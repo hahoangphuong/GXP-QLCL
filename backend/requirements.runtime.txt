@@ -1,0 +1,7 @@
+alembic
+fastapi
+google-auth
+psycopg[binary]
+pydantic
+sqlalchemy
+uvicorn[standard]

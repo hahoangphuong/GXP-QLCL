@@ -1,0 +1,73 @@
+# Decisions — Approved Baseline
+
+- Google Cloud is the application platform.
+- Cloud Run hosts application services.
+- Cloud SQL PostgreSQL stores business database.
+- Synology DS115j stores file binaries only.
+- Business files are not persistently mirrored elsewhere.
+- Initial private network: Tailscale.
+- Future site-to-site VPN is anticipated.
+- Business application must not mount or manipulate NAS directly.
+- All backend file operations go through `StorageService`.
+- Production startup must fail closed:
+  - no SQLite fallback
+  - no fake storage fallback
+  - no `header_stub` auth
+  - no env-owned role map
+- Production Synology integration baseline is adapter-first:
+  - `LocalStorageAdapter` for development/integration.
+  - `Fake/MockStorageAdapter` for automated tests.
+  - `BridgeStorageAdapter` for production Synology integration.
+- Storage adapters resolve physical locations and perform file IO only.
+- `StorageBinding` and `StorageResolutionLog` persistence belong to application/database owner layer, not adapters.
+- Storage bridge calls require authenticated application-level tokens; private network alone is not sufficient.
+- Storage bridge authentication mode is explicit:
+  - `BRIDGE_AUTH_MODE=google_oidc` for Cloud Run/private Google ingress.
+  - `BRIDGE_AUTH_MODE=hmac_jwt` for non-Google bridge hosts.
+  - callers must not rely on implicit scheme fallback.
+- Do not use Cloud Run NFS `no-lock` as the default production storage baseline.
+- Cloud Run NFS may remain experimental or PoC-only until locking, atomicity, and concurrent-write invariants are proven.
+- Production RBAC owner is the application database:
+  - external authenticated identity -> `AppUser` -> `AppUserRole` -> `RbacRole` / permissions
+  - `AUTH_ROLE_MAP` is dev/test/bootstrap only.
+- Database-backed identity matching prefers `external_subject` as the stable external identifier when present.
+- If authenticated email and subject claims resolve to different provisioned users, authorization must fail closed.
+- Top-level request/use-case owns commit/rollback.
+- Mutation endpoints must commit before returning the success response body so stale writes surface as request-level `409 Conflict`.
+- Lower-level storage/document/workflow collaborators may `add()` / `flush()` but must not commit independently.
+- Mutable business aggregates use optimistic concurrency via `row_version`.
+- Audit mutations must persist structured `old_values_json`, `new_values_json`, and field-level diffs, not only a flat payload blob.
+- `payload_redacted` remains a non-secret operational payload snapshot and must scrub secrets, tokens, auth headers/cookies, and binary payload markers.
+- Alembic is the production schema migration owner; `Base.metadata.create_all()` is test/tooling-only.
+- Backend and frontend installs must be reproducible from checked-in lockfiles.
+- Repository tests must be runnable from a fresh checkout without production `legacy/` or `artifacts/`; committed sanitized fixtures are the test baseline.
+- Repository Python baseline is 3.12 for lock generation, CI, Docker, and Cloud Run.
+- CAPA remains a case subworkflow guard rather than a top-level case-state explosion; one shared certificate-eligibility policy now owns:
+  - `inspection_completed -> awaiting_certificate_decision`
+  - `awaiting_certificate_decision -> certified`
+  - case-backed certificate issuance
+  - case-backed certificate current-promotion
+- CAPA may be requested only in `inspection_completed`; do not create new CAPA cycles after a case has already advanced to `awaiting_certificate_decision`.
+- CAPA assessor identity must bind to authenticated `app_user`; free-text assessor values are legacy-compatible snapshots, not authority.
+- Current production frontend topology is a single Cloud Run service/image:
+  - Vite frontend is built into the same production container image as FastAPI
+  - backend serves built frontend static assets for same-origin browser usage
+  - no separate production frontend service is the baseline at this stage
+- Production rollout order is strict:
+  - validate config and resources
+  - run preflight quality gates
+  - build immutable image
+  - run Alembic migration as a one-off Cloud Run job
+  - only after migration success, deploy the new Cloud Run service revision
+  - verify `/healthz` and `/readyz`
+- Current storage-integration sequence is:
+  - PoC A: Cloud Run -> Tailscale userspace networking -> Synology using an application-level client/protocol, without NFS as the default path.
+  - PoC B: only if PoC A fails reliability/performance/security goals, deploy a separate storage bridge host near Synology.
+- Inspector editing UX: Windows Explorer + Word desktop + direct save; avoid manual download/upload.
+- Legacy folder identity is year + site ID + inspection code.
+- Do not bulk rename/restructure legacy storage during early migration.
+- `db.dkkd ID 385` exact duplicate: retain one.
+- No big-bang rewrite; reverse-engineer and reconcile first.
+- Do not mirror workbook schema 1:1 without domain justification.
+- Numeric filename prefixes are legacy document-type signals.
+- DOCX/PDF/scan/signed may be renditions of one logical document.

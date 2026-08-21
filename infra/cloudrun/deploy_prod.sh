@@ -1,0 +1,290 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+PLAN_JSON="$(mktemp)"
+RUNTIME_ENV_FILE="$(mktemp)"
+cleanup() {
+  rm -f "${PLAN_JSON}" "${RUNTIME_ENV_FILE}"
+}
+trap cleanup EXIT
+
+cd "${REPO_ROOT}"
+
+log() {
+  printf '%s\n' "$*"
+}
+
+fail() {
+  printf 'ERROR: %s\n' "$*" >&2
+  exit 1
+}
+
+need_cmd() {
+  command -v "$1" >/dev/null 2>&1 || fail "Required command not found in PATH: $1"
+}
+
+resolve_cmd() {
+  local candidate
+  for candidate in "$@"; do
+    if command -v "${candidate}" >/dev/null 2>&1; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+json_query() {
+  local expr="$1"
+  "${PYTHON_BIN}" - "$PLAN_JSON" "$expr" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+expr = sys.argv[2]
+payload = json.loads(open(path, encoding="utf-8").read())
+value = payload
+for part in expr.split("."):
+    if not part:
+        continue
+    if isinstance(value, dict):
+        value = value[part]
+    else:
+        raise SystemExit(f"Cannot descend into non-dict value for {expr!r}")
+if isinstance(value, bool):
+    print("true" if value else "false")
+elif value is None:
+    print("")
+else:
+    print(value)
+PY
+}
+
+json_to_env_file() {
+  "${PYTHON_BIN}" - "$PLAN_JSON" "$RUNTIME_ENV_FILE" <<'PY'
+import json
+import sys
+
+plan = json.loads(open(sys.argv[1], encoding="utf-8").read())["plan"]
+runtime_env = plan["runtime_env"]
+with open(sys.argv[2], "w", encoding="utf-8") as fh:
+    for key in sorted(runtime_env):
+        value = str(runtime_env[key]).replace("\\", "\\\\").replace('"', '\\"')
+        fh.write(f'{key}: "{value}"\n')
+PY
+}
+
+json_to_secret_flags() {
+  "${PYTHON_BIN}" - "$PLAN_JSON" <<'PY'
+import json
+import sys
+
+plan = json.loads(open(sys.argv[1], encoding="utf-8").read())["plan"]
+pairs = [f"{key}={value}" for key, value in sorted(plan["secret_env"].items())]
+print(",".join(pairs))
+PY
+}
+
+json_to_labels() {
+  "${PYTHON_BIN}" - "$PLAN_JSON" <<'PY'
+import json
+import sys
+
+plan = json.loads(open(sys.argv[1], encoding="utf-8").read())["plan"]
+pairs = [f"{key}={value}" for key, value in sorted(plan["labels"].items())]
+print(",".join(pairs))
+PY
+}
+
+PYTHON_BIN="$(resolve_cmd python3 python)" || fail "python3 or python is required."
+need_cmd git
+need_cmd gcloud
+need_cmd curl
+
+if command -v pnpm >/dev/null 2>&1; then
+  PNPM_CMD=(pnpm)
+elif command -v corepack >/dev/null 2>&1; then
+  PNPM_CMD=(corepack pnpm)
+elif command -v npx >/dev/null 2>&1; then
+  PNPM_CMD=(npx pnpm)
+else
+  fail "pnpm, corepack, or npx is required to run frontend checks."
+fi
+
+"${PYTHON_BIN}" tools/validate_prod_deploy.py >"${PLAN_JSON}" || {
+  cat "${PLAN_JSON}" >&2
+  fail "Production deploy env validation failed."
+}
+
+if [[ "$(json_query ok)" != "true" ]]; then
+  cat "${PLAN_JSON}" >&2
+  fail "Production deploy plan is invalid."
+fi
+
+json_to_env_file
+SECRET_FLAGS="$(json_to_secret_flags)"
+LABEL_FLAGS="$(json_to_labels)"
+
+PROJECT_ID="$(json_query plan.project_id)"
+REGION="$(json_query plan.region)"
+SQL_INSTANCE="$(json_query plan.sql_instance)"
+CLOUD_SQL_CONNECTION_NAME="$(json_query plan.cloud_sql_connection_name)"
+DB_NAME="$(json_query plan.db_name)"
+DB_USER="$(json_query plan.db_user)"
+SERVICE_NAME="$(json_query plan.service_name)"
+MIGRATION_JOB_NAME="$(json_query plan.migration_job_name)"
+ARTIFACT_REGISTRY_REPO="$(json_query plan.artifact_registry_repo)"
+IMAGE_URI="$(json_query plan.image_uri)"
+RUNTIME_SERVICE_ACCOUNT="$(json_query plan.runtime_service_account)"
+DRY_RUN_FLAG="$(json_query plan.dry_run)"
+
+CPU="${CPU:-1}"
+MEMORY="${MEMORY:-1Gi}"
+CONCURRENCY="${CONCURRENCY:-20}"
+TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-300}"
+MIN_INSTANCES="${MIN_INSTANCES:-0}"
+MAX_INSTANCES="${MAX_INSTANCES:-3}"
+INGRESS="${INGRESS:-all}"
+
+log "Validated production deploy plan:"
+cat "${PLAN_JSON}"
+
+required_files=(
+  "backend/Dockerfile"
+  "frontend/package.json"
+  "frontend/pnpm-lock.yaml"
+  "alembic.ini"
+  "migrations/env.py"
+  "infra/cloudrun/cloudbuild.prod.yaml"
+  "infra/cloudrun/deploy_prod.sh"
+  "tools/validate_prod_deploy.py"
+)
+for path in "${required_files[@]}"; do
+  [[ -f "${path}" ]] || fail "Required file missing: ${path}"
+done
+
+run_preflight_checks() {
+  log "Running backend tests..."
+  "${PYTHON_BIN}" -m pytest -q
+
+  log "Running repo hygiene check..."
+  "${PYTHON_BIN}" tools/check_repo_hygiene.py
+
+  log "Running frontend lint/typecheck/test/build..."
+  (
+    cd frontend
+    "${PNPM_CMD[@]}" lint
+    "${PNPM_CMD[@]}" typecheck
+    "${PNPM_CMD[@]}" test
+    "${PNPM_CMD[@]}" build
+  )
+}
+
+verify_gcloud_resources() {
+  log "Verifying Google Cloud project..."
+  gcloud projects describe "${PROJECT_ID}" --format='value(projectId)' >/dev/null
+
+  log "Verifying Cloud SQL instance..."
+  local sql_state
+  sql_state="$(gcloud sql instances describe "${SQL_INSTANCE}" --project "${PROJECT_ID}" --format='value(state)')"
+  [[ "${sql_state}" == "RUNNABLE" ]] || fail "Cloud SQL instance ${SQL_INSTANCE} is not RUNNABLE (state=${sql_state})."
+
+  local actual_connection_name
+  actual_connection_name="$(gcloud sql instances describe "${SQL_INSTANCE}" --project "${PROJECT_ID}" --format='value(connectionName)')"
+  [[ "${actual_connection_name}" == "${CLOUD_SQL_CONNECTION_NAME}" ]] || fail "Cloud SQL connection name mismatch: expected ${CLOUD_SQL_CONNECTION_NAME}, got ${actual_connection_name}."
+
+  log "Verifying Cloud SQL database and user..."
+  gcloud sql databases describe "${DB_NAME}" --instance "${SQL_INSTANCE}" --project "${PROJECT_ID}" --format='value(name)' >/dev/null
+  gcloud sql users list --instance "${SQL_INSTANCE}" --project "${PROJECT_ID}" --format='value(name)' | grep -Fx "${DB_USER}" >/dev/null || fail "Cloud SQL user not found: ${DB_USER}"
+
+  log "Verifying Secret Manager secret..."
+  gcloud secrets describe "$(json_query plan.db_password_secret)" --project "${PROJECT_ID}" --format='value(name)' >/dev/null
+
+  log "Verifying Artifact Registry repository..."
+  gcloud artifacts repositories describe "${ARTIFACT_REGISTRY_REPO}" --location "${REGION}" --project "${PROJECT_ID}" --format='value(name)' >/dev/null
+
+  log "Verifying runtime service account..."
+  gcloud iam service-accounts describe "${RUNTIME_SERVICE_ACCOUNT}" --project "${PROJECT_ID}" --format='value(email)' >/dev/null
+}
+
+print_execution_summary() {
+  cat <<EOF
+Planned image: ${IMAGE_URI}
+Planned Cloud Run service: ${SERVICE_NAME}
+Planned migration job: ${MIGRATION_JOB_NAME}
+Artifact Registry repo: ${ARTIFACT_REGISTRY_REPO}
+Cloud SQL connection: ${CLOUD_SQL_CONNECTION_NAME}
+Runtime service account: ${RUNTIME_SERVICE_ACCOUNT}
+Runtime env file: ${RUNTIME_ENV_FILE}
+EOF
+}
+
+run_preflight_checks
+verify_gcloud_resources
+print_execution_summary
+
+if [[ "${DRY_RUN_FLAG}" == "true" ]]; then
+  log "DRY RUN PASS"
+  exit 0
+fi
+
+log "Building immutable image with Cloud Build..."
+gcloud builds submit \
+  --project "${PROJECT_ID}" \
+  --config "infra/cloudrun/cloudbuild.prod.yaml" \
+  --substitutions "_IMAGE_URI=${IMAGE_URI}" \
+  .
+
+log "Deploying migration job definition..."
+gcloud run jobs deploy "${MIGRATION_JOB_NAME}" \
+  --project "${PROJECT_ID}" \
+  --region "${REGION}" \
+  --image "${IMAGE_URI}" \
+  --service-account "${RUNTIME_SERVICE_ACCOUNT}" \
+  --tasks 1 \
+  --max-retries 0 \
+  --task-timeout 1800s \
+  --set-env-vars-file "${RUNTIME_ENV_FILE}" \
+  --set-secrets "${SECRET_FLAGS}" \
+  --set-cloudsql-instances "${CLOUD_SQL_CONNECTION_NAME}" \
+  --command "alembic" \
+  --args "upgrade" \
+  --args "head" \
+  --labels "${LABEL_FLAGS}"
+
+log "Executing migration job..."
+gcloud run jobs execute "${MIGRATION_JOB_NAME}" \
+  --project "${PROJECT_ID}" \
+  --region "${REGION}" \
+  --wait
+
+log "Deploying Cloud Run service..."
+gcloud run deploy "${SERVICE_NAME}" \
+  --project "${PROJECT_ID}" \
+  --region "${REGION}" \
+  --image "${IMAGE_URI}" \
+  --service-account "${RUNTIME_SERVICE_ACCOUNT}" \
+  --cpu "${CPU}" \
+  --memory "${MEMORY}" \
+  --concurrency "${CONCURRENCY}" \
+  --timeout "${TIMEOUT_SECONDS}s" \
+  --min-instances "${MIN_INSTANCES}" \
+  --max-instances "${MAX_INSTANCES}" \
+  --ingress "${INGRESS}" \
+  --execution-environment gen2 \
+  --no-allow-unauthenticated \
+  --env-vars-file "${RUNTIME_ENV_FILE}" \
+  --set-secrets "${SECRET_FLAGS}" \
+  --set-cloudsql-instances "${CLOUD_SQL_CONNECTION_NAME}" \
+  --labels "${LABEL_FLAGS}"
+
+log "Verifying revision readiness..."
+SERVICE_URL="$(gcloud run services describe "${SERVICE_NAME}" --project "${PROJECT_ID}" --region "${REGION}" --format='value(status.url)')"
+[[ -n "${SERVICE_URL}" ]] || fail "Cloud Run service URL was blank after deploy."
+TOKEN="$(gcloud auth print-identity-token)"
+curl -fsS -H "Authorization: Bearer ${TOKEN}" "${SERVICE_URL}/healthz" >/dev/null
+curl -fsS -H "Authorization: Bearer ${TOKEN}" "${SERVICE_URL}/readyz" >/dev/null
+
+log "Production deploy completed successfully."

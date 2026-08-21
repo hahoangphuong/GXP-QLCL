@@ -1,0 +1,71 @@
+# Phase 3p Current Projection Conflict Contract
+
+## Purpose
+Turn the audited duplicate-current legacy findings into a deterministic migration contract for target current-state projections.
+
+This phase does not decide business winners where evidence is insufficient.
+It defines:
+- which conflict rows must be surfaced explicitly;
+- which fields the conflict queue must preserve;
+- which conflict classes are currently not safe to auto-resolve.
+
+## Inputs
+- [DUPLICATE_CURRENT_ANALYSIS.md](/D:/GXP-QLCL/docs/DUPLICATE_CURRENT_ANALYSIS.md)
+- [duplicate_current_analysis.json](/D:/GXP-QLCL/artifacts/legacy_audit/duplicate_current_analysis.json)
+- [CURRENT_LOOKUP_RECONCILIATION.md](/D:/GXP-QLCL/docs/CURRENT_LOOKUP_RECONCILIATION.md)
+
+## Outputs
+- [current_projection_conflicts.json](/D:/GXP-QLCL/artifacts/phase3p/current_projection_conflicts.json)
+- [current_projection_conflicts.md](/D:/GXP-QLCL/artifacts/phase3p/current_projection_conflicts.md)
+- schema baseline for `current_projection_conflict`
+
+## Conflict contract
+Each conflict row must preserve at least:
+- `projection_type`
+- `source_sheet`
+- `business_key`
+- `classification`
+- `resolution_policy`
+- `status`
+- `detected_on`
+- candidate legacy row IDs
+- detail payload explaining why the conflict exists
+
+## Current approved policies
+### Auto-resolve
+- None yet.
+
+Reason:
+- current workbook evidence is sufficient to prove conflict existence;
+- it is not yet sufficient to prove a universally safe winner-selection rule.
+
+### Manual review required
+- `db.cc.blank_ma_dc_non_case_backed_multi_current`
+- `db.ktra.completed_plus_pending_both_current`
+- `db.ktra.multiple_completed_both_current`
+
+## Current state on August 14, 2026
+- Total conflict rows emitted: `14`
+- Auto-resolvable rows: `0`
+- Manual-review rows: `14`
+
+Breakdown:
+- `current_certificate_projection`: `10`
+- `current_case_projection`: `4`
+
+## Migration guardrails
+- Import all source rows; do not discard duplicates.
+- Do not silently pick one current winner during projection build.
+- Downstream read models must tolerate:
+  - resolved current
+  - no current
+  - conflict
+- Adjudication decisions must be additive and auditable.
+
+## Recommended next step
+The next safe step is to define the decision-file format for human adjudication of `current_projection_conflict` rows:
+- selected winning legacy row ID or explicit `no_winner`;
+- reviewer;
+- reviewed date;
+- rationale;
+- optional policy promotion marker if a repeated pattern becomes proven safe later.

@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: gxp_qlcl_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d gxp_qlcl_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_qlcl_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Assert fresh checkout excludes production legacy artifacts
+        run: |
+          test ! -d legacy
+          test ! -d artifacts
+
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements.dev.lock.txt
+
+      - name: Validate Alembic upgrade
+        run: python -m alembic upgrade head
+
+      - name: Run backend tests
+        run: python -m pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint frontend
+        working-directory: frontend
+        run: pnpm lint
+
+      - name: Typecheck frontend
+        working-directory: frontend
+        run: pnpm typecheck
+
+      - name: Test frontend
+        working-directory: frontend
+        run: pnpm test
+
+      - name: Build frontend
+        working-directory: frontend
+        run: pnpm build
+
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate tracked-file hygiene
+        run: python tools/check_repo_hygiene.py
+
+      - name: Assert fresh checkout excludes production legacy artifacts
+        run: |
+          test ! -d legacy
+          test ! -d artifacts
+
+      - name: Install pip-tools
+        run: python -m pip install pip-tools
+
+      - name: Verify backend runtime lock freshness
+        run: |
+          python -m piptools compile --quiet --strip-extras --output-file backend/requirements.runtime.lock.ci.txt backend/requirements.runtime.txt
+          diff -u backend/requirements.runtime.lock.txt backend/requirements.runtime.lock.ci.txt
+
+      - name: Verify backend dev lock freshness
+        run: |
+          python -m piptools compile --quiet --strip-extras --output-file backend/requirements.dev.lock.ci.txt backend/requirements.dev.txt
+          diff -u backend/requirements.dev.lock.txt backend/requirements.dev.lock.ci.txt

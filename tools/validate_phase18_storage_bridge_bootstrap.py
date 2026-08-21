@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
+import re
 import sys
 from typing import Any
 
@@ -14,14 +15,17 @@ from tools.validate_phase14_cloud_run_contract import parse_env_file
 
 
 DEFAULT_CONFIG_PATH = Path("infra/cloudrun/storage_bridge_bootstrap.example.json")
+NAME_PATTERN = re.compile(r"^[a-z][a-z0-9-]{1,62}$")
 
 
 @dataclass(frozen=True)
 class Phase18ValidationReport:
     errors: list[str]
     warnings: list[str]
+    build_command_preview: list[str]
     deploy_command_preview: list[str]
     invoker_binding_preview: list[str]
+    bridge_base_url_hint: str
 
     @property
     def ok(self) -> bool:
@@ -55,23 +59,62 @@ def validate_bridge_env_contract(env: dict[str, str]) -> tuple[list[str], list[s
     errors: list[str] = []
     warnings: list[str] = []
 
-    deployment_platform = env.get("DEPLOYMENT_PLATFORM", "").strip() or "google_cloud_run"
-    if deployment_platform != "google_cloud_run":
-        errors.append("DEPLOYMENT_PLATFORM must be google_cloud_run for the bridge baseline.")
+    if (env.get("DEPLOYMENT_PLATFORM", "").strip() or "google_cloud_run") != "google_cloud_run":
+        errors.append("DEPLOYMENT_PLATFORM must be google_cloud_run for the bridge runtime.")
+    if (env.get("BRIDGE_RUNTIME", "").strip() or "storage_bridge") != "storage_bridge":
+        errors.append("BRIDGE_RUNTIME must be storage_bridge.")
 
-    storage_class = env.get("STORAGE_CLASS", "").strip() or "local_filesystem_fake"
-    if storage_class == "external_bridge_http":
-        errors.append("Bridge runtime must not use STORAGE_CLASS=external_bridge_http.")
-    if not env.get("STORAGE_INSPECTION_ROOT", "").strip():
-        errors.append("STORAGE_INSPECTION_ROOT is required for the bridge runtime.")
+    storage_class = env.get("STORAGE_CLASS", "").strip()
+    if storage_class != "synology_smb_bridge":
+        errors.append("STORAGE_CLASS must be synology_smb_bridge for the Cloud Run bridge baseline.")
+
+    for key in ("STORAGE_INSPECTION_ROOT", "SMB_AUTH_PROTOCOL"):
+        if not env.get(key, "").strip():
+            errors.append(f"{key} is required for the bridge runtime.")
     if not env.get("STORAGE_DKKD_ROOT", "").strip():
         warnings.append("STORAGE_DKKD_ROOT is blank; DDKD bridge operations will be unavailable.")
     if not env.get("STORAGE_TEMPLATE_ROOT", "").strip():
         warnings.append("STORAGE_TEMPLATE_ROOT is blank; template bridge operations will be unavailable.")
+    if (env.get("BRIDGE_AUTH_MODE", "").strip() or "google_oidc") != "google_oidc":
+        errors.append("BRIDGE_AUTH_MODE must be google_oidc for the production Cloud Run bridge baseline.")
+    if (env.get("TAILSCALE_ENABLE", "").strip() or "0") != "1":
+        errors.append("TAILSCALE_ENABLE must be 1 for the Cloud Run bridge baseline.")
     return errors, warnings
 
 
+def _build_image_uri(config: dict[str, Any]) -> str:
+    region = config["region"]
+    project_id = config["project_id"]
+    artifact_registry_repo = config["artifact_registry_repo"]
+    image_name = config["image_name"]
+    image_tag = config["image_tag"]
+    return f"{region}-docker.pkg.dev/{project_id}/{artifact_registry_repo}/{image_name}:{image_tag}"
+
+
+def _build_bridge_base_url_hint(config: dict[str, Any]) -> str:
+    region = config["region"]
+    project_id = config["project_id"]
+    service_name = config["service_name"]
+    return f"https://{service_name}-{project_id}.{region}.run.app"
+
+
+def _build_build_preview(config: dict[str, Any]) -> list[str]:
+    return [
+        "gcloud",
+        "builds",
+        "submit",
+        "--project",
+        config["project_id"],
+        "--tag",
+        _build_image_uri(config),
+        "--file",
+        "backend/Dockerfile.storage_bridge",
+        ".",
+    ]
+
+
 def _build_deploy_preview(config: dict[str, Any]) -> list[str]:
+    image_uri = _build_image_uri(config)
     command = [
         "gcloud",
         "run",
@@ -82,7 +125,7 @@ def _build_deploy_preview(config: dict[str, Any]) -> list[str]:
         "--region",
         config["region"],
         "--image",
-        config["image"],
+        image_uri,
         "--service-account",
         config["service_account"],
         "--env-vars-file",
@@ -104,24 +147,14 @@ def _build_deploy_preview(config: dict[str, Any]) -> list[str]:
         "--execution-environment",
         "gen2",
         "--no-allow-unauthenticated",
+        "--set-secrets",
+        (
+            "TAILSCALE_AUTHKEY="
+            f"{config['tailscale_authkey_secret']}:latest,"
+            f"SMB_USERNAME={config['smb_username_secret']}:latest,"
+            f"SMB_PASSWORD={config['smb_password_secret']}:latest"
+        ),
     ]
-    if config.get("vpc_network"):
-        command.extend(["--network", config["vpc_network"]])
-    if config.get("vpc_subnet"):
-        command.extend(["--subnet", config["vpc_subnet"]])
-    if config.get("vpc_egress"):
-        command.extend(["--vpc-egress", config["vpc_egress"]])
-    for mount in config.get("storage_mounts", []):
-        readonly = str(bool(mount.get("read_only", False))).lower()
-        command.extend(
-            [
-                "--add-volume",
-                (
-                    f"name={mount['name']},type=nfs,location={mount['server']}:{mount['export_path']},"
-                    f"mount-path={mount['mount_path']},readonly={readonly}"
-                ),
-            ]
-        )
     return command
 
 
@@ -146,12 +179,17 @@ def validate_storage_bridge_bootstrap(config: dict[str, Any], *, root: Path | No
     warnings: list[str] = []
     repo_root = ROOT if root is None else root
 
-    _require_nonblank_string(config, "project_id", errors)
-    _require_nonblank_string(config, "region", errors)
-    _require_nonblank_string(config, "service_name", errors)
-    _require_nonblank_string(config, "image", errors)
+    project_id = _require_nonblank_string(config, "project_id", errors)
+    region = _require_nonblank_string(config, "region", errors)
+    service_name = _require_nonblank_string(config, "service_name", errors)
     _require_nonblank_string(config, "service_account", errors)
     _require_nonblank_string(config, "caller_service_account", errors)
+    _require_nonblank_string(config, "artifact_registry_repo", errors)
+    _require_nonblank_string(config, "image_name", errors)
+    _require_nonblank_string(config, "image_tag", errors)
+    _require_nonblank_string(config, "tailscale_authkey_secret", errors)
+    _require_nonblank_string(config, "smb_username_secret", errors)
+    _require_nonblank_string(config, "smb_password_secret", errors)
     env_file_value = _require_nonblank_string(config, "env_file", errors)
     _require_nonblank_string(config, "cpu", errors)
     _require_nonblank_string(config, "memory", errors)
@@ -160,6 +198,10 @@ def validate_storage_bridge_bootstrap(config: dict[str, Any], *, root: Path | No
     max_instances = _require_int(config, "max_instances", errors, minimum=0)
     _require_int(config, "timeout_seconds", errors, minimum=1)
     _require_int(config, "concurrency", errors, minimum=1)
+
+    for key, value in (("service_name", service_name), ("artifact_registry_repo", config.get("artifact_registry_repo", "")), ("image_name", config.get("image_name", ""))):
+        if value and not NAME_PATTERN.match(value):
+            errors.append(f"{key} must match {NAME_PATTERN.pattern}.")
 
     if min_instances is not None and max_instances is not None and min_instances > max_instances:
         errors.append("min_instances must be <= max_instances.")
@@ -175,37 +217,22 @@ def validate_storage_bridge_bootstrap(config: dict[str, Any], *, root: Path | No
         errors.extend(f"env contract: {item}" for item in env_errors)
         warnings.extend(f"env contract: {item}" for item in env_warnings)
 
-    if not str(config.get("vpc_network", "")).strip():
-        errors.append("vpc_network is required for the bridge baseline.")
-    if not str(config.get("vpc_subnet", "")).strip():
-        errors.append("vpc_subnet is required for the bridge baseline.")
-
-    mounts = config.get("storage_mounts")
-    if not isinstance(mounts, list) or not mounts:
-        errors.append("storage_mounts must contain at least one NFS mount for the bridge baseline.")
-    else:
-        for index, mount in enumerate(mounts):
-            if not isinstance(mount, dict):
-                errors.append(f"storage_mounts[{index}] must be an object.")
-                continue
-            for field in ("name", "mount_path", "server", "export_path"):
-                value = mount.get(field)
-                if not isinstance(value, str) or not value.strip():
-                    errors.append(f"storage_mounts[{index}].{field} must be a non-blank string.")
-            if not isinstance(mount.get("read_only"), bool):
-                errors.append(f"storage_mounts[{index}].read_only must be a boolean.")
-
     warnings.append(
-        "Cloud Run NFS volumes are documented as no-lock; confirm bridge-side file-touching behavior is acceptable for non-production use."
+        "Cloud Run bridge over Tailscale userspace + SMB is an infrastructure adapter baseline; verify Synology test-folder flows before binding production dossiers."
     )
 
-    deploy_command_preview = _build_deploy_preview(config)
-    invoker_binding_preview = _build_invoker_binding_preview(config)
+    if project_id and region and service_name:
+        bridge_base_url_hint = _build_bridge_base_url_hint(config)
+    else:
+        bridge_base_url_hint = ""
+
     return Phase18ValidationReport(
         errors=errors,
         warnings=warnings,
-        deploy_command_preview=deploy_command_preview,
-        invoker_binding_preview=invoker_binding_preview,
+        build_command_preview=_build_build_preview(config) if not errors else [],
+        deploy_command_preview=_build_deploy_preview(config) if not errors else [],
+        invoker_binding_preview=_build_invoker_binding_preview(config) if not errors else [],
+        bridge_base_url_hint=bridge_base_url_hint,
     )
 
 
@@ -214,8 +241,10 @@ def _build_cli_payload(report: Phase18ValidationReport) -> dict[str, Any]:
         "ok": report.ok,
         "errors": report.errors,
         "warnings": report.warnings,
+        "build_command_preview": report.build_command_preview,
         "deploy_command_preview": report.deploy_command_preview,
         "invoker_binding_preview": report.invoker_binding_preview,
+        "bridge_base_url_hint": report.bridge_base_url_hint,
     }
 
 

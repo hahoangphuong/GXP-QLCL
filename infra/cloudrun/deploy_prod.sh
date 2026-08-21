@@ -186,6 +186,9 @@ verify_gcloud_resources() {
   log "Verifying Google Cloud project..."
   gcloud projects describe "${PROJECT_ID}" --format='value(projectId)' >/dev/null
 
+  log "Verifying required APIs..."
+  gcloud services list --enabled --project "${PROJECT_ID}" --filter='config.name=iap.googleapis.com' --format='value(config.name)' | grep -Fx 'iap.googleapis.com' >/dev/null || fail "IAP API is not enabled. Run infra/cloudrun/bootstrap_prod_identity.sh first."
+
   log "Verifying Cloud SQL instance..."
   local sql_state
   sql_state="$(gcloud sql instances describe "${SQL_INSTANCE}" --project "${PROJECT_ID}" --format='value(state)')"
@@ -275,6 +278,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --ingress "${INGRESS}" \
   --execution-environment gen2 \
   --no-allow-unauthenticated \
+  --iap \
   --env-vars-file "${RUNTIME_ENV_FILE}" \
   --set-secrets "${SECRET_FLAGS}" \
   --set-cloudsql-instances "${CLOUD_SQL_CONNECTION_NAME}" \

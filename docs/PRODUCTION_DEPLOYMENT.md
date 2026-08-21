@@ -200,13 +200,27 @@ gcloud sql users create gxp_app \
 ### IAP / external identity
 Production auth mode is `google_iap_jwt`.
 
-You must provide a real IAP audience in:
+Cloud Run direct IAP is the current production baseline. The repository bootstrap helper is:
 
-```text
-AUTH_IAP_EXPECTED_AUDIENCE
+```bash
+infra/cloudrun/bootstrap_prod_identity.sh
 ```
 
-If the HTTPS Load Balancer / IAP backend service is not ready yet, direct end-user production access is not ready yet either, even if Cloud Run revision deployment succeeds.
+It derives the exact audience format from official IAP signed-header guidance:
+
+```text
+/projects/{PROJECT_NUMBER}/locations/{REGION}/services/{SERVICE_NAME}
+```
+
+For this repository baseline, the concrete value is expected to be:
+
+```text
+/projects/<PROJECT_NUMBER>/locations/asia-southeast1/services/gxp-web
+```
+
+`AUTH_IAP_ALLOWED_EMAIL_DOMAIN` is your real Google Workspace operator domain, for example `example.com`.
+
+Cloud Run deploys should keep IAP enabled directly on the service.
 
 ### Storage bridge
 The current production baseline expects:
@@ -215,14 +229,45 @@ The current production baseline expects:
 STORAGE_CLASS=external_bridge_http
 ```
 
-So you must provide:
+The bridge bootstrap helper is:
+
+```bash
+infra/cloudrun/bootstrap_storage_bridge.sh
+```
+
+Bridge topology is now:
+
+```text
+Cloud Run main app
+  -> authenticated HTTPS
+  -> Cloud Run storage bridge
+  -> Tailscale userspace SOCKS5
+  -> SMB
+  -> Synology DS115j
+```
+
+So you must provide real values for:
 
 ```text
 STORAGE_BRIDGE_BASE_URL
 STORAGE_BRIDGE_AUTH_AUDIENCE
 ```
 
-If bridge transport has not been finalized yet, application deployment can still be validated structurally, but file operations are not ready for production use.
+For the current baseline, both values are the deployed bridge service URL, for example:
+
+```text
+https://gxp-storage-bridge-gxp-qlcl.asia-southeast1.run.app
+```
+
+Bridge bootstrap also requires one-time secrets that are not committed:
+
+```text
+TAILSCALE_AUTHKEY secret
+SMB_USERNAME secret
+SMB_PASSWORD secret
+```
+
+The committed bridge env file remains non-secret and only captures topology/config shape.
 
 ## Dry run
 Use:
@@ -247,6 +292,18 @@ Success terminator:
 ```text
 DRY RUN PASS
 ```
+
+## One-time bootstrap order
+Before the first final production dry run, complete bootstrap in this order:
+
+1. Run `infra/cloudrun/bootstrap_prod_identity.sh` and capture the exact `AUTH_IAP_EXPECTED_AUDIENCE`.
+2. Prepare/update `AUTH_IAP_ALLOWED_EMAIL_DOMAIN` to your real operator domain.
+3. Create bridge secrets for Tailscale auth key and Synology SMB credentials.
+4. Update `backend/.env.storage_bridge.cloudrun.example` with the real Synology UNC roots.
+5. Run `DRY_RUN=1 infra/cloudrun/bootstrap_storage_bridge.sh`.
+6. Run `infra/cloudrun/bootstrap_storage_bridge.sh`.
+7. Export the printed `STORAGE_BRIDGE_BASE_URL` and `STORAGE_BRIDGE_AUTH_AUDIENCE`.
+8. Run `DRY_RUN=1 ~/deploy_gxp_prod_git.sh`.
 
 ## Exact first production deploy command
 After one-time prerequisites are complete and wrapper exports the required variables:

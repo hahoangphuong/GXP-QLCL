@@ -53,6 +53,10 @@
   - Vite frontend is built into the same production container image as FastAPI
   - backend serves built frontend static assets for same-origin browser usage
   - no separate production frontend service is the baseline at this stage
+- Current production identity baseline is direct Cloud Run IAP:
+  - Cloud Run service is deployed with `--iap`
+  - backend verifies `X-Goog-IAP-JWT-Assertion`
+  - expected audience format is `/projects/{PROJECT_NUMBER}/locations/{REGION}/services/{SERVICE_NAME}`
 - Production rollout order is strict:
   - validate config and resources
   - run preflight quality gates
@@ -60,9 +64,11 @@
   - run Alembic migration as a one-off Cloud Run job
   - only after migration success, deploy the new Cloud Run service revision
   - verify `/healthz` and `/readyz`
-- Current storage-integration sequence is:
-  - PoC A: Cloud Run -> Tailscale userspace networking -> Synology using an application-level client/protocol, without NFS as the default path.
-  - PoC B: only if PoC A fails reliability/performance/security goals, deploy a separate storage bridge host near Synology.
+- Current storage-integration baseline is:
+  - main app Cloud Run -> `BridgeStorageAdapter` -> authenticated Cloud Run storage bridge
+  - storage bridge -> Tailscale userspace SOCKS5 -> SMB -> Synology DS115j
+  - bridge runtime uses application-level SMB client semantics, not NFS mount semantics
+  - if this baseline fails reliability/performance/security goals, only then evaluate a separate bridge host near Synology
 - Inspector editing UX: Windows Explorer + Word desktop + direct save; avoid manual download/upload.
 - Legacy folder identity is year + site ID + inspection code.
 - Do not bulk rename/restructure legacy storage during early migration.

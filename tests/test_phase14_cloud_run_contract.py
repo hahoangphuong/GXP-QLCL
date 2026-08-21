@@ -40,7 +40,7 @@ def test_validate_env_contract_accepts_cloud_run_baseline():
             "DEPLOYMENT_PLATFORM": "google_cloud_run",
             "AUTH_MODE": "google_iap_jwt",
             "AUTH_ROLE_SOURCE": "database",
-            "AUTH_IAP_EXPECTED_AUDIENCE": "/projects/123/global/backendServices/456",
+            "AUTH_IAP_EXPECTED_AUDIENCE": "/projects/123/locations/asia-southeast1/services/gxp-web",
             "AUTH_IAP_ALLOWED_EMAIL_DOMAIN": "example.com",
             "DB_NAME": "gxp_qlcl",
             "DB_USER": "gxp_app",
@@ -93,7 +93,7 @@ def test_validate_env_contract_accepts_external_bridge_storage_mode():
             "DEPLOYMENT_PLATFORM": "google_cloud_run",
             "AUTH_MODE": "google_iap_jwt",
             "AUTH_ROLE_SOURCE": "database",
-            "AUTH_IAP_EXPECTED_AUDIENCE": "/projects/123/global/backendServices/456",
+            "AUTH_IAP_EXPECTED_AUDIENCE": "/projects/123/locations/asia-southeast1/services/gxp-web",
             "DB_NAME": "gxp_qlcl",
             "DB_USER": "gxp_app",
             "DB_PASSWORD": "secret",
@@ -163,7 +163,7 @@ def test_validate_runtime_config_rejects_fake_storage_in_production():
             "DATABASE_URL": "postgresql+psycopg://user:secret@host/db",
             "AUTH_MODE": "google_iap_jwt",
             "AUTH_ROLE_SOURCE": "database",
-            "AUTH_IAP_EXPECTED_AUDIENCE": "aud",
+            "AUTH_IAP_EXPECTED_AUDIENCE": "/projects/123/locations/asia-southeast1/services/gxp-web",
         }
     )
     storage = create_storage_service_from_env({"STORAGE_INSPECTION_ROOT": ".", "STORAGE_CLASS": "local_filesystem_fake"})
@@ -183,7 +183,7 @@ def test_validate_runtime_config_rejects_direct_filesystem_storage_in_main_app_p
             "DATABASE_URL": "postgresql+psycopg://user:secret@host/db",
             "AUTH_MODE": "google_iap_jwt",
             "AUTH_ROLE_SOURCE": "database",
-            "AUTH_IAP_EXPECTED_AUDIENCE": "aud",
+            "AUTH_IAP_EXPECTED_AUDIENCE": "/projects/123/locations/asia-southeast1/services/gxp-web",
         }
     )
     storage = create_storage_service_from_env(

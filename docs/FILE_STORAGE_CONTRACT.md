@@ -172,8 +172,9 @@ This implies the integration contract needs a desktop-friendly private-network p
 - Cloud Run NFS may exist as an experimental transport or comparison PoC only.
 - Cloud Run NFS `no-lock` is not the default production storage baseline for this system.
 - Current storage-integration order is:
-  - PoC A: Cloud Run -> Tailscale userspace networking -> Synology through an application-level client/protocol hidden behind `BridgeStorageAdapter`
-  - PoC B: if PoC A fails reliability, performance, or security requirements, deploy a separate storage bridge host near Synology
+  - current production baseline: `Cloud Run main app -> authenticated Cloud Run storage bridge -> Tailscale userspace SOCKS5 -> SMB -> Synology`
+  - bridge runtime uses SMB client operations against Synology private share roots; it does not use Cloud Run NFS `no-lock`
+  - fallback only if needed: deploy a separate bridge host near Synology without changing the business-layer contract
 - In either PoC path, business code remains unchanged because all file operations stay behind `StorageService`.
 
 ## Security

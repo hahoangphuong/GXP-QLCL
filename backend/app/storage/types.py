@@ -20,6 +20,20 @@ class StorageConfig:
 
 
 @dataclass(frozen=True)
+class SmbStorageConfig:
+    inspection_root: str
+    dkkd_root: str | None = None
+    template_root: str | None = None
+    storage_class: str = "synology_smb_bridge"
+    username: str | None = None
+    password: str | None = None
+    auth_protocol: str = "ntlm"
+    port: int = 445
+    encrypt: bool = False
+    connection_timeout: int = 60
+
+
+@dataclass(frozen=True)
 class ExternalBridgeStorageConfig:
     base_url: str
     auth_mode: str = "google_oidc"
@@ -48,7 +62,7 @@ class StorageEntry:
 
 
 class StorageServiceProtocol(Protocol):
-    config: StorageConfig | ExternalBridgeStorageConfig
+    config: StorageConfig | SmbStorageConfig | ExternalBridgeStorageConfig
 
     def resolve_inspection_folder(
         self,

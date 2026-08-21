@@ -7,14 +7,18 @@ from tools.validate_phase18_storage_bridge_bootstrap import (
 )
 
 
-def test_validate_bridge_env_contract_accepts_filesystem_backed_bridge():
+def test_validate_bridge_env_contract_accepts_cloud_run_smb_bridge_baseline():
     errors, warnings = validate_bridge_env_contract(
         {
             "DEPLOYMENT_PLATFORM": "google_cloud_run",
-            "STORAGE_CLASS": "synology_private_share_nonprod",
-            "STORAGE_INSPECTION_ROOT": "/mnt/synology/inspection",
-            "STORAGE_DKKD_ROOT": "/mnt/synology/dkkd",
-            "STORAGE_TEMPLATE_ROOT": "/mnt/synology/templates",
+            "BRIDGE_RUNTIME": "storage_bridge",
+            "STORAGE_CLASS": "synology_smb_bridge",
+            "STORAGE_INSPECTION_ROOT": r"\\100.x.x.x\Share\01 - Kiem tra GPs",
+            "STORAGE_DKKD_ROOT": r"\\100.x.x.x\Share\Chung nhan DDKKDD",
+            "STORAGE_TEMPLATE_ROOT": r"\\100.x.x.x\Share\Templates",
+            "SMB_AUTH_PROTOCOL": "ntlm",
+            "BRIDGE_AUTH_MODE": "google_oidc",
+            "TAILSCALE_ENABLE": "1",
         }
     )
 
@@ -24,13 +28,18 @@ def test_validate_bridge_env_contract_accepts_filesystem_backed_bridge():
 
 def test_validate_storage_bridge_bootstrap_accepts_example_shape():
     config = {
-        "project_id": "gxp-project-id",
+        "project_id": "gxp-qlcl",
         "region": "asia-southeast1",
         "service_name": "gxp-storage-bridge",
-        "image": "asia-southeast1-docker.pkg.dev/gxp-project-id/gxp-web/gxp-storage-bridge:build-001",
-        "service_account": "gxp-storage-bridge@gxp-project-id.iam.gserviceaccount.com",
-        "caller_service_account": "gxp-web-api@gxp-project-id.iam.gserviceaccount.com",
+        "artifact_registry_repo": "gxp-qlcl",
+        "image_name": "gxp-storage-bridge",
+        "image_tag": "bootstrap-001",
+        "service_account": "gxp-storage-bridge@gxp-qlcl.iam.gserviceaccount.com",
+        "caller_service_account": "gxp-web-runtime@gxp-qlcl.iam.gserviceaccount.com",
         "env_file": "backend/.env.storage_bridge.cloudrun.example",
+        "tailscale_authkey_secret": "gxp-storage-bridge-tailscale-authkey",
+        "smb_username_secret": "gxp-storage-bridge-smb-username",
+        "smb_password_secret": "gxp-storage-bridge-smb-password",
         "cpu": "1",
         "memory": "1Gi",
         "concurrency": 10,
@@ -39,36 +48,30 @@ def test_validate_storage_bridge_bootstrap_accepts_example_shape():
         "max_instances": 2,
         "ingress": "all",
         "allow_unauthenticated": False,
-        "vpc_network": "projects/gxp-project-id/global/networks/gxp-private",
-        "vpc_subnet": "projects/gxp-project-id/regions/asia-southeast1/subnetworks/gxp-private-ase1",
-        "vpc_egress": "private-ranges-only",
-        "storage_mounts": [
-            {
-                "name": "inspection",
-                "mount_path": "/mnt/synology/inspection",
-                "server": "10.10.0.20",
-                "export_path": "/volume1/inspection",
-                "read_only": False,
-            }
-        ],
     }
 
     report = validate_storage_bridge_bootstrap(config)
 
     assert report.errors == []
-    assert "--add-volume" in report.deploy_command_preview
-    assert "services" in report.invoker_binding_preview
+    assert "gcloud" in report.build_command_preview
+    assert "deploy" in report.deploy_command_preview
+    assert report.bridge_base_url_hint.startswith("https://gxp-storage-bridge-gxp-qlcl.")
 
 
-def test_validate_storage_bridge_bootstrap_rejects_external_bridge_storage_class():
+def test_validate_storage_bridge_bootstrap_rejects_non_smb_bridge_runtime():
     config = {
-        "project_id": "gxp-project-id",
+        "project_id": "gxp-qlcl",
         "region": "asia-southeast1",
         "service_name": "gxp-storage-bridge",
-        "image": "image",
+        "artifact_registry_repo": "gxp-qlcl",
+        "image_name": "gxp-storage-bridge",
+        "image_tag": "bootstrap-001",
         "service_account": "bridge@example.com",
         "caller_service_account": "app@example.com",
         "env_file": "backend/.env.cloudrun.external_bridge.example",
+        "tailscale_authkey_secret": "a",
+        "smb_username_secret": "b",
+        "smb_password_secret": "c",
         "cpu": "1",
         "memory": "1Gi",
         "concurrency": 10,
@@ -77,22 +80,11 @@ def test_validate_storage_bridge_bootstrap_rejects_external_bridge_storage_class
         "max_instances": 1,
         "ingress": "all",
         "allow_unauthenticated": False,
-        "vpc_network": "projects/gxp/global/networks/private",
-        "vpc_subnet": "projects/gxp/regions/asia-southeast1/subnetworks/private",
-        "storage_mounts": [
-            {
-                "name": "inspection",
-                "mount_path": "/mnt/synology/inspection",
-                "server": "10.10.0.20",
-                "export_path": "/volume1/inspection",
-                "read_only": False,
-            }
-        ],
     }
 
     report = validate_storage_bridge_bootstrap(config)
 
-    assert any("Bridge runtime must not use STORAGE_CLASS=external_bridge_http." in item for item in report.errors)
+    assert any("STORAGE_CLASS must be synology_smb_bridge" in item for item in report.errors)
 
 
 def test_load_json_file_reads_bootstrap(tmp_path: Path):

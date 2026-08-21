@@ -10,6 +10,7 @@ import tempfile
 
 from backend.app.storage.bridge_auth import load_bridge_auth_config, require_bridge_request_auth
 from backend.app.storage import ExternalBridgeStorageService, FilesystemStorageService, create_storage_service_from_env
+from backend.app.storage.socket_proxy import enable_socket_proxy_from_env
 from backend.app.storage.types import StorageEntry, StorageOperationError, StorageResolution
 
 
@@ -37,8 +38,11 @@ def create_storage_bridge_app(storage_service: FilesystemStorageService | None =
     storage_error: str | None = None
     if resolved_storage is None:
         try:
+            enable_socket_proxy_from_env()
             resolved_storage = create_storage_service_from_env()
         except StorageOperationError as exc:
+            storage_error = str(exc)
+        except RuntimeError as exc:
             storage_error = str(exc)
     if isinstance(resolved_storage, ExternalBridgeStorageService):
         storage_error = "Storage bridge runtime must use a filesystem-backed storage adapter, not external_bridge_http."
@@ -78,6 +82,22 @@ def create_storage_bridge_app(storage_service: FilesystemStorageService | None =
             "service": "storage_bridge",
             "storage_configured": app.state.storage_service is not None,
             "auth_configured": app.state.bridge_auth_config is not None,
+        }
+
+    @app.get("/readyz")
+    def readyz():
+        if app.state.storage_service is None:
+            raise HTTPException(status_code=503, detail=app.state.storage_error or "Storage bridge is not configured.")
+        if app.state.bridge_auth_config is None:
+            raise HTTPException(status_code=503, detail="Storage bridge auth is not configured.")
+        try:
+            app.state.storage_service.list("", root="inspection")
+        except Exception as exc:  # pragma: no cover
+            raise_http_error(exc)
+        return {
+            "ok": True,
+            "service": "storage_bridge",
+            "inspection_root_ready": True,
         }
 
     @app.post("/bridge/storage/inspection-folder/resolve")

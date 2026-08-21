@@ -1,7 +1,9 @@
 alembic
 fastapi
 google-auth
+PySocks
 psycopg[binary]
 pydantic
+smbprotocol
 sqlalchemy
 uvicorn[standard]

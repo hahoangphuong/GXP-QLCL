@@ -119,8 +119,9 @@ Hard rule:
 - Cloud Run NFS `no-lock` is not the default production storage baseline.
 - NFS may still exist as an experimental transport adapter or comparison PoC, but not as the owner of production file semantics unless locking, atomicity, and concurrent-write invariants are separately proven.
 - Current storage integration order is:
-  - PoC A: evaluate `Cloud Run -> Tailscale userspace networking -> Synology` via an application-level client/protocol behind `BridgeStorageAdapter`
-  - PoC B: only if PoC A fails reliability, performance, or security requirements, deploy a dedicated bridge host near Synology
+  - production baseline: `Cloud Run main app -> authenticated Cloud Run storage bridge -> Tailscale userspace SOCKS5 -> SMB -> Synology`
+  - the storage bridge runtime owns SMB/Tailscale mechanics; the business app still sees only `StorageService`
+  - fallback path only if needed: deploy a dedicated bridge host near Synology without changing business-layer code
 - If PoC B becomes necessary, the bridge host remains an infrastructure adapter only; business application code must remain unchanged.
 - Bridge API authentication is application-level, not just network-level:
   - `BRIDGE_AUTH_MODE=google_oidc` for Cloud Run/private Google service-to-service identity
@@ -143,7 +144,8 @@ Hard rule:
 
 ## Identity and access boundary
 - Local/dev may use `header_stub`, but production-compatible mode is `google_iap_jwt`.
-- Google Cloud identity should be verified from `X-Goog-IAP-JWT-Assertion` against the configured IAP audience.
+- Google Cloud identity should be verified from `X-Goog-IAP-JWT-Assertion` against the configured direct-Cloud-Run IAP audience.
+- Direct Cloud Run IAP audience format is `/projects/{PROJECT_NUMBER}/locations/{REGION}/services/{SERVICE_NAME}`.
 - Plain identity headers are not the primary trust anchor; any fallback must be explicit and temporary.
 - Production role/permission ownership is database-backed:
   - external identity -> `AppUser` -> `AppUserRole` -> `RbacRole` / permissions
@@ -186,6 +188,10 @@ Hard rule:
   - health/readiness verification
 - Direct VPC egress is the recommended private-network path for Cloud Run when VPC access is required.
 - No production baseline currently assumes direct NAS mounting from the business application container.
+- The current repository-owned storage bridge baseline also avoids NFS mount semantics:
+  - bridge container joins the tailnet in userspace mode
+  - bridge container reaches Synology over private SMB
+  - main app reaches the bridge over authenticated Cloud Run HTTPS
 - Explorer/Word desktop access for inspectors is an intentionally separate private-network workflow:
   - inspector laptop -> Tailscale/private network -> SMB -> Synology
   - backend -> `StorageService` -> transport adapter -> Synology

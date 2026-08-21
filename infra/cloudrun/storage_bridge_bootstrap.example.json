@@ -1,11 +1,16 @@
 {
-  "project_id": "gxp-project-id",
+  "project_id": "gxp-qlcl",
   "region": "asia-southeast1",
   "service_name": "gxp-storage-bridge",
-  "image": "asia-southeast1-docker.pkg.dev/gxp-project-id/gxp-web/gxp-storage-bridge:build-001",
-  "service_account": "gxp-storage-bridge@gxp-project-id.iam.gserviceaccount.com",
-  "caller_service_account": "gxp-web-api@gxp-project-id.iam.gserviceaccount.com",
+  "artifact_registry_repo": "gxp-qlcl",
+  "image_name": "gxp-storage-bridge",
+  "image_tag": "bootstrap-001",
+  "service_account": "gxp-storage-bridge@gxp-qlcl.iam.gserviceaccount.com",
+  "caller_service_account": "gxp-web-runtime@gxp-qlcl.iam.gserviceaccount.com",
   "env_file": "backend/.env.storage_bridge.cloudrun.example",
+  "tailscale_authkey_secret": "gxp-storage-bridge-tailscale-authkey",
+  "smb_username_secret": "gxp-storage-bridge-smb-username",
+  "smb_password_secret": "gxp-storage-bridge-smb-password",
   "cpu": "1",
   "memory": "1Gi",
   "concurrency": 10,
@@ -13,31 +18,5 @@
   "min_instances": 0,
   "max_instances": 2,
   "ingress": "all",
-  "allow_unauthenticated": false,
-  "vpc_network": "projects/gxp-project-id/global/networks/gxp-private",
-  "vpc_subnet": "projects/gxp-project-id/regions/asia-southeast1/subnetworks/gxp-private-ase1",
-  "vpc_egress": "private-ranges-only",
-  "storage_mounts": [
-    {
-      "name": "inspection",
-      "mount_path": "/mnt/synology/01 - Kiem tra GPs",
-      "server": "10.10.0.20",
-      "export_path": "/volume1/01 - Kiem tra GPs",
-      "read_only": false
-    },
-    {
-      "name": "dkkd",
-      "mount_path": "/mnt/synology/Chung nhan DDKKDD",
-      "server": "10.10.0.20",
-      "export_path": "/volume1/Chung nhan DDKKDD",
-      "read_only": false
-    },
-    {
-      "name": "templates",
-      "mount_path": "/mnt/synology/Templates",
-      "server": "10.10.0.20",
-      "export_path": "/volume1/Templates",
-      "read_only": true
-    }
-  ]
+  "allow_unauthenticated": false
 }

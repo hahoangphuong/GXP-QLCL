@@ -25,7 +25,7 @@ class Phase18ValidationReport:
     build_command_preview: list[str]
     deploy_command_preview: list[str]
     invoker_binding_preview: list[str]
-    bridge_base_url_hint: str
+    bridge_base_url_source: str
 
     @property
     def ok(self) -> bool:
@@ -89,13 +89,6 @@ def _build_image_uri(config: dict[str, Any]) -> str:
     image_name = config["image_name"]
     image_tag = config["image_tag"]
     return f"{region}-docker.pkg.dev/{project_id}/{artifact_registry_repo}/{image_name}:{image_tag}"
-
-
-def _build_bridge_base_url_hint(config: dict[str, Any]) -> str:
-    region = config["region"]
-    project_id = config["project_id"]
-    service_name = config["service_name"]
-    return f"https://{service_name}-{project_id}.{region}.run.app"
 
 
 def _build_build_preview(config: dict[str, Any]) -> list[str]:
@@ -221,18 +214,13 @@ def validate_storage_bridge_bootstrap(config: dict[str, Any], *, root: Path | No
         "Cloud Run bridge over Tailscale userspace + SMB is an infrastructure adapter baseline; verify Synology test-folder flows before binding production dossiers."
     )
 
-    if project_id and region and service_name:
-        bridge_base_url_hint = _build_bridge_base_url_hint(config)
-    else:
-        bridge_base_url_hint = ""
-
     return Phase18ValidationReport(
         errors=errors,
         warnings=warnings,
         build_command_preview=_build_build_preview(config) if not errors else [],
         deploy_command_preview=_build_deploy_preview(config) if not errors else [],
         invoker_binding_preview=_build_invoker_binding_preview(config) if not errors else [],
-        bridge_base_url_hint=bridge_base_url_hint,
+        bridge_base_url_source="gcloud run services describe <service> --region <region> --format='value(status.url)'",
     )
 
 
@@ -244,7 +232,7 @@ def _build_cli_payload(report: Phase18ValidationReport) -> dict[str, Any]:
         "build_command_preview": report.build_command_preview,
         "deploy_command_preview": report.deploy_command_preview,
         "invoker_binding_preview": report.invoker_binding_preview,
-        "bridge_base_url_hint": report.bridge_base_url_hint,
+        "bridge_base_url_source": report.bridge_base_url_source,
     }
 
 

@@ -44,7 +44,7 @@ if not payload.get("ok"):
 print("BUILD:", " ".join(payload["build_command_preview"]))
 print("DEPLOY:", " ".join(payload["deploy_command_preview"]))
 print("INVOKER:", " ".join(payload["invoker_binding_preview"]))
-print("BRIDGE_BASE_URL_HINT:", payload["bridge_base_url_hint"])
+print("BRIDGE_BASE_URL_SOURCE:", payload["bridge_base_url_source"])
 PY
 
 if [[ "${DRY_RUN:-0}" == "1" ]]; then
@@ -78,12 +78,26 @@ PY
 "${DEPLOY_CMD[@]}"
 "${INVOKER_CMD[@]}"
 
-python3 - "$VALIDATION_JSON" <<'PY'
+SERVICE_NAME="$(python3 - "${CONFIG_PATH}" <<'PY'
 import json
 import sys
-payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
-print("")
-print("Set these in the main application deploy environment after bridge bootstrap:")
-print(f"STORAGE_BRIDGE_BASE_URL={payload['bridge_base_url_hint']}")
-print(f"STORAGE_BRIDGE_AUTH_AUDIENCE={payload['bridge_base_url_hint']}")
+print(json.loads(open(sys.argv[1], encoding="utf-8").read())["service_name"])
 PY
+)"
+REGION="$(python3 - "${CONFIG_PATH}" <<'PY'
+import json
+import sys
+print(json.loads(open(sys.argv[1], encoding="utf-8").read())["region"])
+PY
+)"
+PROJECT_ID="$(python3 - "${CONFIG_PATH}" <<'PY'
+import json
+import sys
+print(json.loads(open(sys.argv[1], encoding="utf-8").read())["project_id"])
+PY
+)"
+BRIDGE_URL="$(gcloud run services describe "${SERVICE_NAME}" --project "${PROJECT_ID}" --region "${REGION}" --format='value(status.url)')"
+
+printf '\nSet these in the main application deploy environment after bridge bootstrap:\n'
+printf 'STORAGE_BRIDGE_BASE_URL=%s\n' "${BRIDGE_URL}"
+printf 'STORAGE_BRIDGE_AUTH_AUDIENCE=%s\n' "${BRIDGE_URL}"

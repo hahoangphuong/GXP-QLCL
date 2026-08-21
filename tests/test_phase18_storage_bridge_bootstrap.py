@@ -55,7 +55,7 @@ def test_validate_storage_bridge_bootstrap_accepts_example_shape():
     assert report.errors == []
     assert "gcloud" in report.build_command_preview
     assert "deploy" in report.deploy_command_preview
-    assert report.bridge_base_url_hint.startswith("https://gxp-storage-bridge-gxp-qlcl.")
+    assert "status.url" in report.bridge_base_url_source
 
 
 def test_validate_storage_bridge_bootstrap_rejects_non_smb_bridge_runtime():

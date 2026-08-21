@@ -253,10 +253,10 @@ STORAGE_BRIDGE_BASE_URL
 STORAGE_BRIDGE_AUTH_AUDIENCE
 ```
 
-For the current baseline, both values are the deployed bridge service URL, for example:
+For the current baseline, both values are the actual deployed bridge service URL returned by:
 
 ```text
-https://gxp-storage-bridge-gxp-qlcl.asia-southeast1.run.app
+gcloud run services describe gxp-storage-bridge --region asia-southeast1 --format='value(status.url)'
 ```
 
 Bridge bootstrap also requires one-time secrets that are not committed:

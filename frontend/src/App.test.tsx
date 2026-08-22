@@ -8,6 +8,11 @@ import { App } from "./App";
 vi.mock("./lib/api", () => ({
   getAppStatus: vi.fn().mockResolvedValue({
     auth_mode: "header_stub",
+    auth: {
+      mode: "header_stub",
+      oidc_client_id: null,
+      allowed_email_domain: null,
+    },
     deployment_platform: "google_cloud_run",
     phases: {
       phase5_status: "ready",
@@ -28,7 +33,10 @@ vi.mock("./lib/api", () => ({
 
 vi.mock("./lib/storage", () => ({
   loadAuthState: vi.fn(() => ({ username: "operator.local", role: "manager" })),
+  loadOidcSession: vi.fn(() => null),
   saveAuthState: vi.fn(),
+  saveOidcSession: vi.fn(),
+  clearOidcSession: vi.fn(),
 }));
 
 describe("App", () => {

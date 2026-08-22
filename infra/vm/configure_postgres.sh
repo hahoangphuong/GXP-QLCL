@@ -16,6 +16,7 @@ PG_WORK_MEM_MB="${PG_WORK_MEM_MB:-4}"
 PG_MAINTENANCE_WORK_MEM_MB="${PG_MAINTENANCE_WORK_MEM_MB:-64}"
 PG_AUTOVACUUM_WORK_MEM_MB="${PG_AUTOVACUUM_WORK_MEM_MB:-64}"
 PG_MAX_CONNECTIONS="${PG_MAX_CONNECTIONS:-30}"
+SUPPORTED_POSTGRES_MAJORS="${VM_SUPPORTED_POSTGRES_MAJORS:-17,18}"
 
 require_root
 need_cmd psql
@@ -28,6 +29,7 @@ DB_USER="${DB_USER:-gxp_app}"
 DB_PASSWORD="${DB_PASSWORD:-}"
 DB_HOST="${DB_HOST:-127.0.0.1}"
 DB_PORT="${DB_PORT:-5432}"
+SUPPORTED_POSTGRES_MAJORS="${VM_SUPPORTED_POSTGRES_MAJORS:-${SUPPORTED_POSTGRES_MAJORS}}"
 
 [[ -n "${DB_PASSWORD}" ]] || {
   echo "ERROR: DB_PASSWORD is required." >&2
@@ -89,5 +91,11 @@ grep -q '^host\s\+all\s\+all\s\+::1/128\s\+scram-sha-256$' "${PG_CLUSTER_DIR}/pg
 
 systemctl restart postgresql
 pg_isready -h "${DB_HOST}" -p "${DB_PORT}" -d "${DB_NAME}" >/dev/null
+PG_VERSION_NUM="$(runuser -u postgres -- psql --dbname=postgres -Atqc 'SHOW server_version_num')"
+PG_MAJOR="${PG_VERSION_NUM:0:${#PG_VERSION_NUM}-4}"
+case ",${SUPPORTED_POSTGRES_MAJORS}," in
+  *",${PG_MAJOR},"*) ;;
+  *) fail "Unsupported PostgreSQL major version ${PG_MAJOR}. Supported majors: ${SUPPORTED_POSTGRES_MAJORS}." ;;
+esac
 
 echo "PostgreSQL configured for ${DB_NAME} / ${DB_USER}."

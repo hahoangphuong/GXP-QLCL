@@ -29,8 +29,8 @@ def _replacement_map() -> dict[str, str]:
     return {
         "{{VM_APP_USER}}": app_user,
         "{{VM_APP_GROUP}}": app_group,
-        "{{VM_SRC_DIR}}": _required_env("VM_SRC_DIR"),
-        "{{VM_VENV_DIR}}": _required_env("VM_VENV_DIR"),
+        "{{VM_CURRENT_BACKEND_RELEASE_LINK}}": _required_env("VM_CURRENT_BACKEND_RELEASE_LINK"),
+        "{{VM_CURRENT_BACKEND_VENV_LINK}}": _required_env("VM_CURRENT_BACKEND_VENV_LINK"),
         "{{VM_RUNTIME_ENV_FILE}}": _required_env("VM_RUNTIME_ENV_FILE"),
         "{{APP_PORT}}": os.environ.get("APP_PORT", "").strip() or "8000",
         "{{GXP_FRONTEND_DIST_ROOT}}": _required_env("GXP_FRONTEND_DIST_ROOT"),

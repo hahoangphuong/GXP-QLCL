@@ -26,5 +26,7 @@ while keeping the full Cloud Run / Cloud SQL code path dormant in the repository
 
 ## Consequences
 - Production deployment scripts, docs, and validators must default to VM flow.
+- VM flow must fail closed if the host image does not supply the official Python 3.12 production baseline.
+- VM releases should be staged by immutable Git SHA for backend code, backend venv, and frontend assets before the active symlinks switch.
 - Cloud Run deployment code must stay isolated so it does not block VM production deploy.
 - Backup responsibility shifts to operator-managed PostgreSQL logical backups, with Cloud SQL retained temporarily as a rollback option.

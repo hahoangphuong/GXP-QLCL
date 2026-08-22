@@ -17,6 +17,7 @@ type RequestOptions = {
   body?: unknown;
   auth?: StubAuthState;
   useStubAuth?: boolean;
+  bearerToken?: string | null;
 };
 
 const DEFAULT_API_BASE_URL = "";
@@ -36,6 +37,8 @@ async function requestJson<T>(path: string, options: RequestOptions): Promise<T>
   if (options.useStubAuth && options.auth) {
     headers["X-Auth-User"] = options.auth.username;
     headers["X-Auth-Role"] = options.auth.role;
+  } else if (options.bearerToken) {
+    headers.Authorization = `Bearer ${options.bearerToken}`;
   }
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
     method: options.method ?? "GET",
@@ -63,32 +66,39 @@ export function getAppStatus(): Promise<AppStatus> {
   return requestJson<AppStatus>("/app/status", {});
 }
 
-export function listCompanies(auth: StubAuthState, useStubAuth: boolean): Promise<Company[]> {
-  return requestJson<Company[]>("/companies", { auth, useStubAuth });
+export function listCompanies(auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<Company[]> {
+  return requestJson<Company[]>("/companies", { auth, useStubAuth, bearerToken });
 }
 
-export function listSites(auth: StubAuthState, useStubAuth: boolean): Promise<Site[]> {
-  return requestJson<Site[]>("/sites", { auth, useStubAuth });
+export function listSites(auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<Site[]> {
+  return requestJson<Site[]>("/sites", { auth, useStubAuth, bearerToken });
 }
 
-export function listCases(auth: StubAuthState, useStubAuth: boolean): Promise<CaseListItem[]> {
-  return requestJson<CaseListItem[]>("/cases", { auth, useStubAuth });
+export function listCases(auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<CaseListItem[]> {
+  return requestJson<CaseListItem[]>("/cases", { auth, useStubAuth, bearerToken });
 }
 
-export function getCaseDetail(caseId: string, auth: StubAuthState, useStubAuth: boolean): Promise<CaseDetail> {
-  return requestJson<CaseDetail>(`/cases/${caseId}`, { auth, useStubAuth });
+export function getCaseDetail(
+  caseId: string,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<CaseDetail> {
+  return requestJson<CaseDetail>(`/cases/${caseId}`, { auth, useStubAuth, bearerToken });
 }
 
 export function prepareDocument(
   payload: DocumentGenerationPrepareRequest,
   auth: StubAuthState,
   useStubAuth: boolean,
+  bearerToken?: string | null,
 ): Promise<DocumentPreparationResponse> {
   return requestJson<DocumentPreparationResponse>("/documents/prepare", {
     method: "POST",
     body: payload,
     auth,
     useStubAuth,
+    bearerToken,
   });
 }
 
@@ -96,12 +106,14 @@ export function renderTemplateDocx(
   payload: DocumentGenerationPrepareRequest & { output_filename: string },
   auth: StubAuthState,
   useStubAuth: boolean,
+  bearerToken?: string | null,
 ): Promise<DocumentRenderResponse> {
   return requestJson<DocumentRenderResponse>("/documents/render-template-docx", {
     method: "POST",
     body: payload,
     auth,
     useStubAuth,
+    bearerToken,
   });
 }
 
@@ -109,10 +121,12 @@ export function getGenerationRun(
   generationRunId: string,
   auth: StubAuthState,
   useStubAuth: boolean,
+  bearerToken?: string | null,
 ): Promise<DocumentGenerationRunStatus> {
   return requestJson<DocumentGenerationRunStatus>(`/document-generation-runs/${generationRunId}`, {
     auth,
     useStubAuth,
+    bearerToken,
   });
 }
 
@@ -120,6 +134,7 @@ export function getDocumentDetail(
   documentId: string,
   auth: StubAuthState,
   useStubAuth: boolean,
+  bearerToken?: string | null,
 ): Promise<DocumentDetail> {
-  return requestJson<DocumentDetail>(`/documents/${documentId}`, { auth, useStubAuth });
+  return requestJson<DocumentDetail>(`/documents/${documentId}`, { auth, useStubAuth, bearerToken });
 }

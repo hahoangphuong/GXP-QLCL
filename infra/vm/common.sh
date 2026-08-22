@@ -21,6 +21,7 @@ require_root() {
 load_runtime_env() {
   local env_file="${1:-${VM_RUNTIME_ENV_FILE:-/etc/gxp/runtime.env}}"
   [[ -f "${env_file}" ]] || fail "Runtime env file not found: ${env_file}"
+  [[ -r "${env_file}" ]] || fail "Runtime env file is not readable by user $(id -un): ${env_file}"
   need_cmd python3
   while IFS= read -r -d '' pair; do
     export "$pair"

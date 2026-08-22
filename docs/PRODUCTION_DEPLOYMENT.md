@@ -20,9 +20,9 @@ infra/cloudrun/deploy_prod.sh
 ```text
 GitHub
   -> Compute Engine VM
-  -> git fetch / target commit resolution / detached checkout
+  -> git fetch / target commit resolution / staged release export
   -> frontend build on VM
-  -> backend runtime install on VM
+  -> staged backend runtime install on VM
   -> local PostgreSQL
   -> StorageService
   -> SMB
@@ -36,7 +36,10 @@ Application file binaries remain on Synology only. Structured data remains in Po
 The VM baseline standardizes these names unless you explicitly override them in `/etc/gxp/runtime.env`.
 
 - VM source checkout: `/opt/gxp/src/GXP-QLCL`
-- VM Python venv: `/opt/gxp/venv`
+- staged backend releases: `/opt/gxp/backend-releases/<git_sha>`
+- staged backend venvs: `/opt/gxp/backend-venvs/<git_sha>`
+- current backend release symlink: `/opt/gxp/current-backend`
+- current backend venv symlink: `/opt/gxp/current-venv`
 - VM frontend dist: `/opt/gxp/frontend-dist`
 - VM runtime env file: `/etc/gxp/runtime.env`
 - VM systemd service: `gxp-web`
@@ -132,19 +135,28 @@ SMB_PASSWORD
 PUBLIC_BASE_URL
 BACKUP_GCS_BUCKET
 VM_RUNTIME_ENV_FILE
+VM_PYTHON_SERIES
+VM_PYTHON_BIN
 VM_SRC_DIR
-VM_VENV_DIR
+VM_BACKEND_RELEASES_DIR
+VM_BACKEND_VENV_RELEASES_DIR
+VM_CURRENT_BACKEND_RELEASE_LINK
+VM_CURRENT_BACKEND_VENV_LINK
 VM_FRONTEND_DIST_DIR
 VM_FRONTEND_RELEASES_DIR
+VM_RELEASE_RETENTION_COUNT
 SYSTEMD_SERVICE_NAME
 NGINX_SITE_NAME
 NGINX_SERVER_NAME
 VM_TLS_CERT_PATH
 VM_TLS_KEY_PATH
+VM_TLS_PROVISIONING_MODE
 VM_NODE_MAJOR
 VM_NODE_MIN_VERSION
+VM_COREPACK_VERSION
 VM_NODE_PACKAGE_MANAGER
 VM_NODE_BUILD_OPTIONS
+VM_SUPPORTED_POSTGRES_MAJORS
 VM_SWAP_SIZE_GB
 VM_SWAPPINESS
 PG_SHARED_BUFFERS_MB
@@ -162,7 +174,6 @@ DEPLOY_GIT_SHA
 DEPLOY_BRANCH
 VM_APP_ROOT
 VM_SRC_DIR
-VM_VENV_DIR
 VM_FRONTEND_DIST_DIR
 VM_RELEASE_METADATA_FILE
 SYSTEMD_SERVICE_NAME
@@ -182,17 +193,18 @@ Current template:
 3. verify clean git working tree
 4. `git fetch origin`
 5. resolve target commit from `DEPLOY_GIT_SHA` or `origin/$DEPLOY_BRANCH`
-6. checkout the target commit in detached mode
-6. rebuild Python venv from `backend/requirements.runtime.vm.txt`
-7. build frontend with `pnpm`
-8. stage frontend dist into a per-release directory
-9. run PostgreSQL backup
-10. run `alembic upgrade head`
-11. switch `/opt/gxp/frontend-dist` symlink to the new release
-12. record previous/new Git SHA
-13. restart backend and Nginx
-14. verify `/healthz` and `/readyz`
-15. cleanup heavy local build artifacts
+6. export the target commit into a staged backend release directory
+7. build a staged backend venv from `backend/requirements.runtime.vm.lock.txt`
+8. build frontend with pinned `pnpm`
+9. stage frontend dist into a per-release directory
+10. render systemd/Nginx assets and verify TLS files exist
+11. run PostgreSQL backup
+12. run `alembic upgrade head` from the staged venv
+13. switch backend/frontend symlinks atomically enough for the service restart
+14. record successful release metadata
+15. restart backend and Nginx
+16. verify `/healthz` and `/readyz`
+17. prune old staged releases with bounded retention
 
 If the working tree is dirty:
 
@@ -206,8 +218,15 @@ If deploy fails before service restart:
 
 ```text
 current running process stays on the old release
-frontend symlink is restored
-checkout is returned to the prior commit/branch when possible
+new staged backend/frontend artifacts remain offline
+```
+
+If deploy fails after the symlink switch or health checks fail:
+
+```text
+prior backend/frontend symlinks are restored
+services are restarted against the previous known-good release
+database migrations are not automatically downgraded
 ```
 
 ## Database contract
@@ -272,10 +291,11 @@ sudo ./infra/vm/bootstrap_vm.sh
 ```
 
 Fresh Ubuntu baseline after bootstrap:
-- installs Python, PostgreSQL, Nginx, Git, rsync, Node.js, Corepack, and `gcloud`
+- installs Python 3.12, PostgreSQL, Nginx, Git, rsync, Node.js, Corepack, pinned pnpm, and `gcloud`
 - creates non-root app user/group `gxp`
 - provisions `/swapfile` with `VM_SWAP_SIZE_GB=4` and `VM_SWAPPINESS=10` by default
-- prepares `/opt/gxp`, `/etc/gxp`, frontend release directories, and backup staging
+- prepares `/opt/gxp`, `/etc/gxp`, backend/frontend release directories, and backup staging
+- fails closed if the host image does not provide Python 3.12 packages natively
 
 ### Configure local PostgreSQL
 
@@ -291,6 +311,7 @@ Current small-VM default tuning baseline:
 - `maintenance_work_mem=64MB`
 - `autovacuum_work_mem=64MB`
 - `max_connections=30`
+- supported PostgreSQL majors: `17,18`
 
 ### Configure Tailscale
 
@@ -309,6 +330,7 @@ This verification path checks:
 - systemd backend service
 - Nginx
 - local PostgreSQL
+- PostgreSQL major support contract
 - Tailscale
 - `/healthz` and `/readyz`
 - storage root reachability through the configured storage adapter

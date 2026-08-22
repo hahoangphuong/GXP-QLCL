@@ -11,6 +11,7 @@ def test_application_status_endpoint_exposes_google_cloud_default():
     payload = app_status(SimpleNamespace(app=app))
     assert payload["deployment_platform"] == "compute_engine_vm"
     assert payload["frontend_topology"] == "nginx_static_proxy"
+    assert payload["auth"]["mode"] == payload["auth_mode"]
     assert "phases" in payload
 
 

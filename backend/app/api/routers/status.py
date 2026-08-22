@@ -12,6 +12,11 @@ def app_status(request: Request):
         "deployment_platform": request.app.state.config.deployment_platform,
         "frontend_topology": request.app.state.config.frontend_topology,
         "auth_mode": request.app.state.config.auth_mode,
+        "auth": {
+            "mode": request.app.state.config.auth_mode,
+            "oidc_client_id": request.app.state.config.auth_oidc_client_id or None,
+            "allowed_email_domain": request.app.state.config.auth_iap_allowed_email_domain or None,
+        },
         "deployment": {
             "git_sha": request.app.state.config.deployment_git_sha or None,
             "git_short_sha": request.app.state.config.deployment_git_short_sha or None,

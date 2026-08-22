@@ -36,10 +36,13 @@ def test_validate_vm_prod_deploy_accepts_local_postgres_direct_smb_oidc_baseline
     assert report.plan.node_major == 22
     assert report.plan.swap_size_gb == 4
     assert report.plan.app_port == 8000
+    assert report.plan.python_series == "3.12"
+    assert report.plan.runtime_requirements_lock_file == "backend/requirements.runtime.vm.lock.txt"
     assert report.plan.runtime_env["VM_SRC_DIR"] == "/opt/gxp/src/GXP-QLCL"
     assert report.plan.runtime_env["VM_RUNTIME_ENV_FILE"] == "/etc/gxp/runtime.env"
     assert report.plan.runtime_env["SYSTEMD_SERVICE_NAME"] == "gxp-web"
     assert report.plan.runtime_env["PUBLIC_BASE_URL"] == "https://gxp.example.com"
+    assert report.plan.runtime_env["VM_CURRENT_BACKEND_VENV_LINK"] == "/opt/gxp/current-venv"
 
 
 def test_validate_vm_prod_deploy_accepts_cloud_sql_dormant_option():
@@ -119,3 +122,30 @@ def test_validate_vm_prod_deploy_requires_smb_credentials_for_direct_smb_mode():
 
     assert any("SMB_USERNAME is required." in item for item in report.errors)
     assert any("SMB_PASSWORD is required." in item for item in report.errors)
+
+
+def test_validate_vm_prod_deploy_rejects_non_python_312_vm_baseline():
+    report = validate_vm_prod_deploy_env(
+        {
+            "DEPLOYMENT_PLATFORM": "compute_engine_vm",
+            "AUTH_PROVIDER": "google_oidc",
+            "AUTH_ROLE_SOURCE": "database",
+            "AUTH_OIDC_CLIENT_ID": "client-id.apps.googleusercontent.com",
+            "DB_MODE": "local_postgres",
+            "DB_NAME": "gxp_qlcl",
+            "DB_USER": "gxp_app",
+            "DB_PASSWORD": "secret",
+            "DB_HOST": "127.0.0.1",
+            "STORAGE_CLASS": "synology_smb",
+            "STORAGE_INSPECTION_ROOT": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs",
+            "STORAGE_DKKD_ROOT": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs\Chứng nhận ĐĐKKDD",
+            "STORAGE_TEMPLATE_ROOT": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs\Templates",
+            "SMB_USERNAME": "gxp-smb",
+            "SMB_PASSWORD": "secret",
+            "PUBLIC_BASE_URL": "https://gxp.example.com",
+            "BACKUP_GCS_BUCKET": "gs://gxp-backups",
+            "VM_PYTHON_SERIES": "3.13",
+        }
+    )
+
+    assert any("VM_PYTHON_SERIES must remain 3.12" in item for item in report.errors)

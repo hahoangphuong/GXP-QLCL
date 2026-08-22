@@ -21,10 +21,32 @@ Application dossiers remain on Synology. PostgreSQL stores structured business d
 - `AUTH_PROVIDER=google_oidc` is the current VM baseline.
 - `AUTH_PROVIDER=google_iap_jwt` remains a dormant Cloud Run path.
 
-## Required runtime files
-- application source checkout: `/opt/gxp/src/GXP-QLCL`
-- Python venv: `/opt/gxp/venv`
-- frontend dist: `/opt/gxp/frontend-dist`
+## Current migration-specific production identifiers
+These are the actual current migration environment identifiers as of August 22, 2026:
+
+- project: `gxp-qlcl-vm`
+- VM: `gxp-web-prod`
+- zone: `asia-southeast1-a`
+- machine type: `e2-small`
+- VM service account: `gxp-vm-runtime@gxp-qlcl-vm.iam.gserviceaccount.com`
+- PostgreSQL backup bucket: `gs://gxp-qlcl-vm-postgres-backup`
+
+Parameterize scripts where appropriate, but operator guidance for this migration should assume these are the live identifiers unless intentionally overridden.
+
+## Supported host baseline
+- Supported production OS/image baseline: Ubuntu 24.04 LTS or another image that ships Python 3.12 packages natively.
+- Official production Python baseline: `3.12.x` only.
+- Debian 13 / Python 3.13 is unsupported for the current production baseline.
+- Do not compile Python from source or add `pyenv`/`conda` as a production workaround.
+- Supported PostgreSQL majors for the current app baseline: `17` and `18`.
+
+## Required runtime paths
+- operator source checkout: `/opt/gxp/src/GXP-QLCL`
+- staged backend releases: `/opt/gxp/backend-releases/<git_sha>`
+- staged backend venvs: `/opt/gxp/backend-venvs/<git_sha>`
+- current backend release symlink: `/opt/gxp/current-backend`
+- current backend venv symlink: `/opt/gxp/current-venv`
+- current frontend release symlink: `/opt/gxp/frontend-dist`
 - runtime env file: `/etc/gxp/runtime.env`
 - release metadata: `/opt/gxp/current-release.json`
 
@@ -34,47 +56,49 @@ Application dossiers remain on Synology. PostgreSQL stores structured business d
 
 ```bash
 gcloud compute instances create gxp-web-prod \
-  --project=gxp-qlcl \
-  --zone=asia-southeast1-b \
+  --project=gxp-qlcl-vm \
+  --zone=asia-southeast1-a \
   --machine-type=e2-small \
   --image-family=ubuntu-2404-lts-amd64 \
   --image-project=ubuntu-os-cloud
 ```
 
-2. Attach appropriate service account and scopes
+2. Attach the runtime service account
 
 ```bash
 gcloud compute instances set-service-account gxp-web-prod \
-  --project=gxp-qlcl \
-  --zone=asia-southeast1-b \
-  --service-account=YOUR_VM_SERVICE_ACCOUNT@gxp-qlcl.iam.gserviceaccount.com \
+  --project=gxp-qlcl-vm \
+  --zone=asia-southeast1-a \
+  --service-account=gxp-vm-runtime@gxp-qlcl-vm.iam.gserviceaccount.com \
   --scopes=https://www.googleapis.com/auth/cloud-platform
 ```
 
-3. SSH into VM
+3. SSH into the VM
 
 ```bash
-gcloud compute ssh gxp-web-prod --project=gxp-qlcl --zone=asia-southeast1-b
+gcloud compute ssh gxp-web-prod --project=gxp-qlcl-vm --zone=asia-southeast1-a
 ```
 
-4. Clone repo
+4. Clone the bootstrap checkout
 
 ```bash
 git clone https://github.com/hahoangphuong/GXP-QLCL ~/GXP-QLCL-bootstrap
 cd ~/GXP-QLCL-bootstrap
 ```
 
-5. Bootstrap VM
+5. Bootstrap the VM
 
 ```bash
 sudo ./infra/vm/bootstrap_vm.sh
 ```
 
-Expected fresh-machine result:
-- Ubuntu LTS host packages for Python, PostgreSQL, Nginx, rsync, Git, Node.js, Corepack, and `gcloud`
-- `/swapfile` provisioned at 4 GB by default with `vm.swappiness=10`
-- non-root application user/group `gxp`
-- prepared paths under `/opt/gxp`, `/etc/gxp`, and `/var/backups/gxp-temp`
+Expected result:
+- Python 3.12 host interpreter is present and validated exactly
+- Node 22, Corepack, pinned pnpm, PostgreSQL, Nginx, rsync, Git, and `gcloud` are available
+- `/swapfile` is active at 4 GB with `vm.swappiness=10`
+- non-root app user/group `gxp` exists
+- `/opt/gxp`, `/etc/gxp`, and `/var/backups/gxp-temp` are prepared
+- bootstrap fails closed if the image does not provide Python 3.12 packages natively
 
 6. Create the final application checkout owned by `gxp`
 
@@ -86,11 +110,18 @@ cd /opt/gxp/src/GXP-QLCL
 7. Prepare runtime env
 
 ```bash
-sudo install -d -m 0750 /etc/gxp
+sudo install -d -m 0750 -o root -g gxp /etc/gxp
 sudo cp backend/.env.vm.production.example /etc/gxp/runtime.env
-sudo chmod 600 /etc/gxp/runtime.env
+sudo chown root:gxp /etc/gxp/runtime.env
+sudo chmod 640 /etc/gxp/runtime.env
 sudoedit /etc/gxp/runtime.env
 ```
+
+Permission contract:
+- `/etc/gxp` -> `root:gxp 0750`
+- `/etc/gxp/runtime.env` -> `root:gxp 0640`
+- `gxp` may read runtime secrets but may not edit them
+- root/operator may edit runtime secrets
 
 8. Configure PostgreSQL
 
@@ -113,24 +144,37 @@ export TAILSCALE_AUTH_KEY='YOUR_TAILSCALE_AUTH_KEY'
 sudo -E ./infra/vm/configure_tailscale.sh
 ```
 
-10. Verify Synology SMB reachability
+10. Verify runtime and Synology reachability
 
 ```bash
 python3 tools/validate_vm_prod_deploy.py
 sudo -E ./infra/vm/verify_prod.sh
 ```
 
-11. Migrate Cloud SQL -> local PostgreSQL
+11. Provision production TLS before first deploy
+
+Production final state must remain HTTPS. `deploy_prod.sh` fails closed if:
+- `VM_TLS_CERT_PATH` does not exist
+- `VM_TLS_KEY_PATH` does not exist
+
+Supported provisioning paths:
+- install an existing certificate/key pair at the configured paths
+- or provision Let’s Encrypt certificates with `certbot` after DNS points to the VM
+
+Do not use self-signed certificates for production.
+Do not add a load balancer solely for TLS.
+
+12. Migrate Cloud SQL -> local PostgreSQL if needed
 
 ```bash
-gcloud sql export sql gxp-db gs://YOUR_GXP_BACKUP_BUCKET/cloudsql-export.sql.gz \
-  --project=gxp-qlcl \
+gcloud sql export sql gxp-db gs://gxp-qlcl-vm-postgres-backup/cloudsql-export.sql.gz \
+  --project=gxp-qlcl-vm \
   --database=gxp_qlcl
 
 gunzip -c cloudsql-export.sql.gz | psql "postgresql://gxp_app:YOUR_PASSWORD@127.0.0.1:5432/gxp_qlcl"
 ```
 
-12. Deploy app from Git
+13. Deploy app from Git
 
 ```bash
 cd /opt/gxp/src/GXP-QLCL
@@ -140,14 +184,23 @@ sudo -E ./infra/vm/deploy_prod.sh
 Deployment privilege model:
 - repository checkout and build artifacts are owned by `gxp:gxp`
 - backend service runs as non-root `gxp`
-- `deploy_prod.sh` requires `root` only for controlled operations:
+- `deploy_prod.sh` requires root only for controlled operations:
   - systemd unit installation/reload
   - Nginx site installation/reload
-  - release symlink switch under `/opt/gxp`
-- the deploy script fetches origin, resolves the approved commit, checks it out in detached mode, backs up PostgreSQL, runs Alembic, then restarts services
-- if deploy fails before restart, the script restores the previous frontend symlink and attempts to return the checkout to the prior state
+  - current backend/frontend symlink switch
+- deploy stages code/runtime by SHA:
+  - `/opt/gxp/backend-releases/<git_sha>`
+  - `/opt/gxp/backend-venvs/<git_sha>`
+  - `/opt/gxp/frontend-releases/<git_sha>`
+- the live service runs from:
+  - `/opt/gxp/current-backend`
+  - `/opt/gxp/current-venv`
+  - `/opt/gxp/frontend-dist`
+- pre-switch failures leave the active release untouched
+- post-switch health failures trigger a safe rollback of backend/frontend symlinks and service restart
+- the deploy script never auto-downgrades Alembic migrations
 
-13. Enable backup
+14. Enable backup
 
 ```bash
 sudo crontab -e
@@ -159,10 +212,10 @@ Suggested nightly entry:
 30 1 * * * /opt/gxp/src/GXP-QLCL/infra/vm/backup_postgres.sh >> /var/log/gxp-backup.log 2>&1
 ```
 
-14. Stop Cloud SQL only after VM verification succeeds
+15. Stop Cloud SQL only after VM verification succeeds
 
 ```bash
 gcloud sql instances patch gxp-db \
-  --project=gxp-qlcl \
+  --project=gxp-qlcl-vm \
   --activation-policy=NEVER
 ```

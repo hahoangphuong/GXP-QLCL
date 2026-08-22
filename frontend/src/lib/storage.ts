@@ -1,6 +1,7 @@
-import type { StubAuthState } from "../types";
+import type { OidcSession, StubAuthState } from "../types";
 
 const STORAGE_KEY = "gxp-operator-shell-auth";
+const OIDC_STORAGE_KEY = "gxp-operator-shell-oidc";
 
 export function loadAuthState(): StubAuthState {
   if (typeof window === "undefined") {
@@ -29,4 +30,43 @@ export function saveAuthState(value: StubAuthState): void {
     return;
   }
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
+}
+
+export function loadOidcSession(): OidcSession | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const raw = window.localStorage.getItem(OIDC_STORAGE_KEY);
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<OidcSession>;
+    if (!parsed.token || typeof parsed.expires_at_epoch_seconds !== "number") {
+      return null;
+    }
+    return {
+      token: parsed.token,
+      email: parsed.email ?? null,
+      name: parsed.name ?? null,
+      subject: parsed.subject ?? null,
+      expires_at_epoch_seconds: parsed.expires_at_epoch_seconds,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function saveOidcSession(value: OidcSession): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(OIDC_STORAGE_KEY, JSON.stringify(value));
+}
+
+export function clearOidcSession(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.removeItem(OIDC_STORAGE_KEY);
 }

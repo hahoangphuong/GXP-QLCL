@@ -9,13 +9,20 @@ GXP_USER="${GXP_USER:-gxp}"
 GXP_GROUP="${VM_APP_GROUP:-${GXP_USER}}"
 APP_ROOT="${VM_APP_ROOT:-/opt/gxp}"
 SRC_DIR="${VM_SRC_DIR:-${APP_ROOT}/src/GXP-QLCL}"
+BACKEND_RELEASES_DIR="${VM_BACKEND_RELEASES_DIR:-${APP_ROOT}/backend-releases}"
+BACKEND_VENV_RELEASES_DIR="${VM_BACKEND_VENV_RELEASES_DIR:-${APP_ROOT}/backend-venvs}"
+CURRENT_BACKEND_RELEASE_LINK="${VM_CURRENT_BACKEND_RELEASE_LINK:-${APP_ROOT}/current-backend}"
+CURRENT_BACKEND_VENV_LINK="${VM_CURRENT_BACKEND_VENV_LINK:-${APP_ROOT}/current-venv}"
 FRONTEND_DIST_DIR="${VM_FRONTEND_DIST_DIR:-${APP_ROOT}/frontend-dist}"
 FRONTEND_RELEASES_DIR="${VM_FRONTEND_RELEASES_DIR:-${APP_ROOT}/frontend-releases}"
-VENV_DIR="${VM_VENV_DIR:-${APP_ROOT}/venv}"
 RUNTIME_ENV_DIR="$(dirname "${VM_RUNTIME_ENV_FILE:-/etc/gxp/runtime.env}")"
 BACKUP_STAGING_DIR="${BACKUP_LOCAL_STAGING_DIR:-/var/backups/gxp-temp}"
+PYTHON_SERIES="${VM_PYTHON_SERIES:-3.12}"
+PYTHON_BIN="${VM_PYTHON_BIN:-/usr/bin/python3.12}"
 NODE_MAJOR="${VM_NODE_MAJOR:-22}"
 NODE_MIN_VERSION="${VM_NODE_MIN_VERSION:-22.12.0}"
+COREPACK_VERSION="${VM_COREPACK_VERSION:-0.31.0}"
+NODE_PACKAGE_MANAGER="${VM_NODE_PACKAGE_MANAGER:-pnpm@11.19.0}"
 VM_SWAP_SIZE_GB="${VM_SWAP_SIZE_GB:-4}"
 VM_SWAPPINESS="${VM_SWAPPINESS:-10}"
 INSTALL_GCLOUD="${INSTALL_GCLOUD:-1}"
@@ -28,9 +35,9 @@ APT_PACKAGES=(
   postgresql
   postgresql-client
   procps
-  python3
+  "python${PYTHON_SERIES}"
+  "python${PYTHON_SERIES}-venv"
   python3-pip
-  python3-venv
   rsync
   sudo
 )
@@ -40,6 +47,25 @@ need_cmd apt-get
 need_cmd bash
 need_cmd curl
 need_cmd gpg
+need_cmd apt-cache
+
+ensure_supported_python_packages() {
+  apt-get update
+  apt-cache show "python${PYTHON_SERIES}" >/dev/null 2>&1 || fail "Host image does not provide python${PYTHON_SERIES}. Recreate the VM with Ubuntu 24.04 LTS or another supported image that ships Python ${PYTHON_SERIES}."
+  apt-cache show "python${PYTHON_SERIES}-venv" >/dev/null 2>&1 || fail "Host image does not provide python${PYTHON_SERIES}-venv. Recreate the VM with Ubuntu 24.04 LTS or another supported image that ships Python ${PYTHON_SERIES}."
+}
+
+validate_python_baseline() {
+  [[ -x "${PYTHON_BIN}" ]] || fail "Supported production Python interpreter not found at ${PYTHON_BIN}. Recreate the VM with Ubuntu 24.04 LTS or another supported image that ships Python ${PYTHON_SERIES}."
+  "${PYTHON_BIN}" - "${PYTHON_SERIES}" <<'PY'
+import sys
+
+expected = tuple(int(part) for part in sys.argv[1].split("."))
+version = tuple(sys.version_info[:2])
+if version != expected:
+    raise SystemExit(1)
+PY
+}
 
 install_nodejs() {
   if command -v node >/dev/null 2>&1; then
@@ -54,8 +80,15 @@ required = tuple(int(part) for part in sys.argv[1].split("."))
 raise SystemExit(0 if current >= required else 1)
 PY
     then
+      if ! command -v corepack >/dev/null 2>&1; then
+        need_cmd npm
+        npm install -g "corepack@${COREPACK_VERSION}"
+      fi
       need_cmd corepack
       corepack enable
+      corepack prepare "${NODE_PACKAGE_MANAGER}" --activate
+      need_cmd pnpm
+      [[ "$(pnpm --version)" == "${NODE_PACKAGE_MANAGER#pnpm@}" ]] || fail "pnpm version mismatch after bootstrap. Expected ${NODE_PACKAGE_MANAGER#pnpm@}."
       return
     fi
   fi
@@ -67,6 +100,10 @@ PY
   apt-get update
   apt-get install -y --no-install-recommends nodejs
   need_cmd node
+  if ! command -v corepack >/dev/null 2>&1; then
+    need_cmd npm
+    npm install -g "corepack@${COREPACK_VERSION}"
+  fi
   need_cmd corepack
   local installed_version
   installed_version="$(node -p 'process.versions.node')"
@@ -80,6 +117,9 @@ if current < required:
     raise SystemExit(1)
 PY
   corepack enable
+  corepack prepare "${NODE_PACKAGE_MANAGER}" --activate
+  need_cmd pnpm
+  [[ "$(pnpm --version)" == "${NODE_PACKAGE_MANAGER#pnpm@}" ]] || fail "pnpm version mismatch after bootstrap. Expected ${NODE_PACKAGE_MANAGER#pnpm@}."
 }
 
 install_gcloud() {
@@ -133,8 +173,9 @@ configure_swap() {
   free -h
 }
 
-apt-get update
+ensure_supported_python_packages
 apt-get install -y --no-install-recommends "${APT_PACKAGES[@]}"
+validate_python_baseline
 
 install_nodejs
 install_gcloud
@@ -147,14 +188,24 @@ if ! id -u "${GXP_USER}" >/dev/null 2>&1; then
   useradd --system --create-home --shell /bin/bash --gid "${GXP_GROUP}" "${GXP_USER}"
 fi
 
-install -d -m 0755 -o "${GXP_USER}" -g "${GXP_GROUP}" "${APP_ROOT}" "${APP_ROOT}/src" "${FRONTEND_RELEASES_DIR}" "${BACKUP_STAGING_DIR}"
+install -d -m 0755 -o "${GXP_USER}" -g "${GXP_GROUP}" \
+  "${APP_ROOT}" \
+  "${APP_ROOT}/src" \
+  "${BACKEND_RELEASES_DIR}" \
+  "${BACKEND_VENV_RELEASES_DIR}" \
+  "${FRONTEND_RELEASES_DIR}" \
+  "${BACKUP_STAGING_DIR}"
 install -d -m 0750 -o root -g "${GXP_GROUP}" "${RUNTIME_ENV_DIR}"
-install -d -m 0755 -o "${GXP_USER}" -g "${GXP_GROUP}" "$(dirname "${VENV_DIR}")"
 
 if [[ ! -e "${FRONTEND_DIST_DIR}" ]]; then
   empty_release="${FRONTEND_RELEASES_DIR}/empty"
   install -d -m 0755 -o "${GXP_USER}" -g "${GXP_GROUP}" "${empty_release}"
   ln -s "${empty_release}" "${FRONTEND_DIST_DIR}"
+fi
+
+if [[ ! -e "${CURRENT_BACKEND_RELEASE_LINK}" ]]; then
+  ln -s "${SRC_DIR}" "${CURRENT_BACKEND_RELEASE_LINK}"
+  chown -h "${GXP_USER}:${GXP_GROUP}" "${CURRENT_BACKEND_RELEASE_LINK}"
 fi
 
 if [[ -d "${APP_ROOT}" ]]; then

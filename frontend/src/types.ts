@@ -2,6 +2,11 @@ export type AppStatus = {
   deployment_platform: string;
   frontend_topology: string;
   auth_mode: string;
+  auth: {
+    mode: string;
+    oidc_client_id: string | null;
+    allowed_email_domain: string | null;
+  };
   deployment: {
     git_sha: string | null;
     git_short_sha: string | null;
@@ -208,4 +213,12 @@ export type DocumentDetail = {
 export type StubAuthState = {
   username: string;
   role: "reader" | "inspector" | "manager" | "admin";
+};
+
+export type OidcSession = {
+  token: string;
+  email: string | null;
+  name: string | null;
+  subject: string | null;
+  expires_at_epoch_seconds: number;
 };

@@ -34,22 +34,31 @@ class VmDeployPlan:
     vm_app_root: str
     app_user: str
     app_group: str
+    python_series: str
+    python_bin: str
     vm_src_dir: str
-    vm_venv_dir: str
+    vm_backend_releases_dir: str
+    vm_backend_venv_releases_dir: str
+    vm_current_backend_release_link: str
+    vm_current_backend_venv_link: str
     vm_frontend_dist_dir: str
     vm_frontend_releases_dir: str
     vm_runtime_env_file: str
     vm_release_metadata_file: str
+    vm_release_retention_count: int
     systemd_service_name: str
     nginx_site_name: str
     nginx_server_name: str
     app_port: int
     tls_cert_path: str
     tls_key_path: str
+    tls_provisioning_mode: str
     node_major: int
     node_min_version: str
+    corepack_version: str
     node_package_manager: str
     node_build_options: str
+    supported_postgres_majors: str
     swap_size_gb: int
     swappiness: int
     pg_shared_buffers_mb: int
@@ -63,6 +72,7 @@ class VmDeployPlan:
     backup_local_staging_dir: str
     deploy_branch: str
     runtime_requirements_file: str
+    runtime_requirements_lock_file: str
     runtime_env: dict[str, str]
 
 
@@ -189,12 +199,22 @@ def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> Validation
     vm_app_root = _get(source, "VM_APP_ROOT", "/opt/gxp")
     app_user = _get(source, "VM_APP_USER", "gxp")
     app_group = _get(source, "VM_APP_GROUP", app_user)
+    python_series = _get(source, "VM_PYTHON_SERIES", "3.12")
+    python_bin = _get(source, "VM_PYTHON_BIN", "/usr/bin/python3.12")
+    if python_series != "3.12":
+        errors.append("VM_PYTHON_SERIES must remain 3.12 for the current production baseline.")
     vm_src_dir = _get(source, "VM_SRC_DIR", "/opt/gxp/src/GXP-QLCL")
-    vm_venv_dir = _get(source, "VM_VENV_DIR", "/opt/gxp/venv")
+    vm_backend_releases_dir = _get(source, "VM_BACKEND_RELEASES_DIR", "/opt/gxp/backend-releases")
+    vm_backend_venv_releases_dir = _get(source, "VM_BACKEND_VENV_RELEASES_DIR", "/opt/gxp/backend-venvs")
+    vm_current_backend_release_link = _get(source, "VM_CURRENT_BACKEND_RELEASE_LINK", "/opt/gxp/current-backend")
+    vm_current_backend_venv_link = _get(source, "VM_CURRENT_BACKEND_VENV_LINK", "/opt/gxp/current-venv")
     vm_frontend_dist_dir = _get(source, "VM_FRONTEND_DIST_DIR", "/opt/gxp/frontend-dist")
     vm_frontend_releases_dir = _get(source, "VM_FRONTEND_RELEASES_DIR", "/opt/gxp/frontend-releases")
     vm_runtime_env_file = _get(source, "VM_RUNTIME_ENV_FILE", "/etc/gxp/runtime.env")
     vm_release_metadata_file = _get(source, "VM_RELEASE_METADATA_FILE", "/opt/gxp/current-release.json")
+    vm_release_retention_count = _parse_int(source, "VM_RELEASE_RETENTION_COUNT", errors, 3)
+    if vm_release_retention_count < 2:
+        errors.append("VM_RELEASE_RETENTION_COUNT must be >= 2.")
     systemd_service_name = _get(source, "SYSTEMD_SERVICE_NAME", "gxp-web")
     nginx_site_name = _get(source, "NGINX_SITE_NAME", "gxp-web")
     public_base_url = _require(source, "PUBLIC_BASE_URL", errors)
@@ -209,14 +229,21 @@ def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> Validation
         errors.append("APP_PORT must be between 1 and 65535.")
     tls_cert_path = _require(source, "VM_TLS_CERT_PATH", errors, "/etc/ssl/certs/gxp.crt")
     tls_key_path = _require(source, "VM_TLS_KEY_PATH", errors, "/etc/ssl/private/gxp.key")
+    tls_provisioning_mode = _get(source, "VM_TLS_PROVISIONING_MODE", "existing_files")
+    if tls_provisioning_mode not in {"existing_files", "letsencrypt_certbot"}:
+        errors.append("VM_TLS_PROVISIONING_MODE must be existing_files or letsencrypt_certbot.")
     node_major = _parse_int(source, "VM_NODE_MAJOR", errors, 22)
     if node_major < 20:
         errors.append("VM_NODE_MAJOR must be >= 20 for the current frontend toolchain.")
     node_min_version = _get(source, "VM_NODE_MIN_VERSION", "22.12.0")
+    corepack_version = _get(source, "VM_COREPACK_VERSION", "0.31.0")
     node_package_manager = _get(source, "VM_NODE_PACKAGE_MANAGER", "pnpm@11.19.0")
     node_build_options = _get(source, "VM_NODE_BUILD_OPTIONS", "--max-old-space-size=512")
     if not node_package_manager.startswith("pnpm@"):
         errors.append("VM_NODE_PACKAGE_MANAGER must pin pnpm with a value like pnpm@11.19.0.")
+    supported_postgres_majors = _get(source, "VM_SUPPORTED_POSTGRES_MAJORS", "17,18")
+    if not re.fullmatch(r"\d+(,\d+)*", supported_postgres_majors):
+        errors.append("VM_SUPPORTED_POSTGRES_MAJORS must be a comma-separated list like 17,18.")
     swap_size_gb = _parse_int(source, "VM_SWAP_SIZE_GB", errors, 4)
     swappiness = _parse_int(source, "VM_SWAPPINESS", errors, 10)
     if swap_size_gb < 0:
@@ -274,22 +301,31 @@ def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> Validation
         "VM_APP_ROOT": vm_app_root,
         "VM_APP_USER": app_user,
         "VM_APP_GROUP": app_group,
+        "VM_PYTHON_SERIES": python_series,
+        "VM_PYTHON_BIN": python_bin,
         "VM_SRC_DIR": vm_src_dir,
-        "VM_VENV_DIR": vm_venv_dir,
+        "VM_BACKEND_RELEASES_DIR": vm_backend_releases_dir,
+        "VM_BACKEND_VENV_RELEASES_DIR": vm_backend_venv_releases_dir,
+        "VM_CURRENT_BACKEND_RELEASE_LINK": vm_current_backend_release_link,
+        "VM_CURRENT_BACKEND_VENV_LINK": vm_current_backend_venv_link,
         "VM_FRONTEND_DIST_DIR": vm_frontend_dist_dir,
         "VM_FRONTEND_RELEASES_DIR": vm_frontend_releases_dir,
         "VM_RUNTIME_ENV_FILE": vm_runtime_env_file,
         "VM_RELEASE_METADATA_FILE": vm_release_metadata_file,
+        "VM_RELEASE_RETENTION_COUNT": str(vm_release_retention_count),
         "SYSTEMD_SERVICE_NAME": systemd_service_name,
         "NGINX_SITE_NAME": nginx_site_name,
         "GXP_FRONTEND_DIST_ROOT": _get(source, "GXP_FRONTEND_DIST_ROOT", vm_frontend_dist_dir),
         "NGINX_SERVER_NAME": nginx_server_name,
         "VM_TLS_CERT_PATH": tls_cert_path,
         "VM_TLS_KEY_PATH": tls_key_path,
+        "VM_TLS_PROVISIONING_MODE": tls_provisioning_mode,
         "VM_NODE_MAJOR": str(node_major),
         "VM_NODE_MIN_VERSION": node_min_version,
+        "VM_COREPACK_VERSION": corepack_version,
         "VM_NODE_PACKAGE_MANAGER": node_package_manager,
         "VM_NODE_BUILD_OPTIONS": node_build_options,
+        "VM_SUPPORTED_POSTGRES_MAJORS": supported_postgres_majors,
         "VM_SWAP_SIZE_GB": str(swap_size_gb),
         "VM_SWAPPINESS": str(swappiness),
         "PG_SHARED_BUFFERS_MB": str(pg_shared_buffers_mb),
@@ -324,22 +360,31 @@ def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> Validation
             vm_app_root=vm_app_root,
             app_user=app_user,
             app_group=app_group,
+            python_series=python_series,
+            python_bin=python_bin,
             vm_src_dir=vm_src_dir,
-            vm_venv_dir=vm_venv_dir,
+            vm_backend_releases_dir=vm_backend_releases_dir,
+            vm_backend_venv_releases_dir=vm_backend_venv_releases_dir,
+            vm_current_backend_release_link=vm_current_backend_release_link,
+            vm_current_backend_venv_link=vm_current_backend_venv_link,
             vm_frontend_dist_dir=vm_frontend_dist_dir,
             vm_frontend_releases_dir=vm_frontend_releases_dir,
             vm_runtime_env_file=vm_runtime_env_file,
             vm_release_metadata_file=vm_release_metadata_file,
+            vm_release_retention_count=vm_release_retention_count,
             systemd_service_name=systemd_service_name,
             nginx_site_name=nginx_site_name,
             nginx_server_name=nginx_server_name,
             app_port=app_port,
             tls_cert_path=tls_cert_path,
             tls_key_path=tls_key_path,
+            tls_provisioning_mode=tls_provisioning_mode,
             node_major=node_major,
             node_min_version=node_min_version,
+            corepack_version=corepack_version,
             node_package_manager=node_package_manager,
             node_build_options=node_build_options,
+            supported_postgres_majors=supported_postgres_majors,
             swap_size_gb=swap_size_gb,
             swappiness=swappiness,
             pg_shared_buffers_mb=pg_shared_buffers_mb,
@@ -353,6 +398,7 @@ def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> Validation
             backup_local_staging_dir=backup_local_staging_dir,
             deploy_branch=deploy_branch,
             runtime_requirements_file="backend/requirements.runtime.vm.txt",
+            runtime_requirements_lock_file="backend/requirements.runtime.vm.lock.txt",
             runtime_env=runtime_env,
         )
 

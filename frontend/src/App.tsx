@@ -4,6 +4,7 @@ import {
   startTransition,
   useDeferredValue,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { NavLink, Route, Routes, useNavigate, useParams } from "react-router-dom";
@@ -19,7 +20,8 @@ import {
   prepareDocument,
   renderTemplateDocx,
 } from "./lib/api";
-import { loadAuthState, saveAuthState } from "./lib/storage";
+import { decodeOidcCredential, isOidcSessionValid, loadGoogleIdentityScript } from "./lib/oidc";
+import { clearOidcSession, loadAuthState, loadOidcSession, saveAuthState, saveOidcSession } from "./lib/storage";
 import type {
   AppStatus,
   CaseDetail,
@@ -30,6 +32,7 @@ import type {
   DocumentGenerationRunStatus,
   DocumentPreparationResponse,
   DocumentRenderResponse,
+  OidcSession,
   Site,
   StubAuthState,
 } from "./types";
@@ -47,7 +50,6 @@ type LoadState = {
 };
 
 const ROLE_OPTIONS: StubAuthState["role"][] = ["reader", "inspector", "manager", "admin"];
-
 const FAMILY_SUGGESTIONS = [
   "DDKD_CERTIFICATE",
   "CERTIFICATE_DECISION",
@@ -56,7 +58,7 @@ const FAMILY_SUGGESTIONS = [
   "INSPECTION_CAPA_LAN_2",
 ];
 
-function useOperatorSnapshot(auth: StubAuthState) {
+function useOperatorSnapshot(auth: StubAuthState, bearerToken: string | null) {
   const [snapshot, setSnapshot] = useState<OperatorSnapshot>({
     status: null,
     companies: [],
@@ -70,11 +72,14 @@ function useOperatorSnapshot(auth: StubAuthState) {
     setState({ loading: true, error: null });
     void getAppStatus()
       .then(async (status) => {
+        if (status.auth_mode === "google_oidc" && !bearerToken) {
+          return { status, companies: [], sites: [], cases: [] };
+        }
         const useStubAuth = status.auth_mode === "header_stub";
         const [companies, sites, cases] = await Promise.all([
-          listCompanies(auth, useStubAuth),
-          listSites(auth, useStubAuth),
-          listCases(auth, useStubAuth),
+          listCompanies(auth, useStubAuth, bearerToken),
+          listSites(auth, useStubAuth, bearerToken),
+          listCases(auth, useStubAuth, bearerToken),
         ]);
         return { status, companies, sites, cases };
       })
@@ -94,12 +99,12 @@ function useOperatorSnapshot(auth: StubAuthState) {
     return () => {
       cancelled = true;
     };
-  }, [auth]);
+  }, [auth, bearerToken]);
 
   return { snapshot, state };
 }
 
-function useCaseDetail(caseId: string | undefined, auth: StubAuthState) {
+function useCaseDetail(caseId: string | undefined, auth: StubAuthState, bearerToken: string | null) {
   const [detail, setDetail] = useState<CaseDetail | null>(null);
   const [state, setState] = useState<LoadState>({ loading: false, error: null });
 
@@ -112,7 +117,7 @@ function useCaseDetail(caseId: string | undefined, auth: StubAuthState) {
     let cancelled = false;
     setState({ loading: true, error: null });
     void getAppStatus()
-      .then((status) => getCaseDetail(caseId, auth, status.auth_mode === "header_stub"))
+      .then((status) => getCaseDetail(caseId, auth, status.auth_mode === "header_stub", bearerToken))
       .then((payload) => {
         if (cancelled) {
           return;
@@ -129,7 +134,7 @@ function useCaseDetail(caseId: string | undefined, auth: StubAuthState) {
     return () => {
       cancelled = true;
     };
-  }, [auth, caseId]);
+  }, [auth, bearerToken, caseId]);
 
   return { detail, state };
 }
@@ -139,16 +144,87 @@ function formatLabel(value: string | null | undefined, fallback = "Unknown"): st
   return normalized.length > 0 ? normalized : fallback;
 }
 
+function GoogleOidcButton({
+  clientId,
+  onCredential,
+}: {
+  clientId: string;
+  onCredential: (session: OidcSession) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadGoogleIdentityScript()
+      .then(() => {
+        if (cancelled || !containerRef.current || !window.google?.accounts?.id) {
+          return;
+        }
+        containerRef.current.innerHTML = "";
+        window.google.accounts.id.initialize({
+          client_id: clientId,
+          callback: (response: { credential?: string }) => {
+            if (!response.credential) {
+              setError("Google did not return an ID token.");
+              return;
+            }
+            try {
+              onCredential(decodeOidcCredential(response.credential));
+              setError(null);
+            } catch (nextError) {
+              setError(nextError instanceof Error ? nextError.message : "Failed to decode Google ID token.");
+            }
+          },
+        });
+        window.google.accounts.id.renderButton(containerRef.current, {
+          theme: "outline",
+          size: "large",
+          text: "signin_with",
+          shape: "pill",
+        });
+        window.google.accounts.id.prompt();
+      })
+      .catch((nextError: Error) => {
+        if (!cancelled) {
+          setError(nextError.message);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId, onCredential]);
+
+  return (
+    <div className="auth-panel auth-panel-readonly">
+      <p className="eyebrow">Identity source</p>
+      <strong>google_oidc</strong>
+      <span>Sign in with your Google Workspace identity to unlock the operator shell.</span>
+      <div ref={containerRef} />
+      {error ? <span>{error}</span> : null}
+    </div>
+  );
+}
+
 function Header({
   auth,
-  authMode,
+  status,
+  oidcSession,
   onChange,
+  onOidcSession,
+  onOidcLogout,
 }: {
   auth: StubAuthState;
-  authMode: string | null;
+  status: AppStatus | null;
+  oidcSession: OidcSession | null;
   onChange: (next: StubAuthState) => void;
+  onOidcSession: (session: OidcSession) => void;
+  onOidcLogout: () => void;
 }) {
+  const authMode = status?.auth_mode ?? null;
   const usesStubAuth = authMode === "header_stub" || authMode === null;
+  const oidcClientId = status?.auth.oidc_client_id ?? null;
+
   return (
     <header className="shell-header">
       <div>
@@ -181,11 +257,22 @@ function Header({
             </select>
           </label>
         </div>
+      ) : oidcSession ? (
+        <div className="auth-panel auth-panel-readonly">
+          <p className="eyebrow">Identity source</p>
+          <strong>{oidcSession.email ?? oidcSession.name ?? "Google user"}</strong>
+          <span>{authMode}</span>
+          <button className="secondary" onClick={onOidcLogout} type="button">
+            Logout
+          </button>
+        </div>
+      ) : oidcClientId ? (
+        <GoogleOidcButton clientId={oidcClientId} onCredential={onOidcSession} />
       ) : (
         <div className="auth-panel auth-panel-readonly">
           <p className="eyebrow">Identity source</p>
           <strong>{authMode}</strong>
-          <span>Browser requests rely on Google Cloud identity instead of local stub headers.</span>
+          <span>Missing Google OIDC client ID in app status.</span>
         </div>
       )}
     </header>
@@ -198,16 +285,10 @@ function Sidebar() {
       <div className="sidebar-card">
         <p className="sidebar-kicker">Navigation</p>
         <nav className="sidebar-nav">
-          <NavLink
-            className={({ isActive }: { isActive: boolean }) => (isActive ? "nav-link active" : "nav-link")}
-            to="/"
-          >
+          <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/">
             Dashboard
           </NavLink>
-          <NavLink
-            className={({ isActive }: { isActive: boolean }) => (isActive ? "nav-link active" : "nav-link")}
-            to="/cases"
-          >
+          <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/cases">
             Case workspace
           </NavLink>
         </nav>
@@ -254,13 +335,7 @@ function StatusCards({ status }: { status: AppStatus | null }) {
   );
 }
 
-function DashboardPage({
-  snapshot,
-  state,
-}: {
-  snapshot: OperatorSnapshot;
-  state: LoadState;
-}) {
+function DashboardPage({ snapshot, state }: { snapshot: OperatorSnapshot; state: LoadState }) {
   return (
     <section className="page-stack">
       <div className="hero-card">
@@ -293,6 +368,9 @@ function DashboardPage({
         </article>
       </div>
       {state.loading ? <p className="muted-panel">Loading operator snapshot…</p> : null}
+      {!state.loading && snapshot.status?.auth_mode === "google_oidc" && snapshot.cases.length === 0 ? (
+        <p className="muted-panel">Sign in with Google to load operator data.</p>
+      ) : null}
     </section>
   );
 }
@@ -300,9 +378,11 @@ function DashboardPage({
 function CaseWorkspacePage({
   snapshot,
   auth,
+  bearerToken,
 }: {
   snapshot: OperatorSnapshot;
   auth: StubAuthState;
+  bearerToken: string | null;
 }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
@@ -389,6 +469,7 @@ function CaseWorkspacePage({
             <CaseDetailWorkspace
               auth={auth}
               authMode={snapshot.status?.auth_mode ?? null}
+              bearerToken={bearerToken}
               caseId={selectedCaseId}
               companies={snapshot.companies}
               sites={snapshot.sites}
@@ -408,11 +489,13 @@ function CaseWorkspacePage({
 function CaseRoutePage({
   auth,
   authMode,
+  bearerToken,
   companies,
   sites,
 }: {
   auth: StubAuthState;
   authMode: string | null;
+  bearerToken: string | null;
   companies: Company[];
   sites: Site[];
 }) {
@@ -424,6 +507,7 @@ function CaseRoutePage({
     <CaseDetailWorkspace
       auth={auth}
       authMode={authMode}
+      bearerToken={bearerToken}
       caseId={caseId}
       companies={companies}
       sites={sites}
@@ -435,6 +519,7 @@ function CaseRoutePage({
 function CaseDetailWorkspace({
   auth,
   authMode,
+  bearerToken,
   caseId,
   companies,
   sites,
@@ -442,13 +527,14 @@ function CaseDetailWorkspace({
 }: {
   auth: StubAuthState;
   authMode: string | null;
+  bearerToken: string | null;
   caseId: string;
   companies: Company[];
   sites: Site[];
   standalone?: boolean;
 }) {
   const navigate = useNavigate();
-  const { detail, state } = useCaseDetail(caseId, auth);
+  const { detail, state } = useCaseDetail(caseId, auth, bearerToken);
   const site = sites.find((candidate) => candidate.id === detail?.site_id);
   const company = companies.find((candidate) => candidate.id === site?.company_id);
 
@@ -496,7 +582,7 @@ function CaseDetailWorkspace({
               </div>
             </div>
           </div>
-          <DocumentWorkbench auth={auth} authMode={authMode} caseDetail={detail} />
+          <DocumentWorkbench auth={auth} authMode={authMode} bearerToken={bearerToken} caseDetail={detail} />
         </>
       )}
     </div>
@@ -506,10 +592,12 @@ function CaseDetailWorkspace({
 function DocumentWorkbench({
   auth,
   authMode,
+  bearerToken,
   caseDetail,
 }: {
   auth: StubAuthState;
   authMode: string | null;
+  bearerToken: string | null;
   caseDetail: CaseDetail;
 }) {
   const usesStubAuth = authMode === "header_stub";
@@ -561,7 +649,7 @@ function DocumentWorkbench({
     setBusyAction("prepare");
     setError(null);
     try {
-      const result = await prepareDocument(buildRequest(), auth, usesStubAuth);
+      const result = await prepareDocument(buildRequest(), auth, usesStubAuth, bearerToken);
       setPrepareResult(result);
       setRunStatus(null);
       setDocumentDetail(null);
@@ -583,12 +671,13 @@ function DocumentWorkbench({
         },
         auth,
         usesStubAuth,
+        bearerToken,
       );
       setRenderResult(result);
       setPrepareResult(null);
       const [latestRun, latestDocument] = await Promise.all([
-        getGenerationRun(result.generation_run_id, auth, usesStubAuth),
-        getDocumentDetail(result.document_id, auth, usesStubAuth),
+        getGenerationRun(result.generation_run_id, auth, usesStubAuth, bearerToken),
+        getDocumentDetail(result.document_id, auth, usesStubAuth, bearerToken),
       ]);
       setRunStatus(latestRun);
       setDocumentDetail(latestDocument);
@@ -610,7 +699,7 @@ function DocumentWorkbench({
     setBusyAction("run");
     setError(null);
     try {
-      setRunStatus(await getGenerationRun(generationRunId, auth, usesStubAuth));
+      setRunStatus(await getGenerationRun(generationRunId, auth, usesStubAuth, bearerToken));
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Failed to load run status.");
     } finally {
@@ -629,7 +718,7 @@ function DocumentWorkbench({
     setBusyAction("document");
     setError(null);
     try {
-      setDocumentDetail(await getDocumentDetail(documentId, auth, usesStubAuth));
+      setDocumentDetail(await getDocumentDetail(documentId, auth, usesStubAuth, bearerToken));
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Failed to load document detail.");
     } finally {
@@ -697,7 +786,7 @@ function DocumentWorkbench({
         <div className="hint-strip">
           <span>Case-backed parent link is prefilled from the selected case.</span>
           <span>Families that remain unresolved will return explicit blocked reasons.</span>
-          <span>{usesStubAuth ? "Local stub auth is active." : "Google Cloud identity mode is active."}</span>
+          <span>{usesStubAuth ? "Local stub auth is active." : "Google OIDC bearer token is active."}</span>
         </div>
       </form>
 
@@ -788,13 +877,7 @@ function DocumentWorkbench({
   );
 }
 
-function ResultCard({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
+function ResultCard({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="result-card">
       <div className="panel-header">
@@ -841,27 +924,58 @@ function ErrorBanner({ message }: { message: string }) {
 
 export function App() {
   const [auth, setAuth] = useState<StubAuthState>(() => loadAuthState());
-  const { snapshot, state } = useOperatorSnapshot(auth);
+  const [oidcSession, setOidcSession] = useState<OidcSession | null>(() => {
+    const stored = loadOidcSession();
+    return isOidcSessionValid(stored) ? stored : null;
+  });
+  const { snapshot, state } = useOperatorSnapshot(auth, oidcSession?.token ?? null);
 
   useEffect(() => {
     saveAuthState(auth);
   }, [auth]);
 
+  useEffect(() => {
+    if (oidcSession && !isOidcSessionValid(oidcSession)) {
+      setOidcSession(null);
+      clearOidcSession();
+      return;
+    }
+    if (oidcSession) {
+      saveOidcSession(oidcSession);
+    } else {
+      clearOidcSession();
+    }
+  }, [oidcSession]);
+
   return (
     <div className="shell-root">
-      <Header auth={auth} authMode={snapshot.status?.auth_mode ?? null} onChange={setAuth} />
+      <Header
+        auth={auth}
+        status={snapshot.status}
+        oidcSession={oidcSession}
+        onChange={setAuth}
+        onOidcSession={setOidcSession}
+        onOidcLogout={() => {
+          window.google?.accounts?.id?.disableAutoSelect?.();
+          setOidcSession(null);
+        }}
+      />
       <div className="shell-body">
         <Sidebar />
         <main className="main-column">
           <Routes>
             <Route path="/" element={<DashboardPage snapshot={snapshot} state={state} />} />
-            <Route path="/cases" element={<CaseWorkspacePage snapshot={snapshot} auth={auth} />} />
+            <Route
+              path="/cases"
+              element={<CaseWorkspacePage snapshot={snapshot} auth={auth} bearerToken={oidcSession?.token ?? null} />}
+            />
             <Route
               path="/cases/:caseId"
               element={
                 <CaseRoutePage
                   auth={auth}
                   authMode={snapshot.status?.auth_mode ?? null}
+                  bearerToken={oidcSession?.token ?? null}
                   companies={snapshot.companies}
                   sites={snapshot.sites}
                 />

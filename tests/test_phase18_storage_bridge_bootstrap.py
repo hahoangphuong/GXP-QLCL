@@ -1,4 +1,6 @@
 from pathlib import Path
+import subprocess
+import sys
 
 from tools.validate_phase18_storage_bridge_bootstrap import (
     load_json_file,
@@ -97,3 +99,37 @@ def test_load_json_file_reads_bootstrap(tmp_path: Path):
     payload = load_json_file(path)
 
     assert payload["service_name"] == "gxp-storage-bridge"
+
+
+def test_phase18_validator_imports_without_backend_runtime_dependencies():
+    script = """
+import importlib
+import importlib.abc
+import pathlib
+import sys
+
+root = pathlib.Path.cwd()
+sys.path.insert(0, str(root))
+
+blocked_prefixes = ("backend.app.config", "sqlalchemy")
+
+class Blocker(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path, target=None):
+        for prefix in blocked_prefixes:
+            if fullname == prefix or fullname.startswith(prefix + "."):
+                raise ModuleNotFoundError(f"blocked import: {fullname}")
+        return None
+
+sys.meta_path.insert(0, Blocker())
+module = importlib.import_module("tools.validate_phase18_storage_bridge_bootstrap")
+raise SystemExit(module.main(["infra/cloudrun/storage_bridge_bootstrap.example.json"]))
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout

@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.app.config import resolve_database_url
+from tools.env_utils import parse_env_file
 
 
 DEFAULT_ENV_PATH = Path("backend/.env.cloudrun.example")
@@ -25,19 +26,6 @@ class ValidationReport:
     @property
     def ok(self) -> bool:
         return not self.errors
-
-
-def parse_env_file(path: Path) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        key, separator, value = line.partition("=")
-        if not separator:
-            raise ValueError(f"Invalid env line: {raw_line!r}")
-        values[key.strip()] = value.strip()
-    return values
 
 
 def validate_env_contract(env: dict[str, str]) -> ValidationReport:

@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools.validate_phase14_cloud_run_contract import parse_env_file
+from tools.env_utils import parse_env_file
 
 
 DEFAULT_CONFIG_PATH = Path("infra/cloudrun/storage_bridge_bootstrap.example.json")

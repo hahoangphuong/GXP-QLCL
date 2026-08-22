@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Mapping
 
 
 def parse_env_file(path: Path) -> dict[str, str]:
@@ -13,4 +15,50 @@ def parse_env_file(path: Path) -> dict[str, str]:
         if not separator:
             raise ValueError(f"Invalid env line: {raw_line!r}")
         values[key.strip()] = value.strip()
+    return values
+
+
+def build_env_map_from_dotenv(
+    path: Path,
+    *,
+    exclude_keys: tuple[str, ...] = (),
+    overrides: Mapping[str, str] | None = None,
+    collapse_escaped_backslashes: bool = False,
+) -> dict[str, str]:
+    values = parse_env_file(path)
+    if collapse_escaped_backslashes:
+        values = {key: value.replace("\\\\", "\\") for key, value in values.items()}
+    for key in exclude_keys:
+        values.pop(key, None)
+    if overrides:
+        for key, value in overrides.items():
+            values[str(key)] = str(value)
+    return values
+
+
+def write_yaml_env_file(path: Path, values: Mapping[str, str]) -> None:
+    with path.open("w", encoding="utf-8", newline="\n") as fh:
+        for raw_key, raw_value in values.items():
+            key = str(raw_key).strip()
+            if not key:
+                raise ValueError("YAML env mappings require non-blank keys.")
+            value = "" if raw_value is None else str(raw_value)
+            fh.write(f"{key}: {json.dumps(value, ensure_ascii=False)}\n")
+
+
+def dotenv_to_yaml_env_file(
+    source_path: Path,
+    output_path: Path,
+    *,
+    exclude_keys: tuple[str, ...] = (),
+    overrides: Mapping[str, str] | None = None,
+    collapse_escaped_backslashes: bool = False,
+) -> dict[str, str]:
+    values = build_env_map_from_dotenv(
+        source_path,
+        exclude_keys=exclude_keys,
+        overrides=overrides,
+        collapse_escaped_backslashes=collapse_escaped_backslashes,
+    )
+    write_yaml_env_file(output_path, values)
     return values

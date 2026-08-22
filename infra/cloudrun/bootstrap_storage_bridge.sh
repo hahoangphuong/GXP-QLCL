@@ -184,24 +184,29 @@ prepare_env_files() {
   python3 - "${REPO_ROOT}/${ENV_FILE}" "${BOOTSTRAP_ENV_FILE}" "${FINAL_ENV_FILE}" <<'PY'
 from pathlib import Path
 import sys
+from tools.env_utils import dotenv_to_yaml_env_file
 
 source_path = Path(sys.argv[1])
 bootstrap_path = Path(sys.argv[2])
 final_path = Path(sys.argv[3])
 
-lines = source_path.read_text(encoding="utf-8").splitlines()
-bootstrap_lines: list[str] = []
-final_lines: list[str] = []
-for line in lines:
-    if line.startswith("STORAGE_BRIDGE_AUTH_AUDIENCE="):
-        continue
-    if line.startswith("BRIDGE_BOOTSTRAP_ALLOW_UNCONFIGURED_AUTH="):
-        continue
-    bootstrap_lines.append(line)
-    final_lines.append(line)
-bootstrap_lines.append("BRIDGE_BOOTSTRAP_ALLOW_UNCONFIGURED_AUTH=1")
-bootstrap_path.write_text("\n".join(bootstrap_lines).strip() + "\n", encoding="utf-8")
-final_path.write_text("\n".join(final_lines).strip() + "\n", encoding="utf-8")
+exclude_keys = (
+    "STORAGE_BRIDGE_AUTH_AUDIENCE",
+    "BRIDGE_BOOTSTRAP_ALLOW_UNCONFIGURED_AUTH",
+)
+dotenv_to_yaml_env_file(
+    source_path,
+    bootstrap_path,
+    exclude_keys=exclude_keys,
+    overrides={"BRIDGE_BOOTSTRAP_ALLOW_UNCONFIGURED_AUTH": "1"},
+    collapse_escaped_backslashes=True,
+)
+dotenv_to_yaml_env_file(
+    source_path,
+    final_path,
+    exclude_keys=exclude_keys,
+    collapse_escaped_backslashes=True,
+)
 PY
 }
 
@@ -253,16 +258,24 @@ BRIDGE_URL="$(gcloud run services describe "${SERVICE_NAME}" --project "${PROJEC
   exit 1
 }
 
-python3 - "${FINAL_ENV_FILE}" "${BRIDGE_URL}" <<'PY'
+python3 - "${REPO_ROOT}/${ENV_FILE}" "${BRIDGE_URL}" "${FINAL_ENV_FILE}" <<'PY'
 from pathlib import Path
 import sys
+from tools.env_utils import dotenv_to_yaml_env_file
 
-path = Path(sys.argv[1])
+dotenv_source_path = Path(sys.argv[1])
 bridge_url = sys.argv[2]
-lines = path.read_text(encoding="utf-8").splitlines()
-lines = [line for line in lines if not line.startswith("STORAGE_BRIDGE_AUTH_AUDIENCE=") and not line.startswith("BRIDGE_BOOTSTRAP_ALLOW_UNCONFIGURED_AUTH=")]
-lines.append(f"STORAGE_BRIDGE_AUTH_AUDIENCE={bridge_url}")
-path.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
+output_path = Path(sys.argv[3])
+dotenv_to_yaml_env_file(
+    dotenv_source_path,
+    output_path,
+    exclude_keys=(
+        "STORAGE_BRIDGE_AUTH_AUDIENCE",
+        "BRIDGE_BOOTSTRAP_ALLOW_UNCONFIGURED_AUTH",
+    ),
+    overrides={"STORAGE_BRIDGE_AUTH_AUDIENCE": bridge_url},
+    collapse_escaped_backslashes=True,
+)
 PY
 
 DEPLOY_CMD_FINAL=("${DEPLOY_CMD[@]}")

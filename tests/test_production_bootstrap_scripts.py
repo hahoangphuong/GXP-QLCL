@@ -42,8 +42,8 @@ def test_storage_bridge_bootstrap_script_uses_cloudbuild_config_and_smoke_script
 def test_storage_bridge_bootstrap_script_uses_two_phase_auth_bootstrap():
     text = (ROOT / "infra" / "cloudrun" / "bootstrap_storage_bridge.sh").read_text(encoding="utf-8")
 
-    assert "BRIDGE_BOOTSTRAP_ALLOW_UNCONFIGURED_AUTH=1" in text
-    assert 'lines.append(f"STORAGE_BRIDGE_AUTH_AUDIENCE={bridge_url}")' in text
+    assert '"BRIDGE_BOOTSTRAP_ALLOW_UNCONFIGURED_AUTH": "1"' in text
+    assert "dotenv_to_yaml_env_file" in text
     assert 'gcloud run services describe "${SERVICE_NAME}"' in text
 
 
@@ -74,6 +74,22 @@ def test_bridge_invoker_binding_remains_scoped_to_bridge_service():
     assert '"services"' in text
     assert 'config["service_name"]' in text
     assert "--role=roles/run.invoker" in text
+
+
+def test_bootstrap_storage_bridge_script_deploys_with_generated_yaml_env_files():
+    text = (ROOT / "infra" / "cloudrun" / "bootstrap_storage_bridge.sh").read_text(encoding="utf-8")
+
+    assert 'DEPLOY_CMD_BOOTSTRAP[$i]="${BOOTSTRAP_ENV_FILE}"' in text
+    assert 'DEPLOY_CMD_FINAL[$i]="${FINAL_ENV_FILE}"' in text
+    assert 'python3 - "${REPO_ROOT}/${ENV_FILE}" "${BOOTSTRAP_ENV_FILE}" "${FINAL_ENV_FILE}"' in text
+
+
+def test_deploy_prod_script_generates_yaml_runtime_env_file_via_env_utils():
+    text = (ROOT / "infra" / "cloudrun" / "deploy_prod.sh").read_text(encoding="utf-8")
+
+    assert "write_yaml_env_file" in text
+    assert '--set-env-vars-file "${RUNTIME_ENV_FILE}"' in text
+    assert '--env-vars-file "${RUNTIME_ENV_FILE}"' in text
 
 
 def test_runtime_lockfile_is_generated_with_python_312_baseline():

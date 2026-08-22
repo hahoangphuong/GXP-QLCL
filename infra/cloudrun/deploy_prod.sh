@@ -67,14 +67,13 @@ PY
 json_to_env_file() {
   "${PYTHON_BIN}" - "$PLAN_JSON" "$RUNTIME_ENV_FILE" <<'PY'
 import json
+from pathlib import Path
 import sys
+from tools.env_utils import write_yaml_env_file
 
 plan = json.loads(open(sys.argv[1], encoding="utf-8").read())["plan"]
 runtime_env = plan["runtime_env"]
-with open(sys.argv[2], "w", encoding="utf-8") as fh:
-    for key in sorted(runtime_env):
-        value = str(runtime_env[key]).replace("\\", "\\\\").replace('"', '\\"')
-        fh.write(f'{key}: "{value}"\n')
+write_yaml_env_file(Path(sys.argv[2]), runtime_env)
 PY
 }
 

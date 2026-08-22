@@ -54,6 +54,9 @@ def test_validate_storage_bridge_bootstrap_accepts_example_shape():
 
     assert report.errors == []
     assert "gcloud" in report.build_command_preview
+    assert "--config" in report.build_command_preview
+    assert "infra/cloudrun/cloudbuild.storage_bridge.yaml" in report.build_command_preview
+    assert "--file" not in report.build_command_preview
     assert "deploy" in report.deploy_command_preview
     assert "status.url" in report.bridge_base_url_source
 

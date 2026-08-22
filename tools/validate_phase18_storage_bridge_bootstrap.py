@@ -98,10 +98,10 @@ def _build_build_preview(config: dict[str, Any]) -> list[str]:
         "submit",
         "--project",
         config["project_id"],
-        "--tag",
-        _build_image_uri(config),
-        "--file",
-        "backend/Dockerfile.storage_bridge",
+        "--config",
+        "infra/cloudrun/cloudbuild.storage_bridge.yaml",
+        "--substitutions",
+        f"_IMAGE_URI={_build_image_uri(config)}",
         ".",
     ]
 
@@ -209,6 +209,10 @@ def validate_storage_bridge_bootstrap(config: dict[str, Any], *, root: Path | No
         env_errors, env_warnings = validate_bridge_env_contract(env)
         errors.extend(f"env contract: {item}" for item in env_errors)
         warnings.extend(f"env contract: {item}" for item in env_warnings)
+
+    build_config_path = repo_root / "infra/cloudrun/cloudbuild.storage_bridge.yaml"
+    if not build_config_path.exists():
+        errors.append(f"build config does not exist: {build_config_path}")
 
     warnings.append(
         "Cloud Run bridge over Tailscale userspace + SMB is an infrastructure adapter baseline; verify Synology test-folder flows before binding production dossiers."

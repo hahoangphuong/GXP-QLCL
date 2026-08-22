@@ -35,6 +35,7 @@ The repository now standardizes these names unless you explicitly override them 
 - Artifact Registry repository: `gxp-qlcl`
 - Image name: `gxp-web`
 - Runtime service account: `gxp-web-runtime@gxp-qlcl.iam.gserviceaccount.com`
+- Bridge runtime service account: `gxp-storage-bridge@gxp-qlcl.iam.gserviceaccount.com`
 
 Image format:
 
@@ -132,9 +133,11 @@ Template:
 5. deploy/update Cloud Run migration job
 6. run `alembic upgrade head`
 7. stop immediately if migration fails
-8. deploy Cloud Run service
-9. verify `/healthz`
-10. verify `/readyz`
+8. deploy Cloud Run service with `--iap`
+9. grant `roles/run.invoker` on the service to the IAP service agent
+10. verify Cloud Run control-plane readiness
+11. verify the service reports `Iap Enabled: true`
+12. perform manual/browser IAP smoke test after explicit user access is granted
 
 ## One-time prerequisites you may still need
 These are not created silently by normal deploy.
@@ -222,6 +225,29 @@ For this repository baseline, the concrete value is expected to be:
 
 Cloud Run deploys should keep IAP enabled directly on the service.
 
+Important:
+- `AUTH_IAP_ALLOWED_EMAIL_DOMAIN` is only the application-layer allowlist.
+- It does not grant IAP access by itself.
+- Explicit IAP user/group access still must be granted with `roles/iap.httpsResourceAccessor`.
+
+After the service exists, example command:
+
+```bash
+gcloud iap web add-iam-policy-binding \
+  --member=user:YOUR_USER@example.com \
+  --role=roles/iap.httpsResourceAccessor \
+  --region=asia-southeast1 \
+  --resource-type=cloud-run \
+  --service=gxp-web
+```
+
+If the project is not part of a Google organization, first-time direct Cloud Run IAP can still require one-time Cloud Console OAuth setup.
+Console path:
+
+```text
+Cloud Run -> gxp-web -> Security -> IAP -> Edit policy -> Configure in IAP -> Configure consent screen
+```
+
 ### Storage bridge
 The current production baseline expects:
 
@@ -269,6 +295,19 @@ gxp-storage-bridge-smb-password
 
 The committed bridge env file remains non-secret and only captures topology/config shape.
 
+The bridge image build now uses a dedicated Cloud Build config:
+- [infra/cloudrun/cloudbuild.storage_bridge.yaml](D:/GXP-QLCL/infra/cloudrun/cloudbuild.storage_bridge.yaml)
+
+Bridge bootstrap preflight verifies before build/deploy:
+- Artifact Registry repo `gxp-qlcl`
+- bridge runtime service account `gxp-storage-bridge@gxp-qlcl.iam.gserviceaccount.com`
+- caller runtime service account `gxp-web-runtime@gxp-qlcl.iam.gserviceaccount.com`
+- secrets:
+  - `gxp-tailscale-auth-key`
+  - `gxp-storage-bridge-smb-username`
+  - `gxp-storage-bridge-smb-password`
+- bridge runtime service account has `roles/secretmanager.secretAccessor` on the required secrets
+
 ## Dry run
 Use:
 
@@ -304,6 +343,9 @@ Before the first final production dry run, complete bootstrap in this order:
 6. Run `infra/cloudrun/bootstrap_storage_bridge.sh`.
 7. Export the printed `STORAGE_BRIDGE_BASE_URL` and `STORAGE_BRIDGE_AUTH_AUDIENCE`.
 8. Run `DRY_RUN=1 ~/deploy_gxp_prod_git.sh`.
+
+If you configure `TEST_INSPECTION_RELATIVE_PATH`, bridge bootstrap now also supports a safe authenticated smoke test path through:
+- [infra/cloudrun/smoke_test_storage_bridge.sh](D:/GXP-QLCL/infra/cloudrun/smoke_test_storage_bridge.sh)
 
 ## Exact first production deploy command
 After one-time prerequisites are complete and wrapper exports the required variables:

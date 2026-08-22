@@ -5,8 +5,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PLAN_JSON="$(mktemp)"
 RUNTIME_ENV_FILE="$(mktemp)"
+SERVICE_DESCRIBE_JSON="$(mktemp)"
+SERVICE_DESCRIBE_TEXT="$(mktemp)"
 cleanup() {
-  rm -f "${PLAN_JSON}" "${RUNTIME_ENV_FILE}"
+  rm -f "${PLAN_JSON}" "${RUNTIME_ENV_FILE}" "${SERVICE_DESCRIBE_JSON}" "${SERVICE_DESCRIBE_TEXT}"
 }
 trap cleanup EXIT
 
@@ -101,7 +103,6 @@ PY
 PYTHON_BIN="$(resolve_cmd python3 python)" || fail "python3 or python is required."
 need_cmd git
 need_cmd gcloud
-need_cmd curl
 
 if command -v pnpm >/dev/null 2>&1; then
   PNPM_CMD=(pnpm)
@@ -224,6 +225,61 @@ Runtime env file: ${RUNTIME_ENV_FILE}
 EOF
 }
 
+verify_cloud_run_service_state() {
+  local project_number iap_service_agent
+  gcloud run services describe "${SERVICE_NAME}" \
+    --project "${PROJECT_ID}" \
+    --region "${REGION}" \
+    --format=json >"${SERVICE_DESCRIBE_JSON}"
+  gcloud run services describe "${SERVICE_NAME}" \
+    --project "${PROJECT_ID}" \
+    --region "${REGION}" >"${SERVICE_DESCRIBE_TEXT}"
+
+  "${PYTHON_BIN}" - "${SERVICE_DESCRIBE_JSON}" <<'PY'
+import json
+import sys
+
+payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
+status = payload.get("status") or {}
+latest_ready = status.get("latestReadyRevisionName") or ""
+url = status.get("url") or ""
+conditions = status.get("conditions") or []
+ready = ""
+for item in conditions:
+    if isinstance(item, dict) and item.get("type") == "Ready":
+        ready = str(item.get("status") or "")
+        break
+if not latest_ready:
+    raise SystemExit("Cloud Run latestReadyRevisionName is blank.")
+if not url:
+    raise SystemExit("Cloud Run service URL is blank.")
+if ready.lower() != "true":
+    raise SystemExit(f"Cloud Run Ready condition is not True (got {ready!r}).")
+print(latest_ready)
+print(url)
+PY
+
+  grep -F "Iap Enabled: true" "${SERVICE_DESCRIBE_TEXT}" >/dev/null || fail "Cloud Run service does not report IAP enabled."
+
+  project_number="$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')"
+  [[ -n "${project_number}" ]] || fail "Could not resolve project number while verifying IAP."
+  iap_service_agent="service-${project_number}@gcp-sa-iap.iam.gserviceaccount.com"
+  gcloud run services get-iam-policy "${SERVICE_NAME}" \
+    --project "${PROJECT_ID}" \
+    --region "${REGION}" \
+    --format=json | "${PYTHON_BIN}" - "${iap_service_agent}" <<'PY'
+import json
+import sys
+
+policy = json.load(sys.stdin)
+member = f"serviceAccount:{sys.argv[1]}"
+for binding in policy.get("bindings", []):
+    if binding.get("role") == "roles/run.invoker" and member in binding.get("members", []):
+        raise SystemExit(0)
+raise SystemExit("IAP service agent does not have roles/run.invoker on the Cloud Run service.")
+PY
+}
+
 run_preflight_checks
 verify_gcloud_resources
 print_execution_summary
@@ -277,6 +333,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --max-instances "${MAX_INSTANCES}" \
   --ingress "${INGRESS}" \
   --execution-environment gen2 \
+  --deploy-health-check \
   --no-allow-unauthenticated \
   --iap \
   --env-vars-file "${RUNTIME_ENV_FILE}" \
@@ -284,11 +341,23 @@ gcloud run deploy "${SERVICE_NAME}" \
   --set-cloudsql-instances "${CLOUD_SQL_CONNECTION_NAME}" \
   --labels "${LABEL_FLAGS}"
 
-log "Verifying revision readiness..."
+log "Granting Cloud Run invoker to the IAP service agent..."
+PROJECT_NUMBER="$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')"
+[[ -n "${PROJECT_NUMBER}" ]] || fail "Could not resolve project number after deploy."
+IAP_SERVICE_AGENT="service-${PROJECT_NUMBER}@gcp-sa-iap.iam.gserviceaccount.com"
+gcloud run services add-iam-policy-binding "${SERVICE_NAME}" \
+  --project "${PROJECT_ID}" \
+  --region "${REGION}" \
+  --member "serviceAccount:${IAP_SERVICE_AGENT}" \
+  --role "roles/run.invoker" >/dev/null
+
+log "Verifying Cloud Run control-plane readiness and IAP state..."
+verify_cloud_run_service_state
+
 SERVICE_URL="$(gcloud run services describe "${SERVICE_NAME}" --project "${PROJECT_ID}" --region "${REGION}" --format='value(status.url)')"
-[[ -n "${SERVICE_URL}" ]] || fail "Cloud Run service URL was blank after deploy."
-TOKEN="$(gcloud auth print-identity-token)"
-curl -fsS -H "Authorization: Bearer ${TOKEN}" "${SERVICE_URL}/healthz" >/dev/null
-curl -fsS -H "Authorization: Bearer ${TOKEN}" "${SERVICE_URL}/readyz" >/dev/null
+log "Cloud Run service is Ready and reports IAP enabled."
+log "Manual IAP smoke test is still required after user access is granted:"
+log "  Browser: ${SERVICE_URL}"
+log "  If you need programmatic IAP verification, follow Google IAP programmatic auth using a real IAP token, not gcloud auth print-identity-token for Cloud Run IAM."
 
 log "Production deploy completed successfully."

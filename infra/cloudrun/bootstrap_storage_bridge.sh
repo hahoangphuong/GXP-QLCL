@@ -3,6 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+source "${SCRIPT_DIR}/iam_policy_utils.sh"
+
 CONFIG_PATH="${1:-infra/cloudrun/storage_bridge_bootstrap.example.json}"
 VALIDATION_JSON="$(mktemp)"
 CONFIG_VALUES_JSON="$(mktemp)"
@@ -110,23 +112,30 @@ verify_preflight_resources() {
       "Secret '${secret_name}' is missing." \
       "gcloud secrets create ${secret_name} --project=${PROJECT_ID} --replication-policy=automatic"
 
-    if ! gcloud secrets get-iam-policy "${secret_name}" \
-      --project "${PROJECT_ID}" \
-      --format=json | python3 - "${SERVICE_ACCOUNT}" <<'PY'
-import json
-import sys
-
-policy = json.load(sys.stdin)
-member = f"serviceAccount:{sys.argv[1]}"
-for binding in policy.get("bindings", []):
-    if binding.get("role") == "roles/secretmanager.secretAccessor" and member in binding.get("members", []):
-        raise SystemExit(0)
-raise SystemExit(1)
-PY
+    if policy_member_has_role \
+      "secret '${secret_name}'" \
+      "serviceAccount:${SERVICE_ACCOUNT}" \
+      "roles/secretmanager.secretAccessor" \
+      gcloud secrets get-iam-policy "${secret_name}" --project "${PROJECT_ID}" --format=json
     then
-      fail_with_command \
-        "Bridge service account '${SERVICE_ACCOUNT}' is missing Secret Manager access for '${secret_name}'." \
-        "gcloud secrets add-iam-policy-binding ${secret_name} --project=${PROJECT_ID} --member=serviceAccount:${SERVICE_ACCOUNT} --role=roles/secretmanager.secretAccessor"
+      :
+    else
+      rc=$?
+      case "${rc}" in
+        1)
+          fail_with_command \
+            "Bridge service account '${SERVICE_ACCOUNT}' is missing Secret Manager access for '${secret_name}'." \
+            "gcloud secrets add-iam-policy-binding ${secret_name} --project=${PROJECT_ID} --member=serviceAccount:${SERVICE_ACCOUNT} --role=roles/secretmanager.secretAccessor"
+          ;;
+        2|3)
+          printf 'ERROR: %s\n' "${POLICY_CHECK_ERROR_MESSAGE}" >&2
+          exit 1
+          ;;
+        *)
+          printf "ERROR: Unexpected IAM policy check failure for secret '%s'.\n" "${secret_name}" >&2
+          exit 1
+          ;;
+      esac
     fi
   done
 }
@@ -144,21 +153,30 @@ verify_operator_impersonation() {
     active_member="user:${active_account}"
   fi
 
-  if ! gcloud iam service-accounts get-iam-policy "${CALLER_SERVICE_ACCOUNT}" --format=json | python3 - "${active_member}" <<'PY'
-import json
-import sys
-
-policy = json.load(sys.stdin)
-member = sys.argv[1]
-for binding in policy.get("bindings", []):
-    if binding.get("role") == "roles/iam.serviceAccountTokenCreator" and member in binding.get("members", []):
-        raise SystemExit(0)
-raise SystemExit(1)
-PY
+  if policy_member_has_role \
+    "service account '${CALLER_SERVICE_ACCOUNT}'" \
+    "${active_member}" \
+    "roles/iam.serviceAccountTokenCreator" \
+    gcloud iam service-accounts get-iam-policy "${CALLER_SERVICE_ACCOUNT}" --format=json
   then
-    fail_with_command \
-      "Active operator '${active_account}' cannot impersonate '${CALLER_SERVICE_ACCOUNT}'." \
-      "gcloud iam service-accounts add-iam-policy-binding ${CALLER_SERVICE_ACCOUNT} --member=${active_member} --role=roles/iam.serviceAccountTokenCreator"
+    :
+  else
+    rc=$?
+    case "${rc}" in
+      1)
+        fail_with_command \
+          "Active operator '${active_account}' cannot impersonate '${CALLER_SERVICE_ACCOUNT}'." \
+          "gcloud iam service-accounts add-iam-policy-binding ${CALLER_SERVICE_ACCOUNT} --member=${active_member} --role=roles/iam.serviceAccountTokenCreator"
+        ;;
+      2|3)
+        printf 'ERROR: %s\n' "${POLICY_CHECK_ERROR_MESSAGE}" >&2
+        exit 1
+        ;;
+      *)
+        printf "ERROR: Unexpected IAM policy check failure for service account '%s'.\n" "${CALLER_SERVICE_ACCOUNT}" >&2
+        exit 1
+        ;;
+    esac
   fi
 }
 

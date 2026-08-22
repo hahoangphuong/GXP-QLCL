@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,6 +53,19 @@ def test_storage_bridge_smoke_test_uses_caller_service_account_impersonation():
     assert '--impersonate-service-account="${CALLER_SERVICE_ACCOUNT}"' in text
     assert "roles/iam.serviceAccountTokenCreator" in text
     assert "gcloud iam service-accounts add-iam-policy-binding" in text
+
+
+def test_no_pipe_plus_heredoc_python_stdin_conflicts_remain_in_cloudrun_scripts():
+    pattern = re.compile(r"\|\s*python3\s+-[^\n]*<<['\"]PY['\"]")
+    scripts = (
+        ROOT / "infra" / "cloudrun" / "bootstrap_storage_bridge.sh",
+        ROOT / "infra" / "cloudrun" / "smoke_test_storage_bridge.sh",
+        ROOT / "infra" / "cloudrun" / "iam_policy_utils.sh",
+    )
+
+    for script in scripts:
+        text = script.read_text(encoding="utf-8")
+        assert pattern.search(text) is None, script.as_posix()
 
 
 def test_bridge_invoker_binding_remains_scoped_to_bridge_service():

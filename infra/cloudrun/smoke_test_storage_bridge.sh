@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/iam_policy_utils.sh"
+
 BRIDGE_URL="${BRIDGE_URL:-}"
 TEST_INSPECTION_RELATIVE_PATH="${TEST_INSPECTION_RELATIVE_PATH:-}"
 TEST_FILE_RELATIVE_PATH="${TEST_FILE_RELATIVE_PATH:-}"
@@ -37,22 +40,31 @@ else
   ACTIVE_MEMBER="user:${ACTIVE_ACCOUNT}"
 fi
 
-if ! gcloud iam service-accounts get-iam-policy "${CALLER_SERVICE_ACCOUNT}" --format=json | python3 - "${ACTIVE_MEMBER}" <<'PY'
-import json
-import sys
-
-policy = json.load(sys.stdin)
-member = sys.argv[1]
-for binding in policy.get("bindings", []):
-    if binding.get("role") == "roles/iam.serviceAccountTokenCreator" and member in binding.get("members", []):
-        raise SystemExit(0)
-raise SystemExit(1)
-PY
+if policy_member_has_role \
+  "service account '${CALLER_SERVICE_ACCOUNT}'" \
+  "${ACTIVE_MEMBER}" \
+  "roles/iam.serviceAccountTokenCreator" \
+  gcloud iam service-accounts get-iam-policy "${CALLER_SERVICE_ACCOUNT}" --format=json
 then
-  echo "ERROR: Active operator '${ACTIVE_ACCOUNT}' cannot impersonate '${CALLER_SERVICE_ACCOUNT}'." >&2
-  echo "Run:" >&2
-  echo "gcloud iam service-accounts add-iam-policy-binding ${CALLER_SERVICE_ACCOUNT} --member=${ACTIVE_MEMBER} --role=roles/iam.serviceAccountTokenCreator" >&2
-  exit 1
+  :
+else
+  rc=$?
+  case "${rc}" in
+    1)
+      echo "ERROR: Active operator '${ACTIVE_ACCOUNT}' cannot impersonate '${CALLER_SERVICE_ACCOUNT}'." >&2
+      echo "Run:" >&2
+      echo "gcloud iam service-accounts add-iam-policy-binding ${CALLER_SERVICE_ACCOUNT} --member=${ACTIVE_MEMBER} --role=roles/iam.serviceAccountTokenCreator" >&2
+      exit 1
+      ;;
+    2|3)
+      echo "ERROR: ${POLICY_CHECK_ERROR_MESSAGE}" >&2
+      exit 1
+      ;;
+    *)
+      echo "ERROR: Unexpected IAM policy check failure for service account '${CALLER_SERVICE_ACCOUNT}'." >&2
+      exit 1
+      ;;
+  esac
 fi
 
 TOKEN="$(gcloud auth print-identity-token --impersonate-service-account="${CALLER_SERVICE_ACCOUNT}" --audiences="${BRIDGE_URL}" --include-email)"

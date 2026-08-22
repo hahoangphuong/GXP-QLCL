@@ -1,35 +1,38 @@
 # Target Architecture
 
 ```text
-Users --HTTPS--> Cloud Run web/api
-                       |
-                       +--> application services
-                       |    - MasterDataService
-                       |    - CaseService
-                       |    - InspectionService
-                       |    - CertificationService
-                       |    - ChangeManagementService
-                       |    - DocumentService
-                       |    - StorageService
-                       |    - AuditService
-                       |
-                       +--> Cloud SQL PostgreSQL
-                       |
-                  StorageService port
-                       |
-                       +--> LocalStorageAdapter (dev/integration)
-                       +--> Fake/MockStorageAdapter (automated tests)
-                       +--> BridgeStorageAdapter (production Synology integration)
-                                |
-                           authenticated storage API
-                                |
-                        private network adapter
-                        initial: Tailscale
-                        future: site-to-site VPN
-                       |
-                       v
-                  Synology DS115j
-                  FILE STORAGE ONLY
+Users --HTTPS--> Compute Engine VM
+                     |
+                     +--> Nginx static frontend + /api proxy
+                     |
+                     +--> FastAPI application services
+                     |    - MasterDataService
+                     |    - CaseService
+                     |    - InspectionService
+                     |    - CertificationService
+                     |    - ChangeManagementService
+                     |    - DocumentService
+                     |    - StorageService
+                     |    - AuditService
+                     |
+                     +--> local PostgreSQL
+                     |
+                StorageService port
+                     |
+                     +--> LocalStorageAdapter (dev/integration)
+                     +--> Fake/MockStorageAdapter (automated tests)
+                     +--> SmbStorageAdapter (current VM production)
+                     +--> BridgeStorageAdapter (dormant Cloud Run / future bridge option)
+                               |
+                          authenticated storage API
+                               |
+                       private network adapter
+                       initial: Tailscale
+                       future: site-to-site VPN
+                     |
+                     v
+                Synology DS115j
+                FILE STORAGE ONLY
 ```
 
 ## Phase 0 findings that affect architecture
@@ -39,9 +42,10 @@ Users --HTTPS--> Cloud Run web/api
 - Folder and file operations are deeply coupled to business logic in VBA today; target architecture must separate them.
 
 ## Separation
-- Application/business state: Cloud SQL PostgreSQL.
+- Current production application/business state: local PostgreSQL on the VM.
+- Dormant/future application/business state option: Cloud SQL PostgreSQL.
 - File binaries: Synology only.
-- File metadata, document lineage, workflow state: Cloud SQL.
+- File metadata, document lineage, workflow state: PostgreSQL, independent of whether `DB_MODE=local_postgres` or `DB_MODE=cloud_sql`.
 - Network transport to NAS: replaceable infrastructure adapter.
 
 ## Backend layering
@@ -114,13 +118,15 @@ Hard rule:
 - Required adapter set:
   - `LocalStorageAdapter` for development and integration tests
   - `Fake/MockStorageAdapter` for automated tests
-  - `BridgeStorageAdapter` for production Synology integration
-- The business application must not mount or manipulate Synology directly in the production baseline.
+  - `SmbStorageAdapter` for the current VM production baseline
+  - `BridgeStorageAdapter` for dormant Cloud Run / future bridge-based production
+- The business application must not mount Synology or expose UNC/NAS details to domain code in the production baseline.
 - Cloud Run NFS `no-lock` is not the default production storage baseline.
 - NFS may still exist as an experimental transport adapter or comparison PoC, but not as the owner of production file semantics unless locking, atomicity, and concurrent-write invariants are separately proven.
 - Current storage integration order is:
-  - production baseline: `Cloud Run main app -> authenticated Cloud Run storage bridge -> Tailscale userspace SOCKS5 -> SMB -> Synology`
-  - the storage bridge runtime owns SMB/Tailscale mechanics; the business app still sees only `StorageService`
+  - current baseline: `Compute Engine VM main app -> SmbStorageAdapter -> SMB -> Tailscale -> Synology`
+  - dormant Cloud Run path: `Cloud Run main app -> authenticated Cloud Run storage bridge -> Tailscale userspace SOCKS5 -> SMB -> Synology`
+  - in both paths the business app still sees only `StorageService`
   - fallback path only if needed: deploy a dedicated bridge host near Synology without changing business-layer code
 - If PoC B becomes necessary, the bridge host remains an infrastructure adapter only; business application code must remain unchanged.
 - Bridge API authentication is application-level, not just network-level:
@@ -143,8 +149,9 @@ Hard rule:
 - Streaming file paths must avoid whole-file RAM buffering for large payloads.
 
 ## Identity and access boundary
-- Local/dev may use `header_stub`, but production-compatible mode is `google_iap_jwt`.
-- Google Cloud identity should be verified from `X-Goog-IAP-JWT-Assertion` against the configured direct-Cloud-Run IAP audience.
+- Local/dev may use `header_stub`, but current production-compatible mode is `google_oidc`.
+- VM production verifies Google OIDC bearer tokens against `AUTH_OIDC_CLIENT_ID`.
+- Dormant Cloud Run mode verifies `X-Goog-IAP-JWT-Assertion` against the configured direct-Cloud-Run IAP audience.
 - Direct Cloud Run IAP audience format is `/projects/{PROJECT_NUMBER}/locations/{REGION}/services/{SERVICE_NAME}`.
 - Plain identity headers are not the primary trust anchor; any fallback must be explicit and temporary.
 - Production role/permission ownership is database-backed:
@@ -171,24 +178,30 @@ Hard rule:
 - Operator-mode migration/template tools may still default to real `legacy/` or `artifacts/` roots when those directories are intentionally supplied outside CI.
 
 ## Deployment baseline
-- Production runtime target is a single Linux Cloud Run container image that contains:
+- Current production runtime target is a single Linux Compute Engine VM that contains:
+  - Nginx
   - FastAPI backend
   - built Vite frontend static assets
-- The Cloud Run service serves the operator web app and API from the same origin.
-- Container builds install Python runtime dependencies from compiled lockfiles, not floating manifests.
-- Frontend assets are built during the production image build, not committed under `frontend/dist/`.
-- Runtime DB connectivity may come from a full `DATABASE_URL` or from Cloud SQL component env vars composed at startup.
-- Secret values belong in Secret Manager-backed injection, not committed literal values in repository env files.
+  - local PostgreSQL
+  - Tailscale
+- The VM serves the operator web app and API from one public HTTPS endpoint.
+- VM builds install Python runtime dependencies from checked-in runtime requirement files, not from dev-only manifests.
+- Frontend assets are built on the VM during deploy and copied into the runtime static directory.
+- Runtime DB connectivity may come from a full `DATABASE_URL` or from normalized component env vars resolved as `DB_MODE=local_postgres` or `DB_MODE=cloud_sql`.
+- Secret values belong in protected runtime env files or secret stores, not committed literal values in repository env files.
 - Deployment contract validation should run before rollout so auth, database, and Synology storage prerequisites fail closed.
-- Production rollout order is:
+- Current production rollout order is:
   - preflight validation
-  - immutable image build
-  - Alembic migration job
-  - Cloud Run service deploy
+  - clean-tree and target-SHA verification
+  - frontend build
+  - backend runtime install
+  - PostgreSQL backup
+  - Alembic migration
+  - service restart
   - health/readiness verification
-- Direct VPC egress is the recommended private-network path for Cloud Run when VPC access is required.
-- No production baseline currently assumes direct NAS mounting from the business application container.
-- The current repository-owned storage bridge baseline also avoids NFS mount semantics:
+- Dormant Cloud Run / Cloud SQL deployment code remains in-repo as a rollback/future option.
+- No production baseline assumes direct NAS mounting from the business application host filesystem.
+- The dormant repository-owned storage bridge path also avoids NFS mount semantics:
   - bridge container joins the tailnet in userspace mode
   - bridge container reaches Synology over private SMB
   - main app reaches the bridge over authenticated Cloud Run HTTPS

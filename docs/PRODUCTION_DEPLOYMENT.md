@@ -3,25 +3,52 @@
 ## Scope
 This document defines the repository-owned production deployment contract for `GXP-QLCL`.
 
-Operator entrypoint:
+Current production baseline entrypoint:
 
 ```bash
-~/deploy_gxp_prod_git.sh
+./infra/vm/deploy_prod.sh
 ```
 
-Wrapper responsibility:
-- verify Google Cloud access
-- verify base production resources
-- pull `main` from GitHub
-- export deployment variables
-- call repository script:
+Dormant optional entrypoint retained in source:
 
 ```bash
 infra/cloudrun/deploy_prod.sh
 ```
 
+## Current production baseline
+
+```text
+GitHub
+  -> Compute Engine VM
+  -> git fetch / ff-only update or exact SHA checkout
+  -> frontend build on VM
+  -> backend runtime install on VM
+  -> local PostgreSQL
+  -> StorageService
+  -> SMB
+  -> Tailscale
+  -> Synology DS115j
+```
+
+Application file binaries remain on Synology only. Structured data remains in PostgreSQL only.
+
 ## Standard production resource mapping
-The repository now standardizes these names unless you explicitly override them with environment variables before calling `infra/cloudrun/deploy_prod.sh`.
+The VM baseline standardizes these names unless you explicitly override them in `/etc/gxp/runtime.env`.
+
+- VM source checkout: `/opt/gxp/src/GXP-QLCL`
+- VM Python venv: `/opt/gxp/venv`
+- VM frontend dist: `/opt/gxp/frontend-dist`
+- VM runtime env file: `/etc/gxp/runtime.env`
+- VM systemd service: `gxp-web`
+- Nginx site: `gxp-web`
+- local PostgreSQL database: `gxp_qlcl`
+- local PostgreSQL application user: `gxp_app`
+- Synology inspection root: `\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs`
+- Synology DDKD root: `\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs\Chứng nhận ĐĐKKDD`
+- Synology template root: `\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs\Templates`
+
+## Dormant Cloud Run mapping
+The repository still standardizes these names for the dormant Cloud Run path unless you explicitly override them before calling `infra/cloudrun/deploy_prod.sh`.
 
 - Google Cloud project: `gxp-qlcl`
 - Region: `asia-southeast1`
@@ -47,21 +74,23 @@ asia-southeast1-docker.pkg.dev/gxp-qlcl/gxp-qlcl/gxp-web:prod-<timestamp>-<short
 Current production baseline:
 
 ```text
-single Cloud Run service/image
+Nginx static frontend + /api reverse proxy to FastAPI
 ```
 
-- Vite frontend is built inside the production container image.
-- FastAPI serves the built frontend static assets.
+- Vite frontend is built on the VM during deploy.
+- Nginx serves the built frontend static assets.
 - Browser API calls stay same-origin by default.
+- No production dev server is allowed.
 
 ## Storage topology
 Current application deployment baseline:
 
 ```text
-Cloud Run application
+Compute Engine VM application
   -> StorageService
-  -> BridgeStorageAdapter
-  -> authenticated bridge API
+  -> SmbStorageAdapter
+  -> SMB
+  -> Tailscale
   -> Synology
 ```
 
@@ -75,72 +104,169 @@ Inspector laptop
 ```
 
 This repository does not promote Cloud Run NFS `no-lock` to production baseline.
+The dormant Cloud Run path remains bridge-based and optional.
 
 ## Production env contract
-Minimal wrapper-exported variables:
+Minimal current VM runtime variables:
 
 ```text
-PROJECT_ID
-REGION
-SQL_INSTANCE
-CLOUD_SQL_CONNECTION_NAME
-DB_PASSWORD_SECRET
-DEPLOY_GIT_SHA
-DEPLOY_GIT_SHORT_SHA
-DEPLOY_BRANCH
-DRY_RUN
-```
-
-Additional required non-secret production variables:
-
-```text
-AUTH_IAP_EXPECTED_AUDIENCE
-AUTH_IAP_ALLOWED_EMAIL_DOMAIN
-STORAGE_BRIDGE_BASE_URL
-STORAGE_BRIDGE_AUTH_AUDIENCE
-```
-
-Optional overrides:
-
-```text
-SERVICE_NAME
-MIGRATION_JOB_NAME
-ARTIFACT_REGISTRY_REPO
-IMAGE_NAME
-RUNTIME_SERVICE_ACCOUNT
+APP_ENV
+DEPLOYMENT_PLATFORM
+FRONTEND_TOPOLOGY
+AUTH_PROVIDER
+AUTH_ROLE_SOURCE
+AUTH_OIDC_CLIENT_ID
+AUTH_ALLOWED_EMAIL_DOMAIN
+DB_MODE
 DB_NAME
 DB_USER
-CPU
-MEMORY
-CONCURRENCY
-TIMEOUT_SECONDS
-MIN_INSTANCES
-MAX_INSTANCES
-INGRESS
-BRIDGE_AUTH_MODE
+DB_PASSWORD
+DB_HOST
+DB_PORT
+STORAGE_CLASS
+STORAGE_INSPECTION_ROOT
+STORAGE_DKKD_ROOT
+STORAGE_TEMPLATE_ROOT
+SMB_USERNAME
+SMB_PASSWORD
+PUBLIC_BASE_URL
+BACKUP_GCS_BUCKET
+VM_RUNTIME_ENV_FILE
 ```
 
-Template:
-- [backend/.env.cloudrun.production.example](D:/GXP-QLCL/backend/.env.cloudrun.production.example)
+Optional VM deploy controls:
 
-## Deploy flow
-`infra/cloudrun/deploy_prod.sh` enforces this order:
+```text
+DEPLOY_GIT_SHA
+DEPLOY_BRANCH
+VM_APP_ROOT
+VM_SRC_DIR
+VM_VENV_DIR
+VM_FRONTEND_DIST_DIR
+VM_RELEASE_METADATA_FILE
+SYSTEMD_SERVICE_NAME
+NGINX_SITE_NAME
+BACKUP_LOCAL_STAGING_DIR
+```
 
-1. validate wrapper env and deployment plan
-2. run preflight quality gates
-3. verify required Google Cloud resources
-4. build immutable image with Cloud Build
-5. deploy/update Cloud Run migration job
-6. run `alembic upgrade head`
-7. stop immediately if migration fails
-8. deploy Cloud Run service with `--iap`
-9. grant `roles/run.invoker` on the service to the IAP service agent
-10. verify Cloud Run control-plane readiness
-11. verify the service reports `Iap Enabled: true`
-12. perform manual/browser IAP smoke test after explicit user access is granted
+Current template:
 
-## One-time prerequisites you may still need
+- [backend/.env.vm.production.example](D:/GXP-QLCL/backend/.env.vm.production.example)
+
+## VM deploy flow
+`infra/vm/deploy_prod.sh` enforces this order:
+
+1. load and validate `/etc/gxp/runtime.env`
+2. verify required local commands
+3. verify clean git working tree
+4. `git fetch origin`
+5. fast-forward `main` or checkout exact `DEPLOY_GIT_SHA`
+6. rebuild Python venv from `backend/requirements.runtime.vm.txt`
+7. build frontend with `pnpm`
+8. sync frontend dist into runtime directory
+9. run PostgreSQL backup
+10. run `alembic upgrade head`
+11. record previous/new Git SHA
+12. restart backend and Nginx
+13. verify `/healthz` and `/readyz`
+14. cleanup heavy local build artifacts
+
+If the working tree is dirty:
+
+```text
+DEPLOY FAIL
+```
+
+No production deploy path may silently merge, stash, or `git reset --hard`.
+
+## Database contract
+- Current production DB baseline is `DB_MODE=local_postgres`.
+- PostgreSQL listens only on local/private address.
+- Application runtime user must not be `postgres`.
+- Normal deploy order is:
+  - backup
+  - migration
+  - restart
+  - readiness verification
+- `DB_MODE=cloud_sql` remains supported as a dormant rollback/future mode.
+
+## Auth contract
+- Current VM production auth baseline is `AUTH_PROVIDER=google_oidc`.
+- Production RBAC remains database-backed.
+- `header_stub`, `AUTH_ROLE_MAP`, and trusted-header fallback remain non-production only.
+- `AUTH_PROVIDER=google_iap_jwt` remains supported for dormant Cloud Run mode.
+
+## Backup contract
+- Required minimum backup is nightly logical PostgreSQL backup:
+  - `pg_dump --format=custom`
+  - sha256 sidecar
+  - upload to Cloud Storage
+- Repository scripts:
+  - [infra/vm/backup_postgres.sh](D:/GXP-QLCL/infra/vm/backup_postgres.sh)
+  - [infra/vm/restore_postgres.sh](D:/GXP-QLCL/infra/vm/restore_postgres.sh)
+- Restore is manual, confirmed, and fail-closed.
+
+## Cloud SQL rollback option
+- Do not delete Cloud SQL immediately.
+- After VM production is verified, operator may stop the instance to reduce recurring cost:
+
+```bash
+gcloud sql instances patch gxp-db \
+  --project=gxp-qlcl \
+  --activation-policy=NEVER
+```
+
+- If rollback is required, restore a logical dump back into Cloud SQL and switch runtime config back to `DB_MODE=cloud_sql`.
+
+## Dormant Cloud Run path
+Cloud Run + Cloud SQL + external storage bridge remain in-repo for rollback/future reactivation:
+
+```text
+infra/cloudrun/
+Cloud SQL support
+external_bridge_http adapter
+google_iap_jwt auth support
+Cloud Run bootstrap/deploy validators and scripts
+```
+
+Those resources must not block VM production deploy when `DB_MODE=local_postgres` and `STORAGE_CLASS=synology_smb` are active.
+
+## One-time VM prerequisites
 These are not created silently by normal deploy.
+
+### Bootstrap host packages
+
+```bash
+sudo ./infra/vm/bootstrap_vm.sh
+```
+
+### Configure local PostgreSQL
+
+```bash
+set -a
+source /etc/gxp/runtime.env
+set +a
+sudo -E ./infra/vm/configure_postgres.sh
+```
+
+### Configure Tailscale
+
+```bash
+export TAILSCALE_AUTH_KEY='YOUR_TAILSCALE_AUTH_KEY'
+sudo -E ./infra/vm/configure_tailscale.sh
+```
+
+### Verify runtime and Synology reachability
+
+```bash
+set -a
+source /etc/gxp/runtime.env
+set +a
+sudo -E ./infra/vm/verify_prod.sh
+```
+
+## One-time dormant Cloud Run prerequisites
+These remain relevant only if you intentionally reactivate the Cloud Run path later.
 
 ### Artifact Registry
 If repository `gxp-qlcl` does not already exist:
@@ -201,9 +327,9 @@ gcloud sql users create gxp_app \
 ```
 
 ### IAP / external identity
-Production auth mode is `google_iap_jwt`.
+Dormant Cloud Run auth mode is `google_iap_jwt`.
 
-Cloud Run direct IAP is the current production baseline. The repository bootstrap helper is:
+Cloud Run direct IAP is the dormant repository baseline for that path. The repository bootstrap helper is:
 
 ```bash
 infra/cloudrun/bootstrap_prod_identity.sh
@@ -249,7 +375,7 @@ Cloud Run -> gxp-web -> Security -> IAP -> Edit policy -> Configure in IAP -> Co
 ```
 
 ### Storage bridge
-The current production baseline expects:
+The dormant Cloud Run baseline expects:
 
 ```text
 STORAGE_CLASS=external_bridge_http
@@ -372,7 +498,7 @@ DRY RUN PASS
 ```
 
 ## One-time bootstrap order
-Before the first final production dry run, complete bootstrap in this order:
+Before the first final Cloud Run dry run, complete bootstrap in this order:
 
 1. Run `infra/cloudrun/bootstrap_prod_identity.sh` and capture the exact `AUTH_IAP_EXPECTED_AUDIENCE`.
 2. Prepare/update `AUTH_IAP_ALLOWED_EMAIL_DOMAIN` to your real operator domain.
@@ -387,13 +513,20 @@ If you configure `TEST_INSPECTION_RELATIVE_PATH`, bridge bootstrap now also supp
 - [infra/cloudrun/smoke_test_storage_bridge.sh](D:/GXP-QLCL/infra/cloudrun/smoke_test_storage_bridge.sh)
 
 ## Exact first production deploy command
-After one-time prerequisites are complete and wrapper exports the required variables:
+Current VM production first deploy command after bootstrap:
+
+```bash
+cd /opt/gxp/src/GXP-QLCL
+./infra/vm/deploy_prod.sh
+```
+
+Exact dormant Cloud Run deploy command after its one-time prerequisites are complete and wrapper exports the required variables:
 
 ```bash
 ~/deploy_gxp_prod_git.sh
 ```
 
-That command is expected to:
+That dormant Cloud Run command is expected to:
 
 ```text
 pull latest approved main

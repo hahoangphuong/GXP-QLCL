@@ -9,8 +9,8 @@ from backend.app.api.routers.status import app_status
 def test_application_status_endpoint_exposes_google_cloud_default():
     app = create_app("sqlite:///:memory:")
     payload = app_status(SimpleNamespace(app=app))
-    assert payload["deployment_platform"] == "google_cloud_run"
-    assert payload["frontend_topology"] == "single_cloud_run_service"
+    assert payload["deployment_platform"] == "compute_engine_vm"
+    assert payload["frontend_topology"] == "nginx_static_proxy"
     assert "phases" in payload
 
 

@@ -21,7 +21,7 @@ except ModuleNotFoundError:  # pragma: no cover
 class SmbStorageService:
     def __init__(self, config: SmbStorageConfig):
         if smbclient is None or smbpath is None:  # pragma: no cover
-            raise StorageOperationError("smbprotocol is required for STORAGE_CLASS=synology_smb_bridge.")
+            raise StorageOperationError("smbprotocol is required for STORAGE_CLASS=synology_smb.")
         self.config = config
         self.inspection_root = self._normalize_root(config.inspection_root)
         self.dkkd_root = self._normalize_root(config.dkkd_root) if config.dkkd_root else None

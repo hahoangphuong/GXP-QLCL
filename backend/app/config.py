@@ -17,14 +17,16 @@ class AppConfig:
     app_name: str = "GxP Web"
     app_mode: str = "application_foundation"
     app_env: str = "development"
-    deployment_platform: str = "google_cloud_run"
-    frontend_topology: str = "single_cloud_run_service"
+    deployment_platform: str = "compute_engine_vm"
+    frontend_topology: str = "nginx_static_proxy"
     auth_mode: str = "header_stub"
     auth_default_role: str = "reader"
     auth_role_map: str = ""
     auth_iap_expected_audience: str = ""
     auth_iap_allowed_email_domain: str = ""
+    auth_oidc_client_id: str = ""
     auth_trusted_header_fallback: bool = False
+    db_mode: str = "local_postgres"
     database_url: str = DEFAULT_SQLITE_DATABASE_URL
     auth_role_source: str = "env_map"
     deployment_git_sha: str = ""
@@ -48,6 +50,17 @@ def _read_bool(source: dict[str, str], key: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def resolve_db_mode(source: dict[str, str]) -> str:
+    explicit = source.get("DB_MODE", "").strip().lower()
+    if explicit:
+        return explicit
+    if source.get("CLOUD_SQL_CONNECTION_NAME", "").strip():
+        return "cloud_sql"
+    if source.get("DB_HOST", "").strip() or source.get("DB_PORT", "").strip():
+        return "local_postgres"
+    return "sqlite_dev"
+
+
 def resolve_database_url(source: dict[str, str]) -> str:
     explicit = source.get("DATABASE_URL", "").strip()
     if explicit:
@@ -57,7 +70,9 @@ def resolve_database_url(source: dict[str, str]) -> str:
     db_user = source.get("DB_USER", "").strip()
     db_password = source.get("DB_PASSWORD", "").strip()
     db_driver = source.get("DB_DRIVER", "").strip() or "postgresql+psycopg"
+    db_mode = resolve_db_mode(source)
     db_host = source.get("DB_HOST", "").strip()
+    db_port = source.get("DB_PORT", "").strip()
     cloud_sql_connection_name = source.get("CLOUD_SQL_CONNECTION_NAME", "").strip()
 
     if not db_name or not db_user or not db_password:
@@ -65,6 +80,15 @@ def resolve_database_url(source: dict[str, str]) -> str:
 
     quoted_user = quote_plus(db_user)
     quoted_password = quote_plus(db_password)
+    if db_mode == "cloud_sql" and cloud_sql_connection_name:
+        quoted_db_name = quote_plus(db_name)
+        quoted_socket = quote_plus(f"/cloudsql/{cloud_sql_connection_name}")
+        return f"{db_driver}://{quoted_user}:{quoted_password}@/{quoted_db_name}?host={quoted_socket}"
+    if db_mode == "local_postgres":
+        quoted_db_name = quote_plus(db_name)
+        resolved_host = db_host or "127.0.0.1"
+        resolved_port = db_port or "5432"
+        return f"{db_driver}://{quoted_user}:{quoted_password}@{resolved_host}:{resolved_port}/{quoted_db_name}"
     if cloud_sql_connection_name:
         quoted_db_name = quote_plus(db_name)
         quoted_socket = quote_plus(f"/cloudsql/{cloud_sql_connection_name}")
@@ -94,10 +118,12 @@ def validate_runtime_config(
     auth_mode = config.auth_mode.strip().lower()
     if auth_mode == "header_stub":
         raise RuntimeError("Production startup failed: AUTH_MODE=header_stub is not allowed.")
-    if auth_mode != "google_iap_jwt":
+    if auth_mode not in {"google_iap_jwt", "google_oidc"}:
         raise RuntimeError(f"Production startup failed: unsupported AUTH_MODE={config.auth_mode!r}.")
-    if not config.auth_iap_expected_audience.strip():
+    if auth_mode == "google_iap_jwt" and not config.auth_iap_expected_audience.strip():
         raise RuntimeError("Production startup failed: AUTH_IAP_EXPECTED_AUDIENCE is required.")
+    if auth_mode == "google_oidc" and not config.auth_oidc_client_id.strip():
+        raise RuntimeError("Production startup failed: AUTH_OIDC_CLIENT_ID is required.")
     if config.auth_trusted_header_fallback:
         raise RuntimeError("Production startup failed: AUTH_TRUSTED_HEADER_FALLBACK must be disabled.")
     if config.auth_role_source.strip().lower() != "database":
@@ -112,25 +138,31 @@ def validate_runtime_config(
     storage_class = storage_service.config.storage_class.strip().lower()
     if "fake" in storage_class:
         raise RuntimeError("Production startup failed: fake storage adapters are not allowed.")
-    if storage_class != "external_bridge_http":
-        raise RuntimeError("Production startup failed: main app must use STORAGE_CLASS=external_bridge_http.")
+    if storage_class not in {"external_bridge_http", "synology_smb", "synology_smb_bridge"}:
+        raise RuntimeError(f"Production startup failed: unsupported production storage class {storage_class!r}.")
 
 
 def load_app_config(env: dict[str, str] | None = None) -> AppConfig:
     source = os.environ if env is None else env
+    auth_mode = source.get("AUTH_PROVIDER", source.get("AUTH_MODE", "header_stub"))
     return AppConfig(
         app_name=source.get("APP_NAME", "GxP Web"),
         app_mode=source.get("APP_MODE", "application_foundation"),
         app_env=source.get("APP_ENV", source.get("ENV", "development")),
-        deployment_platform=source.get("DEPLOYMENT_PLATFORM", "google_cloud_run"),
-        frontend_topology=source.get("FRONTEND_TOPOLOGY", "single_cloud_run_service"),
-        auth_mode=source.get("AUTH_MODE", "header_stub"),
+        deployment_platform=source.get("DEPLOYMENT_PLATFORM", "compute_engine_vm"),
+        frontend_topology=source.get("FRONTEND_TOPOLOGY", "nginx_static_proxy"),
+        auth_mode=auth_mode,
         auth_default_role=source.get("AUTH_DEFAULT_ROLE", "reader"),
         auth_role_map=source.get("AUTH_ROLE_MAP", ""),
         auth_iap_expected_audience=source.get("AUTH_IAP_EXPECTED_AUDIENCE", ""),
-        auth_iap_allowed_email_domain=source.get("AUTH_IAP_ALLOWED_EMAIL_DOMAIN", ""),
+        auth_iap_allowed_email_domain=source.get(
+            "AUTH_ALLOWED_EMAIL_DOMAIN",
+            source.get("AUTH_IAP_ALLOWED_EMAIL_DOMAIN", ""),
+        ),
+        auth_oidc_client_id=source.get("AUTH_OIDC_CLIENT_ID", ""),
         auth_trusted_header_fallback=_read_bool(source, "AUTH_TRUSTED_HEADER_FALLBACK", False),
         auth_role_source=source.get("AUTH_ROLE_SOURCE", "env_map"),
+        db_mode=resolve_db_mode(source),
         database_url=resolve_database_url(source),
         deployment_git_sha=source.get("DEPLOY_GIT_SHA", ""),
         deployment_git_short_sha=source.get("DEPLOY_GIT_SHORT_SHA", ""),

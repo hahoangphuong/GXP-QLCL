@@ -24,7 +24,7 @@ class SmbStorageConfig:
     inspection_root: str
     dkkd_root: str | None = None
     template_root: str | None = None
-    storage_class: str = "synology_smb_bridge"
+    storage_class: str = "synology_smb"
     username: str | None = None
     password: str | None = None
     auth_protocol: str = "ntlm"

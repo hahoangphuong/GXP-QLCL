@@ -21,14 +21,17 @@ Build a safe, testable web replacement for the legacy Excel/VBA GxP system while
 - legacy artifacts when task touches legacy behavior
 
 ## Architectural invariants
-- App: Google Cloud Run.
-- Business DB: Cloud SQL PostgreSQL.
+- App platform: Google Cloud.
+- Current production baseline: Compute Engine VM.
+- Current production DB baseline: local PostgreSQL on the VM.
+- Dormant production option retained in source: Cloud Run + Cloud SQL.
 - File binaries: Synology only.
 - Current NAS: DS115j; file storage only.
 - Initial connectivity: Tailscale.
 - Future site-to-site VPN must be swappable without domain changes.
 - All file operations through `StorageService`.
 - Frontend never gets NAS credentials or raw storage ownership.
+- Business/domain code must not know SMB, bridge URLs, UNC roots, or transport details.
 
 ## Legacy identity
 Inspection folders use stable identifiers:

@@ -51,7 +51,7 @@ def create_storage_service_from_env(env: dict[str, str] | None = None) -> Storag
                 storage_class=storage_class,
             )
         )
-    if storage_class == "synology_smb_bridge":
+    if storage_class in {"synology_smb", "synology_smb_bridge"}:
         inspection_root = source.get("STORAGE_INSPECTION_ROOT", "").strip()
         if not inspection_root:
             raise StorageOperationError("Missing required env var STORAGE_INSPECTION_ROOT.")
@@ -66,7 +66,7 @@ def create_storage_service_from_env(env: dict[str, str] | None = None) -> Storag
                 port=int(source.get("SMB_PORT", "445")),
                 encrypt=source.get("SMB_ENCRYPT", "false").strip().lower() in {"1", "true", "yes", "on"},
                 connection_timeout=int(source.get("SMB_CONNECTION_TIMEOUT_SECONDS", "60")),
-                storage_class=storage_class,
+                storage_class="synology_smb",
             )
         )
     return FilesystemStorageService(storage_config_from_env(source))

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from backend.app.auth import authenticate_google_oidc_request
 from backend.app.config import DEFAULT_SQLITE_DATABASE_URL, load_app_config, resolve_database_url, validate_runtime_config
 from backend.app.storage.factory import create_storage_service_from_env
 from tools.env_utils import parse_env_file
@@ -34,23 +35,39 @@ def test_load_app_config_uses_composed_database_url_when_explicit_url_missing():
     assert config.database_url.startswith("postgresql+psycopg://")
 
 
+def test_resolve_database_url_builds_local_postgres_url():
+    url = resolve_database_url(
+        {
+            "DB_MODE": "local_postgres",
+            "DB_DRIVER": "postgresql+psycopg",
+            "DB_NAME": "gxp_qlcl",
+            "DB_USER": "gxp_app",
+            "DB_PASSWORD": "secret value",
+            "DB_HOST": "127.0.0.1",
+            "DB_PORT": "5432",
+        }
+    )
+
+    assert url == "postgresql+psycopg://gxp_app:secret+value@127.0.0.1:5432/gxp_qlcl"
+
+
 def test_validate_env_contract_accepts_cloud_run_baseline():
     report = validate_env_contract(
         {
             "APP_ENV": "production",
             "DEPLOYMENT_PLATFORM": "google_cloud_run",
-            "AUTH_MODE": "google_iap_jwt",
+            "AUTH_PROVIDER": "google_iap_jwt",
             "AUTH_ROLE_SOURCE": "database",
             "AUTH_IAP_EXPECTED_AUDIENCE": "/projects/123/locations/asia-southeast1/services/gxp-web",
-            "AUTH_IAP_ALLOWED_EMAIL_DOMAIN": "example.com",
+            "AUTH_ALLOWED_EMAIL_DOMAIN": "example.com",
+            "DB_MODE": "cloud_sql",
             "DB_NAME": "gxp_qlcl",
             "DB_USER": "gxp_app",
             "DB_PASSWORD": "secret",
             "CLOUD_SQL_CONNECTION_NAME": "project:asia-southeast1:instance",
-            "STORAGE_CLASS": "synology_private_share_prod",
-            "STORAGE_INSPECTION_ROOT": "/mnt/synology/inspection",
-            "STORAGE_DKKD_ROOT": "/mnt/synology/dkkd",
-            "STORAGE_TEMPLATE_ROOT": "/mnt/synology/templates",
+            "STORAGE_CLASS": "external_bridge_http",
+            "STORAGE_BRIDGE_BASE_URL": "https://bridge.internal",
+            "STORAGE_BRIDGE_AUTH_AUDIENCE": "https://bridge.internal",
         }
     )
 
@@ -63,7 +80,8 @@ def test_validate_env_contract_rejects_sqlite_and_missing_iap_audience():
             "DEPLOYMENT_PLATFORM": "google_cloud_run",
             "AUTH_MODE": "google_iap_jwt",
             "DATABASE_URL": "sqlite:///tmp/local.db",
-            "STORAGE_INSPECTION_ROOT": "/mnt/synology/inspection",
+            "STORAGE_CLASS": "external_bridge_http",
+            "STORAGE_BRIDGE_BASE_URL": "https://bridge.internal",
         }
     )
 
@@ -92,9 +110,10 @@ def test_validate_env_contract_accepts_external_bridge_storage_mode():
         {
             "APP_ENV": "production",
             "DEPLOYMENT_PLATFORM": "google_cloud_run",
-            "AUTH_MODE": "google_iap_jwt",
+            "AUTH_PROVIDER": "google_iap_jwt",
             "AUTH_ROLE_SOURCE": "database",
             "AUTH_IAP_EXPECTED_AUDIENCE": "/projects/123/locations/asia-southeast1/services/gxp-web",
+            "DB_MODE": "cloud_sql",
             "DB_NAME": "gxp_qlcl",
             "DB_USER": "gxp_app",
             "DB_PASSWORD": "secret",
@@ -102,6 +121,30 @@ def test_validate_env_contract_accepts_external_bridge_storage_mode():
             "STORAGE_CLASS": "external_bridge_http",
             "STORAGE_BRIDGE_BASE_URL": "https://bridge.internal",
             "STORAGE_BRIDGE_AUTH_AUDIENCE": "https://bridge.internal",
+        }
+    )
+
+    assert report.errors == []
+
+
+def test_validate_env_contract_accepts_google_oidc_with_local_postgres_and_direct_smb():
+    report = validate_env_contract(
+        {
+            "APP_ENV": "production",
+            "DEPLOYMENT_PLATFORM": "google_cloud_run",
+            "AUTH_PROVIDER": "google_oidc",
+            "AUTH_ROLE_SOURCE": "database",
+            "AUTH_OIDC_CLIENT_ID": "gxp-web.apps.googleusercontent.com",
+            "DB_MODE": "local_postgres",
+            "DB_NAME": "gxp_qlcl",
+            "DB_USER": "gxp_app",
+            "DB_PASSWORD": "secret",
+            "DB_HOST": "127.0.0.1",
+            "DB_PORT": "5432",
+            "STORAGE_CLASS": "synology_smb",
+            "STORAGE_INSPECTION_ROOT": "/mnt/synology/inspection",
+            "STORAGE_DKKD_ROOT": "/mnt/synology/dkkd",
+            "STORAGE_TEMPLATE_ROOT": "/mnt/synology/templates",
         }
     )
 
@@ -181,22 +224,77 @@ def test_validate_runtime_config_rejects_direct_filesystem_storage_in_main_app_p
     config = load_app_config(
         {
             "APP_ENV": "production",
-            "DATABASE_URL": "postgresql+psycopg://user:secret@host/db",
-            "AUTH_MODE": "google_iap_jwt",
+            "DB_MODE": "local_postgres",
+            "DB_NAME": "gxp_qlcl",
+            "DB_USER": "gxp_app",
+            "DB_PASSWORD": "secret",
+            "DB_HOST": "127.0.0.1",
+            "DB_PORT": "5432",
+            "AUTH_PROVIDER": "google_oidc",
             "AUTH_ROLE_SOURCE": "database",
-            "AUTH_IAP_EXPECTED_AUDIENCE": "/projects/123/locations/asia-southeast1/services/gxp-web",
+            "AUTH_OIDC_CLIENT_ID": "gxp-web.apps.googleusercontent.com",
         }
     )
     storage = create_storage_service_from_env(
         {
-            "STORAGE_CLASS": "synology_private_share_prod",
-            "STORAGE_INSPECTION_ROOT": str(tmp_path / "inspection"),
+            "STORAGE_CLASS": "synology_smb",
+            "STORAGE_INSPECTION_ROOT": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs",
         }
     )
 
-    try:
-        validate_runtime_config(config, database_url=config.database_url, storage_service=storage, storage_error=None)
-    except RuntimeError as exc:
-        assert "external_bridge_http" in str(exc)
-    else:
-        raise AssertionError("Expected direct filesystem storage to fail in main-app production mode.")
+    validate_runtime_config(config, database_url=config.database_url, storage_service=storage, storage_error=None)
+
+
+def test_load_app_config_prefers_auth_provider_and_db_mode():
+    config = load_app_config(
+        {
+            "AUTH_PROVIDER": "google_oidc",
+            "AUTH_OIDC_CLIENT_ID": "gxp-web.apps.googleusercontent.com",
+            "DB_MODE": "local_postgres",
+            "DB_NAME": "gxp_qlcl",
+            "DB_USER": "gxp_app",
+            "DB_PASSWORD": "secret",
+        }
+    )
+
+    assert config.auth_mode == "google_oidc"
+    assert config.db_mode == "local_postgres"
+    assert config.auth_oidc_client_id == "gxp-web.apps.googleusercontent.com"
+
+
+def test_create_storage_service_from_env_supports_synology_smb_alias(tmp_path: Path):
+    service = create_storage_service_from_env(
+        {
+            "STORAGE_CLASS": "synology_smb",
+            "STORAGE_INSPECTION_ROOT": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs",
+        }
+    )
+
+    assert service.config.storage_class == "synology_smb"
+
+
+def test_authenticate_google_oidc_request_uses_database_role_source():
+    class _Config:
+        auth_oidc_client_id = "gxp-web.apps.googleusercontent.com"
+        auth_iap_allowed_email_domain = "example.com"
+        auth_role_source = "env_map"
+        auth_default_role = "reader"
+        auth_role_map = "operator@example.com=manager"
+
+    class _State:
+        config = _Config()
+
+    class _Request:
+        headers = {"Authorization": "Bearer token"}
+        app = type("App", (), {"state": _State()})()
+
+    request = _Request()
+
+    user = authenticate_google_oidc_request(
+        request,
+        verifier=lambda token, client_id: {"email": "operator@example.com", "sub": "sub-1"},
+    )
+
+    assert user.auth_mode == "google_oidc"
+    assert user.email == "operator@example.com"
+    assert "manager" in user.role_codes

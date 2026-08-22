@@ -109,7 +109,8 @@ Delete is privileged and should default to archive-or-soft-delete behavior.
 Required adapter set:
 - `LocalStorageAdapter` for development/integration tests
 - `Fake/MockStorageAdapter` for automated tests
-- `BridgeStorageAdapter` for production Synology integration
+- `SmbStorageAdapter` for the current VM production baseline
+- `BridgeStorageAdapter` for dormant Cloud Run / future bridge-based production
 
 Bridge authentication contract:
 - `BRIDGE_AUTH_MODE=google_oidc`
@@ -168,11 +169,22 @@ Storage integration must support:
 
 This implies the integration contract needs a desktop-friendly private-network path strategy, but the business layer must still go only through `StorageService`.
 
+## Production storage topology
+- Current production baseline:
+  - `Compute Engine VM main app -> SmbStorageAdapter -> SMB -> Tailscale -> Synology`
+  - the direct SMB path is implementation detail inside `StorageService`; business code still stays storage-agnostic
+- Dormant optional baseline:
+  - `Cloud Run main app -> authenticated Cloud Run storage bridge -> Tailscale userspace SOCKS5 -> SMB -> Synology`
+  - bridge runtime uses SMB client operations against Synology private share roots; it does not use Cloud Run NFS `no-lock`
+- In both modes:
+  - no business/domain code may own UNC paths or transport-specific logic
+  - no frontend client receives NAS credentials
+
 ## Cloud Run deployment implication
 - Cloud Run NFS may exist as an experimental transport or comparison PoC only.
 - Cloud Run NFS `no-lock` is not the default production storage baseline for this system.
-- Current storage-integration order is:
-  - current production baseline: `Cloud Run main app -> authenticated Cloud Run storage bridge -> Tailscale userspace SOCKS5 -> SMB -> Synology`
+- Current Cloud Run storage-integration order is:
+  - dormant path: `Cloud Run main app -> authenticated Cloud Run storage bridge -> Tailscale userspace SOCKS5 -> SMB -> Synology`
   - bridge runtime uses SMB client operations against Synology private share roots; it does not use Cloud Run NFS `no-lock`
   - fallback only if needed: deploy a separate bridge host near Synology without changing the business-layer contract
 - In either PoC path, business code remains unchanged because all file operations stay behind `StorageService`.

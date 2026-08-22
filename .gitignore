@@ -22,3 +22,4 @@ frontend/*.tsbuildinfo
 !backend/.env.cloudrun.external_bridge.example
 !backend/.env.cloudrun.production.example
 !backend/.env.storage_bridge.cloudrun.example
+!backend/.env.vm.production.example

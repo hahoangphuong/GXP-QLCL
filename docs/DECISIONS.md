@@ -1,13 +1,14 @@
 # Decisions — Approved Baseline
 
 - Google Cloud is the application platform.
-- Cloud Run hosts application services.
-- Cloud SQL PostgreSQL stores business database.
+- Current production runtime baseline is a single Compute Engine VM.
+- Current production DB baseline is local PostgreSQL on that VM.
+- Cloud Run and Cloud SQL remain supported dormant options in source for rollback/future reactivation.
 - Synology DS115j stores file binaries only.
 - Business files are not persistently mirrored elsewhere.
 - Initial private network: Tailscale.
 - Future site-to-site VPN is anticipated.
-- Business application must not mount or manipulate NAS directly.
+- Business/domain code must not mount NAS, own UNC paths, or know transport details.
 - All backend file operations go through `StorageService`.
 - Production startup must fail closed:
   - no SQLite fallback
@@ -17,7 +18,8 @@
 - Production Synology integration baseline is adapter-first:
   - `LocalStorageAdapter` for development/integration.
   - `Fake/MockStorageAdapter` for automated tests.
-  - `BridgeStorageAdapter` for production Synology integration.
+  - `SmbStorageAdapter` for the current VM production baseline.
+  - `BridgeStorageAdapter` for dormant Cloud Run / future bridge-based production.
 - Storage adapters resolve physical locations and perform file IO only.
 - `StorageBinding` and `StorageResolutionLog` persistence belong to application/database owner layer, not adapters.
 - Storage bridge calls require authenticated application-level tokens; private network alone is not sufficient.
@@ -49,26 +51,28 @@
   - case-backed certificate current-promotion
 - CAPA may be requested only in `inspection_completed`; do not create new CAPA cycles after a case has already advanced to `awaiting_certificate_decision`.
 - CAPA assessor identity must bind to authenticated `app_user`; free-text assessor values are legacy-compatible snapshots, not authority.
-- Current production frontend topology is a single Cloud Run service/image:
-  - Vite frontend is built into the same production container image as FastAPI
-  - backend serves built frontend static assets for same-origin browser usage
-  - no separate production frontend service is the baseline at this stage
-- Current production identity baseline is direct Cloud Run IAP:
-  - Cloud Run service is deployed with `--iap`
-  - backend verifies `X-Goog-IAP-JWT-Assertion`
-  - expected audience format is `/projects/{PROJECT_NUMBER}/locations/{REGION}/services/{SERVICE_NAME}`
-- Production rollout order is strict:
-  - validate config and resources
-  - run preflight quality gates
-  - build immutable image
-  - run Alembic migration as a one-off Cloud Run job
-  - only after migration success, deploy the new Cloud Run service revision
+- Current production frontend topology is VM-hosted static frontend via Nginx:
+  - frontend is built on the VM
+  - Nginx serves static assets and proxies `/api` to FastAPI
+  - no production dev server
+- Current production identity baseline is Google OIDC:
+  - backend verifies `Authorization: Bearer <Google OIDC token>`
+  - production role ownership remains database-backed
+  - `google_iap_jwt` remains supported for dormant Cloud Run mode
+- Current production rollout order is strict:
+  - validate VM config and prerequisites
+  - verify clean git working tree
+  - fetch and fast-forward or checkout exact approved SHA
+  - build frontend on the VM
+  - install backend runtime dependencies
+  - backup PostgreSQL
+  - run `alembic upgrade head`
+  - restart services
   - verify `/healthz` and `/readyz`
 - Current storage-integration baseline is:
-  - main app Cloud Run -> `BridgeStorageAdapter` -> authenticated Cloud Run storage bridge
-  - storage bridge -> Tailscale userspace SOCKS5 -> SMB -> Synology DS115j
-  - bridge runtime uses application-level SMB client semantics, not NFS mount semantics
-  - if this baseline fails reliability/performance/security goals, only then evaluate a separate bridge host near Synology
+  - main app VM -> `SmbStorageAdapter` -> SMB -> Tailscale -> Synology DS115j
+  - application-level SMB client semantics own file operations; no NFS mount semantics
+  - Cloud Run `BridgeStorageAdapter` remains a dormant option without changing business-layer code
 - Inspector editing UX: Windows Explorer + Word desktop + direct save; avoid manual download/upload.
 - Legacy folder identity is year + site ID + inspection code.
 - Do not bulk rename/restructure legacy storage during early migration.

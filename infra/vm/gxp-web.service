@@ -1,0 +1,17 @@
+[Unit]
+Description=GxP Web Backend
+After=network-online.target postgresql.service tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gxp
+Group=gxp
+WorkingDirectory=/opt/gxp/src/GXP-QLCL
+EnvironmentFile=/etc/gxp/runtime.env
+ExecStart=/opt/gxp/venv/bin/uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

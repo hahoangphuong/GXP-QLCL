@@ -14,7 +14,7 @@ from tools.env_utils import parse_env_file
 
 
 DEFAULT_ENV_PATH = Path("backend/.env.cloudrun.example")
-SUPPORTED_AUTH_MODES = {"header_stub", "google_iap_jwt"}
+SUPPORTED_AUTH_MODES = {"header_stub", "google_iap_jwt", "google_oidc"}
 
 
 @dataclass(frozen=True)
@@ -33,8 +33,9 @@ def validate_env_contract(env: dict[str, str]) -> ValidationReport:
     warnings: list[str] = []
 
     deployment_platform = env.get("DEPLOYMENT_PLATFORM", "").strip() or "google_cloud_run"
-    auth_mode = env.get("AUTH_MODE", "").strip() or "header_stub"
+    auth_mode = env.get("AUTH_PROVIDER", env.get("AUTH_MODE", "")).strip() or "header_stub"
     storage_class = env.get("STORAGE_CLASS", "").strip() or "local_filesystem_fake"
+    db_mode = env.get("DB_MODE", "").strip().lower()
     resolved_database_url = resolve_database_url(env)
 
     if deployment_platform != "google_cloud_run":
@@ -46,14 +47,21 @@ def validate_env_contract(env: dict[str, str]) -> ValidationReport:
     if auth_mode == "google_iap_jwt":
         if not env.get("AUTH_IAP_EXPECTED_AUDIENCE", "").strip():
             errors.append("AUTH_IAP_EXPECTED_AUDIENCE is required when AUTH_MODE=google_iap_jwt.")
-        if not env.get("AUTH_IAP_ALLOWED_EMAIL_DOMAIN", "").strip():
-            warnings.append("AUTH_IAP_ALLOWED_EMAIL_DOMAIN is blank; operator domain restriction is not enforced.")
+        if not env.get("AUTH_ALLOWED_EMAIL_DOMAIN", env.get("AUTH_IAP_ALLOWED_EMAIL_DOMAIN", "")).strip():
+            warnings.append("AUTH_ALLOWED_EMAIL_DOMAIN is blank; operator domain restriction is not enforced.")
         if env.get("AUTH_TRUSTED_HEADER_FALLBACK", "").strip().lower() in {"1", "true", "yes", "on"}:
             errors.append("AUTH_TRUSTED_HEADER_FALLBACK must be disabled for production-compatible Cloud Run config.")
         if (env.get("AUTH_ROLE_SOURCE", "").strip() or "env_map") != "database":
             errors.append("AUTH_ROLE_SOURCE must be database for production-compatible Cloud Run config.")
         if env.get("AUTH_ROLE_MAP", "").strip():
             errors.append("AUTH_ROLE_MAP must be blank for production-compatible Cloud Run config.")
+    if auth_mode == "google_oidc":
+        if not env.get("AUTH_OIDC_CLIENT_ID", "").strip():
+            errors.append("AUTH_OIDC_CLIENT_ID is required when AUTH_MODE=google_oidc.")
+        if env.get("AUTH_TRUSTED_HEADER_FALLBACK", "").strip().lower() in {"1", "true", "yes", "on"}:
+            errors.append("AUTH_TRUSTED_HEADER_FALLBACK must be disabled for production-compatible OIDC config.")
+        if (env.get("AUTH_ROLE_SOURCE", "").strip() or "env_map") != "database":
+            errors.append("AUTH_ROLE_SOURCE must be database for production-compatible OIDC config.")
 
     explicit_database_url = env.get("DATABASE_URL", "").strip()
     if explicit_database_url:
@@ -67,9 +75,16 @@ def validate_env_contract(env: dict[str, str]) -> ValidationReport:
         db_host = env.get("DB_HOST", "").strip()
         if not (db_name and db_user and db_password):
             errors.append("Provide DATABASE_URL or the DB_NAME/DB_USER/DB_PASSWORD component set.")
-        if not cloud_sql_connection_name and not db_host:
-            errors.append("Provide CLOUD_SQL_CONNECTION_NAME or DB_HOST when DATABASE_URL is not set.")
-        if cloud_sql_connection_name and db_host:
+        if db_mode == "cloud_sql":
+            if not cloud_sql_connection_name:
+                errors.append("CLOUD_SQL_CONNECTION_NAME is required when DB_MODE=cloud_sql.")
+        elif db_mode == "local_postgres":
+            if not (db_host or env.get("DB_PORT", "").strip()):
+                warnings.append("DB_HOST/DB_PORT are blank; local_postgres will fall back to 127.0.0.1:5432.")
+        else:
+            if not cloud_sql_connection_name and not db_host:
+                errors.append("Provide CLOUD_SQL_CONNECTION_NAME or DB_HOST when DATABASE_URL is not set.")
+        if cloud_sql_connection_name and db_host and db_mode != "local_postgres":
             warnings.append("Both CLOUD_SQL_CONNECTION_NAME and DB_HOST are set; unix socket Cloud SQL path will win.")
 
     if storage_class == "local_filesystem_fake":

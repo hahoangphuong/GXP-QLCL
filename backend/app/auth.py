@@ -14,6 +14,7 @@ IAP_EMAIL_HEADER = "X-Goog-Authenticated-User-Email"
 IAP_SUBJECT_HEADER = "X-Goog-Authenticated-User-Id"
 DEFAULT_AUTH_MODE = "header_stub"
 DEFAULT_IAP_CERTS_URL = "https://www.gstatic.com/iap/verify/public_key"
+AUTHORIZATION_HEADER = "Authorization"
 
 
 @dataclass(frozen=True)
@@ -223,6 +224,28 @@ def _verify_iap_jwt_assertion(assertion: str, expected_audience: str) -> dict[st
     return claims
 
 
+def _verify_google_oidc_assertion(assertion: str, client_id: str) -> dict[str, Any]:
+    try:
+        from google.auth.transport.requests import Request as GoogleAuthRequest
+        from google.oauth2 import id_token
+    except ModuleNotFoundError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="google-auth is required for AUTH_MODE=google_oidc.",
+        ) from exc
+    try:
+        claims = id_token.verify_oauth2_token(
+            assertion,
+            GoogleAuthRequest(),
+            audience=client_id,
+        )
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=401, detail="Invalid Google OIDC identity token.") from exc
+    if not isinstance(claims, dict):
+        raise HTTPException(status_code=401, detail="Invalid Google OIDC identity payload.")
+    return claims
+
+
 def _load_database_user(request: Request, *, email: str | None, subject: str | None) -> AuthenticatedUser:
     session_factory = request.app.state.session_factory
     session = session_factory()
@@ -344,6 +367,52 @@ def authenticate_google_iap_request(request: Request, *, verifier: Any | None = 
     )
 
 
+def authenticate_google_oidc_request(request: Request, *, verifier: Any | None = None) -> AuthenticatedUser:
+    config = request.app.state.config
+    client_id = config.auth_oidc_client_id.strip()
+    if not client_id:
+        raise HTTPException(status_code=500, detail="AUTH_OIDC_CLIENT_ID must be configured.")
+
+    auth_header = (request.headers.get(AUTHORIZATION_HEADER) or "").strip()
+    scheme, _, token = auth_header.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(status_code=401, detail="Missing Google OIDC bearer token.")
+    verification_fn = verifier or _verify_google_oidc_assertion
+    claims = verification_fn(token.strip(), client_id)
+
+    email = str(claims.get("email") or "").strip().lower() or None
+    subject = str(claims.get("sub") or "").strip() or None
+    validate_email_domain(email, config.auth_iap_allowed_email_domain)
+    role_source = request.app.state.config.auth_role_source.strip().lower()
+    if role_source == "database":
+        user = _load_database_user(request, email=email, subject=subject)
+        return AuthenticatedUser(
+            username=user.username,
+            auth_mode="google_oidc",
+            email=user.email,
+            subject=user.subject,
+            role_codes=user.role_codes,
+            permissions=user.permissions,
+        )
+    if role_source != "env_map":
+        raise HTTPException(status_code=500, detail=f"Unsupported AUTH_ROLE_SOURCE: {request.app.state.config.auth_role_source}")
+    role = resolve_mapped_role(
+        email,
+        default_role=config.auth_default_role,
+        role_map_raw=config.auth_role_map,
+    )
+    permissions = ROLE_PERMISSIONS.get(role, frozenset())
+    username = email or subject
+    return build_authenticated_user(
+        username,
+        role,
+        auth_mode="google_oidc",
+        email=email,
+        subject=subject,
+        permissions=permissions,
+    )
+
+
 def get_authenticated_user(request: Request) -> AuthenticatedUser:
     auth_mode = request.app.state.config.auth_mode.strip().lower()
     if auth_mode == "header_stub":
@@ -357,4 +426,6 @@ def get_authenticated_user(request: Request) -> AuthenticatedUser:
         )
     if auth_mode == "google_iap_jwt":
         return authenticate_google_iap_request(request)
+    if auth_mode == "google_oidc":
+        return authenticate_google_oidc_request(request)
     raise HTTPException(status_code=500, detail=f"Unsupported AUTH_MODE: {request.app.state.config.auth_mode}")

@@ -4,6 +4,7 @@ set -euo pipefail
 BRIDGE_URL="${BRIDGE_URL:-}"
 TEST_INSPECTION_RELATIVE_PATH="${TEST_INSPECTION_RELATIVE_PATH:-}"
 TEST_FILE_RELATIVE_PATH="${TEST_FILE_RELATIVE_PATH:-}"
+CALLER_SERVICE_ACCOUNT="${CALLER_SERVICE_ACCOUNT:-gxp-web-runtime@gxp-qlcl.iam.gserviceaccount.com}"
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -25,7 +26,36 @@ need_cmd python3
   exit 1
 }
 
-TOKEN="$(gcloud auth print-identity-token --audiences="${BRIDGE_URL}")"
+ACTIVE_ACCOUNT="$(gcloud config get-value account 2>/dev/null || true)"
+[[ -n "${ACTIVE_ACCOUNT}" ]] || {
+  echo "ERROR: Could not determine active gcloud account." >&2
+  exit 1
+}
+if [[ "${ACTIVE_ACCOUNT}" == *".gserviceaccount.com" ]]; then
+  ACTIVE_MEMBER="serviceAccount:${ACTIVE_ACCOUNT}"
+else
+  ACTIVE_MEMBER="user:${ACTIVE_ACCOUNT}"
+fi
+
+if ! gcloud iam service-accounts get-iam-policy "${CALLER_SERVICE_ACCOUNT}" --format=json | python3 - "${ACTIVE_MEMBER}" <<'PY'
+import json
+import sys
+
+policy = json.load(sys.stdin)
+member = sys.argv[1]
+for binding in policy.get("bindings", []):
+    if binding.get("role") == "roles/iam.serviceAccountTokenCreator" and member in binding.get("members", []):
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+then
+  echo "ERROR: Active operator '${ACTIVE_ACCOUNT}' cannot impersonate '${CALLER_SERVICE_ACCOUNT}'." >&2
+  echo "Run:" >&2
+  echo "gcloud iam service-accounts add-iam-policy-binding ${CALLER_SERVICE_ACCOUNT} --member=${ACTIVE_MEMBER} --role=roles/iam.serviceAccountTokenCreator" >&2
+  exit 1
+fi
+
+TOKEN="$(gcloud auth print-identity-token --impersonate-service-account="${CALLER_SERVICE_ACCOUNT}" --audiences="${BRIDGE_URL}" --include-email)"
 AUTH_HEADER="Authorization: Bearer ${TOKEN}"
 SMOKE_DIR="${TEST_INSPECTION_RELATIVE_PATH%/}/__bridge_smoke__"
 SMOKE_FILE="${SMOKE_DIR}/smoke.txt"

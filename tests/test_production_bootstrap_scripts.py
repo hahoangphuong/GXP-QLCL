@@ -38,6 +38,30 @@ def test_storage_bridge_bootstrap_script_uses_cloudbuild_config_and_smoke_script
     assert "gcloud secrets describe" in text
 
 
+def test_storage_bridge_bootstrap_script_uses_two_phase_auth_bootstrap():
+    text = (ROOT / "infra" / "cloudrun" / "bootstrap_storage_bridge.sh").read_text(encoding="utf-8")
+
+    assert "BRIDGE_BOOTSTRAP_ALLOW_UNCONFIGURED_AUTH=1" in text
+    assert 'lines.append(f"STORAGE_BRIDGE_AUTH_AUDIENCE={bridge_url}")' in text
+    assert 'gcloud run services describe "${SERVICE_NAME}"' in text
+
+
+def test_storage_bridge_smoke_test_uses_caller_service_account_impersonation():
+    text = (ROOT / "infra" / "cloudrun" / "smoke_test_storage_bridge.sh").read_text(encoding="utf-8")
+
+    assert '--impersonate-service-account="${CALLER_SERVICE_ACCOUNT}"' in text
+    assert "roles/iam.serviceAccountTokenCreator" in text
+    assert "gcloud iam service-accounts add-iam-policy-binding" in text
+
+
+def test_bridge_invoker_binding_remains_scoped_to_bridge_service():
+    text = (ROOT / "tools" / "validate_phase18_storage_bridge_bootstrap.py").read_text(encoding="utf-8")
+
+    assert '"services"' in text
+    assert 'config["service_name"]' in text
+    assert "--role=roles/run.invoker" in text
+
+
 def test_runtime_lockfile_is_generated_with_python_312_baseline():
     text = (ROOT / "backend" / "requirements.runtime.lock.txt").read_text(encoding="utf-8")
 

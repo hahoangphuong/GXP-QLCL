@@ -344,3 +344,38 @@ def test_bridge_upload_limit_rejects_large_payload(monkeypatch):
             )
         )
     assert _status_from_messages(messages) == 413
+
+
+def test_bridge_readyz_fails_when_auth_is_not_configured_even_if_bootstrap_health_is_allowed(monkeypatch):
+    monkeypatch.setenv("BRIDGE_BOOTSTRAP_ALLOW_UNCONFIGURED_AUTH", "1")
+    storage = _BridgeStorageHarness({})
+    app = create_storage_bridge_app(storage)
+
+    messages = asyncio.run(
+        _invoke_asgi(
+            app,
+            method="GET",
+            path="/readyz",
+        )
+    )
+
+    assert _status_from_messages(messages) == 503
+
+
+def test_bridge_healthz_reports_bootstrap_auth_pending(monkeypatch):
+    monkeypatch.setenv("BRIDGE_BOOTSTRAP_ALLOW_UNCONFIGURED_AUTH", "1")
+    storage = _BridgeStorageHarness({})
+    app = create_storage_bridge_app(storage)
+
+    messages = asyncio.run(
+        _invoke_asgi(
+            app,
+            method="GET",
+            path="/healthz",
+        )
+    )
+
+    assert _status_from_messages(messages) == 200
+    payload = json.loads(_body_from_messages(messages).decode("utf-8"))
+    assert payload["auth_configured"] is False
+    assert payload["bootstrap_auth_pending"] is True

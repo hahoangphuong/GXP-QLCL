@@ -6,8 +6,10 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 CONFIG_PATH="${1:-infra/cloudrun/storage_bridge_bootstrap.example.json}"
 VALIDATION_JSON="$(mktemp)"
 CONFIG_VALUES_JSON="$(mktemp)"
+BOOTSTRAP_ENV_FILE="$(mktemp)"
+FINAL_ENV_FILE="$(mktemp)"
 cleanup() {
-  rm -f "${VALIDATION_JSON}" "${CONFIG_VALUES_JSON}"
+  rm -f "${VALIDATION_JSON}" "${CONFIG_VALUES_JSON}" "${BOOTSTRAP_ENV_FILE}" "${FINAL_ENV_FILE}"
 }
 trap cleanup EXIT
 
@@ -81,6 +83,7 @@ SERVICE_NAME="$(json_config_query service_name)"
 ARTIFACT_REGISTRY_REPO="$(json_config_query artifact_registry_repo)"
 SERVICE_ACCOUNT="$(json_config_query service_account)"
 CALLER_SERVICE_ACCOUNT="$(json_config_query caller_service_account)"
+ENV_FILE="$(json_config_query env_file)"
 TAILSCALE_SECRET="$(json_config_query tailscale_authkey_secret)"
 SMB_USERNAME_SECRET="$(json_config_query smb_username_secret)"
 SMB_PASSWORD_SECRET="$(json_config_query smb_password_secret)"
@@ -128,7 +131,65 @@ PY
   done
 }
 
+verify_operator_impersonation() {
+  local active_account
+  local active_member
+  active_account="$(gcloud config get-value account 2>/dev/null || true)"
+  [[ -n "${active_account}" ]] || fail_with_command \
+    "Could not determine active gcloud account for service-account impersonation." \
+    "gcloud auth login"
+  if [[ "${active_account}" == *".gserviceaccount.com" ]]; then
+    active_member="serviceAccount:${active_account}"
+  else
+    active_member="user:${active_account}"
+  fi
+
+  if ! gcloud iam service-accounts get-iam-policy "${CALLER_SERVICE_ACCOUNT}" --format=json | python3 - "${active_member}" <<'PY'
+import json
+import sys
+
+policy = json.load(sys.stdin)
+member = sys.argv[1]
+for binding in policy.get("bindings", []):
+    if binding.get("role") == "roles/iam.serviceAccountTokenCreator" and member in binding.get("members", []):
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+  then
+    fail_with_command \
+      "Active operator '${active_account}' cannot impersonate '${CALLER_SERVICE_ACCOUNT}'." \
+      "gcloud iam service-accounts add-iam-policy-binding ${CALLER_SERVICE_ACCOUNT} --member=${active_member} --role=roles/iam.serviceAccountTokenCreator"
+  fi
+}
+
+prepare_env_files() {
+  python3 - "${REPO_ROOT}/${ENV_FILE}" "${BOOTSTRAP_ENV_FILE}" "${FINAL_ENV_FILE}" <<'PY'
+from pathlib import Path
+import sys
+
+source_path = Path(sys.argv[1])
+bootstrap_path = Path(sys.argv[2])
+final_path = Path(sys.argv[3])
+
+lines = source_path.read_text(encoding="utf-8").splitlines()
+bootstrap_lines: list[str] = []
+final_lines: list[str] = []
+for line in lines:
+    if line.startswith("STORAGE_BRIDGE_AUTH_AUDIENCE="):
+        continue
+    if line.startswith("BRIDGE_BOOTSTRAP_ALLOW_UNCONFIGURED_AUTH="):
+        continue
+    bootstrap_lines.append(line)
+    final_lines.append(line)
+bootstrap_lines.append("BRIDGE_BOOTSTRAP_ALLOW_UNCONFIGURED_AUTH=1")
+bootstrap_path.write_text("\n".join(bootstrap_lines).strip() + "\n", encoding="utf-8")
+final_path.write_text("\n".join(final_lines).strip() + "\n", encoding="utf-8")
+PY
+}
+
 verify_preflight_resources
+verify_operator_impersonation
+prepare_env_files
 
 if [[ "${DRY_RUN:-0}" == "1" ]]; then
   echo "DRY RUN PASS"
@@ -158,7 +219,14 @@ PY
 )
 
 "${BUILD_CMD[@]}"
-"${DEPLOY_CMD[@]}"
+
+DEPLOY_CMD_BOOTSTRAP=("${DEPLOY_CMD[@]}")
+for i in "${!DEPLOY_CMD_BOOTSTRAP[@]}"; do
+  if [[ "${DEPLOY_CMD_BOOTSTRAP[$i]}" == "${ENV_FILE}" ]]; then
+    DEPLOY_CMD_BOOTSTRAP[$i]="${BOOTSTRAP_ENV_FILE}"
+  fi
+done
+"${DEPLOY_CMD_BOOTSTRAP[@]}"
 "${INVOKER_CMD[@]}"
 
 BRIDGE_URL="$(gcloud run services describe "${SERVICE_NAME}" --project "${PROJECT_ID}" --region "${REGION}" --format='value(status.url)')"
@@ -166,6 +234,26 @@ BRIDGE_URL="$(gcloud run services describe "${SERVICE_NAME}" --project "${PROJEC
   echo "ERROR: bridge URL is blank after deploy." >&2
   exit 1
 }
+
+python3 - "${FINAL_ENV_FILE}" "${BRIDGE_URL}" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+bridge_url = sys.argv[2]
+lines = path.read_text(encoding="utf-8").splitlines()
+lines = [line for line in lines if not line.startswith("STORAGE_BRIDGE_AUTH_AUDIENCE=") and not line.startswith("BRIDGE_BOOTSTRAP_ALLOW_UNCONFIGURED_AUTH=")]
+lines.append(f"STORAGE_BRIDGE_AUTH_AUDIENCE={bridge_url}")
+path.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
+PY
+
+DEPLOY_CMD_FINAL=("${DEPLOY_CMD[@]}")
+for i in "${!DEPLOY_CMD_FINAL[@]}"; do
+  if [[ "${DEPLOY_CMD_FINAL[$i]}" == "${ENV_FILE}" ]]; then
+    DEPLOY_CMD_FINAL[$i]="${FINAL_ENV_FILE}"
+  fi
+done
+"${DEPLOY_CMD_FINAL[@]}"
 
 BRIDGE_DESCRIBE_JSON="$(mktemp)"
 gcloud run services describe "${SERVICE_NAME}" --project "${PROJECT_ID}" --region "${REGION}" --format=json >"${BRIDGE_DESCRIBE_JSON}"
@@ -188,7 +276,7 @@ if ready.lower() != "true":
 PY
 rm -f "${BRIDGE_DESCRIBE_JSON}"
 
-BRIDGE_TOKEN="$(gcloud auth print-identity-token --audiences="${BRIDGE_URL}")"
+BRIDGE_TOKEN="$(gcloud auth print-identity-token --impersonate-service-account="${CALLER_SERVICE_ACCOUNT}" --audiences="${BRIDGE_URL}" --include-email)"
 curl -fsS -H "Authorization: Bearer ${BRIDGE_TOKEN}" "${BRIDGE_URL}/healthz" >/dev/null || {
   echo "ERROR: bridge /healthz check failed." >&2
   exit 1
@@ -203,9 +291,9 @@ printf 'STORAGE_BRIDGE_BASE_URL=%s\n' "${BRIDGE_URL}"
 printf 'STORAGE_BRIDGE_AUTH_AUDIENCE=%s\n' "${BRIDGE_URL}"
 
 if [[ -n "${TEST_INSPECTION_RELATIVE_PATH:-}" ]]; then
-  BRIDGE_URL="${BRIDGE_URL}" TEST_INSPECTION_RELATIVE_PATH="${TEST_INSPECTION_RELATIVE_PATH}" TEST_FILE_RELATIVE_PATH="${TEST_FILE_RELATIVE_PATH:-}" \
+  BRIDGE_URL="${BRIDGE_URL}" CALLER_SERVICE_ACCOUNT="${CALLER_SERVICE_ACCOUNT}" TEST_INSPECTION_RELATIVE_PATH="${TEST_INSPECTION_RELATIVE_PATH}" TEST_FILE_RELATIVE_PATH="${TEST_FILE_RELATIVE_PATH:-}" \
     "${SCRIPT_DIR}/smoke_test_storage_bridge.sh"
 else
   printf '\nOptional authenticated smoke test (recommended before real dossiers):\n'
-  printf 'BRIDGE_URL=%s TEST_INSPECTION_RELATIVE_PATH=2026/TEST_STORAGE %s/smoke_test_storage_bridge.sh\n' "${BRIDGE_URL}" "${SCRIPT_DIR}"
+  printf 'BRIDGE_URL=%s CALLER_SERVICE_ACCOUNT=%s TEST_INSPECTION_RELATIVE_PATH=2026/TEST_STORAGE %s/smoke_test_storage_bridge.sh\n' "${BRIDGE_URL}" "${CALLER_SERVICE_ACCOUNT}" "${SCRIPT_DIR}"
 fi

@@ -14,6 +14,11 @@ from backend.app.storage.socket_proxy import enable_socket_proxy_from_env
 from backend.app.storage.types import StorageEntry, StorageOperationError, StorageResolution
 
 
+def _bootstrap_allows_unconfigured_auth() -> bool:
+    raw = (os.environ.get("BRIDGE_BOOTSTRAP_ALLOW_UNCONFIGURED_AUTH", "0") or "0").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
 def _entry_payload(entry: StorageEntry) -> dict[str, object]:
     return {
         "relative_path": entry.relative_path,
@@ -57,9 +62,17 @@ def create_storage_bridge_app(storage_service: FilesystemStorageService | None =
         app.state.bridge_auth_config = load_bridge_auth_config()
     except RuntimeError as exc:
         app.state.bridge_auth_config = None
-        if storage_error is None:
-            storage_error = str(exc)
-        app.state.storage_error = storage_error
+        if (
+            _bootstrap_allows_unconfigured_auth()
+            and "Missing STORAGE_BRIDGE_AUTH_AUDIENCE." in str(exc)
+            and resolved_storage is not None
+        ):
+            app.state.storage_error = storage_error
+        else:
+            if storage_error is None:
+                storage_error = str(exc)
+            app.state.storage_error = storage_error
+    app.state.bootstrap_auth_pending = app.state.bridge_auth_config is None and _bootstrap_allows_unconfigured_auth()
 
     def get_storage(request: Request) -> FilesystemStorageService:
         service = getattr(request.app.state, "storage_service", None)
@@ -82,6 +95,7 @@ def create_storage_bridge_app(storage_service: FilesystemStorageService | None =
             "service": "storage_bridge",
             "storage_configured": app.state.storage_service is not None,
             "auth_configured": app.state.bridge_auth_config is not None,
+            "bootstrap_auth_pending": bool(getattr(app.state, "bootstrap_auth_pending", False)),
         }
 
     @app.get("/readyz")

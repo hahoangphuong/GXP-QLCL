@@ -295,6 +295,45 @@ gxp-storage-bridge-smb-password
 
 The committed bridge env file remains non-secret and only captures topology/config shape.
 
+Bridge auth bootstrap now uses two phases:
+
+1. first deploy a bootstrap-safe revision without `STORAGE_BRIDGE_AUTH_AUDIENCE`
+2. resolve the actual Cloud Run `status.url`
+3. redeploy the final revision with:
+
+```text
+BRIDGE_AUTH_MODE=google_oidc
+STORAGE_BRIDGE_AUTH_AUDIENCE=<actual Cloud Run bridge status.url>
+```
+
+During phase 1:
+- `/healthz` may report `auth_configured=false`
+- `/readyz` must still fail
+- `/bridge/storage/*` operations remain fail-closed because bridge auth is not configured yet
+
+Bridge smoke tests now impersonate the actual production caller service account:
+
+```text
+gxp-web-runtime@gxp-qlcl.iam.gserviceaccount.com
+```
+
+So the operator must also have:
+
+```text
+roles/iam.serviceAccountTokenCreator
+```
+
+on that service account.
+
+One-time command:
+
+```bash
+gcloud iam service-accounts add-iam-policy-binding \
+  gxp-web-runtime@gxp-qlcl.iam.gserviceaccount.com \
+  --member=user:YOUR_USER@example.com \
+  --role=roles/iam.serviceAccountTokenCreator
+```
+
 The bridge image build now uses a dedicated Cloud Build config:
 - [infra/cloudrun/cloudbuild.storage_bridge.yaml](D:/GXP-QLCL/infra/cloudrun/cloudbuild.storage_bridge.yaml)
 

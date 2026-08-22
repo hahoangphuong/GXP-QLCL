@@ -1,8 +1,10 @@
 from pathlib import Path
+import subprocess
+import sys
 
 import yaml
 
-from tools.env_utils import dotenv_to_yaml_env_file, write_yaml_env_file
+from tools.env_utils import dotenv_to_yaml_env_file, parse_env_file, write_yaml_env_file
 from tools.validate_prod_deploy import validate_prod_deploy_env
 
 
@@ -80,3 +82,41 @@ def test_prod_runtime_env_yaml_round_trips_without_secret_values(tmp_path: Path)
     assert loaded == report.plan.runtime_env
     assert "DB_PASSWORD" not in loaded
     assert loaded["STORAGE_BRIDGE_BASE_URL"] == "https://bridge.example.internal"
+
+
+def test_parse_env_file_supports_quoted_values_for_runtime_env(tmp_path: Path):
+    env_file = tmp_path / "runtime.env"
+    env_file.write_text(
+        "PUBLIC_BASE_URL='https://gxp.example.com'\n"
+        "STORAGE_INSPECTION_ROOT='\\\\\\\\100.95.45.127\\\\Hồ sơ nội bộ\\\\01 - Kiểm tra GPs'\n"
+        "DB_PASSWORD='pa ss#word'\n",
+        encoding="utf-8",
+    )
+
+    parsed = parse_env_file(env_file)
+
+    assert parsed["PUBLIC_BASE_URL"] == "https://gxp.example.com"
+    assert parsed["STORAGE_INSPECTION_ROOT"] == r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs"
+    assert parsed["DB_PASSWORD"] == "pa ss#word"
+
+
+def test_runtime_env_cli_exports_null_safe_pairs(tmp_path: Path):
+    env_file = tmp_path / "runtime.env"
+    env_file.write_text(
+        "PUBLIC_BASE_URL='https://gxp.example.com'\n"
+        "DB_PASSWORD='pa ss#word'\n",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [sys.executable, "tools/runtime_env.py", "export-null", str(env_file)],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr.decode("utf-8", errors="replace")
+    assert completed.stdout.split(b"\0")[:-1] == [
+        b"PUBLIC_BASE_URL=https://gxp.example.com",
+        b"DB_PASSWORD=pa ss#word",
+    ]

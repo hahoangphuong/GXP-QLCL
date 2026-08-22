@@ -62,11 +62,13 @@
 - Current production rollout order is strict:
   - validate VM config and prerequisites
   - verify clean git working tree
-  - fetch and fast-forward or checkout exact approved SHA
+  - fetch origin and resolve the approved target commit
+  - checkout the target commit in detached mode for an immutable deploy workspace
   - build frontend on the VM
   - install backend runtime dependencies
   - backup PostgreSQL
   - run `alembic upgrade head`
+  - switch frontend release symlink
   - restart services
   - verify `/healthz` and `/readyz`
 - Current storage-integration baseline is:

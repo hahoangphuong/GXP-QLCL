@@ -5,13 +5,14 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=gxp
-Group=gxp
-WorkingDirectory=/opt/gxp/src/GXP-QLCL
-EnvironmentFile=/etc/gxp/runtime.env
-ExecStart=/opt/gxp/venv/bin/uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
+User={{VM_APP_USER}}
+Group={{VM_APP_GROUP}}
+WorkingDirectory={{VM_SRC_DIR}}
+EnvironmentFile={{VM_RUNTIME_ENV_FILE}}
+ExecStart={{VM_VENV_DIR}}/bin/uvicorn backend.app.main:app --host 127.0.0.1 --port {{APP_PORT}}
 Restart=on-failure
 RestartSec=5
+NoNewPrivileges=true
 
 [Install]
 WantedBy=multi-user.target

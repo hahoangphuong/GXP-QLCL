@@ -1,29 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RUNTIME_ENV_FILE="${VM_RUNTIME_ENV_FILE:-/etc/gxp/runtime.env}"
-[[ -f "${RUNTIME_ENV_FILE}" ]] || {
-  echo "ERROR: runtime env file not found: ${RUNTIME_ENV_FILE}" >&2
-  exit 1
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=infra/vm/common.sh
+source "${SCRIPT_DIR}/common.sh"
 
-set -a
-# shellcheck disable=SC1090
-source "${RUNTIME_ENV_FILE}"
-set +a
-
-command -v python3 >/dev/null 2>&1 || {
-  echo "ERROR: python3 is required." >&2
-  exit 1
-}
-command -v systemctl >/dev/null 2>&1 || {
-  echo "ERROR: systemctl is required." >&2
-  exit 1
-}
-command -v tailscale >/dev/null 2>&1 || {
-  echo "ERROR: tailscale is required." >&2
-  exit 1
-}
+load_runtime_env "${VM_RUNTIME_ENV_FILE:-/etc/gxp/runtime.env}"
+need_cmd python3
+need_cmd systemctl
+need_cmd tailscale
+need_cmd curl
 
 python3 tools/validate_vm_prod_deploy.py >/tmp/gxp-vm-validate.json
 systemctl is-active --quiet "${SYSTEMD_SERVICE_NAME:-gxp-web}"
@@ -43,5 +29,6 @@ service.list("", root="template")
 print("Storage roots reachable.")
 PY
 
+swapon --show
 df -h /
 echo "VM production verification passed."

@@ -1,8 +1,22 @@
 from __future__ import annotations
 
+import ast
 import json
 from pathlib import Path
 from typing import Mapping
+
+
+def _decode_env_value(raw_value: str) -> str:
+    value = raw_value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        try:
+            decoded = ast.literal_eval(value)
+        except (SyntaxError, ValueError) as exc:
+            raise ValueError(f"Invalid quoted env value: {raw_value!r}") from exc
+        if not isinstance(decoded, str):
+            raise ValueError(f"Env value must decode to string: {raw_value!r}")
+        return decoded
+    return value
 
 
 def parse_env_file(path: Path) -> dict[str, str]:
@@ -14,7 +28,7 @@ def parse_env_file(path: Path) -> dict[str, str]:
         key, separator, value = line.partition("=")
         if not separator:
             raise ValueError(f"Invalid env line: {raw_line!r}")
-        values[key.strip()] = value.strip()
+        values[key.strip()] = _decode_env_value(value)
     return values
 
 

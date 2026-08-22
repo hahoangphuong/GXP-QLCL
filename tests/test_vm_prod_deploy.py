@@ -33,6 +33,13 @@ def test_validate_vm_prod_deploy_accepts_local_postgres_direct_smb_oidc_baseline
     assert report.plan.auth_provider == "google_oidc"
     assert report.plan.runtime_requirements_file == "backend/requirements.runtime.vm.txt"
     assert ":***@" in report.plan.database_url_redacted
+    assert report.plan.node_major == 22
+    assert report.plan.swap_size_gb == 4
+    assert report.plan.app_port == 8000
+    assert report.plan.runtime_env["VM_SRC_DIR"] == "/opt/gxp/src/GXP-QLCL"
+    assert report.plan.runtime_env["VM_RUNTIME_ENV_FILE"] == "/etc/gxp/runtime.env"
+    assert report.plan.runtime_env["SYSTEMD_SERVICE_NAME"] == "gxp-web"
+    assert report.plan.runtime_env["PUBLIC_BASE_URL"] == "https://gxp.example.com"
 
 
 def test_validate_vm_prod_deploy_accepts_cloud_sql_dormant_option():

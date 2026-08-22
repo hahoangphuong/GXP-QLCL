@@ -6,6 +6,7 @@ import os
 import re
 import sys
 from typing import Any
+from urllib.parse import urlparse
 
 
 BOOLEAN_TRUE = {"1", "true", "yes", "on"}
@@ -31,13 +32,32 @@ class VmDeployPlan:
     dkkd_root: str
     template_root: str
     vm_app_root: str
+    app_user: str
+    app_group: str
     vm_src_dir: str
     vm_venv_dir: str
     vm_frontend_dist_dir: str
+    vm_frontend_releases_dir: str
     vm_runtime_env_file: str
     vm_release_metadata_file: str
     systemd_service_name: str
     nginx_site_name: str
+    nginx_server_name: str
+    app_port: int
+    tls_cert_path: str
+    tls_key_path: str
+    node_major: int
+    node_min_version: str
+    node_package_manager: str
+    node_build_options: str
+    swap_size_gb: int
+    swappiness: int
+    pg_shared_buffers_mb: int
+    pg_effective_cache_size_mb: int
+    pg_work_mem_mb: int
+    pg_maintenance_work_mem_mb: int
+    pg_autovacuum_work_mem_mb: int
+    pg_max_connections: int
     public_base_url: str
     backup_gcs_bucket: str
     backup_local_staging_dir: str
@@ -67,6 +87,16 @@ def _require(source: dict[str, str], key: str, errors: list[str], default: str =
 
 def _bool(value: str) -> bool:
     return value.strip().lower() in BOOLEAN_TRUE
+
+
+def _parse_int(source: dict[str, str], key: str, errors: list[str], default: int) -> int:
+    raw = _get(source, key, str(default))
+    try:
+        value = int(raw)
+    except ValueError:
+        errors.append(f"{key} must be an integer.")
+        return default
+    return value
 
 
 def _resolve_database_url(source: dict[str, str], errors: list[str]) -> str:
@@ -157,14 +187,50 @@ def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> Validation
         _require(source, "SMB_PASSWORD", errors)
 
     vm_app_root = _get(source, "VM_APP_ROOT", "/opt/gxp")
+    app_user = _get(source, "VM_APP_USER", "gxp")
+    app_group = _get(source, "VM_APP_GROUP", app_user)
     vm_src_dir = _get(source, "VM_SRC_DIR", "/opt/gxp/src/GXP-QLCL")
     vm_venv_dir = _get(source, "VM_VENV_DIR", "/opt/gxp/venv")
     vm_frontend_dist_dir = _get(source, "VM_FRONTEND_DIST_DIR", "/opt/gxp/frontend-dist")
+    vm_frontend_releases_dir = _get(source, "VM_FRONTEND_RELEASES_DIR", "/opt/gxp/frontend-releases")
     vm_runtime_env_file = _get(source, "VM_RUNTIME_ENV_FILE", "/etc/gxp/runtime.env")
     vm_release_metadata_file = _get(source, "VM_RELEASE_METADATA_FILE", "/opt/gxp/current-release.json")
     systemd_service_name = _get(source, "SYSTEMD_SERVICE_NAME", "gxp-web")
     nginx_site_name = _get(source, "NGINX_SITE_NAME", "gxp-web")
     public_base_url = _require(source, "PUBLIC_BASE_URL", errors)
+    parsed_public_url = urlparse(public_base_url)
+    if parsed_public_url.scheme != "https":
+        errors.append("PUBLIC_BASE_URL must be https for the VM production baseline.")
+    if not parsed_public_url.hostname:
+        errors.append("PUBLIC_BASE_URL must include a hostname.")
+    nginx_server_name = _get(source, "NGINX_SERVER_NAME", parsed_public_url.hostname or "_")
+    app_port = _parse_int(source, "APP_PORT", errors, 8000)
+    if app_port <= 0 or app_port > 65535:
+        errors.append("APP_PORT must be between 1 and 65535.")
+    tls_cert_path = _require(source, "VM_TLS_CERT_PATH", errors, "/etc/ssl/certs/gxp.crt")
+    tls_key_path = _require(source, "VM_TLS_KEY_PATH", errors, "/etc/ssl/private/gxp.key")
+    node_major = _parse_int(source, "VM_NODE_MAJOR", errors, 22)
+    if node_major < 20:
+        errors.append("VM_NODE_MAJOR must be >= 20 for the current frontend toolchain.")
+    node_min_version = _get(source, "VM_NODE_MIN_VERSION", "22.12.0")
+    node_package_manager = _get(source, "VM_NODE_PACKAGE_MANAGER", "pnpm@11.19.0")
+    node_build_options = _get(source, "VM_NODE_BUILD_OPTIONS", "--max-old-space-size=512")
+    if not node_package_manager.startswith("pnpm@"):
+        errors.append("VM_NODE_PACKAGE_MANAGER must pin pnpm with a value like pnpm@11.19.0.")
+    swap_size_gb = _parse_int(source, "VM_SWAP_SIZE_GB", errors, 4)
+    swappiness = _parse_int(source, "VM_SWAPPINESS", errors, 10)
+    if swap_size_gb < 0:
+        errors.append("VM_SWAP_SIZE_GB must be >= 0.")
+    if swappiness < 0 or swappiness > 100:
+        errors.append("VM_SWAPPINESS must be between 0 and 100.")
+    pg_shared_buffers_mb = _parse_int(source, "PG_SHARED_BUFFERS_MB", errors, 256)
+    pg_effective_cache_size_mb = _parse_int(source, "PG_EFFECTIVE_CACHE_SIZE_MB", errors, 768)
+    pg_work_mem_mb = _parse_int(source, "PG_WORK_MEM_MB", errors, 4)
+    pg_maintenance_work_mem_mb = _parse_int(source, "PG_MAINTENANCE_WORK_MEM_MB", errors, 64)
+    pg_autovacuum_work_mem_mb = _parse_int(source, "PG_AUTOVACUUM_WORK_MEM_MB", errors, 64)
+    pg_max_connections = _parse_int(source, "PG_MAX_CONNECTIONS", errors, 30)
+    if pg_max_connections < 10 or pg_max_connections > 100:
+        warnings.append("PG_MAX_CONNECTIONS is outside the usual small-VM baseline range of 10-100.")
     backup_gcs_bucket = _require(source, "BACKUP_GCS_BUCKET", errors)
     backup_local_staging_dir = _get(source, "BACKUP_LOCAL_STAGING_DIR", "/var/backups/gxp-temp")
     deploy_branch = _get(source, "DEPLOY_BRANCH", "main")
@@ -172,6 +238,8 @@ def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> Validation
     for key, value in (
         ("SYSTEMD_SERVICE_NAME", systemd_service_name),
         ("NGINX_SITE_NAME", nginx_site_name),
+        ("VM_APP_USER", app_user),
+        ("VM_APP_GROUP", app_group),
     ):
         if value and not NAME_PATTERN.match(value):
             errors.append(f"{key} must match {NAME_PATTERN.pattern}.")
@@ -196,11 +264,44 @@ def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> Validation
         "STORAGE_INSPECTION_ROOT": inspection_root,
         "STORAGE_DKKD_ROOT": dkkd_root,
         "STORAGE_TEMPLATE_ROOT": template_root,
+        "SMB_USERNAME": _get(source, "SMB_USERNAME"),
+        "SMB_PASSWORD": _get(source, "SMB_PASSWORD"),
         "SMB_AUTH_PROTOCOL": _get(source, "SMB_AUTH_PROTOCOL", "ntlm"),
         "SMB_PORT": _get(source, "SMB_PORT", "445"),
         "SMB_ENCRYPT": _get(source, "SMB_ENCRYPT", "false"),
         "SMB_CONNECTION_TIMEOUT_SECONDS": _get(source, "SMB_CONNECTION_TIMEOUT_SECONDS", "60"),
-        "GXP_FRONTEND_DIST_ROOT": vm_frontend_dist_dir,
+        "APP_PORT": str(app_port),
+        "VM_APP_ROOT": vm_app_root,
+        "VM_APP_USER": app_user,
+        "VM_APP_GROUP": app_group,
+        "VM_SRC_DIR": vm_src_dir,
+        "VM_VENV_DIR": vm_venv_dir,
+        "VM_FRONTEND_DIST_DIR": vm_frontend_dist_dir,
+        "VM_FRONTEND_RELEASES_DIR": vm_frontend_releases_dir,
+        "VM_RUNTIME_ENV_FILE": vm_runtime_env_file,
+        "VM_RELEASE_METADATA_FILE": vm_release_metadata_file,
+        "SYSTEMD_SERVICE_NAME": systemd_service_name,
+        "NGINX_SITE_NAME": nginx_site_name,
+        "GXP_FRONTEND_DIST_ROOT": _get(source, "GXP_FRONTEND_DIST_ROOT", vm_frontend_dist_dir),
+        "NGINX_SERVER_NAME": nginx_server_name,
+        "VM_TLS_CERT_PATH": tls_cert_path,
+        "VM_TLS_KEY_PATH": tls_key_path,
+        "VM_NODE_MAJOR": str(node_major),
+        "VM_NODE_MIN_VERSION": node_min_version,
+        "VM_NODE_PACKAGE_MANAGER": node_package_manager,
+        "VM_NODE_BUILD_OPTIONS": node_build_options,
+        "VM_SWAP_SIZE_GB": str(swap_size_gb),
+        "VM_SWAPPINESS": str(swappiness),
+        "PG_SHARED_BUFFERS_MB": str(pg_shared_buffers_mb),
+        "PG_EFFECTIVE_CACHE_SIZE_MB": str(pg_effective_cache_size_mb),
+        "PG_WORK_MEM_MB": str(pg_work_mem_mb),
+        "PG_MAINTENANCE_WORK_MEM_MB": str(pg_maintenance_work_mem_mb),
+        "PG_AUTOVACUUM_WORK_MEM_MB": str(pg_autovacuum_work_mem_mb),
+        "PG_MAX_CONNECTIONS": str(pg_max_connections),
+        "PUBLIC_BASE_URL": public_base_url,
+        "BACKUP_GCS_BUCKET": backup_gcs_bucket,
+        "BACKUP_LOCAL_STAGING_DIR": backup_local_staging_dir,
+        "DEPLOY_BRANCH": deploy_branch,
     }
     runtime_env = {key: value for key, value in runtime_env.items() if value}
 
@@ -221,13 +322,32 @@ def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> Validation
             dkkd_root=dkkd_root,
             template_root=template_root,
             vm_app_root=vm_app_root,
+            app_user=app_user,
+            app_group=app_group,
             vm_src_dir=vm_src_dir,
             vm_venv_dir=vm_venv_dir,
             vm_frontend_dist_dir=vm_frontend_dist_dir,
+            vm_frontend_releases_dir=vm_frontend_releases_dir,
             vm_runtime_env_file=vm_runtime_env_file,
             vm_release_metadata_file=vm_release_metadata_file,
             systemd_service_name=systemd_service_name,
             nginx_site_name=nginx_site_name,
+            nginx_server_name=nginx_server_name,
+            app_port=app_port,
+            tls_cert_path=tls_cert_path,
+            tls_key_path=tls_key_path,
+            node_major=node_major,
+            node_min_version=node_min_version,
+            node_package_manager=node_package_manager,
+            node_build_options=node_build_options,
+            swap_size_gb=swap_size_gb,
+            swappiness=swappiness,
+            pg_shared_buffers_mb=pg_shared_buffers_mb,
+            pg_effective_cache_size_mb=pg_effective_cache_size_mb,
+            pg_work_mem_mb=pg_work_mem_mb,
+            pg_maintenance_work_mem_mb=pg_maintenance_work_mem_mb,
+            pg_autovacuum_work_mem_mb=pg_autovacuum_work_mem_mb,
+            pg_max_connections=pg_max_connections,
             public_base_url=public_base_url,
             backup_gcs_bucket=backup_gcs_bucket,
             backup_local_staging_dir=backup_local_staging_dir,

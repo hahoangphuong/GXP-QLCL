@@ -6,7 +6,7 @@ This document defines the repository-owned production deployment contract for `G
 Current production baseline entrypoint:
 
 ```bash
-./infra/vm/deploy_prod.sh
+sudo -E ./infra/vm/deploy_prod.sh
 ```
 
 Dormant optional entrypoint retained in source:
@@ -20,7 +20,7 @@ infra/cloudrun/deploy_prod.sh
 ```text
 GitHub
   -> Compute Engine VM
-  -> git fetch / ff-only update or exact SHA checkout
+  -> git fetch / target commit resolution / detached checkout
   -> frontend build on VM
   -> backend runtime install on VM
   -> local PostgreSQL
@@ -132,6 +132,27 @@ SMB_PASSWORD
 PUBLIC_BASE_URL
 BACKUP_GCS_BUCKET
 VM_RUNTIME_ENV_FILE
+VM_SRC_DIR
+VM_VENV_DIR
+VM_FRONTEND_DIST_DIR
+VM_FRONTEND_RELEASES_DIR
+SYSTEMD_SERVICE_NAME
+NGINX_SITE_NAME
+NGINX_SERVER_NAME
+VM_TLS_CERT_PATH
+VM_TLS_KEY_PATH
+VM_NODE_MAJOR
+VM_NODE_MIN_VERSION
+VM_NODE_PACKAGE_MANAGER
+VM_NODE_BUILD_OPTIONS
+VM_SWAP_SIZE_GB
+VM_SWAPPINESS
+PG_SHARED_BUFFERS_MB
+PG_EFFECTIVE_CACHE_SIZE_MB
+PG_WORK_MEM_MB
+PG_MAINTENANCE_WORK_MEM_MB
+PG_AUTOVACUUM_WORK_MEM_MB
+PG_MAX_CONNECTIONS
 ```
 
 Optional VM deploy controls:
@@ -160,16 +181,18 @@ Current template:
 2. verify required local commands
 3. verify clean git working tree
 4. `git fetch origin`
-5. fast-forward `main` or checkout exact `DEPLOY_GIT_SHA`
+5. resolve target commit from `DEPLOY_GIT_SHA` or `origin/$DEPLOY_BRANCH`
+6. checkout the target commit in detached mode
 6. rebuild Python venv from `backend/requirements.runtime.vm.txt`
 7. build frontend with `pnpm`
-8. sync frontend dist into runtime directory
+8. stage frontend dist into a per-release directory
 9. run PostgreSQL backup
 10. run `alembic upgrade head`
-11. record previous/new Git SHA
-12. restart backend and Nginx
-13. verify `/healthz` and `/readyz`
-14. cleanup heavy local build artifacts
+11. switch `/opt/gxp/frontend-dist` symlink to the new release
+12. record previous/new Git SHA
+13. restart backend and Nginx
+14. verify `/healthz` and `/readyz`
+15. cleanup heavy local build artifacts
 
 If the working tree is dirty:
 
@@ -178,6 +201,14 @@ DEPLOY FAIL
 ```
 
 No production deploy path may silently merge, stash, or `git reset --hard`.
+
+If deploy fails before service restart:
+
+```text
+current running process stays on the old release
+frontend symlink is restored
+checkout is returned to the prior commit/branch when possible
+```
 
 ## Database contract
 - Current production DB baseline is `DB_MODE=local_postgres`.
@@ -240,14 +271,26 @@ These are not created silently by normal deploy.
 sudo ./infra/vm/bootstrap_vm.sh
 ```
 
+Fresh Ubuntu baseline after bootstrap:
+- installs Python, PostgreSQL, Nginx, Git, rsync, Node.js, Corepack, and `gcloud`
+- creates non-root app user/group `gxp`
+- provisions `/swapfile` with `VM_SWAP_SIZE_GB=4` and `VM_SWAPPINESS=10` by default
+- prepares `/opt/gxp`, `/etc/gxp`, frontend release directories, and backup staging
+
 ### Configure local PostgreSQL
 
 ```bash
-set -a
-source /etc/gxp/runtime.env
-set +a
 sudo -E ./infra/vm/configure_postgres.sh
 ```
+
+`configure_postgres.sh` loads `/etc/gxp/runtime.env` through the repository parser; do not `source` the file directly.
+Current small-VM default tuning baseline:
+- `shared_buffers=256MB`
+- `effective_cache_size=768MB`
+- `work_mem=4MB`
+- `maintenance_work_mem=64MB`
+- `autovacuum_work_mem=64MB`
+- `max_connections=30`
 
 ### Configure Tailscale
 
@@ -259,11 +302,17 @@ sudo -E ./infra/vm/configure_tailscale.sh
 ### Verify runtime and Synology reachability
 
 ```bash
-set -a
-source /etc/gxp/runtime.env
-set +a
 sudo -E ./infra/vm/verify_prod.sh
 ```
+
+This verification path checks:
+- systemd backend service
+- Nginx
+- local PostgreSQL
+- Tailscale
+- `/healthz` and `/readyz`
+- storage root reachability through the configured storage adapter
+- swap and disk visibility
 
 ## One-time dormant Cloud Run prerequisites
 These remain relevant only if you intentionally reactivate the Cloud Run path later.
@@ -517,7 +566,7 @@ Current VM production first deploy command after bootstrap:
 
 ```bash
 cd /opt/gxp/src/GXP-QLCL
-./infra/vm/deploy_prod.sh
+sudo -E ./infra/vm/deploy_prod.sh
 ```
 
 Exact dormant Cloud Run deploy command after its one-time prerequisites are complete and wrapper exports the required variables:

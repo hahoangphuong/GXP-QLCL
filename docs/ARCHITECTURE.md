@@ -192,11 +192,13 @@ Hard rule:
 - Deployment contract validation should run before rollout so auth, database, and Synology storage prerequisites fail closed.
 - Current production rollout order is:
   - preflight validation
-  - clean-tree and target-SHA verification
+  - clean-tree and target-commit verification
+  - detached checkout of the approved commit
   - frontend build
   - backend runtime install
   - PostgreSQL backup
   - Alembic migration
+  - frontend release symlink switch
   - service restart
   - health/readiness verification
 - Dormant Cloud Run / Cloud SQL deployment code remains in-repo as a rollback/future option.

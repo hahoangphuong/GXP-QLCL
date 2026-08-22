@@ -37,7 +37,7 @@ def test_validate_storage_bridge_bootstrap_accepts_example_shape():
         "service_account": "gxp-storage-bridge@gxp-qlcl.iam.gserviceaccount.com",
         "caller_service_account": "gxp-web-runtime@gxp-qlcl.iam.gserviceaccount.com",
         "env_file": "backend/.env.storage_bridge.cloudrun.example",
-        "tailscale_authkey_secret": "gxp-storage-bridge-tailscale-authkey",
+        "tailscale_authkey_secret": "gxp-tailscale-auth-key",
         "smb_username_secret": "gxp-storage-bridge-smb-username",
         "smb_password_secret": "gxp-storage-bridge-smb-password",
         "cpu": "1",

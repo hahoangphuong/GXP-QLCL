@@ -262,9 +262,9 @@ gcloud run services describe gxp-storage-bridge --region asia-southeast1 --forma
 Bridge bootstrap also requires one-time secrets that are not committed:
 
 ```text
-TAILSCALE_AUTHKEY secret
-SMB_USERNAME secret
-SMB_PASSWORD secret
+gxp-tailscale-auth-key
+gxp-storage-bridge-smb-username
+gxp-storage-bridge-smb-password
 ```
 
 The committed bridge env file remains non-secret and only captures topology/config shape.

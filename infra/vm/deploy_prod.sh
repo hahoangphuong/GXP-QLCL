@@ -10,6 +10,7 @@ PLAN_JSON="$(mktemp)"
 FRONTEND_BUILD_DIR=""
 RUNTIME_ASSET_STAGING_DIR="$(mktemp -d)"
 STAGED_SERVICE_FILE=""
+VALIDATION_SERVICE_FILE=""
 STAGED_NGINX_FILE=""
 PREVIOUS_SERVICE_FILE=""
 PREVIOUS_NGINX_FILE=""
@@ -201,6 +202,7 @@ export GXP_FRONTEND_DIST_ROOT
 FRONTEND_BUILD_DIR="$(mktemp -d)"
 install -d -m 0750 -o "${VM_APP_USER}" -g "${VM_APP_GROUP}" "${FRONTEND_BUILD_DIR}"
 STAGED_SERVICE_FILE="${RUNTIME_ASSET_STAGING_DIR}/${SYSTEMD_SERVICE_NAME}.service"
+VALIDATION_SERVICE_FILE="${RUNTIME_ASSET_STAGING_DIR}/${SYSTEMD_SERVICE_NAME}.validation.service"
 STAGED_NGINX_FILE="${RUNTIME_ASSET_STAGING_DIR}/${NGINX_SITE_NAME}.conf"
 PREVIOUS_SERVICE_FILE="${RUNTIME_ASSET_STAGING_DIR}/${SYSTEMD_SERVICE_NAME}.previous.service"
 PREVIOUS_NGINX_FILE="${RUNTIME_ASSET_STAGING_DIR}/${NGINX_SITE_NAME}.previous.conf"
@@ -345,9 +347,15 @@ chown -R "${VM_APP_USER}:${VM_APP_GROUP}" "${NEW_FRONTEND_RELEASE}"
 CURRENT_STAGE="render_runtime_assets"
 assert_tls_files_exist
 python3 "${NEW_BACKEND_RELEASE}/tools/render_vm_runtime_assets.py" service "${STAGED_SERVICE_FILE}"
+[[ -d "${NEW_BACKEND_RELEASE}" ]] || fail "New backend release directory is missing before service validation: ${NEW_BACKEND_RELEASE}"
+[[ -x "${NEW_BACKEND_VENV}/bin/uvicorn" ]] || fail "New backend release venv is missing an executable uvicorn before service validation: ${NEW_BACKEND_VENV}/bin/uvicorn"
+env \
+  VM_SERVICE_WORKING_DIRECTORY="${NEW_BACKEND_RELEASE}" \
+  VM_SERVICE_EXECUTABLE="${NEW_BACKEND_VENV}/bin/uvicorn" \
+  python3 "${NEW_BACKEND_RELEASE}/tools/render_vm_runtime_assets.py" service "${VALIDATION_SERVICE_FILE}"
 python3 "${NEW_BACKEND_RELEASE}/tools/render_vm_runtime_assets.py" nginx "${STAGED_NGINX_FILE}"
 if command -v systemd-analyze >/dev/null 2>&1; then
-  systemd-analyze verify "${STAGED_SERVICE_FILE}" >/dev/null
+  systemd-analyze verify "${VALIDATION_SERVICE_FILE}" >/dev/null
 fi
 
 CURRENT_STAGE="database_backup"

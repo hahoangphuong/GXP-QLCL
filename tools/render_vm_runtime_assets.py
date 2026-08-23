@@ -26,11 +26,15 @@ def _replacement_map() -> dict[str, str]:
     server_name = os.environ.get("NGINX_SERVER_NAME", "").strip() or parsed.hostname or "_"
     app_user = os.environ.get("VM_APP_USER", "").strip() or "gxp"
     app_group = os.environ.get("VM_APP_GROUP", "").strip() or app_user
+    current_backend_release_link = _required_env("VM_CURRENT_BACKEND_RELEASE_LINK")
+    current_backend_venv_link = _required_env("VM_CURRENT_BACKEND_VENV_LINK")
+    service_working_directory = os.environ.get("VM_SERVICE_WORKING_DIRECTORY", "").strip() or current_backend_release_link
+    service_executable = os.environ.get("VM_SERVICE_EXECUTABLE", "").strip() or f"{current_backend_venv_link}/bin/uvicorn"
     return {
         "{{VM_APP_USER}}": app_user,
         "{{VM_APP_GROUP}}": app_group,
-        "{{VM_CURRENT_BACKEND_RELEASE_LINK}}": _required_env("VM_CURRENT_BACKEND_RELEASE_LINK"),
-        "{{VM_CURRENT_BACKEND_VENV_LINK}}": _required_env("VM_CURRENT_BACKEND_VENV_LINK"),
+        "{{VM_SERVICE_WORKING_DIRECTORY}}": service_working_directory,
+        "{{VM_SERVICE_EXECUTABLE}}": service_executable,
         "{{VM_RUNTIME_ENV_FILE}}": _required_env("VM_RUNTIME_ENV_FILE"),
         "{{APP_PORT}}": os.environ.get("APP_PORT", "").strip() or "8000",
         "{{GXP_FRONTEND_DIST_ROOT}}": _required_env("GXP_FRONTEND_DIST_ROOT"),

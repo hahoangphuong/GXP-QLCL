@@ -92,6 +92,7 @@ def test_vm_deploy_script_preserves_pre_switch_atomicity_and_post_switch_rollbac
     assert 'ln -sfn "${ORIGINAL_FRONTEND_TARGET}" "${VM_FRONTEND_DIST_DIR}"' in text
     assert 'RUNTIME_ASSET_STAGING_DIR="$(mktemp -d)"' in text
     assert 'STAGED_SERVICE_FILE="${RUNTIME_ASSET_STAGING_DIR}/${SYSTEMD_SERVICE_NAME}.service"' in text
+    assert 'VALIDATION_SERVICE_FILE="${RUNTIME_ASSET_STAGING_DIR}/${SYSTEMD_SERVICE_NAME}.validation.service"' in text
     assert 'STAGED_NGINX_FILE="${RUNTIME_ASSET_STAGING_DIR}/${NGINX_SITE_NAME}.conf"' in text
     assert 'PREVIOUS_SERVICE_FILE="${RUNTIME_ASSET_STAGING_DIR}/${SYSTEMD_SERVICE_NAME}.previous.service"' in text
     assert 'PREVIOUS_NGINX_FILE="${RUNTIME_ASSET_STAGING_DIR}/${NGINX_SITE_NAME}.previous.conf"' in text
@@ -143,6 +144,12 @@ def test_vm_deploy_script_uses_vm_runtime_requirements_and_db_backup():
     assert 'run_as_app_user "${NEW_BACKEND_RELEASE}/infra/vm/backup_postgres.sh"' in text
     assert 'run_as_app_user env DATABASE_URL="${DATABASE_URL}" "${NEW_BACKEND_VENV}/bin/alembic"' in text
     assert "render_vm_runtime_assets.py" in text
+    assert '[[ -d "${NEW_BACKEND_RELEASE}" ]] || fail "New backend release directory is missing before service validation: ${NEW_BACKEND_RELEASE}"' in text
+    assert '[[ -x "${NEW_BACKEND_VENV}/bin/uvicorn" ]] || fail "New backend release venv is missing an executable uvicorn before service validation: ${NEW_BACKEND_VENV}/bin/uvicorn"' in text
+    assert 'VM_SERVICE_WORKING_DIRECTORY="${NEW_BACKEND_RELEASE}" \\' in text
+    assert 'VM_SERVICE_EXECUTABLE="${NEW_BACKEND_VENV}/bin/uvicorn" \\' in text
+    assert 'python3 "${NEW_BACKEND_RELEASE}/tools/render_vm_runtime_assets.py" service "${VALIDATION_SERVICE_FILE}"' in text
+    assert 'systemd-analyze verify "${VALIDATION_SERVICE_FILE}" >/dev/null' in text
     assert "GXP_FRONTEND_DIST_ROOT" in text
     assert 'systemctl enable "${SYSTEMD_SERVICE_NAME}"' in text
     assert 'systemctl enable nginx' in text
@@ -2013,6 +2020,8 @@ def _run_deploy_render_runtime_assets_case(
     tmp_path: Path,
     *,
     systemd_verify_exit: int,
+    uvicorn_present: bool = True,
+    current_runtime_paths_exist: bool = False,
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     def _bash_style(path: Path) -> str:
         value = path.as_posix()
@@ -2075,12 +2084,27 @@ def _run_deploy_render_runtime_assets_case(
     (export_root / "tools" / "render_vm_runtime_assets.py").write_text(
         textwrap.dedent(
             f"""\
+            import os
             from pathlib import Path
             import sys
 
             log_path = Path(r"{command_log.as_posix()}")
-            log_path.open("a", encoding="utf-8").write(f"render {{sys.argv[1]}} -> {{sys.argv[2]}}\\n")
-            Path(sys.argv[2]).write_text(f"{{sys.argv[1]}}\\n", encoding="utf-8")
+            target = Path(sys.argv[2])
+            if sys.argv[1] == "service":
+                working_directory = os.environ.get("VM_SERVICE_WORKING_DIRECTORY", os.environ["VM_CURRENT_BACKEND_RELEASE_LINK"])
+                service_executable = os.environ.get("VM_SERVICE_EXECUTABLE", os.environ["VM_CURRENT_BACKEND_VENV_LINK"] + "/bin/uvicorn")
+                rendered = (
+                    "[Service]\\n"
+                    f"WorkingDirectory={{working_directory}}\\n"
+                    f"ExecStart={{service_executable}} backend.app.main:app --host 127.0.0.1 --port 8000\\n"
+                )
+                log_path.open("a", encoding="utf-8").write(
+                    f"render service -> {{target.as_posix()}} working={{working_directory}} exec={{service_executable}}\\n"
+                )
+            else:
+                rendered = "server {{}}\\n"
+                log_path.open("a", encoding="utf-8").write(f"render nginx -> {{target.as_posix()}}\\n")
+            target.write_text(rendered, encoding="utf-8")
             """
         ),
         encoding="utf-8",
@@ -2156,6 +2180,24 @@ def _run_deploy_render_runtime_assets_case(
         encoding="utf-8",
         newline="\n",
     )
+    current_backend_path = tmp_path / "current-backend"
+    current_venv_path = tmp_path / "current-venv"
+    if current_runtime_paths_exist:
+        current_backend_path.mkdir(parents=True, exist_ok=True)
+        (current_venv_path / "bin").mkdir(parents=True, exist_ok=True)
+        current_uvicorn = current_venv_path / "bin" / "uvicorn"
+        current_uvicorn.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8", newline="\n")
+        current_uvicorn.chmod(0o755)
+    uvicorn_create_snippet = ""
+    uvicorn_wrapper_entry = ""
+    if uvicorn_present:
+        uvicorn_create_snippet = (
+            "uvicorn_impl = bin_dir / \"uvicorn_impl.py\"\n"
+            "uvicorn_impl.write_text(\"raise SystemExit(0)\\\\n\", encoding=\"utf-8\", newline=\"\\\\n\")\n"
+        )
+        uvicorn_wrapper_entry = (
+            "    \"uvicorn\": '#!/usr/bin/env bash\\nexec \"' + real_python + '\" \"' + uvicorn_impl.as_posix() + '\" \"$@\"\\n',\n"
+        )
 
     python3_impl = tmp_path / "python3_impl.py"
     python3_impl.write_text(
@@ -2183,71 +2225,93 @@ def _run_deploy_render_runtime_assets_case(
     _write_executable(fake_bin / "python3", f"#!/usr/bin/env bash\nexec \"{python_sh}\" \"{python3_impl.as_posix()}\" \"$@\"\n")
 
     vm_python_impl = tmp_path / "vm_python_impl.py"
-    vm_python_impl.write_text(
-        (
-            "import os\n"
-            "import stat\n"
-            "import sys\n"
-            "from pathlib import Path\n"
-            f'real_python = r"{python_sh}"\n'
-            f'log_path = Path(r"{command_log.as_posix()}")\n'
-            "args = sys.argv[1:]\n"
-            'if args[:2] != ["-m", "venv"] or len(args) != 3:\n'
-            "    raise SystemExit(2)\n"
-            "venv_dir = Path(args[2])\n"
-            'bin_dir = venv_dir / "bin"\n'
-            "bin_dir.mkdir(parents=True, exist_ok=True)\n"
-            'runtime_flag = venv_dir / ".runtime-installed"\n'
-            'python_impl = bin_dir / "python_impl.py"\n'
-            "python_impl.write_text(\n"
-            "    (\n"
-            '        "import os\\n"\n'
-            '        "import sys\\n"\n'
-            '        "from pathlib import Path\\n"\n'
-            '        "runtime_flag = Path(sys.argv[1])\\n"\n'
-            '        "stdin_payload = sys.stdin.read()\\n"\n'
-            '        "if \\"from backend.app.config import resolve_database_url\\" in stdin_payload:\\n"\n'
-            '        "    if not runtime_flag.exists():\\n"\n'
-            '        "        raise SystemExit(1)\\n"\n'
-            '        "    sys.stdout.write(os.environ[\\"DATABASE_URL\\"] + \\"\\\\n\\")\\n"\n'
-            '        "    raise SystemExit(0)\\n"\n'
-            '        "raise SystemExit(0)\\n"\n'
-            "    ),\n"
-            '    encoding="utf-8",\n'
-            '    newline="\\n",\n'
-            ")\n"
-            'pip_impl = bin_dir / "pip_impl.py"\n'
-            "pip_impl.write_text(\n"
-            "    (\n"
-            '        "import sys\\n"\n'
-            '        "from pathlib import Path\\n"\n'
-            '        "runtime_flag = Path(sys.argv[1])\\n"\n'
-            '        "args = sys.argv[2:]\\n"\n'
-            '        "if \\"-r\\" in args:\\n"\n'
-            '        "    runtime_flag.write_text(\\"ready\\\\n\\", encoding=\\"utf-8\\")\\n"\n'
-            '        "raise SystemExit(0)\\n"\n'
-            "    ),\n"
-            '    encoding="utf-8",\n'
-            '    newline="\\n",\n'
-            ")\n"
-            'alembic_impl = bin_dir / "alembic_impl.py"\n'
-            "alembic_impl.write_text('raise SystemExit(99)\\n', encoding='utf-8', newline='\\n')\n"
-            "wrappers = {\n"
-            "    \"python\": '#!/usr/bin/env bash\\nexec \"' + real_python + '\" \"' + python_impl.as_posix() + '\" \"' + runtime_flag.as_posix() + '\" \"$@\"\\n',\n"
-            "    \"pip\": '#!/usr/bin/env bash\\nexec \"' + real_python + '\" \"' + pip_impl.as_posix() + '\" \"' + runtime_flag.as_posix() + '\" \"$@\"\\n',\n"
-            "    \"alembic\": '#!/usr/bin/env bash\\nexec \"' + real_python + '\" \"' + alembic_impl.as_posix() + '\" \"$@\"\\n',\n"
-            "}\n"
-            "for name, content in wrappers.items():\n"
-            "    wrapper = bin_dir / name\n"
-            '    wrapper.write_text(content, encoding="utf-8", newline="\\n")\n'
-            "    wrapper.chmod(wrapper.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)\n"
-            'with log_path.open("a", encoding="utf-8") as fh:\n'
-            '    fh.write(f"vm-python create-venv path={venv_dir.as_posix()}\\n")\n'
-            "raise SystemExit(0)\n"
-        ),
-        encoding="utf-8",
-        newline="\n",
+    vm_python_impl_lines = [
+        "import os",
+        "import stat",
+        "import sys",
+        "from pathlib import Path",
+        "",
+        f'real_python = r"{python_sh}"',
+        f'log_path = Path(r"{command_log.as_posix()}")',
+        "args = sys.argv[1:]",
+        'if args[:2] != ["-m", "venv"] or len(args) != 3:',
+        "    raise SystemExit(2)",
+        "",
+        "venv_dir = Path(args[2])",
+        'bin_dir = venv_dir / "bin"',
+        "bin_dir.mkdir(parents=True, exist_ok=True)",
+        'runtime_flag = venv_dir / ".runtime-installed"',
+        "",
+        'python_impl = bin_dir / "python_impl.py"',
+        'python_impl.write_text(',
+        '    (',
+        '        "import os\\n"',
+        '        "import sys\\n"',
+        '        "from pathlib import Path\\n"',
+        '        "runtime_flag = Path(sys.argv[1])\\n"',
+        '        "stdin_payload = sys.stdin.read()\\n"',
+        '        "if \\"from backend.app.config import resolve_database_url\\" in stdin_payload:\\n"',
+        '        "    if not runtime_flag.exists():\\n"',
+        '        "        raise SystemExit(1)\\n"',
+        '        "    sys.stdout.write(os.environ[\\"DATABASE_URL\\"] + \\"\\\\n\\")\\n"',
+        '        "    raise SystemExit(0)\\n"',
+        '        "raise SystemExit(0)\\n"',
+        '    ),',
+        '    encoding="utf-8",',
+        '    newline="\\n",',
+        ')',
+        "",
+        'pip_impl = bin_dir / "pip_impl.py"',
+        'pip_impl.write_text(',
+        '    (',
+        '        "import sys\\n"',
+        '        "from pathlib import Path\\n"',
+        '        "runtime_flag = Path(sys.argv[1])\\n"',
+        '        "args = sys.argv[2:]\\n"',
+        '        "if \\"-r\\" in args:\\n"',
+        '        "    runtime_flag.write_text(\\"ready\\\\n\\", encoding=\\"utf-8\\")\\n"',
+        '        "raise SystemExit(0)\\n"',
+        '    ),',
+        '    encoding="utf-8",',
+        '    newline="\\n",',
+        ')',
+        "",
+        'alembic_impl = bin_dir / "alembic_impl.py"',
+        'alembic_impl.write_text("raise SystemExit(99)\\n", encoding="utf-8", newline="\\n")',
+    ]
+    if uvicorn_present:
+        vm_python_impl_lines.extend(
+            [
+                'uvicorn_impl = bin_dir / "uvicorn_impl.py"',
+                'uvicorn_impl.write_text("raise SystemExit(0)\\n", encoding="utf-8", newline="\\n")',
+            ]
+        )
+    vm_python_impl_lines.extend(
+        [
+            "wrappers = {",
+            '    "python": \'#!/usr/bin/env bash\\nexec "\' + real_python + \'" "\' + python_impl.as_posix() + \'" "\' + runtime_flag.as_posix() + \'" "$@"\\n\',',
+            '    "pip": \'#!/usr/bin/env bash\\nexec "\' + real_python + \'" "\' + pip_impl.as_posix() + \'" "\' + runtime_flag.as_posix() + \'" "$@"\\n\',',
+            '    "alembic": \'#!/usr/bin/env bash\\nexec "\' + real_python + \'" "\' + alembic_impl.as_posix() + \'" "$@"\\n\',',
+        ]
     )
+    if uvicorn_present:
+        vm_python_impl_lines.append(
+            '    "uvicorn": \'#!/usr/bin/env bash\\nexec "\' + real_python + \'" "\' + uvicorn_impl.as_posix() + \'" "$@"\\n\','
+        )
+    vm_python_impl_lines.extend(
+        [
+            "}",
+            "for name, content in wrappers.items():",
+            "    wrapper = bin_dir / name",
+            '    wrapper.write_text(content, encoding="utf-8", newline="\\n")',
+            "    wrapper.chmod(wrapper.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)",
+            "",
+            'with log_path.open("a", encoding="utf-8") as fh:',
+            '    fh.write(f"vm-python create-venv path={venv_dir.as_posix()}\\n")',
+            "raise SystemExit(0)",
+        ]
+    )
+    vm_python_impl.write_text("\n".join(vm_python_impl_lines) + "\n", encoding="utf-8", newline="\n")
     _write_executable(fake_bin / "vm-python", f"#!/usr/bin/env bash\nexec \"{python_sh}\" \"{vm_python_impl.as_posix()}\" \"$@\"\n")
 
     _write_executable(
@@ -2420,6 +2484,8 @@ def _run_deploy_render_runtime_assets_case(
               printf 'Failed to prepare filename %s: Invalid argument\\n' "${{target}}" >&2
               exit 1
             fi
+            grep -q "WorkingDirectory=.*/backend-releases/{release_sha}" "${{target}}" || {{ echo "validation unit missing immutable WorkingDirectory" >&2; exit 21; }}
+            grep -q "ExecStart=.*/backend-venvs/{release_sha}/bin/uvicorn " "${{target}}" || {{ echo "validation unit missing immutable ExecStart" >&2; exit 22; }}
             if [[ {systemd_verify_exit} -ne 0 ]]; then
               printf 'synthetic unit validation failure for %s\\n' "${{target}}" >&2
               exit {systemd_verify_exit}
@@ -2444,12 +2510,20 @@ def test_deploy_script_render_runtime_assets_uses_service_suffix_and_reaches_bac
     assert "Deploy failed during stage: database_backup" in completed.stderr
     assert "Failed to prepare filename" not in completed.stderr
     log_text = command_log.read_text(encoding="utf-8")
+    current_backend = (tmp_path / "current-backend").as_posix()
+    current_venv = (tmp_path / "current-venv").as_posix()
+    assert not (tmp_path / "current-backend").exists()
+    assert not (tmp_path / "current-venv").exists()
     assert "render service -> " in log_text
-    assert ".service" in log_text
+    assert "gxp-web.service" in log_text
+    assert "gxp-web.validation.service" in log_text
     assert "render nginx -> " in log_text
     assert ".conf" in log_text
     assert "systemd-analyze verify" in log_text
-    assert ".service" in log_text
+    assert f"working={current_backend}" in log_text
+    assert f"exec={current_venv}/bin/uvicorn" in log_text
+    assert "backend-releases/00112233445566778899aabbccddeeff00112233" in log_text
+    assert "backend-venvs/00112233445566778899aabbccddeeff00112233/bin/uvicorn" in log_text
     assert "backup reached" in log_text
 
 
@@ -2460,6 +2534,35 @@ def test_deploy_script_render_runtime_assets_fails_closed_on_systemd_verify_erro
     assert "Deploy failed during stage: render_runtime_assets" in completed.stderr
     assert "synthetic unit validation failure" in completed.stderr
     assert "backup reached" not in command_log.read_text(encoding="utf-8")
+
+
+def test_deploy_script_render_runtime_assets_rejects_missing_new_release_uvicorn(tmp_path: Path):
+    completed, command_log = _run_deploy_render_runtime_assets_case(tmp_path, systemd_verify_exit=0, uvicorn_present=False)
+
+    assert completed.returncode != 0
+    assert "Deploy failed during stage: render_runtime_assets" in completed.stderr
+    assert "New backend release venv is missing an executable uvicorn before service validation" in completed.stderr
+    log_text = command_log.read_text(encoding="utf-8")
+    assert "systemd-analyze verify" not in log_text
+    assert "backup reached" not in log_text
+
+
+def test_deploy_script_render_runtime_assets_existing_runtime_paths_still_verify_validation_unit(tmp_path: Path):
+    completed, command_log = _run_deploy_render_runtime_assets_case(
+        tmp_path,
+        systemd_verify_exit=0,
+        current_runtime_paths_exist=True,
+    )
+
+    assert completed.returncode != 0
+    assert "Deploy failed during stage: database_backup" in completed.stderr
+    log_text = command_log.read_text(encoding="utf-8")
+    current_backend = (tmp_path / "current-backend").as_posix()
+    current_venv = (tmp_path / "current-venv").as_posix()
+    assert f"working={current_backend}" in log_text
+    assert f"exec={current_venv}/bin/uvicorn" in log_text
+    assert "gxp-web.validation.service" in log_text
+    assert "backend-releases/00112233445566778899aabbccddeeff00112233" in log_text
 
 
 def test_configure_postgres_is_idempotent_uses_safe_psql_and_keeps_password_secret(tmp_path: Path):

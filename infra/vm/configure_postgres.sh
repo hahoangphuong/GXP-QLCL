@@ -19,8 +19,11 @@ PG_MAX_CONNECTIONS="${PG_MAX_CONNECTIONS:-30}"
 SUPPORTED_POSTGRES_MAJORS="${VM_SUPPORTED_POSTGRES_MAJORS:-17,18}"
 POSTGRES_MAJOR="${VM_POSTGRES_MAJOR:-18}"
 POSTGRES_CLUSTER_NAME="${VM_POSTGRES_CLUSTER_NAME:-main}"
+PG_CLUSTER_DIR="${VM_POSTGRES_CLUSTER_DIR:-/etc/postgresql/${POSTGRES_MAJOR}/${POSTGRES_CLUSTER_NAME}}"
 
-require_root
+if [[ "${CONFIGURE_POSTGRES_UNSAFE_SKIP_ROOT_CHECK:-0}" != "1" ]]; then
+  require_root
+fi
 need_cmd psql
 need_cmd createdb
 need_cmd pg_isready
@@ -69,25 +72,38 @@ for cluster_line in "${PG_CLUSTERS[@]}"; do
 done
 (( ${#UNEXPECTED_CLUSTERS[@]} == 0 )) || fail "Unexpected PostgreSQL clusters detected: ${UNEXPECTED_CLUSTERS[*]}. Refusing to reconfigure the wrong cluster."
 [[ "${MATCHING_CLUSTER_COUNT}" == "1" ]] || fail "Expected exactly one PostgreSQL cluster ${POSTGRES_MAJOR}/${POSTGRES_CLUSTER_NAME}, found ${MATCHING_CLUSTER_COUNT}."
-PG_CLUSTER_DIR="/etc/postgresql/${POSTGRES_MAJOR}/${POSTGRES_CLUSTER_NAME}"
 [[ -d "${PG_CLUSTER_DIR}" ]] || fail "PostgreSQL cluster config directory not found: ${PG_CLUSTER_DIR}"
 
 runuser -u postgres -- psql \
+  -v ON_ERROR_STOP=1 \
   --set=db_user="${DB_USER}" \
   --set=db_password="${DB_PASSWORD}" \
   --dbname=postgres <<'SQL'
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'db_user') THEN
-    EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', :'db_user', :'db_password');
-  ELSE
-    EXECUTE format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'db_user', :'db_password');
-  END IF;
-END
-$$;
+SELECT format(
+  'CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L',
+  :'db_user',
+  :'db_password'
+)
+WHERE NOT EXISTS (
+  SELECT 1 FROM pg_roles WHERE rolname = :'db_user'
+)\gexec
+SELECT format(
+  'ALTER ROLE %I WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L',
+  :'db_user',
+  :'db_password'
+)\gexec
 SQL
 
-if ! runuser -u postgres -- psql --set=db_name="${DB_NAME}" --dbname=postgres -Atqc "SELECT 1 FROM pg_database WHERE datname = :'db_name'" | grep -q '^1$'; then
+DB_EXISTS="$(
+  runuser -u postgres -- psql \
+    -v ON_ERROR_STOP=1 \
+    --set=db_name="${DB_NAME}" \
+    --dbname=postgres \
+    -At <<'SQL'
+SELECT 1 FROM pg_database WHERE datname = :'db_name';
+SQL
+)"
+if [[ "${DB_EXISTS}" != "1" ]]; then
   runuser -u postgres -- createdb --owner "${DB_USER}" "${DB_NAME}"
 fi
 
@@ -107,7 +123,17 @@ grep -q '^host\s\+all\s\+all\s\+::1/128\s\+scram-sha-256$' "${PG_CLUSTER_DIR}/pg
 
 pg_ctlcluster "${POSTGRES_MAJOR}" "${POSTGRES_CLUSTER_NAME}" restart
 pg_isready -h "${DB_HOST}" -p "${DB_PORT}" -d "${DB_NAME}" >/dev/null
-PG_VERSION_NUM="$(runuser -u postgres -- psql --dbname=postgres -Atqc 'SHOW server_version_num')"
+AUTH_PROBE_RESULT="$(
+  PGPASSWORD="${DB_PASSWORD}" psql \
+    -v ON_ERROR_STOP=1 \
+    --host "${DB_HOST}" \
+    --port "${DB_PORT}" \
+    --username "${DB_USER}" \
+    --dbname "${DB_NAME}" \
+    -Atqc "SELECT current_database() || E'\t' || current_user"
+)"
+[[ "${AUTH_PROBE_RESULT}" == "${DB_NAME}"$'\t'"${DB_USER}" ]] || fail "Authenticated PostgreSQL probe returned unexpected identity: ${AUTH_PROBE_RESULT}."
+PG_VERSION_NUM="$(runuser -u postgres -- psql -v ON_ERROR_STOP=1 --dbname=postgres -Atqc 'SHOW server_version_num')"
 PG_MAJOR="${PG_VERSION_NUM:0:${#PG_VERSION_NUM}-4}"
 case ",${SUPPORTED_POSTGRES_MAJORS}," in
   *",${PG_MAJOR},"*) ;;

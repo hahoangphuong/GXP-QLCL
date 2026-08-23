@@ -74,6 +74,8 @@ def test_vm_deploy_script_preserves_pre_switch_atomicity_and_post_switch_rollbac
 
     assert text.index('CURRENT_STAGE="render_runtime_assets"') < text.index('CURRENT_STAGE="database_backup"')
     assert text.index('CURRENT_STAGE="database_backup"') < text.index('CURRENT_STAGE="alembic_upgrade"')
+    assert text.index('CURRENT_STAGE="build_backend_venv"') < text.index('CURRENT_STAGE="resolve_database_url"')
+    assert text.index('CURRENT_STAGE="resolve_database_url"') < text.index('CURRENT_STAGE="build_frontend"')
     assert text.index('CURRENT_STAGE="alembic_upgrade"') < text.index('CURRENT_STAGE="switch_release_symlinks"')
     assert text.index('CURRENT_STAGE="switch_release_symlinks"') < text.index('CURRENT_STAGE="restart_services"')
     assert text.index('CURRENT_STAGE="restart_services"') < text.index('CURRENT_STAGE="post_switch_health"')
@@ -107,6 +109,8 @@ def test_vm_deploy_script_uses_vm_runtime_requirements_and_db_backup():
 
     assert 'RUNTIME_REQUIREMENTS_LOCK_FILE="$(json_query runtime_requirements_lock_file)"' in text
     assert 'install --no-cache-dir -r "${NEW_BACKEND_RELEASE}/${RUNTIME_REQUIREMENTS_LOCK_FILE}"' in text
+    assert 'CURRENT_STAGE="resolve_database_url"' in text
+    assert "env -u PYTHONHOME PYTHONPATH='${NEW_BACKEND_RELEASE}' '${NEW_BACKEND_VENV}/bin/python' - <<'PY'" in text
     assert 'run_as_app_user "${NEW_BACKEND_RELEASE}/infra/vm/backup_postgres.sh"' in text
     assert 'run_as_app_user env DATABASE_URL="${DATABASE_URL}" "${NEW_BACKEND_VENV}/bin/alembic"' in text
     assert "render_vm_runtime_assets.py" in text
@@ -116,6 +120,7 @@ def test_vm_deploy_script_uses_vm_runtime_requirements_and_db_backup():
     assert 'systemctl enable nginx' in text
     assert 'VM_CURRENT_BACKEND_RELEASE_LINK' in text
     assert 'VM_CURRENT_BACKEND_VENV_LINK' in text
+    assert "python3 - <<'PY'\nfrom backend.app.config import resolve_database_url" not in text
 
 
 def test_vm_backup_and_restore_scripts_use_pg_dump_and_pg_restore():
@@ -685,6 +690,393 @@ EOF
     assert "18 main" in cluster_state.read_text(encoding="utf-8")
 
 
+def test_deploy_script_defers_application_database_url_resolution_until_release_venv_exists(tmp_path: Path):
+    def _bash_style(path: Path) -> str:
+        value = path.as_posix()
+        if os.name == "nt" and len(value) >= 3 and value[1:3] == ":/":
+            return f"/{value[0].lower()}{value[2:]}"
+        return value
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    runtime_env = tmp_path / "runtime.env"
+    export_root = tmp_path / "export-root"
+    command_log = tmp_path / "command.log"
+    python_sh = sys.executable.replace("\\", "/")
+    release_sha = "1234567890abcdef1234567890abcdef12345678"
+    backend_releases_dir = tmp_path / "backend-releases"
+    backend_venvs_dir = tmp_path / "backend-venvs"
+    frontend_releases_dir = tmp_path / "frontend-releases"
+    frontend_dist_dir = tmp_path / "frontend-dist"
+    release_metadata_file = tmp_path / "current-release.json"
+    tls_cert_path = tmp_path / "tls.crt"
+    tls_key_path = tmp_path / "tls.key"
+    fake_bin_bash = _bash_style(fake_bin)
+    (fake_home / ".bash_profile").write_text(
+        f'export PATH="{fake_bin_bash}:$PATH"\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    (fake_home / ".profile").write_text(
+        f'export PATH="{fake_bin_bash}:$PATH"\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    (export_root / "backend" / "app").mkdir(parents=True)
+    (export_root / "frontend").mkdir(parents=True)
+    (export_root / "infra" / "vm").mkdir(parents=True)
+    (export_root / "tools").mkdir(parents=True)
+    (export_root / "backend" / "requirements.runtime.vm.lock.txt").write_text("", encoding="utf-8", newline="\n")
+    (export_root / "backend" / "app" / "__init__.py").write_text("", encoding="utf-8")
+    (export_root / "backend" / "app" / "config.py").write_text(
+        textwrap.dedent(
+            """\
+            def resolve_database_url(env: dict[str, str]) -> str:
+                return env["DATABASE_URL"]
+            """
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    (export_root / "alembic.ini").write_text("[alembic]\nscript_location = alembic\n", encoding="utf-8", newline="\n")
+    (export_root / "tools" / "render_vm_runtime_assets.py").write_text(
+        textwrap.dedent(
+            """\
+            from pathlib import Path
+            import sys
+
+            Path(sys.argv[2]).write_text(f"{sys.argv[1]}\\n", encoding="utf-8")
+            """
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    backup_script = export_root / "infra" / "vm" / "backup_postgres.sh"
+    backup_script.write_text("#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n", encoding="utf-8", newline="\n")
+    backup_script.chmod(0o755)
+
+    runtime_env.write_text(
+        "\n".join(
+            [
+                "AUTH_PROVIDER=google_oidc",
+                "AUTH_OIDC_CLIENT_ID=test-client-id",
+                "AUTH_ALLOWED_EMAIL_DOMAIN=example.com",
+                "DB_MODE=local_postgres",
+                "DB_NAME=gxp_qlcl",
+                "DB_USER=gxp_app",
+                "DB_PASSWORD=secret",
+                "DB_HOST=127.0.0.1",
+                "DB_PORT=5432",
+                "STORAGE_CLASS=synology_smb",
+                "STORAGE_INSPECTION_ROOT=//synology/inspection",
+                "STORAGE_DKKD_ROOT=//synology/dkkd",
+                "STORAGE_TEMPLATE_ROOT=//synology/templates",
+                "SMB_USERNAME=smb-user",
+                "SMB_PASSWORD=smb-password",
+                f"VM_APP_ROOT={_bash_style(tmp_path)}",
+                "VM_APP_USER=gxp",
+                "VM_APP_GROUP=gxp",
+                "VM_PYTHON_SERIES=3.12",
+                f"VM_PYTHON_BIN={_bash_style(fake_bin / 'vm-python')}",
+                f"VM_SRC_DIR={_bash_style(ROOT)}",
+                f"VM_BACKEND_RELEASES_DIR={_bash_style(backend_releases_dir)}",
+                f"VM_BACKEND_VENV_RELEASES_DIR={_bash_style(backend_venvs_dir)}",
+                f"VM_CURRENT_BACKEND_RELEASE_LINK={_bash_style(tmp_path / 'current-backend')}",
+                f"VM_CURRENT_BACKEND_VENV_LINK={_bash_style(tmp_path / 'current-venv')}",
+                f"VM_FRONTEND_DIST_DIR={_bash_style(frontend_dist_dir)}",
+                f"VM_FRONTEND_RELEASES_DIR={_bash_style(frontend_releases_dir)}",
+                f"VM_RELEASE_METADATA_FILE={_bash_style(release_metadata_file)}",
+                "VM_RELEASE_RETENTION_COUNT=3",
+                "SYSTEMD_SERVICE_NAME=gxp-web",
+                "NGINX_SITE_NAME=gxp-web",
+                "PUBLIC_BASE_URL=https://example.com",
+                f"VM_TLS_CERT_PATH={_bash_style(tls_cert_path)}",
+                f"VM_TLS_KEY_PATH={_bash_style(tls_key_path)}",
+                "VM_TLS_PROVISIONING_MODE=existing_files",
+                "VM_NODE_MAJOR=22",
+                "VM_NODE_MIN_VERSION=22.12.0",
+                "VM_COREPACK_VERSION=0.31.0",
+                "VM_NODE_PACKAGE_MANAGER=pnpm@11.19.0",
+                "VM_NODE_BUILD_OPTIONS=--max-old-space-size=512",
+                "VM_SUPPORTED_POSTGRES_MAJORS=17,18",
+                "VM_SWAP_SIZE_GB=4",
+                "VM_SWAPPINESS=10",
+                "PG_SHARED_BUFFERS_MB=256",
+                "PG_EFFECTIVE_CACHE_SIZE_MB=768",
+                "PG_WORK_MEM_MB=4",
+                "PG_MAINTENANCE_WORK_MEM_MB=64",
+                "PG_AUTOVACUUM_WORK_MEM_MB=64",
+                "PG_MAX_CONNECTIONS=30",
+                "BACKUP_GCS_BUCKET=gs://gxp-backups",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    python3_impl = tmp_path / "python3_impl.py"
+    python3_impl.write_text(
+        textwrap.dedent(
+            f"""\
+            import subprocess
+            import sys
+            from pathlib import Path
+
+            real_python = r"{python_sh}"
+            log_path = Path(r"{command_log.as_posix()}")
+            args = sys.argv[1:]
+            stdin_payload = sys.stdin.read()
+            has_backend_import = "from backend.app.config import resolve_database_url" in stdin_payload
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write(f"system-python args={{args!r}} backend_import={{has_backend_import}}\\n")
+            if has_backend_import:
+                sys.stderr.write("ModuleNotFoundError: No module named 'sqlalchemy'\\n")
+                raise SystemExit(1)
+            completed = subprocess.run([real_python, *args], input=stdin_payload, text=True, capture_output=True, check=False)
+            sys.stdout.write(completed.stdout.replace("\\r\\n", "\\n"))
+            sys.stderr.write(completed.stderr.replace("\\r\\n", "\\n"))
+            raise SystemExit(completed.returncode)
+            """
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    _write_executable(fake_bin / "python3", f"#!/usr/bin/env bash\nexec \"{python_sh}\" \"{python3_impl.as_posix()}\" \"$@\"\n")
+
+    vm_python_impl = tmp_path / "vm_python_impl.py"
+    vm_python_impl.write_text(
+        (
+            "import os\n"
+            "import stat\n"
+            "import sys\n"
+            "from pathlib import Path\n"
+            f'log_path = Path(r"{command_log.as_posix()}")\n'
+            f'real_python = r"{python_sh}"\n'
+            "args = sys.argv[1:]\n"
+            'if args[:2] != ["-m", "venv"] or len(args) != 3:\n'
+            "    raise SystemExit(2)\n"
+            "venv_dir = Path(args[2])\n"
+            'bin_dir = venv_dir / "bin"\n'
+            "bin_dir.mkdir(parents=True, exist_ok=True)\n"
+            'runtime_flag = venv_dir / ".runtime-installed"\n'
+            'python_impl = bin_dir / "python_impl.py"\n'
+            "python_impl.write_text(\n"
+            "    (\n"
+            '        "import os\\n"\n'
+            '        "import sys\\n"\n'
+            '        "from pathlib import Path\\n"\n'
+            f'        \'log_path = Path(r"{command_log.as_posix()}")\\n\'\n'
+            '        "runtime_flag = Path(sys.argv[1])\\n"\n'
+            '        "stdin_payload = sys.stdin.read()\\n"\n'
+            '        "if \\"from backend.app.config import resolve_database_url\\" in stdin_payload:\\n"\n'
+            '        "    with log_path.open(\\"a\\", encoding=\\"utf-8\\") as fh:\\n"\n'
+            '        "        fh.write(\\n"\n'
+            '        "            f\\"venv-python action=resolve cwd={Path.cwd().as_posix()} pythonpath={os.environ.get(\'PYTHONPATH\', \'\')} runtime_ready={runtime_flag.exists()}\\\\n\\"\\n"\n'
+            '        "        )\\n"\n'
+            '        "    if not runtime_flag.exists():\\n"\n'
+            '        "        sys.stderr.write(\\"runtime dependencies missing\\\\n\\")\\n"\n'
+            '        "        raise SystemExit(1)\\n"\n'
+            '        "    sys.stdout.write(\\"postgresql+psycopg://gxp_app:secret@127.0.0.1:5432/gxp_qlcl\\\\n\\")\\n"\n'
+            '        "    raise SystemExit(0)\\n"\n'
+            '        "raise SystemExit(0)\\n"\n'
+            "    ),\n"
+            '    encoding="utf-8",\n'
+            '    newline="\\n",\n'
+            ")\n"
+            'pip_impl = bin_dir / "pip_impl.py"\n'
+            "pip_impl.write_text(\n"
+            "    (\n"
+            '        "import sys\\n"\n'
+            '        "from pathlib import Path\\n"\n'
+            f'        \'log_path = Path(r"{command_log.as_posix()}")\\n\'\n'
+            '        "runtime_flag = Path(sys.argv[1])\\n"\n'
+            '        "args = sys.argv[2:]\\n"\n'
+            '        \'with log_path.open("a", encoding="utf-8") as fh:\\n\'\n'
+            '        \'    fh.write(f"venv-pip args={args!r}\\\\n")\\n\'\n'
+            '        \'if "-r" in args:\\n\'\n'
+            '        \'    runtime_flag.write_text("ready\\\\n", encoding="utf-8")\\n\'\n'
+            '        \'    with log_path.open("a", encoding="utf-8") as fh:\\n\'\n'
+            '        \'        fh.write("venv-pip install-runtime\\\\n")\\n\'\n'
+            '        "raise SystemExit(0)\\n"\n'
+            "    ),\n"
+            '    encoding="utf-8",\n'
+            '    newline="\\n",\n'
+            ")\n"
+            'alembic_impl = bin_dir / "alembic_impl.py"\n'
+            "alembic_impl.write_text(\n"
+            "    (\n"
+            '        "import os\\n"\n'
+            '        "import sys\\n"\n'
+            '        "from pathlib import Path\\n"\n'
+            f'        \'log_path = Path(r"{command_log.as_posix()}")\\n\'\n'
+            '        "with log_path.open(\\"a\\", encoding=\\"utf-8\\") as fh:\\n"\n'
+            '        "    fh.write(f\\"venv-alembic database_url={os.environ.get(\'DATABASE_URL\', \'\')} args={sys.argv[1:]!r}\\\\n\\")\\n"\n'
+            '        "raise SystemExit(0)\\n"\n'
+            "    ),\n"
+            '    encoding="utf-8",\n'
+            '    newline="\\n",\n'
+            ")\n"
+            "wrappers = {\n"
+            "    \"python\": '#!/usr/bin/env bash\\nexec \"' + real_python + '\" \"' + python_impl.as_posix() + '\" \"' + runtime_flag.as_posix() + '\" \"$@\"\\n',\n"
+            "    \"pip\": '#!/usr/bin/env bash\\nexec \"' + real_python + '\" \"' + pip_impl.as_posix() + '\" \"' + runtime_flag.as_posix() + '\" \"$@\"\\n',\n"
+            "    \"alembic\": '#!/usr/bin/env bash\\nexec \"' + real_python + '\" \"' + alembic_impl.as_posix() + '\" \"$@\"\\n',\n"
+            "}\n"
+            "for name, content in wrappers.items():\n"
+            "    wrapper = bin_dir / name\n"
+            '    wrapper.write_text(content, encoding="utf-8", newline="\\n")\n'
+            "    wrapper.chmod(wrapper.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)\n"
+            'with log_path.open("a", encoding="utf-8") as fh:\n'
+            '    fh.write(f"vm-python create-venv path={venv_dir.as_posix()}\\n")\n'
+            "raise SystemExit(0)\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    _write_executable(fake_bin / "vm-python", f"#!/usr/bin/env bash\nexec \"{python_sh}\" \"{vm_python_impl.as_posix()}\" \"$@\"\n")
+    _write_executable(
+        fake_bin / "runuser",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            [[ "$1" == "-u" ]] || exit 2
+            shift 2
+            [[ "$1" == "--" ]] || exit 2
+            shift
+            cmd="$1"
+            shift
+            if [[ "$cmd" == "git" ]]; then
+              exec "{(fake_bin / 'git').as_posix()}" "$@"
+            fi
+            exec "$cmd" "$@"
+            """
+        ),
+    )
+    git_impl = tmp_path / "git_impl.py"
+    git_impl.write_text(
+        textwrap.dedent(
+            f"""\
+            import sys
+            import tarfile
+            from pathlib import Path
+
+            export_root = Path(r"{export_root.as_posix()}")
+            log_path = Path(r"{command_log.as_posix()}")
+            release_sha = "{release_sha}"
+            args = sys.argv[1:]
+            if len(args) >= 2 and args[0] == "-C":
+                args = args[2:]
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write(f"git args={{args!r}}\\n")
+            if args[:2] == ["status", "--porcelain"]:
+                raise SystemExit(0)
+            if args[:2] == ["fetch", "origin"]:
+                raise SystemExit(0)
+            if args[:2] == ["rev-parse", "--verify"]:
+                sys.stdout.write(release_sha + "\\n")
+                raise SystemExit(0)
+            if args[:2] == ["archive", "--format=tar"]:
+                with tarfile.open(fileobj=sys.stdout.buffer, mode="w|") as tar:
+                    for path in sorted(export_root.rglob("*")):
+                        tar.add(path, arcname=path.relative_to(export_root).as_posix(), recursive=False)
+                raise SystemExit(0)
+            raise SystemExit(1)
+            """
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    _write_executable(fake_bin / "git", f"#!/usr/bin/env bash\nexec \"{python_sh}\" \"{git_impl.as_posix()}\" \"$@\"\n")
+    _write_executable(
+        fake_bin / "node",
+        textwrap.dedent(
+            """\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            if [[ "${1:-}" == "-p" && "${2:-}" == "process.versions.node" ]]; then
+              printf '22.12.0\n'
+              exit 0
+            fi
+            cat >/dev/null
+            exit 0
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "pnpm",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf 'pnpm %s\\n' "$*" >> "{command_log.as_posix()}"
+            if [[ "${{1:-}}" == "--version" ]]; then
+              printf '11.19.0\\n'
+              exit 0
+            fi
+            if [[ "${{1:-}}" == "build" ]]; then
+              printf 'frontend build intentionally stopped after DATABASE_URL resolution\\n' >&2
+              exit 42
+            fi
+            exit 0
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "install",
+        textwrap.dedent(
+            """\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            if [[ "${1:-}" == "-d" ]]; then
+              shift
+              while [[ $# -gt 0 ]]; do
+                case "$1" in
+                  -m|-o|-g)
+                    shift 2
+                    ;;
+                  *)
+                    mkdir -p "$1"
+                    shift
+                    ;;
+                esac
+              done
+              exit 0
+            fi
+            exit 0
+            """
+        ),
+    )
+    _write_executable(fake_bin / "systemctl", "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n")
+    _write_executable(fake_bin / "curl", "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n")
+    _write_executable(fake_bin / "nginx", "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n")
+    _write_executable(fake_bin / "pg_dump", "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n")
+    _write_executable(fake_bin / "rsync", "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n")
+    _write_executable(fake_bin / "chown", "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n")
+
+    env = _base_env(fake_bin, runtime_env)
+    env["DEPLOY_PROD_UNSAFE_SKIP_ROOT_CHECK"] = "1"
+    env["HOME"] = _bash_style(fake_home)
+
+    completed = _run_bash(f'PATH="{fake_bin_bash}:$PATH" ./infra/vm/deploy_prod.sh', env=env, cwd=ROOT)
+
+    assert completed.returncode != 0
+    assert "Deploy failed during stage: build_frontend" in completed.stderr
+    assert "ModuleNotFoundError: No module named 'sqlalchemy'" not in (completed.stdout + completed.stderr)
+    log_text = command_log.read_text(encoding="utf-8")
+    assert "system-python args=" in log_text
+    assert "backend_import=True" not in log_text
+    assert "venv-pip install-runtime" in log_text
+    assert "venv-python action=resolve" in log_text
+    expected_release_dir = _bash_style(backend_releases_dir / release_sha)
+    assert f"cwd={expected_release_dir}" in log_text or f"cwd={(backend_releases_dir / release_sha).as_posix()}" in log_text
+    assert f"pythonpath={expected_release_dir}" in log_text or f"pythonpath={(backend_releases_dir / release_sha).as_posix()}" in log_text
+    assert log_text.index("venv-pip install-runtime") < log_text.index("venv-python action=resolve")
+
+
 def test_configure_postgres_is_idempotent_uses_safe_psql_and_keeps_password_secret(tmp_path: Path):
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -744,167 +1136,142 @@ def test_configure_postgres_is_idempotent_uses_safe_psql_and_keeps_password_secr
             """
         ),
     )
-    _write_executable(
-        fake_bin / "createdb",
-        textwrap.dedent(
-            f"""\
-            #!/usr/bin/env python3
-            import json
-            import sys
-            from pathlib import Path
-
-            state_path = Path(r"{state_file.as_posix()}")
-            log_path = Path(r"{command_log.as_posix()}")
-            state = {{"roles": {{}}, "databases": {{}}, "createdb_calls": 0}}
-            if state_path.exists():
-                state.update(json.loads(state_path.read_text(encoding="utf-8")))
-            args = sys.argv[1:]
-            owner = None
-            db_name = None
-            i = 0
-            while i < len(args):
-                if args[i] == "--owner":
-                    owner = args[i + 1]
-                    i += 2
-                    continue
-                db_name = args[i]
-                i += 1
-            if owner not in state["roles"]:
-                sys.stderr.write(f'createdb:\nERROR: role "{{owner}}" does not exist\n')
-                raise SystemExit(1)
-            if db_name is None:
-                raise SystemExit(2)
-            state["createdb_calls"] = int(state.get("createdb_calls", 0)) + 1
-            state["databases"][db_name] = {{"owner": owner}}
-            state_path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
-            with log_path.open("a", encoding="utf-8") as fh:
-                fh.write(f'createdb {{owner}} {{db_name}}\\n')
-            """
+    createdb_impl = tmp_path / "createdb_impl.py"
+    createdb_impl.write_text(
+        (
+            "import json\n"
+            "import sys\n"
+            "from pathlib import Path\n"
+            f'state_path = Path(r"{state_file.as_posix()}")\n'
+            f'log_path = Path(r"{command_log.as_posix()}")\n'
+            'state = {"roles": {}, "databases": {}, "createdb_calls": 0}\n'
+            "if state_path.exists():\n"
+            '    state.update(json.loads(state_path.read_text(encoding="utf-8")))\n'
+            "args = sys.argv[1:]\n"
+            "owner = None\n"
+            "db_name = None\n"
+            "i = 0\n"
+            "while i < len(args):\n"
+            '    if args[i] == "--owner":\n'
+            "        owner = args[i + 1]\n"
+            "        i += 2\n"
+            "        continue\n"
+            "    db_name = args[i]\n"
+            "    i += 1\n"
+            'if owner not in state["roles"]:\n'
+            '    sys.stderr.write(f"createdb:\\nERROR: role \\"{owner}\\" does not exist\\n")\n'
+            "    raise SystemExit(1)\n"
+            "if db_name is None:\n"
+            "    raise SystemExit(2)\n"
+            'state["createdb_calls"] = int(state.get("createdb_calls", 0)) + 1\n'
+            'state["databases"][db_name] = {"owner": owner}\n'
+            'state_path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")\n'
+            'with log_path.open("a", encoding="utf-8") as fh:\n'
+            '    fh.write(f"createdb {owner} {db_name}\\n")\n'
         ),
+        encoding="utf-8",
+        newline="\n",
     )
-    _write_executable(
-        fake_bin / "psql",
-        textwrap.dedent(
-            f"""\
-            #!/usr/bin/env python3
-            import json
-            import os
-            import sys
-            from pathlib import Path
-
-            state_path = Path(r"{state_file.as_posix()}")
-            log_path = Path(r"{command_log.as_posix()}")
-
-            def load_state() -> dict:
-                if state_path.exists():
-                    return json.loads(state_path.read_text(encoding="utf-8"))
-                return {{"roles": {{}}, "databases": {{}}, "createdb_calls": 0}}
-
-            def save_state(state: dict) -> None:
-                state_path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
-
-            def arg_value(args: list[str], option: str) -> str | None:
-                for index, arg in enumerate(args):
-                    if arg == option and index + 1 < len(args):
-                        return args[index + 1]
-                    prefix = option + "="
-                    if arg.startswith(prefix):
-                        return arg[len(prefix):]
-                return None
-
-            def set_values(args: list[str]) -> dict[str, str]:
-                values: dict[str, str] = {{}}
-                for index, arg in enumerate(args):
-                    if arg == "--set" and index + 1 < len(args):
-                        key, _, value = args[index + 1].partition("=")
-                        values[key] = value
-                    elif arg.startswith("--set="):
-                        key, _, value = arg[len("--set="):].partition("=")
-                        values[key] = value
-                return values
-
-            args = sys.argv[1:]
-            stdin_sql = sys.stdin.read()
-            command_sql = ""
-            if "-Atqc" in args:
-                command_sql = args[args.index("-Atqc") + 1]
-            elif "-tc" in args:
-                command_sql = args[args.index("-tc") + 1]
-            elif "-c" in args:
-                command_sql = args[args.index("-c") + 1]
-            sets = set_values(args)
-            on_error_stop = False
-            for index, arg in enumerate(args):
-                if arg == "-v" and index + 1 < len(args) and args[index + 1] == "ON_ERROR_STOP=1":
-                    on_error_stop = True
-            with log_path.open("a", encoding="utf-8") as fh:
-                fh.write(f'psql args={{args!r}} stdin={{stdin_sql!r}} sql={{command_sql!r}}\\n')
-            if not on_error_stop:
-                sys.stderr.write("missing ON_ERROR_STOP\\n")
-                raise SystemExit(1)
-                if "DO $$" in stdin_sql and (":'db_user'" in stdin_sql or ":'db_password'" in stdin_sql):
-                    sys.stderr.write('ERROR: syntax error at or near ":"\\n')
-                    sys.stderr.write("LINE 3:\\n")
-                    sys.stderr.write("IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'db_user')\\n")
-                    raise SystemExit(1)
-                if ":'db_name'" in command_sql or ":'target_db'" in command_sql:
-                    sys.stderr.write('ERROR: syntax error at or near ":"\\n')
-                    sys.stderr.write("LINE 1:\\n")
-                    sys.stderr.write("SELECT 1 FROM pg_database WHERE datname = :'db_name'\\n")
-                    raise SystemExit(1)
-            state = load_state()
-            if os.environ.get("PSQL_FORCE_ROLE_SQL_ERROR") == "1" and "CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L" in stdin_sql:
-                sys.stderr.write("ERROR: synthetic role setup failure\\n")
-                raise SystemExit(1)
-            if "CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L" in stdin_sql:
-                db_user = sets["db_user"]
-                db_password = sets["db_password"]
-                state["roles"].setdefault(db_user, {{}})
-                state["roles"][db_user].update(
-                    {{
-                        "password": db_password,
-                        "login": True,
-                        "superuser": False,
-                        "createdb": False,
-                        "createrole": False,
-                    }}
-                )
-                save_state(state)
-                raise SystemExit(0)
-            if "SELECT 1 FROM pg_database WHERE datname = :'db_name';" in stdin_sql:
-                if sets.get("db_name") in state["databases"]:
-                    sys.stdout.write("1\\n")
-                raise SystemExit(0)
-            if "SELECT 1 FROM pg_database WHERE datname = :'target_db';" in stdin_sql:
-                if sets.get("target_db") in state["databases"]:
-                    sys.stdout.write("1\\n")
-                raise SystemExit(0)
-            if command_sql == "SHOW server_version_num":
-                sys.stdout.write("180005\\n")
-                raise SystemExit(0)
-            if "SELECT current_database() || E'\\\\t' || current_user" in command_sql:
-                db_name = arg_value(args, "--dbname")
-                db_user = arg_value(args, "--username")
-                db_host = arg_value(args, "--host")
-                db_port = arg_value(args, "--port")
-                role = state["roles"].get(db_user)
-                database = state["databases"].get(db_name)
-                if db_host != "127.0.0.1" or db_port != "5432" or role is None or database is None:
-                    raise SystemExit(1)
-                if database["owner"] != db_user or role["password"] != os.environ.get("PGPASSWORD"):
-                    raise SystemExit(1)
-                sys.stdout.write(f"{{db_name}}\\t{{db_user}}\\n")
-                raise SystemExit(0)
-            if "SELECT version_num FROM alembic_version" in command_sql:
-                sys.stdout.write("123\\n")
-                raise SystemExit(0)
-            if "SELECT current_database(), current_user;" in command_sql:
-                sys.stdout.write("ok\\n")
-                raise SystemExit(0)
-            raise SystemExit(0)
-            """
+    _write_executable(fake_bin / "createdb", f"#!/usr/bin/env bash\nexec \"{python_sh}\" \"{createdb_impl.as_posix()}\" \"$@\"\n")
+    psql_impl = tmp_path / "psql_impl.py"
+    psql_impl.write_text(
+        (
+            "import json\n"
+            "import os\n"
+            "import sys\n"
+            "from pathlib import Path\n"
+            f'state_path = Path(r"{state_file.as_posix()}")\n'
+            f'log_path = Path(r"{command_log.as_posix()}")\n'
+            "def load_state() -> dict:\n"
+            "    if state_path.exists():\n"
+            '        return json.loads(state_path.read_text(encoding="utf-8"))\n'
+            '    return {"roles": {}, "databases": {}, "createdb_calls": 0}\n'
+            "def save_state(state: dict) -> None:\n"
+            '    state_path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")\n'
+            "def arg_value(args: list[str], option: str) -> str | None:\n"
+            "    for index, arg in enumerate(args):\n"
+            "        if arg == option and index + 1 < len(args):\n"
+            "            return args[index + 1]\n"
+            '        prefix = option + "="\n'
+            "        if arg.startswith(prefix):\n"
+            "            return arg[len(prefix):]\n"
+            "    return None\n"
+            "def set_values(args: list[str]) -> dict[str, str]:\n"
+            "    values: dict[str, str] = {}\n"
+            "    for index, arg in enumerate(args):\n"
+            '        if arg == "--set" and index + 1 < len(args):\n'
+            '            key, _, value = args[index + 1].partition("=")\n'
+            "            values[key] = value\n"
+            '        elif arg.startswith("--set="):\n'
+            '            key, _, value = arg[len("--set="):].partition("=")\n'
+            "            values[key] = value\n"
+            "    return values\n"
+            "args = sys.argv[1:]\n"
+            "stdin_sql = sys.stdin.read()\n"
+            'command_sql = ""\n'
+            'if "-Atqc" in args:\n'
+            '    command_sql = args[args.index("-Atqc") + 1]\n'
+            'elif "-tc" in args:\n'
+            '    command_sql = args[args.index("-tc") + 1]\n'
+            'elif "-c" in args:\n'
+            '    command_sql = args[args.index("-c") + 1]\n'
+            "sets = set_values(args)\n"
+            "on_error_stop = False\n"
+            "for index, arg in enumerate(args):\n"
+            '    if arg == "-v" and index + 1 < len(args) and args[index + 1] == "ON_ERROR_STOP=1":\n'
+            "        on_error_stop = True\n"
+            'with log_path.open("a", encoding="utf-8") as fh:\n'
+            '    fh.write(f"psql args={args!r} stdin={stdin_sql!r} sql={command_sql!r}\\n")\n'
+            "if not on_error_stop:\n"
+            '    sys.stderr.write("missing ON_ERROR_STOP\\n")\n'
+            "    raise SystemExit(1)\n"
+            "state = load_state()\n"
+            'if os.environ.get("PSQL_FORCE_ROLE_SQL_ERROR") == "1" and "CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L" in stdin_sql:\n'
+            '    sys.stderr.write("ERROR: synthetic role setup failure\\n")\n'
+            "    raise SystemExit(1)\n"
+            'if "CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L" in stdin_sql:\n'
+            '    db_user = sets["db_user"]\n'
+            '    db_password = sets["db_password"]\n'
+            '    state["roles"].setdefault(db_user, {})\n'
+            '    state["roles"][db_user].update({"password": db_password, "login": True, "superuser": False, "createdb": False, "createrole": False})\n'
+            "    save_state(state)\n"
+            "    raise SystemExit(0)\n"
+            'if "SELECT 1 FROM pg_database WHERE datname = :\'db_name\';" in stdin_sql:\n'
+            '    if sets.get("db_name") in state["databases"]:\n'
+            '        sys.stdout.write("1\\n")\n'
+            "    raise SystemExit(0)\n"
+            'if "SELECT 1 FROM pg_database WHERE datname = :\'target_db\';" in stdin_sql:\n'
+            '    if sets.get("target_db") in state["databases"]:\n'
+            '        sys.stdout.write("1\\n")\n'
+            "    raise SystemExit(0)\n"
+            'if command_sql == "SHOW server_version_num":\n'
+            '    sys.stdout.write("180005\\n")\n'
+            "    raise SystemExit(0)\n"
+            'if "SELECT current_database() || E\'\\\\t\' || current_user" in command_sql:\n'
+            '    db_name = arg_value(args, "--dbname")\n'
+            '    db_user = arg_value(args, "--username")\n'
+            '    db_host = arg_value(args, "--host")\n'
+            '    db_port = arg_value(args, "--port")\n'
+            '    role = state["roles"].get(db_user)\n'
+            '    database = state["databases"].get(db_name)\n'
+            '    if db_host != "127.0.0.1" or db_port != "5432" or role is None or database is None:\n'
+            "        raise SystemExit(1)\n"
+            '    if database["owner"] != db_user or role["password"] != os.environ.get("PGPASSWORD"):\n'
+            "        raise SystemExit(1)\n"
+            '    sys.stdout.write(f"{db_name}\\t{db_user}\\n")\n'
+            "    raise SystemExit(0)\n"
+            'if "SELECT version_num FROM alembic_version" in command_sql:\n'
+            '    sys.stdout.write("123\\n")\n'
+            "    raise SystemExit(0)\n"
+            'if "SELECT current_database(), current_user;" in command_sql:\n'
+            '    sys.stdout.write("ok\\n")\n'
+            "    raise SystemExit(0)\n"
+            "raise SystemExit(0)\n"
         ),
+        encoding="utf-8",
+        newline="\n",
     )
+    _write_executable(fake_bin / "psql", f"#!/usr/bin/env bash\nexec \"{python_sh}\" \"{psql_impl.as_posix()}\" \"$@\"\n")
     _write_executable(
         fake_bin / "install",
         textwrap.dedent(

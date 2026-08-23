@@ -61,7 +61,9 @@ cleanup() {
 trap cleanup EXIT
 
 cd "${REPO_ROOT}"
-require_root
+if [[ "${DEPLOY_PROD_UNSAFE_SKIP_ROOT_CHECK:-0}" != "1" ]]; then
+  require_root
+fi
 
 json_query() {
   local expr="$1"
@@ -79,6 +81,21 @@ if isinstance(value, bool):
     print("true" if value else "false")
 else:
     print(value)
+PY
+}
+
+normalize_repo_path() {
+  python3 - "$1" <<'PY'
+from pathlib import PurePosixPath, PureWindowsPath
+import sys
+
+value = sys.argv[1].strip()
+if len(value) >= 3 and value[0] == "/" and value[2] == "/" and value[1].isalpha():
+    value = f"{value[1].upper()}:{value[2:]}"
+if len(value) >= 2 and value[1] == ":":
+    print(PureWindowsPath(value).as_posix().lower())
+else:
+    print(PurePosixPath(value).as_posix().lower())
 PY
 }
 
@@ -176,18 +193,10 @@ VM_TLS_KEY_PATH="$(json_query tls_key_path)"
 GXP_FRONTEND_DIST_ROOT="${GXP_FRONTEND_DIST_ROOT:-${VM_FRONTEND_DIST_DIR}}"
 export GXP_FRONTEND_DIST_ROOT
 
-[[ "${REPO_ROOT}" == "${VM_SRC_DIR}" ]] || fail "deploy_prod.sh must run from VM_SRC_DIR=${VM_SRC_DIR}, but current checkout is ${REPO_ROOT}."
+REPO_ROOT_NORMALIZED="$(normalize_repo_path "${REPO_ROOT}")"
+VM_SRC_DIR_NORMALIZED="$(normalize_repo_path "${VM_SRC_DIR}")"
+[[ "${REPO_ROOT_NORMALIZED}" == "${VM_SRC_DIR_NORMALIZED}" ]] || fail "deploy_prod.sh must run from VM_SRC_DIR=${VM_SRC_DIR}, but current checkout is ${REPO_ROOT}."
 [[ -x "${VM_PYTHON_BIN}" ]] || fail "Supported production Python interpreter not found: ${VM_PYTHON_BIN}"
-
-DATABASE_URL="$(
-  python3 - <<'PY'
-from backend.app.config import resolve_database_url
-import os
-
-print(resolve_database_url(dict(os.environ)))
-PY
-)"
-[[ -n "${DATABASE_URL}" && "${DATABASE_URL}" != sqlite:* ]] || fail "DATABASE_URL must resolve to PostgreSQL before deploy."
 
 CURRENT_STAGE="clean_git_check"
 if [[ -n "$(run_as_app_user git -C "${REPO_ROOT}" status --porcelain)" ]]; then
@@ -253,6 +262,25 @@ CURRENT_STAGE="build_backend_venv"
 run_as_app_user "${VM_PYTHON_BIN}" -m venv "${NEW_BACKEND_VENV}"
 run_as_app_user "${NEW_BACKEND_VENV}/bin/pip" install --upgrade pip
 run_as_app_user "${NEW_BACKEND_VENV}/bin/pip" install --no-cache-dir -r "${NEW_BACKEND_RELEASE}/${RUNTIME_REQUIREMENTS_LOCK_FILE}"
+
+CURRENT_STAGE="resolve_database_url"
+DATABASE_URL="$(
+  run_as_app_bash "
+    cd '${NEW_BACKEND_RELEASE}'
+    env -u PYTHONHOME PYTHONPATH='${NEW_BACKEND_RELEASE}' '${NEW_BACKEND_VENV}/bin/python' - <<'PY'
+from backend.app.config import resolve_database_url
+import os
+
+print(resolve_database_url(dict(os.environ)))
+PY
+  "
+)"
+[[ -n "${DATABASE_URL}" ]] || fail "DATABASE_URL must resolve non-empty before deploy."
+case "${DATABASE_URL}" in
+  postgresql://*|postgresql+*://*) ;;
+  sqlite:*) fail "DATABASE_URL must not resolve to SQLite in production." ;;
+  *) fail "DATABASE_URL must resolve to PostgreSQL before deploy." ;;
+esac
 
 CURRENT_STAGE="build_frontend"
 run_as_app_bash "

@@ -113,12 +113,21 @@ def test_vm_deploy_script_uses_vm_runtime_requirements_and_db_backup():
     assert 'CURRENT_NODE_VERSION="$(node -p \'process.versions.node\')" || fail "Could not determine the active Node.js runtime version."' in text
     assert 'python3 - "${CURRENT_NODE_VERSION}" "${NODE_MIN_VERSION}" <<\'PY\'' in text
     assert 'node - "${NODE_MIN_VERSION}" <<\'PY\'' not in text
+    assert 'CURRENT_PNPM_VERSION="$(COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm --version)" || fail "Could not determine the Corepack-managed pnpm version."' in text
     assert 'CURRENT_STAGE="resolve_database_url"' in text
     assert "env -u PYTHONHOME PYTHONPATH='${NEW_BACKEND_RELEASE}' '${NEW_BACKEND_VENV}/bin/python' - <<'PY'" in text
+    assert 'export COREPACK_ENABLE_DOWNLOAD_PROMPT=0' in text
+    assert 'export PATH=\\"${NEW_BACKEND_VENV}/bin:\\${PATH}\\"' in text
+    assert "export PATH='${NEW_BACKEND_VENV}/bin:\\$PATH'" not in text
+    assert 'command -v node >/dev/null' in text
+    assert 'command -v corepack >/dev/null' in text
+    assert 'command -v pnpm >/dev/null' in text
+    assert 'command -v rsync >/dev/null' in text
+    assert 'corepack pnpm install --frozen-lockfile' in text
+    assert 'corepack pnpm build' in text
     assert 'run_as_app_user "${NEW_BACKEND_RELEASE}/infra/vm/backup_postgres.sh"' in text
     assert 'run_as_app_user env DATABASE_URL="${DATABASE_URL}" "${NEW_BACKEND_VENV}/bin/alembic"' in text
     assert "render_vm_runtime_assets.py" in text
-    assert 'pnpm install --frozen-lockfile' in text
     assert "GXP_FRONTEND_DIST_ROOT" in text
     assert 'systemctl enable "${SYSTEMD_SERVICE_NAME}"' in text
     assert 'systemctl enable nginx' in text
@@ -149,7 +158,10 @@ def test_vm_bootstrap_script_installs_node_gcloud_and_swap_defaults():
     assert "VM_PYTHON_BIN" in text
     assert "VM_NODE_MAJOR" in text
     assert "corepack enable" in text
-    assert 'corepack prepare "${NODE_PACKAGE_MANAGER}" --activate' in text
+    assert 'COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack enable --install-directory "${COREPACK_SHIM_DIR}"' in text
+    assert 'COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack prepare "${NODE_PACKAGE_MANAGER}" --activate' in text
+    assert 'COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm --version' in text
+    assert "verify_app_user_node_toolchain" in text
     assert "google-cloud-cli" in text
     assert "VM_SWAP_SIZE_GB" in text
     assert "VM_SWAPPINESS" in text
@@ -378,7 +390,8 @@ def _run_deploy_node_gate_case(
     tmp_path: Path,
     *,
     node_version: str,
-    pnpm_version: str,
+    corepack_pnpm_version: str,
+    global_pnpm_version: str = "11.22.0",
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     def _bash_style(path: Path) -> str:
         value = path.as_posix()
@@ -609,7 +622,7 @@ def _run_deploy_node_gate_case(
             set -euo pipefail
             printf 'pnpm %s\\n' "$*" >> "{command_log.as_posix()}"
             if [[ "${{1:-}}" == "--version" ]]; then
-              printf '{pnpm_version}\\n'
+              printf '{global_pnpm_version}\\n'
               exit 0
             fi
             exit 0
@@ -622,7 +635,7 @@ def _run_deploy_node_gate_case(
                 "@echo off",
                 f'>> "{command_log.as_posix()}" echo pnpm %*',
                 'if "%~1"=="--version" (',
-                f"  echo {pnpm_version}",
+                f"  echo {global_pnpm_version}",
                 "  exit /b 0",
                 ")",
                 "exit /b 0",
@@ -631,6 +644,22 @@ def _run_deploy_node_gate_case(
         ),
         encoding="utf-8",
         newline="\r\n",
+    )
+    _write_executable(
+        fake_bin / "corepack",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf 'corepack %s prompt=%s\\n' "$*" "${{COREPACK_ENABLE_DOWNLOAD_PROMPT:-}}" >> "{command_log.as_posix()}"
+            if [[ "${{1:-}}" == "pnpm" && "${{2:-}}" == "--version" ]]; then
+              [[ "${{COREPACK_ENABLE_DOWNLOAD_PROMPT:-}}" == "0" ]] || exit 1
+              printf '{corepack_pnpm_version}\\n'
+              exit 0
+            fi
+            exit 0
+            """
+        ),
     )
     for name in ["install", "systemctl", "curl", "nginx", "pg_dump", "rsync", "chown"]:
         _write_executable(
@@ -668,7 +697,7 @@ def _run_deploy_node_gate_case(
 
 
 def test_deploy_script_node_version_gate_accepts_supported_node_and_exact_pnpm(tmp_path: Path):
-    completed, command_log = _run_deploy_node_gate_case(tmp_path, node_version="22.23.2", pnpm_version="11.19.0")
+    completed, command_log = _run_deploy_node_gate_case(tmp_path, node_version="22.23.2", corepack_pnpm_version="11.19.0")
 
     assert completed.returncode != 0
     assert "Deploy failed during stage: build_backend_venv" in completed.stderr
@@ -676,11 +705,11 @@ def test_deploy_script_node_version_gate_accepts_supported_node_and_exact_pnpm(t
     assert "pnpm version mismatch" not in completed.stderr
     log_text = command_log.read_text(encoding="utf-8")
     assert "node -p process.versions.node" in log_text
-    assert "pnpm --version" in log_text
+    assert "corepack pnpm --version prompt=0" in log_text
 
 
 def test_deploy_script_node_version_gate_rejects_old_node_with_clear_error(tmp_path: Path):
-    completed, command_log = _run_deploy_node_gate_case(tmp_path, node_version="22.9.0", pnpm_version="11.19.0")
+    completed, command_log = _run_deploy_node_gate_case(tmp_path, node_version="22.9.0", corepack_pnpm_version="11.19.0")
 
     assert completed.returncode != 0
     assert "Node.js version 22.9.0 is lower than required minimum 22.12.0." in completed.stderr
@@ -688,11 +717,11 @@ def test_deploy_script_node_version_gate_rejects_old_node_with_clear_error(tmp_p
     assert "Deploy failed during stage: node_version_check" in completed.stderr
     assert "pnpm version mismatch" not in completed.stderr
     log_text = command_log.read_text(encoding="utf-8")
-    assert "pnpm --version" not in log_text
+    assert "corepack pnpm --version" not in log_text
 
 
 def test_deploy_script_node_version_gate_rejects_pnpm_version_mismatch(tmp_path: Path):
-    completed, command_log = _run_deploy_node_gate_case(tmp_path, node_version="22.23.2", pnpm_version="11.18.0")
+    completed, command_log = _run_deploy_node_gate_case(tmp_path, node_version="22.23.2", corepack_pnpm_version="11.18.0")
 
     assert completed.returncode != 0
     assert "pnpm version mismatch. Expected 11.19.0, got 11.18.0." in completed.stderr
@@ -700,7 +729,7 @@ def test_deploy_script_node_version_gate_rejects_pnpm_version_mismatch(tmp_path:
     assert "Node.js version check failed." not in completed.stderr
     log_text = command_log.read_text(encoding="utf-8")
     assert "node -p process.versions.node" in log_text
-    assert "pnpm --version" in log_text
+    assert "corepack pnpm --version prompt=0" in log_text
 
 
 def test_bootstrap_script_aborts_in_cloud_shell_before_mutation(tmp_path: Path):
@@ -815,8 +844,19 @@ def test_bootstrap_script_orders_minimal_prereqs_before_repo_setup_on_fresh_host
             f"""\
             #!/usr/bin/env bash
             set -euo pipefail
+            printf 'corepack %s prompt=%s\\n' "$*" "${{COREPACK_ENABLE_DOWNLOAD_PROMPT:-}}" >> "{command_log.as_posix()}"
+            [[ "${{COREPACK_ENABLE_DOWNLOAD_PROMPT:-}}" == "0" ]] || exit 1
             if [[ "${{1:-}}" == "prepare" ]]; then
               printf '1' > "{pnpm_ready.as_posix()}"
+              exit 0
+            fi
+            if [[ "${{1:-}}" == "enable" ]]; then
+              exit 0
+            fi
+            if [[ "${{1:-}}" == "pnpm" && "${{2:-}}" == "--version" ]]; then
+              [[ -f "{pnpm_ready.as_posix()}" ]] || exit 1
+              printf '11.19.0\\n'
+              exit 0
             fi
             exit 0
             """
@@ -829,10 +869,6 @@ def test_bootstrap_script_orders_minimal_prereqs_before_repo_setup_on_fresh_host
             #!/usr/bin/env bash
             set -euo pipefail
             [[ -f "{pnpm_ready.as_posix()}" ]] || exit 1
-            if [[ "${{1:-}}" == "--version" ]]; then
-              printf '11.19.0\n'
-              exit 0
-            fi
             exit 0
             """
         ),
@@ -991,6 +1027,18 @@ EOF
         "useradd": "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
         "id": "#!/usr/bin/env bash\nset -euo pipefail\n[[ \"$1\" == \"-u\" ]] && exit 1\nexit 0\n",
         "chown": "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
+        "runuser": textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf 'runuser %s\\n' "$*" >> "{command_log.as_posix()}"
+            [[ "$1" == "-u" ]] || exit 2
+            shift 2
+            [[ "$1" == "--" ]] || exit 2
+            shift
+            exec "$@"
+            """
+        ),
         "ln": textwrap.dedent(
             """\
             #!/usr/bin/env bash
@@ -1019,6 +1067,10 @@ EOF
     assert expected_install in log_text
     assert log_text.index("apt-get install -y --no-install-recommends ca-certificates coreutils curl gnupg mount procps util-linux") < log_text.index(expected_install)
     assert log_text.index("swapon ") < log_text.index(expected_install)
+    assert "corepack enable --install-directory /usr/local/bin prompt=0" in log_text
+    assert "corepack prepare pnpm@11.19.0 --activate prompt=0" in log_text
+    assert "corepack pnpm --version prompt=0" in log_text
+    assert "runuser -u root -- bash -lc" in log_text
     assert (tmp_path / "swap.active").read_text(encoding="utf-8").strip() == (tmp_path / "swapfile").as_posix()
     assert "18 main" in cluster_state.read_text(encoding="utf-8")
 
@@ -1345,14 +1397,33 @@ def test_deploy_script_defers_application_database_url_resolution_until_release_
             f"""\
             #!/usr/bin/env bash
             set -euo pipefail
-            printf 'pnpm %s\\n' "$*" >> "{command_log.as_posix()}"
+            printf 'pnpm %s path=%s\\n' "$*" "$PATH" >> "{command_log.as_posix()}"
             if [[ "${{1:-}}" == "--version" ]]; then
-              printf '11.19.0\\n'
+              printf '11.22.0\\n'
               exit 0
             fi
             if [[ "${{1:-}}" == "build" ]]; then
               printf 'frontend build intentionally stopped after DATABASE_URL resolution\\n' >&2
               exit 42
+            fi
+            exit 0
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "corepack",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf 'corepack %s prompt=%s path=%s\\n' "$*" "${{COREPACK_ENABLE_DOWNLOAD_PROMPT:-}}" "$PATH" >> "{command_log.as_posix()}"
+            if [[ "${{1:-}}" == "pnpm" && "${{2:-}}" == "--version" ]]; then
+              printf '11.19.0\\n'
+              exit 0
+            fi
+            if [[ "${{1:-}}" == "pnpm" ]]; then
+              shift
+              exec "{(fake_bin / 'pnpm').as_posix()}" "$@"
             fi
             exit 0
             """
@@ -1404,9 +1475,16 @@ def test_deploy_script_defers_application_database_url_resolution_until_release_
     assert "backend_import=True" not in log_text
     assert "venv-pip install-runtime" in log_text
     assert "venv-python action=resolve" in log_text
+    assert "corepack pnpm --version prompt=0" in log_text
+    assert "corepack pnpm install --frozen-lockfile prompt=0" in log_text
+    assert "corepack pnpm build prompt=0" in log_text
+    assert "pnpm build path=" in log_text
     expected_release_dir = _bash_style(backend_releases_dir / release_sha)
     assert f"cwd={expected_release_dir}" in log_text or f"cwd={(backend_releases_dir / release_sha).as_posix()}" in log_text
     assert f"pythonpath={expected_release_dir}" in log_text or f"pythonpath={(backend_releases_dir / release_sha).as_posix()}" in log_text
+    expected_venv_bin = _bash_style(backend_venvs_dir / release_sha / "bin")
+    assert f"path={expected_venv_bin}:" in log_text or f"path={(backend_venvs_dir / release_sha / 'bin').as_posix()}:" in log_text
+    assert fake_bin_bash in log_text or fake_bin.as_posix() in log_text
     assert log_text.index("venv-pip install-runtime") < log_text.index("venv-python action=resolve")
 
 

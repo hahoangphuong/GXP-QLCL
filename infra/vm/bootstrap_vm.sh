@@ -23,6 +23,7 @@ NODE_MAJOR="${VM_NODE_MAJOR:-22}"
 NODE_MIN_VERSION="${VM_NODE_MIN_VERSION:-22.12.0}"
 COREPACK_VERSION="${VM_COREPACK_VERSION:-0.31.0}"
 NODE_PACKAGE_MANAGER="${VM_NODE_PACKAGE_MANAGER:-pnpm@11.19.0}"
+COREPACK_SHIM_DIR="${VM_COREPACK_SHIM_DIR:-/usr/local/bin}"
 VM_SWAP_SIZE_GB="${VM_SWAP_SIZE_GB:-4}"
 VM_SWAPPINESS="${VM_SWAPPINESS:-10}"
 INSTALL_GCLOUD="${INSTALL_GCLOUD:-1}"
@@ -249,6 +250,7 @@ ensure_postgres_cluster_state() {
 }
 
 install_nodejs() {
+  local expected_pnpm_version="${NODE_PACKAGE_MANAGER#pnpm@}"
   if command -v node >/dev/null 2>&1; then
     local current_version
     current_version="$(node -p 'process.versions.node')"
@@ -266,10 +268,10 @@ PY
         npm install -g "corepack@${COREPACK_VERSION}"
       fi
       need_cmd corepack
-      corepack enable
-      corepack prepare "${NODE_PACKAGE_MANAGER}" --activate
+      COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack enable --install-directory "${COREPACK_SHIM_DIR}"
+      COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack prepare "${NODE_PACKAGE_MANAGER}" --activate
       need_cmd pnpm
-      [[ "$(pnpm --version)" == "${NODE_PACKAGE_MANAGER#pnpm@}" ]] || fail "pnpm version mismatch after bootstrap. Expected ${NODE_PACKAGE_MANAGER#pnpm@}."
+      [[ "$(COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm --version)" == "${expected_pnpm_version}" ]] || fail "Corepack-managed pnpm version mismatch after bootstrap. Expected ${expected_pnpm_version}."
       return
     fi
   fi
@@ -297,10 +299,22 @@ required = tuple(int(part) for part in sys.argv[1].split("."))
 if current < required:
     raise SystemExit(1)
 PY
-  corepack enable
-  corepack prepare "${NODE_PACKAGE_MANAGER}" --activate
+  COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack enable --install-directory "${COREPACK_SHIM_DIR}"
+  COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack prepare "${NODE_PACKAGE_MANAGER}" --activate
   need_cmd pnpm
-  [[ "$(pnpm --version)" == "${NODE_PACKAGE_MANAGER#pnpm@}" ]] || fail "pnpm version mismatch after bootstrap. Expected ${NODE_PACKAGE_MANAGER#pnpm@}."
+  [[ "$(COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm --version)" == "${expected_pnpm_version}" ]] || fail "Corepack-managed pnpm version mismatch after bootstrap. Expected ${expected_pnpm_version}."
+}
+
+verify_app_user_node_toolchain() {
+  local expected_pnpm_version="${NODE_PACKAGE_MANAGER#pnpm@}"
+  runuser -u "${GXP_USER}" -- bash -lc "set -euo pipefail
+export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+command -v node >/dev/null || { echo 'Node.js is not available in the app-user login shell.' >&2; exit 1; }
+command -v corepack >/dev/null || { echo 'Corepack is not available in the app-user login shell.' >&2; exit 1; }
+command -v pnpm >/dev/null || { echo 'pnpm is not available in the app-user login shell.' >&2; exit 1; }
+corepack prepare '${NODE_PACKAGE_MANAGER}' --activate
+current_pnpm_version=\"\$(corepack pnpm --version)\"
+[[ \"\${current_pnpm_version}\" == '${expected_pnpm_version}' ]] || { echo \"Corepack-managed pnpm version mismatch for the app user. Expected ${expected_pnpm_version}, got \${current_pnpm_version}.\" >&2; exit 1; }"
 }
 
 install_gcloud() {
@@ -408,5 +422,7 @@ if [[ ! -d "${SRC_DIR}/.git" ]]; then
   echo "Clone repository manually or run:" >&2
   echo "sudo -u ${GXP_USER} git clone https://github.com/hahoangphuong/GXP-QLCL ${SRC_DIR}" >&2
 fi
+
+verify_app_user_node_toolchain
 
 echo "VM bootstrap completed."

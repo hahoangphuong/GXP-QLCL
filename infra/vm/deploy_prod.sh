@@ -162,6 +162,7 @@ need_cmd pg_dump
 need_cmd rsync
 need_cmd node
 need_cmd pnpm
+need_cmd corepack
 
 CURRENT_STAGE="validate_runtime_contract"
 python3 tools/validate_vm_prod_deploy.py >"${PLAN_JSON}" || {
@@ -262,7 +263,7 @@ if current < required:
 print(current_text)
 PY
 )" || fail "Node.js version check failed."
-CURRENT_PNPM_VERSION="$(pnpm --version)"
+CURRENT_PNPM_VERSION="$(COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm --version)" || fail "Could not determine the Corepack-managed pnpm version."
 [[ "${CURRENT_PNPM_VERSION}" == "${NODE_PACKAGE_MANAGER#pnpm@}" ]] || fail "pnpm version mismatch. Expected ${NODE_PACKAGE_MANAGER#pnpm@}, got ${CURRENT_PNPM_VERSION}."
 
 CURRENT_STAGE="build_backend_venv"
@@ -292,10 +293,17 @@ esac
 CURRENT_STAGE="build_frontend"
 run_as_app_bash "
   export NODE_OPTIONS='${NODE_BUILD_OPTIONS}'
-  export PATH='${NEW_BACKEND_VENV}/bin:\$PATH'
+  export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+  export PATH=\"${NEW_BACKEND_VENV}/bin:\${PATH}\"
+  command -v node >/dev/null || { echo 'Node.js is not available in the app-user frontend build shell.' >&2; exit 1; }
+  command -v corepack >/dev/null || { echo 'Corepack is not available in the app-user frontend build shell.' >&2; exit 1; }
+  command -v pnpm >/dev/null || { echo 'pnpm is not available in the app-user frontend build shell.' >&2; exit 1; }
+  command -v rsync >/dev/null || { echo 'rsync is not available in the app-user frontend build shell.' >&2; exit 1; }
+  current_pnpm_version=\"\$(corepack pnpm --version)\"
+  [[ \"\${current_pnpm_version}\" == '${NODE_PACKAGE_MANAGER#pnpm@}' ]] || { echo \"pnpm version mismatch in the app-user frontend build shell. Expected ${NODE_PACKAGE_MANAGER#pnpm@}, got \${current_pnpm_version}.\" >&2; exit 1; }
   cd '${NEW_BACKEND_RELEASE}/frontend'
-  pnpm install --frozen-lockfile
-  pnpm build
+  corepack pnpm install --frozen-lockfile
+  corepack pnpm build
   rsync -a --delete '${NEW_BACKEND_RELEASE}/frontend/dist/' '${FRONTEND_BUILD_DIR}/'
 "
 rsync -a --delete "${FRONTEND_BUILD_DIR}/" "${NEW_FRONTEND_RELEASE}/"

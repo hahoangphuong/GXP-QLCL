@@ -113,7 +113,14 @@ def test_vm_deploy_script_uses_vm_runtime_requirements_and_db_backup():
     assert 'CURRENT_NODE_VERSION="$(node -p \'process.versions.node\')" || fail "Could not determine the active Node.js runtime version."' in text
     assert 'python3 - "${CURRENT_NODE_VERSION}" "${NODE_MIN_VERSION}" <<\'PY\'' in text
     assert 'node - "${NODE_MIN_VERSION}" <<\'PY\'' not in text
-    assert 'CURRENT_PNPM_VERSION="$(COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm --version)" || fail "Could not determine the Corepack-managed pnpm version."' in text
+    assert '[[ -f "${NEW_BACKEND_RELEASE}/frontend/package.json" ]] || fail "Release frontend package manifest missing: ${NEW_BACKEND_RELEASE}/frontend/package.json"' in text
+    assert 'FRONTEND_PACKAGE_MANAGER="$(' in text
+    assert 'python3 - "${NEW_BACKEND_RELEASE}/frontend/package.json" <<\'PY\'' in text
+    assert '[[ "${FRONTEND_PACKAGE_MANAGER}" == "${NODE_PACKAGE_MANAGER}" ]] || fail "frontend/package.json packageManager mismatch. Expected ${NODE_PACKAGE_MANAGER}, got ${FRONTEND_PACKAGE_MANAGER}."' in text
+    assert 'cd "${NEW_BACKEND_RELEASE}/frontend"' in text
+    assert 'COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm --version' in text
+    assert 'fail "Could not determine the Corepack-managed pnpm version in the frontend release directory."' in text
+    assert '[[ "${CURRENT_PNPM_VERSION}" == "${NODE_PACKAGE_MANAGER#pnpm@}" ]] || fail "pnpm version mismatch in frontend release directory. Expected ${NODE_PACKAGE_MANAGER#pnpm@}, got ${CURRENT_PNPM_VERSION}."' in text
     assert 'CURRENT_STAGE="resolve_database_url"' in text
     assert "env -u PYTHONHOME PYTHONPATH='${NEW_BACKEND_RELEASE}' '${NEW_BACKEND_VENV}/bin/python' - <<'PY'" in text
     assert 'export COREPACK_ENABLE_DOWNLOAD_PROMPT=0' in text
@@ -123,6 +130,7 @@ def test_vm_deploy_script_uses_vm_runtime_requirements_and_db_backup():
     assert 'command -v corepack >/dev/null' in text
     assert 'command -v pnpm >/dev/null' in text
     assert 'command -v rsync >/dev/null' in text
+    assert 'cd \'${NEW_BACKEND_RELEASE}/frontend\'' in text
     assert 'corepack pnpm install --frozen-lockfile' in text
     assert 'corepack pnpm build' in text
     assert 'run_as_app_user "${NEW_BACKEND_RELEASE}/infra/vm/backup_postgres.sh"' in text
@@ -390,8 +398,9 @@ def _run_deploy_node_gate_case(
     tmp_path: Path,
     *,
     node_version: str,
-    corepack_pnpm_version: str,
+    frontend_corepack_pnpm_version: str,
     global_pnpm_version: str = "11.22.0",
+    frontend_package_manager: str = "pnpm@11.19.0",
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     def _bash_style(path: Path) -> str:
         value = path.as_posix()
@@ -430,6 +439,11 @@ def _run_deploy_node_gate_case(
     (export_root / "backend").mkdir(parents=True)
     (export_root / "frontend").mkdir(parents=True)
     (export_root / "backend" / "requirements.runtime.vm.lock.txt").write_text("", encoding="utf-8", newline="\n")
+    (export_root / "frontend" / "package.json").write_text(
+        json.dumps({"name": "frontend", "packageManager": frontend_package_manager}) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     tls_cert_path.write_text("cert\n", encoding="utf-8", newline="\n")
     tls_key_path.write_text("key\n", encoding="utf-8", newline="\n")
 
@@ -651,10 +665,14 @@ def _run_deploy_node_gate_case(
             f"""\
             #!/usr/bin/env bash
             set -euo pipefail
-            printf 'corepack %s prompt=%s\\n' "$*" "${{COREPACK_ENABLE_DOWNLOAD_PROMPT:-}}" >> "{command_log.as_posix()}"
+            printf 'corepack %s prompt=%s cwd=%s\\n' "$*" "${{COREPACK_ENABLE_DOWNLOAD_PROMPT:-}}" "$PWD" >> "{command_log.as_posix()}"
             if [[ "${{1:-}}" == "pnpm" && "${{2:-}}" == "--version" ]]; then
               [[ "${{COREPACK_ENABLE_DOWNLOAD_PROMPT:-}}" == "0" ]] || exit 1
-              printf '{corepack_pnpm_version}\\n'
+              if [[ "$PWD" == */frontend ]]; then
+                printf '{frontend_corepack_pnpm_version}\\n'
+              else
+                printf '{global_pnpm_version}\\n'
+              fi
               exit 0
             fi
             exit 0
@@ -697,19 +715,23 @@ def _run_deploy_node_gate_case(
 
 
 def test_deploy_script_node_version_gate_accepts_supported_node_and_exact_pnpm(tmp_path: Path):
-    completed, command_log = _run_deploy_node_gate_case(tmp_path, node_version="22.23.2", corepack_pnpm_version="11.19.0")
+    completed, command_log = _run_deploy_node_gate_case(tmp_path, node_version="22.23.2", frontend_corepack_pnpm_version="11.19.0")
 
     assert completed.returncode != 0
     assert "Deploy failed during stage: build_backend_venv" in completed.stderr
     assert "Node.js version check failed." not in completed.stderr
     assert "pnpm version mismatch" not in completed.stderr
+    assert "packageManager mismatch" not in completed.stderr
     log_text = command_log.read_text(encoding="utf-8")
     assert "node -p process.versions.node" in log_text
     assert "corepack pnpm --version prompt=0" in log_text
+    assert "cwd=" in log_text
+    assert "/frontend" in log_text
+    assert "cwd=" + ROOT.as_posix() not in log_text
 
 
 def test_deploy_script_node_version_gate_rejects_old_node_with_clear_error(tmp_path: Path):
-    completed, command_log = _run_deploy_node_gate_case(tmp_path, node_version="22.9.0", corepack_pnpm_version="11.19.0")
+    completed, command_log = _run_deploy_node_gate_case(tmp_path, node_version="22.9.0", frontend_corepack_pnpm_version="11.19.0")
 
     assert completed.returncode != 0
     assert "Node.js version 22.9.0 is lower than required minimum 22.12.0." in completed.stderr
@@ -721,15 +743,30 @@ def test_deploy_script_node_version_gate_rejects_old_node_with_clear_error(tmp_p
 
 
 def test_deploy_script_node_version_gate_rejects_pnpm_version_mismatch(tmp_path: Path):
-    completed, command_log = _run_deploy_node_gate_case(tmp_path, node_version="22.23.2", corepack_pnpm_version="11.18.0")
+    completed, command_log = _run_deploy_node_gate_case(tmp_path, node_version="22.23.2", frontend_corepack_pnpm_version="11.18.0")
 
     assert completed.returncode != 0
-    assert "pnpm version mismatch. Expected 11.19.0, got 11.18.0." in completed.stderr
+    assert "pnpm version mismatch in frontend release directory. Expected 11.19.0, got 11.18.0." in completed.stderr
     assert "Deploy failed during stage: node_version_check" in completed.stderr
     assert "Node.js version check failed." not in completed.stderr
     log_text = command_log.read_text(encoding="utf-8")
     assert "node -p process.versions.node" in log_text
     assert "corepack pnpm --version prompt=0" in log_text
+
+
+def test_deploy_script_node_version_gate_rejects_frontend_package_manager_mismatch(tmp_path: Path):
+    completed, command_log = _run_deploy_node_gate_case(
+        tmp_path,
+        node_version="22.23.2",
+        frontend_corepack_pnpm_version="11.18.0",
+        frontend_package_manager="pnpm@11.18.0",
+    )
+
+    assert completed.returncode != 0
+    assert "frontend/package.json packageManager mismatch. Expected pnpm@11.19.0, got pnpm@11.18.0." in completed.stderr
+    assert "Deploy failed during stage: node_version_check" in completed.stderr
+    log_text = command_log.read_text(encoding="utf-8")
+    assert "corepack pnpm --version" not in log_text
 
 
 def test_bootstrap_script_aborts_in_cloud_shell_before_mutation(tmp_path: Path):
@@ -1115,6 +1152,11 @@ def test_deploy_script_defers_application_database_url_resolution_until_release_
     (export_root / "infra" / "vm").mkdir(parents=True)
     (export_root / "tools").mkdir(parents=True)
     (export_root / "backend" / "requirements.runtime.vm.lock.txt").write_text("", encoding="utf-8", newline="\n")
+    (export_root / "frontend" / "package.json").write_text(
+        json.dumps({"name": "frontend", "packageManager": "pnpm@11.19.0"}) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     (export_root / "backend" / "app" / "__init__.py").write_text("", encoding="utf-8")
     (export_root / "backend" / "app" / "config.py").write_text(
         textwrap.dedent(

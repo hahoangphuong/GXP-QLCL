@@ -247,6 +247,7 @@ run_as_app_bash "
 "
 
 [[ -f "${NEW_BACKEND_RELEASE}/${RUNTIME_REQUIREMENTS_LOCK_FILE}" ]] || fail "Release lockfile missing: ${NEW_BACKEND_RELEASE}/${RUNTIME_REQUIREMENTS_LOCK_FILE}"
+[[ -f "${NEW_BACKEND_RELEASE}/frontend/package.json" ]] || fail "Release frontend package manifest missing: ${NEW_BACKEND_RELEASE}/frontend/package.json"
 
 CURRENT_STAGE="node_version_check"
 CURRENT_NODE_VERSION="$(node -p 'process.versions.node')" || fail "Could not determine the active Node.js runtime version."
@@ -263,8 +264,29 @@ if current < required:
 print(current_text)
 PY
 )" || fail "Node.js version check failed."
-CURRENT_PNPM_VERSION="$(COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm --version)" || fail "Could not determine the Corepack-managed pnpm version."
-[[ "${CURRENT_PNPM_VERSION}" == "${NODE_PACKAGE_MANAGER#pnpm@}" ]] || fail "pnpm version mismatch. Expected ${NODE_PACKAGE_MANAGER#pnpm@}, got ${CURRENT_PNPM_VERSION}."
+FRONTEND_PACKAGE_MANAGER="$(
+  python3 - "${NEW_BACKEND_RELEASE}/frontend/package.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    payload = json.load(fh)
+package_manager = payload.get("packageManager", "")
+if not isinstance(package_manager, str):
+    raise SystemExit(1)
+print(package_manager)
+PY
+)" || fail "Could not read frontend/package.json packageManager."
+[[ -n "${FRONTEND_PACKAGE_MANAGER}" ]] || fail "frontend/package.json must declare packageManager."
+[[ "${FRONTEND_PACKAGE_MANAGER}" == "${NODE_PACKAGE_MANAGER}" ]] || fail "frontend/package.json packageManager mismatch. Expected ${NODE_PACKAGE_MANAGER}, got ${FRONTEND_PACKAGE_MANAGER}."
+CURRENT_PNPM_VERSION="$(
+  cd "${NEW_BACKEND_RELEASE}/frontend"
+  command -v node >/dev/null || fail "Node.js is not available in the frontend release directory."
+  command -v corepack >/dev/null || fail "Corepack is not available in the frontend release directory."
+  command -v pnpm >/dev/null || fail "pnpm is not available in the frontend release directory."
+  COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack pnpm --version
+)" || fail "Could not determine the Corepack-managed pnpm version in the frontend release directory."
+[[ "${CURRENT_PNPM_VERSION}" == "${NODE_PACKAGE_MANAGER#pnpm@}" ]] || fail "pnpm version mismatch in frontend release directory. Expected ${NODE_PACKAGE_MANAGER#pnpm@}, got ${CURRENT_PNPM_VERSION}."
 
 CURRENT_STAGE="build_backend_venv"
 run_as_app_user "${VM_PYTHON_BIN}" -m venv "${NEW_BACKEND_VENV}"
@@ -295,13 +317,13 @@ run_as_app_bash "
   export NODE_OPTIONS='${NODE_BUILD_OPTIONS}'
   export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
   export PATH=\"${NEW_BACKEND_VENV}/bin:\${PATH}\"
+  cd '${NEW_BACKEND_RELEASE}/frontend'
   command -v node >/dev/null || { echo 'Node.js is not available in the app-user frontend build shell.' >&2; exit 1; }
   command -v corepack >/dev/null || { echo 'Corepack is not available in the app-user frontend build shell.' >&2; exit 1; }
   command -v pnpm >/dev/null || { echo 'pnpm is not available in the app-user frontend build shell.' >&2; exit 1; }
   command -v rsync >/dev/null || { echo 'rsync is not available in the app-user frontend build shell.' >&2; exit 1; }
   current_pnpm_version=\"\$(corepack pnpm --version)\"
   [[ \"\${current_pnpm_version}\" == '${NODE_PACKAGE_MANAGER#pnpm@}' ]] || { echo \"pnpm version mismatch in the app-user frontend build shell. Expected ${NODE_PACKAGE_MANAGER#pnpm@}, got \${current_pnpm_version}.\" >&2; exit 1; }
-  cd '${NEW_BACKEND_RELEASE}/frontend'
   corepack pnpm install --frozen-lockfile
   corepack pnpm build
   rsync -a --delete '${NEW_BACKEND_RELEASE}/frontend/dist/' '${FRONTEND_BUILD_DIR}/'

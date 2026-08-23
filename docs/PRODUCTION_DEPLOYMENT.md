@@ -333,6 +333,9 @@ Current small-VM default tuning baseline:
 - `max_connections=30`
 - supported PostgreSQL majors: `17,18`
 - current production cluster contract: `VM_POSTGRES_MAJOR=18`, `VM_POSTGRES_CLUSTER_NAME=main`
+- role/bootstrap SQL uses `psql` stdin with `ON_ERROR_STOP=1`; do not place `:'psql_variables'` inside `DO $$ ... $$` bodies or rely on `-c` interpolation for database existence checks
+- local administrative creation stays `runuser -u postgres`
+- post-configuration readiness now includes an authenticated `psql` login probe to `127.0.0.1:5432`, not only `pg_isready`
 
 ### Configure Tailscale
 

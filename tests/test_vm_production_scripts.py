@@ -90,6 +90,13 @@ def test_vm_deploy_script_preserves_pre_switch_atomicity_and_post_switch_rollbac
     assert 'ln -sfn "${ORIGINAL_BACKEND_RELEASE_TARGET}" "${VM_CURRENT_BACKEND_RELEASE_LINK}"' in text
     assert 'ln -sfn "${ORIGINAL_BACKEND_VENV_TARGET}" "${VM_CURRENT_BACKEND_VENV_LINK}"' in text
     assert 'ln -sfn "${ORIGINAL_FRONTEND_TARGET}" "${VM_FRONTEND_DIST_DIR}"' in text
+    assert 'RUNTIME_ASSET_STAGING_DIR="$(mktemp -d)"' in text
+    assert 'STAGED_SERVICE_FILE="${RUNTIME_ASSET_STAGING_DIR}/${SYSTEMD_SERVICE_NAME}.service"' in text
+    assert 'STAGED_NGINX_FILE="${RUNTIME_ASSET_STAGING_DIR}/${NGINX_SITE_NAME}.conf"' in text
+    assert 'PREVIOUS_SERVICE_FILE="${RUNTIME_ASSET_STAGING_DIR}/${SYSTEMD_SERVICE_NAME}.previous.service"' in text
+    assert 'PREVIOUS_NGINX_FILE="${RUNTIME_ASSET_STAGING_DIR}/${NGINX_SITE_NAME}.previous.conf"' in text
+    assert 'STAGED_SERVICE_FILE="$(mktemp)"' not in text
+    assert 'STAGED_NGINX_FILE="$(mktemp)"' not in text
     assert 'alembic downgrade' not in text
 
 
@@ -2000,6 +2007,459 @@ def test_deploy_script_prepares_frontend_staging_dir_for_app_user_rsync(tmp_path
     assert "corepack pnpm build prompt=0" in log_text
     assert "rsync src=" in log_text
     assert ".app-copy-succeeded" not in completed.stderr
+
+
+def _run_deploy_render_runtime_assets_case(
+    tmp_path: Path,
+    *,
+    systemd_verify_exit: int,
+) -> tuple[subprocess.CompletedProcess[str], Path]:
+    def _bash_style(path: Path) -> str:
+        value = path.as_posix()
+        if os.name == "nt" and len(value) >= 3 and value[1:3] == ":/":
+            return f"/{value[0].lower()}{value[2:]}"
+        return value
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    runtime_env = tmp_path / "runtime.env"
+    export_root = tmp_path / "export-root"
+    command_log = tmp_path / "command.log"
+    python_sh = sys.executable.replace("\\", "/")
+    release_sha = "00112233445566778899aabbccddeeff00112233"
+    backend_releases_dir = tmp_path / "backend-releases"
+    backend_venvs_dir = tmp_path / "backend-venvs"
+    frontend_releases_dir = tmp_path / "frontend-releases"
+    frontend_dist_dir = tmp_path / "frontend-dist"
+    release_metadata_file = tmp_path / "current-release.json"
+    tls_cert_path = tmp_path / "tls.crt"
+    tls_key_path = tmp_path / "tls.key"
+    mktemp_state_dir = tmp_path / "mktemp-state"
+    mktemp_state_dir.mkdir()
+    fake_bin_bash = _bash_style(fake_bin)
+    (fake_home / ".bash_profile").write_text(
+        f'export PATH="{fake_bin_bash}:$PATH"\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    (fake_home / ".profile").write_text(
+        f'export PATH="{fake_bin_bash}:$PATH"\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    (export_root / "backend" / "app").mkdir(parents=True)
+    (export_root / "frontend").mkdir(parents=True)
+    (export_root / "infra" / "vm").mkdir(parents=True)
+    (export_root / "tools").mkdir(parents=True)
+    (export_root / "backend" / "requirements.runtime.vm.lock.txt").write_text("", encoding="utf-8", newline="\n")
+    (export_root / "frontend" / "package.json").write_text(
+        json.dumps({"name": "frontend", "packageManager": "pnpm@11.19.0"}) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    (export_root / "backend" / "app" / "__init__.py").write_text("", encoding="utf-8")
+    (export_root / "backend" / "app" / "config.py").write_text(
+        textwrap.dedent(
+            """\
+            def resolve_database_url(env: dict[str, str]) -> str:
+                return env["DATABASE_URL"]
+            """
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    (export_root / "alembic.ini").write_text("[alembic]\nscript_location = alembic\n", encoding="utf-8", newline="\n")
+    (export_root / "tools" / "render_vm_runtime_assets.py").write_text(
+        textwrap.dedent(
+            f"""\
+            from pathlib import Path
+            import sys
+
+            log_path = Path(r"{command_log.as_posix()}")
+            log_path.open("a", encoding="utf-8").write(f"render {{sys.argv[1]}} -> {{sys.argv[2]}}\\n")
+            Path(sys.argv[2]).write_text(f"{{sys.argv[1]}}\\n", encoding="utf-8")
+            """
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    backup_script = export_root / "infra" / "vm" / "backup_postgres.sh"
+    backup_script.write_text(
+        f"#!/usr/bin/env bash\nset -euo pipefail\necho backup reached >> \"{command_log.as_posix()}\"\nexit 46\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    backup_script.chmod(0o755)
+    tls_cert_path.write_text("cert\n", encoding="utf-8", newline="\n")
+    tls_key_path.write_text("key\n", encoding="utf-8", newline="\n")
+
+    runtime_env.write_text(
+        "\n".join(
+            [
+                "AUTH_PROVIDER=google_oidc",
+                "AUTH_OIDC_CLIENT_ID=test-client-id",
+                "AUTH_ALLOWED_EMAIL_DOMAIN=example.com",
+                "DB_MODE=local_postgres",
+                "DB_NAME=gxp_qlcl",
+                "DB_USER=gxp_app",
+                "DB_PASSWORD=secret",
+                "DB_HOST=127.0.0.1",
+                "DB_PORT=5432",
+                "DATABASE_URL=postgresql+psycopg://gxp_app:secret@127.0.0.1:5432/gxp_qlcl",
+                "STORAGE_CLASS=synology_smb",
+                "STORAGE_INSPECTION_ROOT=//synology/inspection",
+                "STORAGE_DKKD_ROOT=//synology/dkkd",
+                "STORAGE_TEMPLATE_ROOT=//synology/templates",
+                "SMB_USERNAME=smb-user",
+                "SMB_PASSWORD=smb-password",
+                f"VM_APP_ROOT={_bash_style(tmp_path)}",
+                "VM_APP_USER=gxp",
+                "VM_APP_GROUP=gxp",
+                "VM_PYTHON_SERIES=3.12",
+                f"VM_PYTHON_BIN={_bash_style(fake_bin / 'vm-python')}",
+                f"VM_SRC_DIR={_bash_style(ROOT)}",
+                f"VM_BACKEND_RELEASES_DIR={_bash_style(backend_releases_dir)}",
+                f"VM_BACKEND_VENV_RELEASES_DIR={_bash_style(backend_venvs_dir)}",
+                f"VM_CURRENT_BACKEND_RELEASE_LINK={_bash_style(tmp_path / 'current-backend')}",
+                f"VM_CURRENT_BACKEND_VENV_LINK={_bash_style(tmp_path / 'current-venv')}",
+                f"VM_FRONTEND_DIST_DIR={_bash_style(frontend_dist_dir)}",
+                f"VM_FRONTEND_RELEASES_DIR={_bash_style(frontend_releases_dir)}",
+                f"VM_RELEASE_METADATA_FILE={_bash_style(release_metadata_file)}",
+                "VM_RELEASE_RETENTION_COUNT=3",
+                "SYSTEMD_SERVICE_NAME=gxp-web",
+                "NGINX_SITE_NAME=gxp-web",
+                "PUBLIC_BASE_URL=https://example.com",
+                f"VM_TLS_CERT_PATH={_bash_style(tls_cert_path)}",
+                f"VM_TLS_KEY_PATH={_bash_style(tls_key_path)}",
+                "VM_TLS_PROVISIONING_MODE=existing_files",
+                "VM_NODE_MAJOR=22",
+                "VM_NODE_MIN_VERSION=22.12.0",
+                "VM_COREPACK_VERSION=0.31.0",
+                "VM_NODE_PACKAGE_MANAGER=pnpm@11.19.0",
+                "VM_NODE_BUILD_OPTIONS=--max-old-space-size=512",
+                "VM_SUPPORTED_POSTGRES_MAJORS=17,18",
+                "VM_SWAP_SIZE_GB=4",
+                "VM_SWAPPINESS=10",
+                "PG_SHARED_BUFFERS_MB=256",
+                "PG_EFFECTIVE_CACHE_SIZE_MB=768",
+                "PG_WORK_MEM_MB=4",
+                "PG_MAINTENANCE_WORK_MEM_MB=64",
+                "PG_AUTOVACUUM_WORK_MEM_MB=64",
+                "PG_MAX_CONNECTIONS=30",
+                "BACKUP_GCS_BUCKET=gs://gxp-backups",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    python3_impl = tmp_path / "python3_impl.py"
+    python3_impl.write_text(
+        textwrap.dedent(
+            f"""\
+            import subprocess
+            import sys
+            from pathlib import Path
+
+            real_python = r"{python_sh}"
+            log_path = Path(r"{command_log.as_posix()}")
+            args = sys.argv[1:]
+            stdin_payload = sys.stdin.read()
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write(f"system-python args={{args!r}}\\n")
+            completed = subprocess.run([real_python, *args], input=stdin_payload, text=True, capture_output=True, check=False)
+            sys.stdout.write(completed.stdout.replace("\\r\\n", "\\n"))
+            sys.stderr.write(completed.stderr.replace("\\r\\n", "\\n"))
+            raise SystemExit(completed.returncode)
+            """
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    _write_executable(fake_bin / "python3", f"#!/usr/bin/env bash\nexec \"{python_sh}\" \"{python3_impl.as_posix()}\" \"$@\"\n")
+
+    vm_python_impl = tmp_path / "vm_python_impl.py"
+    vm_python_impl.write_text(
+        (
+            "import os\n"
+            "import stat\n"
+            "import sys\n"
+            "from pathlib import Path\n"
+            f'real_python = r"{python_sh}"\n'
+            f'log_path = Path(r"{command_log.as_posix()}")\n'
+            "args = sys.argv[1:]\n"
+            'if args[:2] != ["-m", "venv"] or len(args) != 3:\n'
+            "    raise SystemExit(2)\n"
+            "venv_dir = Path(args[2])\n"
+            'bin_dir = venv_dir / "bin"\n'
+            "bin_dir.mkdir(parents=True, exist_ok=True)\n"
+            'runtime_flag = venv_dir / ".runtime-installed"\n'
+            'python_impl = bin_dir / "python_impl.py"\n'
+            "python_impl.write_text(\n"
+            "    (\n"
+            '        "import os\\n"\n'
+            '        "import sys\\n"\n'
+            '        "from pathlib import Path\\n"\n'
+            '        "runtime_flag = Path(sys.argv[1])\\n"\n'
+            '        "stdin_payload = sys.stdin.read()\\n"\n'
+            '        "if \\"from backend.app.config import resolve_database_url\\" in stdin_payload:\\n"\n'
+            '        "    if not runtime_flag.exists():\\n"\n'
+            '        "        raise SystemExit(1)\\n"\n'
+            '        "    sys.stdout.write(os.environ[\\"DATABASE_URL\\"] + \\"\\\\n\\")\\n"\n'
+            '        "    raise SystemExit(0)\\n"\n'
+            '        "raise SystemExit(0)\\n"\n'
+            "    ),\n"
+            '    encoding="utf-8",\n'
+            '    newline="\\n",\n'
+            ")\n"
+            'pip_impl = bin_dir / "pip_impl.py"\n'
+            "pip_impl.write_text(\n"
+            "    (\n"
+            '        "import sys\\n"\n'
+            '        "from pathlib import Path\\n"\n'
+            '        "runtime_flag = Path(sys.argv[1])\\n"\n'
+            '        "args = sys.argv[2:]\\n"\n'
+            '        "if \\"-r\\" in args:\\n"\n'
+            '        "    runtime_flag.write_text(\\"ready\\\\n\\", encoding=\\"utf-8\\")\\n"\n'
+            '        "raise SystemExit(0)\\n"\n'
+            "    ),\n"
+            '    encoding="utf-8",\n'
+            '    newline="\\n",\n'
+            ")\n"
+            'alembic_impl = bin_dir / "alembic_impl.py"\n'
+            "alembic_impl.write_text('raise SystemExit(99)\\n', encoding='utf-8', newline='\\n')\n"
+            "wrappers = {\n"
+            "    \"python\": '#!/usr/bin/env bash\\nexec \"' + real_python + '\" \"' + python_impl.as_posix() + '\" \"' + runtime_flag.as_posix() + '\" \"$@\"\\n',\n"
+            "    \"pip\": '#!/usr/bin/env bash\\nexec \"' + real_python + '\" \"' + pip_impl.as_posix() + '\" \"' + runtime_flag.as_posix() + '\" \"$@\"\\n',\n"
+            "    \"alembic\": '#!/usr/bin/env bash\\nexec \"' + real_python + '\" \"' + alembic_impl.as_posix() + '\" \"$@\"\\n',\n"
+            "}\n"
+            "for name, content in wrappers.items():\n"
+            "    wrapper = bin_dir / name\n"
+            '    wrapper.write_text(content, encoding="utf-8", newline="\\n")\n'
+            "    wrapper.chmod(wrapper.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)\n"
+            'with log_path.open("a", encoding="utf-8") as fh:\n'
+            '    fh.write(f"vm-python create-venv path={venv_dir.as_posix()}\\n")\n'
+            "raise SystemExit(0)\n"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    _write_executable(fake_bin / "vm-python", f"#!/usr/bin/env bash\nexec \"{python_sh}\" \"{vm_python_impl.as_posix()}\" \"$@\"\n")
+
+    _write_executable(
+        fake_bin / "runuser",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            [[ "$1" == "-u" ]] || exit 2
+            shift 2
+            [[ "$1" == "--" ]] || exit 2
+            shift
+            cmd="$1"
+            shift
+            if [[ "$cmd" == "git" ]]; then
+              exec "{(fake_bin / 'git').as_posix()}" "$@"
+            fi
+            exec "$cmd" "$@"
+            """
+        ),
+    )
+    git_impl = tmp_path / "git_impl.py"
+    git_impl.write_text(
+        textwrap.dedent(
+            f"""\
+            import sys
+            import tarfile
+            from pathlib import Path
+
+            export_root = Path(r"{export_root.as_posix()}")
+            release_sha = "{release_sha}"
+            args = sys.argv[1:]
+            if len(args) >= 2 and args[0] == "-C":
+                args = args[2:]
+            if args[:2] == ["status", "--porcelain"]:
+                raise SystemExit(0)
+            if args[:2] == ["fetch", "origin"]:
+                raise SystemExit(0)
+            if args[:2] == ["rev-parse", "--verify"]:
+                sys.stdout.write(release_sha + "\\n")
+                raise SystemExit(0)
+            if args[:2] == ["archive", "--format=tar"]:
+                with tarfile.open(fileobj=sys.stdout.buffer, mode="w|") as tar:
+                    for path in sorted(export_root.rglob("*")):
+                        tar.add(path, arcname=path.relative_to(export_root).as_posix(), recursive=False)
+                raise SystemExit(0)
+            raise SystemExit(1)
+            """
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    _write_executable(fake_bin / "git", f"#!/usr/bin/env bash\nexec \"{python_sh}\" \"{git_impl.as_posix()}\" \"$@\"\n")
+    _write_executable(
+        fake_bin / "mktemp",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            state_dir="{mktemp_state_dir.as_posix()}"
+            counter_file="${{state_dir}}/counter"
+            count=0
+            if [[ -f "${{counter_file}}" ]]; then
+              count="$(cat "${{counter_file}}")"
+            fi
+            next=$((count + 1))
+            printf '%s' "${{next}}" > "${{counter_file}}"
+            if [[ "${{1:-}}" == "-d" ]]; then
+              path="${{state_dir}}/tmpdir-${{next}}"
+              mkdir -p "${{path}}"
+              printf 'mktemp -d path=%s\\n' "${{path}}" >> "{command_log.as_posix()}"
+              printf '%s\\n' "${{path}}"
+              exit 0
+            fi
+            path="${{state_dir}}/tmpfile-${{next}}"
+            : > "${{path}}"
+            printf 'mktemp path=%s\\n' "${{path}}" >> "{command_log.as_posix()}"
+            printf '%s\\n' "${{path}}"
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "node",
+        "#!/usr/bin/env bash\nset -euo pipefail\nif [[ \"${1:-}\" == \"-p\" && \"${2:-}\" == \"process.versions.node\" ]]; then printf '22.23.2\\n'; exit 0; fi\ncat >/dev/null\n",
+    )
+    _write_executable(
+        fake_bin / "pnpm",
+        "#!/usr/bin/env bash\nset -euo pipefail\nif [[ \"${1:-}\" == \"--version\" ]]; then printf '11.22.0\\n'; exit 0; fi\nif [[ \"${1:-}\" == \"build\" ]]; then mkdir -p \"$PWD/dist\"; printf 'built\\n' > \"$PWD/dist/index.html\"; exit 0; fi\nexit 0\n",
+    )
+    _write_executable(
+        fake_bin / "corepack",
+        textwrap.dedent(
+            """\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            if [[ "${1:-}" == "pnpm" && "${2:-}" == "--version" ]]; then
+              if [[ "$PWD" == */frontend ]]; then
+                printf '11.19.0\n'
+              else
+                printf '11.22.0\n'
+              fi
+              exit 0
+            fi
+            if [[ "${1:-}" == "pnpm" ]]; then
+              shift
+              exec pnpm "$@"
+            fi
+            exit 0
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "install",
+        textwrap.dedent(
+            """\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            if [[ "${1:-}" == "-d" ]]; then
+              shift
+              while [[ $# -gt 0 ]]; do
+                case "$1" in
+                  -m|-o|-g)
+                    shift 2
+                    ;;
+                  *)
+                    mkdir -p "$1"
+                    shift
+                    ;;
+                esac
+              done
+              exit 0
+            fi
+            exit 0
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "rsync",
+        textwrap.dedent(
+            """\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            src="${@: -2:1}"
+            dest="${@: -1}"
+            src_dir="${src%/}"
+            dest_dir="${dest%/}"
+            mkdir -p "${dest_dir}"
+            if [[ -d "${src_dir}" ]]; then
+              cp -R "${src_dir}/." "${dest_dir}/"
+            fi
+            exit 0
+            """
+        ),
+    )
+    _write_executable(fake_bin / "systemctl", "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n")
+    _write_executable(fake_bin / "curl", "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n")
+    _write_executable(fake_bin / "nginx", "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n")
+    _write_executable(fake_bin / "pg_dump", "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n")
+    _write_executable(fake_bin / "chown", "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n")
+    _write_executable(
+        fake_bin / "systemd-analyze",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf 'systemd-analyze %s\\n' "$*" >> "{command_log.as_posix()}"
+            [[ "${{1:-}}" == "verify" ]] || exit 2
+            target="${{2:-}}"
+            if [[ "${{target}}" != *.service ]]; then
+              printf 'Failed to prepare filename %s: Invalid argument\\n' "${{target}}" >&2
+              exit 1
+            fi
+            if [[ {systemd_verify_exit} -ne 0 ]]; then
+              printf 'synthetic unit validation failure for %s\\n' "${{target}}" >&2
+              exit {systemd_verify_exit}
+            fi
+            exit 0
+            """
+        ),
+    )
+
+    env = _base_env(fake_bin, runtime_env)
+    env["DEPLOY_PROD_UNSAFE_SKIP_ROOT_CHECK"] = "1"
+    env["HOME"] = _bash_style(fake_home)
+
+    completed = _run_bash(f'PATH="{fake_bin_bash}:$PATH" ./infra/vm/deploy_prod.sh', env=env, cwd=ROOT)
+    return completed, command_log
+
+
+def test_deploy_script_render_runtime_assets_uses_service_suffix_and_reaches_backup_on_verify_pass(tmp_path: Path):
+    completed, command_log = _run_deploy_render_runtime_assets_case(tmp_path, systemd_verify_exit=0)
+
+    assert completed.returncode != 0
+    assert "Deploy failed during stage: database_backup" in completed.stderr
+    assert "Failed to prepare filename" not in completed.stderr
+    log_text = command_log.read_text(encoding="utf-8")
+    assert "render service -> " in log_text
+    assert ".service" in log_text
+    assert "render nginx -> " in log_text
+    assert ".conf" in log_text
+    assert "systemd-analyze verify" in log_text
+    assert ".service" in log_text
+    assert "backup reached" in log_text
+
+
+def test_deploy_script_render_runtime_assets_fails_closed_on_systemd_verify_error(tmp_path: Path):
+    completed, command_log = _run_deploy_render_runtime_assets_case(tmp_path, systemd_verify_exit=17)
+
+    assert completed.returncode != 0
+    assert "Deploy failed during stage: render_runtime_assets" in completed.stderr
+    assert "synthetic unit validation failure" in completed.stderr
+    assert "backup reached" not in command_log.read_text(encoding="utf-8")
 
 
 def test_configure_postgres_is_idempotent_uses_safe_psql_and_keeps_password_secret(tmp_path: Path):

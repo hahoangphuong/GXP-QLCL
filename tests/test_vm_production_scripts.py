@@ -143,6 +143,10 @@ def test_vm_bootstrap_script_installs_node_gcloud_and_swap_defaults():
     assert "google-cloud-cli" in text
     assert "VM_SWAP_SIZE_GB" in text
     assert "VM_SWAPPINESS" in text
+    assert "coreutils" in text
+    assert "mount" in text
+    assert "procps" in text
+    assert "util-linux" in text
 
 
 def test_vm_bootstrap_script_uses_explicit_postgres_major_and_guards_cloud_shell():
@@ -172,6 +176,12 @@ def test_vm_bootstrap_script_orders_minimal_prereqs_swap_and_explicit_postgres_f
     assert text.rindex("install_postgresql_packages") < text.rindex("install_nodejs")
     assert text.rindex("install_nodejs") < text.rindex("install_gcloud")
     assert "apt-get install -y --no-install-recommends \"${BOOTSTRAP_MINIMAL_APT_PACKAGES[@]}\"" in text
+    assert "need_cmd swapon" in text
+    assert "need_cmd mkswap" in text
+    assert "need_cmd sysctl" in text
+    assert "need_cmd free" in text
+    assert "need_cmd stat" in text
+    assert "need_cmd fallocate" in text
     assert 'apt-cache show "postgresql-${POSTGRES_MAJOR}"' in text
     assert 'pg_createcluster "${POSTGRES_MAJOR}" "${POSTGRES_CLUSTER_NAME}"' in text
 
@@ -313,7 +323,7 @@ def test_bootstrap_script_aborts_in_cloud_shell_before_mutation(tmp_path: Path):
     (tmp_path / "os-release").write_text("ID=ubuntu\nVERSION_CODENAME=noble\n", encoding="utf-8", newline="\n")
 
     _write_executable(fake_bin / "python3", f"#!/usr/bin/env bash\n\"{python_sh}\" \"$@\"\n")
-    for name in ["apt-get", "apt-cache", "install", "groupadd", "useradd", "swapon", "mkswap", "sysctl", "ln", "chown"]:
+    for name in ["apt-get", "apt-cache", "install", "groupadd", "useradd", "ln", "chown"]:
         _write_executable(
             fake_bin / name,
             textwrap.dedent(
@@ -453,6 +463,64 @@ def test_bootstrap_script_orders_minimal_prereqs_before_repo_setup_on_fresh_host
             fi
             for arg in "$@"; do
               case "$arg" in
+                mount)
+                  cat > "{(fake_bin / 'swapon').as_posix()}" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'swapon %s\n' "$*" >> "__COMMAND_LOG__"
+if [[ "${1:-}" == "--show=NAME" || "${1:-}" == "--show" ]]; then
+  [[ -f "__SWAP_ACTIVE__" ]] && cat "__SWAP_ACTIVE__"
+  exit 0
+fi
+printf '%s\n' "$1" > "__SWAP_ACTIVE__"
+exit 0
+EOF
+                  sed -i "s|__COMMAND_LOG__|{command_log.as_posix()}|g; s|__SWAP_ACTIVE__|{(tmp_path / 'swap.active').as_posix()}|g" "{(fake_bin / 'swapon').as_posix()}"
+                  chmod +x "{(fake_bin / 'swapon').as_posix()}"
+                  ;;
+                util-linux)
+                  cat > "{(fake_bin / 'mkswap').as_posix()}" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'mkswap %s\n' "$*" >> "__COMMAND_LOG__"
+exit 0
+EOF
+                  cat > "{(fake_bin / 'fallocate').as_posix()}" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+: > "${{@: -1}}"
+EOF
+                  sed -i "s|__COMMAND_LOG__|{command_log.as_posix()}|g" "{(fake_bin / 'mkswap').as_posix()}"
+                  chmod +x "{(fake_bin / 'mkswap').as_posix()}" "{(fake_bin / 'fallocate').as_posix()}"
+                  ;;
+                procps)
+                  cat > "{(fake_bin / 'sysctl').as_posix()}" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'sysctl %s\n' "$*" >> "__COMMAND_LOG__"
+exit 0
+EOF
+                  cat > "{(fake_bin / 'free').as_posix()}" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'Mem: 2G 1G 1G\n'
+EOF
+                  sed -i "s|__COMMAND_LOG__|{command_log.as_posix()}|g" "{(fake_bin / 'sysctl').as_posix()}"
+                  chmod +x "{(fake_bin / 'sysctl').as_posix()}" "{(fake_bin / 'free').as_posix()}"
+                  ;;
+                coreutils)
+                  cat > "{(fake_bin / 'stat').as_posix()}" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "-c" && "${2:-}" == "%s" ]]; then
+  wc -c < "$3" | tr -d '[:space:]'
+  printf '\n'
+  exit 0
+fi
+exit 1
+EOF
+                  chmod +x "{(fake_bin / 'stat').as_posix()}"
+                  ;;
                 postgresql-18)
                   ;;
                 nodejs)
@@ -526,37 +594,6 @@ def test_bootstrap_script_orders_minimal_prereqs_before_repo_setup_on_fresh_host
         ),
     )
     for name, body in {
-            "swapon": textwrap.dedent(
-                f"""\
-                #!/usr/bin/env bash
-                set -euo pipefail
-                printf 'swapon %s\\n' "$*" >> "{command_log.as_posix()}"
-                if [[ "${{1:-}}" == "--show=NAME" || "${{1:-}}" == "--show" ]]; then
-                  [[ -f "{(tmp_path / 'swap.active').as_posix()}" ]] && cat "{(tmp_path / 'swap.active').as_posix()}"
-                  exit 0
-                fi
-            printf '%s\n' "$1" > "{(tmp_path / 'swap.active').as_posix()}"
-            exit 0
-            """
-        ),
-        "mkswap": textwrap.dedent(
-            f"""\
-            #!/usr/bin/env bash
-            set -euo pipefail
-            printf 'mkswap %s\\n' "$*" >> "{command_log.as_posix()}"
-            exit 0
-            """
-        ),
-        "sysctl": textwrap.dedent(
-            f"""\
-            #!/usr/bin/env bash
-            set -euo pipefail
-            printf 'sysctl %s\\n' "$*" >> "{command_log.as_posix()}"
-            exit 0
-            """
-        ),
-        "free": "#!/usr/bin/env bash\nset -euo pipefail\nprintf 'Mem: 2G 1G 1G\\n'\n",
-        "fallocate": "#!/usr/bin/env bash\nset -euo pipefail\n: > \"${@: -1}\"\n",
         "dd": "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
         "chmod": "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
         "getent": "#!/usr/bin/env bash\nset -euo pipefail\nexit 2\n",
@@ -586,11 +623,11 @@ def test_bootstrap_script_orders_minimal_prereqs_before_repo_setup_on_fresh_host
     assert completed.returncode == 0, completed.stderr or completed.stdout
     log_text = command_log.read_text(encoding="utf-8")
     assert "apt-get update" in log_text
-    assert "apt-get install -y --no-install-recommends ca-certificates curl gnupg" in log_text
+    assert "apt-get install -y --no-install-recommends ca-certificates coreutils curl gnupg mount procps util-linux" in log_text
     assert "apt-cache show postgresql-18" in log_text
-    expected_install = f"apt-get install -y --no-install-recommends git nginx procps python{python_series} python{python_series}-venv python3-pip rsync sudo postgresql-18 postgresql-client-18"
+    expected_install = f"apt-get install -y --no-install-recommends git nginx python{python_series} python{python_series}-venv python3-pip rsync sudo postgresql-18 postgresql-client-18"
     assert expected_install in log_text
-    assert log_text.index("apt-get install -y --no-install-recommends ca-certificates curl gnupg") < log_text.index(expected_install)
+    assert log_text.index("apt-get install -y --no-install-recommends ca-certificates coreutils curl gnupg mount procps util-linux") < log_text.index(expected_install)
     assert log_text.index("swapon ") < log_text.index(expected_install)
     assert (tmp_path / "swap.active").read_text(encoding="utf-8").strip() == (tmp_path / "swapfile").as_posix()
     assert "18 main" in cluster_state.read_text(encoding="utf-8")

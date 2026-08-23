@@ -8,8 +8,13 @@ source "${SCRIPT_DIR}/common.sh"
 
 PLAN_JSON="$(mktemp)"
 FRONTEND_BUILD_DIR="$(mktemp -d)"
+STAGED_SERVICE_FILE="$(mktemp)"
+STAGED_NGINX_FILE="$(mktemp)"
+PREVIOUS_SERVICE_FILE="$(mktemp)"
+PREVIOUS_NGINX_FILE="$(mktemp)"
 SUCCESS=0
 SWITCHED_RELEASES=0
+SWITCHED_CONFIG=0
 CURRENT_STAGE="bootstrap"
 NEW_SHA=""
 NEW_BACKEND_RELEASE=""
@@ -20,6 +25,16 @@ ORIGINAL_BACKEND_RELEASE_TARGET=""
 ORIGINAL_BACKEND_VENV_TARGET=""
 
 cleanup() {
+  if [[ "${SUCCESS}" != "1" && "${SWITCHED_CONFIG}" == "1" ]]; then
+    if [[ -s "${PREVIOUS_SERVICE_FILE}" ]]; then
+      cp "${PREVIOUS_SERVICE_FILE}" "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service" || true
+    fi
+    if [[ -s "${PREVIOUS_NGINX_FILE}" ]]; then
+      cp "${PREVIOUS_NGINX_FILE}" "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf" || true
+      ln -sfn "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf" "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}.conf" || true
+    fi
+    systemctl daemon-reload >/dev/null 2>&1 || true
+  fi
   if [[ "${SUCCESS}" != "1" && "${SWITCHED_RELEASES}" == "1" ]]; then
     if [[ -n "${ORIGINAL_FRONTEND_TARGET}" ]]; then
       ln -sfn "${ORIGINAL_FRONTEND_TARGET}" "${VM_FRONTEND_DIST_DIR}" || true
@@ -37,6 +52,7 @@ cleanup() {
     systemctl restart nginx >/dev/null 2>&1 || true
   fi
   rm -f "${PLAN_JSON}"
+  rm -f "${STAGED_SERVICE_FILE}" "${STAGED_NGINX_FILE}" "${PREVIOUS_SERVICE_FILE}" "${PREVIOUS_NGINX_FILE}"
   rm -rf "${FRONTEND_BUILD_DIR}"
   if [[ "${SUCCESS}" != "1" ]]; then
     echo "Deploy failed during stage: ${CURRENT_STAGE}" >&2
@@ -252,14 +268,11 @@ chown -R "${VM_APP_USER}:${VM_APP_GROUP}" "${NEW_FRONTEND_RELEASE}"
 
 CURRENT_STAGE="render_runtime_assets"
 assert_tls_files_exist
-python3 "${NEW_BACKEND_RELEASE}/tools/render_vm_runtime_assets.py" service "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service"
-python3 "${NEW_BACKEND_RELEASE}/tools/render_vm_runtime_assets.py" nginx "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf"
-ln -sfn "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf" "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}.conf"
-rm -f /etc/nginx/sites-enabled/default
-systemctl daemon-reload
-systemctl enable "${SYSTEMD_SERVICE_NAME}" >/dev/null
-systemctl enable nginx >/dev/null
-nginx -t
+python3 "${NEW_BACKEND_RELEASE}/tools/render_vm_runtime_assets.py" service "${STAGED_SERVICE_FILE}"
+python3 "${NEW_BACKEND_RELEASE}/tools/render_vm_runtime_assets.py" nginx "${STAGED_NGINX_FILE}"
+if command -v systemd-analyze >/dev/null 2>&1; then
+  systemd-analyze verify "${STAGED_SERVICE_FILE}" >/dev/null
+fi
 
 CURRENT_STAGE="database_backup"
 run_as_app_user "${NEW_BACKEND_RELEASE}/infra/vm/backup_postgres.sh"
@@ -268,15 +281,38 @@ CURRENT_STAGE="alembic_upgrade"
 run_as_app_user env DATABASE_URL="${DATABASE_URL}" "${NEW_BACKEND_VENV}/bin/alembic" -c "${NEW_BACKEND_RELEASE}/alembic.ini" upgrade head
 
 CURRENT_STAGE="switch_release_symlinks"
+if [[ -f "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service" ]]; then
+  cp "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service" "${PREVIOUS_SERVICE_FILE}"
+fi
+if [[ -f "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf" ]]; then
+  cp "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf" "${PREVIOUS_NGINX_FILE}"
+fi
+cp "${STAGED_SERVICE_FILE}" "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service"
+cp "${STAGED_NGINX_FILE}" "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf"
+ln -sfn "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf" "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}.conf"
+rm -f /etc/nginx/sites-enabled/default
+systemctl daemon-reload
+systemctl enable "${SYSTEMD_SERVICE_NAME}" >/dev/null
+systemctl enable nginx >/dev/null
+nginx -t
+SWITCHED_CONFIG=1
 ln -sfn "${NEW_FRONTEND_RELEASE}" "${VM_FRONTEND_DIST_DIR}"
 ln -sfn "${NEW_BACKEND_RELEASE}" "${VM_CURRENT_BACKEND_RELEASE_LINK}"
 ln -sfn "${NEW_BACKEND_VENV}" "${VM_CURRENT_BACKEND_VENV_LINK}"
 chown -h "${VM_APP_USER}:${VM_APP_GROUP}" "${VM_FRONTEND_DIST_DIR}" "${VM_CURRENT_BACKEND_RELEASE_LINK}" "${VM_CURRENT_BACKEND_VENV_LINK}"
 SWITCHED_RELEASES=1
 
+CURRENT_STAGE="restart_services"
+systemctl restart "${SYSTEMD_SERVICE_NAME}"
+systemctl restart nginx
+
+CURRENT_STAGE="post_switch_health"
+curl -fsS "http://127.0.0.1:${APP_PORT}/healthz" >/dev/null
+curl -fsS "http://127.0.0.1:${APP_PORT}/readyz" >/dev/null
+
 CURRENT_STAGE="write_release_metadata"
 install -d -m 0755 "$(dirname "${VM_RELEASE_METADATA_FILE}")"
-python3 - "${VM_RELEASE_METADATA_FILE}" "${NEW_SHA}" "${NEW_BACKEND_RELEASE}" "${NEW_BACKEND_VENV}" "${NEW_FRONTEND_RELEASE}" <<'PY'
+python3 - "${VM_RELEASE_METADATA_FILE}.tmp" "${NEW_SHA}" "${NEW_BACKEND_RELEASE}" "${NEW_BACKEND_VENV}" "${NEW_FRONTEND_RELEASE}" <<'PY'
 import json
 import sys
 
@@ -289,14 +325,7 @@ payload = {
 with open(sys.argv[1], "w", encoding="utf-8") as fh:
     json.dump(payload, fh, ensure_ascii=True, indent=2)
 PY
-
-CURRENT_STAGE="restart_services"
-systemctl restart "${SYSTEMD_SERVICE_NAME}"
-systemctl restart nginx
-
-CURRENT_STAGE="post_switch_health"
-curl -fsS "http://127.0.0.1:${APP_PORT}/healthz" >/dev/null
-curl -fsS "http://127.0.0.1:${APP_PORT}/readyz" >/dev/null
+mv "${VM_RELEASE_METADATA_FILE}.tmp" "${VM_RELEASE_METADATA_FILE}"
 
 CURRENT_STAGE="cleanup_transient_build_artifacts"
 run_as_app_bash "

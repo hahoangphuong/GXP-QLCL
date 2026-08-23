@@ -197,14 +197,15 @@ Current template:
 7. build a staged backend venv from `backend/requirements.runtime.vm.lock.txt`
 8. build frontend with pinned `pnpm`
 9. stage frontend dist into a per-release directory
-10. render systemd/Nginx assets and verify TLS files exist
+10. verify TLS files exist and render staged systemd/Nginx assets into temporary files
 11. run PostgreSQL backup
 12. run `alembic upgrade head` from the staged venv
-13. switch backend/frontend symlinks atomically enough for the service restart
-14. record successful release metadata
+13. install active systemd/Nginx config from staged files and preserve previous active config for rollback
+14. switch backend/frontend symlinks atomically enough for the service restart
 15. restart backend and Nginx
 16. verify `/healthz` and `/readyz`
-17. prune old staged releases with bounded retention
+17. record successful release metadata only after the new release is healthy
+18. prune old staged releases with bounded retention
 
 If the working tree is dirty:
 
@@ -224,8 +225,10 @@ new staged backend/frontend artifacts remain offline
 If deploy fails after the symlink switch or health checks fail:
 
 ```text
+prior systemd/Nginx config is restored
 prior backend/frontend symlinks are restored
 services are restarted against the previous known-good release
+release metadata stays on the previous known-good release
 database migrations are not automatically downgraded
 ```
 

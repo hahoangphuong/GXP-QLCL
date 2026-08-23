@@ -164,15 +164,27 @@ Supported provisioning paths:
 Do not use self-signed certificates for production.
 Do not add a load balancer solely for TLS.
 
-12. Migrate Cloud SQL -> local PostgreSQL if needed
+12. Migrate legacy Cloud SQL -> local PostgreSQL only if that source data still matters
+
+If the old Cloud SQL environment has no business data worth retaining, initialize local PostgreSQL fresh and skip this step.
+
+Never invent the source project or instance. Set them explicitly:
 
 ```bash
-gcloud sql export sql gxp-db gs://gxp-qlcl-vm-postgres-backup/cloudsql-export.sql.gz \
-  --project=gxp-qlcl-vm \
+SOURCE_CLOUD_SQL_PROJECT='<old-source-project>'
+SOURCE_CLOUD_SQL_INSTANCE='<old-source-instance>'
+DEST_BACKUP_BUCKET='gs://gxp-qlcl-vm-postgres-backup'
+
+gcloud sql export sql "${SOURCE_CLOUD_SQL_INSTANCE}" "${DEST_BACKUP_BUCKET}/cloudsql-export.sql.gz" \
+  --project="${SOURCE_CLOUD_SQL_PROJECT}" \
   --database=gxp_qlcl
 
 gunzip -c cloudsql-export.sql.gz | psql "postgresql://gxp_app:YOUR_PASSWORD@127.0.0.1:5432/gxp_qlcl"
 ```
+
+Cross-project note:
+- if the Cloud SQL export runs from an older Google Cloud project into the current bucket `gs://gxp-qlcl-vm-postgres-backup`, grant the source Cloud SQL service agent permission to write into that destination bucket
+- do not assume the source Cloud SQL instance exists in `gxp-qlcl-vm`
 
 13. Deploy app from Git
 

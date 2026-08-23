@@ -36,7 +36,7 @@ export function loadOidcSession(): OidcSession | null {
   if (typeof window === "undefined") {
     return null;
   }
-  const raw = window.localStorage.getItem(OIDC_STORAGE_KEY);
+  const raw = window.sessionStorage.getItem(OIDC_STORAGE_KEY);
   if (!raw) {
     return null;
   }
@@ -61,12 +61,12 @@ export function saveOidcSession(value: OidcSession): void {
   if (typeof window === "undefined") {
     return;
   }
-  window.localStorage.setItem(OIDC_STORAGE_KEY, JSON.stringify(value));
+  window.sessionStorage.setItem(OIDC_STORAGE_KEY, JSON.stringify(value));
 }
 
 export function clearOidcSession(): void {
   if (typeof window === "undefined") {
     return;
   }
-  window.localStorage.removeItem(OIDC_STORAGE_KEY);
+  window.sessionStorage.removeItem(OIDC_STORAGE_KEY);
 }

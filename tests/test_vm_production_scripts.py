@@ -27,6 +27,33 @@ def test_vm_scripts_exist():
         assert path.exists(), path.as_posix()
 
 
+def test_vm_shell_scripts_are_tracked_as_executable_in_git():
+    expected_modes = {
+        "infra/vm/bootstrap_vm.sh": "100755",
+        "infra/vm/configure_postgres.sh": "100755",
+        "infra/vm/configure_tailscale.sh": "100755",
+        "infra/vm/deploy_prod.sh": "100755",
+        "infra/vm/backup_postgres.sh": "100755",
+        "infra/vm/restore_postgres.sh": "100755",
+        "infra/vm/verify_prod.sh": "100755",
+        "infra/vm/common.sh": "100644",
+    }
+    completed = subprocess.run(
+        ["git", "ls-files", "--stage", "infra/vm"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    modes_by_path: dict[str, str] = {}
+    for line in completed.stdout.splitlines():
+        mode, _blob, _stage, path = line.split(maxsplit=3)
+        modes_by_path[path] = mode
+
+    for path, expected_mode in expected_modes.items():
+        assert modes_by_path.get(path) == expected_mode, f"{path}: expected {expected_mode}, got {modes_by_path.get(path)}"
+
+
 def test_vm_deploy_script_enforces_clean_git_and_fast_forward_flow():
     text = (ROOT / "infra" / "vm" / "deploy_prod.sh").read_text(encoding="utf-8")
 
@@ -39,6 +66,39 @@ def test_vm_deploy_script_enforces_clean_git_and_fast_forward_flow():
     assert 'SUCCESS=0' in text
     assert 'trap cleanup EXIT' in text
     assert 'SWITCHED_RELEASES=0' in text
+
+
+def test_vm_deploy_script_preserves_pre_switch_atomicity_and_post_switch_rollback_contract():
+    text = (ROOT / "infra" / "vm" / "deploy_prod.sh").read_text(encoding="utf-8")
+
+    assert text.index('CURRENT_STAGE="render_runtime_assets"') < text.index('CURRENT_STAGE="database_backup"')
+    assert text.index('CURRENT_STAGE="database_backup"') < text.index('CURRENT_STAGE="alembic_upgrade"')
+    assert text.index('CURRENT_STAGE="alembic_upgrade"') < text.index('CURRENT_STAGE="switch_release_symlinks"')
+    assert text.index('CURRENT_STAGE="switch_release_symlinks"') < text.index('CURRENT_STAGE="restart_services"')
+    assert text.index('CURRENT_STAGE="restart_services"') < text.index('CURRENT_STAGE="post_switch_health"')
+    assert text.index('CURRENT_STAGE="post_switch_health"') < text.index('CURRENT_STAGE="write_release_metadata"')
+    assert text.index('CURRENT_STAGE="write_release_metadata"') < text.index('CURRENT_STAGE="retention"')
+    assert 'cp "${STAGED_SERVICE_FILE}" "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service"' in text
+    assert 'cp "${STAGED_NGINX_FILE}" "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf"' in text
+    assert 'if [[ "${SUCCESS}" != "1" && "${SWITCHED_CONFIG}" == "1" ]]; then' in text
+    assert 'if [[ -s "${PREVIOUS_SERVICE_FILE}" ]]; then' in text
+    assert 'if [[ -s "${PREVIOUS_NGINX_FILE}" ]]; then' in text
+    assert 'if [[ "${SUCCESS}" != "1" && "${SWITCHED_RELEASES}" == "1" ]]; then' in text
+    assert 'ln -sfn "${ORIGINAL_BACKEND_RELEASE_TARGET}" "${VM_CURRENT_BACKEND_RELEASE_LINK}"' in text
+    assert 'ln -sfn "${ORIGINAL_BACKEND_VENV_TARGET}" "${VM_CURRENT_BACKEND_VENV_LINK}"' in text
+    assert 'ln -sfn "${ORIGINAL_FRONTEND_TARGET}" "${VM_FRONTEND_DIST_DIR}"' in text
+    assert 'alembic downgrade' not in text
+
+
+def test_vm_deploy_script_writes_release_metadata_only_after_health_passes():
+    text = (ROOT / "infra" / "vm" / "deploy_prod.sh").read_text(encoding="utf-8")
+
+    metadata_section = text[text.index('CURRENT_STAGE="write_release_metadata"') :]
+    assert 'curl -fsS "http://127.0.0.1:${APP_PORT}/healthz"' in text
+    assert 'curl -fsS "http://127.0.0.1:${APP_PORT}/readyz"' in text
+    assert 'CURRENT_STAGE="post_switch_health"' in text
+    assert 'CURRENT_STAGE="write_release_metadata"' in text
+    assert 'mv "${VM_RELEASE_METADATA_FILE}.tmp" "${VM_RELEASE_METADATA_FILE}"' in metadata_section
 
 
 def test_vm_deploy_script_uses_vm_runtime_requirements_and_db_backup():
@@ -257,7 +317,7 @@ def test_restore_script_requires_nonproduction_target_and_checksum(tmp_path: Pat
     dump_file = tmp_path / "gxp.dump"
     dump_file.write_text("payload", encoding="utf-8")
     checksum = hashlib.sha256(dump_file.read_bytes()).hexdigest()
-    (tmp_path / "gxp.dump.sha256").write_text(f"{checksum}  gxp.dump\n", encoding="utf-8")
+    (tmp_path / "gxp.dump.sha256").write_text(f"{checksum}  gxp.dump\n", encoding="utf-8", newline="\n")
     python_sh = sys.executable.replace("\\", "/")
 
     runtime_env.write_text(
@@ -289,6 +349,98 @@ def test_restore_script_requires_nonproduction_target_and_checksum(tmp_path: Pat
 
     assert completed.returncode != 0
     assert "must not default to the production database name" in (completed.stderr or completed.stdout)
+
+
+def test_restore_script_creates_missing_restore_db_via_privileged_admin_path(tmp_path: Path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    runtime_env = tmp_path / "runtime.env"
+    dump_file = tmp_path / "gxp.dump"
+    dump_file.write_text("payload", encoding="utf-8")
+    checksum = hashlib.sha256(dump_file.read_bytes()).hexdigest()
+    (tmp_path / "gxp.dump.sha256").write_text(f"{checksum}  gxp.dump\n", encoding="utf-8", newline="\n")
+    python_sh = sys.executable.replace("\\", "/")
+    admin_log = tmp_path / "admin.log"
+    createdb_log = tmp_path / "createdb.log"
+    restore_log = tmp_path / "restore.log"
+    psql_log = tmp_path / "psql.log"
+
+    runtime_env.write_text(
+        "\n".join(
+            [
+                "DB_NAME=gxp_qlcl",
+                "DB_USER=gxp_app",
+                "DB_PASSWORD=secret",
+                "DB_HOST=127.0.0.1",
+                "DB_PORT=5432",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (fake_bin / "python3").write_text(f"#!/usr/bin/env bash\n\"{python_sh}\" \"$@\"\n", encoding="utf-8")
+    (fake_bin / "admin-runner").write_text(
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf '%s\\n' "$*" >> "{admin_log.as_posix()}"
+            "$@"
+            """
+        ),
+        encoding="utf-8",
+    )
+    (fake_bin / "psql").write_text(
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf '%s\\n' "$*" >> "{psql_log.as_posix()}"
+            if printf '%s' "$*" | grep -q -- "--dbname=postgres"; then
+              exit 0
+            fi
+            exit 0
+            """
+        ),
+        encoding="utf-8",
+    )
+    (fake_bin / "createdb").write_text(
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf '%s\\n' "$*" >> "{createdb_log.as_posix()}"
+            exit 0
+            """
+        ),
+        encoding="utf-8",
+    )
+    (fake_bin / "pg_restore").write_text(
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf '%s\\n' "$*" >> "{restore_log.as_posix()}"
+            exit 0
+            """
+        ),
+        encoding="utf-8",
+    )
+    for script_path in fake_bin.iterdir():
+        script_path.chmod(0o755)
+
+    env = _base_env(fake_bin, runtime_env)
+
+    completed = _run_bash(
+        f"POSTGRES_ADMIN_CMD=admin-runner TARGET_DB=gxp_qlcl_restore CONFIRM_RESTORE=RESTORE_gxp_qlcl_restore ./infra/vm/restore_postgres.sh '{dump_file.as_posix()}'",
+        env=env,
+        cwd=ROOT,
+    )
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    assert "createdb --owner gxp_app gxp_qlcl_restore" in admin_log.read_text(encoding="utf-8")
+    assert "--owner gxp_app gxp_qlcl_restore" in createdb_log.read_text(encoding="utf-8")
+    assert "--username gxp_app" not in createdb_log.read_text(encoding="utf-8")
+    assert "--dbname gxp_qlcl_restore" in restore_log.read_text(encoding="utf-8")
 
 
 def test_vm_runtime_env_permission_contract_is_documented_in_scripts():

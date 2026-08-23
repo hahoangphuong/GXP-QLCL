@@ -172,6 +172,9 @@ Cluster contract:
 - `configure_postgres.sh` targets only `VM_POSTGRES_MAJOR` + `VM_POSTGRES_CLUSTER_NAME`
 - current production default is `18/main`
 - stray extra clusters are a hard stop; the script will not auto-select by `find|sort|tail`
+- role creation/password rotation is executed through `psql` stdin with `-v ON_ERROR_STOP=1` and safe identifier/literal formatting
+- database existence checks use `psql` stdin interpolation, not `psql -c` with literal `:'vars'`
+- final success requires an authenticated `psql` probe as `DB_USER` into `DB_NAME` on `127.0.0.1:5432`, not only `pg_isready`
 
 9. Configure Tailscale
 

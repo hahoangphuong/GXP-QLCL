@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -192,9 +193,24 @@ def test_configure_postgres_uses_explicit_cluster_contract():
     assert 'POSTGRES_MAJOR="${VM_POSTGRES_MAJOR:-18}"' in text
     assert 'POSTGRES_CLUSTER_NAME="${VM_POSTGRES_CLUSTER_NAME:-main}"' in text
     assert 'pg_lsclusters --no-header' in text
-    assert 'PG_CLUSTER_DIR="/etc/postgresql/${POSTGRES_MAJOR}/${POSTGRES_CLUSTER_NAME}"' in text
+    assert 'PG_CLUSTER_DIR="${VM_POSTGRES_CLUSTER_DIR:-/etc/postgresql/${POSTGRES_MAJOR}/${POSTGRES_CLUSTER_NAME}}"' in text
     assert 'pg_ctlcluster "${POSTGRES_MAJOR}" "${POSTGRES_CLUSTER_NAME}" restart' in text
     assert "find /etc/postgresql" not in text
+
+
+def test_configure_and_restore_postgres_avoid_literal_psql_variable_regressions():
+    configure = (ROOT / "infra" / "vm" / "configure_postgres.sh").read_text(encoding="utf-8")
+    restore = (ROOT / "infra" / "vm" / "restore_postgres.sh").read_text(encoding="utf-8")
+
+    assert "DO $$" not in configure
+    assert """-Atqc "SELECT 1 FROM pg_database WHERE datname = :'db_name'""" not in configure
+    assert """-Atqc "SELECT 1 FROM pg_database WHERE datname = :'target_db'""" not in restore
+    assert configure.count("-v ON_ERROR_STOP=1") >= 4
+    assert restore.count("-v ON_ERROR_STOP=1") >= 4
+    assert "SELECT format(" in configure
+    assert "\\gexec" in configure
+    assert """SELECT 1 FROM pg_database WHERE datname = :'db_name';""" in configure
+    assert """SELECT 1 FROM pg_database WHERE datname = :'target_db';""" in restore
 
 
 def test_vm_scripts_use_runtime_env_parser_not_shell_source():
@@ -285,6 +301,32 @@ def _write_executable(path: Path, content: str) -> None:
     path.chmod(0o755)
 
 
+def _write_runtime_env(
+    path: Path,
+    *,
+    db_name: str = "gxp_qlcl",
+    db_user: str = "gxp_app",
+    db_password: str = "secret",
+    db_host: str = "127.0.0.1",
+    db_port: str = "5432",
+) -> None:
+    path.write_text(
+        "\n".join(
+            [
+                "DB_MODE=local_postgres",
+                f"DB_NAME={db_name!r}",
+                f"DB_USER={db_user!r}",
+                f"DB_PASSWORD={db_password!r}",
+                f"DB_HOST={db_host!r}",
+                f"DB_PORT={db_port!r}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
 def _bootstrap_test_env(fake_bin: Path, runtime_env: Path, tmp_path: Path) -> dict[str, str]:
     env = _base_env(fake_bin, runtime_env)
     python_series = f"{sys.version_info[0]}.{sys.version_info[1]}"
@@ -310,6 +352,16 @@ def _bootstrap_test_env(fake_bin: Path, runtime_env: Path, tmp_path: Path) -> di
     env["BACKUP_LOCAL_STAGING_DIR"] = (tmp_path / "backups").as_posix()
     env["VM_APP_GROUP"] = "root"
     env["GXP_USER"] = "root"
+    return env
+
+
+def _configure_postgres_test_env(fake_bin: Path, runtime_env: Path, tmp_path: Path) -> dict[str, str]:
+    env = _base_env(fake_bin, runtime_env)
+    env["CONFIGURE_POSTGRES_UNSAFE_SKIP_ROOT_CHECK"] = "1"
+    env["VM_POSTGRES_MAJOR"] = "18"
+    env["VM_POSTGRES_CLUSTER_NAME"] = "main"
+    env["VM_SUPPORTED_POSTGRES_MAJORS"] = "17,18"
+    env["VM_POSTGRES_CLUSTER_DIR"] = (tmp_path / "pg" / "18" / "main").as_posix()
     return env
 
 
@@ -633,6 +685,385 @@ EOF
     assert "18 main" in cluster_state.read_text(encoding="utf-8")
 
 
+def test_configure_postgres_is_idempotent_uses_safe_psql_and_keeps_password_secret(tmp_path: Path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    runtime_env = tmp_path / "runtime.env"
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    state_file = state_dir / "postgres-state.json"
+    command_log = tmp_path / "command.log"
+    python_sh = sys.executable.replace("\\", "/")
+    pg_cluster_dir = tmp_path / "pg" / "18" / "main"
+    (pg_cluster_dir / "conf.d").mkdir(parents=True)
+    (pg_cluster_dir / "pg_hba.conf").write_text("", encoding="utf-8", newline="\n")
+    special_password = " weird ' \" $HOME \\\\ ; : spaces "
+    rotated_password = "rotated ' \" $PATH \\\\ ; : pass"
+    db_name = "gxp_qlcl"
+    db_user = "gxp_app"
+
+    _write_runtime_env(runtime_env, db_name=db_name, db_user=db_user, db_password=special_password)
+    _write_executable(fake_bin / "python3", f"#!/usr/bin/env bash\n\"{python_sh}\" \"$@\"\n")
+    _write_executable(
+        fake_bin / "runuser",
+        textwrap.dedent(
+            """\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            [[ "$1" == "-u" ]] || exit 2
+            shift 2
+            [[ "$1" == "--" ]] || exit 2
+            shift
+            exec "$@"
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "pg_lsclusters",
+        "#!/usr/bin/env bash\nset -euo pipefail\nprintf '18 main 5432 online postgres /var/lib/postgresql/18/main /var/log/postgresql/postgresql-18-main.log\\n'\n",
+    )
+    _write_executable(
+        fake_bin / "pg_ctlcluster",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf 'pg_ctlcluster %s\\n' "$*" >> "{command_log.as_posix()}"
+            exit 0
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "pg_isready",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf 'pg_isready %s\\n' "$*" >> "{command_log.as_posix()}"
+            exit 0
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "createdb",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env python3
+            import json
+            import sys
+            from pathlib import Path
+
+            state_path = Path(r"{state_file.as_posix()}")
+            log_path = Path(r"{command_log.as_posix()}")
+            state = {{"roles": {{}}, "databases": {{}}, "createdb_calls": 0}}
+            if state_path.exists():
+                state.update(json.loads(state_path.read_text(encoding="utf-8")))
+            args = sys.argv[1:]
+            owner = None
+            db_name = None
+            i = 0
+            while i < len(args):
+                if args[i] == "--owner":
+                    owner = args[i + 1]
+                    i += 2
+                    continue
+                db_name = args[i]
+                i += 1
+            if owner not in state["roles"]:
+                sys.stderr.write(f'createdb:\nERROR: role "{{owner}}" does not exist\n')
+                raise SystemExit(1)
+            if db_name is None:
+                raise SystemExit(2)
+            state["createdb_calls"] = int(state.get("createdb_calls", 0)) + 1
+            state["databases"][db_name] = {{"owner": owner}}
+            state_path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write(f'createdb {{owner}} {{db_name}}\\n')
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "psql",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env python3
+            import json
+            import os
+            import sys
+            from pathlib import Path
+
+            state_path = Path(r"{state_file.as_posix()}")
+            log_path = Path(r"{command_log.as_posix()}")
+
+            def load_state() -> dict:
+                if state_path.exists():
+                    return json.loads(state_path.read_text(encoding="utf-8"))
+                return {{"roles": {{}}, "databases": {{}}, "createdb_calls": 0}}
+
+            def save_state(state: dict) -> None:
+                state_path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
+
+            def arg_value(args: list[str], option: str) -> str | None:
+                for index, arg in enumerate(args):
+                    if arg == option and index + 1 < len(args):
+                        return args[index + 1]
+                    prefix = option + "="
+                    if arg.startswith(prefix):
+                        return arg[len(prefix):]
+                return None
+
+            def set_values(args: list[str]) -> dict[str, str]:
+                values: dict[str, str] = {{}}
+                for index, arg in enumerate(args):
+                    if arg == "--set" and index + 1 < len(args):
+                        key, _, value = args[index + 1].partition("=")
+                        values[key] = value
+                    elif arg.startswith("--set="):
+                        key, _, value = arg[len("--set="):].partition("=")
+                        values[key] = value
+                return values
+
+            args = sys.argv[1:]
+            stdin_sql = sys.stdin.read()
+            command_sql = ""
+            if "-Atqc" in args:
+                command_sql = args[args.index("-Atqc") + 1]
+            elif "-tc" in args:
+                command_sql = args[args.index("-tc") + 1]
+            elif "-c" in args:
+                command_sql = args[args.index("-c") + 1]
+            sets = set_values(args)
+            on_error_stop = False
+            for index, arg in enumerate(args):
+                if arg == "-v" and index + 1 < len(args) and args[index + 1] == "ON_ERROR_STOP=1":
+                    on_error_stop = True
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write(f'psql args={{args!r}} stdin={{stdin_sql!r}} sql={{command_sql!r}}\\n')
+            if not on_error_stop:
+                sys.stderr.write("missing ON_ERROR_STOP\\n")
+                raise SystemExit(1)
+                if "DO $$" in stdin_sql and (":'db_user'" in stdin_sql or ":'db_password'" in stdin_sql):
+                    sys.stderr.write('ERROR: syntax error at or near ":"\\n')
+                    sys.stderr.write("LINE 3:\\n")
+                    sys.stderr.write("IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'db_user')\\n")
+                    raise SystemExit(1)
+                if ":'db_name'" in command_sql or ":'target_db'" in command_sql:
+                    sys.stderr.write('ERROR: syntax error at or near ":"\\n')
+                    sys.stderr.write("LINE 1:\\n")
+                    sys.stderr.write("SELECT 1 FROM pg_database WHERE datname = :'db_name'\\n")
+                    raise SystemExit(1)
+            state = load_state()
+            if os.environ.get("PSQL_FORCE_ROLE_SQL_ERROR") == "1" and "CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L" in stdin_sql:
+                sys.stderr.write("ERROR: synthetic role setup failure\\n")
+                raise SystemExit(1)
+            if "CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L" in stdin_sql:
+                db_user = sets["db_user"]
+                db_password = sets["db_password"]
+                state["roles"].setdefault(db_user, {{}})
+                state["roles"][db_user].update(
+                    {{
+                        "password": db_password,
+                        "login": True,
+                        "superuser": False,
+                        "createdb": False,
+                        "createrole": False,
+                    }}
+                )
+                save_state(state)
+                raise SystemExit(0)
+            if "SELECT 1 FROM pg_database WHERE datname = :'db_name';" in stdin_sql:
+                if sets.get("db_name") in state["databases"]:
+                    sys.stdout.write("1\\n")
+                raise SystemExit(0)
+            if "SELECT 1 FROM pg_database WHERE datname = :'target_db';" in stdin_sql:
+                if sets.get("target_db") in state["databases"]:
+                    sys.stdout.write("1\\n")
+                raise SystemExit(0)
+            if command_sql == "SHOW server_version_num":
+                sys.stdout.write("180005\\n")
+                raise SystemExit(0)
+            if "SELECT current_database() || E'\\\\t' || current_user" in command_sql:
+                db_name = arg_value(args, "--dbname")
+                db_user = arg_value(args, "--username")
+                db_host = arg_value(args, "--host")
+                db_port = arg_value(args, "--port")
+                role = state["roles"].get(db_user)
+                database = state["databases"].get(db_name)
+                if db_host != "127.0.0.1" or db_port != "5432" or role is None or database is None:
+                    raise SystemExit(1)
+                if database["owner"] != db_user or role["password"] != os.environ.get("PGPASSWORD"):
+                    raise SystemExit(1)
+                sys.stdout.write(f"{{db_name}}\\t{{db_user}}\\n")
+                raise SystemExit(0)
+            if "SELECT version_num FROM alembic_version" in command_sql:
+                sys.stdout.write("123\\n")
+                raise SystemExit(0)
+            if "SELECT current_database(), current_user;" in command_sql:
+                sys.stdout.write("ok\\n")
+                raise SystemExit(0)
+            raise SystemExit(0)
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "install",
+        textwrap.dedent(
+            """\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            if [[ "$1" == "-d" ]]; then
+              shift
+              while [[ $# -gt 0 ]]; do
+                case "$1" in
+                  -m|-o|-g)
+                    shift 2
+                    ;;
+                  *)
+                    mkdir -p "$1"
+                    shift
+                    ;;
+                esac
+              done
+              exit 0
+            fi
+            exec /usr/bin/install "$@"
+            """
+        ),
+    )
+
+    env = _configure_postgres_test_env(fake_bin, runtime_env, tmp_path)
+    first_run = _run_bash("./infra/vm/configure_postgres.sh", env=env, cwd=ROOT)
+
+    assert first_run.returncode == 0, first_run.stderr or first_run.stdout
+    assert special_password not in (first_run.stdout + first_run.stderr)
+    state = json.loads(state_file.read_text(encoding="utf-8"))
+    assert state["roles"][db_user]["password"] == special_password
+    assert state["roles"][db_user]["createdb"] is False
+    assert state["roles"][db_user]["createrole"] is False
+    assert state["roles"][db_user]["superuser"] is False
+    assert state["databases"][db_name]["owner"] == db_user
+    assert state["createdb_calls"] == 1
+
+    _write_runtime_env(runtime_env, db_name=db_name, db_user=db_user, db_password=rotated_password)
+    second_run = _run_bash("./infra/vm/configure_postgres.sh", env=env, cwd=ROOT)
+
+    assert second_run.returncode == 0, second_run.stderr or second_run.stdout
+    assert rotated_password not in (second_run.stdout + second_run.stderr)
+    state = json.loads(state_file.read_text(encoding="utf-8"))
+    assert state["roles"][db_user]["password"] == rotated_password
+    assert list(state["roles"]) == [db_user]
+    assert list(state["databases"]) == [db_name]
+    assert state["createdb_calls"] == 1
+    log_text = command_log.read_text(encoding="utf-8")
+    assert "createdb gxp_app gxp_qlcl" in log_text
+    assert "pg_isready -h 127.0.0.1 -p 5432 -d gxp_qlcl" in log_text
+
+
+def test_configure_postgres_stops_immediately_on_admin_sql_error(tmp_path: Path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    runtime_env = tmp_path / "runtime.env"
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    state_file = state_dir / "postgres-state.json"
+    command_log = tmp_path / "command.log"
+    python_sh = sys.executable.replace("\\", "/")
+    pg_cluster_dir = tmp_path / "pg" / "18" / "main"
+    (pg_cluster_dir / "conf.d").mkdir(parents=True)
+    (pg_cluster_dir / "pg_hba.conf").write_text("", encoding="utf-8", newline="\n")
+
+    _write_runtime_env(runtime_env, db_password="sql-error-password")
+    _write_executable(fake_bin / "python3", f"#!/usr/bin/env bash\n\"{python_sh}\" \"$@\"\n")
+    _write_executable(
+        fake_bin / "runuser",
+        textwrap.dedent(
+            """\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            shift 3
+            exec "$@"
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "pg_lsclusters",
+        "#!/usr/bin/env bash\nset -euo pipefail\nprintf '18 main 5432 online postgres /var/lib/postgresql/18/main /var/log/postgresql/postgresql-18-main.log\\n'\n",
+    )
+    _write_executable(fake_bin / "pg_ctlcluster", "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n")
+    _write_executable(fake_bin / "pg_isready", "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n")
+    _write_executable(
+        fake_bin / "createdb",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf 'createdb %s\\n' "$*" >> "{command_log.as_posix()}"
+            exit 0
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "psql",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env python3
+            import os
+            import sys
+            from pathlib import Path
+
+            log_path = Path(r"{command_log.as_posix()}")
+            args = sys.argv[1:]
+            stdin_sql = sys.stdin.read()
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write(f'psql args={{args!r}} stdin={{stdin_sql!r}}\\n')
+            if "CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L" in stdin_sql and os.environ.get("PSQL_FORCE_ROLE_SQL_ERROR") == "1":
+                sys.stderr.write("ERROR: synthetic role setup failure\\n")
+                raise SystemExit(1)
+            if "-Atqc" in args and args[args.index("-Atqc") + 1] == "SHOW server_version_num":
+                sys.stdout.write("180005\\n")
+                raise SystemExit(0)
+            raise SystemExit(0)
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "install",
+        textwrap.dedent(
+            """\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            if [[ "$1" == "-d" ]]; then
+              shift
+              while [[ $# -gt 0 ]]; do
+                case "$1" in
+                  -m|-o|-g)
+                    shift 2
+                    ;;
+                  *)
+                    mkdir -p "$1"
+                    shift
+                    ;;
+                esac
+              done
+              exit 0
+            fi
+            exec /usr/bin/install "$@"
+            """
+        ),
+    )
+
+    env = _configure_postgres_test_env(fake_bin, runtime_env, tmp_path)
+    env["PSQL_FORCE_ROLE_SQL_ERROR"] = "1"
+    completed = _run_bash("./infra/vm/configure_postgres.sh", env=env, cwd=ROOT)
+
+    assert completed.returncode != 0
+    assert "synthetic role setup failure" in (completed.stderr or completed.stdout)
+    log_text = command_log.read_text(encoding="utf-8")
+    assert "createdb " not in log_text
+    assert "pg_isready " not in log_text
+    assert not state_file.exists()
+
+
 def test_backup_script_executes_and_cleans_up_local_artifacts(tmp_path: Path):
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -800,8 +1231,12 @@ def test_restore_script_creates_missing_restore_db_via_privileged_admin_path(tmp
     (fake_bin / "psql").write_text(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
-        "if printf '%s' \"$*\" | grep -q -- '--dbname=postgres'; then\n"
-        "  exit 1\n"
+        "stdin_payload=\"$(cat)\"\n"
+        "if printf '%s' \"$stdin_payload\" | grep -q \"SELECT 1 FROM pg_database WHERE datname = :'target_db';\"; then\n"
+        "  exit 0\n"
+        "fi\n"
+        "if printf '%s' \"$*\" | grep -q -- '--dbname gxp_qlcl_restore'; then\n"
+        "  exit 0\n"
         "fi\n"
         "exit 0\n",
         encoding="utf-8",

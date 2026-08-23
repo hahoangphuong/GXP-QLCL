@@ -59,14 +59,29 @@ if [[ -f "${CHECKSUM_FILE}" ]]; then
 fi
 
 if [[ "${DB_MODE}" == "local_postgres" ]]; then
-  postgres_admin_exec psql --dbname=postgres --set=target_db="${TARGET_DB}" -Atqc "SELECT 1 FROM pg_database WHERE datname = :'target_db'" | grep -q '^1$' || \
-    postgres_admin_exec createdb --owner "${DB_USER}" "${TARGET_DB}"
+  TARGET_DB_EXISTS="$(
+    postgres_admin_exec psql -v ON_ERROR_STOP=1 --dbname=postgres --set=target_db="${TARGET_DB}" -At <<'SQL'
+SELECT 1 FROM pg_database WHERE datname = :'target_db';
+SQL
+  )"
+  [[ "${TARGET_DB_EXISTS}" == "1" ]] || postgres_admin_exec createdb --owner "${DB_USER}" "${TARGET_DB}"
 else
-  PGPASSWORD="${DB_PASSWORD}" psql --host "${DB_HOST}" --port "${DB_PORT}" --username "${DB_USER}" --dbname postgres --set=target_db="${TARGET_DB}" -Atqc "SELECT 1 FROM pg_database WHERE datname = :'target_db'" | grep -q '^1$' || \
-    fail "TARGET_DB ${TARGET_DB} does not exist. Create it explicitly before restore when DB_MODE=${DB_MODE}."
+  TARGET_DB_EXISTS="$(
+    PGPASSWORD="${DB_PASSWORD}" psql \
+      -v ON_ERROR_STOP=1 \
+      --host "${DB_HOST}" \
+      --port "${DB_PORT}" \
+      --username "${DB_USER}" \
+      --dbname postgres \
+      --set=target_db="${TARGET_DB}" \
+      -At <<'SQL'
+SELECT 1 FROM pg_database WHERE datname = :'target_db';
+SQL
+  )"
+  [[ "${TARGET_DB_EXISTS}" == "1" ]] || fail "TARGET_DB ${TARGET_DB} does not exist. Create it explicitly before restore when DB_MODE=${DB_MODE}."
 fi
 PGPASSWORD="${DB_PASSWORD}" pg_restore --clean --if-exists --exit-on-error --no-owner --host "${DB_HOST}" --port "${DB_PORT}" --username "${DB_USER}" --dbname "${TARGET_DB}" "${BACKUP_FILE}"
-PGPASSWORD="${DB_PASSWORD}" psql --host "${DB_HOST}" --port "${DB_PORT}" --username "${DB_USER}" --dbname "${TARGET_DB}" -tc "SELECT version_num FROM alembic_version" >/dev/null
-PGPASSWORD="${DB_PASSWORD}" psql --host "${DB_HOST}" --port "${DB_PORT}" --username "${DB_USER}" --dbname "${TARGET_DB}" -c "SELECT current_database(), current_user;"
+PGPASSWORD="${DB_PASSWORD}" psql -v ON_ERROR_STOP=1 --host "${DB_HOST}" --port "${DB_PORT}" --username "${DB_USER}" --dbname "${TARGET_DB}" -tc "SELECT version_num FROM alembic_version" >/dev/null
+PGPASSWORD="${DB_PASSWORD}" psql -v ON_ERROR_STOP=1 --host "${DB_HOST}" --port "${DB_PORT}" --username "${DB_USER}" --dbname "${TARGET_DB}" -c "SELECT current_database(), current_user;"
 
 echo "Manual restore completed into ${TARGET_DB}."

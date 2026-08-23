@@ -41,13 +41,16 @@ SWAPFILE_PATH="${VM_SWAPFILE_PATH:-/swapfile}"
 OS_RELEASE_FILE="${VM_OS_RELEASE_FILE:-/etc/os-release}"
 BOOTSTRAP_MINIMAL_APT_PACKAGES=(
   ca-certificates
+  coreutils
   curl
   gnupg
+  mount
+  procps
+  util-linux
 )
 APT_PACKAGES=(
   git
   nginx
-  procps
   "python${PYTHON_SERIES}"
   "python${PYTHON_SERIES}-venv"
   python3-pip
@@ -188,6 +191,12 @@ install_minimal_bootstrap_prerequisites() {
   apt-get install -y --no-install-recommends "${BOOTSTRAP_MINIMAL_APT_PACKAGES[@]}"
   need_cmd curl
   need_cmd gpg
+  need_cmd stat
+  need_cmd swapon
+  need_cmd mkswap
+  need_cmd sysctl
+  need_cmd free
+  need_cmd fallocate
 }
 
 ensure_pgdg_repository() {

@@ -109,6 +109,10 @@ def test_vm_deploy_script_uses_vm_runtime_requirements_and_db_backup():
 
     assert 'RUNTIME_REQUIREMENTS_LOCK_FILE="$(json_query runtime_requirements_lock_file)"' in text
     assert 'install --no-cache-dir -r "${NEW_BACKEND_RELEASE}/${RUNTIME_REQUIREMENTS_LOCK_FILE}"' in text
+    assert 'CURRENT_STAGE="node_version_check"' in text
+    assert 'CURRENT_NODE_VERSION="$(node -p \'process.versions.node\')" || fail "Could not determine the active Node.js runtime version."' in text
+    assert 'python3 - "${CURRENT_NODE_VERSION}" "${NODE_MIN_VERSION}" <<\'PY\'' in text
+    assert 'node - "${NODE_MIN_VERSION}" <<\'PY\'' not in text
     assert 'CURRENT_STAGE="resolve_database_url"' in text
     assert "env -u PYTHONHOME PYTHONPATH='${NEW_BACKEND_RELEASE}' '${NEW_BACKEND_VENV}/bin/python' - <<'PY'" in text
     assert 'run_as_app_user "${NEW_BACKEND_RELEASE}/infra/vm/backup_postgres.sh"' in text
@@ -368,6 +372,335 @@ def _configure_postgres_test_env(fake_bin: Path, runtime_env: Path, tmp_path: Pa
     env["VM_SUPPORTED_POSTGRES_MAJORS"] = "17,18"
     env["VM_POSTGRES_CLUSTER_DIR"] = (tmp_path / "pg" / "18" / "main").as_posix()
     return env
+
+
+def _run_deploy_node_gate_case(
+    tmp_path: Path,
+    *,
+    node_version: str,
+    pnpm_version: str,
+) -> tuple[subprocess.CompletedProcess[str], Path]:
+    def _bash_style(path: Path) -> str:
+        value = path.as_posix()
+        if os.name == "nt" and len(value) >= 3 and value[1:3] == ":/":
+            return f"/{value[0].lower()}{value[2:]}"
+        return value
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    runtime_env = tmp_path / "runtime.env"
+    export_root = tmp_path / "export-root"
+    command_log = tmp_path / "command.log"
+    python_sh = sys.executable.replace("\\", "/")
+    release_sha = "abcdef1234567890abcdef1234567890abcdef12"
+    backend_releases_dir = tmp_path / "backend-releases"
+    backend_venvs_dir = tmp_path / "backend-venvs"
+    frontend_releases_dir = tmp_path / "frontend-releases"
+    frontend_dist_dir = tmp_path / "frontend-dist"
+    release_metadata_file = tmp_path / "current-release.json"
+    tls_cert_path = tmp_path / "tls.crt"
+    tls_key_path = tmp_path / "tls.key"
+    fake_bin_bash = _bash_style(fake_bin)
+    (fake_home / ".bash_profile").write_text(
+        f'export PATH="{fake_bin_bash}:$PATH"\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    (fake_home / ".profile").write_text(
+        f'export PATH="{fake_bin_bash}:$PATH"\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    (export_root / "backend").mkdir(parents=True)
+    (export_root / "frontend").mkdir(parents=True)
+    (export_root / "backend" / "requirements.runtime.vm.lock.txt").write_text("", encoding="utf-8", newline="\n")
+    tls_cert_path.write_text("cert\n", encoding="utf-8", newline="\n")
+    tls_key_path.write_text("key\n", encoding="utf-8", newline="\n")
+
+    runtime_env.write_text(
+        "\n".join(
+            [
+                "AUTH_PROVIDER=google_oidc",
+                "AUTH_OIDC_CLIENT_ID=test-client-id",
+                "AUTH_ALLOWED_EMAIL_DOMAIN=example.com",
+                "DB_MODE=local_postgres",
+                "DB_NAME=gxp_qlcl",
+                "DB_USER=gxp_app",
+                "DB_PASSWORD=secret",
+                "DB_HOST=127.0.0.1",
+                "DB_PORT=5432",
+                "STORAGE_CLASS=synology_smb",
+                "STORAGE_INSPECTION_ROOT=//synology/inspection",
+                "STORAGE_DKKD_ROOT=//synology/dkkd",
+                "STORAGE_TEMPLATE_ROOT=//synology/templates",
+                "SMB_USERNAME=smb-user",
+                "SMB_PASSWORD=smb-password",
+                f"VM_APP_ROOT={_bash_style(tmp_path)}",
+                "VM_APP_USER=gxp",
+                "VM_APP_GROUP=gxp",
+                "VM_PYTHON_SERIES=3.12",
+                f"VM_PYTHON_BIN={_bash_style(fake_bin / 'vm-python')}",
+                f"VM_SRC_DIR={_bash_style(ROOT)}",
+                f"VM_BACKEND_RELEASES_DIR={_bash_style(backend_releases_dir)}",
+                f"VM_BACKEND_VENV_RELEASES_DIR={_bash_style(backend_venvs_dir)}",
+                f"VM_CURRENT_BACKEND_RELEASE_LINK={_bash_style(tmp_path / 'current-backend')}",
+                f"VM_CURRENT_BACKEND_VENV_LINK={_bash_style(tmp_path / 'current-venv')}",
+                f"VM_FRONTEND_DIST_DIR={_bash_style(frontend_dist_dir)}",
+                f"VM_FRONTEND_RELEASES_DIR={_bash_style(frontend_releases_dir)}",
+                f"VM_RELEASE_METADATA_FILE={_bash_style(release_metadata_file)}",
+                "VM_RELEASE_RETENTION_COUNT=3",
+                "SYSTEMD_SERVICE_NAME=gxp-web",
+                "NGINX_SITE_NAME=gxp-web",
+                "PUBLIC_BASE_URL=https://example.com",
+                f"VM_TLS_CERT_PATH={_bash_style(tls_cert_path)}",
+                f"VM_TLS_KEY_PATH={_bash_style(tls_key_path)}",
+                "VM_TLS_PROVISIONING_MODE=existing_files",
+                "VM_NODE_MAJOR=22",
+                "VM_NODE_MIN_VERSION=22.12.0",
+                "VM_COREPACK_VERSION=0.31.0",
+                "VM_NODE_PACKAGE_MANAGER=pnpm@11.19.0",
+                "VM_NODE_BUILD_OPTIONS=--max-old-space-size=512",
+                "VM_SUPPORTED_POSTGRES_MAJORS=17,18",
+                "VM_SWAP_SIZE_GB=4",
+                "VM_SWAPPINESS=10",
+                "PG_SHARED_BUFFERS_MB=256",
+                "PG_EFFECTIVE_CACHE_SIZE_MB=768",
+                "PG_WORK_MEM_MB=4",
+                "PG_MAINTENANCE_WORK_MEM_MB=64",
+                "PG_AUTOVACUUM_WORK_MEM_MB=64",
+                "PG_MAX_CONNECTIONS=30",
+                "BACKUP_GCS_BUCKET=gs://gxp-backups",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    python3_impl = tmp_path / "python3_impl.py"
+    python3_impl.write_text(
+        textwrap.dedent(
+            f"""\
+            import subprocess
+            import sys
+            from pathlib import Path
+
+            real_python = r"{python_sh}"
+            log_path = Path(r"{command_log.as_posix()}")
+            args = sys.argv[1:]
+            stdin_payload = sys.stdin.read()
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write(f"system-python args={{args!r}}\\n")
+            completed = subprocess.run([real_python, *args], input=stdin_payload, text=True, capture_output=True, check=False)
+            sys.stdout.write(completed.stdout.replace("\\r\\n", "\\n"))
+            sys.stderr.write(completed.stderr.replace("\\r\\n", "\\n"))
+            raise SystemExit(completed.returncode)
+            """
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    _write_executable(fake_bin / "python3", f"#!/usr/bin/env bash\nexec \"{python_sh}\" \"{python3_impl.as_posix()}\" \"$@\"\n")
+    _write_executable(
+        fake_bin / "vm-python",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf 'vm-python %s\\n' "$*" >> "{command_log.as_posix()}"
+            exit 91
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "runuser",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            [[ "$1" == "-u" ]] || exit 2
+            shift 2
+            [[ "$1" == "--" ]] || exit 2
+            shift
+            cmd="$1"
+            shift
+            if [[ "$cmd" == "git" ]]; then
+              exec "{(fake_bin / 'git').as_posix()}" "$@"
+            fi
+            exec "$cmd" "$@"
+            """
+        ),
+    )
+    git_impl = tmp_path / "git_impl.py"
+    git_impl.write_text(
+        textwrap.dedent(
+            f"""\
+            import sys
+            import tarfile
+            from pathlib import Path
+
+            export_root = Path(r"{export_root.as_posix()}")
+            log_path = Path(r"{command_log.as_posix()}")
+            release_sha = "{release_sha}"
+            args = sys.argv[1:]
+            if len(args) >= 2 and args[0] == "-C":
+                args = args[2:]
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write(f"git args={{args!r}}\\n")
+            if args[:2] == ["status", "--porcelain"]:
+                raise SystemExit(0)
+            if args[:2] == ["fetch", "origin"]:
+                raise SystemExit(0)
+            if args[:2] == ["rev-parse", "--verify"]:
+                sys.stdout.write(release_sha + "\\n")
+                raise SystemExit(0)
+            if args[:2] == ["archive", "--format=tar"]:
+                with tarfile.open(fileobj=sys.stdout.buffer, mode="w|") as tar:
+                    for path in sorted(export_root.rglob("*")):
+                        tar.add(path, arcname=path.relative_to(export_root).as_posix(), recursive=False)
+                raise SystemExit(0)
+            raise SystemExit(1)
+            """
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    _write_executable(fake_bin / "git", f"#!/usr/bin/env bash\nexec \"{python_sh}\" \"{git_impl.as_posix()}\" \"$@\"\n")
+    _write_executable(
+        fake_bin / "node",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf 'node %s\\n' "$*" >> "{command_log.as_posix()}"
+            if [[ "${{1:-}}" == "-p" && "${{2:-}}" == "process.versions.node" ]]; then
+              printf '{node_version}\\n'
+              exit 0
+            fi
+            cat >/dev/null
+            exit 0
+            """
+        ),
+    )
+    (fake_bin / "node.cmd").write_text(
+        "\r\n".join(
+            [
+                "@echo off",
+                f'>> "{command_log.as_posix()}" echo node %*',
+                'if "%~1"=="-p" if "%~2"=="process.versions.node" (',
+                f"  echo {node_version}",
+                "  exit /b 0",
+                ")",
+                "exit /b 0",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+        newline="\r\n",
+    )
+    _write_executable(
+        fake_bin / "pnpm",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf 'pnpm %s\\n' "$*" >> "{command_log.as_posix()}"
+            if [[ "${{1:-}}" == "--version" ]]; then
+              printf '{pnpm_version}\\n'
+              exit 0
+            fi
+            exit 0
+            """
+        ),
+    )
+    (fake_bin / "pnpm.cmd").write_text(
+        "\r\n".join(
+            [
+                "@echo off",
+                f'>> "{command_log.as_posix()}" echo pnpm %*',
+                'if "%~1"=="--version" (',
+                f"  echo {pnpm_version}",
+                "  exit /b 0",
+                ")",
+                "exit /b 0",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+        newline="\r\n",
+    )
+    for name in ["install", "systemctl", "curl", "nginx", "pg_dump", "rsync", "chown"]:
+        _write_executable(
+            fake_bin / name,
+            textwrap.dedent(
+                """\
+                #!/usr/bin/env bash
+                set -euo pipefail
+                if [[ "${1:-}" == "-d" ]]; then
+                  shift
+                  while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                      -m|-o|-g)
+                        shift 2
+                        ;;
+                      *)
+                        mkdir -p "$1"
+                        shift
+                        ;;
+                    esac
+                  done
+                  exit 0
+                fi
+                exit 0
+                """
+            ),
+        )
+
+    env = _base_env(fake_bin, runtime_env)
+    env["DEPLOY_PROD_UNSAFE_SKIP_ROOT_CHECK"] = "1"
+    env["HOME"] = _bash_style(fake_home)
+
+    completed = _run_bash(f'PATH="{fake_bin_bash}:$PATH" ./infra/vm/deploy_prod.sh', env=env, cwd=ROOT)
+    return completed, command_log
+
+
+def test_deploy_script_node_version_gate_accepts_supported_node_and_exact_pnpm(tmp_path: Path):
+    completed, command_log = _run_deploy_node_gate_case(tmp_path, node_version="22.23.2", pnpm_version="11.19.0")
+
+    assert completed.returncode != 0
+    assert "Deploy failed during stage: build_backend_venv" in completed.stderr
+    assert "Node.js version check failed." not in completed.stderr
+    assert "pnpm version mismatch" not in completed.stderr
+    log_text = command_log.read_text(encoding="utf-8")
+    assert "node -p process.versions.node" in log_text
+    assert "pnpm --version" in log_text
+
+
+def test_deploy_script_node_version_gate_rejects_old_node_with_clear_error(tmp_path: Path):
+    completed, command_log = _run_deploy_node_gate_case(tmp_path, node_version="22.9.0", pnpm_version="11.19.0")
+
+    assert completed.returncode != 0
+    assert "Node.js version 22.9.0 is lower than required minimum 22.12.0." in completed.stderr
+    assert "Node.js version check failed." in completed.stderr
+    assert "Deploy failed during stage: node_version_check" in completed.stderr
+    assert "pnpm version mismatch" not in completed.stderr
+    log_text = command_log.read_text(encoding="utf-8")
+    assert "pnpm --version" not in log_text
+
+
+def test_deploy_script_node_version_gate_rejects_pnpm_version_mismatch(tmp_path: Path):
+    completed, command_log = _run_deploy_node_gate_case(tmp_path, node_version="22.23.2", pnpm_version="11.18.0")
+
+    assert completed.returncode != 0
+    assert "pnpm version mismatch. Expected 11.19.0, got 11.18.0." in completed.stderr
+    assert "Deploy failed during stage: node_version_check" in completed.stderr
+    assert "Node.js version check failed." not in completed.stderr
+    log_text = command_log.read_text(encoding="utf-8")
+    assert "node -p process.versions.node" in log_text
+    assert "pnpm --version" in log_text
 
 
 def test_bootstrap_script_aborts_in_cloud_shell_before_mutation(tmp_path: Path):

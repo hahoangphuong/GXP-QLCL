@@ -248,15 +248,22 @@ run_as_app_bash "
 [[ -f "${NEW_BACKEND_RELEASE}/${RUNTIME_REQUIREMENTS_LOCK_FILE}" ]] || fail "Release lockfile missing: ${NEW_BACKEND_RELEASE}/${RUNTIME_REQUIREMENTS_LOCK_FILE}"
 
 CURRENT_STAGE="node_version_check"
-node - "${NODE_MIN_VERSION}" <<'PY'
-import subprocess
+CURRENT_NODE_VERSION="$(node -p 'process.versions.node')" || fail "Could not determine the active Node.js runtime version."
+CURRENT_NODE_VERSION="$(
+  python3 - "${CURRENT_NODE_VERSION}" "${NODE_MIN_VERSION}" <<'PY'
 import sys
 
-current = tuple(int(part) for part in subprocess.check_output(["node", "-p", "process.versions.node"], text=True).strip().split("."))
-required = tuple(int(part) for part in sys.argv[1].split("."))
-raise SystemExit(0 if current >= required else 1)
+current_text = sys.argv[1]
+required_text = sys.argv[2]
+required = tuple(int(part) for part in required_text.split("."))
+current = tuple(int(part) for part in current_text.split("."))
+if current < required:
+    raise SystemExit(f"Node.js version {current_text} is lower than required minimum {required_text}.")
+print(current_text)
 PY
-[[ "$(pnpm --version)" == "${NODE_PACKAGE_MANAGER#pnpm@}" ]] || fail "pnpm version mismatch. Expected ${NODE_PACKAGE_MANAGER#pnpm@}."
+)" || fail "Node.js version check failed."
+CURRENT_PNPM_VERSION="$(pnpm --version)"
+[[ "${CURRENT_PNPM_VERSION}" == "${NODE_PACKAGE_MANAGER#pnpm@}" ]] || fail "pnpm version mismatch. Expected ${NODE_PACKAGE_MANAGER#pnpm@}, got ${CURRENT_PNPM_VERSION}."
 
 CURRENT_STAGE="build_backend_venv"
 run_as_app_user "${VM_PYTHON_BIN}" -m venv "${NEW_BACKEND_VENV}"

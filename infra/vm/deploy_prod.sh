@@ -7,7 +7,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 
 PLAN_JSON="$(mktemp)"
-FRONTEND_BUILD_DIR="$(mktemp -d)"
+FRONTEND_BUILD_DIR=""
 STAGED_SERVICE_FILE="$(mktemp)"
 STAGED_NGINX_FILE="$(mktemp)"
 PREVIOUS_SERVICE_FILE="$(mktemp)"
@@ -53,7 +53,9 @@ cleanup() {
   fi
   rm -f "${PLAN_JSON}"
   rm -f "${STAGED_SERVICE_FILE}" "${STAGED_NGINX_FILE}" "${PREVIOUS_SERVICE_FILE}" "${PREVIOUS_NGINX_FILE}"
-  rm -rf "${FRONTEND_BUILD_DIR}"
+  if [[ -n "${FRONTEND_BUILD_DIR}" ]]; then
+    rm -rf "${FRONTEND_BUILD_DIR}"
+  fi
   if [[ "${SUCCESS}" != "1" ]]; then
     echo "Deploy failed during stage: ${CURRENT_STAGE}" >&2
   fi
@@ -193,6 +195,8 @@ VM_TLS_CERT_PATH="$(json_query tls_cert_path)"
 VM_TLS_KEY_PATH="$(json_query tls_key_path)"
 GXP_FRONTEND_DIST_ROOT="${GXP_FRONTEND_DIST_ROOT:-${VM_FRONTEND_DIST_DIR}}"
 export GXP_FRONTEND_DIST_ROOT
+FRONTEND_BUILD_DIR="$(mktemp -d)"
+install -d -m 0750 -o "${VM_APP_USER}" -g "${VM_APP_GROUP}" "${FRONTEND_BUILD_DIR}"
 
 REPO_ROOT_NORMALIZED="$(normalize_repo_path "${REPO_ROOT}")"
 VM_SRC_DIR_NORMALIZED="$(normalize_repo_path "${VM_SRC_DIR}")"

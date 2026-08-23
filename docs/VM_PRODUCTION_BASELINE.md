@@ -39,6 +39,7 @@ Parameterize scripts where appropriate, but operator guidance for this migration
 - Debian 13 / Python 3.13 is unsupported for the current production baseline.
 - Do not compile Python from source or add `pyenv`/`conda` as a production workaround.
 - Supported PostgreSQL majors for the current app baseline: `17` and `18`.
+- Current production bootstrap default: PostgreSQL `18/main`.
 
 ## Required runtime paths
 - operator source checkout: `/opt/gxp/src/GXP-QLCL`
@@ -88,12 +89,42 @@ cd ~/GXP-QLCL-bootstrap
 
 5. Bootstrap the VM
 
+Confirm the shell prompt is the VM itself, not Google Cloud Shell.
+
+Wrong:
+
+```text
+hahoangphuong@cloudshell:...
+```
+
+Right:
+
+```text
+hahoangphuong@gxp-web-prod:...
+```
+
 ```bash
-sudo ./infra/vm/bootstrap_vm.sh
+sudo env \
+  VM_EXPECTED_PROJECT_ID=gxp-qlcl-vm \
+  VM_EXPECTED_INSTANCE_NAME=gxp-web-prod \
+  VM_EXPECTED_ZONE=asia-southeast1-a \
+  VM_POSTGRES_MAJOR=18 \
+  VM_SWAP_SIZE_GB=4 \
+  VM_SWAPPINESS=10 \
+  ./infra/vm/bootstrap_vm.sh
 ```
 
 Expected result:
+- bootstrap fails closed if it detects Google Cloud Shell instead of the target Compute Engine VM
+- bootstrap verifies Compute Engine metadata against the expected project, instance, and zone before package mutation
 - Python 3.12 host interpreter is present and validated exactly
+- minimal bootstrap prerequisites are installed first: `ca-certificates`, `curl`, `gnupg`
+- `/swapfile` is activated at 4 GB with `vm.swappiness=10` before heavier Node / package work
+- PostgreSQL 18 is installed deterministically from explicit packages when required:
+  - `postgresql-18`
+  - `postgresql-client-18`
+- PostgreSQL cluster ownership is explicit: `18/main`
+- bootstrap fails closed if stray PostgreSQL clusters already exist instead of silently upgrading, dropping, or selecting the wrong cluster
 - Node 22, Corepack, pinned pnpm, PostgreSQL, Nginx, rsync, Git, and `gcloud` are available
 - `/swapfile` is active at 4 GB with `vm.swappiness=10`
 - non-root app user/group `gxp` exists
@@ -136,6 +167,11 @@ Default e2-small tuning profile:
 - `maintenance_work_mem=64MB`
 - `autovacuum_work_mem=64MB`
 - `max_connections=30`
+
+Cluster contract:
+- `configure_postgres.sh` targets only `VM_POSTGRES_MAJOR` + `VM_POSTGRES_CLUSTER_NAME`
+- current production default is `18/main`
+- stray extra clusters are a hard stop; the script will not auto-select by `find|sort|tail`
 
 9. Configure Tailscale
 

@@ -156,7 +156,12 @@ VM_NODE_MIN_VERSION
 VM_COREPACK_VERSION
 VM_NODE_PACKAGE_MANAGER
 VM_NODE_BUILD_OPTIONS
+VM_POSTGRES_MAJOR
+VM_POSTGRES_CLUSTER_NAME
 VM_SUPPORTED_POSTGRES_MAJORS
+VM_EXPECTED_PROJECT_ID
+VM_EXPECTED_INSTANCE_NAME
+VM_EXPECTED_ZONE
 VM_SWAP_SIZE_GB
 VM_SWAPPINESS
 PG_SHARED_BUFFERS_MB
@@ -290,13 +295,25 @@ These are not created silently by normal deploy.
 ### Bootstrap host packages
 
 ```bash
-sudo ./infra/vm/bootstrap_vm.sh
+sudo env \
+  VM_EXPECTED_PROJECT_ID=gxp-qlcl-vm \
+  VM_EXPECTED_INSTANCE_NAME=gxp-web-prod \
+  VM_EXPECTED_ZONE=asia-southeast1-a \
+  VM_POSTGRES_MAJOR=18 \
+  VM_SWAP_SIZE_GB=4 \
+  VM_SWAPPINESS=10 \
+  ./infra/vm/bootstrap_vm.sh
 ```
 
 Fresh Ubuntu baseline after bootstrap:
+- fails closed if run from Google Cloud Shell instead of the target Compute Engine VM
+- validates Compute Engine metadata against any configured `VM_EXPECTED_*` values before package mutation
+- installs minimal bootstrap prerequisites first: `ca-certificates`, `curl`, `gnupg`
+- provisions `/swapfile` with `VM_SWAP_SIZE_GB=4` and `VM_SWAPPINESS=10` before Node and other heavier package work
+- installs explicit PostgreSQL packages for the configured production major, currently `postgresql-18` and `postgresql-client-18`
+- requires exactly the intended PostgreSQL cluster, currently `18/main`, and fails closed on stray clusters
 - installs Python 3.12, PostgreSQL, Nginx, Git, rsync, Node.js, Corepack, pinned pnpm, and `gcloud`
 - creates non-root app user/group `gxp`
-- provisions `/swapfile` with `VM_SWAP_SIZE_GB=4` and `VM_SWAPPINESS=10` by default
 - prepares `/opt/gxp`, `/etc/gxp`, backend/frontend release directories, and backup staging
 - fails closed if the host image does not provide Python 3.12 packages natively
 
@@ -315,6 +332,7 @@ Current small-VM default tuning baseline:
 - `autovacuum_work_mem=64MB`
 - `max_connections=30`
 - supported PostgreSQL majors: `17,18`
+- current production cluster contract: `VM_POSTGRES_MAJOR=18`, `VM_POSTGRES_CLUSTER_NAME=main`
 
 ### Configure Tailscale
 

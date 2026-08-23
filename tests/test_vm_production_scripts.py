@@ -141,9 +141,50 @@ def test_vm_bootstrap_script_installs_node_gcloud_and_swap_defaults():
     assert "corepack enable" in text
     assert 'corepack prepare "${NODE_PACKAGE_MANAGER}" --activate' in text
     assert "google-cloud-cli" in text
-    assert "/swapfile" in text
     assert "VM_SWAP_SIZE_GB" in text
     assert "VM_SWAPPINESS" in text
+
+
+def test_vm_bootstrap_script_uses_explicit_postgres_major_and_guards_cloud_shell():
+    text = (ROOT / "infra" / "vm" / "bootstrap_vm.sh").read_text(encoding="utf-8")
+
+    assert 'POSTGRES_MAJOR="${VM_POSTGRES_MAJOR:-18}"' in text
+    assert 'POSTGRES_CLUSTER_NAME="${VM_POSTGRES_CLUSTER_NAME:-main}"' in text
+    assert '"postgresql-${POSTGRES_MAJOR}"' in text
+    assert '"postgresql-client-${POSTGRES_MAJOR}"' in text
+    assert "DEVSHELL_PROJECT_ID" in text
+    assert "CLOUD_SHELL" in text
+    assert "bootstrap_vm.sh must run on the target Compute Engine VM, not Cloud Shell." in text
+    assert "VM_EXPECTED_PROJECT_ID" in text
+    assert "VM_EXPECTED_INSTANCE_NAME" in text
+    assert "VM_EXPECTED_ZONE" in text
+    assert "Could not verify Compute Engine metadata for the expected VM identity." in text
+
+
+def test_vm_bootstrap_script_orders_minimal_prereqs_swap_and_explicit_postgres_flow():
+    text = (ROOT / "infra" / "vm" / "bootstrap_vm.sh").read_text(encoding="utf-8")
+
+    assert text.rindex("ensure_supported_python_packages") < text.rindex("validate_python_baseline")
+    assert text.rindex("validate_python_baseline") < text.rindex("install_minimal_bootstrap_prerequisites")
+    assert text.rindex("install_minimal_bootstrap_prerequisites") < text.rindex("configure_swap")
+    assert text.rindex("configure_swap") < text.rindex("ensure_pgdg_repository")
+    assert text.rindex("ensure_pgdg_repository") < text.rindex("install_postgresql_packages")
+    assert text.rindex("install_postgresql_packages") < text.rindex("install_nodejs")
+    assert text.rindex("install_nodejs") < text.rindex("install_gcloud")
+    assert "apt-get install -y --no-install-recommends \"${BOOTSTRAP_MINIMAL_APT_PACKAGES[@]}\"" in text
+    assert 'apt-cache show "postgresql-${POSTGRES_MAJOR}"' in text
+    assert 'pg_createcluster "${POSTGRES_MAJOR}" "${POSTGRES_CLUSTER_NAME}"' in text
+
+
+def test_configure_postgres_uses_explicit_cluster_contract():
+    text = (ROOT / "infra" / "vm" / "configure_postgres.sh").read_text(encoding="utf-8")
+
+    assert 'POSTGRES_MAJOR="${VM_POSTGRES_MAJOR:-18}"' in text
+    assert 'POSTGRES_CLUSTER_NAME="${VM_POSTGRES_CLUSTER_NAME:-main}"' in text
+    assert 'pg_lsclusters --no-header' in text
+    assert 'PG_CLUSTER_DIR="/etc/postgresql/${POSTGRES_MAJOR}/${POSTGRES_CLUSTER_NAME}"' in text
+    assert 'pg_ctlcluster "${POSTGRES_MAJOR}" "${POSTGRES_CLUSTER_NAME}" restart' in text
+    assert "find /etc/postgresql" not in text
 
 
 def test_vm_scripts_use_runtime_env_parser_not_shell_source():
@@ -184,7 +225,12 @@ def test_vm_runtime_example_declares_fresh_machine_controls():
         "VM_NODE_MIN_VERSION=22.12.0",
         "VM_COREPACK_VERSION=0.31.0",
         "VM_NODE_PACKAGE_MANAGER=pnpm@11.19.0",
+        "VM_POSTGRES_MAJOR=18",
+        "VM_POSTGRES_CLUSTER_NAME=main",
         "VM_SUPPORTED_POSTGRES_MAJORS=17,18",
+        "VM_EXPECTED_PROJECT_ID=",
+        "VM_EXPECTED_INSTANCE_NAME=",
+        "VM_EXPECTED_ZONE=",
         "PG_SHARED_BUFFERS_MB=256",
         "PG_MAX_CONNECTIONS=30",
     ]:
@@ -222,6 +268,332 @@ def _base_env(fake_bin: Path, runtime_env: Path) -> dict[str, str]:
     env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
     env["VM_RUNTIME_ENV_FILE"] = runtime_env.as_posix()
     return env
+
+
+def _write_executable(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8", newline="\n")
+    path.chmod(0o755)
+
+
+def _bootstrap_test_env(fake_bin: Path, runtime_env: Path, tmp_path: Path) -> dict[str, str]:
+    env = _base_env(fake_bin, runtime_env)
+    python_series = f"{sys.version_info[0]}.{sys.version_info[1]}"
+    env["BOOTSTRAP_UNSAFE_SKIP_ROOT_CHECK"] = "1"
+    env["VM_PYTHON_BIN"] = (fake_bin / "python3").as_posix()
+    env["VM_PYTHON_SERIES"] = python_series
+    env["VM_METADATA_BASE_URL"] = "http://127.0.0.1:9/computeMetadata/v1"
+    env["VM_OS_RELEASE_FILE"] = (tmp_path / "os-release").as_posix()
+    env["VM_APT_KEYRINGS_DIR"] = (tmp_path / "apt-keyrings").as_posix()
+    env["VM_APT_SOURCES_DIR"] = (tmp_path / "apt-sources").as_posix()
+    env["VM_SYSCTL_DIR"] = (tmp_path / "sysctl").as_posix()
+    env["VM_SYSCTL_FILE"] = (tmp_path / "sysctl" / "60-gxp-vm.conf").as_posix()
+    env["VM_FSTAB_FILE"] = (tmp_path / "fstab").as_posix()
+    env["VM_SWAPFILE_PATH"] = (tmp_path / "swapfile").as_posix()
+    env["VM_APP_ROOT"] = (tmp_path / "app-root").as_posix()
+    env["VM_SRC_DIR"] = (tmp_path / "app-root" / "src" / "GXP-QLCL").as_posix()
+    env["VM_BACKEND_RELEASES_DIR"] = (tmp_path / "app-root" / "backend-releases").as_posix()
+    env["VM_BACKEND_VENV_RELEASES_DIR"] = (tmp_path / "app-root" / "backend-venvs").as_posix()
+    env["VM_CURRENT_BACKEND_RELEASE_LINK"] = (tmp_path / "app-root" / "current-backend").as_posix()
+    env["VM_CURRENT_BACKEND_VENV_LINK"] = (tmp_path / "app-root" / "current-venv").as_posix()
+    env["VM_FRONTEND_DIST_DIR"] = (tmp_path / "app-root" / "frontend-dist").as_posix()
+    env["VM_FRONTEND_RELEASES_DIR"] = (tmp_path / "app-root" / "frontend-releases").as_posix()
+    env["BACKUP_LOCAL_STAGING_DIR"] = (tmp_path / "backups").as_posix()
+    env["VM_APP_GROUP"] = "root"
+    env["GXP_USER"] = "root"
+    return env
+
+
+def test_bootstrap_script_aborts_in_cloud_shell_before_mutation(tmp_path: Path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    runtime_env = tmp_path / "runtime.env"
+    runtime_env.write_text("", encoding="utf-8")
+    command_log = tmp_path / "command.log"
+    python_sh = sys.executable.replace("\\", "/")
+    (tmp_path / "os-release").write_text("ID=ubuntu\nVERSION_CODENAME=noble\n", encoding="utf-8", newline="\n")
+
+    _write_executable(fake_bin / "python3", f"#!/usr/bin/env bash\n\"{python_sh}\" \"$@\"\n")
+    for name in ["apt-get", "apt-cache", "install", "groupadd", "useradd", "swapon", "mkswap", "sysctl", "ln", "chown"]:
+        _write_executable(
+            fake_bin / name,
+            textwrap.dedent(
+                f"""\
+                #!/usr/bin/env bash
+                set -euo pipefail
+                printf '%s %s\\n' "{name}" "$*" >> "{command_log.as_posix()}"
+                exit 0
+                """
+            ),
+        )
+
+    env = _bootstrap_test_env(fake_bin, runtime_env, tmp_path)
+    env["DEVSHELL_PROJECT_ID"] = "gxp-qlcl-vm"
+
+    completed = _run_bash("./infra/vm/bootstrap_vm.sh", env=env, cwd=ROOT)
+
+    assert completed.returncode != 0
+    assert "must run on the target Compute Engine VM, not Cloud Shell" in (completed.stderr or completed.stdout)
+    assert not command_log.exists() or command_log.read_text(encoding="utf-8") == ""
+    assert not (tmp_path / "swapfile").exists()
+    assert not (tmp_path / "app-root").exists()
+
+
+def test_bootstrap_script_orders_minimal_prereqs_before_repo_setup_on_fresh_host(tmp_path: Path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    runtime_env = tmp_path / "runtime.env"
+    runtime_env.write_text("", encoding="utf-8")
+    python_sh = sys.executable.replace("\\", "/")
+    command_log = tmp_path / "command.log"
+    cluster_state = tmp_path / "cluster.state"
+    node_installed = tmp_path / "node.installed"
+    pnpm_ready = tmp_path / "pnpm.ready"
+    pgdg_repo_attempts = tmp_path / "pgdg.repo.attempts"
+    python_series = f"{sys.version_info[0]}.{sys.version_info[1]}"
+    (tmp_path / "os-release").write_text("ID=ubuntu\nVERSION_CODENAME=noble\n", encoding="utf-8", newline="\n")
+    (tmp_path / "fstab").write_text("", encoding="utf-8", newline="\n")
+
+    _write_executable(fake_bin / "python3", f"#!/usr/bin/env bash\n\"{python_sh}\" \"$@\"\n")
+    _write_executable(fake_bin / "curl", "#!/usr/bin/env bash\nset -euo pipefail\nprintf 'dummy-key'\n")
+    _write_executable(
+        fake_bin / "gpg",
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "output=\"\"\n"
+        "while [[ $# -gt 0 ]]; do\n"
+        "  case \"$1\" in\n"
+        "    -o)\n"
+        "      shift\n"
+        "      output=\"$1\"\n"
+        "      ;;\n"
+        "  esac\n"
+        "  shift || true\n"
+        "done\n"
+        "mkdir -p \"$(dirname \"$output\")\"\n"
+        "printf 'gpg' > \"$output\"\n",
+    )
+    _write_executable(
+        fake_bin / "pg_lsclusters",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            [[ -f "{cluster_state.as_posix()}" ]] && cat "{cluster_state.as_posix()}"
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "pg_createcluster",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf '%s %s 5432 online postgres /var/lib/postgresql/%s/%s /var/log/postgresql/postgresql-%s-%s.log\n' "$1" "$2" "$1" "$2" "$1" "$2" > "{cluster_state.as_posix()}"
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "node",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            version='0.0.0'
+            [[ -f "{node_installed.as_posix()}" ]] && version='22.12.0'
+            if [[ "$1" == "-p" && "$2" == "process.versions.node" ]]; then
+              printf '%s\n' "$version"
+              exit 0
+            fi
+            exit 1
+            """
+        ),
+    )
+    _write_executable(fake_bin / "npm", "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n")
+    _write_executable(
+        fake_bin / "corepack",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            if [[ "${{1:-}}" == "prepare" ]]; then
+              printf '1' > "{pnpm_ready.as_posix()}"
+            fi
+            exit 0
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "pnpm",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            [[ -f "{pnpm_ready.as_posix()}" ]] || exit 1
+            if [[ "${{1:-}}" == "--version" ]]; then
+              printf '11.19.0\n'
+              exit 0
+            fi
+            exit 0
+            """
+        ),
+    )
+    _write_executable(fake_bin / "gcloud", "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n")
+    _write_executable(
+        fake_bin / "apt-get",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf 'apt-get %s\\n' "$*" >> "{command_log.as_posix()}"
+            if [[ "$1" == "update" ]]; then
+              exit 0
+            fi
+            if [[ "$1" != "install" ]]; then
+              exit 0
+            fi
+            for arg in "$@"; do
+              case "$arg" in
+                postgresql-18)
+                  ;;
+                nodejs)
+                  printf '1' > "{node_installed.as_posix()}"
+                  ;;
+              esac
+            done
+            exit 0
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "apt-cache",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf 'apt-cache %s\\n' "$*" >> "{command_log.as_posix()}"
+            package="${{2:-}}"
+            case "$package" in
+              python3.12|python3.12-venv)
+                exit 0
+                ;;
+              postgresql-18)
+                attempts=0
+                [[ -f "{pgdg_repo_attempts.as_posix()}" ]] && attempts="$(cat "{pgdg_repo_attempts.as_posix()}")"
+                attempts=$((attempts + 1))
+                printf '%s\n' "$attempts" > "{pgdg_repo_attempts.as_posix()}"
+                [[ "$attempts" -ge 2 ]]
+                exit $?
+                ;;
+              python{python_series}|python{python_series}-venv)
+                exit 0
+                ;;
+              *)
+                exit 1
+                ;;
+            esac
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "install",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf 'install %s\\n' "$*" >> "{command_log.as_posix()}"
+            if [[ "$1" == "-d" ]]; then
+              skip_next=0
+              for arg in "$@"; do
+                if [[ "$skip_next" == "1" ]]; then
+                  skip_next=0
+                  continue
+                fi
+                case "$arg" in
+                  -d)
+                    ;;
+                  -m|-o|-g)
+                    skip_next=1
+                    ;;
+                  *)
+                    mkdir -p "$arg"
+                    ;;
+                esac
+              done
+              exit 0
+            fi
+            exit 0
+            """
+        ),
+    )
+    for name, body in {
+            "swapon": textwrap.dedent(
+                f"""\
+                #!/usr/bin/env bash
+                set -euo pipefail
+                printf 'swapon %s\\n' "$*" >> "{command_log.as_posix()}"
+                if [[ "${{1:-}}" == "--show=NAME" || "${{1:-}}" == "--show" ]]; then
+                  [[ -f "{(tmp_path / 'swap.active').as_posix()}" ]] && cat "{(tmp_path / 'swap.active').as_posix()}"
+                  exit 0
+                fi
+            printf '%s\n' "$1" > "{(tmp_path / 'swap.active').as_posix()}"
+            exit 0
+            """
+        ),
+        "mkswap": textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf 'mkswap %s\\n' "$*" >> "{command_log.as_posix()}"
+            exit 0
+            """
+        ),
+        "sysctl": textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf 'sysctl %s\\n' "$*" >> "{command_log.as_posix()}"
+            exit 0
+            """
+        ),
+        "free": "#!/usr/bin/env bash\nset -euo pipefail\nprintf 'Mem: 2G 1G 1G\\n'\n",
+        "fallocate": "#!/usr/bin/env bash\nset -euo pipefail\n: > \"${@: -1}\"\n",
+        "dd": "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
+        "chmod": "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
+        "getent": "#!/usr/bin/env bash\nset -euo pipefail\nexit 2\n",
+        "groupadd": "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
+        "useradd": "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
+        "id": "#!/usr/bin/env bash\nset -euo pipefail\n[[ \"$1\" == \"-u\" ]] && exit 1\nexit 0\n",
+        "chown": "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
+        "ln": textwrap.dedent(
+            """\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            target="${@: -2:1}"
+            link="${@: -1}"
+            mkdir -p "$(dirname "$link")"
+            printf '%s\n' "$target" > "$link"
+            exit 0
+            """
+        ),
+    }.items():
+        _write_executable(fake_bin / name, body)
+
+    env = _bootstrap_test_env(fake_bin, runtime_env, tmp_path)
+    env["INSTALL_GCLOUD"] = "0"
+
+    completed = _run_bash("./infra/vm/bootstrap_vm.sh", env=env, cwd=ROOT)
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    log_text = command_log.read_text(encoding="utf-8")
+    assert "apt-get update" in log_text
+    assert "apt-get install -y --no-install-recommends ca-certificates curl gnupg" in log_text
+    assert "apt-cache show postgresql-18" in log_text
+    expected_install = f"apt-get install -y --no-install-recommends git nginx procps python{python_series} python{python_series}-venv python3-pip rsync sudo postgresql-18 postgresql-client-18"
+    assert expected_install in log_text
+    assert log_text.index("apt-get install -y --no-install-recommends ca-certificates curl gnupg") < log_text.index(expected_install)
+    assert log_text.index("swapon ") < log_text.index(expected_install)
+    assert (tmp_path / "swap.active").read_text(encoding="utf-8").strip() == (tmp_path / "swapfile").as_posix()
+    assert "18 main" in cluster_state.read_text(encoding="utf-8")
 
 
 def test_backup_script_executes_and_cleans_up_local_artifacts(tmp_path: Path):
@@ -363,7 +735,6 @@ def test_restore_script_creates_missing_restore_db_via_privileged_admin_path(tmp
     admin_log = tmp_path / "admin.log"
     createdb_log = tmp_path / "createdb.log"
     restore_log = tmp_path / "restore.log"
-    psql_log = tmp_path / "psql.log"
 
     runtime_env.write_text(
         "\n".join(
@@ -390,17 +761,12 @@ def test_restore_script_creates_missing_restore_db_via_privileged_admin_path(tmp
         encoding="utf-8",
     )
     (fake_bin / "psql").write_text(
-        textwrap.dedent(
-            f"""\
-            #!/usr/bin/env bash
-            set -euo pipefail
-            printf '%s\\n' "$*" >> "{psql_log.as_posix()}"
-            if printf '%s' "$*" | grep -q -- "--dbname=postgres"; then
-              exit 0
-            fi
-            exit 0
-            """
-        ),
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "if printf '%s' \"$*\" | grep -q -- '--dbname=postgres'; then\n"
+        "  exit 1\n"
+        "fi\n"
+        "exit 0\n",
         encoding="utf-8",
     )
     (fake_bin / "createdb").write_text(
@@ -447,5 +813,5 @@ def test_vm_runtime_env_permission_contract_is_documented_in_scripts():
     bootstrap = (ROOT / "infra" / "vm" / "bootstrap_vm.sh").read_text(encoding="utf-8")
     common = (ROOT / "infra" / "vm" / "common.sh").read_text(encoding="utf-8")
 
-    assert 'install -d -m 0750 -o root -g "${GXP_GROUP}" "${RUNTIME_ENV_DIR}"' in bootstrap
+    assert 'ensure_dir "${RUNTIME_ENV_DIR}" 0750 root "${GXP_GROUP}"' in bootstrap
     assert '[[ -r "${env_file}" ]] || fail "Runtime env file is not readable by user $(id -un): ${env_file}"' in common

@@ -40,6 +40,7 @@ def test_validate_vm_prod_deploy_accepts_local_postgres_direct_smb_oidc_baseline
     assert report.plan.runtime_requirements_lock_file == "backend/requirements.runtime.vm.lock.txt"
     assert report.plan.runtime_env["VM_SRC_DIR"] == "/opt/gxp/src/GXP-QLCL"
     assert report.plan.runtime_env["VM_RUNTIME_ENV_FILE"] == "/etc/gxp/runtime.env"
+    assert report.plan.runtime_env["VM_SYSTEMD_ENV_FILE"] == "/etc/gxp/runtime.systemd.env"
     assert report.plan.runtime_env["SYSTEMD_SERVICE_NAME"] == "gxp-web"
     assert report.plan.runtime_env["PUBLIC_BASE_URL"] == "https://gxp.example.com"
     assert report.plan.runtime_env["VM_CURRENT_BACKEND_VENV_LINK"] == "/opt/gxp/current-venv"

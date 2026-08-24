@@ -44,6 +44,7 @@ class VmDeployPlan:
     vm_frontend_dist_dir: str
     vm_frontend_releases_dir: str
     vm_runtime_env_file: str
+    vm_systemd_env_file: str
     vm_release_metadata_file: str
     vm_release_retention_count: int
     systemd_service_name: str
@@ -211,6 +212,7 @@ def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> Validation
     vm_frontend_dist_dir = _get(source, "VM_FRONTEND_DIST_DIR", "/opt/gxp/frontend-dist")
     vm_frontend_releases_dir = _get(source, "VM_FRONTEND_RELEASES_DIR", "/opt/gxp/frontend-releases")
     vm_runtime_env_file = _get(source, "VM_RUNTIME_ENV_FILE", "/etc/gxp/runtime.env")
+    vm_systemd_env_file = _get(source, "VM_SYSTEMD_ENV_FILE", "/etc/gxp/runtime.systemd.env")
     vm_release_metadata_file = _get(source, "VM_RELEASE_METADATA_FILE", "/opt/gxp/current-release.json")
     vm_release_retention_count = _parse_int(source, "VM_RELEASE_RETENTION_COUNT", errors, 3)
     if vm_release_retention_count < 2:
@@ -311,6 +313,7 @@ def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> Validation
         "VM_FRONTEND_DIST_DIR": vm_frontend_dist_dir,
         "VM_FRONTEND_RELEASES_DIR": vm_frontend_releases_dir,
         "VM_RUNTIME_ENV_FILE": vm_runtime_env_file,
+        "VM_SYSTEMD_ENV_FILE": vm_systemd_env_file,
         "VM_RELEASE_METADATA_FILE": vm_release_metadata_file,
         "VM_RELEASE_RETENTION_COUNT": str(vm_release_retention_count),
         "SYSTEMD_SERVICE_NAME": systemd_service_name,
@@ -370,6 +373,7 @@ def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> Validation
             vm_frontend_dist_dir=vm_frontend_dist_dir,
             vm_frontend_releases_dir=vm_frontend_releases_dir,
             vm_runtime_env_file=vm_runtime_env_file,
+            vm_systemd_env_file=vm_systemd_env_file,
             vm_release_metadata_file=vm_release_metadata_file,
             vm_release_retention_count=vm_release_retention_count,
             systemd_service_name=systemd_service_name,

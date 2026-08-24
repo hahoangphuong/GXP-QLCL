@@ -12,8 +12,10 @@ RUNTIME_ASSET_STAGING_DIR="$(mktemp -d)"
 STAGED_SERVICE_FILE=""
 VALIDATION_SERVICE_FILE=""
 STAGED_NGINX_FILE=""
+STAGED_SYSTEMD_ENV_FILE=""
 PREVIOUS_SERVICE_FILE=""
 PREVIOUS_NGINX_FILE=""
+PREVIOUS_SYSTEMD_ENV_FILE=""
 SUCCESS=0
 SWITCHED_RELEASES=0
 SWITCHED_CONFIG=0
@@ -25,31 +27,83 @@ NEW_FRONTEND_RELEASE=""
 ORIGINAL_FRONTEND_TARGET=""
 ORIGINAL_BACKEND_RELEASE_TARGET=""
 ORIGINAL_BACKEND_VENV_TARGET=""
+FRONTEND_DIST_EXISTED_BEFORE=0
+BACKEND_RELEASE_LINK_EXISTED_BEFORE=0
+BACKEND_VENV_LINK_EXISTED_BEFORE=0
+SYSTEMD_SERVICE_FILE_EXISTED_BEFORE=0
+NGINX_SITE_FILE_EXISTED_BEFORE=0
+NGINX_SITE_ENABLED_LINK_EXISTED_BEFORE=0
+NGINX_SITE_ENABLED_LINK_TARGET_BEFORE=""
+SYSTEMD_ENV_FILE_EXISTED_BEFORE=0
+
+restore_managed_symlink() {
+  local path="$1"
+  local existed_before="$2"
+  local target_before="$3"
+  local owner="$4"
+  local group="$5"
+  if [[ "${existed_before}" == "1" ]]; then
+    ln -sfn "${target_before}" "${path}" || true
+    chown -h "${owner}:${group}" "${path}" || true
+  else
+    rm -rf "${path}" || true
+  fi
+}
+
+wait_for_http_endpoint() {
+  local path="$1"
+  local deadline_seconds="$2"
+  local service_name="$3"
+  local deadline=$((SECONDS + deadline_seconds))
+  while (( SECONDS < deadline )); do
+    local service_state
+    service_state="$(systemctl is-active "${service_name}" 2>/dev/null || true)"
+    case "${service_state}" in
+      active|activating) ;;
+      *)
+        systemctl status --no-pager --lines=0 "${service_name}" >&2 || true
+        fail "Service ${service_name} entered state ${service_state:-unknown} while waiting for ${path}. Hint: journalctl -u ${service_name} -n 100 --no-pager"
+        ;;
+    esac
+    if curl -fsS "http://127.0.0.1:${APP_PORT}${path}" >/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+  systemctl status --no-pager --lines=0 "${service_name}" >&2 || true
+  fail "Timed out waiting for ${path} on ${service_name}. Hint: journalctl -u ${service_name} -n 100 --no-pager"
+}
 
 cleanup() {
   if [[ "${SUCCESS}" != "1" && "${SWITCHED_CONFIG}" == "1" ]]; then
-    if [[ -s "${PREVIOUS_SERVICE_FILE}" ]]; then
+    if [[ "${SYSTEMD_SERVICE_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_SERVICE_FILE}" ]]; then
       cp "${PREVIOUS_SERVICE_FILE}" "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service" || true
+    else
+      rm -f "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service" || true
     fi
-    if [[ -s "${PREVIOUS_NGINX_FILE}" ]]; then
+    if [[ "${NGINX_SITE_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_NGINX_FILE}" ]]; then
       cp "${PREVIOUS_NGINX_FILE}" "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf" || true
-      ln -sfn "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf" "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}.conf" || true
+    else
+      rm -f "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf" || true
+    fi
+    if [[ "${NGINX_SITE_ENABLED_LINK_EXISTED_BEFORE}" == "1" ]]; then
+      ln -sfn "${NGINX_SITE_ENABLED_LINK_TARGET_BEFORE}" "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}.conf" || true
+    else
+      rm -f "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}.conf" || true
+    fi
+    if [[ "${SYSTEMD_ENV_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_SYSTEMD_ENV_FILE}" ]]; then
+      cp "${PREVIOUS_SYSTEMD_ENV_FILE}" "${VM_SYSTEMD_ENV_FILE}" || true
+      chown "root:${VM_APP_GROUP}" "${VM_SYSTEMD_ENV_FILE}" || true
+      chmod 0640 "${VM_SYSTEMD_ENV_FILE}" || true
+    else
+      rm -f "${VM_SYSTEMD_ENV_FILE}" || true
     fi
     systemctl daemon-reload >/dev/null 2>&1 || true
   fi
   if [[ "${SUCCESS}" != "1" && "${SWITCHED_RELEASES}" == "1" ]]; then
-    if [[ -n "${ORIGINAL_FRONTEND_TARGET}" ]]; then
-      ln -sfn "${ORIGINAL_FRONTEND_TARGET}" "${VM_FRONTEND_DIST_DIR}" || true
-      chown -h "${VM_APP_USER}:${VM_APP_GROUP}" "${VM_FRONTEND_DIST_DIR}" || true
-    fi
-    if [[ -n "${ORIGINAL_BACKEND_RELEASE_TARGET}" ]]; then
-      ln -sfn "${ORIGINAL_BACKEND_RELEASE_TARGET}" "${VM_CURRENT_BACKEND_RELEASE_LINK}" || true
-      chown -h "${VM_APP_USER}:${VM_APP_GROUP}" "${VM_CURRENT_BACKEND_RELEASE_LINK}" || true
-    fi
-    if [[ -n "${ORIGINAL_BACKEND_VENV_TARGET}" ]]; then
-      ln -sfn "${ORIGINAL_BACKEND_VENV_TARGET}" "${VM_CURRENT_BACKEND_VENV_LINK}" || true
-      chown -h "${VM_APP_USER}:${VM_APP_GROUP}" "${VM_CURRENT_BACKEND_VENV_LINK}" || true
-    fi
+    restore_managed_symlink "${VM_FRONTEND_DIST_DIR}" "${FRONTEND_DIST_EXISTED_BEFORE}" "${ORIGINAL_FRONTEND_TARGET}" "${VM_APP_USER}" "${VM_APP_GROUP}"
+    restore_managed_symlink "${VM_CURRENT_BACKEND_RELEASE_LINK}" "${BACKEND_RELEASE_LINK_EXISTED_BEFORE}" "${ORIGINAL_BACKEND_RELEASE_TARGET}" "${VM_APP_USER}" "${VM_APP_GROUP}"
+    restore_managed_symlink "${VM_CURRENT_BACKEND_VENV_LINK}" "${BACKEND_VENV_LINK_EXISTED_BEFORE}" "${ORIGINAL_BACKEND_VENV_TARGET}" "${VM_APP_USER}" "${VM_APP_GROUP}"
     systemctl restart "${SYSTEMD_SERVICE_NAME}" >/dev/null 2>&1 || true
     systemctl restart nginx >/dev/null 2>&1 || true
   fi
@@ -187,6 +241,7 @@ VM_CURRENT_BACKEND_RELEASE_LINK="$(json_query vm_current_backend_release_link)"
 VM_CURRENT_BACKEND_VENV_LINK="$(json_query vm_current_backend_venv_link)"
 VM_FRONTEND_DIST_DIR="$(json_query vm_frontend_dist_dir)"
 VM_FRONTEND_RELEASES_DIR="$(json_query vm_frontend_releases_dir)"
+VM_SYSTEMD_ENV_FILE="$(json_query vm_systemd_env_file)"
 VM_RELEASE_METADATA_FILE="$(json_query vm_release_metadata_file)"
 VM_RELEASE_RETENTION_COUNT="$(json_query vm_release_retention_count)"
 SYSTEMD_SERVICE_NAME="$(json_query systemd_service_name)"
@@ -204,8 +259,10 @@ install -d -m 0750 -o "${VM_APP_USER}" -g "${VM_APP_GROUP}" "${FRONTEND_BUILD_DI
 STAGED_SERVICE_FILE="${RUNTIME_ASSET_STAGING_DIR}/${SYSTEMD_SERVICE_NAME}.service"
 VALIDATION_SERVICE_FILE="${RUNTIME_ASSET_STAGING_DIR}/${SYSTEMD_SERVICE_NAME}.validation.service"
 STAGED_NGINX_FILE="${RUNTIME_ASSET_STAGING_DIR}/${NGINX_SITE_NAME}.conf"
+STAGED_SYSTEMD_ENV_FILE="${RUNTIME_ASSET_STAGING_DIR}/$(basename "${VM_SYSTEMD_ENV_FILE}")"
 PREVIOUS_SERVICE_FILE="${RUNTIME_ASSET_STAGING_DIR}/${SYSTEMD_SERVICE_NAME}.previous.service"
 PREVIOUS_NGINX_FILE="${RUNTIME_ASSET_STAGING_DIR}/${NGINX_SITE_NAME}.previous.conf"
+PREVIOUS_SYSTEMD_ENV_FILE="${RUNTIME_ASSET_STAGING_DIR}/$(basename "${VM_SYSTEMD_ENV_FILE}").previous"
 
 REPO_ROOT_NORMALIZED="$(normalize_repo_path "${REPO_ROOT}")"
 VM_SRC_DIR_NORMALIZED="$(normalize_repo_path "${VM_SRC_DIR}")"
@@ -219,13 +276,29 @@ fi
 
 CURRENT_STAGE="resolve_release_targets"
 if [[ -L "${VM_FRONTEND_DIST_DIR}" ]]; then
+  FRONTEND_DIST_EXISTED_BEFORE=1
   ORIGINAL_FRONTEND_TARGET="$(readlink_safe "${VM_FRONTEND_DIST_DIR}" || true)"
 fi
 if [[ -L "${VM_CURRENT_BACKEND_RELEASE_LINK}" ]]; then
+  BACKEND_RELEASE_LINK_EXISTED_BEFORE=1
   ORIGINAL_BACKEND_RELEASE_TARGET="$(readlink_safe "${VM_CURRENT_BACKEND_RELEASE_LINK}" || true)"
 fi
 if [[ -L "${VM_CURRENT_BACKEND_VENV_LINK}" ]]; then
+  BACKEND_VENV_LINK_EXISTED_BEFORE=1
   ORIGINAL_BACKEND_VENV_TARGET="$(readlink_safe "${VM_CURRENT_BACKEND_VENV_LINK}" || true)"
+fi
+if [[ -f "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service" ]]; then
+  SYSTEMD_SERVICE_FILE_EXISTED_BEFORE=1
+fi
+if [[ -f "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf" ]]; then
+  NGINX_SITE_FILE_EXISTED_BEFORE=1
+fi
+if [[ -L "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}.conf" ]]; then
+  NGINX_SITE_ENABLED_LINK_EXISTED_BEFORE=1
+  NGINX_SITE_ENABLED_LINK_TARGET_BEFORE="$(readlink_safe "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}.conf" || true)"
+fi
+if [[ -f "${VM_SYSTEMD_ENV_FILE}" ]]; then
+  SYSTEMD_ENV_FILE_EXISTED_BEFORE=1
 fi
 
 TARGET_SHA="${DEPLOY_GIT_SHA:-}"
@@ -324,6 +397,8 @@ case "${DATABASE_URL}" in
   sqlite:*) fail "DATABASE_URL must not resolve to SQLite in production." ;;
   *) fail "DATABASE_URL must resolve to PostgreSQL before deploy." ;;
 esac
+CURRENT_STAGE="render_systemd_runtime_env"
+python3 tools/runtime_env.py write-systemd "${RUNTIME_ENV_FILE}" "${STAGED_SYSTEMD_ENV_FILE}"
 
 CURRENT_STAGE="build_frontend"
 run_as_app_bash "
@@ -344,6 +419,18 @@ run_as_app_bash "
 rsync -a --delete "${FRONTEND_BUILD_DIR}/" "${NEW_FRONTEND_RELEASE}/"
 chown -R "${VM_APP_USER}:${VM_APP_GROUP}" "${NEW_FRONTEND_RELEASE}"
 
+CURRENT_STAGE="storage_readiness_check"
+run_as_app_bash "
+  cd '${NEW_BACKEND_RELEASE}'
+  env -u PYTHONHOME PYTHONPATH='${NEW_BACKEND_RELEASE}' '${NEW_BACKEND_VENV}/bin/python' - <<'PY'
+from backend.app.storage.factory import create_storage_service_from_env
+import os
+
+service = create_storage_service_from_env(dict(os.environ))
+service.list('')
+PY
+"
+
 CURRENT_STAGE="render_runtime_assets"
 assert_tls_files_exist
 python3 "${NEW_BACKEND_RELEASE}/tools/render_vm_runtime_assets.py" service "${STAGED_SERVICE_FILE}"
@@ -352,6 +439,7 @@ python3 "${NEW_BACKEND_RELEASE}/tools/render_vm_runtime_assets.py" service "${ST
 env \
   VM_SERVICE_WORKING_DIRECTORY="${NEW_BACKEND_RELEASE}" \
   VM_SERVICE_EXECUTABLE="${NEW_BACKEND_VENV}/bin/uvicorn" \
+  VM_SERVICE_ENVIRONMENT_FILE="${STAGED_SYSTEMD_ENV_FILE}" \
   python3 "${NEW_BACKEND_RELEASE}/tools/render_vm_runtime_assets.py" service "${VALIDATION_SERVICE_FILE}"
 python3 "${NEW_BACKEND_RELEASE}/tools/render_vm_runtime_assets.py" nginx "${STAGED_NGINX_FILE}"
 if command -v systemd-analyze >/dev/null 2>&1; then
@@ -371,8 +459,14 @@ fi
 if [[ -f "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf" ]]; then
   cp "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf" "${PREVIOUS_NGINX_FILE}"
 fi
+if [[ -f "${VM_SYSTEMD_ENV_FILE}" ]]; then
+  cp "${VM_SYSTEMD_ENV_FILE}" "${PREVIOUS_SYSTEMD_ENV_FILE}"
+fi
 cp "${STAGED_SERVICE_FILE}" "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service"
 cp "${STAGED_NGINX_FILE}" "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf"
+install -d -m 0755 "$(dirname "${VM_SYSTEMD_ENV_FILE}")"
+install -m 0640 -o root -g "${VM_APP_GROUP}" "${STAGED_SYSTEMD_ENV_FILE}" "${VM_SYSTEMD_ENV_FILE}.tmp"
+mv "${VM_SYSTEMD_ENV_FILE}.tmp" "${VM_SYSTEMD_ENV_FILE}"
 ln -sfn "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf" "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}.conf"
 rm -f /etc/nginx/sites-enabled/default
 systemctl daemon-reload
@@ -391,8 +485,8 @@ systemctl restart "${SYSTEMD_SERVICE_NAME}"
 systemctl restart nginx
 
 CURRENT_STAGE="post_switch_health"
-curl -fsS "http://127.0.0.1:${APP_PORT}/healthz" >/dev/null
-curl -fsS "http://127.0.0.1:${APP_PORT}/readyz" >/dev/null
+wait_for_http_endpoint "/healthz" 30 "${SYSTEMD_SERVICE_NAME}"
+wait_for_http_endpoint "/readyz" 30 "${SYSTEMD_SERVICE_NAME}"
 
 CURRENT_STAGE="write_release_metadata"
 install -d -m 0755 "$(dirname "${VM_RELEASE_METADATA_FILE}")"

@@ -4,7 +4,14 @@ import sys
 
 import yaml
 
-from tools.env_utils import dotenv_to_yaml_env_file, parse_env_file, write_yaml_env_file
+from tools.env_utils import (
+    dotenv_to_yaml_env_file,
+    parse_env_file,
+    parse_systemd_env_file,
+    serialize_systemd_environment_file_contents,
+    write_systemd_environment_file,
+    write_yaml_env_file,
+)
 from tools.validate_prod_deploy import validate_prod_deploy_env
 
 
@@ -120,3 +127,68 @@ def test_runtime_env_cli_exports_null_safe_pairs(tmp_path: Path):
         b"PUBLIC_BASE_URL=https://gxp.example.com",
         b"DB_PASSWORD=pa ss#word",
     ]
+
+
+def test_systemd_runtime_env_round_trips_special_characters(tmp_path: Path):
+    values = {
+        "PLAIN": "plain",
+        "WITH_SPACES": "  with spaces  ",
+        "UNC_PATH": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs",
+        "BACKSLASH": r"domain\user",
+        "DOUBLE_QUOTE": 'he said "xin chao"',
+        "SINGLE_QUOTE": "it's quoted",
+        "DOLLAR": "$HOME and $PATH",
+        "PERCENT": "%USERPROFILE%",
+        "HASH": "abc#def",
+        "SEMICOLON": "abc;def",
+        "EQUALS": "a=b=c",
+        "UNICODE_VI": "Hồ sơ nội bộ",
+        "MIXED_PASSWORD": " weird ' \" $HOME \\\\ ; : spaces ",
+        "EMPTY": "",
+    }
+    output = tmp_path / "runtime.systemd.env"
+
+    write_systemd_environment_file(output, values)
+    parsed = parse_systemd_env_file(output)
+
+    assert parsed == values
+    payload = output.read_text(encoding="utf-8")
+    assert "MIXED_PASSWORD" in payload
+    assert "Hồ sơ nội bộ" in payload
+
+
+def test_runtime_env_cli_writes_systemd_safe_env_file(tmp_path: Path):
+    source = tmp_path / "runtime.env"
+    output = tmp_path / "runtime.systemd.env"
+    expected_username = "domain\\user"
+    expected_password = " weird ' \" $HOME \\\\ ; : spaces "
+    source.write_text(
+        f"SMB_USERNAME={expected_username!r}\n"
+        f"SMB_PASSWORD={expected_password!r}\n"
+        f"PUBLIC_BASE_URL={'https://gxp.example.com'!r}\n",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [sys.executable, "tools/runtime_env.py", "write-systemd", str(source), str(output)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == ""
+    assert completed.stderr == ""
+    assert parse_systemd_env_file(output)["SMB_USERNAME"] == expected_username
+    assert parse_systemd_env_file(output)["SMB_PASSWORD"] == expected_password
+    assert parse_systemd_env_file(output)["PUBLIC_BASE_URL"] == "https://gxp.example.com"
+    assert expected_password not in output.read_text(encoding="utf-8")
+
+
+def test_systemd_runtime_env_serializer_is_deterministic():
+    values = {"B": "two words", "A": "alpha"}
+    first = serialize_systemd_environment_file_contents(values)
+    second = serialize_systemd_environment_file_contents(values)
+
+    assert first == second

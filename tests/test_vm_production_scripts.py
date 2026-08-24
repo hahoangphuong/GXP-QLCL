@@ -83,30 +83,46 @@ def test_vm_deploy_script_preserves_pre_switch_atomicity_and_post_switch_rollbac
     assert text.index('CURRENT_STAGE="write_release_metadata"') < text.index('CURRENT_STAGE="retention"')
     assert 'cp "${STAGED_SERVICE_FILE}" "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service"' in text
     assert 'cp "${STAGED_NGINX_FILE}" "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf"' in text
+    assert 'install -m 0640 -o root -g "${VM_APP_GROUP}" "${STAGED_SYSTEMD_ENV_FILE}" "${VM_SYSTEMD_ENV_FILE}.tmp"' in text
+    assert 'mv "${VM_SYSTEMD_ENV_FILE}.tmp" "${VM_SYSTEMD_ENV_FILE}"' in text
     assert 'if [[ "${SUCCESS}" != "1" && "${SWITCHED_CONFIG}" == "1" ]]; then' in text
-    assert 'if [[ -s "${PREVIOUS_SERVICE_FILE}" ]]; then' in text
-    assert 'if [[ -s "${PREVIOUS_NGINX_FILE}" ]]; then' in text
+    assert 'if [[ "${SYSTEMD_SERVICE_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_SERVICE_FILE}" ]]; then' in text
+    assert 'if [[ "${NGINX_SITE_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_NGINX_FILE}" ]]; then' in text
+    assert 'if [[ "${SYSTEMD_ENV_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_SYSTEMD_ENV_FILE}" ]]; then' in text
     assert 'if [[ "${SUCCESS}" != "1" && "${SWITCHED_RELEASES}" == "1" ]]; then' in text
-    assert 'ln -sfn "${ORIGINAL_BACKEND_RELEASE_TARGET}" "${VM_CURRENT_BACKEND_RELEASE_LINK}"' in text
-    assert 'ln -sfn "${ORIGINAL_BACKEND_VENV_TARGET}" "${VM_CURRENT_BACKEND_VENV_LINK}"' in text
-    assert 'ln -sfn "${ORIGINAL_FRONTEND_TARGET}" "${VM_FRONTEND_DIST_DIR}"' in text
+    assert 'restore_managed_symlink "${VM_CURRENT_BACKEND_RELEASE_LINK}" "${BACKEND_RELEASE_LINK_EXISTED_BEFORE}" "${ORIGINAL_BACKEND_RELEASE_TARGET}" "${VM_APP_USER}" "${VM_APP_GROUP}"' in text
+    assert 'restore_managed_symlink "${VM_CURRENT_BACKEND_VENV_LINK}" "${BACKEND_VENV_LINK_EXISTED_BEFORE}" "${ORIGINAL_BACKEND_VENV_TARGET}" "${VM_APP_USER}" "${VM_APP_GROUP}"' in text
+    assert 'restore_managed_symlink "${VM_FRONTEND_DIST_DIR}" "${FRONTEND_DIST_EXISTED_BEFORE}" "${ORIGINAL_FRONTEND_TARGET}" "${VM_APP_USER}" "${VM_APP_GROUP}"' in text
+    assert 'else\n    rm -rf "${path}" || true' in text
     assert 'RUNTIME_ASSET_STAGING_DIR="$(mktemp -d)"' in text
     assert 'STAGED_SERVICE_FILE="${RUNTIME_ASSET_STAGING_DIR}/${SYSTEMD_SERVICE_NAME}.service"' in text
     assert 'VALIDATION_SERVICE_FILE="${RUNTIME_ASSET_STAGING_DIR}/${SYSTEMD_SERVICE_NAME}.validation.service"' in text
     assert 'STAGED_NGINX_FILE="${RUNTIME_ASSET_STAGING_DIR}/${NGINX_SITE_NAME}.conf"' in text
+    assert 'STAGED_SYSTEMD_ENV_FILE="${RUNTIME_ASSET_STAGING_DIR}/$(basename "${VM_SYSTEMD_ENV_FILE}")"' in text
     assert 'PREVIOUS_SERVICE_FILE="${RUNTIME_ASSET_STAGING_DIR}/${SYSTEMD_SERVICE_NAME}.previous.service"' in text
     assert 'PREVIOUS_NGINX_FILE="${RUNTIME_ASSET_STAGING_DIR}/${NGINX_SITE_NAME}.previous.conf"' in text
+    assert 'PREVIOUS_SYSTEMD_ENV_FILE="${RUNTIME_ASSET_STAGING_DIR}/$(basename "${VM_SYSTEMD_ENV_FILE}").previous"' in text
     assert 'STAGED_SERVICE_FILE="$(mktemp)"' not in text
     assert 'STAGED_NGINX_FILE="$(mktemp)"' not in text
     assert 'alembic downgrade' not in text
+
+
+def test_vm_service_template_points_to_generated_systemd_env_file():
+    service_text = (ROOT / "infra" / "vm" / "gxp-web.service").read_text(encoding="utf-8")
+    render_text = (ROOT / "tools" / "render_vm_runtime_assets.py").read_text(encoding="utf-8")
+
+    assert "EnvironmentFile={{VM_SERVICE_ENVIRONMENT_FILE}}" in service_text
+    assert "EnvironmentFile={{VM_RUNTIME_ENV_FILE}}" not in service_text
+    assert '_required_env("VM_SYSTEMD_ENV_FILE")' in render_text
+    assert 'VM_SERVICE_ENVIRONMENT_FILE' in render_text
 
 
 def test_vm_deploy_script_writes_release_metadata_only_after_health_passes():
     text = (ROOT / "infra" / "vm" / "deploy_prod.sh").read_text(encoding="utf-8")
 
     metadata_section = text[text.index('CURRENT_STAGE="write_release_metadata"') :]
-    assert 'curl -fsS "http://127.0.0.1:${APP_PORT}/healthz"' in text
-    assert 'curl -fsS "http://127.0.0.1:${APP_PORT}/readyz"' in text
+    assert 'wait_for_http_endpoint "/healthz" 30 "${SYSTEMD_SERVICE_NAME}"' in text
+    assert 'wait_for_http_endpoint "/readyz" 30 "${SYSTEMD_SERVICE_NAME}"' in text
     assert 'CURRENT_STAGE="post_switch_health"' in text
     assert 'CURRENT_STAGE="write_release_metadata"' in text
     assert 'mv "${VM_RELEASE_METADATA_FILE}.tmp" "${VM_RELEASE_METADATA_FILE}"' in metadata_section
@@ -150,11 +166,16 @@ def test_vm_deploy_script_uses_vm_runtime_requirements_and_db_backup():
     assert 'VM_SERVICE_EXECUTABLE="${NEW_BACKEND_VENV}/bin/uvicorn" \\' in text
     assert 'python3 "${NEW_BACKEND_RELEASE}/tools/render_vm_runtime_assets.py" service "${VALIDATION_SERVICE_FILE}"' in text
     assert 'systemd-analyze verify "${VALIDATION_SERVICE_FILE}" >/dev/null' in text
+    assert 'python3 tools/runtime_env.py write-systemd "${RUNTIME_ENV_FILE}" "${STAGED_SYSTEMD_ENV_FILE}"' in text
+    assert 'CURRENT_STAGE="storage_readiness_check"' in text
+    assert "from backend.app.storage.factory import create_storage_service_from_env" in text
+    assert "service.list('')" in text
     assert "GXP_FRONTEND_DIST_ROOT" in text
     assert 'systemctl enable "${SYSTEMD_SERVICE_NAME}"' in text
     assert 'systemctl enable nginx' in text
     assert 'VM_CURRENT_BACKEND_RELEASE_LINK' in text
     assert 'VM_CURRENT_BACKEND_VENV_LINK' in text
+    assert 'VM_SYSTEMD_ENV_FILE' in text
     assert 'FRONTEND_BUILD_DIR=""' in text
     assert 'FRONTEND_BUILD_DIR="$(mktemp -d)"' in text
     assert 'install -d -m 0750 -o "${VM_APP_USER}" -g "${VM_APP_GROUP}" "${FRONTEND_BUILD_DIR}"' in text
@@ -287,6 +308,7 @@ def test_vm_runtime_example_declares_fresh_machine_controls():
         "VM_FRONTEND_DIST_DIR=/opt/gxp/frontend-dist",
         "VM_FRONTEND_RELEASES_DIR=/opt/gxp/frontend-releases",
         "VM_RUNTIME_ENV_FILE=/etc/gxp/runtime.env",
+        "VM_SYSTEMD_ENV_FILE=/etc/gxp/runtime.systemd.env",
         "VM_RELEASE_RETENTION_COUNT=3",
         "SYSTEMD_SERVICE_NAME=gxp-web",
         "NGINX_SITE_NAME=gxp-web",

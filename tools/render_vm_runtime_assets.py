@@ -30,11 +30,13 @@ def _replacement_map() -> dict[str, str]:
     current_backend_venv_link = _required_env("VM_CURRENT_BACKEND_VENV_LINK")
     service_working_directory = os.environ.get("VM_SERVICE_WORKING_DIRECTORY", "").strip() or current_backend_release_link
     service_executable = os.environ.get("VM_SERVICE_EXECUTABLE", "").strip() or f"{current_backend_venv_link}/bin/uvicorn"
+    service_environment_file = os.environ.get("VM_SERVICE_ENVIRONMENT_FILE", "").strip() or _required_env("VM_SYSTEMD_ENV_FILE")
     return {
         "{{VM_APP_USER}}": app_user,
         "{{VM_APP_GROUP}}": app_group,
         "{{VM_SERVICE_WORKING_DIRECTORY}}": service_working_directory,
         "{{VM_SERVICE_EXECUTABLE}}": service_executable,
+        "{{VM_SERVICE_ENVIRONMENT_FILE}}": service_environment_file,
         "{{VM_RUNTIME_ENV_FILE}}": _required_env("VM_RUNTIME_ENV_FILE"),
         "{{APP_PORT}}": os.environ.get("APP_PORT", "").strip() or "8000",
         "{{GXP_FRONTEND_DIST_ROOT}}": _required_env("GXP_FRONTEND_DIST_ROOT"),

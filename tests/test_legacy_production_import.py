@@ -14,33 +14,149 @@ from tools import build_phase7_cutover_readiness as readiness
 from tools import import_legacy_production as ilp
 
 
-def sample_snapshot() -> dict[str, list[dict[str, str]]]:
+def legacy_row_set(
+    *,
+    company_id: str,
+    company_name: str,
+    site_id: str,
+    site_name: str,
+    inspection_id: str,
+    certificate_id: str,
+    business_id: str,
+    change_request_id: str,
+    change_detail_id: str,
+    company_short_name: str | None = None,
+    company_site_link_id: str | None = None,
+) -> dict[str, list[dict[str, str]]]:
+    company_site_link_id = company_site_link_id or company_id
     return {
         "db.cty": [
-            {"ID": "1", "TÊN CÔNG TY": "Company A", "COMPANY NAME": "Company A", "TÊN VIẾT TẮT": "CA", "ĐỊA CHỈ TRỤ SỞ": "Addr A", "LEGAL ADDRESS": "Addr A"},
+            {
+                "ID": company_id,
+                "TÊN CÔNG TY": company_name,
+                "COMPANY NAME": company_name,
+                "TÊN VIẾT TẮT": company_short_name or company_name[:3].upper(),
+                "ĐỊA CHỈ TRỤ SỞ": f"Addr {company_id}",
+                "LEGAL ADDRESS": f"Addr {company_id}",
+            },
         ],
         "db.cso": [
-            {"ID": "10", "ID Cty": "1", "TÊN CƠ SỞ": "Site A", "SITE NAME": "Site A", "ĐỊA CHỈ CƠ SỞ": "Site Addr", "SITE ADDRESS": "Site Addr", "TỈNH/TP": "HN", "TÊN VIẾT TẮT": "SA"},
+            {
+                "ID": site_id,
+                "ID Cty": company_site_link_id,
+                "TÊN CƠ SỞ": site_name,
+                "SITE NAME": site_name,
+                "ĐỊA CHỈ CƠ SỞ": f"Site Addr {site_id}",
+                "SITE ADDRESS": f"Site Addr {site_id}",
+                "TỈNH/TP": "HN",
+                "TÊN VIẾT TẮT": site_name[:3].upper(),
+            },
         ],
         "db.ktra": [
-            {"ID": "100", "LOẠI KT": "GMP", "ID CƠ SỞ": "10", "MÃ DC": "A", "TIÊU CHUẨN ÁP DỤNG": "WHO-GMP", "LOẠI KIỂM TRA": "Tái", "Ngày nộp": "2016-06-17 00:00:00", "Mã hồ sơ": "37/GPs", "Ngày thẩm định": "2016-08-02 00:00:00", "Người thẩm định": "Assessor", "Kết quả": "Đạt", "Ngày K.tra": "2016-08-27 00:00:00", "Q. định": "368/QĐ-QLD", "B. bản": "2016-08-27 00:00:00"},
+            {
+                "ID": inspection_id,
+                "LOẠI KT": "GMP",
+                "ID CƠ SỞ": site_id,
+                "MÃ DC": f"A{inspection_id}",
+                "TIÊU CHUẨN ÁP DỤNG": "WHO-GMP",
+                "LOẠI KIỂM TRA": "Tái",
+                "Ngày nộp": "2016-06-17 00:00:00",
+                "Mã hồ sơ": f"HS-{inspection_id}",
+                "Ngày thẩm định": "2016-08-02 00:00:00",
+                "Người thẩm định": "Assessor",
+                "Kết quả": "Đạt",
+                "Ngày K.tra": "2016-08-27 00:00:00",
+                "Q. định": f"QD-{inspection_id}",
+                "B. bản": "2016-08-27 00:00:00",
+            },
         ],
         "db.cc": [
-            {"ID": "200", "MỚI NHẤT": "-", "ID MỚI NHẤT": "", "LOẠI CC": "GMP", "ID ĐỢT KTRA": "100", "ID CƠ SỞ": "10", "MÃ DC": "A"},
+            {
+                "ID": certificate_id,
+                "MỚI NHẤT": "-",
+                "ID MỚI NHẤT": "",
+                "LOẠI CC": "GMP",
+                "ID ĐỢT KTRA": inspection_id,
+                "ID CƠ SỞ": site_id,
+                "MÃ DC": f"A{certificate_id}",
+            },
         ],
         "db.dkkd": [
-            {"ID": "300", "MỚI NHẤT": "-", "ID MỚI NHẤT": "", "ID CƠ SỞ": "10", "ID CTY": "1", "NGƯỜI CHỊU TRÁCH NHIỆM CHUYÊN MÔN": "Pharmacist", "ID CC": "200"},
+            {
+                "ID": business_id,
+                "MỚI NHẤT": "-",
+                "ID MỚI NHẤT": "",
+                "ID CƠ SỞ": site_id,
+                "ID CTY": company_site_link_id,
+                "NGƯỜI CHỊU TRÁCH NHIỆM CHUYÊN MÔN": "Pharmacist",
+                "ID CC": certificate_id,
+            },
         ],
         "db.Tdoi": [
-            {"ID": "400", "PHẠM VI": "-", "MÔ TẢ": "Đổi tên", "ID CƠ SỞ": "10", "Ngày nộp": "2016-02-22 00:00:00", "ĐƠN VỊ ĐỀ NGHỊ": "Unit", "Ngày hiệu lực của TĐ": "2016-03-08 00:00:00"},
+            {
+                "ID": change_request_id,
+                "PHẠM VI": "-",
+                "MÔ TẢ": f"Đổi tên {site_name}",
+                "ID CƠ SỞ": site_id,
+                "Ngày nộp": "2016-02-22 00:00:00",
+                "ĐƠN VỊ ĐỀ NGHỊ": "Unit",
+                "Ngày hiệu lực của TĐ": "2016-03-08 00:00:00",
+            },
         ],
         "db.Tdoi2": [
-            {"ID": "500", "ID Gốc": "400", "ID Phân loại": "", "PHÂN LOẠI": "Đổi tên", "TÌNH TRẠNG CHẤP NHẬN": "", "THÔNG TIN CŨ": "Old", "THÔNG TIN MỚI": "New", "GHI CHÚ": ""},
+            {
+                "ID": change_detail_id,
+                "ID Gốc": change_request_id,
+                "ID Phân loại": "",
+                "PHÂN LOẠI": "Đổi tên",
+                "TÌNH TRẠNG CHẤP NHẬN": "",
+                "THÔNG TIN CŨ": "Old",
+                "THÔNG TIN MỚI": "New",
+                "GHI CHÚ": "",
+            },
         ],
     }
 
 
-def write_snapshot(path: Path, payload: dict[str, list[dict[str, str]]] | None = None) -> Path:
+def sample_snapshot() -> dict[str, list[dict[str, str]]]:
+    return legacy_row_set(
+        company_id="1",
+        company_name="Company A",
+        site_id="10",
+        site_name="Site A",
+        inspection_id="100",
+        certificate_id="200",
+        business_id="300",
+        change_request_id="400",
+        change_detail_id="500",
+        company_short_name="CA",
+    )
+
+
+def merge_snapshot_sets(*row_sets: dict[str, list[dict[str, str]]]) -> dict[str, list[dict[str, str]]]:
+    merged = {sheet: [] for sheet in sample_snapshot()}
+    for row_set in row_sets:
+        for sheet, rows in row_set.items():
+            merged[sheet].extend(rows)
+    return merged
+
+
+def snapshot_wrapper(
+    payload: dict[str, list[dict[str, str]]],
+    *,
+    exported_at: str = "2026-08-24T00:00:00Z",
+    source_workbook_identity: str = "Danh sách Kiểm tra GPs.xlsb",
+) -> dict[str, object]:
+    return {
+        "metadata": {
+            "exported_at": exported_at,
+            "source_workbook_identity": source_workbook_identity,
+        },
+        "sheets": payload,
+    }
+
+
+def write_snapshot(path: Path, payload: dict[str, object] | dict[str, list[dict[str, str]]] | None = None) -> Path:
     path.write_text(json.dumps(payload or sample_snapshot(), ensure_ascii=False, indent=2), encoding="utf-8")
     return path
 
@@ -73,6 +189,7 @@ def prepare_runtime_db(path: Path) -> str:
         connection.execute(text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL)"))
         connection.execute(text("DELETE FROM alembic_version"))
         connection.execute(text("INSERT INTO alembic_version (version_num) VALUES (:version_num)"), {"version_num": head})
+    engine.dispose()
     return database_url
 
 
@@ -82,6 +199,20 @@ def count_rows(db_path: Path, table: str) -> int:
         return int(con.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0])
     finally:
         con.close()
+
+
+def query_scalar(db_path: Path, sql: str, params: tuple[object, ...] = ()) -> object | None:
+    con = sqlite3.connect(str(db_path))
+    try:
+        row = con.execute(sql, params).fetchone()
+        return None if row is None else row[0]
+    finally:
+        con.close()
+
+
+def sqlite_path_from_url(database_url: str) -> Path:
+    assert database_url.startswith("sqlite:///")
+    return Path(database_url.removeprefix("sqlite:///"))
 
 
 def patch_runtime(monkeypatch, database_url: str, runtime_env: Path) -> None:
@@ -101,6 +232,49 @@ def patch_runtime(monkeypatch, database_url: str, runtime_env: Path) -> None:
         lambda: ("ready", {"status": "pass", "reason": "ok"}, True),
     )
     monkeypatch.setattr(ilp, "_run_backup", lambda runtime_env_path: None)
+
+
+def patch_target_schema_upgrade(monkeypatch) -> None:
+    def fake_upgrade(database_url: str) -> None:
+        prepare_runtime_db(sqlite_path_from_url(database_url))
+
+    monkeypatch.setattr(ilp, "_upgrade_target_database_schema", fake_upgrade)
+
+
+def rehearsal_apply(
+    *,
+    snapshot_path: Path,
+    runtime_env_path: Path,
+    report_root: Path,
+    target_db: str = ilp.DEFAULT_REHEARSAL_TARGET_DB,
+) -> ilp.ImportReport:
+    return ilp.execute_import(
+        snapshot_path=snapshot_path,
+        runtime_env_path=runtime_env_path,
+        mode="apply",
+        import_mode="rehearsal",
+        target_database_name=target_db,
+        reset_from_snapshot=True,
+        report_root=report_root,
+    )
+
+
+def final_apply(
+    *,
+    snapshot_path: Path,
+    runtime_env_path: Path,
+    report_root: Path,
+    target_db: str = ilp.DEFAULT_FINAL_TARGET_DB,
+) -> ilp.ImportReport:
+    return ilp.execute_import(
+        snapshot_path=snapshot_path,
+        runtime_env_path=runtime_env_path,
+        mode="apply",
+        import_mode="final",
+        target_database_name=target_db,
+        reset_from_snapshot=True,
+        report_root=report_root,
+    )
 
 
 def patch_phase7_artifact_paths(monkeypatch, tmp_path: Path) -> None:
@@ -137,7 +311,7 @@ def load_real_phase7_gate() -> tuple[str, dict[str, str], bool]:
 
 def test_snapshot_only_apply_path_does_not_require_xlsb(tmp_path: Path, monkeypatch) -> None:
     runtime_env = write_runtime_env(tmp_path / "runtime.env")
-    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json")
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
     db_path = tmp_path / "prod.db"
     database_url = prepare_runtime_db(db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
@@ -154,32 +328,122 @@ def test_snapshot_only_apply_path_does_not_require_xlsb(tmp_path: Path, monkeypa
     assert count_rows(db_path, "legacy_id_map") == 0
 
 
-def test_apply_commits_import_and_second_run_is_idempotent(tmp_path: Path, monkeypatch) -> None:
+def test_rehearsal_reset_import_rebuilds_target_and_same_snapshot_rerun_is_stable(tmp_path: Path, monkeypatch) -> None:
     runtime_env = write_runtime_env(tmp_path / "runtime.env")
-    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json")
-    db_path = tmp_path / "prod.db"
-    database_url = prepare_runtime_db(db_path)
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
+    prod_db_path = tmp_path / "prod.db"
+    database_url = prepare_runtime_db(prod_db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
 
-    first = ilp.execute_import(snapshot_path=snapshot_path, runtime_env_path=runtime_env, mode="apply", report_root=tmp_path / "reports")
-    second = ilp.execute_import(snapshot_path=snapshot_path, runtime_env_path=runtime_env, mode="apply", report_root=tmp_path / "reports")
+    first = rehearsal_apply(snapshot_path=snapshot_path, runtime_env_path=runtime_env, report_root=tmp_path / "reports")
+    second = rehearsal_apply(snapshot_path=snapshot_path, runtime_env_path=runtime_env, report_root=tmp_path / "reports")
 
-    assert count_rows(db_path, "company") == 1
-    assert count_rows(db_path, "site") == 1
-    assert count_rows(db_path, "case") == 1
-    assert count_rows(db_path, "legacy_id_map") >= 6
+    rehearsal_db_path = tmp_path / f"{ilp.DEFAULT_REHEARSAL_TARGET_DB}.db"
+    assert count_rows(prod_db_path, "company") == 0
+    assert count_rows(rehearsal_db_path, "company") == 1
+    assert count_rows(rehearsal_db_path, "site") == 1
+    assert count_rows(rehearsal_db_path, "case") == 1
+    assert count_rows(rehearsal_db_path, "legacy_id_map") >= 6
+    assert first.import_mode == "rehearsal"
+    assert first.snapshot_exported_at == "2026-08-24T00:00:00Z"
+    assert first.source_workbook_identity == "Danh sách Kiểm tra GPs.xlsb"
+    assert first.target_database == ilp.DEFAULT_REHEARSAL_TARGET_DB
     assert first.reconciliation["inserted_counts"]["company"] == 1
-    assert second.reconciliation["inserted_counts"] == {}
-    assert second.reconciliation["existing_counts"]["company"] == 1
+    assert second.reconciliation["inserted_counts"]["company"] == 1
     assert all(row["balanced"] for row in second.reconciliation["source_balance"].values())
+    assert query_scalar(rehearsal_db_path, "SELECT legal_name FROM company WHERE legacy_company_id = 1") == "Company A"
 
 
-def test_apply_rolls_back_on_injected_failure(tmp_path: Path, monkeypatch) -> None:
+def test_rehearsal_refresh_from_newer_snapshot_rebuilds_clean_target(tmp_path: Path, monkeypatch) -> None:
     runtime_env = write_runtime_env(tmp_path / "runtime.env")
-    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json")
-    db_path = tmp_path / "prod.db"
-    database_url = prepare_runtime_db(db_path)
+    v1_snapshot = merge_snapshot_sets(
+        legacy_row_set(
+            company_id="1",
+            company_name="Company Alpha",
+            site_id="10",
+            site_name="Site Alpha",
+            inspection_id="100",
+            certificate_id="200",
+            business_id="300",
+            change_request_id="400",
+            change_detail_id="500",
+        ),
+        legacy_row_set(
+            company_id="2",
+            company_name="Company Beta",
+            site_id="20",
+            site_name="Site Beta",
+            inspection_id="101",
+            certificate_id="201",
+            business_id="301",
+            change_request_id="401",
+            change_detail_id="501",
+        ),
+    )
+    v2_snapshot = merge_snapshot_sets(
+        legacy_row_set(
+            company_id="2",
+            company_name="Company Beta Updated",
+            site_id="20",
+            site_name="Site Beta",
+            inspection_id="101",
+            certificate_id="201",
+            business_id="301",
+            change_request_id="401",
+            change_detail_id="501",
+            company_site_link_id="3",
+        ),
+        legacy_row_set(
+            company_id="3",
+            company_name="Company Gamma",
+            site_id="30",
+            site_name="Site Gamma",
+            inspection_id="102",
+            certificate_id="202",
+            business_id="302",
+            change_request_id="402",
+            change_detail_id="502",
+        ),
+    )
+    v1_path = write_snapshot(tmp_path / "legacy_snapshot_v1.json", snapshot_wrapper(v1_snapshot, exported_at="2026-08-24T08:00:00Z"))
+    v2_path = write_snapshot(tmp_path / "legacy_snapshot_v2.json", snapshot_wrapper(v2_snapshot, exported_at="2026-08-24T09:00:00Z"))
+    prod_db_path = tmp_path / "prod.db"
+    database_url = prepare_runtime_db(prod_db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
+
+    rehearsal_apply(snapshot_path=v1_path, runtime_env_path=runtime_env, report_root=tmp_path / "reports")
+    second = rehearsal_apply(snapshot_path=v2_path, runtime_env_path=runtime_env, report_root=tmp_path / "reports")
+
+    rehearsal_db_path = tmp_path / f"{ilp.DEFAULT_REHEARSAL_TARGET_DB}.db"
+    assert count_rows(rehearsal_db_path, "company") == 2
+    assert count_rows(rehearsal_db_path, "site") == 2
+    assert count_rows(rehearsal_db_path, "case") == 2
+    assert query_scalar(rehearsal_db_path, "SELECT COUNT(*) FROM company WHERE legacy_company_id = 1") == 0
+    assert query_scalar(rehearsal_db_path, "SELECT legal_name FROM company WHERE legacy_company_id = 2") == "Company Beta Updated"
+    assert query_scalar(
+        rehearsal_db_path,
+        """
+        SELECT company.legacy_company_id
+        FROM site
+        JOIN company ON company.id = site.company_id
+        WHERE site.legacy_site_id = ?
+        """,
+        (20,),
+    ) == 3
+    assert query_scalar(rehearsal_db_path, "SELECT COUNT(*) FROM site WHERE legacy_site_id = 10") == 0
+    assert query_scalar(rehearsal_db_path, "SELECT COUNT(*) FROM site WHERE legacy_site_id = 30") == 1
+    assert second.snapshot_exported_at == "2026-08-24T09:00:00Z"
+
+
+def test_rehearsal_reset_import_rolls_back_on_injected_failure(tmp_path: Path, monkeypatch) -> None:
+    runtime_env = write_runtime_env(tmp_path / "runtime.env")
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
+    prod_db_path = tmp_path / "prod.db"
+    database_url = prepare_runtime_db(prod_db_path)
+    patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
 
     original_import_snapshot = ilp.import_snapshot
 
@@ -189,21 +453,23 @@ def test_apply_rolls_back_on_injected_failure(tmp_path: Path, monkeypatch) -> No
 
     monkeypatch.setattr(ilp, "import_snapshot", exploding_import_snapshot)
     try:
-        ilp.execute_import(snapshot_path=snapshot_path, runtime_env_path=runtime_env, mode="apply", report_root=tmp_path / "reports")
+        rehearsal_apply(snapshot_path=snapshot_path, runtime_env_path=runtime_env, report_root=tmp_path / "reports")
     except RuntimeError as exc:
         assert str(exc) == "boom"
     else:
         raise AssertionError("Expected injected failure")
 
-    assert count_rows(db_path, "company") == 0
-    assert count_rows(db_path, "legacy_id_map") == 0
+    rehearsal_db_path = tmp_path / f"{ilp.DEFAULT_REHEARSAL_TARGET_DB}.db"
+    assert count_rows(prod_db_path, "company") == 0
+    assert count_rows(rehearsal_db_path, "company") == 0
+    assert count_rows(rehearsal_db_path, "legacy_id_map") == 0
 
 
 def test_duplicate_legacy_key_fails_closed(tmp_path: Path, monkeypatch) -> None:
     runtime_env = write_runtime_env(tmp_path / "runtime.env")
     snapshot = sample_snapshot()
     snapshot["db.cty"].append({"ID": "1", "TÊN CÔNG TY": "Company B"})
-    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot)
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(snapshot))
     db_path = tmp_path / "prod.db"
     database_url = prepare_runtime_db(db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
@@ -220,7 +486,7 @@ def test_orphan_fk_blocks_import(tmp_path: Path, monkeypatch) -> None:
     runtime_env = write_runtime_env(tmp_path / "runtime.env")
     snapshot = sample_snapshot()
     snapshot["db.cso"][0]["ID Cty"] = "999"
-    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot)
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(snapshot))
     db_path = tmp_path / "prod.db"
     database_url = prepare_runtime_db(db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
@@ -233,30 +499,33 @@ def test_orphan_fk_blocks_import(tmp_path: Path, monkeypatch) -> None:
         raise AssertionError("Expected unresolved anomaly failure")
 
 
-def test_existing_runtime_collision_fails_closed(tmp_path: Path, monkeypatch) -> None:
+def test_apply_rejects_target_database_matching_production_db(tmp_path: Path, monkeypatch) -> None:
     runtime_env = write_runtime_env(tmp_path / "runtime.env")
-    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json")
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
     db_path = tmp_path / "prod.db"
     database_url = prepare_runtime_db(db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
-
-    engine = create_engine(database_url, future=True)
-    with engine.begin() as connection:
-        connection.execute(
-            text("INSERT INTO company (id, legacy_company_id, legal_name, is_inactive, created_at, updated_at) VALUES ('11111111-1111-1111-1111-111111111111', 1, 'Manual', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
-        )
+    patch_target_schema_upgrade(monkeypatch)
 
     try:
-        ilp.execute_import(snapshot_path=snapshot_path, runtime_env_path=runtime_env, mode="apply", report_root=tmp_path / "reports")
-    except ilp.ImportCollisionError as exc:
-        assert "missing LegacyIdMap lineage" in str(exc)
+        ilp.execute_import(
+            snapshot_path=snapshot_path,
+            runtime_env_path=runtime_env,
+            mode="apply",
+            import_mode="rehearsal",
+            target_database_name="gxp_qlcl",
+            reset_from_snapshot=True,
+            report_root=tmp_path / "reports",
+        )
+    except ilp.ProductionImportError as exc:
+        assert "must not match the canonical production database name" in str(exc)
     else:
-        raise AssertionError("Expected collision failure")
+        raise AssertionError("Expected target database guard failure")
 
 
-def test_wrong_alembic_revision_blocks_apply(tmp_path: Path, monkeypatch) -> None:
+def test_wrong_alembic_revision_blocks_validation(tmp_path: Path, monkeypatch) -> None:
     runtime_env = write_runtime_env(tmp_path / "runtime.env")
-    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json")
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
     db_path = tmp_path / "prod.db"
     database_url = prepare_runtime_db(db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
@@ -267,29 +536,31 @@ def test_wrong_alembic_revision_blocks_apply(tmp_path: Path, monkeypatch) -> Non
         connection.execute(text("INSERT INTO alembic_version (version_num) VALUES ('wrong-revision')"))
 
     try:
-        ilp.execute_import(snapshot_path=snapshot_path, runtime_env_path=runtime_env, mode="apply", report_root=tmp_path / "reports")
+        ilp.execute_import(snapshot_path=snapshot_path, runtime_env_path=runtime_env, mode="dry-run", report_root=tmp_path / "reports")
     except ilp.ProductionImportError as exc:
         assert "Alembic revision mismatch" in str(exc)
     else:
         raise AssertionError("Expected Alembic gate failure")
 
 
-def test_backup_failure_blocks_apply_before_mutation(tmp_path: Path, monkeypatch) -> None:
+def test_final_backup_failure_blocks_apply_before_mutation(tmp_path: Path, monkeypatch) -> None:
     runtime_env = write_runtime_env(tmp_path / "runtime.env")
-    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json")
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
     db_path = tmp_path / "prod.db"
     database_url = prepare_runtime_db(db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
     monkeypatch.setattr(ilp, "_run_backup", lambda runtime_env_path: (_ for _ in ()).throw(ilp.ProductionImportError("backup failed")))
 
     try:
-        ilp.execute_import(snapshot_path=snapshot_path, runtime_env_path=runtime_env, mode="apply", report_root=tmp_path / "reports")
+        final_apply(snapshot_path=snapshot_path, runtime_env_path=runtime_env, report_root=tmp_path / "reports")
     except ilp.ProductionImportError as exc:
         assert "backup failed" in str(exc)
     else:
         raise AssertionError("Expected backup gate failure")
 
     assert count_rows(db_path, "company") == 0
+    assert not (tmp_path / f"{ilp.DEFAULT_FINAL_TARGET_DB}.db").exists()
 
 
 def test_missing_and_invalid_runtime_env_fail_closed(tmp_path: Path) -> None:
@@ -313,7 +584,7 @@ def test_missing_and_invalid_runtime_env_fail_closed(tmp_path: Path) -> None:
 
 def test_main_never_logs_passwords(tmp_path: Path, monkeypatch) -> None:
     runtime_env = write_runtime_env(tmp_path / "runtime.env", password="very-secret")
-    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json")
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
     db_path = tmp_path / "prod.db"
     database_url = prepare_runtime_db(db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
@@ -338,10 +609,11 @@ def test_main_never_logs_passwords(tmp_path: Path, monkeypatch) -> None:
 
 def test_dry_run_reports_not_cutover_ready_without_blocking_apply(tmp_path: Path, monkeypatch) -> None:
     runtime_env = write_runtime_env(tmp_path / "runtime.env")
-    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json")
-    db_path = tmp_path / "prod.db"
-    database_url = prepare_runtime_db(db_path)
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
+    prod_db_path = tmp_path / "prod.db"
+    database_url = prepare_runtime_db(prod_db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
     monkeypatch.setattr(
         ilp,
         "_load_phase7_gate",
@@ -366,6 +638,9 @@ def test_dry_run_reports_not_cutover_ready_without_blocking_apply(tmp_path: Path
             "--runtime-env",
             str(runtime_env),
             "--apply",
+            "--import-mode",
+            "rehearsal",
+            "--reset-from-snapshot",
             "--report-root",
             str(tmp_path / "reports"),
         ]
@@ -373,12 +648,13 @@ def test_dry_run_reports_not_cutover_ready_without_blocking_apply(tmp_path: Path
 
     assert dry_run_code == 3
     assert apply_code == 0
-    assert count_rows(db_path, "company") == 1
+    assert count_rows(prod_db_path, "company") == 0
+    assert count_rows(tmp_path / f"{ilp.DEFAULT_REHEARSAL_TARGET_DB}.db", "company") == 1
 
 
 def test_dry_run_with_missing_phase7_artifacts_creates_report_without_traceback(tmp_path: Path, monkeypatch) -> None:
     runtime_env = write_runtime_env(tmp_path / "runtime.env")
-    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json")
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
     db_path = tmp_path / "prod.db"
     database_url = prepare_runtime_db(db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
@@ -418,7 +694,7 @@ def test_import_validation_failure_is_not_masked_by_cutover_status(tmp_path: Pat
     runtime_env = write_runtime_env(tmp_path / "runtime.env")
     snapshot = sample_snapshot()
     snapshot["db.cso"][0]["ID Cty"] = "999"
-    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot)
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(snapshot))
     db_path = tmp_path / "prod.db"
     database_url = prepare_runtime_db(db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
@@ -449,7 +725,7 @@ def test_main_reports_schema_length_preflight_failures_without_raw_db_traceback(
     snapshot = sample_snapshot()
     snapshot["db.ktra"][0]["Mã hồ sơ"] = "D" * 129
     snapshot["db.Tdoi2"][0]["PHÂN LOẠI"] = "P" * 260
-    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot)
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(snapshot))
     db_path = tmp_path / "prod.db"
     database_url = prepare_runtime_db(db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
@@ -485,3 +761,74 @@ def test_main_reports_schema_length_preflight_failures_without_raw_db_traceback(
         "case_application.dossier_code",
         "change_request_detail.classification_label",
     }
+
+
+def test_cli_enforces_validation_vs_rebuild_mode_contracts(tmp_path: Path, monkeypatch) -> None:
+    runtime_env = write_runtime_env(tmp_path / "runtime.env")
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
+    db_path = tmp_path / "prod.db"
+    database_url = prepare_runtime_db(db_path)
+    patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
+
+    stderr = io.StringIO()
+    with redirect_stderr(stderr):
+        apply_without_mode_code = ilp.main(
+            [
+                "--snapshot",
+                str(snapshot_path),
+                "--runtime-env",
+                str(runtime_env),
+                "--apply",
+                "--report-root",
+                str(tmp_path / "reports"),
+            ]
+        )
+    assert apply_without_mode_code == 1
+    assert "--apply requires --import-mode rehearsal or --import-mode final." in stderr.getvalue()
+
+    stderr = io.StringIO()
+    with redirect_stderr(stderr):
+        invalid_dry_run_code = ilp.main(
+            [
+                "--snapshot",
+                str(snapshot_path),
+                "--runtime-env",
+                str(runtime_env),
+                "--dry-run",
+                "--import-mode",
+                "rehearsal",
+                "--report-root",
+                str(tmp_path / "reports"),
+            ]
+        )
+    assert invalid_dry_run_code == 1
+    assert "Dry-run currently supports only --import-mode validation." in stderr.getvalue()
+
+
+def test_final_apply_uses_candidate_default_and_records_backup_status(tmp_path: Path, monkeypatch) -> None:
+    runtime_env = write_runtime_env(tmp_path / "runtime.env")
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
+    db_path = tmp_path / "prod.db"
+    database_url = prepare_runtime_db(db_path)
+    patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
+
+    backup_calls: list[str] = []
+    monkeypatch.setattr(ilp, "_run_backup", lambda runtime_env_path: backup_calls.append(str(runtime_env_path)))
+
+    report = ilp.execute_import(
+        snapshot_path=snapshot_path,
+        runtime_env_path=runtime_env,
+        mode="apply",
+        import_mode="final",
+        reset_from_snapshot=True,
+        report_root=tmp_path / "reports",
+    )
+
+    candidate_db_path = tmp_path / f"{ilp.DEFAULT_FINAL_TARGET_DB}.db"
+    assert report.import_mode == "final"
+    assert report.target_database == ilp.DEFAULT_FINAL_TARGET_DB
+    assert report.backup_status == "ok"
+    assert backup_calls == [str(runtime_env)]
+    assert count_rows(candidate_db_path, "company") == 1

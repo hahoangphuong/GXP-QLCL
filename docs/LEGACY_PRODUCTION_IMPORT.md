@@ -23,23 +23,40 @@ Production import on the Ubuntu VM uses the exported legacy snapshot JSON, not E
 The VM import path does not require `legacy/*.xlsb` once the snapshot JSON is present and valid.
 
 ## Canonical commands
-Dry-run:
+Validation dry-run against the configured runtime database:
 
 ```bash
 cd /opt/gxp/src/GXP-QLCL
 python3 tools/import_legacy_production.py \
   --snapshot artifacts/phase3c/legacy_snapshot.json \
   --runtime-env /etc/gxp/runtime.env \
+  --import-mode validation \
   --dry-run
 ```
 
-Apply:
+Rehearsal refresh from snapshot into a dedicated non-production database:
 
 ```bash
 cd /opt/gxp/src/GXP-QLCL
 python3 tools/import_legacy_production.py \
   --snapshot artifacts/phase3c/legacy_snapshot.json \
   --runtime-env /etc/gxp/runtime.env \
+  --import-mode rehearsal \
+  --target-db gxp_legacy_rehearsal \
+  --reset-from-snapshot \
+  --apply
+```
+
+Final cutover candidate rebuild:
+
+```bash
+cd /opt/gxp/src/GXP-QLCL
+python3 tools/import_legacy_production.py \
+  --snapshot artifacts/phase3c/legacy_snapshot.json \
+  --runtime-env /etc/gxp/runtime.env \
+  --import-mode final \
+  --target-db gxp_qlcl_candidate \
+  --reset-from-snapshot \
   --apply
 ```
 
@@ -57,6 +74,10 @@ Key outputs:
 Each report includes:
 
 - `snapshot_sha256`
+- `import_mode`
+- `target_database`
+- `snapshot_exported_at` when the snapshot payload includes metadata
+- `source_workbook_identity` when the snapshot payload includes metadata
 - source counts
 - inserted counts
 - existing/idempotent counts
@@ -98,33 +119,53 @@ PY
 
 ### VM
 1. Update the repo to the intended release tooling.
-2. Run the canonical PostgreSQL backup gate:
-
-```bash
-cd /opt/gxp/src/GXP-QLCL
-sudo VM_RUNTIME_ENV_FILE=/etc/gxp/runtime.env ./infra/vm/backup_postgres.sh
-```
-
-3. Run the dry-run:
+2. Run validation dry-run:
 
 ```bash
 cd /opt/gxp/src/GXP-QLCL
 python3 tools/import_legacy_production.py \
   --snapshot artifacts/phase3c/legacy_snapshot.json \
   --runtime-env /etc/gxp/runtime.env \
+  --import-mode validation \
   --dry-run
 ```
 
-4. Review `artifacts/legacy-production/<timestamp>/report.json` and `report.md`.
-5. If the import validation passes, run the apply command.
-6. Rebuild/read the Phase 7 gate:
+3. Review `artifacts/legacy-production/<timestamp>/report.json` and `report.md`.
+4. Refresh the rehearsal database from the snapshot:
+
+```bash
+cd /opt/gxp/src/GXP-QLCL
+python3 tools/import_legacy_production.py \
+  --snapshot artifacts/phase3c/legacy_snapshot.json \
+  --runtime-env /etc/gxp/runtime.env \
+  --import-mode rehearsal \
+  --target-db gxp_legacy_rehearsal \
+  --reset-from-snapshot \
+  --apply
+```
+
+5. Review the rehearsal report and application behavior against the rehearsal target.
+6. For the real cutover window only, rebuild the candidate production database from the frozen final snapshot:
+
+```bash
+cd /opt/gxp/src/GXP-QLCL
+python3 tools/import_legacy_production.py \
+  --snapshot artifacts/phase3c/legacy_snapshot.json \
+  --runtime-env /etc/gxp/runtime.env \
+  --import-mode final \
+  --target-db gxp_qlcl_candidate \
+  --reset-from-snapshot \
+  --apply
+```
+
+7. Rebuild/read the Phase 7 gate:
 
 ```bash
 cd /opt/gxp/src/GXP-QLCL
 python3 tools/build_phase7_cutover_readiness.py
 ```
 
-7. Verify runtime health:
+8. Verify runtime health:
 
 ```bash
 cd /opt/gxp/src/GXP-QLCL
@@ -134,12 +175,17 @@ sudo VM_RUNTIME_ENV_FILE=/etc/gxp/runtime.env ./infra/vm/verify_prod.sh
 ## Safety contract
 - `APP_ENV` must be `production`.
 - `DB_MODE` must be `local_postgres`.
-- Target DB must remain `gxp_qlcl` owned by `gxp_app`.
+- Validation dry-run uses the canonical runtime database contract and never commits mutations.
+- Rehearsal/final apply require explicit `--import-mode` plus `--reset-from-snapshot`.
+- Rehearsal/final target DB must not equal the canonical production database `gxp_qlcl`.
+- Default rebuild targets are `gxp_legacy_rehearsal` for rehearsal and `gxp_qlcl_candidate` for final.
+- Rehearsal/final rebuild semantics are fresh reset imports, not incremental merge.
 - Current Alembic revision must equal repository head.
-- `--apply` always runs the canonical PostgreSQL backup script first.
+- Final candidate rebuild runs the canonical PostgreSQL backup script before mutation.
 - Snapshot hash is recorded in the import report.
 - Dry-run uses the same importer logic as apply and rolls back the transaction.
-- Apply is transactional and must fail closed on collisions, unresolved anomalies, Alembic mismatch, or backup failure.
+- Rehearsal/final apply recreate the target DB, run `alembic upgrade head`, then import transactionally.
+- Apply is transactional and must fail closed on collisions, unresolved anomalies, Alembic mismatch, target DB contract violations, or backup failure.
 - Current Phase 7 gate is reported but not auto-bypassed or auto-resolved by the importer.
 - Missing or invalid Phase 3/4/5/6/3p historical artifacts must become blocked Phase 7 gates, not Python tracebacks.
 - Bounded `VARCHAR(N)` compatibility is preflight-validated before insert; free-form narrative fields owned by the schema use `TEXT` and must not be truncated.

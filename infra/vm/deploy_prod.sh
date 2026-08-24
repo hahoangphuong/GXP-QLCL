@@ -16,6 +16,7 @@ STAGED_SYSTEMD_ENV_FILE=""
 PREVIOUS_SERVICE_FILE=""
 PREVIOUS_NGINX_FILE=""
 PREVIOUS_SYSTEMD_ENV_FILE=""
+PREVIOUS_RELEASE_METADATA_FILE=""
 SUCCESS=0
 SWITCHED_RELEASES=0
 SWITCHED_CONFIG=0
@@ -35,6 +36,7 @@ NGINX_SITE_FILE_EXISTED_BEFORE=0
 NGINX_SITE_ENABLED_LINK_EXISTED_BEFORE=0
 NGINX_SITE_ENABLED_LINK_TARGET_BEFORE=""
 SYSTEMD_ENV_FILE_EXISTED_BEFORE=0
+RELEASE_METADATA_FILE_EXISTED_BEFORE=0
 
 restore_managed_symlink() {
   local path="$1"
@@ -156,6 +158,75 @@ for name, path in managed_paths.items():
 PY
 }
 
+validate_current_release_state() {
+  python3 - \
+    "${VM_CURRENT_BACKEND_RELEASE_LINK}" \
+    "${VM_CURRENT_BACKEND_VENV_LINK}" \
+    "${VM_FRONTEND_DIST_DIR}" \
+    "${VM_SYSTEMD_ENV_FILE}" \
+    "${VM_RELEASE_METADATA_FILE}" \
+    "${NEW_SHA}" \
+    "${DEPLOYMENT_GIT_SHORT_SHA}" \
+    "${DEPLOYMENT_BRANCH}" \
+    "${NEW_BACKEND_RELEASE}" \
+    "${NEW_BACKEND_VENV}" \
+    "${NEW_FRONTEND_RELEASE}" <<'PY'
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import sys
+
+ROOT = Path.cwd()
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tools.env_utils import parse_systemd_env_file
+
+backend_link = Path(sys.argv[1])
+venv_link = Path(sys.argv[2])
+frontend_link = Path(sys.argv[3])
+systemd_env_file = Path(sys.argv[4])
+release_metadata_file = Path(sys.argv[5])
+expected_sha = sys.argv[6]
+expected_short_sha = sys.argv[7]
+expected_branch = sys.argv[8]
+expected_backend_target = sys.argv[9]
+expected_venv_target = sys.argv[10]
+expected_frontend_target = sys.argv[11]
+
+for path, expected_target in (
+    (backend_link, expected_backend_target),
+    (venv_link, expected_venv_target),
+    (frontend_link, expected_frontend_target),
+):
+    if not path.is_symlink():
+        raise SystemExit(f"Managed release path is missing or not a symlink: {path}")
+    actual_target = os.readlink(path)
+    if actual_target != expected_target:
+        raise SystemExit(f"Managed release path {path} expected {expected_target}, got {actual_target}.")
+
+runtime_values = parse_systemd_env_file(systemd_env_file)
+if runtime_values.get("DEPLOYMENT_GIT_SHA", "").strip() != expected_sha:
+    raise SystemExit(
+        f"Runtime deployment metadata mismatch in {systemd_env_file}: expected DEPLOYMENT_GIT_SHA={expected_sha}."
+    )
+if runtime_values.get("DEPLOYMENT_GIT_SHORT_SHA", "").strip() != expected_short_sha:
+    raise SystemExit(
+        f"Runtime deployment metadata mismatch in {systemd_env_file}: expected DEPLOYMENT_GIT_SHORT_SHA={expected_short_sha}."
+    )
+if runtime_values.get("DEPLOYMENT_BRANCH", "").strip() != expected_branch:
+    raise SystemExit(
+        f"Runtime deployment metadata mismatch in {systemd_env_file}: expected DEPLOYMENT_BRANCH={expected_branch}."
+    )
+
+payload = json.loads(release_metadata_file.read_text(encoding="utf-8"))
+if str(payload.get("current_sha", "")).strip() != expected_sha:
+    raise SystemExit(f"Release metadata {release_metadata_file} current_sha does not match expected {expected_sha}.")
+PY
+}
+
 cleanup() {
   if [[ "${SUCCESS}" != "1" && "${SWITCHED_CONFIG}" == "1" ]]; then
     if [[ "${SYSTEMD_SERVICE_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_SERVICE_FILE}" ]]; then
@@ -179,6 +250,11 @@ cleanup() {
       chmod 0640 "${VM_SYSTEMD_ENV_FILE}" || true
     else
       rm -f "${VM_SYSTEMD_ENV_FILE}" || true
+    fi
+    if [[ "${RELEASE_METADATA_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_RELEASE_METADATA_FILE}" ]]; then
+      cp "${PREVIOUS_RELEASE_METADATA_FILE}" "${VM_RELEASE_METADATA_FILE}" || true
+    else
+      rm -f "${VM_RELEASE_METADATA_FILE}" || true
     fi
     systemctl daemon-reload >/dev/null 2>&1 || true
   fi
@@ -346,6 +422,7 @@ STAGED_SYSTEMD_ENV_FILE="${RUNTIME_ASSET_STAGING_DIR}/$(basename "${VM_SYSTEMD_E
 PREVIOUS_SERVICE_FILE="${RUNTIME_ASSET_STAGING_DIR}/${SYSTEMD_SERVICE_NAME}.previous.service"
 PREVIOUS_NGINX_FILE="${RUNTIME_ASSET_STAGING_DIR}/${NGINX_SITE_NAME}.previous.conf"
 PREVIOUS_SYSTEMD_ENV_FILE="${RUNTIME_ASSET_STAGING_DIR}/$(basename "${VM_SYSTEMD_ENV_FILE}").previous"
+PREVIOUS_RELEASE_METADATA_FILE="${RUNTIME_ASSET_STAGING_DIR}/$(basename "${VM_RELEASE_METADATA_FILE}").previous.json"
 
 REPO_ROOT_NORMALIZED="$(normalize_repo_path "${REPO_ROOT}")"
 VM_SRC_DIR_NORMALIZED="$(normalize_repo_path "${VM_SRC_DIR}")"
@@ -386,6 +463,9 @@ fi
 if [[ -f "${VM_SYSTEMD_ENV_FILE}" ]]; then
   SYSTEMD_ENV_FILE_EXISTED_BEFORE=1
 fi
+if [[ -f "${VM_RELEASE_METADATA_FILE}" ]]; then
+  RELEASE_METADATA_FILE_EXISTED_BEFORE=1
+fi
 
 TARGET_SHA="${DEPLOY_GIT_SHA:-}"
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-$(json_query deploy_branch)}"
@@ -398,6 +478,9 @@ else
   run_as_app_user git -C "${REPO_ROOT}" rev-parse --verify "${TARGET_SHA}^{commit}" >/dev/null 2>&1 || fail "DEPLOY_GIT_SHA is not a valid commit: ${TARGET_SHA}"
 fi
 NEW_SHA="${TARGET_SHA}"
+DEPLOYMENT_GIT_SHA="${NEW_SHA}"
+DEPLOYMENT_GIT_SHORT_SHA="${NEW_SHA:0:7}"
+DEPLOYMENT_BRANCH="${DEPLOY_BRANCH}"
 NEW_BACKEND_RELEASE="${VM_BACKEND_RELEASES_DIR}/${NEW_SHA}"
 NEW_BACKEND_VENV="${VM_BACKEND_VENV_RELEASES_DIR}/${NEW_SHA}"
 NEW_FRONTEND_RELEASE="${VM_FRONTEND_RELEASES_DIR}/${NEW_SHA}"
@@ -484,7 +567,10 @@ case "${DATABASE_URL}" in
   *) fail "DATABASE_URL must resolve to PostgreSQL before deploy." ;;
 esac
 CURRENT_STAGE="render_systemd_runtime_env"
-python3 tools/runtime_env.py write-systemd "${RUNTIME_ENV_FILE}" "${STAGED_SYSTEMD_ENV_FILE}"
+python3 tools/runtime_env.py write-systemd "${RUNTIME_ENV_FILE}" "${STAGED_SYSTEMD_ENV_FILE}" \
+  "DEPLOYMENT_GIT_SHA=${DEPLOYMENT_GIT_SHA}" \
+  "DEPLOYMENT_GIT_SHORT_SHA=${DEPLOYMENT_GIT_SHORT_SHA}" \
+  "DEPLOYMENT_BRANCH=${DEPLOYMENT_BRANCH}"
 
 CURRENT_STAGE="build_frontend"
 run_as_app_bash "
@@ -548,6 +634,9 @@ fi
 if [[ -f "${VM_SYSTEMD_ENV_FILE}" ]]; then
   cp "${VM_SYSTEMD_ENV_FILE}" "${PREVIOUS_SYSTEMD_ENV_FILE}"
 fi
+if [[ -f "${VM_RELEASE_METADATA_FILE}" ]]; then
+  cp "${VM_RELEASE_METADATA_FILE}" "${PREVIOUS_RELEASE_METADATA_FILE}"
+fi
 cp "${STAGED_SERVICE_FILE}" "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service"
 cp "${STAGED_NGINX_FILE}" "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf"
 install -d -m 0755 "$(dirname "${VM_SYSTEMD_ENV_FILE}")"
@@ -576,20 +665,23 @@ wait_for_http_endpoint "/readyz" 30 "${SYSTEMD_SERVICE_NAME}"
 
 CURRENT_STAGE="write_release_metadata"
 install -d -m 0755 "$(dirname "${VM_RELEASE_METADATA_FILE}")"
-python3 - "${VM_RELEASE_METADATA_FILE}.tmp" "${NEW_SHA}" "${NEW_BACKEND_RELEASE}" "${NEW_BACKEND_VENV}" "${NEW_FRONTEND_RELEASE}" <<'PY'
+python3 - "${VM_RELEASE_METADATA_FILE}.tmp" "${NEW_SHA}" "${DEPLOYMENT_GIT_SHORT_SHA}" "${DEPLOYMENT_BRANCH}" "${NEW_BACKEND_RELEASE}" "${NEW_BACKEND_VENV}" "${NEW_FRONTEND_RELEASE}" <<'PY'
 import json
 import sys
 
 payload = {
     "current_sha": sys.argv[2],
-    "backend_release_dir": sys.argv[3],
-    "backend_venv_dir": sys.argv[4],
-    "frontend_release_dir": sys.argv[5],
+    "current_short_sha": sys.argv[3],
+    "branch": sys.argv[4],
+    "backend_release_dir": sys.argv[5],
+    "backend_venv_dir": sys.argv[6],
+    "frontend_release_dir": sys.argv[7],
 }
 with open(sys.argv[1], "w", encoding="utf-8") as fh:
     json.dump(payload, fh, ensure_ascii=True, indent=2)
 PY
 mv "${VM_RELEASE_METADATA_FILE}.tmp" "${VM_RELEASE_METADATA_FILE}"
+validate_current_release_state
 
 CURRENT_STAGE="cleanup_transient_build_artifacts"
 run_as_app_bash "

@@ -186,6 +186,41 @@ def test_runtime_env_cli_writes_systemd_safe_env_file(tmp_path: Path):
     assert expected_password not in output.read_text(encoding="utf-8")
 
 
+def test_runtime_env_cli_writes_systemd_safe_env_file_with_deploy_overrides(tmp_path: Path):
+    source = tmp_path / "runtime.env"
+    output = tmp_path / "runtime.systemd.env"
+    source.write_text(
+        "PUBLIC_BASE_URL='https://gxp.example.com'\n"
+        "DB_PASSWORD='secret'\n",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "tools/runtime_env.py",
+            "write-systemd",
+            str(source),
+            str(output),
+            "DEPLOYMENT_GIT_SHA=abcdef1234567890",
+            "DEPLOYMENT_GIT_SHORT_SHA=abcdef1",
+            "DEPLOYMENT_BRANCH=main",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert source.read_text(encoding="utf-8") == "PUBLIC_BASE_URL='https://gxp.example.com'\nDB_PASSWORD='secret'\n"
+    parsed = parse_systemd_env_file(output)
+    assert parsed["PUBLIC_BASE_URL"] == "https://gxp.example.com"
+    assert parsed["DEPLOYMENT_GIT_SHA"] == "abcdef1234567890"
+    assert parsed["DEPLOYMENT_GIT_SHORT_SHA"] == "abcdef1"
+    assert parsed["DEPLOYMENT_BRANCH"] == "main"
+
+
 def test_systemd_runtime_env_serializer_is_deterministic():
     values = {"B": "two words", "A": "alpha"}
     first = serialize_systemd_environment_file_contents(values)

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -21,8 +20,23 @@ def export_null(path: Path) -> int:
     return 0
 
 
-def write_systemd(source_path: Path, output_path: Path) -> int:
+def _parse_override_args(args: list[str]) -> dict[str, str]:
+    overrides: dict[str, str] = {}
+    for raw in args:
+        key, separator, value = raw.partition("=")
+        if not separator:
+            raise ValueError(f"Invalid runtime env override: {raw!r}")
+        normalized_key = key.strip()
+        if not normalized_key:
+            raise ValueError("Runtime env override keys must not be blank.")
+        overrides[normalized_key] = value
+    return overrides
+
+
+def write_systemd(source_path: Path, output_path: Path, override_args: list[str] | None = None) -> int:
     values = parse_env_file(source_path)
+    if override_args:
+        values.update(_parse_override_args(override_args))
     write_systemd_environment_file(output_path, values)
     return 0
 
@@ -31,10 +45,10 @@ def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if len(args) == 2 and args[0] == "export-null":
         return export_null(Path(args[1]))
-    if len(args) == 3 and args[0] == "write-systemd":
-        return write_systemd(Path(args[1]), Path(args[2]))
+    if len(args) >= 3 and args[0] == "write-systemd":
+        return write_systemd(Path(args[1]), Path(args[2]), args[3:])
     print(
-        "Usage: python tools/runtime_env.py {export-null /path/to/runtime.env | write-systemd /path/to/runtime.env /path/to/runtime.systemd.env}",
+        "Usage: python tools/runtime_env.py {export-null /path/to/runtime.env | write-systemd /path/to/runtime.env /path/to/runtime.systemd.env [KEY=VALUE ...]}",
         file=sys.stderr,
     )
     return 2

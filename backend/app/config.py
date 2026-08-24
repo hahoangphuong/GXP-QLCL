@@ -145,6 +145,9 @@ def validate_runtime_config(
 def load_app_config(env: dict[str, str] | None = None) -> AppConfig:
     source = os.environ if env is None else env
     auth_mode = source.get("AUTH_PROVIDER", source.get("AUTH_MODE", "header_stub"))
+    deployment_git_sha = source.get("DEPLOYMENT_GIT_SHA", source.get("DEPLOY_GIT_SHA", ""))
+    deployment_git_short_sha = source.get("DEPLOYMENT_GIT_SHORT_SHA", source.get("DEPLOY_GIT_SHORT_SHA", ""))
+    deployment_branch = source.get("DEPLOYMENT_BRANCH", source.get("DEPLOY_BRANCH", ""))
     return AppConfig(
         app_name=source.get("APP_NAME", "GxP Web"),
         app_mode=source.get("APP_MODE", "application_foundation"),
@@ -164,9 +167,9 @@ def load_app_config(env: dict[str, str] | None = None) -> AppConfig:
         auth_role_source=source.get("AUTH_ROLE_SOURCE", "env_map"),
         db_mode=resolve_db_mode(source),
         database_url=resolve_database_url(source),
-        deployment_git_sha=source.get("DEPLOY_GIT_SHA", ""),
-        deployment_git_short_sha=source.get("DEPLOY_GIT_SHORT_SHA", ""),
-        deployment_branch=source.get("DEPLOY_BRANCH", ""),
+        deployment_git_sha=deployment_git_sha,
+        deployment_git_short_sha=deployment_git_short_sha,
+        deployment_branch=deployment_branch,
         deployment_image_uri=source.get("DEPLOY_IMAGE_URI", ""),
         deployment_timestamp_utc=source.get("DEPLOY_TIMESTAMP_UTC", ""),
         cloud_run_service_name=source.get("CLOUD_RUN_SERVICE_NAME", ""),

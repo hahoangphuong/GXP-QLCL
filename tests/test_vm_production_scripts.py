@@ -110,6 +110,9 @@ def test_vm_deploy_script_preserves_pre_switch_atomicity_and_post_switch_rollbac
     assert 'PREVIOUS_SERVICE_FILE="${RUNTIME_ASSET_STAGING_DIR}/${SYSTEMD_SERVICE_NAME}.previous.service"' in text
     assert 'PREVIOUS_NGINX_FILE="${RUNTIME_ASSET_STAGING_DIR}/${NGINX_SITE_NAME}.previous.conf"' in text
     assert 'PREVIOUS_SYSTEMD_ENV_FILE="${RUNTIME_ASSET_STAGING_DIR}/$(basename "${VM_SYSTEMD_ENV_FILE}").previous"' in text
+    assert 'PREVIOUS_RELEASE_METADATA_FILE="${RUNTIME_ASSET_STAGING_DIR}/$(basename "${VM_RELEASE_METADATA_FILE}").previous.json"' in text
+    assert 'if [[ "${RELEASE_METADATA_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_RELEASE_METADATA_FILE}" ]]; then' in text
+    assert 'validate_current_release_state' in text
     assert 'STAGED_SERVICE_FILE="$(mktemp)"' not in text
     assert 'STAGED_NGINX_FILE="$(mktemp)"' not in text
     assert 'alembic downgrade' not in text
@@ -190,7 +193,13 @@ def test_vm_deploy_script_uses_vm_runtime_requirements_and_db_backup():
     assert 'VM_SERVICE_EXECUTABLE="${NEW_BACKEND_VENV}/bin/uvicorn" \\' in text
     assert 'render_runtime_asset service "${VALIDATION_SERVICE_FILE}" \\' in text
     assert 'systemd-analyze verify "${VALIDATION_SERVICE_FILE}" >/dev/null' in text
-    assert 'python3 tools/runtime_env.py write-systemd "${RUNTIME_ENV_FILE}" "${STAGED_SYSTEMD_ENV_FILE}"' in text
+    assert 'python3 tools/runtime_env.py write-systemd "${RUNTIME_ENV_FILE}" "${STAGED_SYSTEMD_ENV_FILE}" \\' in text
+    assert '"DEPLOYMENT_GIT_SHA=${DEPLOYMENT_GIT_SHA}"' in text
+    assert '"DEPLOYMENT_GIT_SHORT_SHA=${DEPLOYMENT_GIT_SHORT_SHA}"' in text
+    assert '"DEPLOYMENT_BRANCH=${DEPLOYMENT_BRANCH}"' in text
+    assert 'DEPLOYMENT_GIT_SHA="${NEW_SHA}"' in text
+    assert 'DEPLOYMENT_GIT_SHORT_SHA="${NEW_SHA:0:7}"' in text
+    assert 'DEPLOYMENT_BRANCH="${DEPLOY_BRANCH}"' in text
     assert 'CURRENT_STAGE="storage_readiness_check"' in text
     assert "from backend.app.storage.factory import create_storage_service_from_env" in text
     assert "service.list('')" in text
@@ -204,6 +213,7 @@ def test_vm_deploy_script_uses_vm_runtime_requirements_and_db_backup():
     assert 'render_runtime_asset() {' in text
     assert 'VM_RUNTIME_ENV_FILE="${RUNTIME_ENV_FILE}"' in text
     assert 'VM_SERVICE_ENVIRONMENT_FILE="${VM_SYSTEMD_ENV_FILE}"' in text
+    assert 'cp "${VM_RELEASE_METADATA_FILE}" "${PREVIOUS_RELEASE_METADATA_FILE}"' in text
     assert 'FRONTEND_BUILD_DIR=""' in text
     assert 'FRONTEND_BUILD_DIR="$(mktemp -d)"' in text
     assert 'install -d -m 0750 -o "${VM_APP_USER}" -g "${VM_APP_GROUP}" "${FRONTEND_BUILD_DIR}"' in text

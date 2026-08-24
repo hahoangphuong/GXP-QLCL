@@ -10,6 +10,7 @@ from sqlalchemy import create_engine, text
 
 from backend.app.db.models import Base
 from backend.app.runtime_schema import expected_alembic_head_revision
+from tools import build_phase7_cutover_readiness as readiness
 from tools import import_legacy_production as ilp
 
 
@@ -100,6 +101,38 @@ def patch_runtime(monkeypatch, database_url: str, runtime_env: Path) -> None:
         lambda: ("ready", {"status": "pass", "reason": "ok"}, True),
     )
     monkeypatch.setattr(ilp, "_run_backup", lambda runtime_env_path: None)
+
+
+def patch_phase7_artifact_paths(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(readiness, "PHASE3_PATH", tmp_path / "phase3r.json")
+    monkeypatch.setattr(readiness, "PHASE4_PATH", tmp_path / "phase4.json")
+    monkeypatch.setattr(readiness, "PHASE5_PATH", tmp_path / "phase5.json")
+    monkeypatch.setattr(readiness, "PHASE6_PATH", tmp_path / "phase6.json")
+    monkeypatch.setattr(readiness, "PHASE3P_PATH", tmp_path / "phase3p.json")
+    monkeypatch.setattr(readiness, "PHASE3S_PATH", tmp_path / "phase3s.json")
+
+
+def write_phase7_closeout_artifacts(tmp_path: Path) -> None:
+    (tmp_path / "phase4.json").write_text(json.dumps({"phase4_status": "closed"}), encoding="utf-8")
+    (tmp_path / "phase5.json").write_text(json.dumps({"phase5_status": "closed"}), encoding="utf-8")
+    (tmp_path / "phase6.json").write_text(
+        json.dumps({"phase6_status": "closed", "required_outstanding": []}),
+        encoding="utf-8",
+    )
+    (tmp_path / "phase3p.json").write_text(
+        json.dumps({"conflict_count": 0, "manual_review_count": 0}),
+        encoding="utf-8",
+    )
+
+
+def load_real_phase7_gate() -> tuple[str, dict[str, str], bool]:
+    report = readiness.build_readiness()
+    phase7_status = str(report.get("phase7_status", "blocked"))
+    current_projection_gate = report.get("gates", {}).get(
+        "current_projection_conflicts",
+        {"status": "blocked", "reason": "Current projection gate is unavailable."},
+    )
+    return phase7_status, current_projection_gate, phase7_status == "ready"
 
 
 def test_snapshot_only_apply_path_does_not_require_xlsb(tmp_path: Path, monkeypatch) -> None:
@@ -341,3 +374,71 @@ def test_dry_run_reports_not_cutover_ready_without_blocking_apply(tmp_path: Path
     assert dry_run_code == 3
     assert apply_code == 0
     assert count_rows(db_path, "company") == 1
+
+
+def test_dry_run_with_missing_phase7_artifacts_creates_report_without_traceback(tmp_path: Path, monkeypatch) -> None:
+    runtime_env = write_runtime_env(tmp_path / "runtime.env")
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json")
+    db_path = tmp_path / "prod.db"
+    database_url = prepare_runtime_db(db_path)
+    patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_phase7_artifact_paths(monkeypatch, tmp_path)
+    write_phase7_closeout_artifacts(tmp_path)
+    monkeypatch.setattr(ilp, "_load_phase7_gate", load_real_phase7_gate)
+
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        code = ilp.main(
+            [
+                "--snapshot",
+                str(snapshot_path),
+                "--runtime-env",
+                str(runtime_env),
+                "--dry-run",
+                "--report-root",
+                str(tmp_path / "reports"),
+            ]
+        )
+
+    report_dirs = sorted((tmp_path / "reports").iterdir())
+    report = json.loads((report_dirs[-1] / "report.json").read_text(encoding="utf-8"))
+    combined = stdout.getvalue() + stderr.getvalue()
+
+    assert code == 3
+    assert "Traceback" not in combined
+    assert count_rows(db_path, "company") == 0
+    assert report["validation_status"] == "pass"
+    assert report["cutover_ready"] is False
+    assert report["phase7_status"] == "blocked"
+    assert "Report directory:" in combined
+
+
+def test_import_validation_failure_is_not_masked_by_cutover_status(tmp_path: Path, monkeypatch) -> None:
+    runtime_env = write_runtime_env(tmp_path / "runtime.env")
+    snapshot = sample_snapshot()
+    snapshot["db.cso"][0]["ID Cty"] = "999"
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot)
+    db_path = tmp_path / "prod.db"
+    database_url = prepare_runtime_db(db_path)
+    patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_phase7_artifact_paths(monkeypatch, tmp_path)
+    write_phase7_closeout_artifacts(tmp_path)
+    monkeypatch.setattr(ilp, "_load_phase7_gate", load_real_phase7_gate)
+
+    stderr = io.StringIO()
+    with redirect_stderr(stderr):
+        code = ilp.main(
+            [
+                "--snapshot",
+                str(snapshot_path),
+                "--runtime-env",
+                str(runtime_env),
+                "--dry-run",
+                "--report-root",
+                str(tmp_path / "reports"),
+            ]
+        )
+
+    assert code == 1
+    assert "unresolved anomalies" in stderr.getvalue()

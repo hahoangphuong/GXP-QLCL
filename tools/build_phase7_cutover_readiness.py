@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -17,8 +18,14 @@ JSON_OUT = OUT_DIR / "cutover_readiness.json"
 MD_OUT = OUT_DIR / "cutover_readiness.md"
 
 
-def load_json(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
+@dataclass(frozen=True)
+class ArtifactLoadResult:
+    path: Path
+    artifact_label: str
+    required: bool
+    ok: bool
+    payload: dict[str, Any] | None = None
+    error_reason: str | None = None
 
 
 def gate(status: str, reason: str, *, detail: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -29,8 +36,62 @@ def gate(status: str, reason: str, *, detail: dict[str, Any] | None = None) -> d
     }
 
 
-def build_current_projection_gate(phase3p: dict[str, Any], phase3s: dict[str, Any] | None) -> dict[str, Any]:
-    if phase3s is not None:
+def safe_load_json(path: Path, artifact_label: str, *, required: bool = True) -> ArtifactLoadResult:
+    if not path.exists():
+        if required:
+            return ArtifactLoadResult(
+                path=path,
+                artifact_label=artifact_label,
+                required=required,
+                ok=False,
+                error_reason=f"Required {artifact_label} artifact is missing: {path}",
+            )
+        return ArtifactLoadResult(path=path, artifact_label=artifact_label, required=required, ok=False)
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return ArtifactLoadResult(
+            path=path,
+            artifact_label=artifact_label,
+            required=required,
+            ok=False,
+            error_reason=f"Required {artifact_label} artifact is invalid JSON: {path}: {exc}",
+        )
+
+    if not isinstance(payload, dict):
+        return ArtifactLoadResult(
+            path=path,
+            artifact_label=artifact_label,
+            required=required,
+            ok=False,
+            error_reason=f"Required {artifact_label} artifact must be a JSON object: {path}",
+        )
+
+    return ArtifactLoadResult(
+        path=path,
+        artifact_label=artifact_label,
+        required=required,
+        ok=True,
+        payload=payload,
+    )
+
+
+def _blocked_artifact_gate(reason: str) -> dict[str, Any]:
+    return gate("blocked", reason)
+
+
+def build_current_projection_gate(
+    phase3p_result: ArtifactLoadResult,
+    phase3s_result: ArtifactLoadResult,
+) -> dict[str, Any]:
+    if not phase3p_result.ok:
+        return _blocked_artifact_gate(
+            phase3p_result.error_reason or "Current projection conflict artifact is unavailable."
+        )
+
+    if phase3s_result.ok:
+        phase3s = phase3s_result.payload or {}
         unresolved_count = int(phase3s.get("unresolved_count", 0))
         overall_status = str(phase3s.get("overall_status", ""))
         if overall_status == "ready" and unresolved_count == 0:
@@ -53,6 +114,10 @@ def build_current_projection_gate(phase3p: dict[str, Any], phase3s: dict[str, An
             },
         )
 
+    if phase3s_result.error_reason is not None:
+        return _blocked_artifact_gate(phase3s_result.error_reason)
+
+    phase3p = phase3p_result.payload or {}
     conflict_count = int(phase3p.get("conflict_count", 0))
     return (
         gate("pass", "No current-projection conflicts remain.")
@@ -68,38 +133,57 @@ def build_current_projection_gate(phase3p: dict[str, Any], phase3s: dict[str, An
     )
 
 
+def _baseline_gate(
+    result: ArtifactLoadResult,
+    *,
+    expected_key: str,
+    pass_reason: str,
+    blocked_reason: str,
+    detail: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if not result.ok:
+        return _blocked_artifact_gate(result.error_reason or f"{result.artifact_label} artifact is unavailable.")
+    payload = result.payload or {}
+    if payload.get(expected_key) == "closed":
+        return gate("pass", pass_reason)
+    return gate("blocked", blocked_reason, detail=detail or {})
+
+
 def build_readiness() -> dict[str, Any]:
-    phase3 = load_json(PHASE3_PATH)
-    phase4 = load_json(PHASE4_PATH)
-    phase5 = load_json(PHASE5_PATH)
-    phase6 = load_json(PHASE6_PATH)
-    phase3p = load_json(PHASE3P_PATH)
-    phase3s = load_json(PHASE3S_PATH) if PHASE3S_PATH.exists() else None
+    phase3 = safe_load_json(PHASE3_PATH, "Phase 3 closeout")
+    phase4 = safe_load_json(PHASE4_PATH, "Phase 4 closeout")
+    phase5 = safe_load_json(PHASE5_PATH, "Phase 5 closeout")
+    phase6 = safe_load_json(PHASE6_PATH, "Phase 6 closeout")
+    phase3p = safe_load_json(PHASE3P_PATH, "current projection conflict")
+    phase3s = safe_load_json(PHASE3S_PATH, "Phase 3s projection conflict decision summary", required=False)
+
+    phase6_payload = phase6.payload or {}
 
     gates: dict[str, dict[str, Any]] = {}
-    gates["structured_data_baseline"] = (
-        gate("pass", "Phase 3 structured migration baseline is closed.")
-        if phase3.get("phase3_status") == "closed"
-        else gate("blocked", "Phase 3 structured migration baseline is not closed.")
+    gates["structured_data_baseline"] = _baseline_gate(
+        phase3,
+        expected_key="phase3_status",
+        pass_reason="Phase 3 structured migration baseline is closed.",
+        blocked_reason="Phase 3 structured migration baseline is not closed.",
     )
-    gates["storage_contract_baseline"] = (
-        gate("pass", "Phase 4 storage contract/tooling baseline is closed.")
-        if phase4.get("phase4_status") == "closed"
-        else gate("blocked", "Phase 4 storage contract/tooling baseline is not closed.")
+    gates["storage_contract_baseline"] = _baseline_gate(
+        phase4,
+        expected_key="phase4_status",
+        pass_reason="Phase 4 storage contract/tooling baseline is closed.",
+        blocked_reason="Phase 4 storage contract/tooling baseline is not closed.",
     )
-    gates["document_contract_baseline"] = (
-        gate("pass", "Phase 5 document/runtime baseline is closed.")
-        if phase5.get("phase5_status") == "closed"
-        else gate("blocked", "Phase 5 document/runtime baseline is not closed.")
+    gates["document_contract_baseline"] = _baseline_gate(
+        phase5,
+        expected_key="phase5_status",
+        pass_reason="Phase 5 document/runtime baseline is closed.",
+        blocked_reason="Phase 5 document/runtime baseline is not closed.",
     )
-    gates["desktop_private_share_validation"] = (
-        gate("pass", "Phase 6 desktop/private-share evidence is complete.")
-        if phase6.get("phase6_status") == "closed"
-        else gate(
-            "blocked",
-            "Phase 6 desktop/private-share evidence is not closed.",
-            detail={"required_outstanding": phase6.get("required_outstanding", [])},
-        )
+    gates["desktop_private_share_validation"] = _baseline_gate(
+        phase6,
+        expected_key="phase6_status",
+        pass_reason="Phase 6 desktop/private-share evidence is complete.",
+        blocked_reason="Phase 6 desktop/private-share evidence is not closed.",
+        detail={"required_outstanding": phase6_payload.get("required_outstanding", [])},
     )
 
     gates["current_projection_conflicts"] = build_current_projection_gate(phase3p, phase3s)
@@ -122,7 +206,7 @@ def build_readiness() -> dict[str, Any]:
         overall_status = "ready"
 
     return {
-        "generated_on": "2026-08-14",
+        "generated_on": "2026-08-24",
         "phase7_status": overall_status,
         "gates": gates,
     }

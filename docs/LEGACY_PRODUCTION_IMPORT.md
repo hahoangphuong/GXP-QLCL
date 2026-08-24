@@ -66,6 +66,12 @@ Each report includes:
 - deployment Git SHA
 - Phase 7 readiness status
 
+Missing Phase 7 historical evidence does not excuse or fabricate readiness:
+
+- dry-run and reconciliation must still execute if import validation can run
+- the report must mark Phase 7 as not cutover-ready with explicit blocked reasons
+- operators must not create fake historical artifacts just to make the gate pass
+
 ## Operator flow
 ### Windows
 1. Update `legacy/Danh sách Kiểm tra GPs.xlsb`.
@@ -134,6 +140,7 @@ sudo VM_RUNTIME_ENV_FILE=/etc/gxp/runtime.env ./infra/vm/verify_prod.sh
 - Dry-run uses the same importer logic as apply and rolls back the transaction.
 - Apply is transactional and must fail closed on collisions, unresolved anomalies, Alembic mismatch, or backup failure.
 - Current Phase 7 gate is reported but not auto-bypassed or auto-resolved by the importer.
+- Missing or invalid Phase 3/4/5/6/3p historical artifacts must become blocked Phase 7 gates, not Python tracebacks.
 
 ## Boundaries unchanged
 This path does not import or synthesize:

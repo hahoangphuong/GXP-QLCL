@@ -54,7 +54,7 @@ function isJsonContentType(contentType: string | null): boolean {
 
 function getContentTypeLabel(contentType: string | null): string {
   const normalized = (contentType ?? "").split(";", 1)[0].trim().toLowerCase();
-  return normalized || "unknown content type";
+  return normalized || "loại nội dung không rõ";
 }
 
 async function requestJson<T>(path: string, options: RequestOptions): Promise<T> {
@@ -76,7 +76,7 @@ async function requestJson<T>(path: string, options: RequestOptions): Promise<T>
   const contentType = response.headers.get("content-type");
 
   if (!isJsonContentType(contentType)) {
-    throw new Error(`Expected JSON from ${requestUrl} but received ${getContentTypeLabel(contentType)}`);
+    throw new Error(`Kỳ vọng JSON từ ${requestUrl} nhưng nhận được ${getContentTypeLabel(contentType)}`);
   }
 
   if (!response.ok) {

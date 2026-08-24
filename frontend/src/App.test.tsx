@@ -99,9 +99,9 @@ describe("App auth rendering", () => {
 
     renderApp();
 
-    expect(await screen.findByText("GxP Web migration cockpit")).toBeInTheDocument();
-    expect(screen.getByText("Dashboard")).toBeInTheDocument();
-    expect(screen.getByText("Case workspace")).toBeInTheDocument();
+    expect(await screen.findByText("Buồng điều phối di trú GxP Web")).toBeInTheDocument();
+    expect(screen.getByText("Tổng quan")).toBeInTheDocument();
+    expect(screen.getByText("Không gian hồ sơ")).toBeInTheDocument();
   });
 
   it("keeps stub controls for header_stub mode", async () => {
@@ -109,7 +109,7 @@ describe("App auth rendering", () => {
 
     renderApp();
 
-    expect(await screen.findByText("Stub user")).toBeInTheDocument();
+    expect(await screen.findByText("Người dùng giả lập")).toBeInTheDocument();
     expect(screen.getByDisplayValue("operator.local")).toBeInTheDocument();
   });
 
@@ -118,8 +118,8 @@ describe("App auth rendering", () => {
 
     renderApp();
 
-    expect(await screen.findByText("Missing Google OIDC client ID in app status.")).toBeInTheDocument();
-    expect(screen.queryByText("Stub user")).not.toBeInTheDocument();
+    expect(await screen.findByText("Thiếu Google OIDC client ID trong trạng thái ứng dụng.")).toBeInTheDocument();
+    expect(screen.queryByText("Người dùng giả lập")).not.toBeInTheDocument();
     expect(apiMocks.listCompanies).not.toHaveBeenCalled();
     expect(apiMocks.listSites).not.toHaveBeenCalled();
     expect(apiMocks.listCases).not.toHaveBeenCalled();
@@ -130,8 +130,8 @@ describe("App auth rendering", () => {
 
     renderApp();
 
-    expect(await screen.findByText("Sign in with your Google Workspace identity to unlock the operator shell.")).toBeInTheDocument();
-    expect(screen.queryByText("Stub user")).not.toBeInTheDocument();
+    expect(await screen.findByText("Đăng nhập bằng tài khoản Google Workspace để mở giao diện vận hành.")).toBeInTheDocument();
+    expect(screen.queryByText("Người dùng giả lập")).not.toBeInTheDocument();
     expect(window.google?.accounts?.id?.renderButton).toHaveBeenCalled();
   });
 });

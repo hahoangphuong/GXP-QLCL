@@ -162,7 +162,7 @@ describe("frontend API routing contract", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(getAppStatus()).rejects.toThrow("Expected JSON from /api/app/status but received text/html");
+    await expect(getAppStatus()).rejects.toThrow("Kỳ vọng JSON từ /api/app/status nhưng nhận được text/html");
   });
 
   it("sends Authorization bearer token in google_oidc mode", async () => {

@@ -139,7 +139,7 @@ function useCaseDetail(caseId: string | undefined, auth: StubAuthState, bearerTo
   return { detail, state };
 }
 
-function formatLabel(value: string | null | undefined, fallback = "Unknown"): string {
+function formatLabel(value: string | null | undefined, fallback = "Không rõ"): string {
   const normalized = String(value ?? "").trim();
   return normalized.length > 0 ? normalized : fallback;
 }
@@ -166,14 +166,14 @@ function GoogleOidcButton({
           client_id: clientId,
           callback: (response: { credential?: string }) => {
             if (!response.credential) {
-              setError("Google did not return an ID token.");
+              setError("Google không trả về ID token.");
               return;
             }
             try {
               onCredential(decodeOidcCredential(response.credential));
               setError(null);
             } catch (nextError) {
-              setError(nextError instanceof Error ? nextError.message : "Failed to decode Google ID token.");
+              setError(nextError instanceof Error ? nextError.message : "Không thể giải mã Google ID token.");
             }
           },
         });
@@ -197,9 +197,9 @@ function GoogleOidcButton({
 
   return (
     <div className="auth-panel auth-panel-readonly">
-      <p className="eyebrow">Identity source</p>
+      <p className="eyebrow">Nguồn định danh</p>
       <strong>google_oidc</strong>
-      <span>Sign in with your Google Workspace identity to unlock the operator shell.</span>
+      <span>Đăng nhập bằng tài khoản Google Workspace để mở giao diện vận hành.</span>
       <div ref={containerRef} />
       {error ? <span>{error}</span> : null}
     </div>
@@ -228,21 +228,21 @@ function Header({
   return (
     <header className="shell-header">
       <div>
-        <p className="eyebrow">Phase 13 Cloud Auth Baseline</p>
-        <h1>GxP Web migration cockpit</h1>
+        <p className="eyebrow">Pha 13 Nền tảng xác thực đám mây</p>
+        <h1>Buồng điều phối di trú GxP Web</h1>
       </div>
       {usesStubAuth ? (
         <div className="auth-panel">
           <label>
-            <span>Stub user</span>
+            <span>Người dùng giả lập</span>
             <input
               value={auth.username}
               onChange={(event) => onChange({ ...auth, username: event.target.value })}
-              placeholder="operator.local"
+              placeholder="vanhanh.local"
             />
           </label>
           <label>
-            <span>Role</span>
+            <span>Vai trò</span>
             <select
               value={auth.role}
               onChange={(event) =>
@@ -259,20 +259,20 @@ function Header({
         </div>
       ) : oidcSession ? (
         <div className="auth-panel auth-panel-readonly">
-          <p className="eyebrow">Identity source</p>
-          <strong>{oidcSession.email ?? oidcSession.name ?? "Google user"}</strong>
+          <p className="eyebrow">Nguồn định danh</p>
+          <strong>{oidcSession.email ?? oidcSession.name ?? "Người dùng Google"}</strong>
           <span>{authMode}</span>
           <button className="secondary" onClick={onOidcLogout} type="button">
-            Logout
+            Đăng xuất
           </button>
         </div>
       ) : oidcClientId ? (
         <GoogleOidcButton clientId={oidcClientId} onCredential={onOidcSession} />
       ) : (
         <div className="auth-panel auth-panel-readonly">
-          <p className="eyebrow">Identity source</p>
+          <p className="eyebrow">Nguồn định danh</p>
           <strong>{authMode}</strong>
-          <span>Missing Google OIDC client ID in app status.</span>
+          <span>Thiếu Google OIDC client ID trong trạng thái ứng dụng.</span>
         </div>
       )}
     </header>
@@ -283,22 +283,22 @@ function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-card">
-        <p className="sidebar-kicker">Navigation</p>
+        <p className="sidebar-kicker">Điều hướng</p>
         <nav className="sidebar-nav">
           <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/">
-            Dashboard
+            Tổng quan
           </NavLink>
           <NavLink className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")} to="/cases">
-            Case workspace
+            Không gian hồ sơ
           </NavLink>
         </nav>
       </div>
       <div className="sidebar-card accent">
-        <p className="sidebar-kicker">Principles</p>
+        <p className="sidebar-kicker">Nguyên tắc</p>
         <ul className="plain-list">
-          <li>Frontend never touches NAS credentials.</li>
-          <li>Document runs stay fail-closed.</li>
-          <li>Workflow logic stays server-side.</li>
+          <li>Frontend không bao giờ chạm vào thông tin xác thực NAS.</li>
+          <li>Luồng tài liệu luôn fail-closed khi có lỗi.</li>
+          <li>Logic quy trình nghiệp vụ luôn nằm ở phía máy chủ.</li>
         </ul>
       </div>
     </aside>
@@ -308,17 +308,17 @@ function Sidebar() {
 function StatusCards({ status }: { status: AppStatus | null }) {
   const phaseState = status?.phases;
   const cards = [
-    { label: "Platform", value: status?.deployment_platform ?? "unknown" },
-    { label: "Auth mode", value: status?.auth_mode ?? "unknown" },
-    { label: "Phase 5", value: phaseState?.phase5_status ?? "unknown" },
-    { label: "Phase 6", value: phaseState?.phase6_status ?? "unknown" },
-    { label: "Phase 7", value: phaseState?.phase7_status ?? "unknown" },
+    { label: "Nền tảng", value: status?.deployment_platform ?? "không rõ" },
+    { label: "Chế độ xác thực", value: status?.auth_mode ?? "không rõ" },
+    { label: "Pha 5", value: phaseState?.phase5_status ?? "không rõ" },
+    { label: "Pha 6", value: phaseState?.phase6_status ?? "không rõ" },
+    { label: "Pha 7", value: phaseState?.phase7_status ?? "không rõ" },
     {
-      label: "Projection conflicts",
+      label: "Xung đột projection",
       value:
         phaseState?.current_projection_conflicts_unresolved_count === null ||
         phaseState?.current_projection_conflicts_unresolved_count === undefined
-          ? "unknown"
+          ? "không rõ"
           : String(phaseState.current_projection_conflicts_unresolved_count),
     },
   ];
@@ -340,36 +340,36 @@ function DashboardPage({ snapshot, state }: { snapshot: OperatorSnapshot; state:
     <section className="page-stack">
       <div className="hero-card">
         <div>
-          <p className="eyebrow">Application state</p>
-          <h2>Backend-first foundation, now with operator shell</h2>
+          <p className="eyebrow">Trạng thái ứng dụng</p>
+          <h2>Nền tảng ưu tiên backend, nay đã có giao diện vận hành</h2>
         </div>
         <p className="hero-copy">
-          This shell sits on top of the authenticated read, workflow mutation, and document-run APIs
-          built in Phases 8-11. It does not reimplement business logic in the browser.
+          Giao diện này vận hành trên các API đọc có xác thực, thay đổi workflow và chạy tài liệu
+          đã được xây dựng trong các Pha 8-11. Nó không tái hiện logic nghiệp vụ trong trình duyệt.
         </p>
       </div>
       {state.error ? <ErrorBanner message={state.error} /> : null}
       <StatusCards status={snapshot.status} />
       <div className="summary-grid">
         <article className="summary-card">
-          <p className="eyebrow">Catalog</p>
+          <p className="eyebrow">Danh mục</p>
           <h3>{snapshot.companies.length}</h3>
-          <span>companies indexed</span>
+          <span>công ty đã được lập chỉ mục</span>
         </article>
         <article className="summary-card">
-          <p className="eyebrow">Sites</p>
+          <p className="eyebrow">Cơ sở</p>
           <h3>{snapshot.sites.length}</h3>
-          <span>sites visible to current role</span>
+          <span>cơ sở hiển thị với vai trò hiện tại</span>
         </article>
         <article className="summary-card">
-          <p className="eyebrow">Cases</p>
+          <p className="eyebrow">Hồ sơ</p>
           <h3>{snapshot.cases.length}</h3>
-          <span>inspection rows available for shell search</span>
+          <span>dòng kiểm tra có thể tra cứu trong giao diện</span>
         </article>
       </div>
-      {state.loading ? <p className="muted-panel">Loading operator snapshot…</p> : null}
+      {state.loading ? <p className="muted-panel">Đang tải ảnh chụp vận hành…</p> : null}
       {!state.loading && snapshot.status?.auth_mode === "google_oidc" && snapshot.cases.length === 0 ? (
-        <p className="muted-panel">Sign in with Google to load operator data.</p>
+        <p className="muted-panel">Hãy đăng nhập Google để tải dữ liệu vận hành.</p>
       ) : null}
     </section>
   );
@@ -412,22 +412,22 @@ function CaseWorkspacePage({
     <section className="page-stack">
       <div className="section-header">
         <div>
-          <p className="eyebrow">Operator workspace</p>
-          <h2>Search cases and inspect document readiness</h2>
+          <p className="eyebrow">Không gian vận hành</p>
+          <h2>Tìm hồ sơ và kiểm tra mức sẵn sàng của tài liệu</h2>
         </div>
         <div className="search-box">
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search by site, company, state, or inspection code"
+            placeholder="Tìm theo cơ sở, công ty, trạng thái hoặc mã kiểm tra"
           />
         </div>
       </div>
       <div className="workspace-grid">
         <div className="list-panel">
           <div className="panel-header">
-            <h3>Case queue</h3>
-            <span>{filteredCases.length} visible</span>
+            <h3>Hàng đợi hồ sơ</h3>
+            <span>{filteredCases.length} mục hiển thị</span>
           </div>
           <div className="case-list">
             {filteredCases.map((item) => {
@@ -456,7 +456,7 @@ function CaseWorkspacePage({
                   <div>
                     <span className="state-pill">{item.state}</span>
                     <span className="text-link" onClick={() => navigate(`/cases/${item.id}`)}>
-                      Detail
+                      Chi tiết
                     </span>
                   </div>
                 </button>
@@ -476,8 +476,8 @@ function CaseWorkspacePage({
             />
           ) : (
             <div className="empty-panel">
-              <h3>Select a case</h3>
-              <p>Choose a case from the left to inspect workflow context and prepare document runs.</p>
+              <h3>Chọn một hồ sơ</h3>
+              <p>Hãy chọn hồ sơ ở bên trái để xem ngữ cảnh workflow và chuẩn bị luồng tài liệu.</p>
             </div>
           )}
         </div>
@@ -501,7 +501,7 @@ function CaseRoutePage({
 }) {
   const { caseId } = useParams();
   if (!caseId) {
-    return <ErrorBanner message="Missing case ID." />;
+    return <ErrorBanner message="Thiếu mã hồ sơ." />;
   }
   return (
     <CaseDetailWorkspace
@@ -542,30 +542,30 @@ function CaseDetailWorkspace({
     <div className="page-stack">
       {standalone ? (
         <button className="back-link" onClick={() => navigate("/cases")} type="button">
-          ← Back to case workspace
+          ← Quay lại không gian hồ sơ
         </button>
       ) : null}
       {state.error ? <ErrorBanner message={state.error} /> : null}
       {state.loading || !detail ? (
-        <div className="muted-panel">Loading case detail…</div>
+        <div className="muted-panel">Đang tải chi tiết hồ sơ…</div>
       ) : (
         <>
           <div className="detail-card">
             <div>
-              <p className="eyebrow">Case detail</p>
+              <p className="eyebrow">Chi tiết hồ sơ</p>
               <h3>{formatLabel(detail.legacy_inspection_code, detail.id)}</h3>
             </div>
             <div className="detail-grid">
               <div>
-                <span>Company</span>
+                <span>Công ty</span>
                 <strong>{formatLabel(company?.legal_name)}</strong>
               </div>
               <div>
-                <span>Site</span>
+                <span>Cơ sở</span>
                 <strong>{formatLabel(site?.site_name)}</strong>
               </div>
               <div>
-                <span>State</span>
+                <span>Trạng thái</span>
                 <strong>{detail.state}</strong>
               </div>
               <div>
@@ -573,11 +573,11 @@ function CaseDetailWorkspace({
                 <strong>{detail.gxp_type}</strong>
               </div>
               <div>
-                <span>Inspection type</span>
+                <span>Loại kiểm tra</span>
                 <strong>{formatLabel(detail.inspection_type)}</strong>
               </div>
               <div>
-                <span>Opened year</span>
+                <span>Năm mở hồ sơ</span>
                 <strong>{formatLabel(detail.opened_year === null ? null : String(detail.opened_year))}</strong>
               </div>
             </div>
@@ -631,7 +631,7 @@ function DocumentWorkbench({
     try {
       parsedPayload = JSON.parse(payloadText) as Record<string, string>;
     } catch {
-      throw new Error("Payload JSON is invalid.");
+      throw new Error("Payload JSON không hợp lệ.");
     }
     return {
       family_code: familyCode,
@@ -654,7 +654,7 @@ function DocumentWorkbench({
       setRunStatus(null);
       setDocumentDetail(null);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Prepare failed.");
+      setError(nextError instanceof Error ? nextError.message : "Chuẩn bị thất bại.");
     } finally {
       setBusyAction(null);
     }
@@ -682,7 +682,7 @@ function DocumentWorkbench({
       setRunStatus(latestRun);
       setDocumentDetail(latestDocument);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Render failed.");
+      setError(nextError instanceof Error ? nextError.message : "Kết xuất thất bại.");
     } finally {
       setBusyAction(null);
     }
@@ -701,7 +701,7 @@ function DocumentWorkbench({
     try {
       setRunStatus(await getGenerationRun(generationRunId, auth, usesStubAuth, bearerToken));
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Failed to load run status.");
+      setError(nextError instanceof Error ? nextError.message : "Không thể tải trạng thái lượt chạy.");
     } finally {
       setBusyAction(null);
     }
@@ -720,7 +720,7 @@ function DocumentWorkbench({
     try {
       setDocumentDetail(await getDocumentDetail(documentId, auth, usesStubAuth, bearerToken));
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Failed to load document detail.");
+      setError(nextError instanceof Error ? nextError.message : "Không thể tải chi tiết tài liệu.");
     } finally {
       setBusyAction(null);
     }
@@ -731,12 +731,12 @@ function DocumentWorkbench({
       <form className="document-form" onSubmit={handlePrepare}>
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Document workflow</p>
-            <h3>Prepare or render through backend safety gates</h3>
+            <p className="eyebrow">Quy trình tài liệu</p>
+            <h3>Chuẩn bị hoặc kết xuất qua các chốt an toàn của backend</h3>
           </div>
           <div className="button-row">
             <button disabled={busyAction !== null} type="submit">
-              {busyAction === "prepare" ? "Preparing…" : "Prepare run"}
+              {busyAction === "prepare" ? "Đang chuẩn bị…" : "Chuẩn bị lượt chạy"}
             </button>
             <button
               className="secondary"
@@ -744,13 +744,13 @@ function DocumentWorkbench({
               onClick={() => void handleRender()}
               type="button"
             >
-              {busyAction === "render" ? "Rendering…" : "Render DOCX"}
+              {busyAction === "render" ? "Đang kết xuất…" : "Kết xuất DOCX"}
             </button>
           </div>
         </div>
         <div className="form-grid">
           <label>
-            <span>Family code</span>
+            <span>Mã family</span>
             <input list="family-suggestions" value={familyCode} onChange={(event) => setFamilyCode(event.target.value)} />
             <datalist id="family-suggestions">
               {FAMILY_SUGGESTIONS.map((item) => (
@@ -759,21 +759,21 @@ function DocumentWorkbench({
             </datalist>
           </label>
           <label>
-            <span>Storage scope</span>
+            <span>Phạm vi lưu trữ</span>
             <input value={storageScope} onChange={(event) => setStorageScope(event.target.value)} />
           </label>
           <label>
-            <span>GxP type</span>
+            <span>Loại GxP</span>
             <input value={gxpType} onChange={(event) => setGxpType(event.target.value)} />
           </label>
           <label>
-            <span>Output filename</span>
+            <span>Tên tệp đầu ra</span>
             <input value={outputFilename} onChange={(event) => setOutputFilename(event.target.value)} />
           </label>
           <label className="wide">
-            <span>Idempotency key</span>
+            <span>Khóa idempotency</span>
             <input
-              placeholder="Optional for prepare; render will create one if blank"
+              placeholder="Tùy chọn cho bước chuẩn bị; nếu để trống thì bước kết xuất sẽ tự tạo"
               value={idempotencyKey}
               onChange={(event) => setIdempotencyKey(event.target.value)}
             />
@@ -784,65 +784,65 @@ function DocumentWorkbench({
           <textarea rows={10} value={payloadText} onChange={(event) => setPayloadText(event.target.value)} />
         </label>
         <div className="hint-strip">
-          <span>Case-backed parent link is prefilled from the selected case.</span>
-          <span>Families that remain unresolved will return explicit blocked reasons.</span>
-          <span>{usesStubAuth ? "Local stub auth is active." : "Google OIDC bearer token is active."}</span>
+          <span>Liên kết cha theo hồ sơ được điền sẵn từ hồ sơ đang chọn.</span>
+          <span>Các family chưa được giải quyết sẽ trả về lý do bị chặn một cách tường minh.</span>
+          <span>{usesStubAuth ? "Xác thực giả lập cục bộ đang hoạt động." : "Bearer token Google OIDC đang hoạt động."}</span>
         </div>
       </form>
 
       {error ? <ErrorBanner message={error} /> : null}
 
       <div className="document-results-grid">
-        <ResultCard title="Prepare result">
+        <ResultCard title="Kết quả chuẩn bị">
           {prepareResult ? (
             <>
-              <KeyValue label="Run" value={prepareResult.generation_run_id} />
-              <KeyValue label="Status" value={prepareResult.generation_status} />
-              <KeyValue label="Template mode" value={prepareResult.template_readiness.scalar_replacement_mode} />
-              <TagList label="Blocked reasons" items={prepareResult.blocked_reasons} empty="none" />
-              <TagList label="Payload fields used" items={prepareResult.payload_used_fields} empty="none" />
+              <KeyValue label="Lượt chạy" value={prepareResult.generation_run_id} />
+              <KeyValue label="Trạng thái" value={prepareResult.generation_status} />
+              <KeyValue label="Chế độ template" value={prepareResult.template_readiness.scalar_replacement_mode} />
+              <TagList label="Lý do bị chặn" items={prepareResult.blocked_reasons} empty="không có" />
+              <TagList label="Trường payload đã dùng" items={prepareResult.payload_used_fields} empty="không có" />
             </>
           ) : (
-            <p className="muted-panel">No prepare run yet.</p>
+            <p className="muted-panel">Chưa có lượt chuẩn bị nào.</p>
           )}
         </ResultCard>
-        <ResultCard title="Render result">
+        <ResultCard title="Kết quả kết xuất">
           {renderResult ? (
             <>
-              <KeyValue label="Document version" value={renderResult.document_version_id} />
+              <KeyValue label="Phiên bản tài liệu" value={renderResult.document_version_id} />
               <KeyValue label="Checksum" value={renderResult.checksum_sha256} />
-              <KeyValue label="Output path" value={renderResult.output_storage_relative_path} />
-              <TagList label="Replaced bookmarks" items={renderResult.replaced_bookmarks} empty="none" />
+              <KeyValue label="Đường dẫn đầu ra" value={renderResult.output_storage_relative_path} />
+              <TagList label="Bookmark đã thay thế" items={renderResult.replaced_bookmarks} empty="không có" />
             </>
           ) : (
-            <p className="muted-panel">No render result yet.</p>
+            <p className="muted-panel">Chưa có kết quả kết xuất.</p>
           )}
         </ResultCard>
       </div>
 
       <div className="document-results-grid">
-        <ResultCard title="Generation run status">
+        <ResultCard title="Trạng thái lượt chạy">
           <div className="button-row compact">
             <button className="secondary" disabled={busyAction !== null} onClick={() => void loadRunStatus()} type="button">
-              {busyAction === "run" ? "Refreshing…" : "Refresh run"}
+              {busyAction === "run" ? "Đang làm mới…" : "Làm mới lượt chạy"}
             </button>
           </div>
           {runStatus ? (
             <>
-              <KeyValue label="Run status" value={runStatus.status} />
-              <KeyValue label="Source application" value={runStatus.source_application} />
-              <KeyValue label="Error summary" value={runStatus.error_summary} />
+              <KeyValue label="Trạng thái lượt chạy" value={runStatus.status} />
+              <KeyValue label="Ứng dụng nguồn" value={runStatus.source_application} />
+              <KeyValue label="Tóm tắt lỗi" value={runStatus.error_summary} />
               <TagList
-                label="Payload fields"
+                label="Trường payload"
                 items={Object.entries(runStatus.input_payload_redacted ?? {}).map(([key, value]) => `${key}=${value}`)}
-                empty="none"
+                empty="không có"
               />
             </>
           ) : (
-            <p className="muted-panel">Run status has not been loaded.</p>
+            <p className="muted-panel">Chưa tải trạng thái lượt chạy.</p>
           )}
         </ResultCard>
-        <ResultCard title="Document lineage">
+        <ResultCard title="Dòng dõi tài liệu">
           <div className="button-row compact">
             <button
               className="secondary"
@@ -850,26 +850,26 @@ function DocumentWorkbench({
               onClick={() => void loadDocumentLineage()}
               type="button"
             >
-              {busyAction === "document" ? "Refreshing…" : "Refresh document"}
+              {busyAction === "document" ? "Đang làm mới…" : "Làm mới tài liệu"}
             </button>
           </div>
           {documentDetail ? (
             <>
-              <KeyValue label="Family" value={documentDetail.family_code} />
-              <KeyValue label="Variants" value={String(documentDetail.variants.length)} />
-              <KeyValue label="Generation runs" value={String(documentDetail.generation_runs.length)} />
+              <KeyValue label="Family tài liệu" value={documentDetail.family_code} />
+              <KeyValue label="Biến thể" value={String(documentDetail.variants.length)} />
+              <KeyValue label="Lượt chạy phát sinh" value={String(documentDetail.generation_runs.length)} />
               <TagList
-                label="Current versions"
+                label="Phiên bản hiện tại"
                 items={documentDetail.variants.flatMap((variant) =>
                   variant.versions
                     .filter((version) => version.is_current)
                     .map((version) => `${variant.variant_type} v${version.version_no}`)
                 )}
-                empty="none"
+                empty="không có"
               />
             </>
           ) : (
-            <p className="muted-panel">Document lineage has not been loaded.</p>
+            <p className="muted-panel">Chưa tải dòng dõi tài liệu.</p>
           )}
         </ResultCard>
       </div>
@@ -916,7 +916,7 @@ function TagList({ label, items, empty }: { label: string; items: string[]; empt
 function ErrorBanner({ message }: { message: string }) {
   return (
     <div className="error-banner">
-      <strong>Request failed.</strong>
+      <strong>Yêu cầu thất bại.</strong>
       <span>{message}</span>
     </div>
   );

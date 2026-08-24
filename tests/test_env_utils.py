@@ -192,3 +192,134 @@ def test_systemd_runtime_env_serializer_is_deterministic():
     second = serialize_systemd_environment_file_contents(values)
 
     assert first == second
+
+
+def test_render_vm_runtime_assets_renders_nginx_with_only_nginx_env(tmp_path: Path):
+    output = tmp_path / "gxp.conf"
+    env = {
+        "PUBLIC_BASE_URL": "https://gxp.example.com",
+        "GXP_FRONTEND_DIST_ROOT": "/opt/gxp/frontend-dist",
+        "VM_TLS_CERT_PATH": "/etc/ssl/certs/gxp.crt",
+        "VM_TLS_KEY_PATH": "/etc/ssl/private/gxp.key",
+        "APP_PORT": "8000",
+    }
+
+    completed = subprocess.run(
+        [sys.executable, "tools/render_vm_runtime_assets.py", "nginx", str(output)],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    rendered = output.read_text(encoding="utf-8")
+    assert "server_name gxp.example.com;" in rendered
+    assert "root /opt/gxp/frontend-dist;" in rendered
+    assert "ssl_certificate /etc/ssl/certs/gxp.crt;" in rendered
+    assert "ssl_certificate_key /etc/ssl/private/gxp.key;" in rendered
+    assert "proxy_pass http://127.0.0.1:8000/api/;" in rendered
+    assert "{{" not in rendered
+
+
+def test_render_vm_runtime_assets_service_uses_explicit_systemd_env_file(tmp_path: Path):
+    output = tmp_path / "gxp.service"
+    env = {
+        "VM_APP_USER": "gxp",
+        "VM_APP_GROUP": "gxp",
+        "VM_CURRENT_BACKEND_RELEASE_LINK": "/opt/gxp/current-backend",
+        "VM_CURRENT_BACKEND_VENV_LINK": "/opt/gxp/current-venv",
+        "VM_SYSTEMD_ENV_FILE": "/etc/gxp/runtime.systemd.env",
+        "APP_PORT": "8000",
+    }
+
+    completed = subprocess.run(
+        [sys.executable, "tools/render_vm_runtime_assets.py", "service", str(output)],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    rendered = output.read_text(encoding="utf-8")
+    assert "EnvironmentFile=/etc/gxp/runtime.systemd.env" in rendered
+    assert "WorkingDirectory=/opt/gxp/current-backend" in rendered
+    assert "ExecStart=/opt/gxp/current-venv/bin/uvicorn backend.app.main:app --host 127.0.0.1 --port 8000" in rendered
+    assert "{{" not in rendered
+
+
+def test_render_vm_runtime_assets_service_uses_validation_env_override(tmp_path: Path):
+    output = tmp_path / "gxp.validation.service"
+    env = {
+        "VM_APP_USER": "gxp",
+        "VM_APP_GROUP": "gxp",
+        "VM_CURRENT_BACKEND_RELEASE_LINK": "/opt/gxp/current-backend",
+        "VM_CURRENT_BACKEND_VENV_LINK": "/opt/gxp/current-venv",
+        "VM_SERVICE_WORKING_DIRECTORY": "/opt/gxp/backend-releases/abc123",
+        "VM_SERVICE_EXECUTABLE": "/opt/gxp/backend-venvs/abc123/bin/uvicorn",
+        "VM_SERVICE_ENVIRONMENT_FILE": "/tmp/runtime.systemd.env",
+        "APP_PORT": "8001",
+    }
+
+    completed = subprocess.run(
+        [sys.executable, "tools/render_vm_runtime_assets.py", "service", str(output)],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    rendered = output.read_text(encoding="utf-8")
+    assert "EnvironmentFile=/tmp/runtime.systemd.env" in rendered
+    assert "WorkingDirectory=/opt/gxp/backend-releases/abc123" in rendered
+    assert "ExecStart=/opt/gxp/backend-venvs/abc123/bin/uvicorn backend.app.main:app --host 127.0.0.1 --port 8001" in rendered
+    assert "{{" not in rendered
+
+
+def test_render_vm_runtime_assets_service_fails_when_required_service_env_missing(tmp_path: Path):
+    output = tmp_path / "gxp.service"
+    env = {
+        "VM_APP_USER": "gxp",
+        "VM_APP_GROUP": "gxp",
+        "VM_CURRENT_BACKEND_RELEASE_LINK": "/opt/gxp/current-backend",
+        "APP_PORT": "8000",
+    }
+
+    completed = subprocess.run(
+        [sys.executable, "tools/render_vm_runtime_assets.py", "service", str(output)],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode != 0
+    assert "Missing required environment variable: VM_CURRENT_BACKEND_VENV_LINK" in completed.stderr
+
+
+def test_render_vm_runtime_assets_nginx_fails_when_required_nginx_env_missing(tmp_path: Path):
+    output = tmp_path / "gxp.conf"
+    env = {
+        "GXP_FRONTEND_DIST_ROOT": "/opt/gxp/frontend-dist",
+        "VM_TLS_CERT_PATH": "/etc/ssl/certs/gxp.crt",
+        "VM_TLS_KEY_PATH": "/etc/ssl/private/gxp.key",
+        "APP_PORT": "8000",
+    }
+
+    completed = subprocess.run(
+        [sys.executable, "tools/render_vm_runtime_assets.py", "nginx", str(output)],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode != 0
+    assert "Missing required environment variable: PUBLIC_BASE_URL" in completed.stderr

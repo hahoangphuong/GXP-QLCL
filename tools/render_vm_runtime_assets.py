@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import re
 import sys
 from urllib.parse import urlparse
 
@@ -11,6 +12,7 @@ TEMPLATES = {
     "service": ROOT / "infra" / "vm" / "gxp-web.service",
     "nginx": ROOT / "infra" / "vm" / "nginx.gxp.conf",
 }
+MARKER_PATTERN = re.compile(r"{{[A-Z0-9_]+}}")
 
 
 def _required_env(name: str) -> str:
@@ -20,10 +22,7 @@ def _required_env(name: str) -> str:
     return value
 
 
-def _replacement_map() -> dict[str, str]:
-    public_base_url = _required_env("PUBLIC_BASE_URL")
-    parsed = urlparse(public_base_url)
-    server_name = os.environ.get("NGINX_SERVER_NAME", "").strip() or parsed.hostname or "_"
+def _service_replacement_map() -> dict[str, str]:
     app_user = os.environ.get("VM_APP_USER", "").strip() or "gxp"
     app_group = os.environ.get("VM_APP_GROUP", "").strip() or app_user
     current_backend_release_link = _required_env("VM_CURRENT_BACKEND_RELEASE_LINK")
@@ -37,20 +36,41 @@ def _replacement_map() -> dict[str, str]:
         "{{VM_SERVICE_WORKING_DIRECTORY}}": service_working_directory,
         "{{VM_SERVICE_EXECUTABLE}}": service_executable,
         "{{VM_SERVICE_ENVIRONMENT_FILE}}": service_environment_file,
-        "{{VM_RUNTIME_ENV_FILE}}": _required_env("VM_RUNTIME_ENV_FILE"),
         "{{APP_PORT}}": os.environ.get("APP_PORT", "").strip() or "8000",
-        "{{GXP_FRONTEND_DIST_ROOT}}": _required_env("GXP_FRONTEND_DIST_ROOT"),
+    }
+
+
+def _nginx_replacement_map() -> dict[str, str]:
+    public_base_url = _required_env("PUBLIC_BASE_URL")
+    parsed = urlparse(public_base_url)
+    server_name = os.environ.get("NGINX_SERVER_NAME", "").strip() or parsed.hostname or "_"
+    return {
         "{{NGINX_SERVER_NAME}}": server_name,
         "{{VM_TLS_CERT_PATH}}": _required_env("VM_TLS_CERT_PATH"),
         "{{VM_TLS_KEY_PATH}}": _required_env("VM_TLS_KEY_PATH"),
+        "{{GXP_FRONTEND_DIST_ROOT}}": _required_env("GXP_FRONTEND_DIST_ROOT"),
+        "{{APP_PORT}}": os.environ.get("APP_PORT", "").strip() or "8000",
     }
+
+
+def _replacement_map(kind: str) -> dict[str, str]:
+    if kind == "service":
+        return _service_replacement_map()
+    if kind == "nginx":
+        return _nginx_replacement_map()
+    raise ValueError(f"Unsupported template kind: {kind}")
 
 
 def render_template(kind: str, output_path: Path) -> int:
     template_path = TEMPLATES[kind]
     rendered = template_path.read_text(encoding="utf-8")
-    for marker, replacement in _replacement_map().items():
+    for marker, replacement in _replacement_map(kind).items():
         rendered = rendered.replace(marker, replacement)
+    unresolved = sorted(set(MARKER_PATTERN.findall(rendered)))
+    if unresolved:
+        raise RuntimeError(
+            f"Template {kind} still contains unresolved markers: {', '.join(unresolved)}"
+        )
     output_path.write_text(rendered, encoding="utf-8", newline="\n")
     return 0
 

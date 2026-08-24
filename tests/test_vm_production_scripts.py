@@ -121,7 +121,13 @@ def test_vm_service_template_points_to_generated_systemd_env_file():
 
     assert "EnvironmentFile={{VM_SERVICE_ENVIRONMENT_FILE}}" in service_text
     assert "EnvironmentFile={{VM_RUNTIME_ENV_FILE}}" not in service_text
-    assert '_required_env("VM_SYSTEMD_ENV_FILE")' in render_text
+    assert "def _replacement_map(kind: str)" in render_text
+    assert "def _service_replacement_map()" in render_text
+    assert "def _nginx_replacement_map()" in render_text
+    assert 'service_environment_file = os.environ.get("VM_SERVICE_ENVIRONMENT_FILE", "").strip() or _required_env("VM_SYSTEMD_ENV_FILE")' in render_text
+    assert 'public_base_url = _required_env("PUBLIC_BASE_URL")' in render_text
+    assert "MARKER_PATTERN" in render_text
+    assert "still contains unresolved markers" in render_text
     assert 'VM_SERVICE_ENVIRONMENT_FILE' in render_text
 
 

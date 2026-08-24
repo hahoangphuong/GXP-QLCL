@@ -20,14 +20,41 @@ type RequestOptions = {
   bearerToken?: string | null;
 };
 
-const DEFAULT_API_BASE_URL = "";
+const DEFAULT_API_BASE_URL = "/api";
+
+function normalizeApiBaseUrl(value: string): string {
+  const normalized = String(value).trim().replace(/\/+$/, "");
+  return normalized || DEFAULT_API_BASE_URL;
+}
+
+function normalizeApiPath(path: string): string {
+  const normalized = String(path).trim();
+  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+}
 
 function getApiBaseUrl(): string {
   const value = import.meta.env.VITE_API_BASE_URL;
   if (!value) {
     return DEFAULT_API_BASE_URL;
   }
-  return String(value).replace(/\/+$/, "");
+  return normalizeApiBaseUrl(String(value));
+}
+
+function buildApiUrl(path: string): string {
+  return `${getApiBaseUrl()}${normalizeApiPath(path)}`;
+}
+
+function isJsonContentType(contentType: string | null): boolean {
+  if (!contentType) {
+    return false;
+  }
+  const normalized = contentType.toLowerCase();
+  return normalized.includes("application/json") || normalized.includes("+json");
+}
+
+function getContentTypeLabel(contentType: string | null): string {
+  const normalized = (contentType ?? "").split(";", 1)[0].trim().toLowerCase();
+  return normalized || "unknown content type";
 }
 
 async function requestJson<T>(path: string, options: RequestOptions): Promise<T> {
@@ -40,11 +67,17 @@ async function requestJson<T>(path: string, options: RequestOptions): Promise<T>
   } else if (options.bearerToken) {
     headers.Authorization = `Bearer ${options.bearerToken}`;
   }
-  const response = await fetch(`${getApiBaseUrl()}${path}`, {
+  const requestUrl = buildApiUrl(path);
+  const response = await fetch(requestUrl, {
     method: options.method ?? "GET",
     headers,
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   });
+  const contentType = response.headers.get("content-type");
+
+  if (!isJsonContentType(contentType)) {
+    throw new Error(`Expected JSON from ${requestUrl} but received ${getContentTypeLabel(contentType)}`);
+  }
 
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`;

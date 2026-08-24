@@ -144,7 +144,7 @@ class CaseAssessment(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
     case_id: Mapped[str] = mapped_column(ForeignKey("case.id"), nullable=False, unique=True)
     assessed_on: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     assessor_name: Mapped[str | None] = mapped_column(String(255))
-    assessment_result: Mapped[str | None] = mapped_column(String(255))
+    assessment_result: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
 
 
@@ -197,7 +197,7 @@ class InspectionOutcome(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Bas
     inspected_to_on: Mapped[date | None] = mapped_column(Date)
     decision_reference: Mapped[str | None] = mapped_column(String(255))
     bbkt_reference: Mapped[str | None] = mapped_column(String(255))
-    outcome_result: Mapped[str | None] = mapped_column(String(255))
+    outcome_result: Mapped[str | None] = mapped_column(Text)
 
 
 class CapaCycle(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
@@ -330,7 +330,7 @@ class ChangeApproval(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     change_request_id: Mapped[str] = mapped_column(ForeignKey("change_request.id"), nullable=False, unique=True)
     handled_on: Mapped[date | None] = mapped_column(Date)
     handled_by_name: Mapped[str | None] = mapped_column(String(255))
-    result_label: Mapped[str | None] = mapped_column(String(255))
+    result_label: Mapped[str | None] = mapped_column(Text)
     effective_on: Mapped[date | None] = mapped_column(Date)
     approval_reference: Mapped[str | None] = mapped_column(String(255))
 

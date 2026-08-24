@@ -3,12 +3,16 @@ from sqlalchemy.schema import CreateTable
 from backend.app.db.models import Base
 from backend.app.db.models.phase1 import (
     BusinessEligibilityCertificateLink,
+    CaseAssessment,
     Certificate,
     Document,
     DocumentVariant,
     DocumentVersion,
+    InspectionOutcome,
+    ChangeApproval,
     StorageBinding,
 )
+from backend.app.runtime_schema import expected_alembic_head_revision
 
 
 def test_metadata_contains_expected_tables():
@@ -58,3 +62,13 @@ def test_postgresql_ddl_renders_for_key_tables():
     for table in [Document.__table__, StorageBinding.__table__]:
         ddl = str(CreateTable(table).compile())
         assert "CREATE TABLE" in ddl
+
+
+def test_legacy_result_narratives_use_text_columns():
+    assert CaseAssessment.__table__.c.assessment_result.type.__class__.__name__ == "Text"
+    assert InspectionOutcome.__table__.c.outcome_result.type.__class__.__name__ == "Text"
+    assert ChangeApproval.__table__.c.result_label.type.__class__.__name__ == "Text"
+
+
+def test_expected_alembic_head_revision_tracks_latest_runtime_migration():
+    assert expected_alembic_head_revision() == "c1f9d7c8b2aa"

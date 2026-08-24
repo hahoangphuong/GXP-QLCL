@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 import json
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import String, delete, func, select
 from sqlalchemy.orm import Session
 
 from backend.app.db.enums import (
@@ -136,6 +136,85 @@ class ImportStats:
         self.existing_counts[table] = self.existing_counts.get(table, 0) + 1
 
 
+@dataclass(frozen=True)
+class LengthAuditRule:
+    source_sheet: str
+    source_label: str
+    target_model: type[Any]
+    target_column: str
+    classification: str
+    value_getter: Callable[[dict[str, str]], str | None]
+
+
+@dataclass(frozen=True)
+class SchemaLengthViolation:
+    sheet: str
+    source_label: str
+    source_row_key: str
+    target: str
+    actual_length: int
+    max_length: int
+    classification: str
+    sample: str
+
+
+class SchemaLengthValidationError(RuntimeError):
+    """Raised when mapped legacy values exceed canonical bounded-string columns."""
+
+    def __init__(self, violations: list[SchemaLengthViolation]):
+        self.violations = violations
+        summary: dict[str, int] = {}
+        for violation in violations:
+            summary[violation.target] = summary.get(violation.target, 0) + 1
+        detail = ", ".join(f"{target}={count}" for target, count in sorted(summary.items()))
+        super().__init__(f"Schema length preflight failed for {len(violations)} value(s): {detail}")
+
+
+LENGTH_AUDIT_RULES: tuple[LengthAuditRule, ...] = (
+    LengthAuditRule("db.cty", "TÊN CÔNG TY", Company, "legal_name", "narrative_name", lambda row: row.get("company_name")),
+    LengthAuditRule("db.cty", "COMPANY NAME", Company, "english_name", "narrative_name", lambda row: row.get("COMPANY NAME")),
+    LengthAuditRule("db.cty", "TÊN VIẾT TẮT", Company, "short_name", "short_label", lambda row: row.get("company_short_name")),
+    LengthAuditRule("db.cty", "MÃ CTY GMP", Company, "legacy_gmp_company_code", "identifier", lambda row: row.get("company_code_gmp")),
+    LengthAuditRule("db.cty", "MÃ CTY GLP", Company, "legacy_glp_company_code", "identifier", lambda row: row.get("company_code_glp")),
+    LengthAuditRule("db.cty", "MÃ CTY GMPbb", Company, "legacy_gmpbb_company_code", "identifier", lambda row: row.get("company_code_gmpbb")),
+    LengthAuditRule("db.cso", "TÊN CƠ SỞ", Site, "site_name", "narrative_name", lambda row: row.get("site_name")),
+    LengthAuditRule("db.cso", "SITE NAME", Site, "site_name_en", "narrative_name", lambda row: row.get("SITE NAME")),
+    LengthAuditRule("db.cso", "TỈNH/TP", Site, "province_name", "short_label", lambda row: row.get("province_name")),
+    LengthAuditRule("db.cso", "TÊN VIẾT TẮT", Site, "short_name", "short_label", lambda row: row.get("company_short_name")),
+    LengthAuditRule("db.cso", "MÃ CS GMP", Site, "legacy_gmp_site_code", "identifier", lambda row: row.get("site_code_gmp")),
+    LengthAuditRule("db.cso", "MÃ CS GLP", Site, "legacy_glp_site_code", "identifier", lambda row: row.get("site_code_glp")),
+    LengthAuditRule("db.cso", "MÃ CS GMPbb", Site, "legacy_gmpbb_site_code", "identifier", lambda row: row.get("site_code_gmpbb")),
+    LengthAuditRule("db.ktra", "LOẠI KT", Case, "gxp_type", "identifier", lambda row: row.get("inspection_gxp_type")),
+    LengthAuditRule("db.ktra", "MÃ DC", Case, "scope_code", "identifier", lambda row: row.get("scope_code")),
+    LengthAuditRule("db.ktra", "TIÊU CHUẨN ÁP DỤNG", Case, "applicable_standard", "short_label", lambda row: row.get("applicable_standard")),
+    LengthAuditRule("db.ktra", "LOẠI KIỂM TRA", Case, "inspection_type", "short_label", lambda row: row.get("inspection_type")),
+    LengthAuditRule("db.ktra", "Mã hồ sơ", CaseApplication, "dossier_code", "identifier", lambda row: row.get("dossier_code")),
+    LengthAuditRule("db.ktra", "Người thẩm định", CaseAssessment, "assessor_name", "person_name", lambda row: row.get("assessor_name")),
+    LengthAuditRule("db.ktra", "Kết quả", CaseAssessment, "assessment_result", "narrative", lambda row: row.get("assessment_result")),
+    LengthAuditRule("db.ktra", "Q. định", InspectionOutcome, "decision_reference", "reference", lambda row: row.get("decision_reference")),
+    LengthAuditRule("db.ktra", "B. bản", InspectionOutcome, "bbkt_reference", "reference", lambda row: row.get("bbkt_reference")),
+    LengthAuditRule("db.ktra", "Kết quả", InspectionOutcome, "outcome_result", "narrative", lambda row: row.get("assessment_result")),
+    LengthAuditRule("db.cc", "LOẠI CC", Certificate, "certificate_type", "short_label", lambda row: row.get("certificate_type")),
+    LengthAuditRule("db.cc", "MÃ DC", CertificateVersion, "certificate_number", "identifier", lambda row: row.get("scope_code")),
+    LengthAuditRule("db.dkkd", "ID CC", BusinessEligibilityVersion, "certificate_number", "identifier", lambda row: row.get("linked_certificate_ids")),
+    LengthAuditRule(
+        "db.dkkd",
+        "NGƯỜI CHỊU TRÁCH NHIỆM CHUYÊN MÔN",
+        BusinessEligibilityVersion,
+        "professional_responsible_person_name",
+        "person_name",
+        lambda row: row.get("professional_responsible_person_name"),
+    ),
+    LengthAuditRule("db.Tdoi", "PHẠM VI", ChangeRequest, "scope_label", "short_label", lambda row: row.get("change_scope_label")),
+    LengthAuditRule("db.Tdoi", "ĐƠN VỊ ĐỀ NGHỊ", ChangeRequest, "requester_name", "person_name", lambda row: row.get("requester_name")),
+    LengthAuditRule("db.Tdoi", "Người xử lý", ChangeApproval, "handled_by_name", "person_name", lambda row: row.get("handled_by_name")),
+    LengthAuditRule("db.Tdoi", "Kết quả", ChangeApproval, "result_label", "narrative", lambda row: row.get("assessment_result")),
+    LengthAuditRule("db.Tdoi", "CV chấp nhận & ngày", ChangeApproval, "approval_reference", "reference", lambda row: row.get("approval_reference")),
+    LengthAuditRule("db.Tdoi2", "PHÂN LOẠI", ChangeRequestDetail, "classification_label", "short_label", lambda row: row.get("classification_label")),
+    LengthAuditRule("db.Tdoi2", "TÌNH TRẠNG CHẤP NHẬN", ChangeRequestDetail, "approval_status", "short_label", lambda row: row.get("approval_status")),
+)
+
+
 def normalize_row(row: dict[str, str]) -> dict[str, str]:
     normalized: dict[str, str] = {}
     for key, value in row.items():
@@ -186,6 +265,107 @@ def parse_dt(value: str) -> datetime | None:
 def parse_date(value: str):
     dt = parse_dt(value)
     return dt.date() if dt else None
+
+
+def _normalized_string_value(value: str | None) -> str | None:
+    text = str(value or "").strip()
+    if not text or text == "-":
+        return None
+    return text
+
+
+def _rule_max_length(rule: LengthAuditRule) -> int | None:
+    column = rule.target_model.__table__.c[rule.target_column]
+    if not isinstance(column.type, String):
+        return None
+    return column.type.length
+
+
+def _source_row_key_from_raw_row(raw_row: dict[str, str]) -> str:
+    normalized = normalize_row(raw_row)
+    legacy_id = parse_int(normalized.get("ID", ""))
+    row_number = source_row_number(normalized)
+    return source_row_key(legacy_row_id=legacy_id, source_row_number_value=row_number) or "row:unknown"
+
+
+def build_schema_length_audit(snapshot: dict[str, list[dict[str, str]]]) -> list[dict[str, Any]]:
+    audit_rows: list[dict[str, Any]] = []
+    for rule in LENGTH_AUDIT_RULES:
+        max_length = _rule_max_length(rule)
+        if max_length is None:
+            continue
+        values: list[tuple[str, int, str]] = []
+        for raw_row in snapshot[rule.source_sheet]:
+            row = normalize_row(raw_row)
+            text = _normalized_string_value(rule.value_getter(row))
+            if text is None:
+                continue
+            values.append((_source_row_key_from_raw_row(raw_row), len(text), text))
+        if not values:
+            audit_rows.append(
+                {
+                    "target": f"{rule.target_model.__tablename__}.{rule.target_column}",
+                    "sql_type": str(rule.target_model.__table__.c[rule.target_column].type),
+                    "legacy_source": f"{rule.source_sheet}.{rule.source_label}",
+                    "semantic_class": rule.classification,
+                    "mapped_rows": 0,
+                    "max_length": 0,
+                    "p95_length": 0,
+                    "p99_length": 0,
+                    "rows_exceeding_limit": 0,
+                    "longest_source_row_key": None,
+                    "representative_row_keys": [],
+                }
+            )
+            continue
+        lengths = sorted(length for _row_key, length, _text in values)
+        over_limit = [row_key for row_key, length, _text in values if length > max_length]
+        longest_row_key, longest_length, _longest_text = max(values, key=lambda item: item[1])
+        audit_rows.append(
+            {
+                "target": f"{rule.target_model.__tablename__}.{rule.target_column}",
+                "sql_type": str(rule.target_model.__table__.c[rule.target_column].type),
+                "legacy_source": f"{rule.source_sheet}.{rule.source_label}",
+                "semantic_class": rule.classification,
+                "mapped_rows": len(values),
+                "max_length": longest_length,
+                "p95_length": lengths[min(len(lengths) - 1, int((len(lengths) - 1) * 0.95))],
+                "p99_length": lengths[min(len(lengths) - 1, int((len(lengths) - 1) * 0.99))],
+                "rows_exceeding_limit": len(over_limit),
+                "longest_source_row_key": longest_row_key,
+                "representative_row_keys": over_limit[:5],
+            }
+        )
+    return audit_rows
+
+
+def validate_snapshot_schema_lengths(snapshot: dict[str, list[dict[str, str]]]) -> None:
+    violations: list[SchemaLengthViolation] = []
+    for rule in LENGTH_AUDIT_RULES:
+        max_length = _rule_max_length(rule)
+        if max_length is None:
+            continue
+        for raw_row in snapshot[rule.source_sheet]:
+            row = normalize_row(raw_row)
+            text = _normalized_string_value(rule.value_getter(row))
+            if text is None:
+                continue
+            if len(text) <= max_length:
+                continue
+            violations.append(
+                SchemaLengthViolation(
+                    sheet=rule.source_sheet,
+                    source_label=rule.source_label,
+                    source_row_key=_source_row_key_from_raw_row(raw_row),
+                    target=f"{rule.target_model.__tablename__}.{rule.target_column}",
+                    actual_length=len(text),
+                    max_length=max_length,
+                    classification=rule.classification,
+                    sample=text[:200],
+                )
+            )
+    if violations:
+        raise SchemaLengthValidationError(violations)
 
 
 def is_latest_flag(value: str) -> bool:
@@ -771,11 +951,12 @@ def import_snapshot(
     options: ImportExecutionOptions | None = None,
 ) -> dict[str, Any]:
     resolved_options = options or ImportExecutionOptions()
+    _validate_snapshot_source_keys(snapshot)
+    validate_snapshot_schema_lengths(snapshot)
     if resolved_options.ensure_schema:
         create_schema(session)
     if resolved_options.reset_existing_data:
         _reset_import_tables(session)
-    _validate_snapshot_source_keys(snapshot)
     confirmed_blanked_row_keys = load_confirmed_blanked_row_keys()
     confirmed_blanked_null_key_budgets = load_confirmed_blanked_null_key_budgets()
     anomaly_rows: list[dict[str, Any]] = []

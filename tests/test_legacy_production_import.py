@@ -442,3 +442,46 @@ def test_import_validation_failure_is_not_masked_by_cutover_status(tmp_path: Pat
 
     assert code == 1
     assert "unresolved anomalies" in stderr.getvalue()
+
+
+def test_main_reports_schema_length_preflight_failures_without_raw_db_traceback(tmp_path: Path, monkeypatch) -> None:
+    runtime_env = write_runtime_env(tmp_path / "runtime.env")
+    snapshot = sample_snapshot()
+    snapshot["db.ktra"][0]["Mã hồ sơ"] = "D" * 129
+    snapshot["db.Tdoi2"][0]["PHÂN LOẠI"] = "P" * 260
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot)
+    db_path = tmp_path / "prod.db"
+    database_url = prepare_runtime_db(db_path)
+    patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_phase7_artifact_paths(monkeypatch, tmp_path)
+    write_phase7_closeout_artifacts(tmp_path)
+    monkeypatch.setattr(ilp, "_load_phase7_gate", load_real_phase7_gate)
+
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        code = ilp.main(
+            [
+                "--snapshot",
+                str(snapshot_path),
+                "--runtime-env",
+                str(runtime_env),
+                "--dry-run",
+                "--report-root",
+                str(tmp_path / "reports"),
+            ]
+        )
+
+    report_dirs = sorted((tmp_path / "reports").iterdir())
+    report = json.loads((report_dirs[-1] / "report.json").read_text(encoding="utf-8"))
+    combined = stdout.getvalue() + stderr.getvalue()
+
+    assert code == 1
+    assert "StringDataRightTruncation" not in combined
+    assert "Schema length preflight failed" in combined
+    assert count_rows(db_path, "company") == 0
+    assert report["validation_status"] == "failed"
+    assert {row["target"] for row in report["reconciliation"]["schema_length_violations"]} == {
+        "case_application.dossier_code",
+        "change_request_detail.classification_label",
+    }

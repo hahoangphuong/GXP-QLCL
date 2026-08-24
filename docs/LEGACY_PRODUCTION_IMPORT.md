@@ -65,6 +65,7 @@ Each report includes:
 - Alembic current/head revision
 - deployment Git SHA
 - Phase 7 readiness status
+- schema-length preflight violations for any bounded canonical column mismatch
 
 Missing Phase 7 historical evidence does not excuse or fabricate readiness:
 
@@ -141,6 +142,7 @@ sudo VM_RUNTIME_ENV_FILE=/etc/gxp/runtime.env ./infra/vm/verify_prod.sh
 - Apply is transactional and must fail closed on collisions, unresolved anomalies, Alembic mismatch, or backup failure.
 - Current Phase 7 gate is reported but not auto-bypassed or auto-resolved by the importer.
 - Missing or invalid Phase 3/4/5/6/3p historical artifacts must become blocked Phase 7 gates, not Python tracebacks.
+- Bounded `VARCHAR(N)` compatibility is preflight-validated before insert; free-form narrative fields owned by the schema use `TEXT` and must not be truncated.
 
 ## Boundaries unchanged
 This path does not import or synthesize:

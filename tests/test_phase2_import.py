@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
@@ -5,14 +8,22 @@ from backend.app.db.models.phase1 import (
     BusinessEligibilityCertificate,
     BusinessEligibilityCertificateLink,
     Case,
+    CaseAssessment,
     Certificate,
+    ChangeApproval,
     ChangeRequest,
     Company,
+    InspectionOutcome,
     LegacyIdMap,
     MigrationAnomaly,
     Site,
 )
-from backend.app.domain.phase2_import import import_snapshot, source_row_key
+from backend.app.domain.phase2_import import (
+    SchemaLengthValidationError,
+    build_schema_length_audit,
+    import_snapshot,
+    source_row_key,
+)
 
 
 def sample_snapshot():
@@ -145,3 +156,59 @@ def test_import_snapshot_accepts_override_for_blank_id_row_via_source_row_key():
         assert anomaly.legacy_row_id is None
         assert '"source_row_key": "row:42"' in (anomaly.detail_json or "")
         assert reconciliation["applied_override_count"] == 1
+
+
+def test_import_snapshot_preserves_long_unicode_assessment_narratives_without_truncation():
+    snapshot = sample_snapshot()
+    long_result = (
+        "Đây là nhận xét chuyên môn rất dài. " * 12
+        + "Kết luận cuối cùng vẫn phải được giữ nguyên từng ký tự tiếng Việt."
+    )
+    snapshot["db.ktra"][0]["Kết quả"] = long_result
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        import_snapshot(session, snapshot)
+        session.commit()
+        assessment = session.scalars(select(CaseAssessment)).one()
+        outcome = session.scalars(select(InspectionOutcome)).one()
+        assert assessment.assessment_result == long_result
+        assert outcome.outcome_result == long_result
+
+
+def test_import_snapshot_preserves_long_change_result_narratives_without_truncation():
+    snapshot = sample_snapshot()
+    long_result = "Biên bản thay đổi " + ("chi tiết; " * 40)
+    snapshot["db.Tdoi"][0]["Kết quả"] = long_result
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        import_snapshot(session, snapshot)
+        session.commit()
+        approval = session.scalars(select(ChangeApproval)).one()
+        assert approval.result_label == long_result
+
+
+def test_schema_length_preflight_detects_all_bounded_field_violations_and_ignores_text_fields():
+    snapshot = sample_snapshot()
+    snapshot["db.ktra"][0]["Mã hồ sơ"] = "D" * 129
+    snapshot["db.Tdoi2"][0]["PHÂN LOẠI"] = "P" * 260
+    snapshot["db.ktra"][0]["Kết quả"] = "Nội dung dài " * 80
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        try:
+            import_snapshot(session, snapshot)
+        except SchemaLengthValidationError as exc:
+            targets = {violation.target for violation in exc.violations}
+            assert "case_application.dossier_code" in targets
+            assert "change_request_detail.classification_label" in targets
+            assert "case_assessment.assessment_result" not in targets
+            assert "inspection_outcome.outcome_result" not in targets
+        else:
+            raise AssertionError("Expected schema length preflight failure")
+
+
+def test_build_schema_length_audit_for_real_snapshot_has_no_remaining_bounded_overflow():
+    snapshot = json.loads(Path("artifacts/phase3c/legacy_snapshot.json").read_text(encoding="utf-8"))
+    audit_rows = build_schema_length_audit(snapshot)
+
+    assert len(audit_rows) == 31
+    assert [row["target"] for row in audit_rows if row["rows_exceeding_limit"] > 0] == []

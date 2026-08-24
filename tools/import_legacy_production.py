@@ -20,7 +20,12 @@ if str(ROOT) not in sys.path:
 from backend.app.config import PRODUCTION_ENV_NAMES, load_app_config, resolve_database_url
 from backend.app.db.session import build_session_factory
 from backend.app.domain.legacy_snapshot import CORE_SHEETS
-from backend.app.domain.phase2_import import ImportExecutionOptions, ImportCollisionError, import_snapshot
+from backend.app.domain.phase2_import import (
+    ImportExecutionOptions,
+    ImportCollisionError,
+    SchemaLengthValidationError,
+    import_snapshot,
+)
 from backend.app.project_paths import phase_artifact_path
 from backend.app.runtime_schema import expected_alembic_head_revision
 from tools.build_phase7_cutover_readiness import build_readiness
@@ -65,6 +70,7 @@ class ImportReport:
     phase7_status: str
     current_projection_gate: dict[str, Any]
     backup_status: str
+    error_message: str | None
     reconciliation: dict[str, Any]
 
 
@@ -191,17 +197,34 @@ def _render_report_markdown(report: ImportReport) -> str:
         f"- Cutover ready: `{str(report.cutover_ready).lower()}`",
         f"- Backup status: `{report.backup_status}`",
         "",
-        "## Source Balance",
-        "",
-        "| Sheet | Source | Imported | Skipped | Excluded | Unresolved | Balanced |",
-        "|---|---:|---:|---:|---:|---:|---|",
     ]
-    for sheet in CORE_SHEETS:
-        row = reconciliation["source_balance"][sheet]
-        lines.append(
-            f"| `{sheet}` | {row['source_count']} | {row['imported_count']} | {row['skipped_count']} | "
-            f"{row['intentionally_skipped_count']} | {row['unresolved_count']} | `{row['balanced']}` |"
+    if report.error_message:
+        lines.extend(
+            [
+                "## Validation Error",
+                "",
+                report.error_message,
+                "",
+            ]
         )
+    lines.extend(
+        [
+            "## Source Balance",
+            "",
+            "| Sheet | Source | Imported | Skipped | Excluded | Unresolved | Balanced |",
+            "|---|---:|---:|---:|---:|---:|---|",
+        ]
+    )
+    source_balance = reconciliation.get("source_balance", {})
+    if source_balance:
+        for sheet in CORE_SHEETS:
+            row = source_balance[sheet]
+            lines.append(
+                f"| `{sheet}` | {row['source_count']} | {row['imported_count']} | {row['skipped_count']} | "
+                f"{row['intentionally_skipped_count']} | {row['unresolved_count']} | `{row['balanced']}` |"
+            )
+    else:
+        lines.append("| `n/a` | 0 | 0 | 0 | 0 | 0 | `False` |")
     lines.extend(
         [
             "",
@@ -211,6 +234,7 @@ def _render_report_markdown(report: ImportReport) -> str:
             f"- Existing counts: `{json.dumps(reconciliation.get('existing_counts', {}), ensure_ascii=False)}`",
             f"- Skipped rows: `{json.dumps(reconciliation.get('skipped_rows', {}), ensure_ascii=False)}`",
             f"- Excluded rows: `{json.dumps(reconciliation.get('excluded_rows', {}), ensure_ascii=False)}`",
+            f"- Schema length violations: `{json.dumps(reconciliation.get('schema_length_violations', []), ensure_ascii=False)}`",
             f"- Current projection gate: `{current_projection_status(report.current_projection_gate)}`",
         ]
     )
@@ -227,6 +251,22 @@ def _write_report(report_dir: Path, report: ImportReport) -> None:
         encoding="utf-8",
     )
     (report_dir / "report.md").write_text(_render_report_markdown(report), encoding="utf-8")
+
+
+def _schema_length_violations_payload(exc: SchemaLengthValidationError) -> list[dict[str, Any]]:
+    return [
+        {
+            "sheet": violation.sheet,
+            "source_label": violation.source_label,
+            "source_row_key": violation.source_row_key,
+            "target": violation.target,
+            "actual_length": violation.actual_length,
+            "max_length": violation.max_length,
+            "classification": violation.classification,
+            "sample": violation.sample,
+        }
+        for violation in exc.violations
+    ]
 
 
 def _run_import(
@@ -294,14 +334,37 @@ def execute_import(
         _run_backup(runtime_env_path)
         backup_status = "ok"
 
-    reconciliation, current_revision, head_revision = _run_import(
-        database_url=contract.database_url,
-        snapshot=snapshot,
-        dry_run=mode == "dry-run",
-        require_head_revision=True,
-    )
+    try:
+        reconciliation, current_revision, head_revision = _run_import(
+            database_url=contract.database_url,
+            snapshot=snapshot,
+            dry_run=mode == "dry-run",
+            require_head_revision=True,
+        )
+    except SchemaLengthValidationError as exc:
+        report = ImportReport(
+            mode=mode,
+            runtime_env_path=str(runtime_env_path),
+            snapshot_path=str(snapshot_path),
+            snapshot_sha256=snapshot_sha,
+            report_dir=str(report_dir),
+            started_at_utc=started_at,
+            completed_at_utc=datetime.now(timezone.utc).isoformat(),
+            deployment_git_sha=_git_sha(),
+            alembic_head_revision=expected_alembic_head_revision(),
+            alembic_current_revision=None,
+            database_url_redacted=contract.database_url_redacted,
+            validation_status="failed",
+            cutover_ready=cutover_ready,
+            phase7_status=phase7_status,
+            current_projection_gate=current_projection_gate,
+            backup_status=backup_status,
+            error_message=str(exc),
+            reconciliation={"schema_length_violations": _schema_length_violations_payload(exc)},
+        )
+        _write_report(report_dir, report)
+        raise ProductionImportError(str(exc)) from exc
 
-    validation_status = "pass"
     report = ImportReport(
         mode=mode,
         runtime_env_path=str(runtime_env_path),
@@ -314,11 +377,12 @@ def execute_import(
         alembic_head_revision=head_revision,
         alembic_current_revision=current_revision,
         database_url_redacted=contract.database_url_redacted,
-        validation_status=validation_status,
+        validation_status="pass",
         cutover_ready=cutover_ready,
         phase7_status=phase7_status,
         current_projection_gate=current_projection_gate,
         backup_status=backup_status,
+        error_message=None,
         reconciliation=reconciliation,
     )
     _write_report(report_dir, report)

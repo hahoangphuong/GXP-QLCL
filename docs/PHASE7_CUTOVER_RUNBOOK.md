@@ -9,15 +9,48 @@ Provide the execution surface for the real cutover window once all preconditions
 3. A change window must be approved.
 4. Rollback owners and contact paths must be confirmed.
 5. Final reconciliation rerun must complete without unresolved hard errors.
+6. Canonical legacy production import dry-run must have completed from `artifacts/phase3c/legacy_snapshot.json` and produced a report under `artifacts/legacy-production/<timestamp>/`.
+
+## Canonical import commands
+Windows snapshot export:
+
+```bash
+python tools/export_legacy_snapshot.py
+```
+
+VM dry-run:
+
+```bash
+cd /opt/gxp/src/GXP-QLCL
+python3 tools/import_legacy_production.py \
+  --snapshot artifacts/phase3c/legacy_snapshot.json \
+  --runtime-env /etc/gxp/runtime.env \
+  --dry-run
+```
+
+VM apply:
+
+```bash
+cd /opt/gxp/src/GXP-QLCL
+python3 tools/import_legacy_production.py \
+  --snapshot artifacts/phase3c/legacy_snapshot.json \
+  --runtime-env /etc/gxp/runtime.env \
+  --apply
+```
+
+The apply command runs the canonical PostgreSQL backup gate itself before mutating production data. Both modes emit `report.json` and `report.md` into `artifacts/legacy-production/<timestamp>/`.
 
 ## Cutover sequence
 1. Announce legacy write-freeze start time.
 2. Disable or administratively block new legacy business writes.
-3. Run final import/reconciliation against the frozen legacy baseline.
-4. Review reconciliation outputs and obtain sign-off.
-5. Switch web system to authoritative mode.
-6. Put legacy Excel workflow into read-only/archive mode.
-7. Monitor the first production operations closely.
+3. Export a fresh `artifacts/phase3c/legacy_snapshot.json` from the frozen workbook baseline.
+4. Run the canonical VM dry-run and review `artifacts/legacy-production/<timestamp>/report.json` and `report.md`.
+5. If validation passes, run the canonical VM apply command.
+6. Rebuild Phase 7 readiness with `python3 tools/build_phase7_cutover_readiness.py`.
+7. Review reconciliation outputs and obtain sign-off.
+8. Switch web system to authoritative mode.
+9. Put legacy Excel workflow into read-only/archive mode.
+10. Monitor the first production operations closely.
 
 ## Rollback trigger examples
 - unresolved reconciliation mismatch

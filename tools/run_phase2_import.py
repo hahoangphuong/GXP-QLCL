@@ -49,7 +49,7 @@ def write_reconciliation_markdown(report_path: Path, reconciliation: dict[str, o
 
 
 def main() -> int:
-    workbook_path = next((ROOT / "legacy").glob("*.xlsb"))
+    workbook_path = next((ROOT / "legacy").glob("*.xlsb"), None)
     database_path = ROOT / "artifacts" / "phase2" / "staging_readonly.db"
     report_path = ROOT / "artifacts" / "phase2" / "reconciliation.md"
     database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -59,6 +59,8 @@ def main() -> int:
     import_mode = "workbook"
     with session_scope(database_url) as session:
         try:
+            if workbook_path is None:
+                raise FileNotFoundError("No legacy workbook (*.xlsb) is present.")
             result = import_workbook_to_database(session, workbook_path, report_path, remediation_overrides=None)
             reconciliation = result.reconciliation
         except Exception as exc:

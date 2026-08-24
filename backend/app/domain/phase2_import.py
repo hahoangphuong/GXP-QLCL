@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -112,6 +112,30 @@ REMEDIATION_KEY_BY_REASON = {
 }
 
 
+class ImportCollisionError(RuntimeError):
+    """Raised when production-safe import detects conflicting existing data."""
+
+
+@dataclass(frozen=True)
+class ImportExecutionOptions:
+    ensure_schema: bool = True
+    reset_existing_data: bool = True
+    allow_existing_records: bool = False
+    persist_audit_event: bool = True
+
+
+@dataclass
+class ImportStats:
+    inserted_counts: dict[str, int] = field(default_factory=dict)
+    existing_counts: dict[str, int] = field(default_factory=dict)
+
+    def record_inserted(self, table: str) -> None:
+        self.inserted_counts[table] = self.inserted_counts.get(table, 0) + 1
+
+    def record_existing(self, table: str) -> None:
+        self.existing_counts[table] = self.existing_counts.get(table, 0) + 1
+
+
 def normalize_row(row: dict[str, str]) -> dict[str, str]:
     normalized: dict[str, str] = {}
     for key, value in row.items():
@@ -172,6 +196,348 @@ def is_latest_flag(value: str) -> bool:
 def create_schema(session: Session) -> None:
     engine = session.get_bind()
     ModelsBase.metadata.create_all(engine)
+
+
+def _normalize_comparable(value: Any) -> Any:
+    if hasattr(value, "value"):
+        return value.value
+    return value
+
+
+def _assert_fields_match(
+    entity: Any,
+    expected_fields: dict[str, Any],
+    *,
+    context: str,
+) -> None:
+    mismatches: list[str] = []
+    for field_name, expected_value in expected_fields.items():
+        actual_value = getattr(entity, field_name)
+        if _normalize_comparable(actual_value) != _normalize_comparable(expected_value):
+            mismatches.append(
+                f"{field_name}: expected {_normalize_comparable(expected_value)!r}, got {_normalize_comparable(actual_value)!r}"
+            )
+    if mismatches:
+        raise ImportCollisionError(f"{context} has conflicting existing data: {'; '.join(mismatches)}")
+
+
+def _source_identity_key(legacy_id: int | None, row_number: int | None) -> str | None:
+    return source_row_key(legacy_row_id=legacy_id, source_row_number_value=row_number)
+
+
+def _load_existing_entity(
+    session: Session,
+    *,
+    model: type[Any],
+    entity_type: LegacyEntityType | None,
+    legacy_field_name: str | None,
+    identity_key: str | None,
+) -> Any | None:
+    if identity_key is None:
+        return None
+
+    legacy_map = None
+    if entity_type is not None:
+        legacy_map = session.scalar(
+            select(LegacyIdMap).where(
+                LegacyIdMap.entity_type == entity_type,
+                LegacyIdMap.legacy_id == identity_key,
+            )
+        )
+    if legacy_map is not None:
+        entity = session.get(model, legacy_map.target_entity_id)
+        if entity is None:
+            raise ImportCollisionError(
+                f"LegacyIdMap for {entity_type.value}:{identity_key} points to missing {model.__tablename__} id={legacy_map.target_entity_id}."
+            )
+        if legacy_map.target_table != model.__tablename__:
+            raise ImportCollisionError(
+                f"LegacyIdMap for {entity_type.value}:{identity_key} points to unexpected table {legacy_map.target_table!r}."
+            )
+        return entity
+
+    if legacy_field_name is None or identity_key.startswith("row:"):
+        return None
+
+    try:
+        legacy_numeric = int(identity_key)
+    except ValueError:
+        return None
+
+    entity = session.scalar(select(model).where(getattr(model, legacy_field_name) == legacy_numeric))
+    if entity is not None:
+        if entity_type is None:
+            return entity
+        raise ImportCollisionError(
+            f"Existing {model.__tablename__} row with legacy identity {identity_key} is missing LegacyIdMap lineage."
+        )
+    return None
+
+
+def _ensure_legacy_map(
+    session: Session,
+    *,
+    entity_type: LegacyEntityType | None,
+    identity_key: str | None,
+    target_table: str,
+    target_entity_id: str,
+) -> None:
+    if entity_type is None or identity_key is None:
+        return
+
+    existing = session.scalar(
+        select(LegacyIdMap).where(
+            LegacyIdMap.entity_type == entity_type,
+            LegacyIdMap.legacy_id == identity_key,
+        )
+    )
+    if existing is not None:
+        if existing.target_table != target_table or existing.target_entity_id != target_entity_id:
+            raise ImportCollisionError(
+                f"LegacyIdMap collision for {entity_type.value}:{identity_key}; "
+                f"expected {target_table}:{target_entity_id}, found {existing.target_table}:{existing.target_entity_id}."
+            )
+        return
+
+    note = "source_row_key_fallback" if identity_key.startswith("row:") else None
+    session.add(
+        LegacyIdMap(
+            entity_type=entity_type,
+            legacy_id=identity_key,
+            target_table=target_table,
+            target_entity_id=target_entity_id,
+            note=note,
+        )
+    )
+
+
+def _ensure_entity(
+    session: Session,
+    stats: ImportStats,
+    *,
+    table_name: str,
+    model: type[Any],
+    entity_type: LegacyEntityType | None,
+    legacy_field_name: str | None,
+    identity_key: str | None,
+    expected_fields: dict[str, Any],
+    build_entity: Any,
+    options: ImportExecutionOptions,
+) -> Any:
+    if options.allow_existing_records and entity_type is None and identity_key is not None and identity_key.startswith("row:"):
+        raise ImportCollisionError(
+            f"{table_name}[{identity_key}] cannot be replayed idempotently because no canonical LegacyEntityType lineage exists."
+        )
+    if options.allow_existing_records:
+        existing = _load_existing_entity(
+            session,
+            model=model,
+            entity_type=entity_type,
+            legacy_field_name=legacy_field_name,
+            identity_key=identity_key,
+        )
+        if existing is not None:
+            _assert_fields_match(existing, expected_fields, context=f"{table_name}[{identity_key}]")
+            _ensure_legacy_map(
+                session,
+                entity_type=entity_type,
+                identity_key=identity_key,
+                target_table=table_name,
+                target_entity_id=existing.id,
+            )
+            stats.record_existing(table_name)
+            return existing
+
+    entity = build_entity()
+    session.add(entity)
+    session.flush()
+    _ensure_legacy_map(
+        session,
+        entity_type=entity_type,
+        identity_key=identity_key,
+        target_table=table_name,
+        target_entity_id=entity.id,
+    )
+    stats.record_inserted(table_name)
+    return entity
+
+
+def _ensure_single_child(
+    session: Session,
+    stats: ImportStats,
+    *,
+    table_name: str,
+    model: type[Any],
+    filters: dict[str, Any],
+    expected_fields: dict[str, Any],
+    build_entity: Any,
+    options: ImportExecutionOptions,
+) -> Any:
+    existing = session.scalar(select(model).filter_by(**filters))
+    if existing is not None:
+        if not options.allow_existing_records:
+            raise ImportCollisionError(f"{table_name} already contains a row for {filters!r} during reset import mode.")
+        _assert_fields_match(existing, expected_fields, context=f"{table_name}{filters!r}")
+        stats.record_existing(table_name)
+        return existing
+
+    entity = build_entity()
+    session.add(entity)
+    session.flush()
+    stats.record_inserted(table_name)
+    return entity
+
+
+def _ensure_inspection_event(
+    session: Session,
+    stats: ImportStats,
+    *,
+    case_id: str,
+    event_type: InspectionEventType,
+    occurred_at: datetime | None,
+    payload: str | None,
+    options: ImportExecutionOptions,
+) -> None:
+    matching = session.scalars(
+        select(InspectionEvent).where(
+            InspectionEvent.case_id == case_id,
+            InspectionEvent.event_type == event_type,
+        )
+    ).all()
+    for event in matching:
+        if event.occurred_at == occurred_at and event.payload == payload:
+            stats.record_existing("inspection_event")
+            return
+    if matching and options.allow_existing_records:
+        raise ImportCollisionError(
+            f"inspection_event[{case_id},{event_type.value}] has conflicting existing data."
+        )
+    session.add(
+        InspectionEvent(
+            case_id=case_id,
+            event_type=event_type,
+            occurred_at=occurred_at,
+            payload=payload,
+        )
+    )
+    session.flush()
+    stats.record_inserted("inspection_event")
+
+
+def _ensure_business_eligibility_link(
+    session: Session,
+    stats: ImportStats,
+    *,
+    business_eligibility_version_id: str,
+    certificate_id: str,
+    options: ImportExecutionOptions,
+) -> None:
+    existing = session.scalar(
+        select(BusinessEligibilityCertificateLink).where(
+            BusinessEligibilityCertificateLink.business_eligibility_version_id == business_eligibility_version_id,
+            BusinessEligibilityCertificateLink.certificate_id == certificate_id,
+        )
+    )
+    if existing is not None:
+        stats.record_existing("business_eligibility_certificate_link")
+        return
+    session.add(
+        BusinessEligibilityCertificateLink(
+            business_eligibility_version_id=business_eligibility_version_id,
+            certificate_id=certificate_id,
+        )
+    )
+    session.flush()
+    stats.record_inserted("business_eligibility_certificate_link")
+
+
+def _ensure_migration_anomaly(
+    session: Session,
+    stats: ImportStats,
+    *,
+    payload: dict[str, Any],
+    options: ImportExecutionOptions,
+) -> None:
+    existing = session.scalar(
+        select(MigrationAnomaly).where(
+            MigrationAnomaly.source_sheet == payload["source_sheet"],
+            MigrationAnomaly.legacy_row_id == payload["legacy_row_id"],
+            MigrationAnomaly.reason == payload["reason"],
+            MigrationAnomaly.required_field == payload["required_field"],
+            MigrationAnomaly.raw_fk_value == (payload["raw_fk_value"] or None),
+            MigrationAnomaly.override_value == (payload["override_value"] or None),
+            MigrationAnomaly.status == payload["status"],
+        )
+    )
+    if existing is not None:
+        if options.allow_existing_records:
+            detail_json = existing.detail_json or ""
+            expected_detail = json.dumps(payload, ensure_ascii=False)
+            if detail_json != expected_detail:
+                raise ImportCollisionError(
+                    f"migration_anomaly[{payload['source_sheet']}:{payload['source_row_key']}] has conflicting existing detail_json."
+                )
+            stats.record_existing("migration_anomaly")
+            return
+        raise ImportCollisionError("migration_anomaly row already exists during reset import mode.")
+    session.add(
+        MigrationAnomaly(
+            source_sheet=payload["source_sheet"],
+            legacy_row_id=payload["legacy_row_id"],
+            reason=payload["reason"],
+            required_field=payload["required_field"],
+            raw_fk_value=payload["raw_fk_value"] or None,
+            override_value=payload["override_value"],
+            status=payload["status"],
+            detail_json=json.dumps(payload, ensure_ascii=False),
+        )
+    )
+    session.flush()
+    stats.record_inserted("migration_anomaly")
+
+
+def _ensure_audit_event(session: Session, stats: ImportStats, *, options: ImportExecutionOptions) -> None:
+    if not options.persist_audit_event:
+        return
+    payload = "Read-only import from legacy workbook snapshot"
+    existing = session.scalar(
+        select(AuditEvent).where(
+            AuditEvent.actor_type == AuditActorType.MIGRATION,
+            AuditEvent.action == "phase2_import_completed",
+            AuditEvent.entity_type == "legacy_workbook_snapshot",
+            AuditEvent.entity_id == "Danh sach Kiem tra GPs.xlsb",
+            AuditEvent.payload_redacted == payload,
+        )
+    )
+    if existing is not None:
+        if not options.allow_existing_records:
+            raise ImportCollisionError("phase2_import audit event already exists during reset import mode.")
+        stats.record_existing("audit_event")
+        return
+    session.add(
+        AuditEvent(
+            actor_type=AuditActorType.MIGRATION,
+            action="phase2_import_completed",
+            entity_type="legacy_workbook_snapshot",
+            entity_id="Danh sach Kiem tra GPs.xlsb",
+            payload_redacted=payload,
+        )
+    )
+    session.flush()
+    stats.record_inserted("audit_event")
+
+
+def _validate_snapshot_source_keys(snapshot: dict[str, list[dict[str, str]]]) -> None:
+    for source_sheet, rows in snapshot.items():
+        seen: set[str] = set()
+        for raw_row in rows:
+            row = normalize_row(raw_row)
+            row_key = _source_identity_key(parse_int(row.get("ID", "")), source_row_number(row))
+            if row_key is None:
+                continue
+            if row_key in seen:
+                raise ImportCollisionError(f"Duplicate source row key {row_key!r} detected in sheet {source_sheet}.")
+            seen.add(row_key)
 
 
 def _add_legacy_map(session: Session, entity_type: LegacyEntityType, legacy_id: int | None, target_table: str, target_entity_id: str):
@@ -252,6 +618,8 @@ def load_confirmed_blanked_null_key_budgets() -> dict[str, int]:
 
 def _record_anomaly(
     session: Session,
+    stats: ImportStats,
+    options: ImportExecutionOptions,
     anomaly_rows: list[dict[str, Any]],
     *,
     source_sheet: str,
@@ -280,22 +648,18 @@ def _record_anomaly(
         row["classification"] = "confirmed_blanked_row"
         row["migration_action"] = "exclude_from_business_import"
     anomaly_rows.append(row)
-    session.add(
-        MigrationAnomaly(
-            source_sheet=source_sheet,
-            legacy_row_id=row["legacy_row_id"],
-            reason=reason,
-            required_field=required_field,
-            raw_fk_value=raw_fk_value or None,
-            override_value=row["override_value"],
-            status=status,
-            detail_json=json.dumps(row, ensure_ascii=False),
-        )
+    _ensure_migration_anomaly(
+        session,
+        stats,
+        payload=row,
+        options=options,
     )
 
 
 def _resolve_legacy_fk(
     session: Session,
+    stats: ImportStats,
+    options: ImportExecutionOptions,
     anomaly_rows: list[dict[str, Any]],
     overrides: dict[str, dict[str, dict[str, Any]]] | None,
     *,
@@ -324,6 +688,8 @@ def _resolve_legacy_fk(
     if override_legacy_id is not None and override_legacy_id in target_map:
         _record_anomaly(
             session,
+            stats,
+            options,
             anomaly_rows,
             source_sheet=source_sheet,
             legacy_row_id=legacy_row_id,
@@ -345,6 +711,8 @@ def _resolve_legacy_fk(
             confirmed_blanked_null_key_budgets[source_sheet] = remaining_budget - 1
     _record_anomaly(
         session,
+        stats,
+        options,
         anomaly_rows,
         source_sheet=source_sheet,
         legacy_row_id=legacy_row_id,
@@ -360,6 +728,8 @@ def _resolve_legacy_fk(
 
 def _resolve_optional_legacy_fk(
     session: Session,
+    stats: ImportStats,
+    options: ImportExecutionOptions,
     anomaly_rows: list[dict[str, Any]],
     overrides: dict[str, dict[str, dict[str, Any]]] | None,
     *,
@@ -377,6 +747,8 @@ def _resolve_optional_legacy_fk(
         return None
     return _resolve_legacy_fk(
         session,
+        stats,
+        options,
         anomaly_rows,
         overrides,
         source_sheet=source_sheet,
@@ -395,13 +767,20 @@ def import_snapshot(
     session: Session,
     snapshot: dict[str, list[dict[str, str]]],
     remediation_overrides: dict[str, dict[str, dict[str, Any]]] | None = None,
+    *,
+    options: ImportExecutionOptions | None = None,
 ) -> dict[str, Any]:
-    create_schema(session)
-    _reset_import_tables(session)
+    resolved_options = options or ImportExecutionOptions()
+    if resolved_options.ensure_schema:
+        create_schema(session)
+    if resolved_options.reset_existing_data:
+        _reset_import_tables(session)
+    _validate_snapshot_source_keys(snapshot)
     confirmed_blanked_row_keys = load_confirmed_blanked_row_keys()
     confirmed_blanked_null_key_budgets = load_confirmed_blanked_null_key_budgets()
     anomaly_rows: list[dict[str, Any]] = []
     skipped_rows: dict[str, list[dict[str, Any]]] = {sheet: [] for sheet in snapshot}
+    stats = ImportStats()
 
     company_ids: dict[int, str] = {}
     site_ids: dict[int, str] = {}
@@ -412,23 +791,34 @@ def import_snapshot(
     for raw_row in snapshot["db.cty"]:
         row = normalize_row(raw_row)
         legacy_id = parse_int(row.get("ID", ""))
-        entity = Company(
-            legacy_company_id=legacy_id,
-            legacy_gmp_company_code=row.get("company_code_gmp") or None,
-            legacy_glp_company_code=row.get("company_code_glp") or None,
-            legacy_gmpbb_company_code=row.get("company_code_gmpbb") or None,
-            legal_name=row.get("company_name") or "(missing legacy company name)",
-            english_name=row.get("COMPANY NAME") or None,
-            short_name=row.get("company_short_name") or None,
-            legal_address=row.get("company_address") or None,
-            legal_address_en=row.get("LEGAL ADDRESS") or None,
-            is_inactive=bool(row.get("company_inactive_flag")),
+        row_number = source_row_number(row)
+        identity_key = _source_identity_key(legacy_id, row_number)
+        expected_fields = {
+            "legacy_company_id": legacy_id,
+            "legacy_gmp_company_code": row.get("company_code_gmp") or None,
+            "legacy_glp_company_code": row.get("company_code_glp") or None,
+            "legacy_gmpbb_company_code": row.get("company_code_gmpbb") or None,
+            "legal_name": row.get("company_name") or "(missing legacy company name)",
+            "english_name": row.get("COMPANY NAME") or None,
+            "short_name": row.get("company_short_name") or None,
+            "legal_address": row.get("company_address") or None,
+            "legal_address_en": row.get("LEGAL ADDRESS") or None,
+            "is_inactive": bool(row.get("company_inactive_flag")),
+        }
+        entity = _ensure_entity(
+            session,
+            stats,
+            table_name="company",
+            model=Company,
+            entity_type=LegacyEntityType.COMPANY,
+            legacy_field_name="legacy_company_id",
+            identity_key=identity_key,
+            expected_fields=expected_fields,
+            build_entity=lambda expected_fields=expected_fields: Company(**expected_fields),
+            options=resolved_options,
         )
-        session.add(entity)
-        session.flush()
         if legacy_id is not None:
             company_ids[legacy_id] = entity.id
-        _add_legacy_map(session, LegacyEntityType.COMPANY, legacy_id, "company", entity.id)
 
     for raw_row in snapshot["db.cso"]:
         row = normalize_row(raw_row)
@@ -436,6 +826,8 @@ def import_snapshot(
         row_number = source_row_number(row)
         company_id = _resolve_legacy_fk(
             session,
+            stats,
+            resolved_options,
             anomaly_rows,
             remediation_overrides,
             source_sheet="db.cso",
@@ -451,24 +843,34 @@ def import_snapshot(
         if company_id is None:
             skipped_rows["db.cso"].append({"legacy_id": legacy_id, "reason": "missing_company_fk", "raw_fk": row.get("company_legacy_id_ref", "")})
             continue
-        entity = Site(
-            legacy_site_id=legacy_id,
-            company_id=company_id,
-            legacy_gmp_site_code=row.get("site_code_gmp") or None,
-            legacy_glp_site_code=row.get("site_code_glp") or None,
-            legacy_gmpbb_site_code=row.get("site_code_gmpbb") or None,
-            site_name=row.get("site_name") or "(missing legacy site name)",
-            site_name_en=row.get("SITE NAME") or None,
-            site_address=row.get("site_address") or None,
-            site_address_en=row.get("SITE ADDRESS") or None,
-            province_name=row.get("province_name") or None,
-            short_name=row.get("company_short_name") or None,
+        identity_key = _source_identity_key(legacy_id, row_number)
+        expected_fields = {
+            "legacy_site_id": legacy_id,
+            "company_id": company_id,
+            "legacy_gmp_site_code": row.get("site_code_gmp") or None,
+            "legacy_glp_site_code": row.get("site_code_glp") or None,
+            "legacy_gmpbb_site_code": row.get("site_code_gmpbb") or None,
+            "site_name": row.get("site_name") or "(missing legacy site name)",
+            "site_name_en": row.get("SITE NAME") or None,
+            "site_address": row.get("site_address") or None,
+            "site_address_en": row.get("SITE ADDRESS") or None,
+            "province_name": row.get("province_name") or None,
+            "short_name": row.get("company_short_name") or None,
+        }
+        entity = _ensure_entity(
+            session,
+            stats,
+            table_name="site",
+            model=Site,
+            entity_type=LegacyEntityType.SITE,
+            legacy_field_name="legacy_site_id",
+            identity_key=identity_key,
+            expected_fields=expected_fields,
+            build_entity=lambda expected_fields=expected_fields: Site(**expected_fields),
+            options=resolved_options,
         )
-        session.add(entity)
-        session.flush()
         if legacy_id is not None:
             site_ids[legacy_id] = entity.id
-        _add_legacy_map(session, LegacyEntityType.SITE, legacy_id, "site", entity.id)
 
     for raw_row in snapshot["db.ktra"]:
         row = normalize_row(raw_row)
@@ -476,6 +878,8 @@ def import_snapshot(
         row_number = source_row_number(row)
         site_id = _resolve_legacy_fk(
             session,
+            stats,
+            resolved_options,
             anomaly_rows,
             remediation_overrides,
             source_sheet="db.ktra",
@@ -494,30 +898,126 @@ def import_snapshot(
         submitted_at = parse_dt(row.get("submitted_at", ""))
         assessed_at = parse_dt(row.get("assessed_at", ""))
         inspected_at = parse_dt(row.get("bbkt_reference", "")) or parse_dt(row.get("inspected_at", ""))
-        entity = Case(
-            legacy_inspection_id=legacy_id,
-            site_id=site_id,
-            gxp_type=row.get("inspection_gxp_type") or "UNKNOWN",
-            scope_code=row.get("scope_code") or None,
-            applicable_standard=row.get("applicable_standard") or None,
-            inspection_type=row.get("inspection_type") or None,
-            state=CaseState.CERTIFIED if row.get("assessment_result") or row.get("bbkt_reference") else CaseState.APPLICATION_RECEIVED,
-            opened_year=submitted_at.year if submitted_at else None,
+        identity_key = _source_identity_key(legacy_id, row_number)
+        expected_fields = {
+            "legacy_inspection_id": legacy_id,
+            "site_id": site_id,
+            "gxp_type": row.get("inspection_gxp_type") or "UNKNOWN",
+            "scope_code": row.get("scope_code") or None,
+            "applicable_standard": row.get("applicable_standard") or None,
+            "inspection_type": row.get("inspection_type") or None,
+            "state": CaseState.CERTIFIED if row.get("assessment_result") or row.get("bbkt_reference") else CaseState.APPLICATION_RECEIVED,
+            "opened_year": submitted_at.year if submitted_at else None,
+        }
+        entity = _ensure_entity(
+            session,
+            stats,
+            table_name="case",
+            model=Case,
+            entity_type=LegacyEntityType.CASE,
+            legacy_field_name="legacy_inspection_id",
+            identity_key=identity_key,
+            expected_fields=expected_fields,
+            build_entity=lambda expected_fields=expected_fields: Case(**expected_fields),
+            options=resolved_options,
         )
-        session.add(entity)
-        session.flush()
         if legacy_id is not None:
             case_ids[legacy_id] = entity.id
-        _add_legacy_map(session, LegacyEntityType.CASE, legacy_id, "case", entity.id)
-        session.add(CaseApplication(case_id=entity.id, submitted_on=submitted_at, dossier_code=row.get("dossier_code") or None, dossier_reference=row.get("decision_reference") or None))
-        session.add(CaseAssessment(case_id=entity.id, assessed_on=assessed_at, assessor_name=row.get("assessor_name") or None, assessment_result=row.get("assessment_result") or None))
-        session.add(InspectionOutcome(case_id=entity.id, inspected_on=parse_date(row.get("bbkt_reference", "")) or parse_date(row.get("inspected_at", "")), decision_reference=row.get("decision_reference") or None, bbkt_reference=row.get("bbkt_reference") or None, outcome_result=row.get("assessment_result") or None))
+        _ensure_single_child(
+            session,
+            stats,
+            table_name="case_application",
+            model=CaseApplication,
+            filters={"case_id": entity.id},
+            expected_fields={
+                "case_id": entity.id,
+                "submitted_on": submitted_at,
+                "dossier_code": row.get("dossier_code") or None,
+                "dossier_reference": row.get("decision_reference") or None,
+                "applicant_name": None,
+            },
+            build_entity=lambda: CaseApplication(
+                case_id=entity.id,
+                submitted_on=submitted_at,
+                dossier_code=row.get("dossier_code") or None,
+                dossier_reference=row.get("decision_reference") or None,
+            ),
+            options=resolved_options,
+        )
+        _ensure_single_child(
+            session,
+            stats,
+            table_name="case_assessment",
+            model=CaseAssessment,
+            filters={"case_id": entity.id},
+            expected_fields={
+                "case_id": entity.id,
+                "assessed_on": assessed_at,
+                "assessor_name": row.get("assessor_name") or None,
+                "assessment_result": row.get("assessment_result") or None,
+                "notes": None,
+            },
+            build_entity=lambda: CaseAssessment(
+                case_id=entity.id,
+                assessed_on=assessed_at,
+                assessor_name=row.get("assessor_name") or None,
+                assessment_result=row.get("assessment_result") or None,
+            ),
+            options=resolved_options,
+        )
+        _ensure_single_child(
+            session,
+            stats,
+            table_name="inspection_outcome",
+            model=InspectionOutcome,
+            filters={"case_id": entity.id},
+            expected_fields={
+                "case_id": entity.id,
+                "inspected_on": parse_date(row.get("bbkt_reference", "")) or parse_date(row.get("inspected_at", "")),
+                "inspected_to_on": None,
+                "decision_reference": row.get("decision_reference") or None,
+                "bbkt_reference": row.get("bbkt_reference") or None,
+                "outcome_result": row.get("assessment_result") or None,
+            },
+            build_entity=lambda: InspectionOutcome(
+                case_id=entity.id,
+                inspected_on=parse_date(row.get("bbkt_reference", "")) or parse_date(row.get("inspected_at", "")),
+                decision_reference=row.get("decision_reference") or None,
+                bbkt_reference=row.get("bbkt_reference") or None,
+                outcome_result=row.get("assessment_result") or None,
+            ),
+            options=resolved_options,
+        )
         if submitted_at:
-            session.add(InspectionEvent(case_id=entity.id, event_type=InspectionEventType.APPLICATION_SUBMITTED, occurred_at=submitted_at, payload=row.get("dossier_code") or None))
+            _ensure_inspection_event(
+                session,
+                stats,
+                case_id=entity.id,
+                event_type=InspectionEventType.APPLICATION_SUBMITTED,
+                occurred_at=submitted_at,
+                payload=row.get("dossier_code") or None,
+                options=resolved_options,
+            )
         if assessed_at:
-            session.add(InspectionEvent(case_id=entity.id, event_type=InspectionEventType.ASSESSMENT_COMPLETED, occurred_at=assessed_at, payload=row.get("assessment_result") or None))
+            _ensure_inspection_event(
+                session,
+                stats,
+                case_id=entity.id,
+                event_type=InspectionEventType.ASSESSMENT_COMPLETED,
+                occurred_at=assessed_at,
+                payload=row.get("assessment_result") or None,
+                options=resolved_options,
+            )
         if inspected_at:
-            session.add(InspectionEvent(case_id=entity.id, event_type=InspectionEventType.INSPECTION_EXECUTED, occurred_at=inspected_at, payload=row.get("decision_reference") or None))
+            _ensure_inspection_event(
+                session,
+                stats,
+                case_id=entity.id,
+                event_type=InspectionEventType.INSPECTION_EXECUTED,
+                occurred_at=inspected_at,
+                payload=row.get("decision_reference") or None,
+                options=resolved_options,
+            )
 
     for raw_row in snapshot["db.cc"]:
         row = normalize_row(raw_row)
@@ -526,6 +1026,8 @@ def import_snapshot(
         raw_case_fk = row.get("inspection_case_legacy_id_ref", "")
         case_id = _resolve_optional_legacy_fk(
             session,
+            stats,
+            resolved_options,
             anomaly_rows,
             remediation_overrides,
             source_sheet="db.cc",
@@ -543,6 +1045,8 @@ def import_snapshot(
             continue
         site_id = _resolve_legacy_fk(
             session,
+            stats,
+            resolved_options,
             anomaly_rows,
             remediation_overrides,
             source_sheet="db.cc",
@@ -558,23 +1062,64 @@ def import_snapshot(
         if site_id is None:
             skipped_rows["db.cc"].append({"legacy_id": legacy_id, "reason": "missing_site_fk", "raw_fk": row.get("site_legacy_id_ref", "")})
             continue
-        entity = Certificate(
-            legacy_certificate_id=legacy_id,
-            case_id=case_id,
-            site_id=site_id,
-            certificate_type=row.get("certificate_type") or "UNKNOWN",
-            issuance_basis="inspection_case" if case_id is not None else "administrative_no_inspection",
-            latest_flag=is_latest_flag(row.get("latest_flag", "")),
-            latest_legacy_certificate_id=parse_int(row.get("latest_legacy_id", "")),
+        identity_key = _source_identity_key(legacy_id, row_number)
+        expected_fields = {
+            "legacy_certificate_id": legacy_id,
+            "case_id": case_id,
+            "site_id": site_id,
+            "certificate_type": row.get("certificate_type") or "UNKNOWN",
+            "issuance_basis": "inspection_case" if case_id is not None else "administrative_no_inspection",
+            "latest_flag": is_latest_flag(row.get("latest_flag", "")),
+            "latest_legacy_certificate_id": parse_int(row.get("latest_legacy_id", "")),
+        }
+        entity = _ensure_entity(
+            session,
+            stats,
+            table_name="certificate",
+            model=Certificate,
+            entity_type=LegacyEntityType.CERTIFICATE,
+            legacy_field_name="legacy_certificate_id",
+            identity_key=identity_key,
+            expected_fields=expected_fields,
+            build_entity=lambda expected_fields=expected_fields: Certificate(**expected_fields),
+            options=resolved_options,
         )
-        session.add(entity)
-        session.flush()
         if legacy_id is not None:
             certificate_ids[legacy_id] = entity.id
-        _add_legacy_map(session, LegacyEntityType.CERTIFICATE, legacy_id, "certificate", entity.id)
-        session.add(CertificateVersion(certificate_id=entity.id, version_no=1, issue_date=None, expiry_date=None, certificate_number=row.get("scope_code") or None, is_latest_version=True))
+        _ensure_single_child(
+            session,
+            stats,
+            table_name="certificate_version",
+            model=CertificateVersion,
+            filters={"certificate_id": entity.id, "version_no": 1},
+            expected_fields={
+                "certificate_id": entity.id,
+                "version_no": 1,
+                "issue_date": None,
+                "expiry_date": None,
+                "certificate_number": row.get("scope_code") or None,
+                "is_latest_version": True,
+            },
+            build_entity=lambda: CertificateVersion(
+                certificate_id=entity.id,
+                version_no=1,
+                issue_date=None,
+                expiry_date=None,
+                certificate_number=row.get("scope_code") or None,
+                is_latest_version=True,
+            ),
+            options=resolved_options,
+        )
         if entity.case_id is not None:
-            session.add(InspectionEvent(case_id=entity.case_id, event_type=InspectionEventType.CERTIFICATE_ISSUED, occurred_at=None, payload=row.get("certificate_type") or None))
+            _ensure_inspection_event(
+                session,
+                stats,
+                case_id=entity.case_id,
+                event_type=InspectionEventType.CERTIFICATE_ISSUED,
+                occurred_at=None,
+                payload=row.get("certificate_type") or None,
+                options=resolved_options,
+            )
 
     for raw_row in snapshot["db.dkkd"]:
         row = normalize_row(raw_row)
@@ -582,6 +1127,8 @@ def import_snapshot(
         row_number = source_row_number(row)
         site_id = _resolve_legacy_fk(
             session,
+            stats,
+            resolved_options,
             anomaly_rows,
             remediation_overrides,
             source_sheet="db.dkkd",
@@ -599,6 +1146,8 @@ def import_snapshot(
             continue
         company_id = _resolve_legacy_fk(
             session,
+            stats,
+            resolved_options,
             anomaly_rows,
             remediation_overrides,
             source_sheet="db.dkkd",
@@ -614,29 +1163,60 @@ def import_snapshot(
         if company_id is None:
             skipped_rows["db.dkkd"].append({"legacy_id": legacy_id, "reason": "missing_company_fk", "raw_fk": row.get("company_legacy_id_ref", "")})
             continue
-        entity = BusinessEligibilityCertificate(
-            legacy_dkkd_id=legacy_id,
-            site_id=site_id,
-            company_id=company_id,
-            latest_flag=is_latest_flag(row.get("latest_flag", "")),
-            latest_legacy_dkkd_id=parse_int(row.get("latest_legacy_id", "")),
+        identity_key = _source_identity_key(legacy_id, row_number)
+        expected_fields = {
+            "legacy_dkkd_id": legacy_id,
+            "site_id": site_id,
+            "company_id": company_id,
+            "latest_flag": is_latest_flag(row.get("latest_flag", "")),
+            "latest_legacy_dkkd_id": parse_int(row.get("latest_legacy_id", "")),
+        }
+        entity = _ensure_entity(
+            session,
+            stats,
+            table_name="business_eligibility_certificate",
+            model=BusinessEligibilityCertificate,
+            entity_type=LegacyEntityType.BUSINESS_ELIGIBILITY,
+            legacy_field_name="legacy_dkkd_id",
+            identity_key=identity_key,
+            expected_fields=expected_fields,
+            build_entity=lambda expected_fields=expected_fields: BusinessEligibilityCertificate(**expected_fields),
+            options=resolved_options,
         )
-        session.add(entity)
-        session.flush()
-        _add_legacy_map(session, LegacyEntityType.BUSINESS_ELIGIBILITY, legacy_id, "business_eligibility_certificate", entity.id)
-        version = BusinessEligibilityVersion(
-            business_eligibility_certificate_id=entity.id,
-            version_no=1,
-            certificate_number=row.get("linked_certificate_ids") or None,
-            professional_responsible_person_name=row.get("professional_responsible_person_name") or None,
+        version = _ensure_single_child(
+            session,
+            stats,
+            table_name="business_eligibility_version",
+            model=BusinessEligibilityVersion,
+            filters={"business_eligibility_certificate_id": entity.id, "version_no": 1},
+            expected_fields={
+                "business_eligibility_certificate_id": entity.id,
+                "version_no": 1,
+                "certificate_number": row.get("linked_certificate_ids") or None,
+                "issued_on": None,
+                "expires_on": None,
+                "professional_responsible_person_name": row.get("professional_responsible_person_name") or None,
+                "notes": None,
+            },
+            build_entity=lambda: BusinessEligibilityVersion(
+                business_eligibility_certificate_id=entity.id,
+                version_no=1,
+                certificate_number=row.get("linked_certificate_ids") or None,
+                professional_responsible_person_name=row.get("professional_responsible_person_name") or None,
+            ),
+            options=resolved_options,
         )
-        session.add(version)
-        session.flush()
         for part in (row.get("linked_certificate_ids") or "").split(";"):
             cert_legacy_id = parse_int(part)
             if cert_legacy_id is None or cert_legacy_id not in certificate_ids:
                 continue
-            session.add(BusinessEligibilityCertificateLink(business_eligibility_version_id=version.id, certificate_id=certificate_ids[cert_legacy_id]))
+            _ensure_business_eligibility_link(
+                session,
+                stats,
+                business_eligibility_version_id=version.id,
+                certificate_id=certificate_ids[cert_legacy_id],
+                options=resolved_options,
+            )
 
     for raw_row in snapshot["db.Tdoi"]:
         row = normalize_row(raw_row)
@@ -644,6 +1224,8 @@ def import_snapshot(
         row_number = source_row_number(row)
         site_id = _resolve_legacy_fk(
             session,
+            stats,
+            resolved_options,
             anomaly_rows,
             remediation_overrides,
             source_sheet="db.Tdoi",
@@ -659,21 +1241,54 @@ def import_snapshot(
         if site_id is None:
             skipped_rows["db.Tdoi"].append({"legacy_id": legacy_id, "reason": "missing_site_fk", "raw_fk": row.get("site_legacy_id_ref", "")})
             continue
-        entity = ChangeRequest(
-            legacy_change_request_id=legacy_id,
-            site_id=site_id,
-            scope_label=row.get("change_scope_label") or None,
-            description=row.get("change_description") or None,
-            submitted_on=parse_date(row.get("submitted_at", "")),
-            requester_name=row.get("requester_name") or None,
-            state=ChangeRequestState.EFFECTIVE if row.get("effective_on") else ChangeRequestState.RECEIVED,
+        identity_key = _source_identity_key(legacy_id, row_number)
+        expected_fields = {
+            "legacy_change_request_id": legacy_id,
+            "site_id": site_id,
+            "scope_label": row.get("change_scope_label") or None,
+            "description": row.get("change_description") or None,
+            "submitted_on": parse_date(row.get("submitted_at", "")),
+            "requester_name": row.get("requester_name") or None,
+            "state": ChangeRequestState.EFFECTIVE if row.get("effective_on") else ChangeRequestState.RECEIVED,
+        }
+        entity = _ensure_entity(
+            session,
+            stats,
+            table_name="change_request",
+            model=ChangeRequest,
+            entity_type=LegacyEntityType.CHANGE_REQUEST,
+            legacy_field_name="legacy_change_request_id",
+            identity_key=identity_key,
+            expected_fields=expected_fields,
+            build_entity=lambda expected_fields=expected_fields: ChangeRequest(**expected_fields),
+            options=resolved_options,
         )
-        session.add(entity)
-        session.flush()
         if legacy_id is not None:
             change_ids[legacy_id] = entity.id
-        _add_legacy_map(session, LegacyEntityType.CHANGE_REQUEST, legacy_id, "change_request", entity.id)
-        session.add(ChangeApproval(change_request_id=entity.id, handled_on=parse_date(row.get("handled_on", "")), handled_by_name=row.get("handled_by_name") or None, result_label=row.get("assessment_result") or None, effective_on=parse_date(row.get("effective_on", "")), approval_reference=row.get("approval_reference") or None))
+        _ensure_single_child(
+            session,
+            stats,
+            table_name="change_approval",
+            model=ChangeApproval,
+            filters={"change_request_id": entity.id},
+            expected_fields={
+                "change_request_id": entity.id,
+                "handled_on": parse_date(row.get("handled_on", "")),
+                "handled_by_name": row.get("handled_by_name") or None,
+                "result_label": row.get("assessment_result") or None,
+                "effective_on": parse_date(row.get("effective_on", "")),
+                "approval_reference": row.get("approval_reference") or None,
+            },
+            build_entity=lambda: ChangeApproval(
+                change_request_id=entity.id,
+                handled_on=parse_date(row.get("handled_on", "")),
+                handled_by_name=row.get("handled_by_name") or None,
+                result_label=row.get("assessment_result") or None,
+                effective_on=parse_date(row.get("effective_on", "")),
+                approval_reference=row.get("approval_reference") or None,
+            ),
+            options=resolved_options,
+        )
 
     for raw_row in snapshot["db.Tdoi2"]:
         row = normalize_row(raw_row)
@@ -681,6 +1296,8 @@ def import_snapshot(
         row_number = source_row_number(row)
         change_request_id = _resolve_legacy_fk(
             session,
+            stats,
+            resolved_options,
             anomaly_rows,
             remediation_overrides,
             source_sheet="db.Tdoi2",
@@ -696,30 +1313,40 @@ def import_snapshot(
         if change_request_id is None:
             skipped_rows["db.Tdoi2"].append({"legacy_id": legacy_id, "reason": "missing_change_request_fk", "raw_fk": row.get("change_request_legacy_id_ref", "")})
             continue
-        session.add(
-            ChangeRequestDetail(
-                legacy_change_detail_id=legacy_id,
-                change_request_id=change_request_id,
-                classification_id=parse_int(row.get("classification_id", "")),
-                classification_label=row.get("classification_label") or None,
-                approval_status=row.get("approval_status") or None,
-                old_value=row.get("old_value") or None,
-                new_value=row.get("new_value") or None,
-                note=row.get("note") or None,
-            )
+        identity_key = _source_identity_key(legacy_id, row_number)
+        expected_fields = {
+            "legacy_change_detail_id": legacy_id,
+            "change_request_id": change_request_id,
+            "classification_id": parse_int(row.get("classification_id", "")),
+            "classification_label": row.get("classification_label") or None,
+            "approval_status": row.get("approval_status") or None,
+            "old_value": row.get("old_value") or None,
+            "new_value": row.get("new_value") or None,
+            "note": row.get("note") or None,
+        }
+        _ensure_entity(
+            session,
+            stats,
+            table_name="change_request_detail",
+            model=ChangeRequestDetail,
+            entity_type=None,
+            legacy_field_name="legacy_change_detail_id",
+            identity_key=identity_key,
+            expected_fields=expected_fields,
+            build_entity=lambda expected_fields=expected_fields: ChangeRequestDetail(**expected_fields),
+            options=resolved_options,
         )
 
-    session.add(
-        AuditEvent(
-            actor_type=AuditActorType.MIGRATION,
-            action="phase2_import_completed",
-            entity_type="legacy_workbook_snapshot",
-            entity_id="Danh sach Kiem tra GPs.xlsb",
-            payload_redacted="Read-only import from legacy workbook snapshot",
-        )
-    )
+    _ensure_audit_event(session, stats, options=resolved_options)
     session.flush()
-    return build_reconciliation(session, snapshot, skipped_rows, anomaly_rows, remediation_overrides or {})
+    return build_reconciliation(
+        session,
+        snapshot,
+        skipped_rows,
+        anomaly_rows,
+        remediation_overrides or {},
+        stats=stats,
+    )
 
 
 def build_reconciliation(
@@ -728,7 +1355,10 @@ def build_reconciliation(
     skipped_rows: dict[str, list[dict[str, Any]]],
     anomaly_rows: list[dict[str, Any]],
     remediation_overrides: dict[str, dict[str, dict[str, Any]]],
+    *,
+    stats: ImportStats | None = None,
 ) -> dict[str, Any]:
+    resolved_stats = stats or ImportStats()
     excluded_rows_by_sheet: dict[str, list[dict[str, Any]]] = {}
     for row in anomaly_rows:
         if row.get("status") != "excluded_confirmed_blanked":
@@ -767,6 +1397,29 @@ def build_reconciliation(
         if effective_source_counts[source_name] != target_counts[source_name]
     }
     applied_override_count = sum(1 for row in anomaly_rows if row["status"] == "overridden")
+    unresolved_anomaly_counts = {
+        source_name: sum(
+            1
+            for row in anomaly_rows
+            if row["source_sheet"] == source_name and row.get("status") not in {"excluded_confirmed_blanked", "overridden"}
+        )
+        for source_name in PRIMARY_TARGET_MAP
+    }
+    imported_row_counts = {
+        source_name: source_counts[source_name] - len(skipped_rows.get(source_name, []))
+        for source_name in PRIMARY_TARGET_MAP
+    }
+    source_balance = {
+        source_name: {
+            "source_count": source_counts[source_name],
+            "imported_count": imported_row_counts[source_name],
+            "intentionally_skipped_count": excluded_row_counts.get(source_name, 0),
+            "unresolved_count": unresolved_anomaly_counts.get(source_name, 0),
+            "skipped_count": len(skipped_rows.get(source_name, [])),
+            "balanced": imported_row_counts[source_name] + len(skipped_rows.get(source_name, [])) == source_counts[source_name],
+        }
+        for source_name in PRIMARY_TARGET_MAP
+    }
     return {
         "source_counts": source_counts,
         "effective_source_counts": effective_source_counts,
@@ -780,6 +1433,9 @@ def build_reconciliation(
         "anomaly_rows": anomaly_rows,
         "applied_override_count": applied_override_count,
         "remediation_override_keys": sorted(remediation_overrides.keys()),
+        "inserted_counts": dict(sorted(resolved_stats.inserted_counts.items())),
+        "existing_counts": dict(sorted(resolved_stats.existing_counts.items())),
+        "source_balance": source_balance,
         "derived_counts": {
             "case_application": session.scalar(select(func.count()).select_from(CaseApplication)),
             "case_assessment": session.scalar(select(func.count()).select_from(CaseAssessment)),

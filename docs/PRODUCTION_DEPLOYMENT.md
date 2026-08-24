@@ -248,6 +248,54 @@ database migrations are not automatically downgraded
   - readiness verification
 - `DB_MODE=cloud_sql` remains supported as a dormant rollback/future mode.
 
+## Legacy structured-data import contract
+Canonical production import uses the existing legacy importer owner layer plus a production-safe operator CLI:
+
+- importer owner: `backend/app/domain/phase2_import.py`
+- Windows snapshot exporter: `tools/export_legacy_snapshot.py`
+- production CLI: `tools/import_legacy_production.py`
+
+The production VM import path consumes the exported snapshot JSON, not Excel COM:
+
+- Windows workbook: `legacy/Danh sách Kiểm tra GPs.xlsb`
+- exported snapshot: `artifacts/phase3c/legacy_snapshot.json`
+
+Canonical dry-run:
+
+```bash
+cd /opt/gxp/src/GXP-QLCL
+python3 tools/import_legacy_production.py \
+  --snapshot artifacts/phase3c/legacy_snapshot.json \
+  --runtime-env /etc/gxp/runtime.env \
+  --dry-run
+```
+
+Canonical apply:
+
+```bash
+cd /opt/gxp/src/GXP-QLCL
+python3 tools/import_legacy_production.py \
+  --snapshot artifacts/phase3c/legacy_snapshot.json \
+  --runtime-env /etc/gxp/runtime.env \
+  --apply
+```
+
+The CLI must:
+
+- reuse the canonical runtime env parser and resolved production DB contract
+- fail closed if `APP_ENV != production` or `DB_MODE != local_postgres`
+- require current Alembic revision to equal repository head
+- compute and record the snapshot SHA-256
+- run the canonical PostgreSQL backup gate before `--apply`
+- keep `--dry-run` zero-mutation by importing inside a transaction and rolling it back
+- write reports under `artifacts/legacy-production/<timestamp>/`
+
+This import path does not fabricate or import document rows, storage bindings, or RBAC users.
+
+Detailed operator steps live in:
+
+- [docs/LEGACY_PRODUCTION_IMPORT.md](D:/GXP-QLCL/docs/LEGACY_PRODUCTION_IMPORT.md)
+
 ## Auth contract
 - Current VM production auth baseline is `AUTH_PROVIDER=google_oidc`.
 - Production RBAC remains database-backed.

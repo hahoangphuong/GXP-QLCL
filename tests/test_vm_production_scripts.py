@@ -72,6 +72,7 @@ def test_vm_deploy_script_enforces_clean_git_and_fast_forward_flow():
 def test_vm_deploy_script_preserves_pre_switch_atomicity_and_post_switch_rollback_contract():
     text = (ROOT / "infra" / "vm" / "deploy_prod.sh").read_text(encoding="utf-8")
 
+    assert text.index('CURRENT_STAGE="pre_deploy_consistency_gate"') < text.index('CURRENT_STAGE="resolve_release_targets"')
     assert text.index('CURRENT_STAGE="render_runtime_assets"') < text.index('CURRENT_STAGE="database_backup"')
     assert text.index('CURRENT_STAGE="database_backup"') < text.index('CURRENT_STAGE="alembic_upgrade"')
     assert text.index('CURRENT_STAGE="build_backend_venv"') < text.index('CURRENT_STAGE="resolve_database_url"')
@@ -85,6 +86,11 @@ def test_vm_deploy_script_preserves_pre_switch_atomicity_and_post_switch_rollbac
     assert 'cp "${STAGED_NGINX_FILE}" "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf"' in text
     assert 'install -m 0640 -o root -g "${VM_APP_GROUP}" "${STAGED_SYSTEMD_ENV_FILE}" "${VM_SYSTEMD_ENV_FILE}.tmp"' in text
     assert 'mv "${VM_SYSTEMD_ENV_FILE}.tmp" "${VM_SYSTEMD_ENV_FILE}"' in text
+    assert 'render_runtime_asset service "${STAGED_SERVICE_FILE}" \\' in text
+    assert 'VM_SERVICE_ENVIRONMENT_FILE="${VM_SYSTEMD_ENV_FILE}"' in text
+    assert 'render_runtime_asset service "${VALIDATION_SERVICE_FILE}" \\' in text
+    assert 'VM_SERVICE_ENVIRONMENT_FILE="${STAGED_SYSTEMD_ENV_FILE}"' in text
+    assert 'render_runtime_asset nginx "${STAGED_NGINX_FILE}"' in text
     assert 'if [[ "${SUCCESS}" != "1" && "${SWITCHED_CONFIG}" == "1" ]]; then' in text
     assert 'if [[ "${SYSTEMD_SERVICE_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_SERVICE_FILE}" ]]; then' in text
     assert 'if [[ "${NGINX_SITE_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_NGINX_FILE}" ]]; then' in text
@@ -94,6 +100,8 @@ def test_vm_deploy_script_preserves_pre_switch_atomicity_and_post_switch_rollbac
     assert 'restore_managed_symlink "${VM_CURRENT_BACKEND_VENV_LINK}" "${BACKEND_VENV_LINK_EXISTED_BEFORE}" "${ORIGINAL_BACKEND_VENV_TARGET}" "${VM_APP_USER}" "${VM_APP_GROUP}"' in text
     assert 'restore_managed_symlink "${VM_FRONTEND_DIST_DIR}" "${FRONTEND_DIST_EXISTED_BEFORE}" "${ORIGINAL_FRONTEND_TARGET}" "${VM_APP_USER}" "${VM_APP_GROUP}"' in text
     assert 'else\n    rm -rf "${path}" || true' in text
+    assert 'validate_pre_deploy_runtime_baseline' in text
+    assert 'No successful deploy baseline metadata exists yet, but managed runtime paths are already present' in text
     assert 'RUNTIME_ASSET_STAGING_DIR="$(mktemp -d)"' in text
     assert 'STAGED_SERVICE_FILE="${RUNTIME_ASSET_STAGING_DIR}/${SYSTEMD_SERVICE_NAME}.service"' in text
     assert 'VALIDATION_SERVICE_FILE="${RUNTIME_ASSET_STAGING_DIR}/${SYSTEMD_SERVICE_NAME}.validation.service"' in text
@@ -164,7 +172,7 @@ def test_vm_deploy_script_uses_vm_runtime_requirements_and_db_backup():
     assert '[[ -x "${NEW_BACKEND_VENV}/bin/uvicorn" ]] || fail "New backend release venv is missing an executable uvicorn before service validation: ${NEW_BACKEND_VENV}/bin/uvicorn"' in text
     assert 'VM_SERVICE_WORKING_DIRECTORY="${NEW_BACKEND_RELEASE}" \\' in text
     assert 'VM_SERVICE_EXECUTABLE="${NEW_BACKEND_VENV}/bin/uvicorn" \\' in text
-    assert 'python3 "${NEW_BACKEND_RELEASE}/tools/render_vm_runtime_assets.py" service "${VALIDATION_SERVICE_FILE}"' in text
+    assert 'render_runtime_asset service "${VALIDATION_SERVICE_FILE}" \\' in text
     assert 'systemd-analyze verify "${VALIDATION_SERVICE_FILE}" >/dev/null' in text
     assert 'python3 tools/runtime_env.py write-systemd "${RUNTIME_ENV_FILE}" "${STAGED_SYSTEMD_ENV_FILE}"' in text
     assert 'CURRENT_STAGE="storage_readiness_check"' in text
@@ -176,6 +184,10 @@ def test_vm_deploy_script_uses_vm_runtime_requirements_and_db_backup():
     assert 'VM_CURRENT_BACKEND_RELEASE_LINK' in text
     assert 'VM_CURRENT_BACKEND_VENV_LINK' in text
     assert 'VM_SYSTEMD_ENV_FILE' in text
+    assert 'NGINX_SERVER_NAME="$(json_query nginx_server_name)"' in text
+    assert 'render_runtime_asset() {' in text
+    assert 'VM_RUNTIME_ENV_FILE="${RUNTIME_ENV_FILE}"' in text
+    assert 'VM_SERVICE_ENVIRONMENT_FILE="${VM_SYSTEMD_ENV_FILE}"' in text
     assert 'FRONTEND_BUILD_DIR=""' in text
     assert 'FRONTEND_BUILD_DIR="$(mktemp -d)"' in text
     assert 'install -d -m 0750 -o "${VM_APP_USER}" -g "${VM_APP_GROUP}" "${FRONTEND_BUILD_DIR}"' in text
@@ -2043,7 +2055,7 @@ def _run_deploy_render_runtime_assets_case(
     *,
     systemd_verify_exit: int,
     uvicorn_present: bool = True,
-    current_runtime_paths_exist: bool = False,
+    baseline_mode: str = "clean_first_deploy",
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     def _bash_style(path: Path) -> str:
         value = path.as_posix()
@@ -2115,13 +2127,15 @@ def _run_deploy_render_runtime_assets_case(
             if sys.argv[1] == "service":
                 working_directory = os.environ.get("VM_SERVICE_WORKING_DIRECTORY", os.environ["VM_CURRENT_BACKEND_RELEASE_LINK"])
                 service_executable = os.environ.get("VM_SERVICE_EXECUTABLE", os.environ["VM_CURRENT_BACKEND_VENV_LINK"] + "/bin/uvicorn")
+                service_environment_file = os.environ["VM_SERVICE_ENVIRONMENT_FILE"]
                 rendered = (
                     "[Service]\\n"
                     f"WorkingDirectory={{working_directory}}\\n"
+                    f"EnvironmentFile={{service_environment_file}}\\n"
                     f"ExecStart={{service_executable}} backend.app.main:app --host 127.0.0.1 --port 8000\\n"
                 )
                 log_path.open("a", encoding="utf-8").write(
-                    f"render service -> {{target.as_posix()}} working={{working_directory}} exec={{service_executable}}\\n"
+                    f"render service -> {{target.as_posix()}} working={{working_directory}} envfile={{service_environment_file}} exec={{service_executable}}\\n"
                 )
             else:
                 rendered = "server {{}}\\n"
@@ -2204,9 +2218,40 @@ def _run_deploy_render_runtime_assets_case(
     )
     current_backend_path = tmp_path / "current-backend"
     current_venv_path = tmp_path / "current-venv"
-    if current_runtime_paths_exist:
+    current_frontend_path = tmp_path / "frontend-dist"
+    previous_backend_release = backend_releases_dir / "prev-sha"
+    previous_backend_venv = backend_venvs_dir / "prev-sha"
+    previous_frontend_release = frontend_releases_dir / "prev-sha"
+    if baseline_mode not in {"clean_first_deploy", "matching_metadata", "mixed_without_metadata", "mismatched_metadata"}:
+        raise AssertionError(f"Unsupported baseline_mode: {baseline_mode}")
+    if baseline_mode in {"matching_metadata", "mismatched_metadata"}:
+        previous_backend_release.mkdir(parents=True, exist_ok=True)
+        (previous_backend_venv / "bin").mkdir(parents=True, exist_ok=True)
+        previous_frontend_release.mkdir(parents=True, exist_ok=True)
+        current_backend_path.write_text(_bash_style(previous_backend_release), encoding="utf-8", newline="\n")
+        current_venv_path.write_text(_bash_style(previous_backend_venv), encoding="utf-8", newline="\n")
+        current_frontend_path.write_text(_bash_style(previous_frontend_release), encoding="utf-8", newline="\n")
+        release_metadata_file.write_text(
+            json.dumps(
+                {
+                    "current_sha": "prev-sha",
+                    "backend_release_dir": (
+                        _bash_style(backend_releases_dir / "different-sha")
+                        if baseline_mode == "mismatched_metadata"
+                        else _bash_style(previous_backend_release)
+                    ),
+                    "backend_venv_dir": _bash_style(previous_backend_venv),
+                    "frontend_release_dir": _bash_style(previous_frontend_release),
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+    elif baseline_mode == "mixed_without_metadata":
         current_backend_path.mkdir(parents=True, exist_ok=True)
         (current_venv_path / "bin").mkdir(parents=True, exist_ok=True)
+        current_frontend_path.mkdir(parents=True, exist_ok=True)
         current_uvicorn = current_venv_path / "bin" / "uvicorn"
         current_uvicorn.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8", newline="\n")
         current_uvicorn.chmod(0o755)
@@ -2225,6 +2270,7 @@ def _run_deploy_render_runtime_assets_case(
     python3_impl.write_text(
         textwrap.dedent(
             f"""\
+            import json
             import subprocess
             import sys
             from pathlib import Path
@@ -2235,6 +2281,44 @@ def _run_deploy_render_runtime_assets_case(
             stdin_payload = sys.stdin.read()
             with log_path.open("a", encoding="utf-8") as fh:
                 fh.write(f"system-python args={{args!r}}\\n")
+            if args[:1] == ["-"] and "No successful deploy baseline metadata exists yet" in stdin_payload:
+                metadata_path = Path(args[1])
+                managed_paths = {{
+                    "VM_CURRENT_BACKEND_RELEASE_LINK": Path(args[2]),
+                    "VM_CURRENT_BACKEND_VENV_LINK": Path(args[3]),
+                    "VM_FRONTEND_DIST_DIR": Path(args[4]),
+                }}
+                if not metadata_path.exists():
+                    existing = {{name: path for name, path in managed_paths.items() if path.exists()}}
+                    if existing:
+                        details = ", ".join(f"{{name}}={{path}}" for name, path in existing.items())
+                        sys.stderr.write(
+                            "No successful deploy baseline metadata exists yet, but managed runtime paths are already present: "
+                            + details
+                            + ". Remove the mixed first-deploy baseline or restore a valid previous release before retrying.\\n"
+                        )
+                        raise SystemExit(1)
+                    raise SystemExit(0)
+                payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+                expected_targets = {{
+                    "VM_CURRENT_BACKEND_RELEASE_LINK": str(payload.get("backend_release_dir", "")).strip(),
+                    "VM_CURRENT_BACKEND_VENV_LINK": str(payload.get("backend_venv_dir", "")).strip(),
+                    "VM_FRONTEND_DIST_DIR": str(payload.get("frontend_release_dir", "")).strip(),
+                }}
+                for name, expected_target in expected_targets.items():
+                    current_path = managed_paths[name]
+                    if not current_path.exists():
+                        sys.stderr.write(
+                            f"{{name}} must be a symlink matching {{metadata_path}}, but current path is missing or not a symlink: {{current_path}}\\n"
+                        )
+                        raise SystemExit(1)
+                    actual_target = current_path.read_text(encoding="utf-8").strip()
+                    if actual_target != expected_target:
+                        sys.stderr.write(
+                            f"{{name}} does not match release metadata {{metadata_path}}. Expected {{expected_target}}, got {{actual_target}}.\\n"
+                        )
+                        raise SystemExit(1)
+                raise SystemExit(0)
             completed = subprocess.run([real_python, *args], input=stdin_payload, text=True, capture_output=True, check=False)
             sys.stdout.write(completed.stdout.replace("\\r\\n", "\\n"))
             sys.stderr.write(completed.stderr.replace("\\r\\n", "\\n"))
@@ -2534,16 +2618,26 @@ def test_deploy_script_render_runtime_assets_uses_service_suffix_and_reaches_bac
     log_text = command_log.read_text(encoding="utf-8")
     current_backend = (tmp_path / "current-backend").as_posix()
     current_venv = (tmp_path / "current-venv").as_posix()
+    render_lines = [line for line in log_text.splitlines() if line.startswith("render service -> ")]
+    final_service_line = next(line for line in render_lines if "gxp-web.validation.service" not in line)
+    validation_service_line = next(line for line in render_lines if "gxp-web.validation.service" in line)
     assert not (tmp_path / "current-backend").exists()
     assert not (tmp_path / "current-venv").exists()
     assert "render service -> " in log_text
     assert "gxp-web.service" in log_text
     assert "gxp-web.validation.service" in log_text
+    assert "envfile=" in log_text
+    assert "runtime.systemd.env" in log_text
     assert "render nginx -> " in log_text
     assert ".conf" in log_text
     assert "systemd-analyze verify" in log_text
     assert f"working={current_backend}" in log_text
     assert f"exec={current_venv}/bin/uvicorn" in log_text
+    assert "envfile=" in final_service_line
+    assert "runtime.systemd.env" in final_service_line
+    assert str(tmp_path / "mktemp-state" / "tmpdir-2" / "runtime.systemd.env").replace("\\", "/") not in final_service_line
+    assert str(tmp_path / "mktemp-state" / "tmpdir-2" / "runtime.systemd.env").replace("\\", "/") in validation_service_line
+    assert ".validation.service working=" in log_text
     assert "backend-releases/00112233445566778899aabbccddeeff00112233" in log_text
     assert "backend-venvs/00112233445566778899aabbccddeeff00112233/bin/uvicorn" in log_text
     assert "backup reached" in log_text
@@ -2573,7 +2667,7 @@ def test_deploy_script_render_runtime_assets_existing_runtime_paths_still_verify
     completed, command_log = _run_deploy_render_runtime_assets_case(
         tmp_path,
         systemd_verify_exit=0,
-        current_runtime_paths_exist=True,
+        baseline_mode="matching_metadata",
     )
 
     assert completed.returncode != 0
@@ -2585,6 +2679,32 @@ def test_deploy_script_render_runtime_assets_existing_runtime_paths_still_verify
     assert f"exec={current_venv}/bin/uvicorn" in log_text
     assert "gxp-web.validation.service" in log_text
     assert "backend-releases/00112233445566778899aabbccddeeff00112233" in log_text
+
+
+def test_deploy_script_render_runtime_assets_rejects_mixed_first_deploy_baseline_without_metadata(tmp_path: Path):
+    completed, command_log = _run_deploy_render_runtime_assets_case(
+        tmp_path,
+        systemd_verify_exit=0,
+        baseline_mode="mixed_without_metadata",
+    )
+
+    assert completed.returncode != 0
+    assert "Deploy failed during stage: pre_deploy_consistency_gate" in completed.stderr
+    assert "No successful deploy baseline metadata exists yet" in completed.stderr
+    assert "render service -> " not in command_log.read_text(encoding="utf-8")
+
+
+def test_deploy_script_render_runtime_assets_rejects_metadata_mismatch_before_mutation(tmp_path: Path):
+    completed, command_log = _run_deploy_render_runtime_assets_case(
+        tmp_path,
+        systemd_verify_exit=0,
+        baseline_mode="mismatched_metadata",
+    )
+
+    assert completed.returncode != 0
+    assert "Deploy failed during stage: pre_deploy_consistency_gate" in completed.stderr
+    assert "does not match release metadata" in completed.stderr
+    assert "render service -> " not in command_log.read_text(encoding="utf-8")
 
 
 def test_configure_postgres_is_idempotent_uses_safe_psql_and_keeps_password_secret(tmp_path: Path):

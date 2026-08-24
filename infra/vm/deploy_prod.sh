@@ -74,6 +74,88 @@ wait_for_http_endpoint() {
   fail "Timed out waiting for ${path} on ${service_name}. Hint: journalctl -u ${service_name} -n 100 --no-pager"
 }
 
+render_runtime_asset() {
+  local kind="$1"
+  local output_path="$2"
+  shift 2
+  env \
+    PUBLIC_BASE_URL="${PUBLIC_BASE_URL}" \
+    NGINX_SERVER_NAME="${NGINX_SERVER_NAME}" \
+    VM_APP_USER="${VM_APP_USER}" \
+    VM_APP_GROUP="${VM_APP_GROUP}" \
+    VM_CURRENT_BACKEND_RELEASE_LINK="${VM_CURRENT_BACKEND_RELEASE_LINK}" \
+    VM_CURRENT_BACKEND_VENV_LINK="${VM_CURRENT_BACKEND_VENV_LINK}" \
+    VM_RUNTIME_ENV_FILE="${RUNTIME_ENV_FILE}" \
+    APP_PORT="${APP_PORT}" \
+    GXP_FRONTEND_DIST_ROOT="${GXP_FRONTEND_DIST_ROOT}" \
+    VM_TLS_CERT_PATH="${VM_TLS_CERT_PATH}" \
+    VM_TLS_KEY_PATH="${VM_TLS_KEY_PATH}" \
+    "$@" \
+    python3 "${NEW_BACKEND_RELEASE}/tools/render_vm_runtime_assets.py" "${kind}" "${output_path}"
+}
+
+validate_pre_deploy_runtime_baseline() {
+  python3 - \
+    "${VM_RELEASE_METADATA_FILE}" \
+    "${VM_CURRENT_BACKEND_RELEASE_LINK}" \
+    "${VM_CURRENT_BACKEND_VENV_LINK}" \
+    "${VM_FRONTEND_DIST_DIR}" <<'PY'
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import sys
+
+metadata_path = Path(sys.argv[1])
+managed_paths = {
+    "VM_CURRENT_BACKEND_RELEASE_LINK": Path(sys.argv[2]),
+    "VM_CURRENT_BACKEND_VENV_LINK": Path(sys.argv[3]),
+    "VM_FRONTEND_DIST_DIR": Path(sys.argv[4]),
+}
+
+def path_present(path: Path) -> bool:
+    return path.exists() or path.is_symlink()
+
+if not metadata_path.exists():
+    existing = {name: path for name, path in managed_paths.items() if path_present(path)}
+    if existing:
+        details = ", ".join(f"{name}={path}" for name, path in existing.items())
+        raise SystemExit(
+            "No successful deploy baseline metadata exists yet, but managed runtime paths are already present: "
+            f"{details}. Remove the mixed first-deploy baseline or restore a valid previous release before retrying."
+        )
+    raise SystemExit(0)
+
+try:
+    payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+except json.JSONDecodeError as exc:
+    raise SystemExit(f"Invalid release metadata JSON at {metadata_path}: {exc}") from exc
+
+expected_targets = {
+    "VM_CURRENT_BACKEND_RELEASE_LINK": str(payload.get("backend_release_dir", "")).strip(),
+    "VM_CURRENT_BACKEND_VENV_LINK": str(payload.get("backend_venv_dir", "")).strip(),
+    "VM_FRONTEND_DIST_DIR": str(payload.get("frontend_release_dir", "")).strip(),
+}
+
+missing_keys = [name for name, value in expected_targets.items() if not value]
+if missing_keys:
+    raise SystemExit(
+        f"Release metadata {metadata_path} is missing required target entries for: {', '.join(missing_keys)}."
+    )
+
+for name, path in managed_paths.items():
+    if not path.is_symlink():
+      raise SystemExit(f"{name} must be a symlink matching {metadata_path}, but current path is missing or not a symlink: {path}")
+    actual_target = os.readlink(path)
+    expected_target = expected_targets[name]
+    if actual_target != expected_target:
+        raise SystemExit(
+            f"{name} does not match release metadata {metadata_path}. Expected {expected_target}, got {actual_target}."
+        )
+PY
+}
+
 cleanup() {
   if [[ "${SUCCESS}" != "1" && "${SWITCHED_CONFIG}" == "1" ]]; then
     if [[ "${SYSTEMD_SERVICE_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_SERVICE_FILE}" ]]; then
@@ -246,6 +328,7 @@ VM_RELEASE_METADATA_FILE="$(json_query vm_release_metadata_file)"
 VM_RELEASE_RETENTION_COUNT="$(json_query vm_release_retention_count)"
 SYSTEMD_SERVICE_NAME="$(json_query systemd_service_name)"
 NGINX_SITE_NAME="$(json_query nginx_site_name)"
+NGINX_SERVER_NAME="$(json_query nginx_server_name)"
 NODE_MIN_VERSION="$(json_query node_min_version)"
 NODE_PACKAGE_MANAGER="$(json_query node_package_manager)"
 NODE_BUILD_OPTIONS="$(json_query node_build_options)"
@@ -273,6 +356,9 @@ CURRENT_STAGE="clean_git_check"
 if [[ -n "$(run_as_app_user git -C "${REPO_ROOT}" status --porcelain)" ]]; then
   fail "Working tree is dirty or contains untracked non-ignored files. Refusing deploy."
 fi
+
+CURRENT_STAGE="pre_deploy_consistency_gate"
+validate_pre_deploy_runtime_baseline
 
 CURRENT_STAGE="resolve_release_targets"
 if [[ -L "${VM_FRONTEND_DIST_DIR}" ]]; then
@@ -433,15 +519,15 @@ PY
 
 CURRENT_STAGE="render_runtime_assets"
 assert_tls_files_exist
-python3 "${NEW_BACKEND_RELEASE}/tools/render_vm_runtime_assets.py" service "${STAGED_SERVICE_FILE}"
+render_runtime_asset service "${STAGED_SERVICE_FILE}" \
+  VM_SERVICE_ENVIRONMENT_FILE="${VM_SYSTEMD_ENV_FILE}"
 [[ -d "${NEW_BACKEND_RELEASE}" ]] || fail "New backend release directory is missing before service validation: ${NEW_BACKEND_RELEASE}"
 [[ -x "${NEW_BACKEND_VENV}/bin/uvicorn" ]] || fail "New backend release venv is missing an executable uvicorn before service validation: ${NEW_BACKEND_VENV}/bin/uvicorn"
-env \
+render_runtime_asset service "${VALIDATION_SERVICE_FILE}" \
   VM_SERVICE_WORKING_DIRECTORY="${NEW_BACKEND_RELEASE}" \
   VM_SERVICE_EXECUTABLE="${NEW_BACKEND_VENV}/bin/uvicorn" \
-  VM_SERVICE_ENVIRONMENT_FILE="${STAGED_SYSTEMD_ENV_FILE}" \
-  python3 "${NEW_BACKEND_RELEASE}/tools/render_vm_runtime_assets.py" service "${VALIDATION_SERVICE_FILE}"
-python3 "${NEW_BACKEND_RELEASE}/tools/render_vm_runtime_assets.py" nginx "${STAGED_NGINX_FILE}"
+  VM_SERVICE_ENVIRONMENT_FILE="${STAGED_SYSTEMD_ENV_FILE}"
+render_runtime_asset nginx "${STAGED_NGINX_FILE}"
 if command -v systemd-analyze >/dev/null 2>&1; then
   systemd-analyze verify "${VALIDATION_SERVICE_FILE}" >/dev/null
 fi

@@ -219,7 +219,10 @@ def test_render_vm_runtime_assets_renders_nginx_with_only_nginx_env(tmp_path: Pa
     assert "root /opt/gxp/frontend-dist;" in rendered
     assert "ssl_certificate /etc/ssl/certs/gxp.crt;" in rendered
     assert "ssl_certificate_key /etc/ssl/private/gxp.key;" in rendered
-    assert "proxy_pass http://127.0.0.1:8000/api/;" in rendered
+    assert "location /api/" in rendered
+    assert "proxy_pass http://127.0.0.1:8000/;" in rendered
+    assert "proxy_pass http://127.0.0.1:8000/api/;" not in rendered
+    assert "try_files $uri /index.html;" in rendered
     assert "{{" not in rendered
 
 

@@ -131,6 +131,16 @@ def test_vm_service_template_points_to_generated_systemd_env_file():
     assert 'VM_SERVICE_ENVIRONMENT_FILE' in render_text
 
 
+def test_vm_nginx_template_strips_public_api_prefix_before_backend_proxy():
+    text = (ROOT / "infra" / "vm" / "nginx.gxp.conf").read_text(encoding="utf-8")
+
+    assert "location /api/ {" in text
+    assert "proxy_pass http://127.0.0.1:{{APP_PORT}}/;" in text
+    assert "proxy_pass http://127.0.0.1:{{APP_PORT}}/api/;" not in text
+    assert "location / {" in text
+    assert "try_files $uri /index.html;" in text
+
+
 def test_vm_deploy_script_writes_release_metadata_only_after_health_passes():
     text = (ROOT / "infra" / "vm" / "deploy_prod.sh").read_text(encoding="utf-8")
 

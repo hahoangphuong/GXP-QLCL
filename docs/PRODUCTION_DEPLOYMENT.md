@@ -260,23 +260,40 @@ The production VM import path consumes the exported snapshot JSON, not Excel COM
 - Windows workbook: `legacy/Danh sách Kiểm tra GPs.xlsb`
 - exported snapshot: `artifacts/phase3c/legacy_snapshot.json`
 
-Canonical dry-run:
+Canonical validation dry-run:
 
 ```bash
 cd /opt/gxp/src/GXP-QLCL
 python3 tools/import_legacy_production.py \
   --snapshot artifacts/phase3c/legacy_snapshot.json \
   --runtime-env /etc/gxp/runtime.env \
+  --import-mode validation \
   --dry-run
 ```
 
-Canonical apply:
+Canonical rehearsal refresh:
 
 ```bash
 cd /opt/gxp/src/GXP-QLCL
 python3 tools/import_legacy_production.py \
   --snapshot artifacts/phase3c/legacy_snapshot.json \
   --runtime-env /etc/gxp/runtime.env \
+  --import-mode rehearsal \
+  --target-db gxp_legacy_rehearsal \
+  --reset-from-snapshot \
+  --apply
+```
+
+Canonical final candidate rebuild:
+
+```bash
+cd /opt/gxp/src/GXP-QLCL
+python3 tools/import_legacy_production.py \
+  --snapshot artifacts/phase3c/legacy_snapshot.json \
+  --runtime-env /etc/gxp/runtime.env \
+  --import-mode final \
+  --target-db gxp_qlcl_candidate \
+  --reset-from-snapshot \
   --apply
 ```
 
@@ -284,10 +301,18 @@ The CLI must:
 
 - reuse the canonical runtime env parser and resolved production DB contract
 - fail closed if `APP_ENV != production` or `DB_MODE != local_postgres`
-- require current Alembic revision to equal repository head
+- require `--dry-run` to stay `--import-mode validation`
+- require `--apply` to declare `--import-mode rehearsal` or `--import-mode final`
+- require `--reset-from-snapshot` for rehearsal/final apply
+- reject any rehearsal/final target DB that matches canonical production DB `gxp_qlcl`
+- rebuild rehearsal/final targets from a clean database instead of incrementally merging newer snapshots
+- require current Alembic revision to equal repository head for validation/import execution
 - compute and record the snapshot SHA-256
-- run the canonical PostgreSQL backup gate before `--apply`
+- record `import_mode`, `target_database`, deployment SHA, and snapshot metadata when present
 - keep `--dry-run` zero-mutation by importing inside a transaction and rolling it back
+- allow rehearsal refreshes against a dedicated non-production target such as `gxp_legacy_rehearsal`
+- allow final cutover preparation against a candidate DB such as `gxp_qlcl_candidate`
+- run the canonical PostgreSQL backup gate before final candidate rebuild
 - write reports under `artifacts/legacy-production/<timestamp>/`
 
 This import path does not fabricate or import document rows, storage bindings, or RBAC users.

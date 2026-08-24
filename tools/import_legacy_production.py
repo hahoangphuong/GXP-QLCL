@@ -7,11 +7,13 @@ from pathlib import Path
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import sys
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -35,6 +37,8 @@ from tools.env_utils import parse_env_file
 DEFAULT_RUNTIME_ENV_PATH = Path("/etc/gxp/runtime.env")
 DEFAULT_SNAPSHOT_PATH = phase_artifact_path("phase3c", "legacy_snapshot.json")
 DEFAULT_REPORT_ROOT = phase_artifact_path("legacy-production")
+DEFAULT_REHEARSAL_TARGET_DB = "gxp_legacy_rehearsal"
+DEFAULT_FINAL_TARGET_DB = "gxp_qlcl_candidate"
 
 
 class ProductionImportError(RuntimeError):
@@ -55,9 +59,12 @@ class RuntimeDatabaseContract:
 @dataclass(frozen=True)
 class ImportReport:
     mode: str
+    import_mode: str
     runtime_env_path: str
     snapshot_path: str
     snapshot_sha256: str
+    snapshot_exported_at: str | None
+    source_workbook_identity: str | None
     report_dir: str
     started_at_utc: str
     completed_at_utc: str
@@ -65,6 +72,7 @@ class ImportReport:
     alembic_head_revision: str | None
     alembic_current_revision: str | None
     database_url_redacted: str
+    target_database: str
     validation_status: str
     cutover_ready: bool
     phase7_status: str
@@ -83,6 +91,17 @@ def _redact_database_url(url: str) -> str:
         return f"{scheme}://***@{suffix}"
     user, _password = credentials.split(":", 1)
     return f"{scheme}://{user}:***@{suffix}"
+
+
+def _target_database_url(database_url: str, target_database_name: str) -> str:
+    url = make_url(database_url)
+    if url.drivername.startswith("sqlite"):
+        if not url.database:
+            raise ProductionImportError("SQLite target database URL is missing a database path.")
+        current_path = Path(url.database)
+        target_path = current_path.with_name(f"{target_database_name}{current_path.suffix or '.db'}")
+        return f"sqlite:///{target_path.as_posix()}"
+    return str(url.set(database=target_database_name))
 
 
 def _load_runtime_database_contract(runtime_env_path: Path) -> tuple[RuntimeDatabaseContract, dict[str, str]]:
@@ -119,17 +138,26 @@ def _load_runtime_database_contract(runtime_env_path: Path) -> tuple[RuntimeData
     )
 
 
-def _load_snapshot(snapshot_path: Path) -> tuple[dict[str, list[dict[str, str]]], str]:
+def _load_snapshot(snapshot_path: Path) -> tuple[dict[str, list[dict[str, str]]], str, dict[str, Any]]:
     if not snapshot_path.exists():
         raise ProductionImportError(f"Snapshot file not found: {snapshot_path}")
     payload = snapshot_path.read_bytes()
     snapshot_sha = sha256(payload).hexdigest()
     try:
-        snapshot = json.loads(payload.decode("utf-8"))
+        raw_snapshot = json.loads(payload.decode("utf-8"))
     except json.JSONDecodeError as exc:
         raise ProductionImportError(f"Snapshot JSON is invalid: {snapshot_path}: {exc}") from exc
-    if not isinstance(snapshot, dict):
+    if not isinstance(raw_snapshot, dict):
         raise ProductionImportError("Snapshot root must be a JSON object.")
+    metadata: dict[str, Any] = {}
+    if all(sheet in raw_snapshot for sheet in CORE_SHEETS):
+        snapshot = raw_snapshot
+    elif isinstance(raw_snapshot.get("sheets"), dict) and all(sheet in raw_snapshot["sheets"] for sheet in CORE_SHEETS):
+        snapshot = raw_snapshot["sheets"]
+        if isinstance(raw_snapshot.get("metadata"), dict):
+            metadata = dict(raw_snapshot["metadata"])
+    else:
+        raise ProductionImportError("Snapshot JSON does not contain the required legacy sheets.")
     missing_sheets = [sheet for sheet in CORE_SHEETS if sheet not in snapshot]
     if missing_sheets:
         raise ProductionImportError(f"Snapshot is missing required sheets: {', '.join(missing_sheets)}.")
@@ -137,7 +165,7 @@ def _load_snapshot(snapshot_path: Path) -> tuple[dict[str, list[dict[str, str]]]
         rows = snapshot[sheet]
         if not isinstance(rows, list):
             raise ProductionImportError(f"Snapshot sheet {sheet!r} must be a list of rows.")
-    return snapshot, snapshot_sha
+    return snapshot, snapshot_sha, metadata
 
 
 def _current_alembic_revision(session: Any) -> str | None:
@@ -187,9 +215,13 @@ def _render_report_markdown(report: ImportReport) -> str:
         "# Legacy Production Import",
         "",
         f"- Mode: `{report.mode}`",
+        f"- Import mode: `{report.import_mode}`",
         f"- Snapshot: `{report.snapshot_path}`",
         f"- Snapshot SHA-256: `{report.snapshot_sha256}`",
+        f"- Snapshot exported at: `{report.snapshot_exported_at}`",
+        f"- Source workbook identity: `{report.source_workbook_identity}`",
         f"- Runtime env: `{report.runtime_env_path}`",
+        f"- Target database: `{report.target_database}`",
         f"- Database: `{report.database_url_redacted}`",
         f"- Alembic current/head: `{report.alembic_current_revision}` / `{report.alembic_head_revision}`",
         f"- Validation status: `{report.validation_status}`",
@@ -269,6 +301,80 @@ def _schema_length_violations_payload(exc: SchemaLengthValidationError) -> list[
     ]
 
 
+def _snapshot_metadata_value(metadata: dict[str, Any], key: str) -> str | None:
+    value = metadata.get(key)
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _postgres_admin_prefix() -> list[str]:
+    override = os.environ.get("POSTGRES_ADMIN_CMD", "").strip()
+    if override:
+        return shlex.split(override)
+    geteuid = getattr(os, "geteuid", None)
+    if callable(geteuid) and geteuid() == 0:
+        return ["runuser", "-u", "postgres", "--"]
+    raise ProductionImportError(
+        "Rebuild import that creates/drops local PostgreSQL databases must run as root or set POSTGRES_ADMIN_CMD explicitly."
+    )
+
+
+def _run_subprocess(command: list[str], *, env: dict[str, str] | None = None) -> None:
+    completed = subprocess.run(command, cwd=str(ROOT), env=env, capture_output=True, text=True)
+    if completed.returncode != 0:
+        stderr = completed.stderr.strip() or completed.stdout.strip() or f"command failed: {command!r}"
+        raise ProductionImportError(stderr)
+
+
+def _recreate_target_database(contract: RuntimeDatabaseContract, target_database_name: str, target_database_url: str) -> None:
+    if target_database_name == contract.db_name:
+        raise ProductionImportError(
+            f"Target database {target_database_name!r} must not match the canonical production database name {contract.db_name!r}."
+        )
+    if target_database_name == "":
+        raise ProductionImportError("Target database name must not be blank.")
+
+    if target_database_url.startswith("sqlite:///"):
+        database_path = Path(target_database_url.removeprefix("sqlite:///"))
+        if database_path.exists():
+            database_path.unlink()
+        database_path.parent.mkdir(parents=True, exist_ok=True)
+        return
+
+    if contract.db_mode != "local_postgres":
+        raise ProductionImportError(f"Reset-from-snapshot is only supported for local_postgres, got {contract.db_mode!r}.")
+
+    admin_prefix = _postgres_admin_prefix()
+    _run_subprocess(admin_prefix + ["dropdb", "--if-exists", target_database_name])
+    _run_subprocess(admin_prefix + ["createdb", "--owner", contract.db_user, target_database_name])
+
+
+def _upgrade_target_database_schema(database_url: str) -> None:
+    env = os.environ.copy()
+    env["DATABASE_URL"] = database_url
+    _run_subprocess([sys.executable, "-m", "alembic", "-c", str(ROOT / "alembic.ini"), "upgrade", "head"], env=env)
+
+
+def _execute_reset_import(
+    *,
+    contract: RuntimeDatabaseContract,
+    snapshot: dict[str, list[dict[str, str]]],
+    target_database_name: str,
+) -> tuple[dict[str, Any], str | None, str | None, str]:
+    target_database_url = _target_database_url(contract.database_url, target_database_name)
+    _recreate_target_database(contract, target_database_name, target_database_url)
+    _upgrade_target_database_schema(target_database_url)
+    reconciliation, current_revision, head_revision = _run_import(
+        database_url=target_database_url,
+        snapshot=snapshot,
+        dry_run=False,
+        require_head_revision=True,
+    )
+    return reconciliation, current_revision, head_revision, _redact_database_url(target_database_url)
+
+
 def _run_import(
     *,
     database_url: str,
@@ -277,6 +383,7 @@ def _run_import(
     require_head_revision: bool,
 ) -> tuple[dict[str, Any], str | None, str | None]:
     factory = build_session_factory(database_url)
+    bind = factory.kw.get("bind")
     session = factory()
     try:
         current_revision = _current_alembic_revision(session)
@@ -314,6 +421,8 @@ def _run_import(
         raise
     finally:
         session.close()
+        if bind is not None:
+            bind.dispose()
 
 
 def execute_import(
@@ -321,32 +430,68 @@ def execute_import(
     snapshot_path: Path,
     runtime_env_path: Path,
     mode: str,
+    import_mode: str = "validation",
+    target_database_name: str | None = None,
+    reset_from_snapshot: bool = False,
     report_root: Path = DEFAULT_REPORT_ROOT,
 ) -> ImportReport:
     contract, _env = _load_runtime_database_contract(runtime_env_path)
-    snapshot, snapshot_sha = _load_snapshot(snapshot_path)
+    snapshot, snapshot_sha, snapshot_metadata = _load_snapshot(snapshot_path)
     phase7_status, current_projection_gate, cutover_ready = _load_phase7_gate()
     report_dir = _build_report_dir(report_root)
     started_at = datetime.now(timezone.utc).isoformat()
+    exported_at = _snapshot_metadata_value(snapshot_metadata, "exported_at")
+    source_workbook_identity = (
+        _snapshot_metadata_value(snapshot_metadata, "source_workbook_identity")
+        or _snapshot_metadata_value(snapshot_metadata, "source_workbook")
+    )
+
+    if mode == "dry-run":
+        if import_mode != "validation":
+            raise ProductionImportError("Dry-run currently supports only --import-mode validation.")
+        if reset_from_snapshot:
+            raise ProductionImportError("--reset-from-snapshot is not valid with --dry-run.")
+        effective_target_database = contract.db_name
+    else:
+        if import_mode not in {"rehearsal", "final"}:
+            raise ProductionImportError("--apply requires --import-mode rehearsal or --import-mode final.")
+        if not reset_from_snapshot:
+            raise ProductionImportError("--apply with rehearsal/final import mode requires --reset-from-snapshot.")
+        if target_database_name is None:
+            target_database_name = (
+                DEFAULT_REHEARSAL_TARGET_DB if import_mode == "rehearsal" else DEFAULT_FINAL_TARGET_DB
+            )
+        effective_target_database = target_database_name
 
     backup_status = "not-run"
-    if mode == "apply":
+    if mode == "apply" and import_mode == "final":
         _run_backup(runtime_env_path)
         backup_status = "ok"
 
     try:
-        reconciliation, current_revision, head_revision = _run_import(
-            database_url=contract.database_url,
-            snapshot=snapshot,
-            dry_run=mode == "dry-run",
-            require_head_revision=True,
-        )
+        if mode == "dry-run":
+            reconciliation, current_revision, head_revision = _run_import(
+                database_url=contract.database_url,
+                snapshot=snapshot,
+                dry_run=True,
+                require_head_revision=True,
+            )
+            database_url_redacted = contract.database_url_redacted
+        else:
+            reconciliation, current_revision, head_revision, database_url_redacted = _execute_reset_import(
+                contract=contract,
+                snapshot=snapshot,
+                target_database_name=effective_target_database,
+            )
     except SchemaLengthValidationError as exc:
         report = ImportReport(
             mode=mode,
+            import_mode=import_mode,
             runtime_env_path=str(runtime_env_path),
             snapshot_path=str(snapshot_path),
             snapshot_sha256=snapshot_sha,
+            snapshot_exported_at=exported_at,
+            source_workbook_identity=source_workbook_identity,
             report_dir=str(report_dir),
             started_at_utc=started_at,
             completed_at_utc=datetime.now(timezone.utc).isoformat(),
@@ -354,6 +499,7 @@ def execute_import(
             alembic_head_revision=expected_alembic_head_revision(),
             alembic_current_revision=None,
             database_url_redacted=contract.database_url_redacted,
+            target_database=effective_target_database,
             validation_status="failed",
             cutover_ready=cutover_ready,
             phase7_status=phase7_status,
@@ -367,16 +513,20 @@ def execute_import(
 
     report = ImportReport(
         mode=mode,
+        import_mode=import_mode,
         runtime_env_path=str(runtime_env_path),
         snapshot_path=str(snapshot_path),
         snapshot_sha256=snapshot_sha,
+        snapshot_exported_at=exported_at,
+        source_workbook_identity=source_workbook_identity,
         report_dir=str(report_dir),
         started_at_utc=started_at,
         completed_at_utc=datetime.now(timezone.utc).isoformat(),
         deployment_git_sha=_git_sha(),
         alembic_head_revision=head_revision,
         alembic_current_revision=current_revision,
-        database_url_redacted=contract.database_url_redacted,
+        database_url_redacted=database_url_redacted,
+        target_database=effective_target_database,
         validation_status="pass",
         cutover_ready=cutover_ready,
         phase7_status=phase7_status,
@@ -407,6 +557,23 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT_PATH)
     parser.add_argument("--runtime-env", type=Path, default=DEFAULT_RUNTIME_ENV_PATH)
     parser.add_argument("--report-root", type=Path, default=DEFAULT_REPORT_ROOT)
+    parser.add_argument(
+        "--import-mode",
+        choices=("validation", "rehearsal", "final"),
+        default="validation",
+        help="validation performs a transactional dry-run against the configured runtime database; "
+        "rehearsal/final rebuild an explicit non-production target database from the snapshot.",
+    )
+    parser.add_argument(
+        "--target-db",
+        help="Explicit rebuild target database name for rehearsal/final apply modes. "
+        f"Defaults to {DEFAULT_REHEARSAL_TARGET_DB!r} for rehearsal and {DEFAULT_FINAL_TARGET_DB!r} for final.",
+    )
+    parser.add_argument(
+        "--reset-from-snapshot",
+        action="store_true",
+        help="Required for rehearsal/final apply. Recreates the target database, upgrades schema head, then imports the full snapshot.",
+    )
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--apply", action="store_true")
@@ -422,6 +589,9 @@ def main(argv: list[str] | None = None) -> int:
             snapshot_path=args.snapshot,
             runtime_env_path=args.runtime_env,
             mode=mode,
+            import_mode=args.import_mode,
+            target_database_name=args.target_db,
+            reset_from_snapshot=args.reset_from_snapshot,
             report_root=args.report_root,
         )
     except (ProductionImportError, ImportCollisionError, ValueError) as exc:
@@ -429,8 +599,14 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(f"Legacy import {report.mode} completed.")
+    print(f"Import mode: {report.import_mode}")
     print(f"Report directory: {report.report_dir}")
     print(f"Snapshot SHA-256: {report.snapshot_sha256}")
+    if report.snapshot_exported_at:
+        print(f"Snapshot exported at: {report.snapshot_exported_at}")
+    if report.source_workbook_identity:
+        print(f"Source workbook identity: {report.source_workbook_identity}")
+    print(f"Target database: {report.target_database}")
     print(f"Database: {report.database_url_redacted}")
     print(f"Phase 7 status: {report.phase7_status}")
     if not report.cutover_ready:

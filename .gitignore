@@ -6,7 +6,11 @@ __pycache__/
 backend/.env.cloudrun.local
 infra/cloudrun/*.resolved.json
 legacy/
-artifacts/
+artifacts/*
+!artifacts/phase3q/
+artifacts/phase3q/*
+!artifacts/phase3q/confirmed_blanked_rows.json
+!artifacts/phase3q/confirmed_blanked_resurrections.json
 dist/
 frontend/node_modules/
 frontend/dist/

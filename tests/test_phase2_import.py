@@ -19,11 +19,14 @@ from backend.app.db.models.phase1 import (
     Site,
 )
 from backend.app.domain.phase2_import import (
+    CONFIRMED_BLANKED_ROWS_PATH,
     ConfirmedBlankedResurrectionError,
+    ConfirmedBlankedContractError,
     ImportExecutionOptions,
     SchemaLengthValidationError,
     build_schema_length_audit,
     import_snapshot,
+    load_confirmed_blanked_contract_rows,
     source_row_key,
 )
 from backend.app.domain import phase2_import as phase2_import_module
@@ -136,6 +139,44 @@ def test_import_snapshot_rejects_generic_override_for_confirmed_blanked_row(monk
         else:
             raise AssertionError("Expected confirmed blanked resurrection contract failure")
         assert session.query(Site).count() == 0
+
+
+def test_confirmed_blanked_contract_missing_fails_closed(monkeypatch, tmp_path):
+    missing_path = tmp_path / "missing_confirmed_blanked_rows.json"
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", missing_path)
+
+    try:
+        load_confirmed_blanked_contract_rows()
+    except ConfirmedBlankedContractError as exc:
+        assert "Required owner-approved confirmed-blanked contract is missing" in str(exc)
+        assert str(missing_path) in str(exc)
+    else:
+        raise AssertionError("Expected missing confirmed blanked contract failure")
+
+
+def test_confirmed_blanked_contract_duplicate_identity_fails_closed(monkeypatch, tmp_path):
+    confirmed_blanked_path = tmp_path / "confirmed_blanked_rows.json"
+    confirmed_blanked_path.write_text(
+        json.dumps(
+            {
+                "rows": [
+                    {"source_sheet": "db.ktra", "source_row_key": "100"},
+                    {"source_sheet": "db.ktra", "source_row_key": "100"},
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", confirmed_blanked_path)
+
+    try:
+        load_confirmed_blanked_contract_rows()
+    except ConfirmedBlankedContractError as exc:
+        assert "duplicate identity db.ktra:100" in str(exc)
+    else:
+        raise AssertionError("Expected duplicate confirmed blanked identity failure")
 
 
 def test_import_snapshot_accepts_approved_confirmed_blanked_resurrection(monkeypatch, tmp_path):
@@ -656,6 +697,28 @@ def test_real_snapshot_blank_id_rows_no_longer_false_collide_in_migration_anomal
         }
         assert {"row:1162", "row:1169"}.issubset(anomaly_keys)
         assert {"row:1162", "row:1169"}.issubset(stored_keys)
+
+
+def test_real_snapshot_clean_checkout_contract_excludes_all_confirmed_blanked_rows():
+    snapshot = json.loads(Path("artifacts/phase3c/legacy_snapshot.json").read_text(encoding="utf-8"))
+    source_rows = snapshot.get("sheets", snapshot)
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        reconciliation = import_snapshot(session, source_rows)
+        session.commit()
+        assert reconciliation["excluded_rows"] == {
+            "db.cso": 3,
+            "db.ktra": 47,
+            "db.cc": 27,
+            "db.dkkd": 50,
+            "db.Tdoi": 22,
+            "db.Tdoi2": 2,
+        }
+        assert {
+            sheet: balance["unresolved_count"]
+            for sheet, balance in reconciliation["source_balance"].items()
+            if balance["unresolved_count"]
+        } == {}
 
 
 def test_import_snapshot_preserves_long_unicode_assessment_narratives_without_truncation():

@@ -1,13 +1,21 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from hashlib import sha256
 from pathlib import Path
 import json
-
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from backend.app.domain.phase2_import import (
+    CONFIRMED_BLANKED_ROWS_PATH,
+    load_confirmed_blanked_contract_rows,
+)
 INPUT_PATH = ROOT / "artifacts" / "phase3_review" / "anomaly_review_report.json"
-CONFIRMED_BLANKED_PATH = ROOT / "artifacts" / "phase3q" / "confirmed_blanked_rows.json"
+SOURCE_SNAPSHOT_PATH = ROOT / "artifacts" / "phase3c" / "legacy_snapshot.json"
 OUT_DIR = ROOT / "artifacts" / "legacy-production-analysis"
 JSON_OUT = OUT_DIR / "unresolved_fk_analysis.json"
 MD_OUT = OUT_DIR / "unresolved_fk_analysis.md"
@@ -42,6 +50,10 @@ def _cascade_parent(reason: str, raw_fk_value: str, confirmed_keys: set[tuple[st
 def build_unresolved_fk_analysis(
     anomaly_rows: list[dict[str, object]],
     confirmed_rows: list[dict[str, object]],
+    *,
+    snapshot_sha256: str | None = None,
+    confirmed_contract_sha256: str | None = None,
+    anomaly_report_sha256: str | None = None,
 ) -> dict[str, object]:
     confirmed_keys = {
         (str(row.get("source_sheet", "")).strip(), str(row.get("source_row_key", "")).strip())
@@ -114,6 +126,12 @@ def build_unresolved_fk_analysis(
 
     blank_confirmed = sum(1 for row in row_analyses if not row["raw_fk"] and row["is_confirmed_blanked"])
     return {
+        "confirmed_blank_contract_path": CONFIRMED_BLANKED_ROWS_PATH.relative_to(ROOT).as_posix(),
+        "confirmed_blank_contract_sha256": confirmed_contract_sha256,
+        "snapshot_path": SOURCE_SNAPSHOT_PATH.relative_to(ROOT).as_posix(),
+        "snapshot_sha256": snapshot_sha256,
+        "anomaly_report_path": INPUT_PATH.relative_to(ROOT).as_posix(),
+        "anomaly_report_sha256": anomaly_report_sha256,
         "raw_anomaly_count": len(anomaly_rows),
         "blank_fk_total": len(blank_fk_rows),
         "nonblank_dangling_fk_total": len(anomaly_rows) - len(blank_fk_rows),
@@ -143,6 +161,12 @@ def build_markdown(report: dict[str, object]) -> str:
     lines = [
         "# Unresolved FK Analysis",
         "",
+        f"- confirmed_blank_contract_path: {report['confirmed_blank_contract_path']}",
+        f"- confirmed_blank_contract_sha256: {report['confirmed_blank_contract_sha256']}",
+        f"- snapshot_path: {report['snapshot_path']}",
+        f"- snapshot_sha256: {report['snapshot_sha256']}",
+        f"- anomaly_report_path: {report['anomaly_report_path']}",
+        f"- anomaly_report_sha256: {report['anomaly_report_sha256']}",
         f"- raw_anomaly_count: {report['raw_anomaly_count']}",
         f"- confirmed_blanked_match_count: {report['confirmed_blanked_match_count']}",
         f"- confirmed_blanked_match_failure_count: {report['confirmed_blanked_match_failure_count']}",
@@ -170,9 +194,18 @@ def build_markdown(report: dict[str, object]) -> str:
 
 def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    anomaly_rows = json.loads(INPUT_PATH.read_text(encoding="utf-8"))
-    confirmed_payload = json.loads(CONFIRMED_BLANKED_PATH.read_text(encoding="utf-8"))
-    report = build_unresolved_fk_analysis(anomaly_rows, confirmed_payload.get("rows", []))
+    anomaly_report_bytes = INPUT_PATH.read_bytes()
+    anomaly_rows = json.loads(anomaly_report_bytes.decode("utf-8"))
+    source_snapshot_bytes = SOURCE_SNAPSHOT_PATH.read_bytes()
+    confirmed_rows = load_confirmed_blanked_contract_rows()
+    confirmed_bytes = CONFIRMED_BLANKED_ROWS_PATH.read_bytes()
+    report = build_unresolved_fk_analysis(
+        anomaly_rows,
+        confirmed_rows,
+        snapshot_sha256=sha256(source_snapshot_bytes).hexdigest(),
+        confirmed_contract_sha256=sha256(confirmed_bytes).hexdigest(),
+        anomaly_report_sha256=sha256(anomaly_report_bytes).hexdigest(),
+    )
     JSON_OUT.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     MD_OUT.write_text(build_markdown(report), encoding="utf-8")
     print(f"Wrote {JSON_OUT}")

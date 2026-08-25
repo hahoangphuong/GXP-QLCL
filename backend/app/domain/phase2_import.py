@@ -177,6 +177,10 @@ class ConfirmedBlankedResurrectionError(RuntimeError):
     """Raised when a confirmed blanked row is overridden without explicit owner approval."""
 
 
+class ConfirmedBlankedContractError(RuntimeError):
+    """Raised when the owner-approved confirmed-blank contract is missing or invalid."""
+
+
 LENGTH_AUDIT_RULES: tuple[LengthAuditRule, ...] = (
     LengthAuditRule("db.cty", "TÊN CÔNG TY", Company, "legal_name", "narrative_name", lambda row: row.get("company_name")),
     LengthAuditRule("db.cty", "COMPANY NAME", Company, "english_name", "narrative_name", lambda row: row.get("COMPANY NAME")),
@@ -786,52 +790,124 @@ def _get_override(
     return parse_int(row_override.get(remediation_key))
 
 
-def load_confirmed_blanked_row_keys() -> set[tuple[str, str]]:
-    if not CONFIRMED_BLANKED_ROWS_PATH.exists():
-        return set()
-    payload = json.loads(CONFIRMED_BLANKED_ROWS_PATH.read_text(encoding="utf-8"))
-    row_keys: set[tuple[str, str]] = set()
-    for row in payload.get("rows", []):
+def _load_json_contract(path: Path, *, required: bool, contract_label: str) -> dict[str, Any]:
+    if not path.exists():
+        if required:
+            raise ConfirmedBlankedContractError(
+                f"Required owner-approved {contract_label} contract is missing: {path}"
+            )
+        return {"rows": []}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ConfirmedBlankedContractError(
+            f"Owner-approved {contract_label} contract is invalid JSON: {path}: {exc}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise ConfirmedBlankedContractError(
+            f"Owner-approved {contract_label} contract must be a JSON object: {path}"
+        )
+    rows = payload.get("rows")
+    if not isinstance(rows, list):
+        raise ConfirmedBlankedContractError(
+            f"Owner-approved {contract_label} contract must contain a rows list: {path}"
+        )
+    return payload
+
+
+def _validated_contract_rows(payload: dict[str, Any], *, contract_label: str, path: Path) -> list[dict[str, Any]]:
+    rows = payload.get("rows", [])
+    seen_keys: set[tuple[str, str]] = set()
+    validated_rows: list[dict[str, Any]] = []
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise ConfirmedBlankedContractError(
+                f"Owner-approved {contract_label} contract row #{index} must be an object: {path}"
+            )
         source_sheet = str(row.get("source_sheet", "")).strip()
         source_row_key = str(row.get("source_row_key", "")).strip()
-        if source_sheet and source_row_key:
-            row_keys.add((source_sheet, source_row_key))
-    return row_keys
+        if not source_sheet:
+            raise ConfirmedBlankedContractError(
+                f"Owner-approved {contract_label} contract row #{index} is missing source_sheet: {path}"
+            )
+        if not source_row_key:
+            raise ConfirmedBlankedContractError(
+                f"Owner-approved {contract_label} contract row #{index} is missing source_row_key: {path}"
+            )
+        identity = (source_sheet, source_row_key)
+        if identity in seen_keys:
+            raise ConfirmedBlankedContractError(
+                f"Owner-approved {contract_label} contract contains duplicate identity {source_sheet}:{source_row_key}: {path}"
+            )
+        seen_keys.add(identity)
+        validated_rows.append(row)
+    return validated_rows
+
+
+def load_confirmed_blanked_contract_rows() -> list[dict[str, Any]]:
+    payload = _load_json_contract(
+        CONFIRMED_BLANKED_ROWS_PATH,
+        required=True,
+        contract_label="confirmed-blanked",
+    )
+    return _validated_contract_rows(
+        payload,
+        contract_label="confirmed-blanked",
+        path=CONFIRMED_BLANKED_ROWS_PATH,
+    )
+
+
+def load_confirmed_blanked_row_keys() -> set[tuple[str, str]]:
+    return {
+        (
+            str(row.get("source_sheet", "")).strip(),
+            str(row.get("source_row_key", "")).strip(),
+        )
+        for row in load_confirmed_blanked_contract_rows()
+    }
 
 
 def load_confirmed_blanked_null_key_budgets() -> dict[str, int]:
-    if not CONFIRMED_BLANKED_ROWS_PATH.exists():
-        return {}
-    payload = json.loads(CONFIRMED_BLANKED_ROWS_PATH.read_text(encoding="utf-8"))
     budgets: dict[str, int] = {}
-    for row in payload.get("rows", []):
+    for row in load_confirmed_blanked_contract_rows():
         source_sheet = str(row.get("source_sheet", "")).strip()
         source_row_key = str(row.get("source_row_key", "")).strip()
-        if source_sheet and source_row_key.startswith("row:"):
+        if source_row_key.startswith("row:"):
             budgets[source_sheet] = budgets.get(source_sheet, 0) + 1
     return budgets
 
 
 def load_confirmed_blanked_resurrections() -> dict[tuple[str, str], dict[str, int]]:
-    if not CONFIRMED_BLANKED_RESURRECTIONS_PATH.exists():
-        return {}
-    payload = json.loads(CONFIRMED_BLANKED_RESURRECTIONS_PATH.read_text(encoding="utf-8"))
+    payload = _load_json_contract(
+        CONFIRMED_BLANKED_RESURRECTIONS_PATH,
+        required=False,
+        contract_label="confirmed-blanked resurrection",
+    )
     approved: dict[tuple[str, str], dict[str, int]] = {}
-    for row in payload.get("rows", []):
+    for row in _validated_contract_rows(
+        payload,
+        contract_label="confirmed-blanked resurrection",
+        path=CONFIRMED_BLANKED_RESURRECTIONS_PATH,
+    ):
         source_sheet = str(row.get("source_sheet", "")).strip()
         source_row_key = str(row.get("source_row_key", "")).strip()
-        if not source_sheet or not source_row_key:
-            continue
         override_payload = row.get("approved_override")
         if not isinstance(override_payload, dict):
-            continue
+            raise ConfirmedBlankedContractError(
+                "Owner-approved confirmed-blanked resurrection contract row "
+                f"{source_sheet}:{source_row_key} is missing approved_override."
+            )
         parsed_override: dict[str, int] = {}
         for key, value in override_payload.items():
             parsed_value = parse_int(value)
             if parsed_value is not None:
                 parsed_override[str(key)] = parsed_value
-        if parsed_override:
-            approved[(source_sheet, source_row_key)] = parsed_override
+        if not parsed_override:
+            raise ConfirmedBlankedContractError(
+                "Owner-approved confirmed-blanked resurrection contract row "
+                f"{source_sheet}:{source_row_key} has no valid approved override values."
+            )
+        approved[(source_sheet, source_row_key)] = parsed_override
     return approved
 
 

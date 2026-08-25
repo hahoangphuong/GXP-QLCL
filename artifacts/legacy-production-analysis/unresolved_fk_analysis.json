@@ -1,4 +1,10 @@
 {
+  "confirmed_blank_contract_path": "artifacts/phase3q/confirmed_blanked_rows.json",
+  "confirmed_blank_contract_sha256": "f82192573a305c916621a6f0586b0f21c8db93986e72029430299aa2880fde24",
+  "snapshot_path": "artifacts/phase3c/legacy_snapshot.json",
+  "snapshot_sha256": "391966f4c093b6eb4defb3db7f90d0477cc2e8567b18d5305302a60cb36c5e36",
+  "anomaly_report_path": "artifacts/phase3_review/anomaly_review_report.json",
+  "anomaly_report_sha256": "3f0eb5a1090a7b7e936810a2747e0e7870d58321eabe58a707072aef43bd9ee0",
   "raw_anomaly_count": 151,
   "blank_fk_total": 149,
   "nonblank_dangling_fk_total": 2,

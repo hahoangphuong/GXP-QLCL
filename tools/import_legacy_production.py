@@ -7,6 +7,7 @@ from pathlib import Path
 import argparse
 import json
 import os
+import secrets
 import shlex
 import subprocess
 import sys
@@ -37,6 +38,7 @@ from tools.env_utils import parse_env_file
 DEFAULT_RUNTIME_ENV_PATH = Path("/etc/gxp/runtime.env")
 DEFAULT_SNAPSHOT_PATH = phase_artifact_path("phase3c", "legacy_snapshot.json")
 DEFAULT_REPORT_ROOT = phase_artifact_path("legacy-production")
+DEFAULT_VALIDATION_TARGET_DB_PREFIX = "gxp_legacy_validation"
 DEFAULT_REHEARSAL_TARGET_DB = "gxp_legacy_rehearsal"
 DEFAULT_FINAL_TARGET_DB = "gxp_qlcl_candidate"
 
@@ -60,6 +62,7 @@ class RuntimeDatabaseContract:
 class ImportReport:
     mode: str
     import_mode: str
+    validation_isolation: str
     runtime_env_path: str
     snapshot_path: str
     snapshot_sha256: str
@@ -72,12 +75,14 @@ class ImportReport:
     alembic_head_revision: str | None
     alembic_current_revision: str | None
     database_url_redacted: str
+    canonical_production_database: str
     target_database: str
     validation_status: str
     cutover_ready: bool
     phase7_status: str
     current_projection_gate: dict[str, Any]
     backup_status: str
+    cleanup_status: str
     error_message: str | None
     reconciliation: dict[str, Any]
 
@@ -216,11 +221,13 @@ def _render_report_markdown(report: ImportReport) -> str:
         "",
         f"- Mode: `{report.mode}`",
         f"- Import mode: `{report.import_mode}`",
+        f"- Validation isolation: `{report.validation_isolation}`",
         f"- Snapshot: `{report.snapshot_path}`",
         f"- Snapshot SHA-256: `{report.snapshot_sha256}`",
         f"- Snapshot exported at: `{report.snapshot_exported_at}`",
         f"- Source workbook identity: `{report.source_workbook_identity}`",
         f"- Runtime env: `{report.runtime_env_path}`",
+        f"- Canonical production database: `{report.canonical_production_database}`",
         f"- Target database: `{report.target_database}`",
         f"- Database: `{report.database_url_redacted}`",
         f"- Alembic current/head: `{report.alembic_current_revision}` / `{report.alembic_head_revision}`",
@@ -228,6 +235,7 @@ def _render_report_markdown(report: ImportReport) -> str:
         f"- Phase 7 status: `{report.phase7_status}`",
         f"- Cutover ready: `{str(report.cutover_ready).lower()}`",
         f"- Backup status: `{report.backup_status}`",
+        f"- Cleanup status: `{report.cleanup_status}`",
         "",
     ]
     if report.error_message:
@@ -309,6 +317,10 @@ def _snapshot_metadata_value(metadata: dict[str, Any], key: str) -> str | None:
     return text or None
 
 
+def _validation_target_database_name() -> str:
+    return f"{DEFAULT_VALIDATION_TARGET_DB_PREFIX}_{secrets.token_hex(4)}"
+
+
 def _postgres_admin_prefix() -> list[str]:
     override = os.environ.get("POSTGRES_ADMIN_CMD", "").strip()
     if override:
@@ -349,6 +361,20 @@ def _recreate_target_database(contract: RuntimeDatabaseContract, target_database
     admin_prefix = _postgres_admin_prefix()
     _run_subprocess(admin_prefix + ["dropdb", "--if-exists", target_database_name])
     _run_subprocess(admin_prefix + ["createdb", "--owner", contract.db_user, target_database_name])
+
+
+def _drop_target_database(contract: RuntimeDatabaseContract, target_database_name: str, target_database_url: str) -> None:
+    if target_database_url.startswith("sqlite:///"):
+        database_path = Path(target_database_url.removeprefix("sqlite:///"))
+        if database_path.exists():
+            database_path.unlink()
+        return
+
+    if contract.db_mode != "local_postgres":
+        raise ProductionImportError(f"Temporary validation cleanup is only supported for local_postgres, got {contract.db_mode!r}.")
+
+    admin_prefix = _postgres_admin_prefix()
+    _run_subprocess(admin_prefix + ["dropdb", "--if-exists", target_database_name])
 
 
 def _upgrade_target_database_schema(database_url: str) -> None:
@@ -445,13 +471,25 @@ def execute_import(
         _snapshot_metadata_value(snapshot_metadata, "source_workbook_identity")
         or _snapshot_metadata_value(snapshot_metadata, "source_workbook")
     )
+    validation_isolation = "clean_temporary_database" if import_mode == "validation" else "persistent_rebuild_database"
+    cleanup_status = "not-required"
+    database_url_redacted = contract.database_url_redacted
+    current_revision: str | None = None
+    head_revision: str | None = None
+    reconciliation: dict[str, Any] = {}
+    error_message: str | None = None
+    primary_error: Exception | None = None
+    cleanup_error_message: str | None = None
+    validation_target_database_url: str | None = None
 
     if mode == "dry-run":
         if import_mode != "validation":
             raise ProductionImportError("Dry-run currently supports only --import-mode validation.")
         if reset_from_snapshot:
             raise ProductionImportError("--reset-from-snapshot is not valid with --dry-run.")
-        effective_target_database = contract.db_name
+        effective_target_database = target_database_name or _validation_target_database_name()
+        validation_target_database_url = _target_database_url(contract.database_url, effective_target_database)
+        database_url_redacted = _redact_database_url(validation_target_database_url)
     else:
         if import_mode not in {"rehearsal", "final"}:
             raise ProductionImportError("--apply requires --import-mode rehearsal or --import-mode final.")
@@ -470,13 +508,11 @@ def execute_import(
 
     try:
         if mode == "dry-run":
-            reconciliation, current_revision, head_revision = _run_import(
-                database_url=contract.database_url,
+            reconciliation, current_revision, head_revision, database_url_redacted = _execute_reset_import(
+                contract=contract,
                 snapshot=snapshot,
-                dry_run=True,
-                require_head_revision=True,
+                target_database_name=effective_target_database,
             )
-            database_url_redacted = contract.database_url_redacted
         else:
             reconciliation, current_revision, head_revision, database_url_redacted = _execute_reset_import(
                 contract=contract,
@@ -484,36 +520,38 @@ def execute_import(
                 target_database_name=effective_target_database,
             )
     except SchemaLengthValidationError as exc:
-        report = ImportReport(
-            mode=mode,
-            import_mode=import_mode,
-            runtime_env_path=str(runtime_env_path),
-            snapshot_path=str(snapshot_path),
-            snapshot_sha256=snapshot_sha,
-            snapshot_exported_at=exported_at,
-            source_workbook_identity=source_workbook_identity,
-            report_dir=str(report_dir),
-            started_at_utc=started_at,
-            completed_at_utc=datetime.now(timezone.utc).isoformat(),
-            deployment_git_sha=_git_sha(),
-            alembic_head_revision=expected_alembic_head_revision(),
-            alembic_current_revision=None,
-            database_url_redacted=contract.database_url_redacted,
-            target_database=effective_target_database,
-            validation_status="failed",
-            cutover_ready=cutover_ready,
-            phase7_status=phase7_status,
-            current_projection_gate=current_projection_gate,
-            backup_status=backup_status,
-            error_message=str(exc),
-            reconciliation={"schema_length_violations": _schema_length_violations_payload(exc)},
-        )
-        _write_report(report_dir, report)
-        raise ProductionImportError(str(exc)) from exc
+        primary_error = exc
+        head_revision = expected_alembic_head_revision()
+        reconciliation = {"schema_length_violations": _schema_length_violations_payload(exc)}
+    except Exception as exc:
+        primary_error = exc
+    finally:
+        if mode == "dry-run" and validation_target_database_url is not None:
+            try:
+                _drop_target_database(contract, effective_target_database, validation_target_database_url)
+                cleanup_status = "ok"
+            except Exception as cleanup_exc:
+                cleanup_error_message = str(cleanup_exc)
+                cleanup_status = f"failed: orphan temporary validation database {effective_target_database!r}: {cleanup_error_message}"
+
+    if primary_error is None and cleanup_error_message is None:
+        validation_status = "pass"
+    else:
+        validation_status = "failed"
+
+    if cleanup_error_message is not None:
+        cleanup_fragment = f"Validation cleanup failed for temporary database {effective_target_database!r}: {cleanup_error_message}"
+        if primary_error is None:
+            error_message = cleanup_fragment
+        else:
+            error_message = f"{primary_error} {cleanup_fragment}"
+    elif primary_error is not None:
+        error_message = str(primary_error)
 
     report = ImportReport(
         mode=mode,
         import_mode=import_mode,
+        validation_isolation=validation_isolation,
         runtime_env_path=str(runtime_env_path),
         snapshot_path=str(snapshot_path),
         snapshot_sha256=snapshot_sha,
@@ -526,17 +564,31 @@ def execute_import(
         alembic_head_revision=head_revision,
         alembic_current_revision=current_revision,
         database_url_redacted=database_url_redacted,
+        canonical_production_database=contract.db_name,
         target_database=effective_target_database,
-        validation_status="pass",
+        validation_status=validation_status,
         cutover_ready=cutover_ready,
         phase7_status=phase7_status,
         current_projection_gate=current_projection_gate,
         backup_status=backup_status,
-        error_message=None,
+        cleanup_status=cleanup_status,
+        error_message=error_message,
         reconciliation=reconciliation,
     )
     _write_report(report_dir, report)
-    return report
+    if primary_error is None and cleanup_error_message is None:
+        return report
+    if primary_error is None:
+        raise ProductionImportError(error_message)
+    if isinstance(primary_error, SchemaLengthValidationError):
+        raise ProductionImportError(error_message) from primary_error
+    if cleanup_error_message is None:
+        raise primary_error
+    if isinstance(primary_error, ImportCollisionError):
+        raise ImportCollisionError(error_message) from primary_error
+    if isinstance(primary_error, ProductionImportError):
+        raise ProductionImportError(error_message) from primary_error
+    raise type(primary_error)(error_message) from primary_error
 
 
 def _git_sha() -> str:

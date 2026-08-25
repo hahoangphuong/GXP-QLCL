@@ -1135,7 +1135,7 @@ EOF
     )
     for name, body in {
         "dd": "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
-        "chmod": "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
+        "chmod": "#!/usr/bin/env bash\nset -euo pipefail\nexec /bin/chmod \"$@\"\n",
         "getent": "#!/usr/bin/env bash\nset -euo pipefail\nexit 2\n",
         "groupadd": "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
         "useradd": "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",

@@ -1020,6 +1020,48 @@ def test_orphan_fk_blocks_import(tmp_path: Path, monkeypatch) -> None:
         raise AssertionError("Expected unresolved anomaly failure")
 
 
+def test_validation_isolation_rebuild_keeps_confirmed_blanked_rows_excluded(tmp_path: Path, monkeypatch) -> None:
+    runtime_env = write_runtime_env(tmp_path / "runtime.env")
+    snapshot = sample_snapshot()
+    snapshot["db.ktra"][0]["ID CƠ SỞ"] = ""
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(snapshot))
+    prod_db_path = tmp_path / "prod.db"
+    database_url = prepare_runtime_db(prod_db_path)
+    patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
+
+    confirmed_blanked_path = tmp_path / "confirmed_blanked_rows.json"
+    confirmed_blanked_path.write_text(
+        json.dumps(
+            {
+                "rows": [
+                    {"source_sheet": "db.ktra", "source_row_key": "100"},
+                    {"source_sheet": "db.cc", "source_row_key": "200"},
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ilp, "ROOT", Path.cwd())
+    from backend.app.domain import phase2_import as phase2_import_module
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", confirmed_blanked_path)
+
+    report = ilp.execute_import(
+        snapshot_path=snapshot_path,
+        runtime_env_path=runtime_env,
+        mode="dry-run",
+        import_mode="validation",
+        report_root=tmp_path / "reports",
+    )
+
+    assert report.validation_status == "pass"
+    assert report.reconciliation["unresolved_anomaly_count"] == 0
+    assert report.reconciliation["excluded_rows"] == {"db.ktra": 1, "db.cc": 1}
+    assert report.reconciliation["source_balance"]["db.ktra"]["unresolved_count"] == 0
+
+
 def test_apply_rejects_target_database_matching_production_db(tmp_path: Path, monkeypatch) -> None:
     runtime_env = write_runtime_env(tmp_path / "runtime.env")
     snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))

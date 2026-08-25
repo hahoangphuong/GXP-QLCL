@@ -1,0 +1,1446 @@
+{
+  "raw_anomaly_count": 151,
+  "blank_fk_total": 149,
+  "nonblank_dangling_fk_total": 2,
+  "confirmed_blanked_match_count": 151,
+  "confirmed_blanked_match_failure_count": 0,
+  "remaining_root_anomaly_count": 0,
+  "cascade_anomaly_count": 2,
+  "blank_fk_breakdown": {
+    "already_owner_confirmed_blanked": 149,
+    "not_in_confirmed_blanked": 0,
+    "by_sheet": {
+      "db.Tdoi": 22,
+      "db.Tdoi2": 1,
+      "db.cc": 26,
+      "db.cso": 3,
+      "db.dkkd": 50,
+      "db.ktra": 47
+    }
+  },
+  "family_summary": [
+    {
+      "source_sheet": "db.Tdoi",
+      "reason": "missing_site_fk",
+      "raw": 22,
+      "confirmed_blanked": 22,
+      "remaining_root": 0,
+      "cascade": 0
+    },
+    {
+      "source_sheet": "db.Tdoi2",
+      "reason": "missing_change_request_fk",
+      "raw": 2,
+      "confirmed_blanked": 2,
+      "remaining_root": 0,
+      "cascade": 1
+    },
+    {
+      "source_sheet": "db.cc",
+      "reason": "missing_case_fk",
+      "raw": 1,
+      "confirmed_blanked": 1,
+      "remaining_root": 0,
+      "cascade": 1
+    },
+    {
+      "source_sheet": "db.cc",
+      "reason": "missing_site_fk",
+      "raw": 26,
+      "confirmed_blanked": 26,
+      "remaining_root": 0,
+      "cascade": 0
+    },
+    {
+      "source_sheet": "db.cso",
+      "reason": "missing_company_fk",
+      "raw": 3,
+      "confirmed_blanked": 3,
+      "remaining_root": 0,
+      "cascade": 0
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "reason": "missing_site_fk",
+      "raw": 50,
+      "confirmed_blanked": 50,
+      "remaining_root": 0,
+      "cascade": 0
+    },
+    {
+      "source_sheet": "db.ktra",
+      "reason": "missing_site_fk",
+      "raw": 47,
+      "confirmed_blanked": 47,
+      "remaining_root": 0,
+      "cascade": 0
+    }
+  ],
+  "row_analyses": [
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "44",
+      "legacy_row_id": "44",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "49",
+      "legacy_row_id": "49",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "50",
+      "legacy_row_id": "50",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "53",
+      "legacy_row_id": "53",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "78",
+      "legacy_row_id": "78",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "79",
+      "legacy_row_id": "79",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "80",
+      "legacy_row_id": "80",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "88",
+      "legacy_row_id": "88",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "98",
+      "legacy_row_id": "98",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "105",
+      "legacy_row_id": "105",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "123",
+      "legacy_row_id": "123",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "124",
+      "legacy_row_id": "124",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "125",
+      "legacy_row_id": "125",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "126",
+      "legacy_row_id": "126",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "127",
+      "legacy_row_id": "127",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "130",
+      "legacy_row_id": "130",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "131",
+      "legacy_row_id": "131",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "135",
+      "legacy_row_id": "135",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "144",
+      "legacy_row_id": "144",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "187",
+      "legacy_row_id": "187",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "193",
+      "legacy_row_id": "193",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi",
+      "source_row_key": "208",
+      "legacy_row_id": "208",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.Tdoi2",
+      "source_row_key": "155",
+      "legacy_row_id": "155",
+      "reason": "missing_change_request_fk",
+      "raw_fk": "187",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id",
+      "classification": "cascade_from_confirmed_blanked_parent",
+      "parent_source_sheet": "db.Tdoi",
+      "parent_source_row_key": "187"
+    },
+    {
+      "source_sheet": "db.Tdoi2",
+      "source_row_key": "160",
+      "legacy_row_id": "160",
+      "reason": "missing_change_request_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "268",
+      "legacy_row_id": "268",
+      "reason": "missing_case_fk",
+      "raw_fk": "257",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id",
+      "classification": "cascade_from_confirmed_blanked_parent",
+      "parent_source_sheet": "db.ktra",
+      "parent_source_row_key": "257"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "244",
+      "legacy_row_id": "244",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "256",
+      "legacy_row_id": "256",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "886",
+      "legacy_row_id": "886",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "887",
+      "legacy_row_id": "887",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "row:948",
+      "legacy_row_id": null,
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:excel_row_fallback"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "955",
+      "legacy_row_id": "955",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "1001",
+      "legacy_row_id": "1001",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "row:1064",
+      "legacy_row_id": null,
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:excel_row_fallback"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "1090",
+      "legacy_row_id": "1090",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "1119",
+      "legacy_row_id": "1119",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "row:1125",
+      "legacy_row_id": null,
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:excel_row_fallback"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "row:1166",
+      "legacy_row_id": null,
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:excel_row_fallback"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "row:1264",
+      "legacy_row_id": null,
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:excel_row_fallback"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "1283",
+      "legacy_row_id": "1283",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "1353",
+      "legacy_row_id": "1353",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "1362",
+      "legacy_row_id": "1362",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "1369",
+      "legacy_row_id": "1369",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "1465",
+      "legacy_row_id": "1465",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "1476",
+      "legacy_row_id": "1476",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "1499",
+      "legacy_row_id": "1499",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "1515",
+      "legacy_row_id": "1515",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "1525",
+      "legacy_row_id": "1525",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "row:1552",
+      "legacy_row_id": null,
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:excel_row_fallback"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "1557",
+      "legacy_row_id": "1557",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "1584",
+      "legacy_row_id": "1584",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cc",
+      "source_row_key": "row:1636",
+      "legacy_row_id": null,
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:excel_row_fallback"
+    },
+    {
+      "source_sheet": "db.cso",
+      "source_row_key": "271",
+      "legacy_row_id": "271",
+      "reason": "missing_company_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cso",
+      "source_row_key": "294",
+      "legacy_row_id": "294",
+      "reason": "missing_company_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.cso",
+      "source_row_key": "328",
+      "legacy_row_id": "328",
+      "reason": "missing_company_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "125",
+      "legacy_row_id": "125",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "146",
+      "legacy_row_id": "146",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "150",
+      "legacy_row_id": "150",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "157",
+      "legacy_row_id": "157",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "162",
+      "legacy_row_id": "162",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "204",
+      "legacy_row_id": "204",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "206",
+      "legacy_row_id": "206",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "217",
+      "legacy_row_id": "217",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "232",
+      "legacy_row_id": "232",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "241",
+      "legacy_row_id": "241",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "254",
+      "legacy_row_id": "254",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "267",
+      "legacy_row_id": "267",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "281",
+      "legacy_row_id": "281",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "283",
+      "legacy_row_id": "283",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "307",
+      "legacy_row_id": "307",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "313",
+      "legacy_row_id": "313",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "323",
+      "legacy_row_id": "323",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "334",
+      "legacy_row_id": "334",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "336",
+      "legacy_row_id": "336",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "341",
+      "legacy_row_id": "341",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "343",
+      "legacy_row_id": "343",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "383",
+      "legacy_row_id": "383",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "415",
+      "legacy_row_id": "415",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "419",
+      "legacy_row_id": "419",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "427",
+      "legacy_row_id": "427",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "428",
+      "legacy_row_id": "428",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "431",
+      "legacy_row_id": "431",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "443",
+      "legacy_row_id": "443",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "501",
+      "legacy_row_id": "501",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "503",
+      "legacy_row_id": "503",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "519",
+      "legacy_row_id": "519",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "542",
+      "legacy_row_id": "542",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "554",
+      "legacy_row_id": "554",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "565",
+      "legacy_row_id": "565",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "570",
+      "legacy_row_id": "570",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "580",
+      "legacy_row_id": "580",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "586",
+      "legacy_row_id": "586",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "587",
+      "legacy_row_id": "587",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "616",
+      "legacy_row_id": "616",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "622",
+      "legacy_row_id": "622",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "632",
+      "legacy_row_id": "632",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "635",
+      "legacy_row_id": "635",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "657",
+      "legacy_row_id": "657",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "658",
+      "legacy_row_id": "658",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "660",
+      "legacy_row_id": "660",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "661",
+      "legacy_row_id": "661",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "662",
+      "legacy_row_id": "662",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "674",
+      "legacy_row_id": "674",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "695",
+      "legacy_row_id": "695",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.dkkd",
+      "source_row_key": "704",
+      "legacy_row_id": "704",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "257",
+      "legacy_row_id": "257",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "482",
+      "legacy_row_id": "482",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "813",
+      "legacy_row_id": "813",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "817",
+      "legacy_row_id": "817",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "818",
+      "legacy_row_id": "818",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "827",
+      "legacy_row_id": "827",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "835",
+      "legacy_row_id": "835",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "843",
+      "legacy_row_id": "843",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "852",
+      "legacy_row_id": "852",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "858",
+      "legacy_row_id": "858",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "876",
+      "legacy_row_id": "876",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "883",
+      "legacy_row_id": "883",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "889",
+      "legacy_row_id": "889",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "893",
+      "legacy_row_id": "893",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "895",
+      "legacy_row_id": "895",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "896",
+      "legacy_row_id": "896",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "927",
+      "legacy_row_id": "927",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "929",
+      "legacy_row_id": "929",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "933",
+      "legacy_row_id": "933",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "934",
+      "legacy_row_id": "934",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "938",
+      "legacy_row_id": "938",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "942",
+      "legacy_row_id": "942",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "945",
+      "legacy_row_id": "945",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "958",
+      "legacy_row_id": "958",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "986",
+      "legacy_row_id": "986",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "1006",
+      "legacy_row_id": "1006",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "1011",
+      "legacy_row_id": "1011",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "1104",
+      "legacy_row_id": "1104",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "row:1162",
+      "legacy_row_id": null,
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:excel_row_fallback"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "row:1169",
+      "legacy_row_id": null,
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:excel_row_fallback"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "row:1177",
+      "legacy_row_id": null,
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:excel_row_fallback"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "1181",
+      "legacy_row_id": "1181",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "1183",
+      "legacy_row_id": "1183",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "1188",
+      "legacy_row_id": "1188",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "1197",
+      "legacy_row_id": "1197",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "1198",
+      "legacy_row_id": "1198",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "row:1229",
+      "legacy_row_id": null,
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:excel_row_fallback"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "row:1317",
+      "legacy_row_id": null,
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:excel_row_fallback"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "1334",
+      "legacy_row_id": "1334",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "1335",
+      "legacy_row_id": "1335",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "1417",
+      "legacy_row_id": "1417",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "1444",
+      "legacy_row_id": "1444",
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:numeric_legacy_id"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "row:1470",
+      "legacy_row_id": null,
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:excel_row_fallback"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "row:1510",
+      "legacy_row_id": null,
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:excel_row_fallback"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "row:1512",
+      "legacy_row_id": null,
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:excel_row_fallback"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "row:1547",
+      "legacy_row_id": null,
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:excel_row_fallback"
+    },
+    {
+      "source_sheet": "db.ktra",
+      "source_row_key": "row:1553",
+      "legacy_row_id": null,
+      "reason": "missing_site_fk",
+      "raw_fk": "",
+      "is_confirmed_blanked": true,
+      "confirmed_blank_match_method": "source_sheet+source_row_key:excel_row_fallback"
+    }
+  ]
+}

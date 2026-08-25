@@ -869,6 +869,41 @@ def _validate_confirmed_blanked_override_contract(
                 )
 
 
+def _confirmed_blank_match_method(row_key: str | None) -> str | None:
+    if row_key is None:
+        return None
+    if row_key.startswith("row:"):
+        return "source_sheet+source_row_key:excel_row_fallback"
+    if row_key.isdigit():
+        return "source_sheet+source_row_key:numeric_legacy_id"
+    return "source_sheet+source_row_key"
+
+
+def _confirmed_blanked_parent_dependency(
+    *,
+    reason: str,
+    raw_fk_value: str,
+    confirmed_blanked_row_keys: set[tuple[str, str]],
+) -> dict[str, str] | None:
+    raw_fk = str(raw_fk_value or "").strip()
+    if not raw_fk:
+        return None
+    parent_sheet_by_reason = {
+        "missing_case_fk": "db.ktra",
+        "missing_change_request_fk": "db.Tdoi",
+    }
+    parent_sheet = parent_sheet_by_reason.get(reason)
+    if parent_sheet is None:
+        return None
+    if (parent_sheet, raw_fk) not in confirmed_blanked_row_keys:
+        return None
+    return {
+        "classification": "cascade_from_confirmed_blanked_parent",
+        "parent_source_sheet": parent_sheet,
+        "parent_source_row_key": raw_fk,
+    }
+
+
 def _record_anomaly(
     session: Session,
     stats: ImportStats,
@@ -883,6 +918,7 @@ def _record_anomaly(
     raw_fk_value: str,
     override_value: int | None,
     status_override: str | None = None,
+    extra_detail: dict[str, Any] | None = None,
 ) -> None:
     row_key = source_row_key(legacy_row_id=legacy_row_id, source_row_number_value=source_row_number_value)
     status = status_override or ("overridden" if override_value is not None else "open")
@@ -897,8 +933,10 @@ def _record_anomaly(
         "override_value": None if override_value is None else str(override_value),
         "status": status,
     }
+    if extra_detail:
+        row.update(extra_detail)
     if status == "excluded_confirmed_blanked":
-        row["classification"] = "confirmed_blanked_row"
+        row.setdefault("classification", "confirmed_blanked_row")
         row["migration_action"] = "exclude_from_business_import"
     anomaly_rows.append(row)
     _ensure_migration_anomaly(
@@ -929,6 +967,19 @@ def _resolve_legacy_fk(
     remediation_key = REMEDIATION_KEY_BY_REASON[reason]
     row_key = source_row_key(legacy_row_id=legacy_row_id, source_row_number_value=source_row_number_value)
     parsed_legacy_id = parse_int(raw_value)
+    is_confirmed_blanked = (source_sheet, row_key or "") in confirmed_blanked_row_keys
+    match_method = _confirmed_blank_match_method(row_key) if is_confirmed_blanked else None
+    parent_dependency = _confirmed_blanked_parent_dependency(
+        reason=reason,
+        raw_fk_value=raw_value,
+        confirmed_blanked_row_keys=confirmed_blanked_row_keys,
+    )
+    extra_detail: dict[str, Any] = {
+        "is_confirmed_blanked": is_confirmed_blanked,
+        "confirmed_blank_match_method": match_method,
+    }
+    if parent_dependency is not None:
+        extra_detail.update(parent_dependency)
     if parsed_legacy_id is not None and parsed_legacy_id in target_map:
         return target_map[parsed_legacy_id]
 
@@ -951,17 +1002,20 @@ def _resolve_legacy_fk(
             required_field=required_field,
             raw_fk_value=raw_value,
             override_value=override_legacy_id,
+            extra_detail=extra_detail,
         )
         return target_map[override_legacy_id]
 
     status_override = None
-    if (source_sheet, row_key or "") in confirmed_blanked_row_keys:
+    if is_confirmed_blanked:
         status_override = "excluded_confirmed_blanked"
     elif row_key is None and legacy_row_id is None and not str(raw_value or "").strip():
         remaining_budget = confirmed_blanked_null_key_budgets.get(source_sheet, 0)
         if remaining_budget > 0:
             status_override = "excluded_confirmed_blanked"
             confirmed_blanked_null_key_budgets[source_sheet] = remaining_budget - 1
+            extra_detail["is_confirmed_blanked"] = True
+            extra_detail["confirmed_blank_match_method"] = "null_key_budget_fallback"
     _record_anomaly(
         session,
         stats,
@@ -975,6 +1029,7 @@ def _resolve_legacy_fk(
         raw_fk_value=raw_value,
         override_value=override_legacy_id,
         status_override=status_override,
+        extra_detail=extra_detail,
     )
     return None
 

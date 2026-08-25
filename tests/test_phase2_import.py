@@ -312,6 +312,161 @@ def test_import_snapshot_accepts_override_for_blank_id_row_via_source_row_key():
         assert reconciliation["applied_override_count"] == 1
 
 
+def test_numeric_id_confirmed_blanked_match_excludes_row(monkeypatch, tmp_path):
+    confirmed_blanked_path = tmp_path / "confirmed_blanked_rows.json"
+    confirmed_blanked_path.write_text(
+        json.dumps({"rows": [{"source_sheet": "db.ktra", "source_row_key": "100"}]}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", confirmed_blanked_path)
+
+    snapshot = sample_snapshot()
+    snapshot["db.ktra"][0]["ID CƠ SỞ"] = ""
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        reconciliation = import_snapshot(session, snapshot)
+        session.commit()
+        anomaly = session.scalars(select(MigrationAnomaly).where(MigrationAnomaly.source_sheet == "db.ktra")).one()
+        detail = json.loads(anomaly.detail_json or "{}")
+        assert anomaly.status == "excluded_confirmed_blanked"
+        assert detail["is_confirmed_blanked"] is True
+        assert detail["confirmed_blank_match_method"] == "source_sheet+source_row_key:numeric_legacy_id"
+        assert reconciliation["source_balance"]["db.ktra"]["unresolved_count"] == 0
+        assert reconciliation["excluded_rows"]["db.ktra"] == 1
+
+
+def test_row_fallback_confirmed_blanked_match_excludes_row(monkeypatch, tmp_path):
+    confirmed_blanked_path = tmp_path / "confirmed_blanked_rows.json"
+    confirmed_blanked_path.write_text(
+        json.dumps({"rows": [{"source_sheet": "db.ktra", "source_row_key": "row:42"}]}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", confirmed_blanked_path)
+
+    snapshot = sample_snapshot()
+    snapshot["db.ktra"] = [
+        {
+            "ID": "",
+            "__excel_row_number": "42",
+            "LOẠI KT": "GMP",
+            "ID CƠ SỞ": "",
+            "MÃ DC": "A",
+        }
+    ]
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        reconciliation = import_snapshot(session, snapshot)
+        session.commit()
+        anomaly = session.scalars(select(MigrationAnomaly).where(MigrationAnomaly.source_sheet == "db.ktra")).one()
+        detail = json.loads(anomaly.detail_json or "{}")
+        assert anomaly.status == "excluded_confirmed_blanked"
+        assert detail["is_confirmed_blanked"] is True
+        assert detail["confirmed_blank_match_method"] == "source_sheet+source_row_key:excel_row_fallback"
+        assert reconciliation["source_balance"]["db.ktra"]["unresolved_count"] == 0
+        assert reconciliation["excluded_rows"]["db.ktra"] == 1
+
+
+def test_confirmed_blanked_survives_same_snapshot_replay(monkeypatch, tmp_path):
+    confirmed_blanked_path = tmp_path / "confirmed_blanked_rows.json"
+    confirmed_blanked_path.write_text(
+        json.dumps({"rows": [{"source_sheet": "db.ktra", "source_row_key": "100"}]}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", confirmed_blanked_path)
+
+    snapshot = sample_snapshot()
+    snapshot["db.ktra"][0]["ID CƠ SỞ"] = ""
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        import_snapshot(session, snapshot)
+        session.commit()
+        replay = import_snapshot(
+            session,
+            snapshot,
+            options=ImportExecutionOptions(
+                ensure_schema=False,
+                reset_existing_data=False,
+                allow_existing_records=True,
+                persist_audit_event=False,
+            ),
+        )
+        session.commit()
+        anomalies = session.scalars(select(MigrationAnomaly).where(MigrationAnomaly.source_sheet == "db.ktra")).all()
+        assert len(anomalies) == 1
+        assert anomalies[0].status == "excluded_confirmed_blanked"
+        assert replay["source_balance"]["db.ktra"]["unresolved_count"] == 0
+        assert replay["excluded_rows"]["db.ktra"] == 1
+
+
+def test_downstream_fk_to_confirmed_blanked_parent_is_classified_as_cascade(monkeypatch, tmp_path):
+    confirmed_blanked_path = tmp_path / "confirmed_blanked_rows.json"
+    confirmed_blanked_path.write_text(
+        json.dumps(
+            {
+                "rows": [
+                    {"source_sheet": "db.ktra", "source_row_key": "100"},
+                    {"source_sheet": "db.cc", "source_row_key": "200"},
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", confirmed_blanked_path)
+
+    snapshot = sample_snapshot()
+    snapshot["db.ktra"][0]["ID CƠ SỞ"] = ""
+    snapshot["db.cc"][0]["ID CƠ SỞ"] = "10"
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        reconciliation = import_snapshot(session, snapshot)
+        session.commit()
+        certificate_anomaly = session.scalars(
+            select(MigrationAnomaly).where(MigrationAnomaly.source_sheet == "db.cc")
+        ).one()
+        detail = json.loads(certificate_anomaly.detail_json or "{}")
+        assert certificate_anomaly.status == "excluded_confirmed_blanked"
+        assert detail["classification"] == "cascade_from_confirmed_blanked_parent"
+        assert detail["parent_source_sheet"] == "db.ktra"
+        assert detail["parent_source_row_key"] == "100"
+        assert reconciliation["source_balance"]["db.cc"]["unresolved_count"] == 0
+
+
+def test_unconfirmed_blank_remains_unresolved(monkeypatch, tmp_path):
+    confirmed_blanked_path = tmp_path / "confirmed_blanked_rows.json"
+    confirmed_blanked_path.write_text(json.dumps({"rows": []}, ensure_ascii=False, indent=2), encoding="utf-8")
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", confirmed_blanked_path)
+
+    snapshot = sample_snapshot()
+    snapshot["db.ktra"][0]["ID CƠ SỞ"] = ""
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        reconciliation = import_snapshot(session, snapshot)
+        session.commit()
+        anomaly = session.scalars(select(MigrationAnomaly).where(MigrationAnomaly.source_sheet == "db.ktra")).one()
+        detail = json.loads(anomaly.detail_json or "{}")
+        assert anomaly.status == "open"
+        assert detail["is_confirmed_blanked"] is False
+        assert detail["confirmed_blank_match_method"] is None
+        assert reconciliation["source_balance"]["db.ktra"]["unresolved_count"] == 1
+
+
+def test_import_snapshot_does_not_mutate_confirmed_blanked_contract(monkeypatch, tmp_path):
+    confirmed_blanked_path = tmp_path / "confirmed_blanked_rows.json"
+    original = json.dumps({"rows": [{"source_sheet": "db.ktra", "source_row_key": "100"}]}, ensure_ascii=False, indent=2)
+    confirmed_blanked_path.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", confirmed_blanked_path)
+
+    snapshot = sample_snapshot()
+    snapshot["db.ktra"][0]["ID CƠ SỞ"] = ""
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        import_snapshot(session, snapshot)
+        session.commit()
+    assert confirmed_blanked_path.read_text(encoding="utf-8") == original
+
+
 def test_import_snapshot_creates_distinct_anomalies_for_blank_id_rows_with_same_other_fields():
     snapshot = sample_snapshot()
     snapshot["db.ktra"] = [

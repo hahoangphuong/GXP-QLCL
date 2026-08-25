@@ -672,7 +672,49 @@ def test_validation_drops_temporary_database_when_reconciliation_fails(tmp_path:
 
     def unresolved_import(*args, **kwargs):
         payload = balanced_reconciliation()
-        payload["anomaly_rows"] = [{"status": "open"}]
+        payload["source_balance"] = {
+            "db.cty": {"source_count": 1, "imported_count": 1, "skipped_count": 0, "intentionally_skipped_count": 0, "unresolved_count": 0, "balanced": True},
+            "db.cso": {"source_count": 1, "imported_count": 1, "skipped_count": 0, "intentionally_skipped_count": 0, "unresolved_count": 0, "balanced": True},
+            "db.ktra": {"source_count": 3, "imported_count": 0, "skipped_count": 3, "intentionally_skipped_count": 0, "unresolved_count": 3, "balanced": True},
+            "db.cc": {"source_count": 0, "imported_count": 0, "skipped_count": 0, "intentionally_skipped_count": 0, "unresolved_count": 0, "balanced": True},
+            "db.dkkd": {"source_count": 0, "imported_count": 0, "skipped_count": 0, "intentionally_skipped_count": 0, "unresolved_count": 0, "balanced": True},
+            "db.Tdoi": {"source_count": 0, "imported_count": 0, "skipped_count": 0, "intentionally_skipped_count": 0, "unresolved_count": 0, "balanced": True},
+            "db.Tdoi2": {"source_count": 0, "imported_count": 0, "skipped_count": 0, "intentionally_skipped_count": 0, "unresolved_count": 0, "balanced": True},
+        }
+        payload["skipped_rows"] = {"db.ktra": 3}
+        payload["excluded_rows"] = {}
+        payload["inserted_counts"] = {"company": 1, "site": 1}
+        payload["existing_counts"] = {"company": 0}
+        payload["schema_length_violations"] = []
+        payload["anomaly_rows"] = [
+            {
+                "source_sheet": "db.ktra",
+                "source_row_key": "row:10",
+                "legacy_row_id": None,
+                "reason": "missing_site_fk",
+                "required_field": "ID Cơ Sở",
+                "raw_fk_value": "999",
+                "status": "open",
+            },
+            {
+                "source_sheet": "db.ktra",
+                "source_row_key": "row:11",
+                "legacy_row_id": None,
+                "reason": "missing_site_fk",
+                "required_field": "ID Cơ Sở",
+                "raw_fk_value": "999",
+                "status": "open",
+            },
+            {
+                "source_sheet": "db.ktra",
+                "source_row_key": "100",
+                "legacy_row_id": "100",
+                "reason": "missing_company_fk",
+                "required_field": "ID CTY",
+                "raw_fk_value": "888",
+                "status": "open",
+            },
+        ]
         return payload
 
     monkeypatch.setattr(ilp, "import_snapshot", unresolved_import)
@@ -687,13 +729,53 @@ def test_validation_drops_temporary_database_when_reconciliation_fails(tmp_path:
         )
     except ilp.ProductionImportError as exc:
         assert "unresolved anomalies" in str(exc)
+        assert Path(exc.report_json_path).name == "report.json"
     else:
         raise AssertionError("Expected reconciliation failure")
 
     report_dirs = sorted((tmp_path / "reports").iterdir())
     report = json.loads((report_dirs[-1] / "report.json").read_text(encoding="utf-8"))
+    report_md = (report_dirs[-1] / "report.md").read_text(encoding="utf-8")
+    assert report["validation_status"] == "failed"
     assert report["cleanup_status"] == "ok"
+    assert report["reconciliation"]["anomaly_rows"] == unresolved_import()["anomaly_rows"]
+    assert report["reconciliation"]["source_balance"]["db.ktra"]["unresolved_count"] == 3
+    assert report["reconciliation"]["skipped_rows"] == {"db.ktra": 3}
+    assert report["reconciliation"]["excluded_rows"] == {}
+    assert report["reconciliation"]["inserted_counts"] == {"company": 1, "site": 1}
+    assert report["reconciliation"]["existing_counts"] == {"company": 0}
+    assert report["reconciliation"]["schema_length_violations"] == []
+    assert report["reconciliation"]["unresolved_anomaly_count"] == 3
+    assert report["reconciliation"]["unresolved_anomalies_by_sheet"] == {"db.ktra": 3}
+    assert report["reconciliation"]["unresolved_anomalies_by_reason"] == {
+        "missing_company_fk": 1,
+        "missing_site_fk": 2,
+    }
+    assert report["reconciliation"]["unresolved_anomalies_by_required_field"] == {
+        "ID CTY": 1,
+        "ID Cơ Sở": 2,
+    }
+    assert report["reconciliation"]["unresolved_anomaly_groups"] == [
+        {
+            "source_sheet": "db.ktra",
+            "reason": "missing_site_fk",
+            "required_field": "ID Cơ Sở",
+            "count": 2,
+            "sample_source_row_keys": ["row:10", "row:11"],
+        },
+        {
+            "source_sheet": "db.ktra",
+            "reason": "missing_company_fk",
+            "required_field": "ID CTY",
+            "count": 1,
+            "sample_source_row_keys": ["100"],
+        },
+    ]
+    assert "## Unresolved Anomalies" in report_md
+    assert "| `db.ktra` | `missing_site_fk` | `ID Cơ Sở` | 2 | `row:10`, `row:11` |" in report_md
+    assert "| `db.ktra` | `missing_company_fk` | `ID CTY` | 1 | `100` |" in report_md
     assert not validation_db_path(database_url, report["target_database"]).exists()
+    assert count_rows(prod_db_path, "company") == 0
 
 
 def test_validation_cleanup_failure_reports_orphan_without_masking_primary_error(tmp_path: Path, monkeypatch) -> None:
@@ -1167,6 +1249,7 @@ def test_import_validation_failure_is_not_masked_by_cutover_status(tmp_path: Pat
 
     assert code == 1
     assert "unresolved anomalies" in stderr.getvalue()
+    assert "See report:" in stderr.getvalue()
 
 
 def test_main_reports_schema_length_preflight_failures_without_raw_db_traceback(tmp_path: Path, monkeypatch) -> None:

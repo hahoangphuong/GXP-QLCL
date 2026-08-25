@@ -47,6 +47,24 @@ class ProductionImportError(RuntimeError):
     """Raised when production import orchestration must fail closed."""
 
 
+class UnresolvedAnomaliesError(ProductionImportError):
+    """Raised when canonical import completes but leaves unresolved anomalies."""
+
+    def __init__(
+        self,
+        *,
+        reconciliation: dict[str, Any],
+        current_revision: str | None,
+        head_revision: str | None,
+        open_anomalies: list[dict[str, Any]],
+    ) -> None:
+        super().__init__(f"Import produced unresolved anomalies: {len(open_anomalies)} row(s).")
+        self.reconciliation = reconciliation
+        self.current_revision = current_revision
+        self.head_revision = head_revision
+        self.open_anomalies = open_anomalies
+
+
 @dataclass(frozen=True)
 class RuntimeDatabaseContract:
     runtime_env_path: Path
@@ -216,6 +234,7 @@ def _build_report_dir(root: Path) -> Path:
 
 def _render_report_markdown(report: ImportReport) -> str:
     reconciliation = report.reconciliation
+    unresolved_groups = reconciliation.get("unresolved_anomaly_groups", [])
     lines = [
         "# Legacy Production Import",
         "",
@@ -265,6 +284,31 @@ def _render_report_markdown(report: ImportReport) -> str:
             )
     else:
         lines.append("| `n/a` | 0 | 0 | 0 | 0 | 0 | `False` |")
+    unresolved_anomaly_count = reconciliation.get("unresolved_anomaly_count", 0)
+    lines.extend(
+        [
+            "",
+            "## Unresolved Anomalies",
+            "",
+            f"- Unresolved anomaly count: `{unresolved_anomaly_count}`",
+        ]
+    )
+    if unresolved_groups:
+        lines.extend(
+            [
+                "",
+                "| Sheet | Reason | Required field | Count | Sample source rows |",
+                "|---|---|---|---:|---|",
+            ]
+        )
+        for group in unresolved_groups:
+            sample_keys = ", ".join(f"`{value}`" for value in group["sample_source_row_keys"])
+            lines.append(
+                f"| `{group['source_sheet']}` | `{group['reason']}` | `{group['required_field']}` | "
+                f"{group['count']} | {sample_keys or '`-`'} |"
+            )
+    else:
+        lines.extend(["", "- none"])
     lines.extend(
         [
             "",
@@ -319,6 +363,61 @@ def _snapshot_metadata_value(metadata: dict[str, Any], key: str) -> str | None:
 
 def _validation_target_database_name() -> str:
     return f"{DEFAULT_VALIDATION_TARGET_DB_PREFIX}_{secrets.token_hex(4)}"
+
+
+def _open_anomaly_rows(reconciliation: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in reconciliation.get("anomaly_rows", [])
+        if row.get("status") not in {"excluded_confirmed_blanked", "overridden"}
+    ]
+
+
+def _augment_reconciliation_diagnostics(reconciliation: dict[str, Any]) -> dict[str, Any]:
+    augmented = dict(reconciliation)
+    open_anomalies = _open_anomaly_rows(augmented)
+    unresolved_by_sheet: dict[str, int] = {}
+    unresolved_by_reason: dict[str, int] = {}
+    unresolved_by_required_field: dict[str, int] = {}
+    grouped: dict[tuple[str, str, str], dict[str, Any]] = {}
+
+    for row in open_anomalies:
+        source_sheet = str(row.get("source_sheet") or "unknown")
+        reason = str(row.get("reason") or "unknown")
+        required_field = str(row.get("required_field") or "-")
+        source_row_key = str(row.get("source_row_key") or row.get("legacy_row_id") or "unknown")
+        unresolved_by_sheet[source_sheet] = unresolved_by_sheet.get(source_sheet, 0) + 1
+        unresolved_by_reason[reason] = unresolved_by_reason.get(reason, 0) + 1
+        unresolved_by_required_field[required_field] = unresolved_by_required_field.get(required_field, 0) + 1
+        group_key = (source_sheet, reason, required_field)
+        group = grouped.setdefault(
+            group_key,
+            {
+                "source_sheet": source_sheet,
+                "reason": reason,
+                "required_field": required_field,
+                "count": 0,
+                "sample_source_row_keys": [],
+            },
+        )
+        group["count"] += 1
+        if source_row_key not in group["sample_source_row_keys"] and len(group["sample_source_row_keys"]) < 5:
+            group["sample_source_row_keys"].append(source_row_key)
+
+    augmented["unresolved_anomaly_count"] = len(open_anomalies)
+    augmented["unresolved_anomalies_by_sheet"] = dict(sorted(unresolved_by_sheet.items()))
+    augmented["unresolved_anomalies_by_reason"] = dict(sorted(unresolved_by_reason.items()))
+    augmented["unresolved_anomalies_by_required_field"] = dict(sorted(unresolved_by_required_field.items()))
+    augmented["unresolved_anomaly_groups"] = sorted(
+        grouped.values(),
+        key=lambda item: (-item["count"], item["source_sheet"], item["reason"], item["required_field"]),
+    )
+    return augmented
+
+
+def _reported_exception(exc: Exception, report_dir: Path) -> Exception:
+    setattr(exc, "report_json_path", str(report_dir / "report.json"))
+    return exc
 
 
 def _postgres_admin_prefix() -> list[str]:
@@ -451,13 +550,13 @@ def _run_import(
                 persist_audit_event=True,
             ),
         )
-        open_anomalies = [
-            row for row in reconciliation.get("anomaly_rows", [])
-            if row.get("status") not in {"excluded_confirmed_blanked", "overridden"}
-        ]
+        open_anomalies = _open_anomaly_rows(reconciliation)
         if open_anomalies:
-            raise ProductionImportError(
-                f"Import produced unresolved anomalies: {len(open_anomalies)} row(s)."
+            raise UnresolvedAnomaliesError(
+                reconciliation=reconciliation,
+                current_revision=current_revision,
+                head_revision=head_revision,
+                open_anomalies=open_anomalies,
             )
         if dry_run:
             session.rollback()
@@ -545,12 +644,21 @@ def execute_import(
                 target_database_name=effective_target_database,
                 execution_label=execution_label,
             )
+        reconciliation = _augment_reconciliation_diagnostics(reconciliation)
+    except UnresolvedAnomaliesError as exc:
+        primary_error = exc
+        reconciliation = _augment_reconciliation_diagnostics(exc.reconciliation)
+        current_revision = exc.current_revision
+        head_revision = exc.head_revision
     except SchemaLengthValidationError as exc:
         primary_error = exc
         head_revision = expected_alembic_head_revision()
-        reconciliation = {"schema_length_violations": _schema_length_violations_payload(exc)}
+        reconciliation = _augment_reconciliation_diagnostics(
+            {"schema_length_violations": _schema_length_violations_payload(exc)}
+        )
     except Exception as exc:
         primary_error = exc
+        reconciliation = _augment_reconciliation_diagnostics(reconciliation)
     finally:
         if mode == "dry-run" and validation_target_database_url is not None:
             try:
@@ -605,16 +713,16 @@ def execute_import(
     if primary_error is None and cleanup_error_message is None:
         return report
     if primary_error is None:
-        raise ProductionImportError(error_message)
+        raise _reported_exception(ProductionImportError(error_message), report_dir)
     if isinstance(primary_error, SchemaLengthValidationError):
-        raise ProductionImportError(error_message) from primary_error
+        raise _reported_exception(ProductionImportError(error_message), report_dir) from primary_error
     if cleanup_error_message is None:
-        raise primary_error
+        raise _reported_exception(primary_error, report_dir)
     if isinstance(primary_error, ImportCollisionError):
-        raise ImportCollisionError(error_message) from primary_error
+        raise _reported_exception(ImportCollisionError(error_message), report_dir) from primary_error
     if isinstance(primary_error, ProductionImportError):
-        raise ProductionImportError(error_message) from primary_error
-    raise type(primary_error)(error_message) from primary_error
+        raise _reported_exception(ProductionImportError(error_message), report_dir) from primary_error
+    raise _reported_exception(type(primary_error)(error_message), report_dir) from primary_error
 
 
 def _git_sha() -> str:
@@ -674,6 +782,9 @@ def main(argv: list[str] | None = None) -> int:
         )
     except (ProductionImportError, ImportCollisionError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
+        report_json_path = getattr(exc, "report_json_path", "")
+        if report_json_path:
+            print(f"See report: {report_json_path}", file=sys.stderr)
         return 1
 
     print(f"Legacy import {report.mode} completed.")

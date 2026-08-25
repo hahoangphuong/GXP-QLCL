@@ -8,7 +8,7 @@ from contextlib import redirect_stderr, redirect_stdout
 
 from sqlalchemy import create_engine, text
 
-from backend.app.db.models import Base
+from backend.app.db.models import Base, MigrationAnomaly
 from backend.app.runtime_schema import expected_alembic_head_revision
 from tools import build_phase7_cutover_readiness as readiness
 from tools import import_legacy_production as ilp
@@ -215,6 +215,32 @@ def sqlite_path_from_url(database_url: str) -> Path:
     return Path(database_url.removeprefix("sqlite:///"))
 
 
+def balanced_reconciliation() -> dict[str, object]:
+    source_balance = {}
+    for sheet in ilp.CORE_SHEETS:
+        source_balance[sheet] = {
+            "source_count": 0,
+            "imported_count": 0,
+            "skipped_count": 0,
+            "intentionally_skipped_count": 0,
+            "unresolved_count": 0,
+            "balanced": True,
+        }
+    return {
+        "source_balance": source_balance,
+        "inserted_counts": {},
+        "existing_counts": {},
+        "skipped_rows": {},
+        "excluded_rows": {},
+        "schema_length_violations": [],
+        "anomaly_rows": [],
+    }
+
+
+def validation_db_path(prod_database_url: str, target_database_name: str) -> Path:
+    return sqlite_path_from_url(ilp._target_database_url(prod_database_url, target_database_name))
+
+
 def patch_runtime(monkeypatch, database_url: str, runtime_env: Path) -> None:
     contract = ilp.RuntimeDatabaseContract(
         runtime_env_path=runtime_env,
@@ -315,6 +341,7 @@ def test_snapshot_only_apply_path_does_not_require_xlsb(tmp_path: Path, monkeypa
     db_path = tmp_path / "prod.db"
     database_url = prepare_runtime_db(db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
 
     report = ilp.execute_import(
         snapshot_path=snapshot_path,
@@ -324,8 +351,209 @@ def test_snapshot_only_apply_path_does_not_require_xlsb(tmp_path: Path, monkeypa
     )
 
     assert report.mode == "dry-run"
+    assert report.validation_isolation == "clean_temporary_database"
+    assert report.canonical_production_database == "gxp_qlcl"
+    assert report.cleanup_status == "ok"
     assert count_rows(db_path, "company") == 0
     assert count_rows(db_path, "legacy_id_map") == 0
+    assert not validation_db_path(database_url, report.target_database).exists()
+
+
+def test_validation_uses_clean_temporary_database_and_ignores_existing_production_anomaly_state(tmp_path: Path, monkeypatch) -> None:
+    runtime_env = write_runtime_env(tmp_path / "runtime.env")
+    prod_db_path = tmp_path / "prod.db"
+    database_url = prepare_runtime_db(prod_db_path)
+    patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
+
+    snapshot_v1 = sample_snapshot()
+    snapshot_v2 = sample_snapshot()
+    snapshot_v2["db.ktra"][0]["Kết quả"] = "Không đạt"
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot_v2.json", snapshot_wrapper(snapshot_v2))
+
+    detail_v1 = json.dumps(
+        {
+            "source_sheet": "db.ktra",
+            "source_row_key": "row:1169",
+            "legacy_row_id": "1169",
+            "reason": "conflicting_existing_detail",
+            "required_field": "legacy_case_id",
+            "raw_fk_value": "100",
+            "override_value": "",
+            "status": "open",
+            "detail": {"legacy_result": snapshot_v1["db.ktra"][0]["Kết quả"]},
+        },
+        ensure_ascii=False,
+    )
+
+    engine = create_engine(database_url, future=True)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO company (id, legacy_company_id, legal_name, is_inactive, created_at, updated_at) "
+                "VALUES ('11111111-1111-1111-1111-111111111111', 999, 'Production Keep', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO migration_anomaly "
+                "(id, source_sheet, legacy_row_id, reason, required_field, raw_fk_value, override_value, status, detail_json, created_at, updated_at) "
+                "VALUES "
+                "('22222222-2222-2222-2222-222222222222', :source_sheet, :legacy_row_id, :reason, :required_field, :raw_fk_value, :override_value, :status, :detail_json, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            ),
+            {
+                "source_sheet": "db.ktra",
+                "legacy_row_id": "1169",
+                "reason": "conflicting_existing_detail",
+                "required_field": "legacy_case_id",
+                "raw_fk_value": "100",
+                "override_value": None,
+                "status": "open",
+                "detail_json": detail_v1,
+            },
+        )
+    engine.dispose()
+
+    original_import_snapshot = ilp.import_snapshot
+
+    def fake_import_snapshot(session, snapshot, remediation_overrides=None, options=None):
+        payload = {
+            "source_sheet": "db.ktra",
+            "source_row_key": "row:1169",
+            "legacy_row_id": "1169",
+            "reason": "conflicting_existing_detail",
+            "required_field": "legacy_case_id",
+            "raw_fk_value": "100",
+            "override_value": "",
+            "status": "open",
+            "detail": {"legacy_result": snapshot["db.ktra"][0]["Kết quả"]},
+        }
+        session.add(
+            MigrationAnomaly(
+                source_sheet=payload["source_sheet"],
+                legacy_row_id=payload["legacy_row_id"],
+                reason=payload["reason"],
+                required_field=payload["required_field"],
+                raw_fk_value=payload["raw_fk_value"],
+                override_value=None,
+                status=payload["status"],
+                detail_json=json.dumps(payload, ensure_ascii=False),
+            )
+        )
+        session.flush()
+        return balanced_reconciliation()
+
+    monkeypatch.setattr(ilp, "import_snapshot", fake_import_snapshot)
+
+    report = ilp.execute_import(
+        snapshot_path=snapshot_path,
+        runtime_env_path=runtime_env,
+        mode="dry-run",
+        import_mode="validation",
+        report_root=tmp_path / "reports",
+    )
+
+    assert report.validation_status == "pass"
+    assert report.validation_isolation == "clean_temporary_database"
+    assert report.cleanup_status == "ok"
+    assert query_scalar(prod_db_path, "SELECT COUNT(*) FROM migration_anomaly") == 1
+    assert query_scalar(prod_db_path, "SELECT detail_json FROM migration_anomaly") == detail_v1
+    assert query_scalar(prod_db_path, "SELECT COUNT(*) FROM company WHERE legacy_company_id = 999") == 1
+    assert not validation_db_path(database_url, report.target_database).exists()
+    monkeypatch.setattr(ilp, "import_snapshot", original_import_snapshot)
+
+
+def test_validation_drops_temporary_database_when_importer_fails(tmp_path: Path, monkeypatch) -> None:
+    runtime_env = write_runtime_env(tmp_path / "runtime.env")
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
+    prod_db_path = tmp_path / "prod.db"
+    database_url = prepare_runtime_db(prod_db_path)
+    patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
+    monkeypatch.setattr(ilp, "import_snapshot", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    try:
+        ilp.execute_import(
+            snapshot_path=snapshot_path,
+            runtime_env_path=runtime_env,
+            mode="dry-run",
+            import_mode="validation",
+            report_root=tmp_path / "reports",
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "boom"
+    else:
+        raise AssertionError("Expected importer failure")
+
+    report_dirs = sorted((tmp_path / "reports").iterdir())
+    report = json.loads((report_dirs[-1] / "report.json").read_text(encoding="utf-8"))
+    assert report["cleanup_status"] == "ok"
+    assert not validation_db_path(database_url, report["target_database"]).exists()
+
+
+def test_validation_drops_temporary_database_when_reconciliation_fails(tmp_path: Path, monkeypatch) -> None:
+    runtime_env = write_runtime_env(tmp_path / "runtime.env")
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
+    prod_db_path = tmp_path / "prod.db"
+    database_url = prepare_runtime_db(prod_db_path)
+    patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
+
+    def unresolved_import(*args, **kwargs):
+        payload = balanced_reconciliation()
+        payload["anomaly_rows"] = [{"status": "open"}]
+        return payload
+
+    monkeypatch.setattr(ilp, "import_snapshot", unresolved_import)
+
+    try:
+        ilp.execute_import(
+            snapshot_path=snapshot_path,
+            runtime_env_path=runtime_env,
+            mode="dry-run",
+            import_mode="validation",
+            report_root=tmp_path / "reports",
+        )
+    except ilp.ProductionImportError as exc:
+        assert "unresolved anomalies" in str(exc)
+    else:
+        raise AssertionError("Expected reconciliation failure")
+
+    report_dirs = sorted((tmp_path / "reports").iterdir())
+    report = json.loads((report_dirs[-1] / "report.json").read_text(encoding="utf-8"))
+    assert report["cleanup_status"] == "ok"
+    assert not validation_db_path(database_url, report["target_database"]).exists()
+
+
+def test_validation_cleanup_failure_reports_orphan_without_masking_primary_error(tmp_path: Path, monkeypatch) -> None:
+    runtime_env = write_runtime_env(tmp_path / "runtime.env")
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
+    prod_db_path = tmp_path / "prod.db"
+    database_url = prepare_runtime_db(prod_db_path)
+    patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
+    monkeypatch.setattr(ilp, "import_snapshot", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("primary boom")))
+    monkeypatch.setattr(ilp, "_drop_target_database", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("cleanup boom")))
+
+    try:
+        ilp.execute_import(
+            snapshot_path=snapshot_path,
+            runtime_env_path=runtime_env,
+            mode="dry-run",
+            import_mode="validation",
+            report_root=tmp_path / "reports",
+        )
+    except RuntimeError as exc:
+        assert "primary boom" in str(exc)
+        assert "cleanup boom" in str(exc)
+    else:
+        raise AssertionError("Expected combined failure")
+
+    report_dirs = sorted((tmp_path / "reports").iterdir())
+    report = json.loads((report_dirs[-1] / "report.json").read_text(encoding="utf-8"))
+    assert report["cleanup_status"].startswith("failed:")
+    assert "primary boom" in report["error_message"]
+    assert "cleanup boom" in report["error_message"]
 
 
 def test_rehearsal_reset_import_rebuilds_target_and_same_snapshot_rerun_is_stable(tmp_path: Path, monkeypatch) -> None:
@@ -473,6 +701,7 @@ def test_duplicate_legacy_key_fails_closed(tmp_path: Path, monkeypatch) -> None:
     db_path = tmp_path / "prod.db"
     database_url = prepare_runtime_db(db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
 
     try:
         ilp.execute_import(snapshot_path=snapshot_path, runtime_env_path=runtime_env, mode="dry-run", report_root=tmp_path / "reports")
@@ -490,6 +719,7 @@ def test_orphan_fk_blocks_import(tmp_path: Path, monkeypatch) -> None:
     db_path = tmp_path / "prod.db"
     database_url = prepare_runtime_db(db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
 
     try:
         ilp.execute_import(snapshot_path=snapshot_path, runtime_env_path=runtime_env, mode="dry-run", report_root=tmp_path / "reports")
@@ -523,24 +753,31 @@ def test_apply_rejects_target_database_matching_production_db(tmp_path: Path, mo
         raise AssertionError("Expected target database guard failure")
 
 
-def test_wrong_alembic_revision_blocks_validation(tmp_path: Path, monkeypatch) -> None:
+def test_validation_ignores_canonical_production_alembic_revision_and_upgrades_clean_temporary_database(tmp_path: Path, monkeypatch) -> None:
     runtime_env = write_runtime_env(tmp_path / "runtime.env")
     snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
-    db_path = tmp_path / "prod.db"
-    database_url = prepare_runtime_db(db_path)
+    prod_db_path = tmp_path / "prod.db"
+    database_url = prepare_runtime_db(prod_db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
 
     engine = create_engine(database_url, future=True)
     with engine.begin() as connection:
         connection.execute(text("DELETE FROM alembic_version"))
         connection.execute(text("INSERT INTO alembic_version (version_num) VALUES ('wrong-revision')"))
 
-    try:
-        ilp.execute_import(snapshot_path=snapshot_path, runtime_env_path=runtime_env, mode="dry-run", report_root=tmp_path / "reports")
-    except ilp.ProductionImportError as exc:
-        assert "Alembic revision mismatch" in str(exc)
-    else:
-        raise AssertionError("Expected Alembic gate failure")
+    report = ilp.execute_import(
+        snapshot_path=snapshot_path,
+        runtime_env_path=runtime_env,
+        mode="dry-run",
+        report_root=tmp_path / "reports",
+    )
+
+    assert report.validation_status == "pass"
+    assert report.validation_isolation == "clean_temporary_database"
+    assert report.cleanup_status == "ok"
+    assert query_scalar(prod_db_path, "SELECT version_num FROM alembic_version") == "wrong-revision"
+    assert not validation_db_path(database_url, report.target_database).exists()
 
 
 def test_final_backup_failure_blocks_apply_before_mutation(tmp_path: Path, monkeypatch) -> None:
@@ -588,6 +825,7 @@ def test_main_never_logs_passwords(tmp_path: Path, monkeypatch) -> None:
     db_path = tmp_path / "prod.db"
     database_url = prepare_runtime_db(db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
     stdout = io.StringIO()
     stderr = io.StringIO()
     with redirect_stdout(stdout), redirect_stderr(stderr):
@@ -658,6 +896,7 @@ def test_dry_run_with_missing_phase7_artifacts_creates_report_without_traceback(
     db_path = tmp_path / "prod.db"
     database_url = prepare_runtime_db(db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
     patch_phase7_artifact_paths(monkeypatch, tmp_path)
     write_phase7_closeout_artifacts(tmp_path)
     monkeypatch.setattr(ilp, "_load_phase7_gate", load_real_phase7_gate)
@@ -698,6 +937,7 @@ def test_import_validation_failure_is_not_masked_by_cutover_status(tmp_path: Pat
     db_path = tmp_path / "prod.db"
     database_url = prepare_runtime_db(db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
     patch_phase7_artifact_paths(monkeypatch, tmp_path)
     write_phase7_closeout_artifacts(tmp_path)
     monkeypatch.setattr(ilp, "_load_phase7_gate", load_real_phase7_gate)
@@ -729,6 +969,7 @@ def test_main_reports_schema_length_preflight_failures_without_raw_db_traceback(
     db_path = tmp_path / "prod.db"
     database_url = prepare_runtime_db(db_path)
     patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
     patch_phase7_artifact_paths(monkeypatch, tmp_path)
     write_phase7_closeout_artifacts(tmp_path)
     monkeypatch.setattr(ilp, "_load_phase7_gate", load_real_phase7_gate)

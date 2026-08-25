@@ -7,6 +7,7 @@ import sqlite3
 from contextlib import redirect_stderr, redirect_stdout
 
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import URL, make_url
 
 from backend.app.db.models import Base, MigrationAnomaly
 from backend.app.runtime_schema import expected_alembic_head_revision
@@ -249,7 +250,7 @@ def patch_runtime(monkeypatch, database_url: str, runtime_env: Path) -> None:
         db_name="gxp_qlcl",
         db_user="gxp_app",
         database_url=database_url,
-        database_url_redacted="sqlite:///***",
+        database_url_redacted=ilp._redact_database_url(database_url),
     )
     monkeypatch.setattr(ilp, "_load_runtime_database_contract", lambda runtime_env_path: (contract, {}))
     monkeypatch.setattr(
@@ -265,6 +266,17 @@ def patch_target_schema_upgrade(monkeypatch) -> None:
         prepare_runtime_db(sqlite_path_from_url(database_url))
 
     monkeypatch.setattr(ilp, "_upgrade_target_database_schema", fake_upgrade)
+
+
+def postgres_database_url(*, password: str, database: str = "gxp_qlcl") -> str:
+    return URL.create(
+        "postgresql+psycopg",
+        username="gxp_app",
+        password=password,
+        host="127.0.0.1",
+        port=5432,
+        database=database,
+    ).render_as_string(hide_password=False)
 
 
 def rehearsal_apply(
@@ -357,6 +369,63 @@ def test_snapshot_only_apply_path_does_not_require_xlsb(tmp_path: Path, monkeypa
     assert count_rows(db_path, "company") == 0
     assert count_rows(db_path, "legacy_id_map") == 0
     assert not validation_db_path(database_url, report.target_database).exists()
+
+
+def test_target_database_url_preserves_real_postgres_password() -> None:
+    database_url = postgres_database_url(password="s3cr3t", database="source")
+
+    target_database_url = ilp._target_database_url(database_url, "target")
+
+    assert "***" not in target_database_url
+    parsed = make_url(target_database_url)
+    assert parsed.username == "gxp_app"
+    assert parsed.password == "s3cr3t"
+    assert parsed.database == "target"
+
+
+def test_target_database_url_round_trips_reserved_password_characters() -> None:
+    password = "p@ss:/%# word"
+    database_url = postgres_database_url(password=password, database="source")
+
+    target_database_url = ilp._target_database_url(database_url, "target")
+
+    assert "***" not in target_database_url
+    parsed = make_url(target_database_url)
+    assert parsed.password == password
+    assert parsed.database == "target"
+
+
+def test_redacted_database_url_hides_raw_password() -> None:
+    password = "p@ss:/%# word"
+    database_url = postgres_database_url(password=password, database="source")
+
+    redacted = ilp._redact_database_url(database_url)
+
+    assert password not in redacted
+    assert ":***@" in redacted
+    assert redacted.endswith("/source")
+
+
+def test_upgrade_target_database_schema_passes_executable_url_to_alembic(monkeypatch) -> None:
+    password = "s3cr3t"
+    target_database_url = ilp._target_database_url(
+        postgres_database_url(password=password, database="source"),
+        "gxp_legacy_validation_demo",
+    )
+    captured: dict[str, str] = {}
+
+    def fake_run_subprocess(command, *, env=None):
+        captured["command"] = " ".join(command)
+        captured["database_url"] = "" if env is None else env["DATABASE_URL"]
+
+    monkeypatch.setattr(ilp, "_run_subprocess", fake_run_subprocess)
+
+    ilp._upgrade_target_database_schema(target_database_url)
+
+    assert "alembic" in captured["command"]
+    assert "***" not in captured["database_url"]
+    assert make_url(captured["database_url"]).password == password
+    assert make_url(captured["database_url"]).database == "gxp_legacy_validation_demo"
 
 
 def test_validation_uses_clean_temporary_database_and_ignores_existing_production_anomaly_state(tmp_path: Path, monkeypatch) -> None:
@@ -463,6 +532,106 @@ def test_validation_uses_clean_temporary_database_and_ignores_existing_productio
     monkeypatch.setattr(ilp, "import_snapshot", original_import_snapshot)
 
 
+def test_validation_uses_executable_url_and_redacts_reports(tmp_path: Path, monkeypatch) -> None:
+    password = "p@ss:/%# word"
+    runtime_env = write_runtime_env(tmp_path / "runtime.env", password=password)
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
+    database_url = postgres_database_url(password=password)
+    patch_runtime(monkeypatch, database_url, runtime_env)
+    captured_urls: list[str] = []
+
+    monkeypatch.setattr(ilp, "_recreate_target_database", lambda *args, **kwargs: None)
+    monkeypatch.setattr(ilp, "_drop_target_database", lambda *args, **kwargs: None)
+    monkeypatch.setattr(ilp, "_upgrade_target_database_schema", lambda url: captured_urls.append(url))
+
+    def fake_run_import(*, database_url: str, snapshot, dry_run: bool, require_head_revision: bool):
+        captured_urls.append(database_url)
+        head = expected_alembic_head_revision()
+        return balanced_reconciliation(), head, head
+
+    monkeypatch.setattr(ilp, "_run_import", fake_run_import)
+
+    report = ilp.execute_import(
+        snapshot_path=snapshot_path,
+        runtime_env_path=runtime_env,
+        mode="dry-run",
+        import_mode="validation",
+        report_root=tmp_path / "reports",
+    )
+
+    assert report.validation_status == "pass"
+    assert report.database_url_redacted == ilp._redact_database_url(captured_urls[-1])
+    assert password not in report.database_url_redacted
+    assert ":***@" in report.database_url_redacted
+    assert len(captured_urls) == 2
+    for captured_url in captured_urls:
+        parsed = make_url(captured_url)
+        assert parsed.password == password
+        assert parsed.database == report.target_database
+        assert "***" not in captured_url
+
+    report_dir = Path(report.report_dir)
+    report_json = (report_dir / "report.json").read_text(encoding="utf-8")
+    report_md = (report_dir / "report.md").read_text(encoding="utf-8")
+    assert password not in report_json
+    assert password not in report_md
+    assert report.database_url_redacted in report_json
+    assert report.database_url_redacted in report_md
+
+
+def test_apply_modes_use_executable_target_urls_without_secret_leaks(tmp_path: Path, monkeypatch) -> None:
+    password = "p@ss:/%# word"
+    runtime_env = write_runtime_env(tmp_path / "runtime.env", password=password)
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
+    database_url = postgres_database_url(password=password)
+    patch_runtime(monkeypatch, database_url, runtime_env)
+
+    mode_targets = {
+        "rehearsal": ilp.DEFAULT_REHEARSAL_TARGET_DB,
+        "final": ilp.DEFAULT_FINAL_TARGET_DB,
+    }
+    captured_by_mode: dict[str, list[str]] = {}
+    backup_calls: list[str] = []
+
+    monkeypatch.setattr(ilp, "_recreate_target_database", lambda *args, **kwargs: None)
+
+    def fake_upgrade(database_url: str) -> None:
+        captured_by_mode.setdefault(current_mode[0], []).append(database_url)
+
+    def fake_run_import(*, database_url: str, snapshot, dry_run: bool, require_head_revision: bool):
+        captured_by_mode.setdefault(current_mode[0], []).append(database_url)
+        head = expected_alembic_head_revision()
+        return balanced_reconciliation(), head, head
+
+    monkeypatch.setattr(ilp, "_upgrade_target_database_schema", fake_upgrade)
+    monkeypatch.setattr(ilp, "_run_import", fake_run_import)
+    monkeypatch.setattr(ilp, "_run_backup", lambda runtime_env_path: backup_calls.append(str(runtime_env_path)))
+
+    for import_mode, expected_target in mode_targets.items():
+        current_mode = [import_mode]
+        report = ilp.execute_import(
+            snapshot_path=snapshot_path,
+            runtime_env_path=runtime_env,
+            mode="apply",
+            import_mode=import_mode,
+            reset_from_snapshot=True,
+            report_root=tmp_path / "reports",
+        )
+        assert report.target_database == expected_target
+        assert password not in report.database_url_redacted
+        assert ":***@" in report.database_url_redacted
+        for captured_url in captured_by_mode[import_mode]:
+            parsed = make_url(captured_url)
+            assert parsed.password == password
+            assert parsed.database == expected_target
+            assert "***" not in captured_url
+        report_dir = Path(report.report_dir)
+        assert password not in (report_dir / "report.json").read_text(encoding="utf-8")
+        assert password not in (report_dir / "report.md").read_text(encoding="utf-8")
+
+    assert backup_calls == [str(runtime_env)]
+
+
 def test_validation_drops_temporary_database_when_importer_fails(tmp_path: Path, monkeypatch) -> None:
     runtime_env = write_runtime_env(tmp_path / "runtime.env")
     snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
@@ -554,6 +723,44 @@ def test_validation_cleanup_failure_reports_orphan_without_masking_primary_error
     assert report["cleanup_status"].startswith("failed:")
     assert "primary boom" in report["error_message"]
     assert "cleanup boom" in report["error_message"]
+
+
+def test_validation_wraps_alembic_auth_failure_without_url_leak(tmp_path: Path, monkeypatch) -> None:
+    password = "top-secret"
+    runtime_env = write_runtime_env(tmp_path / "runtime.env", password=password)
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
+    database_url = postgres_database_url(password=password)
+    patch_runtime(monkeypatch, database_url, runtime_env)
+    monkeypatch.setattr(ilp, "_recreate_target_database", lambda *args, **kwargs: None)
+    monkeypatch.setattr(ilp, "_drop_target_database", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        ilp,
+        "_upgrade_target_database_schema",
+        lambda database_url: (_ for _ in ()).throw(
+            ilp.ProductionImportError(
+                "Traceback...\n"
+                "sqlalchemy.exc.OperationalError: (psycopg.OperationalError) connection failed\n"
+                'FATAL: password authentication failed for user "gxp_app"'
+            )
+        ),
+    )
+
+    try:
+        ilp.execute_import(
+            snapshot_path=snapshot_path,
+            runtime_env_path=runtime_env,
+            mode="dry-run",
+            import_mode="validation",
+            report_root=tmp_path / "reports",
+        )
+    except ilp.ProductionImportError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("Expected schema migration failure")
+
+    assert message == "Temporary validation schema migration failed: PostgreSQL authentication failed"
+    assert password not in message
+    assert "***" not in message
 
 
 def test_rehearsal_reset_import_rebuilds_target_and_same_snapshot_rerun_is_stable(tmp_path: Path, monkeypatch) -> None:

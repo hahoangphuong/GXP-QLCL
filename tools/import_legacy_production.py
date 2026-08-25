@@ -14,7 +14,7 @@ import sys
 from typing import Any
 
 from sqlalchemy import text
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import URL, make_url
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -88,14 +88,14 @@ class ImportReport:
 
 
 def _redact_database_url(url: str) -> str:
-    if "://" not in url or "@" not in url:
-        return url
-    scheme, remainder = url.split("://", 1)
-    credentials, suffix = remainder.split("@", 1)
-    if ":" not in credentials:
-        return f"{scheme}://***@{suffix}"
-    user, _password = credentials.split(":", 1)
-    return f"{scheme}://{user}:***@{suffix}"
+    return _render_database_url(url, hide_password=True)
+
+
+def _render_database_url(url: str | URL, *, hide_password: bool) -> str:
+    parsed = make_url(url) if isinstance(url, str) else url
+    if parsed.drivername.startswith("sqlite"):
+        return str(parsed)
+    return parsed.render_as_string(hide_password=hide_password)
 
 
 def _target_database_url(database_url: str, target_database_name: str) -> str:
@@ -106,7 +106,7 @@ def _target_database_url(database_url: str, target_database_name: str) -> str:
         current_path = Path(url.database)
         target_path = current_path.with_name(f"{target_database_name}{current_path.suffix or '.db'}")
         return f"sqlite:///{target_path.as_posix()}"
-    return str(url.set(database=target_database_name))
+    return _render_database_url(url.set(database=target_database_name), hide_password=False)
 
 
 def _load_runtime_database_contract(runtime_env_path: Path) -> tuple[RuntimeDatabaseContract, dict[str, str]]:
@@ -383,15 +383,37 @@ def _upgrade_target_database_schema(database_url: str) -> None:
     _run_subprocess([sys.executable, "-m", "alembic", "-c", str(ROOT / "alembic.ini"), "upgrade", "head"], env=env)
 
 
+def _concise_database_error(message: str) -> str:
+    lowered = message.lower()
+    if "password authentication failed" in lowered:
+        return "PostgreSQL authentication failed"
+    if "authentication failed" in lowered:
+        return "Database authentication failed"
+    if "could not connect" in lowered or "connection refused" in lowered:
+        return "PostgreSQL connection failed"
+    lines = [line.strip() for line in message.splitlines() if line.strip()]
+    for line in reversed(lines):
+        if line.startswith("Traceback"):
+            continue
+        if line.startswith("File "):
+            continue
+        return line
+    return message.strip() or "database operation failed"
+
+
 def _execute_reset_import(
     *,
     contract: RuntimeDatabaseContract,
     snapshot: dict[str, list[dict[str, str]]],
     target_database_name: str,
+    execution_label: str,
 ) -> tuple[dict[str, Any], str | None, str | None, str]:
     target_database_url = _target_database_url(contract.database_url, target_database_name)
     _recreate_target_database(contract, target_database_name, target_database_url)
-    _upgrade_target_database_schema(target_database_url)
+    try:
+        _upgrade_target_database_schema(target_database_url)
+    except ProductionImportError as exc:
+        raise ProductionImportError(f"{execution_label} schema migration failed: {_concise_database_error(str(exc))}") from exc
     reconciliation, current_revision, head_revision = _run_import(
         database_url=target_database_url,
         snapshot=snapshot,
@@ -490,6 +512,7 @@ def execute_import(
         effective_target_database = target_database_name or _validation_target_database_name()
         validation_target_database_url = _target_database_url(contract.database_url, effective_target_database)
         database_url_redacted = _redact_database_url(validation_target_database_url)
+        execution_label = "Temporary validation"
     else:
         if import_mode not in {"rehearsal", "final"}:
             raise ProductionImportError("--apply requires --import-mode rehearsal or --import-mode final.")
@@ -500,6 +523,7 @@ def execute_import(
                 DEFAULT_REHEARSAL_TARGET_DB if import_mode == "rehearsal" else DEFAULT_FINAL_TARGET_DB
             )
         effective_target_database = target_database_name
+        execution_label = "Rehearsal target" if import_mode == "rehearsal" else "Final candidate"
 
     backup_status = "not-run"
     if mode == "apply" and import_mode == "final":
@@ -512,12 +536,14 @@ def execute_import(
                 contract=contract,
                 snapshot=snapshot,
                 target_database_name=effective_target_database,
+                execution_label=execution_label,
             )
         else:
             reconciliation, current_revision, head_revision, database_url_redacted = _execute_reset_import(
                 contract=contract,
                 snapshot=snapshot,
                 target_database_name=effective_target_database,
+                execution_label=execution_label,
             )
     except SchemaLengthValidationError as exc:
         primary_error = exc

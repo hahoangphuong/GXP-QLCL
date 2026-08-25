@@ -23,7 +23,7 @@ Production import on the Ubuntu VM uses the exported legacy snapshot JSON, not E
 The VM import path does not require `legacy/*.xlsb` once the snapshot JSON is present and valid.
 
 ## Canonical commands
-Validation dry-run against the configured runtime database:
+Validation dry-run against a clean temporary validation database derived from the canonical production runtime contract:
 
 ```bash
 cd /opt/gxp/src/GXP-QLCL
@@ -175,15 +175,17 @@ sudo VM_RUNTIME_ENV_FILE=/etc/gxp/runtime.env ./infra/vm/verify_prod.sh
 ## Safety contract
 - `APP_ENV` must be `production`.
 - `DB_MODE` must be `local_postgres`.
-- Validation dry-run uses the canonical runtime database contract and never commits mutations.
+- Validation dry-run uses the canonical runtime database contract to derive a clean temporary validation database.
+- Validation dry-run upgrades that temporary database to Alembic head, runs the canonical importer/reconciliation there, writes the report, then drops the temporary database in `finally`.
+- Validation dry-run performs zero mutation on the canonical production database `gxp_qlcl`.
 - Rehearsal/final apply require explicit `--import-mode` plus `--reset-from-snapshot`.
 - Rehearsal/final target DB must not equal the canonical production database `gxp_qlcl`.
 - Default rebuild targets are `gxp_legacy_rehearsal` for rehearsal and `gxp_qlcl_candidate` for final.
 - Rehearsal/final rebuild semantics are fresh reset imports, not incremental merge.
-- Current Alembic revision must equal repository head.
+- Validation uses a clean temporary database upgraded to repository head; rehearsal/final reset imports rebuild their own target database at repository head.
 - Final candidate rebuild runs the canonical PostgreSQL backup script before mutation.
 - Snapshot hash is recorded in the import report.
-- Dry-run uses the same importer logic as apply and rolls back the transaction.
+- Dry-run uses the same importer logic as apply, but against an ephemeral validation database rather than the canonical production database.
 - Rehearsal/final apply recreate the target DB, run `alembic upgrade head`, then import transactionally.
 - Apply is transactional and must fail closed on collisions, unresolved anomalies, Alembic mismatch, target DB contract violations, or backup failure.
 - Current Phase 7 gate is reported but not auto-bypassed or auto-resolved by the importer.

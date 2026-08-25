@@ -19,12 +19,14 @@ from backend.app.db.models.phase1 import (
     Site,
 )
 from backend.app.domain.phase2_import import (
+    ConfirmedBlankedResurrectionError,
     ImportExecutionOptions,
     SchemaLengthValidationError,
     build_schema_length_audit,
     import_snapshot,
     source_row_key,
 )
+from backend.app.domain import phase2_import as phase2_import_module
 
 
 def sample_snapshot():
@@ -93,6 +95,156 @@ def test_import_snapshot_applies_remediation_override_and_persists_anomaly():
         assert session.query(Site).count() == 1
         assert session.query(MigrationAnomaly).count() == 1
         assert reconciliation["applied_override_count"] == 1
+
+
+def test_import_snapshot_rejects_generic_override_for_confirmed_blanked_row(monkeypatch, tmp_path):
+    confirmed_blanked_path = tmp_path / "confirmed_blanked_rows.json"
+    confirmed_blanked_path.write_text(
+        json.dumps(
+            {
+                "rows": [
+                    {
+                        "source_sheet": "db.cso",
+                        "source_row_key": "10",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    resurrection_path = tmp_path / "confirmed_blanked_resurrections.json"
+    resurrection_path.write_text(json.dumps({"rows": []}, ensure_ascii=False, indent=2), encoding="utf-8")
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", confirmed_blanked_path)
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_RESURRECTIONS_PATH", resurrection_path)
+
+    snapshot = sample_snapshot()
+    snapshot["db.cso"] = [
+        {"ID": "10", "ID Cty": "", "TÊN CƠ SỞ": "Site A", "SITE NAME": "Site A", "ĐỊA CHỈ CƠ SỞ": "Site Addr", "SITE ADDRESS": "Site Addr", "TỈNH/TP": "HN", "TÊN VIẾT TẮT": "SA"},
+    ]
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        try:
+            import_snapshot(
+                session,
+                snapshot,
+                remediation_overrides={"db.cso": {"10": {"company_legacy_id": 1}}},
+            )
+        except ConfirmedBlankedResurrectionError as exc:
+            assert "db.cso:10" in str(exc)
+        else:
+            raise AssertionError("Expected confirmed blanked resurrection contract failure")
+        assert session.query(Site).count() == 0
+
+
+def test_import_snapshot_accepts_approved_confirmed_blanked_resurrection(monkeypatch, tmp_path):
+    confirmed_blanked_path = tmp_path / "confirmed_blanked_rows.json"
+    confirmed_blanked_path.write_text(
+        json.dumps(
+            {
+                "rows": [
+                    {
+                        "source_sheet": "db.cso",
+                        "source_row_key": "10",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    resurrection_path = tmp_path / "confirmed_blanked_resurrections.json"
+    resurrection_path.write_text(
+        json.dumps(
+            {
+                "rows": [
+                    {
+                        "source_sheet": "db.cso",
+                        "source_row_key": "10",
+                        "approved_override": {"company_legacy_id": 1},
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", confirmed_blanked_path)
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_RESURRECTIONS_PATH", resurrection_path)
+
+    snapshot = sample_snapshot()
+    snapshot["db.cso"] = [
+        {"ID": "10", "ID Cty": "", "TÊN CƠ SỞ": "Site A", "SITE NAME": "Site A", "ĐỊA CHỈ CƠ SỞ": "Site Addr", "SITE ADDRESS": "Site Addr", "TỈNH/TP": "HN", "TÊN VIẾT TẮT": "SA"},
+    ]
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        reconciliation = import_snapshot(
+            session,
+            snapshot,
+            remediation_overrides={"db.cso": {"10": {"company_legacy_id": 1}}},
+        )
+        session.commit()
+        assert session.query(Site).count() == 1
+        assert session.query(MigrationAnomaly).count() == 1
+        assert reconciliation["applied_override_count"] == 1
+
+
+def test_import_snapshot_rejects_mismatched_confirmed_blanked_resurrection(monkeypatch, tmp_path):
+    confirmed_blanked_path = tmp_path / "confirmed_blanked_rows.json"
+    confirmed_blanked_path.write_text(
+        json.dumps(
+            {
+                "rows": [
+                    {
+                        "source_sheet": "db.cso",
+                        "source_row_key": "10",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    resurrection_path = tmp_path / "confirmed_blanked_resurrections.json"
+    resurrection_path.write_text(
+        json.dumps(
+            {
+                "rows": [
+                    {
+                        "source_sheet": "db.cso",
+                        "source_row_key": "10",
+                        "approved_override": {"company_legacy_id": 2},
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", confirmed_blanked_path)
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_RESURRECTIONS_PATH", resurrection_path)
+
+    snapshot = sample_snapshot()
+    snapshot["db.cso"] = [
+        {"ID": "10", "ID Cty": "", "TÊN CƠ SỞ": "Site A", "SITE NAME": "Site A", "ĐỊA CHỈ CƠ SỞ": "Site Addr", "SITE ADDRESS": "Site Addr", "TỈNH/TP": "HN", "TÊN VIẾT TẮT": "SA"},
+    ]
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        try:
+            import_snapshot(
+                session,
+                snapshot,
+                remediation_overrides={"db.cso": {"10": {"company_legacy_id": 1}}},
+            )
+        except ConfirmedBlankedResurrectionError as exc:
+            assert "does not match" in str(exc)
+        else:
+            raise AssertionError("Expected approved resurrection mismatch failure")
 
 
 def test_import_snapshot_allows_certificate_without_case_when_site_exists():

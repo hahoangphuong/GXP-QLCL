@@ -109,6 +109,7 @@ Supported override keys:
 - Reimports are deterministic for the same workbook snapshot plus the same override file.
 - `row:<excel_row_number>` is valid for remediation replay only and is not a business key.
 - This phase does not modify Synology binaries or legacy workbook files.
+- Rows already covered by `confirmed_blanked_rows.json` must not be revived through this generic override channel; use the explicit resurrection contract in [PHASE3S_CONFIRMED_BLANKED_RESURRECTION_CONTRACT.md](/D:/GXP-QLCL/docs/PHASE3S_CONFIRMED_BLANKED_RESURRECTION_CONTRACT.md).
 
 ## Next recommended step
 Historical next step at the time:

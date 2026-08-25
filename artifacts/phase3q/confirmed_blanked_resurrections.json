@@ -1,0 +1,10 @@
+{
+  "generated_on": "2026-08-25",
+  "purpose": "Explicit owner-approved resurrection contract for rows that otherwise remain excluded by confirmed_blanked_rows.json.",
+  "rules": [
+    "Only rows already present in confirmed_blanked_rows.json may appear here.",
+    "Each approved_override must match the remediation override exactly.",
+    "Absent rows remain excluded from business import."
+  ],
+  "rows": []
+}

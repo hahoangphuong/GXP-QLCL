@@ -40,6 +40,9 @@ from backend.app.db.models.phase1 import (
 from backend.app.domain.legacy_snapshot import read_core_sheet_rows
 
 CONFIRMED_BLANKED_ROWS_PATH = Path(__file__).resolve().parents[3] / "artifacts" / "phase3q" / "confirmed_blanked_rows.json"
+CONFIRMED_BLANKED_RESURRECTIONS_PATH = (
+    Path(__file__).resolve().parents[3] / "artifacts" / "phase3q" / "confirmed_blanked_resurrections.json"
+)
 
 
 PRIMARY_TARGET_MAP = {
@@ -168,6 +171,10 @@ class SchemaLengthValidationError(RuntimeError):
             summary[violation.target] = summary.get(violation.target, 0) + 1
         detail = ", ".join(f"{target}={count}" for target, count in sorted(summary.items()))
         super().__init__(f"Schema length preflight failed for {len(violations)} value(s): {detail}")
+
+
+class ConfirmedBlankedResurrectionError(RuntimeError):
+    """Raised when a confirmed blanked row is overridden without explicit owner approval."""
 
 
 LENGTH_AUDIT_RULES: tuple[LengthAuditRule, ...] = (
@@ -805,6 +812,63 @@ def load_confirmed_blanked_null_key_budgets() -> dict[str, int]:
     return budgets
 
 
+def load_confirmed_blanked_resurrections() -> dict[tuple[str, str], dict[str, int]]:
+    if not CONFIRMED_BLANKED_RESURRECTIONS_PATH.exists():
+        return {}
+    payload = json.loads(CONFIRMED_BLANKED_RESURRECTIONS_PATH.read_text(encoding="utf-8"))
+    approved: dict[tuple[str, str], dict[str, int]] = {}
+    for row in payload.get("rows", []):
+        source_sheet = str(row.get("source_sheet", "")).strip()
+        source_row_key = str(row.get("source_row_key", "")).strip()
+        if not source_sheet or not source_row_key:
+            continue
+        override_payload = row.get("approved_override")
+        if not isinstance(override_payload, dict):
+            continue
+        parsed_override: dict[str, int] = {}
+        for key, value in override_payload.items():
+            parsed_value = parse_int(value)
+            if parsed_value is not None:
+                parsed_override[str(key)] = parsed_value
+        if parsed_override:
+            approved[(source_sheet, source_row_key)] = parsed_override
+    return approved
+
+
+def _validate_confirmed_blanked_override_contract(
+    overrides: dict[str, dict[str, dict[str, Any]]] | None,
+    *,
+    confirmed_blanked_row_keys: set[tuple[str, str]],
+    approved_resurrections: dict[tuple[str, str], dict[str, int]],
+) -> None:
+    if not overrides:
+        return
+    for source_sheet, rows in overrides.items():
+        for source_row_key, override_payload in rows.items():
+            key = (source_sheet, source_row_key)
+            if key not in confirmed_blanked_row_keys:
+                continue
+            if not isinstance(override_payload, dict):
+                raise ConfirmedBlankedResurrectionError(
+                    f"Confirmed blanked row {source_sheet}:{source_row_key} requires an explicit approved_override payload."
+                )
+            approved_override = approved_resurrections.get(key)
+            if approved_override is None:
+                raise ConfirmedBlankedResurrectionError(
+                    f"Confirmed blanked row {source_sheet}:{source_row_key} cannot be resurrected by a generic remediation override. "
+                    f"Add an explicit approval entry to {CONFIRMED_BLANKED_RESURRECTIONS_PATH} first."
+                )
+            normalized_override = {
+                str(remediation_key): parse_int(value)
+                for remediation_key, value in override_payload.items()
+                if parse_int(value) is not None
+            }
+            if normalized_override != approved_override:
+                raise ConfirmedBlankedResurrectionError(
+                    f"Confirmed blanked row {source_sheet}:{source_row_key} override does not match the approved resurrection contract."
+                )
+
+
 def _record_anomaly(
     session: Session,
     stats: ImportStats,
@@ -968,6 +1032,12 @@ def import_snapshot(
         _reset_import_tables(session)
     confirmed_blanked_row_keys = load_confirmed_blanked_row_keys()
     confirmed_blanked_null_key_budgets = load_confirmed_blanked_null_key_budgets()
+    approved_confirmed_blanked_resurrections = load_confirmed_blanked_resurrections()
+    _validate_confirmed_blanked_override_contract(
+        remediation_overrides,
+        confirmed_blanked_row_keys=confirmed_blanked_row_keys,
+        approved_resurrections=approved_confirmed_blanked_resurrections,
+    )
     anomaly_rows: list[dict[str, Any]] = []
     skipped_rows: dict[str, list[dict[str, Any]]] = {sheet: [] for sheet in snapshot}
     stats = ImportStats()

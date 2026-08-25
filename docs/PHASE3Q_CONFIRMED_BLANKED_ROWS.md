@@ -34,6 +34,7 @@ These rows exist because:
 - Do not send this set into external-evidence review.
 - Do not infer business meaning from preserved row numbers alone.
 - Keep deterministic source references only for audit/reconciliation traceability.
+- If the business later wants a specific row materialized again, use the explicit resurrection contract in [PHASE3S_CONFIRMED_BLANKED_RESURRECTION_CONTRACT.md](/D:/GXP-QLCL/docs/PHASE3S_CONFIRMED_BLANKED_RESURRECTION_CONTRACT.md) instead of a generic remediation override.
 
 ## Superseded interpretation
 Earlier Phase 3 documents correctly detected many of these rows as placeholders heuristically, but they still left room for manual evidence review on some rows.

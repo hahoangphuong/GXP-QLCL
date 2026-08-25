@@ -71,4 +71,4 @@ def test_legacy_result_narratives_use_text_columns():
 
 
 def test_expected_alembic_head_revision_tracks_latest_runtime_migration():
-    assert expected_alembic_head_revision() == "c1f9d7c8b2aa"
+    assert expected_alembic_head_revision() == "20260825_0003"

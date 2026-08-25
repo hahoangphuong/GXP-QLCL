@@ -19,6 +19,7 @@ from backend.app.db.models.phase1 import (
     Site,
 )
 from backend.app.domain.phase2_import import (
+    ImportExecutionOptions,
     SchemaLengthValidationError,
     build_schema_length_audit,
     import_snapshot,
@@ -151,11 +152,203 @@ def test_import_snapshot_accepts_override_for_blank_id_row_via_source_row_key():
         session.commit()
         assert session.query(Case).count() == 1
         anomaly = session.scalars(
-            select(MigrationAnomaly).where(MigrationAnomaly.legacy_row_id.is_(None))
+            select(MigrationAnomaly).where(MigrationAnomaly.source_row_key == "row:42")
         ).one()
+        assert anomaly.source_row_key == "row:42"
         assert anomaly.legacy_row_id is None
         assert '"source_row_key": "row:42"' in (anomaly.detail_json or "")
         assert reconciliation["applied_override_count"] == 1
+
+
+def test_import_snapshot_creates_distinct_anomalies_for_blank_id_rows_with_same_other_fields():
+    snapshot = sample_snapshot()
+    snapshot["db.ktra"] = [
+        {
+            "ID": "",
+            "__excel_row_number": "10",
+            "LOẠI KT": "GMP",
+            "ID CƠ SỞ": "999",
+            "MÃ DC": "A",
+        },
+        {
+            "ID": "",
+            "__excel_row_number": "11",
+            "LOẠI KT": "GMP",
+            "ID CƠ SỞ": "999",
+            "MÃ DC": "B",
+        },
+    ]
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        reconciliation = import_snapshot(session, snapshot)
+        session.commit()
+        anomalies = session.scalars(
+            select(MigrationAnomaly)
+            .where(MigrationAnomaly.source_sheet == "db.ktra")
+            .order_by(MigrationAnomaly.source_row_key)
+        ).all()
+        assert [row.source_row_key for row in anomalies] == ["row:10", "row:11"]
+        assert all(row.legacy_row_id is None for row in anomalies)
+        assert reconciliation["source_balance"]["db.ktra"]["unresolved_count"] == 2
+
+
+def test_import_snapshot_same_snapshot_replay_does_not_duplicate_blank_id_anomalies():
+    snapshot = sample_snapshot()
+    snapshot["db.ktra"] = [
+        {
+            "ID": "",
+            "__excel_row_number": "10",
+            "LOẠI KT": "GMP",
+            "ID CƠ SỞ": "999",
+            "MÃ DC": "A",
+        },
+        {
+            "ID": "",
+            "__excel_row_number": "11",
+            "LOẠI KT": "GMP",
+            "ID CƠ SỞ": "999",
+            "MÃ DC": "B",
+        },
+    ]
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        import_snapshot(session, snapshot)
+        session.commit()
+        replay = import_snapshot(
+            session,
+            snapshot,
+            options=ImportExecutionOptions(
+                ensure_schema=False,
+                reset_existing_data=False,
+                allow_existing_records=True,
+                persist_audit_event=False,
+            ),
+        )
+        session.commit()
+        anomalies = session.scalars(
+            select(MigrationAnomaly)
+            .where(MigrationAnomaly.source_sheet == "db.ktra")
+            .order_by(MigrationAnomaly.source_row_key)
+        ).all()
+        assert [row.source_row_key for row in anomalies] == ["row:10", "row:11"]
+        assert replay["source_balance"]["db.ktra"]["unresolved_count"] == 2
+
+
+def test_import_snapshot_raises_on_same_source_row_key_with_conflicting_anomaly_detail():
+    snapshot = sample_snapshot()
+    snapshot["db.ktra"] = [
+        {
+            "ID": "",
+            "__excel_row_number": "10",
+            "LOẠI KT": "GMP",
+            "ID CƠ SỞ": "999",
+            "MÃ DC": "A",
+        }
+    ]
+    engine = create_engine("sqlite:///:memory:", future=True)
+    from backend.app.db.models import Base
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        session.add(
+            MigrationAnomaly(
+                source_sheet="db.ktra",
+                source_row_key="row:10",
+                legacy_row_id=None,
+                reason="missing_site_fk",
+                required_field="ID Cơ Sở",
+                raw_fk_value="999",
+                override_value=None,
+                status="open",
+                detail_json=json.dumps(
+                    {
+                        "source_sheet": "db.ktra",
+                        "source_row_key": "row:10",
+                        "source_row_number": 999,
+                        "legacy_row_id": None,
+                        "reason": "missing_site_fk",
+                        "required_field": "ID Cơ Sở",
+                        "raw_fk_value": "999",
+                        "override_value": None,
+                        "status": "open",
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+        )
+        session.commit()
+        try:
+            import_snapshot(
+                session,
+                snapshot,
+                options=ImportExecutionOptions(
+                    ensure_schema=False,
+                    reset_existing_data=False,
+                    allow_existing_records=True,
+                    persist_audit_event=False,
+                ),
+            )
+        except Exception as exc:
+            message = str(exc)
+            assert "source_sheet='db.ktra'" in message
+            assert "source_row_key='row:10'" in message
+            assert "reason='missing_site_fk'" in message
+        else:
+            raise AssertionError("Expected conflicting anomaly detail failure")
+
+
+def test_import_snapshot_blank_and_numeric_anomaly_identities_do_not_collide():
+    snapshot = sample_snapshot()
+    snapshot["db.ktra"] = [
+        {
+            "ID": "100",
+            "LOẠI KT": "GMP",
+            "ID CƠ SỞ": "999",
+            "MÃ DC": "A",
+        },
+        {
+            "ID": "",
+            "__excel_row_number": "11",
+            "LOẠI KT": "GMP",
+            "ID CƠ SỞ": "999",
+            "MÃ DC": "B",
+        },
+    ]
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        import_snapshot(session, snapshot)
+        session.commit()
+        anomalies = session.scalars(
+            select(MigrationAnomaly)
+            .where(MigrationAnomaly.source_sheet == "db.ktra")
+            .order_by(MigrationAnomaly.source_row_key)
+        ).all()
+        assert [row.source_row_key for row in anomalies] == ["100", "row:11"]
+        assert [row.legacy_row_id for row in anomalies] == ["100", None]
+
+
+def test_real_snapshot_blank_id_rows_no_longer_false_collide_in_migration_anomaly():
+    snapshot = json.loads(Path("artifacts/phase3c/legacy_snapshot.json").read_text(encoding="utf-8"))
+    source_rows = snapshot.get("sheets", snapshot)
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        reconciliation = import_snapshot(session, source_rows)
+        session.commit()
+        anomaly_keys = {
+            row["source_row_key"]
+            for row in reconciliation["anomaly_rows"]
+            if row["source_sheet"] == "db.ktra" and row["status"] == "excluded_confirmed_blanked"
+        }
+        stored_keys = {
+            row[0]
+            for row in session.execute(
+                select(MigrationAnomaly.source_row_key).where(
+                    MigrationAnomaly.source_sheet == "db.ktra",
+                    MigrationAnomaly.status == "excluded_confirmed_blanked",
+                )
+            )
+        }
+        assert {"row:1162", "row:1169"}.issubset(anomaly_keys)
+        assert {"row:1162", "row:1169"}.issubset(stored_keys)
 
 
 def test_import_snapshot_preserves_long_unicode_assessment_narratives_without_truncation():

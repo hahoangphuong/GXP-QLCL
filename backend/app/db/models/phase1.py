@@ -595,6 +595,7 @@ class MigrationAnomaly(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "migration_anomaly"
 
     source_sheet: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    source_row_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     legacy_row_id: Mapped[str | None] = mapped_column(String(64), index=True)
     reason: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     required_field: Mapped[str | None] = mapped_column(String(128))

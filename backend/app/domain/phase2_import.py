@@ -638,10 +638,15 @@ def _ensure_migration_anomaly(
     payload: dict[str, Any],
     options: ImportExecutionOptions,
 ) -> None:
+    source_row_key = str(payload.get("source_row_key", "")).strip()
+    if not source_row_key:
+        raise ImportCollisionError(
+            f"migration_anomaly[{payload.get('source_sheet', 'unknown')}] is missing canonical source_row_key."
+        )
     existing = session.scalar(
         select(MigrationAnomaly).where(
             MigrationAnomaly.source_sheet == payload["source_sheet"],
-            MigrationAnomaly.legacy_row_id == payload["legacy_row_id"],
+            MigrationAnomaly.source_row_key == source_row_key,
             MigrationAnomaly.reason == payload["reason"],
             MigrationAnomaly.required_field == payload["required_field"],
             MigrationAnomaly.raw_fk_value == (payload["raw_fk_value"] or None),
@@ -655,7 +660,10 @@ def _ensure_migration_anomaly(
             expected_detail = json.dumps(payload, ensure_ascii=False)
             if detail_json != expected_detail:
                 raise ImportCollisionError(
-                    f"migration_anomaly[{payload['source_sheet']}:{payload['source_row_key']}] has conflicting existing detail_json."
+                    "migration_anomaly conflict for "
+                    f"source_sheet={payload['source_sheet']!r} "
+                    f"source_row_key={source_row_key!r} "
+                    f"reason={payload['reason']!r}: conflicting existing detail_json."
                 )
             stats.record_existing("migration_anomaly")
             return
@@ -663,6 +671,7 @@ def _ensure_migration_anomaly(
     session.add(
         MigrationAnomaly(
             source_sheet=payload["source_sheet"],
+            source_row_key=source_row_key,
             legacy_row_id=payload["legacy_row_id"],
             reason=payload["reason"],
             required_field=payload["required_field"],

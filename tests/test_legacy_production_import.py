@@ -466,12 +466,13 @@ def test_validation_uses_clean_temporary_database_and_ignores_existing_productio
         connection.execute(
             text(
                 "INSERT INTO migration_anomaly "
-                "(id, source_sheet, legacy_row_id, reason, required_field, raw_fk_value, override_value, status, detail_json, created_at, updated_at) "
+                "(id, source_sheet, source_row_key, legacy_row_id, reason, required_field, raw_fk_value, override_value, status, detail_json, created_at, updated_at) "
                 "VALUES "
-                "('22222222-2222-2222-2222-222222222222', :source_sheet, :legacy_row_id, :reason, :required_field, :raw_fk_value, :override_value, :status, :detail_json, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                "('22222222-2222-2222-2222-222222222222', :source_sheet, :source_row_key, :legacy_row_id, :reason, :required_field, :raw_fk_value, :override_value, :status, :detail_json, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
             ),
             {
                 "source_sheet": "db.ktra",
+                "source_row_key": "row:1169",
                 "legacy_row_id": "1169",
                 "reason": "conflicting_existing_detail",
                 "required_field": "legacy_case_id",
@@ -500,6 +501,7 @@ def test_validation_uses_clean_temporary_database_and_ignores_existing_productio
         session.add(
             MigrationAnomaly(
                 source_sheet=payload["source_sheet"],
+                source_row_key=payload["source_row_key"],
                 legacy_row_id=payload["legacy_row_id"],
                 reason=payload["reason"],
                 required_field=payload["required_field"],

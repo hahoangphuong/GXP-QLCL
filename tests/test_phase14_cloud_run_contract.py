@@ -3,6 +3,7 @@ from pathlib import Path
 from backend.app.auth import authenticate_google_oidc_request
 from backend.app.config import DEFAULT_SQLITE_DATABASE_URL, load_app_config, resolve_database_url, validate_runtime_config
 from backend.app.storage.factory import create_storage_service_from_env
+from backend.app.storage import smb as smb_storage
 from tools.env_utils import parse_env_file
 from tools.validate_phase14_cloud_run_contract import validate_env_contract
 
@@ -220,7 +221,8 @@ def test_validate_runtime_config_rejects_fake_storage_in_production():
         raise AssertionError("Expected production fake storage validation to fail.")
 
 
-def test_validate_runtime_config_rejects_direct_filesystem_storage_in_main_app_production(tmp_path: Path):
+def test_validate_runtime_config_rejects_direct_filesystem_storage_in_main_app_production(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(smb_storage.smbclient, "register_session", lambda *args, **kwargs: None)
     config = load_app_config(
         {
             "APP_ENV": "production",
@@ -262,7 +264,8 @@ def test_load_app_config_prefers_auth_provider_and_db_mode():
     assert config.auth_oidc_client_id == "gxp-web.apps.googleusercontent.com"
 
 
-def test_create_storage_service_from_env_supports_synology_smb_alias(tmp_path: Path):
+def test_create_storage_service_from_env_supports_synology_smb_alias(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(smb_storage.smbclient, "register_session", lambda *args, **kwargs: None)
     service = create_storage_service_from_env(
         {
             "STORAGE_CLASS": "synology_smb",

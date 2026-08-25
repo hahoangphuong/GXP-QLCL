@@ -17,6 +17,8 @@ def _write_executable(path: Path, content: str) -> None:
 
 def _to_bash_path(path: Path) -> str:
     resolved = path.resolve()
+    if resolved.as_posix().startswith("/"):
+        return resolved.as_posix()
     drive = resolved.drive.rstrip(":").lower()
     tail = resolved.as_posix().split(":", 1)[1]
     return f"/mnt/{drive}{tail}"

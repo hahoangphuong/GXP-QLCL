@@ -5,7 +5,9 @@
 #    pip-compile --output-file=backend/requirements.dev.lock.txt --strip-extras backend/requirements.dev.txt
 #
 alembic==1.19.1
-    # via -r backend/requirements.dev.txt
+    # via
+    #   -r backend/requirements.dev.txt
+    #   -r backend/requirements.runtime.txt
 annotated-doc==0.0.5
     # via fastapi
 annotated-types==0.8.0
@@ -14,10 +16,10 @@ anyio==4.14.2
     # via
     #   starlette
     #   watchfiles
+certifi==2026.7.22
+    # via requests
 cffi==2.1.1
     # via cryptography
-certifi==2026.8.3
-    # via requests
 charset-normalizer==3.4.4
     # via requests
 click==8.4.2
@@ -27,7 +29,10 @@ colorama==0.4.6
     #   click
     #   pytest
 cryptography==50.0.0
-    # via google-auth
+    # via
+    #   google-auth
+    #   pyspnego
+    #   smbprotocol
 fastapi==0.141.1
     # via -r backend/requirements.runtime.txt
 google-auth==2.56.3
@@ -70,6 +75,10 @@ pydantic-core==2.46.4
     # via pydantic
 pygments==2.21.0
     # via pytest
+pysocks==1.7.1
+    # via -r backend/requirements.runtime.txt
+pyspnego==0.12.2
+    # via smbprotocol
 pytest==9.1.1
     # via -r backend/requirements.dev.txt
 python-dotenv==1.2.3
@@ -78,10 +87,14 @@ pyyaml==6.0.3
     # via uvicorn
 requests==2.32.5
     # via -r backend/requirements.runtime.txt
+smbprotocol==1.17.0
+    # via -r backend/requirements.runtime.txt
 sqlalchemy==2.0.52
     # via
     #   -r backend/requirements.runtime.txt
     #   alembic
+sspilib==0.6.0
+    # via pyspnego
 starlette==1.6.0
     # via fastapi
 typing-extensions==4.16.0

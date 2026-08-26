@@ -101,7 +101,27 @@ jobs:
           python -m piptools compile --quiet --strip-extras --output-file backend/requirements.runtime.lock.ci.txt backend/requirements.runtime.txt
           diff -u backend/requirements.runtime.lock.txt backend/requirements.runtime.lock.ci.txt
 
+      - name: Verify backend VM runtime lock freshness
+        run: |
+          python -m piptools compile --quiet --strip-extras --output-file backend/requirements.runtime.vm.lock.ci.txt backend/requirements.runtime.vm.txt
+          diff -u backend/requirements.runtime.vm.lock.txt backend/requirements.runtime.vm.lock.ci.txt
+
       - name: Verify backend dev lock freshness
         run: |
           python -m piptools compile --quiet --strip-extras --output-file backend/requirements.dev.lock.ci.txt backend/requirements.dev.txt
           diff -u backend/requirements.dev.lock.txt backend/requirements.dev.lock.ci.txt
+
+      - name: Verify backend VM runtime lock installs with auth transport imports
+        run: |
+          python -m venv .venv-vm-runtime-lock
+          . .venv-vm-runtime-lock/bin/activate
+          python -m pip install --no-cache-dir -r backend/requirements.runtime.vm.lock.txt
+          python - <<'PY'
+          import requests
+          from google.auth.transport.requests import Request as GoogleAuthRequest
+          from google.oauth2 import id_token
+          
+          assert requests.__version__
+          assert GoogleAuthRequest is not None
+          assert id_token is not None
+          PY

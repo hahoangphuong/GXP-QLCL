@@ -44,6 +44,10 @@ def _display_path(path: Path) -> str:
         return path.as_posix()
 
 
+def _write_utf8(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8", newline="\n")
+
+
 def _validate_sheet_mapping(payload: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     validated: dict[str, list[dict[str, Any]]] = {}
     for sheet_name, rows in payload.items():
@@ -360,11 +364,11 @@ def main() -> int:
     try:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         report = build_report()
-        JSON_OUT.write_text(
+        _write_utf8(
+            JSON_OUT,
             json.dumps(report, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
         )
-        MD_OUT.write_text(render_markdown(report), encoding="utf-8")
+        _write_utf8(MD_OUT, render_markdown(report))
         print(f"Wrote {JSON_OUT}")
         print(f"Wrote {MD_OUT}")
         return 0

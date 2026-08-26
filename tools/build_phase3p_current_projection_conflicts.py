@@ -22,6 +22,22 @@ def _display_path(path: Path) -> str:
         return path.as_posix()
 
 
+def _write_utf8(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8", newline="\n")
+
+
+def _resolve_repo_path(path_text: str) -> Path:
+    candidate = (ROOT / path_text).resolve()
+    root_resolved = ROOT.resolve()
+    try:
+        candidate.relative_to(root_resolved)
+    except ValueError as exc:
+        raise RuntimeError(
+            f"Duplicate-current analysis snapshot_path escapes repository root: {path_text}"
+        ) from exc
+    return candidate
+
+
 def load_analysis(input_path: Path = INPUT_PATH) -> tuple[dict[str, Any], str]:
     if not input_path.exists():
         raise RuntimeError(
@@ -142,6 +158,26 @@ def _snapshot_provenance(report: dict[str, Any]) -> tuple[str | None, str | None
     )
 
 
+def _validated_snapshot_provenance(report: dict[str, Any]) -> tuple[str, str]:
+    snapshot_path_text, reported_snapshot_sha256 = _snapshot_provenance(report)
+    if not snapshot_path_text:
+        raise RuntimeError("Duplicate-current analysis is missing required snapshot_path provenance.")
+    if not reported_snapshot_sha256:
+        raise RuntimeError("Duplicate-current analysis is missing required snapshot_sha256 provenance.")
+    snapshot_path = _resolve_repo_path(snapshot_path_text)
+    if not snapshot_path.exists():
+        raise RuntimeError(
+            f"Duplicate-current analysis references a missing snapshot artifact: {snapshot_path_text}"
+        )
+    actual_snapshot_sha256 = sha256(snapshot_path.read_bytes()).hexdigest()
+    if actual_snapshot_sha256 != reported_snapshot_sha256:
+        raise RuntimeError(
+            "Duplicate-current analysis snapshot provenance mismatch: "
+            f"{snapshot_path_text} reports {reported_snapshot_sha256} but actual bytes hash is {actual_snapshot_sha256}"
+        )
+    return _display_path(snapshot_path), actual_snapshot_sha256
+
+
 def render_markdown(summary: dict[str, Any]) -> str:
     lines = [
         "# Current Projection Conflicts",
@@ -190,7 +226,7 @@ def build_summary(input_path: Path = INPUT_PATH) -> dict[str, Any]:
     resolution_policy_counts = Counter(row["resolution_policy"] for row in conflicts)
     manual_review_count = sum(1 for row in conflicts if row["resolution_policy"] == "manual_review_required")
     auto_resolvable_count = sum(1 for row in conflicts if row["resolution_policy"] != "manual_review_required")
-    snapshot_path, snapshot_sha256 = _snapshot_provenance(report)
+    snapshot_path, snapshot_sha256 = _validated_snapshot_provenance(report)
     return {
         "generated_on": "2026-08-14",
         "input_path": _display_path(input_path),
@@ -211,11 +247,11 @@ def main() -> int:
     try:
         OUT_DIR.mkdir(parents=True, exist_ok=True)
         summary = build_summary()
-        JSON_OUT.write_text(
+        _write_utf8(
+            JSON_OUT,
             json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
         )
-        MD_OUT.write_text(render_markdown(summary), encoding="utf-8")
+        _write_utf8(MD_OUT, render_markdown(summary))
         print(f"Wrote {JSON_OUT}")
         print(f"Wrote {MD_OUT}")
         return 0

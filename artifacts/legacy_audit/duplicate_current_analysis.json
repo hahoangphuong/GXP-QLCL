@@ -1,7 +1,7 @@
 {
   "generated_from": {
     "snapshot_path": "artifacts/phase3c/legacy_snapshot.json",
-    "snapshot_sha256": "391966f4c093b6eb4defb3db7f90d0477cc2e8567b18d5305302a60cb36c5e36",
+    "snapshot_sha256": "b3bde05963e4e4d14d5b244e7c62b0f810f1cbbe206750574def6a366bdf7296",
     "snapshot_exported_at": null,
     "source_workbook_identity": null,
     "analysis_strategy": "snapshot_only"

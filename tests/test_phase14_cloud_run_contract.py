@@ -301,3 +301,14 @@ def test_authenticate_google_oidc_request_uses_database_role_source():
     assert user.auth_mode == "google_oidc"
     assert user.email == "operator@example.com"
     assert "manager" in user.role_codes
+
+
+def test_auth_runtime_errors_reference_google_auth_and_requests_dependencies() -> None:
+    auth_text = (Path(__file__).resolve().parents[1] / "backend" / "app" / "auth.py").read_text(encoding="utf-8")
+    bridge_auth_text = (Path(__file__).resolve().parents[1] / "backend" / "app" / "storage" / "bridge_auth.py").read_text(encoding="utf-8")
+    external_bridge_text = (Path(__file__).resolve().parents[1] / "backend" / "app" / "storage" / "external_bridge.py").read_text(encoding="utf-8")
+
+    assert "google-auth and requests are required for AUTH_MODE=google_oidc." in auth_text
+    assert "google-auth and requests are required for AUTH_MODE=google_iap_jwt." in auth_text
+    assert "google-auth and requests are required for BRIDGE_AUTH_MODE=google_oidc." in bridge_auth_text
+    assert "google-auth and requests are required to call external_bridge storage with service-to-service authentication." in external_bridge_text

@@ -75,7 +75,8 @@ def test_vm_deploy_script_preserves_pre_switch_atomicity_and_post_switch_rollbac
     assert text.index('CURRENT_STAGE="pre_deploy_consistency_gate"') < text.index('CURRENT_STAGE="resolve_release_targets"')
     assert text.index('CURRENT_STAGE="render_runtime_assets"') < text.index('CURRENT_STAGE="database_backup"')
     assert text.index('CURRENT_STAGE="database_backup"') < text.index('CURRENT_STAGE="alembic_upgrade"')
-    assert text.index('CURRENT_STAGE="build_backend_venv"') < text.index('CURRENT_STAGE="resolve_database_url"')
+    assert text.index('CURRENT_STAGE="build_backend_venv"') < text.index('CURRENT_STAGE="auth_runtime_dependency_check"')
+    assert text.index('CURRENT_STAGE="auth_runtime_dependency_check"') < text.index('CURRENT_STAGE="resolve_database_url"')
     assert text.index('CURRENT_STAGE="resolve_database_url"') < text.index('CURRENT_STAGE="build_frontend"')
     assert text.index('CURRENT_STAGE="alembic_upgrade"') < text.index('CURRENT_STAGE="switch_release_symlinks"')
     assert text.index('CURRENT_STAGE="switch_release_symlinks"') < text.index('CURRENT_STAGE="restart_services"')
@@ -160,6 +161,10 @@ def test_vm_deploy_script_uses_vm_runtime_requirements_and_db_backup():
 
     assert 'RUNTIME_REQUIREMENTS_LOCK_FILE="$(json_query runtime_requirements_lock_file)"' in text
     assert 'install --no-cache-dir -r "${NEW_BACKEND_RELEASE}/${RUNTIME_REQUIREMENTS_LOCK_FILE}"' in text
+    assert 'CURRENT_STAGE="auth_runtime_dependency_check"' in text
+    assert "import requests" in text
+    assert "from google.auth.transport.requests import Request as GoogleAuthRequest" in text
+    assert "from google.oauth2 import id_token" in text
     assert 'CURRENT_STAGE="node_version_check"' in text
     assert 'CURRENT_NODE_VERSION="$(node -p \'process.versions.node\')" || fail "Could not determine the active Node.js runtime version."' in text
     assert 'python3 - "${CURRENT_NODE_VERSION}" "${NODE_MIN_VERSION}" <<\'PY\'' in text

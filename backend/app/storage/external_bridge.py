@@ -78,9 +78,9 @@ class ExternalBridgeStorageService:
         try:
             from google.auth.transport.requests import Request as GoogleAuthRequest
             from google.oauth2 import id_token
-        except ModuleNotFoundError as exc:
+        except (ModuleNotFoundError, ImportError) as exc:
             raise StorageOperationError(
-                "google-auth is required to call external_bridge storage with service-to-service authentication."
+                "google-auth and requests are required to call external_bridge storage with service-to-service authentication."
             ) from exc
         return id_token.fetch_id_token(GoogleAuthRequest(), audience)
 

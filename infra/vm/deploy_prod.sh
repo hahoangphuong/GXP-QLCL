@@ -548,6 +548,20 @@ run_as_app_user "${VM_PYTHON_BIN}" -m venv "${NEW_BACKEND_VENV}"
 run_as_app_user "${NEW_BACKEND_VENV}/bin/pip" install --upgrade pip
 run_as_app_user "${NEW_BACKEND_VENV}/bin/pip" install --no-cache-dir -r "${NEW_BACKEND_RELEASE}/${RUNTIME_REQUIREMENTS_LOCK_FILE}"
 
+CURRENT_STAGE="auth_runtime_dependency_check"
+run_as_app_bash "
+  cd '${NEW_BACKEND_RELEASE}'
+  env -u PYTHONHOME PYTHONPATH='${NEW_BACKEND_RELEASE}' '${NEW_BACKEND_VENV}/bin/python' - <<'PY'
+import requests
+from google.auth.transport.requests import Request as GoogleAuthRequest
+from google.oauth2 import id_token
+
+assert requests.__version__
+assert GoogleAuthRequest is not None
+assert id_token is not None
+PY
+"
+
 CURRENT_STAGE="resolve_database_url"
 DATABASE_URL="$(
   run_as_app_bash "

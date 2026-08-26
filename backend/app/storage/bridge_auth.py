@@ -136,10 +136,10 @@ def _verify_google_oidc_token(token: str, expected_audience: str) -> dict[str, A
     try:
         from google.auth.transport.requests import Request as GoogleAuthRequest
         from google.oauth2 import id_token
-    except ModuleNotFoundError as exc:
+    except (ModuleNotFoundError, ImportError) as exc:
         raise HTTPException(
             status_code=503,
-            detail="google-auth is required for BRIDGE_AUTH_MODE=google_oidc.",
+            detail="google-auth and requests are required for BRIDGE_AUTH_MODE=google_oidc.",
         ) from exc
     try:
         claims = id_token.verify_oauth2_token(token, GoogleAuthRequest(), audience=expected_audience)

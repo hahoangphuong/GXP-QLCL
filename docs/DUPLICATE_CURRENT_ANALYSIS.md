@@ -2,9 +2,22 @@
 
 ## Scope
 - This document summarizes audited legacy cases where more than one row is marked current for the same workbook-maintained current key.
+- Canonical reproducible input is `artifacts/phase3c/legacy_snapshot.json`.
+- `tools/analyze_duplicate_current_keys.py` now derives this analysis from the canonical snapshot itself, so a clean repository checkout does not need the live `.xlsb` workbook to rebuild the duplicate-current artifact chain.
 - Machine-generated detail is stored in:
   - [duplicate_current_analysis.json](/D:/GXP-QLCL/artifacts/legacy_audit/duplicate_current_analysis.json)
   - [duplicate_current_analysis.md](/D:/GXP-QLCL/artifacts/legacy_audit/duplicate_current_analysis.md)
+
+## Provenance chain
+1. `tools/export_legacy_snapshot.py` exports the authoritative legacy workbook into `artifacts/phase3c/legacy_snapshot.json`.
+2. `tools/analyze_duplicate_current_keys.py` reads that snapshot and emits `artifacts/legacy_audit/duplicate_current_analysis.json`.
+3. `tools/build_phase3p_current_projection_conflicts.py` reads the duplicate-current analysis and emits `artifacts/phase3p/current_projection_conflicts.json`.
+
+Each generated JSON artifact now records:
+- source path
+- source SHA256
+- conflict/classification counts
+- manual-review policy evidence
 
 ## Proven patterns
 ### `db.cc`: current-key collapse on blank `MÃ DC`

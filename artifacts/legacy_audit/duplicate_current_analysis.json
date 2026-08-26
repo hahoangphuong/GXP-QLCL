@@ -1,0 +1,645 @@
+{
+  "generated_from": {
+    "snapshot_path": "artifacts/phase3c/legacy_snapshot.json",
+    "snapshot_sha256": "391966f4c093b6eb4defb3db7f90d0477cc2e8567b18d5305302a60cb36c5e36",
+    "snapshot_exported_at": null,
+    "source_workbook_identity": null,
+    "analysis_strategy": "snapshot_only"
+  },
+  "db_cc": {
+    "duplicate_group_count": 10,
+    "classification_counts": {
+      "blank_ma_dc_non_case_backed_multi_current": 10
+    },
+    "groups": [
+      {
+        "lookup_key": "GMP-104",
+        "row_count": 4,
+        "classification": "blank_ma_dc_non_case_backed_multi_current",
+        "all_blank_ma_dc": true,
+        "all_blank_inspection_id": true,
+        "unique_site_ids": [
+          "104"
+        ],
+        "unique_certificate_nos": [
+          "5130408005493",
+          "INS-484517-103383276-20874384",
+          "OGYÉI/10084-6/2023",
+          "OGYÉI/22758-6/2019"
+        ],
+        "rows": [
+          {
+            "legacy_row_id": "845",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "104",
+            "ma_dc": "",
+            "certificate_no": "OGYÉI/22758-6/2019",
+            "issue_date": "2019-11-28 00:00:00+00:00",
+            "expiry_date": "30-08-2022\r\n(gia hạn đến 31-12-2023)"
+          },
+          {
+            "legacy_row_id": "1242",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "104",
+            "ma_dc": "",
+            "certificate_no": "OGYÉI/10084-6/2023",
+            "issue_date": "2023-07-12 00:00:00+00:00",
+            "expiry_date": "2026-02-09 00:00:00+00:00"
+          },
+          {
+            "legacy_row_id": "1438",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "104",
+            "ma_dc": "",
+            "certificate_no": "5130408005493",
+            "issue_date": "2022-09-01 00:00:00+00:00",
+            "expiry_date": "2027-09-01 00:00:00+00:00"
+          },
+          {
+            "legacy_row_id": "1475",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "104",
+            "ma_dc": "",
+            "certificate_no": "INS-484517-103383276-20874384",
+            "issue_date": "2025-10-07 00:00:00+00:00",
+            "expiry_date": "2027-05-31 00:00:00+00:00"
+          }
+        ]
+      },
+      {
+        "lookup_key": "GMP-128",
+        "row_count": 3,
+        "classification": "blank_ma_dc_non_case_backed_multi_current",
+        "all_blank_ma_dc": true,
+        "all_blank_inspection_id": true,
+        "unique_site_ids": [
+          "128"
+        ],
+        "unique_certificate_nos": [
+          "MEDFAREASTLIQ&SEMISOL/2026/001",
+          "MEDFAREASTORAL/2026/001",
+          "MEDOFEORALB/2024/001"
+        ],
+        "rows": [
+          {
+            "legacy_row_id": "1217",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "128",
+            "ma_dc": "",
+            "certificate_no": "MEDFAREASTORAL/2026/001",
+            "issue_date": "2026-04-07 00:00:00+00:00",
+            "expiry_date": "2028-07-17 00:00:00+00:00"
+          },
+          {
+            "legacy_row_id": "1244",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "128",
+            "ma_dc": "",
+            "certificate_no": "MEDFAREASTLIQ&SEMISOL/2026/001",
+            "issue_date": "2026-04-20 00:00:00+00:00",
+            "expiry_date": "2028-07-19 00:00:00+00:00"
+          },
+          {
+            "legacy_row_id": "1348",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "128",
+            "ma_dc": "",
+            "certificate_no": "MEDOFEORALB/2024/001",
+            "issue_date": "2024-07-05 00:00:00+00:00",
+            "expiry_date": "2026-12-15 00:00:00+00:00"
+          }
+        ]
+      },
+      {
+        "lookup_key": "GMP-129",
+        "row_count": 3,
+        "classification": "blank_ma_dc_non_case_backed_multi_current",
+        "all_blank_ma_dc": true,
+        "all_blank_inspection_id": true,
+        "unique_site_ids": [
+          "129"
+        ],
+        "unique_certificate_nos": [
+          "MED10/2020/001",
+          "MEDOFARINJC/2026/001",
+          "MEDOFEINJB/2024/001"
+        ],
+        "rows": [
+          {
+            "legacy_row_id": "883",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "129",
+            "ma_dc": "",
+            "certificate_no": "MED10/2020/001",
+            "issue_date": "2020-02-03 00:00:00+00:00",
+            "expiry_date": "15-09-2020\r\n(gia hạn đến 31-12-2023)"
+          },
+          {
+            "legacy_row_id": "1243",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "129",
+            "ma_dc": "",
+            "certificate_no": "MEDOFARINJC/2026/001",
+            "issue_date": "2026-04-07 00:00:00+00:00",
+            "expiry_date": "2028-07-15 00:00:00+00:00"
+          },
+          {
+            "legacy_row_id": "1347",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "129",
+            "ma_dc": "",
+            "certificate_no": "MEDOFEINJB/2024/001",
+            "issue_date": "2024-07-05 00:00:00+00:00",
+            "expiry_date": "2026-12-15 00:00:00+00:00"
+          }
+        ]
+      },
+      {
+        "lookup_key": "GMP-144",
+        "row_count": 4,
+        "classification": "blank_ma_dc_non_case_backed_multi_current",
+        "all_blank_ma_dc": true,
+        "all_blank_inspection_id": true,
+        "unique_site_ids": [
+          "144"
+        ],
+        "unique_certificate_nos": [
+          "5130708009170",
+          "AG1100001001",
+          "INS-484520-103561370-20778606",
+          "NNGYK/GYSZ/11918-5/2024"
+        ],
+        "rows": [
+          {
+            "legacy_row_id": "1239",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "144",
+            "ma_dc": "",
+            "certificate_no": "AG1100001001",
+            "issue_date": "2023-10-04 00:00:00+00:00",
+            "expiry_date": "2026-09-24 00:00:00+00:00"
+          },
+          {
+            "legacy_row_id": "1345",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "144",
+            "ma_dc": "",
+            "certificate_no": "NNGYK/GYSZ/11918-5/2024",
+            "issue_date": "2024-08-22 00:00:00+00:00",
+            "expiry_date": "2027-04-07 00:00:00+00:00"
+          },
+          {
+            "legacy_row_id": "1437",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "144",
+            "ma_dc": "",
+            "certificate_no": "INS-484520-103561370-20778606",
+            "issue_date": "2025-09-02 00:00:00+00:00",
+            "expiry_date": "05-2027"
+          },
+          {
+            "legacy_row_id": "1597",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "144",
+            "ma_dc": "",
+            "certificate_no": "5130708009170",
+            "issue_date": "2026-03-04 00:00:00+00:00",
+            "expiry_date": "2029-03-03 00:00:00+00:00"
+          }
+        ]
+      },
+      {
+        "lookup_key": "GMP-2",
+        "row_count": 2,
+        "classification": "blank_ma_dc_non_case_backed_multi_current",
+        "all_blank_ma_dc": true,
+        "all_blank_inspection_id": true,
+        "unique_site_ids": [
+          "2"
+        ],
+        "unique_certificate_nos": [
+          "NNGYK/30304-2/2026",
+          "OGYÉI/895-7/2023"
+        ],
+        "rows": [
+          {
+            "legacy_row_id": "1241",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "2",
+            "ma_dc": "",
+            "certificate_no": "OGYÉI/895-7/2023",
+            "issue_date": "2023-10-16 00:00:00+00:00",
+            "expiry_date": "2026-05-01 00:00:00+00:00"
+          },
+          {
+            "legacy_row_id": "1598",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "2",
+            "ma_dc": "",
+            "certificate_no": "NNGYK/30304-2/2026",
+            "issue_date": "2026-04-16 00:00:00+00:00",
+            "expiry_date": "2026-12-31 00:00:00+00:00"
+          }
+        ]
+      },
+      {
+        "lookup_key": "GMP-24",
+        "row_count": 4,
+        "classification": "blank_ma_dc_non_case_backed_multi_current",
+        "all_blank_ma_dc": true,
+        "all_blank_inspection_id": true,
+        "unique_site_ids": [
+          "24"
+        ],
+        "unique_certificate_nos": [
+          "530-10/25-06/02; 381-13-08/256-25-06",
+          "DE_HE_01_GMP_2019_0065",
+          "DE_HE_01_GMP_2020_0081",
+          "DE_HE_01_GMP_2024_0239"
+        ],
+        "rows": [
+          {
+            "legacy_row_id": "835",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "24",
+            "ma_dc": "",
+            "certificate_no": "DE_HE_01_GMP_2019_0065",
+            "issue_date": "2019-05-13 00:00:00+00:00",
+            "expiry_date": "2022-03-07 00:00:00+00:00"
+          },
+          {
+            "legacy_row_id": "871",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "24",
+            "ma_dc": "",
+            "certificate_no": "DE_HE_01_GMP_2020_0081",
+            "issue_date": "2020-06-03 00:00:00+00:00",
+            "expiry_date": "07-03-2022\r\n(gia hạn đến 31-12-2024)"
+          },
+          {
+            "legacy_row_id": "1365",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "24",
+            "ma_dc": "",
+            "certificate_no": "DE_HE_01_GMP_2024_0239",
+            "issue_date": "2024-11-05 00:00:00+00:00",
+            "expiry_date": "2025-10-11 00:00:00+00:00"
+          },
+          {
+            "legacy_row_id": "1434",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "24",
+            "ma_dc": "",
+            "certificate_no": "530-10/25-06/02; 381-13-08/256-25-06",
+            "issue_date": "2025-07-18 00:00:00+00:00",
+            "expiry_date": "2028-03-28 00:00:00+00:00"
+          }
+        ]
+      },
+      {
+        "lookup_key": "GMP-264",
+        "row_count": 2,
+        "classification": "blank_ma_dc_non_case_backed_multi_current",
+        "all_blank_ma_dc": true,
+        "all_blank_inspection_id": true,
+        "unique_site_ids": [
+          "264"
+        ],
+        "unique_certificate_nos": [
+          "008/2023/RO",
+          "098/2024/RO"
+        ],
+        "rows": [
+          {
+            "legacy_row_id": "1179",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "264",
+            "ma_dc": "",
+            "certificate_no": "008/2023/RO",
+            "issue_date": "2023-03-29 00:00:00+00:00",
+            "expiry_date": "01-09-2024\r\n(gia hạn đến 31/12/2024)"
+          },
+          {
+            "legacy_row_id": "1383",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "264",
+            "ma_dc": "",
+            "certificate_no": "098/2024/RO",
+            "issue_date": "2024-12-18 00:00:00+00:00",
+            "expiry_date": "10/2027"
+          }
+        ]
+      },
+      {
+        "lookup_key": "GMP-337",
+        "row_count": 2,
+        "classification": "blank_ma_dc_non_case_backed_multi_current",
+        "all_blank_ma_dc": true,
+        "all_blank_inspection_id": true,
+        "unique_site_ids": [
+          "337"
+        ],
+        "unique_certificate_nos": [
+          "ISF.405.105.2025.IP.1 WTC/0653_01_01/224",
+          "ISF.405.71.2024.IP.1 WTC/0653_01_01/129"
+        ],
+        "rows": [
+          {
+            "legacy_row_id": "1330",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "337",
+            "ma_dc": "",
+            "certificate_no": "ISF.405.71.2024.IP.1 WTC/0653_01_01/129",
+            "issue_date": "2024-07-02 00:00:00+00:00",
+            "expiry_date": "2027-04-12 00:00:00+00:00"
+          },
+          {
+            "legacy_row_id": "1451",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "337",
+            "ma_dc": "",
+            "certificate_no": "ISF.405.105.2025.IP.1 WTC/0653_01_01/224",
+            "issue_date": "2025-09-17 00:00:00+00:00",
+            "expiry_date": "2028-07-04 00:00:00+00:00"
+          }
+        ]
+      },
+      {
+        "lookup_key": "GMP-50",
+        "row_count": 6,
+        "classification": "blank_ma_dc_non_case_backed_multi_current",
+        "all_blank_ma_dc": true,
+        "all_blank_inspection_id": true,
+        "unique_site_ids": [
+          "50"
+        ],
+        "unique_certificate_nos": [
+          "007/2023/RO",
+          "097/2024/RO",
+          "DE_HE_01_GMP_2018_0017",
+          "DE_HE_01_GMP_2018_0127",
+          "DE_HE_01_GMP_2020_0072",
+          "II 23.2 (Bey) - 18/02(21)-B 55"
+        ],
+        "rows": [
+          {
+            "legacy_row_id": "839",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "50",
+            "ma_dc": "",
+            "certificate_no": "II 23.2 (Bey) - 18/02(21)-B 55",
+            "issue_date": "2018-07-06 00:00:00+00:00",
+            "expiry_date": "2020-07-31 00:00:00+00:00"
+          },
+          {
+            "legacy_row_id": "872",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "50",
+            "ma_dc": "",
+            "certificate_no": "DE_HE_01_GMP_2018_0017",
+            "issue_date": "2018-02-07 00:00:00+00:00",
+            "expiry_date": "2021-01-31 00:00:00+00:00"
+          },
+          {
+            "legacy_row_id": "889",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "50",
+            "ma_dc": "",
+            "certificate_no": "DE_HE_01_GMP_2020_0072",
+            "issue_date": "2020-05-18 00:00:00+00:00",
+            "expiry_date": "2023-03-05 00:00:00+00:00"
+          },
+          {
+            "legacy_row_id": "920",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "50",
+            "ma_dc": "",
+            "certificate_no": "DE_HE_01_GMP_2018_0127",
+            "issue_date": "2018-10-24 00:00:00+00:00",
+            "expiry_date": "31-12-2021\r\n(gia hạn 31-12-2022)"
+          },
+          {
+            "legacy_row_id": "1178",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "50",
+            "ma_dc": "",
+            "certificate_no": "007/2023/RO",
+            "issue_date": "2023-03-29 00:00:00+00:00",
+            "expiry_date": "01-09-2024\r\n(gia hạn đến 31/12/2024)"
+          },
+          {
+            "legacy_row_id": "1382",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "50",
+            "ma_dc": "",
+            "certificate_no": "097/2024/RO",
+            "issue_date": "2024-12-18 00:00:00+00:00",
+            "expiry_date": "10-2027"
+          }
+        ]
+      },
+      {
+        "lookup_key": "GMP-69",
+        "row_count": 3,
+        "classification": "blank_ma_dc_non_case_backed_multi_current",
+        "all_blank_ma_dc": true,
+        "all_blank_inspection_id": true,
+        "unique_site_ids": [
+          "69"
+        ],
+        "unique_certificate_nos": [
+          "INS-484622-104529740-21440305",
+          "UK GMP 46387 Insp GMP 46387/14673770-0005",
+          "UK GMP 46387 Insp GMP 46387/15275896-0004"
+        ],
+        "rows": [
+          {
+            "legacy_row_id": "1503",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "69",
+            "ma_dc": "",
+            "certificate_no": "UK GMP 46387 Insp GMP 46387/14673770-0005",
+            "issue_date": "2026-01-07 00:00:00+00:00",
+            "expiry_date": "2028-11-18 00:00:00+00:00"
+          },
+          {
+            "legacy_row_id": "1504",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "69",
+            "ma_dc": "",
+            "certificate_no": "UK GMP 46387 Insp GMP 46387/15275896-0004",
+            "issue_date": "2026-01-07 00:00:00+00:00",
+            "expiry_date": "2028-11-18 00:00:00+00:00"
+          },
+          {
+            "legacy_row_id": "1620",
+            "certificate_type": "GMP",
+            "inspection_id": "",
+            "site_id": "69",
+            "ma_dc": "",
+            "certificate_no": "INS-484622-104529740-21440305",
+            "issue_date": "2026-03-26 00:00:00+00:00",
+            "expiry_date": "2029-01-15 00:00:00+00:00"
+          }
+        ]
+      }
+    ]
+  },
+  "db_ktra": {
+    "duplicate_group_count": 4,
+    "classification_counts": {
+      "completed_plus_pending_both_current": 3,
+      "multiple_completed_both_current": 1
+    },
+    "groups": [
+      {
+        "lookup_key": "GMP-103C",
+        "row_count": 2,
+        "classification": "completed_plus_pending_both_current",
+        "rows": [
+          {
+            "logical_index": "1096",
+            "excel_row_number": "1096",
+            "legacy_row_id": "1095",
+            "inspection_type": "GMP",
+            "site_id": "103",
+            "ma_dc": "C",
+            "progress": "Chờ đi kiểm tra ...",
+            "bb": "",
+            "linked_certificate_id": ""
+          },
+          {
+            "logical_index": "1198",
+            "excel_row_number": "1198",
+            "legacy_row_id": "1194",
+            "inspection_type": "GMP",
+            "site_id": "103",
+            "ma_dc": "C",
+            "progress": "Hoàn thành",
+            "bb": "2023-01-07 00:00:00+00:00",
+            "linked_certificate_id": "1183"
+          }
+        ]
+      },
+      {
+        "lookup_key": "GMP-310A",
+        "row_count": 2,
+        "classification": "multiple_completed_both_current",
+        "rows": [
+          {
+            "logical_index": "1047",
+            "excel_row_number": "1047",
+            "legacy_row_id": "1047",
+            "inspection_type": "GMP",
+            "site_id": "310",
+            "ma_dc": "A",
+            "progress": "Hoàn thành",
+            "bb": "2021-07-17 00:00:00+00:00",
+            "linked_certificate_id": "1022"
+          },
+          {
+            "logical_index": "1161",
+            "excel_row_number": "1161",
+            "legacy_row_id": "1160",
+            "inspection_type": "GMP",
+            "site_id": "310",
+            "ma_dc": "A",
+            "progress": "Hoàn thành",
+            "bb": "2023-06-19 00:00:00+00:00",
+            "linked_certificate_id": "1209"
+          }
+        ]
+      },
+      {
+        "lookup_key": "GMP-52A",
+        "row_count": 2,
+        "classification": "completed_plus_pending_both_current",
+        "rows": [
+          {
+            "logical_index": "1153",
+            "excel_row_number": "1153",
+            "legacy_row_id": "1152",
+            "inspection_type": "GMP",
+            "site_id": "52",
+            "ma_dc": "A",
+            "progress": "Hoàn thành",
+            "bb": "2023-04-08 00:00:00+00:00",
+            "linked_certificate_id": "1194"
+          },
+          {
+            "logical_index": "1518",
+            "excel_row_number": "1518",
+            "legacy_row_id": "1509",
+            "inspection_type": "GMP",
+            "site_id": "52",
+            "ma_dc": "A",
+            "progress": "Chờ hoàn thiện báo cáo ...",
+            "bb": "",
+            "linked_certificate_id": ""
+          }
+        ]
+      },
+      {
+        "lookup_key": "GMP-75B",
+        "row_count": 2,
+        "classification": "completed_plus_pending_both_current",
+        "rows": [
+          {
+            "logical_index": "1127",
+            "excel_row_number": "1127",
+            "legacy_row_id": "1126",
+            "inspection_type": "GMP",
+            "site_id": "75",
+            "ma_dc": "B",
+            "progress": "Hoàn thành",
+            "bb": "2022-05-16 00:00:00+00:00",
+            "linked_certificate_id": "1096"
+          },
+          {
+            "logical_index": "1466",
+            "excel_row_number": "1466",
+            "legacy_row_id": "1460",
+            "inspection_type": "GMP",
+            "site_id": "75",
+            "ma_dc": "B",
+            "progress": "Chờ đi kiểm tra ...",
+            "bb": "",
+            "linked_certificate_id": ""
+          }
+        ]
+      }
+    ]
+  }
+}

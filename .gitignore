@@ -7,6 +7,17 @@ backend/.env.cloudrun.local
 infra/cloudrun/*.resolved.json
 legacy/
 artifacts/*
+!artifacts/phase3c/
+artifacts/phase3c/*
+!artifacts/phase3c/legacy_snapshot.json
+!artifacts/legacy_audit/
+artifacts/legacy_audit/*
+!artifacts/legacy_audit/duplicate_current_analysis.json
+!artifacts/legacy_audit/duplicate_current_analysis.md
+!artifacts/phase3p/
+artifacts/phase3p/*
+!artifacts/phase3p/current_projection_conflicts.json
+!artifacts/phase3p/current_projection_conflicts.md
 !artifacts/phase3q/
 artifacts/phase3q/*
 !artifacts/phase3q/confirmed_blanked_rows.json

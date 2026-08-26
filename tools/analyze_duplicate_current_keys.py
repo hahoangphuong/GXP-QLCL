@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from hashlib import sha256
 import json
 from pathlib import Path
 import re
@@ -8,19 +9,16 @@ import sys
 from typing import Any
 import unicodedata
 
-from pyxlsb import open_workbook
-
-
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
 SNAPSHOT_PATH = ROOT / "artifacts" / "phase3c" / "legacy_snapshot.json"
-WORKBOOK_PATH = next((ROOT / "legacy").glob("*.xlsb"))
 OUTPUT_DIR = ROOT / "artifacts" / "legacy_audit"
 JSON_OUT = OUTPUT_DIR / "duplicate_current_analysis.json"
 MD_OUT = OUTPUT_DIR / "duplicate_current_analysis.md"
+SNAPSHOT_ONLY_ANALYSIS_STRATEGY = "snapshot_only"
 
 
 def normalize_scalar(value: Any) -> str:
@@ -39,8 +37,73 @@ def normalize_label(value: str) -> str:
     return compact.strip("_").lower()
 
 
-def load_snapshot() -> dict[str, list[dict[str, Any]]]:
-    return json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
+def _display_path(path: Path) -> str:
+    try:
+        return path.relative_to(ROOT).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _validate_sheet_mapping(payload: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    validated: dict[str, list[dict[str, Any]]] = {}
+    for sheet_name, rows in payload.items():
+        if not isinstance(sheet_name, str):
+            raise RuntimeError("Legacy snapshot sheet names must be strings.")
+        if not isinstance(rows, list):
+            continue
+        normalized_rows: list[dict[str, Any]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                raise RuntimeError(
+                    f"Legacy snapshot sheet {sheet_name!r} contains a non-object row."
+                )
+            normalized_rows.append(row)
+        validated[sheet_name] = normalized_rows
+    return validated
+
+
+def _snapshot_sheets(payload: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    if "sheets" in payload:
+        sheets = payload["sheets"]
+        if not isinstance(sheets, dict):
+            raise RuntimeError("Legacy snapshot wrapper field 'sheets' must be a JSON object.")
+        return _validate_sheet_mapping(sheets)
+    return _validate_sheet_mapping(payload)
+
+
+def _snapshot_metadata(payload: dict[str, Any]) -> dict[str, Any]:
+    metadata = payload.get("metadata")
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _load_snapshot_document(snapshot_path: Path) -> tuple[dict[str, Any], dict[str, list[dict[str, Any]]], str]:
+    if not snapshot_path.exists():
+        raise RuntimeError(
+            f"Required legacy snapshot artifact is missing: {_display_path(snapshot_path)}"
+        )
+    snapshot_bytes = snapshot_path.read_bytes()
+    try:
+        payload = json.loads(snapshot_bytes.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f"Legacy snapshot artifact is invalid JSON: {_display_path(snapshot_path)}: {exc}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(
+            f"Legacy snapshot artifact must be a JSON object: {_display_path(snapshot_path)}"
+        )
+    return payload, _snapshot_sheets(payload), sha256(snapshot_bytes).hexdigest()
+
+
+def _require_rows(
+    sheets: dict[str, list[dict[str, Any]]], sheet_name: str
+) -> list[dict[str, Any]]:
+    rows = sheets.get(sheet_name)
+    if rows is None:
+        raise RuntimeError(f"Legacy snapshot is missing required sheet: {sheet_name}")
+    if not rows:
+        raise RuntimeError(f"Legacy snapshot sheet has no rows: {sheet_name}")
+    return rows
 
 
 def alias_map(columns: list[str]) -> dict[str, str]:
@@ -121,38 +184,30 @@ def summarize_cc_duplicates(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def read_ktra_rows() -> list[dict[str, str]]:
-    rows: list[dict[str, str]] = []
-    with open_workbook(str(WORKBOOK_PATH)) as workbook:
-        with workbook.get_sheet("db.ktra") as sheet:
-            headers: dict[int, str] = {}
-            for row in sheet.rows():
-                if row[0].r == 3:
-                    for idx, cell in enumerate(row):
-                        headers[idx] = normalize_scalar(cell.v)
-                    continue
-                if row[0].r < 4:
-                    continue
-
-                record: dict[str, str] = {
-                    "logical_index": str(row[0].r - 3),
-                    "excel_row_number": str(row[0].r + 1),
-                    "__legacy_row_id": normalize_scalar(row[0].v if len(row) > 0 else None),
-                    "__inspection_type": normalize_scalar(row[1].v if len(row) > 1 else None),
-                    "__site_id": normalize_scalar(row[2].v if len(row) > 2 else None),
-                    "__ma_dc": normalize_scalar(row[3].v if len(row) > 3 else None),
-                    "__bb": normalize_scalar(row[14].v if len(row) > 14 else None),
-                    "__progress": normalize_scalar(row[31].v if len(row) > 31 else None),
-                    "__linked_certificate_id": normalize_scalar(row[32].v if len(row) > 32 else None),
-                    "__lookup_status": normalize_scalar(row[34].v if len(row) > 34 else None),
-                    "__lookup_key": normalize_scalar(row[35].v if len(row) > 35 else None),
-                }
-                for idx, header in headers.items():
-                    if not header:
-                        continue
-                    record[header] = normalize_scalar(row[idx].v if idx < len(row) else None)
-                rows.append(record)
-    return rows
+def read_ktra_rows(rows: list[dict[str, Any]]) -> list[dict[str, str]]:
+    if not rows:
+        return []
+    aliases = alias_map(list(rows[0].keys()))
+    normalized_rows: list[dict[str, str]] = []
+    for index, row in enumerate(rows, start=1):
+        normalized_rows.append(
+            {
+                "logical_index": field_any(row, aliases, ["logical_index"])
+                or field_any(row, aliases, ["excel_row_number"])
+                or str(index),
+                "excel_row_number": field_any(row, aliases, ["excel_row_number"]) or str(index),
+                "__legacy_row_id": field(row, aliases, "id"),
+                "__inspection_type": field(row, aliases, "loai_kt"),
+                "__site_id": field(row, aliases, "id_co_so"),
+                "__ma_dc": field(row, aliases, "ma_dc"),
+                "__bb": field_any(row, aliases, ["b_ban", "bien_ban"]),
+                "__progress": field(row, aliases, "tien_do_xu_ly"),
+                "__linked_certificate_id": field_any(row, aliases, ["id_cc_gps", "id_cc"]),
+                "__lookup_status": field(row, aliases, "moi_nhat"),
+                "__lookup_key": field(row, aliases, "id_moi_nhat"),
+            }
+        )
+    return normalized_rows
 
 
 def is_pending_progress(value: str) -> bool:
@@ -216,11 +271,36 @@ def summarize_ktra_duplicates(rows: list[dict[str, str]]) -> dict[str, Any]:
     }
 
 
+def build_report(*, snapshot_path: Path = SNAPSHOT_PATH) -> dict[str, Any]:
+    snapshot_document, sheets, snapshot_sha256 = _load_snapshot_document(snapshot_path)
+    metadata = _snapshot_metadata(snapshot_document)
+    return {
+        "generated_from": {
+            "snapshot_path": _display_path(snapshot_path),
+            "snapshot_sha256": snapshot_sha256,
+            "snapshot_exported_at": metadata.get("exported_at"),
+            "source_workbook_identity": metadata.get("source_workbook_identity"),
+            "analysis_strategy": SNAPSHOT_ONLY_ANALYSIS_STRATEGY,
+        },
+        "db_cc": summarize_cc_duplicates(_require_rows(sheets, "db.cc")),
+        "db_ktra": summarize_ktra_duplicates(read_ktra_rows(_require_rows(sheets, "db.ktra"))),
+    }
+
+
 def render_markdown(report: dict[str, Any]) -> str:
+    provenance = report["generated_from"]
     lines = [
         "# Duplicate Current Analysis",
         "",
         "Generated by `tools/analyze_duplicate_current_keys.py`.",
+        "",
+        "## Provenance",
+        "",
+        f"- snapshot_path: `{provenance['snapshot_path']}`",
+        f"- snapshot_sha256: `{provenance['snapshot_sha256']}`",
+        f"- snapshot_exported_at: `{provenance['snapshot_exported_at']}`",
+        f"- source_workbook_identity: `{provenance['source_workbook_identity']}`",
+        f"- analysis_strategy: `{provenance['analysis_strategy']}`",
         "",
         "## Summary",
         "",
@@ -277,26 +357,20 @@ def render_markdown(report: dict[str, Any]) -> str:
 
 
 def main() -> int:
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    snapshot = load_snapshot()
-    cc_report = summarize_cc_duplicates(snapshot["db.cc"])
-    ktra_report = summarize_ktra_duplicates(read_ktra_rows())
-
-    report = {
-        "generated_from": {
-            "snapshot": str(SNAPSHOT_PATH.relative_to(ROOT)),
-            "workbook": str(WORKBOOK_PATH.relative_to(ROOT)),
-        },
-        "db_cc": cc_report,
-        "db_ktra": ktra_report,
-    }
-
-    JSON_OUT.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    MD_OUT.write_text(render_markdown(report), encoding="utf-8")
-    print(f"Wrote {JSON_OUT}")
-    print(f"Wrote {MD_OUT}")
-    return 0
+    try:
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        report = build_report()
+        JSON_OUT.write_text(
+            json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        MD_OUT.write_text(render_markdown(report), encoding="utf-8")
+        print(f"Wrote {JSON_OUT}")
+        print(f"Wrote {MD_OUT}")
+        return 0
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

@@ -1,0 +1,421 @@
+{
+  "generated_on": "2026-08-14",
+  "input_path": "artifacts/legacy_audit/duplicate_current_analysis.json",
+  "input_sha256": "0f4441d2e18bff07da34712c15a8b55c3a7ba92adf956d01cef025c7c228993c",
+  "snapshot_path": "artifacts/phase3c/legacy_snapshot.json",
+  "snapshot_sha256": "391966f4c093b6eb4defb3db7f90d0477cc2e8567b18d5305302a60cb36c5e36",
+  "conflict_count": 14,
+  "auto_resolvable_count": 0,
+  "manual_review_count": 14,
+  "projection_type_counts": {
+    "current_case_projection": 4,
+    "current_certificate_projection": 10
+  },
+  "classification_counts": {
+    "blank_ma_dc_non_case_backed_multi_current": 10,
+    "completed_plus_pending_both_current": 3,
+    "multiple_completed_both_current": 1
+  },
+  "resolution_policy_counts": {
+    "manual_review_required": 14
+  },
+  "conflicts": [
+    {
+      "conflict_key": "db.ktra::GMP-103C",
+      "projection_type": "current_case_projection",
+      "source_sheet": "db.ktra",
+      "business_key": "GMP-103C",
+      "classification": "completed_plus_pending_both_current",
+      "resolution_policy": "manual_review_required",
+      "status": "open",
+      "detected_on": "2026-08-14",
+      "candidate_count": 2,
+      "candidate_legacy_ids": [
+        "1095",
+        "1194"
+      ],
+      "resolution_rationale": "One completed row and one pending row are both marked current; workbook evidence does not yet prove which row should drive the target current-case projection.",
+      "detail": {
+        "progress_values": [
+          "Chờ đi kiểm tra ...",
+          "Hoàn thành"
+        ],
+        "linked_certificate_ids": [
+          "1183"
+        ]
+      }
+    },
+    {
+      "conflict_key": "db.ktra::GMP-310A",
+      "projection_type": "current_case_projection",
+      "source_sheet": "db.ktra",
+      "business_key": "GMP-310A",
+      "classification": "multiple_completed_both_current",
+      "resolution_policy": "manual_review_required",
+      "status": "open",
+      "detected_on": "2026-08-14",
+      "candidate_count": 2,
+      "candidate_legacy_ids": [
+        "1047",
+        "1160"
+      ],
+      "resolution_rationale": "More than one completed inspection row remains current; no proven winner-selection rule exists yet.",
+      "detail": {
+        "progress_values": [
+          "Hoàn thành",
+          "Hoàn thành"
+        ],
+        "linked_certificate_ids": [
+          "1022",
+          "1209"
+        ]
+      }
+    },
+    {
+      "conflict_key": "db.ktra::GMP-52A",
+      "projection_type": "current_case_projection",
+      "source_sheet": "db.ktra",
+      "business_key": "GMP-52A",
+      "classification": "completed_plus_pending_both_current",
+      "resolution_policy": "manual_review_required",
+      "status": "open",
+      "detected_on": "2026-08-14",
+      "candidate_count": 2,
+      "candidate_legacy_ids": [
+        "1152",
+        "1509"
+      ],
+      "resolution_rationale": "One completed row and one pending row are both marked current; workbook evidence does not yet prove which row should drive the target current-case projection.",
+      "detail": {
+        "progress_values": [
+          "Hoàn thành",
+          "Chờ hoàn thiện báo cáo ..."
+        ],
+        "linked_certificate_ids": [
+          "1194"
+        ]
+      }
+    },
+    {
+      "conflict_key": "db.ktra::GMP-75B",
+      "projection_type": "current_case_projection",
+      "source_sheet": "db.ktra",
+      "business_key": "GMP-75B",
+      "classification": "completed_plus_pending_both_current",
+      "resolution_policy": "manual_review_required",
+      "status": "open",
+      "detected_on": "2026-08-14",
+      "candidate_count": 2,
+      "candidate_legacy_ids": [
+        "1126",
+        "1460"
+      ],
+      "resolution_rationale": "One completed row and one pending row are both marked current; workbook evidence does not yet prove which row should drive the target current-case projection.",
+      "detail": {
+        "progress_values": [
+          "Hoàn thành",
+          "Chờ đi kiểm tra ..."
+        ],
+        "linked_certificate_ids": [
+          "1096"
+        ]
+      }
+    },
+    {
+      "conflict_key": "db.cc::GMP-104",
+      "projection_type": "current_certificate_projection",
+      "source_sheet": "db.cc",
+      "business_key": "GMP-104",
+      "classification": "blank_ma_dc_non_case_backed_multi_current",
+      "resolution_policy": "manual_review_required",
+      "status": "open",
+      "detected_on": "2026-08-14",
+      "candidate_count": 4,
+      "candidate_legacy_ids": [
+        "845",
+        "1242",
+        "1438",
+        "1475"
+      ],
+      "resolution_rationale": "Multiple non-case-backed certificate rows collapse onto one current key when MÃ DC is blank; no proven business discriminator exists yet.",
+      "detail": {
+        "all_blank_ma_dc": true,
+        "all_blank_inspection_id": true,
+        "unique_site_ids": [
+          "104"
+        ],
+        "unique_certificate_nos": [
+          "5130408005493",
+          "INS-484517-103383276-20874384",
+          "OGYÉI/10084-6/2023",
+          "OGYÉI/22758-6/2019"
+        ]
+      }
+    },
+    {
+      "conflict_key": "db.cc::GMP-128",
+      "projection_type": "current_certificate_projection",
+      "source_sheet": "db.cc",
+      "business_key": "GMP-128",
+      "classification": "blank_ma_dc_non_case_backed_multi_current",
+      "resolution_policy": "manual_review_required",
+      "status": "open",
+      "detected_on": "2026-08-14",
+      "candidate_count": 3,
+      "candidate_legacy_ids": [
+        "1217",
+        "1244",
+        "1348"
+      ],
+      "resolution_rationale": "Multiple non-case-backed certificate rows collapse onto one current key when MÃ DC is blank; no proven business discriminator exists yet.",
+      "detail": {
+        "all_blank_ma_dc": true,
+        "all_blank_inspection_id": true,
+        "unique_site_ids": [
+          "128"
+        ],
+        "unique_certificate_nos": [
+          "MEDFAREASTLIQ&SEMISOL/2026/001",
+          "MEDFAREASTORAL/2026/001",
+          "MEDOFEORALB/2024/001"
+        ]
+      }
+    },
+    {
+      "conflict_key": "db.cc::GMP-129",
+      "projection_type": "current_certificate_projection",
+      "source_sheet": "db.cc",
+      "business_key": "GMP-129",
+      "classification": "blank_ma_dc_non_case_backed_multi_current",
+      "resolution_policy": "manual_review_required",
+      "status": "open",
+      "detected_on": "2026-08-14",
+      "candidate_count": 3,
+      "candidate_legacy_ids": [
+        "883",
+        "1243",
+        "1347"
+      ],
+      "resolution_rationale": "Multiple non-case-backed certificate rows collapse onto one current key when MÃ DC is blank; no proven business discriminator exists yet.",
+      "detail": {
+        "all_blank_ma_dc": true,
+        "all_blank_inspection_id": true,
+        "unique_site_ids": [
+          "129"
+        ],
+        "unique_certificate_nos": [
+          "MED10/2020/001",
+          "MEDOFARINJC/2026/001",
+          "MEDOFEINJB/2024/001"
+        ]
+      }
+    },
+    {
+      "conflict_key": "db.cc::GMP-144",
+      "projection_type": "current_certificate_projection",
+      "source_sheet": "db.cc",
+      "business_key": "GMP-144",
+      "classification": "blank_ma_dc_non_case_backed_multi_current",
+      "resolution_policy": "manual_review_required",
+      "status": "open",
+      "detected_on": "2026-08-14",
+      "candidate_count": 4,
+      "candidate_legacy_ids": [
+        "1239",
+        "1345",
+        "1437",
+        "1597"
+      ],
+      "resolution_rationale": "Multiple non-case-backed certificate rows collapse onto one current key when MÃ DC is blank; no proven business discriminator exists yet.",
+      "detail": {
+        "all_blank_ma_dc": true,
+        "all_blank_inspection_id": true,
+        "unique_site_ids": [
+          "144"
+        ],
+        "unique_certificate_nos": [
+          "5130708009170",
+          "AG1100001001",
+          "INS-484520-103561370-20778606",
+          "NNGYK/GYSZ/11918-5/2024"
+        ]
+      }
+    },
+    {
+      "conflict_key": "db.cc::GMP-2",
+      "projection_type": "current_certificate_projection",
+      "source_sheet": "db.cc",
+      "business_key": "GMP-2",
+      "classification": "blank_ma_dc_non_case_backed_multi_current",
+      "resolution_policy": "manual_review_required",
+      "status": "open",
+      "detected_on": "2026-08-14",
+      "candidate_count": 2,
+      "candidate_legacy_ids": [
+        "1241",
+        "1598"
+      ],
+      "resolution_rationale": "Multiple non-case-backed certificate rows collapse onto one current key when MÃ DC is blank; no proven business discriminator exists yet.",
+      "detail": {
+        "all_blank_ma_dc": true,
+        "all_blank_inspection_id": true,
+        "unique_site_ids": [
+          "2"
+        ],
+        "unique_certificate_nos": [
+          "NNGYK/30304-2/2026",
+          "OGYÉI/895-7/2023"
+        ]
+      }
+    },
+    {
+      "conflict_key": "db.cc::GMP-24",
+      "projection_type": "current_certificate_projection",
+      "source_sheet": "db.cc",
+      "business_key": "GMP-24",
+      "classification": "blank_ma_dc_non_case_backed_multi_current",
+      "resolution_policy": "manual_review_required",
+      "status": "open",
+      "detected_on": "2026-08-14",
+      "candidate_count": 4,
+      "candidate_legacy_ids": [
+        "835",
+        "871",
+        "1365",
+        "1434"
+      ],
+      "resolution_rationale": "Multiple non-case-backed certificate rows collapse onto one current key when MÃ DC is blank; no proven business discriminator exists yet.",
+      "detail": {
+        "all_blank_ma_dc": true,
+        "all_blank_inspection_id": true,
+        "unique_site_ids": [
+          "24"
+        ],
+        "unique_certificate_nos": [
+          "530-10/25-06/02; 381-13-08/256-25-06",
+          "DE_HE_01_GMP_2019_0065",
+          "DE_HE_01_GMP_2020_0081",
+          "DE_HE_01_GMP_2024_0239"
+        ]
+      }
+    },
+    {
+      "conflict_key": "db.cc::GMP-264",
+      "projection_type": "current_certificate_projection",
+      "source_sheet": "db.cc",
+      "business_key": "GMP-264",
+      "classification": "blank_ma_dc_non_case_backed_multi_current",
+      "resolution_policy": "manual_review_required",
+      "status": "open",
+      "detected_on": "2026-08-14",
+      "candidate_count": 2,
+      "candidate_legacy_ids": [
+        "1179",
+        "1383"
+      ],
+      "resolution_rationale": "Multiple non-case-backed certificate rows collapse onto one current key when MÃ DC is blank; no proven business discriminator exists yet.",
+      "detail": {
+        "all_blank_ma_dc": true,
+        "all_blank_inspection_id": true,
+        "unique_site_ids": [
+          "264"
+        ],
+        "unique_certificate_nos": [
+          "008/2023/RO",
+          "098/2024/RO"
+        ]
+      }
+    },
+    {
+      "conflict_key": "db.cc::GMP-337",
+      "projection_type": "current_certificate_projection",
+      "source_sheet": "db.cc",
+      "business_key": "GMP-337",
+      "classification": "blank_ma_dc_non_case_backed_multi_current",
+      "resolution_policy": "manual_review_required",
+      "status": "open",
+      "detected_on": "2026-08-14",
+      "candidate_count": 2,
+      "candidate_legacy_ids": [
+        "1330",
+        "1451"
+      ],
+      "resolution_rationale": "Multiple non-case-backed certificate rows collapse onto one current key when MÃ DC is blank; no proven business discriminator exists yet.",
+      "detail": {
+        "all_blank_ma_dc": true,
+        "all_blank_inspection_id": true,
+        "unique_site_ids": [
+          "337"
+        ],
+        "unique_certificate_nos": [
+          "ISF.405.105.2025.IP.1 WTC/0653_01_01/224",
+          "ISF.405.71.2024.IP.1 WTC/0653_01_01/129"
+        ]
+      }
+    },
+    {
+      "conflict_key": "db.cc::GMP-50",
+      "projection_type": "current_certificate_projection",
+      "source_sheet": "db.cc",
+      "business_key": "GMP-50",
+      "classification": "blank_ma_dc_non_case_backed_multi_current",
+      "resolution_policy": "manual_review_required",
+      "status": "open",
+      "detected_on": "2026-08-14",
+      "candidate_count": 6,
+      "candidate_legacy_ids": [
+        "839",
+        "872",
+        "889",
+        "920",
+        "1178",
+        "1382"
+      ],
+      "resolution_rationale": "Multiple non-case-backed certificate rows collapse onto one current key when MÃ DC is blank; no proven business discriminator exists yet.",
+      "detail": {
+        "all_blank_ma_dc": true,
+        "all_blank_inspection_id": true,
+        "unique_site_ids": [
+          "50"
+        ],
+        "unique_certificate_nos": [
+          "007/2023/RO",
+          "097/2024/RO",
+          "DE_HE_01_GMP_2018_0017",
+          "DE_HE_01_GMP_2018_0127",
+          "DE_HE_01_GMP_2020_0072",
+          "II 23.2 (Bey) - 18/02(21)-B 55"
+        ]
+      }
+    },
+    {
+      "conflict_key": "db.cc::GMP-69",
+      "projection_type": "current_certificate_projection",
+      "source_sheet": "db.cc",
+      "business_key": "GMP-69",
+      "classification": "blank_ma_dc_non_case_backed_multi_current",
+      "resolution_policy": "manual_review_required",
+      "status": "open",
+      "detected_on": "2026-08-14",
+      "candidate_count": 3,
+      "candidate_legacy_ids": [
+        "1503",
+        "1504",
+        "1620"
+      ],
+      "resolution_rationale": "Multiple non-case-backed certificate rows collapse onto one current key when MÃ DC is blank; no proven business discriminator exists yet.",
+      "detail": {
+        "all_blank_ma_dc": true,
+        "all_blank_inspection_id": true,
+        "unique_site_ids": [
+          "69"
+        ],
+        "unique_certificate_nos": [
+          "INS-484622-104529740-21440305",
+          "UK GMP 46387 Insp GMP 46387/14673770-0005",
+          "UK GMP 46387 Insp GMP 46387/15275896-0004"
+        ]
+      }
+    }
+  ]
+}

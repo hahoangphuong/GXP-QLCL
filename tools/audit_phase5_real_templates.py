@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import json
+import sys
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree as ET
 from zipfile import BadZipFile, ZipFile
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 from backend.app.project_paths import legacy_path, phase_artifact_path, repo_root
 
@@ -316,8 +321,8 @@ def render_markdown(audit: dict) -> str:
 
 def main() -> None:
     audit = build_audit()
-    OUTPUT_JSON.write_text(json.dumps(audit, ensure_ascii=False, indent=2), encoding="utf-8")
-    OUTPUT_MD.write_text(render_markdown(audit), encoding="utf-8")
+    OUTPUT_JSON.write_text(json.dumps(audit, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+    OUTPUT_MD.write_text(render_markdown(audit), encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":

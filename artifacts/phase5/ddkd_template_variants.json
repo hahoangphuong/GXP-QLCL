@@ -1,0 +1,117 @@
+{
+  "family_code": "DDKD_CERTIFICATE",
+  "variants": [
+    {
+      "variant_key": "ddkd_certificate_new",
+      "template_name": "z2. Giấy chứng nhận ĐĐKKDD (Mới).dotx",
+      "bookmarks": [
+        "Co_Ng_DBCL",
+        "DiachiCoso",
+        "DiachiVPCty",
+        "HoatdongKD",
+        "Nguoi_DBCL_CCHN",
+        "Nguoi_DBCL_CCHN_Ngaycap",
+        "Nguoi_DBCL_CCHN_Noicap",
+        "Nguoi_DBCL_Ten",
+        "Nguoi_DBCL_Trinhdo",
+        "Nguoi_PTCM_CCHN",
+        "Nguoi_PTCM_CCHN_Ngaycap",
+        "Nguoi_PTCM_CCHN_Noicap",
+        "Nguoi_PTCM_Ten",
+        "Nguoi_PTCM_Trinhdo",
+        "TenCoso",
+        "TenCty"
+      ],
+      "allowed_payload_fields": [
+        "Co_Ng_DBCL",
+        "DiachiCoso",
+        "DiachiVPCty",
+        "HoatdongKD",
+        "Nguoi_DBCL_CCHN",
+        "Nguoi_DBCL_CCHN_Ngaycap",
+        "Nguoi_DBCL_CCHN_Noicap",
+        "Nguoi_DBCL_Ten",
+        "Nguoi_DBCL_Trinhdo",
+        "Nguoi_PTCM_CCHN",
+        "Nguoi_PTCM_CCHN_Ngaycap",
+        "Nguoi_PTCM_CCHN_Noicap",
+        "Nguoi_PTCM_Ten",
+        "Nguoi_PTCM_Trinhdo",
+        "TenCoso",
+        "TenCty"
+      ],
+      "exclusive_bookmarks": []
+    },
+    {
+      "variant_key": "ddkd_certificate_adjustment",
+      "template_name": "z2. Giấy chứng nhận ĐĐKKDD (Điều chỉnh).dotx",
+      "bookmarks": [
+        "Cap_lan",
+        "Co_Ng_DBCL",
+        "DiachiCoso",
+        "DiachiVPCty",
+        "GCN_thaythe",
+        "HoatdongKD",
+        "Nguoi_DBCL_CCHN",
+        "Nguoi_DBCL_CCHN_Ngaycap",
+        "Nguoi_DBCL_CCHN_Noicap",
+        "Nguoi_DBCL_Ten",
+        "Nguoi_DBCL_Trinhdo",
+        "Nguoi_PTCM_CCHN",
+        "Nguoi_PTCM_CCHN_Ngaycap",
+        "Nguoi_PTCM_CCHN_Noicap",
+        "Nguoi_PTCM_Ten",
+        "Nguoi_PTCM_Trinhdo",
+        "TenCoso",
+        "TenCty"
+      ],
+      "allowed_payload_fields": [
+        "Cap_lan",
+        "Co_Ng_DBCL",
+        "DiachiCoso",
+        "DiachiVPCty",
+        "GCN_thaythe",
+        "HoatdongKD",
+        "Nguoi_DBCL_CCHN",
+        "Nguoi_DBCL_CCHN_Ngaycap",
+        "Nguoi_DBCL_CCHN_Noicap",
+        "Nguoi_DBCL_Ten",
+        "Nguoi_DBCL_Trinhdo",
+        "Nguoi_PTCM_CCHN",
+        "Nguoi_PTCM_CCHN_Ngaycap",
+        "Nguoi_PTCM_CCHN_Noicap",
+        "Nguoi_PTCM_Ten",
+        "Nguoi_PTCM_Trinhdo",
+        "TenCoso",
+        "TenCty"
+      ],
+      "exclusive_bookmarks": [
+        "Cap_lan",
+        "GCN_thaythe"
+      ]
+    }
+  ],
+  "common_bookmarks": [
+    "Co_Ng_DBCL",
+    "DiachiCoso",
+    "DiachiVPCty",
+    "HoatdongKD",
+    "Nguoi_DBCL_CCHN",
+    "Nguoi_DBCL_CCHN_Ngaycap",
+    "Nguoi_DBCL_CCHN_Noicap",
+    "Nguoi_DBCL_Ten",
+    "Nguoi_DBCL_Trinhdo",
+    "Nguoi_PTCM_CCHN",
+    "Nguoi_PTCM_CCHN_Ngaycap",
+    "Nguoi_PTCM_CCHN_Noicap",
+    "Nguoi_PTCM_Ten",
+    "Nguoi_PTCM_Trinhdo",
+    "TenCoso",
+    "TenCty"
+  ],
+  "new_only_bookmarks": [],
+  "adjustment_only_bookmarks": [
+    "Cap_lan",
+    "GCN_thaythe"
+  ]
+}

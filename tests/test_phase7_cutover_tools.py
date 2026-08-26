@@ -32,7 +32,7 @@ def test_validate_rows_rejects_duplicate_ids_and_unknown_status():
 
 def _write_json(path: Path, payload) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
 def _patch_phase7_paths(monkeypatch, tmp_path: Path) -> None:
@@ -48,7 +48,40 @@ def _patch_phase7_paths(monkeypatch, tmp_path: Path) -> None:
 def _write_valid_phase7_artifacts(tmp_path: Path, *, conflict_count: int = 0) -> None:
     _write_json(tmp_path / "phase3r.json", {"phase3_status": "closed"})
     _write_json(tmp_path / "phase4.json", {"phase4_status": "closed"})
-    _write_json(tmp_path / "phase5.json", {"phase5_status": "closed"})
+    _write_json(tmp_path / "phase5_audit.json", {"registry_family_count": 26, "matched_family_count": 26, "active_file_count": 91})
+    _write_json(tmp_path / "phase5_recon.json", {"families": []})
+    _write_json(tmp_path / "phase5_ddkd_variants.json", {"family_code": "DDKD_CERTIFICATE", "variants": [{"variant_key": "ddkd_certificate_new"}]})
+    _write_json(tmp_path / "phase5_bbtd_variants.json", {"family_code": "INSPECTION_BBTD_HOSO_DK", "variants": [{"variant_key": "bbtd_hoso_dk_all_lines"}]})
+    _write_json(tmp_path / "phase5_ddkd_appendix.json", {"family_code": "DDKD_APPENDIX_OR_DECISION", "recommended_next_state": {"promotable_now": ["All"], "still_blocked": ["GCN_GMP", "QD_GMP"]}})
+    _write_json(
+        tmp_path / "phase5.json",
+        {
+            "phase5_status": "closed",
+            "validation_errors": [],
+            "artifact_sources": {
+                "template_compatibility_audit": {
+                    "path": (tmp_path / "phase5_audit.json").as_posix(),
+                    "sha256": readiness.safe_load_json(tmp_path / "phase5_audit.json", "phase5_audit").payload_sha256,
+                },
+                "template_contract_reconciled": {
+                    "path": (tmp_path / "phase5_recon.json").as_posix(),
+                    "sha256": readiness.safe_load_json(tmp_path / "phase5_recon.json", "phase5_recon").payload_sha256,
+                },
+                "ddkd_template_variants": {
+                    "path": (tmp_path / "phase5_ddkd_variants.json").as_posix(),
+                    "sha256": readiness.safe_load_json(tmp_path / "phase5_ddkd_variants.json", "phase5_ddkd_variants").payload_sha256,
+                },
+                "bbtd_template_variants": {
+                    "path": (tmp_path / "phase5_bbtd_variants.json").as_posix(),
+                    "sha256": readiness.safe_load_json(tmp_path / "phase5_bbtd_variants.json", "phase5_bbtd_variants").payload_sha256,
+                },
+                "ddkd_appendix_field_adjudication": {
+                    "path": (tmp_path / "phase5_ddkd_appendix.json").as_posix(),
+                    "sha256": readiness.safe_load_json(tmp_path / "phase5_ddkd_appendix.json", "phase5_ddkd_appendix").payload_sha256,
+                },
+            },
+        },
+    )
     _write_json(
         tmp_path / "phase6_summary.json",
         {
@@ -207,6 +240,18 @@ def test_build_readiness_blocks_when_phase6_closeout_is_stale_relative_to_summar
     gate = report["gates"]["desktop_private_share_validation"]
     assert gate["status"] == "blocked"
     assert "stale relative to the current desktop validation summary" in gate["reason"]
+
+
+def test_build_readiness_blocks_when_phase5_closeout_is_stale_relative_to_upstream_artifact(tmp_path: Path, monkeypatch) -> None:
+    _patch_phase7_paths(monkeypatch, tmp_path)
+    _write_valid_phase7_artifacts(tmp_path)
+    _write_json(tmp_path / "phase5.json", {"phase5_status": "closed", "validation_errors": [], "artifact_sources": {"template_compatibility_audit": {"path": (tmp_path / "phase5_audit.json").as_posix(), "sha256": "deadbeef"}, "template_contract_reconciled": {"path": (tmp_path / "phase5_recon.json").as_posix(), "sha256": readiness.safe_load_json(tmp_path / "phase5_recon.json", "phase5_recon").payload_sha256}, "ddkd_template_variants": {"path": (tmp_path / "phase5_ddkd_variants.json").as_posix(), "sha256": readiness.safe_load_json(tmp_path / "phase5_ddkd_variants.json", "phase5_ddkd_variants").payload_sha256}, "bbtd_template_variants": {"path": (tmp_path / "phase5_bbtd_variants.json").as_posix(), "sha256": readiness.safe_load_json(tmp_path / "phase5_bbtd_variants.json", "phase5_bbtd_variants").payload_sha256}, "ddkd_appendix_field_adjudication": {"path": (tmp_path / "phase5_ddkd_appendix.json").as_posix(), "sha256": readiness.safe_load_json(tmp_path / "phase5_ddkd_appendix.json", "phase5_ddkd_appendix").payload_sha256}}})
+
+    report = readiness.build_readiness()
+
+    gate = report["gates"]["document_contract_baseline"]
+    assert gate["status"] == "blocked"
+    assert "stale relative to template_compatibility_audit" in gate["reason"]
 
 
 def test_build_readiness_blocks_when_phase3s_summary_is_stale_relative_to_phase3p(tmp_path: Path, monkeypatch) -> None:

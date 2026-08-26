@@ -1,0 +1,137 @@
+{
+  "family_code": "DDKD_APPENDIX_OR_DECISION",
+  "templates": {
+    "appendix": {
+      "template_name": "z3. Phụ lục GCN ĐĐKKDD.dotx",
+      "bookmark_count": 17,
+      "bookmarks": [
+        "AllGDP",
+        "AllGLP",
+        "AllGMP",
+        "AllGSP",
+        "ChuthichGDP",
+        "ChuthichGLP",
+        "ChuthichGMP",
+        "ChuthichGSP",
+        "Co_ChuthichGDP",
+        "Co_ChuthichGLP",
+        "Co_ChuthichGMP",
+        "Co_ChuthichGSP",
+        "PviGDP",
+        "PviGLP",
+        "PviGMP",
+        "PviGSP",
+        "TenCty1"
+      ]
+    },
+    "issuance_decision": {
+      "template_name": "z4. QĐ cấp ĐĐKKDD.dotx",
+      "bookmark_count": 46,
+      "bookmarks": [
+        "AllGDP",
+        "AllGLP",
+        "AllGMP",
+        "AllGSP",
+        "ChuthichGDP",
+        "ChuthichGLP",
+        "ChuthichGMP",
+        "ChuthichGSP",
+        "Co_ChuthichGDP",
+        "Co_ChuthichGLP",
+        "Co_ChuthichGMP",
+        "Co_ChuthichGSP",
+        "Co_DoiTen",
+        "Co_Ng_DBCL",
+        "CoDieuChinh",
+        "DiachiCoso",
+        "DiachiVPCty",
+        "Diadiemx",
+        "GiayDK_cu1",
+        "HoatdongKD",
+        "NgaycapDK_cu1",
+        "NgaycapDK_cu2",
+        "NgaycapDK_cu3",
+        "Nguoi_DBCL_CCHN",
+        "Nguoi_DBCL_CCHN_Ngaycap",
+        "Nguoi_DBCL_CCHN_Noicap",
+        "Nguoi_DBCL_Ten",
+        "Nguoi_DBCL_Trinhdo",
+        "Nguoi_PTCM_CCHN",
+        "Nguoi_PTCM_CCHN_Ngaycap",
+        "Nguoi_PTCM_CCHN_Noicap",
+        "Nguoi_PTCM_Ten",
+        "Nguoi_PTCM_Trinhdo",
+        "PviGDP",
+        "PviGLP",
+        "PviGMP",
+        "PviGSP",
+        "QDcap_cu1",
+        "QDcap_cu2",
+        "TenCso",
+        "TenCty1",
+        "TenCty2",
+        "TenCty3",
+        "TenCty4",
+        "TenCty_ddk_cu1",
+        "TenCty_ddk_cu2"
+      ]
+    }
+  },
+  "field_adjudications": [
+    {
+      "field_name": "All",
+      "status": "safe_prefix_variant_group",
+      "target_bookmarks": [
+        "AllGDP",
+        "AllGLP",
+        "AllGMP",
+        "AllGSP"
+      ],
+      "evidence": [
+        "Active templates expose AllGDP/AllGLP/AllGMP/AllGSP bookmarks.",
+        "RecordForm.Tao_PL_QD_GiayDDK deletes All{GPs_T} inside a 4-group loop.",
+        "Get_Tplz case 3 and case 4 both feed the same Tao_PL_QD_GiayDDK loop."
+      ],
+      "vba_snippet": "amvi\" & GPs_T & \".docx\")\n\n            DCForm.Init_PVCN IIf(i = 4, 6, i) 'Sel_GPs\n\n            'If Not Tao_Pvi_Chungnhan(wdDoc, wdDoc2, DC_All, GPs_Text(i - 1)) Then GoTo Quit0\n\n            If Not Input_DC_to_CC(wdDoc, wdDoc2, DC_All, False, GPs_T) Then GoTo Quit0\n\n            If Not (wdDoc2 Is Nothing) Then wdDoc2.Saved = True:    wdDoc2.Close\n\n            If ghan <> vbNullString Then Call Replace_Bookmark(wdDoc, \"Chuthich\" & GPs_T, ghan) Else Delete_Bookmark wdDoc, \"Co_Chuthich\" & GPs_T\n\n            'Replace_Bookmark wdDoc, \"Chuthich\", ghan\n\n            Inc_Val (1)\n\n        Else\n\n            Delete_Bookmark wdDoc, \"All\" & GPs_T\n\n        End If\n\n    Next i\n\nQuit1:\n\n    Tao_PL_QD_GiayDDK = True\n\nQuit0:\n\n    If Not (wdDoc2 Is Nothing) Then wdDoc2.Saved = True:    wdDoc2.Close\n\n    Set wdDoc2 = Nothing\n\nEnd Function\n\nPrivate Function Input_DC_to_CC(ByRef wdDoc As Object, ByRef wdDoc2 As Object, ByVal DC_All$, ByVal EngPart As Boolean, Optional ByVal GPs_T$ = vbNullString) As Boolean\n\n    Dim i&, j&, k&, PV_Desc$(), PV_map&(), ncount&, iDaychuyen$(), DC_Count&, s_N$, s_D$, s_Note$, s_Comp$\n\n    '\n\n    On Error Resume Next\n\n    Input_DC_to_CC = False\n\n    iDaychuyen = Split(DC_All, \"§\")"
+    },
+    {
+      "field_name": "GCN_GMP",
+      "status": "case_shared_write_with_missing_active_bookmark",
+      "target_bookmarks": [],
+      "evidence": [
+        "Get_Tplz selects z3 explicitly for case 3 and z4 explicitly for case 4.",
+        "CreateFilez handles case 3 and case 4 explicitly, then routes both into Tao_PL_QD_GiayDDK.",
+        "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung calls Replace_Bookmark wdDoc, GCN_GMP.",
+        "Replace_Bookmark uses On Error Resume Next and silently no-ops when a bookmark is missing.",
+        "Neither active template z3 nor z4 exposes a GCN_GMP bookmark."
+      ],
+      "vba_snippet": "= 0 Then\n\n            .Bookmarks(Key2Bookmark(DCForm.PVCN_GxP(j, PVCN_colKey))).Range.Font.Strikethrough = True\n\n            .Bookmarks(Key2Bookmark(DCForm.PVCN_GxP(j, PVCN_colKey))).Range.Rows.Delete\n\n        End If\n\n    Next j\n\n    End With\n\n    Tao_CC_Daychuyen = True\n\nQuit0:\n\nEnd Function\n\nPrivate Sub Tao_PL_QD_GiayDDK_Thongtinchung(ByRef wdDoc As Object)\n\n    Dim s$, Gcn_GP$, QD_GCN$\n\n    '\n\n    With Names(\"db_ddk\").RefersToRange\n\n        Gcn_GP = Get_SoGCNGPs(.Cells(Idx_DDK, clDB_DaychuyenDDK - 1).Value)\n\n        QD_GCN = VBA.Replace(Gcn_GP, \"GCN-QLD\", \"Q\" & ChrW(272) & \"-QLD\")\n\n        Replace_Bookmark wdDoc, \"GCN_GMP\", Gcn_GP\n\n        Replace_Bookmark wdDoc, \"QD_GMP\", QD_GCN\n\n        Replace_Bookmark wdDoc, \"TenCty\", Del_LastPeriod(.Cells(Idx_DDK, clDB_TenCty_ddk).Value2), 1, 6\n\n        Replace_Bookmark wdDoc, \"TenCso\", Del_LastPeriod(.Cells(Idx_DDK, clDB_TenCs_ddk).Value2)\n\n        Replace_Bookmark wdDoc, \"DiachiVPCty\", Del_LastPeriod(.Cells(Idx_DDK, clDB_TenCs_ddk + 4).Value2)\n\n        s = Del_LastPeriod(Replace(.Cells(Idx_DDK, clDB_TenCs_ddk + 2).Value2, \"* \", \"+ \"))\n\n        If InStr(1, s, vbCrLf, vbTextCompare) > 0 Then s = vbCrLf & s\n\n        Replace_Bookmark wdDoc, \""
+    },
+    {
+      "field_name": "QD_GMP",
+      "status": "case_shared_write_with_missing_active_bookmark",
+      "target_bookmarks": [],
+      "evidence": [
+        "Get_Tplz selects z3 explicitly for case 3 and z4 explicitly for case 4.",
+        "CreateFilez handles case 3 and case 4 explicitly, then routes both into Tao_PL_QD_GiayDDK.",
+        "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung calls Replace_Bookmark wdDoc, QD_GMP.",
+        "Replace_Bookmark uses On Error Resume Next and silently no-ops when a bookmark is missing.",
+        "Neither active template z3 nor z4 exposes a QD_GMP bookmark."
+      ],
+      "vba_snippet": "m.PVCN_GxP(j, PVCN_colKey))).Range.Font.Strikethrough = True\n\n            .Bookmarks(Key2Bookmark(DCForm.PVCN_GxP(j, PVCN_colKey))).Range.Rows.Delete\n\n        End If\n\n    Next j\n\n    End With\n\n    Tao_CC_Daychuyen = True\n\nQuit0:\n\nEnd Function\n\nPrivate Sub Tao_PL_QD_GiayDDK_Thongtinchung(ByRef wdDoc As Object)\n\n    Dim s$, Gcn_GP$, QD_GCN$\n\n    '\n\n    With Names(\"db_ddk\").RefersToRange\n\n        Gcn_GP = Get_SoGCNGPs(.Cells(Idx_DDK, clDB_DaychuyenDDK - 1).Value)\n\n        QD_GCN = VBA.Replace(Gcn_GP, \"GCN-QLD\", \"Q\" & ChrW(272) & \"-QLD\")\n\n        Replace_Bookmark wdDoc, \"GCN_GMP\", Gcn_GP\n\n        Replace_Bookmark wdDoc, \"QD_GMP\", QD_GCN\n\n        Replace_Bookmark wdDoc, \"TenCty\", Del_LastPeriod(.Cells(Idx_DDK, clDB_TenCty_ddk).Value2), 1, 6\n\n        Replace_Bookmark wdDoc, \"TenCso\", Del_LastPeriod(.Cells(Idx_DDK, clDB_TenCs_ddk).Value2)\n\n        Replace_Bookmark wdDoc, \"DiachiVPCty\", Del_LastPeriod(.Cells(Idx_DDK, clDB_TenCs_ddk + 4).Value2)\n\n        s = Del_LastPeriod(Replace(.Cells(Idx_DDK, clDB_TenCs_ddk + 2).Value2, \"* \", \"+ \"))\n\n        If InStr(1, s, vbCrLf, vbTextCompare) > 0 Then s = vbCrLf & s\n\n        Replace_Bookmark wdDoc, \"DiachiCoso\", s\n\n        s = .Cells(Idx_DDK, clDB_Da"
+    }
+  ],
+  "recommended_next_state": {
+    "promotable_now": [
+      "All"
+    ],
+    "still_blocked": [
+      "GCN_GMP",
+      "QD_GMP"
+    ],
+    "notes": [
+      "GCN_GMP and QD_GMP should not be promoted into render-safe runtime mapping until we explicitly decide how DocumentService handles case-shared writes whose active templates do not expose matching bookmarks.",
+      "A future runtime policy may classify these as tolerated missing-bookmark writes for this family, but that must be an explicit contract decision rather than an accidental side effect."
+    ]
+  }
+}

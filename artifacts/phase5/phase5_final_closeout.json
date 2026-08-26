@@ -1,0 +1,97 @@
+{
+  "generated_on": "2026-08-26",
+  "phase5_status": "closed",
+  "artifact_sources": {
+    "template_compatibility_audit": {
+      "path": "artifacts/phase5/template_compatibility_audit.json",
+      "sha256": "77f048df17513d787441e3aca11c00fe4a1f4ff511571f9cb97d39b2706e3bb8"
+    },
+    "template_contract_reconciled": {
+      "path": "artifacts/phase5/template_contract_reconciled.json",
+      "sha256": "715b449a2ca7ad919813bc5330dbf2ae97b87cc9a6323b6e69e0489ffce01cca"
+    },
+    "ddkd_template_variants": {
+      "path": "artifacts/phase5/ddkd_template_variants.json",
+      "sha256": "0383c44d8028d2f14b0f8bfdd0bc5f75a29a5141c49728ad1bda2035e9d69738"
+    },
+    "bbtd_template_variants": {
+      "path": "artifacts/phase5/bbtd_template_variants.json",
+      "sha256": "c589d2b81faa5dcc3ace071fb50860a7179929ed93c17258e3d54ec93f2d67db"
+    },
+    "ddkd_appendix_field_adjudication": {
+      "path": "artifacts/phase5/ddkd_appendix_field_adjudication.json",
+      "sha256": "b55d8e042ff52dcb672dbd754395ec1fdc6b27dc230f10eafcc95ea94b0814bc"
+    }
+  },
+  "document_generation_baseline": {
+    "registry_family_count": 26,
+    "matched_family_count": 26,
+    "active_template_file_count": 91,
+    "powerpoint_branch_in_scope": false
+  },
+  "runtime_contract_status": {
+    "contract_exact_scalar_families": [
+      "INSPECTION_CAPA_LAN_1",
+      "INSPECTION_CAPA_LAN_2"
+    ],
+    "contract_variant_exact_families": [
+      "DDKD_CERTIFICATE",
+      "INSPECTION_BBTD_HOSO_DK"
+    ],
+    "selection_safe_families": [
+      "DDKD_APPENDIX_OR_DECISION"
+    ],
+    "payload_passthrough_family_count": 20,
+    "payload_passthrough_families": [
+      "ASSESSMENT_MINUTES",
+      "CERTIFICATE_DECISION",
+      "CERTIFICATE_ISSUANCE_WORD",
+      "CHANGE_REPORT_ROUTE_LETTER",
+      "CONSENT_CHANGE_LETTER",
+      "DDKD_PRESENTATION",
+      "INSPECTION_BB_KT",
+      "INSPECTION_KE_HOACH_KT",
+      "INSPECTION_PT_CT",
+      "INSPECTION_PT_PCT",
+      "INSPECTION_QD_KT",
+      "NAME_ADDRESS_CHANGE_LETTER",
+      "RISK_MANAGEMENT_WORKSHEET",
+      "STATUS_CONFIRMATION_LETTER",
+      "SUPPORT_ATTENDEE_LIST",
+      "SUPPORT_DOSSIER_CHECKLIST",
+      "SUPPORT_FLIGHT_REQUEST",
+      "SUPPORT_PAYMENT_TRANSFER",
+      "SUPPORT_PAYMENT_WORKBOOK",
+      "SUPPORT_TRAVEL_AUTHORIZATION"
+    ]
+  },
+  "variant_contracts": {
+    "ddkd_variant_keys": [
+      "ddkd_certificate_new",
+      "ddkd_certificate_adjustment"
+    ],
+    "bbtd_variant_keys": [
+      "bbtd_hoso_dk_line_1",
+      "bbtd_hoso_dk_line_2",
+      "bbtd_hoso_dk_line_3",
+      "bbtd_hoso_dk_all_lines"
+    ]
+  },
+  "ddkd_appendix_decision_status": {
+    "promotable_now": [
+      "All"
+    ],
+    "blocked_fields": [
+      "GCN_GMP",
+      "QD_GMP"
+    ]
+  },
+  "validation_errors": [],
+  "remaining_follow_on": [
+    "Real Explorer + Word + direct-save validation on private network in Phase 6",
+    "Family-by-family promotion from payload_passthrough to explicit runtime contract",
+    "Copy-forward parity for families that transplant prior bookmark/table content",
+    "Explicit policy for tolerated missing-bookmark writes, if any are approved",
+    "Excel-backed support-document branch adjudication outside the current Word render-safe baseline"
+  ]
+}

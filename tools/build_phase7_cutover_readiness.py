@@ -182,6 +182,69 @@ def _baseline_gate(
     return gate("blocked", blocked_reason, detail=detail or {})
 
 
+def _resolve_reported_artifact_path(reported_path: str) -> Path:
+    candidate = Path(reported_path)
+    if candidate.is_absolute():
+        return candidate
+    return ROOT / candidate
+
+
+def build_phase5_gate(phase5_result: ArtifactLoadResult) -> dict[str, Any]:
+    if not phase5_result.ok:
+        return _blocked_artifact_gate(
+            phase5_result.error_reason or "Phase 5 closeout artifact is unavailable."
+        )
+
+    phase5 = phase5_result.payload or {}
+    if phase5.get("phase5_status") != "closed":
+        return gate("blocked", "Phase 5 document/runtime baseline is not closed.")
+    if phase5.get("validation_errors"):
+        return gate(
+            "blocked",
+            "Phase 5 closeout contains validation errors.",
+            detail={"validation_errors": phase5.get("validation_errors", [])},
+        )
+
+    artifact_sources = phase5.get("artifact_sources")
+    if not isinstance(artifact_sources, dict):
+        return gate(
+            "blocked",
+            "Phase 5 closeout is missing authoritative artifact_sources provenance.",
+        )
+
+    required_sources = {
+        "template_compatibility_audit": "Phase 5 template compatibility audit",
+        "template_contract_reconciled": "Phase 5 template contract reconciliation",
+        "ddkd_template_variants": "Phase 5 DDKD template variants",
+        "bbtd_template_variants": "Phase 5 BBTD template variants",
+        "ddkd_appendix_field_adjudication": "Phase 5 DDKD appendix adjudication",
+    }
+    for key, label in required_sources.items():
+        source = artifact_sources.get(key)
+        if not isinstance(source, dict):
+            return gate("blocked", f"Phase 5 closeout is missing provenance for {key}.")
+        reported_path = str(source.get("path", "")).strip()
+        reported_sha256 = str(source.get("sha256", "")).strip()
+        if not reported_path or not reported_sha256:
+            return gate("blocked", f"Phase 5 closeout provenance for {key} is incomplete.")
+        actual_result = safe_load_json(_resolve_reported_artifact_path(reported_path), label)
+        if not actual_result.ok:
+            return _blocked_artifact_gate(actual_result.error_reason or f"{label} artifact is unavailable.")
+        actual_sha256 = actual_result.payload_sha256 or ""
+        if actual_sha256 != reported_sha256:
+            return gate(
+                "blocked",
+                f"Phase 5 closeout is stale relative to {key}.",
+                detail={
+                    "reported_path": reported_path,
+                    "reported_sha256": reported_sha256,
+                    "actual_sha256": actual_sha256,
+                },
+            )
+
+    return gate("pass", "Phase 5 document/runtime baseline is closed.")
+
+
 def build_phase6_gate(
     phase6_result: ArtifactLoadResult,
     phase6_summary_result: ArtifactLoadResult,
@@ -247,12 +310,7 @@ def build_readiness() -> dict[str, Any]:
         pass_reason="Phase 4 storage contract/tooling baseline is closed.",
         blocked_reason="Phase 4 storage contract/tooling baseline is not closed.",
     )
-    gates["document_contract_baseline"] = _baseline_gate(
-        phase5,
-        expected_key="phase5_status",
-        pass_reason="Phase 5 document/runtime baseline is closed.",
-        blocked_reason="Phase 5 document/runtime baseline is not closed.",
-    )
+    gates["document_contract_baseline"] = build_phase5_gate(phase5)
     gates["desktop_private_share_validation"] = build_phase6_gate(phase6, phase6_summary)
 
     gates["current_projection_conflicts"] = build_current_projection_gate(phase3p, phase3s)

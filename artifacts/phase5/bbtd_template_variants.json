@@ -1,0 +1,181 @@
+{
+  "family_code": "INSPECTION_BBTD_HOSO_DK",
+  "variants": [
+    {
+      "variant_key": "bbtd_hoso_dk_line_1",
+      "template_name": "1. BBTD Ho so DK - GLP - Moi.dotx",
+      "template_examples": [
+        "1. BBTD Ho so DK - GLP - Moi.dotx",
+        "1. BBTD Ho so DK - GMPbb - Moi.dotx",
+        "1. BBTD Ho so DK - GMPbb - Tai.dotx"
+      ],
+      "bookmarks": [
+        "DayChuyen1",
+        "DiaChiCoSo1",
+        "Fulldate1",
+        "TenCoSo1",
+        "TenNguoiPhuTrach1"
+      ],
+      "allowed_payload_fields": [
+        "Daychuyen",
+        "Diachicoso",
+        "Fulldate",
+        "Tencoso"
+      ],
+      "exclusive_bookmarks": [],
+      "field_mappings": {
+        "Daychuyen": [
+          "DayChuyen1"
+        ],
+        "Diachicoso": [
+          "DiaChiCoSo1"
+        ],
+        "Fulldate": [
+          "Fulldate1"
+        ],
+        "Tencoso": [
+          "TenCoSo1"
+        ]
+      },
+      "unmapped_template_bookmarks": [
+        "TenNguoiPhuTrach1"
+      ]
+    },
+    {
+      "variant_key": "bbtd_hoso_dk_line_2",
+      "template_name": "1. BBTD Ho so DK - GLP - Tai.dotx",
+      "template_examples": [
+        "1. BBTD Ho so DK - GLP - Tai.dotx"
+      ],
+      "bookmarks": [
+        "DayChuyen2",
+        "DiaChiCoSo2",
+        "Fulldate1",
+        "TenCoSo2",
+        "TenNguoiPhuTrach2"
+      ],
+      "allowed_payload_fields": [
+        "Daychuyen",
+        "Diachicoso",
+        "Fulldate",
+        "Tencoso"
+      ],
+      "exclusive_bookmarks": [],
+      "field_mappings": {
+        "Daychuyen": [
+          "DayChuyen2"
+        ],
+        "Diachicoso": [
+          "DiaChiCoSo2"
+        ],
+        "Fulldate": [
+          "Fulldate1"
+        ],
+        "Tencoso": [
+          "TenCoSo2"
+        ]
+      },
+      "unmapped_template_bookmarks": [
+        "TenNguoiPhuTrach2"
+      ]
+    },
+    {
+      "variant_key": "bbtd_hoso_dk_line_3",
+      "template_name": "1. BBTD Ho so DK - GSP - Moi.dotx",
+      "template_examples": [
+        "1. BBTD Ho so DK - GSP - Moi.dotx",
+        "1. BBTD Ho so DK - GSP - Tai.dotx"
+      ],
+      "bookmarks": [
+        "DayChuyen3",
+        "DiaChiCoSo3",
+        "Fulldate1",
+        "TenCoSo3",
+        "TenNguoiPhuTrach3"
+      ],
+      "allowed_payload_fields": [
+        "Daychuyen",
+        "Diachicoso",
+        "Fulldate",
+        "Tencoso"
+      ],
+      "exclusive_bookmarks": [],
+      "field_mappings": {
+        "Daychuyen": [
+          "DayChuyen3"
+        ],
+        "Diachicoso": [
+          "DiaChiCoSo3"
+        ],
+        "Fulldate": [
+          "Fulldate1"
+        ],
+        "Tencoso": [
+          "TenCoSo3"
+        ]
+      },
+      "unmapped_template_bookmarks": [
+        "TenNguoiPhuTrach3"
+      ]
+    },
+    {
+      "variant_key": "bbtd_hoso_dk_all_lines",
+      "template_name": "1. BBTD Ho so DK - GMP - Moi.dotx",
+      "template_examples": [
+        "1. BBTD Ho so DK - GMP - Moi.dotx",
+        "1. BBTD Ho so DK - GMP - Tai.dotx"
+      ],
+      "bookmarks": [
+        "DayChuyen1",
+        "DayChuyen2",
+        "DayChuyen3",
+        "DiaChiCoSo1",
+        "DiaChiCoSo2",
+        "DiaChiCoSo3",
+        "Fulldate1",
+        "Fulldate2",
+        "Fulldate3",
+        "TenCoSo1",
+        "TenCoSo2",
+        "TenCoSo3",
+        "TenNguoiPhuTrach1",
+        "TenNguoiPhuTrach2",
+        "TenNguoiPhuTrach3"
+      ],
+      "allowed_payload_fields": [
+        "Daychuyen",
+        "Diachicoso",
+        "Fulldate",
+        "Tencoso"
+      ],
+      "exclusive_bookmarks": [],
+      "field_mappings": {
+        "Daychuyen": [
+          "DayChuyen1",
+          "DayChuyen2",
+          "DayChuyen3"
+        ],
+        "Diachicoso": [
+          "DiaChiCoSo1",
+          "DiaChiCoSo2",
+          "DiaChiCoSo3"
+        ],
+        "Fulldate": [
+          "Fulldate1",
+          "Fulldate2",
+          "Fulldate3"
+        ],
+        "Tencoso": [
+          "TenCoSo1",
+          "TenCoSo2",
+          "TenCoSo3"
+        ]
+      },
+      "unmapped_template_bookmarks": [
+        "TenNguoiPhuTrach1",
+        "TenNguoiPhuTrach2",
+        "TenNguoiPhuTrach3"
+      ]
+    }
+  ]
+}

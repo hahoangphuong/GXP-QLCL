@@ -1,0 +1,5090 @@
+{
+  "families": [
+    {
+      "family_code": "INSPECTION_BBTD_HOSO_DK",
+      "logical_name": "Bien ban tham dinh ho so dang ky",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        "1. BBTD Ho so DK - GLP - Moi.dotx",
+        "1. BBTD Ho so DK - GLP - Tai.dotx",
+        "1. BBTD Ho so DK - GMP - Moi.dotx",
+        "1. BBTD Ho so DK - GMP - Tai.dotx",
+        "1. BBTD Ho so DK - GMPbb - Moi.dotx",
+        "1. BBTD Ho so DK - GMPbb - Tai.dotx",
+        "1. BBTD Ho so DK - GSP - Moi.dotx",
+        "1. BBTD Ho so DK - GSP - Tai.dotx"
+      ],
+      "payload_registry_field_count": 4,
+      "real_bookmark_count": 15,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "Daychuyen",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "DayChuyen1",
+            "DayChuyen2",
+            "DayChuyen3"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Diachicoso",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "DiaChiCoSo1",
+            "DiaChiCoSo2",
+            "DiaChiCoSo3"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Fulldate",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Fulldate1",
+            "Fulldate2",
+            "Fulldate3"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Tencoso",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "TenCoSo1",
+            "TenCoSo2",
+            "TenCoSo3"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        }
+      ],
+      "unresolved_fields": [],
+      "unmatched_real_bookmarks": [
+        "TenNguoiPhuTrach1",
+        "TenNguoiPhuTrach2",
+        "TenNguoiPhuTrach3"
+      ]
+    },
+    {
+      "family_code": "INSPECTION_QD_KT",
+      "logical_name": "Quyet dinh kiem tra",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        "2. QD KT - GLP.dotx",
+        "2. QD KT - GMP.dotx",
+        "2. QD KT - GMPbb.dotx",
+        "2. QD KT - GSP.dotx"
+      ],
+      "payload_registry_field_count": 35,
+      "real_bookmark_count": 22,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "Daychuyen",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Diachicoso",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Diadiem",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Diadiemx1",
+            "Diadiemx2",
+            "Diadiemx3"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Diadiemx",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Diadiemx1",
+            "Diadiemx2",
+            "Diadiemx3"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Fulldate",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "GhPviCN",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "GhPviDG",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "GioiHanPvi",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "HsDK",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "MoiDel",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "MoiDel2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "NgayKT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayKTx",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgaynopHsDK",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayQDKT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "PVCepha",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "PVDuoclieu",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "PVNangmem",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "PVNhomat",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "PVPeni",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "PVSuibot",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "PVTiem",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "QDKT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TaiDel",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "TaiDel1",
+            "TaiDel2",
+            "TaiDel3",
+            "TaiDel4"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Tencoso",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Tencoso1",
+            "Tencoso2",
+            "Tencoso3"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "ThoigianKT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TieuchuanKT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT1",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT2",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT3Del",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT3Del"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT3x",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT3x"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT_SYTx",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT_VKNx",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "VKN",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "VKN"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "VKNx",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "VKNx"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        }
+      ],
+      "unresolved_fields": [
+        "Daychuyen",
+        "Diachicoso",
+        "Fulldate",
+        "GhPviCN",
+        "GhPviDG",
+        "GioiHanPvi",
+        "HsDK",
+        "NgayKT",
+        "NgayKTx",
+        "NgaynopHsDK",
+        "NgayQDKT",
+        "PVCepha",
+        "PVDuoclieu",
+        "PVNangmem",
+        "PVNhomat",
+        "PVPeni",
+        "PVSuibot",
+        "PVTiem",
+        "QDKT",
+        "ThoigianKT",
+        "TieuchuanKT",
+        "TT",
+        "TT1",
+        "TT2",
+        "TT_SYTx",
+        "TT_VKNx"
+      ],
+      "unmatched_real_bookmarks": [
+        "CTky",
+        "PCTky",
+        "TT1x",
+        "TT2x",
+        "TT_ext",
+        "VKN1",
+        "VKN2"
+      ]
+    },
+    {
+      "family_code": "INSPECTION_KE_HOACH_KT",
+      "logical_name": "Ke hoach kiem tra",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        "3. Kế hoạch kiểm tra GLP.dotx",
+        "3. Kế hoạch kiểm tra GMP.dotx",
+        "3. Kế hoạch kiểm tra GMPbb.dotx",
+        "3. Kế hoạch kiểm tra GSP.dotx"
+      ],
+      "payload_registry_field_count": 35,
+      "real_bookmark_count": 33,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "Daychuyen",
+          "resolution_type": "case_insensitive_exact",
+          "target_bookmarks": [
+            "DayChuyen"
+          ],
+          "evidence": "Only case differs between payload registry and real template bookmark."
+        },
+        {
+          "field_name": "Diachicoso",
+          "resolution_type": "case_insensitive_exact",
+          "target_bookmarks": [
+            "DiaChiCoSo"
+          ],
+          "evidence": "Only case differs between payload registry and real template bookmark."
+        },
+        {
+          "field_name": "Diadiem",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Diadiemx",
+            "Diadiemx1"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Diadiemx",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Diadiemx"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Fulldate",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Fulldate"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "GhPviCN",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "GhPviDG",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "GhPviDG"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "GioiHanPvi",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "GioiHanPvi"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "HsDK",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "MoiDel",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayKT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayKTx",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgaynopHsDK",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayQDKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayQDKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "PVCepha",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "PVCepha1",
+            "PVCepha2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "PVDuoclieu",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "PVDuoclieu1",
+            "PVDuoclieu2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "PVNangmem",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "PVNangmem1",
+            "PVNangmem2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "PVNhomat",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "PVNhomat"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "PVPeni",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "PVPeni1",
+            "PVPeni2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "PVSuibot",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "PVSuibot"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "PVTiem",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "PVTiem1",
+            "PVTiem2",
+            "PVTiem3"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "QDKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "QDKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TaiDel",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Tencoso",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "TenCoSo1"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "ThoigianKT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TieuchuanKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TieuchuanKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT1",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT2",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT3Del",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT3Del"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT3x",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT3x"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT_SYTx",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT_SYTx"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT_VKNx",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT_VKNx"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "VKN",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "VKNx",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "VKNx"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        }
+      ],
+      "unresolved_fields": [
+        "GhPviCN",
+        "HsDK",
+        "MoiDel",
+        "NgayKT",
+        "NgayKTx",
+        "NgaynopHsDK",
+        "TaiDel",
+        "ThoigianKT",
+        "TT",
+        "TT1",
+        "TT2",
+        "VKN"
+      ],
+      "unmatched_real_bookmarks": [
+        "DGMoi",
+        "TT1x",
+        "TT2x",
+        "TT_ext"
+      ]
+    },
+    {
+      "family_code": "INSPECTION_BB_KT",
+      "logical_name": "Bien ban kiem tra",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        "4. BB KT - GLP.dotx",
+        "4. BB KT - GMP.dotx",
+        "4. BB KT - GSP.dotx"
+      ],
+      "payload_registry_field_count": 35,
+      "real_bookmark_count": 56,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "Daychuyen",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Daychuyen1",
+            "Daychuyen2",
+            "Daychuyen3"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Diachicoso",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Diachicoso1",
+            "Diachicoso2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Diadiem",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Diadiem"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Diadiemx",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Diadiemx"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Fulldate",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "GhPviCN",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "GhPviCN"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "GhPviDG",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "GhPviDG"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "GioiHanPvi",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "HsDK",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "HsDK"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "MoiDel",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayKTx",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayKTx"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgaynopHsDK",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgaynopHsDK"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayQDKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayQDKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "PVCepha",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "PVDuoclieu",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "PVNangmem",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "PVNhomat",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "PVPeni",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "PVSuibot",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "PVTiem",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "QDKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "QDKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TaiDel",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "TaiDel2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Tencoso",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Tencoso1",
+            "Tencoso2",
+            "Tencoso3",
+            "Tencoso4",
+            "Tencoso5",
+            "Tencoso6",
+            "Tencoso7",
+            "Tencoso8",
+            "Tencoso9"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "ThoigianKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "ThoigianKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TieuchuanKT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT1",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT1"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT2",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT2"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT3Del",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT3Del"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT3x",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT3x"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT_SYTx",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT_SYTx"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT_VKNx",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT_VKNx"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "VKN",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "VKNx",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "VKNx"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        }
+      ],
+      "unresolved_fields": [
+        "Fulldate",
+        "GioiHanPvi",
+        "MoiDel",
+        "PVCepha",
+        "PVDuoclieu",
+        "PVNangmem",
+        "PVNhomat",
+        "PVPeni",
+        "PVSuibot",
+        "PVTiem",
+        "TieuchuanKT",
+        "TT",
+        "VKN"
+      ],
+      "unmatched_real_bookmarks": [
+        "CapDDKKD1",
+        "DiachiTruso1",
+        "DsTT",
+        "EU_Ref",
+        "NoWHO_Del1",
+        "TT1x",
+        "TT2x",
+        "TT_ext",
+        "TTs1",
+        "TTs10",
+        "TTs11",
+        "TTs12",
+        "TTs13",
+        "TTs2",
+        "TTs3",
+        "TTs4",
+        "TTs5",
+        "TTs6",
+        "TTs7",
+        "TTs8",
+        "TTs9",
+        "TTsend",
+        "WHO_Ref"
+      ]
+    },
+    {
+      "family_code": "INSPECTION_CAPA_LAN_1",
+      "logical_name": "Danh gia CAPA lan 1",
+      "compatibility_status": "template_verified_copy_forward_pending",
+      "matched_file_names": [
+        "5. Danh gia CAPA - GLP.dotx",
+        "5. Danh gia CAPA - GMP.dotx"
+      ],
+      "payload_registry_field_count": 11,
+      "real_bookmark_count": 27,
+      "copy_forward_dependencies": [
+        {
+          "source_family_code": "INSPECTION_BB_KT",
+          "condition": "If prior BBKT exists and bookmark DsTT is present, copy deficiency table into CAPA document.",
+          "source_bookmarks": [
+            "DsTT"
+          ]
+        }
+      ],
+      "field_resolutions": [
+        {
+          "field_name": "CAPAx",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "CAPAx"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "CV_BCKP",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "CV_BCKP"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "DsTT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "DsTT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "LanKP",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "LanKP"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "LanKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "LanKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Ngay_BCKP",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Ngay_BCKP"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NXL",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NXL"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Tday",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Tday"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Tencoso",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Tencoso"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "ThoigianKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "ThoigianKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TTV1",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TTV1"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        }
+      ],
+      "unresolved_fields": [],
+      "unmatched_real_bookmarks": [
+        "DsTT_Title",
+        "DsTTDel",
+        "DsTTx",
+        "TTs10x",
+        "TTs11x",
+        "TTs12x",
+        "TTs13x",
+        "TTs1x",
+        "TTs2x",
+        "TTs3x",
+        "TTs4x",
+        "TTs5x",
+        "TTs6x",
+        "TTs7x",
+        "TTs8x",
+        "TTs9x"
+      ]
+    },
+    {
+      "family_code": "INSPECTION_CAPA_LAN_2",
+      "logical_name": "Danh gia CAPA lan 2",
+      "compatibility_status": "template_verified_copy_forward_pending",
+      "matched_file_names": [
+        "5. Danh gia CAPA - GLP.dotx",
+        "5. Danh gia CAPA - GMP.dotx"
+      ],
+      "payload_registry_field_count": 11,
+      "real_bookmark_count": 27,
+      "copy_forward_dependencies": [
+        {
+          "source_family_code": "INSPECTION_CAPA_LAN_1",
+          "condition": "If CopyPT is enabled and prior CAPA round 1 exists, copy CAPAx table into round 2 document.",
+          "source_bookmarks": [
+            "CAPAx"
+          ]
+        }
+      ],
+      "field_resolutions": [
+        {
+          "field_name": "CAPAx",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "CAPAx"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "CV_BCKP",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "CV_BCKP"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "DsTT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "DsTT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "LanKP",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "LanKP"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "LanKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "LanKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Ngay_BCKP",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Ngay_BCKP"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NXL",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NXL"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Tday",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Tday"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Tencoso",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Tencoso"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "ThoigianKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "ThoigianKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TTV1",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TTV1"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        }
+      ],
+      "unresolved_fields": [],
+      "unmatched_real_bookmarks": [
+        "DsTT_Title",
+        "DsTTDel",
+        "DsTTx",
+        "TTs10x",
+        "TTs11x",
+        "TTs12x",
+        "TTs13x",
+        "TTs1x",
+        "TTs2x",
+        "TTs3x",
+        "TTs4x",
+        "TTs5x",
+        "TTs6x",
+        "TTs7x",
+        "TTs8x",
+        "TTs9x"
+      ]
+    },
+    {
+      "family_code": "INSPECTION_PT_PCT",
+      "logical_name": "Phieu trinh PCT",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        "6. PT.PCT - GLP.dotx",
+        "6. PT.PCT - GMP.dotx"
+      ],
+      "payload_registry_field_count": 14,
+      "real_bookmark_count": 19,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "cacBCKP",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "cacBCKP"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Daychuyen",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Daychuyen2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Daychuyen2",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Daychuyen2"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Diachicoso",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Diachicoso1",
+            "Diachicoso2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "GioihanPvi",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "GioihanPvi"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "HsDK",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "HsDK"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayBCKP",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayBCKP"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayKT2",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "NgayKT21",
+            "NgayKT22"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "NgayQDKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayQDKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Noidung",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Noidung"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "QDKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "QDKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Tencoso",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Tencoso1",
+            "Tencoso2",
+            "Tencoso3",
+            "Tencoso4",
+            "Tencoso5"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "ThoigianKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "ThoigianKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT2",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT2"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        }
+      ],
+      "unresolved_fields": [],
+      "unmatched_real_bookmarks": []
+    },
+    {
+      "family_code": "INSPECTION_PT_CT",
+      "logical_name": "Phieu trinh CT",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        "7. PT.CT - GLP.dotx",
+        "7. PT.CT - GMP.dotx"
+      ],
+      "payload_registry_field_count": 14,
+      "real_bookmark_count": 18,
+      "copy_forward_dependencies": [
+        {
+          "source_family_code": "INSPECTION_PT_PCT",
+          "condition": "If CopyPT is enabled and prior PCT exists, copy bookmark Noidung from prior PCT document.",
+          "source_bookmarks": [
+            "Noidung"
+          ]
+        }
+      ],
+      "field_resolutions": [
+        {
+          "field_name": "cacBCKP",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "cacBCKP"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Daychuyen",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Daychuyen"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Daychuyen2",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Daychuyen2"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Diachicoso",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Diachicoso1",
+            "Diachicoso2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "GioihanPvi",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "HsDK",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "HsDK"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayBCKP",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayBCKP"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayKT2",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "NgayKT21",
+            "NgayKT22"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "NgayQDKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayQDKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Noidung",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Noidung"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "QDKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "QDKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Tencoso",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Tencoso1",
+            "Tencoso2",
+            "Tencoso3",
+            "Tencoso4"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "ThoigianKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "ThoigianKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT2",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT2"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        }
+      ],
+      "unresolved_fields": [
+        "GioihanPvi"
+      ],
+      "unmatched_real_bookmarks": []
+    },
+    {
+      "family_code": "CERTIFICATE_DECISION",
+      "logical_name": "Quyet dinh cap chung chi",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        "8. QD cap CC - GLP.dotx",
+        "8. QD cap CC - GMP.dotx",
+        "8. QD cap CC - GMPbb.dotx",
+        "8. QD cap CC - GSP.dotx"
+      ],
+      "payload_registry_field_count": 15,
+      "real_bookmark_count": 16,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "cacBCKP",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "cacBCKP"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Chuthich",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "ChuthichDel",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Daychuyen",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Daychuyen"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Diachicoso",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Diachicoso"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "iBoth",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "iNgLieu",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "iThanhpham",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayBCKP",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayBCKP"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayHethan",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TenCoso",
+          "resolution_type": "case_insensitive_exact",
+          "target_bookmarks": [
+            "Tencoso"
+          ],
+          "evidence": "Only case differs between payload registry and real template bookmark."
+        },
+        {
+          "field_name": "Tencoso5",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Tencoso",
+            "Tencoso1",
+            "Tencoso2",
+            "Tencoso3",
+            "Tencoso4"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "TenCty",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "TenCty1",
+            "TenCty2",
+            "TenCty3",
+            "TenCtyCoso"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "TenCtyCoso",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TenCtyCoso"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        }
+      ],
+      "unresolved_fields": [
+        "Chuthich",
+        "ChuthichDel",
+        "iBoth",
+        "iNgLieu",
+        "iThanhpham",
+        "NgayHethan"
+      ],
+      "unmatched_real_bookmarks": [
+        "HsTai",
+        "vaBCKP"
+      ]
+    },
+    {
+      "family_code": "CERTIFICATE_ISSUANCE_WORD",
+      "logical_name": "Chung chi GPs (Word-scoped baseline)",
+      "compatibility_status": "powerpoint_or_non_word_variant_present",
+      "matched_file_names": [
+        "9. Chung chi GLP (moi).dotx",
+        "9. Chung chi GMP (moi).dotx",
+        "9. Chung chi GMPbb.dotx",
+        "9. Chung chi GMPbb.potx"
+      ],
+      "payload_registry_field_count": 17,
+      "real_bookmark_count": 30,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "Chuthich",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Chuthich"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "ChuthichE",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "ChuthichE"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "DiachiCoso",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "DiachiCoso"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "DiachiCosoE",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "DiachiCosoE"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "DiachiVPCty",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "DiachiVPCty"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "DiachiVPCtyE",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "DiachiVPCtyE"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayKT1",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayKT1"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayKT2",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayKT2"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NoEU_Del",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "NoEU_Del1",
+            "NoEU_Del2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "NoPICS_Del",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "NoPICS_Del1",
+            "NoPICS_Del2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "NoWHO_Del",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "NoWHO_Del1",
+            "NoWHO_Del2",
+            "NoWHO_Del3",
+            "NoWHO_Del4"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "OECD_Del",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TenCoso",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TenCoso"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TenCosoE",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TenCosoE"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TenCty",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TenCty"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TenCtyE",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TenCtyE"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "WHO_Del",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "WHO_Del"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        }
+      ],
+      "unresolved_fields": [
+        "OECD_Del"
+      ],
+      "unmatched_real_bookmarks": [
+        "EU_Del1",
+        "EU_Del2",
+        "PICS_Del1",
+        "PICS_Del2",
+        "PICS_Del3",
+        "PICS_Del4",
+        "Pvi",
+        "WHO_Del1",
+        "WHO_Del2"
+      ]
+    },
+    {
+      "family_code": "RISK_MANAGEMENT_WORKSHEET",
+      "logical_name": "Bang cong cu quan ly rui ro",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        "10. Bảng công cụ quản lý rủi ro.dotx"
+      ],
+      "payload_registry_field_count": 7,
+      "real_bookmark_count": 8,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "Daychuyen",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Daychuyen"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Diachi",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Diachi"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NXL",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NXL"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Tday",
+          "resolution_type": "case_insensitive_exact",
+          "target_bookmarks": [
+            "TDay"
+          ],
+          "evidence": "Only case differs between payload registry and real template bookmark."
+        },
+        {
+          "field_name": "TenCty",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TenCty"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TTV1",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TTV1"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        }
+      ],
+      "unresolved_fields": [],
+      "unmatched_real_bookmarks": [
+        "BM15"
+      ]
+    },
+    {
+      "family_code": "STATUS_CONFIRMATION_LETTER",
+      "logical_name": "Cong van xac nhan tinh trang",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        "a. CV xác nhận tình trạng.dotx"
+      ],
+      "payload_registry_field_count": 37,
+      "real_bookmark_count": 17,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "ChoKT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "CoQDKT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "DaKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "DaKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "DiachiCty",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "DiachiCty1"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "MahsDKKT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "MahsDKKT2",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "MahsDKKT3",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgaycapDDK",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgaycapDDK2",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayDKKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayDKKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayDKKT2",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "NgayDKKT"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "NgayDKKT3",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "NgayDKKT"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "NgayGCN",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayGCN"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayGCN2",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "NgayGCN"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "NgayGCN3",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "NgayGCN"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "NgayKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayKT2",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "NgayKT"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "NgayKT3",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "NgayKT"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "NgayQDKT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayQDKT2",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayQDKT3",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "PhamviKT",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "PhamviKT1"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "QDcapDDK",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "QDcapDDK"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "QDcapDDK2",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "QDcapDDK"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "QDGCN",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "QDGCN"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "QDGCN2",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "QDGCN"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "QDGCN3",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "QDGCN"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "QDKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "QDKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "QDKT2",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "QDKT3",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "SoDDK",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "SoDDK"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "SoDDK_2",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "SoDDK_2"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "SoDDK_3",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "SoDDK_2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "SoGCN",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "SoGCN"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "SoGCN2",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "SoGCN"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "SoGCN3",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "SoGCN"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "TenCtydd",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "TenCtydd1",
+            "TenCtydd2",
+            "TenCtydd3",
+            "TenCtydd4",
+            "TenCtydd5"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        }
+      ],
+      "unresolved_fields": [
+        "ChoKT",
+        "CoQDKT",
+        "MahsDKKT",
+        "MahsDKKT2",
+        "MahsDKKT3",
+        "NgaycapDDK",
+        "NgaycapDDK2",
+        "NgayQDKT",
+        "NgayQDKT2",
+        "NgayQDKT3",
+        "QDKT2",
+        "QDKT3"
+      ],
+      "unmatched_real_bookmarks": []
+    },
+    {
+      "family_code": "NAME_ADDRESS_CHANGE_LETTER",
+      "logical_name": "Cong van dong y doi ten dia chi",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        "b. CV trả lời đồng ý đổi tên, địa chỉ.dotx"
+      ],
+      "payload_registry_field_count": 6,
+      "real_bookmark_count": 16,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "DiachiCty",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "DiachiCty1",
+            "DiachiCty2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "NgayGCN",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "NgayGCN1",
+            "NgayGCN2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "SoGCN",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "SoGCN1",
+            "SoGCN2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "SoQD",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TenCtydd",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "TenCtydd1",
+            "TenCtydd2",
+            "TenCtydd3",
+            "TenCtydd4"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "TenCtyTA",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "TenCtyTA1",
+            "TenCtyTA2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        }
+      ],
+      "unresolved_fields": [
+        "SoQD"
+      ],
+      "unmatched_real_bookmarks": [
+        "NgayCVden",
+        "SoCVden",
+        "SoQD1",
+        "SoQD2"
+      ]
+    },
+    {
+      "family_code": "CHANGE_REPORT_ROUTE_LETTER",
+      "logical_name": "Cong van chuyen ho so thay doi cho phong kinh doanh",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        "11. Đánh giá báo cáo thay đổi.dotx"
+      ],
+      "payload_registry_field_count": 6,
+      "real_bookmark_count": 5,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "HsDKKT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayDKKT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayGCN",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "QDGCN",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "SoGCN",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TenCtydd",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        }
+      ],
+      "unresolved_fields": [
+        "HsDKKT",
+        "NgayDKKT",
+        "NgayGCN",
+        "QDGCN",
+        "SoGCN",
+        "TenCtydd"
+      ],
+      "unmatched_real_bookmarks": [
+        "Daychuyen",
+        "Diachi",
+        "NXL",
+        "TDay",
+        "TenCty"
+      ]
+    },
+    {
+      "family_code": "ASSESSMENT_MINUTES",
+      "logical_name": "Bien ban danh gia",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        "3.2. Biên bản đánh giá GLP.dotx",
+        "3.2. Biên bản đánh giá GMP.dotx"
+      ],
+      "payload_registry_field_count": 5,
+      "real_bookmark_count": 38,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "Daychuyen",
+          "resolution_type": "case_insensitive_exact",
+          "target_bookmarks": [
+            "DayChuyen"
+          ],
+          "evidence": "Only case differs between payload registry and real template bookmark."
+        },
+        {
+          "field_name": "Diachi",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Diachicoso"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "NXL",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Tday",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TenCty",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        }
+      ],
+      "unresolved_fields": [
+        "NXL",
+        "Tday",
+        "TenCty"
+      ],
+      "unmatched_real_bookmarks": [
+        "DsTT",
+        "GioiHanPvi",
+        "NgayKTe",
+        "NgayKTs",
+        "NgayKTx",
+        "TenCoSo1",
+        "Tencoso2",
+        "Tencoso3",
+        "Tieuchuan",
+        "TieuchuanKT",
+        "Tinhthanh",
+        "TT1",
+        "TT1x",
+        "TT1xxx",
+        "TT2",
+        "TT2x",
+        "TT3",
+        "TT3_Del",
+        "TT3x",
+        "TT3x_Del",
+        "TT_ext",
+        "TT_SYT",
+        "TT_SYTx",
+        "TT_VKN",
+        "TT_VKNx",
+        "TTs1",
+        "TTs10",
+        "TTs11",
+        "TTs2",
+        "TTs3",
+        "TTs4",
+        "TTs5",
+        "TTs6",
+        "TTs7",
+        "TTs8",
+        "TTs9"
+      ]
+    },
+    {
+      "family_code": "CONSENT_CHANGE_LETTER",
+      "logical_name": "Cong van dong y thay doi",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        "d. CV đồng ý thay đổi.dotx"
+      ],
+      "payload_registry_field_count": 37,
+      "real_bookmark_count": 25,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "ChoKT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "CoQDKT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "DaKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "DaKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "DiachiCty",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "DiachiCty1"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "MahsDKKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "MahsDKKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "MahsDKKT2",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "MahsDKKT2"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "MahsDKKT3",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "MahsDKKT",
+            "MahsDKKT2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "NgaycapDDK",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgaycapDDK2",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayDKKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayDKKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayDKKT2",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayDKKT2"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayDKKT3",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "NgayDKKT",
+            "NgayDKKT2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "NgayGCN",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayGCN"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayGCN2",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayGCN2"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayGCN3",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "NgayGCN",
+            "NgayGCN2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "NgayKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayKT2",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayKT2"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayKT3",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "NgayKT",
+            "NgayKT2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "NgayQDKT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayQDKT2",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayQDKT3",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "PhamviKT",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "PhamviKT1"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "QDcapDDK",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "QDcapDDK"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "QDcapDDK2",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "QDcapDDK2"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "QDGCN",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "QDGCN"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "QDGCN2",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "QDGCN"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "QDGCN3",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "QDGCN"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "QDKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "QDKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "QDKT2",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "QDKT3",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "SoDDK",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "SoDDK"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "SoDDK_2",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "SoDDK_2"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "SoDDK_3",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "SoDDK_2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "SoGCN",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "SoGCN"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "SoGCN2",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "SoGCN2"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "SoGCN3",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "SoGCN",
+            "SoGCN2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "TenCtydd",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "TenCtydd1",
+            "TenCtydd2",
+            "TenCtydd3",
+            "TenCtydd4",
+            "TenCtydd5",
+            "TenCtydd6"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        }
+      ],
+      "unresolved_fields": [
+        "ChoKT",
+        "CoQDKT",
+        "NgaycapDDK",
+        "NgaycapDDK2",
+        "NgayQDKT",
+        "NgayQDKT2",
+        "NgayQDKT3",
+        "QDKT2",
+        "QDKT3"
+      ],
+      "unmatched_real_bookmarks": []
+    },
+    {
+      "family_code": "DDKD_PRESENTATION",
+      "logical_name": "Phieu trinh cap DDK",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        "z1. PT TT - Cấp ĐĐKKDD.dotx",
+        "z1. PT TT - Cấp ĐĐKKDD.pdf"
+      ],
+      "payload_registry_field_count": 34,
+      "real_bookmark_count": 86,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "Cap_DC",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Cap_DC1",
+            "Cap_DC2",
+            "Cap_DC3",
+            "Cap_DC4"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "cb",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Co_Doiten",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Co_Doiten1",
+            "Co_Doiten2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Co_KSDB",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Co_KSDB1",
+            "Co_KSDB2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Comment",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Comment1",
+            "Comment2",
+            "Comment3",
+            "Comment4",
+            "Comment5",
+            "Comment6",
+            "Comment7"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "DiachiCoso",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "DiachiCoso"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Diachicoso1",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Diachicoso1"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "DiachiCoso_cu",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "DiachiCoso_cu"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "DiachiVPCty",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "DiachiVPCty"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "DiachiVPCty_cu",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "DiachiVPCty_cu"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Diadiemx",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Diadiemx1",
+            "Diadiemx2",
+            "Diadiemx3"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "GCN_GPs",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "GCN_GPs1",
+            "GCN_GPs2",
+            "GCN_GPs3",
+            "GCN_GPs4",
+            "GCN_GPs5",
+            "GCN_GPs6",
+            "GCN_GPs7"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "GiayDK_cu",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "GiayDK_cu1",
+            "GiayDK_cu2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Loaihinh",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Loaihinh1",
+            "Loaihinh2",
+            "Loaihinh_cu1"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "NgaycapDK_cu",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "NgaycapDK_cu1",
+            "NgaycapDK_cu2",
+            "NgaycapDK_cu3",
+            "NgaycapDK_cu4"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Nguoi_DBCL_CCHN",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_DBCL_CCHN"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_DBCL_Ten",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Nguoi_DBCL_Ten1",
+            "Nguoi_DBCL_Ten2",
+            "Nguoi_DBCL_Ten3",
+            "Nguoi_DBCL_Ten4",
+            "Nguoi_DBCL_Ten5",
+            "Nguoi_DBCL_Ten6",
+            "Nguoi_DBCL_Ten_cu1"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Nguoi_DBCL_Ten_cu1",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_DBCL_Ten_cu1"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_PTCM_CCHN",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_PTCM_CCHN"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_PTCM_Ten",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Nguoi_PTCM_Ten1",
+            "Nguoi_PTCM_Ten2",
+            "Nguoi_PTCM_Ten3",
+            "Nguoi_PTCM_Ten4",
+            "Nguoi_PTCM_Ten_cu1"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Nguoi_PTCM_Ten_cu1",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_PTCM_Ten_cu1"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NXL",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NXL"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Pvi_Cam",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Pvi_Cam"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Pvi_DLDoc",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Pvi_DLDoc"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Pvi_Doc",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Pvi_Doc"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Pvi_GN",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Pvi_GN"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Pvi_PHGN",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Pvi_PHGN"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "PviCN_Rg",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "QDcap_cu",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "QDcap_cu1",
+            "QDcap_cu2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Tencoso1",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Tencoso1"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TenCty",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "TenCty1",
+            "TenCty2",
+            "TenCty3",
+            "TenCty4",
+            "TenCty5",
+            "TenCty6",
+            "TenCty7",
+            "TenCty_cu1",
+            "TenCty_cu2",
+            "TenCty_cu3"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "TenCty_cu",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "TenCty_cu1",
+            "TenCty_cu2",
+            "TenCty_cu3"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Thay_DBCL",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Thay_DBCL"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Thay_PTCM",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Thay_PTCM"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        }
+      ],
+      "unresolved_fields": [
+        "cb",
+        "PviCN_Rg"
+      ],
+      "unmatched_real_bookmarks": [
+        "cb1",
+        "cb2",
+        "cb3",
+        "cb4",
+        "cb5",
+        "cb6",
+        "cb7",
+        "Co_Ng_DBCL",
+        "NgayGCN1",
+        "NgayGCN2",
+        "SoGCN1",
+        "SoGCN2"
+      ]
+    },
+    {
+      "family_code": "DDKD_CERTIFICATE",
+      "logical_name": "Giay DDK",
+      "compatibility_status": "template_verified_word_ooxml",
+      "matched_file_names": [
+        "z2. Giấy chứng nhận ĐĐKKDD (Mới).dotx",
+        "z2. Giấy chứng nhận ĐĐKKDD (Điều chỉnh).dotx"
+      ],
+      "payload_registry_field_count": 18,
+      "real_bookmark_count": 18,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "Cap_lan",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Cap_lan"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Co_Ng_DBCL",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Co_Ng_DBCL"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "DiachiCoso",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "DiachiCoso"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "DiachiVPCty",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "DiachiVPCty"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "GCN_thaythe",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "GCN_thaythe"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "HoatdongKD",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "HoatdongKD"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_DBCL_CCHN",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_DBCL_CCHN"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_DBCL_CCHN_Ngaycap",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_DBCL_CCHN_Ngaycap"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_DBCL_CCHN_Noicap",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_DBCL_CCHN_Noicap"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_DBCL_Ten",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_DBCL_Ten"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_DBCL_Trinhdo",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_DBCL_Trinhdo"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_PTCM_CCHN",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_PTCM_CCHN"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_PTCM_CCHN_Ngaycap",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_PTCM_CCHN_Ngaycap"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_PTCM_CCHN_Noicap",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_PTCM_CCHN_Noicap"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_PTCM_Ten",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_PTCM_Ten"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_PTCM_Trinhdo",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_PTCM_Trinhdo"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TenCoso",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TenCoso"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TenCty",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TenCty"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        }
+      ],
+      "unresolved_fields": [],
+      "unmatched_real_bookmarks": []
+    },
+    {
+      "family_code": "DDKD_APPENDIX_OR_DECISION",
+      "logical_name": "Phu luc Giay DDK",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        "z3. Phụ lục GCN ĐĐKKDD.dotx",
+        "z4. QĐ cấp ĐĐKKDD.dotx"
+      ],
+      "payload_registry_field_count": 28,
+      "real_bookmark_count": 46,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "All",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Chuthich",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "ChuthichGDP",
+            "ChuthichGLP",
+            "ChuthichGMP",
+            "ChuthichGSP"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Co_Chuthich",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Co_ChuthichGDP",
+            "Co_ChuthichGLP",
+            "Co_ChuthichGMP",
+            "Co_ChuthichGSP"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Co_Doiten",
+          "resolution_type": "case_insensitive_exact",
+          "target_bookmarks": [
+            "Co_DoiTen"
+          ],
+          "evidence": "Only case differs between payload registry and real template bookmark."
+        },
+        {
+          "field_name": "Co_Ng_DBCL",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Co_Ng_DBCL"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "CoDieuChinh",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "CoDieuChinh"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "DiachiCoso",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "DiachiCoso"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "DiachiVPCty",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "DiachiVPCty"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Diadiemx",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Diadiemx"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "GCN_GMP",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "GiayDK_cu",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "GiayDK_cu1"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "HoatdongKD",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "HoatdongKD"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgaycapDK_cu",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "NgaycapDK_cu1",
+            "NgaycapDK_cu2",
+            "NgaycapDK_cu3"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Nguoi_DBCL_CCHN",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_DBCL_CCHN"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_DBCL_CCHN_Ngaycap",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_DBCL_CCHN_Ngaycap"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_DBCL_CCHN_Noicap",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_DBCL_CCHN_Noicap"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_DBCL_Ten",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_DBCL_Ten"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_DBCL_Trinhdo",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_DBCL_Trinhdo"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_PTCM_CCHN",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_PTCM_CCHN"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_PTCM_CCHN_Ngaycap",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_PTCM_CCHN_Ngaycap"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_PTCM_CCHN_Noicap",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_PTCM_CCHN_Noicap"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_PTCM_Ten",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_PTCM_Ten"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_PTCM_Trinhdo",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_PTCM_Trinhdo"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "QD_GMP",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "QDcap_cu",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "QDcap_cu1",
+            "QDcap_cu2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "TenCso",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TenCso"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TenCty",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "TenCty1",
+            "TenCty2",
+            "TenCty3",
+            "TenCty4",
+            "TenCty_ddk_cu1",
+            "TenCty_ddk_cu2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "TenCty_ddk_cu",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "TenCty_ddk_cu1",
+            "TenCty_ddk_cu2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        }
+      ],
+      "unresolved_fields": [
+        "All",
+        "GCN_GMP",
+        "QD_GMP"
+      ],
+      "unmatched_real_bookmarks": [
+        "AllGDP",
+        "AllGLP",
+        "AllGMP",
+        "AllGSP",
+        "PviGDP",
+        "PviGLP",
+        "PviGMP",
+        "PviGSP"
+      ]
+    },
+    {
+      "family_code": "DDKD_APPENDIX_OR_DECISION",
+      "logical_name": "Quyet dinh cap DDK",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        "z3. Phụ lục GCN ĐĐKKDD.dotx",
+        "z4. QĐ cấp ĐĐKKDD.dotx"
+      ],
+      "payload_registry_field_count": 28,
+      "real_bookmark_count": 46,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "All",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Chuthich",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "ChuthichGDP",
+            "ChuthichGLP",
+            "ChuthichGMP",
+            "ChuthichGSP"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Co_Chuthich",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "Co_ChuthichGDP",
+            "Co_ChuthichGLP",
+            "Co_ChuthichGMP",
+            "Co_ChuthichGSP"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Co_Doiten",
+          "resolution_type": "case_insensitive_exact",
+          "target_bookmarks": [
+            "Co_DoiTen"
+          ],
+          "evidence": "Only case differs between payload registry and real template bookmark."
+        },
+        {
+          "field_name": "Co_Ng_DBCL",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Co_Ng_DBCL"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "CoDieuChinh",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "CoDieuChinh"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "DiachiCoso",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "DiachiCoso"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "DiachiVPCty",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "DiachiVPCty"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Diadiemx",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Diadiemx"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "GCN_GMP",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "GiayDK_cu",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "GiayDK_cu1"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "HoatdongKD",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "HoatdongKD"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgaycapDK_cu",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "NgaycapDK_cu1",
+            "NgaycapDK_cu2",
+            "NgaycapDK_cu3"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "Nguoi_DBCL_CCHN",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_DBCL_CCHN"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_DBCL_CCHN_Ngaycap",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_DBCL_CCHN_Ngaycap"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_DBCL_CCHN_Noicap",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_DBCL_CCHN_Noicap"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_DBCL_Ten",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_DBCL_Ten"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_DBCL_Trinhdo",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_DBCL_Trinhdo"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_PTCM_CCHN",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_PTCM_CCHN"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_PTCM_CCHN_Ngaycap",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_PTCM_CCHN_Ngaycap"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_PTCM_CCHN_Noicap",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_PTCM_CCHN_Noicap"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_PTCM_Ten",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_PTCM_Ten"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Nguoi_PTCM_Trinhdo",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Nguoi_PTCM_Trinhdo"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "QD_GMP",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "QDcap_cu",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "QDcap_cu1",
+            "QDcap_cu2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "TenCso",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TenCso"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TenCty",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "TenCty1",
+            "TenCty2",
+            "TenCty3",
+            "TenCty4",
+            "TenCty_ddk_cu1",
+            "TenCty_ddk_cu2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "TenCty_ddk_cu",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "TenCty_ddk_cu1",
+            "TenCty_ddk_cu2"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        }
+      ],
+      "unresolved_fields": [
+        "All",
+        "GCN_GMP",
+        "QD_GMP"
+      ],
+      "unmatched_real_bookmarks": [
+        "AllGDP",
+        "AllGLP",
+        "AllGMP",
+        "AllGSP",
+        "PviGDP",
+        "PviGLP",
+        "PviGMP",
+        "PviGSP"
+      ]
+    },
+    {
+      "family_code": "SUPPORT_TRAVEL_AUTHORIZATION",
+      "logical_name": "Giay di duong",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        ".Giấy đi đường.dotx"
+      ],
+      "payload_registry_field_count": 33,
+      "real_bookmark_count": 8,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "Chucvu",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Chucvu"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Congtac",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Congtac"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Diachicoso",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "GPs",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NganHang",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgaycapCMT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayQDKT",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "NgayQDKTx"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "NgayQDKTx",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayQDKTx"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NoicapCMT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Phongve",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "QDKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "QDKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Sanbay",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "SoCMT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "SoTien",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "SoTienBangChu",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "SoTK",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TenCoSo",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TenCty",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Tinhthanh",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Tinhthanh"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Tinhthanh2",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Tinhthanh2"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TinhTP_Cty",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT1x",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT2x",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT2xx",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT3",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT_ext",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT_SYT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT_VKN",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TTV",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TTV"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TTV2",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TTV2"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TTV_2",
+          "resolution_type": "signature_exact",
+          "target_bookmarks": [
+            "TTV2"
+          ],
+          "evidence": "Bookmark matches after removing punctuation differences."
+        },
+        {
+          "field_name": "TTV_2x",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TTxx",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        }
+      ],
+      "unresolved_fields": [
+        "Diachicoso",
+        "GPs",
+        "NganHang",
+        "NgaycapCMT",
+        "NoicapCMT",
+        "Phongve",
+        "Sanbay",
+        "SoCMT",
+        "SoTien",
+        "SoTienBangChu",
+        "SoTK",
+        "TenCoSo",
+        "TenCty",
+        "TinhTP_Cty",
+        "TT1x",
+        "TT2x",
+        "TT2xx",
+        "TT3",
+        "TT_ext",
+        "TT_SYT",
+        "TT_VKN",
+        "TTV_2x",
+        "TTxx"
+      ],
+      "unmatched_real_bookmarks": []
+    },
+    {
+      "family_code": "SUPPORT_FLIGHT_REQUEST",
+      "logical_name": "Giay xin di may bay",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        ".Xin đi máy bay.dotx"
+      ],
+      "payload_registry_field_count": 33,
+      "real_bookmark_count": 8,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "Chucvu",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Congtac",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Diachicoso",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "GPs",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "GPs"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NganHang",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgaycapCMT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayQDKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayQDKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayQDKTx",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NoicapCMT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Phongve",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "QDKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "QDKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Sanbay",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Sanbay"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "SoCMT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "SoTien",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "SoTienBangChu",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "SoTK",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TenCoSo",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TenCty",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TenCty"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Tinhthanh",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Tinhthanh2",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TinhTP_Cty",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TinhTP_Cty"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT1x",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT2x",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT2xx",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT3",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT_ext",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT_SYT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT_VKN",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TTV",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TTV"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TTV2",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TTV2"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TTV_2",
+          "resolution_type": "signature_exact",
+          "target_bookmarks": [
+            "TTV2"
+          ],
+          "evidence": "Bookmark matches after removing punctuation differences."
+        },
+        {
+          "field_name": "TTV_2x",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TTxx",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        }
+      ],
+      "unresolved_fields": [
+        "Chucvu",
+        "Congtac",
+        "Diachicoso",
+        "NganHang",
+        "NgaycapCMT",
+        "NgayQDKTx",
+        "NoicapCMT",
+        "Phongve",
+        "SoCMT",
+        "SoTien",
+        "SoTienBangChu",
+        "SoTK",
+        "TenCoSo",
+        "Tinhthanh",
+        "Tinhthanh2",
+        "TT1x",
+        "TT2x",
+        "TT2xx",
+        "TT3",
+        "TT_ext",
+        "TT_SYT",
+        "TT_VKN",
+        "TTV_2x",
+        "TTxx"
+      ],
+      "unmatched_real_bookmarks": []
+    },
+    {
+      "family_code": "SUPPORT_ATTENDEE_LIST",
+      "logical_name": "Danh sach tham du dot kiem tra",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        ".Ds tham dự đợt kiểm tra.dotx"
+      ],
+      "payload_registry_field_count": 33,
+      "real_bookmark_count": 10,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "Chucvu",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Congtac",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Diachicoso",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Diachicoso"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "GPs",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NganHang",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgaycapCMT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayQDKT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayQDKTx",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NoicapCMT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Phongve",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "QDKT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Sanbay",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "SoCMT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "SoTien",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "SoTienBangChu",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "SoTK",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TenCoSo",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TenCoSo"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TenCty",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Tinhthanh",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Tinhthanh2",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TinhTP_Cty",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT1x",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT1x"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT2x",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT2xx",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT3",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT3"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT_ext",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT_ext"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT_SYT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT_SYT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT_VKN",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT_VKN"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TTV",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TTV2",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TTV_2",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TTV_2x",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TTxx",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        }
+      ],
+      "unresolved_fields": [
+        "Chucvu",
+        "Congtac",
+        "GPs",
+        "NganHang",
+        "NgaycapCMT",
+        "NgayQDKT",
+        "NgayQDKTx",
+        "NoicapCMT",
+        "Phongve",
+        "QDKT",
+        "Sanbay",
+        "SoCMT",
+        "SoTien",
+        "SoTienBangChu",
+        "SoTK",
+        "TenCty",
+        "Tinhthanh",
+        "Tinhthanh2",
+        "TinhTP_Cty",
+        "TT2x",
+        "TT2xx",
+        "TTV",
+        "TTV2",
+        "TTV_2",
+        "TTV_2x",
+        "TTxx"
+      ],
+      "unmatched_real_bookmarks": [
+        "TT1",
+        "TT2",
+        "TT3_Del"
+      ]
+    },
+    {
+      "family_code": "SUPPORT_DOSSIER_CHECKLIST",
+      "logical_name": "Checklist ho so GPs",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        ".Checklist hồ sơ GPs.dotx",
+        ".Checklist kiểm tra GPs.dotx"
+      ],
+      "payload_registry_field_count": 33,
+      "real_bookmark_count": 4,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "Chucvu",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Congtac",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Diachicoso",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "GPs",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "GPs"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NganHang",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgaycapCMT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayQDKT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NgayQDKTx",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NoicapCMT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Phongve",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "QDKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "QDKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Sanbay",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "SoCMT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "SoTien",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "SoTienBangChu",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "SoTK",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TenCoSo",
+          "resolution_type": "case_insensitive_exact",
+          "target_bookmarks": [
+            "Tencoso"
+          ],
+          "evidence": "Only case differs between payload registry and real template bookmark."
+        },
+        {
+          "field_name": "TenCty",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TenCty"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Tinhthanh",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Tinhthanh2",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TinhTP_Cty",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT1x",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT2x",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT2xx",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT3",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT_ext",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT_SYT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT_VKN",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TTV",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TTV2",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TTV_2",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TTV_2x",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TTxx",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        }
+      ],
+      "unresolved_fields": [
+        "Chucvu",
+        "Congtac",
+        "Diachicoso",
+        "NganHang",
+        "NgaycapCMT",
+        "NgayQDKT",
+        "NgayQDKTx",
+        "NoicapCMT",
+        "Phongve",
+        "Sanbay",
+        "SoCMT",
+        "SoTien",
+        "SoTienBangChu",
+        "SoTK",
+        "Tinhthanh",
+        "Tinhthanh2",
+        "TinhTP_Cty",
+        "TT1x",
+        "TT2x",
+        "TT2xx",
+        "TT3",
+        "TT_ext",
+        "TT_SYT",
+        "TT_VKN",
+        "TTV",
+        "TTV2",
+        "TTV_2",
+        "TTV_2x",
+        "TTxx"
+      ],
+      "unmatched_real_bookmarks": []
+    },
+    {
+      "family_code": "SUPPORT_PAYMENT_TRANSFER",
+      "logical_name": "Giay xin sec chuyen khoan",
+      "compatibility_status": "bookmark_contract_mismatch",
+      "matched_file_names": [
+        ".Giấy xin séc chuyển khoản.dotx",
+        ".Uy quyen thanh toan CTP.dotx"
+      ],
+      "payload_registry_field_count": 33,
+      "real_bookmark_count": 26,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "Chucvu",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Congtac",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Diachicoso",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "GPs",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "NganHang",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NganHang"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgaycapCMT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgaycapCMT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NgayQDKT",
+          "resolution_type": "prefix_variant_group",
+          "target_bookmarks": [
+            "NgayQDKTx"
+          ],
+          "evidence": "Real template exposes numbered or suffixed variants sharing the same bookmark stem."
+        },
+        {
+          "field_name": "NgayQDKTx",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NgayQDKTx"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "NoicapCMT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "NoicapCMT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Phongve",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "Phongve"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "QDKT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "QDKT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Sanbay",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "SoCMT",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "SoCMT"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "SoTien",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "SoTien"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "SoTienBangChu",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "SoTienBangChu"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "SoTK",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "SoTK"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TenCoSo",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TenCty",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TenCty"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "Tinhthanh",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "Tinhthanh2",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TinhTP_Cty",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT1x",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT2x",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT2x"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT2xx",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT2xx"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT3",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TT3"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TT_ext",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT_SYT",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TT_VKN",
+          "resolution_type": "unresolved",
+          "target_bookmarks": [],
+          "evidence": "No safe automatic reconciliation from curated payload field to real template bookmark."
+        },
+        {
+          "field_name": "TTV",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TTV"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TTV2",
+          "resolution_type": "signature_exact",
+          "target_bookmarks": [
+            "TTV_2"
+          ],
+          "evidence": "Bookmark matches after removing punctuation differences."
+        },
+        {
+          "field_name": "TTV_2",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TTV_2"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TTV_2x",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TTV_2x"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        },
+        {
+          "field_name": "TTxx",
+          "resolution_type": "exact",
+          "target_bookmarks": [
+            "TTxx"
+          ],
+          "evidence": "Exact bookmark name present in real template."
+        }
+      ],
+      "unresolved_fields": [
+        "Chucvu",
+        "Congtac",
+        "Diachicoso",
+        "GPs",
+        "Sanbay",
+        "TenCoSo",
+        "Tinhthanh",
+        "Tinhthanh2",
+        "TinhTP_Cty",
+        "TT1x",
+        "TT_ext",
+        "TT_SYT",
+        "TT_VKN"
+      ],
+      "unmatched_real_bookmarks": [
+        "TT1",
+        "TT2",
+        "TT2Del",
+        "TT3Del",
+        "TT4",
+        "TT4Del",
+        "TT5",
+        "TT5Del"
+      ]
+    },
+    {
+      "family_code": "SUPPORT_PAYMENT_WORKBOOK",
+      "logical_name": "Thanh toan tam ung / De nghi thanh toan",
+      "compatibility_status": "out_of_scope_excel_template",
+      "matched_file_names": [
+        ".Thanh toán tạm ứng.xltx",
+        ".Đề nghị thanh toánx.xltx"
+      ],
+      "payload_registry_field_count": 0,
+      "real_bookmark_count": 0,
+      "copy_forward_dependencies": [],
+      "field_resolutions": [],
+      "unresolved_fields": [],
+      "unmatched_real_bookmarks": []
+    }
+  ]
+}

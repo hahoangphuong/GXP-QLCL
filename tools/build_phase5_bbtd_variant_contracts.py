@@ -119,8 +119,8 @@ def render_markdown(payload: dict[str, object]) -> str:
 
 def main() -> None:
     payload = build_variant_contract()
-    OUTPUT_JSON.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    OUTPUT_MD.write_text(render_markdown(payload), encoding="utf-8")
+    OUTPUT_JSON.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+    OUTPUT_MD.write_text(render_markdown(payload), encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":

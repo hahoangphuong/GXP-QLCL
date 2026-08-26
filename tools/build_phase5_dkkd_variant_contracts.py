@@ -19,8 +19,8 @@ NSMAP = {"w": WORD_NS}
 
 TEMPLATES_ROOT = ROOT / "legacy" / "Templates"
 RECONCILED_PATH = ROOT / "artifacts" / "phase5" / "template_contract_reconciled.json"
-OUTPUT_JSON = ROOT / "artifacts" / "phase5" / "dkkd_template_variants.json"
-OUTPUT_MD = ROOT / "artifacts" / "phase5" / "dkkd_template_variants.md"
+OUTPUT_JSON = ROOT / "artifacts" / "phase5" / "ddkd_template_variants.json"
+OUTPUT_MD = ROOT / "artifacts" / "phase5" / "ddkd_template_variants.md"
 
 
 def _bookmark_names(path: Path) -> list[str]:
@@ -83,7 +83,7 @@ def main() -> None:
         "new_only_bookmarks": moi_only,
         "adjustment_only_bookmarks": dieu_chinh_only,
     }
-    OUTPUT_JSON.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    OUTPUT_JSON.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
 
     lines = [
         "# DDKD Template Variants",
@@ -98,7 +98,7 @@ def main() -> None:
     ]
     for variant in payload["variants"]:
         lines.append(f"- `{variant['variant_key']}` -> `{', '.join(variant['allowed_payload_fields'])}`")
-    OUTPUT_MD.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    OUTPUT_MD.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":

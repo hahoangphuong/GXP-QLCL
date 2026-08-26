@@ -150,8 +150,8 @@ def render_markdown(report: dict[str, object]) -> str:
 
 def main() -> None:
     report = build_report()
-    OUTPUT_JSON.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    OUTPUT_MD.write_text(render_markdown(report), encoding="utf-8")
+    OUTPUT_JSON.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+    OUTPUT_MD.write_text(render_markdown(report), encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":

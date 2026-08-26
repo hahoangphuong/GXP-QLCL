@@ -320,15 +320,29 @@ def patch_phase7_artifact_paths(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(readiness, "PHASE4_PATH", tmp_path / "phase4.json")
     monkeypatch.setattr(readiness, "PHASE5_PATH", tmp_path / "phase5.json")
     monkeypatch.setattr(readiness, "PHASE6_PATH", tmp_path / "phase6.json")
+    monkeypatch.setattr(readiness, "PHASE6_SUMMARY_PATH", tmp_path / "phase6_summary.json")
     monkeypatch.setattr(readiness, "PHASE3P_PATH", tmp_path / "phase3p.json")
     monkeypatch.setattr(readiness, "PHASE3S_PATH", tmp_path / "phase3s.json")
 
 
 def write_phase7_closeout_artifacts(tmp_path: Path) -> None:
     (tmp_path / "phase4.json").write_text(json.dumps({"phase4_status": "closed"}), encoding="utf-8")
-    (tmp_path / "phase5.json").write_text(json.dumps({"phase5_status": "closed"}), encoding="utf-8")
+    (tmp_path / "phase5_audit.json").write_text(json.dumps({"registry_family_count": 26, "matched_family_count": 26, "active_file_count": 91}), encoding="utf-8")
+    (tmp_path / "phase5_recon.json").write_text(json.dumps({"families": []}), encoding="utf-8")
+    (tmp_path / "phase5_ddkd_variants.json").write_text(json.dumps({"family_code": "DDKD_CERTIFICATE", "variants": [{"variant_key": "ddkd_certificate_new"}]}), encoding="utf-8")
+    (tmp_path / "phase5_bbtd_variants.json").write_text(json.dumps({"family_code": "INSPECTION_BBTD_HOSO_DK", "variants": [{"variant_key": "bbtd_hoso_dk_all_lines"}]}), encoding="utf-8")
+    (tmp_path / "phase5_ddkd_appendix.json").write_text(json.dumps({"family_code": "DDKD_APPENDIX_OR_DECISION", "recommended_next_state": {"promotable_now": ["All"], "still_blocked": ["GCN_GMP", "QD_GMP"]}}), encoding="utf-8")
+    phase5_sources = {
+        "template_compatibility_audit": {"path": (tmp_path / "phase5_audit.json").as_posix(), "sha256": readiness.safe_load_json(tmp_path / "phase5_audit.json", "phase5_audit").payload_sha256},
+        "template_contract_reconciled": {"path": (tmp_path / "phase5_recon.json").as_posix(), "sha256": readiness.safe_load_json(tmp_path / "phase5_recon.json", "phase5_recon").payload_sha256},
+        "ddkd_template_variants": {"path": (tmp_path / "phase5_ddkd_variants.json").as_posix(), "sha256": readiness.safe_load_json(tmp_path / "phase5_ddkd_variants.json", "phase5_ddkd_variants").payload_sha256},
+        "bbtd_template_variants": {"path": (tmp_path / "phase5_bbtd_variants.json").as_posix(), "sha256": readiness.safe_load_json(tmp_path / "phase5_bbtd_variants.json", "phase5_bbtd_variants").payload_sha256},
+        "ddkd_appendix_field_adjudication": {"path": (tmp_path / "phase5_ddkd_appendix.json").as_posix(), "sha256": readiness.safe_load_json(tmp_path / "phase5_ddkd_appendix.json", "phase5_ddkd_appendix").payload_sha256},
+    }
+    (tmp_path / "phase5.json").write_text(json.dumps({"phase5_status": "closed", "validation_errors": [], "artifact_sources": phase5_sources}), encoding="utf-8")
+    (tmp_path / "phase6_summary.json").write_text(json.dumps({"overall_status": "closed", "required_outstanding": [], "validation_errors": []}), encoding="utf-8")
     (tmp_path / "phase6.json").write_text(
-        json.dumps({"phase6_status": "closed", "required_outstanding": []}),
+        json.dumps({"phase6_status": "closed", "required_outstanding": [], "summary_sha256": readiness.safe_load_json(tmp_path / "phase6_summary.json", "phase6_summary").payload_sha256}),
         encoding="utf-8",
     )
     (tmp_path / "phase3p.json").write_text(

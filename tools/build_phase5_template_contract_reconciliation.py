@@ -199,8 +199,8 @@ def render_markdown(reconciliation: dict) -> str:
 
 def main() -> None:
     reconciliation = build_reconciliation()
-    OUTPUT_JSON.write_text(json.dumps(reconciliation, ensure_ascii=False, indent=2), encoding="utf-8")
-    OUTPUT_MD.write_text(render_markdown(reconciliation), encoding="utf-8")
+    OUTPUT_JSON.write_text(json.dumps(reconciliation, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+    OUTPUT_MD.write_text(render_markdown(reconciliation), encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":

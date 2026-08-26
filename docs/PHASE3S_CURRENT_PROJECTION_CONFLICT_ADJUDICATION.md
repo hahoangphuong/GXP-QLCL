@@ -4,7 +4,7 @@
 Provide the decision-file and validation layer for the `14` current-projection conflicts carried forward from Phase 3p.
 
 This phase does **not** invent winners automatically.
-It closes the tooling gap so each conflict can be reviewed explicitly and auditably.
+It records the owner-approved adjudication contract explicitly and auditably.
 
 ## Delivered
 - decision template builder: [tools/build_phase3s_projection_conflict_decision_template.py](/D:/GXP-QLCL/tools/build_phase3s_projection_conflict_decision_template.py)
@@ -35,7 +35,14 @@ It closes the tooling gap so each conflict can be reviewed explicitly and audita
 - `pending` must not carry reviewer/date/rationale or a selected candidate
 
 ## Current state
-Immediately after template generation, the summary is expected to remain `blocked` because all rows start at `pending`.
+- `14` Phase 3p conflicts are now covered by `14` owner-approved Phase 3s decisions.
+- `4` `db.ktra` conflicts resolve to explicit winners.
+- `10` `db.cc.blank_ma_dc_non_case_backed_multi_current` conflicts resolve to `no_winner`.
+- Phase 3s summary is expected to report:
+  - `overall_status = ready`
+  - `resolved_count = 14`
+  - `unresolved_count = 0`
+  - exact key-set and provenance match against Phase 3p
 
 ## Relationship to cutover
 Phase 7 should treat this decision summary as the operational proof surface for the `current_projection_conflicts` gate.

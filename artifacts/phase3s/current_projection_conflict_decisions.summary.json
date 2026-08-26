@@ -1,0 +1,22 @@
+{
+  "generated_on": "2026-08-26",
+  "overall_status": "ready",
+  "decision_contract_path": "artifacts/phase3s/current_projection_conflict_decisions.template.json",
+  "decision_contract_sha256": "f47b24680410f706be7bd511fa949f4364d75fa5e48c129f279db7262818b7d4",
+  "source_phase3p_path": "artifacts/phase3p/current_projection_conflicts.json",
+  "source_phase3p_sha256": "4d703203e873319613e9b67c6bb8044902848ce64a085d67432d6dc06e40ecf0",
+  "source_snapshot_path": "artifacts/phase3c/legacy_snapshot.json",
+  "source_snapshot_sha256": "b3bde05963e4e4d14d5b244e7c62b0f810f1cbbe206750574def6a366bdf7296",
+  "source_conflict_count": 14,
+  "decision_count": 14,
+  "resolved_count": 14,
+  "unresolved_count": 0,
+  "action_counts": {
+    "no_winner": 10,
+    "winner": 4
+  },
+  "missing_conflict_keys": [],
+  "extra_decision_keys": [],
+  "key_set_matches_phase3p": true,
+  "validation_errors": []
+}

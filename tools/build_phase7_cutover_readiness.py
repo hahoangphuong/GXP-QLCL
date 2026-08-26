@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,7 @@ class ArtifactLoadResult:
     artifact_label: str
     required: bool
     ok: bool
+    payload_sha256: str | None = None
     payload: dict[str, Any] | None = None
     error_reason: str | None = None
 
@@ -49,7 +51,8 @@ def safe_load_json(path: Path, artifact_label: str, *, required: bool = True) ->
         return ArtifactLoadResult(path=path, artifact_label=artifact_label, required=required, ok=False)
 
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload_bytes = path.read_bytes()
+        payload = json.loads(payload_bytes.decode("utf-8"))
     except json.JSONDecodeError as exc:
         return ArtifactLoadResult(
             path=path,
@@ -57,6 +60,14 @@ def safe_load_json(path: Path, artifact_label: str, *, required: bool = True) ->
             required=required,
             ok=False,
             error_reason=f"Required {artifact_label} artifact is invalid JSON: {path}: {exc}",
+        )
+    except OSError as exc:
+        return ArtifactLoadResult(
+            path=path,
+            artifact_label=artifact_label,
+            required=required,
+            ok=False,
+            error_reason=f"Required {artifact_label} artifact could not be read: {path}: {exc}",
         )
 
     if not isinstance(payload, dict):
@@ -73,6 +84,7 @@ def safe_load_json(path: Path, artifact_label: str, *, required: bool = True) ->
         artifact_label=artifact_label,
         required=required,
         ok=True,
+        payload_sha256=sha256(payload_bytes).hexdigest(),
         payload=payload,
     )
 
@@ -92,9 +104,27 @@ def build_current_projection_gate(
 
     if phase3s_result.ok:
         phase3s = phase3s_result.payload or {}
+        reported_phase3p_sha256 = str(phase3s.get("source_phase3p_sha256", "")).strip()
+        actual_phase3p_sha256 = phase3p_result.payload_sha256 or ""
+        if reported_phase3p_sha256 != actual_phase3p_sha256:
+            return gate(
+                "blocked",
+                "Phase 3s adjudication summary is stale relative to the current Phase 3p artifact.",
+                detail={
+                    "reported_phase3p_sha256": reported_phase3p_sha256,
+                    "actual_phase3p_sha256": actual_phase3p_sha256,
+                },
+            )
         unresolved_count = int(phase3s.get("unresolved_count", 0))
         overall_status = str(phase3s.get("overall_status", ""))
-        if overall_status == "ready" and unresolved_count == 0:
+        if (
+            overall_status == "ready"
+            and unresolved_count == 0
+            and not phase3s.get("validation_errors", [])
+            and not phase3s.get("missing_conflict_keys", [])
+            and not phase3s.get("extra_decision_keys", [])
+            and int(phase3s.get("source_conflict_count", 0)) == int((phase3p_result.payload or {}).get("conflict_count", 0))
+        ):
             return gate(
                 "pass",
                 "Current-projection conflicts were adjudicated in Phase 3s.",
@@ -110,6 +140,8 @@ def build_current_projection_gate(
             detail={
                 "overall_status": overall_status,
                 "unresolved_count": unresolved_count,
+                "missing_conflict_keys": phase3s.get("missing_conflict_keys", []),
+                "extra_decision_keys": phase3s.get("extra_decision_keys", []),
                 "validation_errors": phase3s.get("validation_errors", []),
             },
         )

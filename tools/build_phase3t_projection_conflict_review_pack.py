@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import csv
+from hashlib import sha256
 import json
 from pathlib import Path
+import sys
 from typing import Any
 
 
@@ -16,8 +18,26 @@ CSV_OUT = OUT_DIR / "current_projection_conflict_review_pack.csv"
 MD_OUT = OUT_DIR / "current_projection_conflict_review_pack.md"
 
 
-def load_json(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
+def _display_path(path: Path) -> str:
+    try:
+        return path.relative_to(ROOT).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _write_utf8(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8", newline="\n")
+
+
+def load_json(path: Path) -> tuple[dict[str, Any], str]:
+    payload_bytes = path.read_bytes()
+    try:
+        payload = json.loads(payload_bytes.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Invalid JSON: {_display_path(path)}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"Expected JSON object: {_display_path(path)}")
+    return payload, sha256(payload_bytes).hexdigest()
 
 
 def sanitize_text(value: Any) -> str:
@@ -104,9 +124,9 @@ def build_candidate_detail_lines(duplicate_group: dict[str, Any], projection_typ
 
 
 def build_review_pack() -> dict[str, Any]:
-    conflicts = load_json(CONFLICT_PATH)
-    decisions = load_json(DECISION_PATH)
-    duplicates = load_json(DUPLICATE_PATH)
+    conflicts, conflict_sha256 = load_json(CONFLICT_PATH)
+    decisions, decision_sha256 = load_json(DECISION_PATH)
+    duplicates, duplicate_sha256 = load_json(DUPLICATE_PATH)
     decision_index = {
         str(row["conflict_key"]): row for row in decisions.get("decisions", [])
     }
@@ -139,7 +159,13 @@ def build_review_pack() -> dict[str, Any]:
         )
 
     return {
-        "generated_on": "2026-08-14",
+        "generated_on": "2026-08-26",
+        "source_phase3p_path": _display_path(CONFLICT_PATH),
+        "source_phase3p_sha256": conflict_sha256,
+        "source_decision_contract_path": _display_path(DECISION_PATH),
+        "source_decision_contract_sha256": decision_sha256,
+        "source_duplicate_analysis_path": _display_path(DUPLICATE_PATH),
+        "source_duplicate_analysis_sha256": duplicate_sha256,
         "source_conflict_count": len(review_rows),
         "review_rows": review_rows,
     }
@@ -182,6 +208,12 @@ def render_markdown(payload: dict[str, Any]) -> str:
         "# Current Projection Conflict Review Pack",
         "",
         f"- Generated on: `{payload['generated_on']}`",
+        f"- Source Phase 3p path: `{payload['source_phase3p_path']}`",
+        f"- Source Phase 3p sha256: `{payload['source_phase3p_sha256']}`",
+        f"- Source decision contract path: `{payload['source_decision_contract_path']}`",
+        f"- Source decision contract sha256: `{payload['source_decision_contract_sha256']}`",
+        f"- Source duplicate analysis path: `{payload['source_duplicate_analysis_path']}`",
+        f"- Source duplicate analysis sha256: `{payload['source_duplicate_analysis_sha256']}`",
         f"- Conflict count: `{payload['source_conflict_count']}`",
         "",
     ]
@@ -211,15 +243,19 @@ def render_markdown(payload: dict[str, Any]) -> str:
 
 
 def main() -> int:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    payload = build_review_pack()
-    JSON_OUT.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    write_csv(payload["review_rows"])
-    MD_OUT.write_text(render_markdown(payload), encoding="utf-8")
-    print(f"Wrote {JSON_OUT}")
-    print(f"Wrote {CSV_OUT}")
-    print(f"Wrote {MD_OUT}")
-    return 0
+    try:
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        payload = build_review_pack()
+        _write_utf8(JSON_OUT, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+        write_csv(payload["review_rows"])
+        _write_utf8(MD_OUT, render_markdown(payload))
+        print(f"Wrote {JSON_OUT}")
+        print(f"Wrote {CSV_OUT}")
+        print(f"Wrote {MD_OUT}")
+        return 0
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

@@ -1,0 +1,53 @@
+{
+  "generated_on": "2026-08-14",
+  "items": [
+    {
+      "item_id": "desktop_phase6_complete",
+      "required_for_cutover": true,
+      "status": "blocked",
+      "notes": "Phase 6 desktop/private-share evidence remains blocked."
+    },
+    {
+      "item_id": "projection_conflicts_resolved",
+      "required_for_cutover": true,
+      "status": "pass",
+      "notes": "All 14 current-projection conflicts were adjudicated in Phase 3s on 2026-08-16."
+    },
+    {
+      "item_id": "legacy_write_freeze_window_approved",
+      "required_for_cutover": true,
+      "status": "pending",
+      "notes": "Operational change window not yet approved."
+    },
+    {
+      "item_id": "legacy_write_freeze_announced",
+      "required_for_cutover": true,
+      "status": "pending",
+      "notes": "Stakeholder communication not yet sent."
+    },
+    {
+      "item_id": "final_phase2_import_rerun",
+      "required_for_cutover": true,
+      "status": "pending",
+      "notes": "Final pre-cutover import/reconciliation rerun still pending."
+    },
+    {
+      "item_id": "final_reconciliation_signed_off",
+      "required_for_cutover": true,
+      "status": "pending",
+      "notes": "Business/data sign-off still pending."
+    },
+    {
+      "item_id": "rollback_contacts_confirmed",
+      "required_for_cutover": true,
+      "status": "pending",
+      "notes": "Rollback owner and contacts still need confirmation."
+    },
+    {
+      "item_id": "excel_read_only_archive_mode",
+      "required_for_cutover": true,
+      "status": "pending",
+      "notes": "Legacy Excel archive/read-only plan still pending operational execution."
+    }
+  ]
+}

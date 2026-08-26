@@ -1,0 +1,22 @@
+{
+  "generated_on": "2026-08-14",
+  "overall_status": "blocked",
+  "readiness_status": "blocked",
+  "status_counts": {
+    "blocked": 1,
+    "fail": 0,
+    "not_started": 0,
+    "pass": 1,
+    "pending": 6
+  },
+  "required_outstanding": [
+    "desktop_phase6_complete",
+    "legacy_write_freeze_window_approved",
+    "legacy_write_freeze_announced",
+    "final_phase2_import_rerun",
+    "final_reconciliation_signed_off",
+    "rollback_contacts_confirmed",
+    "excel_read_only_archive_mode"
+  ],
+  "validation_errors": []
+}

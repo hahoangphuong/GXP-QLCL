@@ -1,6 +1,7 @@
 from tools.build_phase3t_projection_conflict_review_pack import (
     build_candidate_detail_lines,
     build_decision_question,
+    build_review_pack,
     build_review_focus,
 )
 
@@ -35,3 +36,11 @@ def test_build_candidate_detail_lines_for_certificate_rows():
     )
 
     assert "certificate_no=OGYEI/895-7/2023" in lines[0]
+
+
+def test_build_review_pack_carries_phase3p_and_decision_provenance():
+    payload = build_review_pack()
+
+    assert payload["source_phase3p_path"] == "artifacts/phase3p/current_projection_conflicts.json"
+    assert payload["source_decision_contract_path"] == "artifacts/phase3s/current_projection_conflict_decisions.template.json"
+    assert payload["source_conflict_count"] == 14

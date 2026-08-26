@@ -17,6 +17,10 @@ def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _write_utf8(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8", newline="\n")
+
+
 def build_summary() -> dict[str, Any]:
     readiness = load_json(READINESS_PATH)
     checklist = load_json(CHECKLIST_PATH)
@@ -62,8 +66,8 @@ def render_markdown(summary: dict[str, Any]) -> str:
 def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     summary = build_summary()
-    JSON_OUT.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
-    MD_OUT.write_text(render_markdown(summary), encoding="utf-8")
+    _write_utf8(JSON_OUT, json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
+    _write_utf8(MD_OUT, render_markdown(summary))
     print(f"Wrote {JSON_OUT}")
     print(f"Wrote {MD_OUT}")
     return 0

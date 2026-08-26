@@ -1,0 +1,58 @@
+{
+  "generated_on": "2026-08-24",
+  "phase7_status": "blocked",
+  "gates": {
+    "structured_data_baseline": {
+      "status": "pass",
+      "reason": "Phase 3 structured migration baseline is closed.",
+      "detail": {}
+    },
+    "storage_contract_baseline": {
+      "status": "pass",
+      "reason": "Phase 4 storage contract/tooling baseline is closed.",
+      "detail": {}
+    },
+    "document_contract_baseline": {
+      "status": "pass",
+      "reason": "Phase 5 document/runtime baseline is closed.",
+      "detail": {}
+    },
+    "desktop_private_share_validation": {
+      "status": "blocked",
+      "reason": "Phase 6 desktop/private-share evidence is not closed.",
+      "detail": {
+        "required_outstanding": [
+          "private_share_mapping_active",
+          "explorer_navigation_private_share",
+          "word_open_existing_doc_private_share",
+          "word_direct_save_private_share",
+          "office_wifi_single_user",
+          "hotspot_single_user",
+          "disconnect_during_open",
+          "disconnect_during_save",
+          "reconnect_after_disconnect",
+          "two_user_lock_contention_private_share"
+        ]
+      }
+    },
+    "current_projection_conflicts": {
+      "status": "pass",
+      "reason": "Current-projection conflicts were adjudicated in Phase 3s.",
+      "detail": {
+        "resolved_count": 14,
+        "winner_count": 4,
+        "no_winner_count": 10
+      }
+    },
+    "legacy_write_freeze_execution": {
+      "status": "pending",
+      "reason": "Legacy write freeze cannot be executed until desktop/private-share evidence and cutover window approval are complete.",
+      "detail": {}
+    },
+    "rollback_window_execution": {
+      "status": "pending",
+      "reason": "Rollback execution remains pending until production cutover window is approved.",
+      "detail": {}
+    }
+  }
+}

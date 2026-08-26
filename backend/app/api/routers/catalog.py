@@ -132,6 +132,7 @@ def register_catalog_routes(app, session_factory) -> None:
             inspection_type=row.inspection_type,
             state=row.state.value,
             opened_year=row.opened_year,
+            row_version=row.row_version,
         )
 
     app.add_api_route("/companies", list_companies, methods=["GET"], response_model=list[CompanyRead], tags=["catalog"])

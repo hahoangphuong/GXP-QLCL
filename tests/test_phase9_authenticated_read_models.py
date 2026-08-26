@@ -1,3 +1,5 @@
+import ast
+from pathlib import Path
 from types import SimpleNamespace
 
 from fastapi import HTTPException
@@ -12,8 +14,12 @@ from backend.app.auth import (
     resolve_mapped_role,
 )
 from backend.app.db.base import Base
-from backend.app.db.models.phase1 import AppUser, AppUserRole, RbacPermission, RbacRole, RbacRolePermission
+from backend.app.db.enums import CaseState
+from backend.app.db.models.phase1 import AppUser, AppUserRole, Case, Company, RbacPermission, RbacRole, RbacRolePermission, Site
 from backend.app.main import create_app
+from backend.app.read_models import CaseDetailRead, CaseRead, CompanyDetailRead, CompanyRead, SiteDetailRead, SiteRead
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_build_authenticated_user_accepts_valid_stub_headers():
@@ -230,3 +236,106 @@ def test_authenticate_google_iap_request_fails_closed_on_ambiguous_database_iden
         assert "different provisioned users" in exc.detail
     else:
         raise AssertionError("Expected ambiguity between email and subject claims to fail closed")
+
+
+def test_get_case_detail_returns_row_version_and_matches_database_value(tmp_path):
+    database_path = tmp_path / "catalog-detail.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        company = Company(legal_name="Case Detail Company", short_name="CDC")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="Case Detail Site")
+        session.add(site)
+        session.flush()
+        case = Case(
+            site_id=site.id,
+            gxp_type="GMP",
+            state=CaseState.INSPECTION_COMPLETED,
+            legacy_inspection_id=123,
+            legacy_inspection_code="KT-123",
+            scope_code="WHO-GMP",
+            applicable_standard="WHO-GMP",
+            inspection_type="Định kỳ",
+            opened_year=2026,
+        )
+        session.add(case)
+        session.commit()
+        case_id = case.id
+        expected_row_version = case.row_version
+
+    app = create_app(database_url)
+    detail_route = next(route for route in app.routes if getattr(route, "path", "") == "/cases/{case_id}")
+    list_route = next(route for route in app.routes if getattr(route, "path", "") == "/cases")
+    with Session(engine) as session:
+        detail_payload = detail_route.endpoint(
+            case_id=case_id,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+        list_payload = list_route.endpoint(
+            q=None,
+            gxp_type=None,
+            limit=20,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+
+    response = SimpleNamespace(
+        status_code=200,
+        json=lambda: CaseDetailRead.model_validate(detail_payload).model_dump(mode="json"),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == case_id
+    assert payload["row_version"] == expected_row_version
+    assert payload["legacy_inspection_id"] == 123
+    assert payload["legacy_inspection_code"] == "KT-123"
+    assert payload["state"] == "inspection_completed"
+    assert CaseDetailRead.model_validate(payload).row_version == expected_row_version
+
+    assert isinstance(list_payload, list)
+    assert len(list_payload) == 1
+    list_item = CaseRead.model_validate(list_payload[0]).model_dump(mode="json")
+    assert list_item["id"] == payload["id"]
+    assert list_item["legacy_inspection_id"] == payload["legacy_inspection_id"]
+    assert list_item["legacy_inspection_code"] == payload["legacy_inspection_code"]
+    assert list_item["site_id"] == payload["site_id"]
+    assert list_item["gxp_type"] == payload["gxp_type"]
+    assert list_item["state"] == payload["state"]
+
+
+def test_catalog_manual_response_constructors_populate_all_required_schema_fields():
+    router_path = ROOT / "backend" / "app" / "api" / "routers" / "catalog.py"
+    tree = ast.parse(router_path.read_text(encoding="utf-8"))
+    models = {
+        "CompanyRead": CompanyRead,
+        "SiteRead": SiteRead,
+        "CaseRead": CaseRead,
+        "CompanyDetailRead": CompanyDetailRead,
+        "SiteDetailRead": SiteDetailRead,
+        "CaseDetailRead": CaseDetailRead,
+    }
+    seen_models: set[str] = set()
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not isinstance(node.func, ast.Name):
+            continue
+        model_name = node.func.id
+        if model_name not in models:
+            continue
+        seen_models.add(model_name)
+        keyword_names = {keyword.arg for keyword in node.keywords if keyword.arg is not None}
+        required_fields = {
+            field_name
+            for field_name, field in models[model_name].model_fields.items()
+            if field.is_required()
+        }
+        assert keyword_names == required_fields, f"{model_name} constructor fields drifted from response schema"
+
+    assert seen_models == set(models)

@@ -878,6 +878,11 @@ def test_rehearsal_reset_import_rebuilds_target_and_same_snapshot_rerun_is_stabl
     assert count_rows(rehearsal_db_path, "site") == 1
     assert count_rows(rehearsal_db_path, "case") == 1
     assert count_rows(rehearsal_db_path, "legacy_id_map") >= 6
+    assert count_rows(rehearsal_db_path, "rbac_role") == 4
+    assert count_rows(rehearsal_db_path, "rbac_permission") == 19
+    assert count_rows(rehearsal_db_path, "rbac_role_permission") == 50
+    assert count_rows(rehearsal_db_path, "app_user") == 0
+    assert count_rows(rehearsal_db_path, "app_user_role") == 0
     assert first.import_mode == "rehearsal"
     assert first.snapshot_exported_at == "2026-08-24T00:00:00Z"
     assert first.source_workbook_identity == "Danh sách Kiểm tra GPs.xlsb"
@@ -953,6 +958,10 @@ def test_rehearsal_refresh_from_newer_snapshot_rebuilds_clean_target(tmp_path: P
     assert count_rows(rehearsal_db_path, "company") == 2
     assert count_rows(rehearsal_db_path, "site") == 2
     assert count_rows(rehearsal_db_path, "case") == 2
+    assert count_rows(rehearsal_db_path, "rbac_role") == 4
+    assert count_rows(rehearsal_db_path, "rbac_permission") == 19
+    assert count_rows(rehearsal_db_path, "rbac_role_permission") == 50
+    assert count_rows(rehearsal_db_path, "app_user") == 0
     assert query_scalar(rehearsal_db_path, "SELECT COUNT(*) FROM company WHERE legacy_company_id = 1") == 0
     assert query_scalar(rehearsal_db_path, "SELECT legal_name FROM company WHERE legacy_company_id = 2") == "Company Beta Updated"
     assert query_scalar(

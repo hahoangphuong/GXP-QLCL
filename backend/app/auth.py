@@ -7,6 +7,7 @@ from fastapi import HTTPException, Request
 from sqlalchemy import select
 
 from backend.app.db.models.phase1 import AppUser, AppUserRole, RbacPermission, RbacRole, RbacRolePermission
+from backend.app.rbac import BUILTIN_ROLE_CODES, ROLE_PERMISSIONS
 
 
 IAP_JWT_HEADER = "X-Goog-IAP-JWT-Assertion"
@@ -31,69 +32,7 @@ class AuthenticatedUser:
         return self.role_codes[0] if self.role_codes else ""
 
 
-ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
-    "reader": frozenset({"case.view", "certificate.view", "document.read", "capa.view"}),
-    "inspector": frozenset(
-        {
-            "case.view",
-            "case.edit",
-            "inspection.plan",
-            "inspection.edit",
-            "capa.view",
-            "capa.edit",
-            "certificate.view",
-            "document.read",
-            "document.write",
-            "document.move",
-            "document.rename",
-        }
-    ),
-    "manager": frozenset(
-        {
-            "case.view",
-            "case.edit",
-            "case.assign",
-            "inspection.plan",
-            "inspection.edit",
-            "capa.view",
-            "capa.edit",
-            "capa.assess",
-            "certificate.view",
-            "certificate.edit",
-            "certificate.approve",
-            "document.read",
-            "document.write",
-            "document.move",
-            "document.rename",
-            "document.archive",
-        }
-    ),
-    "admin": frozenset(
-        {
-            "case.view",
-            "case.edit",
-            "case.assign",
-            "inspection.plan",
-            "inspection.edit",
-            "capa.view",
-            "capa.edit",
-            "capa.assess",
-            "certificate.view",
-            "certificate.edit",
-            "certificate.approve",
-            "certificate.issue",
-            "document.read",
-            "document.write",
-            "document.move",
-            "document.rename",
-            "document.archive",
-            "admin.users",
-            "admin.roles",
-        }
-    ),
-}
-
-ALLOWED_READ_ROLES = {"reader", "inspector", "manager", "admin"}
+ALLOWED_READ_ROLES = set(BUILTIN_ROLE_CODES)
 
 
 def build_authenticated_user(

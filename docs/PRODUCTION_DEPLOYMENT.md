@@ -315,7 +315,8 @@ The CLI must:
 - run the canonical PostgreSQL backup gate before final candidate rebuild
 - write reports under `artifacts/legacy-production/<timestamp>/`
 
-This import path does not fabricate or import document rows, storage bindings, or RBAC users.
+This import path does not fabricate or import document rows, storage bindings, or environment-specific RBAC users.
+It does initialize the static RBAC baseline for rebuilt rehearsal/final databases so roles, permissions, and role-permission mappings exist before explicit user provisioning.
 
 Detailed operator steps live in:
 

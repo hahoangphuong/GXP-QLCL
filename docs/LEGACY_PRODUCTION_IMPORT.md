@@ -144,8 +144,20 @@ python3 tools/import_legacy_production.py \
   --apply
 ```
 
-5. Review the rehearsal report and application behavior against the rehearsal target.
-6. For the real cutover window only, rebuild the candidate production database from the frozen final snapshot:
+5. Verify the rebuilt database has the static RBAC baseline, then explicitly provision required UAT users:
+
+```bash
+cd /opt/gxp/src/GXP-QLCL
+python3 tools/provision_app_user.py \
+  --runtime-env /etc/gxp/runtime.env \
+  --target-db gxp_legacy_rehearsal \
+  --email hahoangphuong@gmail.com \
+  --username hahoangphuong \
+  --role admin
+```
+
+6. Review the rehearsal report and application behavior against the rehearsal target.
+7. For the real cutover window only, rebuild the candidate production database from the frozen final snapshot:
 
 ```bash
 cd /opt/gxp/src/GXP-QLCL
@@ -158,14 +170,14 @@ python3 tools/import_legacy_production.py \
   --apply
 ```
 
-7. Rebuild/read the Phase 7 gate:
+8. Rebuild/read the Phase 7 gate:
 
 ```bash
 cd /opt/gxp/src/GXP-QLCL
 python3 tools/build_phase7_cutover_readiness.py
 ```
 
-8. Verify runtime health:
+9. Verify runtime health:
 
 ```bash
 cd /opt/gxp/src/GXP-QLCL
@@ -187,6 +199,7 @@ sudo VM_RUNTIME_ENV_FILE=/etc/gxp/runtime.env ./infra/vm/verify_prod.sh
 - Snapshot hash is recorded in the import report.
 - Dry-run uses the same importer logic as apply, but against an ephemeral validation database rather than the canonical production database.
 - Rehearsal/final apply recreate the target DB, run `alembic upgrade head`, then import transactionally.
+- Rehearsal/final apply recreate the target DB, run `alembic upgrade head`, initialize the static RBAC baseline, then import transactionally.
 - Apply is transactional and must fail closed on collisions, unresolved anomalies, Alembic mismatch, target DB contract violations, or backup failure.
 - Current Phase 7 gate is reported but not auto-bypassed or auto-resolved by the importer.
 - Missing or invalid Phase 3/4/5/6/3p historical artifacts must become blocked Phase 7 gates, not Python tracebacks.
@@ -197,6 +210,6 @@ This path does not import or synthesize:
 
 - document rows
 - storage bindings
-- RBAC/app users
+- environment-specific RBAC/app users
 
-Those remain separate phases and must not be fabricated just to balance counts.
+Static RBAC roles, permissions, and role-permission mappings are initialized as part of database bootstrap. Human user provisioning remains explicit and separate.

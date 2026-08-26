@@ -30,6 +30,7 @@ from backend.app.domain.phase2_import import (
     import_snapshot,
 )
 from backend.app.project_paths import phase_artifact_path
+from backend.app.rbac import ensure_builtin_rbac_baseline
 from backend.app.runtime_schema import expected_alembic_head_revision
 from tools.build_phase7_cutover_readiness import build_readiness
 from tools.env_utils import parse_env_file
@@ -482,6 +483,28 @@ def _upgrade_target_database_schema(database_url: str) -> None:
     _run_subprocess([sys.executable, "-m", "alembic", "-c", str(ROOT / "alembic.ini"), "upgrade", "head"], env=env)
 
 
+def _initialize_static_application_baseline(database_url: str) -> None:
+    factory = build_session_factory(database_url)
+    bind = factory.kw.get("bind")
+    session = factory()
+    try:
+        current_revision = _current_alembic_revision(session)
+        head_revision = expected_alembic_head_revision()
+        if current_revision != head_revision:
+            raise ProductionImportError(
+                f"Alembic revision mismatch before static baseline bootstrap: current={current_revision!r}, head={head_revision!r}."
+            )
+        ensure_builtin_rbac_baseline(session)
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+        if bind is not None:
+            bind.dispose()
+
+
 def _concise_database_error(message: str) -> str:
     lowered = message.lower()
     if "password authentication failed" in lowered:
@@ -511,7 +534,8 @@ def _execute_reset_import(
     _recreate_target_database(contract, target_database_name, target_database_url)
     try:
         _upgrade_target_database_schema(target_database_url)
-    except ProductionImportError as exc:
+        _initialize_static_application_baseline(target_database_url)
+    except Exception as exc:
         raise ProductionImportError(f"{execution_label} schema migration failed: {_concise_database_error(str(exc))}") from exc
     reconciliation, current_revision, head_revision = _run_import(
         database_url=target_database_url,

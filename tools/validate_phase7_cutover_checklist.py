@@ -60,7 +60,7 @@ def build_summary() -> dict[str, Any]:
         overall_status = "ready"
 
     return {
-        "generated_on": "2026-08-14",
+        "generated_on": "2026-08-26",
         "overall_status": overall_status,
         "readiness_status": readiness["phase7_status"],
         "status_counts": status_counts,
@@ -92,8 +92,8 @@ def render_markdown(summary: dict[str, Any]) -> str:
 def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     summary = build_summary()
-    JSON_OUT.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
-    MD_OUT.write_text(render_markdown(summary), encoding="utf-8")
+    JSON_OUT.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+    MD_OUT.write_text(render_markdown(summary), encoding="utf-8", newline="\n")
     print(f"Wrote {JSON_OUT}")
     print(f"Wrote {MD_OUT}")
     return 0

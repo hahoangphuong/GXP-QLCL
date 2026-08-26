@@ -1,11 +1,11 @@
 {
-  "generated_on": "2026-08-14",
+  "generated_on": "2026-08-26",
   "items": [
     {
       "item_id": "desktop_phase6_complete",
       "required_for_cutover": true,
-      "status": "blocked",
-      "notes": "Phase 6 desktop/private-share evidence remains blocked."
+      "status": "pass",
+      "notes": "Phase 6 desktop/private-share evidence chain closed against operator-attested live validation on 2026-08-26."
     },
     {
       "item_id": "projection_conflicts_resolved",

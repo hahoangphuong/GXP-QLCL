@@ -1,0 +1,13 @@
+{
+  "generated_on": "2026-08-14",
+  "word_com_available": true,
+  "document_created": true,
+  "document_updated_text_verified": true,
+  "verified_text": "phase6-updated",
+  "lock_behavior_observed": false,
+  "lock_behavior_note": "Not exercised in the local harness; real SMB/file-lock behavior remains a separate Phase 6 evidence item.",
+  "harness_scope": [
+    "local filesystem open/edit/save",
+    "single Word instance reopen verification"
+  ]
+}

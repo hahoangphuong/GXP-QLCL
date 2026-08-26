@@ -1,0 +1,30 @@
+{
+  "generated_on": "2026-08-26",
+  "phase6_status": "closed",
+  "summary_path": "artifacts/phase6/desktop_validation_summary.json",
+  "summary_sha256": "98968b524e1d452fc698fab93b6334962250b58b8ccb269325f0d06bd29e0ce1",
+  "evidence_path": "artifacts/phase6/phase6_desktop_validation_evidence_20260826.json",
+  "evidence_sha256": "83043693dc84e85d78778d4f984600677da2b82444268fe3f517fd895f4f675d",
+  "matrix_path": "artifacts/phase6/desktop_validation_matrix.template.json",
+  "matrix_sha256": "b6ce1d5379408abd654aa9e2a02de3791d71900bdb6d5a393fe10f1ac93b1bef",
+  "operator_attested_source": "business owner/operator attestation in ChatGPT conversation",
+  "required_scenario_count": 10,
+  "required_pass_count": 10,
+  "required_fail_count": 0,
+  "required_blocked_count": 0,
+  "required_pending_count": 0,
+  "required_outstanding": [],
+  "scenario_ids": [
+    "disconnect_during_open",
+    "disconnect_during_save",
+    "explorer_navigation_private_share",
+    "hotspot_single_user",
+    "office_wifi_single_user",
+    "private_share_mapping_active",
+    "reconnect_after_disconnect",
+    "two_user_lock_contention_private_share",
+    "word_direct_save_private_share",
+    "word_open_existing_doc_private_share"
+  ],
+  "validation_errors": []
+}

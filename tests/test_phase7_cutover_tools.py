@@ -40,6 +40,7 @@ def _patch_phase7_paths(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(readiness, "PHASE4_PATH", tmp_path / "phase4.json")
     monkeypatch.setattr(readiness, "PHASE5_PATH", tmp_path / "phase5.json")
     monkeypatch.setattr(readiness, "PHASE6_PATH", tmp_path / "phase6.json")
+    monkeypatch.setattr(readiness, "PHASE6_SUMMARY_PATH", tmp_path / "phase6_summary.json")
     monkeypatch.setattr(readiness, "PHASE3P_PATH", tmp_path / "phase3p.json")
     monkeypatch.setattr(readiness, "PHASE3S_PATH", tmp_path / "phase3s.json")
 
@@ -48,7 +49,26 @@ def _write_valid_phase7_artifacts(tmp_path: Path, *, conflict_count: int = 0) ->
     _write_json(tmp_path / "phase3r.json", {"phase3_status": "closed"})
     _write_json(tmp_path / "phase4.json", {"phase4_status": "closed"})
     _write_json(tmp_path / "phase5.json", {"phase5_status": "closed"})
-    _write_json(tmp_path / "phase6.json", {"phase6_status": "closed", "required_outstanding": []})
+    _write_json(
+        tmp_path / "phase6_summary.json",
+        {
+            "overall_status": "closed",
+            "required_outstanding": [],
+            "validation_errors": [],
+        },
+    )
+    phase6_summary_sha256 = readiness.safe_load_json(
+        tmp_path / "phase6_summary.json",
+        "phase6_summary",
+    ).payload_sha256
+    _write_json(
+        tmp_path / "phase6.json",
+        {
+            "phase6_status": "closed",
+            "required_outstanding": [],
+            "summary_sha256": phase6_summary_sha256,
+        },
+    )
     _write_json(tmp_path / "phase3p.json", {"conflict_count": conflict_count, "manual_review_count": conflict_count})
 
 
@@ -118,6 +138,18 @@ def test_build_readiness_blocks_when_phase6_artifact_missing(tmp_path: Path, mon
     assert "Phase 6 closeout artifact is missing" in gate["reason"]
 
 
+def test_build_readiness_blocks_when_phase6_summary_artifact_missing(tmp_path: Path, monkeypatch) -> None:
+    _patch_phase7_paths(monkeypatch, tmp_path)
+    _write_valid_phase7_artifacts(tmp_path)
+    (tmp_path / "phase6_summary.json").unlink()
+
+    report = readiness.build_readiness()
+
+    gate = report["gates"]["desktop_private_share_validation"]
+    assert gate["status"] == "blocked"
+    assert "Phase 6 desktop validation summary artifact is missing" in gate["reason"]
+
+
 def test_build_readiness_blocks_when_phase3p_artifact_missing(tmp_path: Path, monkeypatch) -> None:
     _patch_phase7_paths(monkeypatch, tmp_path)
     _write_valid_phase7_artifacts(tmp_path)
@@ -156,6 +188,25 @@ def test_build_readiness_preserves_valid_existing_behavior(tmp_path: Path, monke
     assert report["gates"]["document_contract_baseline"]["status"] == "pass"
     assert report["gates"]["desktop_private_share_validation"]["status"] == "pass"
     assert report["gates"]["current_projection_conflicts"]["status"] == "pass"
+
+
+def test_build_readiness_blocks_when_phase6_closeout_is_stale_relative_to_summary(tmp_path: Path, monkeypatch) -> None:
+    _patch_phase7_paths(monkeypatch, tmp_path)
+    _write_valid_phase7_artifacts(tmp_path)
+    _write_json(
+        tmp_path / "phase6.json",
+        {
+            "phase6_status": "closed",
+            "required_outstanding": [],
+            "summary_sha256": "deadbeef",
+        },
+    )
+
+    report = readiness.build_readiness()
+
+    gate = report["gates"]["desktop_private_share_validation"]
+    assert gate["status"] == "blocked"
+    assert "stale relative to the current desktop validation summary" in gate["reason"]
 
 
 def test_build_readiness_blocks_when_phase3s_summary_is_stale_relative_to_phase3p(tmp_path: Path, monkeypatch) -> None:

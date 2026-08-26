@@ -1,42 +1,90 @@
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from pathlib import Path
+import sys
 from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "artifacts" / "phase6"
-ENV_PROBE = OUT_DIR / "environment_probe.json"
-WORD_HARNESS = OUT_DIR / "word_desktop_harness.json"
 SUMMARY = OUT_DIR / "desktop_validation_summary.json"
+EVIDENCE_PATH = OUT_DIR / "phase6_desktop_validation_evidence_20260826.json"
+MATRIX_PATH = OUT_DIR / "desktop_validation_matrix.template.json"
 JSON_OUT = OUT_DIR / "phase6_final_closeout.json"
 MD_OUT = OUT_DIR / "phase6_final_closeout.md"
 
 
-def load_json(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
+def _display_path(path: Path) -> str:
+    try:
+        return path.relative_to(ROOT).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
-def build_summary() -> dict[str, Any]:
-    env_probe = load_json(ENV_PROBE)
-    word_harness = load_json(WORD_HARNESS)
-    validation = load_json(SUMMARY)
+def _write_utf8(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8", newline="\n")
+
+
+def load_json(path: Path) -> tuple[dict[str, Any], str]:
+    payload_bytes = path.read_bytes()
+    try:
+        payload = json.loads(payload_bytes.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Invalid JSON: {_display_path(path)}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"Expected JSON object: {_display_path(path)}")
+    return payload, sha256(payload_bytes).hexdigest()
+
+
+def build_summary(
+    *,
+    summary_path: Path = SUMMARY,
+    evidence_path: Path = EVIDENCE_PATH,
+    matrix_path: Path = MATRIX_PATH,
+) -> dict[str, Any]:
+    validation, summary_sha256 = load_json(summary_path)
+    _, evidence_sha256 = load_json(evidence_path)
+    _, matrix_sha256 = load_json(matrix_path)
+
+    errors: list[str] = []
+    if str(validation.get("evidence_path", "")).strip() != _display_path(evidence_path):
+        errors.append("Phase 6 summary evidence_path does not match authoritative evidence file.")
+    if str(validation.get("evidence_sha256", "")).strip() != evidence_sha256:
+        errors.append("Phase 6 summary evidence_sha256 does not match authoritative evidence file bytes.")
+    if str(validation.get("matrix_path", "")).strip() != _display_path(matrix_path):
+        errors.append("Phase 6 summary matrix_path does not match authoritative matrix file.")
+    if str(validation.get("matrix_sha256", "")).strip() != matrix_sha256:
+        errors.append("Phase 6 summary matrix_sha256 does not match authoritative matrix file bytes.")
+    if validation.get("validation_errors"):
+        errors.append("Phase 6 summary still contains validation errors.")
+    if validation.get("required_outstanding"):
+        errors.append("Phase 6 summary still contains required outstanding scenarios.")
+    if int(validation.get("required_scenario_count", 0)) != 10:
+        errors.append("Phase 6 summary must reconcile exactly 10 required scenarios.")
+    if int(validation.get("required_pass_count", 0)) != 10:
+        errors.append("Phase 6 summary must report 10 passing required scenarios.")
+
+    phase6_status = "closed" if not errors and validation.get("overall_status") == "closed" else "invalid"
     return {
-        "generated_on": "2026-08-14",
-        "phase6_status": validation["overall_status"],
-        "environment": {
-            "word_com_available": env_probe.get("word_com", {}).get("available", False),
-            "explorer_available": bool(env_probe.get("explorer_executable")),
-            "tailscale_available": bool(env_probe.get("tailscale_executable")),
-            "active_smb_mapping_count": len(env_probe.get("active_smb_mappings", [])),
-            "disconnected_smb_mapping_count": len(env_probe.get("disconnected_smb_mappings", [])),
-        },
-        "local_word_harness": {
-            "document_updated_text_verified": word_harness.get("document_updated_text_verified", False),
-            "lock_behavior_observed": word_harness.get("lock_behavior_observed", False),
-        },
+        "generated_on": "2026-08-26",
+        "phase6_status": phase6_status,
+        "summary_path": _display_path(summary_path),
+        "summary_sha256": summary_sha256,
+        "evidence_path": _display_path(evidence_path),
+        "evidence_sha256": evidence_sha256,
+        "matrix_path": _display_path(matrix_path),
+        "matrix_sha256": matrix_sha256,
+        "operator_attested_source": validation.get("operator_attested_source"),
+        "required_scenario_count": validation.get("required_scenario_count"),
+        "required_pass_count": validation.get("required_pass_count"),
+        "required_fail_count": validation.get("required_fail_count"),
+        "required_blocked_count": validation.get("required_blocked_count"),
+        "required_pending_count": validation.get("required_pending_count"),
         "required_outstanding": validation.get("required_outstanding", []),
+        "scenario_ids": [row.get("scenario_id") for row in validation.get("scenario_reconciliation", [])],
+        "validation_errors": errors,
     }
 
 
@@ -46,15 +94,16 @@ def render_markdown(summary: dict[str, Any]) -> str:
         "",
         "Generated by `tools/build_phase6_final_closeout.py`.",
         "",
-        "## Status",
-        "",
         f"- Phase 6 status: `{summary['phase6_status']}`",
-        f"- Word COM available: `{summary['environment']['word_com_available']}`",
-        f"- Explorer available: `{summary['environment']['explorer_available']}`",
-        f"- Tailscale available: `{summary['environment']['tailscale_available']}`",
-        f"- Active SMB mappings: `{summary['environment']['active_smb_mapping_count']}`",
-        f"- Disconnected SMB mappings: `{summary['environment']['disconnected_smb_mapping_count']}`",
-        f"- Local Word edit/save harness verified: `{summary['local_word_harness']['document_updated_text_verified']}`",
+        f"- Summary path: `{summary['summary_path']}`",
+        f"- Summary sha256: `{summary['summary_sha256']}`",
+        f"- Evidence path: `{summary['evidence_path']}`",
+        f"- Evidence sha256: `{summary['evidence_sha256']}`",
+        f"- Matrix path: `{summary['matrix_path']}`",
+        f"- Matrix sha256: `{summary['matrix_sha256']}`",
+        f"- Operator-attested source: `{summary['operator_attested_source']}`",
+        f"- Required scenarios: `{summary['required_scenario_count']}`",
+        f"- Required pass: `{summary['required_pass_count']}`",
         "",
         "## Outstanding Required Scenarios",
         "",
@@ -64,16 +113,26 @@ def render_markdown(summary: dict[str, Any]) -> str:
     else:
         for item in summary["required_outstanding"]:
             lines.append(f"- `{item}`")
+    lines.extend(["", "## Validation Errors", ""])
+    if not summary["validation_errors"]:
+        lines.append("- none")
+    else:
+        for error in summary["validation_errors"]:
+            lines.append(f"- {error}")
     return "\n".join(lines) + "\n"
 
 
 def main() -> int:
-    summary = build_summary()
-    JSON_OUT.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
-    MD_OUT.write_text(render_markdown(summary), encoding="utf-8")
-    print(f"Wrote {JSON_OUT}")
-    print(f"Wrote {MD_OUT}")
-    return 0
+    try:
+        summary = build_summary()
+        _write_utf8(JSON_OUT, json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
+        _write_utf8(MD_OUT, render_markdown(summary))
+        print(f"Wrote {JSON_OUT}")
+        print(f"Wrote {MD_OUT}")
+        return 0
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

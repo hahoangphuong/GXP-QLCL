@@ -1,16 +1,15 @@
 {
-  "generated_on": "2026-08-14",
-  "overall_status": "blocked",
-  "readiness_status": "blocked",
+  "generated_on": "2026-08-26",
+  "overall_status": "pending",
+  "readiness_status": "pending",
   "status_counts": {
-    "blocked": 1,
+    "blocked": 0,
     "fail": 0,
     "not_started": 0,
-    "pass": 1,
+    "pass": 2,
     "pending": 6
   },
   "required_outstanding": [
-    "desktop_phase6_complete",
     "legacy_write_freeze_window_approved",
     "legacy_write_freeze_announced",
     "final_phase2_import_rerun",

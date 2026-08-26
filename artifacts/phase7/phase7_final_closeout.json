@@ -1,12 +1,9 @@
 {
-  "generated_on": "2026-08-14",
-  "phase7_status": "blocked",
-  "checklist_status": "blocked",
-  "blocked_gates": [
-    "desktop_private_share_validation"
-  ],
+  "generated_on": "2026-08-26",
+  "phase7_status": "pending",
+  "checklist_status": "pending",
+  "blocked_gates": [],
   "required_outstanding": [
-    "desktop_phase6_complete",
     "legacy_write_freeze_window_approved",
     "legacy_write_freeze_announced",
     "final_phase2_import_rerun",

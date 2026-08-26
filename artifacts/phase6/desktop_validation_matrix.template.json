@@ -1,0 +1,193 @@
+{
+  "generated_on": "2026-08-26",
+  "phase": "phase6_desktop_private_share_validation",
+  "required_scenario_count": 10,
+  "operator_evidence_path": "artifacts/phase6/phase6_desktop_validation_evidence_20260826.json",
+  "scenarios": [
+    {
+      "scenario_id": "private_share_mapping_active",
+      "required_for_phase_close": true,
+      "status": "pass",
+      "notes": "Live operator attestation confirms active Synology SMB/private-share mapping on 2026-08-26.",
+      "required_evidence_fields": [
+        "operator",
+        "executed_on",
+        "machine_name",
+        "network_mode",
+        "share_path",
+        "status",
+        "notes",
+        "evidence_refs"
+      ]
+    },
+    {
+      "scenario_id": "explorer_navigation_private_share",
+      "required_for_phase_close": true,
+      "status": "pass",
+      "notes": "Live operator attestation confirms Explorer navigation to the approved private-share test area on 2026-08-26.",
+      "required_evidence_fields": [
+        "operator",
+        "executed_on",
+        "machine_name",
+        "network_mode",
+        "share_path",
+        "status",
+        "notes",
+        "evidence_refs"
+      ]
+    },
+    {
+      "scenario_id": "word_open_existing_doc_private_share",
+      "required_for_phase_close": true,
+      "status": "pass",
+      "notes": "Live operator attestation confirms direct Word open from the private share on 2026-08-26.",
+      "required_evidence_fields": [
+        "operator",
+        "executed_on",
+        "machine_name",
+        "network_mode",
+        "share_path",
+        "status",
+        "notes",
+        "evidence_refs",
+        "document_path",
+        "word_behavior"
+      ]
+    },
+    {
+      "scenario_id": "word_direct_save_private_share",
+      "required_for_phase_close": true,
+      "status": "pass",
+      "notes": "Live operator attestation confirms direct Word save and reopen on the private share on 2026-08-26.",
+      "required_evidence_fields": [
+        "operator",
+        "executed_on",
+        "machine_name",
+        "network_mode",
+        "share_path",
+        "status",
+        "notes",
+        "evidence_refs",
+        "document_path",
+        "word_behavior"
+      ]
+    },
+    {
+      "scenario_id": "office_wifi_single_user",
+      "required_for_phase_close": true,
+      "status": "pass",
+      "notes": "Live operator attestation confirms the single-user workflow passed on office Wi-Fi on 2026-08-26.",
+      "required_evidence_fields": [
+        "operator",
+        "executed_on",
+        "machine_name",
+        "network_mode",
+        "share_path",
+        "status",
+        "notes",
+        "evidence_refs"
+      ]
+    },
+    {
+      "scenario_id": "hotspot_single_user",
+      "required_for_phase_close": true,
+      "status": "pass",
+      "notes": "Live operator attestation confirms the single-user workflow passed on mobile hotspot plus Tailscale on 2026-08-26.",
+      "required_evidence_fields": [
+        "operator",
+        "executed_on",
+        "machine_name",
+        "network_mode",
+        "share_path",
+        "status",
+        "notes",
+        "evidence_refs"
+      ]
+    },
+    {
+      "scenario_id": "disconnect_during_open",
+      "required_for_phase_close": true,
+      "status": "pass",
+      "notes": "Live operator attestation confirms controlled disconnect-during-open behavior and recovery on 2026-08-26.",
+      "required_evidence_fields": [
+        "operator",
+        "executed_on",
+        "machine_name",
+        "network_mode",
+        "share_path",
+        "status",
+        "notes",
+        "evidence_refs",
+        "disconnect_method",
+        "recovery_observed"
+      ]
+    },
+    {
+      "scenario_id": "disconnect_during_save",
+      "required_for_phase_close": true,
+      "status": "pass",
+      "notes": "Live operator attestation confirms controlled disconnect-during-save behavior and recovery on 2026-08-26.",
+      "required_evidence_fields": [
+        "operator",
+        "executed_on",
+        "machine_name",
+        "network_mode",
+        "share_path",
+        "status",
+        "notes",
+        "evidence_refs",
+        "disconnect_method",
+        "recovery_observed"
+      ]
+    },
+    {
+      "scenario_id": "reconnect_after_disconnect",
+      "required_for_phase_close": true,
+      "status": "pass",
+      "notes": "Live operator attestation confirms post-disconnect reconnect/recovery on 2026-08-26.",
+      "required_evidence_fields": [
+        "operator",
+        "executed_on",
+        "machine_name",
+        "network_mode",
+        "share_path",
+        "status",
+        "notes",
+        "evidence_refs",
+        "disconnect_method",
+        "recovery_observed"
+      ]
+    },
+    {
+      "scenario_id": "two_user_lock_contention_private_share",
+      "required_for_phase_close": true,
+      "status": "pass",
+      "notes": "Live operator attestation confirms two-user Word/SMB contention handling on the private share on 2026-08-26.",
+      "required_evidence_fields": [
+        "operator",
+        "executed_on",
+        "machine_name",
+        "network_mode",
+        "share_path",
+        "status",
+        "notes",
+        "evidence_refs",
+        "user_a",
+        "user_b",
+        "lock_outcome"
+      ]
+    },
+    {
+      "scenario_id": "local_word_open_edit_save_harness",
+      "required_for_phase_close": false,
+      "status": "pass",
+      "notes": "Local desktop harness remained available as supporting evidence."
+    },
+    {
+      "scenario_id": "local_word_lock_harness",
+      "required_for_phase_close": false,
+      "status": "not_tested",
+      "notes": "Local lock harness remains optional support evidence and is not required for Phase 6 closure."
+    }
+  ]
+}

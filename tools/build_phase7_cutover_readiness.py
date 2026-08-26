@@ -12,6 +12,7 @@ PHASE3_PATH = ROOT / "artifacts" / "phase3r" / "phase3_final_closeout.json"
 PHASE4_PATH = ROOT / "artifacts" / "phase4" / "phase4_final_closeout.json"
 PHASE5_PATH = ROOT / "artifacts" / "phase5" / "phase5_final_closeout.json"
 PHASE6_PATH = ROOT / "artifacts" / "phase6" / "phase6_final_closeout.json"
+PHASE6_SUMMARY_PATH = ROOT / "artifacts" / "phase6" / "desktop_validation_summary.json"
 PHASE3P_PATH = ROOT / "artifacts" / "phase3p" / "current_projection_conflicts.json"
 PHASE3S_PATH = ROOT / "artifacts" / "phase3s" / "current_projection_conflict_decisions.summary.json"
 OUT_DIR = ROOT / "artifacts" / "phase7"
@@ -181,15 +182,57 @@ def _baseline_gate(
     return gate("blocked", blocked_reason, detail=detail or {})
 
 
+def build_phase6_gate(
+    phase6_result: ArtifactLoadResult,
+    phase6_summary_result: ArtifactLoadResult,
+) -> dict[str, Any]:
+    if not phase6_result.ok:
+        return _blocked_artifact_gate(
+            phase6_result.error_reason or "Phase 6 closeout artifact is unavailable."
+        )
+    if not phase6_summary_result.ok:
+        return _blocked_artifact_gate(
+            phase6_summary_result.error_reason or "Phase 6 desktop validation summary is unavailable."
+        )
+    phase6 = phase6_result.payload or {}
+    phase6_summary = phase6_summary_result.payload or {}
+    reported_summary_sha256 = str(phase6.get("summary_sha256", "")).strip()
+    actual_summary_sha256 = phase6_summary_result.payload_sha256 or ""
+    if reported_summary_sha256 != actual_summary_sha256:
+        return gate(
+            "blocked",
+            "Phase 6 closeout is stale relative to the current desktop validation summary.",
+            detail={
+                "reported_summary_sha256": reported_summary_sha256,
+                "actual_summary_sha256": actual_summary_sha256,
+            },
+        )
+    if (
+        phase6.get("phase6_status") == "closed"
+        and phase6_summary.get("overall_status") == "closed"
+        and not phase6_summary.get("validation_errors", [])
+        and not phase6_summary.get("required_outstanding", [])
+    ):
+        return gate(
+            "pass",
+            "Phase 6 desktop/private-share evidence is complete.",
+            detail={"required_outstanding": []},
+        )
+    return gate(
+        "blocked",
+        "Phase 6 desktop/private-share evidence is not closed.",
+        detail={"required_outstanding": phase6_summary.get("required_outstanding", [])},
+    )
+
+
 def build_readiness() -> dict[str, Any]:
     phase3 = safe_load_json(PHASE3_PATH, "Phase 3 closeout")
     phase4 = safe_load_json(PHASE4_PATH, "Phase 4 closeout")
     phase5 = safe_load_json(PHASE5_PATH, "Phase 5 closeout")
     phase6 = safe_load_json(PHASE6_PATH, "Phase 6 closeout")
+    phase6_summary = safe_load_json(PHASE6_SUMMARY_PATH, "Phase 6 desktop validation summary")
     phase3p = safe_load_json(PHASE3P_PATH, "current projection conflict")
     phase3s = safe_load_json(PHASE3S_PATH, "Phase 3s projection conflict decision summary", required=False)
-
-    phase6_payload = phase6.payload or {}
 
     gates: dict[str, dict[str, Any]] = {}
     gates["structured_data_baseline"] = _baseline_gate(
@@ -210,13 +253,7 @@ def build_readiness() -> dict[str, Any]:
         pass_reason="Phase 5 document/runtime baseline is closed.",
         blocked_reason="Phase 5 document/runtime baseline is not closed.",
     )
-    gates["desktop_private_share_validation"] = _baseline_gate(
-        phase6,
-        expected_key="phase6_status",
-        pass_reason="Phase 6 desktop/private-share evidence is complete.",
-        blocked_reason="Phase 6 desktop/private-share evidence is not closed.",
-        detail={"required_outstanding": phase6_payload.get("required_outstanding", [])},
-    )
+    gates["desktop_private_share_validation"] = build_phase6_gate(phase6, phase6_summary)
 
     gates["current_projection_conflicts"] = build_current_projection_gate(phase3p, phase3s)
 
@@ -238,7 +275,7 @@ def build_readiness() -> dict[str, Any]:
         overall_status = "ready"
 
     return {
-        "generated_on": "2026-08-24",
+        "generated_on": "2026-08-26",
         "phase7_status": overall_status,
         "gates": gates,
     }
@@ -265,8 +302,8 @@ def render_markdown(report: dict[str, Any]) -> str:
 def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     report = build_readiness()
-    JSON_OUT.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    MD_OUT.write_text(render_markdown(report), encoding="utf-8")
+    JSON_OUT.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+    MD_OUT.write_text(render_markdown(report), encoding="utf-8", newline="\n")
     print(f"Wrote {JSON_OUT}")
     print(f"Wrote {MD_OUT}")
     return 0

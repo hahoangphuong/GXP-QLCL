@@ -1,0 +1,189 @@
+{
+  "generated_on": "2026-08-26",
+  "overall_status": "closed",
+  "matrix_path": "artifacts/phase6/desktop_validation_matrix.template.json",
+  "matrix_sha256": "b6ce1d5379408abd654aa9e2a02de3791d71900bdb6d5a393fe10f1ac93b1bef",
+  "evidence_path": "artifacts/phase6/phase6_desktop_validation_evidence_20260826.json",
+  "evidence_sha256": "83043693dc84e85d78778d4f984600677da2b82444268fe3f517fd895f4f675d",
+  "environment_probe_path": "artifacts/phase6/environment_probe.json",
+  "environment_probe_sha256": "e846262ffe8798d756e44059cee826ba83ad136ae63fe37add1d87382ce9bd6b",
+  "word_harness_path": "artifacts/phase6/word_desktop_harness.json",
+  "word_harness_sha256": "cd71b07a01381ae722d2bd7f12b9d236448a55871a997be4f98e7485093a5278",
+  "operator_attested_source": "business owner/operator attestation in ChatGPT conversation",
+  "evidence_status": "operator_attested_pass",
+  "required_scenario_count": 10,
+  "required_pass_count": 10,
+  "required_fail_count": 0,
+  "required_blocked_count": 0,
+  "required_pending_count": 0,
+  "required_not_tested_count": 0,
+  "required_outstanding": [],
+  "missing_required_scenarios": [],
+  "extra_unknown_scenarios": [],
+  "validation_errors": [],
+  "environment_probe": {
+    "word_com_available": true,
+    "explorer_available": true,
+    "active_smb_mapping_count": 0,
+    "disconnected_smb_mapping_count": 0,
+    "tailscale_available": true
+  },
+  "word_harness": {
+    "document_updated_text_verified": true,
+    "lock_behavior_observed": false,
+    "second_open_read_only": null,
+    "second_open_error": null
+  },
+  "scenario_reconciliation": [
+    {
+      "scenario_id": "disconnect_during_open",
+      "status": "pass",
+      "executed_on": "2026-08-26",
+      "evidence_refs": [
+        "operator_attestation: all required Phase 6 live private-share scenarios were executed and passed on 2026-08-26"
+      ],
+      "document_path": null,
+      "word_behavior": null,
+      "disconnect_method": "controlled temporary network/Tailscale interruption while test DOCX was open",
+      "recovery_observed": "Behavior was observed and the workflow recovered after connectivity returned.",
+      "user_a": null,
+      "user_b": null,
+      "lock_outcome": null
+    },
+    {
+      "scenario_id": "disconnect_during_save",
+      "status": "pass",
+      "executed_on": "2026-08-26",
+      "evidence_refs": [
+        "operator_attestation: all required Phase 6 live private-share scenarios were executed and passed on 2026-08-26"
+      ],
+      "document_path": null,
+      "word_behavior": null,
+      "disconnect_method": "controlled temporary network/Tailscale interruption during save of scratch/test DOCX",
+      "recovery_observed": "Save interruption behavior and file aftermath were checked; the document remained recoverable/usable after reconnect.",
+      "user_a": null,
+      "user_b": null,
+      "lock_outcome": null
+    },
+    {
+      "scenario_id": "explorer_navigation_private_share",
+      "status": "pass",
+      "executed_on": "2026-08-26",
+      "evidence_refs": [
+        "operator_attestation: all required Phase 6 live private-share scenarios were executed and passed on 2026-08-26"
+      ],
+      "document_path": null,
+      "word_behavior": null,
+      "disconnect_method": null,
+      "recovery_observed": null,
+      "user_a": null,
+      "user_b": null,
+      "lock_outcome": null
+    },
+    {
+      "scenario_id": "hotspot_single_user",
+      "status": "pass",
+      "executed_on": "2026-08-26",
+      "evidence_refs": [
+        "operator_attestation: all required Phase 6 live private-share scenarios were executed and passed on 2026-08-26"
+      ],
+      "document_path": null,
+      "word_behavior": null,
+      "disconnect_method": null,
+      "recovery_observed": null,
+      "user_a": null,
+      "user_b": null,
+      "lock_outcome": null
+    },
+    {
+      "scenario_id": "office_wifi_single_user",
+      "status": "pass",
+      "executed_on": "2026-08-26",
+      "evidence_refs": [
+        "operator_attestation: all required Phase 6 live private-share scenarios were executed and passed on 2026-08-26"
+      ],
+      "document_path": null,
+      "word_behavior": null,
+      "disconnect_method": null,
+      "recovery_observed": null,
+      "user_a": null,
+      "user_b": null,
+      "lock_outcome": null
+    },
+    {
+      "scenario_id": "private_share_mapping_active",
+      "status": "pass",
+      "executed_on": "2026-08-26",
+      "evidence_refs": [
+        "operator_attestation: all required Phase 6 live private-share scenarios were executed and passed on 2026-08-26"
+      ],
+      "document_path": null,
+      "word_behavior": null,
+      "disconnect_method": null,
+      "recovery_observed": null,
+      "user_a": null,
+      "user_b": null,
+      "lock_outcome": null
+    },
+    {
+      "scenario_id": "reconnect_after_disconnect",
+      "status": "pass",
+      "executed_on": "2026-08-26",
+      "evidence_refs": [
+        "operator_attestation: all required Phase 6 live private-share scenarios were executed and passed on 2026-08-26"
+      ],
+      "document_path": null,
+      "word_behavior": null,
+      "disconnect_method": "temporary network/Tailscale interruption followed by reconnect",
+      "recovery_observed": "Synology share and test document became accessible again after reconnection.",
+      "user_a": null,
+      "user_b": null,
+      "lock_outcome": null
+    },
+    {
+      "scenario_id": "two_user_lock_contention_private_share",
+      "status": "pass",
+      "executed_on": "2026-08-26",
+      "evidence_refs": [
+        "operator_attestation: all required Phase 6 live private-share scenarios were executed and passed on 2026-08-26"
+      ],
+      "document_path": null,
+      "word_behavior": null,
+      "disconnect_method": null,
+      "recovery_observed": null,
+      "user_a": "desktop_session_A",
+      "user_b": "desktop_session_B",
+      "lock_outcome": "Microsoft Word/SMB contention behavior was observed and handled as expected; no silent overwrite of the scratch/test document was observed."
+    },
+    {
+      "scenario_id": "word_direct_save_private_share",
+      "status": "pass",
+      "executed_on": "2026-08-26",
+      "evidence_refs": [
+        "operator_attestation: all required Phase 6 live private-share scenarios were executed and passed on 2026-08-26"
+      ],
+      "document_path": "\\\\100.95.45.127\\Hồ sơ nội bộ\\_GXP_PHASE6_TEST\\phase6_word_test.docx",
+      "word_behavior": "DOCX was edited and saved directly in Word on the private share; reopening confirmed the saved content.",
+      "disconnect_method": null,
+      "recovery_observed": null,
+      "user_a": null,
+      "user_b": null,
+      "lock_outcome": null
+    },
+    {
+      "scenario_id": "word_open_existing_doc_private_share",
+      "status": "pass",
+      "executed_on": "2026-08-26",
+      "evidence_refs": [
+        "operator_attestation: all required Phase 6 live private-share scenarios were executed and passed on 2026-08-26"
+      ],
+      "document_path": "\\\\100.95.45.127\\Hồ sơ nội bộ\\_GXP_PHASE6_TEST\\phase6_word_test.docx",
+      "word_behavior": "Existing DOCX opened successfully in Microsoft Word directly from the private share.",
+      "disconnect_method": null,
+      "recovery_observed": null,
+      "user_a": null,
+      "user_b": null,
+      "lock_outcome": null
+    }
+  ]
+}

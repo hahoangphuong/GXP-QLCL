@@ -1,0 +1,175 @@
+{
+  "generated_on": "2026-08-26",
+  "evidence_status": "operator_attested_pass",
+  "evidence_scope": "Phase 6 live Windows desktop + Synology private-share validation",
+  "source": "business owner/operator attestation in ChatGPT conversation",
+  "environment": {
+    "word_com_available": true,
+    "explorer_available": true,
+    "tailscale_available": true,
+    "local_word_harness_verified": true
+  },
+  "scenarios": [
+    {
+      "operator": "business_owner/operator",
+      "executed_on": "2026-08-26",
+      "machine_name": "Windows operator workstation",
+      "share_path": "\\\\100.95.45.127\\Hồ sơ nội bộ",
+      "status": "pass",
+      "required_for_phase_close": true,
+      "evidence_refs": [
+        "operator_attestation: all required Phase 6 live private-share scenarios were executed and passed on 2026-08-26"
+      ],
+      "scenario_id": "private_share_mapping_active",
+      "network_mode": "tailscale_private_network",
+      "notes": "Active Synology SMB/private-share access was verified successfully from the Windows operator workstation."
+    },
+    {
+      "operator": "business_owner/operator",
+      "executed_on": "2026-08-26",
+      "machine_name": "Windows operator workstation",
+      "share_path": "\\\\100.95.45.127\\Hồ sơ nội bộ",
+      "status": "pass",
+      "required_for_phase_close": true,
+      "evidence_refs": [
+        "operator_attestation: all required Phase 6 live private-share scenarios were executed and passed on 2026-08-26"
+      ],
+      "scenario_id": "explorer_navigation_private_share",
+      "network_mode": "tailscale_private_network",
+      "notes": "Explorer navigation to the approved Synology private-share test area succeeded."
+    },
+    {
+      "operator": "business_owner/operator",
+      "executed_on": "2026-08-26",
+      "machine_name": "Windows operator workstation",
+      "share_path": "\\\\100.95.45.127\\Hồ sơ nội bộ",
+      "status": "pass",
+      "required_for_phase_close": true,
+      "evidence_refs": [
+        "operator_attestation: all required Phase 6 live private-share scenarios were executed and passed on 2026-08-26"
+      ],
+      "scenario_id": "word_open_existing_doc_private_share",
+      "network_mode": "tailscale_private_network",
+      "document_path": "\\\\100.95.45.127\\Hồ sơ nội bộ\\_GXP_PHASE6_TEST\\phase6_word_test.docx",
+      "word_behavior": "Existing DOCX opened successfully in Microsoft Word directly from the private share.",
+      "notes": "Direct open from Synology private share passed."
+    },
+    {
+      "operator": "business_owner/operator",
+      "executed_on": "2026-08-26",
+      "machine_name": "Windows operator workstation",
+      "share_path": "\\\\100.95.45.127\\Hồ sơ nội bộ",
+      "status": "pass",
+      "required_for_phase_close": true,
+      "evidence_refs": [
+        "operator_attestation: all required Phase 6 live private-share scenarios were executed and passed on 2026-08-26"
+      ],
+      "scenario_id": "word_direct_save_private_share",
+      "network_mode": "tailscale_private_network",
+      "document_path": "\\\\100.95.45.127\\Hồ sơ nội bộ\\_GXP_PHASE6_TEST\\phase6_word_test.docx",
+      "word_behavior": "DOCX was edited and saved directly in Word on the private share; reopening confirmed the saved content.",
+      "notes": "Direct Word save and reopen verification passed without manual download/upload."
+    },
+    {
+      "operator": "business_owner/operator",
+      "executed_on": "2026-08-26",
+      "machine_name": "Windows operator workstation",
+      "share_path": "\\\\100.95.45.127\\Hồ sơ nội bộ",
+      "status": "pass",
+      "required_for_phase_close": true,
+      "evidence_refs": [
+        "operator_attestation: all required Phase 6 live private-share scenarios were executed and passed on 2026-08-26"
+      ],
+      "scenario_id": "office_wifi_single_user",
+      "network_mode": "office_wifi_plus_tailscale",
+      "notes": "Single-user Explorer and Word open/edit/save workflow passed on office Wi-Fi."
+    },
+    {
+      "operator": "business_owner/operator",
+      "executed_on": "2026-08-26",
+      "machine_name": "Windows operator workstation",
+      "share_path": "\\\\100.95.45.127\\Hồ sơ nội bộ",
+      "status": "pass",
+      "required_for_phase_close": true,
+      "evidence_refs": [
+        "operator_attestation: all required Phase 6 live private-share scenarios were executed and passed on 2026-08-26"
+      ],
+      "scenario_id": "hotspot_single_user",
+      "network_mode": "mobile_hotspot_plus_tailscale",
+      "notes": "Single-user Explorer and Word open/edit/save workflow passed over mobile hotspot with Tailscale."
+    },
+    {
+      "operator": "business_owner/operator",
+      "executed_on": "2026-08-26",
+      "machine_name": "Windows operator workstation",
+      "share_path": "\\\\100.95.45.127\\Hồ sơ nội bộ",
+      "status": "pass",
+      "required_for_phase_close": true,
+      "evidence_refs": [
+        "operator_attestation: all required Phase 6 live private-share scenarios were executed and passed on 2026-08-26"
+      ],
+      "scenario_id": "disconnect_during_open",
+      "network_mode": "controlled_network_interruption",
+      "disconnect_method": "controlled temporary network/Tailscale interruption while test DOCX was open",
+      "recovery_observed": "Behavior was observed and the workflow recovered after connectivity returned.",
+      "notes": "Controlled disconnect-during-open scenario passed using the scratch/test document."
+    },
+    {
+      "operator": "business_owner/operator",
+      "executed_on": "2026-08-26",
+      "machine_name": "Windows operator workstation",
+      "share_path": "\\\\100.95.45.127\\Hồ sơ nội bộ",
+      "status": "pass",
+      "required_for_phase_close": true,
+      "evidence_refs": [
+        "operator_attestation: all required Phase 6 live private-share scenarios were executed and passed on 2026-08-26"
+      ],
+      "scenario_id": "disconnect_during_save",
+      "network_mode": "controlled_network_interruption",
+      "disconnect_method": "controlled temporary network/Tailscale interruption during save of scratch/test DOCX",
+      "recovery_observed": "Save interruption behavior and file aftermath were checked; the document remained recoverable/usable after reconnect.",
+      "notes": "Controlled disconnect-during-save scenario passed using only the scratch/test document."
+    },
+    {
+      "operator": "business_owner/operator",
+      "executed_on": "2026-08-26",
+      "machine_name": "Windows operator workstation",
+      "share_path": "\\\\100.95.45.127\\Hồ sơ nội bộ",
+      "status": "pass",
+      "required_for_phase_close": true,
+      "evidence_refs": [
+        "operator_attestation: all required Phase 6 live private-share scenarios were executed and passed on 2026-08-26"
+      ],
+      "scenario_id": "reconnect_after_disconnect",
+      "network_mode": "tailscale_reconnect",
+      "disconnect_method": "temporary network/Tailscale interruption followed by reconnect",
+      "recovery_observed": "Synology share and test document became accessible again after reconnection.",
+      "notes": "Reconnect and access recovery passed."
+    },
+    {
+      "operator": "business_owner/operator",
+      "executed_on": "2026-08-26",
+      "machine_name": "Windows operator workstation",
+      "share_path": "\\\\100.95.45.127\\Hồ sơ nội bộ",
+      "status": "pass",
+      "required_for_phase_close": true,
+      "evidence_refs": [
+        "operator_attestation: all required Phase 6 live private-share scenarios were executed and passed on 2026-08-26"
+      ],
+      "scenario_id": "two_user_lock_contention_private_share",
+      "network_mode": "two_desktop_sessions_via_private_share",
+      "user_a": "desktop_session_A",
+      "user_b": "desktop_session_B",
+      "lock_outcome": "Microsoft Word/SMB contention behavior was observed and handled as expected; no silent overwrite of the scratch/test document was observed.",
+      "notes": "Two-user contention test on the same scratch/test DOCX passed."
+    }
+  ],
+  "summary": {
+    "required_scenario_count": 10,
+    "pass_count": 10,
+    "fail_count": 0,
+    "outstanding_count": 0,
+    "overall_status": "closed"
+  },
+  "audit_note": "This file records the operator's explicit attestation that all required Phase 6 scenarios were executed and passed. It does not invent screenshot filenames; attach captured screenshots/logs separately if retained for audit."
+}

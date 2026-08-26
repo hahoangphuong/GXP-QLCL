@@ -1,0 +1,15 @@
+{
+  "generated_on": "2026-08-14",
+  "word_executable_paths": [
+    "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE"
+  ],
+  "word_com": {
+    "version": "16.0",
+    "available": true
+  },
+  "explorer_executable": "C:\\Windows\\explorer.exe",
+  "tailscale_executable": "C:\\Program Files\\Tailscale\\tailscale.EXE",
+  "smb_mappings": [],
+  "active_smb_mappings": [],
+  "disconnected_smb_mappings": []
+}

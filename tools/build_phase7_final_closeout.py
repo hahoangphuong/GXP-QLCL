@@ -25,7 +25,7 @@ def build_summary() -> dict[str, Any]:
     readiness = load_json(READINESS_PATH)
     checklist = load_json(CHECKLIST_PATH)
     return {
-        "generated_on": "2026-08-14",
+        "generated_on": "2026-08-26",
         "phase7_status": readiness["phase7_status"],
         "checklist_status": checklist["overall_status"],
         "blocked_gates": [

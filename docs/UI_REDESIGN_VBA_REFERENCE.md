@@ -559,3 +559,141 @@ Do not repeat this full specification in the report.
 ## 22. Audit rule
 
 This document is the acceptance source for UI redesign audit. If implementation deviates, Codex should explicitly state why and obtain approval rather than silently replacing the workflow with a generic web dashboard pattern.
+
+## 23. UAT refinement — compact search, production-line rows, and facility tabs
+
+This section records the post-Slice-A.1 UAT decision and is authoritative over earlier illustrative column/layout recommendations where they conflict.
+
+### 23.1 Search and results become one compact workspace
+
+On desktop, do not waste vertical space on separate large `Tra cứu` and `Kết quả` cards.
+
+Preferred structure:
+
+```
++--------------------------------------------------------------------------+
+| TRA CỨU  [GMP] [GLP] [GMPbd] [quick search................] [Bộ lọc ▾] |
+|          active-filter chips when advanced filters are applied           |
++-------------------------------------------+------------------------------+
+| KẾT QUẢ / DÂY CHUYỀN                     | LỊCH SỬ                     |
+| internal scroll                           | internal scroll              |
++-------------------------------------------+------------------------------+
+| FACILITY WORKSPACE TABS                                                  |
+| Thông tin chung | Các đợt kiểm tra & thay đổi | GCN GxP | ĐĐKKDD        |
++--------------------------------------------------------------------------+
+```
+
+Remove redundant `Danh sách cơ sở` headings when the context is already obvious.
+
+### 23.2 Advanced filters collapsed by default
+
+Keep the quick search and GxP selector always visible.
+
+The following are advanced filters and should be hidden/collapsed by default, expanding only when the operator requests them:
+- Tỉnh/thành
+- Trạng thái hồ sơ
+- Chứng nhận
+- Sắp hết hạn
+- other secondary filters added later
+
+When collapsed, active filters must still be visible through compact chips/summary text so a dashboard drilldown or multi-state predicate is not hidden from the operator.
+
+`Xóa lọc` remains accessible without forcing expansion.
+
+### 23.3 Header should be even more compact
+
+The application chrome should minimize vertical usage further. Brand, primary nav, user identity, and sign-out should fit into a compact single-row or near-single-row application header where practical.
+
+Avoid subtitle text that consumes a second line unless it materially helps the operator.
+
+### 23.4 Search result grain is production-line level, not only facility level
+
+The visible result table must support **production-line granularity** when the authoritative data has production lines.
+
+Example:
+- facility `1.1`
+- lines `A`, `B`, `C`
+
+must be representable as separate rows/codes:
+- `1.1A`
+- `1.1B`
+- `1.1C`
+
+Do not fabricate line suffixes. Derive the composite display code from authoritative facility + production-line identity.
+
+A facility with no line-level records may still appear at facility grain if that is the authoritative domain state. The backend/API should expose the grain explicitly enough that the frontend does not infer or duplicate line ownership rules.
+
+Search, sorting, selection, and later workspace actions must preserve both facility identity and selected production-line identity.
+
+### 23.5 Revised default result columns
+
+For the compact default result table, remove these columns unless a user chooses an expanded view later:
+- Công ty
+- Phạm vi/tiêu chuẩn (old summary column)
+- GCN hiện hành
+- Hết hạn
+
+Default columns should prioritize:
+- Mã cơ sở/dây chuyền (e.g. `1.1A`)
+- Tên cơ sở
+- GxP
+- **Phạm vi chứng nhận**
+- Tỉnh/thành
+- Kiểm tra gần nhất
+- Trạng thái hồ sơ gần nhất
+
+`Phạm vi chứng nhận` must mean actual authoritative certificate scope / line-specific certified scope as modeled by the backend. Do not substitute `applicable_standard`, generic scope code, or latest-case summary merely because those values are already available.
+
+If the current backend cannot expose authoritative line-level certificate scope, record the gap and add the smallest correct read model/API rather than faking the field in React.
+
+### 23.6 Typography density
+
+Use a smaller desktop data-grid type scale than the current A.1 implementation where readability permits.
+
+For compact controls and tables, prefer a legible sans-serif font stack. Serif typography may remain for occasional high-level headings if desired, but dense tables, labels, filters, tabs, and data values should use sans-serif.
+
+Density must come from compact row height, spacing, and font sizing without making Vietnamese text unreadable.
+
+### 23.7 History panel moves beside results
+
+The compact `Lịch sử` panel should sit beside the result table, replacing the current top-right facility-summary card.
+
+History default columns should be reduced to:
+- Loại sự kiện
+- Tiêu chuẩn
+- Ngày
+- Trạng thái
+
+Remove by default:
+- Mã hồ sơ
+- GxP
+
+History remains bounded with internal scrolling.
+
+### 23.8 Facility context moves below into top-level tabs
+
+The current standalone `Ngữ cảnh cơ sở` card should no longer consume the top-right pane.
+
+Facility context belongs below the result/history split inside a top-level facility workspace with these tabs:
+- **Thông tin chung**
+- **Các đợt kiểm tra & thay đổi**
+- **Giấy chứng nhận GxP**
+- **Giấy chứng nhận đủ điều kiện**
+
+The selected facility and selected production line must remain stable when switching these tabs.
+
+The existing event-level tabs (`Hồ sơ`, `Kiểm tra`, `Khắc phục`, `Xử lý`, etc.) belong inside the **Các đợt kiểm tra & thay đổi** facility tab, not as a competing top-level workspace model.
+
+### 23.9 Acceptance additions for the next implementation round
+
+The next UI round is accepted only if:
+1. Advanced filters are collapsed by default and active predicates remain visible when collapsed.
+2. Search + results no longer waste space as two large stacked cards.
+3. Header chrome is smaller than A.1.
+4. Result rows support authoritative production-line grain and composite codes such as `1.1A` where real line data exists.
+5. Default result table removes Company, old scope/standard summary, GCN current, and expiry columns.
+6. Default result table adds authoritative `Phạm vi chứng nhận`.
+7. Dense tables/controls use a smaller readable sans-serif type scale.
+8. History sits beside results and omits default `Mã hồ sơ` and `GxP` columns.
+9. Facility context is moved below into the four top-level facility tabs listed above.
+10. No line code, certificate scope, filter meaning, or workflow state is fabricated client-side.

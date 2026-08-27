@@ -1,0 +1,561 @@
+# GXP-QLCL UI redesign specification — VBA/Excel driven
+
+Status: implementation specification for Codex and later audit.
+
+## 1. Purpose
+
+Redesign the web frontend so it behaves like a dense desktop-grade business application, preserving the successful operator workflow of the existing VBA/Excel application instead of the current large-card operator shell.
+
+The web UI must keep backend/business logic server-side. This redesign is primarily frontend/UX. Do not weaken authentication, RBAC, fail-closed document behavior, database contracts, or workflow rules.
+
+Core UX principle:
+
+> Dashboard tells the operator what needs attention. Search finds the business object. Workspace lets the operator complete the work without losing context.
+
+The central feature is **Tra cứu** (Search). Most daily workflows begin there.
+
+## 2. Reference UX extracted from the legacy VBA form
+
+The legacy VBA search form is organized as a highly effective three-level master/history/detail workflow:
+
+1. **Facility master list**
+   - GxP category selectors: GMP / GLP / GMPbd
+   - one quick filter/search box
+   - dense facility list with facility code, facility/company name, scope summary, province
+   - quick lookup/actions for GPs certificate, ĐĐK and CCHN
+   - contextual create/actions such as Công ty mới, Cơ sở mới, Dây chuyền mới, Tái đánh giá, Thay đổi
+
+2. **History for the selected facility**
+   - inspection/change events
+   - event type
+   - standard
+   - date
+
+3. **Detail for the selected event**
+   - Hồ sơ đăng ký
+   - Kiểm tra thực tế
+   - Báo cáo khắc phục
+   - Xử lý tiếp
+   - Cấp chứng nhận GPs
+   - Chứng nhận khác
+   - inspection decision and related documents
+   - inspection scope
+   - certificate scope
+   - processing/supporting folders
+
+This **master -> history -> detail** model is authoritative for the redesign. Preserve it even if the visual styling changes.
+
+## 3. Design goals
+
+### 3.1 Dense professional application UI
+
+Prefer information density and fast scanning over decorative cards and large empty areas.
+
+The visual target is a modern line-of-business/data-workspace application, not a marketing website.
+
+Use:
+- compact headers
+- tables/data grids
+- sticky column/table headers
+- consistent row heights
+- compact controls
+- restrained spacing
+- clear selected-row state
+- status badges only where they add meaning
+- clear hierarchy without oversized typography
+
+Avoid:
+- giant cards for each record
+- excessive whitespace
+- decorative gradients as the primary hierarchy mechanism
+- technical platform/status information on normal operator screens
+- forcing users through many pages for data that belongs to one facility/workspace
+
+### 3.2 Preserve operator familiarity
+
+Preserve from VBA where practical:
+- terminology
+- grouping of fields
+- order of business concepts
+- relationship company -> facility -> inspection/change -> certificate/documents
+- contextual action placement
+- high information density
+
+Do not copy VBA pixel-for-pixel. Improve using web capabilities while keeping the mental model familiar.
+
+### 3.3 Context must remain visible
+
+When the operator selects a facility and then an inspection/change event, the current context must remain obvious while navigating tabs/actions.
+
+Use a persistent summary strip showing at least:
+- facility code
+- facility name
+- company name when useful
+- GxP type
+- current/selected standard
+- province/country if useful
+- current certificate state/expiry when available
+
+## 4. Main navigation
+
+Use a compact primary navigation:
+
+- **Tổng quan**
+- **Tra cứu** — visually emphasized; this is the core daily entry point
+- **Nghiệp vụ**
+  - Hồ sơ kiểm tra
+  - Giấy chứng nhận
+  - ĐĐKKDD
+  - Theo dõi thay đổi
+- **Tài liệu**
+- **Báo cáo**
+- **Quản trị** — role-gated
+
+Technical items such as deployment platform, auth provider, Phase 5/6/7 state, projection conflicts, etc. must not occupy the operator dashboard. If still needed, move them under **Quản trị -> Trạng thái hệ thống**.
+
+## 5. Dashboard specification
+
+The default authenticated landing page is a business dashboard.
+
+### 5.1 Dashboard metrics
+
+Choose metrics only when supported by existing API/data. Prefer these when available:
+- Tổng số cơ sở
+- Hồ sơ đang xử lý
+- Hồ sơ đến hạn / quá hạn
+- Chứng nhận còn hiệu lực
+- Chứng nhận sắp hết hạn (30/60/90 days)
+- Chờ bổ sung/khắc phục
+- Chờ kiểm tra
+- Chờ cấp/gia hạn chứng nhận
+- Thay đổi cơ sở chưa hoàn tất
+
+If a metric is not currently supported, do not fabricate values. Either omit it or implement the smallest correct backend read model/API after auditing the source owner.
+
+### 5.2 Dashboard interactions
+
+Dashboard metric tiles are shortcuts into **Tra cứu** with filters pre-applied.
+
+Example:
+- `Chứng nhận sắp hết hạn 90 ngày: 12`
+- click -> Tra cứu opens with the corresponding expiry filter
+
+### 5.3 Work queue
+
+Include a compact `Việc cần xử lý` table/list when data supports it:
+- object/facility
+- business state
+- due/important date
+- owner/assignee when available
+- direct action/open link
+
+Do not show technical health information here.
+
+## 6. Tra cứu — core screen
+
+### 6.1 Overall layout
+
+Desktop-first layout, designed for 1366px+ screens but still usable at narrower widths.
+
+Recommended structure:
+
+```
++---------------------------------------------------------------+
+| TRA CỨU | GMP | GLP | GMPbd | [Search....................]   |
++---------------------------------------------------------------+
+| Advanced filters: province | status | standard | year | ...  |
++-------------------------------+-------------------------------+
+| FACILITY RESULTS              | FACILITY SUMMARY              |
+| dense data grid               | selected facility context     |
++-------------------------------+-------------------------------+
+| INSPECTION / CHANGE HISTORY                                   |
+| compact table                                                |
++---------------------------------------------------------------+
+| Hồ sơ | Kiểm tra | Khắc phục | Xử lý | Chứng nhận | ...      |
++---------------------------------------------------------------+
+| selected event detail / document actions / scopes             |
++---------------------------------------------------------------+
+```
+
+Do not rigidly reproduce these exact percentages. Preserve the master/history/detail behavior.
+
+### 6.2 GxP mode selector
+
+At minimum preserve current concepts:
+- GMP
+- GLP
+- GMPbd
+
+Use the authoritative codes already present in data/API; do not create translation logic that changes stored values.
+
+Selection filters the master results while preserving the current search string when sensible.
+
+### 6.3 Unified search
+
+One primary search field should match existing searchable data across as many of these as the current API safely supports:
+- facility code/legacy ID
+- facility name
+- company name
+- address
+- province
+- inspection code/file code
+- certificate number
+- scope/standard
+
+Search should be case-insensitive and Vietnamese-operator friendly where backend support exists.
+
+Do not implement client-only fake search over only the currently loaded 20 rows if that gives misleading results. Prefer server-side search through existing query APIs; extend API only after owner audit if necessary.
+
+### 6.4 Advanced filters
+
+Provide a collapsible compact filter row/panel. Candidate filters:
+- province/city
+- GxP type
+- standard
+- facility/current status
+- inspection status
+- inspection year/date range
+- inspection type
+- certificate state
+- certificate expiry range
+- change request state
+
+Only expose filters supported by real data/API.
+
+Provide `Xóa lọc`.
+
+Saved filters are desirable but not required in first implementation unless a persistence owner already exists.
+
+### 6.5 Facility results data grid
+
+Replace large record cards with a dense grid.
+
+Recommended columns, based on available data:
+- Mã cơ sở
+- Tên cơ sở
+- Công ty
+- GxP
+- Phạm vi / tiêu chuẩn chính
+- Tỉnh/thành
+- Kiểm tra gần nhất
+- Trạng thái
+- Chứng nhận hiện hành
+- Hết hạn
+
+The exact first iteration may use fewer columns if the current read models do not expose all of them.
+
+Required grid UX:
+- visible selected row
+- sortable columns where correct
+- horizontal scrolling instead of destroying density
+- sticky header
+- reasonable min/max widths
+- text ellipsis with tooltip/title for long fields
+- keyboard focus behavior should remain usable
+- double-click or explicit `Chi tiết` action
+
+Do not add a heavy grid dependency unless it provides clear value and fits current frontend architecture. A well-built semantic table is acceptable.
+
+### 6.6 Facility summary panel
+
+When a facility is selected show a concise summary, not another giant card.
+
+Include existing fields as available:
+- facility code
+- facility name
+- company
+- address
+- province
+- GxP type
+- current state
+- current standard/scope summary
+- current certificate status/expiry when supported
+
+Contextual actions should appear near this summary.
+
+## 7. Contextual actions
+
+Preserve the legacy action model and progressively enable actions based on selected context/RBAC.
+
+Desired action bar:
+- `+ Công ty`
+- `+ Cơ sở`
+- `+ Dây chuyền`
+- `+ Hồ sơ kiểm tra`
+- `Tái đánh giá`
+- `Thay đổi`
+
+Rules:
+- do not invent backend write flows that do not exist
+- actions without a valid implemented workflow may be rendered disabled with a clear reason, or omitted in the first slice
+- do not fake success locally
+- use permissions/RBAC from the server
+
+Legacy quick lookups such as GPs certificate / ĐĐK / CCHN should become tabs/actions in the selected business workspace rather than isolated decorative buttons.
+
+## 8. Inspection/change history
+
+For the selected facility show a compact table by default.
+
+Recommended columns:
+- Loại sự kiện
+- Tiêu chuẩn
+- Ngày
+- Trạng thái
+- Số hồ sơ / mã kiểm tra
+- Chứng nhận liên quan when available
+
+A timeline visualization may be offered later, but the table is primary because it supports fast scanning.
+
+Selecting a history row updates the event detail area below without losing the selected facility.
+
+## 9. Event detail tabs
+
+Preserve the VBA workflow concepts. Use compact tabs:
+
+- **Hồ sơ**
+- **Kiểm tra**
+- **Khắc phục**
+- **Xử lý**
+- **Chứng nhận GPs**
+- **Chứng nhận khác**
+
+Tab labels may include a subtle completeness/state marker only when backed by real data:
+- complete
+- warning/incomplete
+- pending
+
+Do not infer completion from missing frontend fields.
+
+## 10. Inspection detail content
+
+The selected inspection/event detail should support fields analogous to the VBA form when the backend already exposes them, such as:
+- inspection decision number/date
+- inspector/team members
+- inspection date
+- applicable standard
+- report date
+- evaluation/result
+- notes
+
+Use aligned label/value grids instead of large standalone cards.
+
+Do not duplicate business logic in React. Editing/actions must use existing server workflow APIs.
+
+## 11. Document actions
+
+Replace the right-side VBA document buttons with a compact `Tài liệu đợt kiểm tra` panel/list.
+
+Examples:
+- Quyết định kiểm tra
+- Kế hoạch kiểm tra
+- Biên bản đánh giá
+- Báo cáo đánh giá
+
+Each item may expose only supported actions:
+- Mở
+- Tạo
+- Xem lịch sử
+- Mở thư mục
+
+Document flow must remain fail-closed. Frontend must never receive NAS credentials. Existing Synology/Tailscale/storage contracts remain authoritative.
+
+## 12. Scopes
+
+Preserve prominent side-by-side or tabbed display of:
+- **Phạm vi đánh giá**
+- **Phạm vi chứng nhận GPs**
+
+These are important high-density text fields. Use readable, scrollable text areas/panels that preserve line breaks.
+
+Future enhancement: a compare/diff mode. Do not implement semantic diff unless supported/tested correctly.
+
+## 13. Document explorer / folders
+
+The legacy `Hồ sơ xử lý` and `Hồ sơ phụ trợ` concepts must remain easy to reach.
+
+Web may provide a document list/tree when existing APIs support it, but retain an operator-friendly path to the existing Explorer/Word workflow where supported by the existing storage design.
+
+Do not mirror NAS files to another storage provider for this redesign.
+
+## 14. Business alerts
+
+Where data is authoritative, use compact warnings for things such as:
+- certificate nearing expiry
+- overdue processing
+- missing required workflow document
+- unresolved change request
+- missing evaluation result
+
+Warnings must be business-relevant and must not be guessed client-side.
+
+## 15. Frontend architecture requirements
+
+Current frontend has a large `frontend/src/App.tsx`. The redesign should reduce monolithic growth rather than adding another large conditional block.
+
+Codex should refactor incrementally into components/modules with clear responsibility, e.g. conceptually:
+
+```
+frontend/src/
+  App.tsx
+  components/
+    AppShell.tsx
+    TopBar.tsx
+    PrimaryNav.tsx
+    DataTable.tsx
+    StatusBadge.tsx
+    EmptyState.tsx
+    ErrorState.tsx
+  pages/
+    DashboardPage.tsx
+    SearchPage.tsx
+  features/search/
+    SearchToolbar.tsx
+    SearchFilters.tsx
+    FacilityTable.tsx
+    FacilitySummary.tsx
+    HistoryTable.tsx
+    EventWorkspace.tsx
+    DocumentActions.tsx
+    ScopePanels.tsx
+```
+
+Names may differ. The requirement is separation of concerns, testability, and avoiding a single mega-component.
+
+Reuse the existing auth/API client/error handling contracts instead of duplicating fetch/token logic inside components.
+
+## 16. Styling requirements
+
+Create a coherent compact design system using CSS variables/tokens for at least:
+- page background
+- panel background
+- border
+- text primary/secondary
+- accent
+- danger/warning/success
+- selected row
+- compact control height
+- spacing scale
+- border radius
+
+Visual direction:
+- neutral light workspace
+- strong but restrained teal/blue accent is acceptable
+- tables and form fields should dominate, not decorative backgrounds
+- clear focus styles
+- readable Vietnamese text
+- no tiny fonts; density should come from layout, not illegibility
+
+Use semantic HTML and accessibility basics:
+- labels
+- buttons instead of clickable divs
+- keyboard focus
+- ARIA only where needed
+- sufficient contrast
+
+## 17. Responsive behavior
+
+Primary target is desktop office use.
+
+At narrower widths:
+- allow horizontal table scrolling
+- stack summary panel below results if needed
+- keep primary search/navigation usable
+- do not transform dense tables into giant cards unless absolutely necessary
+
+Mobile optimization is secondary to correct desktop business workflow.
+
+## 18. API/backend rules
+
+Before adding an API, audit existing backend read/write contracts.
+
+Hard rules:
+- do not reimplement workflow logic in browser
+- do not bypass RBAC
+- do not put NAS credentials in frontend
+- do not make fake dashboard statistics
+- do not silently map missing data to invented values
+- preserve fail-closed behavior
+- keep canonical DB/cutover state unrelated to this UI redesign
+
+If a desired field is unavailable, Codex must document the gap and either:
+1. leave that UI element out/disabled in the first implementation, or
+2. add the smallest correct backend read model/API in the source owner with tests.
+
+## 19. Implementation strategy to minimize rework
+
+Implement in slices, but keep a coherent visual system from the first slice.
+
+### Slice A — foundation + dashboard + Tra cứu shell
+
+Required:
+- refactored app shell/navigation
+- business dashboard replacing technical landing content
+- Tra cứu page
+- GxP selector
+- unified search
+- dense facility/case results using existing APIs
+- selection state
+- summary strip/panel
+- history area using existing case data
+- no regression to Google OIDC/RBAC
+
+### Slice B — selected facility/event workspace
+
+Required:
+- selected facility context
+- event/history selection
+- business tabs
+- case detail rendering
+- scope panels where supported
+- document action area using existing API contracts
+
+### Slice C — richer business actions and analytics
+
+Only after A/B are stable:
+- create/reassessment/change actions
+- richer certificate views
+- ĐĐKKDD/CCHN views
+- saved filters
+- dashboard drilldowns
+- business alerts
+- document explorer improvements
+
+Do not attempt to implement every legacy VBA button with fake/incomplete flows in Slice A.
+
+## 20. Acceptance criteria for Slice A
+
+A Slice A implementation is acceptable only if all are true:
+
+1. Authenticated user lands on a business dashboard, not a deployment/phase-status screen.
+2. `Tra cứu` is a first-class primary navigation item.
+3. Search screen preserves the master/history/detail mental model.
+4. Results are shown as a dense table/grid, not large per-record cards.
+5. Existing case/facility data is read from real authenticated APIs.
+6. Selecting a result gives persistent context and does not require navigating through unrelated pages.
+7. No technical Phase 5/6/7/deployment/auth-provider cards are shown to normal operators.
+8. Existing Google OIDC and database-backed RBAC behavior remains intact.
+9. Existing error responses are rendered clearly; frontend does not convert an API error into fake empty data.
+10. No NAS credentials or business rules move into frontend.
+11. `pnpm` frontend tests/build/lint (as currently defined by the repository) pass.
+12. Add/adjust tests for navigation, search loading, selected-row/detail state, authenticated API errors, and dashboard rendering.
+13. UI works at typical 1366x768 and 1920x1080 desktop sizes without unusable overflow.
+14. App.tsx is not allowed to become a larger monolith; meaningful decomposition is required.
+
+## 21. Codex implementation report required
+
+At the end of each slice, report only:
+- files changed
+- major UX decisions
+- existing APIs reused
+- API/backend gaps discovered
+- tests/build/lint results
+- screenshots or concise visual description if screenshot generation is available
+- full commit SHA
+- exact VM deploy command
+
+Do not repeat this full specification in the report.
+
+## 22. Audit rule
+
+This document is the acceptance source for UI redesign audit. If implementation deviates, Codex should explicitly state why and obtain approval rather than silently replacing the workflow with a generic web dashboard pattern.

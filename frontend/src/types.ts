@@ -65,6 +65,75 @@ export type CaseDetail = {
   opened_year: number | null;
 };
 
+export type DashboardQueueItem = {
+  case_id: string;
+  site_id: string;
+  facility_name: string;
+  company_name: string;
+  gxp_type: string;
+  state: string;
+  reference_code: string | null;
+  opened_year: number | null;
+};
+
+export type DashboardSummary = {
+  total_facilities: number;
+  total_cases: number;
+  active_cases: number;
+  waiting_inspection: number;
+  waiting_certificate_decision: number;
+  active_certificates: number;
+  expiring_certificates_90_days: number;
+  incomplete_changes: number;
+  queue: DashboardQueueItem[];
+};
+
+export type FacilitySearchResult = {
+  site_id: string;
+  legacy_site_id: number | null;
+  facility_code: string | null;
+  facility_name: string;
+  company_name: string;
+  gxp_types: string[];
+  primary_standard: string | null;
+  province_name: string | null;
+  last_inspection_code: string | null;
+  current_state: string | null;
+  current_certificate_number: string | null;
+  current_certificate_expiry: string | null;
+};
+
+export type FacilityWorkspaceSummary = {
+  site_id: string;
+  legacy_site_id: number | null;
+  facility_code: string | null;
+  facility_name: string;
+  company_name: string;
+  address: string | null;
+  province_name: string | null;
+  gxp_types: string[];
+  current_state: string | null;
+  primary_standard: string | null;
+  current_certificate_number: string | null;
+  current_certificate_expiry: string | null;
+};
+
+export type FacilityHistoryItem = {
+  id: string;
+  source_type: "case" | "change_request";
+  reference_code: string | null;
+  event_type: string;
+  gxp_type: string | null;
+  standard: string | null;
+  occurred_on: string | null;
+  state: string;
+};
+
+export type FacilityWorkspace = {
+  summary: FacilityWorkspaceSummary;
+  history: FacilityHistoryItem[];
+};
+
 export type DocumentPreparationResponse = {
   document_id: string;
   document_variant_id: string;

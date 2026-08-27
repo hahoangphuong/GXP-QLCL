@@ -7,6 +7,19 @@ import { App } from "./App";
 
 const apiMocks = vi.hoisted(() => ({
   getAppStatus: vi.fn(),
+  getDashboardSummary: vi.fn().mockResolvedValue({
+    total_facilities: 18,
+    total_cases: 42,
+    active_cases: 12,
+    waiting_inspection: 4,
+    waiting_certificate_decision: 3,
+    active_certificates: 9,
+    expiring_certificates_90_days: 2,
+    incomplete_changes: 1,
+    queue: [],
+  }),
+  searchFacilities: vi.fn().mockResolvedValue([]),
+  getFacilityWorkspace: vi.fn().mockResolvedValue(null),
   getCaseDetail: vi.fn().mockResolvedValue(null),
   getDocumentDetail: vi.fn().mockResolvedValue(null),
   getGenerationRun: vi.fn().mockResolvedValue(null),
@@ -65,15 +78,15 @@ function buildStatus(authMode: "header_stub" | "google_oidc", oidcClientId: stri
   };
 }
 
-function renderApp() {
+function renderApp(initialEntries: string[] = ["/"]) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={initialEntries}>
       <App />
     </MemoryRouter>,
   );
 }
 
-describe("App auth rendering", () => {
+describe("App Slice A shell", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.google = {
@@ -86,43 +99,37 @@ describe("App auth rendering", () => {
         },
       },
     };
-    apiMocks.getCaseDetail.mockResolvedValue(null);
-    apiMocks.getDocumentDetail.mockResolvedValue(null);
-    apiMocks.getGenerationRun.mockResolvedValue(null);
-    apiMocks.listCases.mockResolvedValue([]);
-    apiMocks.listCompanies.mockResolvedValue([]);
-    apiMocks.listSites.mockResolvedValue([]);
   });
 
-  it("renders the migration cockpit shell", async () => {
+  it("renders the business shell with Tra cứu as primary navigation", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
 
     renderApp();
 
-    expect(await screen.findByText("Buồng điều phối di trú GxP Web")).toBeInTheDocument();
+    expect(await screen.findByText("Workspace nghiệp vụ")).toBeInTheDocument();
     expect(screen.getByText("Tổng quan")).toBeInTheDocument();
-    expect(screen.getByText("Không gian hồ sơ")).toBeInTheDocument();
+    expect(screen.getByText("Tra cứu")).toBeInTheDocument();
+    expect(screen.queryByText("Không gian hồ sơ")).not.toBeInTheDocument();
   });
 
-  it("keeps stub controls for header_stub mode", async () => {
+  it("keeps stub auth controls in header_stub mode", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
 
     renderApp();
 
     expect(await screen.findByText("Người dùng giả lập")).toBeInTheDocument();
     expect(screen.getByDisplayValue("operator.local")).toBeInTheDocument();
+    expect(await screen.findByText("Bảng điều phối nghiệp vụ")).toBeInTheDocument();
   });
 
-  it("does not render stub controls in google_oidc mode", async () => {
+  it("prompts sign-in instead of loading data in google_oidc mode without session", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("google_oidc", null));
 
-    renderApp();
+    renderApp(["/search"]);
 
-    expect(await screen.findByText("Thiếu Google OIDC client ID trong trạng thái ứng dụng.")).toBeInTheDocument();
+    expect(await screen.findByText("Cần đăng nhập")).toBeInTheDocument();
     expect(screen.queryByText("Người dùng giả lập")).not.toBeInTheDocument();
-    expect(apiMocks.listCompanies).not.toHaveBeenCalled();
-    expect(apiMocks.listSites).not.toHaveBeenCalled();
-    expect(apiMocks.listCases).not.toHaveBeenCalled();
+    expect(apiMocks.searchFacilities).not.toHaveBeenCalled();
   });
 
   it("renders Google sign-in button when google_oidc has a client id", async () => {
@@ -130,8 +137,88 @@ describe("App auth rendering", () => {
 
     renderApp();
 
-    expect(await screen.findByText("Đăng nhập bằng tài khoản Google Workspace để mở giao diện vận hành.")).toBeInTheDocument();
+    expect(await screen.findByText("Đăng nhập")).toBeInTheDocument();
     expect(screen.queryByText("Người dùng giả lập")).not.toBeInTheDocument();
     expect(window.google?.accounts?.id?.renderButton).toHaveBeenCalled();
+  });
+
+  it("renders search master history detail structure from authenticated API", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue([
+      {
+        site_id: "site-1",
+        legacy_site_id: 101,
+        facility_code: "GMP-101",
+        facility_name: "Nhà máy A",
+        company_name: "Công ty A",
+        gxp_types: ["GMP"],
+        primary_standard: "WHO-GMP",
+        province_name: "Hà Nội",
+        last_inspection_code: "KT-2026-GMP",
+        current_state: "awaiting_certificate_decision",
+        current_certificate_number: "GCN-001",
+        current_certificate_expiry: "2026-12-31",
+      },
+    ]);
+    apiMocks.getFacilityWorkspace.mockResolvedValue({
+      summary: {
+        site_id: "site-1",
+        legacy_site_id: 101,
+        facility_code: "GMP-101",
+        facility_name: "Nhà máy A",
+        company_name: "Công ty A",
+        address: "Hà Nội",
+        province_name: "Hà Nội",
+        gxp_types: ["GMP"],
+        current_state: "awaiting_certificate_decision",
+        primary_standard: "WHO-GMP",
+        current_certificate_number: "GCN-001",
+        current_certificate_expiry: "2026-12-31",
+      },
+      history: [
+        {
+          id: "case-1",
+          source_type: "case",
+          reference_code: "KT-2026-GMP",
+          event_type: "Định kỳ",
+          gxp_type: "GMP",
+          standard: "WHO-GMP",
+          occurred_on: "2026-08-01",
+          state: "awaiting_certificate_decision",
+        },
+      ],
+    });
+    apiMocks.getCaseDetail.mockResolvedValue({
+      id: "case-1",
+      legacy_inspection_id: 1,
+      legacy_inspection_code: "KT-2026-GMP",
+      site_id: "site-1",
+      gxp_type: "GMP",
+      scope_code: "WHO-GMP",
+      applicable_standard: "WHO-GMP",
+      inspection_type: "Định kỳ",
+      state: "awaiting_certificate_decision",
+      opened_year: 2026,
+    });
+
+    renderApp(["/search"]);
+
+    expect(await screen.findByText("Danh sách cơ sở")).toBeInTheDocument();
+    expect(await screen.findByText("Ngữ cảnh cơ sở")).toBeInTheDocument();
+    expect(await screen.findByText("Kiểm tra và thay đổi")).toBeInTheDocument();
+    expect(await screen.findByText("Business workspace")).toBeInTheDocument();
+    expect(screen.getAllByText("Nhà máy A")).toHaveLength(2);
+    expect(screen.getAllByText("KT-2026-GMP").length).toBeGreaterThan(0);
+  });
+
+  it("shows API error instead of fake empty state on failed search", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockRejectedValue(new Error("403 Forbidden"));
+
+    renderApp(["/search"]);
+
+    expect(await screen.findByText("Yêu cầu thất bại")).toBeInTheDocument();
+    expect(screen.getByText("403 Forbidden")).toBeInTheDocument();
+    expect(screen.queryByText("Không có kết quả")).not.toBeInTheDocument();
   });
 });

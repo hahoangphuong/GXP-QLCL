@@ -10,6 +10,9 @@ from backend.app.read_models import (
     CaseRead,
     CompanyDetailRead,
     CompanyRead,
+    DashboardSummaryRead,
+    FacilitySearchResultRead,
+    FacilityWorkspaceRead,
     SiteDetailRead,
     SiteRead,
 )
@@ -135,9 +138,54 @@ def register_catalog_routes(app, session_factory) -> None:
             row_version=row.row_version,
         )
 
+    def get_dashboard_summary(
+        queue_limit: int = Query(default=8, ge=1, le=20),
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        return DashboardSummaryRead(**service.get_dashboard_summary(session, queue_limit=queue_limit))
+
+    def search_facilities(
+        q: str | None = Query(default=None),
+        gxp_type: str | None = Query(default=None),
+        province: str | None = Query(default=None),
+        case_state: str | None = Query(default=None),
+        certificate_state: str | None = Query(default=None),
+        certificate_expiring_within_days: int | None = Query(default=None, ge=1, le=365),
+        limit: int = Query(default=50, ge=1, le=200),
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        return [
+            FacilitySearchResultRead(**row)
+            for row in service.search_facilities(
+                session,
+                q=q,
+                gxp_type=gxp_type,
+                province=province,
+                case_state=case_state,
+                certificate_state=certificate_state,
+                certificate_expiring_within_days=certificate_expiring_within_days,
+                limit=limit,
+            )
+        ]
+
+    def get_facility_workspace(
+        site_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        return FacilityWorkspaceRead(**service.get_facility_workspace(session, site_id=site_id))
+
     app.add_api_route("/companies", list_companies, methods=["GET"], response_model=list[CompanyRead], tags=["catalog"])
     app.add_api_route("/companies/{company_id}", get_company_detail, methods=["GET"], response_model=CompanyDetailRead, tags=["catalog"])
     app.add_api_route("/sites", list_sites, methods=["GET"], response_model=list[SiteRead], tags=["catalog"])
     app.add_api_route("/sites/{site_id}", get_site_detail, methods=["GET"], response_model=SiteDetailRead, tags=["catalog"])
     app.add_api_route("/cases", list_cases, methods=["GET"], response_model=list[CaseRead], tags=["catalog"])
     app.add_api_route("/cases/{case_id}", get_case_detail, methods=["GET"], response_model=CaseDetailRead, tags=["catalog"])
+    app.add_api_route("/dashboard/summary", get_dashboard_summary, methods=["GET"], response_model=DashboardSummaryRead, tags=["catalog"])
+    app.add_api_route("/search/facilities", search_facilities, methods=["GET"], response_model=list[FacilitySearchResultRead], tags=["catalog"])
+    app.add_api_route("/sites/{site_id}/workspace", get_facility_workspace, methods=["GET"], response_model=FacilityWorkspaceRead, tags=["catalog"])

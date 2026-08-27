@@ -57,6 +57,9 @@ def test_phase9_detail_routes_are_registered():
     assert "/companies/{company_id}" in routes
     assert "/sites/{site_id}" in routes
     assert "/cases/{case_id}" in routes
+    assert "/dashboard/summary" in routes
+    assert "/search/facilities" in routes
+    assert "/sites/{site_id}/workspace" in routes
 
 
 def test_parse_role_map_accepts_email_role_pairs():
@@ -264,6 +267,8 @@ def test_get_case_detail_returns_row_version_and_matches_database_value(tmp_path
         )
         session.add(case)
         session.commit()
+        site_id = site.id
+        site_id = site.id
         case_id = case.id
         expected_row_version = case.row_version
 
@@ -339,3 +344,81 @@ def test_catalog_manual_response_constructors_populate_all_required_schema_field
         assert keyword_names == required_fields, f"{model_name} constructor fields drifted from response schema"
 
     assert seen_models == set(models)
+
+
+def test_dashboard_summary_and_workspace_routes_return_business_read_models(tmp_path):
+    database_path = tmp_path / "dashboard-workspace.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        company = Company(legal_name="Công ty A", short_name="CTA")
+        session.add(company)
+        session.flush()
+        site = Site(
+            company_id=company.id,
+            site_name="Nhà máy A",
+            province_name="Hà Nội",
+            legacy_site_id=101,
+            legacy_gmp_site_code="GMP-101",
+            site_address="KCN A",
+        )
+        session.add(site)
+        session.flush()
+        case = Case(
+            site_id=site.id,
+            gxp_type="GMP",
+            state=CaseState.AWAITING_CERTIFICATE_DECISION,
+            legacy_inspection_id=301,
+            legacy_inspection_code="KT-2026-GMP",
+            applicable_standard="WHO-GMP",
+            inspection_type="Định kỳ",
+            opened_year=2026,
+        )
+        session.add(case)
+        session.commit()
+        site_id = site.id
+
+    app = create_app(database_url)
+    dashboard_route = next(route for route in app.routes if getattr(route, "path", "") == "/dashboard/summary")
+    search_route = next(route for route in app.routes if getattr(route, "path", "") == "/search/facilities")
+    workspace_route = next(route for route in app.routes if getattr(route, "path", "") == "/sites/{site_id}/workspace")
+
+    with Session(engine) as session:
+        dashboard_payload = dashboard_route.endpoint(
+            queue_limit=8,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+        search_payload = search_route.endpoint(
+            q="Nhà máy",
+            gxp_type="GMP",
+            province="Hà Nội",
+            case_state="awaiting_certificate_decision",
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            limit=50,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+        workspace_payload = workspace_route.endpoint(
+            site_id=site_id,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+
+    assert dashboard_payload.total_facilities == 1
+    assert dashboard_payload.waiting_certificate_decision == 1
+    assert len(dashboard_payload.queue) == 1
+    assert dashboard_payload.queue[0].facility_name == "Nhà máy A"
+
+    assert len(search_payload) == 1
+    assert search_payload[0].facility_name == "Nhà máy A"
+    assert search_payload[0].facility_code == "GMP-101"
+    assert search_payload[0].current_state == "awaiting_certificate_decision"
+
+    assert workspace_payload.summary.facility_name == "Nhà máy A"
+    assert workspace_payload.summary.company_name == "Công ty A"
+    assert len(workspace_payload.history) == 1
+    assert workspace_payload.history[0].reference_code == "KT-2026-GMP"

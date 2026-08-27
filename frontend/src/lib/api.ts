@@ -3,11 +3,14 @@ import type {
   CaseDetail,
   CaseListItem,
   Company,
+  DashboardSummary,
   DocumentDetail,
   DocumentGenerationPrepareRequest,
   DocumentGenerationRunStatus,
   DocumentPreparationResponse,
   DocumentRenderResponse,
+  FacilitySearchResult,
+  FacilityWorkspace,
   Site,
   StubAuthState,
 } from "../types";
@@ -42,6 +45,14 @@ function getApiBaseUrl(): string {
 
 function buildApiUrl(path: string): string {
   return `${getApiBaseUrl()}${normalizeApiPath(path)}`;
+}
+
+function buildApiPath(path: string, searchParams?: URLSearchParams): string {
+  const normalizedPath = normalizeApiPath(path);
+  if (!searchParams || Array.from(searchParams.keys()).length === 0) {
+    return normalizedPath;
+  }
+  return `${normalizedPath}?${searchParams.toString()}`;
 }
 
 function isJsonContentType(contentType: string | null): boolean {
@@ -99,6 +110,14 @@ export function getAppStatus(): Promise<AppStatus> {
   return requestJson<AppStatus>("/app/status", {});
 }
 
+export function getDashboardSummary(
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<DashboardSummary> {
+  return requestJson<DashboardSummary>("/dashboard/summary", { auth, useStubAuth, bearerToken });
+}
+
 export function listCompanies(auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<Company[]> {
   return requestJson<Company[]>("/companies", { auth, useStubAuth, bearerToken });
 }
@@ -109,6 +128,59 @@ export function listSites(auth: StubAuthState, useStubAuth: boolean, bearerToken
 
 export function listCases(auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<CaseListItem[]> {
   return requestJson<CaseListItem[]>("/cases", { auth, useStubAuth, bearerToken });
+}
+
+export function searchFacilities(
+  filters: {
+    q?: string;
+    gxp_type?: string | null;
+    province?: string;
+    case_state?: string | null;
+    certificate_state?: string | null;
+    certificate_expiring_within_days?: number | null;
+    limit?: number;
+  },
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<FacilitySearchResult[]> {
+  const searchParams = new URLSearchParams();
+  if (filters.q) {
+    searchParams.set("q", filters.q);
+  }
+  if (filters.gxp_type) {
+    searchParams.set("gxp_type", filters.gxp_type);
+  }
+  if (filters.province) {
+    searchParams.set("province", filters.province);
+  }
+  if (filters.case_state) {
+    searchParams.set("case_state", filters.case_state);
+  }
+  if (filters.certificate_state) {
+    searchParams.set("certificate_state", filters.certificate_state);
+  }
+  if (filters.certificate_expiring_within_days) {
+    searchParams.set(
+      "certificate_expiring_within_days",
+      String(filters.certificate_expiring_within_days),
+    );
+  }
+  searchParams.set("limit", String(filters.limit ?? 50));
+  return requestJson<FacilitySearchResult[]>(buildApiPath("/search/facilities", searchParams), {
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function getFacilityWorkspace(
+  siteId: string,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<FacilityWorkspace> {
+  return requestJson<FacilityWorkspace>(`/sites/${siteId}/workspace`, { auth, useStubAuth, bearerToken });
 }
 
 export function getCaseDetail(

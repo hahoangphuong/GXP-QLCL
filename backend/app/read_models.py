@@ -67,6 +67,75 @@ class CaseDetailRead(BaseModel):
     row_version: int
 
 
+class DashboardQueueItemRead(BaseModel):
+    case_id: str
+    site_id: str
+    facility_name: str
+    company_name: str
+    gxp_type: str
+    state: str
+    reference_code: str | None
+    opened_year: int | None
+
+
+class DashboardSummaryRead(BaseModel):
+    total_facilities: int
+    total_cases: int
+    active_cases: int
+    waiting_inspection: int
+    waiting_certificate_decision: int
+    active_certificates: int
+    expiring_certificates_90_days: int
+    incomplete_changes: int
+    queue: list[DashboardQueueItemRead]
+
+
+class FacilitySearchResultRead(BaseModel):
+    site_id: str
+    legacy_site_id: int | None
+    facility_code: str | None
+    facility_name: str
+    company_name: str
+    gxp_types: list[str]
+    primary_standard: str | None
+    province_name: str | None
+    last_inspection_code: str | None
+    current_state: str | None
+    current_certificate_number: str | None
+    current_certificate_expiry: date | None
+
+
+class FacilityWorkspaceSummaryRead(BaseModel):
+    site_id: str
+    legacy_site_id: int | None
+    facility_code: str | None
+    facility_name: str
+    company_name: str
+    address: str | None
+    province_name: str | None
+    gxp_types: list[str]
+    current_state: str | None
+    primary_standard: str | None
+    current_certificate_number: str | None
+    current_certificate_expiry: date | None
+
+
+class FacilityHistoryItemRead(BaseModel):
+    id: str
+    source_type: Literal["case", "change_request"]
+    reference_code: str | None
+    event_type: str
+    gxp_type: str | None
+    standard: str | None
+    occurred_on: date | None
+    state: str
+
+
+class FacilityWorkspaceRead(BaseModel):
+    summary: FacilityWorkspaceSummaryRead
+    history: list[FacilityHistoryItemRead]
+
+
 class CaseTransitionRequest(BaseModel):
     target_state: str
     expected_version: int

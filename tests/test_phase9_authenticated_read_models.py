@@ -35,6 +35,7 @@ from backend.app.db.models.phase1 import (
 )
 from backend.app.main import create_app
 from backend.app.read_models import CaseDetailRead, CaseRead, CompanyDetailRead, CompanyRead, SiteDetailRead, SiteRead
+from backend.app.domain.phase2_import import import_snapshot
 from backend.app.services.catalog import CatalogReadService
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -721,6 +722,123 @@ def test_search_facilities_and_workspace_preserve_production_line_context_and_ce
     assert workspace_payload.summary.primary_standard == "WHO-GMP"
     assert [item.reference_code for item in workspace_payload.history if item.source_type == "case"] == ["KT-GMP-A"]
     assert any(item.source_type == "change_request" for item in workspace_payload.history)
+
+
+def test_imported_legacy_certificate_scope_flows_through_catalog_search(tmp_path):
+    database_path = tmp_path / "catalog-imported-scope.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+    snapshot = {
+        "db.cty": [
+            {"ID": "1", "TÊN CÔNG TY": "Công ty Scope", "COMPANY NAME": "Scope Co", "TÊN VIẾT TẮT": "SCOPE"},
+        ],
+        "db.cso": [
+            {
+                "ID": "10",
+                "ID Cty": "1",
+                "TÊN CƠ SỞ": "Nhà máy Scope",
+                "SITE NAME": "Scope Plant",
+                "ĐỊA CHỈ CƠ SỞ": "Hà Nội",
+                "SITE ADDRESS": "Ha Noi",
+                "TỈNH/TP": "Hà Nội",
+                "MÃ CS GMP": "1.1",
+            },
+        ],
+        "db.ktra": [
+            {
+                "ID": "100",
+                "LOẠI KT": "GMP",
+                "ID CƠ SỞ": "10",
+                "MÃ DC": "A",
+                "TIÊU CHUẨN ÁP DỤNG": "WHO-GMP",
+                "LOẠI KIỂM TRA": "Định kỳ",
+                "Ngày nộp": "2026-01-01 00:00:00+00:00",
+                "Mã hồ sơ": "HS-A",
+                "Ngày thẩm định": "2026-01-03 00:00:00+00:00",
+                "Người thẩm định": "Auditor A",
+                "Kết quả": "Đạt",
+                "Ngày K.tra": "2026-01-10 00:00:00+00:00",
+                "Q. định": "QD-A",
+                "B. bản": "BB-A",
+            },
+            {
+                "ID": "101",
+                "LOẠI KT": "GMP",
+                "ID CƠ SỞ": "10",
+                "MÃ DC": "B",
+                "TIÊU CHUẨN ÁP DỤNG": "EU-GMP",
+                "LOẠI KIỂM TRA": "Định kỳ",
+                "Ngày nộp": "2026-02-01 00:00:00+00:00",
+                "Mã hồ sơ": "HS-B",
+                "Ngày thẩm định": "2026-02-03 00:00:00+00:00",
+                "Người thẩm định": "Auditor B",
+                "Kết quả": "Đạt",
+                "Ngày K.tra": "2026-02-10 00:00:00+00:00",
+                "Q. định": "QD-B",
+                "B. bản": "BB-B",
+            },
+        ],
+        "db.cc": [
+            {
+                "ID": "200",
+                "MỚI NHẤT": "o",
+                "ID MỚI NHẤT": "",
+                "LOẠI CC": "GMP",
+                "ID ĐỢT KTRA": "100",
+                "ID CƠ SỞ": "10",
+                "MÃ DC": "A",
+                "Mã số CC": "GCN-A",
+                "Ngày cấp CC": "2026-03-01 00:00:00+00:00",
+                "Hết hạn CC": "2028-03-01 00:00:00+00:00",
+                "PHẠM VI CHỨNG NHẬN": "Dây chuyền viên nén A",
+                "TIÊU CHUẨN ÁP DỤNG": "WHO-GMP",
+            },
+            {
+                "ID": "201",
+                "MỚI NHẤT": "o",
+                "ID MỚI NHẤT": "",
+                "LOẠI CC": "GMP",
+                "ID ĐỢT KTRA": "101",
+                "ID CƠ SỞ": "10",
+                "MÃ DC": "B",
+                "Mã số CC": "GCN-B",
+                "Ngày cấp CC": "2026-04-01 00:00:00+00:00",
+                "Hết hạn CC": "2028-04-01 00:00:00+00:00",
+                "PHẠM VI CHỨNG NHẬN": "Dây chuyền thuốc bột B",
+                "TIÊU CHUẨN ÁP DỤNG": "EU-GMP",
+            },
+        ],
+        "db.dkkd": [],
+        "db.Tdoi": [],
+        "db.Tdoi2": [],
+    }
+
+    with Session(engine) as session:
+        import_snapshot(session, snapshot)
+        session.commit()
+
+    app = create_app(database_url)
+    search_route = next(route for route in app.routes if getattr(route, "path", "") == "/search/facilities")
+
+    with Session(engine) as session:
+        search_payload = search_route.endpoint(
+            q=None,
+            gxp_type="GMP",
+            province=None,
+            case_state=[],
+            change_request_state=[],
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            limit=80,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+
+    assert [row.context_code for row in search_payload] == ["1.1A", "1.1B"]
+    assert [row.current_certificate_number for row in search_payload] == ["GCN-A", "GCN-B"]
+    assert [row.certificate_scope_summary for row in search_payload] == ["Dây chuyền viên nén A", "Dây chuyền thuốc bột B"]
+    assert [row.line_code for row in search_payload] == ["A", "B"]
 
 
 def test_search_facility_candidate_query_projects_order_by_columns_for_postgresql():

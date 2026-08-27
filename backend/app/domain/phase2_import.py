@@ -26,6 +26,7 @@ from backend.app.db.models.phase1 import (
     CaseApplication,
     CaseAssessment,
     Certificate,
+    CertificateScope,
     CertificateVersion,
     ChangeApproval,
     ChangeRequest,
@@ -86,6 +87,14 @@ FIELD_ALIASES = {
     "bbkt_reference": {"B. bÃ¡ÂºÂ£n", "B. bÃƒÂ¡Ã‚ÂºÃ‚Â£n", "B. báº£n", "B. bản"},
     "inspection_case_legacy_id_ref": {"ID Ã„ÂÃ¡Â»Â¢T KTRA", "ID Ãƒâ€žÃ‚ÂÃƒÂ¡Ã‚Â»Ã‚Â¢T KTRA", "ID Äá»¢T KTRA", "ID ĐỢT KTRA"},
     "certificate_type": {"LOÃ¡ÂºÂ I CC", "LOÃƒÂ¡Ã‚ÂºÃ‚Â I CC", "LOẠI CC"},
+    "certificate_scope_text": {"PHẠM VI CHỨNG NHẬN"},
+    "certificate_scope_short_text": {"VIẾT RÚT GỌN PHẠM VI"},
+    "certificate_standard": {"TIÊU CHUẨN ÁP DỤNG"},
+    "certificate_valid_until": {"THỜI HẠN HIỆU LỰC"},
+    "certificate_number": {"Mã số CC"},
+    "certificate_issue_date": {"Ngày cấp CC"},
+    "certificate_expiry_date": {"Hết hạn CC"},
+    "certificate_issuer": {"Cơ quan cấp chứng nhận"},
     "latest_flag": {"MÃ¡Â»Å¡I NHÃ¡ÂºÂ¤T", "MÃƒÂ¡Ã‚Â»Ã…Â¡I NHÃƒÂ¡Ã‚ÂºÃ‚Â¤T", "Má»šI NHáº¤T", "MỚI NHẤT"},
     "latest_legacy_id": {"ID MÃ¡Â»Å¡I NHÃ¡ÂºÂ¤T", "ID MÃƒÂ¡Ã‚Â»Ã…Â¡I NHÃƒÂ¡Ã‚ÂºÃ‚Â¤T", "ID Má»šI NHáº¤T", "ID MỚI NHẤT"},
     "professional_responsible_person_name": {"NGÃ†Â¯Ã¡Â»Å’I CHÃ¡Â»Å U TRÃƒÂCH NHIÃ¡Â»â€ M CHUYÃƒÅ N MÃƒâ€N", "NGÃƒâ€ Ã‚Â¯ÃƒÂ¡Ã‚Â»Ã…â€™I CHÃƒÂ¡Ã‚Â»Ã…Â U TRÃƒÆ’Ã‚ÂCH NHIÃƒÂ¡Ã‚Â»Ã¢â‚¬Â M CHUYÃƒÆ’Ã…Â N MÃƒÆ’Ã¢â‚¬ÂN", "NGÆ¯á»ŒI CHá»ŠU TRÃCH NHIá»†M CHUYÃŠN MÃ”N", "NGƯỜI CHỊU TRÁCH NHIỆM CHUYÊN MÔN"},
@@ -206,7 +215,7 @@ LENGTH_AUDIT_RULES: tuple[LengthAuditRule, ...] = (
     LengthAuditRule("db.ktra", "B. bản", InspectionOutcome, "bbkt_reference", "reference", lambda row: row.get("bbkt_reference")),
     LengthAuditRule("db.ktra", "Kết quả", InspectionOutcome, "outcome_result", "narrative", lambda row: row.get("assessment_result")),
     LengthAuditRule("db.cc", "LOẠI CC", Certificate, "certificate_type", "short_label", lambda row: row.get("certificate_type")),
-    LengthAuditRule("db.cc", "MÃ DC", CertificateVersion, "certificate_number", "identifier", lambda row: row.get("scope_code")),
+    LengthAuditRule("db.cc", "Mã số CC", CertificateVersion, "certificate_number", "identifier", lambda row: row.get("certificate_number")),
     LengthAuditRule("db.dkkd", "ID CC", BusinessEligibilityVersion, "certificate_number", "identifier", lambda row: row.get("linked_certificate_ids")),
     LengthAuditRule(
         "db.dkkd",
@@ -642,6 +651,54 @@ def _ensure_business_eligibility_link(
     stats.record_inserted("business_eligibility_certificate_link")
 
 
+def _ensure_certificate_scopes(
+    session: Session,
+    stats: ImportStats,
+    *,
+    certificate_version_id: str,
+    scope_texts: list[str],
+    options: ImportExecutionOptions,
+) -> None:
+    expected_rows = [
+        {
+            "certificate_version_id": certificate_version_id,
+            "scope_key": None,
+            "scope_text": scope_text,
+            "language_code": "vi",
+            "sort_order": sort_order,
+        }
+        for sort_order, scope_text in enumerate(scope_texts)
+    ]
+    existing_rows = session.scalars(
+        select(CertificateScope)
+        .where(CertificateScope.certificate_version_id == certificate_version_id)
+        .order_by(CertificateScope.sort_order.asc(), CertificateScope.created_at.asc(), CertificateScope.id.asc())
+    ).all()
+    if existing_rows:
+        existing_payload = [
+            {
+                "certificate_version_id": row.certificate_version_id,
+                "scope_key": row.scope_key,
+                "scope_text": row.scope_text,
+                "language_code": row.language_code,
+                "sort_order": row.sort_order,
+            }
+            for row in existing_rows
+        ]
+        if existing_payload != expected_rows:
+            raise ImportCollisionError(
+                f"certificate_scope[{certificate_version_id}] has conflicting existing data."
+            )
+        stats.record_existing("certificate_scope")
+        return
+
+    for payload in expected_rows:
+        session.add(CertificateScope(**payload))
+    session.flush()
+    if expected_rows:
+        stats.inserted_counts["certificate_scope"] = stats.inserted_counts.get("certificate_scope", 0) + len(expected_rows)
+
+
 def _ensure_migration_anomaly(
     session: Session,
     stats: ImportStats,
@@ -759,6 +816,7 @@ def _reset_import_tables(session: Session) -> None:
         BusinessEligibilityCertificateLink,
         BusinessEligibilityVersion,
         BusinessEligibilityCertificate,
+        CertificateScope,
         CertificateVersion,
         Certificate,
         InspectionEvent,
@@ -1477,7 +1535,7 @@ def import_snapshot(
         )
         if legacy_id is not None:
             certificate_ids[legacy_id] = entity.id
-        _ensure_single_child(
+        version = _ensure_single_child(
             session,
             stats,
             table_name="certificate_version",
@@ -1486,21 +1544,30 @@ def import_snapshot(
             expected_fields={
                 "certificate_id": entity.id,
                 "version_no": 1,
-                "issue_date": None,
-                "expiry_date": None,
-                "certificate_number": row.get("scope_code") or None,
+                "issue_date": parse_date(row.get("certificate_issue_date", "")),
+                "expiry_date": parse_date(row.get("certificate_expiry_date", "") or row.get("certificate_valid_until", "")),
+                "certificate_number": row.get("certificate_number") or None,
                 "is_latest_version": True,
             },
             build_entity=lambda: CertificateVersion(
                 certificate_id=entity.id,
                 version_no=1,
-                issue_date=None,
-                expiry_date=None,
-                certificate_number=row.get("scope_code") or None,
+                issue_date=parse_date(row.get("certificate_issue_date", "")),
+                expiry_date=parse_date(row.get("certificate_expiry_date", "") or row.get("certificate_valid_until", "")),
+                certificate_number=row.get("certificate_number") or None,
                 is_latest_version=True,
             ),
             options=resolved_options,
         )
+        certificate_scope_text = str(row.get("certificate_scope_text") or "").strip()
+        if certificate_scope_text:
+            _ensure_certificate_scopes(
+                session,
+                stats,
+                certificate_version_id=version.id,
+                scope_texts=[certificate_scope_text],
+                options=resolved_options,
+            )
         if entity.case_id is not None:
             _ensure_inspection_event(
                 session,
@@ -1833,6 +1900,7 @@ def build_reconciliation(
             "inspection_outcome": session.scalar(select(func.count()).select_from(InspectionOutcome)),
             "inspection_event": session.scalar(select(func.count()).select_from(InspectionEvent)),
             "certificate_version": session.scalar(select(func.count()).select_from(CertificateVersion)),
+            "certificate_scope": session.scalar(select(func.count()).select_from(CertificateScope)),
             "business_eligibility_version": session.scalar(select(func.count()).select_from(BusinessEligibilityVersion)),
             "business_eligibility_certificate_link": session.scalar(select(func.count()).select_from(BusinessEligibilityCertificateLink)),
             "change_approval": session.scalar(select(func.count()).select_from(ChangeApproval)),

@@ -10,6 +10,8 @@ from backend.app.db.models.phase1 import (
     Case,
     CaseAssessment,
     Certificate,
+    CertificateScope,
+    CertificateVersion,
     ChangeApproval,
     ChangeRequest,
     Company,
@@ -44,7 +46,21 @@ def sample_snapshot():
             {"ID": "100", "LOẠI KT": "GMP", "ID CƠ SỞ": "10", "MÃ DC": "A", "TIÊU CHUẨN ÁP DỤNG": "WHO-GMP", "LOẠI KIỂM TRA": "Tái", "Ngày nộp": "2016-06-17 00:00:00", "Mã hồ sơ": "37/GPs", "Ngày thẩm định": "2016-08-02 00:00:00", "Người thẩm định": "Assessor", "Kết quả": "Đạt", "Ngày K.tra": "26-27/8/2016", "Q. định": "368/QĐ-QLD", "B. bản": "2016-08-27 00:00:00"},
         ],
         "db.cc": [
-            {"ID": "200", "MỚI NHẤT": "-", "ID MỚI NHẤT": "", "LOẠI CC": "GMP", "ID ĐỢT KTRA": "100", "ID CƠ SỞ": "10", "MÃ DC": "A"},
+            {
+                "ID": "200",
+                "MỚI NHẤT": "-",
+                "ID MỚI NHẤT": "",
+                "LOẠI CC": "GMP",
+                "ID ĐỢT KTRA": "100",
+                "ID CƠ SỞ": "10",
+                "MÃ DC": "A",
+                "Mã số CC": "508/GCN-QLD",
+                "Ngày cấp CC": "2016-10-19 00:00:00+00:00",
+                "Hết hạn CC": "2019-10-19 00:00:00+00:00",
+                "PHẠM VI CHỨNG NHẬN": "* Thuốc viên nén không bao;\n* Thuốc viên nang cứng.",
+                "TIÊU CHUẨN ÁP DỤNG": "WHO-GMP",
+                "Cơ quan cấp chứng nhận": "Cục Quản lý Dược Việt Nam",
+            },
         ],
         "db.dkkd": [
             {"ID": "300", "MỚI NHẤT": "-", "ID MỚI NHẤT": "", "ID CƠ SỞ": "10", "ID CTY": "1", "NGƯỜI CHỊU TRÁCH NHIỆM CHUYÊN MÔN": "Pharmacist", "ID CC": "200"},
@@ -70,6 +86,24 @@ def test_import_snapshot_loads_primary_entities():
         assert session.query(BusinessEligibilityCertificate).count() == 1
         assert session.query(ChangeRequest).count() == 1
         assert reconciliation["mismatches"] == {}
+
+
+def test_import_snapshot_populates_certificate_version_and_scope_from_legacy_db_cc():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        reconciliation = import_snapshot(session, sample_snapshot())
+        session.commit()
+
+        version = session.scalars(select(CertificateVersion)).one()
+        scope = session.scalars(select(CertificateScope)).one()
+
+        assert version.certificate_number == "508/GCN-QLD"
+        assert str(version.issue_date) == "2016-10-19"
+        assert str(version.expiry_date) == "2019-10-19"
+        assert scope.scope_text == "* Thuốc viên nén không bao;\n* Thuốc viên nang cứng."
+        assert scope.language_code == "vi"
+        assert scope.sort_order == 0
+        assert reconciliation["derived_counts"]["certificate_scope"] == 1
 
 
 def test_import_snapshot_creates_join_and_legacy_maps():

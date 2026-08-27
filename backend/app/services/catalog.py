@@ -156,6 +156,19 @@ class CatalogReadService:
             .exists()
         )
 
+    @staticmethod
+    def _build_search_facility_candidates_stmt(base_stmt, *, limit: int):
+        return (
+            base_stmt.with_only_columns(
+                Site.id,
+                Site.legacy_site_id,
+                Site.site_name,
+            )
+            .distinct()
+            .order_by(Site.legacy_site_id.asc(), Site.site_name.asc())
+            .limit(limit)
+        )
+
     def list_companies(self, session: Session, *, q: str | None, limit: int):
         stmt = select(Company).order_by(Company.legacy_company_id).limit(limit)
         if q:
@@ -359,7 +372,9 @@ class CatalogReadService:
                 )
             )
 
-        site_ids = list(session.scalars(stmt.distinct().order_by(Site.legacy_site_id.asc(), Site.site_name.asc()).limit(limit)))
+        candidate_stmt = self._build_search_facility_candidates_stmt(stmt, limit=limit)
+        site_rows = session.execute(candidate_stmt).all()
+        site_ids = [row.id for row in site_rows]
         if not site_ids:
             return []
 

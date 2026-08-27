@@ -4,7 +4,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from fastapi import HTTPException
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
 from backend.app.auth import (
@@ -33,6 +34,7 @@ from backend.app.db.models.phase1 import (
 )
 from backend.app.main import create_app
 from backend.app.read_models import CaseDetailRead, CaseRead, CompanyDetailRead, CompanyRead, SiteDetailRead, SiteRead
+from backend.app.services.catalog import CatalogReadService
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -558,6 +560,19 @@ def test_search_facilities_and_workspace_keep_current_semantics_inside_selected_
     assert [item.reference_code for item in glp_workspace.history if item.source_type == "case"] == ["KT-GLP-2026"]
 
 
+def test_search_facility_candidate_query_projects_order_by_columns_for_postgresql():
+    service = CatalogReadService()
+    stmt = service._build_search_facility_candidates_stmt(select(Site.id).join(Company, Company.id == Site.company_id), limit=80)
+    compiled = str(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+    normalized = " ".join(compiled.split())
+
+    assert "SELECT DISTINCT" in normalized
+    assert "site.id" in normalized
+    assert "site.legacy_site_id" in normalized
+    assert "site.site_name" in normalized
+    assert "ORDER BY site.legacy_site_id ASC, site.site_name ASC" in normalized
+
+
 def test_dashboard_metric_drilldowns_match_search_predicates(tmp_path):
     database_path = tmp_path / "dashboard-drilldown.sqlite"
     database_url = f"sqlite:///{database_path.as_posix()}"
@@ -716,6 +731,90 @@ def test_dashboard_metric_drilldowns_match_search_predicates(tmp_path):
     assert dashboard_payload.active_certificates == len(active_certificates)
     assert dashboard_payload.expiring_certificates_90_days == len(expiring_certificates)
     assert dashboard_payload.incomplete_changes == len(incomplete_changes)
+
+
+def test_search_facilities_keeps_distinct_facility_rows_when_joins_match_multiple_records(tmp_path):
+    database_path = tmp_path / "search-distinct-facilities.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        company = Company(legal_name="Công ty Join", short_name="JOIN")
+        session.add(company)
+        session.flush()
+        site = Site(
+            company_id=company.id,
+            site_name="Cơ sở Join",
+            province_name="Hà Nội",
+            legacy_site_id=701,
+            legacy_gmp_site_code="GMP-701",
+        )
+        session.add(site)
+        session.flush()
+        session.add_all(
+            [
+                Case(
+                    site_id=site.id,
+                    gxp_type="GMP",
+                    state=CaseState.UNDER_ASSESSMENT,
+                    legacy_inspection_code="KT-JOIN-1",
+                    applicable_standard="WHO-GMP",
+                    opened_year=2026,
+                ),
+                Case(
+                    site_id=site.id,
+                    gxp_type="GMP",
+                    state=CaseState.INSPECTION_COMPLETED,
+                    legacy_inspection_code="KT-JOIN-2",
+                    applicable_standard="PIC/S-GMP",
+                    opened_year=2026,
+                ),
+            ]
+        )
+        cert_1 = Certificate(site_id=site.id, certificate_type="GMP", latest_flag=True)
+        cert_2 = Certificate(site_id=site.id, certificate_type="GMP", latest_flag=True)
+        session.add_all([cert_1, cert_2])
+        session.flush()
+        session.add_all(
+            [
+                CertificateVersion(
+                    certificate_id=cert_1.id,
+                    version_no=1,
+                    issue_date=date(2026, 1, 1),
+                    expiry_date=date(2027, 1, 1),
+                    certificate_number="JOIN-CERT-1",
+                    is_latest_version=True,
+                ),
+                CertificateVersion(
+                    certificate_id=cert_2.id,
+                    version_no=1,
+                    issue_date=date(2026, 2, 1),
+                    expiry_date=date(2027, 2, 1),
+                    certificate_number="JOIN-CERT-2",
+                    is_latest_version=True,
+                ),
+            ]
+        )
+        session.commit()
+        site_id = site.id
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        rows = service.search_facilities(
+            session,
+            q="JOIN",
+            gxp_type="GMP",
+            province="Hà Nội",
+            case_states=[],
+            change_request_states=[],
+            certificate_state="active",
+            certificate_expiring_within_days=None,
+            limit=80,
+        )
+
+    assert len(rows) == 1
+    assert rows[0]["site_id"] == site_id
 
 
 def test_dashboard_metrics_count_matching_facilities_not_raw_records(tmp_path):

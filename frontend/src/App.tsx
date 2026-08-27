@@ -101,8 +101,7 @@ function AppHeader({
       <div className="brand-block">
         <span className="brand-mark">GxP QLCL</span>
         <div className="brand-copy">
-          <strong>QLCL desktop workspace</strong>
-          <span>Tra cứu và điều phối nghiệp vụ</span>
+          <strong>Tra cứu và điều phối nghiệp vụ</strong>
         </div>
       </div>
       {usesStubAuth ? (

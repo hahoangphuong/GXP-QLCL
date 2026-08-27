@@ -177,11 +177,14 @@ def register_catalog_routes(app, session_factory) -> None:
     def get_facility_workspace(
         site_id: str,
         gxp_type: str | None = Query(default=None),
+        line_code: str | None = None,
         session: Session = dependency,
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
         require_role(user, ALLOWED_READ_ROLES)
-        return FacilityWorkspaceRead(**service.get_facility_workspace(session, site_id=site_id, gxp_type=gxp_type))
+        return FacilityWorkspaceRead(
+            **service.get_facility_workspace(session, site_id=site_id, gxp_type=gxp_type, line_code=line_code)
+        )
 
     app.add_api_route("/companies", list_companies, methods=["GET"], response_model=list[CompanyRead], tags=["catalog"])
     app.add_api_route("/companies/{company_id}", get_company_detail, methods=["GET"], response_model=CompanyDetailRead, tags=["catalog"])

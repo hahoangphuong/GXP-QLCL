@@ -10,10 +10,10 @@ function formatDate(value: string | null): string {
 
 export function FacilitySummary({ summary }: { summary: FacilityWorkspaceSummary }) {
   return (
-    <section className="panel panel-tight summary-panel">
+    <div className="summary-panel summary-panel-embedded">
       <div className="summary-head">
         <div className="summary-identity">
-          <p className="eyebrow">Ngữ cảnh cơ sở</p>
+          <p className="eyebrow">Thông tin chung</p>
           <h3>{summary.facility_name}</h3>
           <p className="summary-subtitle">{summary.company_name}</p>
         </div>
@@ -21,20 +21,20 @@ export function FacilitySummary({ summary }: { summary: FacilityWorkspaceSummary
       </div>
       <dl className="summary-grid summary-grid-compact">
         <div>
-          <dt>Mã cơ sở</dt>
-          <dd>{summary.facility_code ?? "Chưa có"}</dd>
+          <dt>Mã cơ sở/dây chuyền</dt>
+          <dd>{summary.context_code ?? summary.facility_code ?? "Chưa có"}</dd>
         </div>
         <div>
           <dt>GxP</dt>
-          <dd>{summary.gxp_types.join(", ") || "Chưa có"}</dd>
+          <dd>{summary.selected_gxp_type ?? (summary.gxp_types.join(", ") || "Chưa có")}</dd>
         </div>
         <div>
-          <dt>Ngữ cảnh GxP</dt>
-          <dd>{summary.selected_gxp_type ?? "Toàn bộ"}</dd>
+          <dt>Grain</dt>
+          <dd>{summary.context_grain === "production_line" ? "Dây chuyền" : "Cơ sở"}</dd>
         </div>
         <div>
-          <dt>Tỉnh/thành</dt>
-          <dd>{summary.province_name ?? "Chưa có"}</dd>
+          <dt>Dây chuyền</dt>
+          <dd>{summary.selected_line_code ?? "Ngữ cảnh cơ sở"}</dd>
         </div>
         <div>
           <dt>Trạng thái hồ sơ gần nhất</dt>
@@ -53,6 +53,14 @@ export function FacilitySummary({ summary }: { summary: FacilityWorkspaceSummary
           <dd>{formatDate(summary.current_certificate_expiry)}</dd>
         </div>
         <div className="summary-span">
+          <dt>Phạm vi chứng nhận</dt>
+          <dd className="multiline-value">{summary.certificate_scope_summary ?? "Chưa có dữ liệu scope hiện hành."}</dd>
+        </div>
+        <div className="summary-span">
+          <dt>Tỉnh/thành</dt>
+          <dd>{summary.province_name ?? "Chưa có"}</dd>
+        </div>
+        <div className="summary-span">
           <dt>Địa chỉ</dt>
           <dd>{summary.address ?? "Chưa có"}</dd>
         </div>
@@ -64,6 +72,6 @@ export function FacilitySummary({ summary }: { summary: FacilityWorkspaceSummary
         <button disabled type="button">Tái đánh giá</button>
         <button disabled type="button">Thay đổi</button>
       </div>
-    </section>
+    </div>
   );
 }

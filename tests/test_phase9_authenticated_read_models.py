@@ -22,6 +22,7 @@ from backend.app.db.models.phase1 import (
     AppUserRole,
     Case,
     Certificate,
+    CertificateScope,
     CertificateVersion,
     ChangeRequest,
     Company,
@@ -451,6 +452,109 @@ def seed_cross_gxp_catalog(session: Session):
     }
 
 
+def seed_line_grain_catalog(session: Session):
+    company = Company(legal_name="Công ty dây chuyền", short_name="LINE")
+    session.add(company)
+    session.flush()
+    site = Site(
+        company_id=company.id,
+        site_name="Nhà máy viên nén",
+        province_name="Bắc Ninh",
+        legacy_site_id=111,
+        legacy_gmp_site_code="1.1",
+        site_address="KCN Yên Phong",
+    )
+    session.add(site)
+    session.flush()
+
+    case_a = Case(
+        site_id=site.id,
+        gxp_type="GMP",
+        scope_code="A",
+        state=CaseState.AWAITING_CERTIFICATE_DECISION,
+        legacy_inspection_id=3001,
+        legacy_inspection_code="KT-GMP-A",
+        applicable_standard="WHO-GMP",
+        inspection_type="Định kỳ",
+        opened_year=2026,
+    )
+    case_b = Case(
+        site_id=site.id,
+        gxp_type="GMP",
+        scope_code="B",
+        state=CaseState.INSPECTION_IN_PROGRESS,
+        legacy_inspection_id=3002,
+        legacy_inspection_code="KT-GMP-B",
+        applicable_standard="PIC/S-GMP",
+        inspection_type="Mở rộng",
+        opened_year=2026,
+    )
+    case_c = Case(
+        site_id=site.id,
+        gxp_type="GMP",
+        scope_code="C",
+        state=CaseState.PLANNED,
+        legacy_inspection_id=3003,
+        legacy_inspection_code="KT-GMP-C",
+        applicable_standard="EU-GMP",
+        inspection_type="Định kỳ",
+        opened_year=2025,
+    )
+    session.add_all([case_a, case_b, case_c])
+    session.flush()
+
+    certificate_a = Certificate(site_id=site.id, case_id=case_a.id, certificate_type="GMP", latest_flag=True)
+    certificate_b = Certificate(site_id=site.id, case_id=case_b.id, certificate_type="GMP", latest_flag=True)
+    session.add_all([certificate_a, certificate_b])
+    session.flush()
+
+    version_a = CertificateVersion(
+        certificate_id=certificate_a.id,
+        version_no=1,
+        issue_date=date(2026, 6, 1),
+        expiry_date=date(2027, 6, 1),
+        certificate_number="GCN-A",
+        is_latest_version=True,
+    )
+    version_b = CertificateVersion(
+        certificate_id=certificate_b.id,
+        version_no=1,
+        issue_date=date(2026, 7, 15),
+        expiry_date=date(2027, 7, 15),
+        certificate_number="GCN-B",
+        is_latest_version=True,
+    )
+    session.add_all([version_a, version_b])
+    session.flush()
+    session.add_all(
+        [
+            CertificateScope(
+                certificate_version_id=version_a.id,
+                scope_key="A",
+                scope_text="Dây chuyền viên nén A",
+                sort_order=1,
+            ),
+            CertificateScope(
+                certificate_version_id=version_b.id,
+                scope_key="B",
+                scope_text="Dây chuyền thuốc bột B",
+                sort_order=1,
+            ),
+        ]
+    )
+    session.add(
+        ChangeRequest(
+            site_id=site.id,
+            legacy_change_request_id=9100,
+            scope_label="Điều chỉnh khu pha chế",
+            submitted_on=date(2026, 8, 10),
+            state=ChangeRequestState.RECEIVED,
+        )
+    )
+    session.commit()
+    return {"site_id": site.id}
+
+
 def test_catalog_manual_response_constructors_populate_all_required_schema_fields():
     router_path = ROOT / "backend" / "app" / "api" / "routers" / "catalog.py"
     tree = ast.parse(router_path.read_text(encoding="utf-8"))
@@ -525,24 +629,31 @@ def test_search_facilities_and_workspace_keep_current_semantics_inside_selected_
         gmp_workspace = workspace_route.endpoint(
             site_id=seeded["site_id"],
             gxp_type="GMP",
+            line_code=None,
             session=session,
             user=build_authenticated_user("reader01", "reader"),
         )
         glp_workspace = workspace_route.endpoint(
             site_id=seeded["site_id"],
             gxp_type="GLP",
+            line_code=None,
             session=session,
             user=build_authenticated_user("reader01", "reader"),
         )
 
     assert len(gmp_search) == 1
-    assert gmp_search[0].primary_standard == "WHO-GMP"
+    assert gmp_search[0].context_code == "GMP-501"
+    assert gmp_search[0].line_code is None
+    assert gmp_search[0].gxp_type == "GMP"
     assert gmp_search[0].last_inspection_code == "KT-GMP-2025"
     assert gmp_search[0].current_state == "inspection_completed"
     assert gmp_search[0].current_certificate_number == "GCN-GMP-001"
+    assert gmp_search[0].certificate_scope_summary is None
 
     assert len(glp_search) == 1
-    assert glp_search[0].primary_standard == "GLP-WHO"
+    assert glp_search[0].context_code == "GLP-501"
+    assert glp_search[0].line_code is None
+    assert glp_search[0].gxp_type == "GLP"
     assert glp_search[0].last_inspection_code == "KT-GLP-2026"
     assert glp_search[0].current_state == "awaiting_certificate_decision"
     assert glp_search[0].current_certificate_number == "GCN-GLP-009"
@@ -558,6 +669,58 @@ def test_search_facilities_and_workspace_keep_current_semantics_inside_selected_
     assert glp_workspace.summary.current_state == "awaiting_certificate_decision"
     assert glp_workspace.summary.current_certificate_number == "GCN-GLP-009"
     assert [item.reference_code for item in glp_workspace.history if item.source_type == "case"] == ["KT-GLP-2026"]
+
+
+def test_search_facilities_and_workspace_preserve_production_line_context_and_certificate_scope(tmp_path):
+    database_path = tmp_path / "catalog-line-grain.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        seeded = seed_line_grain_catalog(session)
+
+    app = create_app(database_url)
+    search_route = next(route for route in app.routes if getattr(route, "path", "") == "/search/facilities")
+    workspace_route = next(route for route in app.routes if getattr(route, "path", "") == "/sites/{site_id}/workspace")
+
+    with Session(engine) as session:
+        search_payload = search_route.endpoint(
+            q=None,
+            gxp_type="GMP",
+            province=None,
+            case_state=[],
+            change_request_state=[],
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            limit=80,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+        workspace_payload = workspace_route.endpoint(
+            site_id=seeded["site_id"],
+            gxp_type="GMP",
+            line_code="A",
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+
+    assert [row.context_code for row in search_payload] == ["1.1A", "1.1B", "1.1C"]
+    assert [row.line_code for row in search_payload] == ["A", "B", "C"]
+    assert [row.result_grain for row in search_payload] == ["production_line", "production_line", "production_line"]
+    assert search_payload[0].gxp_type == "GMP"
+    assert search_payload[0].certificate_scope_summary == "Dây chuyền viên nén A"
+    assert search_payload[0].certificate_scope_summary != search_payload[0].current_state
+    assert search_payload[1].certificate_scope_summary == "Dây chuyền thuốc bột B"
+    assert search_payload[2].certificate_scope_summary is None
+
+    assert workspace_payload.summary.context_code == "1.1A"
+    assert workspace_payload.summary.selected_line_code == "A"
+    assert workspace_payload.summary.context_grain == "production_line"
+    assert workspace_payload.summary.certificate_scope_summary == "Dây chuyền viên nén A"
+    assert workspace_payload.summary.primary_standard == "WHO-GMP"
+    assert [item.reference_code for item in workspace_payload.history if item.source_type == "case"] == ["KT-GMP-A"]
+    assert any(item.source_type == "change_request" for item in workspace_payload.history)
 
 
 def test_search_facility_candidate_query_projects_order_by_columns_for_postgresql():
@@ -974,6 +1137,7 @@ def test_dashboard_summary_and_workspace_routes_return_business_read_models(tmp_
         workspace_payload = workspace_route.endpoint(
             site_id=site_id,
             gxp_type="GMP",
+            line_code=None,
             session=session,
             user=build_authenticated_user("reader01", "reader"),
         )

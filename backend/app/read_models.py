@@ -91,13 +91,18 @@ class DashboardSummaryRead(BaseModel):
 
 
 class FacilitySearchResultRead(BaseModel):
+    result_key: str
     site_id: str
     legacy_site_id: int | None
     facility_code: str | None
+    context_code: str | None
+    result_grain: Literal["facility", "production_line"]
+    gxp_type: str | None
+    line_code: str | None
     facility_name: str
     company_name: str
     gxp_types: list[str]
-    primary_standard: str | None
+    certificate_scope_summary: str | None
     province_name: str | None
     last_inspection_code: str | None
     current_state: str | None
@@ -106,9 +111,13 @@ class FacilitySearchResultRead(BaseModel):
 
 
 class FacilityWorkspaceSummaryRead(BaseModel):
+    context_key: str
     site_id: str
     legacy_site_id: int | None
     facility_code: str | None
+    context_code: str | None
+    context_grain: Literal["facility", "production_line"]
+    selected_line_code: str | None
     facility_name: str
     company_name: str
     address: str | None
@@ -119,6 +128,7 @@ class FacilityWorkspaceSummaryRead(BaseModel):
     primary_standard: str | None
     current_certificate_number: str | None
     current_certificate_expiry: date | None
+    certificate_scope_summary: str | None
 
 
 class FacilityHistoryItemRead(BaseModel):

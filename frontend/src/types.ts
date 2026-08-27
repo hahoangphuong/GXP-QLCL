@@ -89,13 +89,18 @@ export type DashboardSummary = {
 };
 
 export type FacilitySearchResult = {
+  result_key: string;
   site_id: string;
   legacy_site_id: number | null;
   facility_code: string | null;
+  context_code: string | null;
+  result_grain: "facility" | "production_line";
+  gxp_type: string | null;
+  line_code: string | null;
   facility_name: string;
   company_name: string;
   gxp_types: string[];
-  primary_standard: string | null;
+  certificate_scope_summary: string | null;
   province_name: string | null;
   last_inspection_code: string | null;
   current_state: string | null;
@@ -104,9 +109,13 @@ export type FacilitySearchResult = {
 };
 
 export type FacilityWorkspaceSummary = {
+  context_key: string;
   site_id: string;
   legacy_site_id: number | null;
   facility_code: string | null;
+  context_code: string | null;
+  context_grain: "facility" | "production_line";
+  selected_line_code: string | null;
   facility_name: string;
   company_name: string;
   address: string | null;
@@ -117,6 +126,7 @@ export type FacilityWorkspaceSummary = {
   primary_standard: string | null;
   current_certificate_number: string | null;
   current_certificate_expiry: string | null;
+  certificate_scope_summary: string | null;
 };
 
 export type FacilityHistoryItem = {

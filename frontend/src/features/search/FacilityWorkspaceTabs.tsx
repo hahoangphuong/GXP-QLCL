@@ -1,0 +1,129 @@
+import { EmptyState } from "../../components/EmptyState";
+import { StatusBadge } from "../../components/StatusBadge";
+import type { CaseDetail, FacilityHistoryItem, FacilityWorkspaceSummary } from "../../types";
+import { EventWorkspace } from "./EventWorkspace";
+import { FacilitySummary } from "./FacilitySummary";
+
+const FACILITY_TABS = [
+  "Thông tin chung",
+  "Các đợt kiểm tra & thay đổi",
+  "Giấy chứng nhận GxP",
+  "Giấy chứng nhận đủ điều kiện",
+] as const;
+
+function formatDate(value: string | null): string {
+  if (!value) {
+    return "Chưa có";
+  }
+  return new Intl.DateTimeFormat("vi-VN").format(new Date(value));
+}
+
+export function FacilityWorkspaceTabs({
+  summary,
+  selectedFacilityTab,
+  onFacilityTabChange,
+  selectedHistory,
+  caseDetail,
+  caseDetailLoading,
+  caseDetailError,
+  activeEventTab,
+  onEventTabChange,
+}: {
+  summary: FacilityWorkspaceSummary;
+  selectedFacilityTab: string;
+  onFacilityTabChange: (tab: string) => void;
+  selectedHistory: FacilityHistoryItem | null;
+  caseDetail: CaseDetail | null;
+  caseDetailLoading: boolean;
+  caseDetailError: string | null;
+  activeEventTab: string;
+  onEventTabChange: (tab: string) => void;
+}) {
+  return (
+    <section className="panel panel-tight facility-workspace-panel">
+      <div className="workspace-context-strip">
+        <div className="workspace-context-copy">
+          <span className="workspace-context-code">{summary.context_code ?? summary.facility_code ?? "Chưa có mã"}</span>
+          <strong>{summary.facility_name}</strong>
+          <span>{summary.company_name}</span>
+        </div>
+        <div className="workspace-context-meta">
+          <span>{summary.selected_gxp_type ?? (summary.gxp_types.join(", ") || "Chưa có GxP")}</span>
+          {summary.selected_line_code ? <span>Dây chuyền {summary.selected_line_code}</span> : <span>Ngữ cảnh cơ sở</span>}
+          <StatusBadge value={summary.current_state} />
+        </div>
+      </div>
+
+      <div className="workspace-tabs facility-tabs" role="tablist" aria-label="Tab nghiệp vụ cơ sở">
+        {FACILITY_TABS.map((tab) => (
+          <button
+            className={selectedFacilityTab === tab ? "workspace-tab active" : "workspace-tab"}
+            key={tab}
+            onClick={() => onFacilityTabChange(tab)}
+            type="button"
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      <div className="facility-tab-body">
+        {selectedFacilityTab === "Thông tin chung" ? (
+          <FacilitySummary summary={summary} />
+        ) : null}
+
+        {selectedFacilityTab === "Các đợt kiểm tra & thay đổi" ? (
+          <EventWorkspace
+            activeTab={activeEventTab}
+            caseDetail={caseDetail}
+            caseDetailError={caseDetailError}
+            caseDetailLoading={caseDetailLoading}
+            onTabChange={onEventTabChange}
+            selectedHistory={selectedHistory}
+          />
+        ) : null}
+
+        {selectedFacilityTab === "Giấy chứng nhận GxP" ? (
+          summary.current_certificate_number || summary.current_certificate_expiry || summary.certificate_scope_summary ? (
+            <div className="certificate-shell">
+              <div className="detail-grid compact-grid">
+                <div>
+                  <span>Số GCN hiện hành</span>
+                  <strong>{summary.current_certificate_number ?? "Chưa có"}</strong>
+                </div>
+                <div>
+                  <span>Hết hạn</span>
+                  <strong>{formatDate(summary.current_certificate_expiry)}</strong>
+                </div>
+                <div>
+                  <span>GxP</span>
+                  <strong>{summary.selected_gxp_type ?? "Chưa xác định"}</strong>
+                </div>
+                <div className="summary-span">
+                  <span>Phạm vi chứng nhận</span>
+                  <strong className="multiline-value">{summary.certificate_scope_summary ?? "Chưa có dữ liệu scope hiện hành."}</strong>
+                </div>
+              </div>
+              <EmptyState
+                title="Lịch sử chứng nhận chưa mở ở Slice A.2"
+                description="Owner layer hiện mới trả current certificate projection đủ an toàn cho ngữ cảnh đang chọn. History/detail API cho chứng nhận GxP sẽ nối ở Slice B."
+              />
+            </div>
+          ) : (
+            <EmptyState
+              title="Chưa có dữ liệu chứng nhận GxP"
+              description="Current certificate projection chưa có dữ liệu cho facility/line/GxP đang chọn hoặc certificate scope lịch sử chưa được backend read model mở ra."
+            />
+          )
+        ) : null}
+
+        {selectedFacilityTab === "Giấy chứng nhận đủ điều kiện" ? (
+          <EmptyState
+            title="Workspace ĐĐKKDD chưa mở ở Slice A.2"
+            description="Top-level tab đã được đặt đúng hierarchy. History/detail read API cho giấy chứng nhận đủ điều kiện vẫn là khoảng trống backend cần nối ở Slice B."
+          />
+        ) : null}
+      </div>
+    </section>
+  );
+}

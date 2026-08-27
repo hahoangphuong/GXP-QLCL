@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date, timedelta
 
 from fastapi import HTTPException
@@ -13,6 +14,7 @@ from backend.app.db.models.phase1 import (
     BusinessEligibilityVersion,
     Case,
     Certificate,
+    CertificateScope,
     CertificateVersion,
     ChangeRequest,
     Company,
@@ -43,7 +45,20 @@ OPEN_CHANGE_REQUEST_STATES = [
 ]
 
 
+@dataclass(frozen=True)
+class CertificateContextRow:
+    certificate: Certificate
+    version: CertificateVersion
+    line_code: str | None
+    scope_summary: str | None
+
+
 class CatalogReadService:
+    @staticmethod
+    def _normalize_line_code(value: str | None) -> str | None:
+        normalized = str(value or "").strip()
+        return normalized or None
+
     @staticmethod
     def _preferred_site_code(site: Site, selected_gxp: str | None) -> str | None:
         if selected_gxp == "GMP":
@@ -66,6 +81,17 @@ class CatalogReadService:
         )
 
     @staticmethod
+    def _build_context_code(site: Site, *, gxp_type: str | None, line_code: str | None) -> str | None:
+        base_code = CatalogReadService._preferred_site_code(site, gxp_type)
+        if base_code is None:
+            return line_code
+        return f"{base_code}{line_code}" if line_code else base_code
+
+    @staticmethod
+    def _build_result_key(site_id: str, *, gxp_type: str | None, line_code: str | None) -> str:
+        return f"{site_id}:{gxp_type or ''}:{line_code or ''}"
+
+    @staticmethod
     def _select_latest_case(rows: list[Case]) -> Case | None:
         if not rows:
             return None
@@ -79,24 +105,87 @@ class CatalogReadService:
         )
 
     @staticmethod
-    def _select_current_certificate(
-        rows: list[tuple[Certificate, CertificateVersion]],
+    def _select_current_certificate_context(
+        rows: list[CertificateContextRow],
         selected_gxp: str | None,
-    ) -> tuple[Certificate, CertificateVersion] | None:
+        line_code: str | None = None,
+    ) -> CertificateContextRow | None:
         if not rows:
             return None
         if selected_gxp:
-            rows = [row for row in rows if row[0].certificate_type == selected_gxp]
+            rows = [row for row in rows if row.certificate.certificate_type == selected_gxp]
             if not rows:
                 return None
+        if line_code is not None:
+            exact_matches = [row for row in rows if row.line_code == line_code]
+            if exact_matches:
+                rows = exact_matches
+            else:
+                facility_wide_matches = [row for row in rows if row.line_code is None]
+                if not facility_wide_matches:
+                    return None
+                rows = facility_wide_matches
         return max(
             rows,
             key=lambda item: (
-                item[1].issue_date or date.min,
-                item[1].expiry_date or date.max,
-                item[0].updated_at,
+                item.version.issue_date or date.min,
+                item.version.expiry_date or date.max,
+                item.certificate.updated_at,
             ),
         )
+
+    @staticmethod
+    def _build_certificate_scope_summary(rows: list[CertificateScope]) -> str | None:
+        parts = [
+            row.scope_text.strip()
+            for row in sorted(rows, key=lambda item: (item.sort_order, item.created_at, item.id))
+            if row.scope_text and row.scope_text.strip()
+        ]
+        if not parts:
+            return None
+        return "\n".join(parts)
+
+    @staticmethod
+    def _build_site_contexts(
+        *,
+        site_cases: list[Case],
+        certificate_rows: list[CertificateContextRow],
+        requested_gxp: str | None,
+    ) -> list[tuple[str | None, str | None, list[Case]]]:
+        grouped_cases: dict[tuple[str | None, str | None], list[Case]] = defaultdict(list)
+        for row in site_cases:
+            grouped_cases[(row.gxp_type, CatalogReadService._normalize_line_code(row.scope_code))].append(row)
+
+        discovered_gxp_types = sorted(
+            {
+                row.gxp_type
+                for row in site_cases
+                if row.gxp_type
+            }
+            | {
+                row.certificate.certificate_type
+                for row in certificate_rows
+                if row.certificate.certificate_type
+            }
+        )
+        if requested_gxp:
+            discovered_gxp_types = [requested_gxp]
+        if not discovered_gxp_types:
+            discovered_gxp_types = [None]
+
+        contexts: list[tuple[str | None, str | None, list[Case]]] = []
+        for current_gxp in discovered_gxp_types:
+            current_groups = [
+                (line_code, cases)
+                for (group_gxp, line_code), cases in grouped_cases.items()
+                if group_gxp == current_gxp
+            ]
+            if current_groups:
+                current_groups.sort(key=lambda item: (item[0] is None, item[0] or ""))
+                contexts.extend((current_gxp, line_code, cases) for line_code, cases in current_groups)
+            else:
+                contexts.append((current_gxp, None, []))
+        return contexts
 
     @staticmethod
     def _build_case_exists_clause(
@@ -389,8 +478,10 @@ class CatalogReadService:
             )
         }
         cases_by_site: dict[str, list[Case]] = defaultdict(list)
+        cases_by_id: dict[str, Case] = {}
         for row in session.scalars(select(Case).where(Case.site_id.in_(site_ids))):
             cases_by_site[row.site_id].append(row)
+            cases_by_id[row.id] = row
 
         current_certificates = list(
             session.execute(
@@ -405,42 +496,83 @@ class CatalogReadService:
                 .where(Certificate.site_id.in_(site_ids), Certificate.latest_flag.is_(True))
             ).all()
         )
-        certificate_by_site: dict[str, list[tuple[Certificate, CertificateVersion]]] = defaultdict(list)
+        certificate_scope_rows_by_version: dict[str, list[CertificateScope]] = defaultdict(list)
+        version_ids = [version.id for _, version in current_certificates]
+        if version_ids:
+            for scope in session.scalars(select(CertificateScope).where(CertificateScope.certificate_version_id.in_(version_ids))):
+                certificate_scope_rows_by_version[scope.certificate_version_id].append(scope)
+
+        certificate_by_site: dict[str, list[CertificateContextRow]] = defaultdict(list)
         for certificate, version in current_certificates:
-            certificate_by_site[certificate.site_id].append((certificate, version))
+            linked_case = None if certificate.case_id is None else cases_by_id.get(certificate.case_id)
+            certificate_by_site[certificate.site_id].append(
+                CertificateContextRow(
+                    certificate=certificate,
+                    version=version,
+                    line_code=self._normalize_line_code(None if linked_case is None else linked_case.scope_code),
+                    scope_summary=self._build_certificate_scope_summary(
+                        certificate_scope_rows_by_version.get(version.id, [])
+                    ),
+                )
+            )
 
         results = []
         for site_id in site_ids:
             site = sites[site_id]
             company = companies[site.company_id]
             site_cases = cases_by_site.get(site_id, [])
-            scoped_cases = [row for row in site_cases if row.gxp_type == gxp_type] if gxp_type else site_cases
-            latest = self._select_latest_case(scoped_cases)
-            certificate_pair = self._select_current_certificate(certificate_by_site.get(site_id, []), gxp_type)
             gxp_types = sorted({item.gxp_type for item in site_cases if item.gxp_type})
-            results.append(
-                {
-                    "site_id": site.id,
-                    "legacy_site_id": site.legacy_site_id,
-                    "facility_code": self._preferred_site_code(site, gxp_type),
-                    "facility_name": site.site_name,
-                    "company_name": company.legal_name,
-                    "gxp_types": gxp_types,
-                    "primary_standard": None if latest is None else latest.applicable_standard or latest.scope_code,
-                    "province_name": site.province_name,
-                    "last_inspection_code": None if latest is None else latest.legacy_inspection_code,
-                    "current_state": None if latest is None else latest.state.value,
-                    "current_certificate_number": None if certificate_pair is None else certificate_pair[1].certificate_number,
-                    "current_certificate_expiry": None if certificate_pair is None else certificate_pair[1].expiry_date,
-                }
+            site_certificate_rows = certificate_by_site.get(site_id, [])
+            for row_gxp_type, line_code, context_cases in self._build_site_contexts(
+                site_cases=site_cases,
+                certificate_rows=site_certificate_rows,
+                requested_gxp=gxp_type,
+            ):
+                latest = self._select_latest_case(context_cases)
+                certificate_context = self._select_current_certificate_context(
+                    site_certificate_rows,
+                    row_gxp_type,
+                    line_code=line_code,
+                )
+                results.append(
+                    {
+                        "result_key": self._build_result_key(site.id, gxp_type=row_gxp_type, line_code=line_code),
+                        "site_id": site.id,
+                        "legacy_site_id": site.legacy_site_id,
+                        "facility_code": self._preferred_site_code(site, row_gxp_type),
+                        "context_code": self._build_context_code(site, gxp_type=row_gxp_type, line_code=line_code),
+                        "result_grain": "production_line" if line_code else "facility",
+                        "gxp_type": row_gxp_type,
+                        "line_code": line_code,
+                        "facility_name": site.site_name,
+                        "company_name": company.legal_name,
+                        "gxp_types": gxp_types,
+                        "certificate_scope_summary": None if certificate_context is None else certificate_context.scope_summary,
+                        "province_name": site.province_name,
+                        "last_inspection_code": None if latest is None else latest.legacy_inspection_code,
+                        "current_state": None if latest is None else latest.state.value,
+                        "current_certificate_number": None if certificate_context is None else certificate_context.version.certificate_number,
+                        "current_certificate_expiry": None if certificate_context is None else certificate_context.version.expiry_date,
+                    }
+                )
+        results.sort(
+            key=lambda item: (
+                item["context_code"] is None,
+                item["context_code"] or "",
+                item["facility_name"],
+                item["gxp_type"] or "",
             )
-        return results
+        )
+        return results[:limit]
 
-    def get_facility_workspace(self, session: Session, *, site_id: str, gxp_type: str | None):
+    def get_facility_workspace(self, session: Session, *, site_id: str, gxp_type: str | None, line_code: str | None):
         site = self.get_site(session, site_id)
         company = self.get_company(session, site.company_id)
         site_cases = list(session.scalars(select(Case).where(Case.site_id == site_id)))
+        normalized_line_code = self._normalize_line_code(line_code)
         scoped_cases = [row for row in site_cases if row.gxp_type == gxp_type] if gxp_type else site_cases
+        if normalized_line_code is not None:
+            scoped_cases = [row for row in scoped_cases if self._normalize_line_code(row.scope_code) == normalized_line_code]
         case_ids = [item.id for item in site_cases]
         event_dates = {}
         if case_ids:
@@ -464,11 +596,32 @@ class CatalogReadService:
                 .where(Certificate.site_id == site_id, Certificate.latest_flag.is_(True))
             ).all()
         )
+        certificate_scope_rows_by_version: dict[str, list[CertificateScope]] = defaultdict(list)
+        version_ids = [version.id for _, version in current_certificates]
+        if version_ids:
+            for scope in session.scalars(select(CertificateScope).where(CertificateScope.certificate_version_id.in_(version_ids))):
+                certificate_scope_rows_by_version[scope.certificate_version_id].append(scope)
+        case_by_id = {row.id: row for row in site_cases}
+        certificate_context_rows = [
+            CertificateContextRow(
+                certificate=certificate,
+                version=version,
+                line_code=self._normalize_line_code(
+                    None if certificate.case_id is None or certificate.case_id not in case_by_id else case_by_id[certificate.case_id].scope_code
+                ),
+                scope_summary=self._build_certificate_scope_summary(certificate_scope_rows_by_version.get(version.id, [])),
+            )
+            for certificate, version in current_certificates
+        ]
 
         latest_case = None
         if scoped_cases:
             latest_case = self._select_latest_case(scoped_cases)
-        current_certificate = self._select_current_certificate(current_certificates, gxp_type)
+        current_certificate = self._select_current_certificate_context(
+            certificate_context_rows,
+            gxp_type,
+            line_code=normalized_line_code,
+        )
 
         history = [
             {
@@ -507,19 +660,27 @@ class CatalogReadService:
 
         return {
             "summary": {
+                "context_key": self._build_result_key(site.id, gxp_type=gxp_type, line_code=normalized_line_code),
                 "site_id": site.id,
                 "legacy_site_id": site.legacy_site_id,
                 "facility_code": self._preferred_site_code(site, gxp_type),
+                "context_code": self._build_context_code(site, gxp_type=gxp_type, line_code=normalized_line_code),
+                "context_grain": "production_line" if normalized_line_code else "facility",
+                "selected_line_code": normalized_line_code,
                 "facility_name": site.site_name,
                 "company_name": company.legal_name,
                 "address": site.site_address,
                 "province_name": site.province_name,
-                "gxp_types": sorted({item.gxp_type for item in site_cases if item.gxp_type}),
+                "gxp_types": sorted(
+                    {item.gxp_type for item in site_cases if item.gxp_type}
+                    | {row.certificate.certificate_type for row in certificate_context_rows if row.certificate.certificate_type}
+                ),
                 "selected_gxp_type": gxp_type,
                 "current_state": None if latest_case is None else latest_case.state.value,
                 "primary_standard": None if latest_case is None else latest_case.applicable_standard or latest_case.scope_code,
-                "current_certificate_number": None if current_certificate is None else current_certificate[1].certificate_number,
-                "current_certificate_expiry": None if current_certificate is None else current_certificate[1].expiry_date,
+                "current_certificate_number": None if current_certificate is None else current_certificate.version.certificate_number,
+                "current_certificate_expiry": None if current_certificate is None else current_certificate.version.expiry_date,
+                "certificate_scope_summary": None if current_certificate is None else current_certificate.scope_summary,
             },
             "history": history,
         }

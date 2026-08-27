@@ -183,11 +183,15 @@ export function getFacilityWorkspace(
   auth: StubAuthState,
   useStubAuth: boolean,
   gxpType?: string | null,
+  lineCode?: string | null,
   bearerToken?: string | null,
 ): Promise<FacilityWorkspace> {
   const searchParams = new URLSearchParams();
   if (gxpType) {
     searchParams.set("gxp_type", gxpType);
+  }
+  if (lineCode) {
+    searchParams.set("line_code", lineCode);
   }
   return requestJson<FacilityWorkspace>(buildApiPath(`/sites/${siteId}/workspace`, searchParams), {
     auth,

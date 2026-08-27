@@ -34,8 +34,6 @@ export function HistoryTable({
               <th>Tiêu chuẩn</th>
               <th>Ngày</th>
               <th>Trạng thái</th>
-              <th>Mã hồ sơ</th>
-              <th>GxP</th>
             </tr>
           </thead>
           <tbody>
@@ -59,8 +57,6 @@ export function HistoryTable({
                 <td>
                   <StatusBadge value={row.state} />
                 </td>
-                <td>{row.reference_code ?? "Chưa có"}</td>
-                <td>{row.gxp_type ?? "Chưa có"}</td>
               </tr>
             ))}
           </tbody>

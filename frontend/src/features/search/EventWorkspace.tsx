@@ -30,10 +30,10 @@ export function EventWorkspace({
   }
 
   return (
-    <section className="panel panel-tight workspace-panel">
+    <section className="event-workspace">
       <div className="panel-header">
         <div>
-          <p className="eyebrow">Không gian xử lý</p>
+          <p className="eyebrow">Các đợt kiểm tra & thay đổi</p>
           <h3>{selectedHistory.reference_code ?? selectedHistory.event_type}</h3>
         </div>
         <StatusBadge value={selectedHistory.state} />

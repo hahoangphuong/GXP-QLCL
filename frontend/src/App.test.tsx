@@ -114,12 +114,15 @@ describe("App Slice A shell", () => {
   it("renders the business shell with Tra cứu as primary navigation", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
 
-    renderApp();
+    const { container } = renderApp();
 
-    expect(await screen.findByText("Workspace nghiệp vụ")).toBeInTheDocument();
+    expect(await screen.findByText("GxP QLCL")).toBeInTheDocument();
+    expect(screen.getByText("Tra cứu và điều phối nghiệp vụ")).toBeInTheDocument();
     expect(screen.getByText("Tổng quan")).toBeInTheDocument();
     expect(screen.getByText("Tra cứu")).toBeInTheDocument();
     expect(screen.queryByText("Không gian hồ sơ")).not.toBeInTheDocument();
+    expect(container.querySelector(".shell-chrome")).not.toBeNull();
+    expect(container.querySelector(".primary-nav")).not.toBeNull();
   });
 
   it("keeps stub auth controls in header_stub mode", async () => {
@@ -218,9 +221,82 @@ describe("App Slice A shell", () => {
     expect(await screen.findByText("Ngữ cảnh cơ sở")).toBeInTheDocument();
     expect(await screen.findByText("Kiểm tra và thay đổi")).toBeInTheDocument();
     expect(await screen.findByText("Không gian xử lý")).toBeInTheDocument();
+    expect(await screen.findByText("Trạng thái hồ sơ gần nhất")).toBeInTheDocument();
+    expect(screen.getAllByText("GCN hiện hành").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Chờ cấp chứng nhận").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Nhà máy A")).toHaveLength(2);
     expect(screen.getAllByText("KT-2026-GMP").length).toBeGreaterThan(0);
+  });
+
+  it("keeps search workspace inside compact application viewport structure", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue([
+      {
+        site_id: "site-1",
+        legacy_site_id: 101,
+        facility_code: "GMP-101",
+        facility_name: "Nhà máy A",
+        company_name: "Công ty A",
+        gxp_types: ["GMP"],
+        primary_standard: "WHO-GMP",
+        province_name: "Hà Nội",
+        last_inspection_code: "KT-2026-GMP",
+        current_state: "awaiting_certificate_decision",
+        current_certificate_number: "GCN-001",
+        current_certificate_expiry: "2026-12-31",
+      },
+    ]);
+    apiMocks.getFacilityWorkspace.mockResolvedValue({
+      summary: {
+        site_id: "site-1",
+        legacy_site_id: 101,
+        facility_code: "GMP-101",
+        facility_name: "Nhà máy A",
+        company_name: "Công ty A",
+        address: "Hà Nội",
+        province_name: "Hà Nội",
+        gxp_types: ["GMP"],
+        selected_gxp_type: "GMP",
+        current_state: "awaiting_certificate_decision",
+        primary_standard: "WHO-GMP",
+        current_certificate_number: "GCN-001",
+        current_certificate_expiry: "2026-12-31",
+      },
+      history: [
+        {
+          id: "case-1",
+          source_type: "case",
+          reference_code: "KT-2026-GMP",
+          event_type: "Định kỳ",
+          gxp_type: "GMP",
+          standard: "WHO-GMP",
+          occurred_on: "2026-08-01",
+          state: "awaiting_certificate_decision",
+        },
+      ],
+    });
+    apiMocks.getCaseDetail.mockResolvedValue({
+      id: "case-1",
+      legacy_inspection_id: 1,
+      legacy_inspection_code: "KT-2026-GMP",
+      site_id: "site-1",
+      gxp_type: "GMP",
+      scope_code: "WHO-GMP",
+      applicable_standard: "WHO-GMP",
+      inspection_type: "Định kỳ",
+      state: "awaiting_certificate_decision",
+      opened_year: 2026,
+    });
+
+    const { container } = renderApp(["/search"]);
+
+    await screen.findByText("Không gian xử lý");
+
+    expect(container.querySelector(".search-page")).not.toBeNull();
+    expect(container.querySelector(".search-workspace")).not.toBeNull();
+    expect(container.querySelector(".detail-stack")).not.toBeNull();
+    expect(container.querySelector(".history-panel")).not.toBeNull();
+    expect(container.querySelector(".workspace-panel")).not.toBeNull();
   });
 
   it("shows API error instead of fake empty state on failed search", async () => {

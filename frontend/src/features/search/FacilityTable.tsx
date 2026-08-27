@@ -18,7 +18,7 @@ export function FacilityTable({
   onSelect: (siteId: string) => void;
 }) {
   return (
-    <section className="panel">
+    <section className="panel panel-tight results-panel">
       <div className="panel-header">
         <div>
           <p className="eyebrow">Kết quả</p>
@@ -26,20 +26,20 @@ export function FacilityTable({
         </div>
         <span className="panel-meta">{rows.length} dòng</span>
       </div>
-      <div className="table-scroll table-scroll-tall">
+      <div className="table-scroll table-scroll-fill">
         <table className="dense-table facility-table">
           <thead>
             <tr>
-              <th>Mã cơ sở</th>
-              <th>Tên cơ sở</th>
-              <th>Công ty</th>
-              <th>GxP</th>
-              <th>Phạm vi/tiêu chuẩn</th>
-              <th>Tỉnh/thành</th>
-              <th>Kiểm tra gần nhất</th>
-              <th>Trạng thái</th>
-              <th>Chứng nhận</th>
-              <th>Hết hạn</th>
+              <th className="col-code">Mã cơ sở</th>
+              <th className="col-facility">Tên cơ sở</th>
+              <th className="col-company">Công ty</th>
+              <th className="col-gxp">GxP</th>
+              <th className="col-standard">Phạm vi/tiêu chuẩn</th>
+              <th className="col-province">Tỉnh/thành</th>
+              <th className="col-reference">Kiểm tra gần nhất</th>
+              <th className="col-status">Trạng thái hồ sơ</th>
+              <th className="col-certificate">GCN hiện hành</th>
+              <th className="col-expiry">Hết hạn</th>
             </tr>
           </thead>
           <tbody>

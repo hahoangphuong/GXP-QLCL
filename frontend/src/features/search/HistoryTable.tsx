@@ -18,7 +18,7 @@ export function HistoryTable({
   onSelect: (historyId: string) => void;
 }) {
   return (
-    <section className="panel">
+    <section className="panel panel-tight history-panel">
       <div className="panel-header">
         <div>
           <p className="eyebrow">Lịch sử</p>
@@ -26,7 +26,7 @@ export function HistoryTable({
         </div>
         <span className="panel-meta">{rows.length} sự kiện</span>
       </div>
-      <div className="table-scroll">
+      <div className="table-scroll table-scroll-history">
         <table className="dense-table">
           <thead>
             <tr>

@@ -10,22 +10,19 @@ function formatDate(value: string | null): string {
 
 export function FacilitySummary({ summary }: { summary: FacilityWorkspaceSummary }) {
   return (
-    <section className="panel summary-panel">
-      <div className="panel-header">
-        <div>
+    <section className="panel panel-tight summary-panel">
+      <div className="summary-head">
+        <div className="summary-identity">
           <p className="eyebrow">Ngữ cảnh cơ sở</p>
           <h3>{summary.facility_name}</h3>
+          <p className="summary-subtitle">{summary.company_name}</p>
         </div>
         <StatusBadge value={summary.current_state} />
       </div>
-      <dl className="summary-grid">
+      <dl className="summary-grid summary-grid-compact">
         <div>
           <dt>Mã cơ sở</dt>
           <dd>{summary.facility_code ?? "Chưa có"}</dd>
-        </div>
-        <div>
-          <dt>Công ty</dt>
-          <dd>{summary.company_name}</dd>
         </div>
         <div>
           <dt>GxP</dt>
@@ -40,7 +37,11 @@ export function FacilitySummary({ summary }: { summary: FacilityWorkspaceSummary
           <dd>{summary.province_name ?? "Chưa có"}</dd>
         </div>
         <div>
-          <dt>Tiêu chuẩn chính</dt>
+          <dt>Trạng thái hồ sơ gần nhất</dt>
+          <dd>{summary.current_state ? <StatusBadge value={summary.current_state} /> : "Chưa có"}</dd>
+        </div>
+        <div>
+          <dt>Tiêu chuẩn hồ sơ gần nhất</dt>
           <dd>{summary.primary_standard ?? "Chưa có"}</dd>
         </div>
         <div>
@@ -56,11 +57,10 @@ export function FacilitySummary({ summary }: { summary: FacilityWorkspaceSummary
           <dd>{summary.address ?? "Chưa có"}</dd>
         </div>
       </dl>
-      <div className="action-strip">
-        <button disabled type="button">+ Công ty</button>
-        <button disabled type="button">+ Cơ sở</button>
-        <button disabled type="button">+ Dây chuyền</button>
-        <button disabled type="button">+ Hồ sơ kiểm tra</button>
+      <div className="action-strip action-strip-compact">
+        <button disabled type="button">Công ty</button>
+        <button disabled type="button">Cơ sở</button>
+        <button disabled type="button">Dây chuyền</button>
         <button disabled type="button">Tái đánh giá</button>
         <button disabled type="button">Thay đổi</button>
       </div>

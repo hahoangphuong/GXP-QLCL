@@ -13,8 +13,10 @@ export function AppShell({
 }) {
   return (
     <div className="app-shell">
-      {header}
-      <PrimaryNav canAccessAdmin={canAccessAdmin} />
+      <div className="shell-chrome">
+        {header}
+        <PrimaryNav canAccessAdmin={canAccessAdmin} />
+      </div>
       <main className="workspace-root">{children}</main>
     </div>
   );

@@ -20,29 +20,24 @@ export function SearchToolbar({
 }) {
   return (
     <section className="panel search-toolbar">
-      <div className="panel-header">
-        <div>
+      <div className="toolbar-primary">
+        <div className="toolbar-heading">
           <p className="eyebrow">Tra cứu</p>
           <h3>Danh sách cơ sở</h3>
         </div>
-        <button className="secondary" onClick={onClear} type="button">
-          Xóa lọc
-        </button>
-      </div>
-      <div className="gxp-toggle" role="tablist" aria-label="Bộ lọc GxP">
-        {["ALL", "GMP", "GLP", "GMPbd"].map((option) => (
-          <button
-            className={filters.gxpType === option ? "toggle-chip active" : "toggle-chip"}
-            key={option}
-            onClick={() => onChange("gxpType", option)}
-            type="button"
-          >
-            {option === "ALL" ? "Tất cả" : option}
-          </button>
-        ))}
-      </div>
-      <div className="toolbar-grid">
-        <label className="toolbar-search">
+        <div className="gxp-toggle" role="tablist" aria-label="Bộ lọc GxP">
+          {["ALL", "GMP", "GLP", "GMPbd"].map((option) => (
+            <button
+              className={filters.gxpType === option ? "toggle-chip active" : "toggle-chip"}
+              key={option}
+              onClick={() => onChange("gxpType", option)}
+              type="button"
+            >
+              {option === "ALL" ? "Tất cả" : option}
+            </button>
+          ))}
+        </div>
+        <label className="toolbar-search toolbar-search-primary">
           <span>Tìm nhanh</span>
           <input
             value={filters.query}
@@ -50,6 +45,11 @@ export function SearchToolbar({
             placeholder="Mã cơ sở, tên cơ sở, công ty, địa chỉ, tỉnh, mã hồ sơ, tiêu chuẩn, số GCN"
           />
         </label>
+        <button className="secondary" onClick={onClear} type="button">
+          Xóa lọc
+        </button>
+      </div>
+      <div className="toolbar-grid">
         <label>
           <span>Tỉnh/thành</span>
           <input value={filters.province} onChange={(event) => onChange("province", event.target.value)} />

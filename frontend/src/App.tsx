@@ -99,24 +99,29 @@ function AppHeader({
   return (
     <header className="topbar">
       <div className="brand-block">
-        <p className="eyebrow">GxP QLCL</p>
-        <h1>Workspace nghiệp vụ</h1>
+        <span className="brand-mark">GxP QLCL</span>
+        <div className="brand-copy">
+          <strong>QLCL desktop workspace</strong>
+          <span>Tra cứu và điều phối nghiệp vụ</span>
+        </div>
       </div>
       {usesStubAuth ? (
         <div className="auth-cluster">
           <label>
             <span>Người dùng giả lập</span>
             <input
-              value={auth.username}
-              onChange={(event) => onAuthChange({ ...auth, username: event.target.value })}
-              placeholder="vanhanh.local"
-            />
+            value={auth.username}
+            onChange={(event) => onAuthChange({ ...auth, username: event.target.value })}
+            placeholder="vanhanh.local"
+            aria-label="Người dùng giả lập"
+          />
           </label>
           <label>
             <span>Vai trò</span>
             <select
               value={auth.role}
               onChange={(event) => onAuthChange({ ...auth, role: event.target.value as StubAuthState["role"] })}
+              aria-label="Vai trò"
             >
               <option value="reader">reader</option>
               <option value="inspector">inspector</option>

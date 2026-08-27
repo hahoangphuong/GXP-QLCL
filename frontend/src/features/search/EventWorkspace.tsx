@@ -30,7 +30,7 @@ export function EventWorkspace({
   }
 
   return (
-    <section className="panel">
+    <section className="panel panel-tight workspace-panel">
       <div className="panel-header">
         <div>
           <p className="eyebrow">Không gian xử lý</p>
@@ -50,6 +50,7 @@ export function EventWorkspace({
           </button>
         ))}
       </div>
+      <div className="workspace-body">
       {selectedHistory.source_type === "change_request" ? (
         <div className="detail-grid compact-grid">
           <div>
@@ -110,6 +111,7 @@ export function EventWorkspace({
       ) : (
         <EmptyState title="Chưa có chi tiết hồ sơ" description="Backend chưa trả dữ liệu chi tiết cho lựa chọn hiện tại." />
       )}
+      </div>
     </section>
   );
 }

@@ -255,7 +255,7 @@ export function SearchPage({
   }
 
   return (
-    <section className="page-section">
+    <section className="page-section search-page">
       <SearchToolbar
         filters={{ query, gxpType, province, caseState, certificateState, certificateExpiringWithinDays }}
         onChange={(field, value) => updateFilter(field, value)}
@@ -268,7 +268,7 @@ export function SearchPage({
       ) : null}
 
       {results.length > 0 ? (
-        <>
+        <div className="search-workspace">
           <div className="search-layout">
             <FacilityTable rows={results} selectedSiteId={selectedSiteId} onSelect={setSelectedSiteId} />
             {workspaceError ? (
@@ -280,7 +280,7 @@ export function SearchPage({
             )}
           </div>
           {workspaceError ? null : workspaceLoading || !workspace ? null : (
-            <>
+            <div className="detail-stack">
               <HistoryTable rows={workspace.history} selectedHistoryId={selectedHistoryId} onSelect={setSelectedHistoryId} />
               <EventWorkspace
                 activeTab={activeTab}
@@ -290,9 +290,9 @@ export function SearchPage({
                 onTabChange={setActiveTab}
                 selectedHistory={selectedHistory}
               />
-            </>
+            </div>
           )}
-        </>
+        </div>
       ) : null}
     </section>
   );

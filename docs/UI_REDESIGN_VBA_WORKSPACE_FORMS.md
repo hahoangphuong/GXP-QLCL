@@ -411,3 +411,92 @@ When implementing UI slices, Codex must explicitly state which of these legacy-w
 - supported by newly added minimal backend read APIs
 
 This makes later audit deterministic and prevents silent feature loss during redesign.
+
+## 13. UAT hierarchy refinement — result/history split and facility tabs
+
+Post-Slice-A.1 UAT confirms a more specific hierarchy than the temporary A.1 layout. This section is authoritative for the next implementation round.
+
+### 13.1 Top area: result rows + history side by side
+
+The top business area after the compact search row should be a split pane:
+- left: result rows at facility/production-line grain
+- right: compact inspection/change history for the selected facility/line context
+
+The old standalone top-right `Ngữ cảnh cơ sở` summary card should be removed from that position.
+
+History default columns:
+- Loại sự kiện
+- Tiêu chuẩn
+- Ngày
+- Trạng thái
+
+Do not show `Mã hồ sơ` or `GxP` by default in this compact history pane.
+
+### 13.2 Bottom area: facility-level tabs
+
+Below the result/history split, render facility-level tabs exactly around these business projections:
+- **Thông tin chung**
+- **Các đợt kiểm tra & thay đổi**
+- **Giấy chứng nhận GxP**
+- **Giấy chứng nhận đủ điều kiện**
+
+These are top-level projections of one persistent selected facility (and selected production line when applicable).
+
+The prior temporary `Ngữ cảnh cơ sở` information moves into **Thông tin chung**.
+
+### 13.3 Event workflow belongs inside `Các đợt kiểm tra & thay đổi`
+
+The event-level tabs such as:
+- Hồ sơ
+- Kiểm tra
+- Khắc phục
+- Xử lý
+- Chứng nhận GPs
+- Chứng nhận khác
+- Documents
+
+must be nested within the **Các đợt kiểm tra & thay đổi** facility tab after an event is selected.
+
+Do not show these event tabs as a competing top-level workspace below every search result.
+
+### 13.4 `Giấy chứng nhận GxP` tab
+
+This tab owns:
+- GxP certificate history
+- selected certificate detail
+- certificate scope
+- limitations
+- issuing authority
+- validity/status
+- provenance/source
+
+When production-line scope is modeled, the tab must preserve the selected line context and distinguish facility-wide versus line-specific certification data according to backend ownership.
+
+### 13.5 `Giấy chứng nhận đủ điều kiện` tab
+
+This tab owns the existing ĐĐK/ĐĐKKDD concepts from this document:
+- history
+- detail
+- issuance sequence
+- replacement chain
+- professional person/CCHN
+- GMP/GLP/GSP/GDP business scopes
+
+Use the user-facing tab label **Giấy chứng nhận đủ điều kiện** while retaining authoritative backend terminology internally.
+
+### 13.6 Selection persistence
+
+Selection state must preserve, as applicable:
+- selected facility
+- selected production line
+- selected GxP mode
+- selected history event
+- selected facility tab
+
+Switching among facility tabs must never silently reset the facility/line search context.
+
+### 13.7 Production-line identity affects workspace context
+
+Where search results are line-grained (`1.1A`, `1.1B`, `1.1C`), the selected production line is part of durable workspace context.
+
+Do not collapse three line rows back into one ambiguous facility context when opening `Thông tin chung`, certificate scope, or event workspaces. If a domain projection is facility-wide, the UI may state that explicitly while still retaining which line row led the operator into the workspace.

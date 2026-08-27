@@ -718,6 +718,103 @@ def test_dashboard_metric_drilldowns_match_search_predicates(tmp_path):
     assert dashboard_payload.incomplete_changes == len(incomplete_changes)
 
 
+def test_dashboard_metrics_count_matching_facilities_not_raw_records(tmp_path):
+    database_path = tmp_path / "dashboard-facility-counts.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        company = Company(legal_name="Công ty Semantic", short_name="SEM")
+        session.add(company)
+        session.flush()
+
+        multi_match_site = Site(company_id=company.id, site_name="Cơ sở nhiều bản ghi", legacy_site_id=11)
+        other_site = Site(company_id=company.id, site_name="Cơ sở đối chứng", legacy_site_id=12)
+        session.add_all([multi_match_site, other_site])
+        session.flush()
+
+        session.add_all(
+            [
+                Case(site_id=multi_match_site.id, gxp_type="GMP", state=CaseState.UNDER_ASSESSMENT, opened_year=2026),
+                Case(site_id=multi_match_site.id, gxp_type="GLP", state=CaseState.INSPECTION_IN_PROGRESS, opened_year=2026),
+                Case(site_id=multi_match_site.id, gxp_type="GMP", state=CaseState.AWAITING_CERTIFICATE_DECISION, opened_year=2026),
+                Case(site_id=other_site.id, gxp_type="GMP", state=CaseState.CERTIFIED, opened_year=2026),
+            ]
+        )
+        session.flush()
+
+        active_cert_1 = Certificate(site_id=multi_match_site.id, certificate_type="GMP", latest_flag=True)
+        active_cert_2 = Certificate(site_id=multi_match_site.id, certificate_type="GLP", latest_flag=True)
+        expiring_cert = Certificate(site_id=multi_match_site.id, certificate_type="GMP", latest_flag=True)
+        session.add_all([active_cert_1, active_cert_2, expiring_cert])
+        session.flush()
+        session.add_all(
+            [
+                CertificateVersion(
+                    certificate_id=active_cert_1.id,
+                    version_no=1,
+                    issue_date=date(2026, 1, 1),
+                    expiry_date=date(2027, 1, 1),
+                    certificate_number="SEM-ACTIVE-1",
+                    is_latest_version=True,
+                ),
+                CertificateVersion(
+                    certificate_id=active_cert_2.id,
+                    version_no=1,
+                    issue_date=date(2026, 2, 1),
+                    expiry_date=date(2027, 2, 1),
+                    certificate_number="SEM-ACTIVE-2",
+                    is_latest_version=True,
+                ),
+                CertificateVersion(
+                    certificate_id=expiring_cert.id,
+                    version_no=1,
+                    issue_date=date(2026, 3, 1),
+                    expiry_date=date(2026, 9, 20),
+                    certificate_number="SEM-EXP-1",
+                    is_latest_version=True,
+                ),
+            ]
+        )
+        session.add_all(
+            [
+                ChangeRequest(
+                    site_id=multi_match_site.id,
+                    legacy_change_request_id=8101,
+                    scope_label="Thay đổi A",
+                    submitted_on=date(2026, 8, 1),
+                    state=ChangeRequestState.RECEIVED,
+                ),
+                ChangeRequest(
+                    site_id=multi_match_site.id,
+                    legacy_change_request_id=8102,
+                    scope_label="Thay đổi B",
+                    submitted_on=date(2026, 8, 2),
+                    state=ChangeRequestState.UNDER_REVIEW,
+                ),
+            ]
+        )
+        session.commit()
+
+    app = create_app(database_url)
+    dashboard_route = next(route for route in app.routes if getattr(route, "path", "") == "/dashboard/summary")
+
+    with Session(engine) as session:
+        dashboard_payload = dashboard_route.endpoint(
+            queue_limit=8,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+
+    assert dashboard_payload.active_cases == 1
+    assert dashboard_payload.waiting_inspection == 1
+    assert dashboard_payload.waiting_certificate_decision == 1
+    assert dashboard_payload.active_certificates == 1
+    assert dashboard_payload.expiring_certificates_90_days == 1
+    assert dashboard_payload.incomplete_changes == 1
+
+
 def test_dashboard_summary_and_workspace_routes_return_business_read_models(tmp_path):
     database_path = tmp_path / "dashboard-workspace.sqlite"
     database_url = f"sqlite:///{database_path.as_posix()}"

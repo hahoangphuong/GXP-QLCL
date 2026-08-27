@@ -237,11 +237,20 @@ describe("App Slice A shell", () => {
   it("keeps dashboard drilldowns aligned with metric predicates", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
 
-    const { container } = renderApp(["/"]);
+    renderApp(["/"]);
 
     await screen.findByText("Bảng điều phối nghiệp vụ");
 
-    const metricLinks = Array.from(container.querySelectorAll(".metric-grid a")).map((node) => node.getAttribute("href"));
+    expect(screen.getByText("Cơ sở có hồ sơ đang xử lý")).toBeInTheDocument();
+    expect(screen.getByText("Cơ sở chờ kiểm tra")).toBeInTheDocument();
+    expect(screen.getByText("Cơ sở chờ cấp chứng nhận")).toBeInTheDocument();
+    expect(screen.getByText("Cơ sở có GCN còn hiệu lực")).toBeInTheDocument();
+    expect(screen.getByText("Cơ sở có GCN sắp hết hạn 90 ngày")).toBeInTheDocument();
+    expect(screen.getByText("Cơ sở có thay đổi chưa hoàn tất")).toBeInTheDocument();
+    expect(screen.getByText("Số cơ sở hiện có ít nhất một hồ sơ chưa đi vào trạng thái kết thúc.")).toBeInTheDocument();
+    expect(screen.getByText("Số cơ sở hiện có hồ sơ ở các trạng thái chuẩn bị hoặc đang kiểm tra.")).toBeInTheDocument();
+
+    const metricLinks = Array.from(document.querySelectorAll(".metric-grid a")).map((node) => node.getAttribute("href"));
     expect(metricLinks).toContain(
       "/search?case_state=draft&case_state=application_received&case_state=under_assessment&case_state=planned&case_state=decision_issued&case_state=inspection_in_progress&case_state=inspection_completed&case_state=awaiting_certificate_decision",
     );

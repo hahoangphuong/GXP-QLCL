@@ -56,6 +56,13 @@ def test_certificate_case_link_is_optional_for_administrative_reissue_flows():
     table = Certificate.__table__
     assert table.c.case_id.nullable is True
     assert table.c.issuance_basis.server_default is not None
+    assert "line_code" in table.c.keys()
+
+
+def test_certificate_version_preserves_standard_and_issuer_fields():
+    table = Base.metadata.tables["certificate_version"]
+    assert "applicable_standard" in table.c.keys()
+    assert "issuing_authority" in table.c.keys()
 
 
 def test_postgresql_ddl_renders_for_key_tables():
@@ -71,4 +78,4 @@ def test_legacy_result_narratives_use_text_columns():
 
 
 def test_expected_alembic_head_revision_tracks_latest_runtime_migration():
-    assert expected_alembic_head_revision() == "20260825_0003"
+    assert expected_alembic_head_revision() == "20260827_0004"

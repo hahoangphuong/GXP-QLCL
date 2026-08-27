@@ -100,6 +100,10 @@ def test_import_snapshot_populates_certificate_version_and_scope_from_legacy_db_
         assert version.certificate_number == "508/GCN-QLD"
         assert str(version.issue_date) == "2016-10-19"
         assert str(version.expiry_date) == "2019-10-19"
+        assert version.applicable_standard == "WHO-GMP"
+        assert version.issuing_authority == "Cục Quản lý Dược Việt Nam"
+        certificate = session.scalars(select(Certificate)).one()
+        assert certificate.line_code == "A"
         assert scope.scope_text == "* Thuốc viên nén không bao;\n* Thuốc viên nang cứng."
         assert scope.language_code == "vi"
         assert scope.sort_order == 0
@@ -807,5 +811,5 @@ def test_build_schema_length_audit_for_real_snapshot_has_no_remaining_bounded_ov
     snapshot = json.loads(Path("artifacts/phase3c/legacy_snapshot.json").read_text(encoding="utf-8"))
     audit_rows = build_schema_length_audit(snapshot)
 
-    assert len(audit_rows) == 31
+    assert len(audit_rows) == 34
     assert [row["target"] for row in audit_rows if row["rows_exceeding_limit"] > 0] == []

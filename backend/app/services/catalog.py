@@ -146,6 +146,15 @@ class CatalogReadService:
         return "\n".join(parts)
 
     @staticmethod
+    def _certificate_line_code(certificate: Certificate, linked_case: Case | None) -> str | None:
+        direct_line_code = CatalogReadService._normalize_line_code(certificate.line_code)
+        if direct_line_code is not None:
+            return direct_line_code
+        if linked_case is None:
+            return None
+        return CatalogReadService._normalize_line_code(linked_case.scope_code)
+
+    @staticmethod
     def _build_site_contexts(
         *,
         site_cases: list[Case],
@@ -175,14 +184,22 @@ class CatalogReadService:
 
         contexts: list[tuple[str | None, str | None, list[Case]]] = []
         for current_gxp in discovered_gxp_types:
-            current_groups = [
-                (line_code, cases)
+            case_line_codes = {
+                line_code
                 for (group_gxp, line_code), cases in grouped_cases.items()
-                if group_gxp == current_gxp
-            ]
-            if current_groups:
-                current_groups.sort(key=lambda item: (item[0] is None, item[0] or ""))
-                contexts.extend((current_gxp, line_code, cases) for line_code, cases in current_groups)
+                if group_gxp == current_gxp and cases
+            }
+            certificate_line_codes = {
+                row.line_code
+                for row in certificate_rows
+                if row.certificate.certificate_type == current_gxp and row.line_code is not None
+            }
+            all_line_codes = sorted(case_line_codes | certificate_line_codes, key=lambda item: item or "")
+            if all_line_codes:
+                for line_code in all_line_codes:
+                    contexts.append((current_gxp, line_code, grouped_cases.get((current_gxp, line_code), [])))
+            elif (current_gxp, None) in grouped_cases:
+                contexts.append((current_gxp, None, grouped_cases[(current_gxp, None)]))
             else:
                 contexts.append((current_gxp, None, []))
         return contexts
@@ -509,7 +526,7 @@ class CatalogReadService:
                 CertificateContextRow(
                     certificate=certificate,
                     version=version,
-                    line_code=self._normalize_line_code(None if linked_case is None else linked_case.scope_code),
+                    line_code=self._certificate_line_code(certificate, linked_case),
                     scope_summary=self._build_certificate_scope_summary(
                         certificate_scope_rows_by_version.get(version.id, [])
                     ),
@@ -606,8 +623,9 @@ class CatalogReadService:
             CertificateContextRow(
                 certificate=certificate,
                 version=version,
-                line_code=self._normalize_line_code(
-                    None if certificate.case_id is None or certificate.case_id not in case_by_id else case_by_id[certificate.case_id].scope_code
+                line_code=self._certificate_line_code(
+                    certificate,
+                    None if certificate.case_id is None or certificate.case_id not in case_by_id else case_by_id[certificate.case_id],
                 ),
                 scope_summary=self._build_certificate_scope_summary(certificate_scope_rows_by_version.get(version.id, [])),
             )

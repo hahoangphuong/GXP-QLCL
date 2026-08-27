@@ -215,7 +215,17 @@ LENGTH_AUDIT_RULES: tuple[LengthAuditRule, ...] = (
     LengthAuditRule("db.ktra", "B. bản", InspectionOutcome, "bbkt_reference", "reference", lambda row: row.get("bbkt_reference")),
     LengthAuditRule("db.ktra", "Kết quả", InspectionOutcome, "outcome_result", "narrative", lambda row: row.get("assessment_result")),
     LengthAuditRule("db.cc", "LOẠI CC", Certificate, "certificate_type", "short_label", lambda row: row.get("certificate_type")),
+    LengthAuditRule("db.cc", "MÃ DC", Certificate, "line_code", "identifier", lambda row: row.get("scope_code")),
     LengthAuditRule("db.cc", "Mã số CC", CertificateVersion, "certificate_number", "identifier", lambda row: row.get("certificate_number")),
+    LengthAuditRule(
+        "db.cc",
+        "TIÊU CHUẨN ÁP DỤNG",
+        CertificateVersion,
+        "applicable_standard",
+        "short_label",
+        lambda row: row.get("certificate_standard") or row.get("applicable_standard"),
+    ),
+    LengthAuditRule("db.cc", "Cơ quan cấp chứng nhận", CertificateVersion, "issuing_authority", "short_label", lambda row: row.get("certificate_issuer")),
     LengthAuditRule("db.dkkd", "ID CC", BusinessEligibilityVersion, "certificate_number", "identifier", lambda row: row.get("linked_certificate_ids")),
     LengthAuditRule(
         "db.dkkd",
@@ -1512,11 +1522,13 @@ def import_snapshot(
             skipped_rows["db.cc"].append({"legacy_id": legacy_id, "reason": "missing_site_fk", "raw_fk": row.get("site_legacy_id_ref", "")})
             continue
         identity_key = _source_identity_key(legacy_id, row_number)
+        certificate_standard = row.get("certificate_standard") or row.get("applicable_standard") or None
         expected_fields = {
             "legacy_certificate_id": legacy_id,
             "case_id": case_id,
             "site_id": site_id,
             "certificate_type": row.get("certificate_type") or "UNKNOWN",
+            "line_code": row.get("scope_code") or None,
             "issuance_basis": "inspection_case" if case_id is not None else "administrative_no_inspection",
             "latest_flag": is_latest_flag(row.get("latest_flag", "")),
             "latest_legacy_certificate_id": parse_int(row.get("latest_legacy_id", "")),
@@ -1547,6 +1559,8 @@ def import_snapshot(
                 "issue_date": parse_date(row.get("certificate_issue_date", "")),
                 "expiry_date": parse_date(row.get("certificate_expiry_date", "") or row.get("certificate_valid_until", "")),
                 "certificate_number": row.get("certificate_number") or None,
+                "applicable_standard": certificate_standard,
+                "issuing_authority": row.get("certificate_issuer") or None,
                 "is_latest_version": True,
             },
             build_entity=lambda: CertificateVersion(
@@ -1555,6 +1569,8 @@ def import_snapshot(
                 issue_date=parse_date(row.get("certificate_issue_date", "")),
                 expiry_date=parse_date(row.get("certificate_expiry_date", "") or row.get("certificate_valid_until", "")),
                 certificate_number=row.get("certificate_number") or None,
+                applicable_standard=certificate_standard,
+                issuing_authority=row.get("certificate_issuer") or None,
                 is_latest_version=True,
             ),
             options=resolved_options,

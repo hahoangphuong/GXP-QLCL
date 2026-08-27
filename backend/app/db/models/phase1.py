@@ -223,6 +223,7 @@ class Certificate(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
     case_id: Mapped[str | None] = mapped_column(ForeignKey("case.id"), index=True)
     site_id: Mapped[str] = mapped_column(ForeignKey("site.id"), nullable=False, index=True)
     certificate_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    line_code: Mapped[str | None] = mapped_column(String(32))
     issuance_basis: Mapped[str] = mapped_column(
         String(64),
         nullable=False,
@@ -241,6 +242,8 @@ class CertificateVersion(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Ba
     issue_date: Mapped[date | None] = mapped_column(Date)
     expiry_date: Mapped[date | None] = mapped_column(Date)
     certificate_number: Mapped[str | None] = mapped_column(String(128))
+    applicable_standard: Mapped[str | None] = mapped_column(String(255))
+    issuing_authority: Mapped[str | None] = mapped_column(String(255))
     is_latest_version: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     __table_args__ = (UniqueConstraint("certificate_id", "version_no"),)
 

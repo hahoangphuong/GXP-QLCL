@@ -799,7 +799,7 @@ def test_imported_legacy_certificate_scope_flows_through_catalog_search(tmp_path
                 "MỚI NHẤT": "o",
                 "ID MỚI NHẤT": "",
                 "LOẠI CC": "GMP",
-                "ID ĐỢT KTRA": "101",
+                "ID ĐỢT KTRA": "",
                 "ID CƠ SỞ": "10",
                 "MÃ DC": "B",
                 "Mã số CC": "GCN-B",
@@ -839,6 +839,84 @@ def test_imported_legacy_certificate_scope_flows_through_catalog_search(tmp_path
     assert [row.current_certificate_number for row in search_payload] == ["GCN-A", "GCN-B"]
     assert [row.certificate_scope_summary for row in search_payload] == ["Dây chuyền viên nén A", "Dây chuyền thuốc bột B"]
     assert [row.line_code for row in search_payload] == ["A", "B"]
+
+
+def test_catalog_prefers_certificate_line_code_over_linked_case_scope_when_legacy_row_disagrees(tmp_path):
+    database_path = tmp_path / "catalog-certificate-line-owner.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+    snapshot = {
+        "db.cty": [
+            {"ID": "1", "TÊN CÔNG TY": "Công ty Lệch Mã", "COMPANY NAME": "Mismatch Co", "TÊN VIẾT TẮT": "MIS"},
+        ],
+        "db.cso": [
+            {
+                "ID": "10",
+                "ID Cty": "1",
+                "TÊN CƠ SỞ": "Nhà máy Mismatch",
+                "SITE NAME": "Mismatch Plant",
+                "ĐỊA CHỈ CƠ SỞ": "Hà Nội",
+                "SITE ADDRESS": "Ha Noi",
+                "TỈNH/TP": "Hà Nội",
+                "MÃ CS GMP": "1.1",
+            },
+        ],
+        "db.ktra": [
+            {
+                "ID": "100",
+                "LOẠI KT": "GMP",
+                "ID CƠ SỞ": "10",
+                "MÃ DC": "B",
+                "TIÊU CHUẨN ÁP DỤNG": "WHO-GMP",
+                "LOẠI KIỂM TRA": "Định kỳ",
+            },
+        ],
+        "db.cc": [
+            {
+                "ID": "200",
+                "MỚI NHẤT": "o",
+                "ID MỚI NHẤT": "",
+                "LOẠI CC": "GMP",
+                "ID ĐỢT KTRA": "100",
+                "ID CƠ SỞ": "10",
+                "MÃ DC": "A",
+                "Mã số CC": "GCN-MISMATCH",
+                "Ngày cấp CC": "2026-03-01 00:00:00+00:00",
+                "Hết hạn CC": "2028-03-01 00:00:00+00:00",
+                "PHẠM VI CHỨNG NHẬN": "Dây chuyền A từ certificate owner",
+                "TIÊU CHUẨN ÁP DỤNG": "WHO-GMP",
+            },
+        ],
+        "db.dkkd": [],
+        "db.Tdoi": [],
+        "db.Tdoi2": [],
+    }
+
+    with Session(engine) as session:
+        import_snapshot(session, snapshot)
+        session.commit()
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        search_payload = service.search_facilities(
+            session,
+            q=None,
+            gxp_type="GMP",
+            province=None,
+            case_states=None,
+            change_request_states=None,
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            limit=80,
+        )
+
+    assert [row["context_code"] for row in search_payload] == ["1.1A", "1.1B"]
+    assert search_payload[0]["line_code"] == "A"
+    assert search_payload[0]["current_certificate_number"] == "GCN-MISMATCH"
+    assert search_payload[0]["certificate_scope_summary"] == "Dây chuyền A từ certificate owner"
+    assert search_payload[1]["line_code"] == "B"
+    assert search_payload[1]["current_certificate_number"] is None
 
 
 def test_search_facility_candidate_query_projects_order_by_columns_for_postgresql():

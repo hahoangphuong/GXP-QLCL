@@ -112,6 +112,7 @@ export type FacilityWorkspaceSummary = {
   address: string | null;
   province_name: string | null;
   gxp_types: string[];
+  selected_gxp_type: string | null;
   current_state: string | null;
   primary_standard: string | null;
   current_certificate_number: string | null;

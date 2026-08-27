@@ -1,5 +1,6 @@
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
+import { formatStatusLabel } from "../../lib/presentation";
 import type { CaseDetail, FacilityHistoryItem } from "../../types";
 
 const EVENT_TABS = ["Hồ sơ", "Kiểm tra", "Khắc phục", "Xử lý", "Chứng nhận GPs", "Chứng nhận khác"] as const;
@@ -7,11 +8,15 @@ const EVENT_TABS = ["Hồ sơ", "Kiểm tra", "Khắc phục", "Xử lý", "Ch�
 export function EventWorkspace({
   selectedHistory,
   caseDetail,
+  caseDetailLoading,
+  caseDetailError,
   activeTab,
   onTabChange,
 }: {
   selectedHistory: FacilityHistoryItem | null;
   caseDetail: CaseDetail | null;
+  caseDetailLoading: boolean;
+  caseDetailError: string | null;
   activeTab: string;
   onTabChange: (tab: string) => void;
 }) {
@@ -28,7 +33,7 @@ export function EventWorkspace({
     <section className="panel">
       <div className="panel-header">
         <div>
-          <p className="eyebrow">Business workspace</p>
+          <p className="eyebrow">Không gian xử lý</p>
           <h3>{selectedHistory.reference_code ?? selectedHistory.event_type}</h3>
         </div>
         <StatusBadge value={selectedHistory.state} />
@@ -76,7 +81,7 @@ export function EventWorkspace({
           </div>
           <div>
             <span>Trạng thái</span>
-            <strong>{caseDetail.state}</strong>
+            <strong>{formatStatusLabel(caseDetail.state)}</strong>
           </div>
           <div>
             <span>Loại kiểm tra</span>
@@ -95,8 +100,15 @@ export function EventWorkspace({
             </strong>
           </div>
         </div>
-      ) : (
+      ) : caseDetailLoading ? (
         <EmptyState title="Đang tải chi tiết hồ sơ" description="Đang lấy thông tin hồ sơ được chọn từ API có xác thực." />
+      ) : caseDetailError ? (
+        <EmptyState
+          title="Không tải được chi tiết hồ sơ"
+          description="Chi tiết hồ sơ hiện không sẵn sàng cho lựa chọn đang mở. Vui lòng chọn lại hoặc thử sau."
+        />
+      ) : (
+        <EmptyState title="Chưa có chi tiết hồ sơ" description="Backend chưa trả dữ liệu chi tiết cho lựa chọn hiện tại." />
       )}
     </section>
   );

@@ -3,12 +3,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getAppStatus,
   getCaseDetail,
+  getFacilityWorkspace,
   getDocumentDetail,
   getGenerationRun,
   listCases,
   listCompanies,
   listSites,
   prepareDocument,
+  searchFacilities,
   renderTemplateDocx,
 } from "./api";
 
@@ -180,5 +182,37 @@ describe("frontend API routing contract", () => {
       }),
     );
     expect(fetchMock.mock.calls[0][1].headers["X-Auth-User"]).toBeUndefined();
+  });
+
+  it("encodes repeated facility search filters for exact drilldown predicates", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await searchFacilities(
+      {
+        gxp_type: "GMP",
+        case_state: ["planned", "decision_issued", "inspection_in_progress"],
+        change_request_state: ["received", "under_review"],
+        certificate_state: "active",
+        certificate_expiring_within_days: 90,
+        limit: 80,
+      },
+      { username: "operator.local", role: "manager" },
+      true,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/search/facilities?gxp_type=GMP&case_state=planned&case_state=decision_issued&case_state=inspection_in_progress&change_request_state=received&change_request_state=under_review&certificate_state=active&certificate_expiring_within_days=90&limit=80",
+      expect.any(Object),
+    );
+  });
+
+  it("passes gxp_type through facility workspace requests", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: { summary: {}, history: [] } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getFacilityWorkspace("site-123", { username: "operator.local", role: "manager" }, true, "GLP");
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/sites/site-123/workspace?gxp_type=GLP", expect.any(Object));
   });
 });

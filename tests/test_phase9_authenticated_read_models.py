@@ -1,4 +1,5 @@
 import ast
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,12 +15,43 @@ from backend.app.auth import (
     resolve_mapped_role,
 )
 from backend.app.db.base import Base
-from backend.app.db.enums import CaseState
-from backend.app.db.models.phase1 import AppUser, AppUserRole, Case, Company, RbacPermission, RbacRole, RbacRolePermission, Site
+from backend.app.db.enums import CaseState, ChangeRequestState
+from backend.app.db.models.phase1 import (
+    AppUser,
+    AppUserRole,
+    Case,
+    Certificate,
+    CertificateVersion,
+    ChangeRequest,
+    Company,
+    InspectionEvent,
+    InspectionEventType,
+    RbacPermission,
+    RbacRole,
+    RbacRolePermission,
+    Site,
+)
 from backend.app.main import create_app
 from backend.app.read_models import CaseDetailRead, CaseRead, CompanyDetailRead, CompanyRead, SiteDetailRead, SiteRead
 
 ROOT = Path(__file__).resolve().parents[1]
+
+ACTIVE_CASE_STATES = [
+    "draft",
+    "application_received",
+    "under_assessment",
+    "planned",
+    "decision_issued",
+    "inspection_in_progress",
+    "inspection_completed",
+    "awaiting_certificate_decision",
+]
+
+WAITING_INSPECTION_CASE_STATES = [
+    "planned",
+    "decision_issued",
+    "inspection_in_progress",
+]
 
 
 def test_build_authenticated_user_accepts_valid_stub_headers():
@@ -267,8 +299,6 @@ def test_get_case_detail_returns_row_version_and_matches_database_value(tmp_path
         )
         session.add(case)
         session.commit()
-        site_id = site.id
-        site_id = site.id
         case_id = case.id
         expected_row_version = case.row_version
 
@@ -313,6 +343,112 @@ def test_get_case_detail_returns_row_version_and_matches_database_value(tmp_path
     assert list_item["state"] == payload["state"]
 
 
+def seed_cross_gxp_catalog(session: Session):
+    company = Company(legal_name="Công ty GxP", short_name="GXP")
+    session.add(company)
+    session.flush()
+    site = Site(
+        company_id=company.id,
+        site_name="Cơ sở đa GxP",
+        province_name="Hà Nội",
+        legacy_site_id=501,
+        legacy_gmp_site_code="GMP-501",
+        legacy_glp_site_code="GLP-501",
+        site_address="KCN Bắc Thăng Long",
+    )
+    session.add(site)
+    session.flush()
+
+    gmp_case = Case(
+        site_id=site.id,
+        gxp_type="GMP",
+        state=CaseState.INSPECTION_COMPLETED,
+        legacy_inspection_id=1001,
+        legacy_inspection_code="KT-GMP-2025",
+        applicable_standard="WHO-GMP",
+        inspection_type="Định kỳ",
+        opened_year=2025,
+    )
+    glp_case = Case(
+        site_id=site.id,
+        gxp_type="GLP",
+        state=CaseState.AWAITING_CERTIFICATE_DECISION,
+        legacy_inspection_id=2002,
+        legacy_inspection_code="KT-GLP-2026",
+        applicable_standard="GLP-WHO",
+        inspection_type="Tái đánh giá",
+        opened_year=2026,
+    )
+    session.add_all([gmp_case, glp_case])
+    session.flush()
+
+    session.add_all(
+        [
+            InspectionEvent(
+                case_id=gmp_case.id,
+                event_type=InspectionEventType.INSPECTION_EXECUTED,
+                occurred_at=datetime(2025, 5, 20, tzinfo=timezone.utc),
+            ),
+            InspectionEvent(
+                case_id=glp_case.id,
+                event_type=InspectionEventType.INSPECTION_EXECUTED,
+                occurred_at=datetime(2026, 7, 15, tzinfo=timezone.utc),
+            ),
+        ]
+    )
+
+    gmp_certificate = Certificate(
+        site_id=site.id,
+        case_id=gmp_case.id,
+        certificate_type="GMP",
+        latest_flag=True,
+    )
+    glp_certificate = Certificate(
+        site_id=site.id,
+        case_id=glp_case.id,
+        certificate_type="GLP",
+        latest_flag=True,
+    )
+    session.add_all([gmp_certificate, glp_certificate])
+    session.flush()
+    session.add_all(
+        [
+            CertificateVersion(
+                certificate_id=gmp_certificate.id,
+                version_no=1,
+                issue_date=date(2025, 6, 1),
+                expiry_date=date(2027, 6, 1),
+                certificate_number="GCN-GMP-001",
+                is_latest_version=True,
+            ),
+            CertificateVersion(
+                certificate_id=glp_certificate.id,
+                version_no=1,
+                issue_date=date(2026, 8, 1),
+                expiry_date=date(2026, 11, 15),
+                certificate_number="GCN-GLP-009",
+                is_latest_version=True,
+            ),
+        ]
+    )
+
+    received_change = ChangeRequest(
+        site_id=site.id,
+        legacy_change_request_id=9001,
+        scope_label="Mở rộng kho",
+        submitted_on=date(2026, 8, 10),
+        state=ChangeRequestState.RECEIVED,
+    )
+    session.add(received_change)
+    session.commit()
+
+    return {
+        "site_id": site.id,
+        "gmp_case_id": gmp_case.id,
+        "glp_case_id": glp_case.id,
+    }
+
+
 def test_catalog_manual_response_constructors_populate_all_required_schema_fields():
     router_path = ROOT / "backend" / "app" / "api" / "routers" / "catalog.py"
     tree = ast.parse(router_path.read_text(encoding="utf-8"))
@@ -344,6 +480,242 @@ def test_catalog_manual_response_constructors_populate_all_required_schema_field
         assert keyword_names == required_fields, f"{model_name} constructor fields drifted from response schema"
 
     assert seen_models == set(models)
+
+
+def test_search_facilities_and_workspace_keep_current_semantics_inside_selected_gxp(tmp_path):
+    database_path = tmp_path / "catalog-cross-gxp.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        seeded = seed_cross_gxp_catalog(session)
+
+    app = create_app(database_url)
+    search_route = next(route for route in app.routes if getattr(route, "path", "") == "/search/facilities")
+    workspace_route = next(route for route in app.routes if getattr(route, "path", "") == "/sites/{site_id}/workspace")
+
+    with Session(engine) as session:
+        gmp_search = search_route.endpoint(
+            q=None,
+            gxp_type="GMP",
+            province=None,
+            case_state=[],
+            change_request_state=[],
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            limit=50,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+        glp_search = search_route.endpoint(
+            q=None,
+            gxp_type="GLP",
+            province=None,
+            case_state=[],
+            change_request_state=[],
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            limit=50,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+        gmp_workspace = workspace_route.endpoint(
+            site_id=seeded["site_id"],
+            gxp_type="GMP",
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+        glp_workspace = workspace_route.endpoint(
+            site_id=seeded["site_id"],
+            gxp_type="GLP",
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+
+    assert len(gmp_search) == 1
+    assert gmp_search[0].primary_standard == "WHO-GMP"
+    assert gmp_search[0].last_inspection_code == "KT-GMP-2025"
+    assert gmp_search[0].current_state == "inspection_completed"
+    assert gmp_search[0].current_certificate_number == "GCN-GMP-001"
+
+    assert len(glp_search) == 1
+    assert glp_search[0].primary_standard == "GLP-WHO"
+    assert glp_search[0].last_inspection_code == "KT-GLP-2026"
+    assert glp_search[0].current_state == "awaiting_certificate_decision"
+    assert glp_search[0].current_certificate_number == "GCN-GLP-009"
+
+    assert gmp_workspace.summary.selected_gxp_type == "GMP"
+    assert gmp_workspace.summary.primary_standard == "WHO-GMP"
+    assert gmp_workspace.summary.current_state == "inspection_completed"
+    assert gmp_workspace.summary.current_certificate_number == "GCN-GMP-001"
+    assert [item.reference_code for item in gmp_workspace.history if item.source_type == "case"] == ["KT-GMP-2025"]
+
+    assert glp_workspace.summary.selected_gxp_type == "GLP"
+    assert glp_workspace.summary.primary_standard == "GLP-WHO"
+    assert glp_workspace.summary.current_state == "awaiting_certificate_decision"
+    assert glp_workspace.summary.current_certificate_number == "GCN-GLP-009"
+    assert [item.reference_code for item in glp_workspace.history if item.source_type == "case"] == ["KT-GLP-2026"]
+
+
+def test_dashboard_metric_drilldowns_match_search_predicates(tmp_path):
+    database_path = tmp_path / "dashboard-drilldown.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        company = Company(legal_name="Công ty Drilldown", short_name="CDD")
+        session.add(company)
+        session.flush()
+
+        active_site = Site(company_id=company.id, site_name="Site active", legacy_site_id=1)
+        waiting_site = Site(company_id=company.id, site_name="Site waiting", legacy_site_id=2)
+        decision_site = Site(company_id=company.id, site_name="Site decision", legacy_site_id=3)
+        active_cert_site = Site(company_id=company.id, site_name="Site cert", legacy_site_id=4)
+        expiring_cert_site = Site(company_id=company.id, site_name="Site expiring", legacy_site_id=5)
+        change_site = Site(company_id=company.id, site_name="Site change", legacy_site_id=6)
+        session.add_all([active_site, waiting_site, decision_site, active_cert_site, expiring_cert_site, change_site])
+        session.flush()
+
+        session.add_all(
+            [
+                Case(site_id=active_site.id, gxp_type="GMP", state=CaseState.UNDER_ASSESSMENT, opened_year=2026),
+                Case(site_id=waiting_site.id, gxp_type="GMP", state=CaseState.PLANNED, opened_year=2026),
+                Case(
+                    site_id=decision_site.id,
+                    gxp_type="GLP",
+                    state=CaseState.AWAITING_CERTIFICATE_DECISION,
+                    opened_year=2026,
+                ),
+            ]
+        )
+        session.flush()
+
+        active_cert = Certificate(site_id=active_cert_site.id, certificate_type="GMP", latest_flag=True)
+        expiring_cert = Certificate(site_id=expiring_cert_site.id, certificate_type="GLP", latest_flag=True)
+        session.add_all([active_cert, expiring_cert])
+        session.flush()
+        session.add_all(
+            [
+                CertificateVersion(
+                    certificate_id=active_cert.id,
+                    version_no=1,
+                    issue_date=date(2026, 1, 1),
+                    expiry_date=date(2027, 1, 1),
+                    certificate_number="CERT-ACTIVE",
+                    is_latest_version=True,
+                ),
+                CertificateVersion(
+                    certificate_id=expiring_cert.id,
+                    version_no=1,
+                    issue_date=date(2026, 6, 1),
+                    expiry_date=date.today() + timedelta(days=30),
+                    certificate_number="CERT-EXPIRING",
+                    is_latest_version=True,
+                ),
+            ]
+        )
+        session.add(
+            ChangeRequest(
+                site_id=change_site.id,
+                legacy_change_request_id=7001,
+                scope_label="Đổi người phụ trách",
+                submitted_on=date.today(),
+                state=ChangeRequestState.UNDER_REVIEW,
+            )
+        )
+        session.commit()
+
+    app = create_app(database_url)
+    dashboard_route = next(route for route in app.routes if getattr(route, "path", "") == "/dashboard/summary")
+    search_route = next(route for route in app.routes if getattr(route, "path", "") == "/search/facilities")
+
+    with Session(engine) as session:
+        dashboard_payload = dashboard_route.endpoint(
+            queue_limit=8,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+        active_cases = search_route.endpoint(
+            q=None,
+            gxp_type=None,
+            province=None,
+            case_state=ACTIVE_CASE_STATES,
+            change_request_state=[],
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            limit=50,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+        waiting_inspection = search_route.endpoint(
+            q=None,
+            gxp_type=None,
+            province=None,
+            case_state=WAITING_INSPECTION_CASE_STATES,
+            change_request_state=[],
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            limit=50,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+        waiting_certificate_decision = search_route.endpoint(
+            q=None,
+            gxp_type=None,
+            province=None,
+            case_state=["awaiting_certificate_decision"],
+            change_request_state=[],
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            limit=50,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+        active_certificates = search_route.endpoint(
+            q=None,
+            gxp_type=None,
+            province=None,
+            case_state=[],
+            change_request_state=[],
+            certificate_state="active",
+            certificate_expiring_within_days=None,
+            limit=50,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+        expiring_certificates = search_route.endpoint(
+            q=None,
+            gxp_type=None,
+            province=None,
+            case_state=[],
+            change_request_state=[],
+            certificate_state=None,
+            certificate_expiring_within_days=90,
+            limit=50,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+        incomplete_changes = search_route.endpoint(
+            q=None,
+            gxp_type=None,
+            province=None,
+            case_state=[],
+            change_request_state=["received", "under_review"],
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            limit=50,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+
+    assert dashboard_payload.active_cases == len(active_cases)
+    assert dashboard_payload.waiting_inspection == len(waiting_inspection)
+    assert dashboard_payload.waiting_certificate_decision == len(waiting_certificate_decision)
+    assert dashboard_payload.active_certificates == len(active_certificates)
+    assert dashboard_payload.expiring_certificates_90_days == len(expiring_certificates)
+    assert dashboard_payload.incomplete_changes == len(incomplete_changes)
 
 
 def test_dashboard_summary_and_workspace_routes_return_business_read_models(tmp_path):
@@ -395,7 +767,8 @@ def test_dashboard_summary_and_workspace_routes_return_business_read_models(tmp_
             q="Nhà máy",
             gxp_type="GMP",
             province="Hà Nội",
-            case_state="awaiting_certificate_decision",
+            case_state=["awaiting_certificate_decision"],
+            change_request_state=[],
             certificate_state=None,
             certificate_expiring_within_days=None,
             limit=50,
@@ -404,6 +777,7 @@ def test_dashboard_summary_and_workspace_routes_return_business_read_models(tmp_
         )
         workspace_payload = workspace_route.endpoint(
             site_id=site_id,
+            gxp_type="GMP",
             session=session,
             user=build_authenticated_user("reader01", "reader"),
         )

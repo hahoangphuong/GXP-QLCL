@@ -1,3 +1,5 @@
+import { CASE_STATE_OPTIONS, formatStatusLabel } from "../../lib/presentation";
+
 type Filters = {
   query: string;
   gxpType: string;
@@ -21,7 +23,7 @@ export function SearchToolbar({
       <div className="panel-header">
         <div>
           <p className="eyebrow">Tra cứu</p>
-          <h3>Facility master list</h3>
+          <h3>Danh sách cơ sở</h3>
         </div>
         <button className="secondary" onClick={onClear} type="button">
           Xóa lọc
@@ -56,14 +58,11 @@ export function SearchToolbar({
           <span>Trạng thái hồ sơ</span>
           <select value={filters.caseState} onChange={(event) => onChange("caseState", event.target.value)}>
             <option value="">Tất cả</option>
-            <option value="application_received">application_received</option>
-            <option value="under_assessment">under_assessment</option>
-            <option value="planned">planned</option>
-            <option value="decision_issued">decision_issued</option>
-            <option value="inspection_in_progress">inspection_in_progress</option>
-            <option value="inspection_completed">inspection_completed</option>
-            <option value="awaiting_certificate_decision">awaiting_certificate_decision</option>
-            <option value="certified">certified</option>
+            {CASE_STATE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {formatStatusLabel(option)}
+              </option>
+            ))}
           </select>
         </label>
         <label>

@@ -13,7 +13,6 @@ import { getCaseDetail, getFacilityWorkspace, searchFacilities } from "../lib/ap
 import type { CaseDetail, FacilitySearchResult, FacilityWorkspace } from "../types";
 
 const DEFAULT_TAB = "Hồ sơ";
-
 export function SearchPage({
   access,
   statusError,
@@ -25,11 +24,14 @@ export function SearchPage({
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [gxpType, setGxpType] = useState(searchParams.get("gxp_type") ?? "ALL");
   const [province, setProvince] = useState(searchParams.get("province") ?? "");
-  const [caseState, setCaseState] = useState(searchParams.get("case_state") ?? "");
+  const initialCaseStates = searchParams.getAll("case_state");
+  const [caseStates, setCaseStates] = useState<string[]>(initialCaseStates);
   const [certificateState, setCertificateState] = useState(searchParams.get("certificate_state") ?? "");
   const [certificateExpiringWithinDays, setCertificateExpiringWithinDays] = useState(
     searchParams.get("certificate_expiring_within_days") ?? "",
   );
+  const initialChangeRequestStates = searchParams.getAll("change_request_state");
+  const [changeRequestStates, setChangeRequestStates] = useState<string[]>(initialChangeRequestStates);
   const deferredQuery = useDeferredValue(query);
 
   const [results, setResults] = useState<FacilitySearchResult[]>([]);
@@ -41,8 +43,10 @@ export function SearchPage({
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const [selectedCaseDetail, setSelectedCaseDetail] = useState<CaseDetail | null>(null);
+  const [caseDetailLoading, setCaseDetailLoading] = useState(false);
   const [caseDetailError, setCaseDetailError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(DEFAULT_TAB);
+  const caseState = caseStates.length === 1 ? caseStates[0] : "";
 
   useEffect(() => {
     const nextParams = new URLSearchParams();
@@ -55,8 +59,11 @@ export function SearchPage({
     if (province.trim()) {
       nextParams.set("province", province.trim());
     }
-    if (caseState) {
-      nextParams.set("case_state", caseState);
+    for (const value of caseStates) {
+      nextParams.append("case_state", value);
+    }
+    for (const value of changeRequestStates) {
+      nextParams.append("change_request_state", value);
     }
     if (certificateState) {
       nextParams.set("certificate_state", certificateState);
@@ -72,7 +79,8 @@ export function SearchPage({
     deferredQuery,
     gxpType,
     province,
-    caseState,
+    caseStates,
+    changeRequestStates,
     certificateState,
     certificateExpiringWithinDays,
     selectedSiteId,
@@ -92,7 +100,8 @@ export function SearchPage({
         q: deferredQuery.trim() || undefined,
         gxp_type: gxpType === "ALL" ? null : gxpType,
         province: province.trim() || undefined,
-        case_state: caseState || null,
+        case_state: caseStates,
+        change_request_state: changeRequestStates,
         certificate_state: certificateState || null,
         certificate_expiring_within_days: certificateExpiringWithinDays ? Number(certificateExpiringWithinDays) : null,
         limit: 80,
@@ -126,7 +135,17 @@ export function SearchPage({
     return () => {
       cancelled = true;
     };
-  }, [access, deferredQuery, gxpType, province, caseState, certificateState, certificateExpiringWithinDays, selectedSiteId]);
+  }, [
+    access,
+    deferredQuery,
+    gxpType,
+    province,
+    caseStates,
+    changeRequestStates,
+    certificateState,
+    certificateExpiringWithinDays,
+    selectedSiteId,
+  ]);
 
   useEffect(() => {
     if (!selectedSiteId || !access.canLoadSecureApi) {
@@ -135,7 +154,13 @@ export function SearchPage({
     }
     let cancelled = false;
     setWorkspaceLoading(true);
-    void getFacilityWorkspace(selectedSiteId, access.auth, access.useStubAuth, access.bearerToken)
+    void getFacilityWorkspace(
+      selectedSiteId,
+      access.auth,
+      access.useStubAuth,
+      gxpType === "ALL" ? null : gxpType,
+      access.bearerToken,
+    )
       .then((payload) => {
         if (!cancelled) {
           setWorkspace(payload);
@@ -155,27 +180,32 @@ export function SearchPage({
     return () => {
       cancelled = true;
     };
-  }, [access, selectedSiteId]);
+  }, [access, gxpType, selectedSiteId]);
 
   const selectedHistory = workspace?.history.find((item) => item.id === selectedHistoryId) ?? null;
 
   useEffect(() => {
+    setSelectedCaseDetail(null);
+    setCaseDetailError(null);
+    setCaseDetailLoading(false);
     if (!selectedHistory || selectedHistory.source_type !== "case") {
-      setSelectedCaseDetail(null);
-      setCaseDetailError(null);
       return;
     }
     let cancelled = false;
+    setCaseDetailLoading(true);
     void getCaseDetail(selectedHistory.id, access.auth, access.useStubAuth, access.bearerToken)
       .then((payload) => {
         if (!cancelled) {
           setSelectedCaseDetail(payload);
           setCaseDetailError(null);
+          setCaseDetailLoading(false);
         }
       })
       .catch((error: Error) => {
         if (!cancelled) {
+          setSelectedCaseDetail(null);
           setCaseDetailError(error.message);
+          setCaseDetailLoading(false);
         }
       });
     return () => {
@@ -192,7 +222,8 @@ export function SearchPage({
       } else if (field === "province") {
         setProvince(value);
       } else if (field === "caseState") {
-        setCaseState(value);
+        setCaseStates(value ? [value] : []);
+        setChangeRequestStates([]);
       } else if (field === "certificateState") {
         setCertificateState(value);
       } else if (field === "certificateExpiringWithinDays") {
@@ -205,7 +236,8 @@ export function SearchPage({
     setQuery("");
     setGxpType("ALL");
     setProvince("");
-    setCaseState("");
+    setCaseStates([]);
+    setChangeRequestStates([]);
     setCertificateState("");
     setCertificateExpiringWithinDays("");
     setSelectedSiteId(null);
@@ -250,16 +282,14 @@ export function SearchPage({
           {workspaceError ? null : workspaceLoading || !workspace ? null : (
             <>
               <HistoryTable rows={workspace.history} selectedHistoryId={selectedHistoryId} onSelect={setSelectedHistoryId} />
-              {caseDetailError ? (
-                <ErrorState message={caseDetailError} />
-              ) : (
-                <EventWorkspace
-                  activeTab={activeTab}
-                  caseDetail={selectedCaseDetail}
-                  onTabChange={setActiveTab}
-                  selectedHistory={selectedHistory}
-                />
-              )}
+              <EventWorkspace
+                activeTab={activeTab}
+                caseDetail={selectedCaseDetail}
+                caseDetailError={caseDetailError}
+                caseDetailLoading={caseDetailLoading}
+                onTabChange={setActiveTab}
+                selectedHistory={selectedHistory}
+              />
             </>
           )}
         </>

@@ -150,7 +150,8 @@ def register_catalog_routes(app, session_factory) -> None:
         q: str | None = Query(default=None),
         gxp_type: str | None = Query(default=None),
         province: str | None = Query(default=None),
-        case_state: str | None = Query(default=None),
+        case_state: list[str] = Query(default=[]),
+        change_request_state: list[str] = Query(default=[]),
         certificate_state: str | None = Query(default=None),
         certificate_expiring_within_days: int | None = Query(default=None, ge=1, le=365),
         limit: int = Query(default=50, ge=1, le=200),
@@ -165,7 +166,8 @@ def register_catalog_routes(app, session_factory) -> None:
                 q=q,
                 gxp_type=gxp_type,
                 province=province,
-                case_state=case_state,
+                case_states=case_state,
+                change_request_states=change_request_state,
                 certificate_state=certificate_state,
                 certificate_expiring_within_days=certificate_expiring_within_days,
                 limit=limit,
@@ -174,11 +176,12 @@ def register_catalog_routes(app, session_factory) -> None:
 
     def get_facility_workspace(
         site_id: str,
+        gxp_type: str | None = Query(default=None),
         session: Session = dependency,
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
         require_role(user, ALLOWED_READ_ROLES)
-        return FacilityWorkspaceRead(**service.get_facility_workspace(session, site_id=site_id))
+        return FacilityWorkspaceRead(**service.get_facility_workspace(session, site_id=site_id, gxp_type=gxp_type))
 
     app.add_api_route("/companies", list_companies, methods=["GET"], response_model=list[CompanyRead], tags=["catalog"])
     app.add_api_route("/companies/{company_id}", get_company_detail, methods=["GET"], response_model=CompanyDetailRead, tags=["catalog"])

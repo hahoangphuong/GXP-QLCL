@@ -114,6 +114,7 @@ class FacilityWorkspaceSummaryRead(BaseModel):
     address: str | None
     province_name: str | None
     gxp_types: list[str]
+    selected_gxp_type: str | None
     current_state: str | None
     primary_standard: str | None
     current_certificate_number: str | None

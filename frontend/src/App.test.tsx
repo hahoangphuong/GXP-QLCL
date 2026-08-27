@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -86,6 +86,16 @@ function renderApp(initialEntries: string[] = ["/"]) {
   );
 }
 
+function deferredPromise<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("App Slice A shell", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -170,6 +180,7 @@ describe("App Slice A shell", () => {
         address: "Hà Nội",
         province_name: "Hà Nội",
         gxp_types: ["GMP"],
+        selected_gxp_type: "GMP",
         current_state: "awaiting_certificate_decision",
         primary_standard: "WHO-GMP",
         current_certificate_number: "GCN-001",
@@ -206,7 +217,8 @@ describe("App Slice A shell", () => {
     expect(await screen.findByText("Danh sách cơ sở")).toBeInTheDocument();
     expect(await screen.findByText("Ngữ cảnh cơ sở")).toBeInTheDocument();
     expect(await screen.findByText("Kiểm tra và thay đổi")).toBeInTheDocument();
-    expect(await screen.findByText("Business workspace")).toBeInTheDocument();
+    expect(await screen.findByText("Không gian xử lý")).toBeInTheDocument();
+    expect(screen.getAllByText("Chờ cấp chứng nhận").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Nhà máy A")).toHaveLength(2);
     expect(screen.getAllByText("KT-2026-GMP").length).toBeGreaterThan(0);
   });
@@ -220,5 +232,157 @@ describe("App Slice A shell", () => {
     expect(await screen.findByText("Yêu cầu thất bại")).toBeInTheDocument();
     expect(screen.getByText("403 Forbidden")).toBeInTheDocument();
     expect(screen.queryByText("Không có kết quả")).not.toBeInTheDocument();
+  });
+
+  it("keeps dashboard drilldowns aligned with metric predicates", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+
+    const { container } = renderApp(["/"]);
+
+    await screen.findByText("Bảng điều phối nghiệp vụ");
+
+    const metricLinks = Array.from(container.querySelectorAll(".metric-grid a")).map((node) => node.getAttribute("href"));
+    expect(metricLinks).toContain(
+      "/search?case_state=draft&case_state=application_received&case_state=under_assessment&case_state=planned&case_state=decision_issued&case_state=inspection_in_progress&case_state=inspection_completed&case_state=awaiting_certificate_decision",
+    );
+    expect(metricLinks).toContain("/search?case_state=planned&case_state=decision_issued&case_state=inspection_in_progress");
+    expect(metricLinks).toContain("/search?case_state=awaiting_certificate_decision");
+    expect(metricLinks).toContain("/search?certificate_state=active");
+    expect(metricLinks).toContain("/search?certificate_expiring_within_days=90");
+    expect(metricLinks).toContain("/search?change_request_state=received&change_request_state=under_review");
+  });
+
+  it("clears stale case detail while switching history items quickly", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue([
+      {
+        site_id: "site-1",
+        legacy_site_id: 101,
+        facility_code: "GMP-101",
+        facility_name: "Nhà máy A",
+        company_name: "Công ty A",
+        gxp_types: ["GMP"],
+        primary_standard: "WHO-GMP",
+        province_name: "Hà Nội",
+        last_inspection_code: "KT-2026-GMP-B",
+        current_state: "inspection_in_progress",
+        current_certificate_number: "GCN-001",
+        current_certificate_expiry: "2026-12-31",
+      },
+    ]);
+    apiMocks.getFacilityWorkspace.mockResolvedValue({
+      summary: {
+        site_id: "site-1",
+        legacy_site_id: 101,
+        facility_code: "GMP-101",
+        facility_name: "Nhà máy A",
+        company_name: "Công ty A",
+        address: "Hà Nội",
+        province_name: "Hà Nội",
+        gxp_types: ["GMP"],
+        selected_gxp_type: "GMP",
+        current_state: "inspection_in_progress",
+        primary_standard: "WHO-GMP/PIC/S",
+        current_certificate_number: "GCN-001",
+        current_certificate_expiry: "2026-12-31",
+      },
+      history: [
+        {
+          id: "case-a",
+          source_type: "case",
+          reference_code: "KT-2026-GMP-A",
+          event_type: "Định kỳ",
+          gxp_type: "GMP",
+          standard: "WHO-GMP",
+          occurred_on: "2026-08-01",
+          state: "planned",
+        },
+        {
+          id: "case-b",
+          source_type: "case",
+          reference_code: "KT-2026-GMP-B",
+          event_type: "Đột xuất",
+          gxp_type: "GMP",
+          standard: "PIC/S-GMP",
+          occurred_on: "2026-08-05",
+          state: "inspection_in_progress",
+        },
+      ],
+    });
+    const caseA = deferredPromise<{
+      id: string;
+      legacy_inspection_id: number;
+      legacy_inspection_code: string;
+      site_id: string;
+      gxp_type: string;
+      scope_code: string;
+      applicable_standard: string;
+      inspection_type: string;
+      state: string;
+      opened_year: number;
+    }>();
+    const caseB = deferredPromise<{
+      id: string;
+      legacy_inspection_id: number;
+      legacy_inspection_code: string;
+      site_id: string;
+      gxp_type: string;
+      scope_code: string;
+      applicable_standard: string;
+      inspection_type: string;
+      state: string;
+      opened_year: number;
+    }>();
+    apiMocks.getCaseDetail.mockImplementation((caseId: string) => {
+      if (caseId === "case-a") {
+        return caseA.promise;
+      }
+      if (caseId === "case-b") {
+        return caseB.promise;
+      }
+      return Promise.reject(new Error(`Unexpected case id ${caseId}`));
+    });
+
+    renderApp(["/search"]);
+
+    expect(await screen.findByText("Đang tải chi tiết hồ sơ")).toBeInTheDocument();
+
+    fireEvent.click((await screen.findByText("Đột xuất")).closest("tr") as HTMLElement);
+
+    expect(screen.getByText("Đang tải chi tiết hồ sơ")).toBeInTheDocument();
+
+    caseA.resolve({
+      id: "case-a",
+      legacy_inspection_id: 1,
+      legacy_inspection_code: "KT-2026-GMP-A",
+      site_id: "site-1",
+      gxp_type: "GMP",
+      scope_code: "WHO-GMP",
+      applicable_standard: "WHO-GMP",
+      inspection_type: "Định kỳ",
+      state: "planned",
+      opened_year: 2026,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Đang tải chi tiết hồ sơ")).toBeInTheDocument();
+    });
+
+    caseB.resolve({
+      id: "case-b",
+      legacy_inspection_id: 2,
+      legacy_inspection_code: "KT-2026-GMP-B",
+      site_id: "site-1",
+      gxp_type: "GMP",
+      scope_code: "PIC/S-GMP",
+      applicable_standard: "PIC/S-GMP",
+      inspection_type: "Đột xuất",
+      state: "inspection_in_progress",
+      opened_year: 2026,
+    });
+
+    expect(await screen.findByText("PIC/S-GMP")).toBeInTheDocument();
+    expect(screen.getAllByText("Đang kiểm tra").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Không tải được chi tiết hồ sơ")).not.toBeInTheDocument();
   });
 });

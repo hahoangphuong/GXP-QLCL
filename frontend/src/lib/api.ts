@@ -135,7 +135,8 @@ export function searchFacilities(
     q?: string;
     gxp_type?: string | null;
     province?: string;
-    case_state?: string | null;
+    case_state?: string[] | null;
+    change_request_state?: string[] | null;
     certificate_state?: string | null;
     certificate_expiring_within_days?: number | null;
     limit?: number;
@@ -154,8 +155,11 @@ export function searchFacilities(
   if (filters.province) {
     searchParams.set("province", filters.province);
   }
-  if (filters.case_state) {
-    searchParams.set("case_state", filters.case_state);
+  for (const caseState of filters.case_state ?? []) {
+    searchParams.append("case_state", caseState);
+  }
+  for (const changeRequestState of filters.change_request_state ?? []) {
+    searchParams.append("change_request_state", changeRequestState);
   }
   if (filters.certificate_state) {
     searchParams.set("certificate_state", filters.certificate_state);
@@ -178,9 +182,18 @@ export function getFacilityWorkspace(
   siteId: string,
   auth: StubAuthState,
   useStubAuth: boolean,
+  gxpType?: string | null,
   bearerToken?: string | null,
 ): Promise<FacilityWorkspace> {
-  return requestJson<FacilityWorkspace>(`/sites/${siteId}/workspace`, { auth, useStubAuth, bearerToken });
+  const searchParams = new URLSearchParams();
+  if (gxpType) {
+    searchParams.set("gxp_type", gxpType);
+  }
+  return requestJson<FacilityWorkspace>(buildApiPath(`/sites/${siteId}/workspace`, searchParams), {
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
 }
 
 export function getCaseDetail(

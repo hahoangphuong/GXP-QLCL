@@ -19,13 +19,13 @@ const METRICS = [
     key: "active_cases",
     label: "Hồ sơ đang xử lý",
     description: "Các hồ sơ chưa đi vào trạng thái kết thúc.",
-    to: "/search",
+    to: "/search?case_state=draft&case_state=application_received&case_state=under_assessment&case_state=planned&case_state=decision_issued&case_state=inspection_in_progress&case_state=inspection_completed&case_state=awaiting_certificate_decision",
   },
   {
     key: "waiting_inspection",
     label: "Chờ kiểm tra",
     description: "Hồ sơ ở các trạng thái chuẩn bị hoặc đang kiểm tra.",
-    to: "/search?case_state=inspection_in_progress",
+    to: "/search?case_state=planned&case_state=decision_issued&case_state=inspection_in_progress",
   },
   {
     key: "waiting_certificate_decision",
@@ -49,7 +49,7 @@ const METRICS = [
     key: "incomplete_changes",
     label: "Thay đổi chưa hoàn tất",
     description: "Yêu cầu thay đổi cơ sở còn đang mở.",
-    to: "/search",
+    to: "/search?change_request_state=received&change_request_state=under_review",
   },
 ] as const;
 

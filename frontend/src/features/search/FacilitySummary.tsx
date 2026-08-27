@@ -32,6 +32,10 @@ export function FacilitySummary({ summary }: { summary: FacilityWorkspaceSummary
           <dd>{summary.gxp_types.join(", ") || "Chưa có"}</dd>
         </div>
         <div>
+          <dt>Ngữ cảnh GxP</dt>
+          <dd>{summary.selected_gxp_type ?? "Toàn bộ"}</dd>
+        </div>
+        <div>
           <dt>Tỉnh/thành</dt>
           <dd>{summary.province_name ?? "Chưa có"}</dd>
         </div>

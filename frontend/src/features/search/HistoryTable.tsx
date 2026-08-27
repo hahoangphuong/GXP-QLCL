@@ -21,7 +21,7 @@ export function HistoryTable({
     <section className="panel">
       <div className="panel-header">
         <div>
-          <p className="eyebrow">History</p>
+          <p className="eyebrow">Lịch sử</p>
           <h3>Kiểm tra và thay đổi</h3>
         </div>
         <span className="panel-meta">{rows.length} sự kiện</span>

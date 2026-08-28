@@ -5,6 +5,7 @@ from pathlib import Path
 import argparse
 import json
 import os
+import stat
 import sys
 import tempfile
 
@@ -55,6 +56,7 @@ def _write_env_file(path: Path, values: dict[str, str]) -> None:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(payload)
         os.replace(temp_path, path)
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP)
     except Exception:
         try:
             os.unlink(temp_path)

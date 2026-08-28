@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -10,6 +12,8 @@ from backend.app.runtime_schema import expected_alembic_head_revision
 from tools import import_legacy_production as production_import
 from tools import prepare_rehearsal_deploy as rehearsal_deploy
 from tools.env_utils import parse_env_file
+
+
 def _prepare_target_db(path: Path, *, revision: str | None = None) -> str:
     database_url = f"sqlite:///{path.as_posix()}"
     engine = create_engine(database_url, future=True)
@@ -38,6 +42,8 @@ def _patch_runtime_contract(monkeypatch: pytest.MonkeyPatch, runtime_env: Path, 
         database_url_redacted=production_import._redact_database_url(database_url),
     )
     monkeypatch.setattr(rehearsal_deploy.production_import, "_load_runtime_database_contract", lambda path: (contract, {}))
+
+
 def test_prepare_rehearsal_runtime_env_rejects_canonical_target_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     runtime_env = tmp_path / "runtime.env"
     runtime_env.write_text("DB_NAME=gxp_qlcl\n", encoding="utf-8", newline="\n")
@@ -55,6 +61,15 @@ def test_prepare_rehearsal_runtime_env_preserves_canonical_env_and_points_runtim
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    chmod_calls: list[tuple[Path, int]] = []
+    original_chmod = rehearsal_deploy.os.chmod
+
+    def recording_chmod(path: str | os.PathLike[str], mode: int) -> None:
+        chmod_calls.append((Path(path), mode))
+        original_chmod(path, mode)
+
+    monkeypatch.setattr(rehearsal_deploy.os, "chmod", recording_chmod)
+
     canonical_env = tmp_path / "runtime.env"
     canonical_env.write_text(
         "\n".join(
@@ -92,6 +107,11 @@ def test_prepare_rehearsal_runtime_env_preserves_canonical_env_and_points_runtim
     written = parse_env_file(output_env)
     assert written["DB_NAME"] == "gxp_legacy_rehearsal"
     assert written["DATABASE_URL"] == target_url
+    assert chmod_calls[-1] == (output_env, 0o640)
+    if os.name == "posix":
+        assert stat.S_IMODE(output_env.stat().st_mode) == 0o640
+        assert output_env.stat().st_mode & stat.S_IROTH == 0
+        assert output_env.stat().st_mode & stat.S_IWOTH == 0
 
 
 def test_prepare_rehearsal_runtime_env_requires_expected_alembic_head(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -112,8 +132,23 @@ def test_prepare_rehearsal_runtime_env_requires_expected_alembic_head(tmp_path: 
 def test_rehearsal_deploy_script_runs_preflight_before_handing_off_to_production_switch() -> None:
     script_text = (Path(__file__).resolve().parents[1] / "infra" / "vm" / "deploy_rehearsal.sh").read_text(encoding="utf-8")
 
+    assert 'load_runtime_env "${CANONICAL_RUNTIME_ENV_FILE}"' in script_text
+    assert 'REHEARSAL_DEPLOY_TEMP_DIR="$(mktemp -d)"' in script_text
+    assert 'chown "root:${VM_APP_GROUP}" "${REHEARSAL_DEPLOY_TEMP_DIR}"' in script_text
+    assert 'chmod 0750 "${REHEARSAL_DEPLOY_TEMP_DIR}"' in script_text
     assert 'python3 "${REPO_ROOT}/tools/prepare_rehearsal_deploy.py" \\' in script_text
+    assert 'chown "root:${VM_APP_GROUP}" "${REHEARSAL_RUNTIME_ENV_FILE}" "${REHEARSAL_PLAN_JSON}"' in script_text
+    assert 'chmod 0640 "${REHEARSAL_RUNTIME_ENV_FILE}" "${REHEARSAL_PLAN_JSON}"' in script_text
     assert 'VM_RUNTIME_ENV_FILE="${REHEARSAL_RUNTIME_ENV_FILE}" "${SCRIPT_DIR}/deploy_prod.sh"' in script_text
+    assert script_text.index('load_runtime_env "${CANONICAL_RUNTIME_ENV_FILE}"') < script_text.index('REHEARSAL_DEPLOY_TEMP_DIR="$(mktemp -d)"')
+    assert script_text.index('REHEARSAL_DEPLOY_TEMP_DIR="$(mktemp -d)"') < script_text.index('chown "root:${VM_APP_GROUP}" "${REHEARSAL_DEPLOY_TEMP_DIR}"')
+    assert script_text.index('chown "root:${VM_APP_GROUP}" "${REHEARSAL_DEPLOY_TEMP_DIR}"') < script_text.index('chmod 0750 "${REHEARSAL_DEPLOY_TEMP_DIR}"')
     assert script_text.index('python3 "${REPO_ROOT}/tools/prepare_rehearsal_deploy.py" \\') < script_text.index(
+        'chown "root:${VM_APP_GROUP}" "${REHEARSAL_RUNTIME_ENV_FILE}" "${REHEARSAL_PLAN_JSON}"'
+    )
+    assert script_text.index('chown "root:${VM_APP_GROUP}" "${REHEARSAL_RUNTIME_ENV_FILE}" "${REHEARSAL_PLAN_JSON}"') < script_text.index(
+        'chmod 0640 "${REHEARSAL_RUNTIME_ENV_FILE}" "${REHEARSAL_PLAN_JSON}"'
+    )
+    assert script_text.index('chmod 0640 "${REHEARSAL_RUNTIME_ENV_FILE}" "${REHEARSAL_PLAN_JSON}"') < script_text.index(
         'VM_RUNTIME_ENV_FILE="${REHEARSAL_RUNTIME_ENV_FILE}" "${SCRIPT_DIR}/deploy_prod.sh"'
     )

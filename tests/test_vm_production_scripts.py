@@ -75,10 +75,19 @@ def test_vm_rehearsal_deploy_script_wraps_production_switch_with_explicit_prefli
     text = (ROOT / "infra" / "vm" / "deploy_rehearsal.sh").read_text(encoding="utf-8")
 
     assert 'CANONICAL_RUNTIME_ENV_FILE="${VM_RUNTIME_ENV_FILE:-/etc/gxp/runtime.env}"' in text
+    assert 'REHEARSAL_DEPLOY_TEMP_DIR=""' in text
     assert 'load_runtime_env "${CANONICAL_RUNTIME_ENV_FILE}"' in text
+    assert 'need_cmd mktemp' in text
+    assert 'need_cmd chmod' in text
+    assert 'need_cmd chown' in text
+    assert 'REHEARSAL_DEPLOY_TEMP_DIR="$(mktemp -d)"' in text
+    assert 'chown "root:${VM_APP_GROUP}" "${REHEARSAL_DEPLOY_TEMP_DIR}"' in text
+    assert 'chmod 0750 "${REHEARSAL_DEPLOY_TEMP_DIR}"' in text
     assert 'python3 "${REPO_ROOT}/tools/prepare_rehearsal_deploy.py" \\' in text
     assert '--runtime-env "${CANONICAL_RUNTIME_ENV_FILE}"' in text
     assert '--output-runtime-env "${REHEARSAL_RUNTIME_ENV_FILE}"' in text
+    assert 'chown "root:${VM_APP_GROUP}" "${REHEARSAL_RUNTIME_ENV_FILE}" "${REHEARSAL_PLAN_JSON}"' in text
+    assert 'chmod 0640 "${REHEARSAL_RUNTIME_ENV_FILE}" "${REHEARSAL_PLAN_JSON}"' in text
     assert 'VM_RUNTIME_ENV_FILE="${REHEARSAL_RUNTIME_ENV_FILE}" "${SCRIPT_DIR}/deploy_prod.sh"' in text
     assert 'source "${CANONICAL_RUNTIME_ENV_FILE}"' not in text
     assert 'chmod "${CANONICAL_RUNTIME_ENV_FILE}"' not in text

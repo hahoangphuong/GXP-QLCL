@@ -697,3 +697,73 @@ The next UI round is accepted only if:
 8. History sits beside results and omits default `Mã hồ sơ` and `GxP` columns.
 9. Facility context is moved below into the four top-level facility tabs listed above.
 10. No line code, certificate scope, filter meaning, or workflow state is fabricated client-side.
+
+## 24. UAT refinement — result/history micro-density and selection behavior
+
+This section records the next post-deploy UAT decision and is authoritative where it conflicts with earlier presentational wording.
+
+### 24.1 Result panel title and compact code column
+
+The result panel title should be exactly **`Cơ sở/dây chuyền`**. Do not render a redundant second heading with the same meaning below an eyebrow/title pair.
+
+The first result-table column header should be **`#`** and should be intentionally narrow, sized for compact values such as `1.1A`, `10.1A`, etc. Preserve the full code in a tooltip/title when useful.
+
+### 24.2 Compact facility-name presentation
+
+For display in the result grid only, a presentation-layer abbreviation may be applied to facility names to improve scan density:
+- `Công ty` -> `Cty`
+- `cổ phần` -> `CP`
+
+This is display-only. Never mutate authoritative facility names, search semantics, API values, exports, or persistence. Preserve the full authoritative name in the cell tooltip/title.
+
+### 24.3 `Kiểm tra gần nhất` must mean an actual latest inspection signal
+
+The result column **`Kiểm tra gần nhất`** must not simply display `legacy_inspection_code` if that field is commonly blank and therefore produces misleading `Chưa có` rows.
+
+Audit the authoritative inspection/event owner and define the smallest correct read-model projection for latest inspection information. Prefer a useful business signal such as the latest actual inspection date (or another explicitly approved latest-inspection reference) derived server-side from authoritative inspection/case/event data.
+
+Do not fabricate a value in React and do not relabel an unrelated field as inspection information.
+
+### 24.4 Result count must not be an arbitrary client cap
+
+The current hard-coded `limit: 80` is not an acceptable representation of the complete result set when more matching rows exist.
+
+Search results must expose the full logical result set through a scalable contract. Preferred options are proper server-side pagination/infinite loading/virtualized paging with total count metadata. Do not simply raise an arbitrary limit to another magic number.
+
+The UI must make clear how many matching rows exist and which subset/page is currently loaded when pagination is used.
+
+### 24.5 Selecting a result must not refetch the result list
+
+Clicking a result row should update only the selected context/history/workspace that depends on the selection. It must not trigger a fresh search request or temporarily replace the result area with an `Đang tra cứu` card.
+
+Selection state must be decoupled from search-query dependencies. Preserve the current result list while loading the selected workspace/history, using subtle local loading only in the dependent pane if needed.
+
+### 24.6 History panel title and compact columns
+
+The history panel title should be exactly **`Lịch sử kiểm tra & thay đổi`**, without a redundant second line such as `Kiểm tra và thay đổi`.
+
+For event presentation, display `Thay đổi cơ sở` as **`Thay đổi`** in the compact history grid. This is a presentation label only; do not mutate stored event type values.
+
+Make the event-type column narrow and size all remaining columns to their information content so the history panel can use less horizontal width than the result panel.
+
+### 24.7 Result/history split priority
+
+The result panel is the primary master list and should receive more horizontal space than history. The history pane should be only as wide as needed for the compact four-column table.
+
+### 24.8 Facility tabs must look unambiguously like tabs
+
+The lower workspace selectors (`Thông tin chung`, `Các đợt kiểm tra & thay đổi`, `Giấy chứng nhận GxP`, `Giấy chứng nhận đủ điều kiện`) must read visually as a tab strip, not as a row of generic pill buttons.
+
+Use a conventional selected-tab affordance such as a connected strip, active underline/top border, stronger selected background, or equivalent desktop application tab treatment. The active tab must be obvious at a glance while remaining compact.
+
+### 24.9 Acceptance additions
+
+The next refinement is accepted only if:
+1. Result panel uses one compact title `Cơ sở/dây chuyền` and `#` as the narrow code-column header.
+2. Facility-name abbreviations are display-only and preserve full names for tooltip/search/data ownership.
+3. `Kiểm tra gần nhất` is backed by an authoritative latest-inspection projection rather than blank legacy codes.
+4. Search no longer truncates matching rows to an unexplained fixed 80-row client limit; a scalable result-count/paging contract is used.
+5. Result-row selection does not refetch the result list or flash a global `Đang tra cứu` state.
+6. History title is `Lịch sử kiểm tra & thay đổi`, with compact columns and `Thay đổi cơ sở` displayed as `Thay đổi` only in presentation.
+7. Result pane receives more width than history.
+8. Lower facility-level navigation is visually implemented as a real tab strip.

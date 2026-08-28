@@ -4,9 +4,8 @@ import { useSearchParams } from "react-router-dom";
 import type { ApiAccess } from "../App";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
+import { ActionCard } from "../features/search/ActionCard";
 import { FacilityTable } from "../features/search/FacilityTable";
-import { HistoryTable } from "../features/search/HistoryTable";
-import { SearchToolbar } from "../features/search/SearchToolbar";
 import { FacilityWorkspaceTabs } from "../features/search/FacilityWorkspaceTabs";
 import { getCaseDetail, getFacilityWorkspace, searchFacilities } from "../lib/api";
 import type { CaseDetail, FacilitySearchResult, FacilityWorkspace } from "../types";
@@ -14,6 +13,24 @@ import type { CaseDetail, FacilitySearchResult, FacilityWorkspace } from "../typ
 const DEFAULT_EVENT_TAB = "Hồ sơ";
 const DEFAULT_FACILITY_TAB = "Các đợt kiểm tra & thay đổi";
 const RESULT_PAGE_SIZE = 100;
+const GXP_FILTER_OPTIONS = new Set(["ALL", "GMP", "GLP", "GMPbb"]);
+
+function normalizeGxpSelection(value: string | null): string {
+  return value && GXP_FILTER_OPTIONS.has(value) ? value : "ALL";
+}
+
+function appendUniqueResults(current: FacilitySearchResult[], incoming: FacilitySearchResult[]) {
+  const seen = new Set(current.map((item) => item.result_key));
+  const next = [...current];
+  for (const item of incoming) {
+    if (seen.has(item.result_key)) {
+      continue;
+    }
+    seen.add(item.result_key);
+    next.push(item);
+  }
+  return next;
+}
 
 export function SearchPage({
   access,
@@ -23,24 +40,21 @@ export function SearchPage({
   statusError: string | null;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [query, setQuery] = useState(searchParams.get("q") ?? "");
-  const [gxpType, setGxpType] = useState(searchParams.get("gxp_type") ?? "ALL");
-  const [province, setProvince] = useState(searchParams.get("province") ?? "");
+  const [facilityName, setFacilityName] = useState(searchParams.get("facility_name") ?? searchParams.get("q") ?? "");
+  const [certificateScope, setCertificateScope] = useState(searchParams.get("certificate_scope") ?? "");
+  const [gxpType, setGxpType] = useState(normalizeGxpSelection(searchParams.get("gxp_type")));
+  const [province] = useState(searchParams.get("province") ?? "");
   const [caseStates, setCaseStates] = useState<string[]>(searchParams.getAll("case_state"));
-  const [certificateState, setCertificateState] = useState(searchParams.get("certificate_state") ?? "");
-  const [certificateExpiringWithinDays, setCertificateExpiringWithinDays] = useState(
-    searchParams.get("certificate_expiring_within_days") ?? "",
-  );
-  const [changeRequestStates, setChangeRequestStates] = useState<string[]>(searchParams.getAll("change_request_state"));
-  const [resultsOffset, setResultsOffset] = useState(() => {
-    const raw = Number(searchParams.get("offset") ?? "0");
-    return Number.isFinite(raw) && raw >= 0 ? raw : 0;
-  });
+  const [certificateState] = useState(searchParams.get("certificate_state") ?? "");
+  const [certificateExpiringWithinDays] = useState(searchParams.get("certificate_expiring_within_days") ?? "");
+  const [changeRequestStates] = useState<string[]>(searchParams.getAll("change_request_state"));
+  const [resultsOffset, setResultsOffset] = useState(0);
   const [selectedResultKey, setSelectedResultKey] = useState<string | null>(searchParams.get("result_key"));
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(searchParams.get("history_id"));
   const [selectedFacilityTab, setSelectedFacilityTab] = useState(searchParams.get("facility_tab") ?? DEFAULT_FACILITY_TAB);
   const [activeTab, setActiveTab] = useState(searchParams.get("event_tab") ?? DEFAULT_EVENT_TAB);
-  const deferredQuery = useDeferredValue(query);
+  const deferredFacilityName = useDeferredValue(facilityName);
+  const deferredCertificateScope = useDeferredValue(certificateScope);
 
   const [results, setResults] = useState<FacilitySearchResult[]>([]);
   const [resultsLoading, setResultsLoading] = useState(true);
@@ -55,11 +69,15 @@ export function SearchPage({
 
   const selectedResult = results.find((item) => item.result_key === selectedResultKey) ?? null;
   const selectedHistory = workspace?.history.find((item) => item.id === selectedHistoryId) ?? null;
+  const hasMoreResults = results.length < resultsTotalCount;
 
   useEffect(() => {
     const nextParams = new URLSearchParams();
-    if (deferredQuery.trim()) {
-      nextParams.set("q", deferredQuery.trim());
+    if (deferredFacilityName.trim()) {
+      nextParams.set("facility_name", deferredFacilityName.trim());
+    }
+    if (deferredCertificateScope.trim()) {
+      nextParams.set("certificate_scope", deferredCertificateScope.trim());
     }
     if (gxpType !== "ALL") {
       nextParams.set("gxp_type", gxpType);
@@ -78,9 +96,6 @@ export function SearchPage({
     }
     if (certificateExpiringWithinDays) {
       nextParams.set("certificate_expiring_within_days", certificateExpiringWithinDays);
-    }
-    if (resultsOffset > 0) {
-      nextParams.set("offset", String(resultsOffset));
     }
     if (selectedResult) {
       nextParams.set("result_key", selectedResult.result_key);
@@ -108,10 +123,10 @@ export function SearchPage({
     certificateExpiringWithinDays,
     certificateState,
     changeRequestStates,
-    deferredQuery,
+    deferredCertificateScope,
+    deferredFacilityName,
     gxpType,
     province,
-    resultsOffset,
     selectedFacilityTab,
     selectedHistoryId,
     selectedResult,
@@ -122,13 +137,20 @@ export function SearchPage({
     if (!access.canLoadSecureApi) {
       setResultsLoading(false);
       setResults([]);
+      setResultsTotalCount(0);
       return;
     }
+    const isFirstPage = resultsOffset === 0;
     let cancelled = false;
     setResultsLoading(true);
+    if (isFirstPage) {
+      setResults([]);
+      setResultsTotalCount(0);
+    }
     void searchFacilities(
       {
-        q: deferredQuery.trim() || undefined,
+        facility_name: deferredFacilityName.trim() || undefined,
+        certificate_scope: deferredCertificateScope.trim() || undefined,
         gxp_type: gxpType === "ALL" ? null : gxpType,
         province: province.trim() || undefined,
         case_state: caseStates,
@@ -146,25 +168,31 @@ export function SearchPage({
         if (cancelled) {
           return;
         }
-        setResults(payload.items);
+        setResults((current) => (isFirstPage ? payload.items : appendUniqueResults(current, payload.items)));
         setResultsTotalCount(payload.total_count);
         setResultsError(null);
         setResultsLoading(false);
-        if (payload.items.length === 0) {
-          setSelectedResultKey(null);
-          setWorkspace(null);
-          return;
-        }
-        const hasSelection = selectedResultKey && payload.items.some((item) => item.result_key === selectedResultKey);
-        if (!hasSelection) {
-          setSelectedResultKey(payload.items[0].result_key);
+        if (isFirstPage) {
+          if (payload.items.length === 0) {
+            setSelectedResultKey(null);
+            setSelectedHistoryId(null);
+            setWorkspace(null);
+            return;
+          }
+          const hasSelection = selectedResultKey && payload.items.some((item) => item.result_key === selectedResultKey);
+          if (!hasSelection) {
+            setSelectedResultKey(payload.items[0].result_key);
+          }
         }
       })
       .catch((error: Error) => {
         if (!cancelled) {
           setResultsError(error.message);
           setResultsLoading(false);
-          setResultsTotalCount(0);
+          if (isFirstPage) {
+            setResults([]);
+            setResultsTotalCount(0);
+          }
         }
       });
     return () => {
@@ -176,7 +204,8 @@ export function SearchPage({
     certificateExpiringWithinDays,
     certificateState,
     changeRequestStates,
-    deferredQuery,
+    deferredCertificateScope,
+    deferredFacilityName,
     gxpType,
     province,
     resultsOffset,
@@ -247,39 +276,46 @@ export function SearchPage({
     };
   }, [access, selectedHistory]);
 
-  function updateFilter(field: string, value: string) {
-    startTransition(() => {
-      setResultsOffset(0);
-      if (field === "query") {
-        setQuery(value);
-      } else if (field === "gxpType") {
-        setGxpType(value);
-      } else if (field === "province") {
-        setProvince(value);
-      } else if (field === "caseState") {
-        setCaseStates(value ? [value] : []);
-        setChangeRequestStates([]);
-      } else if (field === "certificateState") {
-        setCertificateState(value);
-      } else if (field === "certificateExpiringWithinDays") {
-        setCertificateExpiringWithinDays(value);
-      }
-    });
-  }
-
-  function clearFilters() {
-    setQuery("");
-    setGxpType("ALL");
-    setProvince("");
-    setCaseStates([]);
-    setChangeRequestStates([]);
-    setCertificateState("");
-    setCertificateExpiringWithinDays("");
+  function resetDependentContext() {
     setResultsOffset(0);
     setSelectedResultKey(null);
     setSelectedHistoryId(null);
     setSelectedFacilityTab(DEFAULT_FACILITY_TAB);
     setActiveTab(DEFAULT_EVENT_TAB);
+    setWorkspace(null);
+    setWorkspaceError(null);
+    setSelectedCaseDetail(null);
+    setCaseDetailError(null);
+  }
+
+  function updateFilter(field: "facilityName" | "certificateScope" | "caseState" | "gxpType", value: string) {
+    startTransition(() => {
+      resetDependentContext();
+      if (field === "facilityName") {
+        setFacilityName(value);
+      } else if (field === "certificateScope") {
+        setCertificateScope(value);
+      } else if (field === "gxpType") {
+        setGxpType(value);
+      } else if (field === "caseState") {
+        setCaseStates(value ? [value] : []);
+      }
+    });
+  }
+
+  function clearFilters() {
+    setFacilityName("");
+    setCertificateScope("");
+    setGxpType("ALL");
+    setCaseStates([]);
+    resetDependentContext();
+  }
+
+  function loadMoreResults() {
+    if (resultsLoading || !hasMoreResults) {
+      return;
+    }
+    setResultsOffset(results.length);
   }
 
   if (statusError) {
@@ -288,73 +324,67 @@ export function SearchPage({
   if (!access.canLoadSecureApi) {
     return <EmptyState title="Cần đăng nhập" description="Đăng nhập để dùng Tra cứu trên authenticated API thật." />;
   }
-  if (resultsError) {
+  if (resultsError && results.length === 0) {
     return <ErrorState message={resultsError} />;
   }
 
   return (
     <section className="page-section search-page">
-      <SearchToolbar
-        filters={{
-          query,
-          gxpType,
-          province,
-          caseState: caseStates.length === 1 ? caseStates[0] : "",
-          certificateState,
-          certificateExpiringWithinDays,
-          changeRequestStates,
-        }}
-        onChange={(field, value) => updateFilter(field, value)}
-        onClear={clearFilters}
-      />
+      <div className="search-workspace search-workspace-split search-workspace-a4">
+        <FacilityTable
+          filters={{
+            facilityName,
+            certificateScope,
+            caseState: caseStates.length === 1 ? caseStates[0] : "",
+            gxpType,
+          }}
+          hasMore={hasMoreResults}
+          hiddenFilters={{
+            province,
+            changeRequestStates,
+            certificateState,
+            certificateExpiringWithinDays,
+          }}
+          loading={resultsLoading}
+          onClear={clearFilters}
+          onFilterChange={updateFilter}
+          onReachEnd={loadMoreResults}
+          onSelect={setSelectedResultKey}
+          rows={results}
+          selectedResultKey={selectedResultKey}
+          showGxpColumn={gxpType === "ALL"}
+          totalCount={resultsTotalCount}
+        />
+        <ActionCard selectedResult={selectedResult} />
+      </div>
 
-      {resultsLoading && results.length === 0 ? <EmptyState title="Đang tra cứu" description="Đang tải danh sách cơ sở từ backend." /> : null}
       {!resultsLoading && resultsTotalCount === 0 ? (
         <EmptyState title="Không có kết quả" description="Không tìm thấy cơ sở phù hợp với bộ lọc hiện tại." />
       ) : null}
 
       {resultsTotalCount > 0 ? (
-        <>
-          <div className="search-workspace search-workspace-split">
-            <FacilityTable
-              rows={results}
-              selectedResultKey={selectedResultKey}
-              totalCount={resultsTotalCount}
-              offset={resultsOffset}
-              loading={resultsLoading}
-              onNextPage={() => setResultsOffset((current) => current + RESULT_PAGE_SIZE)}
-              onPrevPage={() => setResultsOffset((current) => Math.max(0, current - RESULT_PAGE_SIZE))}
-              onSelect={setSelectedResultKey}
-            />
-            {workspaceError ? (
-              <ErrorState message={workspaceError} />
-            ) : workspaceLoading || !workspace ? (
-              <section className="panel panel-tight history-panel">
-                <EmptyState title="Đang tải lịch sử" description="Đang lấy lịch sử theo cơ sở/dây chuyền đang chọn." />
-              </section>
-            ) : (
-              <HistoryTable rows={workspace.history} selectedHistoryId={selectedHistoryId} onSelect={setSelectedHistoryId} />
-            )}
-          </div>
-
-          {workspaceError ? null : workspaceLoading || !workspace ? (
-            <section className="panel panel-tight facility-workspace-panel">
-              <EmptyState title="Đang tải workspace" description="Đang đồng bộ ngữ cảnh cơ sở, dây chuyền và chứng nhận hiện hành." />
-            </section>
-          ) : (
-            <FacilityWorkspaceTabs
-              activeEventTab={activeTab}
-              caseDetail={selectedCaseDetail}
-              caseDetailError={caseDetailError}
-              caseDetailLoading={caseDetailLoading}
-              onEventTabChange={setActiveTab}
-              onFacilityTabChange={setSelectedFacilityTab}
-              selectedFacilityTab={selectedFacilityTab}
-              selectedHistory={selectedHistory}
-              summary={workspace.summary}
-            />
-          )}
-        </>
+        workspaceError ? (
+          <ErrorState message={workspaceError} />
+        ) : workspaceLoading || !workspace ? (
+          <section className="panel panel-tight facility-workspace-panel">
+            <EmptyState title="Đang tải workspace" description="Đang đồng bộ ngữ cảnh cơ sở, dây chuyền và chứng nhận hiện hành." />
+          </section>
+        ) : (
+          <FacilityWorkspaceTabs
+            activeEventTab={activeTab}
+            caseDetail={selectedCaseDetail}
+            caseDetailError={caseDetailError}
+            caseDetailLoading={caseDetailLoading}
+            history={workspace.history}
+            onEventTabChange={setActiveTab}
+            onFacilityTabChange={setSelectedFacilityTab}
+            onHistorySelect={setSelectedHistoryId}
+            selectedFacilityTab={selectedFacilityTab}
+            selectedHistory={selectedHistory}
+            selectedHistoryId={selectedHistoryId}
+            summary={workspace.summary}
+          />
+        )
       ) : null}
     </section>
   );

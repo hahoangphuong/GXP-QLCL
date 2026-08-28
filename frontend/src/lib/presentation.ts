@@ -43,6 +43,24 @@ const STATUS_TONES: Record<string, string> = {
 };
 
 const FACILITY_NAME_ABBREVIATIONS: Array<[RegExp, string]> = [
+  [/trang thiết bị y tế/gi, "TTBYT"],
+  [/y dược cổ truyền/gi, "YDCT"],
+  [/công nghệ sinh học/gi, "CNSH"],
+  [/thực phẩm chức năng/gi, "TPCN"],
+  [/trung tâm kiểm nghiệm/gi, "TTKN"],
+  [/xuất nhập khẩu/gi, "XNK"],
+  [/sinh phẩm y tế/gi, "SPYT"],
+  [/thiết bị y tế/gi, "TBYT"],
+  [/khoa học công nghệ/gi, "KHCN"],
+  [/dược phẩm/gi, "DP"],
+  [/chi nhánh/gi, "CN"],
+  [/sinh phẩm/gi, "SP"],
+  [/sản xuất/gi, "SX"],
+  [/thương mại/gi, "TM"],
+  [/nghiên cứu/gi, "NC"],
+  [/y học cổ truyền/gi, "YHCT"],
+  [/kiểm nghiệm/gi, "KN"],
+  [/dịch vụ/gi, "DV"],
   [/\bCông ty\b/g, "Cty"],
   [/\bcổ phần\b/gi, "CP"],
 ];
@@ -76,6 +94,25 @@ export function getStatusTone(value: string | null | undefined): string {
 
 export function formatFacilityNameForGrid(value: string): string {
   return FACILITY_NAME_ABBREVIATIONS.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), value);
+}
+
+export function formatCompactDate(value: string | null | undefined): string {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return "Chưa có";
+  }
+  const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    return `${match[3]}-${match[2]}-${match[1]}`;
+  }
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) {
+    return normalized;
+  }
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const year = String(parsed.getFullYear());
+  return `${day}-${month}-${year}`;
 }
 
 export function formatHistoryEventType(value: string | null | undefined): string {

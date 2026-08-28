@@ -4,7 +4,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { getAppStatus } from "./lib/api";
 import { decodeOidcCredential, isOidcSessionValid, loadGoogleIdentityScript } from "./lib/oidc";
-import { clearOidcSession, loadAuthState, loadOidcSession, saveAuthState, saveOidcSession } from "./lib/storage";
+import { clearOidcSession, loadAuthState, loadOidcSession, saveOidcSession } from "./lib/storage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { SearchPage } from "./pages/SearchPage";
@@ -82,7 +82,6 @@ function AppHeader({
   authMode,
   oidcClientId,
   oidcSession,
-  onAuthChange,
   onOidcSession,
   onOidcLogout,
 }: {
@@ -90,75 +89,44 @@ function AppHeader({
   authMode: string | null;
   oidcClientId: string | null;
   oidcSession: OidcSession | null;
-  onAuthChange: (value: StubAuthState) => void;
   onOidcSession: (session: OidcSession) => void;
   onOidcLogout: () => void;
 }) {
   const usesStubAuth = authMode === "header_stub" || authMode === null;
+  const identityLabel = oidcSession?.email ?? oidcSession?.name ?? `${auth.username} (${auth.role})`;
 
   return (
     <header className="topbar">
-      <div className="brand-block">
+      <div className="header-identity-group">
         <span className="brand-mark">GxP QLCL</span>
-        <div className="brand-copy">
-          <strong>Tra cứu và điều phối nghiệp vụ</strong>
-        </div>
+        {usesStubAuth || oidcSession ? (
+          <div className="auth-cluster auth-cluster-compact">
+            <span className="auth-label">{identityLabel}</span>
+            <button className="secondary" disabled={usesStubAuth} onClick={onOidcLogout} type="button">
+              Đăng xuất
+            </button>
+          </div>
+        ) : null}
       </div>
-      {usesStubAuth ? (
-        <div className="auth-cluster">
-          <label>
-            <span>Người dùng giả lập</span>
-            <input
-            value={auth.username}
-            onChange={(event) => onAuthChange({ ...auth, username: event.target.value })}
-            placeholder="vanhanh.local"
-            aria-label="Người dùng giả lập"
-          />
-          </label>
-          <label>
-            <span>Vai trò</span>
-            <select
-              value={auth.role}
-              onChange={(event) => onAuthChange({ ...auth, role: event.target.value as StubAuthState["role"] })}
-              aria-label="Vai trò"
-            >
-              <option value="reader">reader</option>
-              <option value="inspector">inspector</option>
-              <option value="manager">manager</option>
-              <option value="admin">admin</option>
-            </select>
-          </label>
-        </div>
-      ) : oidcSession ? (
-        <div className="auth-cluster auth-cluster-compact">
-          <span className="auth-label">{oidcSession.email ?? oidcSession.name ?? "Google Workspace"}</span>
-          <button className="secondary" onClick={onOidcLogout} type="button">
-            Đăng xuất
-          </button>
-        </div>
-      ) : oidcClientId ? (
+      {!usesStubAuth && !oidcSession && oidcClientId ? (
         <GoogleOidcButton clientId={oidcClientId} onCredential={onOidcSession} />
-      ) : (
+      ) : !usesStubAuth && !oidcClientId ? (
         <div className="auth-cluster auth-cluster-compact">
           <span className="auth-label">Google OIDC chưa sẵn sàng</span>
         </div>
-      )}
+      ) : null}
     </header>
   );
 }
 
 export function App() {
-  const [auth, setAuth] = useState<StubAuthState>(() => loadAuthState());
+  const [auth] = useState<StubAuthState>(() => loadAuthState());
   const [oidcSession, setOidcSession] = useState<OidcSession | null>(() => {
     const stored = loadOidcSession();
     return isOidcSessionValid(stored) ? stored : null;
   });
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
-
-  useEffect(() => {
-    saveAuthState(auth);
-  }, [auth]);
 
   useEffect(() => {
     if (oidcSession && !isOidcSessionValid(oidcSession)) {
@@ -208,7 +176,6 @@ export function App() {
           authMode={status?.auth_mode ?? null}
           oidcClientId={status?.auth.oidc_client_id ?? null}
           oidcSession={oidcSession}
-          onAuthChange={setAuth}
           onOidcSession={setOidcSession}
           onOidcLogout={() => {
             window.google?.accounts?.id?.disableAutoSelect?.();

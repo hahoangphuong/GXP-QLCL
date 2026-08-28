@@ -136,14 +136,14 @@ tr:focus-visible {
 
 .topbar {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 0.75rem;
   min-width: 0;
 }
 
 .brand-block,
-.brand-copy {
+.brand-copy,
+.header-identity-group {
   display: flex;
   align-items: center;
 }
@@ -153,7 +153,8 @@ tr:focus-visible {
   min-width: 0;
 }
 
-.brand-copy {
+.header-identity-group {
+  gap: 0.55rem;
   min-width: 0;
 }
 
@@ -207,6 +208,7 @@ tr:focus-visible {
   display: flex;
   gap: 0.45rem;
   align-items: center;
+  min-width: 0;
 }
 
 .auth-cluster label,
@@ -282,7 +284,7 @@ tr:focus-visible {
 }
 
 .search-page {
-  grid-template-rows: auto minmax(220px, 0.95fr) minmax(280px, 1.1fr);
+  grid-template-rows: minmax(280px, 0.95fr) minmax(320px, 1.1fr);
 }
 
 .section-title,
@@ -315,6 +317,10 @@ tr:focus-visible {
   height: 26px;
   padding: 0 0.55rem;
   font-size: 0.76rem;
+}
+
+.panel-heading-inline-wrap {
+  flex-wrap: wrap;
 }
 
 .panel-subtle-loading {
@@ -376,25 +382,6 @@ tr:focus-visible {
   color: var(--text-muted);
 }
 
-.search-toolbar {
-  display: grid;
-  gap: 0.4rem;
-}
-
-.toolbar-primary {
-  display: grid;
-  gap: 0.45rem;
-}
-
-.toolbar-primary-compact {
-  grid-template-columns: auto auto minmax(280px, 1fr) auto auto;
-  align-items: center;
-}
-
-.toolbar-heading {
-  min-width: max-content;
-}
-
 .gxp-toggle,
 .workspace-tabs,
 .action-strip {
@@ -450,10 +437,6 @@ tr:focus-visible {
   color: #556d75;
 }
 
-.toolbar-search-primary {
-  min-width: 0;
-}
-
 .active-filter-strip {
   display: flex;
   gap: 0.35rem;
@@ -473,12 +456,6 @@ tr:focus-visible {
   font-weight: 600;
 }
 
-.toolbar-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(140px, 1fr));
-  gap: 0.45rem;
-}
-
 .search-workspace,
 .search-workspace-split,
 .facility-workspace-panel,
@@ -492,17 +469,43 @@ tr:focus-visible {
 
 .search-workspace-split {
   display: grid;
-  grid-template-columns: minmax(0, 2.55fr) minmax(260px, 0.95fr);
+  grid-template-columns: minmax(0, 5.6fr) minmax(180px, 1fr);
   gap: 0.55rem;
 }
 
 .results-panel,
+.action-panel,
 .history-panel,
 .facility-workspace-panel,
 .event-workspace,
 .certificate-shell {
   display: flex;
   flex-direction: column;
+}
+
+.results-toolbar {
+  display: grid;
+  gap: 0.4rem;
+  margin-bottom: 0.45rem;
+}
+
+.results-toolbar-head {
+  align-items: center;
+}
+
+.inline-filter-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.6fr) minmax(220px, 1.4fr) minmax(180px, 0.9fr);
+  gap: 0.45rem;
+}
+
+.inline-filter-field,
+.inline-filter-field span {
+  min-width: 0;
+}
+
+.panel-inline-loading {
+  margin-bottom: 0.35rem;
 }
 
 .table-scroll {
@@ -559,38 +562,39 @@ tr:focus-visible {
 
 .dense-table tbody tr.selected {
   background: var(--selected);
+  font-weight: 700;
 }
 
 .facility-table .col-code {
-  width: 4.6rem;
+  width: 4.3rem;
 }
 
 .facility-table .col-facility {
-  width: 27%;
-}
-
-.facility-table .col-gxp {
-  width: 5.75rem;
-}
-
-.facility-table .col-scope {
   width: 31%;
 }
 
+.facility-table .col-gxp {
+  width: 5.35rem;
+}
+
+.facility-table .col-scope {
+  width: 29%;
+}
+
 .facility-table .col-province {
-  width: 12%;
+  width: 12.5%;
 }
 
 .facility-table .col-reference {
-  width: 10%;
+  width: 9%;
 }
 
 .facility-table .col-status {
-  width: 11.5rem;
+  width: 11rem;
 }
 
 .history-table .col-event-type {
-  width: 5.8rem;
+  width: 6.3rem;
 }
 
 .history-table .col-standard {
@@ -626,41 +630,14 @@ tr:focus-visible {
   gap: 0.1rem;
 }
 
-.workspace-context-strip {
-  padding: 0.1rem 0 0.25rem;
-  border-bottom: 1px solid #e1ecef;
-}
-
-.workspace-context-copy {
-  display: grid;
-  gap: 0.08rem;
-  min-width: 0;
-}
-
-.workspace-context-copy strong {
-  font-size: 0.96rem;
-}
-
-.workspace-context-code {
-  color: var(--accent-strong);
-}
-
-.workspace-context-meta {
-  display: flex;
-  gap: 0.35rem;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-}
-
 .facility-tabs {
-  padding-top: 0.45rem;
+  padding-top: 0.1rem;
 }
 
 .facility-tab-body {
   flex: 1 1 auto;
   overflow: auto;
-  margin-top: 0.5rem;
+  margin-top: 0.4rem;
   padding-right: 0.15rem;
 }
 
@@ -715,17 +692,6 @@ tr:focus-visible {
   grid-column: 1 / -1;
 }
 
-.action-strip {
-  margin-top: 0.1rem;
-}
-
-.action-strip-compact button {
-  height: 28px;
-  padding: 0 0.6rem;
-  border-radius: 8px;
-  font-size: 0.78rem;
-}
-
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -745,6 +711,75 @@ tr:focus-visible {
 
 .certificate-shell {
   gap: 0.55rem;
+}
+
+.event-workspace-stack {
+  display: grid;
+  gap: 0.55rem;
+  min-height: 0;
+}
+
+.workflow-stepper {
+  margin-top: 0.2rem;
+}
+
+.workflow-step-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.workflow-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  min-height: 30px;
+  padding: 0 0.65rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-alt);
+  color: #47626b;
+}
+
+.workflow-step.active {
+  background: var(--accent-soft);
+  border-color: #86c0c8;
+  color: var(--accent-strong);
+}
+
+.workflow-step-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 999px;
+  background: rgba(13, 109, 119, 0.1);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.action-panel {
+  justify-content: flex-start;
+}
+
+.action-context {
+  margin: 0 0 0.45rem;
+  white-space: normal;
+}
+
+.action-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.4rem;
+}
+
+.action-grid button {
+  justify-content: flex-start;
+  border-radius: 8px;
 }
 
 .status-badge {
@@ -804,12 +839,7 @@ tr:focus-visible {
     justify-content: flex-start;
   }
 
-  .toolbar-primary-compact {
-    grid-template-columns: 1fr;
-    align-items: stretch;
-  }
-
-  .toolbar-grid {
+  .inline-filter-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -818,8 +848,7 @@ tr:focus-visible {
   .topbar,
   .section-title,
   .panel-header,
-  .summary-head,
-  .workspace-context-strip {
+  .summary-head {
     align-items: stretch;
   }
 
@@ -832,6 +861,7 @@ tr:focus-visible {
   }
 
   .search-workspace-split,
+  .inline-filter-row,
   .summary-grid,
   .detail-grid,
   .metric-grid {
@@ -866,7 +896,7 @@ tr:focus-visible {
   }
 
   .auth-cluster,
-  .toolbar-grid {
+  .inline-filter-row {
     grid-template-columns: 1fr;
   }
 }

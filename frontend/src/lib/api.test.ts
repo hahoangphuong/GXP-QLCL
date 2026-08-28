@@ -208,6 +208,28 @@ describe("frontend API routing contract", () => {
     );
   });
 
+  it("encodes field-specific search filters and the canonical GMPbb selector", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await searchFacilities(
+      {
+        facility_name: "Nhà máy GMPbb",
+        certificate_scope: "Bao bì vô trùng",
+        gxp_type: "GMPbb",
+        case_state: ["awaiting_certificate_decision"],
+        limit: 100,
+      },
+      { username: "operator.local", role: "manager" },
+      true,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/search/facilities?facility_name=Nh%C3%A0+m%C3%A1y+GMPbb&certificate_scope=Bao+b%C3%AC+v%C3%B4+tr%C3%B9ng&gxp_type=GMPbb&case_state=awaiting_certificate_decision&limit=100",
+      expect.any(Object),
+    );
+  });
+
   it("passes gxp_type through facility workspace requests", async () => {
     const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: { summary: {}, history: [] } }));
     vi.stubGlobal("fetch", fetchMock);

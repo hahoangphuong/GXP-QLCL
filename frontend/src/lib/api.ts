@@ -133,6 +133,8 @@ export function listCases(auth: StubAuthState, useStubAuth: boolean, bearerToken
 export function searchFacilities(
   filters: {
     q?: string;
+    facility_name?: string;
+    certificate_scope?: string;
     gxp_type?: string | null;
     province?: string;
     case_state?: string[] | null;
@@ -149,6 +151,12 @@ export function searchFacilities(
   const searchParams = new URLSearchParams();
   if (filters.q) {
     searchParams.set("q", filters.q);
+  }
+  if (filters.facility_name) {
+    searchParams.set("facility_name", filters.facility_name);
+  }
+  if (filters.certificate_scope) {
+    searchParams.set("certificate_scope", filters.certificate_scope);
   }
   if (filters.gxp_type) {
     searchParams.set("gxp_type", filters.gxp_type);

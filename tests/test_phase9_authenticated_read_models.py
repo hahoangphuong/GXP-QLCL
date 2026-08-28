@@ -741,6 +741,158 @@ def test_search_facilities_and_workspace_preserve_production_line_context_and_ce
     assert any(item.source_type == "change_request" for item in workspace_payload.history)
 
 
+def test_search_facilities_supports_field_specific_name_scope_and_gmpbb_filters(tmp_path):
+    database_path = tmp_path / "catalog-field-filters.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        company = Company(legal_name="Công ty GMPbb", short_name="GMPbb")
+        session.add(company)
+        session.flush()
+
+        site_gmpbb = Site(
+            company_id=company.id,
+            site_name="Nhà máy Bao bì vô trùng",
+            province_name="Bình Dương",
+            legacy_site_id=210,
+            legacy_gmp_site_code="9.1",
+        )
+        site_other = Site(
+            company_id=company.id,
+            site_name="Nhà máy viên nén",
+            province_name="Đồng Nai",
+            legacy_site_id=211,
+            legacy_gmp_site_code="9.2",
+        )
+        session.add_all([site_gmpbb, site_other])
+        session.flush()
+
+        case_gmpbb = Case(
+            site_id=site_gmpbb.id,
+            gxp_type="GMPbb",
+            scope_code="A",
+            state=CaseState.AWAITING_CERTIFICATE_DECISION,
+            legacy_inspection_code="KT-GMPBB-A",
+            applicable_standard="GMP Bao bì",
+            opened_year=2026,
+        )
+        case_other = Case(
+            site_id=site_other.id,
+            gxp_type="GMP",
+            scope_code="A",
+            state=CaseState.AWAITING_CERTIFICATE_DECISION,
+            legacy_inspection_code="KT-GMP-A",
+            applicable_standard="WHO-GMP",
+            opened_year=2026,
+        )
+        session.add_all([case_gmpbb, case_other])
+        session.flush()
+
+        cert_gmpbb = Certificate(site_id=site_gmpbb.id, case_id=case_gmpbb.id, certificate_type="GMPbb", latest_flag=True)
+        cert_other = Certificate(site_id=site_other.id, case_id=case_other.id, certificate_type="GMP", latest_flag=True)
+        session.add_all([cert_gmpbb, cert_other])
+        session.flush()
+
+        version_gmpbb = CertificateVersion(
+            certificate_id=cert_gmpbb.id,
+            version_no=1,
+            issue_date=date(2026, 5, 1),
+            expiry_date=date(2027, 5, 1),
+            certificate_number="GCN-GMPBB-001",
+            is_latest_version=True,
+        )
+        version_other = CertificateVersion(
+            certificate_id=cert_other.id,
+            version_no=1,
+            issue_date=date(2026, 6, 1),
+            expiry_date=date(2027, 6, 1),
+            certificate_number="GCN-GMP-001",
+            is_latest_version=True,
+        )
+        session.add_all([version_gmpbb, version_other])
+        session.flush()
+        session.add_all(
+            [
+                CertificateScope(
+                    certificate_version_id=version_gmpbb.id,
+                    scope_key="A",
+                    scope_text="Bao bì vô trùng cấp A",
+                    sort_order=1,
+                ),
+                CertificateScope(
+                    certificate_version_id=version_other.id,
+                    scope_key="A",
+                    scope_text="Viên nén không vô trùng",
+                    sort_order=1,
+                ),
+            ]
+        )
+        session.commit()
+
+    app = create_app(database_url)
+    search_route = next(route for route in app.routes if getattr(route, "path", "") == "/search/facilities")
+
+    with Session(engine) as session:
+        gmpbb_search = search_route.endpoint(
+            q=None,
+            facility_name=None,
+            certificate_scope=None,
+            gxp_type="GMPbb",
+            province=None,
+            case_state=[],
+            change_request_state=[],
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            offset=0,
+            limit=50,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+        facility_name_search = search_route.endpoint(
+            q=None,
+            facility_name="Bao bì",
+            certificate_scope=None,
+            gxp_type=None,
+            province=None,
+            case_state=[],
+            change_request_state=[],
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            offset=0,
+            limit=50,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+        certificate_scope_search = search_route.endpoint(
+            q=None,
+            facility_name=None,
+            certificate_scope="vô trùng cấp A",
+            gxp_type=None,
+            province=None,
+            case_state=[],
+            change_request_state=[],
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            offset=0,
+            limit=50,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+
+    assert gmpbb_search.total_count == 1
+    assert gmpbb_search.items[0].gxp_type == "GMPbb"
+    assert gmpbb_search.items[0].context_code == "9.1A"
+
+    assert facility_name_search.total_count == 1
+    assert [row.facility_name for row in facility_name_search.items] == ["Nhà máy Bao bì vô trùng"]
+
+    assert certificate_scope_search.total_count == 1
+    assert [row.certificate_scope_summary for row in certificate_scope_search.items] == ["Bao bì vô trùng cấp A"]
+    assert [row.facility_name for row in certificate_scope_search.items] == ["Nhà máy Bao bì vô trùng"]
+
+
 def test_imported_legacy_certificate_scope_flows_through_catalog_search(tmp_path):
     database_path = tmp_path / "catalog-imported-scope.sqlite"
     database_url = f"sqlite:///{database_path.as_posix()}"

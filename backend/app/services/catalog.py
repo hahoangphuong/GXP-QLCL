@@ -75,7 +75,7 @@ class CatalogReadService:
             return site.legacy_glp_site_code or site.legacy_gmp_site_code or site.legacy_gmpbb_site_code or (
                 None if site.legacy_site_id is None else str(site.legacy_site_id)
             )
-        if selected_gxp == "GMPbd":
+        if selected_gxp == "GMPbb":
             return site.legacy_gmpbb_site_code or site.legacy_gmp_site_code or site.legacy_glp_site_code or (
                 None if site.legacy_site_id is None else str(site.legacy_site_id)
             )
@@ -236,6 +236,7 @@ class CatalogReadService:
         gxp_type: str | None = None,
         certificate_state: str | None = None,
         certificate_expiring_within_days: int | None = None,
+        certificate_scope: str | None = None,
     ):
         conditions = [Certificate.site_id == Site.id, Certificate.latest_flag.is_(True)]
         if gxp_type:
@@ -263,7 +264,13 @@ class CatalogReadService:
                     CertificateVersion.is_latest_version.is_(True),
                 ),
             )
+            .outerjoin(CertificateScope, CertificateScope.certificate_version_id == CertificateVersion.id)
             .where(*conditions)
+            .where(
+                CertificateScope.scope_text.ilike(f"%{certificate_scope}%")
+                if certificate_scope
+                else True
+            )
             .correlate(Site)
             .exists()
         )
@@ -271,13 +278,15 @@ class CatalogReadService:
     def _build_filtered_search_sites_stmt(
         self,
         *,
-        q: str | None,
-        gxp_type: str | None,
-        province: str | None,
-        case_states: list[str] | None,
-        change_request_states: list[str] | None,
-        certificate_state: str | None,
-        certificate_expiring_within_days: int | None,
+        q: str | None = None,
+        facility_name: str | None = None,
+        certificate_scope: str | None = None,
+        gxp_type: str | None = None,
+        province: str | None = None,
+        case_states: list[str] | None = None,
+        change_request_states: list[str] | None = None,
+        certificate_state: str | None = None,
+        certificate_expiring_within_days: int | None = None,
     ):
         stmt = select(
             Site.id.label("site_id"),
@@ -332,6 +341,9 @@ class CatalogReadService:
                 )
             )
 
+        if facility_name:
+            stmt = stmt.where(Site.site_name.ilike(f"%{facility_name}%"))
+
         if gxp_type:
             stmt = stmt.where(
                 or_(
@@ -365,6 +377,14 @@ class CatalogReadService:
                 )
             )
 
+        if certificate_scope:
+            stmt = stmt.where(
+                self._build_current_certificate_exists_clause(
+                    gxp_type=gxp_type,
+                    certificate_scope=certificate_scope,
+                )
+            )
+
         return stmt.distinct()
 
     def _build_context_case_exists_clause(self, contexts, *, case_states: list[str] | None):
@@ -387,6 +407,7 @@ class CatalogReadService:
         *,
         certificate_state: str | None,
         certificate_expiring_within_days: int | None,
+        certificate_scope: str | None,
     ):
         linked_case = aliased(Case)
         normalized_line_code = self._normalized_line_code_sql(func.coalesce(Certificate.line_code, linked_case.scope_code))
@@ -423,8 +444,14 @@ class CatalogReadService:
                     CertificateVersion.is_latest_version.is_(True),
                 ),
             )
+            .outerjoin(CertificateScope, CertificateScope.certificate_version_id == CertificateVersion.id)
             .outerjoin(linked_case, linked_case.id == Certificate.case_id)
             .where(*conditions)
+            .where(
+                CertificateScope.scope_text.ilike(f"%{certificate_scope}%")
+                if certificate_scope
+                else True
+            )
             .correlate(contexts)
             .exists()
         )
@@ -433,10 +460,11 @@ class CatalogReadService:
         self,
         filtered_sites_stmt,
         *,
-        gxp_type: str | None,
-        case_states: list[str] | None,
-        certificate_state: str | None,
-        certificate_expiring_within_days: int | None,
+        gxp_type: str | None = None,
+        case_states: list[str] | None = None,
+        certificate_state: str | None = None,
+        certificate_expiring_within_days: int | None = None,
+        certificate_scope: str | None = None,
     ):
         filtered_sites = filtered_sites_stmt.subquery("filtered_sites")
         linked_case = aliased(Case)
@@ -532,6 +560,16 @@ class CatalogReadService:
                     contexts,
                     certificate_state=certificate_state,
                     certificate_expiring_within_days=certificate_expiring_within_days,
+                    certificate_scope=None,
+                )
+            )
+        if certificate_scope:
+            filtered_contexts_stmt = filtered_contexts_stmt.where(
+                self._build_context_certificate_exists_clause(
+                    contexts,
+                    certificate_state=None,
+                    certificate_expiring_within_days=None,
+                    certificate_scope=certificate_scope,
                 )
             )
         return filtered_contexts_stmt
@@ -746,18 +784,22 @@ class CatalogReadService:
         self,
         session: Session,
         *,
-        q: str | None,
-        gxp_type: str | None,
-        province: str | None,
-        case_states: list[str] | None,
-        change_request_states: list[str] | None,
-        certificate_state: str | None,
-        certificate_expiring_within_days: int | None,
+        q: str | None = None,
+        facility_name: str | None = None,
+        certificate_scope: str | None = None,
+        gxp_type: str | None = None,
+        province: str | None = None,
+        case_states: list[str] | None = None,
+        change_request_states: list[str] | None = None,
+        certificate_state: str | None = None,
+        certificate_expiring_within_days: int | None = None,
         offset: int,
         limit: int,
     ):
         filtered_sites_stmt = self._build_filtered_search_sites_stmt(
             q=q,
+            facility_name=facility_name,
+            certificate_scope=certificate_scope,
             gxp_type=gxp_type,
             province=province,
             case_states=case_states,
@@ -771,6 +813,7 @@ class CatalogReadService:
             case_states=case_states,
             certificate_state=certificate_state,
             certificate_expiring_within_days=certificate_expiring_within_days,
+            certificate_scope=certificate_scope,
         )
         ordered_contexts_stmt = self._ordered_search_contexts_stmt(contexts_stmt)
 

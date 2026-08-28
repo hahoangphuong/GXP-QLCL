@@ -19,6 +19,11 @@ from backend.app.read_models import (
 )
 from backend.app.services import CatalogReadService
 
+
+def _optional_string_query(value: str | None) -> str | None:
+    return value if isinstance(value, str) and value.strip() else None
+
+
 def register_catalog_routes(app, session_factory) -> None:
     dependency = Depends(get_session_from_request_factory(session_factory))
     service = CatalogReadService()
@@ -149,6 +154,8 @@ def register_catalog_routes(app, session_factory) -> None:
 
     def search_facilities(
         q: str | None = Query(default=None),
+        facility_name: str | None = Query(default=None),
+        certificate_scope: str | None = Query(default=None),
         gxp_type: str | None = Query(default=None),
         province: str | None = Query(default=None),
         case_state: list[str] = Query(default=[]),
@@ -163,12 +170,14 @@ def register_catalog_routes(app, session_factory) -> None:
         require_role(user, ALLOWED_READ_ROLES)
         payload = service.search_facilities(
             session,
-            q=q,
-            gxp_type=gxp_type,
-            province=province,
+            q=_optional_string_query(q),
+            facility_name=_optional_string_query(facility_name),
+            certificate_scope=_optional_string_query(certificate_scope),
+            gxp_type=_optional_string_query(gxp_type),
+            province=_optional_string_query(province),
             case_states=case_state,
             change_request_states=change_request_state,
-            certificate_state=certificate_state,
+            certificate_state=_optional_string_query(certificate_state),
             certificate_expiring_within_days=certificate_expiring_within_days,
             offset=offset,
             limit=limit,

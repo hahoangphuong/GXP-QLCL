@@ -1,8 +1,9 @@
 import { EmptyState } from "../../components/EmptyState";
-import { StatusBadge } from "../../components/StatusBadge";
 import type { CaseDetail, FacilityHistoryItem, FacilityWorkspaceSummary } from "../../types";
+import { formatCompactDate } from "../../lib/presentation";
 import { EventWorkspace } from "./EventWorkspace";
 import { FacilitySummary } from "./FacilitySummary";
+import { HistoryTable } from "./HistoryTable";
 
 const FACILITY_TABS = [
   "Thông tin chung",
@@ -11,18 +12,14 @@ const FACILITY_TABS = [
   "Giấy chứng nhận đủ điều kiện",
 ] as const;
 
-function formatDate(value: string | null): string {
-  if (!value) {
-    return "Chưa có";
-  }
-  return new Intl.DateTimeFormat("vi-VN").format(new Date(value));
-}
-
 export function FacilityWorkspaceTabs({
   summary,
+  history,
   selectedFacilityTab,
   onFacilityTabChange,
   selectedHistory,
+  selectedHistoryId,
+  onHistorySelect,
   caseDetail,
   caseDetailLoading,
   caseDetailError,
@@ -30,9 +27,12 @@ export function FacilityWorkspaceTabs({
   onEventTabChange,
 }: {
   summary: FacilityWorkspaceSummary;
+  history: FacilityHistoryItem[];
   selectedFacilityTab: string;
   onFacilityTabChange: (tab: string) => void;
   selectedHistory: FacilityHistoryItem | null;
+  selectedHistoryId: string | null;
+  onHistorySelect: (historyId: string) => void;
   caseDetail: CaseDetail | null;
   caseDetailLoading: boolean;
   caseDetailError: string | null;
@@ -41,19 +41,6 @@ export function FacilityWorkspaceTabs({
 }) {
   return (
     <section className="panel panel-tight facility-workspace-panel">
-      <div className="workspace-context-strip">
-        <div className="workspace-context-copy">
-          <span className="workspace-context-code">{summary.context_code ?? summary.facility_code ?? "Chưa có mã"}</span>
-          <strong>{summary.facility_name}</strong>
-          <span>{summary.company_name}</span>
-        </div>
-        <div className="workspace-context-meta">
-          <span>{summary.selected_gxp_type ?? (summary.gxp_types.join(", ") || "Chưa có GxP")}</span>
-          {summary.selected_line_code ? <span>Dây chuyền {summary.selected_line_code}</span> : <span>Ngữ cảnh cơ sở</span>}
-          <StatusBadge value={summary.current_state} />
-        </div>
-      </div>
-
       <div className="workspace-tabs facility-tabs tab-strip tab-strip-primary" role="tablist" aria-label="Tab nghiệp vụ cơ sở">
         {FACILITY_TABS.map((tab) => (
           <button
@@ -75,14 +62,17 @@ export function FacilityWorkspaceTabs({
         ) : null}
 
         {selectedFacilityTab === "Các đợt kiểm tra & thay đổi" ? (
-          <EventWorkspace
-            activeTab={activeEventTab}
-            caseDetail={caseDetail}
-            caseDetailError={caseDetailError}
-            caseDetailLoading={caseDetailLoading}
-            onTabChange={onEventTabChange}
-            selectedHistory={selectedHistory}
-          />
+          <div className="event-workspace-stack">
+            <HistoryTable rows={history} selectedHistoryId={selectedHistoryId} onSelect={onHistorySelect} />
+            <EventWorkspace
+              activeTab={activeEventTab}
+              caseDetail={caseDetail}
+              caseDetailError={caseDetailError}
+              caseDetailLoading={caseDetailLoading}
+              onTabChange={onEventTabChange}
+              selectedHistory={selectedHistory}
+            />
+          </div>
         ) : null}
 
         {selectedFacilityTab === "Giấy chứng nhận GxP" ? (
@@ -95,7 +85,7 @@ export function FacilityWorkspaceTabs({
                 </div>
                 <div>
                   <span>Hết hạn</span>
-                  <strong>{formatDate(summary.current_certificate_expiry)}</strong>
+                  <strong>{formatCompactDate(summary.current_certificate_expiry)}</strong>
                 </div>
                 <div>
                   <span>GxP</span>

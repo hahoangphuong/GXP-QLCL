@@ -1,13 +1,6 @@
 import { StatusBadge } from "../../components/StatusBadge";
-import { formatHistoryEventType } from "../../lib/presentation";
+import { formatCompactDate, formatHistoryEventType } from "../../lib/presentation";
 import type { FacilityHistoryItem } from "../../types";
-
-function formatDate(value: string | null): string {
-  if (!value) {
-    return "Chưa có";
-  }
-  return new Intl.DateTimeFormat("vi-VN").format(new Date(value));
-}
 
 export function HistoryTable({
   rows,
@@ -28,7 +21,7 @@ export function HistoryTable({
         <table className="dense-table history-table">
           <thead>
             <tr>
-              <th className="col-event-type">Loại sự kiện</th>
+              <th className="col-event-type">Phân loại</th>
               <th className="col-standard">Tiêu chuẩn</th>
               <th className="col-date">Ngày</th>
               <th className="col-state">Trạng thái</th>
@@ -51,7 +44,7 @@ export function HistoryTable({
               >
                 <td title={row.event_type}>{formatHistoryEventType(row.event_type)}</td>
                 <td title={row.standard ?? ""}>{row.standard ?? "Chưa có"}</td>
-                <td>{formatDate(row.occurred_on)}</td>
+                <td>{formatCompactDate(row.occurred_on)}</td>
                 <td>
                   <StatusBadge value={row.state} />
                 </td>

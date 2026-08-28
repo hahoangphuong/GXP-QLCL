@@ -102,10 +102,17 @@ export type FacilitySearchResult = {
   gxp_types: string[];
   certificate_scope_summary: string | null;
   province_name: string | null;
-  last_inspection_code: string | null;
+  last_inspection_on: string | null;
   current_state: string | null;
   current_certificate_number: string | null;
   current_certificate_expiry: string | null;
+};
+
+export type FacilitySearchPage = {
+  items: FacilitySearchResult[];
+  total_count: number;
+  offset: number;
+  limit: number;
 };
 
 export type FacilityWorkspaceSummary = {

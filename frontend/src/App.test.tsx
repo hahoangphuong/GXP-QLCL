@@ -18,7 +18,7 @@ const apiMocks = vi.hoisted(() => ({
     incomplete_changes: 1,
     queue: [],
   }),
-  searchFacilities: vi.fn().mockResolvedValue([]),
+  searchFacilities: vi.fn().mockResolvedValue({ items: [], total_count: 0, offset: 0, limit: 100 }),
   getFacilityWorkspace: vi.fn().mockResolvedValue(null),
   getCaseDetail: vi.fn().mockResolvedValue(null),
   getDocumentDetail: vi.fn().mockResolvedValue(null),
@@ -93,7 +93,7 @@ function buildSearchResult(overrides: Record<string, unknown> = {}) {
     gxp_types: ["GMP"],
     certificate_scope_summary: "Dây chuyền viên nén A",
     province_name: "Hà Nội",
-    last_inspection_code: "KT-2026-GMP-A",
+    last_inspection_on: "2026-08-01",
     current_state: "awaiting_certificate_decision",
     current_certificate_number: "GCN-001",
     current_certificate_expiry: "2026-12-31",
@@ -217,7 +217,7 @@ describe("App Slice A shell", () => {
 
   it("renders compact search split, line-grain results, and bottom facility tabs from authenticated API", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
-    apiMocks.searchFacilities.mockResolvedValue([buildSearchResult()]);
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
     apiMocks.getCaseDetail.mockResolvedValue({
       id: "case-1",
@@ -234,13 +234,14 @@ describe("App Slice A shell", () => {
 
     const { container } = renderApp(["/search"]);
 
-    expect(await screen.findByText("Cơ sở / dây chuyền")).toBeInTheDocument();
+    expect(await screen.findByText("Cơ sở/dây chuyền")).toBeInTheDocument();
     expect(await screen.findByText("1.1A")).toBeInTheDocument();
     expect(await screen.findByText("Dây chuyền viên nén A")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Thông tin chung" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Các đợt kiểm tra & thay đổi" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Giấy chứng nhận GxP" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Giấy chứng nhận đủ điều kiện" })).toBeInTheDocument();
+    expect(screen.getByText("1-1 / 1 dòng")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Thông tin chung" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Các đợt kiểm tra & thay đổi" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Giấy chứng nhận GxP" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Giấy chứng nhận đủ điều kiện" })).toBeInTheDocument();
     expect(screen.getAllByText("KT-2026-GMP-A").length).toBeGreaterThan(0);
     expect(container.querySelector(".search-workspace-split")).not.toBeNull();
     expect(container.querySelector(".facility-workspace-panel")).not.toBeNull();
@@ -249,7 +250,7 @@ describe("App Slice A shell", () => {
 
   it("keeps active filter chips visible while advanced filters stay collapsed by default", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
-    apiMocks.searchFacilities.mockResolvedValue([buildSearchResult()]);
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
     apiMocks.getCaseDetail.mockResolvedValue({
       id: "case-1",
@@ -275,16 +276,21 @@ describe("App Slice A shell", () => {
 
   it("preserves selected facility, line, and gxp context while switching facility tabs", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
-    apiMocks.searchFacilities.mockResolvedValue([
-      buildSearchResult(),
-      buildSearchResult({
+    apiMocks.searchFacilities.mockResolvedValue({
+      items: [
+        buildSearchResult(),
+        buildSearchResult({
         result_key: "site-1:GMP:B",
         context_code: "1.1B",
         line_code: "B",
         certificate_scope_summary: "Dây chuyền thuốc bột B",
-        last_inspection_code: "KT-2026-GMP-B",
+        last_inspection_on: "2026-08-05",
       }),
-    ]);
+      ],
+      total_count: 2,
+      offset: 0,
+      limit: 100,
+    });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
     apiMocks.getCaseDetail.mockResolvedValue({
       id: "case-1",
@@ -303,12 +309,12 @@ describe("App Slice A shell", () => {
 
     expect(await screen.findByText(/Dây chuyền\s*A/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Thông tin chung" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Thông tin chung" }));
     expect(screen.getAllByText("Phạm vi chứng nhận").length).toBeGreaterThan(0);
     expect(screen.getAllByText("1.1A").length).toBeGreaterThan(0);
     expect(screen.getByText(/Dây chuyền\s*A/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Giấy chứng nhận GxP" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Giấy chứng nhận GxP" }));
     expect(await screen.findByText("Số GCN hiện hành")).toBeInTheDocument();
     expect(screen.getAllByText("Dây chuyền viên nén A").length).toBeGreaterThan(0);
     expect(screen.getByText("Lịch sử chứng nhận chưa mở ở Slice A.2")).toBeInTheDocument();
@@ -352,12 +358,17 @@ describe("App Slice A shell", () => {
 
   it("clears stale case detail while switching history items quickly", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
-    apiMocks.searchFacilities.mockResolvedValue([
+    apiMocks.searchFacilities.mockResolvedValue({
+      items: [
       buildSearchResult({
         current_state: "inspection_in_progress",
-        last_inspection_code: "KT-2026-GMP-B",
+        last_inspection_on: "2026-08-05",
       }),
-    ]);
+      ],
+      total_count: 1,
+      offset: 0,
+      limit: 100,
+    });
     apiMocks.getFacilityWorkspace.mockResolvedValue({
       ...buildWorkspace(),
       summary: {
@@ -463,5 +474,78 @@ describe("App Slice A shell", () => {
     expect(await screen.findByText("PIC/S-GMP")).toBeInTheDocument();
     expect(screen.getAllByText("Đang kiểm tra").length).toBeGreaterThan(0);
     expect(screen.queryByText("Không tải được chi tiết hồ sơ")).not.toBeInTheDocument();
+  });
+
+  it("does not refetch the result list when selecting another result row", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({
+      items: [
+        buildSearchResult(),
+        buildSearchResult({
+          result_key: "site-1:GMP:B",
+          context_code: "1.1B",
+          line_code: "B",
+          facility_name: "Công ty cổ phần Dược phẩm Trung ương I",
+          certificate_scope_summary: "Dây chuyền thuốc bột B",
+          last_inspection_on: "2026-08-05",
+        }),
+      ],
+      total_count: 2,
+      offset: 0,
+      limit: 100,
+    });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseDetail.mockResolvedValue({
+      id: "case-1",
+      legacy_inspection_id: 1,
+      legacy_inspection_code: "KT-2026-GMP-A",
+      site_id: "site-1",
+      gxp_type: "GMP",
+      scope_code: "A",
+      applicable_standard: "WHO-GMP",
+      inspection_type: "Định kỳ",
+      state: "awaiting_certificate_decision",
+      opened_year: 2026,
+    });
+
+    renderApp(["/search"]);
+
+    expect(await screen.findByText("Cty CP Dược phẩm Trung ương I")).toBeInTheDocument();
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByText("1.1B"));
+
+    await waitFor(() => {
+      const lastCall = apiMocks.getFacilityWorkspace.mock.calls.at(-1);
+      expect(lastCall?.[0]).toBe("site-1");
+      expect(lastCall?.[2]).toBe(true);
+      expect(lastCall?.[3]).toBe("GMP");
+      expect(lastCall?.[4]).toBe("B");
+    });
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders facility tabs as a dedicated tab strip", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseDetail.mockResolvedValue({
+      id: "case-1",
+      legacy_inspection_id: 1,
+      legacy_inspection_code: "KT-2026-GMP-A",
+      site_id: "site-1",
+      gxp_type: "GMP",
+      scope_code: "A",
+      applicable_standard: "WHO-GMP",
+      inspection_type: "Định kỳ",
+      state: "awaiting_certificate_decision",
+      opened_year: 2026,
+    });
+
+    const { container } = renderApp(["/search"]);
+
+    await screen.findByRole("tab", { name: "Thông tin chung" });
+    expect(container.querySelector(".tab-strip-primary")).not.toBeNull();
+    expect(screen.getByRole("tab", { name: "Các đợt kiểm tra & thay đổi" })).toHaveAttribute("aria-selected", "true");
   });
 });

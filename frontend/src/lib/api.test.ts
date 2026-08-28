@@ -184,7 +184,7 @@ describe("frontend API routing contract", () => {
     expect(fetchMock.mock.calls[0][1].headers["X-Auth-User"]).toBeUndefined();
   });
 
-  it("encodes repeated facility search filters for exact drilldown predicates", async () => {
+  it("encodes repeated facility search filters plus paging for exact drilldown predicates", async () => {
     const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse());
     vi.stubGlobal("fetch", fetchMock);
 
@@ -195,14 +195,15 @@ describe("frontend API routing contract", () => {
         change_request_state: ["received", "under_review"],
         certificate_state: "active",
         certificate_expiring_within_days: 90,
-        limit: 80,
+        offset: 100,
+        limit: 100,
       },
       { username: "operator.local", role: "manager" },
       true,
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/search/facilities?gxp_type=GMP&case_state=planned&case_state=decision_issued&case_state=inspection_in_progress&change_request_state=received&change_request_state=under_review&certificate_state=active&certificate_expiring_within_days=90&limit=80",
+      "/api/search/facilities?gxp_type=GMP&case_state=planned&case_state=decision_issued&case_state=inspection_in_progress&change_request_state=received&change_request_state=under_review&certificate_state=active&certificate_expiring_within_days=90&offset=100&limit=100",
       expect.any(Object),
     );
   });

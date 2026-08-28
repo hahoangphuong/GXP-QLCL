@@ -11,6 +11,7 @@ from backend.app.read_models import (
     CompanyDetailRead,
     CompanyRead,
     DashboardSummaryRead,
+    FacilitySearchPageRead,
     FacilitySearchResultRead,
     FacilityWorkspaceRead,
     SiteDetailRead,
@@ -154,25 +155,30 @@ def register_catalog_routes(app, session_factory) -> None:
         change_request_state: list[str] = Query(default=[]),
         certificate_state: str | None = Query(default=None),
         certificate_expiring_within_days: int | None = Query(default=None, ge=1, le=365),
+        offset: int = 0,
         limit: int = Query(default=50, ge=1, le=200),
         session: Session = dependency,
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
         require_role(user, ALLOWED_READ_ROLES)
-        return [
-            FacilitySearchResultRead(**row)
-            for row in service.search_facilities(
-                session,
-                q=q,
-                gxp_type=gxp_type,
-                province=province,
-                case_states=case_state,
-                change_request_states=change_request_state,
-                certificate_state=certificate_state,
-                certificate_expiring_within_days=certificate_expiring_within_days,
-                limit=limit,
-            )
-        ]
+        payload = service.search_facilities(
+            session,
+            q=q,
+            gxp_type=gxp_type,
+            province=province,
+            case_states=case_state,
+            change_request_states=change_request_state,
+            certificate_state=certificate_state,
+            certificate_expiring_within_days=certificate_expiring_within_days,
+            offset=offset,
+            limit=limit,
+        )
+        return FacilitySearchPageRead(
+            items=[FacilitySearchResultRead(**row) for row in payload["items"]],
+            total_count=payload["total_count"],
+            offset=payload["offset"],
+            limit=payload["limit"],
+        )
 
     def get_facility_workspace(
         site_id: str,
@@ -193,5 +199,5 @@ def register_catalog_routes(app, session_factory) -> None:
     app.add_api_route("/cases", list_cases, methods=["GET"], response_model=list[CaseRead], tags=["catalog"])
     app.add_api_route("/cases/{case_id}", get_case_detail, methods=["GET"], response_model=CaseDetailRead, tags=["catalog"])
     app.add_api_route("/dashboard/summary", get_dashboard_summary, methods=["GET"], response_model=DashboardSummaryRead, tags=["catalog"])
-    app.add_api_route("/search/facilities", search_facilities, methods=["GET"], response_model=list[FacilitySearchResultRead], tags=["catalog"])
+    app.add_api_route("/search/facilities", search_facilities, methods=["GET"], response_model=FacilitySearchPageRead, tags=["catalog"])
     app.add_api_route("/sites/{site_id}/workspace", get_facility_workspace, methods=["GET"], response_model=FacilityWorkspaceRead, tags=["catalog"])

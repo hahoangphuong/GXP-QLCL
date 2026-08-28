@@ -1,4 +1,5 @@
 import { StatusBadge } from "../../components/StatusBadge";
+import { formatHistoryEventType } from "../../lib/presentation";
 import type { FacilityHistoryItem } from "../../types";
 
 function formatDate(value: string | null): string {
@@ -20,20 +21,17 @@ export function HistoryTable({
   return (
     <section className="panel panel-tight history-panel">
       <div className="panel-header">
-        <div>
-          <p className="eyebrow">Lịch sử</p>
-          <h3>Kiểm tra và thay đổi</h3>
-        </div>
+        <h3>Lịch sử kiểm tra & thay đổi</h3>
         <span className="panel-meta">{rows.length} sự kiện</span>
       </div>
       <div className="table-scroll table-scroll-history">
-        <table className="dense-table">
+        <table className="dense-table history-table">
           <thead>
             <tr>
-              <th>Loại sự kiện</th>
-              <th>Tiêu chuẩn</th>
-              <th>Ngày</th>
-              <th>Trạng thái</th>
+              <th className="col-event-type">Loại sự kiện</th>
+              <th className="col-standard">Tiêu chuẩn</th>
+              <th className="col-date">Ngày</th>
+              <th className="col-state">Trạng thái</th>
             </tr>
           </thead>
           <tbody>
@@ -51,7 +49,7 @@ export function HistoryTable({
                 }}
                 tabIndex={0}
               >
-                <td>{row.event_type}</td>
+                <td title={row.event_type}>{formatHistoryEventType(row.event_type)}</td>
                 <td title={row.standard ?? ""}>{row.standard ?? "Chưa có"}</td>
                 <td>{formatDate(row.occurred_on)}</td>
                 <td>

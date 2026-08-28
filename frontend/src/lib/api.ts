@@ -9,7 +9,7 @@ import type {
   DocumentGenerationRunStatus,
   DocumentPreparationResponse,
   DocumentRenderResponse,
-  FacilitySearchResult,
+  FacilitySearchPage,
   FacilityWorkspace,
   Site,
   StubAuthState,
@@ -139,12 +139,13 @@ export function searchFacilities(
     change_request_state?: string[] | null;
     certificate_state?: string | null;
     certificate_expiring_within_days?: number | null;
+    offset?: number;
     limit?: number;
   },
   auth: StubAuthState,
   useStubAuth: boolean,
   bearerToken?: string | null,
-): Promise<FacilitySearchResult[]> {
+): Promise<FacilitySearchPage> {
   const searchParams = new URLSearchParams();
   if (filters.q) {
     searchParams.set("q", filters.q);
@@ -170,8 +171,11 @@ export function searchFacilities(
       String(filters.certificate_expiring_within_days),
     );
   }
+  if (filters.offset && filters.offset > 0) {
+    searchParams.set("offset", String(filters.offset));
+  }
   searchParams.set("limit", String(filters.limit ?? 50));
-  return requestJson<FacilitySearchResult[]>(buildApiPath("/search/facilities", searchParams), {
+  return requestJson<FacilitySearchPage>(buildApiPath("/search/facilities", searchParams), {
     auth,
     useStubAuth,
     bearerToken,

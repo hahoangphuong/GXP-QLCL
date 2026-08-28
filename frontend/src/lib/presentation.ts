@@ -42,6 +42,11 @@ const STATUS_TONES: Record<string, string> = {
   active: "success",
 };
 
+const FACILITY_NAME_ABBREVIATIONS: Array<[RegExp, string]> = [
+  [/\bCông ty\b/g, "Cty"],
+  [/\bcổ phần\b/gi, "CP"],
+];
+
 export const CASE_STATE_OPTIONS = [
   "application_received",
   "under_assessment",
@@ -67,4 +72,19 @@ export function getStatusTone(value: string | null | undefined): string {
     return "muted";
   }
   return STATUS_TONES[normalized] ?? "info";
+}
+
+export function formatFacilityNameForGrid(value: string): string {
+  return FACILITY_NAME_ABBREVIATIONS.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), value);
+}
+
+export function formatHistoryEventType(value: string | null | undefined): string {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return "Chưa có";
+  }
+  if (normalized === "Thay đổi cơ sở") {
+    return "Thay đổi";
+  }
+  return normalized;
 }

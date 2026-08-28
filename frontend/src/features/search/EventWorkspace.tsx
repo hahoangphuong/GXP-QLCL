@@ -1,6 +1,6 @@
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
-import { formatStatusLabel } from "../../lib/presentation";
+import { formatHistoryEventType, formatStatusLabel } from "../../lib/presentation";
 import type { CaseDetail, FacilityHistoryItem } from "../../types";
 
 const EVENT_TABS = ["Hồ sơ", "Kiểm tra", "Khắc phục", "Xử lý", "Chứng nhận GPs", "Chứng nhận khác"] as const;
@@ -38,12 +38,14 @@ export function EventWorkspace({
         </div>
         <StatusBadge value={selectedHistory.state} />
       </div>
-      <div className="workspace-tabs" role="tablist" aria-label="Vùng detail sự kiện">
+      <div className="workspace-tabs tab-strip tab-strip-secondary" role="tablist" aria-label="Vùng detail sự kiện">
         {EVENT_TABS.map((tab) => (
           <button
+            aria-selected={activeTab === tab}
             className={activeTab === tab ? "workspace-tab active" : "workspace-tab"}
             key={tab}
             onClick={() => onTabChange(tab)}
+            role="tab"
             type="button"
           >
             {tab}
@@ -55,7 +57,7 @@ export function EventWorkspace({
         <div className="detail-grid compact-grid">
           <div>
             <span>Loại</span>
-            <strong>Thay đổi cơ sở</strong>
+            <strong>{formatHistoryEventType(selectedHistory.event_type)}</strong>
           </div>
           <div>
             <span>Mã tham chiếu</span>

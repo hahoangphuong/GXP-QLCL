@@ -104,10 +104,17 @@ class FacilitySearchResultRead(BaseModel):
     gxp_types: list[str]
     certificate_scope_summary: str | None
     province_name: str | None
-    last_inspection_code: str | None
+    last_inspection_on: date | None
     current_state: str | None
     current_certificate_number: str | None
     current_certificate_expiry: date | None
+
+
+class FacilitySearchPageRead(BaseModel):
+    items: list[FacilitySearchResultRead]
+    total_count: int
+    offset: int
+    limit: int
 
 
 class FacilityWorkspaceSummaryRead(BaseModel):

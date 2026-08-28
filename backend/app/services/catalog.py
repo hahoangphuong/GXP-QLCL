@@ -19,8 +19,10 @@ from backend.app.db.models.phase1 import (
     ChangeRequest,
     Company,
     InspectionEvent,
+    InspectionOutcome,
     Site,
 )
+from backend.app.db.enums import InspectionEventType
 
 ACTIVE_CASE_STATES = [
     CaseState.DRAFT,
@@ -272,8 +274,48 @@ class CatalogReadService:
             )
             .distinct()
             .order_by(Site.legacy_site_id.asc(), Site.site_name.asc())
-            .limit(limit)
         )
+
+    @staticmethod
+    def _inspection_signal_for_case(
+        case: Case,
+        *,
+        outcomes_by_case_id: dict[str, InspectionOutcome],
+        inspection_event_dates_by_case_id: dict[str, date],
+    ) -> date | None:
+        outcome = outcomes_by_case_id.get(case.id)
+        if outcome is not None:
+            if outcome.inspected_to_on is not None:
+                return outcome.inspected_to_on
+            if outcome.inspected_on is not None:
+                return outcome.inspected_on
+        return inspection_event_dates_by_case_id.get(case.id)
+
+    def _select_latest_inspection_on(
+        self,
+        rows: list[Case],
+        *,
+        outcomes_by_case_id: dict[str, InspectionOutcome],
+        inspection_event_dates_by_case_id: dict[str, date],
+    ) -> date | None:
+        latest_value: tuple[date, int, int, date] | None = None
+        for row in rows:
+            inspected_on = self._inspection_signal_for_case(
+                row,
+                outcomes_by_case_id=outcomes_by_case_id,
+                inspection_event_dates_by_case_id=inspection_event_dates_by_case_id,
+            )
+            if inspected_on is None:
+                continue
+            candidate = (
+                inspected_on,
+                row.opened_year or 0,
+                row.legacy_inspection_id or 0,
+                row.updated_at.date(),
+            )
+            if latest_value is None or candidate > latest_value:
+                latest_value = candidate
+        return None if latest_value is None else latest_value[0]
 
     def list_companies(self, session: Session, *, q: str | None, limit: int):
         stmt = select(Company).order_by(Company.legacy_company_id).limit(limit)
@@ -395,6 +437,7 @@ class CatalogReadService:
         change_request_states: list[str] | None,
         certificate_state: str | None,
         certificate_expiring_within_days: int | None,
+        offset: int,
         limit: int,
     ):
         stmt = select(Site.id).join(Company, Company.id == Site.company_id)
@@ -482,7 +525,12 @@ class CatalogReadService:
         site_rows = session.execute(candidate_stmt).all()
         site_ids = [row.id for row in site_rows]
         if not site_ids:
-            return []
+            return {
+                "items": [],
+                "total_count": 0,
+                "offset": offset,
+                "limit": limit,
+            }
 
         sites = {
             row.id: row
@@ -499,6 +547,26 @@ class CatalogReadService:
         for row in session.scalars(select(Case).where(Case.site_id.in_(site_ids))):
             cases_by_site[row.site_id].append(row)
             cases_by_id[row.id] = row
+        case_ids = list(cases_by_id)
+        outcomes_by_case_id: dict[str, InspectionOutcome] = {}
+        if case_ids:
+            for outcome in session.scalars(select(InspectionOutcome).where(InspectionOutcome.case_id.in_(case_ids))):
+                outcomes_by_case_id[outcome.case_id] = outcome
+        inspection_event_dates_by_case_id: dict[str, date] = {}
+        if case_ids:
+            event_rows = session.execute(
+                select(InspectionEvent.case_id, func.max(InspectionEvent.occurred_at))
+                .where(
+                    InspectionEvent.case_id.in_(case_ids),
+                    InspectionEvent.event_type == InspectionEventType.INSPECTION_EXECUTED,
+                )
+                .group_by(InspectionEvent.case_id)
+            ).all()
+            inspection_event_dates_by_case_id = {
+                case_id: occurred_at.date()
+                for case_id, occurred_at in event_rows
+                if occurred_at is not None
+            }
 
         current_certificates = list(
             session.execute(
@@ -566,7 +634,11 @@ class CatalogReadService:
                         "gxp_types": gxp_types,
                         "certificate_scope_summary": None if certificate_context is None else certificate_context.scope_summary,
                         "province_name": site.province_name,
-                        "last_inspection_code": None if latest is None else latest.legacy_inspection_code,
+                        "last_inspection_on": self._select_latest_inspection_on(
+                            context_cases,
+                            outcomes_by_case_id=outcomes_by_case_id,
+                            inspection_event_dates_by_case_id=inspection_event_dates_by_case_id,
+                        ),
                         "current_state": None if latest is None else latest.state.value,
                         "current_certificate_number": None if certificate_context is None else certificate_context.version.certificate_number,
                         "current_certificate_expiry": None if certificate_context is None else certificate_context.version.expiry_date,
@@ -580,7 +652,13 @@ class CatalogReadService:
                 item["gxp_type"] or "",
             )
         )
-        return results[:limit]
+        total_count = len(results)
+        return {
+            "items": results[offset : offset + limit],
+            "total_count": total_count,
+            "offset": offset,
+            "limit": limit,
+        }
 
     def get_facility_workspace(self, session: Session, *, site_id: str, gxp_type: str | None, line_code: str | None):
         site = self.get_site(session, site_id)

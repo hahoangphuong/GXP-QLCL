@@ -28,13 +28,22 @@ from backend.app.db.models.phase1 import (
     Company,
     InspectionEvent,
     InspectionEventType,
+    InspectionOutcome,
     RbacPermission,
     RbacRole,
     RbacRolePermission,
     Site,
 )
 from backend.app.main import create_app
-from backend.app.read_models import CaseDetailRead, CaseRead, CompanyDetailRead, CompanyRead, SiteDetailRead, SiteRead
+from backend.app.read_models import (
+    CaseDetailRead,
+    CaseRead,
+    CompanyDetailRead,
+    CompanyRead,
+    FacilitySearchPageRead,
+    SiteDetailRead,
+    SiteRead,
+)
 from backend.app.domain.phase2_import import import_snapshot
 from backend.app.services.catalog import CatalogReadService
 
@@ -566,6 +575,7 @@ def test_catalog_manual_response_constructors_populate_all_required_schema_field
         "CompanyDetailRead": CompanyDetailRead,
         "SiteDetailRead": SiteDetailRead,
         "CaseDetailRead": CaseDetailRead,
+        "FacilitySearchPageRead": FacilitySearchPageRead,
     }
     seen_models: set[str] = set()
 
@@ -642,22 +652,24 @@ def test_search_facilities_and_workspace_keep_current_semantics_inside_selected_
             user=build_authenticated_user("reader01", "reader"),
         )
 
-    assert len(gmp_search) == 1
-    assert gmp_search[0].context_code == "GMP-501"
-    assert gmp_search[0].line_code is None
-    assert gmp_search[0].gxp_type == "GMP"
-    assert gmp_search[0].last_inspection_code == "KT-GMP-2025"
-    assert gmp_search[0].current_state == "inspection_completed"
-    assert gmp_search[0].current_certificate_number == "GCN-GMP-001"
-    assert gmp_search[0].certificate_scope_summary is None
+    assert gmp_search.total_count == 1
+    assert len(gmp_search.items) == 1
+    assert gmp_search.items[0].context_code == "GMP-501"
+    assert gmp_search.items[0].line_code is None
+    assert gmp_search.items[0].gxp_type == "GMP"
+    assert gmp_search.items[0].last_inspection_on == date(2025, 5, 20)
+    assert gmp_search.items[0].current_state == "inspection_completed"
+    assert gmp_search.items[0].current_certificate_number == "GCN-GMP-001"
+    assert gmp_search.items[0].certificate_scope_summary is None
 
-    assert len(glp_search) == 1
-    assert glp_search[0].context_code == "GLP-501"
-    assert glp_search[0].line_code is None
-    assert glp_search[0].gxp_type == "GLP"
-    assert glp_search[0].last_inspection_code == "KT-GLP-2026"
-    assert glp_search[0].current_state == "awaiting_certificate_decision"
-    assert glp_search[0].current_certificate_number == "GCN-GLP-009"
+    assert glp_search.total_count == 1
+    assert len(glp_search.items) == 1
+    assert glp_search.items[0].context_code == "GLP-501"
+    assert glp_search.items[0].line_code is None
+    assert glp_search.items[0].gxp_type == "GLP"
+    assert glp_search.items[0].last_inspection_on == date(2026, 7, 15)
+    assert glp_search.items[0].current_state == "awaiting_certificate_decision"
+    assert glp_search.items[0].current_certificate_number == "GCN-GLP-009"
 
     assert gmp_workspace.summary.selected_gxp_type == "GMP"
     assert gmp_workspace.summary.primary_standard == "WHO-GMP"
@@ -706,14 +718,15 @@ def test_search_facilities_and_workspace_preserve_production_line_context_and_ce
             user=build_authenticated_user("reader01", "reader"),
         )
 
-    assert [row.context_code for row in search_payload] == ["1.1A", "1.1B", "1.1C"]
-    assert [row.line_code for row in search_payload] == ["A", "B", "C"]
-    assert [row.result_grain for row in search_payload] == ["production_line", "production_line", "production_line"]
-    assert search_payload[0].gxp_type == "GMP"
-    assert search_payload[0].certificate_scope_summary == "Dây chuyền viên nén A"
-    assert search_payload[0].certificate_scope_summary != search_payload[0].current_state
-    assert search_payload[1].certificate_scope_summary == "Dây chuyền thuốc bột B"
-    assert search_payload[2].certificate_scope_summary is None
+    assert search_payload.total_count == 3
+    assert [row.context_code for row in search_payload.items] == ["1.1A", "1.1B", "1.1C"]
+    assert [row.line_code for row in search_payload.items] == ["A", "B", "C"]
+    assert [row.result_grain for row in search_payload.items] == ["production_line", "production_line", "production_line"]
+    assert search_payload.items[0].gxp_type == "GMP"
+    assert search_payload.items[0].certificate_scope_summary == "Dây chuyền viên nén A"
+    assert search_payload.items[0].certificate_scope_summary != search_payload.items[0].current_state
+    assert search_payload.items[1].certificate_scope_summary == "Dây chuyền thuốc bột B"
+    assert search_payload.items[2].certificate_scope_summary is None
 
     assert workspace_payload.summary.context_code == "1.1A"
     assert workspace_payload.summary.selected_line_code == "A"
@@ -835,10 +848,11 @@ def test_imported_legacy_certificate_scope_flows_through_catalog_search(tmp_path
             user=build_authenticated_user("reader01", "reader"),
         )
 
-    assert [row.context_code for row in search_payload] == ["1.1A", "1.1B"]
-    assert [row.current_certificate_number for row in search_payload] == ["GCN-A", "GCN-B"]
-    assert [row.certificate_scope_summary for row in search_payload] == ["Dây chuyền viên nén A", "Dây chuyền thuốc bột B"]
-    assert [row.line_code for row in search_payload] == ["A", "B"]
+    assert search_payload.total_count == 2
+    assert [row.context_code for row in search_payload.items] == ["1.1A", "1.1B"]
+    assert [row.current_certificate_number for row in search_payload.items] == ["GCN-A", "GCN-B"]
+    assert [row.certificate_scope_summary for row in search_payload.items] == ["Dây chuyền viên nén A", "Dây chuyền thuốc bột B"]
+    assert [row.line_code for row in search_payload.items] == ["A", "B"]
 
 
 def test_catalog_prefers_certificate_line_code_over_linked_case_scope_when_legacy_row_disagrees(tmp_path):
@@ -908,15 +922,17 @@ def test_catalog_prefers_certificate_line_code_over_linked_case_scope_when_legac
             change_request_states=None,
             certificate_state=None,
             certificate_expiring_within_days=None,
+            offset=0,
             limit=80,
         )
 
-    assert [row["context_code"] for row in search_payload] == ["1.1A", "1.1B"]
-    assert search_payload[0]["line_code"] == "A"
-    assert search_payload[0]["current_certificate_number"] == "GCN-MISMATCH"
-    assert search_payload[0]["certificate_scope_summary"] == "Dây chuyền A từ certificate owner"
-    assert search_payload[1]["line_code"] == "B"
-    assert search_payload[1]["current_certificate_number"] is None
+    assert search_payload["total_count"] == 2
+    assert [row["context_code"] for row in search_payload["items"]] == ["1.1A", "1.1B"]
+    assert search_payload["items"][0]["line_code"] == "A"
+    assert search_payload["items"][0]["current_certificate_number"] == "GCN-MISMATCH"
+    assert search_payload["items"][0]["certificate_scope_summary"] == "Dây chuyền A từ certificate owner"
+    assert search_payload["items"][1]["line_code"] == "B"
+    assert search_payload["items"][1]["current_certificate_number"] is None
 
 
 def test_search_facility_candidate_query_projects_order_by_columns_for_postgresql():
@@ -1084,12 +1100,12 @@ def test_dashboard_metric_drilldowns_match_search_predicates(tmp_path):
             user=build_authenticated_user("reader01", "reader"),
         )
 
-    assert dashboard_payload.active_cases == len(active_cases)
-    assert dashboard_payload.waiting_inspection == len(waiting_inspection)
-    assert dashboard_payload.waiting_certificate_decision == len(waiting_certificate_decision)
-    assert dashboard_payload.active_certificates == len(active_certificates)
-    assert dashboard_payload.expiring_certificates_90_days == len(expiring_certificates)
-    assert dashboard_payload.incomplete_changes == len(incomplete_changes)
+    assert dashboard_payload.active_cases == active_cases.total_count
+    assert dashboard_payload.waiting_inspection == waiting_inspection.total_count
+    assert dashboard_payload.waiting_certificate_decision == waiting_certificate_decision.total_count
+    assert dashboard_payload.active_certificates == active_certificates.total_count
+    assert dashboard_payload.expiring_certificates_90_days == expiring_certificates.total_count
+    assert dashboard_payload.incomplete_changes == incomplete_changes.total_count
 
 
 def test_search_facilities_keeps_distinct_facility_rows_when_joins_match_multiple_records(tmp_path):
@@ -1169,11 +1185,145 @@ def test_search_facilities_keeps_distinct_facility_rows_when_joins_match_multipl
             change_request_states=[],
             certificate_state="active",
             certificate_expiring_within_days=None,
+            offset=0,
             limit=80,
         )
 
-    assert len(rows) == 1
-    assert rows[0]["site_id"] == site_id
+    assert rows["total_count"] == 1
+    assert len(rows["items"]) == 1
+    assert rows["items"][0]["site_id"] == site_id
+
+
+def test_search_facilities_pages_full_line_grain_result_set_with_deterministic_order_and_total_count(tmp_path):
+    database_path = tmp_path / "search-paging.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        company = Company(legal_name="Công ty Paging", short_name="PAGE")
+        session.add(company)
+        session.flush()
+
+        site_one = Site(company_id=company.id, site_name="Nhà máy 10", legacy_site_id=10, legacy_gmp_site_code="10.1")
+        site_two = Site(company_id=company.id, site_name="Nhà máy 20", legacy_site_id=20, legacy_gmp_site_code="20.1")
+        session.add_all([site_one, site_two])
+        session.flush()
+
+        session.add_all(
+            [
+                Case(site_id=site_one.id, gxp_type="GMP", scope_code="A", state=CaseState.PLANNED, opened_year=2026),
+                Case(site_id=site_one.id, gxp_type="GMP", scope_code="B", state=CaseState.PLANNED, opened_year=2026),
+                Case(site_id=site_two.id, gxp_type="GMP", scope_code="A", state=CaseState.PLANNED, opened_year=2026),
+            ]
+        )
+        session.commit()
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        first_page = service.search_facilities(
+            session,
+            q=None,
+            gxp_type="GMP",
+            province=None,
+            case_states=None,
+            change_request_states=None,
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            offset=0,
+            limit=2,
+        )
+        second_page = service.search_facilities(
+            session,
+            q=None,
+            gxp_type="GMP",
+            province=None,
+            case_states=None,
+            change_request_states=None,
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            offset=2,
+            limit=2,
+        )
+
+    assert first_page["total_count"] == 3
+    assert first_page["offset"] == 0
+    assert first_page["limit"] == 2
+    assert [row["context_code"] for row in first_page["items"]] == ["10.1A", "10.1B"]
+
+    assert second_page["total_count"] == 3
+    assert second_page["offset"] == 2
+    assert second_page["limit"] == 2
+    assert [row["context_code"] for row in second_page["items"]] == ["20.1A"]
+
+
+def test_search_facilities_uses_inspection_outcome_or_executed_event_for_latest_inspection_signal(tmp_path):
+    database_path = tmp_path / "search-latest-inspection.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        company = Company(legal_name="Công ty Inspection", short_name="INSP")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="Nhà máy Inspection", legacy_site_id=77, legacy_gmp_site_code="77.1")
+        session.add(site)
+        session.flush()
+
+        case_with_outcome = Case(
+            site_id=site.id,
+            gxp_type="GMP",
+            scope_code="A",
+            state=CaseState.INSPECTION_COMPLETED,
+            legacy_inspection_code="KT-OUTCOME",
+            opened_year=2026,
+        )
+        case_with_event_only = Case(
+            site_id=site.id,
+            gxp_type="GMP",
+            scope_code="B",
+            state=CaseState.INSPECTION_COMPLETED,
+            legacy_inspection_code="KT-EVENT",
+            opened_year=2026,
+        )
+        session.add_all([case_with_outcome, case_with_event_only])
+        session.flush()
+
+        session.add(
+            InspectionOutcome(
+                case_id=case_with_outcome.id,
+                inspected_on=date(2026, 7, 10),
+                inspected_to_on=date(2026, 7, 12),
+            )
+        )
+        session.add(
+            InspectionEvent(
+                case_id=case_with_event_only.id,
+                event_type=InspectionEventType.INSPECTION_EXECUTED,
+                occurred_at=datetime(2026, 8, 5, tzinfo=timezone.utc),
+            )
+        )
+        session.commit()
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        payload = service.search_facilities(
+            session,
+            q=None,
+            gxp_type="GMP",
+            province=None,
+            case_states=None,
+            change_request_states=None,
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            offset=0,
+            limit=10,
+        )
+
+    assert [row["context_code"] for row in payload["items"]] == ["77.1A", "77.1B"]
+    assert payload["items"][0]["last_inspection_on"] == date(2026, 7, 12)
+    assert payload["items"][1]["last_inspection_on"] == date(2026, 8, 5)
 
 
 def test_dashboard_metrics_count_matching_facilities_not_raw_records(tmp_path):
@@ -1343,10 +1493,11 @@ def test_dashboard_summary_and_workspace_routes_return_business_read_models(tmp_
     assert len(dashboard_payload.queue) == 1
     assert dashboard_payload.queue[0].facility_name == "Nhà máy A"
 
-    assert len(search_payload) == 1
-    assert search_payload[0].facility_name == "Nhà máy A"
-    assert search_payload[0].facility_code == "GMP-101"
-    assert search_payload[0].current_state == "awaiting_certificate_decision"
+    assert search_payload.total_count == 1
+    assert len(search_payload.items) == 1
+    assert search_payload.items[0].facility_name == "Nhà máy A"
+    assert search_payload.items[0].facility_code == "GMP-101"
+    assert search_payload.items[0].current_state == "awaiting_certificate_decision"
 
     assert workspace_payload.summary.facility_name == "Nhà máy A"
     assert workspace_payload.summary.company_name == "Công ty A"

@@ -54,12 +54,14 @@ export function FacilityWorkspaceTabs({
         </div>
       </div>
 
-      <div className="workspace-tabs facility-tabs" role="tablist" aria-label="Tab nghiệp vụ cơ sở">
+      <div className="workspace-tabs facility-tabs tab-strip tab-strip-primary" role="tablist" aria-label="Tab nghiệp vụ cơ sở">
         {FACILITY_TABS.map((tab) => (
           <button
+            aria-selected={selectedFacilityTab === tab}
             className={selectedFacilityTab === tab ? "workspace-tab active" : "workspace-tab"}
             key={tab}
             onClick={() => onFacilityTabChange(tab)}
+            role="tab"
             type="button"
           >
             {tab}

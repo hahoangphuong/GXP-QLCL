@@ -13,6 +13,7 @@ import type { CaseDetail, FacilitySearchResult, FacilityWorkspace } from "../typ
 
 const DEFAULT_EVENT_TAB = "Hồ sơ";
 const DEFAULT_FACILITY_TAB = "Các đợt kiểm tra & thay đổi";
+const RESULT_PAGE_SIZE = 100;
 
 export function SearchPage({
   access,
@@ -31,6 +32,10 @@ export function SearchPage({
     searchParams.get("certificate_expiring_within_days") ?? "",
   );
   const [changeRequestStates, setChangeRequestStates] = useState<string[]>(searchParams.getAll("change_request_state"));
+  const [resultsOffset, setResultsOffset] = useState(() => {
+    const raw = Number(searchParams.get("offset") ?? "0");
+    return Number.isFinite(raw) && raw >= 0 ? raw : 0;
+  });
   const [selectedResultKey, setSelectedResultKey] = useState<string | null>(searchParams.get("result_key"));
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(searchParams.get("history_id"));
   const [selectedFacilityTab, setSelectedFacilityTab] = useState(searchParams.get("facility_tab") ?? DEFAULT_FACILITY_TAB);
@@ -40,6 +45,7 @@ export function SearchPage({
   const [results, setResults] = useState<FacilitySearchResult[]>([]);
   const [resultsLoading, setResultsLoading] = useState(true);
   const [resultsError, setResultsError] = useState<string | null>(null);
+  const [resultsTotalCount, setResultsTotalCount] = useState(0);
   const [workspace, setWorkspace] = useState<FacilityWorkspace | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
@@ -73,6 +79,9 @@ export function SearchPage({
     if (certificateExpiringWithinDays) {
       nextParams.set("certificate_expiring_within_days", certificateExpiringWithinDays);
     }
+    if (resultsOffset > 0) {
+      nextParams.set("offset", String(resultsOffset));
+    }
     if (selectedResult) {
       nextParams.set("result_key", selectedResult.result_key);
       nextParams.set("site_id", selectedResult.site_id);
@@ -102,6 +111,7 @@ export function SearchPage({
     deferredQuery,
     gxpType,
     province,
+    resultsOffset,
     selectedFacilityTab,
     selectedHistoryId,
     selectedResult,
@@ -125,7 +135,8 @@ export function SearchPage({
         change_request_state: changeRequestStates,
         certificate_state: certificateState || null,
         certificate_expiring_within_days: certificateExpiringWithinDays ? Number(certificateExpiringWithinDays) : null,
-        limit: 80,
+        offset: resultsOffset,
+        limit: RESULT_PAGE_SIZE,
       },
       access.auth,
       access.useStubAuth,
@@ -135,23 +146,25 @@ export function SearchPage({
         if (cancelled) {
           return;
         }
-        setResults(payload);
+        setResults(payload.items);
+        setResultsTotalCount(payload.total_count);
         setResultsError(null);
         setResultsLoading(false);
-        if (payload.length === 0) {
+        if (payload.items.length === 0) {
           setSelectedResultKey(null);
           setWorkspace(null);
           return;
         }
-        const hasSelection = selectedResultKey && payload.some((item) => item.result_key === selectedResultKey);
+        const hasSelection = selectedResultKey && payload.items.some((item) => item.result_key === selectedResultKey);
         if (!hasSelection) {
-          setSelectedResultKey(payload[0].result_key);
+          setSelectedResultKey(payload.items[0].result_key);
         }
       })
       .catch((error: Error) => {
         if (!cancelled) {
           setResultsError(error.message);
           setResultsLoading(false);
+          setResultsTotalCount(0);
         }
       });
     return () => {
@@ -166,7 +179,7 @@ export function SearchPage({
     deferredQuery,
     gxpType,
     province,
-    selectedResultKey,
+    resultsOffset,
   ]);
 
   useEffect(() => {
@@ -236,6 +249,7 @@ export function SearchPage({
 
   function updateFilter(field: string, value: string) {
     startTransition(() => {
+      setResultsOffset(0);
       if (field === "query") {
         setQuery(value);
       } else if (field === "gxpType") {
@@ -261,6 +275,7 @@ export function SearchPage({
     setChangeRequestStates([]);
     setCertificateState("");
     setCertificateExpiringWithinDays("");
+    setResultsOffset(0);
     setSelectedResultKey(null);
     setSelectedHistoryId(null);
     setSelectedFacilityTab(DEFAULT_FACILITY_TAB);
@@ -293,15 +308,24 @@ export function SearchPage({
         onClear={clearFilters}
       />
 
-      {resultsLoading ? <EmptyState title="Đang tra cứu" description="Đang tải danh sách cơ sở từ backend." /> : null}
-      {!resultsLoading && results.length === 0 ? (
+      {resultsLoading && results.length === 0 ? <EmptyState title="Đang tra cứu" description="Đang tải danh sách cơ sở từ backend." /> : null}
+      {!resultsLoading && resultsTotalCount === 0 ? (
         <EmptyState title="Không có kết quả" description="Không tìm thấy cơ sở phù hợp với bộ lọc hiện tại." />
       ) : null}
 
-      {results.length > 0 ? (
+      {resultsTotalCount > 0 ? (
         <>
           <div className="search-workspace search-workspace-split">
-            <FacilityTable rows={results} selectedResultKey={selectedResultKey} onSelect={setSelectedResultKey} />
+            <FacilityTable
+              rows={results}
+              selectedResultKey={selectedResultKey}
+              totalCount={resultsTotalCount}
+              offset={resultsOffset}
+              loading={resultsLoading}
+              onNextPage={() => setResultsOffset((current) => current + RESULT_PAGE_SIZE)}
+              onPrevPage={() => setResultsOffset((current) => Math.max(0, current - RESULT_PAGE_SIZE))}
+              onSelect={setSelectedResultKey}
+            />
             {workspaceError ? (
               <ErrorState message={workspaceError} />
             ) : workspaceLoading || !workspace ? (

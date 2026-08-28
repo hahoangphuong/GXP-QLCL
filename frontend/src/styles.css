@@ -295,6 +295,34 @@ tr:focus-visible {
   align-items: start;
 }
 
+.panel-heading-inline,
+.panel-actions,
+.panel-actions-tight {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.panel-heading-inline {
+  min-width: 0;
+}
+
+.panel-actions {
+  margin-left: auto;
+}
+
+.panel-actions-tight button {
+  height: 26px;
+  padding: 0 0.55rem;
+  font-size: 0.76rem;
+}
+
+.panel-subtle-loading {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
 .section-copy,
 .muted-copy,
 .state-panel p {
@@ -378,7 +406,6 @@ tr:focus-visible {
 .toggle-chip,
 .workspace-tab {
   min-height: 28px;
-  border-radius: 999px;
   background: var(--surface-alt);
   color: var(--text);
   border: 1px solid var(--border-strong);
@@ -386,11 +413,41 @@ tr:focus-visible {
   font-size: 0.8rem;
 }
 
-.toggle-chip.active,
-.workspace-tab.active {
+.toggle-chip {
+  border-radius: 999px;
+}
+
+.toggle-chip.active {
   background: var(--accent-soft);
   color: var(--accent-strong);
   border-color: #7cb7c0;
+}
+
+.tab-strip {
+  gap: 0.2rem;
+  align-items: end;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab-strip .workspace-tab {
+  min-height: 30px;
+  border-radius: 8px 8px 0 0;
+  border-bottom-color: transparent;
+  background: #eef4f6;
+  color: #45616b;
+}
+
+.tab-strip .workspace-tab.active {
+  background: var(--surface);
+  color: var(--accent-strong);
+  border-color: var(--border-strong);
+  border-bottom-color: var(--surface);
+}
+
+.tab-strip-secondary .workspace-tab {
+  min-height: 28px;
+  background: #f4f8f9;
+  color: #556d75;
 }
 
 .toolbar-search-primary {
@@ -435,7 +492,7 @@ tr:focus-visible {
 
 .search-workspace-split {
   display: grid;
-  grid-template-columns: minmax(0, 1.75fr) minmax(320px, 0.95fr);
+  grid-template-columns: minmax(0, 2.55fr) minmax(260px, 0.95fr);
   gap: 0.55rem;
 }
 
@@ -505,11 +562,11 @@ tr:focus-visible {
 }
 
 .facility-table .col-code {
-  width: 8.75rem;
+  width: 4.6rem;
 }
 
 .facility-table .col-facility {
-  width: 22%;
+  width: 27%;
 }
 
 .facility-table .col-gxp {
@@ -517,19 +574,35 @@ tr:focus-visible {
 }
 
 .facility-table .col-scope {
-  width: 28%;
+  width: 31%;
 }
 
 .facility-table .col-province {
-  width: 11%;
+  width: 12%;
 }
 
 .facility-table .col-reference {
-  width: 14%;
+  width: 10%;
 }
 
 .facility-table .col-status {
-  width: 16%;
+  width: 11.5rem;
+}
+
+.history-table .col-event-type {
+  width: 5.8rem;
+}
+
+.history-table .col-standard {
+  width: auto;
+}
+
+.history-table .col-date {
+  width: 5.5rem;
+}
+
+.history-table .col-state {
+  width: 7.2rem;
 }
 
 .multiline-cell {

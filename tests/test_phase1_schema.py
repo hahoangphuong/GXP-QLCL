@@ -65,6 +65,17 @@ def test_certificate_version_preserves_standard_and_issuer_fields():
     assert "issuing_authority" in table.c.keys()
 
 
+def test_general_info_workspace_fields_exist_on_company_and_site():
+    company_table = Base.metadata.tables["company"]
+    site_table = Base.metadata.tables["site"]
+
+    assert "assigned_specialist_text" in company_table.c.keys()
+    assert "foreign_investment_text" in site_table.c.keys()
+    assert "contact_information" in site_table.c.keys()
+    assert "professional_responsible_person_name" in site_table.c.keys()
+    assert "quality_assurance_person_name" in site_table.c.keys()
+
+
 def test_postgresql_ddl_renders_for_key_tables():
     for table in [Document.__table__, StorageBinding.__table__]:
         ddl = str(CreateTable(table).compile())
@@ -78,4 +89,4 @@ def test_legacy_result_narratives_use_text_columns():
 
 
 def test_expected_alembic_head_revision_tracks_latest_runtime_migration():
-    assert expected_alembic_head_revision() == "20260827_0004"
+    assert expected_alembic_head_revision() == "20260828_0005"

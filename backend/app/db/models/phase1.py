@@ -48,6 +48,7 @@ class Company(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     short_name: Mapped[str | None] = mapped_column(String(128))
     legal_address: Mapped[str | None] = mapped_column(Text)
     legal_address_en: Mapped[str | None] = mapped_column(Text)
+    assigned_specialist_text: Mapped[str | None] = mapped_column(Text)
     is_inactive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
 
 
@@ -65,6 +66,10 @@ class Site(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     site_address_en: Mapped[str | None] = mapped_column(Text)
     province_name: Mapped[str | None] = mapped_column(String(255))
     short_name: Mapped[str | None] = mapped_column(String(255))
+    foreign_investment_text: Mapped[str | None] = mapped_column(Text)
+    contact_information: Mapped[str | None] = mapped_column(Text)
+    professional_responsible_person_name: Mapped[str | None] = mapped_column(Text)
+    quality_assurance_person_name: Mapped[str | None] = mapped_column(Text)
 
 
 class Person(UUIDPrimaryKeyMixin, TimestampMixin, Base):

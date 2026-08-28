@@ -24,6 +24,7 @@ from backend.app.domain.phase2_import import (
     CONFIRMED_BLANKED_ROWS_PATH,
     ConfirmedBlankedResurrectionError,
     ConfirmedBlankedContractError,
+    ImportCollisionError,
     ImportExecutionOptions,
     SchemaLengthValidationError,
     build_schema_length_audit,
@@ -40,7 +41,21 @@ def sample_snapshot():
             {"ID": "1", "TÊN CÔNG TY": "Company A", "COMPANY NAME": "Company A", "TÊN VIẾT TẮT": "CA", "ĐỊA CHỈ TRỤ SỞ": "Addr A", "LEGAL ADDRESS": "Addr A"},
         ],
         "db.cso": [
-            {"ID": "10", "ID Cty": "1", "TÊN CƠ SỞ": "Site A", "SITE NAME": "Site A", "ĐỊA CHỈ CƠ SỞ": "Site Addr", "SITE ADDRESS": "Site Addr", "TỈNH/TP": "HN", "TÊN VIẾT TẮT": "SA"},
+            {
+                "ID": "10",
+                "ID Cty": "1",
+                "TÊN CƠ SỞ": "Site A",
+                "SITE NAME": "Site A",
+                "ĐỊA CHỈ CƠ SỞ": "Site Addr",
+                "SITE ADDRESS": "Site Addr",
+                "TỈNH/TP": "HN",
+                "TÊN VIẾT TẮT": "SA",
+                "Chuyên viên phụ trách": "Hà Hoàng Phương",
+                "DOANH NGHIỆP NƯỚC NGOÀI": "Nhật Bản",
+                "LIÊN HỆ": "QA: 0903 000 000",
+                "NGƯỜI CHỊU TRÁCH NHIỆM CHUYÊN MÔN": "Pharmacist Site",
+                "NGƯỜI PHỤ TRÁCH QA": "Manager QA",
+            },
         ],
         "db.ktra": [
             {"ID": "100", "LOẠI KT": "GMP", "ID CƠ SỞ": "10", "MÃ DC": "A", "TIÊU CHUẨN ÁP DỤNG": "WHO-GMP", "LOẠI KIỂM TRA": "Tái", "Ngày nộp": "2016-06-17 00:00:00", "Mã hồ sơ": "37/GPs", "Ngày thẩm định": "2016-08-02 00:00:00", "Người thẩm định": "Assessor", "Kết quả": "Đạt", "Ngày K.tra": "26-27/8/2016", "Q. định": "368/QĐ-QLD", "B. bản": "2016-08-27 00:00:00"},
@@ -88,6 +103,22 @@ def test_import_snapshot_loads_primary_entities():
         assert reconciliation["mismatches"] == {}
 
 
+def test_import_snapshot_populates_general_info_owner_fields_from_legacy_db_cso():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        import_snapshot(session, sample_snapshot())
+        session.commit()
+
+        company = session.scalars(select(Company)).one()
+        site = session.scalars(select(Site)).one()
+
+        assert company.assigned_specialist_text == "Hà Hoàng Phương"
+        assert site.foreign_investment_text == "Nhật Bản"
+        assert site.contact_information == "QA: 0903 000 000"
+        assert site.professional_responsible_person_name == "Pharmacist Site"
+        assert site.quality_assurance_person_name == "Manager QA"
+
+
 def test_import_snapshot_populates_certificate_version_and_scope_from_legacy_db_cc():
     engine = create_engine("sqlite:///:memory:", future=True)
     with Session(engine) as session:
@@ -108,6 +139,54 @@ def test_import_snapshot_populates_certificate_version_and_scope_from_legacy_db_
         assert scope.language_code == "vi"
         assert scope.sort_order == 0
         assert reconciliation["derived_counts"]["certificate_scope"] == 1
+
+
+def test_import_snapshot_leaves_general_info_owner_fields_null_when_legacy_source_is_blank():
+    snapshot = sample_snapshot()
+    snapshot["db.cso"][0]["Chuyên viên phụ trách"] = ""
+    snapshot["db.cso"][0]["DOANH NGHIỆP NƯỚC NGOÀI"] = ""
+    snapshot["db.cso"][0]["LIÊN HỆ"] = ""
+    snapshot["db.cso"][0]["NGƯỜI CHỊU TRÁCH NHIỆM CHUYÊN MÔN"] = ""
+    snapshot["db.cso"][0]["NGƯỜI PHỤ TRÁCH QA"] = ""
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        import_snapshot(session, snapshot)
+        session.commit()
+
+        company = session.scalars(select(Company)).one()
+        site = session.scalars(select(Site)).one()
+
+        assert company.assigned_specialist_text is None
+        assert site.foreign_investment_text is None
+        assert site.contact_information is None
+        assert site.professional_responsible_person_name is None
+        assert site.quality_assurance_person_name is None
+
+
+def test_import_snapshot_fails_closed_when_company_assigned_specialist_conflicts_across_sites():
+    snapshot = sample_snapshot()
+    snapshot["db.cso"].append(
+        {
+            "ID": "11",
+            "ID Cty": "1",
+            "TÊN CƠ SỞ": "Site B",
+            "SITE NAME": "Site B",
+            "ĐỊA CHỈ CƠ SỞ": "Site Addr B",
+            "SITE ADDRESS": "Site Addr B",
+            "TỈNH/TP": "HCM",
+            "TÊN VIẾT TẮT": "SB",
+            "Chuyên viên phụ trách": "Người khác",
+        }
+    )
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        try:
+            import_snapshot(session, snapshot)
+        except ImportCollisionError as exc:
+            assert "assigned specialist" in str(exc)
+            assert "legacy company 1" in str(exc)
+        else:
+            raise AssertionError("Expected conflicting company specialist import to fail closed")
 
 
 def test_import_snapshot_creates_join_and_legacy_maps():

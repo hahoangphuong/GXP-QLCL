@@ -66,6 +66,7 @@ FIELD_ALIASES = {
     "company_address": {"Ã„ÂÃ¡Â»Å A CHÃ¡Â»Ë† TRÃ¡Â»Â¤ SÃ¡Â»Å¾", "Ãƒâ€žÃ‚ÂÃƒÂ¡Ã‚Â»Ã…Â A CHÃƒÂ¡Ã‚Â»Ã‹â€  TRÃƒÂ¡Ã‚Â»Ã‚Â¤ SÃƒÂ¡Ã‚Â»Ã…Â¾", "Äá»ŠA CHá»ˆ TRá»¤ Sá»ž", "ĐỊA CHỈ TRỤ SỞ"},
     "company_inactive_flag": {"NGÃ¡Â»ÂªNG HOÃ¡ÂºÂ T Ã„ÂÃ¡Â»ËœNG", "NGÃƒÂ¡Ã‚Â»Ã‚ÂªNG HOÃƒÂ¡Ã‚ÂºÃ‚Â T Ãƒâ€žÃ‚ÂÃƒÂ¡Ã‚Â»Ã‹Å“NG", "NGƯNG HOẠT ĐỘNG"},
     "company_legacy_id_ref": {"ID Cty", "ID CTY"},
+    "assigned_specialist_text": {"Chuyên viên phụ trách"},
     "site_code_gmp": {"MÃƒÆ’ CS GMP", "MÃƒÆ’Ã†â€™ CS GMP", "MÃ CS GMP"},
     "site_code_glp": {"MÃƒÆ’ CS GLP", "MÃƒÆ’Ã†â€™ CS GLP", "MÃ CS GLP"},
     "site_code_gmpbb": {"MÃƒÆ’ CS GMPbb", "MÃƒÆ’Ã†â€™ CS GMPbb", "MÃ CS GMPbb"},
@@ -97,7 +98,10 @@ FIELD_ALIASES = {
     "certificate_issuer": {"Cơ quan cấp chứng nhận"},
     "latest_flag": {"MÃ¡Â»Å¡I NHÃ¡ÂºÂ¤T", "MÃƒÂ¡Ã‚Â»Ã…Â¡I NHÃƒÂ¡Ã‚ÂºÃ‚Â¤T", "Má»šI NHáº¤T", "MỚI NHẤT"},
     "latest_legacy_id": {"ID MÃ¡Â»Å¡I NHÃ¡ÂºÂ¤T", "ID MÃƒÂ¡Ã‚Â»Ã…Â¡I NHÃƒÂ¡Ã‚ÂºÃ‚Â¤T", "ID Má»šI NHáº¤T", "ID MỚI NHẤT"},
+    "foreign_investment_text": {"DOANH NGHIỆP NƯỚC NGOÀI"},
+    "contact_information": {"LIÊN HỆ"},
     "professional_responsible_person_name": {"NGÃ†Â¯Ã¡Â»Å’I CHÃ¡Â»Å U TRÃƒÂCH NHIÃ¡Â»â€ M CHUYÃƒÅ N MÃƒâ€N", "NGÃƒâ€ Ã‚Â¯ÃƒÂ¡Ã‚Â»Ã…â€™I CHÃƒÂ¡Ã‚Â»Ã…Â U TRÃƒÆ’Ã‚ÂCH NHIÃƒÂ¡Ã‚Â»Ã¢â‚¬Â M CHUYÃƒÆ’Ã…Â N MÃƒÆ’Ã¢â‚¬ÂN", "NGÆ¯á»ŒI CHá»ŠU TRÃCH NHIá»†M CHUYÃŠN MÃ”N", "NGƯỜI CHỊU TRÁCH NHIỆM CHUYÊN MÔN"},
+    "quality_assurance_person_name": {"NGƯỜI PHỤ TRÁCH QA"},
     "linked_certificate_ids": {"ID CC"},
     "change_scope_label": {"PHÃ¡ÂºÂ M VI", "PHÃƒÂ¡Ã‚ÂºÃ‚Â M VI", "PHáº M VI", "PHẠM VI"},
     "change_description": {"MÃƒâ€ TÃ¡ÂºÂ¢", "MÃƒÆ’Ã¢â‚¬Â TÃƒÂ¡Ã‚ÂºÃ‚Â¢", "MÃ” Táº¢", "MÔ TẢ"},
@@ -255,6 +259,27 @@ def normalize_row(row: dict[str, str]) -> dict[str, str]:
                 break
         normalized[mapped_key] = value
     return normalized
+
+
+def _apply_company_assigned_specialist(
+    *,
+    company: Company,
+    assigned_specialist_text: str | None,
+    legacy_company_id: int | None,
+    legacy_site_id: int | None,
+) -> None:
+    value = str(assigned_specialist_text or "").strip() or None
+    if value is None:
+        return
+    if company.assigned_specialist_text in {None, ""}:
+        company.assigned_specialist_text = value
+        return
+    if company.assigned_specialist_text != value:
+        raise ImportCollisionError(
+            "Conflicting db.cso assigned specialist values for "
+            f"legacy company {legacy_company_id!r}: {company.assigned_specialist_text!r} vs {value!r} "
+            f"(from legacy site {legacy_site_id!r})"
+        )
 
 
 def parse_int(value: str | int | None) -> int | None:
@@ -1315,6 +1340,10 @@ def import_snapshot(
             "site_address_en": row.get("SITE ADDRESS") or None,
             "province_name": row.get("province_name") or None,
             "short_name": row.get("company_short_name") or None,
+            "foreign_investment_text": row.get("foreign_investment_text") or None,
+            "contact_information": row.get("contact_information") or None,
+            "professional_responsible_person_name": row.get("professional_responsible_person_name") or None,
+            "quality_assurance_person_name": row.get("quality_assurance_person_name") or None,
         }
         entity = _ensure_entity(
             session,
@@ -1327,6 +1356,15 @@ def import_snapshot(
             expected_fields=expected_fields,
             build_entity=lambda expected_fields=expected_fields: Site(**expected_fields),
             options=resolved_options,
+        )
+        company = session.get(Company, company_id)
+        if company is None:
+            raise ImportCollisionError(f"Missing company {company_id!r} while applying db.cso derived company fields")
+        _apply_company_assigned_specialist(
+            company=company,
+            assigned_specialist_text=row.get("assigned_specialist_text"),
+            legacy_company_id=parse_int(row.get("company_legacy_id_ref", "")),
+            legacy_site_id=legacy_id,
         )
         if legacy_id is not None:
             site_ids[legacy_id] = entity.id

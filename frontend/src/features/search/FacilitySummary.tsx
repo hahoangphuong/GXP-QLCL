@@ -55,15 +55,15 @@ export function FacilitySummary({ summary }: { summary: FacilityWorkspaceSummary
         </div>
         <div>
           <dt>Lãnh đạo</dt>
-          <SummaryValue value={null} />
+          <SummaryValue value={summary.company_leader} />
         </div>
         <div>
           <dt>Công ty vốn nước ngoài</dt>
-          <SummaryValue value={null} />
+          <SummaryValue value={summary.company_foreign_investment} />
         </div>
         <div>
           <dt>Chuyên viên phụ trách</dt>
-          <SummaryValue value={null} />
+          <SummaryValue value={summary.assigned_specialist} />
         </div>
       </SummaryGroup>
 
@@ -82,19 +82,19 @@ export function FacilitySummary({ summary }: { summary: FacilityWorkspaceSummary
         </div>
         <div className="summary-span">
           <dt>Thông tin liên hệ</dt>
-          <SummaryValue multiline value={null} />
+          <SummaryValue multiline value={summary.contact_information} />
         </div>
         <div>
           <dt>Người Phụ trách chuyên môn</dt>
-          <SummaryValue value={null} />
+          <SummaryValue value={summary.professional_responsible_person} />
         </div>
         <div>
           <dt>Người Đảm bảo chất lượng</dt>
-          <SummaryValue value={null} />
+          <SummaryValue value={summary.quality_assurance_person} />
         </div>
         <div>
           <dt>Tình trạng hiện tại của cơ sở</dt>
-          <SummaryValue value={null} />
+          <SummaryValue value={summary.facility_current_status} />
         </div>
       </SummaryGroup>
 

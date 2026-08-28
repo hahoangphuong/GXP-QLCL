@@ -114,7 +114,14 @@ function buildWorkspace(overrides: Record<string, unknown> = {}) {
       facility_name: "Nhà máy A",
       company_name: "Công ty A",
       company_legal_address: "123 Trụ sở chính",
+      company_leader: null,
+      company_foreign_investment: "Nhật Bản",
+      assigned_specialist: "Hà Hoàng Phương",
       address: "KCN A",
+      contact_information: "QA: 0903 000 000",
+      professional_responsible_person: "Dược sĩ A",
+      quality_assurance_person: "QA Lead B",
+      facility_current_status: null,
       province_name: "Hà Nội",
       gxp_types: ["GMP"],
       selected_gxp_type: "GMP",
@@ -307,7 +314,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
   });
 
-  it("renders three grouped sections in Thông tin chung and shows missing owner-gap fields as Chưa có", async () => {
+  it("renders three grouped sections in Thông tin chung with imported general info values and only unsourced fields as Chưa có", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(
@@ -333,15 +340,20 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByRole("heading", { name: "Thông tin về GxP" })).toBeInTheDocument();
     expect(screen.getByText("Công ty A")).toBeInTheDocument();
     expect(screen.getByText("456 Trụ sở công ty")).toBeInTheDocument();
+    expect(screen.getByText("Nhật Bản")).toBeInTheDocument();
+    expect(screen.getByText("Hà Hoàng Phương")).toBeInTheDocument();
     expect(screen.getByText("Nhà máy A")).toBeInTheDocument();
     expect(screen.getByText("KCN A")).toBeInTheDocument();
+    expect(screen.getByText("QA: 0903 000 000")).toBeInTheDocument();
+    expect(screen.getByText("Dược sĩ A")).toBeInTheDocument();
+    expect(screen.getByText("QA Lead B")).toBeInTheDocument();
     expect(screen.getByText("GCN-789")).toBeInTheDocument();
     expect(screen.getByText("15-03-2026")).toBeInTheDocument();
     expect(screen.getByText("15-03-2027")).toBeInTheDocument();
     expect(screen.getByText("PIC/S-GMP")).toBeInTheDocument();
     expect(screen.getByText("Dây chuyền thuốc nước")).toBeInTheDocument();
     expect(screen.getByText("Còn hiệu lực")).toBeInTheDocument();
-    expect(screen.getAllByText("Chưa có").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Chưa có")).toHaveLength(2);
   });
 
   it("keeps facility-name abbreviations presentation-only inside the result grid", async () => {

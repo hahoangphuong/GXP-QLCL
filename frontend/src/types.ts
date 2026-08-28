@@ -126,7 +126,14 @@ export type FacilityWorkspaceSummary = {
   facility_name: string;
   company_name: string;
   company_legal_address: string | null;
+  company_leader: string | null;
+  company_foreign_investment: string | null;
+  assigned_specialist: string | null;
   address: string | null;
+  contact_information: string | null;
+  professional_responsible_person: string | null;
+  quality_assurance_person: string | null;
+  facility_current_status: string | null;
   province_name: string | null;
   gxp_types: string[];
   selected_gxp_type: string | null;

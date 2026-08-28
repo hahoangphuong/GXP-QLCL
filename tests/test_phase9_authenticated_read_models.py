@@ -1099,6 +1099,95 @@ def test_catalog_prefers_certificate_line_code_over_linked_case_scope_when_legac
     assert search_payload["items"][1]["current_certificate_number"] is None
 
 
+def test_imported_general_info_fields_flow_into_facility_workspace_summary(tmp_path):
+    database_path = tmp_path / "workspace-general-info.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+    snapshot = {
+        "db.cty": [
+            {
+                "ID": "1",
+                "TÊN CÔNG TY": "Công ty General Info",
+                "COMPANY NAME": "General Info Co",
+                "TÊN VIẾT TẮT": "GEN",
+                "ĐỊA CHỈ TRỤ SỞ": "123 Trụ sở chính",
+            },
+        ],
+        "db.cso": [
+            {
+                "ID": "10",
+                "ID Cty": "1",
+                "TÊN CƠ SỞ": "Nhà máy General Info",
+                "SITE NAME": "General Info Plant",
+                "ĐỊA CHỈ CƠ SỞ": "KCN A",
+                "SITE ADDRESS": "Industrial Park A",
+                "TỈNH/TP": "Hà Nội",
+                "MÃ CS GMP": "1.1",
+                "Chuyên viên phụ trách": "Hà Hoàng Phương",
+                "DOANH NGHIỆP NƯỚC NGOÀI": "Nhật Bản",
+                "LIÊN HỆ": "QA: 0903 000 000",
+                "NGƯỜI CHỊU TRÁCH NHIỆM CHUYÊN MÔN": "Dược sĩ A",
+                "NGƯỜI PHỤ TRÁCH QA": "QA Lead B",
+            },
+        ],
+        "db.ktra": [
+            {
+                "ID": "100",
+                "LOẠI KT": "GMP",
+                "ID CƠ SỞ": "10",
+                "MÃ DC": "A",
+                "TIÊU CHUẨN ÁP DỤNG": "WHO-GMP",
+                "LOẠI KIỂM TRA": "Định kỳ",
+            },
+        ],
+        "db.cc": [
+            {
+                "ID": "200",
+                "MỚI NHẤT": "o",
+                "ID MỚI NHẤT": "",
+                "LOẠI CC": "GMP",
+                "ID ĐỢT KTRA": "100",
+                "ID CƠ SỞ": "10",
+                "MÃ DC": "A",
+                "Mã số CC": "GCN-GEN-001",
+                "Ngày cấp CC": "2026-03-01 00:00:00+00:00",
+                "Hết hạn CC": "2028-03-01 00:00:00+00:00",
+                "PHẠM VI CHỨNG NHẬN": "Dây chuyền viên nén A",
+                "TIÊU CHUẨN ÁP DỤNG": "WHO-GMP",
+            },
+        ],
+        "db.dkkd": [],
+        "db.Tdoi": [],
+        "db.Tdoi2": [],
+    }
+
+    with Session(engine) as session:
+        import_snapshot(session, snapshot)
+        session.commit()
+        site_id = session.scalars(select(Site.id)).one()
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        workspace_payload = service.get_facility_workspace(
+            session,
+            site_id=site_id,
+            gxp_type="GMP",
+            line_code="A",
+        )
+
+    assert workspace_payload["summary"]["company_name"] == "Công ty General Info"
+    assert workspace_payload["summary"]["company_legal_address"] == "123 Trụ sở chính"
+    assert workspace_payload["summary"]["company_leader"] is None
+    assert workspace_payload["summary"]["company_foreign_investment"] == "Nhật Bản"
+    assert workspace_payload["summary"]["assigned_specialist"] == "Hà Hoàng Phương"
+    assert workspace_payload["summary"]["contact_information"] == "QA: 0903 000 000"
+    assert workspace_payload["summary"]["professional_responsible_person"] == "Dược sĩ A"
+    assert workspace_payload["summary"]["quality_assurance_person"] == "QA Lead B"
+    assert workspace_payload["summary"]["facility_current_status"] is None
+    assert workspace_payload["summary"]["current_certificate_number"] == "GCN-GEN-001"
+
+
 def test_search_context_query_preserves_postgresql_paging_semantics():
     service = CatalogReadService()
     filtered_sites_stmt = service._build_filtered_search_sites_stmt(

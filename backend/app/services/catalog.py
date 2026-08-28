@@ -1092,7 +1092,14 @@ class CatalogReadService:
                 "facility_name": site.site_name,
                 "company_name": company.legal_name,
                 "company_legal_address": company.legal_address,
+                "company_leader": None,
+                "company_foreign_investment": site.foreign_investment_text,
+                "assigned_specialist": company.assigned_specialist_text,
                 "address": site.site_address,
+                "contact_information": site.contact_information,
+                "professional_responsible_person": site.professional_responsible_person_name,
+                "quality_assurance_person": site.quality_assurance_person_name,
+                "facility_current_status": None,
                 "province_name": site.province_name,
                 "gxp_types": sorted(
                     {item.gxp_type for item in site_cases if item.gxp_type}

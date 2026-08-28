@@ -128,7 +128,14 @@ class FacilityWorkspaceSummaryRead(BaseModel):
     facility_name: str
     company_name: str
     company_legal_address: str | None
+    company_leader: str | None
+    company_foreign_investment: str | None
+    assigned_specialist: str | None
     address: str | None
+    contact_information: str | None
+    professional_responsible_person: str | None
+    quality_assurance_person: str | None
+    facility_current_status: str | None
     province_name: str | None
     gxp_types: list[str]
     selected_gxp_type: str | None

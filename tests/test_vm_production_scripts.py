@@ -18,6 +18,7 @@ def test_vm_scripts_exist():
         ROOT / "infra" / "vm" / "configure_postgres.sh",
         ROOT / "infra" / "vm" / "configure_tailscale.sh",
         ROOT / "infra" / "vm" / "deploy_prod.sh",
+        ROOT / "infra" / "vm" / "deploy_rehearsal.sh",
         ROOT / "infra" / "vm" / "backup_postgres.sh",
         ROOT / "infra" / "vm" / "restore_postgres.sh",
         ROOT / "infra" / "vm" / "verify_prod.sh",
@@ -34,6 +35,7 @@ def test_vm_shell_scripts_are_tracked_as_executable_in_git():
         "infra/vm/configure_postgres.sh": "100755",
         "infra/vm/configure_tailscale.sh": "100755",
         "infra/vm/deploy_prod.sh": "100755",
+        "infra/vm/deploy_rehearsal.sh": "100755",
         "infra/vm/backup_postgres.sh": "100755",
         "infra/vm/restore_postgres.sh": "100755",
         "infra/vm/verify_prod.sh": "100755",
@@ -67,6 +69,20 @@ def test_vm_deploy_script_enforces_clean_git_and_fast_forward_flow():
     assert 'SUCCESS=0' in text
     assert 'trap cleanup EXIT' in text
     assert 'SWITCHED_RELEASES=0' in text
+
+
+def test_vm_rehearsal_deploy_script_wraps_production_switch_with_explicit_preflight():
+    text = (ROOT / "infra" / "vm" / "deploy_rehearsal.sh").read_text(encoding="utf-8")
+
+    assert 'CANONICAL_RUNTIME_ENV_FILE="${VM_RUNTIME_ENV_FILE:-/etc/gxp/runtime.env}"' in text
+    assert 'load_runtime_env "${CANONICAL_RUNTIME_ENV_FILE}"' in text
+    assert 'python3 "${REPO_ROOT}/tools/prepare_rehearsal_deploy.py" \\' in text
+    assert '--runtime-env "${CANONICAL_RUNTIME_ENV_FILE}"' in text
+    assert '--output-runtime-env "${REHEARSAL_RUNTIME_ENV_FILE}"' in text
+    assert 'VM_RUNTIME_ENV_FILE="${REHEARSAL_RUNTIME_ENV_FILE}" "${SCRIPT_DIR}/deploy_prod.sh"' in text
+    assert 'source "${CANONICAL_RUNTIME_ENV_FILE}"' not in text
+    assert 'chmod "${CANONICAL_RUNTIME_ENV_FILE}"' not in text
+    assert 'alembic' not in text
 
 
 def test_vm_deploy_script_preserves_pre_switch_atomicity_and_post_switch_rollback_contract():

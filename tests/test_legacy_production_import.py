@@ -559,6 +559,7 @@ def test_validation_uses_executable_url_and_redacts_reports(tmp_path: Path, monk
     monkeypatch.setattr(ilp, "_recreate_target_database", lambda *args, **kwargs: None)
     monkeypatch.setattr(ilp, "_drop_target_database", lambda *args, **kwargs: None)
     monkeypatch.setattr(ilp, "_upgrade_target_database_schema", lambda url: captured_urls.append(url))
+    monkeypatch.setattr(ilp, "_initialize_static_application_baseline", lambda url: captured_urls.append(url))
 
     def fake_run_import(*, database_url: str, snapshot, dry_run: bool, require_head_revision: bool):
         captured_urls.append(database_url)
@@ -579,7 +580,7 @@ def test_validation_uses_executable_url_and_redacts_reports(tmp_path: Path, monk
     assert report.database_url_redacted == ilp._redact_database_url(captured_urls[-1])
     assert password not in report.database_url_redacted
     assert ":***@" in report.database_url_redacted
-    assert len(captured_urls) == 2
+    assert len(captured_urls) == 3
     for captured_url in captured_urls:
         parsed = make_url(captured_url)
         assert parsed.password == password
@@ -620,6 +621,11 @@ def test_apply_modes_use_executable_target_urls_without_secret_leaks(tmp_path: P
         return balanced_reconciliation(), head, head
 
     monkeypatch.setattr(ilp, "_upgrade_target_database_schema", fake_upgrade)
+    monkeypatch.setattr(
+        ilp,
+        "_initialize_static_application_baseline",
+        lambda database_url: captured_by_mode.setdefault(current_mode[0], []).append(database_url),
+    )
     monkeypatch.setattr(ilp, "_run_import", fake_run_import)
     monkeypatch.setattr(ilp, "_run_backup", lambda runtime_env_path: backup_calls.append(str(runtime_env_path)))
 
@@ -636,6 +642,7 @@ def test_apply_modes_use_executable_target_urls_without_secret_leaks(tmp_path: P
         assert report.target_database == expected_target
         assert password not in report.database_url_redacted
         assert ":***@" in report.database_url_redacted
+        assert captured_by_mode[import_mode] == [ilp._target_database_url(database_url, expected_target)] * 3
         for captured_url in captured_by_mode[import_mode]:
             parsed = make_url(captured_url)
             assert parsed.password == password

@@ -133,17 +133,30 @@ def test_rehearsal_deploy_script_runs_preflight_before_handing_off_to_production
     script_text = (Path(__file__).resolve().parents[1] / "infra" / "vm" / "deploy_rehearsal.sh").read_text(encoding="utf-8")
 
     assert 'load_runtime_env "${CANONICAL_RUNTIME_ENV_FILE}"' in script_text
+    assert 'PREPARE_REHEARSAL_PYTHON="${VM_CURRENT_BACKEND_VENV_LINK}/bin/python"' in script_text
+    assert '[[ -x "${PREPARE_REHEARSAL_PYTHON}" ]] || fail "Current application venv Python is missing or not executable: ${PREPARE_REHEARSAL_PYTHON}"' in script_text
+    assert '''"${PREPARE_REHEARSAL_PYTHON}" - <<'PY' >/dev/null || fail "Current application venv Python is missing required application dependencies for rehearsal preflight."''' in script_text
+    assert "import sqlalchemy" in script_text
     assert 'REHEARSAL_DEPLOY_TEMP_DIR="$(mktemp -d)"' in script_text
     assert 'chown "root:${VM_APP_GROUP}" "${REHEARSAL_DEPLOY_TEMP_DIR}"' in script_text
     assert 'chmod 0750 "${REHEARSAL_DEPLOY_TEMP_DIR}"' in script_text
-    assert 'python3 "${REPO_ROOT}/tools/prepare_rehearsal_deploy.py" \\' in script_text
+    assert '"${PREPARE_REHEARSAL_PYTHON}" "${REPO_ROOT}/tools/prepare_rehearsal_deploy.py" \\' in script_text
     assert 'chown "root:${VM_APP_GROUP}" "${REHEARSAL_RUNTIME_ENV_FILE}" "${REHEARSAL_PLAN_JSON}"' in script_text
     assert 'chmod 0640 "${REHEARSAL_RUNTIME_ENV_FILE}" "${REHEARSAL_PLAN_JSON}"' in script_text
     assert 'VM_RUNTIME_ENV_FILE="${REHEARSAL_RUNTIME_ENV_FILE}" "${SCRIPT_DIR}/deploy_prod.sh"' in script_text
+    assert 'python3 "${REPO_ROOT}/tools/prepare_rehearsal_deploy.py"' not in script_text
     assert script_text.index('load_runtime_env "${CANONICAL_RUNTIME_ENV_FILE}"') < script_text.index('REHEARSAL_DEPLOY_TEMP_DIR="$(mktemp -d)"')
+    assert script_text.index('load_runtime_env "${CANONICAL_RUNTIME_ENV_FILE}"') < script_text.index('PREPARE_REHEARSAL_PYTHON="${VM_CURRENT_BACKEND_VENV_LINK}/bin/python"')
+    assert script_text.index('PREPARE_REHEARSAL_PYTHON="${VM_CURRENT_BACKEND_VENV_LINK}/bin/python"') < script_text.index('[[ -x "${PREPARE_REHEARSAL_PYTHON}" ]] || fail "Current application venv Python is missing or not executable: ${PREPARE_REHEARSAL_PYTHON}"')
+    assert script_text.index('[[ -x "${PREPARE_REHEARSAL_PYTHON}" ]] || fail "Current application venv Python is missing or not executable: ${PREPARE_REHEARSAL_PYTHON}"') < script_text.index(
+        '''"${PREPARE_REHEARSAL_PYTHON}" - <<'PY' >/dev/null || fail "Current application venv Python is missing required application dependencies for rehearsal preflight."'''
+    )
+    assert script_text.index(
+        '''"${PREPARE_REHEARSAL_PYTHON}" - <<'PY' >/dev/null || fail "Current application venv Python is missing required application dependencies for rehearsal preflight."'''
+    ) < script_text.index('REHEARSAL_DEPLOY_TEMP_DIR="$(mktemp -d)"')
     assert script_text.index('REHEARSAL_DEPLOY_TEMP_DIR="$(mktemp -d)"') < script_text.index('chown "root:${VM_APP_GROUP}" "${REHEARSAL_DEPLOY_TEMP_DIR}"')
     assert script_text.index('chown "root:${VM_APP_GROUP}" "${REHEARSAL_DEPLOY_TEMP_DIR}"') < script_text.index('chmod 0750 "${REHEARSAL_DEPLOY_TEMP_DIR}"')
-    assert script_text.index('python3 "${REPO_ROOT}/tools/prepare_rehearsal_deploy.py" \\') < script_text.index(
+    assert script_text.index('"${PREPARE_REHEARSAL_PYTHON}" "${REPO_ROOT}/tools/prepare_rehearsal_deploy.py" \\') < script_text.index(
         'chown "root:${VM_APP_GROUP}" "${REHEARSAL_RUNTIME_ENV_FILE}" "${REHEARSAL_PLAN_JSON}"'
     )
     assert script_text.index('chown "root:${VM_APP_GROUP}" "${REHEARSAL_RUNTIME_ENV_FILE}" "${REHEARSAL_PLAN_JSON}"') < script_text.index(

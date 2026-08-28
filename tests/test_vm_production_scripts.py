@@ -77,13 +77,17 @@ def test_vm_rehearsal_deploy_script_wraps_production_switch_with_explicit_prefli
     assert 'CANONICAL_RUNTIME_ENV_FILE="${VM_RUNTIME_ENV_FILE:-/etc/gxp/runtime.env}"' in text
     assert 'REHEARSAL_DEPLOY_TEMP_DIR=""' in text
     assert 'load_runtime_env "${CANONICAL_RUNTIME_ENV_FILE}"' in text
+    assert 'PREPARE_REHEARSAL_PYTHON="${VM_CURRENT_BACKEND_VENV_LINK}/bin/python"' in text
+    assert '[[ -x "${PREPARE_REHEARSAL_PYTHON}" ]] || fail "Current application venv Python is missing or not executable: ${PREPARE_REHEARSAL_PYTHON}"' in text
+    assert '''"${PREPARE_REHEARSAL_PYTHON}" - <<'PY' >/dev/null || fail "Current application venv Python is missing required application dependencies for rehearsal preflight."''' in text
+    assert "import sqlalchemy" in text
     assert 'need_cmd mktemp' in text
     assert 'need_cmd chmod' in text
     assert 'need_cmd chown' in text
     assert 'REHEARSAL_DEPLOY_TEMP_DIR="$(mktemp -d)"' in text
     assert 'chown "root:${VM_APP_GROUP}" "${REHEARSAL_DEPLOY_TEMP_DIR}"' in text
     assert 'chmod 0750 "${REHEARSAL_DEPLOY_TEMP_DIR}"' in text
-    assert 'python3 "${REPO_ROOT}/tools/prepare_rehearsal_deploy.py" \\' in text
+    assert '"${PREPARE_REHEARSAL_PYTHON}" "${REPO_ROOT}/tools/prepare_rehearsal_deploy.py" \\' in text
     assert '--runtime-env "${CANONICAL_RUNTIME_ENV_FILE}"' in text
     assert '--output-runtime-env "${REHEARSAL_RUNTIME_ENV_FILE}"' in text
     assert 'chown "root:${VM_APP_GROUP}" "${REHEARSAL_RUNTIME_ENV_FILE}" "${REHEARSAL_PLAN_JSON}"' in text
@@ -91,6 +95,7 @@ def test_vm_rehearsal_deploy_script_wraps_production_switch_with_explicit_prefli
     assert 'VM_RUNTIME_ENV_FILE="${REHEARSAL_RUNTIME_ENV_FILE}" "${SCRIPT_DIR}/deploy_prod.sh"' in text
     assert 'source "${CANONICAL_RUNTIME_ENV_FILE}"' not in text
     assert 'chmod "${CANONICAL_RUNTIME_ENV_FILE}"' not in text
+    assert 'python3 "${REPO_ROOT}/tools/prepare_rehearsal_deploy.py"' not in text
     assert 'alembic' not in text
 
 

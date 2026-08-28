@@ -10,6 +10,7 @@ CANONICAL_RUNTIME_ENV_FILE="${VM_RUNTIME_ENV_FILE:-/etc/gxp/runtime.env}"
 REHEARSAL_DEPLOY_TEMP_DIR=""
 REHEARSAL_RUNTIME_ENV_FILE=""
 REHEARSAL_PLAN_JSON=""
+PREPARE_REHEARSAL_PYTHON=""
 
 cleanup() {
   if [[ -n "${REHEARSAL_DEPLOY_TEMP_DIR}" ]]; then
@@ -22,10 +23,14 @@ if [[ "${DEPLOY_REHEARSAL_UNSAFE_SKIP_ROOT_CHECK:-0}" != "1" ]]; then
   require_root
 fi
 load_runtime_env "${CANONICAL_RUNTIME_ENV_FILE}"
-need_cmd python3
 need_cmd mktemp
 need_cmd chmod
 need_cmd chown
+PREPARE_REHEARSAL_PYTHON="${VM_CURRENT_BACKEND_VENV_LINK}/bin/python"
+[[ -x "${PREPARE_REHEARSAL_PYTHON}" ]] || fail "Current application venv Python is missing or not executable: ${PREPARE_REHEARSAL_PYTHON}"
+"${PREPARE_REHEARSAL_PYTHON}" - <<'PY' >/dev/null || fail "Current application venv Python is missing required application dependencies for rehearsal preflight."
+import sqlalchemy
+PY
 
 REHEARSAL_DEPLOY_TEMP_DIR="$(mktemp -d)"
 REHEARSAL_RUNTIME_ENV_FILE="${REHEARSAL_DEPLOY_TEMP_DIR}/runtime.rehearsal.env"
@@ -33,7 +38,7 @@ REHEARSAL_PLAN_JSON="${REHEARSAL_DEPLOY_TEMP_DIR}/rehearsal-plan.json"
 chown "root:${VM_APP_GROUP}" "${REHEARSAL_DEPLOY_TEMP_DIR}"
 chmod 0750 "${REHEARSAL_DEPLOY_TEMP_DIR}"
 
-python3 "${REPO_ROOT}/tools/prepare_rehearsal_deploy.py" \
+"${PREPARE_REHEARSAL_PYTHON}" "${REPO_ROOT}/tools/prepare_rehearsal_deploy.py" \
   --runtime-env "${CANONICAL_RUNTIME_ENV_FILE}" \
   --output-runtime-env "${REHEARSAL_RUNTIME_ENV_FILE}" >"${REHEARSAL_PLAN_JSON}" || {
   cat "${REHEARSAL_PLAN_JSON}" >&2 || true

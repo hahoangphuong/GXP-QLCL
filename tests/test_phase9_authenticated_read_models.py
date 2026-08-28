@@ -1,4 +1,5 @@
 import ast
+import anyio
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -621,6 +622,7 @@ def test_search_facilities_and_workspace_keep_current_semantics_inside_selected_
             change_request_state=[],
             certificate_state=None,
             certificate_expiring_within_days=None,
+            offset=0,
             limit=50,
             session=session,
             user=build_authenticated_user("reader01", "reader"),
@@ -633,6 +635,7 @@ def test_search_facilities_and_workspace_keep_current_semantics_inside_selected_
             change_request_state=[],
             certificate_state=None,
             certificate_expiring_within_days=None,
+            offset=0,
             limit=50,
             session=session,
             user=build_authenticated_user("reader01", "reader"),
@@ -706,6 +709,7 @@ def test_search_facilities_and_workspace_preserve_production_line_context_and_ce
             change_request_state=[],
             certificate_state=None,
             certificate_expiring_within_days=None,
+            offset=0,
             limit=80,
             session=session,
             user=build_authenticated_user("reader01", "reader"),
@@ -843,6 +847,7 @@ def test_imported_legacy_certificate_scope_flows_through_catalog_search(tmp_path
             change_request_state=[],
             certificate_state=None,
             certificate_expiring_within_days=None,
+            offset=0,
             limit=80,
             session=session,
             user=build_authenticated_user("reader01", "reader"),
@@ -935,17 +940,39 @@ def test_catalog_prefers_certificate_line_code_over_linked_case_scope_when_legac
     assert search_payload["items"][1]["current_certificate_number"] is None
 
 
-def test_search_facility_candidate_query_projects_order_by_columns_for_postgresql():
+def test_search_context_query_preserves_postgresql_paging_semantics():
     service = CatalogReadService()
-    stmt = service._build_search_facility_candidates_stmt(select(Site.id).join(Company, Company.id == Site.company_id), limit=80)
+    filtered_sites_stmt = service._build_filtered_search_sites_stmt(
+        q=None,
+        gxp_type="GMP",
+        province=None,
+        case_states=None,
+        change_request_states=None,
+        certificate_state=None,
+        certificate_expiring_within_days=None,
+    )
+    stmt = service._ordered_search_contexts_stmt(
+        service._build_search_contexts_stmt(
+            filtered_sites_stmt,
+            gxp_type="GMP",
+            case_states=None,
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+        )
+    ).offset(10).limit(20)
     compiled = str(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
     normalized = " ".join(compiled.split())
 
+    assert "UNION ALL" in normalized
     assert "SELECT DISTINCT" in normalized
-    assert "site.id" in normalized
-    assert "site.legacy_site_id" in normalized
-    assert "site.site_name" in normalized
-    assert "ORDER BY site.legacy_site_id ASC, site.site_name ASC" in normalized
+    assert "site_id" in normalized
+    assert "legacy_site_id" in normalized
+    assert "site_name" in normalized
+    assert "gxp_type" in normalized
+    assert "line_code" in normalized
+    assert "ORDER BY search_contexts.legacy_site_id IS NULL, search_contexts.legacy_site_id ASC, search_contexts.site_name ASC, search_contexts.gxp_type IS NULL, search_contexts.gxp_type ASC, search_contexts.line_code IS NULL, search_contexts.line_code ASC, search_contexts.site_id ASC" in normalized
+    assert "LIMIT 20" in normalized
+    assert "OFFSET 10" in normalized
 
 
 def test_dashboard_metric_drilldowns_match_search_predicates(tmp_path):
@@ -1035,6 +1062,7 @@ def test_dashboard_metric_drilldowns_match_search_predicates(tmp_path):
             change_request_state=[],
             certificate_state=None,
             certificate_expiring_within_days=None,
+            offset=0,
             limit=50,
             session=session,
             user=build_authenticated_user("reader01", "reader"),
@@ -1047,6 +1075,7 @@ def test_dashboard_metric_drilldowns_match_search_predicates(tmp_path):
             change_request_state=[],
             certificate_state=None,
             certificate_expiring_within_days=None,
+            offset=0,
             limit=50,
             session=session,
             user=build_authenticated_user("reader01", "reader"),
@@ -1059,6 +1088,7 @@ def test_dashboard_metric_drilldowns_match_search_predicates(tmp_path):
             change_request_state=[],
             certificate_state=None,
             certificate_expiring_within_days=None,
+            offset=0,
             limit=50,
             session=session,
             user=build_authenticated_user("reader01", "reader"),
@@ -1071,6 +1101,7 @@ def test_dashboard_metric_drilldowns_match_search_predicates(tmp_path):
             change_request_state=[],
             certificate_state="active",
             certificate_expiring_within_days=None,
+            offset=0,
             limit=50,
             session=session,
             user=build_authenticated_user("reader01", "reader"),
@@ -1083,6 +1114,7 @@ def test_dashboard_metric_drilldowns_match_search_predicates(tmp_path):
             change_request_state=[],
             certificate_state=None,
             certificate_expiring_within_days=90,
+            offset=0,
             limit=50,
             session=session,
             user=build_authenticated_user("reader01", "reader"),
@@ -1095,6 +1127,7 @@ def test_dashboard_metric_drilldowns_match_search_predicates(tmp_path):
             change_request_state=["received", "under_review"],
             certificate_state=None,
             certificate_expiring_within_days=None,
+            offset=0,
             limit=50,
             session=session,
             user=build_authenticated_user("reader01", "reader"),
@@ -1194,7 +1227,7 @@ def test_search_facilities_keeps_distinct_facility_rows_when_joins_match_multipl
     assert rows["items"][0]["site_id"] == site_id
 
 
-def test_search_facilities_pages_full_line_grain_result_set_with_deterministic_order_and_total_count(tmp_path):
+def test_search_facilities_pages_context_grain_without_materializing_full_site_rows(tmp_path):
     database_path = tmp_path / "search-paging.sqlite"
     database_url = f"sqlite:///{database_path.as_posix()}"
     engine = create_engine(database_url, future=True)
@@ -1207,15 +1240,32 @@ def test_search_facilities_pages_full_line_grain_result_set_with_deterministic_o
 
         site_one = Site(company_id=company.id, site_name="Nhà máy 10", legacy_site_id=10, legacy_gmp_site_code="10.1")
         site_two = Site(company_id=company.id, site_name="Nhà máy 20", legacy_site_id=20, legacy_gmp_site_code="20.1")
-        session.add_all([site_one, site_two])
+        site_three = Site(company_id=company.id, site_name="Nhà máy 30", legacy_site_id=30, legacy_gmp_site_code="30.1")
+        site_four = Site(company_id=company.id, site_name="Nhà máy 40", legacy_site_id=40, legacy_gmp_site_code="40.1")
+        session.add_all([site_one, site_two, site_three, site_four])
         session.flush()
 
         session.add_all(
             [
                 Case(site_id=site_one.id, gxp_type="GMP", scope_code="A", state=CaseState.PLANNED, opened_year=2026),
                 Case(site_id=site_one.id, gxp_type="GMP", scope_code="B", state=CaseState.PLANNED, opened_year=2026),
+                Case(site_id=site_one.id, gxp_type="GMP", scope_code="C", state=CaseState.PLANNED, opened_year=2026),
                 Case(site_id=site_two.id, gxp_type="GMP", scope_code="A", state=CaseState.PLANNED, opened_year=2026),
+                Case(site_id=site_three.id, gxp_type="GMP", scope_code=None, state=CaseState.PLANNED, opened_year=2026),
             ]
+        )
+        certificate_only = Certificate(site_id=site_four.id, case_id=None, certificate_type="GMP", line_code="Z", latest_flag=True)
+        session.add(certificate_only)
+        session.flush()
+        session.add(
+            CertificateVersion(
+                certificate_id=certificate_only.id,
+                version_no=1,
+                issue_date=date(2026, 4, 1),
+                expiry_date=date(2028, 4, 1),
+                certificate_number="GCN-Z",
+                is_latest_version=True,
+            )
         )
         session.commit()
 
@@ -1231,7 +1281,7 @@ def test_search_facilities_pages_full_line_grain_result_set_with_deterministic_o
             certificate_state=None,
             certificate_expiring_within_days=None,
             offset=0,
-            limit=2,
+            limit=3,
         )
         second_page = service.search_facilities(
             session,
@@ -1242,19 +1292,66 @@ def test_search_facilities_pages_full_line_grain_result_set_with_deterministic_o
             change_request_states=None,
             certificate_state=None,
             certificate_expiring_within_days=None,
-            offset=2,
-            limit=2,
+            offset=3,
+            limit=3,
         )
 
-    assert first_page["total_count"] == 3
-    assert first_page["offset"] == 0
-    assert first_page["limit"] == 2
-    assert [row["context_code"] for row in first_page["items"]] == ["10.1A", "10.1B"]
+    expected_contexts = ["10.1A", "10.1B", "10.1C", "20.1A", "30.1", "40.1Z"]
 
-    assert second_page["total_count"] == 3
-    assert second_page["offset"] == 2
-    assert second_page["limit"] == 2
-    assert [row["context_code"] for row in second_page["items"]] == ["20.1A"]
+    assert first_page["total_count"] == 6
+    assert first_page["offset"] == 0
+    assert first_page["limit"] == 3
+    assert [row["context_code"] for row in first_page["items"]] == expected_contexts[:3]
+
+    assert second_page["total_count"] == 6
+    assert second_page["offset"] == 3
+    assert second_page["limit"] == 3
+    assert [row["context_code"] for row in second_page["items"]] == expected_contexts[3:]
+    assert {row["result_key"] for row in first_page["items"]}.isdisjoint({row["result_key"] for row in second_page["items"]})
+    assert [row["context_code"] for row in first_page["items"] + second_page["items"]] == expected_contexts
+    assert second_page["items"][1]["result_grain"] == "facility"
+    assert second_page["items"][2]["line_code"] == "Z"
+    assert second_page["items"][2]["current_certificate_number"] == "GCN-Z"
+
+
+def test_search_facilities_api_rejects_negative_offset_with_422(tmp_path):
+    database_path = tmp_path / "search-negative-offset.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+    app = create_app(database_url)
+    messages: list[dict] = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        messages.append(message)
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": "/search/facilities",
+        "raw_path": b"/search/facilities",
+        "query_string": b"offset=-1",
+        "headers": [
+            (b"host", b"testserver"),
+            (b"x-auth-user", b"reader01"),
+            (b"x-auth-role", b"reader"),
+        ],
+        "client": ("testclient", 50000),
+        "server": ("testserver", 80),
+        "root_path": "",
+        "app": app,
+    }
+
+    anyio.run(app, scope, receive, send)
+
+    response_start = next(message for message in messages if message["type"] == "http.response.start")
+    assert response_start["status"] == 422
 
 
 def test_search_facilities_uses_inspection_outcome_or_executed_event_for_latest_inspection_signal(tmp_path):
@@ -1476,6 +1573,7 @@ def test_dashboard_summary_and_workspace_routes_return_business_read_models(tmp_
             change_request_state=[],
             certificate_state=None,
             certificate_expiring_within_days=None,
+            offset=0,
             limit=50,
             session=session,
             user=build_authenticated_user("reader01", "reader"),

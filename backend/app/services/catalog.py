@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import and_, cast, func, or_, select, String
+from sqlalchemy import and_, cast, func, or_, select, String, union_all
 from sqlalchemy.orm import Session, aliased
 
 from backend.app.db.enums import CaseState, ChangeRequestState
@@ -56,6 +56,10 @@ class CertificateContextRow:
 
 
 class CatalogReadService:
+    @staticmethod
+    def _normalized_line_code_sql(column):
+        return func.nullif(func.trim(column), "")
+
     @staticmethod
     def _normalize_line_code(value: str | None) -> str | None:
         normalized = str(value or "").strip()
@@ -264,17 +268,329 @@ class CatalogReadService:
             .exists()
         )
 
-    @staticmethod
-    def _build_search_facility_candidates_stmt(base_stmt, *, limit: int):
-        return (
-            base_stmt.with_only_columns(
-                Site.id,
-                Site.legacy_site_id,
-                Site.site_name,
+    def _build_filtered_search_sites_stmt(
+        self,
+        *,
+        q: str | None,
+        gxp_type: str | None,
+        province: str | None,
+        case_states: list[str] | None,
+        change_request_states: list[str] | None,
+        certificate_state: str | None,
+        certificate_expiring_within_days: int | None,
+    ):
+        stmt = select(
+            Site.id.label("site_id"),
+            Site.legacy_site_id.label("legacy_site_id"),
+            Site.site_name.label("site_name"),
+        ).join(Company, Company.id == Site.company_id)
+
+        if q:
+            pattern = f"%{q}%"
+            search_case = aliased(Case)
+            search_certificate = aliased(Certificate)
+            search_certificate_version = aliased(CertificateVersion)
+            search_business_eligibility = aliased(BusinessEligibilityCertificate)
+            search_business_eligibility_version = aliased(BusinessEligibilityVersion)
+            stmt = (
+                stmt.outerjoin(search_case, search_case.site_id == Site.id)
+                .outerjoin(
+                    search_certificate,
+                    and_(search_certificate.site_id == Site.id, search_certificate.latest_flag.is_(True)),
+                )
+                .outerjoin(
+                    search_certificate_version,
+                    and_(
+                        search_certificate_version.certificate_id == search_certificate.id,
+                        search_certificate_version.is_latest_version.is_(True),
+                    ),
+                )
+                .outerjoin(search_business_eligibility, search_business_eligibility.site_id == Site.id)
+                .outerjoin(
+                    search_business_eligibility_version,
+                    search_business_eligibility_version.business_eligibility_certificate_id == search_business_eligibility.id,
+                )
             )
-            .distinct()
-            .order_by(Site.legacy_site_id.asc(), Site.site_name.asc())
+            stmt = stmt.where(
+                or_(
+                    Site.site_name.ilike(pattern),
+                    Site.short_name.ilike(pattern),
+                    Site.site_address.ilike(pattern),
+                    Site.province_name.ilike(pattern),
+                    Site.legacy_gmp_site_code.ilike(pattern),
+                    Site.legacy_glp_site_code.ilike(pattern),
+                    Site.legacy_gmpbb_site_code.ilike(pattern),
+                    cast(Site.legacy_site_id, String).ilike(pattern),
+                    Company.legal_name.ilike(pattern),
+                    Company.short_name.ilike(pattern),
+                    Company.legal_address.ilike(pattern),
+                    search_case.legacy_inspection_code.ilike(pattern),
+                    search_case.applicable_standard.ilike(pattern),
+                    search_case.scope_code.ilike(pattern),
+                    search_certificate_version.certificate_number.ilike(pattern),
+                    search_business_eligibility_version.certificate_number.ilike(pattern),
+                )
+            )
+
+        if gxp_type:
+            stmt = stmt.where(
+                or_(
+                    self._build_case_exists_clause(gxp_type=gxp_type),
+                    self._build_current_certificate_exists_clause(gxp_type=gxp_type),
+                )
+            )
+
+        if province:
+            stmt = stmt.where(Site.province_name.ilike(f"%{province}%"))
+
+        if case_states:
+            stmt = stmt.where(self._build_case_exists_clause(gxp_type=gxp_type, case_states=case_states))
+
+        if change_request_states:
+            stmt = stmt.where(self._build_change_request_exists_clause(change_request_states=change_request_states))
+
+        if certificate_state == "active":
+            stmt = stmt.where(
+                self._build_current_certificate_exists_clause(
+                    gxp_type=gxp_type,
+                    certificate_state=certificate_state,
+                )
+            )
+
+        if certificate_expiring_within_days is not None:
+            stmt = stmt.where(
+                self._build_current_certificate_exists_clause(
+                    gxp_type=gxp_type,
+                    certificate_expiring_within_days=certificate_expiring_within_days,
+                )
+            )
+
+        return stmt.distinct()
+
+    def _build_context_case_exists_clause(self, contexts, *, case_states: list[str] | None):
+        normalized_scope_code = self._normalized_line_code_sql(Case.scope_code)
+        conditions = [
+            Case.site_id == contexts.c.site_id,
+            Case.gxp_type == contexts.c.gxp_type,
+            or_(
+                and_(contexts.c.line_code.is_(None), normalized_scope_code.is_(None)),
+                normalized_scope_code == contexts.c.line_code,
+            ),
+        ]
+        if case_states:
+            conditions.append(Case.state.in_(case_states))
+        return select(Case.id).where(*conditions).correlate(contexts).exists()
+
+    def _build_context_certificate_exists_clause(
+        self,
+        contexts,
+        *,
+        certificate_state: str | None,
+        certificate_expiring_within_days: int | None,
+    ):
+        linked_case = aliased(Case)
+        normalized_line_code = self._normalized_line_code_sql(func.coalesce(Certificate.line_code, linked_case.scope_code))
+        conditions = [
+            Certificate.site_id == contexts.c.site_id,
+            Certificate.certificate_type == contexts.c.gxp_type,
+            Certificate.latest_flag.is_(True),
+            or_(
+                and_(contexts.c.line_code.is_(None), normalized_line_code.is_(None)),
+                and_(
+                    contexts.c.line_code.is_not(None),
+                    or_(normalized_line_code == contexts.c.line_code, normalized_line_code.is_(None)),
+                ),
+            ),
+        ]
+        if certificate_state == "active":
+            conditions.append(or_(CertificateVersion.expiry_date.is_(None), CertificateVersion.expiry_date >= date.today()))
+        if certificate_expiring_within_days is not None:
+            expiry_cutoff = date.today() + timedelta(days=certificate_expiring_within_days)
+            conditions.extend(
+                [
+                    CertificateVersion.expiry_date.is_not(None),
+                    CertificateVersion.expiry_date >= date.today(),
+                    CertificateVersion.expiry_date <= expiry_cutoff,
+                ]
+            )
+        return (
+            select(Certificate.id)
+            .select_from(Certificate)
+            .join(
+                CertificateVersion,
+                and_(
+                    CertificateVersion.certificate_id == Certificate.id,
+                    CertificateVersion.is_latest_version.is_(True),
+                ),
+            )
+            .outerjoin(linked_case, linked_case.id == Certificate.case_id)
+            .where(*conditions)
+            .correlate(contexts)
+            .exists()
         )
+
+    def _build_search_contexts_stmt(
+        self,
+        filtered_sites_stmt,
+        *,
+        gxp_type: str | None,
+        case_states: list[str] | None,
+        certificate_state: str | None,
+        certificate_expiring_within_days: int | None,
+    ):
+        filtered_sites = filtered_sites_stmt.subquery("filtered_sites")
+        linked_case = aliased(Case)
+        certificate_line_code = self._normalized_line_code_sql(func.coalesce(Certificate.line_code, linked_case.scope_code))
+
+        case_contexts = (
+            select(
+                filtered_sites.c.site_id,
+                filtered_sites.c.legacy_site_id,
+                filtered_sites.c.site_name,
+                Case.gxp_type.label("gxp_type"),
+                self._normalized_line_code_sql(Case.scope_code).label("line_code"),
+            )
+            .join(Case, Case.site_id == filtered_sites.c.site_id)
+        )
+        if gxp_type:
+            case_contexts = case_contexts.where(Case.gxp_type == gxp_type)
+
+        certificate_contexts = (
+            select(
+                filtered_sites.c.site_id,
+                filtered_sites.c.legacy_site_id,
+                filtered_sites.c.site_name,
+                Certificate.certificate_type.label("gxp_type"),
+                certificate_line_code.label("line_code"),
+            )
+            .join(Certificate, Certificate.site_id == filtered_sites.c.site_id)
+            .join(
+                CertificateVersion,
+                and_(
+                    CertificateVersion.certificate_id == Certificate.id,
+                    CertificateVersion.is_latest_version.is_(True),
+                ),
+            )
+            .outerjoin(linked_case, linked_case.id == Certificate.case_id)
+            .where(Certificate.latest_flag.is_(True))
+        )
+        if gxp_type:
+            certificate_contexts = certificate_contexts.where(Certificate.certificate_type == gxp_type)
+
+        context_selects = [case_contexts, certificate_contexts]
+        if gxp_type is None:
+            fallback_certificate_exists = (
+                select(Certificate.id)
+                .join(
+                    CertificateVersion,
+                    and_(
+                        CertificateVersion.certificate_id == Certificate.id,
+                        CertificateVersion.is_latest_version.is_(True),
+                    ),
+                )
+                .where(Certificate.site_id == filtered_sites.c.site_id, Certificate.latest_flag.is_(True))
+                .correlate(filtered_sites)
+                .exists()
+            )
+            facility_fallback_contexts = select(
+                filtered_sites.c.site_id,
+                filtered_sites.c.legacy_site_id,
+                filtered_sites.c.site_name,
+                cast(None, String).label("gxp_type"),
+                cast(None, String).label("line_code"),
+            ).where(
+                ~select(Case.id).where(Case.site_id == filtered_sites.c.site_id).correlate(filtered_sites).exists(),
+                ~fallback_certificate_exists,
+            )
+            context_selects.append(facility_fallback_contexts)
+
+        unioned_contexts = union_all(*context_selects).subquery("search_context_candidates")
+        contexts_stmt = select(
+            unioned_contexts.c.site_id,
+            unioned_contexts.c.legacy_site_id,
+            unioned_contexts.c.site_name,
+            unioned_contexts.c.gxp_type,
+            unioned_contexts.c.line_code,
+        ).distinct()
+        contexts = contexts_stmt.subquery("search_contexts_filtered")
+        filtered_contexts_stmt = select(
+            contexts.c.site_id,
+            contexts.c.legacy_site_id,
+            contexts.c.site_name,
+            contexts.c.gxp_type,
+            contexts.c.line_code,
+        )
+        if gxp_type:
+            filtered_contexts_stmt = filtered_contexts_stmt.where(contexts.c.gxp_type == gxp_type)
+        if case_states:
+            filtered_contexts_stmt = filtered_contexts_stmt.where(
+                self._build_context_case_exists_clause(contexts, case_states=case_states)
+            )
+        if certificate_state == "active" or certificate_expiring_within_days is not None:
+            filtered_contexts_stmt = filtered_contexts_stmt.where(
+                self._build_context_certificate_exists_clause(
+                    contexts,
+                    certificate_state=certificate_state,
+                    certificate_expiring_within_days=certificate_expiring_within_days,
+                )
+            )
+        return filtered_contexts_stmt
+
+    @staticmethod
+    def _ordered_search_contexts_stmt(contexts_stmt):
+        contexts = contexts_stmt.subquery("search_contexts")
+        return select(
+            contexts.c.site_id,
+            contexts.c.legacy_site_id,
+            contexts.c.site_name,
+            contexts.c.gxp_type,
+            contexts.c.line_code,
+        ).order_by(
+            contexts.c.legacy_site_id.is_(None),
+            contexts.c.legacy_site_id.asc(),
+            contexts.c.site_name.asc(),
+            contexts.c.gxp_type.is_(None),
+            contexts.c.gxp_type.asc(),
+            contexts.c.line_code.is_(None),
+            contexts.c.line_code.asc(),
+            contexts.c.site_id.asc(),
+        )
+
+    def _build_case_context_match_clause(self, page_contexts: list[tuple[str, str | None, str | None]]):
+        normalized_scope_code = self._normalized_line_code_sql(Case.scope_code)
+        conditions = []
+        for site_id, current_gxp, line_code in page_contexts:
+            row_conditions = [Case.site_id == site_id]
+            if current_gxp is None:
+                row_conditions.append(Case.gxp_type.is_(None))
+            else:
+                row_conditions.append(Case.gxp_type == current_gxp)
+            if line_code is None:
+                row_conditions.append(normalized_scope_code.is_(None))
+            else:
+                row_conditions.append(normalized_scope_code == line_code)
+            conditions.append(and_(*row_conditions))
+        if not conditions:
+            return None
+        return or_(*conditions)
+
+    def _build_certificate_context_match_clause(self, page_contexts: list[tuple[str, str | None, str | None]], linked_case):
+        normalized_line_code = self._normalized_line_code_sql(func.coalesce(Certificate.line_code, linked_case.scope_code))
+        conditions = []
+        for site_id, current_gxp, line_code in page_contexts:
+            row_conditions = [Certificate.site_id == site_id]
+            if current_gxp is None:
+                row_conditions.append(Certificate.certificate_type.is_(None))
+            else:
+                row_conditions.append(Certificate.certificate_type == current_gxp)
+            if line_code is None:
+                row_conditions.append(normalized_line_code.is_(None))
+            else:
+                row_conditions.append(or_(normalized_line_code == line_code, normalized_line_code.is_(None)))
+            conditions.append(and_(*row_conditions))
+        if not conditions:
+            return None
+        return or_(*conditions)
 
     @staticmethod
     def _inspection_signal_for_case(
@@ -440,91 +756,28 @@ class CatalogReadService:
         offset: int,
         limit: int,
     ):
-        stmt = select(Site.id).join(Company, Company.id == Site.company_id)
+        filtered_sites_stmt = self._build_filtered_search_sites_stmt(
+            q=q,
+            gxp_type=gxp_type,
+            province=province,
+            case_states=case_states,
+            change_request_states=change_request_states,
+            certificate_state=certificate_state,
+            certificate_expiring_within_days=certificate_expiring_within_days,
+        )
+        contexts_stmt = self._build_search_contexts_stmt(
+            filtered_sites_stmt,
+            gxp_type=gxp_type,
+            case_states=case_states,
+            certificate_state=certificate_state,
+            certificate_expiring_within_days=certificate_expiring_within_days,
+        )
+        ordered_contexts_stmt = self._ordered_search_contexts_stmt(contexts_stmt)
 
-        if q:
-            pattern = f"%{q}%"
-            search_case = aliased(Case)
-            search_certificate = aliased(Certificate)
-            search_certificate_version = aliased(CertificateVersion)
-            search_business_eligibility = aliased(BusinessEligibilityCertificate)
-            search_business_eligibility_version = aliased(BusinessEligibilityVersion)
-            stmt = (
-                stmt.outerjoin(search_case, search_case.site_id == Site.id)
-                .outerjoin(
-                    search_certificate,
-                    and_(search_certificate.site_id == Site.id, search_certificate.latest_flag.is_(True)),
-                )
-                .outerjoin(
-                    search_certificate_version,
-                    and_(
-                        search_certificate_version.certificate_id == search_certificate.id,
-                        search_certificate_version.is_latest_version.is_(True),
-                    ),
-                )
-                .outerjoin(
-                    search_business_eligibility,
-                    search_business_eligibility.site_id == Site.id,
-                )
-                .outerjoin(
-                    search_business_eligibility_version,
-                    search_business_eligibility_version.business_eligibility_certificate_id
-                    == search_business_eligibility.id,
-                )
-            )
-            stmt = stmt.where(
-                or_(
-                    Site.site_name.ilike(pattern),
-                    Site.short_name.ilike(pattern),
-                    Site.site_address.ilike(pattern),
-                    Site.province_name.ilike(pattern),
-                    Site.legacy_gmp_site_code.ilike(pattern),
-                    Site.legacy_glp_site_code.ilike(pattern),
-                    Site.legacy_gmpbb_site_code.ilike(pattern),
-                    cast(Site.legacy_site_id, String).ilike(pattern),
-                    Company.legal_name.ilike(pattern),
-                    Company.short_name.ilike(pattern),
-                    Company.legal_address.ilike(pattern),
-                    search_case.legacy_inspection_code.ilike(pattern),
-                    search_case.applicable_standard.ilike(pattern),
-                    search_case.scope_code.ilike(pattern),
-                    search_certificate_version.certificate_number.ilike(pattern),
-                    search_business_eligibility_version.certificate_number.ilike(pattern),
-                )
-            )
-
-        if gxp_type:
-            stmt = stmt.where(self._build_case_exists_clause(gxp_type=gxp_type))
-
-        if province:
-            stmt = stmt.where(Site.province_name.ilike(f"%{province}%"))
-
-        if case_states:
-            stmt = stmt.where(self._build_case_exists_clause(gxp_type=gxp_type, case_states=case_states))
-
-        if change_request_states:
-            stmt = stmt.where(self._build_change_request_exists_clause(change_request_states=change_request_states))
-
-        if certificate_state == "active":
-            stmt = stmt.where(
-                self._build_current_certificate_exists_clause(
-                    gxp_type=gxp_type,
-                    certificate_state=certificate_state,
-                )
-            )
-
-        if certificate_expiring_within_days is not None:
-            stmt = stmt.where(
-                self._build_current_certificate_exists_clause(
-                    gxp_type=gxp_type,
-                    certificate_expiring_within_days=certificate_expiring_within_days,
-                )
-            )
-
-        candidate_stmt = self._build_search_facility_candidates_stmt(stmt, limit=limit)
-        site_rows = session.execute(candidate_stmt).all()
-        site_ids = [row.id for row in site_rows]
-        if not site_ids:
+        total_count = session.scalar(
+            select(func.count()).select_from(contexts_stmt.subquery("search_context_count"))
+        ) or 0
+        if total_count == 0:
             return {
                 "items": [],
                 "total_count": 0,
@@ -532,19 +785,46 @@ class CatalogReadService:
                 "limit": limit,
             }
 
+        page_context_rows = session.execute(ordered_contexts_stmt.offset(offset).limit(limit)).all()
+        if not page_context_rows:
+            return {
+                "items": [],
+                "total_count": total_count,
+                "offset": offset,
+                "limit": limit,
+            }
+
+        page_site_ids = sorted({row.site_id for row in page_context_rows})
+        page_contexts = [(row.site_id, row.gxp_type, self._normalize_line_code(row.line_code)) for row in page_context_rows]
+
         sites = {
             row.id: row
-            for row in session.scalars(select(Site).where(Site.id.in_(site_ids)))
+            for row in session.scalars(select(Site).where(Site.id.in_(page_site_ids)))
         }
         companies = {
             row.id: row
             for row in session.scalars(
-                select(Company).where(Company.id.in_({sites[site_id].company_id for site_id in site_ids}))
+                select(Company).where(Company.id.in_({sites[site_id].company_id for site_id in page_site_ids}))
             )
         }
+        site_gxp_rows = session.execute(
+            union_all(
+                select(Case.site_id.label("site_id"), Case.gxp_type.label("gxp_type")).where(Case.site_id.in_(page_site_ids)),
+                select(Certificate.site_id.label("site_id"), Certificate.certificate_type.label("gxp_type")).where(
+                    Certificate.site_id.in_(page_site_ids),
+                    Certificate.latest_flag.is_(True),
+                ),
+            )
+        ).all()
+        gxp_types_by_site: dict[str, list[str]] = defaultdict(list)
+        for site_id, current_gxp in site_gxp_rows:
+            if current_gxp and current_gxp not in gxp_types_by_site[site_id]:
+                gxp_types_by_site[site_id].append(current_gxp)
+
         cases_by_site: dict[str, list[Case]] = defaultdict(list)
         cases_by_id: dict[str, Case] = {}
-        for row in session.scalars(select(Case).where(Case.site_id.in_(site_ids))):
+        case_match_clause = self._build_case_context_match_clause(page_contexts)
+        for row in session.scalars(select(Case).where(case_match_clause)):
             cases_by_site[row.site_id].append(row)
             cases_by_id[row.id] = row
         case_ids = list(cases_by_id)
@@ -571,6 +851,7 @@ class CatalogReadService:
         current_certificates = list(
             session.execute(
                 select(Certificate, CertificateVersion)
+                .outerjoin(Case, Case.id == Certificate.case_id)
                 .join(
                     CertificateVersion,
                     and_(
@@ -578,7 +859,10 @@ class CatalogReadService:
                         CertificateVersion.is_latest_version.is_(True),
                     ),
                 )
-                .where(Certificate.site_id.in_(site_ids), Certificate.latest_flag.is_(True))
+                .where(
+                    Certificate.latest_flag.is_(True),
+                    self._build_certificate_context_match_clause(page_contexts, Case),
+                )
             ).all()
         )
         certificate_scope_rows_by_version: dict[str, list[CertificateScope]] = defaultdict(list)
@@ -602,59 +886,49 @@ class CatalogReadService:
             )
 
         results = []
-        for site_id in site_ids:
-            site = sites[site_id]
+        for page_context in page_context_rows:
+            site = sites[page_context.site_id]
             company = companies[site.company_id]
-            site_cases = cases_by_site.get(site_id, [])
-            gxp_types = sorted({item.gxp_type for item in site_cases if item.gxp_type})
-            site_certificate_rows = certificate_by_site.get(site_id, [])
-            for row_gxp_type, line_code, context_cases in self._build_site_contexts(
-                site_cases=site_cases,
-                certificate_rows=site_certificate_rows,
-                requested_gxp=gxp_type,
-            ):
-                latest = self._select_latest_case(context_cases)
-                certificate_context = self._select_current_certificate_context(
-                    site_certificate_rows,
-                    row_gxp_type,
-                    line_code=line_code,
-                )
-                results.append(
-                    {
-                        "result_key": self._build_result_key(site.id, gxp_type=row_gxp_type, line_code=line_code),
-                        "site_id": site.id,
-                        "legacy_site_id": site.legacy_site_id,
-                        "facility_code": self._preferred_site_code(site, row_gxp_type),
-                        "context_code": self._build_context_code(site, gxp_type=row_gxp_type, line_code=line_code),
-                        "result_grain": "production_line" if line_code else "facility",
-                        "gxp_type": row_gxp_type,
-                        "line_code": line_code,
-                        "facility_name": site.site_name,
-                        "company_name": company.legal_name,
-                        "gxp_types": gxp_types,
-                        "certificate_scope_summary": None if certificate_context is None else certificate_context.scope_summary,
-                        "province_name": site.province_name,
-                        "last_inspection_on": self._select_latest_inspection_on(
-                            context_cases,
-                            outcomes_by_case_id=outcomes_by_case_id,
-                            inspection_event_dates_by_case_id=inspection_event_dates_by_case_id,
-                        ),
-                        "current_state": None if latest is None else latest.state.value,
-                        "current_certificate_number": None if certificate_context is None else certificate_context.version.certificate_number,
-                        "current_certificate_expiry": None if certificate_context is None else certificate_context.version.expiry_date,
-                    }
-                )
-        results.sort(
-            key=lambda item: (
-                item["context_code"] is None,
-                item["context_code"] or "",
-                item["facility_name"],
-                item["gxp_type"] or "",
+            row_gxp_type = page_context.gxp_type
+            line_code = self._normalize_line_code(page_context.line_code)
+            context_cases = [
+                row
+                for row in cases_by_site.get(page_context.site_id, [])
+                if row.gxp_type == row_gxp_type and self._normalize_line_code(row.scope_code) == line_code
+            ]
+            latest = self._select_latest_case(context_cases)
+            certificate_context = self._select_current_certificate_context(
+                certificate_by_site.get(page_context.site_id, []),
+                row_gxp_type,
+                line_code=line_code,
             )
-        )
-        total_count = len(results)
+            results.append(
+                {
+                    "result_key": self._build_result_key(site.id, gxp_type=row_gxp_type, line_code=line_code),
+                    "site_id": site.id,
+                    "legacy_site_id": site.legacy_site_id,
+                    "facility_code": self._preferred_site_code(site, row_gxp_type),
+                    "context_code": self._build_context_code(site, gxp_type=row_gxp_type, line_code=line_code),
+                    "result_grain": "production_line" if line_code else "facility",
+                    "gxp_type": row_gxp_type,
+                    "line_code": line_code,
+                    "facility_name": site.site_name,
+                    "company_name": company.legal_name,
+                    "gxp_types": sorted(gxp_types_by_site.get(page_context.site_id, [])),
+                    "certificate_scope_summary": None if certificate_context is None else certificate_context.scope_summary,
+                    "province_name": site.province_name,
+                    "last_inspection_on": self._select_latest_inspection_on(
+                        context_cases,
+                        outcomes_by_case_id=outcomes_by_case_id,
+                        inspection_event_dates_by_case_id=inspection_event_dates_by_case_id,
+                    ),
+                    "current_state": None if latest is None else latest.state.value,
+                    "current_certificate_number": None if certificate_context is None else certificate_context.version.certificate_number,
+                    "current_certificate_expiry": None if certificate_context is None else certificate_context.version.expiry_date,
+                }
+            )
         return {
-            "items": results[offset : offset + limit],
+            "items": results,
             "total_count": total_count,
             "offset": offset,
             "limit": limit,

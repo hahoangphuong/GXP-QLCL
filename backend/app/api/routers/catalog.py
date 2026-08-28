@@ -155,7 +155,7 @@ def register_catalog_routes(app, session_factory) -> None:
         change_request_state: list[str] = Query(default=[]),
         certificate_state: str | None = Query(default=None),
         certificate_expiring_within_days: int | None = Query(default=None, ge=1, le=365),
-        offset: int = 0,
+        offset: int = Query(default=0, ge=0),
         limit: int = Query(default=50, ge=1, le=200),
         session: Session = dependency,
         user: AuthenticatedUser = Depends(get_authenticated_user),

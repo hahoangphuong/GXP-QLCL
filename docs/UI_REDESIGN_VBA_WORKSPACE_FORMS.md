@@ -500,3 +500,35 @@ Switching among facility tabs must never silently reset the facility/line search
 Where search results are line-grained (`1.1A`, `1.1B`, `1.1C`), the selected production line is part of durable workspace context.
 
 Do not collapse three line rows back into one ambiguous facility context when opening `Thông tin chung`, certificate scope, or event workspaces. If a domain projection is facility-wide, the UI may state that explicitly while still retaining which line row led the operator into the workspace.
+
+## 14. UAT refinement — compact master/history proportions and true tab affordance
+
+This section captures the next desktop UAT pass and supplements section 13.
+
+### 14.1 Master list remains visually dominant
+
+The `Cơ sở/dây chuyền` result pane is the primary master list. It should receive substantially more horizontal space than `Lịch sử kiểm tra & thay đổi`.
+
+The history pane should be compressed to the minimum width that still makes its four columns readable. Column widths should be content-driven, with `Loại sự kiện` particularly narrow after presentation normalization.
+
+### 14.2 Compact history presentation labels
+
+In the history grid, `Thay đổi cơ sở` should be presented as `Thay đổi` for compact scanning. This is display-only; keep the authoritative event type unchanged in API/domain state.
+
+The history panel must use one title: **`Lịch sử kiểm tra & thay đổi`**. Do not render a duplicate subtitle conveying the same concept.
+
+### 14.3 Facility-level navigation must look like application tabs
+
+The four facility projections:
+- Thông tin chung
+- Các đợt kiểm tra & thay đổi
+- Giấy chứng nhận GxP
+- Giấy chứng nhận đủ điều kiện
+
+must be rendered as a conventional tab strip, not pill-shaped generic action buttons. Active state should be visually unmistakable while preserving dense desktop styling.
+
+Event-level tabs inside `Các đợt kiểm tra & thay đổi` may also use the same tab vocabulary at a secondary level, but must remain visually subordinate to the facility-level tabs.
+
+### 14.4 Selection should not destabilize the master list
+
+Selecting a new facility/line row must keep the current result list stable. Only dependent history/workspace projections should load/update. The master table must not disappear or show a global search-loading replacement merely because selection changed.

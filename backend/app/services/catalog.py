@@ -152,6 +152,15 @@ class CatalogReadService:
         return "\n".join(parts)
 
     @staticmethod
+    def _derive_certificate_status(row: CertificateContextRow | None) -> str | None:
+        if row is None:
+            return None
+        expiry = row.version.expiry_date
+        if expiry is not None and expiry < date.today():
+            return "expired"
+        return "active"
+
+    @staticmethod
     def _certificate_line_code(certificate: Certificate, linked_case: Case | None) -> str | None:
         direct_line_code = CatalogReadService._normalize_line_code(certificate.line_code)
         if direct_line_code is not None:
@@ -1082,6 +1091,7 @@ class CatalogReadService:
                 "selected_line_code": normalized_line_code,
                 "facility_name": site.site_name,
                 "company_name": company.legal_name,
+                "company_legal_address": company.legal_address,
                 "address": site.site_address,
                 "province_name": site.province_name,
                 "gxp_types": sorted(
@@ -1092,7 +1102,10 @@ class CatalogReadService:
                 "current_state": None if latest_case is None else latest_case.state.value,
                 "primary_standard": None if latest_case is None else latest_case.applicable_standard or latest_case.scope_code,
                 "current_certificate_number": None if current_certificate is None else current_certificate.version.certificate_number,
+                "current_certificate_issue_date": None if current_certificate is None else current_certificate.version.issue_date,
                 "current_certificate_expiry": None if current_certificate is None else current_certificate.version.expiry_date,
+                "current_certificate_standard": None if current_certificate is None else current_certificate.version.applicable_standard,
+                "current_certificate_status": self._derive_certificate_status(current_certificate),
                 "certificate_scope_summary": None if current_certificate is None else current_certificate.scope_summary,
             },
             "history": history,

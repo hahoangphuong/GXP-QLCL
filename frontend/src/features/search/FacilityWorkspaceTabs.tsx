@@ -1,6 +1,6 @@
 import { EmptyState } from "../../components/EmptyState";
 import type { CaseDetail, FacilityHistoryItem, FacilityWorkspaceSummary } from "../../types";
-import { formatCompactDate } from "../../lib/presentation";
+import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
 import { EventWorkspace } from "./EventWorkspace";
 import { FacilitySummary } from "./FacilitySummary";
 import { HistoryTable } from "./HistoryTable";
@@ -62,26 +62,39 @@ export function FacilityWorkspaceTabs({
         ) : null}
 
         {selectedFacilityTab === "Các đợt kiểm tra & thay đổi" ? (
-          <div className="event-workspace-stack">
-            <HistoryTable rows={history} selectedHistoryId={selectedHistoryId} onSelect={onHistorySelect} />
-            <EventWorkspace
-              activeTab={activeEventTab}
-              caseDetail={caseDetail}
-              caseDetailError={caseDetailError}
-              caseDetailLoading={caseDetailLoading}
-              onTabChange={onEventTabChange}
-              selectedHistory={selectedHistory}
-            />
+          <div className="event-workspace-split">
+            <div className="event-workspace-history-pane">
+              <HistoryTable rows={history} selectedHistoryId={selectedHistoryId} onSelect={onHistorySelect} />
+            </div>
+            <div className="event-workspace-detail-pane">
+              <EventWorkspace
+                activeTab={activeEventTab}
+                caseDetail={caseDetail}
+                caseDetailError={caseDetailError}
+                caseDetailLoading={caseDetailLoading}
+                onTabChange={onEventTabChange}
+                selectedHistory={selectedHistory}
+              />
+            </div>
           </div>
         ) : null}
 
         {selectedFacilityTab === "Giấy chứng nhận GxP" ? (
-          summary.current_certificate_number || summary.current_certificate_expiry || summary.certificate_scope_summary ? (
+          summary.current_certificate_number ||
+          summary.current_certificate_issue_date ||
+          summary.current_certificate_expiry ||
+          summary.current_certificate_standard ||
+          summary.certificate_scope_summary ||
+          summary.current_certificate_status ? (
             <div className="certificate-shell">
               <div className="detail-grid compact-grid">
                 <div>
                   <span>Số GCN hiện hành</span>
                   <strong>{summary.current_certificate_number ?? "Chưa có"}</strong>
+                </div>
+                <div>
+                  <span>Ngày cấp</span>
+                  <strong>{formatCompactDate(summary.current_certificate_issue_date)}</strong>
                 </div>
                 <div>
                   <span>Hết hạn</span>
@@ -90,6 +103,14 @@ export function FacilityWorkspaceTabs({
                 <div>
                   <span>GxP</span>
                   <strong>{summary.selected_gxp_type ?? "Chưa xác định"}</strong>
+                </div>
+                <div>
+                  <span>Tiêu chuẩn</span>
+                  <strong>{summary.current_certificate_standard ?? "Chưa có"}</strong>
+                </div>
+                <div>
+                  <span>Tình trạng</span>
+                  <strong>{formatStatusLabel(summary.current_certificate_status)}</strong>
                 </div>
                 <div className="summary-span">
                   <span>Phạm vi chứng nhận</span>

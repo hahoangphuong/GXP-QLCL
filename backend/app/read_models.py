@@ -127,6 +127,7 @@ class FacilityWorkspaceSummaryRead(BaseModel):
     selected_line_code: str | None
     facility_name: str
     company_name: str
+    company_legal_address: str | None
     address: str | None
     province_name: str | None
     gxp_types: list[str]
@@ -134,7 +135,10 @@ class FacilityWorkspaceSummaryRead(BaseModel):
     current_state: str | None
     primary_standard: str | None
     current_certificate_number: str | None
+    current_certificate_issue_date: date | None
     current_certificate_expiry: date | None
+    current_certificate_standard: str | None
+    current_certificate_status: str | None
     certificate_scope_summary: str | None
 
 

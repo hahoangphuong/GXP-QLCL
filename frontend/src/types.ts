@@ -125,6 +125,7 @@ export type FacilityWorkspaceSummary = {
   selected_line_code: string | null;
   facility_name: string;
   company_name: string;
+  company_legal_address: string | null;
   address: string | null;
   province_name: string | null;
   gxp_types: string[];
@@ -132,7 +133,10 @@ export type FacilityWorkspaceSummary = {
   current_state: string | null;
   primary_standard: string | null;
   current_certificate_number: string | null;
+  current_certificate_issue_date: string | null;
   current_certificate_expiry: string | null;
+  current_certificate_standard: string | null;
+  current_certificate_status: string | null;
   certificate_scope_summary: string | null;
 };
 

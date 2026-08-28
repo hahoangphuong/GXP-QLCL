@@ -21,6 +21,11 @@ const CHANGE_REQUEST_STATE_LABELS: Record<string, string> = {
   superseded: "Đã được thay thế",
 };
 
+const CERTIFICATE_STATUS_LABELS: Record<string, string> = {
+  active: "Còn hiệu lực",
+  expired: "Hết hiệu lực",
+};
+
 const STATUS_TONES: Record<string, string> = {
   draft: "info",
   application_received: "warning",
@@ -40,6 +45,7 @@ const STATUS_TONES: Record<string, string> = {
   effective: "success",
   superseded: "muted",
   active: "success",
+  expired: "danger",
 };
 
 const FACILITY_NAME_ABBREVIATIONS: Array<[RegExp, string]> = [
@@ -81,7 +87,7 @@ export function formatStatusLabel(value: string | null | undefined): string {
   if (!normalized) {
     return "Chưa có";
   }
-  return CASE_STATE_LABELS[normalized] ?? CHANGE_REQUEST_STATE_LABELS[normalized] ?? normalized;
+  return CASE_STATE_LABELS[normalized] ?? CHANGE_REQUEST_STATE_LABELS[normalized] ?? CERTIFICATE_STATUS_LABELS[normalized] ?? normalized;
 }
 
 export function getStatusTone(value: string | null | undefined): string {

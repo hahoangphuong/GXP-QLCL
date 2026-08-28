@@ -464,7 +464,7 @@ def seed_cross_gxp_catalog(session: Session):
 
 
 def seed_line_grain_catalog(session: Session):
-    company = Company(legal_name="Công ty dây chuyền", short_name="LINE")
+    company = Company(legal_name="Công ty dây chuyền", short_name="LINE", legal_address="123 Trụ sở chính")
     session.add(company)
     session.flush()
     site = Site(
@@ -525,6 +525,7 @@ def seed_line_grain_catalog(session: Session):
         issue_date=date(2026, 6, 1),
         expiry_date=date(2027, 6, 1),
         certificate_number="GCN-A",
+        applicable_standard="WHO-GMP",
         is_latest_version=True,
     )
     version_b = CertificateVersion(
@@ -533,6 +534,7 @@ def seed_line_grain_catalog(session: Session):
         issue_date=date(2026, 7, 15),
         expiry_date=date(2027, 7, 15),
         certificate_number="GCN-B",
+        applicable_standard="PIC/S-GMP",
         is_latest_version=True,
     )
     session.add_all([version_a, version_b])
@@ -735,6 +737,11 @@ def test_search_facilities_and_workspace_preserve_production_line_context_and_ce
     assert workspace_payload.summary.context_code == "1.1A"
     assert workspace_payload.summary.selected_line_code == "A"
     assert workspace_payload.summary.context_grain == "production_line"
+    assert workspace_payload.summary.company_legal_address == "123 Trụ sở chính"
+    assert workspace_payload.summary.current_certificate_issue_date == date(2026, 6, 1)
+    assert workspace_payload.summary.current_certificate_expiry == date(2027, 6, 1)
+    assert workspace_payload.summary.current_certificate_standard == "WHO-GMP"
+    assert workspace_payload.summary.current_certificate_status == "active"
     assert workspace_payload.summary.certificate_scope_summary == "Dây chuyền viên nén A"
     assert workspace_payload.summary.primary_standard == "WHO-GMP"
     assert [item.reference_code for item in workspace_payload.history if item.source_type == "case"] == ["KT-GMP-A"]

@@ -113,6 +113,7 @@ function buildWorkspace(overrides: Record<string, unknown> = {}) {
       selected_line_code: "A",
       facility_name: "Nhà máy A",
       company_name: "Công ty A",
+      company_legal_address: "123 Trụ sở chính",
       address: "KCN A",
       province_name: "Hà Nội",
       gxp_types: ["GMP"],
@@ -120,7 +121,10 @@ function buildWorkspace(overrides: Record<string, unknown> = {}) {
       current_state: "awaiting_certificate_decision",
       primary_standard: "WHO-GMP",
       current_certificate_number: "GCN-001",
+      current_certificate_issue_date: "2026-06-01",
       current_certificate_expiry: "2026-12-31",
+      current_certificate_standard: "WHO-GMP",
+      current_certificate_status: "active",
       certificate_scope_summary: "Dây chuyền viên nén A",
     },
     history: [
@@ -296,8 +300,48 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByText("01-08-2026")).toBeInTheDocument();
     await screen.findByText("Lịch sử kiểm tra & thay đổi");
     expect(screen.getByText("05-08-2026")).toBeInTheDocument();
-    expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Thông tin chung" }));
+    expect(await screen.findByText("01-06-2026")).toBeInTheDocument();
+    expect(screen.getByText("31-12-2026")).toBeInTheDocument();
+    expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
+  });
+
+  it("renders three grouped sections in Thông tin chung and shows missing owner-gap fields as Chưa có", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(
+      buildWorkspace({
+        summary: {
+          ...buildWorkspace().summary,
+          company_legal_address: "456 Trụ sở công ty",
+          current_certificate_number: "GCN-789",
+          current_certificate_issue_date: "2026-03-15",
+          current_certificate_expiry: "2027-03-15",
+          current_certificate_standard: "PIC/S-GMP",
+          current_certificate_status: "active",
+          certificate_scope_summary: "Dây chuyền thuốc nước",
+        },
+      }),
+    );
+    apiMocks.getCaseDetail.mockResolvedValue(null);
+
+    renderApp(["/search?facility_tab=Thông%20tin%20chung"]);
+
+    expect(await screen.findByRole("heading", { name: "Thông tin về công ty" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Thông tin về cơ sở" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Thông tin về GxP" })).toBeInTheDocument();
+    expect(screen.getByText("Công ty A")).toBeInTheDocument();
+    expect(screen.getByText("456 Trụ sở công ty")).toBeInTheDocument();
+    expect(screen.getByText("Nhà máy A")).toBeInTheDocument();
+    expect(screen.getByText("KCN A")).toBeInTheDocument();
+    expect(screen.getByText("GCN-789")).toBeInTheDocument();
+    expect(screen.getByText("15-03-2026")).toBeInTheDocument();
+    expect(screen.getByText("15-03-2027")).toBeInTheDocument();
+    expect(screen.getByText("PIC/S-GMP")).toBeInTheDocument();
+    expect(screen.getByText("Dây chuyền thuốc nước")).toBeInTheDocument();
+    expect(screen.getByText("Còn hiệu lực")).toBeInTheDocument();
+    expect(screen.getAllByText("Chưa có").length).toBeGreaterThan(0);
   });
 
   it("keeps facility-name abbreviations presentation-only inside the result grid", async () => {
@@ -394,6 +438,48 @@ describe("App Slice A.4 search workspace", () => {
     expect(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi")).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Hồ sơ" })).not.toBeInTheDocument();
     expect(container.querySelector(".workspace-context-strip")).toBeNull();
+    expect(container.querySelector(".event-workspace-split")).not.toBeNull();
+    expect(container.querySelector(".event-workspace-history-pane .history-panel")).not.toBeNull();
+    expect(container.querySelector(".event-workspace-detail-pane .event-workspace")).not.toBeNull();
+  });
+
+  it("updates only the right event pane when history selection changes and keeps ActionCard free of duplicated facility context", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseDetail.mockResolvedValue({
+      id: "case-1",
+      legacy_inspection_id: 1,
+      legacy_inspection_code: "KT-2026-GMP-A",
+      site_id: "site-1",
+      gxp_type: "GMP",
+      scope_code: "A",
+      applicable_standard: "WHO-GMP",
+      inspection_type: "Định kỳ",
+      state: "awaiting_certificate_decision",
+      opened_year: 2026,
+    });
+
+    const { container } = renderApp(["/search"]);
+
+    expect(await screen.findByRole("button", { name: "Công ty mới" })).toBeInTheDocument();
+    const actionPanel = container.querySelector(".action-panel");
+    expect(actionPanel).not.toBeNull();
+    expect(actionPanel?.textContent ?? "").not.toContain("1.1A");
+    expect(actionPanel?.textContent ?? "").not.toContain("Nhà máy A");
+    expect(actionPanel?.textContent ?? "").not.toContain("Công ty cổ phần dược phẩm Trung ương I");
+
+    await waitFor(() => {
+      expect(container.querySelector(".history-panel")).not.toBeNull();
+    });
+    fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "TD-01" })).toBeInTheDocument();
+    });
+    expect(within(container.querySelector(".event-workspace") as HTMLElement).getByText("Đổi địa chỉ")).toBeInTheDocument();
+    expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
+    expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
   });
 
   it("keeps dashboard drilldown links aligned with the accepted facility-level semantics", async () => {

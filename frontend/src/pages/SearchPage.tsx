@@ -355,7 +355,7 @@ export function SearchPage({
           showGxpColumn={gxpType === "ALL"}
           totalCount={resultsTotalCount}
         />
-        <ActionCard selectedResult={selectedResult} />
+        <ActionCard />
       </div>
 
       {!resultsLoading && resultsTotalCount === 0 ? (

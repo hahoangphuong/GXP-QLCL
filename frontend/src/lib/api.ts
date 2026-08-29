@@ -1,5 +1,7 @@
 import type {
   AppStatus,
+  BusinessEligibilityDetail,
+  BusinessEligibilityList,
   CaseDetail,
   CaseListItem,
   Company,
@@ -11,6 +13,8 @@ import type {
   DocumentRenderResponse,
   FacilitySearchPage,
   FacilityWorkspace,
+  GxpCertificateDetail,
+  GxpCertificateList,
   Site,
   StubAuthState,
 } from "../types";
@@ -219,6 +223,63 @@ export function getCaseDetail(
   bearerToken?: string | null,
 ): Promise<CaseDetail> {
   return requestJson<CaseDetail>(`/cases/${caseId}`, { auth, useStubAuth, bearerToken });
+}
+
+export function listSiteGxpCertificates(
+  siteId: string,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  gxpType?: string | null,
+  lineCode?: string | null,
+  bearerToken?: string | null,
+): Promise<GxpCertificateList> {
+  const searchParams = new URLSearchParams();
+  if (gxpType) {
+    searchParams.set("gxp_type", gxpType);
+  }
+  if (lineCode) {
+    searchParams.set("line_code", lineCode);
+  }
+  return requestJson<GxpCertificateList>(buildApiPath(`/sites/${siteId}/gxp-certificates`, searchParams), {
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function getGxpCertificateDetail(
+  certificateId: string,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<GxpCertificateDetail> {
+  return requestJson<GxpCertificateDetail>(`/certificates/${certificateId}`, { auth, useStubAuth, bearerToken });
+}
+
+export function listSiteBusinessEligibilityCertificates(
+  siteId: string,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<BusinessEligibilityList> {
+  return requestJson<BusinessEligibilityList>(`/sites/${siteId}/business-eligibility-certificates`, {
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function getBusinessEligibilityDetail(
+  businessEligibilityCertificateId: string,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<BusinessEligibilityDetail> {
+  return requestJson<BusinessEligibilityDetail>(`/business-eligibility-certificates/${businessEligibilityCertificateId}`, {
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
 }
 
 export function prepareDocument(

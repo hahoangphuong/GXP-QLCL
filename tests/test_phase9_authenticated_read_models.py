@@ -21,6 +21,9 @@ from backend.app.db.enums import CaseState, ChangeRequestState
 from backend.app.db.models.phase1 import (
     AppUser,
     AppUserRole,
+    BusinessEligibilityCertificate,
+    BusinessEligibilityCertificateLink,
+    BusinessEligibilityVersion,
     Case,
     Certificate,
     CertificateScope,
@@ -106,6 +109,10 @@ def test_phase9_detail_routes_are_registered():
     assert "/dashboard/summary" in routes
     assert "/search/facilities" in routes
     assert "/sites/{site_id}/workspace" in routes
+    assert "/sites/{site_id}/gxp-certificates" in routes
+    assert "/certificates/{certificate_id}" in routes
+    assert "/sites/{site_id}/business-eligibility-certificates" in routes
+    assert "/business-eligibility-certificates/{business_eligibility_certificate_id}" in routes
 
 
 def test_parse_role_map_accepts_email_role_pairs():
@@ -568,6 +575,194 @@ def seed_line_grain_catalog(session: Session):
     return {"site_id": site.id}
 
 
+def seed_certificate_workspace_catalog(session: Session):
+    company = Company(legal_name="Công ty chứng nhận", short_name="CERT", legal_address="88 Trụ sở")
+    session.add(company)
+    session.flush()
+    site = Site(
+        company_id=company.id,
+        site_name="Cơ sở chứng nhận",
+        site_address="KCN Chứng nhận",
+        legacy_site_id=222,
+        legacy_gmp_site_code="2.2",
+    )
+    session.add(site)
+    session.flush()
+
+    case_a = Case(
+        site_id=site.id,
+        gxp_type="GMP",
+        scope_code="A",
+        state=CaseState.CERTIFIED,
+        legacy_inspection_id=4201,
+        legacy_inspection_code="KT-GMP-A-2025",
+        applicable_standard="WHO-GMP",
+        inspection_type="Tái đánh giá",
+        opened_year=2025,
+    )
+    case_b = Case(
+        site_id=site.id,
+        gxp_type="GMP",
+        scope_code="B",
+        state=CaseState.INSPECTION_COMPLETED,
+        legacy_inspection_id=4202,
+        legacy_inspection_code="KT-GMP-B-2026",
+        applicable_standard="PIC/S-GMP",
+        inspection_type="Định kỳ",
+        opened_year=2026,
+    )
+    session.add_all([case_a, case_b])
+    session.flush()
+
+    session.add(InspectionOutcome(case_id=case_a.id, inspected_on=date(2025, 1, 10), inspected_to_on=date(2025, 1, 10)))
+
+    cert_a_new = Certificate(site_id=site.id, case_id=case_a.id, certificate_type="GMP", line_code="A", latest_flag=True)
+    cert_a_old = Certificate(site_id=site.id, case_id=case_a.id, certificate_type="GMP", line_code="A", latest_flag=False)
+    cert_facility = Certificate(
+        site_id=site.id,
+        case_id=None,
+        certificate_type="GMP",
+        line_code=None,
+        latest_flag=False,
+        issuance_basis="administrative_no_inspection",
+    )
+    cert_b = Certificate(site_id=site.id, case_id=case_b.id, certificate_type="GMP", line_code="B", latest_flag=True)
+    session.add_all([cert_a_new, cert_a_old, cert_facility, cert_b])
+    session.flush()
+
+    version_a_new = CertificateVersion(
+        certificate_id=cert_a_new.id,
+        version_no=1,
+        issue_date=date(2025, 4, 17),
+        expiry_date=date(2027, 4, 17),
+        certificate_number="195/GCN-QLD",
+        applicable_standard="WHO-GMP",
+        issuing_authority="Cục Quản lý Dược Việt Nam",
+        is_latest_version=True,
+    )
+    version_a_old = CertificateVersion(
+        certificate_id=cert_a_old.id,
+        version_no=1,
+        issue_date=date(2021, 9, 14),
+        expiry_date=date(2024, 9, 14),
+        certificate_number="533/GCN-QLD",
+        applicable_standard="WHO-GMP",
+        issuing_authority="Cục Quản lý Dược Việt Nam",
+        is_latest_version=True,
+    )
+    version_facility = CertificateVersion(
+        certificate_id=cert_facility.id,
+        version_no=1,
+        issue_date=date(2020, 5, 1),
+        expiry_date=date(2023, 5, 1),
+        certificate_number="ADMIN-001",
+        applicable_standard="WHO-GMP",
+        issuing_authority="Bộ Y tế",
+        is_latest_version=True,
+    )
+    version_b = CertificateVersion(
+        certificate_id=cert_b.id,
+        version_no=1,
+        issue_date=date(2026, 6, 1),
+        expiry_date=date(2028, 6, 1),
+        certificate_number="B-001",
+        applicable_standard="PIC/S-GMP",
+        issuing_authority="Cục Quản lý Dược Việt Nam",
+        is_latest_version=True,
+    )
+    session.add_all([version_a_new, version_a_old, version_facility, version_b])
+    session.flush()
+    session.add_all(
+        [
+            CertificateScope(
+                certificate_version_id=version_a_new.id,
+                scope_key="A",
+                scope_text="Thuốc không vô trùng",
+                sort_order=1,
+            ),
+            CertificateScope(
+                certificate_version_id=version_a_old.id,
+                scope_key="A",
+                scope_text="Thuốc không vô trùng cũ",
+                sort_order=1,
+            ),
+            CertificateScope(
+                certificate_version_id=version_b.id,
+                scope_key="B",
+                scope_text="Dây chuyền B",
+                sort_order=1,
+            ),
+        ]
+    )
+
+    dkkd_previous = BusinessEligibilityCertificate(
+        site_id=site.id,
+        company_id=company.id,
+        legacy_dkkd_id=700,
+        latest_flag=False,
+    )
+    dkkd_current = BusinessEligibilityCertificate(
+        site_id=site.id,
+        company_id=company.id,
+        legacy_dkkd_id=701,
+        latest_flag=True,
+        replaces_legacy_dkkd_id=700,
+    )
+    session.add_all([dkkd_previous, dkkd_current])
+    session.flush()
+    previous_version = BusinessEligibilityVersion(
+        business_eligibility_certificate_id=dkkd_previous.id,
+        version_no=1,
+        certificate_number="703/ĐKKDD-BYT",
+        issued_on=date(2022, 5, 30),
+        issuance_sequence_text="4",
+    )
+    current_version = BusinessEligibilityVersion(
+        business_eligibility_certificate_id=dkkd_current.id,
+        version_no=1,
+        certificate_number="1201/ĐKKDD-BYT",
+        issued_on=date(2025, 6, 9),
+        decision_reference="QĐ-1201",
+        issuance_sequence_text="5",
+        issuance_history_text="Lần 1, Lần 2, Lần 3, Lần 4, Lần 5",
+        professional_responsible_person_name="Nguyễn Khắc Minh",
+        quality_assurance_person_name="Võ Việt Hùng",
+        professional_qualification_text="Dược sĩ đại học",
+        professional_license_number="2241/BD-CCHND",
+        professional_license_issued_on=date(2013, 8, 8),
+        professional_license_issuer="Sở Y tế",
+        responsible_license_issued_on=date(2020, 7, 14),
+        responsible_license_issuer="Sở Y tế Hà Tĩnh",
+        business_activity_text="Bán buôn thuốc",
+        current_status_text="Chưa cấp chứng chỉ",
+        handled_by_name="Hà Hoàng Phương",
+        application_dossier_reference="HS-001",
+    )
+    session.add_all([previous_version, current_version])
+    session.flush()
+    session.add(
+        BusinessEligibilityCertificateLink(
+            business_eligibility_version_id=current_version.id,
+            certificate_id=cert_a_new.id,
+            link_role="source_certificate",
+        )
+    )
+    session.commit()
+    return {
+        "site_id": site.id,
+        "gxp_certificate_ids": {
+            "a_new": cert_a_new.id,
+            "a_old": cert_a_old.id,
+            "facility": cert_facility.id,
+            "b": cert_b.id,
+        },
+        "eligibility_certificate_ids": {
+            "current": dkkd_current.id,
+            "previous": dkkd_previous.id,
+        },
+    }
+
+
 def test_catalog_manual_response_constructors_populate_all_required_schema_fields():
     router_path = ROOT / "backend" / "app" / "api" / "routers" / "catalog.py"
     tree = ast.parse(router_path.read_text(encoding="utf-8"))
@@ -746,6 +941,81 @@ def test_search_facilities_and_workspace_preserve_production_line_context_and_ce
     assert workspace_payload.summary.primary_standard == "WHO-GMP"
     assert [item.reference_code for item in workspace_payload.history if item.source_type == "case"] == ["KT-GMP-A"]
     assert any(item.source_type == "change_request" for item in workspace_payload.history)
+
+
+def test_gxp_certificate_workspace_reads_history_and_detail_with_line_safe_filtering(tmp_path):
+    database_path = tmp_path / "catalog-gxp-workspace.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        payload = service.list_site_gxp_certificates(
+            session,
+            site_id=seeded["site_id"],
+            gxp_type="GMP",
+            line_code="A",
+        )
+        detail = service.get_gxp_certificate_detail(session, certificate_id=seeded["gxp_certificate_ids"]["a_new"])
+
+    assert [item["certificate_number"] for item in payload["items"]] == ["195/GCN-QLD", "533/GCN-QLD", "ADMIN-001"]
+    assert [item["context_match_kind"] for item in payload["items"]] == ["exact_line", "exact_line", "facility_wide"]
+    assert all(item["line_code"] in {"A", None} for item in payload["items"])
+    assert all(item["certificate_number"] != "B-001" for item in payload["items"])
+
+    assert detail["certificate_number"] == "195/GCN-QLD"
+    assert detail["line_code"] == "A"
+    assert detail["scope_summary"] == "Thuốc không vô trùng"
+    assert detail["issuing_authority"] == "Cục Quản lý Dược Việt Nam"
+    assert detail["status"] == "active"
+    assert detail["source_description"] == "Đợt kiểm tra GMP ngày 10-01-2025"
+    assert detail["limitation_text"] is None
+
+
+def test_business_eligibility_workspace_reads_history_detail_and_linked_gxp_basis(tmp_path):
+    database_path = tmp_path / "catalog-dkkd-workspace.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        payload = service.list_site_business_eligibility_certificates(session, site_id=seeded["site_id"])
+        detail = service.get_business_eligibility_detail(
+            session,
+            business_eligibility_certificate_id=seeded["eligibility_certificate_ids"]["current"],
+        )
+
+    assert [item["certificate_number"] for item in payload["items"]] == ["1201/ĐKKDD-BYT", "703/ĐKKDD-BYT"]
+    assert payload["items"][0]["issuance_sequence_text"] == "5"
+    assert payload["items"][0]["current_status_text"] == "Chưa cấp chứng chỉ"
+
+    assert detail["certificate_number"] == "1201/ĐKKDD-BYT"
+    assert detail["decision_reference"] == "QĐ-1201"
+    assert detail["issuance_sequence_text"] == "5"
+    assert detail["professional_responsible_person_name"] == "Nguyễn Khắc Minh"
+    assert detail["quality_assurance_person_name"] == "Võ Việt Hùng"
+    assert detail["professional_license_number"] == "2241/BD-CCHND"
+    assert detail["current_status_text"] == "Chưa cấp chứng chỉ"
+    assert detail["replaces_certificate_number"] == "703/ĐKKDD-BYT"
+    assert detail["replaced_by_certificate_number"] is None
+    assert detail["linked_gxp_certificates"] == [
+        {
+            "certificate_id": seeded["gxp_certificate_ids"]["a_new"],
+            "certificate_type": "GMP",
+            "line_code": "A",
+            "certificate_number": "195/GCN-QLD",
+            "issue_date": date(2025, 4, 17),
+            "link_role": "source_certificate",
+        }
+    ]
 
 
 def test_search_facilities_supports_field_specific_name_scope_and_gmpbb_filters(tmp_path):
@@ -1127,8 +1397,10 @@ def test_imported_general_info_fields_flow_into_facility_workspace_summary(tmp_p
                 "Chuyên viên phụ trách": "Hà Hoàng Phương",
                 "DOANH NGHIỆP NƯỚC NGOÀI": "Nhật Bản",
                 "LIÊN HỆ": "QA: 0903 000 000",
+                "NGƯỜI ĐỨNG ĐẦU CƠ SỞ": "Rajesh Kamat, Tổng Giám đốc",
                 "NGƯỜI CHỊU TRÁCH NHIỆM CHUYÊN MÔN": "Dược sĩ A",
                 "NGƯỜI PHỤ TRÁCH QA": "QA Lead B",
+                "NGỪNG HOẠT ĐỘNG": "Cơ sở dừng hoạt động từ 31/12/2020",
             },
         ],
         "db.ktra": [
@@ -1178,13 +1450,13 @@ def test_imported_general_info_fields_flow_into_facility_workspace_summary(tmp_p
 
     assert workspace_payload["summary"]["company_name"] == "Công ty General Info"
     assert workspace_payload["summary"]["company_legal_address"] == "123 Trụ sở chính"
-    assert workspace_payload["summary"]["company_leader"] is None
+    assert workspace_payload["summary"]["company_leader"] == "Rajesh Kamat, Tổng Giám đốc"
     assert workspace_payload["summary"]["company_foreign_investment"] == "Nhật Bản"
     assert workspace_payload["summary"]["assigned_specialist"] == "Hà Hoàng Phương"
     assert workspace_payload["summary"]["contact_information"] == "QA: 0903 000 000"
     assert workspace_payload["summary"]["professional_responsible_person"] == "Dược sĩ A"
     assert workspace_payload["summary"]["quality_assurance_person"] == "QA Lead B"
-    assert workspace_payload["summary"]["facility_current_status"] is None
+    assert workspace_payload["summary"]["facility_current_status"] == "Cơ sở dừng hoạt động từ 31/12/2020"
     assert workspace_payload["summary"]["current_certificate_number"] == "GCN-GEN-001"
 
 

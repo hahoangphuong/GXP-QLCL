@@ -68,12 +68,26 @@ def test_certificate_version_preserves_standard_and_issuer_fields():
 def test_general_info_workspace_fields_exist_on_company_and_site():
     company_table = Base.metadata.tables["company"]
     site_table = Base.metadata.tables["site"]
+    business_eligibility_table = Base.metadata.tables["business_eligibility_certificate"]
+    business_eligibility_version_table = Base.metadata.tables["business_eligibility_version"]
 
     assert "assigned_specialist_text" in company_table.c.keys()
     assert "foreign_investment_text" in site_table.c.keys()
     assert "contact_information" in site_table.c.keys()
+    assert "facility_leader_name" in site_table.c.keys()
     assert "professional_responsible_person_name" in site_table.c.keys()
     assert "quality_assurance_person_name" in site_table.c.keys()
+    assert "current_status_text" in site_table.c.keys()
+    assert "replaces_legacy_dkkd_id" in business_eligibility_table.c.keys()
+    assert "replaced_by_legacy_dkkd_id" in business_eligibility_table.c.keys()
+    assert "quality_assurance_person_name" in business_eligibility_version_table.c.keys()
+    assert "professional_qualification_text" in business_eligibility_version_table.c.keys()
+    assert "professional_license_number" in business_eligibility_version_table.c.keys()
+    assert "decision_reference" in business_eligibility_version_table.c.keys()
+    assert "issuance_sequence_text" in business_eligibility_version_table.c.keys()
+    assert "issuance_history_text" in business_eligibility_version_table.c.keys()
+    assert "business_activity_text" in business_eligibility_version_table.c.keys()
+    assert "current_status_text" in business_eligibility_version_table.c.keys()
 
 
 def test_postgresql_ddl_renders_for_key_tables():
@@ -89,4 +103,4 @@ def test_legacy_result_narratives_use_text_columns():
 
 
 def test_expected_alembic_head_revision_tracks_latest_runtime_migration():
-    assert expected_alembic_head_revision() == "20260828_0005"
+    assert expected_alembic_head_revision() == "20260829_0006"

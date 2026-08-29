@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from backend.app.auth import ALLOWED_READ_ROLES, AuthenticatedUser, get_authenticated_user, require_role
 from backend.app.api.session import get_session_from_request_factory
 from backend.app.read_models import (
+    BusinessEligibilityDetailRead,
+    BusinessEligibilityListRead,
     CaseDetailRead,
     CaseRead,
     CompanyDetailRead,
@@ -14,6 +16,8 @@ from backend.app.read_models import (
     FacilitySearchPageRead,
     FacilitySearchResultRead,
     FacilityWorkspaceRead,
+    GxpCertificateDetailRead,
+    GxpCertificateListRead,
     SiteDetailRead,
     SiteRead,
 )
@@ -201,6 +205,52 @@ def register_catalog_routes(app, session_factory) -> None:
             **service.get_facility_workspace(session, site_id=site_id, gxp_type=gxp_type, line_code=line_code)
         )
 
+    def list_site_gxp_certificates(
+        site_id: str,
+        gxp_type: str | None = Query(default=None),
+        line_code: str | None = Query(default=None),
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        return GxpCertificateListRead(
+            **service.list_site_gxp_certificates(
+                session,
+                site_id=site_id,
+                gxp_type=_optional_string_query(gxp_type),
+                line_code=_optional_string_query(line_code),
+            )
+        )
+
+    def get_gxp_certificate_detail(
+        certificate_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        return GxpCertificateDetailRead(**service.get_gxp_certificate_detail(session, certificate_id=certificate_id))
+
+    def list_site_business_eligibility_certificates(
+        site_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        return BusinessEligibilityListRead(**service.list_site_business_eligibility_certificates(session, site_id=site_id))
+
+    def get_business_eligibility_detail(
+        business_eligibility_certificate_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        return BusinessEligibilityDetailRead(
+            **service.get_business_eligibility_detail(
+                session,
+                business_eligibility_certificate_id=business_eligibility_certificate_id,
+            )
+        )
+
     app.add_api_route("/companies", list_companies, methods=["GET"], response_model=list[CompanyRead], tags=["catalog"])
     app.add_api_route("/companies/{company_id}", get_company_detail, methods=["GET"], response_model=CompanyDetailRead, tags=["catalog"])
     app.add_api_route("/sites", list_sites, methods=["GET"], response_model=list[SiteRead], tags=["catalog"])
@@ -210,3 +260,19 @@ def register_catalog_routes(app, session_factory) -> None:
     app.add_api_route("/dashboard/summary", get_dashboard_summary, methods=["GET"], response_model=DashboardSummaryRead, tags=["catalog"])
     app.add_api_route("/search/facilities", search_facilities, methods=["GET"], response_model=FacilitySearchPageRead, tags=["catalog"])
     app.add_api_route("/sites/{site_id}/workspace", get_facility_workspace, methods=["GET"], response_model=FacilityWorkspaceRead, tags=["catalog"])
+    app.add_api_route("/sites/{site_id}/gxp-certificates", list_site_gxp_certificates, methods=["GET"], response_model=GxpCertificateListRead, tags=["catalog"])
+    app.add_api_route("/certificates/{certificate_id}", get_gxp_certificate_detail, methods=["GET"], response_model=GxpCertificateDetailRead, tags=["catalog"])
+    app.add_api_route(
+        "/sites/{site_id}/business-eligibility-certificates",
+        list_site_business_eligibility_certificates,
+        methods=["GET"],
+        response_model=BusinessEligibilityListRead,
+        tags=["catalog"],
+    )
+    app.add_api_route(
+        "/business-eligibility-certificates/{business_eligibility_certificate_id}",
+        get_business_eligibility_detail,
+        methods=["GET"],
+        response_model=BusinessEligibilityDetailRead,
+        tags=["catalog"],
+    )

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from backend.app.db.models.phase1 import (
     BusinessEligibilityCertificate,
     BusinessEligibilityCertificateLink,
+    BusinessEligibilityVersion,
     Case,
     CaseAssessment,
     Certificate,
@@ -53,8 +54,10 @@ def sample_snapshot():
                 "Chuyên viên phụ trách": "Hà Hoàng Phương",
                 "DOANH NGHIỆP NƯỚC NGOÀI": "Nhật Bản",
                 "LIÊN HỆ": "QA: 0903 000 000",
+                "NGƯỜI ĐỨNG ĐẦU CƠ SỞ": "Lãnh đạo Site",
                 "NGƯỜI CHỊU TRÁCH NHIỆM CHUYÊN MÔN": "Pharmacist Site",
                 "NGƯỜI PHỤ TRÁCH QA": "Manager QA",
+                "NGỪNG HOẠT ĐỘNG": "Tạm ngừng một phần",
             },
         ],
         "db.ktra": [
@@ -78,7 +81,33 @@ def sample_snapshot():
             },
         ],
         "db.dkkd": [
-            {"ID": "300", "MỚI NHẤT": "-", "ID MỚI NHẤT": "", "ID CƠ SỞ": "10", "ID CTY": "1", "NGƯỜI CHỊU TRÁCH NHIỆM CHUYÊN MÔN": "Pharmacist", "ID CC": "200"},
+            {
+                "ID": "300",
+                "MỚI NHẤT": "-",
+                "ID MỚI NHẤT": "",
+                "ID CƠ SỞ": "10",
+                "ID CTY": "1",
+                "Mã số CC": "126/DKKDD-BYT",
+                "Ngày cấp CC": "2018-10-31 00:00:00+00:00",
+                "Số QĐ cấp": "6580/QĐ-BYT",
+                "LẦN CẤP": "2",
+                "LỊCH SỬ CẤP": "Cấp lần 1: 122/BYT-ĐKKDD ngày 01/9/2015",
+                "NGƯỜI CHỊU TRÁCH NHIỆM CHUYÊN MÔN": "Pharmacist",
+                "NGƯỜI PHỤ TRÁCH QA": "Manager QA DDKD",
+                "TRÌNH ĐỘ CHUYÊN MÔN": "Dược sĩ đại học",
+                "CHỨNG CHỈ HÀNH NGHỀ": "3344/CCHN-D-SYT-HCM",
+                "NGÀY CẤP CCHN": "2018-08-10 00:00:00+00:00",
+                "NƠI CẤP CCHN": "Sở Y tế thành phố Hồ Chí Minh",
+                "NGÀY CẤP CCHN - PTCM": "2013-08-16 00:00:00+00:00",
+                "NƠI CẤP CCHN - PTCM": "Sở Y tế Thành phố Hồ Chí Minh",
+                "HOẠT ĐỘNG KINH DOANH": "Sản xuất thuốc, nguyên liệu làm thuốc",
+                "NGƯỜI XỬ LÝ": "Hà Hoàng Phương",
+                "NGỪNG HOẠT ĐỘNG": "chứng chỉ còn hiệu lực",
+                "HỒ SƠ ĐỀ NGHỊ CẤP/ĐIỀU CHỈNH": "51/OTS-RA ngày 19/12/2024",
+                "THAY THẾ GIẤY ID": "299",
+                "BỊ THAY THẾ BỞI GIẤY ID": "301",
+                "ID CC": "200",
+            },
         ],
         "db.Tdoi": [
             {"ID": "400", "PHẠM VI": "-", "MÔ TẢ": "Đổi tên", "ID CƠ SỞ": "10", "Ngày nộp": "2016-02-22 00:00:00", "ĐƠN VỊ ĐỀ NGHỊ": "Unit", "Ngày hiệu lực của TĐ": "2016-03-08 00:00:00"},
@@ -115,8 +144,10 @@ def test_import_snapshot_populates_general_info_owner_fields_from_legacy_db_cso(
         assert company.assigned_specialist_text == "Hà Hoàng Phương"
         assert site.foreign_investment_text == "Nhật Bản"
         assert site.contact_information == "QA: 0903 000 000"
+        assert site.facility_leader_name == "Lãnh đạo Site"
         assert site.professional_responsible_person_name == "Pharmacist Site"
         assert site.quality_assurance_person_name == "Manager QA"
+        assert site.current_status_text == "Tạm ngừng một phần"
 
 
 def test_import_snapshot_populates_certificate_version_and_scope_from_legacy_db_cc():
@@ -146,8 +177,10 @@ def test_import_snapshot_leaves_general_info_owner_fields_null_when_legacy_sourc
     snapshot["db.cso"][0]["Chuyên viên phụ trách"] = ""
     snapshot["db.cso"][0]["DOANH NGHIỆP NƯỚC NGOÀI"] = ""
     snapshot["db.cso"][0]["LIÊN HỆ"] = ""
+    snapshot["db.cso"][0]["NGƯỜI ĐỨNG ĐẦU CƠ SỞ"] = ""
     snapshot["db.cso"][0]["NGƯỜI CHỊU TRÁCH NHIỆM CHUYÊN MÔN"] = ""
     snapshot["db.cso"][0]["NGƯỜI PHỤ TRÁCH QA"] = ""
+    snapshot["db.cso"][0]["NGỪNG HOẠT ĐỘNG"] = ""
     engine = create_engine("sqlite:///:memory:", future=True)
     with Session(engine) as session:
         import_snapshot(session, snapshot)
@@ -159,8 +192,40 @@ def test_import_snapshot_leaves_general_info_owner_fields_null_when_legacy_sourc
         assert company.assigned_specialist_text is None
         assert site.foreign_investment_text is None
         assert site.contact_information is None
+        assert site.facility_leader_name is None
         assert site.professional_responsible_person_name is None
         assert site.quality_assurance_person_name is None
+        assert site.current_status_text is None
+
+
+def test_import_snapshot_populates_business_eligibility_detail_owner_fields_from_legacy_db_dkkd():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        import_snapshot(session, sample_snapshot())
+        session.commit()
+
+        certificate = session.scalars(select(BusinessEligibilityCertificate)).one()
+        version = session.scalars(select(BusinessEligibilityVersion)).one()
+
+        assert certificate.legacy_dkkd_id == 300
+        assert certificate.replaces_legacy_dkkd_id == 299
+        assert certificate.replaced_by_legacy_dkkd_id == 301
+        assert version.certificate_number == "126/DKKDD-BYT"
+        assert str(version.issued_on) == "2018-10-31"
+        assert version.decision_reference == "6580/QĐ-BYT"
+        assert version.issuance_sequence_text == "2"
+        assert version.issuance_history_text == "Cấp lần 1: 122/BYT-ĐKKDD ngày 01/9/2015"
+        assert version.quality_assurance_person_name == "Manager QA DDKD"
+        assert version.professional_qualification_text == "Dược sĩ đại học"
+        assert version.professional_license_number == "3344/CCHN-D-SYT-HCM"
+        assert str(version.professional_license_issued_on) == "2018-08-10"
+        assert version.professional_license_issuer == "Sở Y tế thành phố Hồ Chí Minh"
+        assert str(version.responsible_license_issued_on) == "2013-08-16"
+        assert version.responsible_license_issuer == "Sở Y tế Thành phố Hồ Chí Minh"
+        assert version.business_activity_text == "Sản xuất thuốc, nguyên liệu làm thuốc"
+        assert version.current_status_text == "chứng chỉ còn hiệu lực"
+        assert version.handled_by_name == "Hà Hoàng Phương"
+        assert version.application_dossier_reference == "51/OTS-RA ngày 19/12/2024"
 
 
 def test_import_snapshot_fails_closed_when_company_assigned_specialist_conflicts_across_sites():

@@ -7,8 +7,24 @@ import { ErrorState } from "../components/ErrorState";
 import { ActionCard } from "../features/search/ActionCard";
 import { FacilityTable } from "../features/search/FacilityTable";
 import { FacilityWorkspaceTabs } from "../features/search/FacilityWorkspaceTabs";
-import { getCaseDetail, getFacilityWorkspace, searchFacilities } from "../lib/api";
-import type { CaseDetail, FacilitySearchResult, FacilityWorkspace } from "../types";
+import {
+  getBusinessEligibilityDetail,
+  getCaseDetail,
+  getFacilityWorkspace,
+  getGxpCertificateDetail,
+  listSiteBusinessEligibilityCertificates,
+  listSiteGxpCertificates,
+  searchFacilities,
+} from "../lib/api";
+import type {
+  BusinessEligibilityDetail,
+  BusinessEligibilityListItem,
+  CaseDetail,
+  FacilitySearchResult,
+  FacilityWorkspace,
+  GxpCertificateDetail,
+  GxpCertificateListItem,
+} from "../types";
 
 const DEFAULT_EVENT_TAB = "Hồ sơ";
 const DEFAULT_FACILITY_TAB = "Các đợt kiểm tra & thay đổi";
@@ -66,10 +82,41 @@ export function SearchPage({
   const [selectedCaseDetail, setSelectedCaseDetail] = useState<CaseDetail | null>(null);
   const [caseDetailLoading, setCaseDetailLoading] = useState(false);
   const [caseDetailError, setCaseDetailError] = useState<string | null>(null);
+  const [gxpCertificates, setGxpCertificates] = useState<GxpCertificateListItem[]>([]);
+  const [gxpCertificatesLoading, setGxpCertificatesLoading] = useState(false);
+  const [gxpCertificatesError, setGxpCertificatesError] = useState<string | null>(null);
+  const [selectedGxpCertificateId, setSelectedGxpCertificateId] = useState<string | null>(null);
+  const [gxpCertificateDetail, setGxpCertificateDetail] = useState<GxpCertificateDetail | null>(null);
+  const [gxpCertificateDetailLoading, setGxpCertificateDetailLoading] = useState(false);
+  const [gxpCertificateDetailError, setGxpCertificateDetailError] = useState<string | null>(null);
+  const [eligibilityCertificates, setEligibilityCertificates] = useState<BusinessEligibilityListItem[]>([]);
+  const [eligibilityCertificatesLoading, setEligibilityCertificatesLoading] = useState(false);
+  const [eligibilityCertificatesError, setEligibilityCertificatesError] = useState<string | null>(null);
+  const [selectedEligibilityCertificateId, setSelectedEligibilityCertificateId] = useState<string | null>(null);
+  const [eligibilityCertificateDetail, setEligibilityCertificateDetail] = useState<BusinessEligibilityDetail | null>(null);
+  const [eligibilityCertificateDetailLoading, setEligibilityCertificateDetailLoading] = useState(false);
+  const [eligibilityCertificateDetailError, setEligibilityCertificateDetailError] = useState<string | null>(null);
 
   const selectedResult = results.find((item) => item.result_key === selectedResultKey) ?? null;
   const selectedHistory = workspace?.history.find((item) => item.id === selectedHistoryId) ?? null;
   const hasMoreResults = results.length < resultsTotalCount;
+
+  function resetCertificateWorkspaceState() {
+    setGxpCertificates([]);
+    setGxpCertificatesLoading(false);
+    setGxpCertificatesError(null);
+    setSelectedGxpCertificateId(null);
+    setGxpCertificateDetail(null);
+    setGxpCertificateDetailLoading(false);
+    setGxpCertificateDetailError(null);
+    setEligibilityCertificates([]);
+    setEligibilityCertificatesLoading(false);
+    setEligibilityCertificatesError(null);
+    setSelectedEligibilityCertificateId(null);
+    setEligibilityCertificateDetail(null);
+    setEligibilityCertificateDetailLoading(false);
+    setEligibilityCertificateDetailError(null);
+  }
 
   useEffect(() => {
     const nextParams = new URLSearchParams();
@@ -177,6 +224,7 @@ export function SearchPage({
             setSelectedResultKey(null);
             setSelectedHistoryId(null);
             setWorkspace(null);
+            resetCertificateWorkspaceState();
             return;
           }
           const hasSelection = selectedResultKey && payload.items.some((item) => item.result_key === selectedResultKey);
@@ -214,10 +262,12 @@ export function SearchPage({
   useEffect(() => {
     if (!selectedResult || !access.canLoadSecureApi) {
       setWorkspace(null);
+      resetCertificateWorkspaceState();
       return;
     }
     let cancelled = false;
     setWorkspaceLoading(true);
+    resetCertificateWorkspaceState();
     void getFacilityWorkspace(
       selectedResult.site_id,
       access.auth,
@@ -276,6 +326,138 @@ export function SearchPage({
     };
   }, [access, selectedHistory]);
 
+  useEffect(() => {
+    if (!selectedResult || !access.canLoadSecureApi || selectedFacilityTab !== "Giấy chứng nhận GxP") {
+      return;
+    }
+    let cancelled = false;
+    setGxpCertificatesLoading(true);
+    void listSiteGxpCertificates(
+      selectedResult.site_id,
+      access.auth,
+      access.useStubAuth,
+      selectedResult.gxp_type,
+      selectedResult.line_code,
+      access.bearerToken,
+    )
+      .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+        setGxpCertificates(payload.items);
+        setGxpCertificatesError(null);
+        setGxpCertificatesLoading(false);
+        setSelectedGxpCertificateId((current) =>
+          current && payload.items.some((item) => item.certificate_id === current) ? current : payload.items[0]?.certificate_id ?? null,
+        );
+      })
+      .catch((error: Error) => {
+        if (!cancelled) {
+          setGxpCertificates([]);
+          setGxpCertificatesError(error.message);
+          setGxpCertificatesLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [access, selectedFacilityTab, selectedResult]);
+
+  useEffect(() => {
+    setGxpCertificateDetail(null);
+    setGxpCertificateDetailError(null);
+    setGxpCertificateDetailLoading(false);
+    if (!selectedGxpCertificateId || !access.canLoadSecureApi || selectedFacilityTab !== "Giấy chứng nhận GxP") {
+      return;
+    }
+    let cancelled = false;
+    setGxpCertificateDetailLoading(true);
+    void getGxpCertificateDetail(selectedGxpCertificateId, access.auth, access.useStubAuth, access.bearerToken)
+      .then((payload) => {
+        if (!cancelled) {
+          setGxpCertificateDetail(payload);
+          setGxpCertificateDetailError(null);
+          setGxpCertificateDetailLoading(false);
+        }
+      })
+      .catch((error: Error) => {
+        if (!cancelled) {
+          setGxpCertificateDetail(null);
+          setGxpCertificateDetailError(error.message);
+          setGxpCertificateDetailLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [access, selectedFacilityTab, selectedGxpCertificateId]);
+
+  useEffect(() => {
+    if (!selectedResult || !access.canLoadSecureApi || selectedFacilityTab !== "Giấy chứng nhận đủ điều kiện") {
+      return;
+    }
+    let cancelled = false;
+    setEligibilityCertificatesLoading(true);
+    void listSiteBusinessEligibilityCertificates(
+      selectedResult.site_id,
+      access.auth,
+      access.useStubAuth,
+      access.bearerToken,
+    )
+      .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+        setEligibilityCertificates(payload.items);
+        setEligibilityCertificatesError(null);
+        setEligibilityCertificatesLoading(false);
+        setSelectedEligibilityCertificateId((current) =>
+          current && payload.items.some((item) => item.business_eligibility_certificate_id === current)
+            ? current
+            : payload.items[0]?.business_eligibility_certificate_id ?? null,
+        );
+      })
+      .catch((error: Error) => {
+        if (!cancelled) {
+          setEligibilityCertificates([]);
+          setEligibilityCertificatesError(error.message);
+          setEligibilityCertificatesLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [access, selectedFacilityTab, selectedResult]);
+
+  useEffect(() => {
+    setEligibilityCertificateDetail(null);
+    setEligibilityCertificateDetailError(null);
+    setEligibilityCertificateDetailLoading(false);
+    if (!selectedEligibilityCertificateId || !access.canLoadSecureApi || selectedFacilityTab !== "Giấy chứng nhận đủ điều kiện") {
+      return;
+    }
+    let cancelled = false;
+    setEligibilityCertificateDetailLoading(true);
+    void getBusinessEligibilityDetail(selectedEligibilityCertificateId, access.auth, access.useStubAuth, access.bearerToken)
+      .then((payload) => {
+        if (!cancelled) {
+          setEligibilityCertificateDetail(payload);
+          setEligibilityCertificateDetailError(null);
+          setEligibilityCertificateDetailLoading(false);
+        }
+      })
+      .catch((error: Error) => {
+        if (!cancelled) {
+          setEligibilityCertificateDetail(null);
+          setEligibilityCertificateDetailError(error.message);
+          setEligibilityCertificateDetailLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [access, selectedEligibilityCertificateId, selectedFacilityTab]);
+
   function resetDependentContext() {
     setResultsOffset(0);
     setSelectedResultKey(null);
@@ -286,6 +468,7 @@ export function SearchPage({
     setWorkspaceError(null);
     setSelectedCaseDetail(null);
     setCaseDetailError(null);
+    resetCertificateWorkspaceState();
   }
 
   function updateFilter(field: "facilityName" | "certificateScope" | "caseState" | "gxpType", value: string) {
@@ -375,11 +558,27 @@ export function SearchPage({
             caseDetail={selectedCaseDetail}
             caseDetailError={caseDetailError}
             caseDetailLoading={caseDetailLoading}
+            eligibilityCertificateDetail={eligibilityCertificateDetail}
+            eligibilityCertificateDetailError={eligibilityCertificateDetailError}
+            eligibilityCertificateDetailLoading={eligibilityCertificateDetailLoading}
+            eligibilityCertificates={eligibilityCertificates}
+            eligibilityCertificatesError={eligibilityCertificatesError}
+            eligibilityCertificatesLoading={eligibilityCertificatesLoading}
+            gxpCertificateDetail={gxpCertificateDetail}
+            gxpCertificateDetailError={gxpCertificateDetailError}
+            gxpCertificateDetailLoading={gxpCertificateDetailLoading}
+            gxpCertificates={gxpCertificates}
+            gxpCertificatesError={gxpCertificatesError}
+            gxpCertificatesLoading={gxpCertificatesLoading}
             history={workspace.history}
+            onEligibilityCertificateSelect={setSelectedEligibilityCertificateId}
             onEventTabChange={setActiveTab}
             onFacilityTabChange={setSelectedFacilityTab}
+            onGxpCertificateSelect={setSelectedGxpCertificateId}
             onHistorySelect={setSelectedHistoryId}
+            selectedEligibilityCertificateId={selectedEligibilityCertificateId}
             selectedFacilityTab={selectedFacilityTab}
+            selectedGxpCertificateId={selectedGxpCertificateId}
             selectedHistory={selectedHistory}
             selectedHistoryId={selectedHistoryId}
             summary={workspace.summary}

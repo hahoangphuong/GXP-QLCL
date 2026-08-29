@@ -68,8 +68,10 @@ class Site(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     short_name: Mapped[str | None] = mapped_column(String(255))
     foreign_investment_text: Mapped[str | None] = mapped_column(Text)
     contact_information: Mapped[str | None] = mapped_column(Text)
+    facility_leader_name: Mapped[str | None] = mapped_column(Text)
     professional_responsible_person_name: Mapped[str | None] = mapped_column(Text)
     quality_assurance_person_name: Mapped[str | None] = mapped_column(Text)
+    current_status_text: Mapped[str | None] = mapped_column(Text)
 
 
 class Person(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -271,6 +273,8 @@ class BusinessEligibilityCertificate(UUIDPrimaryKeyMixin, TimestampMixin, Versio
     company_id: Mapped[str] = mapped_column(ForeignKey("company.id"), nullable=False, index=True)
     latest_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     latest_legacy_dkkd_id: Mapped[int | None] = mapped_column(Integer)
+    replaces_legacy_dkkd_id: Mapped[int | None] = mapped_column(Integer)
+    replaced_by_legacy_dkkd_id: Mapped[int | None] = mapped_column(Integer)
 
 
 class BusinessEligibilityVersion(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
@@ -286,6 +290,20 @@ class BusinessEligibilityVersion(UUIDPrimaryKeyMixin, TimestampMixin, VersionedM
     issued_on: Mapped[date | None] = mapped_column(Date)
     expires_on: Mapped[date | None] = mapped_column(Date)
     professional_responsible_person_name: Mapped[str | None] = mapped_column(String(255))
+    quality_assurance_person_name: Mapped[str | None] = mapped_column(Text)
+    professional_qualification_text: Mapped[str | None] = mapped_column(Text)
+    professional_license_number: Mapped[str | None] = mapped_column(Text)
+    professional_license_issued_on: Mapped[date | None] = mapped_column(Date)
+    professional_license_issuer: Mapped[str | None] = mapped_column(Text)
+    responsible_license_issued_on: Mapped[date | None] = mapped_column(Date)
+    responsible_license_issuer: Mapped[str | None] = mapped_column(Text)
+    decision_reference: Mapped[str | None] = mapped_column(Text)
+    issuance_sequence_text: Mapped[str | None] = mapped_column(Text)
+    issuance_history_text: Mapped[str | None] = mapped_column(Text)
+    business_activity_text: Mapped[str | None] = mapped_column(Text)
+    current_status_text: Mapped[str | None] = mapped_column(Text)
+    handled_by_name: Mapped[str | None] = mapped_column(Text)
+    application_dossier_reference: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
     __table_args__ = (UniqueConstraint("business_eligibility_certificate_id", "version_no"),)
 

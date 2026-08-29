@@ -165,6 +165,104 @@ class FacilityWorkspaceRead(BaseModel):
     history: list[FacilityHistoryItemRead]
 
 
+class GxpCertificateListItemRead(BaseModel):
+    certificate_id: str
+    site_id: str
+    case_id: str | None
+    certificate_type: str
+    line_code: str | None
+    context_match_kind: Literal["exact_line", "facility_wide", "site_wide"]
+    latest_flag: bool
+    certificate_number: str | None
+    issue_date: date | None
+    expiry_date: date | None
+    applicable_standard: str | None
+    issuing_authority: str | None
+    status: str | None
+
+
+class GxpCertificateListRead(BaseModel):
+    items: list[GxpCertificateListItemRead]
+
+
+class GxpCertificateDetailRead(BaseModel):
+    certificate_id: str
+    site_id: str
+    case_id: str | None
+    certificate_type: str
+    line_code: str | None
+    issuance_basis: str
+    latest_flag: bool
+    certificate_number: str | None
+    issue_date: date | None
+    expiry_date: date | None
+    applicable_standard: str | None
+    issuing_authority: str | None
+    status: str | None
+    facility_name: str
+    address: str | None
+    company_name: str
+    company_legal_address: str | None
+    scope_summary: str | None
+    limitation_text: str | None
+    source_description: str | None
+
+
+class BusinessEligibilityBasisCertificateRead(BaseModel):
+    certificate_id: str
+    certificate_type: str
+    line_code: str | None
+    certificate_number: str | None
+    issue_date: date | None
+    link_role: str
+
+
+class BusinessEligibilityListItemRead(BaseModel):
+    business_eligibility_certificate_id: str
+    site_id: str
+    company_id: str
+    latest_flag: bool
+    certificate_number: str | None
+    issued_on: date | None
+    issuance_sequence_text: str | None
+    current_status_text: str | None
+
+
+class BusinessEligibilityListRead(BaseModel):
+    items: list[BusinessEligibilityListItemRead]
+
+
+class BusinessEligibilityDetailRead(BaseModel):
+    business_eligibility_certificate_id: str
+    site_id: str
+    company_id: str
+    latest_flag: bool
+    certificate_number: str | None
+    issued_on: date | None
+    decision_reference: str | None
+    issuance_sequence_text: str | None
+    issuance_history_text: str | None
+    company_name: str
+    company_legal_address: str | None
+    facility_name: str
+    address: str | None
+    professional_responsible_person_name: str | None
+    quality_assurance_person_name: str | None
+    professional_qualification_text: str | None
+    professional_license_number: str | None
+    professional_license_issued_on: date | None
+    professional_license_issuer: str | None
+    responsible_license_issued_on: date | None
+    responsible_license_issuer: str | None
+    business_activity_text: str | None
+    current_status_text: str | None
+    handled_by_name: str | None
+    application_dossier_reference: str | None
+    replaces_certificate_number: str | None
+    replaced_by_certificate_number: str | None
+    linked_gxp_certificates: list[BusinessEligibilityBasisCertificateRead]
+
+
 class CaseTransitionRequest(BaseModel):
     target_state: str
     expected_version: int

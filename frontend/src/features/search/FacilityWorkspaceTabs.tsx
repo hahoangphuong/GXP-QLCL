@@ -1,8 +1,16 @@
-import { EmptyState } from "../../components/EmptyState";
-import type { CaseDetail, FacilityHistoryItem, FacilityWorkspaceSummary } from "../../types";
-import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
+import type {
+  BusinessEligibilityDetail,
+  BusinessEligibilityListItem,
+  CaseDetail,
+  FacilityHistoryItem,
+  FacilityWorkspaceSummary,
+  GxpCertificateDetail,
+  GxpCertificateListItem,
+} from "../../types";
 import { EventWorkspace } from "./EventWorkspace";
+import { BusinessEligibilityWorkspace } from "./BusinessEligibilityWorkspace";
 import { FacilitySummary } from "./FacilitySummary";
+import { GxpCertificateWorkspace } from "./GxpCertificateWorkspace";
 import { HistoryTable } from "./HistoryTable";
 
 const FACILITY_TABS = [
@@ -25,6 +33,22 @@ export function FacilityWorkspaceTabs({
   caseDetailError,
   activeEventTab,
   onEventTabChange,
+  gxpCertificates,
+  gxpCertificatesLoading,
+  gxpCertificatesError,
+  selectedGxpCertificateId,
+  onGxpCertificateSelect,
+  gxpCertificateDetail,
+  gxpCertificateDetailLoading,
+  gxpCertificateDetailError,
+  eligibilityCertificates,
+  eligibilityCertificatesLoading,
+  eligibilityCertificatesError,
+  selectedEligibilityCertificateId,
+  onEligibilityCertificateSelect,
+  eligibilityCertificateDetail,
+  eligibilityCertificateDetailLoading,
+  eligibilityCertificateDetailError,
 }: {
   summary: FacilityWorkspaceSummary;
   history: FacilityHistoryItem[];
@@ -38,6 +62,22 @@ export function FacilityWorkspaceTabs({
   caseDetailError: string | null;
   activeEventTab: string;
   onEventTabChange: (tab: string) => void;
+  gxpCertificates: GxpCertificateListItem[];
+  gxpCertificatesLoading: boolean;
+  gxpCertificatesError: string | null;
+  selectedGxpCertificateId: string | null;
+  onGxpCertificateSelect: (certificateId: string) => void;
+  gxpCertificateDetail: GxpCertificateDetail | null;
+  gxpCertificateDetailLoading: boolean;
+  gxpCertificateDetailError: string | null;
+  eligibilityCertificates: BusinessEligibilityListItem[];
+  eligibilityCertificatesLoading: boolean;
+  eligibilityCertificatesError: string | null;
+  selectedEligibilityCertificateId: string | null;
+  onEligibilityCertificateSelect: (certificateId: string) => void;
+  eligibilityCertificateDetail: BusinessEligibilityDetail | null;
+  eligibilityCertificateDetailLoading: boolean;
+  eligibilityCertificateDetailError: string | null;
 }) {
   return (
     <section className="panel panel-tight facility-workspace-panel">
@@ -80,60 +120,28 @@ export function FacilityWorkspaceTabs({
         ) : null}
 
         {selectedFacilityTab === "Giấy chứng nhận GxP" ? (
-          summary.current_certificate_number ||
-          summary.current_certificate_issue_date ||
-          summary.current_certificate_expiry ||
-          summary.current_certificate_standard ||
-          summary.certificate_scope_summary ||
-          summary.current_certificate_status ? (
-            <div className="certificate-shell">
-              <div className="detail-grid compact-grid">
-                <div>
-                  <span>Số GCN hiện hành</span>
-                  <strong>{summary.current_certificate_number ?? "Chưa có"}</strong>
-                </div>
-                <div>
-                  <span>Ngày cấp</span>
-                  <strong>{formatCompactDate(summary.current_certificate_issue_date)}</strong>
-                </div>
-                <div>
-                  <span>Hết hạn</span>
-                  <strong>{formatCompactDate(summary.current_certificate_expiry)}</strong>
-                </div>
-                <div>
-                  <span>GxP</span>
-                  <strong>{summary.selected_gxp_type ?? "Chưa xác định"}</strong>
-                </div>
-                <div>
-                  <span>Tiêu chuẩn</span>
-                  <strong>{summary.current_certificate_standard ?? "Chưa có"}</strong>
-                </div>
-                <div>
-                  <span>Tình trạng</span>
-                  <strong>{formatStatusLabel(summary.current_certificate_status)}</strong>
-                </div>
-                <div className="summary-span">
-                  <span>Phạm vi chứng nhận</span>
-                  <strong className="multiline-value">{summary.certificate_scope_summary ?? "Chưa có dữ liệu scope hiện hành."}</strong>
-                </div>
-              </div>
-              <EmptyState
-                title="Lịch sử chứng nhận chưa mở ở Slice A.2"
-                description="Owner layer hiện mới trả current certificate projection đủ an toàn cho ngữ cảnh đang chọn. History/detail API cho chứng nhận GxP sẽ nối ở Slice B."
-              />
-            </div>
-          ) : (
-            <EmptyState
-              title="Chưa có dữ liệu chứng nhận GxP"
-              description="Current certificate projection chưa có dữ liệu cho facility/line/GxP đang chọn hoặc certificate scope lịch sử chưa được backend read model mở ra."
-            />
-          )
+          <GxpCertificateWorkspace
+            detail={gxpCertificateDetail}
+            detailError={gxpCertificateDetailError}
+            detailLoading={gxpCertificateDetailLoading}
+            items={gxpCertificates}
+            listError={gxpCertificatesError}
+            listLoading={gxpCertificatesLoading}
+            onSelectCertificate={onGxpCertificateSelect}
+            selectedCertificateId={selectedGxpCertificateId}
+          />
         ) : null}
 
         {selectedFacilityTab === "Giấy chứng nhận đủ điều kiện" ? (
-          <EmptyState
-            title="Workspace ĐĐKKDD chưa mở ở Slice A.2"
-            description="Top-level tab đã được đặt đúng hierarchy. History/detail read API cho giấy chứng nhận đủ điều kiện vẫn là khoảng trống backend cần nối ở Slice B."
+          <BusinessEligibilityWorkspace
+            detail={eligibilityCertificateDetail}
+            detailError={eligibilityCertificateDetailError}
+            detailLoading={eligibilityCertificateDetailLoading}
+            items={eligibilityCertificates}
+            listError={eligibilityCertificatesError}
+            listLoading={eligibilityCertificatesLoading}
+            onSelectCertificate={onEligibilityCertificateSelect}
+            selectedCertificateId={selectedEligibilityCertificateId}
           />
         ) : null}
       </div>

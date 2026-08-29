@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, aliased
 from backend.app.db.enums import CaseState, ChangeRequestState
 from backend.app.db.models.phase1 import (
     BusinessEligibilityCertificate,
+    BusinessEligibilityCertificateLink,
     BusinessEligibilityVersion,
     Case,
     Certificate,
@@ -159,6 +160,42 @@ class CatalogReadService:
         if expiry is not None and expiry < date.today():
             return "expired"
         return "active"
+
+    @staticmethod
+    def _describe_certificate_source(
+        *,
+        certificate: Certificate,
+        linked_case: Case | None,
+        inspected_on: date | None,
+    ) -> str | None:
+        if linked_case is not None:
+            if inspected_on is not None:
+                return f"Đợt kiểm tra {linked_case.gxp_type} ngày {inspected_on.strftime('%d-%m-%Y')}"
+            if linked_case.legacy_inspection_code:
+                return f"Đợt kiểm tra {linked_case.gxp_type} {linked_case.legacy_inspection_code}"
+            return f"Đợt kiểm tra {linked_case.gxp_type}"
+        if certificate.issuance_basis == "administrative_no_inspection":
+            return "Cấp hành chính không gắn đợt kiểm tra"
+        return None
+
+    @staticmethod
+    def _build_latest_business_eligibility_version_subquery():
+        return (
+            select(
+                BusinessEligibilityVersion.business_eligibility_certificate_id.label("business_eligibility_certificate_id"),
+                func.max(BusinessEligibilityVersion.version_no).label("max_version_no"),
+            )
+            .group_by(BusinessEligibilityVersion.business_eligibility_certificate_id)
+            .subquery()
+        )
+
+    @staticmethod
+    def _normalize_match_kind(selected_line_code: str | None, row_line_code: str | None) -> str:
+        if selected_line_code is None:
+            return "site_wide"
+        if row_line_code == selected_line_code:
+            return "exact_line"
+        return "facility_wide"
 
     @staticmethod
     def _certificate_line_code(certificate: Certificate, linked_case: Case | None) -> str | None:
@@ -1092,14 +1129,14 @@ class CatalogReadService:
                 "facility_name": site.site_name,
                 "company_name": company.legal_name,
                 "company_legal_address": company.legal_address,
-                "company_leader": None,
+                "company_leader": site.facility_leader_name,
                 "company_foreign_investment": site.foreign_investment_text,
                 "assigned_specialist": company.assigned_specialist_text,
                 "address": site.site_address,
                 "contact_information": site.contact_information,
                 "professional_responsible_person": site.professional_responsible_person_name,
                 "quality_assurance_person": site.quality_assurance_person_name,
-                "facility_current_status": None,
+                "facility_current_status": site.current_status_text,
                 "province_name": site.province_name,
                 "gxp_types": sorted(
                     {item.gxp_type for item in site_cases if item.gxp_type}
@@ -1116,4 +1153,318 @@ class CatalogReadService:
                 "certificate_scope_summary": None if current_certificate is None else current_certificate.scope_summary,
             },
             "history": history,
+        }
+
+    def list_site_gxp_certificates(self, session: Session, *, site_id: str, gxp_type: str | None, line_code: str | None):
+        self.get_site(session, site_id)
+        normalized_line_code = self._normalize_line_code(line_code)
+        cases = list(session.scalars(select(Case).where(Case.site_id == site_id)))
+        case_by_id = {row.id: row for row in cases}
+        case_ids = list(case_by_id)
+        outcomes_by_case_id: dict[str, InspectionOutcome] = {}
+        if case_ids:
+            for outcome in session.scalars(select(InspectionOutcome).where(InspectionOutcome.case_id.in_(case_ids))):
+                outcomes_by_case_id[outcome.case_id] = outcome
+        inspection_event_dates_by_case_id: dict[str, date] = {}
+        if case_ids:
+            event_rows = session.execute(
+                select(InspectionEvent.case_id, func.max(InspectionEvent.occurred_at))
+                .where(
+                    InspectionEvent.case_id.in_(case_ids),
+                    InspectionEvent.event_type == InspectionEventType.INSPECTION_EXECUTED,
+                )
+                .group_by(InspectionEvent.case_id)
+            ).all()
+            inspection_event_dates_by_case_id = {
+                case_id: occurred_at.date()
+                for case_id, occurred_at in event_rows
+                if occurred_at is not None
+            }
+
+        rows = list(
+            session.execute(
+                select(Certificate, CertificateVersion)
+                .join(
+                    CertificateVersion,
+                    and_(
+                        CertificateVersion.certificate_id == Certificate.id,
+                        CertificateVersion.is_latest_version.is_(True),
+                    ),
+                )
+                .where(
+                    Certificate.site_id == site_id,
+                    *( [Certificate.certificate_type == gxp_type] if gxp_type else [] ),
+                )
+            ).all()
+        )
+        items = []
+        for certificate, version in rows:
+            linked_case = None if certificate.case_id is None else case_by_id.get(certificate.case_id)
+            resolved_line_code = self._certificate_line_code(certificate, linked_case)
+            if normalized_line_code is not None and resolved_line_code not in {normalized_line_code, None}:
+                continue
+            certificate_context = CertificateContextRow(
+                certificate=certificate,
+                version=version,
+                line_code=resolved_line_code,
+                scope_summary=None,
+            )
+            items.append(
+                {
+                    "certificate_id": certificate.id,
+                    "site_id": certificate.site_id,
+                    "case_id": certificate.case_id,
+                    "certificate_type": certificate.certificate_type,
+                    "line_code": resolved_line_code,
+                    "context_match_kind": self._normalize_match_kind(normalized_line_code, resolved_line_code),
+                    "latest_flag": certificate.latest_flag,
+                    "certificate_number": version.certificate_number,
+                    "issue_date": version.issue_date,
+                    "expiry_date": version.expiry_date,
+                    "applicable_standard": version.applicable_standard,
+                    "issuing_authority": version.issuing_authority,
+                    "status": self._derive_certificate_status(certificate_context),
+                }
+            )
+        items.sort(
+            key=lambda item: (
+                0 if item["context_match_kind"] == "exact_line" else 1 if item["context_match_kind"] == "facility_wide" else 2,
+                -(item["issue_date"].toordinal()) if item["issue_date"] is not None else float("inf"),
+                -(item["expiry_date"].toordinal()) if item["expiry_date"] is not None else float("inf"),
+                item["certificate_number"] or "",
+                item["certificate_id"],
+            )
+        )
+        return {"items": items}
+
+    def get_gxp_certificate_detail(self, session: Session, *, certificate_id: str):
+        certificate = session.get(Certificate, certificate_id)
+        if certificate is None:
+            raise HTTPException(status_code=404, detail="Certificate not found")
+        site = self.get_site(session, certificate.site_id)
+        company = self.get_company(session, site.company_id)
+        version = session.scalar(
+            select(CertificateVersion)
+            .where(
+                CertificateVersion.certificate_id == certificate.id,
+                CertificateVersion.is_latest_version.is_(True),
+            )
+        )
+        if version is None:
+            raise HTTPException(status_code=404, detail="Certificate latest version not found")
+        linked_case = None if certificate.case_id is None else session.get(Case, certificate.case_id)
+        scope_rows = list(
+            session.scalars(
+                select(CertificateScope)
+                .where(CertificateScope.certificate_version_id == version.id)
+                .order_by(CertificateScope.sort_order.asc(), CertificateScope.created_at.asc(), CertificateScope.id.asc())
+            )
+        )
+        inspected_on = None
+        if linked_case is not None:
+            outcome = session.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == linked_case.id))
+            if outcome is not None:
+                inspected_on = outcome.inspected_to_on or outcome.inspected_on
+            if inspected_on is None:
+                latest_event = session.scalar(
+                    select(func.max(InspectionEvent.occurred_at)).where(
+                        InspectionEvent.case_id == linked_case.id,
+                        InspectionEvent.event_type == InspectionEventType.INSPECTION_EXECUTED,
+                    )
+                )
+                if latest_event is not None:
+                    inspected_on = latest_event.date()
+        context = CertificateContextRow(
+            certificate=certificate,
+            version=version,
+            line_code=self._certificate_line_code(certificate, linked_case),
+            scope_summary=self._build_certificate_scope_summary(scope_rows),
+        )
+        return {
+            "certificate_id": certificate.id,
+            "site_id": certificate.site_id,
+            "case_id": certificate.case_id,
+            "certificate_type": certificate.certificate_type,
+            "line_code": context.line_code,
+            "issuance_basis": certificate.issuance_basis,
+            "latest_flag": certificate.latest_flag,
+            "certificate_number": version.certificate_number,
+            "issue_date": version.issue_date,
+            "expiry_date": version.expiry_date,
+            "applicable_standard": version.applicable_standard,
+            "issuing_authority": version.issuing_authority,
+            "status": self._derive_certificate_status(context),
+            "facility_name": site.site_name,
+            "address": site.site_address,
+            "company_name": company.legal_name,
+            "company_legal_address": company.legal_address,
+            "scope_summary": context.scope_summary,
+            "limitation_text": None,
+            "source_description": self._describe_certificate_source(
+                certificate=certificate,
+                linked_case=linked_case,
+                inspected_on=inspected_on,
+            ),
+        }
+
+    def list_site_business_eligibility_certificates(self, session: Session, *, site_id: str):
+        self.get_site(session, site_id)
+        latest_version_sq = self._build_latest_business_eligibility_version_subquery()
+        rows = list(
+            session.execute(
+                select(BusinessEligibilityCertificate, BusinessEligibilityVersion)
+                .join(
+                    latest_version_sq,
+                    latest_version_sq.c.business_eligibility_certificate_id == BusinessEligibilityCertificate.id,
+                )
+                .join(
+                    BusinessEligibilityVersion,
+                    and_(
+                        BusinessEligibilityVersion.business_eligibility_certificate_id == BusinessEligibilityCertificate.id,
+                        BusinessEligibilityVersion.version_no == latest_version_sq.c.max_version_no,
+                    ),
+                )
+                .where(BusinessEligibilityCertificate.site_id == site_id)
+            ).all()
+        )
+        items = [
+            {
+                "business_eligibility_certificate_id": certificate.id,
+                "site_id": certificate.site_id,
+                "company_id": certificate.company_id,
+                "latest_flag": certificate.latest_flag,
+                "certificate_number": version.certificate_number,
+                "issued_on": version.issued_on,
+                "issuance_sequence_text": version.issuance_sequence_text,
+                "current_status_text": version.current_status_text,
+            }
+            for certificate, version in rows
+        ]
+        items.sort(
+            key=lambda item: (
+                -(item["issued_on"].toordinal()) if item["issued_on"] is not None else float("inf"),
+                item["issuance_sequence_text"] or "",
+                item["certificate_number"] or "",
+                item["business_eligibility_certificate_id"],
+            )
+        )
+        return {"items": items}
+
+    def get_business_eligibility_detail(self, session: Session, *, business_eligibility_certificate_id: str):
+        certificate = session.get(BusinessEligibilityCertificate, business_eligibility_certificate_id)
+        if certificate is None:
+            raise HTTPException(status_code=404, detail="Business eligibility certificate not found")
+        site = self.get_site(session, certificate.site_id)
+        company = self.get_company(session, certificate.company_id)
+        latest_version_sq = self._build_latest_business_eligibility_version_subquery()
+        version = session.scalar(
+            select(BusinessEligibilityVersion)
+            .join(
+                latest_version_sq,
+                and_(
+                    latest_version_sq.c.business_eligibility_certificate_id == BusinessEligibilityVersion.business_eligibility_certificate_id,
+                    latest_version_sq.c.max_version_no == BusinessEligibilityVersion.version_no,
+                ),
+            )
+            .where(BusinessEligibilityVersion.business_eligibility_certificate_id == certificate.id)
+        )
+        if version is None:
+            raise HTTPException(status_code=404, detail="Business eligibility latest version not found")
+
+        linked_rows = list(
+            session.execute(
+                select(BusinessEligibilityCertificateLink, Certificate, CertificateVersion)
+                .join(Certificate, Certificate.id == BusinessEligibilityCertificateLink.certificate_id)
+                .join(
+                    CertificateVersion,
+                    and_(
+                        CertificateVersion.certificate_id == Certificate.id,
+                        CertificateVersion.is_latest_version.is_(True),
+                    ),
+                )
+                .where(BusinessEligibilityCertificateLink.business_eligibility_version_id == version.id)
+            ).all()
+        )
+        linked_cases = {
+            row.id: row
+            for row in session.scalars(
+                select(Case).where(Case.id.in_([certificate_row.case_id for _, certificate_row, _ in linked_rows if certificate_row.case_id]))
+            )
+        } if linked_rows else {}
+        linked_gxp_certificates = [
+            {
+                "certificate_id": linked_certificate.id,
+                "certificate_type": linked_certificate.certificate_type,
+                "line_code": self._certificate_line_code(
+                    linked_certificate,
+                    None if linked_certificate.case_id is None else linked_cases.get(linked_certificate.case_id),
+                ),
+                "certificate_number": linked_version.certificate_number,
+                "issue_date": linked_version.issue_date,
+                "link_role": link.link_role,
+            }
+            for link, linked_certificate, linked_version in linked_rows
+        ]
+        linked_gxp_certificates.sort(
+            key=lambda item: (
+                item["certificate_type"],
+                item["line_code"] or "",
+                -(item["issue_date"].toordinal()) if item["issue_date"] is not None else float("inf"),
+                item["certificate_number"] or "",
+                item["certificate_id"],
+            )
+        )
+
+        replacement_map: dict[int, str | None] = {}
+        replacement_ids = [value for value in [certificate.replaces_legacy_dkkd_id, certificate.replaced_by_legacy_dkkd_id] if value is not None]
+        if replacement_ids:
+            latest_versions_by_legacy_id = {
+                legacy_id: number
+                for legacy_id, number in session.execute(
+                    select(BusinessEligibilityCertificate.legacy_dkkd_id, BusinessEligibilityVersion.certificate_number)
+                    .join(
+                        latest_version_sq,
+                        latest_version_sq.c.business_eligibility_certificate_id == BusinessEligibilityCertificate.id,
+                    )
+                    .join(
+                        BusinessEligibilityVersion,
+                        and_(
+                            BusinessEligibilityVersion.business_eligibility_certificate_id == BusinessEligibilityCertificate.id,
+                            BusinessEligibilityVersion.version_no == latest_version_sq.c.max_version_no,
+                        ),
+                    )
+                    .where(BusinessEligibilityCertificate.legacy_dkkd_id.in_(replacement_ids))
+                )
+            }
+            replacement_map.update(latest_versions_by_legacy_id)
+
+        return {
+            "business_eligibility_certificate_id": certificate.id,
+            "site_id": certificate.site_id,
+            "company_id": certificate.company_id,
+            "latest_flag": certificate.latest_flag,
+            "certificate_number": version.certificate_number,
+            "issued_on": version.issued_on,
+            "decision_reference": version.decision_reference,
+            "issuance_sequence_text": version.issuance_sequence_text,
+            "issuance_history_text": version.issuance_history_text,
+            "company_name": company.legal_name,
+            "company_legal_address": company.legal_address,
+            "facility_name": site.site_name,
+            "address": site.site_address,
+            "professional_responsible_person_name": version.professional_responsible_person_name,
+            "quality_assurance_person_name": version.quality_assurance_person_name,
+            "professional_qualification_text": version.professional_qualification_text,
+            "professional_license_number": version.professional_license_number,
+            "professional_license_issued_on": version.professional_license_issued_on,
+            "professional_license_issuer": version.professional_license_issuer,
+            "responsible_license_issued_on": version.responsible_license_issued_on,
+            "responsible_license_issuer": version.responsible_license_issuer,
+            "business_activity_text": version.business_activity_text,
+            "current_status_text": version.current_status_text,
+            "handled_by_name": version.handled_by_name,
+            "application_dossier_reference": version.application_dossier_reference,
+            "replaces_certificate_number": replacement_map.get(certificate.replaces_legacy_dkkd_id),
+            "replaced_by_certificate_number": replacement_map.get(certificate.replaced_by_legacy_dkkd_id),
+            "linked_gxp_certificates": linked_gxp_certificates,
         }

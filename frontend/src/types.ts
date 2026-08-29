@@ -163,6 +163,104 @@ export type FacilityWorkspace = {
   history: FacilityHistoryItem[];
 };
 
+export type GxpCertificateListItem = {
+  certificate_id: string;
+  site_id: string;
+  case_id: string | null;
+  certificate_type: string;
+  line_code: string | null;
+  context_match_kind: "exact_line" | "facility_wide" | "site_wide";
+  latest_flag: boolean;
+  certificate_number: string | null;
+  issue_date: string | null;
+  expiry_date: string | null;
+  applicable_standard: string | null;
+  issuing_authority: string | null;
+  status: string | null;
+};
+
+export type GxpCertificateList = {
+  items: GxpCertificateListItem[];
+};
+
+export type GxpCertificateDetail = {
+  certificate_id: string;
+  site_id: string;
+  case_id: string | null;
+  certificate_type: string;
+  line_code: string | null;
+  issuance_basis: string;
+  latest_flag: boolean;
+  certificate_number: string | null;
+  issue_date: string | null;
+  expiry_date: string | null;
+  applicable_standard: string | null;
+  issuing_authority: string | null;
+  status: string | null;
+  facility_name: string;
+  address: string | null;
+  company_name: string;
+  company_legal_address: string | null;
+  scope_summary: string | null;
+  limitation_text: string | null;
+  source_description: string | null;
+};
+
+export type BusinessEligibilityBasisCertificate = {
+  certificate_id: string;
+  certificate_type: string;
+  line_code: string | null;
+  certificate_number: string | null;
+  issue_date: string | null;
+  link_role: string;
+};
+
+export type BusinessEligibilityListItem = {
+  business_eligibility_certificate_id: string;
+  site_id: string;
+  company_id: string;
+  latest_flag: boolean;
+  certificate_number: string | null;
+  issued_on: string | null;
+  issuance_sequence_text: string | null;
+  current_status_text: string | null;
+};
+
+export type BusinessEligibilityList = {
+  items: BusinessEligibilityListItem[];
+};
+
+export type BusinessEligibilityDetail = {
+  business_eligibility_certificate_id: string;
+  site_id: string;
+  company_id: string;
+  latest_flag: boolean;
+  certificate_number: string | null;
+  issued_on: string | null;
+  decision_reference: string | null;
+  issuance_sequence_text: string | null;
+  issuance_history_text: string | null;
+  company_name: string;
+  company_legal_address: string | null;
+  facility_name: string;
+  address: string | null;
+  professional_responsible_person_name: string | null;
+  quality_assurance_person_name: string | null;
+  professional_qualification_text: string | null;
+  professional_license_number: string | null;
+  professional_license_issued_on: string | null;
+  professional_license_issuer: string | null;
+  responsible_license_issued_on: string | null;
+  responsible_license_issuer: string | null;
+  business_activity_text: string | null;
+  current_status_text: string | null;
+  handled_by_name: string | null;
+  application_dossier_reference: string | null;
+  replaces_certificate_number: string | null;
+  replaced_by_certificate_number: string | null;
+  linked_gxp_certificates: BusinessEligibilityBasisCertificate[];
+};
+
 export type DocumentPreparationResponse = {
   document_id: string;
   document_variant_id: string;

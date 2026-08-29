@@ -21,6 +21,10 @@ const apiMocks = vi.hoisted(() => ({
   searchFacilities: vi.fn().mockResolvedValue({ items: [], total_count: 0, offset: 0, limit: 100 }),
   getFacilityWorkspace: vi.fn().mockResolvedValue(null),
   getCaseDetail: vi.fn().mockResolvedValue(null),
+  listSiteGxpCertificates: vi.fn().mockResolvedValue({ items: [] }),
+  getGxpCertificateDetail: vi.fn().mockResolvedValue(null),
+  listSiteBusinessEligibilityCertificates: vi.fn().mockResolvedValue({ items: [] }),
+  getBusinessEligibilityDetail: vi.fn().mockResolvedValue(null),
   getDocumentDetail: vi.fn().mockResolvedValue(null),
   getGenerationRun: vi.fn().mockResolvedValue(null),
   listCases: vi.fn().mockResolvedValue([]),
@@ -114,14 +118,14 @@ function buildWorkspace(overrides: Record<string, unknown> = {}) {
       facility_name: "Nhà máy A",
       company_name: "Công ty A",
       company_legal_address: "123 Trụ sở chính",
-      company_leader: null,
+      company_leader: "Rajesh Kamat, Tổng Giám đốc",
       company_foreign_investment: "Nhật Bản",
       assigned_specialist: "Hà Hoàng Phương",
       address: "KCN A",
       contact_information: "QA: 0903 000 000",
       professional_responsible_person: "Dược sĩ A",
       quality_assurance_person: "QA Lead B",
-      facility_current_status: null,
+      facility_current_status: "Cơ sở dừng hoạt động từ 31/12/2020",
       province_name: "Hà Nội",
       gxp_types: ["GMP"],
       selected_gxp_type: "GMP",
@@ -231,7 +235,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByRole("combobox", { name: "Trạng thái hồ sơ" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Tỉnh/thành" })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Chứng nhận" })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Xử lý" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Xử lý" })).not.toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Công ty mới" })).toBeInTheDocument();
     expect(screen.queryByText(/^Prev$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Next$/)).not.toBeInTheDocument();
@@ -314,7 +318,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
   });
 
-  it("renders three grouped sections in Thông tin chung with imported general info values and only unsourced fields as Chưa có", async () => {
+  it("renders three grouped sections in Thông tin chung with imported general info values from canonical owner fields", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(
@@ -340,6 +344,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByRole("heading", { name: "Thông tin về GxP" })).toBeInTheDocument();
     expect(screen.getByText("Công ty A")).toBeInTheDocument();
     expect(screen.getByText("456 Trụ sở công ty")).toBeInTheDocument();
+    expect(screen.getByText("Rajesh Kamat, Tổng Giám đốc")).toBeInTheDocument();
     expect(screen.getByText("Nhật Bản")).toBeInTheDocument();
     expect(screen.getByText("Hà Hoàng Phương")).toBeInTheDocument();
     expect(screen.getByText("Nhà máy A")).toBeInTheDocument();
@@ -347,13 +352,13 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByText("QA: 0903 000 000")).toBeInTheDocument();
     expect(screen.getByText("Dược sĩ A")).toBeInTheDocument();
     expect(screen.getByText("QA Lead B")).toBeInTheDocument();
+    expect(screen.getByText("Cơ sở dừng hoạt động từ 31/12/2020")).toBeInTheDocument();
     expect(screen.getByText("GCN-789")).toBeInTheDocument();
     expect(screen.getByText("15-03-2026")).toBeInTheDocument();
     expect(screen.getByText("15-03-2027")).toBeInTheDocument();
     expect(screen.getByText("PIC/S-GMP")).toBeInTheDocument();
     expect(screen.getByText("Dây chuyền thuốc nước")).toBeInTheDocument();
     expect(screen.getByText("Còn hiệu lực")).toBeInTheDocument();
-    expect(screen.getAllByText("Chưa có")).toHaveLength(2);
   });
 
   it("keeps facility-name abbreviations presentation-only inside the result grid", async () => {
@@ -507,5 +512,191 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByText("Cơ sở có GCN còn hiệu lực")).toBeInTheDocument();
     expect(screen.getByText("Cơ sở có GCN sắp hết hạn 90 ngày")).toBeInTheDocument();
     expect(screen.getByText("Cơ sở có thay đổi chưa hoàn tất")).toBeInTheDocument();
+  });
+
+  it("renders the GxP certificate workspace as list plus detail and keeps search results untouched when switching certificates", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseDetail.mockResolvedValue(null);
+    apiMocks.listSiteGxpCertificates.mockResolvedValue({
+      items: [
+        {
+          certificate_id: "cert-a-new",
+          site_id: "site-1",
+          case_id: "case-1",
+          certificate_type: "GMP",
+          line_code: "A",
+          context_match_kind: "exact_line",
+          latest_flag: true,
+          certificate_number: "195/GCN-QLD",
+          issue_date: "2025-04-17",
+          expiry_date: "2027-04-17",
+          applicable_standard: "WHO-GMP",
+          issuing_authority: "Cục Quản lý Dược Việt Nam",
+          status: "active",
+        },
+        {
+          certificate_id: "cert-a-old",
+          site_id: "site-1",
+          case_id: "case-1",
+          certificate_type: "GMP",
+          line_code: "A",
+          context_match_kind: "exact_line",
+          latest_flag: false,
+          certificate_number: "533/GCN-QLD",
+          issue_date: "2021-09-14",
+          expiry_date: "2024-09-14",
+          applicable_standard: "WHO-GMP",
+          issuing_authority: "Cục Quản lý Dược Việt Nam",
+          status: "expired",
+        },
+      ],
+    });
+    apiMocks.getGxpCertificateDetail
+      .mockResolvedValueOnce({
+        certificate_id: "cert-a-new",
+        site_id: "site-1",
+        case_id: "case-1",
+        certificate_type: "GMP",
+        line_code: "A",
+        issuance_basis: "inspection_case",
+        latest_flag: true,
+        certificate_number: "195/GCN-QLD",
+        issue_date: "2025-04-17",
+        expiry_date: "2027-04-17",
+        applicable_standard: "WHO-GMP",
+        issuing_authority: "Cục Quản lý Dược Việt Nam",
+        status: "active",
+        facility_name: "Nhà máy A",
+        address: "KCN A",
+        company_name: "Công ty A",
+        company_legal_address: "123 Trụ sở chính",
+        scope_summary: "Thuốc không vô trùng",
+        limitation_text: null,
+        source_description: "Đợt kiểm tra GMP ngày 10-01-2025",
+      })
+      .mockResolvedValueOnce({
+        certificate_id: "cert-a-old",
+        site_id: "site-1",
+        case_id: "case-1",
+        certificate_type: "GMP",
+        line_code: "A",
+        issuance_basis: "inspection_case",
+        latest_flag: false,
+        certificate_number: "533/GCN-QLD",
+        issue_date: "2021-09-14",
+        expiry_date: "2024-09-14",
+        applicable_standard: "WHO-GMP",
+        issuing_authority: "Cục Quản lý Dược Việt Nam",
+        status: "expired",
+        facility_name: "Nhà máy A",
+        address: "KCN A",
+        company_name: "Công ty A",
+        company_legal_address: "123 Trụ sở chính",
+        scope_summary: "Thuốc không vô trùng cũ",
+        limitation_text: null,
+        source_description: "Đợt kiểm tra GMP ngày 14-09-2021",
+      });
+
+    renderApp(["/search?facility_tab=Gi%E1%BA%A5y%20ch%E1%BB%A9ng%20nh%E1%BA%ADn%20GxP"]);
+
+    expect(await screen.findByRole("heading", { name: "Danh mục GCN GxP" })).toBeInTheDocument();
+    expect(screen.getByText("195/GCN-QLD")).toBeInTheDocument();
+    expect(screen.getByText("533/GCN-QLD")).toBeInTheDocument();
+    expect(await screen.findByText("Thuốc không vô trùng")).toBeInTheDocument();
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByText("533/GCN-QLD"));
+
+    expect(await screen.findByText("Thuốc không vô trùng cũ")).toBeInTheDocument();
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.listSiteGxpCertificates).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getGxpCertificateDetail).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders the business eligibility workspace as list plus detail with linked GxP basis", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseDetail.mockResolvedValue(null);
+    apiMocks.listSiteBusinessEligibilityCertificates.mockResolvedValue({
+      items: [
+        {
+          business_eligibility_certificate_id: "dkkd-5",
+          site_id: "site-1",
+          company_id: "company-1",
+          latest_flag: true,
+          certificate_number: "1201/ĐKKDD-BYT",
+          issued_on: "2025-06-09",
+          issuance_sequence_text: "5",
+          current_status_text: "Chưa cấp chứng chỉ",
+        },
+      ],
+    });
+    apiMocks.getBusinessEligibilityDetail.mockResolvedValue({
+      business_eligibility_certificate_id: "dkkd-5",
+      site_id: "site-1",
+      company_id: "company-1",
+      latest_flag: true,
+      certificate_number: "1201/ĐKKDD-BYT",
+      issued_on: "2025-06-09",
+      decision_reference: "QĐ-1201",
+      issuance_sequence_text: "5",
+      issuance_history_text: "Lần 1, Lần 2, Lần 3, Lần 4, Lần 5",
+      company_name: "Công ty A",
+      company_legal_address: "123 Trụ sở chính",
+      facility_name: "Nhà máy A",
+      address: "KCN A",
+      professional_responsible_person_name: "Nguyễn Khắc Minh",
+      quality_assurance_person_name: "Võ Việt Hùng",
+      professional_qualification_text: "Dược sĩ đại học",
+      professional_license_number: "2241/BD-CCHND",
+      professional_license_issued_on: "2013-08-08",
+      professional_license_issuer: "Sở Y tế",
+      responsible_license_issued_on: "2020-07-14",
+      responsible_license_issuer: "Sở Y tế Hà Tĩnh",
+      business_activity_text: "Bán buôn thuốc",
+      current_status_text: "Chưa cấp chứng chỉ",
+      handled_by_name: "Hà Hoàng Phương",
+      application_dossier_reference: "HS-001",
+      replaces_certificate_number: "703/ĐKKDD-BYT",
+      replaced_by_certificate_number: null,
+      linked_gxp_certificates: [
+        {
+          certificate_id: "cert-a-new",
+          certificate_type: "GMP",
+          line_code: "A",
+          certificate_number: "195/GCN-QLD",
+          issue_date: "2025-04-17",
+          link_role: "source_certificate",
+        },
+      ],
+    });
+
+    renderApp(["/search?facility_tab=Gi%E1%BA%A5y%20ch%E1%BB%A9ng%20nh%E1%BA%ADn%20%C4%91%E1%BB%A7%20%C4%91i%E1%BB%81u%20ki%E1%BB%87n"]);
+
+    expect(await screen.findByRole("heading", { name: "Danh mục GCN đủ điều kiện" })).toBeInTheDocument();
+    expect(screen.getByText("1201/ĐKKDD-BYT")).toBeInTheDocument();
+    expect(await screen.findByText("Nguyễn Khắc Minh")).toBeInTheDocument();
+    expect(screen.getByText("Võ Việt Hùng")).toBeInTheDocument();
+    expect(screen.getByText("703/ĐKKDD-BYT")).toBeInTheDocument();
+    expect(screen.getByText(/GMP A · 195\/GCN-QLD · 17-04-2025/)).toBeInTheDocument();
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.listSiteBusinessEligibilityCertificates).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getBusinessEligibilityDetail).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows certificate-tab empty states without rendering fake detail forms", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseDetail.mockResolvedValue(null);
+    apiMocks.listSiteGxpCertificates.mockResolvedValue({ items: [] });
+
+    renderApp(["/search?facility_tab=Gi%E1%BA%A5y%20ch%E1%BB%A9ng%20nh%E1%BA%ADn%20GxP"]);
+
+    expect(await screen.findByText("Chưa có giấy chứng nhận GxP")).toBeInTheDocument();
+    expect(screen.queryByText("Nguồn gốc")).not.toBeInTheDocument();
   });
 });

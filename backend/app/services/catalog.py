@@ -249,6 +249,17 @@ class CatalogReadService:
             ),
         )
 
+    @staticmethod
+    def _document_parent_pairs(document: Document) -> list[tuple[str, str]]:
+        pairs: list[tuple[str, str]] = []
+        if document.case_id is not None:
+            pairs.append(("case", document.case_id))
+        if document.capa_cycle_id is not None:
+            pairs.append(("capa_cycle", document.capa_cycle_id))
+        if document.change_request_id is not None:
+            pairs.append(("change_request", document.change_request_id))
+        return pairs
+
     def _serialize_document_checklist_items(
         self,
         session: Session,
@@ -271,14 +282,24 @@ class CatalogReadService:
             conditions.append(Document.change_request_id.in_(change_request_ids))
 
         documents = list(session.scalars(select(Document).where(or_(*conditions)))) if conditions else []
-        documents_by_key: dict[tuple[str, str, str | None], list[Document]] = defaultdict(list)
+        allowed_parents = {(item.parent_scope, item.parent_id) for item in definitions}
+        definition_keys = {
+            (item.parent_scope, item.parent_id, item.family_code)
+            for item in definitions
+            if item.family_code is not None
+        }
+        documents_by_key: dict[tuple[str, str, str], list[Document]] = defaultdict(list)
         for row in documents:
-            if row.case_id is not None:
-                documents_by_key[("case", row.case_id, row.family_code)].append(row)
-            if row.capa_cycle_id is not None:
-                documents_by_key[("capa_cycle", row.capa_cycle_id, row.family_code)].append(row)
-            if row.change_request_id is not None:
-                documents_by_key[("change_request", row.change_request_id, row.family_code)].append(row)
+            matching_keys = [
+                (parent_scope, parent_id, row.family_code)
+                for parent_scope, parent_id in self._document_parent_pairs(row)
+                if (parent_scope, parent_id) in allowed_parents
+            ]
+            if not matching_keys:
+                continue
+            exact_matching_keys = [key for key in matching_keys if key in definition_keys]
+            for key in exact_matching_keys or matching_keys:
+                documents_by_key[key].append(row)
 
         document_ids = [row.id for row in documents]
         variants = (
@@ -330,10 +351,8 @@ class CatalogReadService:
 
         labels = self._document_registry_labels()
         items: list[dict[str, object]] = []
-        seen_keys: set[str] = set()
 
         for definition in definitions:
-            seen_keys.add(definition.checklist_key)
             matched_documents = (
                 documents_by_key.get((definition.parent_scope, definition.parent_id, definition.family_code), [])
                 if definition.family_code
@@ -358,42 +377,25 @@ class CatalogReadService:
                 }
             )
 
-        for row in documents:
-            parent_scope = None
-            parent_id = None
-            if row.change_request_id is not None:
-                parent_scope = "change_request"
-                parent_id = row.change_request_id
-            elif row.capa_cycle_id is not None:
-                parent_scope = "capa_cycle"
-                parent_id = row.capa_cycle_id
-            elif row.case_id is not None:
-                parent_scope = "case"
-                parent_id = row.case_id
-            if parent_scope is None or parent_id is None:
+        for parent_scope, parent_id, family_code in sorted(
+            key for key in documents_by_key if key not in definition_keys
+        ):
+            matched_documents = documents_by_key[(parent_scope, parent_id, family_code)]
+            best_document, best_version, variant_types = select_best_document(matched_documents)
+            if best_document is None:
                 continue
-            checklist_key = f"{parent_scope}:{parent_id}:{row.family_code}"
-            if checklist_key in seen_keys:
-                continue
-            candidate_variants = variants_by_document_id.get(row.id, [])
-            candidate_versions = [
-                version
-                for variant in candidate_variants
-                for version in versions_by_variant_id.get(variant.id, [])
-            ]
-            best_version = self._pick_document_version(candidate_versions)
-            variant_types = sorted({variant.variant_type.value for variant in candidate_variants if variant.variant_type})
+            checklist_key = f"{parent_scope}:{parent_id}:{family_code}"
             items.append(
                 {
                     "checklist_key": checklist_key,
-                    "label": labels.get(row.family_code, row.title or row.family_code),
-                    "family_code": row.family_code,
+                    "label": labels.get(family_code, best_document.title or family_code),
+                    "family_code": family_code,
                     "parent_scope": parent_scope,
                     "parent_id": parent_id,
                     "status": "available",
-                    "document_id": row.id,
-                    "document_type_code": row.document_type_code,
-                    "title": row.title,
+                    "document_id": best_document.id,
+                    "document_type_code": best_document.document_type_code,
+                    "title": best_document.title,
                     "original_filename": None if best_version is None else best_version.original_filename,
                     "issued_on": None if best_version is None else best_version.issued_on,
                     "available_variant_types": variant_types,
@@ -2119,7 +2121,14 @@ class CatalogReadService:
             raise HTTPException(status_code=404, detail="Company not found for change request.")
 
         approval = session.scalars(
-            select(ChangeApproval).where(ChangeApproval.change_request_id == change_request.id)
+            select(ChangeApproval)
+            .where(ChangeApproval.change_request_id == change_request.id)
+            .order_by(
+                ChangeApproval.handled_on.is_(None),
+                ChangeApproval.handled_on.desc(),
+                ChangeApproval.created_at.desc(),
+                ChangeApproval.id.desc(),
+            )
         ).first()
         details = list(
             session.scalars(

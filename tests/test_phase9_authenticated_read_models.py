@@ -1363,6 +1363,241 @@ def test_change_request_workspace_reads_authoritative_change_sections_and_docume
     assert document_items["CV đồng ý thay đổi"].status == "missing"
 
 
+def test_case_workspace_document_checklist_keeps_multi_parent_document_inside_allowed_case_owner(tmp_path):
+    database_path = tmp_path / "catalog-case-document-ownership.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+        unrelated_change_request = ChangeRequest(
+            site_id=seeded["site_id"],
+            legacy_change_request_id=9102,
+            scope_label="Thay đổi không liên quan",
+            submitted_on=date(2026, 8, 9),
+            state=ChangeRequestState.RECEIVED,
+        )
+        shared_document = Document(
+            family_code="UNREGISTERED_SHARED_CASE",
+            document_type_code="UNREGISTERED_SHARED_CASE",
+            title="Tài liệu nhiều parent",
+            case_id=seeded["case_ids"]["a"],
+            change_request_id=unrelated_change_request.id,
+        )
+        session.add(unrelated_change_request)
+        session.flush()
+        shared_document.change_request_id = unrelated_change_request.id
+        session.add(shared_document)
+        session.flush()
+        shared_variant = DocumentVariant(
+            document_id=shared_document.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="vi",
+            is_active=True,
+        )
+        session.add(shared_variant)
+        session.flush()
+        session.add(
+            DocumentVersion(
+                document_variant_id=shared_variant.id,
+                version_no=1,
+                original_filename="shared-case.docx",
+                is_current=True,
+                issued_on=datetime(2026, 8, 10, tzinfo=timezone.utc),
+            )
+        )
+        session.commit()
+
+    app = create_app(database_url)
+    case_workspace_route = next(route for route in app.routes if getattr(route, "path", "") == "/cases/{case_id}/workspace")
+
+    with Session(engine) as session:
+        payload = case_workspace_route.endpoint(
+            case_id=seeded["case_ids"]["a"],
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+
+    shared_items = [item for item in payload.documents.items if item.family_code == "UNREGISTERED_SHARED_CASE"]
+    assert len(shared_items) == 1
+    assert shared_items[0].parent_scope == "case"
+    assert shared_items[0].parent_id == seeded["case_ids"]["a"]
+    assert shared_items[0].original_filename == "shared-case.docx"
+    assert all(item.parent_scope != "change_request" for item in shared_items)
+
+
+def test_change_request_workspace_document_checklist_keeps_multi_parent_document_inside_allowed_change_owner(tmp_path):
+    database_path = tmp_path / "catalog-change-document-ownership.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+        multi_parent_document = Document(
+            family_code="UNREGISTERED_SHARED_CHANGE",
+            document_type_code="UNREGISTERED_SHARED_CHANGE",
+            title="Tài liệu thay đổi nhiều parent",
+            case_id=seeded["case_ids"]["b"],
+            change_request_id=seeded["change_request_ids"]["primary"],
+        )
+        session.add(multi_parent_document)
+        session.flush()
+        change_variant = DocumentVariant(
+            document_id=multi_parent_document.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="vi",
+            is_active=True,
+        )
+        session.add(change_variant)
+        session.flush()
+        session.add(
+            DocumentVersion(
+                document_variant_id=change_variant.id,
+                version_no=1,
+                original_filename="shared-change.docx",
+                is_current=True,
+                issued_on=datetime(2026, 8, 11, tzinfo=timezone.utc),
+            )
+        )
+        session.commit()
+
+    app = create_app(database_url)
+    change_workspace_route = next(
+        route for route in app.routes if getattr(route, "path", "") == "/change-requests/{change_request_id}/workspace"
+    )
+
+    with Session(engine) as session:
+        payload = change_workspace_route.endpoint(
+            change_request_id=seeded["change_request_ids"]["primary"],
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+
+    shared_items = [item for item in payload.documents.items if item.family_code == "UNREGISTERED_SHARED_CHANGE"]
+    assert len(shared_items) == 1
+    assert shared_items[0].parent_scope == "change_request"
+    assert shared_items[0].parent_id == seeded["change_request_ids"]["primary"]
+    assert shared_items[0].original_filename == "shared-change.docx"
+    assert all(item.parent_scope != "case" for item in shared_items)
+
+
+def test_case_workspace_document_checklist_prefers_explicit_capa_owner_and_deduplicates_dynamic_families(tmp_path):
+    database_path = tmp_path / "catalog-document-dedup.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+        capa_round_1_id = session.scalars(
+            select(CapaCycle)
+            .where(CapaCycle.case_id == seeded["case_ids"]["a"])
+            .where(CapaCycle.round_no == 1)
+        ).one().id
+        older_duplicate = Document(
+            family_code="UNREGISTERED_DUPLICATE",
+            document_type_code="UNREGISTERED_DUPLICATE",
+            title="Tài liệu cũ",
+            case_id=seeded["case_ids"]["a"],
+        )
+        newer_duplicate = Document(
+            family_code="UNREGISTERED_DUPLICATE",
+            document_type_code="UNREGISTERED_DUPLICATE",
+            title="Tài liệu mới",
+            case_id=seeded["case_ids"]["a"],
+        )
+        session.add_all([older_duplicate, newer_duplicate])
+        session.flush()
+        older_variant = DocumentVariant(
+            document_id=older_duplicate.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="vi",
+            is_active=True,
+        )
+        newer_variant = DocumentVariant(
+            document_id=newer_duplicate.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="vi",
+            is_active=True,
+        )
+        session.add_all([older_variant, newer_variant])
+        session.flush()
+        session.add_all(
+            [
+                DocumentVersion(
+                    document_variant_id=older_variant.id,
+                    version_no=1,
+                    original_filename="duplicate-old.docx",
+                    is_current=True,
+                    issued_on=datetime(2026, 8, 1, tzinfo=timezone.utc),
+                ),
+                DocumentVersion(
+                    document_variant_id=newer_variant.id,
+                    version_no=1,
+                    original_filename="duplicate-new.docx",
+                    is_current=True,
+                    issued_on=datetime(2026, 8, 12, tzinfo=timezone.utc),
+                ),
+            ]
+        )
+        session.commit()
+
+    app = create_app(database_url)
+    case_workspace_route = next(route for route in app.routes if getattr(route, "path", "") == "/cases/{case_id}/workspace")
+
+    with Session(engine) as session:
+        payload = case_workspace_route.endpoint(
+            case_id=seeded["case_ids"]["a"],
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+
+    capa_items = [item for item in payload.documents.items if item.family_code == "INSPECTION_CAPA_LAN_1"]
+    assert len(capa_items) == 1
+    assert capa_items[0].parent_scope == "capa_cycle"
+    assert capa_items[0].parent_id == capa_round_1_id
+
+    duplicate_items = [item for item in payload.documents.items if item.family_code == "UNREGISTERED_DUPLICATE"]
+    assert len(duplicate_items) == 1
+    assert duplicate_items[0].parent_scope == "case"
+    assert duplicate_items[0].parent_id == seeded["case_ids"]["a"]
+    assert duplicate_items[0].original_filename == "duplicate-new.docx"
+
+
+def test_document_checklist_response_keeps_storage_fields_hidden(tmp_path):
+    database_path = tmp_path / "catalog-document-storage-hidden.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+
+    app = create_app(database_url)
+    case_workspace_route = next(route for route in app.routes if getattr(route, "path", "") == "/cases/{case_id}/workspace")
+    change_workspace_route = next(
+        route for route in app.routes if getattr(route, "path", "") == "/change-requests/{change_request_id}/workspace"
+    )
+
+    with Session(engine) as session:
+        case_payload = case_workspace_route.endpoint(
+            case_id=seeded["case_ids"]["a"],
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+        change_payload = change_workspace_route.endpoint(
+            change_request_id=seeded["change_request_ids"]["primary"],
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+
+    forbidden_fields = {"storage_root", "storage_relative_path", "storage_binding_id", "checksum", "checksum_sha256"}
+    for item in [*case_payload.documents.items, *change_payload.documents.items]:
+        assert forbidden_fields.isdisjoint(item.model_dump().keys())
+
+
 def test_case_workspace_does_not_fabricate_business_eligibility_for_unlinked_case(tmp_path):
     database_path = tmp_path / "catalog-case-workspace-unlinked.sqlite"
     database_url = f"sqlite:///{database_path.as_posix()}"

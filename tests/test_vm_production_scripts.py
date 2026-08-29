@@ -3330,6 +3330,146 @@ def test_configure_postgres_rejects_invalid_private_remote_hba_configuration_bef
     assert not command_log.exists() or "pg_ctlcluster" not in command_log.read_text(encoding="utf-8")
 
 
+def test_configure_postgres_rejects_malformed_managed_hba_markers_without_rewriting_file(tmp_path: Path):
+    malformed_cases = {
+        "missing_end": "\n".join(
+            [
+                "host all all 127.0.0.1/32 scram-sha-256",
+                "# BEGIN GXP MANAGED PRIVATE POSTGRES ACCESS",
+                "hostssl gmpnn_ai gmpnn_ai_app 10.20.0.0/26 scram-sha-256",
+            ]
+        )
+        + "\n",
+        "missing_begin": "\n".join(
+            [
+                "host all all 127.0.0.1/32 scram-sha-256",
+                "hostssl gmpnn_ai gmpnn_ai_app 10.20.0.0/26 scram-sha-256",
+                "# END GXP MANAGED PRIVATE POSTGRES ACCESS",
+            ]
+        )
+        + "\n",
+        "end_before_begin": "\n".join(
+            [
+                "# END GXP MANAGED PRIVATE POSTGRES ACCESS",
+                "host all all 127.0.0.1/32 scram-sha-256",
+                "# BEGIN GXP MANAGED PRIVATE POSTGRES ACCESS",
+                "hostssl gmpnn_ai gmpnn_ai_app 10.20.0.0/26 scram-sha-256",
+            ]
+        )
+        + "\n",
+        "duplicate_begin": "\n".join(
+            [
+                "# BEGIN GXP MANAGED PRIVATE POSTGRES ACCESS",
+                "hostssl gmpnn_ai gmpnn_ai_app 10.20.0.0/26 scram-sha-256",
+                "# BEGIN GXP MANAGED PRIVATE POSTGRES ACCESS",
+                "hostssl gmpnn_ai gmpnn_ai_migrator 10.20.0.0/26 scram-sha-256",
+                "# END GXP MANAGED PRIVATE POSTGRES ACCESS",
+            ]
+        )
+        + "\n",
+        "duplicate_end": "\n".join(
+            [
+                "# BEGIN GXP MANAGED PRIVATE POSTGRES ACCESS",
+                "hostssl gmpnn_ai gmpnn_ai_app 10.20.0.0/26 scram-sha-256",
+                "# END GXP MANAGED PRIVATE POSTGRES ACCESS",
+                "# END GXP MANAGED PRIVATE POSTGRES ACCESS",
+            ]
+        )
+        + "\n",
+    }
+
+    for case_name, initial_hba in malformed_cases.items():
+        case_dir = tmp_path / case_name
+        fake_bin = case_dir / "bin"
+        fake_bin.mkdir(parents=True)
+        runtime_env = case_dir / "runtime.env"
+        pg_cluster_dir = case_dir / "pg" / "18" / "main"
+        (pg_cluster_dir / "conf.d").mkdir(parents=True)
+        pg_hba_path = pg_cluster_dir / "pg_hba.conf"
+        pg_hba_path.write_text(initial_hba, encoding="utf-8", newline="\n")
+        command_log = case_dir / "command.log"
+        python_sh = sys.executable.replace("\\", "/")
+
+        _write_runtime_env(
+            runtime_env,
+            extra_entries={
+                "PG_LISTEN_ADDRESSES": "127.0.0.1,10.148.0.3",
+                "PG_PRIVATE_CLIENT_CIDR": "10.20.0.0/26",
+                "PG_PRIVATE_DB_NAME": "gmpnn_ai",
+                "PG_PRIVATE_RUNTIME_USER": "gmpnn_ai_app",
+                "PG_PRIVATE_MIGRATOR_USER": "gmpnn_ai_migrator",
+            },
+        )
+        _write_executable(fake_bin / "python3", f"#!/usr/bin/env bash\n\"{python_sh}\" \"$@\"\n")
+        _write_executable(
+            fake_bin / "runuser",
+            textwrap.dedent(
+                """\
+                #!/usr/bin/env bash
+                set -euo pipefail
+                [[ "$1" == "-u" ]] || exit 2
+                shift 2
+                [[ "$1" == "--" ]] || exit 2
+                shift
+                exec "$@"
+                """
+            ),
+        )
+        _write_executable(
+            fake_bin / "pg_lsclusters",
+            "#!/usr/bin/env bash\nset -euo pipefail\nprintf '18 main 5432 online postgres /var/lib/postgresql/18/main /var/log/postgresql/postgresql-18-main.log\\n'\n",
+        )
+        _write_executable(
+            fake_bin / "pg_ctlcluster",
+            textwrap.dedent(
+                f"""\
+                #!/usr/bin/env bash
+                set -euo pipefail
+                printf 'pg_ctlcluster %s\\n' "$*" >> "{command_log.as_posix()}"
+                exit 0
+                """
+            ),
+        )
+        _write_executable(fake_bin / "pg_isready", "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n")
+        _write_executable(fake_bin / "createdb", "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n")
+        _write_executable(fake_bin / "psql", "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n")
+        _write_executable(
+            fake_bin / "install",
+            textwrap.dedent(
+                """\
+                #!/usr/bin/env bash
+                set -euo pipefail
+                if [[ "$1" == "-d" ]]; then
+                  shift
+                  while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                      -m|-o|-g)
+                        shift 2
+                        ;;
+                      *)
+                        mkdir -p "$1"
+                        shift
+                        ;;
+                    esac
+                  done
+                  exit 0
+                fi
+                exec /usr/bin/install "$@"
+                """
+            ),
+        )
+
+        env = _configure_postgres_test_env(fake_bin, runtime_env, case_dir)
+        before_text = pg_hba_path.read_text(encoding="utf-8")
+        completed = _run_bash("./infra/vm/configure_postgres.sh", env=env, cwd=ROOT)
+        after_text = pg_hba_path.read_text(encoding="utf-8")
+
+        assert completed.returncode != 0, case_name
+        assert "Malformed managed PostgreSQL HBA block markers" in (completed.stderr or completed.stdout), case_name
+        assert before_text == after_text, case_name
+        assert not command_log.exists() or "pg_ctlcluster" not in command_log.read_text(encoding="utf-8"), case_name
+
+
 def test_configure_postgres_stops_immediately_on_admin_sql_error(tmp_path: Path):
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()

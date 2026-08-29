@@ -124,8 +124,6 @@ maintenance_work_mem = '${PG_MAINTENANCE_WORK_MEM_MB}MB'
 autovacuum_work_mem = '${PG_AUTOVACUUM_WORK_MEM_MB}MB'
 max_connections = ${PG_MAX_CONNECTIONS}
 EOF
-grep -q '^host\s\+all\s\+all\s\+127.0.0.1/32\s\+scram-sha-256$' "${PG_CLUSTER_DIR}/pg_hba.conf" || printf '\nhost all all 127.0.0.1/32 scram-sha-256\n' >> "${PG_CLUSTER_DIR}/pg_hba.conf"
-grep -q '^host\s\+all\s\+all\s\+::1/128\s\+scram-sha-256$' "${PG_CLUSTER_DIR}/pg_hba.conf" || printf 'host all all ::1/128 scram-sha-256\n' >> "${PG_CLUSTER_DIR}/pg_hba.conf"
 python3 - "${PG_CLUSTER_DIR}/pg_hba.conf" "${PRIVATE_HBA_RULES}" <<'PY'
 from pathlib import Path
 import sys
@@ -134,9 +132,24 @@ path = Path(sys.argv[1])
 private_rules = [line for line in sys.argv[2].splitlines() if line.strip()]
 start_marker = "# BEGIN GXP MANAGED PRIVATE POSTGRES ACCESS"
 end_marker = "# END GXP MANAGED PRIVATE POSTGRES ACCESS"
+required_local_rules = (
+    "host all all 127.0.0.1/32 scram-sha-256",
+    "host all all ::1/128 scram-sha-256",
+)
 
 content = path.read_text(encoding="utf-8")
 lines = content.splitlines()
+start_indexes = [index for index, line in enumerate(lines) if line == start_marker]
+end_indexes = [index for index, line in enumerate(lines) if line == end_marker]
+
+if start_indexes or end_indexes:
+    if len(start_indexes) != 1 or len(end_indexes) != 1:
+        raise SystemExit(
+            "Malformed managed PostgreSQL HBA block markers: expected exactly one BEGIN and one END marker when either marker is present."
+        )
+    if end_indexes[0] < start_indexes[0]:
+        raise SystemExit("Malformed managed PostgreSQL HBA block markers: END marker appears before BEGIN marker.")
+
 result: list[str] = []
 in_block = False
 for line in lines:
@@ -148,6 +161,11 @@ for line in lines:
         continue
     if not in_block:
         result.append(line)
+for local_rule in required_local_rules:
+    if local_rule not in result:
+        if result and result[-1] != "":
+            result.append("")
+        result.append(local_rule)
 while result and result[-1] == "":
     result.pop()
 if private_rules:

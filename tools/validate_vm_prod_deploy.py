@@ -76,6 +76,8 @@ class VmDeployPlan:
     pg_autovacuum_work_mem_mb: int
     pg_max_connections: int
     pg_listen_addresses: str
+    pg_ssl_cert_file: str | None
+    pg_ssl_key_file: str | None
     public_base_url: str
     backup_gcs_bucket: str
     backup_local_staging_dir: str
@@ -269,6 +271,8 @@ def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> Validation
     pg_autovacuum_work_mem_mb = _parse_int(source, "PG_AUTOVACUUM_WORK_MEM_MB", errors, 64)
     pg_max_connections = _parse_int(source, "PG_MAX_CONNECTIONS", errors, 30)
     pg_listen_addresses = "127.0.0.1" if postgres_config is None else postgres_config.listen_addresses_csv
+    pg_ssl_cert_file = None if postgres_config is None else postgres_config.ssl_cert_file
+    pg_ssl_key_file = None if postgres_config is None else postgres_config.ssl_key_file
     if pg_max_connections < 10 or pg_max_connections > 100:
         warnings.append("PG_MAX_CONNECTIONS is outside the usual small-VM baseline range of 10-100.")
     backup_gcs_bucket = _require(source, "BACKUP_GCS_BUCKET", errors)
@@ -354,6 +358,9 @@ def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> Validation
         "BACKUP_LOCAL_STAGING_DIR": backup_local_staging_dir,
         "DEPLOY_BRANCH": deploy_branch,
     }
+    if pg_ssl_cert_file is not None and pg_ssl_key_file is not None:
+        runtime_env["PG_SSL_CERT_FILE"] = pg_ssl_cert_file
+        runtime_env["PG_SSL_KEY_FILE"] = pg_ssl_key_file
     if postgres_config is not None and postgres_config.private_access is not None:
         runtime_env["PG_PRIVATE_CLIENT_CIDR"] = postgres_config.private_access.client_cidr
         runtime_env["PG_PRIVATE_DB_NAME"] = postgres_config.private_access.db_name
@@ -415,6 +422,8 @@ def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> Validation
             pg_autovacuum_work_mem_mb=pg_autovacuum_work_mem_mb,
             pg_max_connections=pg_max_connections,
             pg_listen_addresses=pg_listen_addresses,
+            pg_ssl_cert_file=pg_ssl_cert_file,
+            pg_ssl_key_file=pg_ssl_key_file,
             public_base_url=public_base_url,
             backup_gcs_bucket=backup_gcs_bucket,
             backup_local_staging_dir=backup_local_staging_dir,

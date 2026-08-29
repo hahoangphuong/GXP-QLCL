@@ -347,3 +347,115 @@ def test_validate_vm_prod_deploy_rejects_non_python_312_vm_baseline():
     )
 
     assert any("VM_PYTHON_SERIES must remain 3.12" in item for item in report.errors)
+
+
+def test_validate_vm_prod_deploy_preserves_legacy_behavior_without_postgres_tls_override():
+    report = validate_vm_prod_deploy_env(
+        {
+            "DEPLOYMENT_PLATFORM": "compute_engine_vm",
+            "AUTH_PROVIDER": "google_oidc",
+            "AUTH_ROLE_SOURCE": "database",
+            "AUTH_OIDC_CLIENT_ID": "client-id.apps.googleusercontent.com",
+            "DB_MODE": "local_postgres",
+            "DB_NAME": "gxp_qlcl",
+            "DB_USER": "gxp_app",
+            "DB_PASSWORD": "secret",
+            "DB_HOST": "127.0.0.1",
+            "STORAGE_CLASS": "synology_smb",
+            "STORAGE_INSPECTION_ROOT": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs",
+            "STORAGE_DKKD_ROOT": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs\Chứng nhận ĐĐKKDD",
+            "STORAGE_TEMPLATE_ROOT": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs\Templates",
+            "SMB_USERNAME": "gxp-smb",
+            "SMB_PASSWORD": "secret",
+            "PUBLIC_BASE_URL": "https://gxp.example.com",
+            "BACKUP_GCS_BUCKET": "gs://gxp-backups",
+        }
+    )
+
+    assert report.errors == []
+    assert report.plan is not None
+    assert report.plan.pg_ssl_cert_file is None
+    assert report.plan.pg_ssl_key_file is None
+    assert "PG_SSL_CERT_FILE" not in report.plan.runtime_env
+    assert "PG_SSL_KEY_FILE" not in report.plan.runtime_env
+
+
+def test_validate_vm_prod_deploy_accepts_valid_postgres_tls_override_paths():
+    report = validate_vm_prod_deploy_env(
+        {
+            "DEPLOYMENT_PLATFORM": "compute_engine_vm",
+            "AUTH_PROVIDER": "google_oidc",
+            "AUTH_ROLE_SOURCE": "database",
+            "AUTH_OIDC_CLIENT_ID": "client-id.apps.googleusercontent.com",
+            "DB_MODE": "local_postgres",
+            "DB_NAME": "gxp_qlcl",
+            "DB_USER": "gxp_app",
+            "DB_PASSWORD": "secret",
+            "DB_HOST": "127.0.0.1",
+            "PG_SSL_CERT_FILE": "/etc/gxp/postgres-tls/server.crt",
+            "PG_SSL_KEY_FILE": "/etc/gxp/postgres-tls/server.key",
+            "STORAGE_CLASS": "synology_smb",
+            "STORAGE_INSPECTION_ROOT": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs",
+            "STORAGE_DKKD_ROOT": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs\Chứng nhận ĐĐKKDD",
+            "STORAGE_TEMPLATE_ROOT": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs\Templates",
+            "SMB_USERNAME": "gxp-smb",
+            "SMB_PASSWORD": "secret",
+            "PUBLIC_BASE_URL": "https://gxp.example.com",
+            "BACKUP_GCS_BUCKET": "gs://gxp-backups",
+        }
+    )
+
+    assert report.errors == []
+    assert report.plan is not None
+    assert report.plan.pg_ssl_cert_file == "/etc/gxp/postgres-tls/server.crt"
+    assert report.plan.pg_ssl_key_file == "/etc/gxp/postgres-tls/server.key"
+    assert report.plan.runtime_env["PG_SSL_CERT_FILE"] == "/etc/gxp/postgres-tls/server.crt"
+    assert report.plan.runtime_env["PG_SSL_KEY_FILE"] == "/etc/gxp/postgres-tls/server.key"
+
+
+def test_validate_vm_prod_deploy_rejects_incomplete_or_invalid_postgres_tls_override_paths():
+    base = {
+        "DEPLOYMENT_PLATFORM": "compute_engine_vm",
+        "AUTH_PROVIDER": "google_oidc",
+        "AUTH_ROLE_SOURCE": "database",
+        "AUTH_OIDC_CLIENT_ID": "client-id.apps.googleusercontent.com",
+        "DB_MODE": "local_postgres",
+        "DB_NAME": "gxp_qlcl",
+        "DB_USER": "gxp_app",
+        "DB_PASSWORD": "secret",
+        "DB_HOST": "127.0.0.1",
+        "STORAGE_CLASS": "synology_smb",
+        "STORAGE_INSPECTION_ROOT": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs",
+        "STORAGE_DKKD_ROOT": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs\Chứng nhận ĐĐKKDD",
+        "STORAGE_TEMPLATE_ROOT": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs\Templates",
+        "SMB_USERNAME": "gxp-smb",
+        "SMB_PASSWORD": "secret",
+        "PUBLIC_BASE_URL": "https://gxp.example.com",
+        "BACKUP_GCS_BUCKET": "gs://gxp-backups",
+    }
+
+    only_cert = validate_vm_prod_deploy_env({**base, "PG_SSL_CERT_FILE": "/etc/gxp/postgres-tls/server.crt"})
+    only_key = validate_vm_prod_deploy_env({**base, "PG_SSL_KEY_FILE": "/etc/gxp/postgres-tls/server.key"})
+    relative = validate_vm_prod_deploy_env(
+        {**base, "PG_SSL_CERT_FILE": "certs/server.crt", "PG_SSL_KEY_FILE": "/etc/gxp/postgres-tls/server.key"}
+    )
+    same_path = validate_vm_prod_deploy_env(
+        {
+            **base,
+            "PG_SSL_CERT_FILE": "/etc/gxp/postgres-tls/server.pem",
+            "PG_SSL_KEY_FILE": "/etc/gxp/postgres-tls/server.pem",
+        }
+    )
+    url_path = validate_vm_prod_deploy_env(
+        {
+            **base,
+            "PG_SSL_CERT_FILE": "https://example.com/server.crt",
+            "PG_SSL_KEY_FILE": "/etc/gxp/postgres-tls/server.key",
+        }
+    )
+
+    assert any("PG_SSL_KEY_FILE is required" in item for item in only_cert.errors)
+    assert any("PG_SSL_CERT_FILE is required" in item for item in only_key.errors)
+    assert any("PG_SSL_CERT_FILE must be an absolute Unix path." in item for item in relative.errors)
+    assert any("must point to different files" in item for item in same_path.errors)
+    assert any("not a URL" in item for item in url_path.errors)

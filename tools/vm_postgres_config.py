@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,6 +43,8 @@ class PrivatePostgresAccess:
 class VmPostgresConfig:
     listen_addresses: tuple[str, ...]
     private_access: PrivatePostgresAccess | None
+    ssl_cert_file: str | None
+    ssl_key_file: str | None
 
     @property
     def listen_addresses_csv(self) -> str:
@@ -163,14 +166,106 @@ def _parse_private_access(source: dict[str, str], errors: list[str]) -> PrivateP
     )
 
 
+def _normalize_posix_absolute_path(key: str, raw: str, errors: list[str]) -> str | None:
+    value = raw.strip()
+    if not value:
+        errors.append(f"{key} must not be blank.")
+        return None
+    if "://" in value:
+        errors.append(f"{key} must be an absolute Unix path, not a URL.")
+        return None
+    if "*" in value or "?" in value:
+        errors.append(f"{key} must not contain wildcard characters.")
+        return None
+    if "\\" in value:
+        errors.append(f"{key} must use Unix-style / path separators.")
+        return None
+    if any(char.isspace() for char in value):
+        errors.append(f"{key} must not contain whitespace.")
+        return None
+    if "'" in value or '"' in value:
+        errors.append(f"{key} must not contain quotes.")
+        return None
+    if not value.startswith("/"):
+        errors.append(f"{key} must be an absolute Unix path.")
+        return None
+    if "//" in value:
+        errors.append(f"{key} must not contain empty path segments.")
+        return None
+    segments = value.split("/")[1:]
+    if any(segment in {"", ".", ".."} for segment in segments):
+        errors.append(f"{key} must not contain traversal or relative path segments.")
+        return None
+    return value
+
+
+def _parse_ssl_override(source: dict[str, str], errors: list[str]) -> tuple[str | None, str | None]:
+    raw_cert = (source.get("PG_SSL_CERT_FILE", "") or "").strip()
+    raw_key = (source.get("PG_SSL_KEY_FILE", "") or "").strip()
+    if not raw_cert and not raw_key:
+        return None, None
+    if not raw_cert:
+        errors.append("PG_SSL_CERT_FILE is required when PG_SSL_KEY_FILE is configured.")
+        return None, None
+    if not raw_key:
+        errors.append("PG_SSL_KEY_FILE is required when PG_SSL_CERT_FILE is configured.")
+        return None, None
+    cert_file = _normalize_posix_absolute_path("PG_SSL_CERT_FILE", raw_cert, errors)
+    key_file = _normalize_posix_absolute_path("PG_SSL_KEY_FILE", raw_key, errors)
+    if cert_file is not None and key_file is not None and cert_file == key_file:
+        errors.append("PG_SSL_CERT_FILE and PG_SSL_KEY_FILE must point to different files.")
+    return cert_file, key_file
+
+
+def validate_tls_key_file_metadata(path_value: str) -> list[str]:
+    key_path = Path(path_value)
+    try:
+        file_stat = key_path.stat()
+    except FileNotFoundError:
+        return [f"PostgreSQL TLS key file does not exist: {path_value}"]
+    except OSError as exc:
+        return [f"Could not inspect PostgreSQL TLS key permissions: {path_value} ({exc})"]
+
+    group_other_bits = stat.S_IMODE(file_stat.st_mode) & (stat.S_IRWXG | stat.S_IRWXO)
+    if group_other_bits not in {0, stat.S_IRGRP}:
+        return [
+            "PostgreSQL TLS key must be postgres-owned 0600 or root-owned 0640 with postgres group readability: "
+            f"{path_value}"
+        ]
+
+    try:
+        import grp
+        import pwd
+    except ImportError:
+        return [f"Could not inspect PostgreSQL TLS key ownership on this platform: {path_value}"]
+
+    owner = pwd.getpwuid(file_stat.st_uid).pw_name
+    group = grp.getgrgid(file_stat.st_gid).gr_name
+    mode = stat.S_IMODE(file_stat.st_mode)
+    if owner == "postgres" and group == "postgres" and mode == 0o600:
+        return []
+    if owner == "root" and group == "postgres" and mode == 0o640:
+        return []
+    return [
+        "PostgreSQL TLS key must be postgres-owned 0600 or root-owned 0640 with postgres group readability: "
+        f"{path_value}"
+    ]
+
+
 def validate_vm_postgres_config(source: dict[str, str] | None = None) -> tuple[VmPostgresConfig | None, list[str]]:
     values = os.environ if source is None else source
     errors: list[str] = []
     listen_addresses = _normalize_listen_addresses(values, errors)
     private_access = _parse_private_access(values, errors)
+    ssl_cert_file, ssl_key_file = _parse_ssl_override(values, errors)
     if errors:
         return None, errors
-    return VmPostgresConfig(listen_addresses=listen_addresses, private_access=private_access), []
+    return VmPostgresConfig(
+        listen_addresses=listen_addresses,
+        private_access=private_access,
+        ssl_cert_file=ssl_cert_file,
+        ssl_key_file=ssl_key_file,
+    ), []
 
 
 def render_json(source: dict[str, str] | None = None) -> str:
@@ -182,6 +277,8 @@ def render_json(source: dict[str, str] | None = None) -> str:
             "listen_addresses": list(config.listen_addresses),
             "listen_addresses_csv": config.listen_addresses_csv,
             "private_hba_rules": list(config.private_hba_rules),
+            "ssl_cert_file": config.ssl_cert_file,
+            "ssl_key_file": config.ssl_key_file,
         },
         ensure_ascii=False,
     )
@@ -197,15 +294,33 @@ def _load_source_from_args(args: list[str]) -> dict[str, str]:
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    if not args or args[0] != "render-json":
-        print("Usage: python tools/vm_postgres_config.py render-json [/path/to/runtime.env]", file=sys.stderr)
+    if not args:
+        print(
+            "Usage: python tools/vm_postgres_config.py render-json [/path/to/runtime.env] | validate-tls-key-file /absolute/path",
+            file=sys.stderr,
+        )
         return 2
-    try:
-        print(render_json(_load_source_from_args(args[1:])))
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
-    return 0
+    if args[0] == "render-json":
+        try:
+            print(render_json(_load_source_from_args(args[1:])))
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        return 0
+    if args[0] == "validate-tls-key-file":
+        if len(args) != 2:
+            print("Usage: python tools/vm_postgres_config.py validate-tls-key-file /absolute/path", file=sys.stderr)
+            return 2
+        errors = validate_tls_key_file_metadata(args[1])
+        if errors:
+            print("\n".join(errors), file=sys.stderr)
+            return 1
+        return 0
+    print(
+        "Usage: python tools/vm_postgres_config.py render-json [/path/to/runtime.env] | validate-tls-key-file /absolute/path",
+        file=sys.stderr,
+    )
+    return 2
 
 
 if __name__ == "__main__":

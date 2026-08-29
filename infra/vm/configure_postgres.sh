@@ -21,6 +21,48 @@ SUPPORTED_POSTGRES_MAJORS="${VM_SUPPORTED_POSTGRES_MAJORS:-17,18}"
 POSTGRES_MAJOR="${VM_POSTGRES_MAJOR:-18}"
 POSTGRES_CLUSTER_NAME="${VM_POSTGRES_CLUSTER_NAME:-main}"
 PG_CLUSTER_DIR="${VM_POSTGRES_CLUSTER_DIR:-/etc/postgresql/${POSTGRES_MAJOR}/${POSTGRES_CLUSTER_NAME}}"
+OPENSSL_BIN="${VM_OPENSSL_BIN:-openssl}"
+
+ensure_tls_override_tools() {
+  need_cmd "${OPENSSL_BIN}"
+}
+
+validate_postgres_tls_path_exists() {
+  local label="$1"
+  local path="$2"
+  [[ -f "${path}" ]] || fail "${label} file does not exist: ${path}"
+}
+
+validate_postgres_tls_key_permissions() {
+  local key_path="$1"
+  python3 "${REPO_ROOT}/tools/vm_postgres_config.py" validate-tls-key-file "${key_path}" >/dev/null \
+    || fail "PostgreSQL TLS key permission check failed: ${key_path}"
+}
+
+validate_postgres_tls_artifacts() {
+  local cert_path="$1"
+  local key_path="$2"
+  local cert_digest key_digest
+  ensure_tls_override_tools
+  validate_postgres_tls_path_exists "PostgreSQL TLS certificate" "${cert_path}"
+  validate_postgres_tls_path_exists "PostgreSQL TLS private key" "${key_path}"
+  validate_postgres_tls_key_permissions "${key_path}"
+  runuser -u postgres -- "${OPENSSL_BIN}" x509 -in "${cert_path}" -noout >/dev/null \
+    || fail "PostgreSQL TLS certificate could not be parsed: ${cert_path}"
+  runuser -u postgres -- "${OPENSSL_BIN}" pkey -in "${key_path}" -pubout -outform PEM >/dev/null \
+    || fail "PostgreSQL TLS private key could not be parsed or read by postgres: ${key_path}"
+  cert_digest="$(
+    runuser -u postgres -- "${OPENSSL_BIN}" x509 -in "${cert_path}" -pubkey -noout \
+      | runuser -u postgres -- "${OPENSSL_BIN}" pkey -pubin -outform DER \
+      | runuser -u postgres -- "${OPENSSL_BIN}" dgst -sha256 -r
+  )" || fail "Could not derive PostgreSQL TLS certificate public key fingerprint: ${cert_path}"
+  key_digest="$(
+    runuser -u postgres -- "${OPENSSL_BIN}" pkey -in "${key_path}" -pubout -outform DER \
+      | runuser -u postgres -- "${OPENSSL_BIN}" dgst -sha256 -r
+  )" || fail "Could not derive PostgreSQL TLS private key public key fingerprint: ${key_path}"
+  [[ "${cert_digest%% *}" == "${key_digest%% *}" ]] \
+    || fail "PostgreSQL TLS certificate and private key do not match."
+}
 
 if [[ "${CONFIGURE_POSTGRES_UNSAFE_SKIP_ROOT_CHECK:-0}" != "1" ]]; then
   require_root
@@ -63,6 +105,16 @@ POSTGRES_LISTEN_ADDRESSES="$(
 PRIVATE_HBA_RULES="$(
   python3 -c 'import json, sys; print("\n".join(json.loads(sys.argv[1])["private_hba_rules"]))' "${POSTGRES_CONFIG_JSON}"
 )" || fail "Could not resolve private PostgreSQL HBA rules."
+PG_SSL_CERT_FILE_RENDERED="$(
+  python3 -c 'import json, sys; print(json.loads(sys.argv[1])["ssl_cert_file"] or "")' "${POSTGRES_CONFIG_JSON}"
+)" || fail "Could not resolve PG_SSL_CERT_FILE."
+PG_SSL_KEY_FILE_RENDERED="$(
+  python3 -c 'import json, sys; print(json.loads(sys.argv[1])["ssl_key_file"] or "")' "${POSTGRES_CONFIG_JSON}"
+)" || fail "Could not resolve PG_SSL_KEY_FILE."
+
+if [[ -n "${PG_SSL_CERT_FILE_RENDERED}" || -n "${PG_SSL_KEY_FILE_RENDERED}" ]]; then
+  validate_postgres_tls_artifacts "${PG_SSL_CERT_FILE_RENDERED}" "${PG_SSL_KEY_FILE_RENDERED}"
+fi
 
 mapfile -t PG_CLUSTERS < <(pg_lsclusters --no-header 2>/dev/null || true)
 MATCHING_CLUSTER_COUNT=0
@@ -115,7 +167,16 @@ fi
 
 install -d -m 0755 "${PG_CLUSTER_DIR}/conf.d"
 cat > "${PG_CLUSTER_DIR}/conf.d/90-gxp-vm.conf" <<EOF
+ssl = on
 listen_addresses = '${POSTGRES_LISTEN_ADDRESSES}'
+EOF
+if [[ -n "${PG_SSL_CERT_FILE_RENDERED}" ]]; then
+cat >> "${PG_CLUSTER_DIR}/conf.d/90-gxp-vm.conf" <<EOF
+ssl_cert_file = '${PG_SSL_CERT_FILE_RENDERED}'
+ssl_key_file = '${PG_SSL_KEY_FILE_RENDERED}'
+EOF
+fi
+cat >> "${PG_CLUSTER_DIR}/conf.d/90-gxp-vm.conf" <<EOF
 password_encryption = 'scram-sha-256'
 shared_buffers = '${PG_SHARED_BUFFERS_MB}MB'
 effective_cache_size = '${PG_EFFECTIVE_CACHE_SIZE_MB}MB'

@@ -448,10 +448,17 @@ def _run_bash(script: str, *, env: dict[str, str], cwd: Path) -> subprocess.Comp
     )
 
 
+def _bash_style(path: Path) -> str:
+    value = path.as_posix()
+    if os.name == "nt" and len(value) >= 3 and value[1:3] == ":/":
+        return f"/{value[0].lower()}{value[2:]}"
+    return value
+
+
 def _base_env(fake_bin: Path, runtime_env: Path) -> dict[str, str]:
     env = dict(os.environ)
-    env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
-    env["VM_RUNTIME_ENV_FILE"] = runtime_env.as_posix()
+    env["PATH"] = f"{_bash_style(fake_bin)}:{env['PATH']}"
+    env["VM_RUNTIME_ENV_FILE"] = _bash_style(runtime_env)
     return env
 
 
@@ -524,6 +531,323 @@ def _configure_postgres_test_env(fake_bin: Path, runtime_env: Path, tmp_path: Pa
     env["VM_SUPPORTED_POSTGRES_MAJORS"] = "17,18"
     env["VM_POSTGRES_CLUSTER_DIR"] = (tmp_path / "pg" / "18" / "main").as_posix()
     return env
+
+
+def _write_fake_postgres_tls_executables(
+    fake_bin: Path,
+    *,
+    cert_path: Path,
+    key_path: Path,
+    cert_env_path: str,
+    key_env_path: str,
+    command_log: Path,
+    key_stat_mode: str = "640",
+    key_stat_owner: str = "root",
+    key_stat_group: str = "postgres",
+    cert_stat_mode: str = "644",
+    cert_stat_owner: str = "root",
+    cert_stat_group: str = "postgres",
+) -> None:
+    python_sh = sys.executable.replace("\\", "/")
+    stat_impl = fake_bin / "stat_impl.py"
+    stat_impl.write_text(
+        textwrap.dedent(
+            f"""\
+            import sys
+            from pathlib import Path
+
+            cert_path = Path(r"{cert_path.as_posix()}")
+            key_path = Path(r"{key_path.as_posix()}")
+            valid_cert_paths = {{cert_path.resolve().as_posix(), {cert_env_path!r}}}
+            valid_key_paths = {{key_path.resolve().as_posix(), {key_env_path!r}}}
+            raw_path = sys.argv[-1]
+            resolved_path = Path(raw_path).resolve().as_posix()
+            if raw_path in valid_key_paths or resolved_path in valid_key_paths:
+                print("{key_stat_mode} {key_stat_owner} {key_stat_group}")
+                raise SystemExit(0)
+            if raw_path in valid_cert_paths or resolved_path in valid_cert_paths:
+                print("{cert_stat_mode} {cert_stat_owner} {cert_stat_group}")
+                raise SystemExit(0)
+            raise SystemExit(1)
+            """
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    _write_executable(fake_bin / "stat", f"#!/usr/bin/env bash\nexec \"{python_sh}\" \"{stat_impl.as_posix()}\" \"$@\"\n")
+    _write_executable(fake_bin / "id", "#!/usr/bin/env bash\nset -euo pipefail\n[[ \"$1\" == \"-Gn\" && \"$2\" == \"postgres\" ]] || exit 1\nprintf 'postgres ssl-cert\\n'\n")
+    openssl_impl = fake_bin / "openssl_impl.py"
+    openssl_impl.write_text(
+        textwrap.dedent(
+            f"""\
+            import os
+            import sys
+            from pathlib import Path
+
+            cert_path = Path(r"{cert_path.as_posix()}").resolve()
+            key_path = Path(r"{key_path.as_posix()}").resolve()
+            valid_cert_paths = {{cert_path.as_posix(), {cert_env_path!r}}}
+            valid_key_paths = {{key_path.as_posix(), {key_env_path!r}}}
+            log_path = Path(r"{command_log.as_posix()}")
+            args = sys.argv[1:]
+            stdin_data = sys.stdin.read()
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write(f"openssl args={{args!r}} stdin={{stdin_data!r}}\\n")
+
+            def fail(flag: str, message: str) -> None:
+                if os.environ.get(flag) == "1":
+                    sys.stderr.write(message + "\\n")
+                    raise SystemExit(1)
+
+            if args[:2] == ["x509", "-in"] and len(args) >= 4 and args[3] == "-noout":
+                fail("OPENSSL_CERT_PARSE_FAIL", "synthetic cert parse failure")
+                if args[2] not in valid_cert_paths and Path(args[2]).resolve().as_posix() not in valid_cert_paths:
+                    raise SystemExit(1)
+                raise SystemExit(0)
+
+            if args[:2] == ["x509", "-in"] and "-pubkey" in args and "-noout" in args:
+                fail("OPENSSL_CERT_PARSE_FAIL", "synthetic cert parse failure")
+                if args[2] not in valid_cert_paths and Path(args[2]).resolve().as_posix() not in valid_cert_paths:
+                    raise SystemExit(1)
+                sys.stdout.write("CERTPUB")
+                raise SystemExit(0)
+
+            if args[:2] == ["pkey", "-in"] and "-pubout" in args and "-outform" in args and "PEM" in args:
+                fail("OPENSSL_KEY_PARSE_FAIL", "synthetic key parse failure")
+                if args[2] not in valid_key_paths and Path(args[2]).resolve().as_posix() not in valid_key_paths:
+                    raise SystemExit(1)
+                raise SystemExit(0)
+
+            if args[:2] == ["pkey", "-in"] and "-pubout" in args and "-outform" in args and "DER" in args:
+                fail("OPENSSL_KEY_PARSE_FAIL", "synthetic key parse failure")
+                if args[2] not in valid_key_paths and Path(args[2]).resolve().as_posix() not in valid_key_paths:
+                    raise SystemExit(1)
+                sys.stdout.write("KEYDER")
+                raise SystemExit(0)
+
+            if args[:2] == ["pkey", "-pubin"] and "-outform" in args and "DER" in args:
+                fail("OPENSSL_CERT_PARSE_FAIL", "synthetic cert parse failure")
+                if stdin_data != "CERTPUB":
+                    raise SystemExit(1)
+                sys.stdout.write("CERTDER")
+                raise SystemExit(0)
+
+            if args[:2] == ["dgst", "-sha256"] and "-r" in args:
+                payload = stdin_data
+                if payload == "CERTDER":
+                    sys.stdout.write("same-cert-digest *stdin\\n")
+                    raise SystemExit(0)
+                if payload == "KEYDER":
+                    if os.environ.get("OPENSSL_MISMATCH") == "1":
+                        sys.stdout.write("different-key-digest *stdin\\n")
+                    else:
+                        sys.stdout.write("same-cert-digest *stdin\\n")
+                    raise SystemExit(0)
+                raise SystemExit(1)
+
+            raise SystemExit(1)
+            """
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    _write_executable(fake_bin / "openssl", f"#!/usr/bin/env bash\nexec \"{python_sh}\" \"{openssl_impl.as_posix()}\" \"$@\"\n")
+
+
+def _run_configure_postgres_tls_case(
+    tmp_path: Path,
+    *,
+    runtime_extra_entries: dict[str, str] | None = None,
+    cert_exists: bool = True,
+    key_exists: bool = True,
+    key_stat_mode: str = "640",
+    key_stat_owner: str = "root",
+    key_stat_group: str = "postgres",
+    cert_parse_fail: bool = False,
+    key_parse_fail: bool = False,
+    cert_key_mismatch: bool = False,
+) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    runtime_env = tmp_path / "runtime.env"
+    command_log = tmp_path / "command.log"
+    python_sh = sys.executable.replace("\\", "/")
+    pg_cluster_dir = tmp_path / "pg" / "18" / "main"
+    (pg_cluster_dir / "conf.d").mkdir(parents=True)
+    (pg_cluster_dir / "pg_hba.conf").write_text("", encoding="utf-8", newline="\n")
+    tls_dir = tmp_path / "tls"
+    tls_dir.mkdir()
+    cert_path = tls_dir / "server.crt"
+    key_path = tls_dir / "server.key"
+    cert_env_path = _bash_style(cert_path)
+    key_env_path = _bash_style(key_path)
+    if cert_exists:
+        cert_path.write_text("fake cert", encoding="utf-8")
+    if key_exists:
+        key_path.write_text("fake key", encoding="utf-8")
+
+    _write_runtime_env(runtime_env, extra_entries=runtime_extra_entries)
+    python3_wrapper = tmp_path / "python3_wrapper.py"
+    python3_wrapper.write_text(
+        textwrap.dedent(
+            """\
+            import os
+            import subprocess
+            import sys
+
+            args = sys.argv[1:]
+            if len(args) >= 2 and args[0].endswith("tools/vm_postgres_config.py") and args[1] == "validate-tls-key-file":
+                path_value = args[2]
+                cert_path = os.environ.get("FAKE_TLS_CERT_PATH", "")
+                key_path = os.environ.get("FAKE_TLS_KEY_PATH", "")
+                if path_value != key_path:
+                    sys.stderr.write(f"Could not inspect PostgreSQL TLS key permissions: {path_value}\\n")
+                    raise SystemExit(1)
+                if os.environ.get("FAKE_TLS_KEY_PERMISSION_ERROR") == "1":
+                    sys.stderr.write(
+                        "PostgreSQL TLS key must be postgres-owned 0600 or root-owned 0640 with postgres group readability: "
+                        f"{path_value}\\n"
+                    )
+                    raise SystemExit(1)
+                raise SystemExit(0)
+            raise SystemExit(subprocess.call([sys.executable, *args]))
+            """
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    _write_executable(fake_bin / "python3", f"#!/usr/bin/env bash\nexec \"{python_sh}\" \"{python3_wrapper.as_posix()}\" \"$@\"\n")
+    _write_executable(
+        fake_bin / "runuser",
+        textwrap.dedent(
+            """\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            [[ "$1" == "-u" ]] || exit 2
+            shift 2
+            [[ "$1" == "--" ]] || exit 2
+            shift
+            exec "$@"
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "pg_lsclusters",
+        "#!/usr/bin/env bash\nset -euo pipefail\nprintf '18 main 5432 online postgres /var/lib/postgresql/18/main /var/log/postgresql/postgresql-18-main.log\\n'\n",
+    )
+    _write_executable(
+        fake_bin / "pg_ctlcluster",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf 'pg_ctlcluster %s\\n' "$*" >> "{command_log.as_posix()}"
+            exit 0
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "pg_isready",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf 'pg_isready %s\\n' "$*" >> "{command_log.as_posix()}"
+            exit 0
+            """
+        ),
+    )
+    _write_executable(
+        fake_bin / "createdb",
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            printf 'createdb %s\\n' "$*" >> "{command_log.as_posix()}"
+            exit 0
+            """
+        ),
+    )
+    psql_impl = tmp_path / "psql_impl.py"
+    psql_impl.write_text(
+        textwrap.dedent(
+            """\
+            import sys
+
+            args = sys.argv[1:]
+            stdin_sql = sys.stdin.read()
+            command_sql = ""
+            if "-Atqc" in args:
+                command_sql = args[args.index("-Atqc") + 1]
+            if "SELECT 1 FROM pg_database WHERE datname = :'db_name';" in stdin_sql:
+                sys.stdout.write("1\\n")
+                raise SystemExit(0)
+            if "current_database()" in command_sql and "current_user" in command_sql:
+                sys.stdout.write("gxp_qlcl\\tgxp_app\\n")
+                raise SystemExit(0)
+            if command_sql == "SHOW server_version_num":
+                sys.stdout.write("180005\\n")
+                raise SystemExit(0)
+            raise SystemExit(0)
+            """
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    _write_executable(fake_bin / "psql", f"#!/usr/bin/env bash\nexec \"{python_sh}\" \"{psql_impl.as_posix()}\" \"$@\"\n")
+    _write_executable(
+        fake_bin / "install",
+        textwrap.dedent(
+            """\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            if [[ "$1" == "-d" ]]; then
+              shift
+              while [[ $# -gt 0 ]]; do
+                case "$1" in
+                  -m|-o|-g)
+                    shift 2
+                    ;;
+                  *)
+                    mkdir -p "$1"
+                    shift
+                    ;;
+                esac
+              done
+              exit 0
+            fi
+            exec /usr/bin/install "$@"
+            """
+        ),
+    )
+
+    if runtime_extra_entries and runtime_extra_entries.get("PG_SSL_CERT_FILE") and runtime_extra_entries.get("PG_SSL_KEY_FILE"):
+        _write_fake_postgres_tls_executables(
+            fake_bin,
+            cert_path=cert_path,
+            key_path=key_path,
+            cert_env_path=cert_env_path,
+            key_env_path=key_env_path,
+            command_log=command_log,
+            key_stat_mode=key_stat_mode,
+            key_stat_owner=key_stat_owner,
+            key_stat_group=key_stat_group,
+        )
+
+    env = _configure_postgres_test_env(fake_bin, runtime_env, tmp_path)
+    env["FAKE_TLS_CERT_PATH"] = cert_env_path
+    env["FAKE_TLS_KEY_PATH"] = key_env_path
+    env["VM_OPENSSL_BIN"] = _bash_style(fake_bin / "openssl")
+    if key_stat_mode != "640" or key_stat_owner != "root" or key_stat_group != "postgres":
+        env["FAKE_TLS_KEY_PERMISSION_ERROR"] = "1"
+    if cert_parse_fail:
+        env["OPENSSL_CERT_PARSE_FAIL"] = "1"
+    if key_parse_fail:
+        env["OPENSSL_KEY_PARSE_FAIL"] = "1"
+    if cert_key_mismatch:
+        env["OPENSSL_MISMATCH"] = "1"
+    completed = _run_bash("./infra/vm/configure_postgres.sh", env=env, cwd=ROOT)
+    return completed, command_log, pg_cluster_dir
 
 
 def _run_deploy_node_gate_case(
@@ -3242,6 +3566,124 @@ def test_configure_postgres_accepts_private_listener_and_manages_private_hba_rul
     assert rendered_hba.count("# END GXP MANAGED PRIVATE POSTGRES ACCESS") == 1
     assert rendered_hba.count("host all all 127.0.0.1/32 scram-sha-256") == 1
     assert rendered_hba.count("host all all ::1/128 scram-sha-256") == 1
+
+
+def test_configure_postgres_keeps_legacy_ssl_behavior_without_tls_override(tmp_path: Path):
+    completed, command_log, pg_cluster_dir = _run_configure_postgres_tls_case(tmp_path)
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    rendered_conf = (pg_cluster_dir / "conf.d" / "90-gxp-vm.conf").read_text(encoding="utf-8")
+    assert "ssl = on" in rendered_conf
+    assert "ssl_cert_file =" not in rendered_conf
+    assert "ssl_key_file =" not in rendered_conf
+    assert "openssl args=" not in command_log.read_text(encoding="utf-8")
+
+
+def test_configure_postgres_accepts_valid_root_postgres_tls_override(tmp_path: Path):
+    cert_path = _bash_style(tmp_path / "tls" / "server.crt")
+    key_path = _bash_style(tmp_path / "tls" / "server.key")
+    completed, command_log, pg_cluster_dir = _run_configure_postgres_tls_case(
+        tmp_path,
+        runtime_extra_entries={
+            "PG_SSL_CERT_FILE": cert_path,
+            "PG_SSL_KEY_FILE": key_path,
+        },
+    )
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    rendered_conf = (pg_cluster_dir / "conf.d" / "90-gxp-vm.conf").read_text(encoding="utf-8")
+    assert "ssl = on" in rendered_conf
+    assert f"ssl_cert_file = '{cert_path}'" in rendered_conf
+    assert f"ssl_key_file = '{key_path}'" in rendered_conf
+    log_text = command_log.read_text(encoding="utf-8")
+    assert "openssl args=['x509', '-in'" in log_text
+    assert "openssl args=['pkey', '-in'" in log_text
+    assert "pg_ctlcluster 18 main restart" in log_text
+
+
+def test_configure_postgres_fails_before_restart_when_tls_files_are_missing(tmp_path: Path):
+    cert_path = _bash_style(tmp_path / "tls" / "server.crt")
+    key_path = _bash_style(tmp_path / "tls" / "server.key")
+    completed, command_log, _pg_cluster_dir = _run_configure_postgres_tls_case(
+        tmp_path,
+        runtime_extra_entries={
+            "PG_SSL_CERT_FILE": cert_path,
+            "PG_SSL_KEY_FILE": key_path,
+        },
+        cert_exists=False,
+    )
+
+    assert completed.returncode != 0
+    assert "TLS certificate file does not exist" in (completed.stderr or completed.stdout)
+    assert not command_log.exists() or "pg_ctlcluster" not in command_log.read_text(encoding="utf-8")
+
+
+def test_configure_postgres_rejects_unsafe_tls_key_permissions_before_restart(tmp_path: Path):
+    cert_path = _bash_style(tmp_path / "tls" / "server.crt")
+    key_path = _bash_style(tmp_path / "tls" / "server.key")
+    completed, command_log, _pg_cluster_dir = _run_configure_postgres_tls_case(
+        tmp_path,
+        runtime_extra_entries={
+            "PG_SSL_CERT_FILE": cert_path,
+            "PG_SSL_KEY_FILE": key_path,
+        },
+        key_stat_mode="644",
+    )
+
+    assert completed.returncode != 0
+    assert "TLS key must be postgres-owned 0600 or root-owned 0640" in (completed.stderr or completed.stdout)
+    assert not command_log.exists() or "pg_ctlcluster" not in command_log.read_text(encoding="utf-8")
+
+
+def test_configure_postgres_rejects_invalid_tls_certificate_before_restart(tmp_path: Path):
+    cert_path = _bash_style(tmp_path / "tls" / "server.crt")
+    key_path = _bash_style(tmp_path / "tls" / "server.key")
+    completed, command_log, _pg_cluster_dir = _run_configure_postgres_tls_case(
+        tmp_path,
+        runtime_extra_entries={
+            "PG_SSL_CERT_FILE": cert_path,
+            "PG_SSL_KEY_FILE": key_path,
+        },
+        cert_parse_fail=True,
+    )
+
+    assert completed.returncode != 0
+    assert "TLS certificate could not be parsed" in (completed.stderr or completed.stdout)
+    assert not command_log.exists() or "pg_ctlcluster" not in command_log.read_text(encoding="utf-8")
+
+
+def test_configure_postgres_rejects_invalid_tls_private_key_before_restart(tmp_path: Path):
+    cert_path = _bash_style(tmp_path / "tls" / "server.crt")
+    key_path = _bash_style(tmp_path / "tls" / "server.key")
+    completed, command_log, _pg_cluster_dir = _run_configure_postgres_tls_case(
+        tmp_path,
+        runtime_extra_entries={
+            "PG_SSL_CERT_FILE": cert_path,
+            "PG_SSL_KEY_FILE": key_path,
+        },
+        key_parse_fail=True,
+    )
+
+    assert completed.returncode != 0
+    assert "TLS private key could not be parsed or read by postgres" in (completed.stderr or completed.stdout)
+    assert "pg_ctlcluster" not in command_log.read_text(encoding="utf-8")
+
+
+def test_configure_postgres_rejects_mismatched_tls_certificate_and_key_before_restart(tmp_path: Path):
+    cert_path = _bash_style(tmp_path / "tls" / "server.crt")
+    key_path = _bash_style(tmp_path / "tls" / "server.key")
+    completed, command_log, _pg_cluster_dir = _run_configure_postgres_tls_case(
+        tmp_path,
+        runtime_extra_entries={
+            "PG_SSL_CERT_FILE": cert_path,
+            "PG_SSL_KEY_FILE": key_path,
+        },
+        cert_key_mismatch=True,
+    )
+
+    assert completed.returncode != 0
+    assert "certificate and private key do not match" in (completed.stderr or completed.stdout)
+    assert "pg_ctlcluster" not in command_log.read_text(encoding="utf-8")
 
 
 def test_configure_postgres_recognizes_existing_local_hba_rules_by_semantic_tokens(tmp_path: Path):

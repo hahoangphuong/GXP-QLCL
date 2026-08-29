@@ -338,8 +338,15 @@ def test_configure_postgres_uses_explicit_cluster_contract():
     assert 'PG_LISTEN_ADDRESSES="${PG_LISTEN_ADDRESSES:-127.0.0.1}"' in text
     assert 'python3 "${REPO_ROOT}/tools/vm_postgres_config.py" render-json "${VM_RUNTIME_ENV_FILE:-/etc/gxp/runtime.env}"' in text
     assert "listen_addresses = '${POSTGRES_LISTEN_ADDRESSES}'" in text
+    assert 'POSTGRES_LISTEN_ADDRESS="${DB_HOST}"' not in text
+    assert 'PG_LISTEN_ADDRESSES="${PG_LISTEN_ADDRESSES:-${PG_LISTEN_ADDRESSES}}"' not in text
     assert "# BEGIN GXP MANAGED PRIVATE POSTGRES ACCESS" in text
     assert "hostssl" in helper_text
+    assert "RFC1918_NETWORKS" in helper_text
+    assert "10.0.0.0/8" in helper_text
+    assert "172.16.0.0/12" in helper_text
+    assert "192.168.0.0/16" in helper_text
+    assert ".is_private" not in helper_text
     assert 'pg_ctlcluster "${POSTGRES_MAJOR}" "${POSTGRES_CLUSTER_NAME}" restart' in text
     assert "find /etc/postgresql" not in text
 

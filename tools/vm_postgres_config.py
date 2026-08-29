@@ -16,6 +16,11 @@ from tools.env_utils import parse_env_file
 
 
 POSTGRES_IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
+RFC1918_NETWORKS = (
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+)
 
 
 @dataclass(frozen=True)
@@ -53,6 +58,14 @@ def _csv_values(raw: str) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
+def _is_rfc1918_address(address: ipaddress.IPv4Address) -> bool:
+    return any(address in network for network in RFC1918_NETWORKS)
+
+
+def _is_rfc1918_subnet(network: ipaddress.IPv4Network) -> bool:
+    return any(network.subnet_of(allowed) for allowed in RFC1918_NETWORKS)
+
+
 def _normalize_listen_address(raw: str, errors: list[str]) -> str | None:
     if raw == "localhost":
         raw = "127.0.0.1"
@@ -72,7 +85,7 @@ def _normalize_listen_address(raw: str, errors: list[str]) -> str | None:
         return None
     if parsed.is_loopback:
         return "127.0.0.1"
-    if not parsed.is_private:
+    if not _is_rfc1918_address(parsed):
         errors.append(f"PG_LISTEN_ADDRESSES must stay on loopback or RFC1918 private IPv4 addresses, got {raw!r}.")
         return None
     return raw
@@ -135,7 +148,7 @@ def _parse_private_access(source: dict[str, str], errors: list[str]) -> PrivateP
         return None
     if network.version != 4:
         errors.append("PG_PRIVATE_CLIENT_CIDR must be an IPv4 CIDR for the VM baseline.")
-    elif not network.is_private:
+    elif not _is_rfc1918_subnet(network):
         errors.append("PG_PRIVATE_CLIENT_CIDR must stay within an RFC1918 private IPv4 range.")
     if network.prefixlen == 0:
         errors.append("PG_PRIVATE_CLIENT_CIDR must not be an open network like 0.0.0.0/0.")

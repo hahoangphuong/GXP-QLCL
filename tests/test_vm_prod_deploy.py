@@ -168,11 +168,101 @@ def test_validate_vm_prod_deploy_rejects_broad_or_public_postgres_listener_value
     open_listener = validate_vm_prod_deploy_env({**base, "PG_LISTEN_ADDRESSES": "0.0.0.0"})
     malformed = validate_vm_prod_deploy_env({**base, "PG_LISTEN_ADDRESSES": "127.0.0.1,not-an-ip"})
     public = validate_vm_prod_deploy_env({**base, "PG_LISTEN_ADDRESSES": "127.0.0.1,8.8.8.8"})
+    link_local = validate_vm_prod_deploy_env({**base, "PG_LISTEN_ADDRESSES": "127.0.0.1,169.254.1.1"})
+    multicast = validate_vm_prod_deploy_env({**base, "PG_LISTEN_ADDRESSES": "127.0.0.1,224.0.0.1"})
+    reserved = validate_vm_prod_deploy_env({**base, "PG_LISTEN_ADDRESSES": "127.0.0.1,240.0.0.1"})
+    benchmark = validate_vm_prod_deploy_env({**base, "PG_LISTEN_ADDRESSES": "127.0.0.1,198.18.0.1"})
+    documentation = validate_vm_prod_deploy_env({**base, "PG_LISTEN_ADDRESSES": "127.0.0.1,192.0.2.1"})
+    outside_172 = validate_vm_prod_deploy_env({**base, "PG_LISTEN_ADDRESSES": "127.0.0.1,172.32.0.1"})
+    outside_192 = validate_vm_prod_deploy_env({**base, "PG_LISTEN_ADDRESSES": "127.0.0.1,192.169.0.1"})
 
     assert any("wildcard" in item for item in wildcard.errors)
     assert any("0.0.0.0" in item for item in open_listener.errors)
     assert any("invalid IP address" in item for item in malformed.errors)
     assert any("RFC1918 private IPv4" in item for item in public.errors)
+    assert any("RFC1918 private IPv4" in item for item in link_local.errors)
+    assert any("RFC1918 private IPv4" in item for item in multicast.errors)
+    assert any("RFC1918 private IPv4" in item for item in reserved.errors)
+    assert any("RFC1918 private IPv4" in item for item in benchmark.errors)
+    assert any("RFC1918 private IPv4" in item for item in documentation.errors)
+    assert any("RFC1918 private IPv4" in item for item in outside_172.errors)
+    assert any("RFC1918 private IPv4" in item for item in outside_192.errors)
+
+
+def test_validate_vm_prod_deploy_accepts_rfc1918_listener_boundaries_only():
+    base = {
+        "DEPLOYMENT_PLATFORM": "compute_engine_vm",
+        "AUTH_PROVIDER": "google_oidc",
+        "AUTH_ROLE_SOURCE": "database",
+        "AUTH_OIDC_CLIENT_ID": "client-id.apps.googleusercontent.com",
+        "DB_MODE": "local_postgres",
+        "DB_NAME": "gxp_qlcl",
+        "DB_USER": "gxp_app",
+        "DB_PASSWORD": "secret",
+        "DB_HOST": "127.0.0.1",
+        "STORAGE_CLASS": "synology_smb",
+        "STORAGE_INSPECTION_ROOT": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs",
+        "STORAGE_DKKD_ROOT": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs\Chứng nhận ĐĐKKDD",
+        "STORAGE_TEMPLATE_ROOT": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs\Templates",
+        "SMB_USERNAME": "gxp-smb",
+        "SMB_PASSWORD": "secret",
+        "PUBLIC_BASE_URL": "https://gxp.example.com",
+        "BACKUP_GCS_BUCKET": "gs://gxp-backups",
+    }
+
+    accepted_listeners = [
+        "127.0.0.1,10.0.0.1",
+        "127.0.0.1,10.255.255.254",
+        "127.0.0.1,172.16.0.1",
+        "127.0.0.1,172.31.255.254",
+        "127.0.0.1,192.168.0.1",
+        "127.0.0.1,192.168.255.254",
+    ]
+
+    for listen_addresses in accepted_listeners:
+        report = validate_vm_prod_deploy_env({**base, "PG_LISTEN_ADDRESSES": listen_addresses})
+        assert report.errors == [], listen_addresses
+
+
+def test_validate_vm_prod_deploy_accepts_only_rfc1918_private_client_cidrs():
+    base = {
+        "DEPLOYMENT_PLATFORM": "compute_engine_vm",
+        "AUTH_PROVIDER": "google_oidc",
+        "AUTH_ROLE_SOURCE": "database",
+        "AUTH_OIDC_CLIENT_ID": "client-id.apps.googleusercontent.com",
+        "DB_MODE": "local_postgres",
+        "DB_NAME": "gxp_qlcl",
+        "DB_USER": "gxp_app",
+        "DB_PASSWORD": "secret",
+        "DB_HOST": "127.0.0.1",
+        "PG_PRIVATE_DB_NAME": "gmpnn_ai",
+        "PG_PRIVATE_RUNTIME_USER": "gmpnn_ai_app",
+        "PG_PRIVATE_MIGRATOR_USER": "gmpnn_ai_migrator",
+        "STORAGE_CLASS": "synology_smb",
+        "STORAGE_INSPECTION_ROOT": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs",
+        "STORAGE_DKKD_ROOT": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs\Chứng nhận ĐĐKKDD",
+        "STORAGE_TEMPLATE_ROOT": r"\\100.95.45.127\Hồ sơ nội bộ\01 - Kiểm tra GPs\Templates",
+        "SMB_USERNAME": "gxp-smb",
+        "SMB_PASSWORD": "secret",
+        "PUBLIC_BASE_URL": "https://gxp.example.com",
+        "BACKUP_GCS_BUCKET": "gs://gxp-backups",
+    }
+
+    for cidr in ["10.20.0.0/26", "172.16.0.0/12", "192.168.10.0/24"]:
+        report = validate_vm_prod_deploy_env({**base, "PG_PRIVATE_CLIENT_CIDR": cidr})
+        assert report.errors == [], cidr
+
+    rejected_cidrs = [
+        "127.0.0.0/8",
+        "169.254.0.0/16",
+        "198.18.0.0/15",
+        "192.0.2.0/24",
+        "224.0.0.0/4",
+        "240.0.0.0/4",
+    ]
+    for cidr in rejected_cidrs:
+        report = validate_vm_prod_deploy_env({**base, "PG_PRIVATE_CLIENT_CIDR": cidr})
+        assert any("RFC1918 private IPv4 range" in item for item in report.errors), cidr
 
 
 def test_validate_vm_prod_deploy_rejects_overly_broad_private_remote_postgres_hba_values():

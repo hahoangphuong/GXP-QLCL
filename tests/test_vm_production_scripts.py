@@ -3240,6 +3240,225 @@ def test_configure_postgres_accepts_private_listener_and_manages_private_hba_rul
     assert rendered_hba.count("hostssl gmpnn_ai gmpnn_ai_migrator 10.20.0.0/26 scram-sha-256") == 1
     assert rendered_hba.count("# BEGIN GXP MANAGED PRIVATE POSTGRES ACCESS") == 1
     assert rendered_hba.count("# END GXP MANAGED PRIVATE POSTGRES ACCESS") == 1
+    assert rendered_hba.count("host all all 127.0.0.1/32 scram-sha-256") == 1
+    assert rendered_hba.count("host all all ::1/128 scram-sha-256") == 1
+
+
+def test_configure_postgres_recognizes_existing_local_hba_rules_by_semantic_tokens(tmp_path: Path):
+    hba_cases = {
+        "aligned_spaces": "\n".join(
+            [
+                "host    all             all             127.0.0.1/32            scram-sha-256",
+                "host    all             all             ::1/128                 scram-sha-256",
+            ]
+        )
+        + "\n",
+        "tab_separated": "host\tall\tall\t127.0.0.1/32\tscram-sha-256\nhost\tall\tall\t::1/128\tscram-sha-256\n",
+        "canonical_single_space": "host all all 127.0.0.1/32 scram-sha-256\nhost all all ::1/128 scram-sha-256\n",
+        "missing_ipv6": "host all all 127.0.0.1/32 scram-sha-256\n",
+        "semantically_different": "\n".join(
+            [
+                "host all postgres 127.0.0.1/32 scram-sha-256",
+                "host all all ::1/128 md5",
+            ]
+        )
+        + "\n",
+    }
+
+    for case_name, initial_hba in hba_cases.items():
+        case_dir = tmp_path / case_name
+        fake_bin = case_dir / "bin"
+        fake_bin.mkdir(parents=True)
+        runtime_env = case_dir / "runtime.env"
+        state_dir = case_dir / "state"
+        state_dir.mkdir()
+        state_file = state_dir / "postgres-state.json"
+        command_log = case_dir / "command.log"
+        python_sh = sys.executable.replace("\\", "/")
+        pg_cluster_dir = case_dir / "pg" / "18" / "main"
+        (pg_cluster_dir / "conf.d").mkdir(parents=True)
+        pg_hba_path = pg_cluster_dir / "pg_hba.conf"
+        pg_hba_path.write_text(initial_hba, encoding="utf-8", newline="\n")
+
+        _write_runtime_env(runtime_env)
+        _write_executable(fake_bin / "python3", f"#!/usr/bin/env bash\n\"{python_sh}\" \"$@\"\n")
+        _write_executable(
+            fake_bin / "runuser",
+            textwrap.dedent(
+                """\
+                #!/usr/bin/env bash
+                set -euo pipefail
+                [[ "$1" == "-u" ]] || exit 2
+                shift 2
+                [[ "$1" == "--" ]] || exit 2
+                shift
+                exec "$@"
+                """
+            ),
+        )
+        _write_executable(
+            fake_bin / "pg_lsclusters",
+            "#!/usr/bin/env bash\nset -euo pipefail\nprintf '18 main 5432 online postgres /var/lib/postgresql/18/main /var/log/postgresql/postgresql-18-main.log\\n'\n",
+        )
+        _write_executable(
+            fake_bin / "pg_ctlcluster",
+            textwrap.dedent(
+                f"""\
+                #!/usr/bin/env bash
+                set -euo pipefail
+                printf 'pg_ctlcluster %s\\n' "$*" >> "{command_log.as_posix()}"
+                exit 0
+                """
+            ),
+        )
+        _write_executable(
+            fake_bin / "pg_isready",
+            textwrap.dedent(
+                f"""\
+                #!/usr/bin/env bash
+                set -euo pipefail
+                printf 'pg_isready %s\\n' "$*" >> "{command_log.as_posix()}"
+                exit 0
+                """
+            ),
+        )
+        createdb_impl = case_dir / "createdb_impl.py"
+        createdb_impl.write_text(
+            (
+                "import json\n"
+                "import sys\n"
+                "from pathlib import Path\n"
+                f'state_path = Path(r"{state_file.as_posix()}")\n'
+                'state = {"roles": {}, "databases": {}, "createdb_calls": 0}\n'
+                "if state_path.exists():\n"
+                '    state.update(json.loads(state_path.read_text(encoding="utf-8")))\n'
+                "args = sys.argv[1:]\n"
+                "owner = None\n"
+                "db_name = None\n"
+                "i = 0\n"
+                "while i < len(args):\n"
+                '    if args[i] == "--owner":\n'
+                "        owner = args[i + 1]\n"
+                "        i += 2\n"
+                "        continue\n"
+                "    db_name = args[i]\n"
+                "    i += 1\n"
+                'state["createdb_calls"] = int(state.get("createdb_calls", 0)) + 1\n'
+                'state["databases"][db_name] = {"owner": owner}\n'
+                'state_path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")\n'
+            ),
+            encoding="utf-8",
+            newline="\n",
+        )
+        _write_executable(fake_bin / "createdb", f"#!/usr/bin/env bash\nexec \"{python_sh}\" \"{createdb_impl.as_posix()}\" \"$@\"\n")
+        psql_impl = case_dir / "psql_impl.py"
+        psql_impl.write_text(
+            (
+                "import json\n"
+                "import sys\n"
+                "from pathlib import Path\n"
+                f'state_path = Path(r"{state_file.as_posix()}")\n'
+                "def load_state() -> dict:\n"
+                "    if state_path.exists():\n"
+                '        return json.loads(state_path.read_text(encoding="utf-8"))\n'
+                '    return {"roles": {}, "databases": {}, "createdb_calls": 0}\n'
+                "def save_state(state: dict) -> None:\n"
+                '    state_path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")\n'
+                "def set_values(args: list[str]) -> dict[str, str]:\n"
+                "    values: dict[str, str] = {}\n"
+                "    for index, arg in enumerate(args):\n"
+                '        if arg == "--set" and index + 1 < len(args):\n'
+                '            key, _, value = args[index + 1].partition("=")\n'
+                "            values[key] = value\n"
+                '        elif arg.startswith("--set="):\n'
+                '            key, _, value = arg[len("--set="):].partition("=")\n'
+                "            values[key] = value\n"
+                "    return values\n"
+                "args = sys.argv[1:]\n"
+                "stdin_sql = sys.stdin.read()\n"
+                'command_sql = ""\n'
+                'if "-Atqc" in args:\n'
+                '    command_sql = args[args.index("-Atqc") + 1]\n'
+                "sets = set_values(args)\n"
+                'state = load_state()\n'
+                'if "CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L" in stdin_sql:\n'
+                '    db_user = sets["db_user"]\n'
+                '    db_password = sets["db_password"]\n'
+                '    state["roles"].setdefault(db_user, {})\n'
+                '    state["roles"][db_user].update({"password": db_password})\n'
+                "    save_state(state)\n"
+                "    raise SystemExit(0)\n"
+                'if "SELECT 1 FROM pg_database WHERE datname = :\'db_name\';" in stdin_sql:\n'
+                '    if sets.get("db_name") in state["databases"]:\n'
+                '        sys.stdout.write("1\\n")\n'
+                "    raise SystemExit(0)\n"
+                'if command_sql == "SHOW server_version_num":\n'
+                '    sys.stdout.write("180005\\n")\n'
+                "    raise SystemExit(0)\n"
+                'if "SELECT current_database() || E\'\\\\t\' || current_user" in command_sql:\n'
+                '    sys.stdout.write("gxp_qlcl\\tgxp_app\\n")\n'
+                "    raise SystemExit(0)\n"
+                "raise SystemExit(0)\n"
+            ),
+            encoding="utf-8",
+            newline="\n",
+        )
+        _write_executable(fake_bin / "psql", f"#!/usr/bin/env bash\nexec \"{python_sh}\" \"{psql_impl.as_posix()}\" \"$@\"\n")
+        _write_executable(
+            fake_bin / "install",
+            textwrap.dedent(
+                """\
+                #!/usr/bin/env bash
+                set -euo pipefail
+                if [[ "$1" == "-d" ]]; then
+                  shift
+                  while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                      -m|-o|-g)
+                        shift 2
+                        ;;
+                      *)
+                        mkdir -p "$1"
+                        shift
+                        ;;
+                    esac
+                  done
+                  exit 0
+                fi
+                exec /usr/bin/install "$@"
+                """
+            ),
+        )
+
+        env = _configure_postgres_test_env(fake_bin, runtime_env, case_dir)
+        first_run = _run_bash("./infra/vm/configure_postgres.sh", env=env, cwd=ROOT)
+        second_run = _run_bash("./infra/vm/configure_postgres.sh", env=env, cwd=ROOT)
+
+        assert first_run.returncode == 0, case_name
+        assert second_run.returncode == 0, case_name
+        rendered_hba = pg_hba_path.read_text(encoding="utf-8")
+
+        if case_name == "aligned_spaces":
+            assert rendered_hba.count("127.0.0.1/32") == 1
+            assert rendered_hba.count("::1/128") == 1
+            assert "host    all             all             127.0.0.1/32            scram-sha-256" in rendered_hba
+            assert "host    all             all             ::1/128                 scram-sha-256" in rendered_hba
+        elif case_name == "tab_separated":
+            assert rendered_hba.count("127.0.0.1/32") == 1
+            assert rendered_hba.count("::1/128") == 1
+            assert "host\tall\tall\t127.0.0.1/32\tscram-sha-256" in rendered_hba
+            assert "host\tall\tall\t::1/128\tscram-sha-256" in rendered_hba
+        elif case_name == "canonical_single_space":
+            assert rendered_hba.count("host all all 127.0.0.1/32 scram-sha-256") == 1
+            assert rendered_hba.count("host all all ::1/128 scram-sha-256") == 1
+        elif case_name == "missing_ipv6":
+            assert rendered_hba.count("127.0.0.1/32") == 1
+            assert rendered_hba.count("host all all ::1/128 scram-sha-256") == 1
+        elif case_name == "semantically_different":
+            assert rendered_hba.count("host all postgres 127.0.0.1/32 scram-sha-256") == 1
+            assert rendered_hba.count("host all all ::1/128 md5") == 1
+            assert rendered_hba.count("host all all 127.0.0.1/32 scram-sha-256") == 1
+            assert rendered_hba.count("host all all ::1/128 scram-sha-256") == 1
 
 
 def test_configure_postgres_rejects_invalid_private_remote_hba_configuration_before_restart(tmp_path: Path):

@@ -137,6 +137,12 @@ required_local_rules = (
     "host all all ::1/128 scram-sha-256",
 )
 
+def semantic_hba_tokens(line: str) -> tuple[str, ...] | None:
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+    return tuple(stripped.split())
+
 content = path.read_text(encoding="utf-8")
 lines = content.splitlines()
 start_indexes = [index for index, line in enumerate(lines) if line == start_marker]
@@ -161,11 +167,18 @@ for line in lines:
         continue
     if not in_block:
         result.append(line)
+existing_semantic_rules = {
+    tokens
+    for line in result
+    if (tokens := semantic_hba_tokens(line)) is not None
+}
 for local_rule in required_local_rules:
-    if local_rule not in result:
+    local_rule_tokens = tuple(local_rule.split())
+    if local_rule_tokens not in existing_semantic_rules:
         if result and result[-1] != "":
             result.append("")
         result.append(local_rule)
+        existing_semantic_rules.add(local_rule_tokens)
 while result and result[-1] == "":
     result.pop()
 if private_rules:

@@ -135,6 +135,7 @@ class CatalogReadService:
         return max(
             rows,
             key=lambda item: (
+                item.certificate.latest_flag,
                 item.version.issue_date or date.min,
                 item.version.expiry_date or date.max,
                 item.certificate.updated_at,
@@ -159,6 +160,8 @@ class CatalogReadService:
         expiry = row.version.expiry_date
         if expiry is not None and expiry < date.today():
             return "expired"
+        if not row.certificate.latest_flag:
+            return "superseded"
         return "active"
 
     @staticmethod

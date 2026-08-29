@@ -644,7 +644,7 @@ def seed_certificate_workspace_catalog(session: Session):
         certificate_id=cert_a_old.id,
         version_no=1,
         issue_date=date(2021, 9, 14),
-        expiry_date=date(2024, 9, 14),
+        expiry_date=date(2027, 9, 14),
         certificate_number="533/GCN-QLD",
         applicable_standard="WHO-GMP",
         issuing_authority="Cục Quản lý Dược Việt Nam",
@@ -960,20 +960,31 @@ def test_gxp_certificate_workspace_reads_history_and_detail_with_line_safe_filte
             gxp_type="GMP",
             line_code="A",
         )
-        detail = service.get_gxp_certificate_detail(session, certificate_id=seeded["gxp_certificate_ids"]["a_new"])
+        active_detail = service.get_gxp_certificate_detail(session, certificate_id=seeded["gxp_certificate_ids"]["a_new"])
+        superseded_detail = service.get_gxp_certificate_detail(session, certificate_id=seeded["gxp_certificate_ids"]["a_old"])
+        expired_detail = service.get_gxp_certificate_detail(session, certificate_id=seeded["gxp_certificate_ids"]["facility"])
 
     assert [item["certificate_number"] for item in payload["items"]] == ["195/GCN-QLD", "533/GCN-QLD", "ADMIN-001"]
+    assert [item["status"] for item in payload["items"]] == ["active", "superseded", "expired"]
     assert [item["context_match_kind"] for item in payload["items"]] == ["exact_line", "exact_line", "facility_wide"]
     assert all(item["line_code"] in {"A", None} for item in payload["items"])
     assert all(item["certificate_number"] != "B-001" for item in payload["items"])
 
-    assert detail["certificate_number"] == "195/GCN-QLD"
-    assert detail["line_code"] == "A"
-    assert detail["scope_summary"] == "Thuốc không vô trùng"
-    assert detail["issuing_authority"] == "Cục Quản lý Dược Việt Nam"
-    assert detail["status"] == "active"
-    assert detail["source_description"] == "Đợt kiểm tra GMP ngày 10-01-2025"
-    assert detail["limitation_text"] is None
+    assert active_detail["certificate_number"] == "195/GCN-QLD"
+    assert active_detail["line_code"] == "A"
+    assert active_detail["scope_summary"] == "Thuốc không vô trùng"
+    assert active_detail["issuing_authority"] == "Cục Quản lý Dược Việt Nam"
+    assert active_detail["status"] == "active"
+    assert active_detail["source_description"] == "Đợt kiểm tra GMP ngày 10-01-2025"
+    assert active_detail["limitation_text"] is None
+
+    assert superseded_detail["certificate_number"] == "533/GCN-QLD"
+    assert superseded_detail["status"] == "superseded"
+    assert superseded_detail["expiry_date"] == date(2027, 9, 14)
+
+    assert expired_detail["certificate_number"] == "ADMIN-001"
+    assert expired_detail["status"] == "expired"
+    assert expired_detail["source_description"] == "Cấp hành chính không gắn đợt kiểm tra"
 
 
 def test_business_eligibility_workspace_reads_history_detail_and_linked_gxp_basis(tmp_path):

@@ -223,9 +223,22 @@ def test_import_snapshot_populates_business_eligibility_detail_owner_fields_from
         assert str(version.responsible_license_issued_on) == "2013-08-16"
         assert version.responsible_license_issuer == "Sở Y tế Thành phố Hồ Chí Minh"
         assert version.business_activity_text == "Sản xuất thuốc, nguyên liệu làm thuốc"
-        assert version.current_status_text == "chứng chỉ còn hiệu lực"
+        assert version.current_status_text is None
         assert version.handled_by_name == "Hà Hoàng Phương"
         assert version.application_dossier_reference == "51/OTS-RA ngày 19/12/2024"
+
+
+def test_import_snapshot_keeps_ngung_hoat_dong_owned_by_site_only_not_business_eligibility():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        import_snapshot(session, sample_snapshot())
+        session.commit()
+
+        site = session.scalars(select(Site)).one()
+        version = session.scalars(select(BusinessEligibilityVersion)).one()
+
+        assert site.current_status_text == "Tạm ngừng một phần"
+        assert version.current_status_text is None
 
 
 def test_import_snapshot_fails_closed_when_company_assigned_specialist_conflicts_across_sites():

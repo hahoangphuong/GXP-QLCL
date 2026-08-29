@@ -546,10 +546,10 @@ describe("App Slice A.4 search workspace", () => {
           latest_flag: false,
           certificate_number: "533/GCN-QLD",
           issue_date: "2021-09-14",
-          expiry_date: "2024-09-14",
+          expiry_date: "2027-09-14",
           applicable_standard: "WHO-GMP",
           issuing_authority: "Cục Quản lý Dược Việt Nam",
-          status: "expired",
+          status: "superseded",
         },
       ],
     });
@@ -586,10 +586,10 @@ describe("App Slice A.4 search workspace", () => {
         latest_flag: false,
         certificate_number: "533/GCN-QLD",
         issue_date: "2021-09-14",
-        expiry_date: "2024-09-14",
+        expiry_date: "2027-09-14",
         applicable_standard: "WHO-GMP",
         issuing_authority: "Cục Quản lý Dược Việt Nam",
-        status: "expired",
+        status: "superseded",
         facility_name: "Nhà máy A",
         address: "KCN A",
         company_name: "Công ty A",
@@ -610,6 +610,7 @@ describe("App Slice A.4 search workspace", () => {
     fireEvent.click(screen.getByText("533/GCN-QLD"));
 
     expect(await screen.findByText("Thuốc không vô trùng cũ")).toBeInTheDocument();
+    expect(screen.getByText("Đã được thay thế")).toBeInTheDocument();
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(apiMocks.listSiteGxpCertificates).toHaveBeenCalledTimes(1);
     expect(apiMocks.getGxpCertificateDetail).toHaveBeenCalledTimes(2);

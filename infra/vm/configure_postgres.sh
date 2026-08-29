@@ -10,6 +10,7 @@ DB_USER="${DB_USER:-gxp_app}"
 DB_PASSWORD="${DB_PASSWORD:-}"
 DB_HOST="${DB_HOST:-127.0.0.1}"
 DB_PORT="${DB_PORT:-5432}"
+PG_LISTEN_ADDRESSES="${PG_LISTEN_ADDRESSES:-127.0.0.1}"
 PG_SHARED_BUFFERS_MB="${PG_SHARED_BUFFERS_MB:-256}"
 PG_EFFECTIVE_CACHE_SIZE_MB="${PG_EFFECTIVE_CACHE_SIZE_MB:-768}"
 PG_WORK_MEM_MB="${PG_WORK_MEM_MB:-4}"
@@ -36,6 +37,7 @@ DB_USER="${DB_USER:-gxp_app}"
 DB_PASSWORD="${DB_PASSWORD:-}"
 DB_HOST="${DB_HOST:-127.0.0.1}"
 DB_PORT="${DB_PORT:-5432}"
+PG_LISTEN_ADDRESSES="${PG_LISTEN_ADDRESSES:-${PG_LISTEN_ADDRESSES}}"
 SUPPORTED_POSTGRES_MAJORS="${VM_SUPPORTED_POSTGRES_MAJORS:-${SUPPORTED_POSTGRES_MAJORS}}"
 POSTGRES_MAJOR="${VM_POSTGRES_MAJOR:-${POSTGRES_MAJOR}}"
 POSTGRES_CLUSTER_NAME="${VM_POSTGRES_CLUSTER_NAME:-${POSTGRES_CLUSTER_NAME}}"
@@ -53,10 +55,15 @@ case ",${SUPPORTED_POSTGRES_MAJORS}," in
   *) fail "VM_POSTGRES_MAJOR=${POSTGRES_MAJOR} is unsupported. Supported majors: ${SUPPORTED_POSTGRES_MAJORS}." ;;
 esac
 
-POSTGRES_LISTEN_ADDRESS="${DB_HOST}"
-if [[ "${POSTGRES_LISTEN_ADDRESS}" == "localhost" ]]; then
-  POSTGRES_LISTEN_ADDRESS="127.0.0.1"
-fi
+POSTGRES_CONFIG_JSON="$(
+  python3 "${REPO_ROOT}/tools/vm_postgres_config.py" render-json "${VM_RUNTIME_ENV_FILE:-/etc/gxp/runtime.env}"
+)" || fail "Invalid PostgreSQL VM configuration."
+POSTGRES_LISTEN_ADDRESSES="$(
+  python3 -c 'import json, sys; print(json.loads(sys.argv[1])["listen_addresses_csv"])' "${POSTGRES_CONFIG_JSON}"
+)" || fail "Could not resolve PG_LISTEN_ADDRESSES."
+PRIVATE_HBA_RULES="$(
+  python3 -c 'import json, sys; print("\n".join(json.loads(sys.argv[1])["private_hba_rules"]))' "${POSTGRES_CONFIG_JSON}"
+)" || fail "Could not resolve private PostgreSQL HBA rules."
 
 mapfile -t PG_CLUSTERS < <(pg_lsclusters --no-header 2>/dev/null || true)
 MATCHING_CLUSTER_COUNT=0
@@ -109,7 +116,7 @@ fi
 
 install -d -m 0755 "${PG_CLUSTER_DIR}/conf.d"
 cat > "${PG_CLUSTER_DIR}/conf.d/90-gxp-vm.conf" <<EOF
-listen_addresses = '${POSTGRES_LISTEN_ADDRESS}'
+listen_addresses = '${POSTGRES_LISTEN_ADDRESSES}'
 password_encryption = 'scram-sha-256'
 shared_buffers = '${PG_SHARED_BUFFERS_MB}MB'
 effective_cache_size = '${PG_EFFECTIVE_CACHE_SIZE_MB}MB'
@@ -120,6 +127,38 @@ max_connections = ${PG_MAX_CONNECTIONS}
 EOF
 grep -q '^host\s\+all\s\+all\s\+127.0.0.1/32\s\+scram-sha-256$' "${PG_CLUSTER_DIR}/pg_hba.conf" || printf '\nhost all all 127.0.0.1/32 scram-sha-256\n' >> "${PG_CLUSTER_DIR}/pg_hba.conf"
 grep -q '^host\s\+all\s\+all\s\+::1/128\s\+scram-sha-256$' "${PG_CLUSTER_DIR}/pg_hba.conf" || printf 'host all all ::1/128 scram-sha-256\n' >> "${PG_CLUSTER_DIR}/pg_hba.conf"
+python3 - "${PG_CLUSTER_DIR}/pg_hba.conf" "${PRIVATE_HBA_RULES}" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+private_rules = [line for line in sys.argv[2].splitlines() if line.strip()]
+start_marker = "# BEGIN GXP MANAGED PRIVATE POSTGRES ACCESS"
+end_marker = "# END GXP MANAGED PRIVATE POSTGRES ACCESS"
+
+content = path.read_text(encoding="utf-8")
+lines = content.splitlines()
+result: list[str] = []
+in_block = False
+for line in lines:
+    if line == start_marker:
+        in_block = True
+        continue
+    if line == end_marker:
+        in_block = False
+        continue
+    if not in_block:
+        result.append(line)
+while result and result[-1] == "":
+    result.pop()
+if private_rules:
+    if result:
+        result.append("")
+    result.append(start_marker)
+    result.extend(private_rules)
+    result.append(end_marker)
+path.write_text("\n".join(result) + "\n", encoding="utf-8", newline="\n")
+PY
 
 pg_ctlcluster "${POSTGRES_MAJOR}" "${POSTGRES_CLUSTER_NAME}" restart
 pg_isready -h "${DB_HOST}" -p "${DB_PORT}" -d "${DB_NAME}" >/dev/null

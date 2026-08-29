@@ -3,10 +3,17 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import json
 import os
+from pathlib import Path
 import re
 import sys
 from typing import Any
 from urllib.parse import urlparse
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tools.vm_postgres_config import validate_vm_postgres_config
 
 
 BOOLEAN_TRUE = {"1", "true", "yes", "on"}
@@ -68,6 +75,7 @@ class VmDeployPlan:
     pg_maintenance_work_mem_mb: int
     pg_autovacuum_work_mem_mb: int
     pg_max_connections: int
+    pg_listen_addresses: str
     public_base_url: str
     backup_gcs_bucket: str
     backup_local_staging_dir: str
@@ -185,6 +193,8 @@ def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> Validation
             errors.append("DB_HOST must stay local/private for VM production baseline.")
         if db_port != "5432":
             warnings.append("DB_PORT is not 5432; confirm local PostgreSQL listener intentionally differs from baseline.")
+    postgres_config, postgres_errors = validate_vm_postgres_config(source)
+    errors.extend(postgres_errors)
     database_url = _resolve_database_url(source, errors)
 
     storage_class = _get(source, "STORAGE_CLASS", "synology_smb").lower()
@@ -258,6 +268,7 @@ def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> Validation
     pg_maintenance_work_mem_mb = _parse_int(source, "PG_MAINTENANCE_WORK_MEM_MB", errors, 64)
     pg_autovacuum_work_mem_mb = _parse_int(source, "PG_AUTOVACUUM_WORK_MEM_MB", errors, 64)
     pg_max_connections = _parse_int(source, "PG_MAX_CONNECTIONS", errors, 30)
+    pg_listen_addresses = "127.0.0.1" if postgres_config is None else postgres_config.listen_addresses_csv
     if pg_max_connections < 10 or pg_max_connections > 100:
         warnings.append("PG_MAX_CONNECTIONS is outside the usual small-VM baseline range of 10-100.")
     backup_gcs_bucket = _require(source, "BACKUP_GCS_BUCKET", errors)
@@ -337,11 +348,17 @@ def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> Validation
         "PG_MAINTENANCE_WORK_MEM_MB": str(pg_maintenance_work_mem_mb),
         "PG_AUTOVACUUM_WORK_MEM_MB": str(pg_autovacuum_work_mem_mb),
         "PG_MAX_CONNECTIONS": str(pg_max_connections),
+        "PG_LISTEN_ADDRESSES": pg_listen_addresses,
         "PUBLIC_BASE_URL": public_base_url,
         "BACKUP_GCS_BUCKET": backup_gcs_bucket,
         "BACKUP_LOCAL_STAGING_DIR": backup_local_staging_dir,
         "DEPLOY_BRANCH": deploy_branch,
     }
+    if postgres_config is not None and postgres_config.private_access is not None:
+        runtime_env["PG_PRIVATE_CLIENT_CIDR"] = postgres_config.private_access.client_cidr
+        runtime_env["PG_PRIVATE_DB_NAME"] = postgres_config.private_access.db_name
+        runtime_env["PG_PRIVATE_RUNTIME_USER"] = postgres_config.private_access.runtime_user
+        runtime_env["PG_PRIVATE_MIGRATOR_USER"] = postgres_config.private_access.migrator_user
     runtime_env = {key: value for key, value in runtime_env.items() if value}
 
     plan = None
@@ -397,6 +414,7 @@ def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> Validation
             pg_maintenance_work_mem_mb=pg_maintenance_work_mem_mb,
             pg_autovacuum_work_mem_mb=pg_autovacuum_work_mem_mb,
             pg_max_connections=pg_max_connections,
+            pg_listen_addresses=pg_listen_addresses,
             public_base_url=public_base_url,
             backup_gcs_bucket=backup_gcs_bucket,
             backup_local_staging_dir=backup_local_staging_dir,

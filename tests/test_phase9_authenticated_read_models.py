@@ -25,6 +25,9 @@ from backend.app.db.models.phase1 import (
     BusinessEligibilityCertificateLink,
     BusinessEligibilityVersion,
     Case,
+    CaseApplication,
+    CaseAssessment,
+    CapaCycle,
     Certificate,
     CertificateScope,
     CertificateVersion,
@@ -32,7 +35,9 @@ from backend.app.db.models.phase1 import (
     Company,
     InspectionEvent,
     InspectionEventType,
+    InspectionPlan,
     InspectionOutcome,
+    InspectionTeam,
     RbacPermission,
     RbacRole,
     RbacRolePermission,
@@ -106,6 +111,7 @@ def test_phase9_detail_routes_are_registered():
     assert "/companies/{company_id}" in routes
     assert "/sites/{site_id}" in routes
     assert "/cases/{case_id}" in routes
+    assert "/cases/{case_id}/workspace" in routes
     assert "/dashboard/summary" in routes
     assert "/search/facilities" in routes
     assert "/sites/{site_id}/workspace" in routes
@@ -576,7 +582,12 @@ def seed_line_grain_catalog(session: Session):
 
 
 def seed_certificate_workspace_catalog(session: Session):
-    company = Company(legal_name="Công ty chứng nhận", short_name="CERT", legal_address="88 Trụ sở")
+    company = Company(
+        legal_name="Công ty chứng nhận",
+        short_name="CERT",
+        legal_address="88 Trụ sở",
+        assigned_specialist_text="Hà Hoàng Phương",
+    )
     session.add(company)
     session.flush()
     site = Site(
@@ -614,7 +625,103 @@ def seed_certificate_workspace_catalog(session: Session):
     session.add_all([case_a, case_b])
     session.flush()
 
-    session.add(InspectionOutcome(case_id=case_a.id, inspected_on=date(2025, 1, 10), inspected_to_on=date(2025, 1, 10)))
+    session.add(
+        CaseApplication(
+            case_id=case_a.id,
+            submitted_on=datetime(2025, 1, 2, tzinfo=timezone.utc),
+            dossier_code="HS-GMP-A",
+            dossier_reference="QĐ-TN-4201",
+            applicant_name="Nguyễn Văn A",
+        )
+    )
+    session.add(
+        CaseAssessment(
+            case_id=case_a.id,
+            assessed_on=datetime(2025, 1, 6, tzinfo=timezone.utc),
+            assessor_name="Hà Hoàng Phương",
+            assessment_result="Đề xuất cấp chứng nhận GMP",
+            notes="Đủ điều kiện theo hồ sơ",
+        )
+    )
+    session.add(
+        InspectionPlan(
+            case_id=case_a.id,
+            plan_start_on=date(2025, 1, 10),
+            plan_end_on=date(2025, 1, 11),
+            planning_sheet_name="KH-KT-4201",
+            decision_document_hint="QĐ-KT-4201",
+        )
+    )
+    session.add(
+        InspectionTeam(
+            case_id=case_a.id,
+            display_text="Đoàn kiểm tra GMP dây chuyền A",
+        )
+    )
+    session.add(
+        InspectionOutcome(
+            case_id=case_a.id,
+            inspected_on=date(2025, 1, 10),
+            inspected_to_on=date(2025, 1, 10),
+            decision_reference="QĐ-KT-4201",
+            bbkt_reference="BBKT-4201",
+            outcome_result="Đạt WHO-GMP dây chuyền A",
+        )
+    )
+    session.add_all(
+        [
+            InspectionEvent(
+                case_id=case_a.id,
+                event_type=InspectionEventType.APPLICATION_SUBMITTED,
+                occurred_at=datetime(2025, 1, 2, 8, 0, tzinfo=timezone.utc),
+                payload="HS-GMP-A",
+            ),
+            InspectionEvent(
+                case_id=case_a.id,
+                event_type=InspectionEventType.ASSESSMENT_COMPLETED,
+                occurred_at=datetime(2025, 1, 6, 9, 0, tzinfo=timezone.utc),
+                payload="Đề xuất cấp chứng nhận GMP",
+            ),
+            InspectionEvent(
+                case_id=case_a.id,
+                event_type=InspectionEventType.INSPECTION_EXECUTED,
+                occurred_at=datetime(2025, 1, 10, 10, 0, tzinfo=timezone.utc),
+                payload="QĐ-KT-4201",
+            ),
+            InspectionEvent(
+                case_id=case_a.id,
+                event_type=InspectionEventType.CERTIFICATE_ISSUED,
+                occurred_at=datetime(2025, 4, 17, 10, 0, tzinfo=timezone.utc),
+                payload="GMP",
+            ),
+        ]
+    )
+    session.add_all(
+        [
+            CapaCycle(
+                case_id=case_a.id,
+                round_no=1,
+                requested_on=date(2025, 1, 12),
+                submitted_on=date(2025, 1, 14),
+                assessed_on=date(2025, 1, 20),
+                assessor_name="Hà Hoàng Phương",
+                result="Đạt",
+                status="accepted",
+                notes="Hoàn tất CAPA lần 1",
+            ),
+            CapaCycle(
+                case_id=case_a.id,
+                round_no=2,
+                requested_on=date(2025, 2, 1),
+                submitted_on=date(2025, 2, 3),
+                assessed_on=date(2025, 2, 10),
+                assessor_name="Hà Hoàng Phương",
+                result="Đạt",
+                status="accepted",
+                notes="Hoàn tất CAPA lần 2",
+            ),
+        ]
+    )
 
     cert_a_new = Certificate(site_id=site.id, case_id=case_a.id, certificate_type="GMP", line_code="A", latest_flag=True)
     cert_a_old = Certificate(site_id=site.id, case_id=case_a.id, certificate_type="GMP", line_code="A", latest_flag=False)
@@ -750,6 +857,10 @@ def seed_certificate_workspace_catalog(session: Session):
     session.commit()
     return {
         "site_id": site.id,
+        "case_ids": {
+            "a": case_a.id,
+            "b": case_b.id,
+        },
         "gxp_certificate_ids": {
             "a_new": cert_a_new.id,
             "a_old": cert_a_old.id,
@@ -1027,6 +1138,75 @@ def test_business_eligibility_workspace_reads_history_detail_and_linked_gxp_basi
             "link_role": "source_certificate",
         }
     ]
+
+
+def test_case_workspace_reads_owner_correct_sections_and_direct_links_only(tmp_path):
+    database_path = tmp_path / "catalog-case-workspace.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+
+    app = create_app(database_url)
+    case_workspace_route = next(route for route in app.routes if getattr(route, "path", "") == "/cases/{case_id}/workspace")
+
+    with Session(engine) as session:
+        payload = case_workspace_route.endpoint(
+            case_id=seeded["case_ids"]["a"],
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+
+    assert payload.case_summary.legacy_inspection_code == "KT-GMP-A-2025"
+    assert payload.case_summary.gxp_type == "GMP"
+    assert payload.case_summary.scope_code == "A"
+    assert payload.application.dossier_code == "HS-GMP-A"
+    assert payload.application.assigned_specialist == "Hà Hoàng Phương"
+    assert payload.inspection.decision_reference == "QĐ-KT-4201"
+    assert payload.inspection.planning_sheet_name == "KH-KT-4201"
+    assert payload.inspection.bbkt_reference == "BBKT-4201"
+    assert payload.inspection.team_display_text == "Đoàn kiểm tra GMP dây chuyền A"
+    assert payload.inspection.outcome_result == "Đạt WHO-GMP dây chuyền A"
+    assert [cycle.round_no for cycle in payload.remediation.cycles] == [1, 2]
+    assert payload.processing.assessment_result == "Đề xuất cấp chứng nhận GMP"
+    assert [event.event_type for event in payload.processing.events] == [
+        "application_submitted",
+        "assessment_completed",
+        "inspection_executed",
+        "certificate_issued",
+    ]
+    assert [row.certificate_number for row in payload.linked_gxp_certificates] == ["195/GCN-QLD", "533/GCN-QLD"]
+    assert all(row.case_id == seeded["case_ids"]["a"] for row in payload.linked_gxp_certificates)
+    assert all(row.certificate_number != "ADMIN-001" for row in payload.linked_gxp_certificates)
+    assert all(row.certificate_number != "B-001" for row in payload.linked_gxp_certificates)
+    assert [row.certificate_number for row in payload.linked_business_eligibility_certificates] == ["1201/ĐKKDD-BYT"]
+    basis_certificates = payload.linked_business_eligibility_certificates[0].linked_gxp_certificates
+    assert len(basis_certificates) == 1
+    assert basis_certificates[0].certificate_id == seeded["gxp_certificate_ids"]["a_new"]
+    assert basis_certificates[0].certificate_type == "GMP"
+    assert basis_certificates[0].line_code == "A"
+    assert basis_certificates[0].certificate_number == "195/GCN-QLD"
+    assert basis_certificates[0].issue_date == date(2025, 4, 17)
+    assert basis_certificates[0].link_role == "source_certificate"
+
+
+def test_case_workspace_does_not_fabricate_business_eligibility_for_unlinked_case(tmp_path):
+    database_path = tmp_path / "catalog-case-workspace-unlinked.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        payload = service.get_case_workspace(session, case_id=seeded["case_ids"]["b"])
+
+    assert payload["linked_gxp_certificates"][0]["certificate_number"] == "B-001"
+    assert payload["linked_business_eligibility_certificates"] == []
 
 
 def test_search_facilities_supports_field_specific_name_scope_and_gmpbb_filters(tmp_path):

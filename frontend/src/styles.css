@@ -817,6 +817,49 @@ tr:focus-visible {
   font-weight: 700;
 }
 
+.event-workspace-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.event-step-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.workspace-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.workspace-section h4 {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--text-strong);
+}
+
+.event-linked-certificate-workspace {
+  min-height: 360px;
+}
+
+.capa-cycle-table th:first-child,
+.capa-cycle-table td:first-child {
+  width: 3.2rem;
+}
+
+.event-milestone-table th:first-child,
+.event-milestone-table td:first-child {
+  width: 11rem;
+}
+
+.event-milestone-table th:nth-child(2),
+.event-milestone-table td:nth-child(2) {
+  width: 7rem;
+}
+
 .action-panel {
   justify-content: flex-start;
   padding-top: 0.65rem;

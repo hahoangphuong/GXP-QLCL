@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getAppStatus,
   getCaseDetail,
+  getCaseWorkspace,
   getFacilityWorkspace,
   getDocumentDetail,
   getGenerationRun,
@@ -93,11 +94,12 @@ describe("frontend API routing contract", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/cases", expect.any(Object));
   });
 
-  it("uses exactly one /api prefix for document and case detail endpoints", async () => {
+  it("uses exactly one /api prefix for document, case detail, and case workspace endpoints", async () => {
     const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: {} }));
     vi.stubGlobal("fetch", fetchMock);
 
     await getCaseDetail("case-123", { username: "operator.local", role: "manager" }, true);
+    await getCaseWorkspace("case-123", { username: "operator.local", role: "manager" }, true);
     await prepareDocument(
       { case_id: "case-123", family_code: "DDKD_CERTIFICATE" } as never,
       { username: "operator.local", role: "manager" },
@@ -114,6 +116,7 @@ describe("frontend API routing contract", () => {
     const urls = fetchMock.mock.calls.map((call) => call[0]);
     expect(urls).toEqual([
       "/api/cases/case-123",
+      "/api/cases/case-123/workspace",
       "/api/documents/prepare",
       "/api/documents/render-template-docx",
       "/api/document-generation-runs/run-123",

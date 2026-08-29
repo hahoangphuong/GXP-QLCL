@@ -165,6 +165,83 @@ class FacilityWorkspaceRead(BaseModel):
     history: list[FacilityHistoryItemRead]
 
 
+class CaseWorkspaceSummaryRead(BaseModel):
+    id: str
+    legacy_inspection_id: int | None
+    legacy_inspection_code: str | None
+    site_id: str
+    facility_name: str
+    company_name: str
+    gxp_type: str
+    scope_code: str | None
+    applicable_standard: str | None
+    inspection_type: str | None
+    state: str
+    opened_year: int | None
+
+
+class CaseWorkspaceApplicationRead(BaseModel):
+    submitted_on: datetime | None
+    dossier_code: str | None
+    dossier_reference: str | None
+    applicant_name: str | None
+    assigned_specialist: str | None
+
+
+class CaseWorkspaceInspectionRead(BaseModel):
+    decision_reference: str | None
+    decision_document_hint: str | None
+    plan_start_on: date | None
+    plan_end_on: date | None
+    planning_sheet_name: str | None
+    inspected_on: date | None
+    inspected_to_on: date | None
+    executed_on: datetime | None
+    bbkt_reference: str | None
+    outcome_result: str | None
+    team_display_text: str | None
+
+
+class CaseWorkspaceRemediationCycleRead(BaseModel):
+    capa_cycle_id: str
+    round_no: int
+    requested_on: date | None
+    submitted_on: date | None
+    assessed_on: date | None
+    assessor_name: str | None
+    result: str | None
+    status: str
+    notes: str | None
+
+
+class CaseWorkspaceRemediationRead(BaseModel):
+    cycles: list[CaseWorkspaceRemediationCycleRead]
+
+
+class CaseWorkspaceProcessingEventRead(BaseModel):
+    event_type: str
+    occurred_at: datetime | None
+    payload: str | None
+
+
+class CaseWorkspaceProcessingRead(BaseModel):
+    assessed_on: datetime | None
+    assessor_name: str | None
+    assessment_result: str | None
+    notes: str | None
+    events: list[CaseWorkspaceProcessingEventRead]
+
+
+class CaseWorkspaceRead(BaseModel):
+    case_summary: CaseWorkspaceSummaryRead
+    application: CaseWorkspaceApplicationRead
+    inspection: CaseWorkspaceInspectionRead
+    remediation: CaseWorkspaceRemediationRead
+    processing: CaseWorkspaceProcessingRead
+    linked_gxp_certificates: list[GxpCertificateDetailRead]
+    linked_business_eligibility_certificates: list[BusinessEligibilityDetailRead]
+
+
 class GxpCertificateListItemRead(BaseModel):
     certificate_id: str
     site_id: str

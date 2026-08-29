@@ -1,7 +1,7 @@
 import type {
   BusinessEligibilityDetail,
   BusinessEligibilityListItem,
-  CaseDetail,
+  CaseWorkspace,
   FacilityHistoryItem,
   FacilityWorkspaceSummary,
   GxpCertificateDetail,
@@ -28,9 +28,9 @@ export function FacilityWorkspaceTabs({
   selectedHistory,
   selectedHistoryId,
   onHistorySelect,
-  caseDetail,
-  caseDetailLoading,
-  caseDetailError,
+  caseWorkspace,
+  caseWorkspaceLoading,
+  caseWorkspaceError,
   activeEventTab,
   onEventTabChange,
   gxpCertificates,
@@ -57,9 +57,9 @@ export function FacilityWorkspaceTabs({
   selectedHistory: FacilityHistoryItem | null;
   selectedHistoryId: string | null;
   onHistorySelect: (historyId: string) => void;
-  caseDetail: CaseDetail | null;
-  caseDetailLoading: boolean;
-  caseDetailError: string | null;
+  caseWorkspace: CaseWorkspace | null;
+  caseWorkspaceLoading: boolean;
+  caseWorkspaceError: string | null;
   activeEventTab: string;
   onEventTabChange: (tab: string) => void;
   gxpCertificates: GxpCertificateListItem[];
@@ -109,9 +109,9 @@ export function FacilityWorkspaceTabs({
             <div className="event-workspace-detail-pane">
               <EventWorkspace
                 activeTab={activeEventTab}
-                caseDetail={caseDetail}
-                caseDetailError={caseDetailError}
-                caseDetailLoading={caseDetailLoading}
+                caseWorkspace={caseWorkspace}
+                caseWorkspaceError={caseWorkspaceError}
+                caseWorkspaceLoading={caseWorkspaceLoading}
                 onTabChange={onEventTabChange}
                 selectedHistory={selectedHistory}
               />

@@ -4,6 +4,7 @@ import type {
   BusinessEligibilityList,
   CaseDetail,
   CaseListItem,
+  CaseWorkspace,
   Company,
   DashboardSummary,
   DocumentDetail,
@@ -223,6 +224,15 @@ export function getCaseDetail(
   bearerToken?: string | null,
 ): Promise<CaseDetail> {
   return requestJson<CaseDetail>(`/cases/${caseId}`, { auth, useStubAuth, bearerToken });
+}
+
+export function getCaseWorkspace(
+  caseId: string,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<CaseWorkspace> {
+  return requestJson<CaseWorkspace>(`/cases/${caseId}/workspace`, { auth, useStubAuth, bearerToken });
 }
 
 export function listSiteGxpCertificates(

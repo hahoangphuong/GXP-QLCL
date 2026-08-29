@@ -163,6 +163,73 @@ export type FacilityWorkspace = {
   history: FacilityHistoryItem[];
 };
 
+export type CaseWorkspaceSummary = {
+  id: string;
+  legacy_inspection_id: number | null;
+  legacy_inspection_code: string | null;
+  site_id: string;
+  facility_name: string;
+  company_name: string;
+  gxp_type: string;
+  scope_code: string | null;
+  applicable_standard: string | null;
+  inspection_type: string | null;
+  state: string;
+  opened_year: number | null;
+};
+
+export type CaseWorkspaceApplication = {
+  submitted_on: string | null;
+  dossier_code: string | null;
+  dossier_reference: string | null;
+  applicant_name: string | null;
+  assigned_specialist: string | null;
+};
+
+export type CaseWorkspaceInspection = {
+  decision_reference: string | null;
+  decision_document_hint: string | null;
+  plan_start_on: string | null;
+  plan_end_on: string | null;
+  planning_sheet_name: string | null;
+  inspected_on: string | null;
+  inspected_to_on: string | null;
+  executed_on: string | null;
+  bbkt_reference: string | null;
+  outcome_result: string | null;
+  team_display_text: string | null;
+};
+
+export type CaseWorkspaceRemediationCycle = {
+  capa_cycle_id: string;
+  round_no: number;
+  requested_on: string | null;
+  submitted_on: string | null;
+  assessed_on: string | null;
+  assessor_name: string | null;
+  result: string | null;
+  status: string;
+  notes: string | null;
+};
+
+export type CaseWorkspaceRemediation = {
+  cycles: CaseWorkspaceRemediationCycle[];
+};
+
+export type CaseWorkspaceProcessingEvent = {
+  event_type: string;
+  occurred_at: string | null;
+  payload: string | null;
+};
+
+export type CaseWorkspaceProcessing = {
+  assessed_on: string | null;
+  assessor_name: string | null;
+  assessment_result: string | null;
+  notes: string | null;
+  events: CaseWorkspaceProcessingEvent[];
+};
+
 export type GxpCertificateListItem = {
   certificate_id: string;
   site_id: string;
@@ -259,6 +326,16 @@ export type BusinessEligibilityDetail = {
   replaces_certificate_number: string | null;
   replaced_by_certificate_number: string | null;
   linked_gxp_certificates: BusinessEligibilityBasisCertificate[];
+};
+
+export type CaseWorkspace = {
+  case_summary: CaseWorkspaceSummary;
+  application: CaseWorkspaceApplication;
+  inspection: CaseWorkspaceInspection;
+  remediation: CaseWorkspaceRemediation;
+  processing: CaseWorkspaceProcessing;
+  linked_gxp_certificates: GxpCertificateDetail[];
+  linked_business_eligibility_certificates: BusinessEligibilityDetail[];
 };
 
 export type DocumentPreparationResponse = {

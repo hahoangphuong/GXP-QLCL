@@ -9,7 +9,7 @@ import { FacilityTable } from "../features/search/FacilityTable";
 import { FacilityWorkspaceTabs } from "../features/search/FacilityWorkspaceTabs";
 import {
   getBusinessEligibilityDetail,
-  getCaseDetail,
+  getCaseWorkspace,
   getFacilityWorkspace,
   getGxpCertificateDetail,
   listSiteBusinessEligibilityCertificates,
@@ -19,7 +19,7 @@ import {
 import type {
   BusinessEligibilityDetail,
   BusinessEligibilityListItem,
-  CaseDetail,
+  CaseWorkspace,
   FacilitySearchResult,
   FacilityWorkspace,
   GxpCertificateDetail,
@@ -79,9 +79,9 @@ export function SearchPage({
   const [workspace, setWorkspace] = useState<FacilityWorkspace | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
-  const [selectedCaseDetail, setSelectedCaseDetail] = useState<CaseDetail | null>(null);
-  const [caseDetailLoading, setCaseDetailLoading] = useState(false);
-  const [caseDetailError, setCaseDetailError] = useState<string | null>(null);
+  const [selectedCaseWorkspace, setSelectedCaseWorkspace] = useState<CaseWorkspace | null>(null);
+  const [caseWorkspaceLoading, setCaseWorkspaceLoading] = useState(false);
+  const [caseWorkspaceError, setCaseWorkspaceError] = useState<string | null>(null);
   const [gxpCertificates, setGxpCertificates] = useState<GxpCertificateListItem[]>([]);
   const [gxpCertificatesLoading, setGxpCertificatesLoading] = useState(false);
   const [gxpCertificatesError, setGxpCertificatesError] = useState<string | null>(null);
@@ -298,27 +298,27 @@ export function SearchPage({
   }, [access, selectedResult]);
 
   useEffect(() => {
-    setSelectedCaseDetail(null);
-    setCaseDetailError(null);
-    setCaseDetailLoading(false);
+    setSelectedCaseWorkspace(null);
+    setCaseWorkspaceError(null);
+    setCaseWorkspaceLoading(false);
     if (!selectedHistory || selectedHistory.source_type !== "case") {
       return;
     }
     let cancelled = false;
-    setCaseDetailLoading(true);
-    void getCaseDetail(selectedHistory.id, access.auth, access.useStubAuth, access.bearerToken)
+    setCaseWorkspaceLoading(true);
+    void getCaseWorkspace(selectedHistory.id, access.auth, access.useStubAuth, access.bearerToken)
       .then((payload) => {
         if (!cancelled) {
-          setSelectedCaseDetail(payload);
-          setCaseDetailError(null);
-          setCaseDetailLoading(false);
+          setSelectedCaseWorkspace(payload);
+          setCaseWorkspaceError(null);
+          setCaseWorkspaceLoading(false);
         }
       })
       .catch((error: Error) => {
         if (!cancelled) {
-          setSelectedCaseDetail(null);
-          setCaseDetailError(error.message);
-          setCaseDetailLoading(false);
+          setSelectedCaseWorkspace(null);
+          setCaseWorkspaceError(error.message);
+          setCaseWorkspaceLoading(false);
         }
       });
     return () => {
@@ -466,8 +466,8 @@ export function SearchPage({
     setActiveTab(DEFAULT_EVENT_TAB);
     setWorkspace(null);
     setWorkspaceError(null);
-    setSelectedCaseDetail(null);
-    setCaseDetailError(null);
+    setSelectedCaseWorkspace(null);
+    setCaseWorkspaceError(null);
     resetCertificateWorkspaceState();
   }
 
@@ -555,9 +555,9 @@ export function SearchPage({
         ) : (
           <FacilityWorkspaceTabs
             activeEventTab={activeTab}
-            caseDetail={selectedCaseDetail}
-            caseDetailError={caseDetailError}
-            caseDetailLoading={caseDetailLoading}
+            caseWorkspace={selectedCaseWorkspace}
+            caseWorkspaceError={caseWorkspaceError}
+            caseWorkspaceLoading={caseWorkspaceLoading}
             eligibilityCertificateDetail={eligibilityCertificateDetail}
             eligibilityCertificateDetailError={eligibilityCertificateDetailError}
             eligibilityCertificateDetailLoading={eligibilityCertificateDetailLoading}

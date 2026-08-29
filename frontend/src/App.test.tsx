@@ -21,6 +21,7 @@ const apiMocks = vi.hoisted(() => ({
   searchFacilities: vi.fn().mockResolvedValue({ items: [], total_count: 0, offset: 0, limit: 100 }),
   getFacilityWorkspace: vi.fn().mockResolvedValue(null),
   getCaseDetail: vi.fn().mockResolvedValue(null),
+  getCaseWorkspace: vi.fn().mockResolvedValue(null),
   listSiteGxpCertificates: vi.fn().mockResolvedValue({ items: [] }),
   getGxpCertificateDetail: vi.fn().mockResolvedValue(null),
   listSiteBusinessEligibilityCertificates: vi.fn().mockResolvedValue({ items: [] }),
@@ -164,6 +165,92 @@ function buildWorkspace(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function buildCaseWorkspace(overrides: Record<string, unknown> = {}) {
+  return {
+    case_summary: {
+      id: "case-1",
+      legacy_inspection_id: 1,
+      legacy_inspection_code: "KT-2026-GMP-A",
+      site_id: "site-1",
+      facility_name: "Nhà máy A",
+      company_name: "Công ty A",
+      gxp_type: "GMP",
+      scope_code: "A",
+      applicable_standard: "WHO-GMP",
+      inspection_type: "Định kỳ",
+      state: "awaiting_certificate_decision",
+      opened_year: 2026,
+    },
+    application: {
+      submitted_on: "2026-01-15T00:00:00Z",
+      dossier_code: "HS-001",
+      dossier_reference: "QĐ-TN-01",
+      applicant_name: "Nguyễn Văn A",
+      assigned_specialist: "Hà Hoàng Phương",
+    },
+    inspection: {
+      decision_reference: "QĐ-KT-01",
+      decision_document_hint: null,
+      plan_start_on: null,
+      plan_end_on: null,
+      planning_sheet_name: null,
+      inspected_on: "2026-08-05",
+      inspected_to_on: "2026-08-06",
+      executed_on: "2026-08-06T09:30:00Z",
+      bbkt_reference: "BBKT-01",
+      outcome_result: "Đạt WHO-GMP dây chuyền A",
+      team_display_text: null,
+    },
+    remediation: {
+      cycles: [],
+    },
+    processing: {
+      assessed_on: "2026-08-08T00:00:00Z",
+      assessor_name: "Chuyên viên B",
+      assessment_result: "Đề xuất cấp chứng nhận",
+      notes: null,
+      events: [
+        {
+          event_type: "application_submitted",
+          occurred_at: "2026-01-15T00:00:00Z",
+          payload: "HS-001",
+        },
+        {
+          event_type: "inspection_executed",
+          occurred_at: "2026-08-06T09:30:00Z",
+          payload: "QĐ-KT-01",
+        },
+      ],
+    },
+    linked_gxp_certificates: [
+      {
+        certificate_id: "cert-a-new",
+        site_id: "site-1",
+        case_id: "case-1",
+        certificate_type: "GMP",
+        line_code: "A",
+        issuance_basis: "inspection_case",
+        latest_flag: true,
+        certificate_number: "195/GCN-QLD",
+        issue_date: "2025-04-17",
+        expiry_date: "2027-04-17",
+        applicable_standard: "WHO-GMP",
+        issuing_authority: "Cục Quản lý Dược Việt Nam",
+        status: "active",
+        facility_name: "Nhà máy A",
+        address: "KCN A",
+        company_name: "Công ty A",
+        company_legal_address: "123 Trụ sở chính",
+        scope_summary: "Thuốc không vô trùng",
+        limitation_text: null,
+        source_description: "Đợt kiểm tra GMP ngày 10-01-2025",
+      },
+    ],
+    linked_business_eligibility_certificates: [],
+    ...overrides,
+  };
+}
+
 function renderApp(initialEntries: string[] = ["/"]) {
   return render(
     <MemoryRouter initialEntries={initialEntries}>
@@ -213,18 +300,7 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
-    apiMocks.getCaseDetail.mockResolvedValue({
-      id: "case-1",
-      legacy_inspection_id: 1,
-      legacy_inspection_code: "KT-2026-GMP-A",
-      site_id: "site-1",
-      gxp_type: "GMP",
-      scope_code: "A",
-      applicable_standard: "WHO-GMP",
-      inspection_type: "Định kỳ",
-      state: "awaiting_certificate_decision",
-      opened_year: 2026,
-    });
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
 
     const { container } = renderApp(["/search"]);
 
@@ -268,7 +344,7 @@ describe("App Slice A.4 search workspace", () => {
         },
       }),
     );
-    apiMocks.getCaseDetail.mockResolvedValue(null);
+    apiMocks.getCaseWorkspace.mockResolvedValue(null);
 
     renderApp(["/search?gxp_type=GMPbb"]);
 
@@ -282,7 +358,7 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
-    apiMocks.getCaseDetail.mockResolvedValue(null);
+    apiMocks.getCaseWorkspace.mockResolvedValue(null);
 
     renderApp(["/search"]);
 
@@ -293,18 +369,7 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
-    apiMocks.getCaseDetail.mockResolvedValue({
-      id: "case-1",
-      legacy_inspection_id: 1,
-      legacy_inspection_code: "KT-2026-GMP-A",
-      site_id: "site-1",
-      gxp_type: "GMP",
-      scope_code: "A",
-      applicable_standard: "WHO-GMP",
-      inspection_type: "Định kỳ",
-      state: "awaiting_certificate_decision",
-      opened_year: 2026,
-    });
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
 
     const { container } = renderApp(["/search"]);
 
@@ -335,7 +400,7 @@ describe("App Slice A.4 search workspace", () => {
         },
       }),
     );
-    apiMocks.getCaseDetail.mockResolvedValue(null);
+    apiMocks.getCaseWorkspace.mockResolvedValue(null);
 
     renderApp(["/search?facility_tab=Thông%20tin%20chung"]);
 
@@ -374,7 +439,7 @@ describe("App Slice A.4 search workspace", () => {
       limit: 100,
     });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
-    apiMocks.getCaseDetail.mockResolvedValue(null);
+    apiMocks.getCaseWorkspace.mockResolvedValue(null);
 
     renderApp(["/search"]);
 
@@ -400,7 +465,7 @@ describe("App Slice A.4 search workspace", () => {
         limit: 100,
       });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
-    apiMocks.getCaseDetail.mockResolvedValue(null);
+    apiMocks.getCaseWorkspace.mockResolvedValue(null);
 
     renderApp(["/search"]);
 
@@ -433,25 +498,14 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
-    apiMocks.getCaseDetail.mockResolvedValue({
-      id: "case-1",
-      legacy_inspection_id: 1,
-      legacy_inspection_code: "KT-2026-GMP-A",
-      site_id: "site-1",
-      gxp_type: "GMP",
-      scope_code: "A",
-      applicable_standard: "WHO-GMP",
-      inspection_type: "Định kỳ",
-      state: "awaiting_certificate_decision",
-      opened_year: 2026,
-    });
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
 
     const { container } = renderApp(["/search"]);
 
     const workspacePanel = await screen.findByRole("tab", { name: "Các đợt kiểm tra & thay đổi" });
     expect(workspacePanel).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("navigation", { name: "Quy trình xử lý sự kiện" })).toBeInTheDocument();
-    expect(screen.getByText("Phân loại")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Thông tin hồ sơ" })).toBeInTheDocument();
     expect(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi")).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Hồ sơ" })).not.toBeInTheDocument();
     expect(container.querySelector(".workspace-context-strip")).toBeNull();
@@ -464,18 +518,7 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
-    apiMocks.getCaseDetail.mockResolvedValue({
-      id: "case-1",
-      legacy_inspection_id: 1,
-      legacy_inspection_code: "KT-2026-GMP-A",
-      site_id: "site-1",
-      gxp_type: "GMP",
-      scope_code: "A",
-      applicable_standard: "WHO-GMP",
-      inspection_type: "Định kỳ",
-      state: "awaiting_certificate_decision",
-      opened_year: 2026,
-    });
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
 
     const { container } = renderApp(["/search"]);
 
@@ -495,8 +538,94 @@ describe("App Slice A.4 search workspace", () => {
       expect(screen.getByRole("heading", { name: "TD-01" })).toBeInTheDocument();
     });
     expect(within(container.querySelector(".event-workspace") as HTMLElement).getByText("Đổi địa chỉ")).toBeInTheDocument();
+    expect(screen.getByText("Workspace thay đổi")).toBeInTheDocument();
     expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
+  });
+
+  it("renders case-linked workflow steps without refetching master search or changing selected rows", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(
+      buildCaseWorkspace({
+        remediation: {
+          cycles: [
+            {
+              capa_cycle_id: "capa-1",
+              round_no: 1,
+              requested_on: "2026-08-07",
+              submitted_on: "2026-08-09",
+              assessed_on: "2026-08-12",
+              assessor_name: "Chuyên viên B",
+              result: "Đạt",
+              status: "accepted",
+              notes: "Đã hoàn tất",
+            },
+          ],
+        },
+      }),
+    );
+
+    const { container } = renderApp(["/search"]);
+
+    expect(await screen.findByText("HS-001")).toBeInTheDocument();
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /Kiểm tra/ }));
+    expect(await screen.findByText("QĐ-KT-01")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Khắc phục/ }));
+    expect(await screen.findByText("Lịch sử khắc phục")).toBeInTheDocument();
+    expect(screen.getByText("Đã hoàn tất")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Xử lý/ }));
+    expect(await screen.findByText("Đề xuất cấp chứng nhận")).toBeInTheDocument();
+    expect(screen.getByText("Tiếp nhận hồ sơ")).toBeInTheDocument();
+
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
+    expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
+    expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
+  });
+
+  it("shows only direct case-linked certificates inside event steps and does not fabricate site-wide business eligibility", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(
+      buildCaseWorkspace({
+        linked_gxp_certificates: [
+          buildCaseWorkspace().linked_gxp_certificates[0],
+          {
+            ...buildCaseWorkspace().linked_gxp_certificates[0],
+            certificate_id: "cert-a-old",
+            latest_flag: false,
+            certificate_number: "533/GCN-QLD",
+            issue_date: "2021-09-14",
+            expiry_date: "2027-09-14",
+            status: "superseded",
+            scope_summary: "Thuốc không vô trùng cũ",
+          },
+        ],
+        linked_business_eligibility_certificates: [],
+      }),
+    );
+
+    renderApp(["/search"]);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Chứng nhận GxP/ }));
+    expect(await screen.findByRole("heading", { name: "Chứng nhận GxP liên kết" })).toBeInTheDocument();
+    expect(screen.getAllByText("195/GCN-QLD").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("533/GCN-QLD").length).toBeGreaterThan(0);
+    expect(screen.queryByText("ADMIN-001")).not.toBeInTheDocument();
+    expect(screen.queryByText("B-001")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Chứng nhận ĐĐK/ }));
+    expect(await screen.findByText("Chưa có chứng nhận ĐĐK liên kết")).toBeInTheDocument();
+    expect(screen.queryByText("1201/ĐKKDD-BYT")).not.toBeInTheDocument();
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
   });
 
   it("keeps dashboard drilldown links aligned with the accepted facility-level semantics", async () => {
@@ -518,7 +647,7 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
-    apiMocks.getCaseDetail.mockResolvedValue(null);
+    apiMocks.getCaseWorkspace.mockResolvedValue(null);
     apiMocks.listSiteGxpCertificates.mockResolvedValue({
       items: [
         {
@@ -620,7 +749,7 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
-    apiMocks.getCaseDetail.mockResolvedValue(null);
+    apiMocks.getCaseWorkspace.mockResolvedValue(null);
     apiMocks.listSiteBusinessEligibilityCertificates.mockResolvedValue({
       items: [
         {
@@ -692,7 +821,7 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
-    apiMocks.getCaseDetail.mockResolvedValue(null);
+    apiMocks.getCaseWorkspace.mockResolvedValue(null);
     apiMocks.listSiteGxpCertificates.mockResolvedValue({ items: [] });
 
     renderApp(["/search?facility_tab=Gi%E1%BA%A5y%20ch%E1%BB%A9ng%20nh%E1%BA%ADn%20GxP"]);

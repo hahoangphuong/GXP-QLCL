@@ -9,6 +9,7 @@ from backend.app.read_models import (
     BusinessEligibilityDetailRead,
     BusinessEligibilityListRead,
     CaseDetailRead,
+    CaseWorkspaceRead,
     CaseRead,
     CompanyDetailRead,
     CompanyRead,
@@ -148,6 +149,14 @@ def register_catalog_routes(app, session_factory) -> None:
             row_version=row.row_version,
         )
 
+    def get_case_workspace(
+        case_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        return CaseWorkspaceRead(**service.get_case_workspace(session, case_id=case_id))
+
     def get_dashboard_summary(
         queue_limit: int = Query(default=8, ge=1, le=20),
         session: Session = dependency,
@@ -257,6 +266,7 @@ def register_catalog_routes(app, session_factory) -> None:
     app.add_api_route("/sites/{site_id}", get_site_detail, methods=["GET"], response_model=SiteDetailRead, tags=["catalog"])
     app.add_api_route("/cases", list_cases, methods=["GET"], response_model=list[CaseRead], tags=["catalog"])
     app.add_api_route("/cases/{case_id}", get_case_detail, methods=["GET"], response_model=CaseDetailRead, tags=["catalog"])
+    app.add_api_route("/cases/{case_id}/workspace", get_case_workspace, methods=["GET"], response_model=CaseWorkspaceRead, tags=["catalog"])
     app.add_api_route("/dashboard/summary", get_dashboard_summary, methods=["GET"], response_model=DashboardSummaryRead, tags=["catalog"])
     app.add_api_route("/search/facilities", search_facilities, methods=["GET"], response_model=FacilitySearchPageRead, tags=["catalog"])
     app.add_api_route("/sites/{site_id}/workspace", get_facility_workspace, methods=["GET"], response_model=FacilityWorkspaceRead, tags=["catalog"])

@@ -14,13 +14,18 @@ from backend.app.db.models.phase1 import (
     BusinessEligibilityCertificateLink,
     BusinessEligibilityVersion,
     Case,
+    CaseApplication,
+    CaseAssessment,
+    CapaCycle,
     Certificate,
     CertificateScope,
     CertificateVersion,
     ChangeRequest,
     Company,
     InspectionEvent,
+    InspectionPlan,
     InspectionOutcome,
+    InspectionTeam,
     Site,
 )
 from backend.app.db.enums import InspectionEventType
@@ -180,6 +185,91 @@ class CatalogReadService:
         if certificate.issuance_basis == "administrative_no_inspection":
             return "Cấp hành chính không gắn đợt kiểm tra"
         return None
+
+    def _serialize_gxp_certificate_detail(
+        self,
+        *,
+        certificate: Certificate,
+        version: CertificateVersion,
+        linked_case: Case | None,
+        site: Site,
+        company: Company,
+        scope_summary: str | None,
+        inspected_on: date | None,
+    ) -> dict[str, object]:
+        context = CertificateContextRow(
+            certificate=certificate,
+            version=version,
+            line_code=self._certificate_line_code(certificate, linked_case),
+            scope_summary=scope_summary,
+        )
+        return {
+            "certificate_id": certificate.id,
+            "site_id": certificate.site_id,
+            "case_id": certificate.case_id,
+            "certificate_type": certificate.certificate_type,
+            "line_code": context.line_code,
+            "issuance_basis": certificate.issuance_basis,
+            "latest_flag": certificate.latest_flag,
+            "certificate_number": version.certificate_number,
+            "issue_date": version.issue_date,
+            "expiry_date": version.expiry_date,
+            "applicable_standard": version.applicable_standard,
+            "issuing_authority": version.issuing_authority,
+            "status": self._derive_certificate_status(context),
+            "facility_name": site.site_name,
+            "address": site.site_address,
+            "company_name": company.legal_name,
+            "company_legal_address": company.legal_address,
+            "scope_summary": scope_summary,
+            "limitation_text": None,
+            "source_description": self._describe_certificate_source(
+                certificate=certificate,
+                linked_case=linked_case,
+                inspected_on=inspected_on,
+            ),
+        }
+
+    def _serialize_business_eligibility_detail(
+        self,
+        *,
+        certificate: BusinessEligibilityCertificate,
+        version: BusinessEligibilityVersion,
+        site: Site,
+        company: Company,
+        linked_gxp_certificates: list[dict[str, object]],
+        replacement_map: dict[int, str | None],
+    ) -> dict[str, object]:
+        return {
+            "business_eligibility_certificate_id": certificate.id,
+            "site_id": certificate.site_id,
+            "company_id": certificate.company_id,
+            "latest_flag": certificate.latest_flag,
+            "certificate_number": version.certificate_number,
+            "issued_on": version.issued_on,
+            "decision_reference": version.decision_reference,
+            "issuance_sequence_text": version.issuance_sequence_text,
+            "issuance_history_text": version.issuance_history_text,
+            "company_name": company.legal_name,
+            "company_legal_address": company.legal_address,
+            "facility_name": site.site_name,
+            "address": site.site_address,
+            "professional_responsible_person_name": version.professional_responsible_person_name,
+            "quality_assurance_person_name": version.quality_assurance_person_name,
+            "professional_qualification_text": version.professional_qualification_text,
+            "professional_license_number": version.professional_license_number,
+            "professional_license_issued_on": version.professional_license_issued_on,
+            "professional_license_issuer": version.professional_license_issuer,
+            "responsible_license_issued_on": version.responsible_license_issued_on,
+            "responsible_license_issuer": version.responsible_license_issuer,
+            "business_activity_text": version.business_activity_text,
+            "current_status_text": version.current_status_text,
+            "handled_by_name": version.handled_by_name,
+            "application_dossier_reference": version.application_dossier_reference,
+            "replaces_certificate_number": replacement_map.get(certificate.replaces_legacy_dkkd_id),
+            "replaced_by_certificate_number": replacement_map.get(certificate.replaced_by_legacy_dkkd_id),
+            "linked_gxp_certificates": linked_gxp_certificates,
+        }
 
     @staticmethod
     def _build_latest_business_eligibility_version_subquery():
@@ -1283,32 +1373,15 @@ class CatalogReadService:
             line_code=self._certificate_line_code(certificate, linked_case),
             scope_summary=self._build_certificate_scope_summary(scope_rows),
         )
-        return {
-            "certificate_id": certificate.id,
-            "site_id": certificate.site_id,
-            "case_id": certificate.case_id,
-            "certificate_type": certificate.certificate_type,
-            "line_code": context.line_code,
-            "issuance_basis": certificate.issuance_basis,
-            "latest_flag": certificate.latest_flag,
-            "certificate_number": version.certificate_number,
-            "issue_date": version.issue_date,
-            "expiry_date": version.expiry_date,
-            "applicable_standard": version.applicable_standard,
-            "issuing_authority": version.issuing_authority,
-            "status": self._derive_certificate_status(context),
-            "facility_name": site.site_name,
-            "address": site.site_address,
-            "company_name": company.legal_name,
-            "company_legal_address": company.legal_address,
-            "scope_summary": context.scope_summary,
-            "limitation_text": None,
-            "source_description": self._describe_certificate_source(
-                certificate=certificate,
-                linked_case=linked_case,
-                inspected_on=inspected_on,
-            ),
-        }
+        return self._serialize_gxp_certificate_detail(
+            certificate=certificate,
+            version=version,
+            linked_case=linked_case,
+            site=site,
+            company=company,
+            scope_summary=context.scope_summary,
+            inspected_on=inspected_on,
+        )
 
     def list_site_business_eligibility_certificates(self, session: Session, *, site_id: str):
         self.get_site(session, site_id)
@@ -1441,33 +1514,308 @@ class CatalogReadService:
             }
             replacement_map.update(latest_versions_by_legacy_id)
 
+        return self._serialize_business_eligibility_detail(
+            certificate=certificate,
+            version=version,
+            site=site,
+            company=company,
+            linked_gxp_certificates=linked_gxp_certificates,
+            replacement_map=replacement_map,
+        )
+
+    def get_case_workspace(self, session: Session, *, case_id: str):
+        case = self.get_case(session, case_id)
+        site = self.get_site(session, case.site_id)
+        company = self.get_company(session, site.company_id)
+
+        application = session.scalar(select(CaseApplication).where(CaseApplication.case_id == case.id))
+        assessment = session.scalar(select(CaseAssessment).where(CaseAssessment.case_id == case.id))
+        plan = session.scalar(select(InspectionPlan).where(InspectionPlan.case_id == case.id))
+        team = session.scalar(select(InspectionTeam).where(InspectionTeam.case_id == case.id))
+        outcome = session.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == case.id))
+        events = list(
+            session.scalars(
+                select(InspectionEvent)
+                .where(InspectionEvent.case_id == case.id)
+                .order_by(InspectionEvent.occurred_at.asc(), InspectionEvent.created_at.asc(), InspectionEvent.id.asc())
+            )
+        )
+        capa_cycles = list(
+            session.scalars(
+                select(CapaCycle)
+                .where(CapaCycle.case_id == case.id)
+                .order_by(CapaCycle.round_no.asc(), CapaCycle.created_at.asc(), CapaCycle.id.asc())
+            )
+        )
+
+        gxp_certificate_rows = list(
+            session.execute(
+                select(Certificate, CertificateVersion)
+                .join(
+                    CertificateVersion,
+                    and_(
+                        CertificateVersion.certificate_id == Certificate.id,
+                        CertificateVersion.is_latest_version.is_(True),
+                    ),
+                )
+                .where(Certificate.case_id == case.id)
+            ).all()
+        )
+        certificate_ids = [certificate.id for certificate, _ in gxp_certificate_rows]
+        version_ids = [version.id for _, version in gxp_certificate_rows]
+        scope_rows_by_version_id: dict[str, list[CertificateScope]] = defaultdict(list)
+        if version_ids:
+            for scope_row in session.scalars(
+                select(CertificateScope)
+                .where(CertificateScope.certificate_version_id.in_(version_ids))
+                .order_by(CertificateScope.sort_order.asc(), CertificateScope.created_at.asc(), CertificateScope.id.asc())
+            ):
+                scope_rows_by_version_id[scope_row.certificate_version_id].append(scope_row)
+
+        inspected_on = None
+        if outcome is not None:
+            inspected_on = outcome.inspected_to_on or outcome.inspected_on
+        if inspected_on is None:
+            executed_event = next(
+                (row for row in reversed(events) if row.event_type == InspectionEventType.INSPECTION_EXECUTED and row.occurred_at is not None),
+                None,
+            )
+            if executed_event is not None and executed_event.occurred_at is not None:
+                inspected_on = executed_event.occurred_at.date()
+
+        linked_gxp_certificates = [
+            self._serialize_gxp_certificate_detail(
+                certificate=certificate,
+                version=version,
+                linked_case=case,
+                site=site,
+                company=company,
+                scope_summary=self._build_certificate_scope_summary(scope_rows_by_version_id.get(version.id, [])),
+                inspected_on=inspected_on,
+            )
+            for certificate, version in gxp_certificate_rows
+        ]
+        linked_gxp_certificates.sort(
+            key=lambda item: (
+                -(item["issue_date"].toordinal()) if item["issue_date"] is not None else float("inf"),
+                item["certificate_number"] or "",
+                item["certificate_id"],
+            )
+        )
+
+        latest_version_sq = self._build_latest_business_eligibility_version_subquery()
+        linked_business_eligibility_certificates: list[dict[str, object]] = []
+        if certificate_ids:
+            linked_be_rows = list(
+                session.execute(
+                    select(BusinessEligibilityCertificate, BusinessEligibilityVersion)
+                    .join(
+                        latest_version_sq,
+                        latest_version_sq.c.business_eligibility_certificate_id == BusinessEligibilityCertificate.id,
+                    )
+                    .join(
+                        BusinessEligibilityVersion,
+                        and_(
+                            BusinessEligibilityVersion.business_eligibility_certificate_id == BusinessEligibilityCertificate.id,
+                            BusinessEligibilityVersion.version_no == latest_version_sq.c.max_version_no,
+                        ),
+                    )
+                    .join(
+                        BusinessEligibilityCertificateLink,
+                        BusinessEligibilityCertificateLink.business_eligibility_version_id == BusinessEligibilityVersion.id,
+                    )
+                    .where(BusinessEligibilityCertificateLink.certificate_id.in_(certificate_ids))
+                ).all()
+            )
+            deduped_be_rows: dict[str, tuple[BusinessEligibilityCertificate, BusinessEligibilityVersion]] = {}
+            for certificate_row, version_row in linked_be_rows:
+                deduped_be_rows[certificate_row.id] = (certificate_row, version_row)
+
+            be_rows = list(deduped_be_rows.values())
+            be_version_ids = [version.id for _, version in be_rows]
+            linked_basis_rows = list(
+                session.execute(
+                    select(BusinessEligibilityCertificateLink, Certificate, CertificateVersion)
+                    .join(Certificate, Certificate.id == BusinessEligibilityCertificateLink.certificate_id)
+                    .join(
+                        CertificateVersion,
+                        and_(
+                            CertificateVersion.certificate_id == Certificate.id,
+                            CertificateVersion.is_latest_version.is_(True),
+                        ),
+                    )
+                    .where(BusinessEligibilityCertificateLink.business_eligibility_version_id.in_(be_version_ids))
+                ).all()
+            ) if be_version_ids else []
+
+            linked_cases = (
+                {
+                    linked_case.id: linked_case
+                    for linked_case in session.scalars(
+                        select(Case).where(Case.id.in_([certificate_row.case_id for _, certificate_row, _ in linked_basis_rows if certificate_row.case_id]))
+                    )
+                }
+                if linked_basis_rows
+                else {}
+            )
+
+            linked_basis_by_version_id: dict[str, list[dict[str, object]]] = defaultdict(list)
+            for link, linked_certificate, linked_version in linked_basis_rows:
+                linked_basis_by_version_id[link.business_eligibility_version_id].append(
+                    {
+                        "certificate_id": linked_certificate.id,
+                        "certificate_type": linked_certificate.certificate_type,
+                        "line_code": self._certificate_line_code(
+                            linked_certificate,
+                            None if linked_certificate.case_id is None else linked_cases.get(linked_certificate.case_id),
+                        ),
+                        "certificate_number": linked_version.certificate_number,
+                        "issue_date": linked_version.issue_date,
+                        "link_role": link.link_role,
+                    }
+                )
+            for payloads in linked_basis_by_version_id.values():
+                payloads.sort(
+                    key=lambda item: (
+                        item["certificate_type"],
+                        item["line_code"] or "",
+                        -(item["issue_date"].toordinal()) if item["issue_date"] is not None else float("inf"),
+                        item["certificate_number"] or "",
+                        item["certificate_id"],
+                    )
+                )
+
+            replacement_ids = [
+                legacy_id
+                for certificate_row, _ in be_rows
+                for legacy_id in [certificate_row.replaces_legacy_dkkd_id, certificate_row.replaced_by_legacy_dkkd_id]
+                if legacy_id is not None
+            ]
+            replacement_map: dict[int, str | None] = {}
+            if replacement_ids:
+                replacement_map.update(
+                    {
+                        legacy_id: number
+                        for legacy_id, number in session.execute(
+                            select(BusinessEligibilityCertificate.legacy_dkkd_id, BusinessEligibilityVersion.certificate_number)
+                            .join(
+                                latest_version_sq,
+                                latest_version_sq.c.business_eligibility_certificate_id == BusinessEligibilityCertificate.id,
+                            )
+                            .join(
+                                BusinessEligibilityVersion,
+                                and_(
+                                    BusinessEligibilityVersion.business_eligibility_certificate_id == BusinessEligibilityCertificate.id,
+                                    BusinessEligibilityVersion.version_no == latest_version_sq.c.max_version_no,
+                                ),
+                            )
+                            .where(BusinessEligibilityCertificate.legacy_dkkd_id.in_(replacement_ids))
+                        )
+                    }
+                )
+
+            linked_business_eligibility_certificates = [
+                self._serialize_business_eligibility_detail(
+                    certificate=certificate_row,
+                    version=version_row,
+                    site=site,
+                    company=company,
+                    linked_gxp_certificates=linked_basis_by_version_id.get(version_row.id, []),
+                    replacement_map=replacement_map,
+                )
+                for certificate_row, version_row in be_rows
+            ]
+            linked_business_eligibility_certificates.sort(
+                key=lambda item: (
+                    -(item["issued_on"].toordinal()) if item["issued_on"] is not None else float("inf"),
+                    item["issuance_sequence_text"] or "",
+                    item["certificate_number"] or "",
+                    item["business_eligibility_certificate_id"],
+                )
+            )
+
         return {
-            "business_eligibility_certificate_id": certificate.id,
-            "site_id": certificate.site_id,
-            "company_id": certificate.company_id,
-            "latest_flag": certificate.latest_flag,
-            "certificate_number": version.certificate_number,
-            "issued_on": version.issued_on,
-            "decision_reference": version.decision_reference,
-            "issuance_sequence_text": version.issuance_sequence_text,
-            "issuance_history_text": version.issuance_history_text,
-            "company_name": company.legal_name,
-            "company_legal_address": company.legal_address,
-            "facility_name": site.site_name,
-            "address": site.site_address,
-            "professional_responsible_person_name": version.professional_responsible_person_name,
-            "quality_assurance_person_name": version.quality_assurance_person_name,
-            "professional_qualification_text": version.professional_qualification_text,
-            "professional_license_number": version.professional_license_number,
-            "professional_license_issued_on": version.professional_license_issued_on,
-            "professional_license_issuer": version.professional_license_issuer,
-            "responsible_license_issued_on": version.responsible_license_issued_on,
-            "responsible_license_issuer": version.responsible_license_issuer,
-            "business_activity_text": version.business_activity_text,
-            "current_status_text": version.current_status_text,
-            "handled_by_name": version.handled_by_name,
-            "application_dossier_reference": version.application_dossier_reference,
-            "replaces_certificate_number": replacement_map.get(certificate.replaces_legacy_dkkd_id),
-            "replaced_by_certificate_number": replacement_map.get(certificate.replaced_by_legacy_dkkd_id),
+            "case_summary": {
+                "id": case.id,
+                "legacy_inspection_id": case.legacy_inspection_id,
+                "legacy_inspection_code": case.legacy_inspection_code,
+                "site_id": case.site_id,
+                "facility_name": site.site_name,
+                "company_name": company.legal_name,
+                "gxp_type": case.gxp_type,
+                "scope_code": case.scope_code,
+                "applicable_standard": case.applicable_standard,
+                "inspection_type": case.inspection_type,
+                "state": case.state.value,
+                "opened_year": case.opened_year,
+            },
+            "application": {
+                "submitted_on": None if application is None else application.submitted_on,
+                "dossier_code": None if application is None else application.dossier_code,
+                "dossier_reference": None if application is None else application.dossier_reference,
+                "applicant_name": None if application is None else application.applicant_name,
+                "assigned_specialist": company.assigned_specialist_text,
+            },
+            "inspection": {
+                "decision_reference": None if outcome is None else outcome.decision_reference,
+                "decision_document_hint": None if plan is None else plan.decision_document_hint,
+                "plan_start_on": None if plan is None else plan.plan_start_on,
+                "plan_end_on": None if plan is None else plan.plan_end_on,
+                "planning_sheet_name": None if plan is None else plan.planning_sheet_name,
+                "inspected_on": None if outcome is None else outcome.inspected_on,
+                "inspected_to_on": None if outcome is None else outcome.inspected_to_on,
+                "executed_on": next(
+                    (
+                        row.occurred_at
+                        for row in reversed(events)
+                        if row.event_type == InspectionEventType.INSPECTION_EXECUTED and row.occurred_at is not None
+                    ),
+                    None,
+                ),
+                "bbkt_reference": None if outcome is None else outcome.bbkt_reference,
+                "outcome_result": None if outcome is None else outcome.outcome_result,
+                "team_display_text": None if team is None else team.display_text,
+            },
+            "remediation": {
+                "cycles": [
+                    {
+                        "capa_cycle_id": row.id,
+                        "round_no": row.round_no,
+                        "requested_on": row.requested_on,
+                        "submitted_on": row.submitted_on,
+                        "assessed_on": row.assessed_on,
+                        "assessor_name": row.assessor_name,
+                        "result": row.result,
+                        "status": row.status,
+                        "notes": row.notes,
+                    }
+                    for row in capa_cycles
+                ]
+            },
+            "processing": {
+                "assessed_on": None if assessment is None else assessment.assessed_on,
+                "assessor_name": None if assessment is None else assessment.assessor_name,
+                "assessment_result": None if assessment is None else assessment.assessment_result,
+                "notes": None if assessment is None else assessment.notes,
+                "events": [
+                    {
+                        "event_type": row.event_type.value,
+                        "occurred_at": row.occurred_at,
+                        "payload": row.payload,
+                    }
+                    for row in events
+                    if row.event_type
+                    in {
+                        InspectionEventType.APPLICATION_SUBMITTED,
+                        InspectionEventType.ASSESSMENT_COMPLETED,
+                        InspectionEventType.PLAN_CREATED,
+                        InspectionEventType.DECISION_ISSUED,
+                        InspectionEventType.INSPECTION_EXECUTED,
+                        InspectionEventType.OUTCOME_RECORDED,
+                        InspectionEventType.CERTIFICATE_ISSUED,
+                    }
+                ],
+            },
             "linked_gxp_certificates": linked_gxp_certificates,
+            "linked_business_eligibility_certificates": linked_business_eligibility_certificates,
         }

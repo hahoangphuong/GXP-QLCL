@@ -10,6 +10,7 @@ import { FacilityWorkspaceTabs } from "../features/search/FacilityWorkspaceTabs"
 import {
   getBusinessEligibilityDetail,
   getCaseWorkspace,
+  getChangeRequestWorkspace,
   getFacilityWorkspace,
   getGxpCertificateDetail,
   listSiteBusinessEligibilityCertificates,
@@ -20,6 +21,7 @@ import type {
   BusinessEligibilityDetail,
   BusinessEligibilityListItem,
   CaseWorkspace,
+  ChangeRequestWorkspace,
   FacilitySearchResult,
   FacilityWorkspace,
   GxpCertificateDetail,
@@ -82,6 +84,9 @@ export function SearchPage({
   const [selectedCaseWorkspace, setSelectedCaseWorkspace] = useState<CaseWorkspace | null>(null);
   const [caseWorkspaceLoading, setCaseWorkspaceLoading] = useState(false);
   const [caseWorkspaceError, setCaseWorkspaceError] = useState<string | null>(null);
+  const [selectedChangeRequestWorkspace, setSelectedChangeRequestWorkspace] = useState<ChangeRequestWorkspace | null>(null);
+  const [changeRequestWorkspaceLoading, setChangeRequestWorkspaceLoading] = useState(false);
+  const [changeRequestWorkspaceError, setChangeRequestWorkspaceError] = useState<string | null>(null);
   const [gxpCertificates, setGxpCertificates] = useState<GxpCertificateListItem[]>([]);
   const [gxpCertificatesLoading, setGxpCertificatesLoading] = useState(false);
   const [gxpCertificatesError, setGxpCertificatesError] = useState<string | null>(null);
@@ -262,6 +267,12 @@ export function SearchPage({
   useEffect(() => {
     if (!selectedResult || !access.canLoadSecureApi) {
       setWorkspace(null);
+      setSelectedCaseWorkspace(null);
+      setCaseWorkspaceError(null);
+      setCaseWorkspaceLoading(false);
+      setSelectedChangeRequestWorkspace(null);
+      setChangeRequestWorkspaceError(null);
+      setChangeRequestWorkspaceLoading(false);
       resetCertificateWorkspaceState();
       return;
     }
@@ -319,6 +330,35 @@ export function SearchPage({
           setSelectedCaseWorkspace(null);
           setCaseWorkspaceError(error.message);
           setCaseWorkspaceLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [access, selectedHistory]);
+
+  useEffect(() => {
+    setSelectedChangeRequestWorkspace(null);
+    setChangeRequestWorkspaceError(null);
+    setChangeRequestWorkspaceLoading(false);
+    if (!selectedHistory || selectedHistory.source_type !== "change_request") {
+      return;
+    }
+    let cancelled = false;
+    setChangeRequestWorkspaceLoading(true);
+    void getChangeRequestWorkspace(selectedHistory.id, access.auth, access.useStubAuth, access.bearerToken)
+      .then((payload) => {
+        if (!cancelled) {
+          setSelectedChangeRequestWorkspace(payload);
+          setChangeRequestWorkspaceError(null);
+          setChangeRequestWorkspaceLoading(false);
+        }
+      })
+      .catch((error: Error) => {
+        if (!cancelled) {
+          setSelectedChangeRequestWorkspace(null);
+          setChangeRequestWorkspaceError(error.message);
+          setChangeRequestWorkspaceLoading(false);
         }
       });
     return () => {
@@ -468,6 +508,10 @@ export function SearchPage({
     setWorkspaceError(null);
     setSelectedCaseWorkspace(null);
     setCaseWorkspaceError(null);
+    setCaseWorkspaceLoading(false);
+    setSelectedChangeRequestWorkspace(null);
+    setChangeRequestWorkspaceError(null);
+    setChangeRequestWorkspaceLoading(false);
     resetCertificateWorkspaceState();
   }
 
@@ -558,6 +602,9 @@ export function SearchPage({
             caseWorkspace={selectedCaseWorkspace}
             caseWorkspaceError={caseWorkspaceError}
             caseWorkspaceLoading={caseWorkspaceLoading}
+            changeRequestWorkspace={selectedChangeRequestWorkspace}
+            changeRequestWorkspaceError={changeRequestWorkspaceError}
+            changeRequestWorkspaceLoading={changeRequestWorkspaceLoading}
             eligibilityCertificateDetail={eligibilityCertificateDetail}
             eligibilityCertificateDetailError={eligibilityCertificateDetailError}
             eligibilityCertificateDetailLoading={eligibilityCertificateDetailLoading}

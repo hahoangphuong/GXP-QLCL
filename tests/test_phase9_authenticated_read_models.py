@@ -17,7 +17,7 @@ from backend.app.auth import (
     resolve_mapped_role,
 )
 from backend.app.db.base import Base
-from backend.app.db.enums import CaseState, ChangeRequestState
+from backend.app.db.enums import CaseState, ChangeRequestState, DocumentVariantType
 from backend.app.db.models.phase1 import (
     AppUser,
     AppUserRole,
@@ -31,8 +31,13 @@ from backend.app.db.models.phase1 import (
     Certificate,
     CertificateScope,
     CertificateVersion,
+    ChangeApproval,
     ChangeRequest,
+    ChangeRequestDetail,
     Company,
+    Document,
+    DocumentVariant,
+    DocumentVersion,
     InspectionEvent,
     InspectionEventType,
     InspectionPlan,
@@ -112,6 +117,7 @@ def test_phase9_detail_routes_are_registered():
     assert "/sites/{site_id}" in routes
     assert "/cases/{case_id}" in routes
     assert "/cases/{case_id}/workspace" in routes
+    assert "/change-requests/{change_request_id}/workspace" in routes
     assert "/dashboard/summary" in routes
     assert "/search/facilities" in routes
     assert "/sites/{site_id}/workspace" in routes
@@ -722,6 +728,42 @@ def seed_certificate_workspace_catalog(session: Session):
             ),
         ]
     )
+    session.flush()
+    capa_round_1, capa_round_2 = session.scalars(select(CapaCycle).where(CapaCycle.case_id == case_a.id).order_by(CapaCycle.round_no.asc())).all()
+
+    change_request = ChangeRequest(
+        site_id=site.id,
+        legacy_change_request_id=9101,
+        scope_label="Đổi địa chỉ",
+        description="Điều chỉnh địa chỉ kho bảo quản",
+        submitted_on=date(2026, 8, 6),
+        requester_name="Phòng QA",
+        state=ChangeRequestState.UNDER_REVIEW,
+    )
+    session.add(change_request)
+    session.flush()
+    session.add(
+        ChangeApproval(
+            change_request_id=change_request.id,
+            handled_on=date(2026, 8, 7),
+            handled_by_name="Hà Hoàng Phương",
+            result_label="Đang thẩm tra hồ sơ thay đổi",
+            effective_on=None,
+            approval_reference=None,
+        )
+    )
+    session.add(
+        ChangeRequestDetail(
+            change_request_id=change_request.id,
+            legacy_change_detail_id=501,
+            classification_id=1,
+            classification_label="Đổi địa chỉ",
+            approval_status=None,
+            old_value="Địa chỉ cũ",
+            new_value="Địa chỉ mới",
+            note=None,
+        )
+    )
 
     cert_a_new = Certificate(site_id=site.id, case_id=case_a.id, certificate_type="GMP", line_code="A", latest_flag=True)
     cert_a_old = Certificate(site_id=site.id, case_id=case_a.id, certificate_type="GMP", line_code="A", latest_flag=False)
@@ -854,12 +896,94 @@ def seed_certificate_workspace_catalog(session: Session):
             link_role="source_certificate",
         )
     )
+    case_document = Document(
+        family_code="CERTIFICATE_DECISION",
+        document_type_code="CERTIFICATE_DECISION",
+        title="Certificate Decision",
+        case_id=case_a.id,
+    )
+    capa_document = Document(
+        family_code="INSPECTION_CAPA_LAN_1",
+        document_type_code="INSPECTION_CAPA_LAN_1",
+        title="Đánh giá CAPA 1",
+        case_id=case_a.id,
+        capa_cycle_id=capa_round_1.id,
+    )
+    change_document = Document(
+        family_code="NAME_ADDRESS_CHANGE_LETTER",
+        document_type_code="NAME_ADDRESS_CHANGE_LETTER",
+        title="Đổi tên, địa chỉ",
+        change_request_id=change_request.id,
+    )
+    session.add_all([case_document, capa_document, change_document])
+    session.flush()
+
+    case_variant = DocumentVariant(
+        document_id=case_document.id,
+        variant_type=DocumentVariantType.EDITABLE_DOCX,
+        language_code="vi",
+        is_active=True,
+    )
+    capa_variant = DocumentVariant(
+        document_id=capa_document.id,
+        variant_type=DocumentVariantType.EDITABLE_DOCX,
+        language_code="vi",
+        is_active=True,
+    )
+    change_variant = DocumentVariant(
+        document_id=change_document.id,
+        variant_type=DocumentVariantType.EDITABLE_DOCX,
+        language_code="vi",
+        is_active=True,
+    )
+    session.add_all([case_variant, capa_variant, change_variant])
+    session.flush()
+    session.add_all(
+        [
+            DocumentVersion(
+                document_variant_id=case_variant.id,
+                version_no=1,
+                storage_binding_id=None,
+                storage_root=None,
+                storage_relative_path=None,
+                original_filename="8 qd cap cc GMP.docx",
+                checksum_sha256=None,
+                is_current=True,
+                issued_on=datetime(2025, 4, 17, tzinfo=timezone.utc),
+            ),
+            DocumentVersion(
+                document_variant_id=capa_variant.id,
+                version_no=1,
+                storage_binding_id=None,
+                storage_root=None,
+                storage_relative_path=None,
+                original_filename="5. Danh gia CAPA - GMP.dotx",
+                checksum_sha256=None,
+                is_current=True,
+                issued_on=datetime(2025, 1, 20, tzinfo=timezone.utc),
+            ),
+            DocumentVersion(
+                document_variant_id=change_variant.id,
+                version_no=1,
+                storage_binding_id=None,
+                storage_root=None,
+                storage_relative_path=None,
+                original_filename="doi-ten-dia-chi.docx",
+                checksum_sha256=None,
+                is_current=True,
+                issued_on=datetime(2026, 8, 8, tzinfo=timezone.utc),
+            ),
+        ]
+    )
     session.commit()
     return {
         "site_id": site.id,
         "case_ids": {
             "a": case_a.id,
             "b": case_b.id,
+        },
+        "change_request_ids": {
+            "primary": change_request.id,
         },
         "gxp_certificate_ids": {
             "a_new": cert_a_new.id,
@@ -1164,6 +1288,7 @@ def test_case_workspace_reads_owner_correct_sections_and_direct_links_only(tmp_p
     assert payload.case_summary.scope_code == "A"
     assert payload.application.dossier_code == "HS-GMP-A"
     assert payload.application.assigned_specialist == "Hà Hoàng Phương"
+    assert payload.application.assigned_specialist_source == "company_master"
     assert payload.inspection.decision_reference == "QĐ-KT-4201"
     assert payload.inspection.planning_sheet_name == "KH-KT-4201"
     assert payload.inspection.bbkt_reference == "BBKT-4201"
@@ -1190,6 +1315,52 @@ def test_case_workspace_reads_owner_correct_sections_and_direct_links_only(tmp_p
     assert basis_certificates[0].certificate_number == "195/GCN-QLD"
     assert basis_certificates[0].issue_date == date(2025, 4, 17)
     assert basis_certificates[0].link_role == "source_certificate"
+    document_items = {item.label: item for item in payload.documents.items}
+    assert document_items["QĐ cấp CC"].status == "available"
+    assert document_items["QĐ cấp CC"].original_filename == "8 qd cap cc GMP.docx"
+    assert document_items["Quyết định kiểm tra"].status == "missing"
+    assert document_items["Đánh giá CAPA 1"].status == "available"
+    assert document_items["Đánh giá CAPA 2"].status == "missing"
+
+
+def test_change_request_workspace_reads_authoritative_change_sections_and_document_checklist(tmp_path):
+    database_path = tmp_path / "catalog-change-request-workspace.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+
+    app = create_app(database_url)
+    change_workspace_route = next(
+        route for route in app.routes if getattr(route, "path", "") == "/change-requests/{change_request_id}/workspace"
+    )
+
+    with Session(engine) as session:
+        payload = change_workspace_route.endpoint(
+            change_request_id=seeded["change_request_ids"]["primary"],
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+
+    assert payload.legacy_change_request_id == 9101
+    assert payload.facility_name == "Cơ sở chứng nhận"
+    assert payload.company_name == "Công ty chứng nhận"
+    assert payload.scope_label == "Đổi địa chỉ"
+    assert payload.description == "Điều chỉnh địa chỉ kho bảo quản"
+    assert payload.requester_name == "Phòng QA"
+    assert payload.state == "under_review"
+    assert payload.handled_by_name == "Hà Hoàng Phương"
+    assert payload.result_label == "Đang thẩm tra hồ sơ thay đổi"
+    assert len(payload.details) == 1
+    assert payload.details[0].classification_label == "Đổi địa chỉ"
+    assert payload.details[0].old_value == "Địa chỉ cũ"
+    assert payload.details[0].new_value == "Địa chỉ mới"
+    document_items = {item.label: item for item in payload.documents.items}
+    assert document_items["Đổi tên, địa chỉ"].status == "available"
+    assert document_items["Đổi tên, địa chỉ"].original_filename == "doi-ten-dia-chi.docx"
+    assert document_items["CV đồng ý thay đổi"].status == "missing"
 
 
 def test_case_workspace_does_not_fabricate_business_eligibility_for_unlinked_case(tmp_path):

@@ -2,6 +2,7 @@ import type {
   BusinessEligibilityDetail,
   BusinessEligibilityListItem,
   CaseWorkspace,
+  ChangeRequestWorkspace,
   FacilityHistoryItem,
   FacilityWorkspaceSummary,
   GxpCertificateDetail,
@@ -31,6 +32,9 @@ export function FacilityWorkspaceTabs({
   caseWorkspace,
   caseWorkspaceLoading,
   caseWorkspaceError,
+  changeRequestWorkspace,
+  changeRequestWorkspaceLoading,
+  changeRequestWorkspaceError,
   activeEventTab,
   onEventTabChange,
   gxpCertificates,
@@ -60,6 +64,9 @@ export function FacilityWorkspaceTabs({
   caseWorkspace: CaseWorkspace | null;
   caseWorkspaceLoading: boolean;
   caseWorkspaceError: string | null;
+  changeRequestWorkspace: ChangeRequestWorkspace | null;
+  changeRequestWorkspaceLoading: boolean;
+  changeRequestWorkspaceError: string | null;
   activeEventTab: string;
   onEventTabChange: (tab: string) => void;
   gxpCertificates: GxpCertificateListItem[];
@@ -112,6 +119,9 @@ export function FacilityWorkspaceTabs({
                 caseWorkspace={caseWorkspace}
                 caseWorkspaceError={caseWorkspaceError}
                 caseWorkspaceLoading={caseWorkspaceLoading}
+                changeRequestWorkspace={changeRequestWorkspace}
+                changeRequestWorkspaceError={changeRequestWorkspaceError}
+                changeRequestWorkspaceLoading={changeRequestWorkspaceLoading}
                 onTabChange={onEventTabChange}
                 selectedHistory={selectedHistory}
               />

@@ -22,6 +22,7 @@ const apiMocks = vi.hoisted(() => ({
   getFacilityWorkspace: vi.fn().mockResolvedValue(null),
   getCaseDetail: vi.fn().mockResolvedValue(null),
   getCaseWorkspace: vi.fn().mockResolvedValue(null),
+  getChangeRequestWorkspace: vi.fn().mockResolvedValue(null),
   listSiteGxpCertificates: vi.fn().mockResolvedValue({ items: [] }),
   getGxpCertificateDetail: vi.fn().mockResolvedValue(null),
   listSiteBusinessEligibilityCertificates: vi.fn().mockResolvedValue({ items: [] }),
@@ -187,6 +188,7 @@ function buildCaseWorkspace(overrides: Record<string, unknown> = {}) {
       dossier_reference: "QĐ-TN-01",
       applicant_name: "Nguyễn Văn A",
       assigned_specialist: "Hà Hoàng Phương",
+      assigned_specialist_source: "company_master",
     },
     inspection: {
       decision_reference: "QĐ-KT-01",
@@ -222,6 +224,40 @@ function buildCaseWorkspace(overrides: Record<string, unknown> = {}) {
         },
       ],
     },
+    documents: {
+      items: [
+        {
+          checklist_key: "case:case-1:INSPECTION_QD_KT",
+          label: "Quyết định kiểm tra",
+          family_code: "INSPECTION_QD_KT",
+          parent_scope: "case",
+          parent_id: "case-1",
+          status: "missing",
+          document_id: null,
+          document_type_code: null,
+          title: null,
+          original_filename: null,
+          issued_on: null,
+          available_variant_types: [],
+          detail_available: false,
+        },
+        {
+          checklist_key: "case:case-1:CERTIFICATE_DECISION",
+          label: "QĐ cấp CC",
+          family_code: "CERTIFICATE_DECISION",
+          parent_scope: "case",
+          parent_id: "case-1",
+          status: "available",
+          document_id: "doc-cert-decision",
+          document_type_code: "CERTIFICATE_DECISION",
+          title: "Certificate Decision",
+          original_filename: "8 qd cap cc GMP.docx",
+          issued_on: "2026-08-09T00:00:00Z",
+          available_variant_types: ["editable_docx"],
+          detail_available: true,
+        },
+      ],
+    },
     linked_gxp_certificates: [
       {
         certificate_id: "cert-a-new",
@@ -247,6 +283,73 @@ function buildCaseWorkspace(overrides: Record<string, unknown> = {}) {
       },
     ],
     linked_business_eligibility_certificates: [],
+    ...overrides,
+  };
+}
+
+function buildChangeRequestWorkspace(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "change-1",
+    legacy_change_request_id: 1,
+    site_id: "site-1",
+    facility_name: "Nhà máy A",
+    company_name: "Công ty A",
+    scope_label: "Đổi địa chỉ",
+    description: "Điều chỉnh địa chỉ kho bảo quản",
+    submitted_on: "2026-08-06",
+    requester_name: "Phòng QA",
+    state: "under_review",
+    handled_on: "2026-08-07",
+    handled_by_name: "Hà Hoàng Phương",
+    result_label: "Đang thẩm tra hồ sơ thay đổi",
+    effective_on: null,
+    approval_reference: null,
+    documents: {
+      items: [
+        {
+          checklist_key: "change_request:change-1:NAME_ADDRESS_CHANGE_LETTER",
+          label: "Đổi tên, địa chỉ",
+          family_code: "NAME_ADDRESS_CHANGE_LETTER",
+          parent_scope: "change_request",
+          parent_id: "change-1",
+          status: "available",
+          document_id: "doc-change-1",
+          document_type_code: "NAME_ADDRESS_CHANGE_LETTER",
+          title: "Đổi tên, địa chỉ",
+          original_filename: "doi-ten-dia-chi.docx",
+          issued_on: "2026-08-08T00:00:00Z",
+          available_variant_types: ["editable_docx"],
+          detail_available: true,
+        },
+        {
+          checklist_key: "change_request:change-1:CONSENT_CHANGE_LETTER",
+          label: "CV đồng ý thay đổi",
+          family_code: "CONSENT_CHANGE_LETTER",
+          parent_scope: "change_request",
+          parent_id: "change-1",
+          status: "missing",
+          document_id: null,
+          document_type_code: null,
+          title: null,
+          original_filename: null,
+          issued_on: null,
+          available_variant_types: [],
+          detail_available: false,
+        },
+      ],
+    },
+    details: [
+      {
+        change_detail_id: "change-detail-1",
+        legacy_change_detail_id: 101,
+        classification_id: 1,
+        classification_label: "Đổi địa chỉ",
+        approval_status: null,
+        old_value: "Địa chỉ cũ",
+        new_value: "Địa chỉ mới",
+        note: null,
+      },
+    ],
     ...overrides,
   };
 }
@@ -519,6 +622,7 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
     apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.getChangeRequestWorkspace.mockResolvedValue(buildChangeRequestWorkspace());
 
     const { container } = renderApp(["/search"]);
 
@@ -537,8 +641,11 @@ describe("App Slice A.4 search workspace", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "TD-01" })).toBeInTheDocument();
     });
-    expect(within(container.querySelector(".event-workspace") as HTMLElement).getByText("Đổi địa chỉ")).toBeInTheDocument();
-    expect(screen.getByText("Workspace thay đổi")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Đề nghị" })).toBeInTheDocument();
+    expect(within(container.querySelector(".event-workspace") as HTMLElement).getByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getChangeRequestWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
   });
@@ -583,8 +690,13 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByText("Đề xuất cấp chứng nhận")).toBeInTheDocument();
     expect(screen.getByText("Tiếp nhận hồ sơ")).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("button", { name: "Tài liệu" }));
+    expect(await screen.findByText("QĐ cấp CC")).toBeInTheDocument();
+    expect(screen.getByText("8 qd cap cc GMP.docx")).toBeInTheDocument();
+
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getChangeRequestWorkspace).not.toHaveBeenCalled();
     expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
   });

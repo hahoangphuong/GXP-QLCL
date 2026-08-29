@@ -5,6 +5,7 @@ import type {
   CaseDetail,
   CaseListItem,
   CaseWorkspace,
+  ChangeRequestWorkspace,
   Company,
   DashboardSummary,
   DocumentDetail,
@@ -233,6 +234,19 @@ export function getCaseWorkspace(
   bearerToken?: string | null,
 ): Promise<CaseWorkspace> {
   return requestJson<CaseWorkspace>(`/cases/${caseId}/workspace`, { auth, useStubAuth, bearerToken });
+}
+
+export function getChangeRequestWorkspace(
+  changeRequestId: string,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<ChangeRequestWorkspace> {
+  return requestJson<ChangeRequestWorkspace>(`/change-requests/${changeRequestId}/workspace`, {
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
 }
 
 export function listSiteGxpCertificates(

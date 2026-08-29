@@ -3,12 +3,14 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
+from functools import lru_cache
 
 from fastapi import HTTPException
 from sqlalchemy import and_, cast, func, or_, select, String, union_all
 from sqlalchemy.orm import Session, aliased
 
 from backend.app.db.enums import CaseState, ChangeRequestState
+from backend.app.document.service_contract import load_default_registry
 from backend.app.db.models.phase1 import (
     BusinessEligibilityCertificate,
     BusinessEligibilityCertificateLink,
@@ -20,8 +22,13 @@ from backend.app.db.models.phase1 import (
     Certificate,
     CertificateScope,
     CertificateVersion,
+    ChangeApproval,
     ChangeRequest,
+    ChangeRequestDetail,
     Company,
+    Document,
+    DocumentVariant,
+    DocumentVersion,
     InspectionEvent,
     InspectionPlan,
     InspectionOutcome,
@@ -61,7 +68,47 @@ class CertificateContextRow:
     scope_summary: str | None
 
 
+@dataclass(frozen=True)
+class DocumentChecklistDefinition:
+    checklist_key: str
+    label: str
+    family_code: str | None
+    parent_scope: str
+    parent_id: str
+
+
+CASE_DOCUMENT_FAMILY_LABELS = {
+    "ASSESSMENT_MINUTES": "Biên bản thẩm định",
+    "INSPECTION_QD_KT": "Quyết định kiểm tra",
+    "INSPECTION_KE_HOACH_KT": "Kế hoạch kiểm tra",
+    "INSPECTION_BB_KT": "Biên bản đánh giá",
+    "INSPECTION_BBTD_HOSO_DK": "Báo cáo đánh giá",
+    "INSPECTION_PT_PCT": "Phiếu trình PCT",
+    "INSPECTION_PT_CT": "Phiếu trình CT",
+    "CERTIFICATE_DECISION": "QĐ cấp CC",
+    "CERTIFICATE_ISSUANCE_WORD": "Chứng chỉ GPs",
+    "RISK_MANAGEMENT_WORKSHEET": "Đánh giá rủi ro",
+    "STATUS_CONFIRMATION_LETTER": "Xác nhận tình trạng",
+}
+
+CHANGE_REQUEST_DOCUMENT_FAMILY_LABELS = {
+    "NAME_ADDRESS_CHANGE_LETTER": "Đổi tên, địa chỉ",
+    "CHANGE_REPORT_ROUTE_LETTER": "Đánh giá thay đổi",
+    "CONSENT_CHANGE_LETTER": "CV đồng ý thay đổi",
+}
+
+
 class CatalogReadService:
+    @staticmethod
+    @lru_cache(maxsize=1)
+    def _document_registry_labels() -> dict[str, str]:
+        labels: dict[str, str] = {}
+        for entry in load_default_registry():
+            labels.setdefault(entry.family_code, entry.logical_name)
+        labels.update(CASE_DOCUMENT_FAMILY_LABELS)
+        labels.update(CHANGE_REQUEST_DOCUMENT_FAMILY_LABELS)
+        return labels
+
     @staticmethod
     def _normalized_line_code_sql(column):
         return func.nullif(func.trim(column), "")
@@ -185,6 +232,243 @@ class CatalogReadService:
         if certificate.issuance_basis == "administrative_no_inspection":
             return "Cấp hành chính không gắn đợt kiểm tra"
         return None
+
+    @staticmethod
+    def _pick_document_version(versions: list[DocumentVersion]) -> DocumentVersion | None:
+        if not versions:
+            return None
+        current_versions = [row for row in versions if row.is_current]
+        candidates = current_versions or versions
+        return max(
+            candidates,
+            key=lambda row: (
+                row.is_current,
+                row.issued_on or row.created_at,
+                row.version_no,
+                row.id,
+            ),
+        )
+
+    def _serialize_document_checklist_items(
+        self,
+        session: Session,
+        *,
+        definitions: list[DocumentChecklistDefinition],
+    ) -> list[dict[str, object]]:
+        if not definitions:
+            return []
+
+        case_ids = sorted({item.parent_id for item in definitions if item.parent_scope == "case"})
+        capa_cycle_ids = sorted({item.parent_id for item in definitions if item.parent_scope == "capa_cycle"})
+        change_request_ids = sorted({item.parent_id for item in definitions if item.parent_scope == "change_request"})
+
+        conditions = []
+        if case_ids:
+            conditions.append(Document.case_id.in_(case_ids))
+        if capa_cycle_ids:
+            conditions.append(Document.capa_cycle_id.in_(capa_cycle_ids))
+        if change_request_ids:
+            conditions.append(Document.change_request_id.in_(change_request_ids))
+
+        documents = list(session.scalars(select(Document).where(or_(*conditions)))) if conditions else []
+        documents_by_key: dict[tuple[str, str, str | None], list[Document]] = defaultdict(list)
+        for row in documents:
+            if row.case_id is not None:
+                documents_by_key[("case", row.case_id, row.family_code)].append(row)
+            if row.capa_cycle_id is not None:
+                documents_by_key[("capa_cycle", row.capa_cycle_id, row.family_code)].append(row)
+            if row.change_request_id is not None:
+                documents_by_key[("change_request", row.change_request_id, row.family_code)].append(row)
+
+        document_ids = [row.id for row in documents]
+        variants = (
+            list(session.scalars(select(DocumentVariant).where(DocumentVariant.document_id.in_(document_ids))))
+            if document_ids
+            else []
+        )
+        variants_by_document_id: dict[str, list[DocumentVariant]] = defaultdict(list)
+        for row in variants:
+            variants_by_document_id[row.document_id].append(row)
+
+        variant_ids = [row.id for row in variants]
+        versions = (
+            list(session.scalars(select(DocumentVersion).where(DocumentVersion.document_variant_id.in_(variant_ids))))
+            if variant_ids
+            else []
+        )
+        versions_by_variant_id: dict[str, list[DocumentVersion]] = defaultdict(list)
+        for row in versions:
+            versions_by_variant_id[row.document_variant_id].append(row)
+
+        def select_best_document(candidates: list[Document]) -> tuple[Document | None, DocumentVersion | None, list[str]]:
+            best_document: Document | None = None
+            best_version: DocumentVersion | None = None
+            best_variant_types: list[str] = []
+            best_key = None
+            for candidate in candidates:
+                candidate_variants = variants_by_document_id.get(candidate.id, [])
+                candidate_versions = [
+                    version
+                    for variant in candidate_variants
+                    for version in versions_by_variant_id.get(variant.id, [])
+                ]
+                selected_version = self._pick_document_version(candidate_versions)
+                variant_types = sorted({variant.variant_type.value for variant in candidate_variants if variant.variant_type})
+                sort_key = (
+                    selected_version is not None,
+                    False if selected_version is None or selected_version.issued_on is None else True,
+                    date.min if selected_version is None or selected_version.issued_on is None else selected_version.issued_on.date(),
+                    candidate.updated_at,
+                    candidate.id,
+                )
+                if best_key is None or sort_key > best_key:
+                    best_document = candidate
+                    best_version = selected_version
+                    best_variant_types = variant_types
+                    best_key = sort_key
+            return best_document, best_version, best_variant_types
+
+        labels = self._document_registry_labels()
+        items: list[dict[str, object]] = []
+        seen_keys: set[str] = set()
+
+        for definition in definitions:
+            seen_keys.add(definition.checklist_key)
+            matched_documents = (
+                documents_by_key.get((definition.parent_scope, definition.parent_id, definition.family_code), [])
+                if definition.family_code
+                else []
+            )
+            best_document, best_version, variant_types = select_best_document(matched_documents)
+            items.append(
+                {
+                    "checklist_key": definition.checklist_key,
+                    "label": definition.label,
+                    "family_code": definition.family_code,
+                    "parent_scope": definition.parent_scope,
+                    "parent_id": definition.parent_id,
+                    "status": "available" if best_document is not None else "missing",
+                    "document_id": None if best_document is None else best_document.id,
+                    "document_type_code": None if best_document is None else best_document.document_type_code,
+                    "title": None if best_document is None else best_document.title,
+                    "original_filename": None if best_version is None else best_version.original_filename,
+                    "issued_on": None if best_version is None else best_version.issued_on,
+                    "available_variant_types": variant_types,
+                    "detail_available": best_document is not None,
+                }
+            )
+
+        for row in documents:
+            parent_scope = None
+            parent_id = None
+            if row.change_request_id is not None:
+                parent_scope = "change_request"
+                parent_id = row.change_request_id
+            elif row.capa_cycle_id is not None:
+                parent_scope = "capa_cycle"
+                parent_id = row.capa_cycle_id
+            elif row.case_id is not None:
+                parent_scope = "case"
+                parent_id = row.case_id
+            if parent_scope is None or parent_id is None:
+                continue
+            checklist_key = f"{parent_scope}:{parent_id}:{row.family_code}"
+            if checklist_key in seen_keys:
+                continue
+            candidate_variants = variants_by_document_id.get(row.id, [])
+            candidate_versions = [
+                version
+                for variant in candidate_variants
+                for version in versions_by_variant_id.get(variant.id, [])
+            ]
+            best_version = self._pick_document_version(candidate_versions)
+            variant_types = sorted({variant.variant_type.value for variant in candidate_variants if variant.variant_type})
+            items.append(
+                {
+                    "checklist_key": checklist_key,
+                    "label": labels.get(row.family_code, row.title or row.family_code),
+                    "family_code": row.family_code,
+                    "parent_scope": parent_scope,
+                    "parent_id": parent_id,
+                    "status": "available",
+                    "document_id": row.id,
+                    "document_type_code": row.document_type_code,
+                    "title": row.title,
+                    "original_filename": None if best_version is None else best_version.original_filename,
+                    "issued_on": None if best_version is None else best_version.issued_on,
+                    "available_variant_types": variant_types,
+                    "detail_available": True,
+                }
+            )
+
+        items.sort(
+            key=lambda item: (
+                item["parent_scope"],
+                item["label"],
+                item["family_code"] or "",
+                item["parent_id"],
+                item["checklist_key"],
+            )
+        )
+        return items
+
+    def _build_case_document_checklist(
+        self,
+        session: Session,
+        *,
+        case_id: str,
+        capa_cycles: list[CapaCycle],
+    ) -> dict[str, object]:
+        definitions = [
+            DocumentChecklistDefinition(
+                checklist_key=f"case:{case_id}:{family_code}",
+                label=label,
+                family_code=family_code,
+                parent_scope="case",
+                parent_id=case_id,
+            )
+            for family_code, label in CASE_DOCUMENT_FAMILY_LABELS.items()
+        ]
+        for cycle in capa_cycles:
+            if cycle.round_no == 1:
+                definitions.append(
+                    DocumentChecklistDefinition(
+                        checklist_key=f"capa_cycle:{cycle.id}:INSPECTION_CAPA_LAN_1",
+                        label="Đánh giá CAPA 1",
+                        family_code="INSPECTION_CAPA_LAN_1",
+                        parent_scope="capa_cycle",
+                        parent_id=cycle.id,
+                    )
+                )
+            elif cycle.round_no == 2:
+                definitions.append(
+                    DocumentChecklistDefinition(
+                        checklist_key=f"capa_cycle:{cycle.id}:INSPECTION_CAPA_LAN_2",
+                        label="Đánh giá CAPA 2",
+                        family_code="INSPECTION_CAPA_LAN_2",
+                        parent_scope="capa_cycle",
+                        parent_id=cycle.id,
+                    )
+                )
+        return {"items": self._serialize_document_checklist_items(session, definitions=definitions)}
+
+    def _build_change_request_document_checklist(
+        self,
+        session: Session,
+        *,
+        change_request_id: str,
+    ) -> dict[str, object]:
+        definitions = [
+            DocumentChecklistDefinition(
+                checklist_key=f"change_request:{change_request_id}:{family_code}",
+                label=label,
+                family_code=family_code,
+                parent_scope="change_request",
+                parent_id=change_request_id,
+            )
+            for family_code, label in CHANGE_REQUEST_DOCUMENT_FAMILY_LABELS.items()
+        ]
+        return {"items": self._serialize_document_checklist_items(session, definitions=definitions)}
 
     def _serialize_gxp_certificate_detail(
         self,
@@ -1755,6 +2039,7 @@ class CatalogReadService:
                 "dossier_reference": None if application is None else application.dossier_reference,
                 "applicant_name": None if application is None else application.applicant_name,
                 "assigned_specialist": company.assigned_specialist_text,
+                "assigned_specialist_source": None if company.assigned_specialist_text is None else "company_master",
             },
             "inspection": {
                 "decision_reference": None if outcome is None else outcome.decision_reference,
@@ -1816,6 +2101,71 @@ class CatalogReadService:
                     }
                 ],
             },
+            "documents": self._build_case_document_checklist(session, case_id=case.id, capa_cycles=capa_cycles),
             "linked_gxp_certificates": linked_gxp_certificates,
             "linked_business_eligibility_certificates": linked_business_eligibility_certificates,
+        }
+
+    def get_change_request_workspace(self, session: Session, *, change_request_id: str) -> dict[str, object]:
+        change_request = session.get(ChangeRequest, change_request_id)
+        if change_request is None:
+            raise HTTPException(status_code=404, detail="Change request not found.")
+
+        site = session.get(Site, change_request.site_id)
+        if site is None:
+            raise HTTPException(status_code=404, detail="Facility not found for change request.")
+        company = session.get(Company, site.company_id)
+        if company is None:
+            raise HTTPException(status_code=404, detail="Company not found for change request.")
+
+        approval = session.scalars(
+            select(ChangeApproval).where(ChangeApproval.change_request_id == change_request.id)
+        ).first()
+        details = list(
+            session.scalars(
+                select(ChangeRequestDetail)
+                .where(ChangeRequestDetail.change_request_id == change_request.id)
+                .order_by(
+                    ChangeRequestDetail.classification_label.is_(None),
+                    ChangeRequestDetail.classification_label.asc(),
+                    ChangeRequestDetail.legacy_change_detail_id.is_(None),
+                    ChangeRequestDetail.legacy_change_detail_id.asc(),
+                    ChangeRequestDetail.id.asc(),
+                )
+            )
+        )
+
+        return {
+            "id": change_request.id,
+            "legacy_change_request_id": change_request.legacy_change_request_id,
+            "site_id": change_request.site_id,
+            "facility_name": site.site_name,
+            "company_name": company.legal_name,
+            "scope_label": change_request.scope_label,
+            "description": change_request.description,
+            "submitted_on": change_request.submitted_on,
+            "requester_name": change_request.requester_name,
+            "state": change_request.state.value,
+            "handled_on": None if approval is None else approval.handled_on,
+            "handled_by_name": None if approval is None else approval.handled_by_name,
+            "result_label": None if approval is None else approval.result_label,
+            "effective_on": None if approval is None else approval.effective_on,
+            "approval_reference": None if approval is None else approval.approval_reference,
+            "documents": self._build_change_request_document_checklist(
+                session,
+                change_request_id=change_request.id,
+            ),
+            "details": [
+                {
+                    "change_detail_id": row.id,
+                    "legacy_change_detail_id": row.legacy_change_detail_id,
+                    "classification_id": row.classification_id,
+                    "classification_label": row.classification_label,
+                    "approval_status": row.approval_status,
+                    "old_value": row.old_value,
+                    "new_value": row.new_value,
+                    "note": row.note,
+                }
+                for row in details
+            ],
         }

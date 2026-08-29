@@ -186,6 +186,7 @@ class CaseWorkspaceApplicationRead(BaseModel):
     dossier_reference: str | None
     applicant_name: str | None
     assigned_specialist: str | None
+    assigned_specialist_source: Literal["company_master"] | None
 
 
 class CaseWorkspaceInspectionRead(BaseModel):
@@ -232,14 +233,66 @@ class CaseWorkspaceProcessingRead(BaseModel):
     events: list[CaseWorkspaceProcessingEventRead]
 
 
+class DocumentChecklistItemRead(BaseModel):
+    checklist_key: str
+    label: str
+    family_code: str | None
+    parent_scope: Literal["case", "capa_cycle", "change_request"]
+    parent_id: str
+    status: Literal["available", "missing"]
+    document_id: str | None
+    document_type_code: str | None
+    title: str | None
+    original_filename: str | None
+    issued_on: datetime | None
+    available_variant_types: list[str]
+    detail_available: bool
+
+
+class DocumentChecklistRead(BaseModel):
+    items: list[DocumentChecklistItemRead]
+
+
 class CaseWorkspaceRead(BaseModel):
     case_summary: CaseWorkspaceSummaryRead
     application: CaseWorkspaceApplicationRead
     inspection: CaseWorkspaceInspectionRead
     remediation: CaseWorkspaceRemediationRead
     processing: CaseWorkspaceProcessingRead
+    documents: DocumentChecklistRead
     linked_gxp_certificates: list[GxpCertificateDetailRead]
     linked_business_eligibility_certificates: list[BusinessEligibilityDetailRead]
+
+
+class ChangeRequestWorkspaceDetailRead(BaseModel):
+    change_detail_id: str
+    legacy_change_detail_id: int | None
+    classification_id: int | None
+    classification_label: str | None
+    approval_status: str | None
+    old_value: str | None
+    new_value: str | None
+    note: str | None
+
+
+class ChangeRequestWorkspaceRead(BaseModel):
+    id: str
+    legacy_change_request_id: int | None
+    site_id: str
+    facility_name: str
+    company_name: str
+    scope_label: str | None
+    description: str | None
+    submitted_on: date | None
+    requester_name: str | None
+    state: str
+    handled_on: date | None
+    handled_by_name: str | None
+    result_label: str | None
+    effective_on: date | None
+    approval_reference: str | None
+    documents: DocumentChecklistRead
+    details: list[ChangeRequestWorkspaceDetailRead]
 
 
 class GxpCertificateListItemRead(BaseModel):

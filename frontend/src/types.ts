@@ -184,6 +184,7 @@ export type CaseWorkspaceApplication = {
   dossier_reference: string | null;
   applicant_name: string | null;
   assigned_specialist: string | null;
+  assigned_specialist_source: "company_master" | null;
 };
 
 export type CaseWorkspaceInspection = {
@@ -228,6 +229,26 @@ export type CaseWorkspaceProcessing = {
   assessment_result: string | null;
   notes: string | null;
   events: CaseWorkspaceProcessingEvent[];
+};
+
+export type DocumentChecklistItem = {
+  checklist_key: string;
+  label: string;
+  family_code: string | null;
+  parent_scope: "case" | "capa_cycle" | "change_request";
+  parent_id: string;
+  status: "available" | "missing";
+  document_id: string | null;
+  document_type_code: string | null;
+  title: string | null;
+  original_filename: string | null;
+  issued_on: string | null;
+  available_variant_types: string[];
+  detail_available: boolean;
+};
+
+export type DocumentChecklist = {
+  items: DocumentChecklistItem[];
 };
 
 export type GxpCertificateListItem = {
@@ -334,8 +355,40 @@ export type CaseWorkspace = {
   inspection: CaseWorkspaceInspection;
   remediation: CaseWorkspaceRemediation;
   processing: CaseWorkspaceProcessing;
+  documents: DocumentChecklist;
   linked_gxp_certificates: GxpCertificateDetail[];
   linked_business_eligibility_certificates: BusinessEligibilityDetail[];
+};
+
+export type ChangeRequestWorkspaceDetail = {
+  change_detail_id: string;
+  legacy_change_detail_id: number | null;
+  classification_id: number | null;
+  classification_label: string | null;
+  approval_status: string | null;
+  old_value: string | null;
+  new_value: string | null;
+  note: string | null;
+};
+
+export type ChangeRequestWorkspace = {
+  id: string;
+  legacy_change_request_id: number | null;
+  site_id: string;
+  facility_name: string;
+  company_name: string;
+  scope_label: string | null;
+  description: string | null;
+  submitted_on: string | null;
+  requester_name: string | null;
+  state: string;
+  handled_on: string | null;
+  handled_by_name: string | null;
+  result_label: string | null;
+  effective_on: string | null;
+  approval_reference: string | null;
+  documents: DocumentChecklist;
+  details: ChangeRequestWorkspaceDetail[];
 };
 
 export type DocumentPreparationResponse = {

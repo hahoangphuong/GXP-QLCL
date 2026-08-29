@@ -2,11 +2,13 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
-import { formatCompactDate, formatHistoryEventType, formatStatusLabel } from "../../lib/presentation";
+import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
 import type {
   BusinessEligibilityDetail,
   CaseWorkspace,
   CaseWorkspaceRemediationCycle,
+  ChangeRequestWorkspace,
+  DocumentChecklistItem,
   FacilityHistoryItem,
   GxpCertificateDetail,
 } from "../../types";
@@ -14,7 +16,8 @@ import { BusinessEligibilityDetailFields } from "./BusinessEligibilityDetailFiel
 import { DetailValue } from "./DetailValue";
 import { GxpCertificateDetailFields } from "./GxpCertificateDetailFields";
 
-const EVENT_TABS = ["Hồ sơ", "Kiểm tra", "Khắc phục", "Xử lý", "Chứng nhận GxP", "Chứng nhận ĐĐK"] as const;
+const CASE_EVENT_TABS = ["Hồ sơ", "Kiểm tra", "Khắc phục", "Xử lý", "Tài liệu", "Chứng nhận GxP", "Chứng nhận ĐĐK"] as const;
+const CHANGE_REQUEST_EVENT_TABS = ["Đề nghị", "Chi tiết", "Xử lý", "Tài liệu"] as const;
 
 const PROCESSING_EVENT_LABELS: Record<string, string> = {
   application_submitted: "Tiếp nhận hồ sơ",
@@ -24,6 +27,17 @@ const PROCESSING_EVENT_LABELS: Record<string, string> = {
   inspection_executed: "Thực hiện kiểm tra",
   outcome_recorded: "Ghi nhận kết quả",
   certificate_issued: "Cấp chứng nhận",
+};
+
+const DOCUMENT_STATUS_LABELS: Record<string, string> = {
+  available: "Đã có tài liệu",
+  missing: "Chưa có tài liệu",
+};
+
+const DOCUMENT_PARENT_SCOPE_LABELS: Record<string, string> = {
+  case: "Hồ sơ",
+  capa_cycle: "CAPA",
+  change_request: "Thay đổi",
 };
 
 function WorkspaceSection({
@@ -41,17 +55,49 @@ function WorkspaceSection({
   );
 }
 
-function EmptySection({
-  title,
-  description,
+function DocumentChecklistSection({
+  items,
+  emptyDescription,
 }: {
-  title: string;
-  description: string;
+  items: DocumentChecklistItem[];
+  emptyDescription: string;
 }) {
+  if (items.length === 0) {
+    return <EmptyState title="Chưa có checklist tài liệu" description={emptyDescription} />;
+  }
+
   return (
-    <WorkspaceSection title={title}>
-      <EmptyState title="Chưa có dữ liệu" description={description} />
-    </WorkspaceSection>
+    <div className="table-scroll table-scroll-history">
+      <table className="dense-table event-document-table">
+        <thead>
+          <tr>
+            <th>Loại tài liệu</th>
+            <th>Phạm vi</th>
+            <th>Trạng thái</th>
+            <th>Tệp hiện có</th>
+            <th>Ngày</th>
+            <th>Định dạng</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <tr key={item.checklist_key}>
+              <td title={item.family_code ?? ""}>
+                <div className="cell-stack">
+                  <strong>{item.label}</strong>
+                  {item.title ? <span>{item.title}</span> : null}
+                </div>
+              </td>
+              <td>{DOCUMENT_PARENT_SCOPE_LABELS[item.parent_scope] ?? item.parent_scope}</td>
+              <td>{DOCUMENT_STATUS_LABELS[item.status] ?? item.status}</td>
+              <td title={item.original_filename ?? ""}>{item.original_filename ?? "Chưa có"}</td>
+              <td>{formatCompactDate(item.issued_on)}</td>
+              <td>{item.available_variant_types.length > 0 ? item.available_variant_types.join(", ") : "Chưa có"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -322,16 +368,19 @@ function renderCaseStepContent(activeTab: string, caseWorkspace: CaseWorkspace) 
             <DetailValue label="Phạm vi đánh giá" value={caseWorkspace.inspection.outcome_result} multiline />
           </div>
         </WorkspaceSection>
-        <WorkspaceSection title="Xử lý hồ sơ">
+        <WorkspaceSection title="Đầu mối cơ sở">
           <div className="detail-grid compact-grid">
-            <DetailValue label="Chuyên viên phụ trách" value={caseWorkspace.application.assigned_specialist} />
+            <DetailValue
+              label={
+                caseWorkspace.application.assigned_specialist_source === "company_master"
+                  ? "Chuyên viên phụ trách cơ sở"
+                  : "Chuyên viên phụ trách"
+              }
+              value={caseWorkspace.application.assigned_specialist}
+            />
             <DetailValue label="Người nộp hồ sơ" value={caseWorkspace.application.applicant_name} />
           </div>
         </WorkspaceSection>
-        <EmptySection
-          title="Tài liệu"
-          description="Step read model hiện chưa có owner API cho typed document checklist của hồ sơ này, nên chưa render nút tài liệu giả."
-        />
       </div>
     );
   }
@@ -447,7 +496,101 @@ function renderCaseStepContent(activeTab: string, caseWorkspace: CaseWorkspace) 
     return <LinkedGxpCertificates items={caseWorkspace.linked_gxp_certificates} />;
   }
 
+  if (activeTab === "Tài liệu") {
+    return (
+      <WorkspaceSection title="Checklist tài liệu hồ sơ">
+        <DocumentChecklistSection
+          emptyDescription="Canonical document owner hiện chưa có document row nào cho hồ sơ hoặc các vòng CAPA đang chọn."
+          items={caseWorkspace.documents.items}
+        />
+      </WorkspaceSection>
+    );
+  }
+
   return <LinkedBusinessEligibilityCertificates items={caseWorkspace.linked_business_eligibility_certificates} />;
+}
+
+function renderChangeRequestStepContent(activeTab: string, changeRequestWorkspace: ChangeRequestWorkspace) {
+  if (activeTab === "Đề nghị") {
+    return (
+      <div className="event-step-stack">
+        <WorkspaceSection title="Thông tin đề nghị thay đổi">
+          <div className="detail-grid compact-grid">
+            <DetailValue label="Mã thay đổi" value={changeRequestWorkspace.legacy_change_request_id ? `TD-${changeRequestWorkspace.legacy_change_request_id}` : null} />
+            <DetailValue label="Phạm vi" value={changeRequestWorkspace.scope_label} />
+            <DetailValue label="Ngày đề nghị" value={formatCompactDate(changeRequestWorkspace.submitted_on)} />
+            <DetailValue label="Đơn vị/người đề nghị" value={changeRequestWorkspace.requester_name} />
+            <DetailValue label="Trạng thái" value={formatStatusLabel(changeRequestWorkspace.state)} />
+            <DetailValue label="Mô tả" multiline value={changeRequestWorkspace.description} />
+          </div>
+        </WorkspaceSection>
+      </div>
+    );
+  }
+
+  if (activeTab === "Chi tiết") {
+    if (changeRequestWorkspace.details.length === 0) {
+      return (
+        <EmptyState
+          title="Chưa có chi tiết thay đổi"
+          description="Legacy db.Tdoi2 hiện không có dòng chi tiết canonical cho yêu cầu thay đổi này."
+        />
+      );
+    }
+    return (
+      <div className="event-step-stack">
+        <WorkspaceSection title="Danh mục chi tiết thay đổi">
+          <div className="table-scroll table-scroll-history">
+            <table className="dense-table change-request-detail-table">
+              <thead>
+                <tr>
+                  <th>Phân loại</th>
+                  <th>Trạng thái chấp nhận</th>
+                  <th>Thông tin cũ</th>
+                  <th>Thông tin mới</th>
+                </tr>
+              </thead>
+              <tbody>
+                {changeRequestWorkspace.details.map((item) => (
+                  <tr key={item.change_detail_id}>
+                    <td>{item.classification_label ?? "Chưa có"}</td>
+                    <td>{item.approval_status ?? "Chưa có"}</td>
+                    <td>{item.old_value ?? "Chưa có"}</td>
+                    <td>{item.new_value ?? "Chưa có"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </WorkspaceSection>
+      </div>
+    );
+  }
+
+  if (activeTab === "Xử lý") {
+    return (
+      <div className="event-step-stack">
+        <WorkspaceSection title="Kết quả xử lý thay đổi">
+          <div className="detail-grid compact-grid">
+            <DetailValue label="Ngày xử lý" value={formatCompactDate(changeRequestWorkspace.handled_on)} />
+            <DetailValue label="Người xử lý" value={changeRequestWorkspace.handled_by_name} />
+            <DetailValue label="Kết quả" multiline value={changeRequestWorkspace.result_label} />
+            <DetailValue label="Hiệu lực" value={formatCompactDate(changeRequestWorkspace.effective_on)} />
+            <DetailValue label="Tham chiếu phê duyệt" value={changeRequestWorkspace.approval_reference} />
+          </div>
+        </WorkspaceSection>
+      </div>
+    );
+  }
+
+  return (
+    <WorkspaceSection title="Checklist tài liệu thay đổi">
+      <DocumentChecklistSection
+        emptyDescription="Canonical document owner hiện chưa có document row hoặc family checklist nào được gắn cho yêu cầu thay đổi này."
+        items={changeRequestWorkspace.documents.items}
+      />
+    </WorkspaceSection>
+  );
 }
 
 export function EventWorkspace({
@@ -455,6 +598,9 @@ export function EventWorkspace({
   caseWorkspace,
   caseWorkspaceLoading,
   caseWorkspaceError,
+  changeRequestWorkspace,
+  changeRequestWorkspaceLoading,
+  changeRequestWorkspaceError,
   activeTab,
   onTabChange,
 }: {
@@ -462,6 +608,9 @@ export function EventWorkspace({
   caseWorkspace: CaseWorkspace | null;
   caseWorkspaceLoading: boolean;
   caseWorkspaceError: string | null;
+  changeRequestWorkspace: ChangeRequestWorkspace | null;
+  changeRequestWorkspaceLoading: boolean;
+  changeRequestWorkspaceError: string | null;
   activeTab: string;
   onTabChange: (tab: string) => void;
 }) {
@@ -474,6 +623,9 @@ export function EventWorkspace({
     );
   }
 
+  const tabs = selectedHistory.source_type === "change_request" ? CHANGE_REQUEST_EVENT_TABS : CASE_EVENT_TABS;
+  const effectiveActiveTab = tabs.some((tab) => tab === activeTab) ? activeTab : tabs[0];
+
   return (
     <section className="event-workspace">
       <div className="panel-header">
@@ -484,11 +636,12 @@ export function EventWorkspace({
       </div>
       <nav aria-label="Quy trình xử lý sự kiện" className="workflow-stepper">
         <ol className="workflow-step-list">
-          {EVENT_TABS.map((tab, index) => (
+          {tabs.map((tab, index) => (
             <li key={tab}>
               <button
-                aria-current={activeTab === tab ? "step" : undefined}
-                className={activeTab === tab ? "workflow-step active" : "workflow-step"}
+                aria-label={tab}
+                aria-current={effectiveActiveTab === tab ? "step" : undefined}
+                className={effectiveActiveTab === tab ? "workflow-step active" : "workflow-step"}
                 onClick={() => onTabChange(tab)}
                 type="button"
               >
@@ -501,21 +654,18 @@ export function EventWorkspace({
       </nav>
       <div className="workspace-body event-workspace-body">
         {selectedHistory.source_type === "change_request" ? (
-          <div className="event-step-stack">
-            <WorkspaceSection title="Thông tin thay đổi">
-              <div className="detail-grid compact-grid">
-                <DetailValue label="Phân loại" value={formatHistoryEventType(selectedHistory.event_type)} />
-                <DetailValue label="Mã tham chiếu" value={selectedHistory.reference_code ?? "Chưa có"} />
-                <DetailValue label="Trạng thái" value={formatStatusLabel(selectedHistory.state)} />
-                <DetailValue label="Ngày tiếp nhận" value={formatCompactDate(selectedHistory.occurred_on)} />
-                <DetailValue label="Phạm vi" multiline value={selectedHistory.standard ?? "Chưa có dữ liệu chi tiết từ backend"} />
-              </div>
-            </WorkspaceSection>
-            <EmptySection
-              title="Workspace thay đổi"
-              description="Change request read workspace canonical chưa được tách riêng trong vòng này, nên pane phải chỉ hiển thị summary fail-closed cho lựa chọn thay đổi."
+          changeRequestWorkspaceLoading ? (
+            <EmptyState title="Đang tải workspace thay đổi" description="Đang lấy dữ liệu đọc theo yêu cầu thay đổi đã chọn từ authenticated API." />
+          ) : changeRequestWorkspaceError ? (
+            <EmptyState
+              title="Không tải được workspace thay đổi"
+              description="Workspace read model cho yêu cầu thay đổi đang chọn hiện không sẵn sàng. Vui lòng chọn lại hoặc thử sau."
             />
-          </div>
+          ) : changeRequestWorkspace ? (
+            renderChangeRequestStepContent(effectiveActiveTab, changeRequestWorkspace)
+          ) : (
+            <EmptyState title="Chưa có workspace thay đổi" description="Backend chưa trả dữ liệu workspace cho lựa chọn thay đổi hiện tại." />
+          )
         ) : caseWorkspaceLoading ? (
           <EmptyState title="Đang tải workspace hồ sơ" description="Đang lấy dữ liệu đọc theo case đã chọn từ authenticated API." />
         ) : caseWorkspaceError ? (
@@ -524,7 +674,7 @@ export function EventWorkspace({
             description="Workspace read model cho hồ sơ đang chọn hiện không sẵn sàng. Vui lòng chọn lại hoặc thử sau."
           />
         ) : caseWorkspace ? (
-          renderCaseStepContent(activeTab, caseWorkspace)
+          renderCaseStepContent(effectiveActiveTab, caseWorkspace)
         ) : (
           <EmptyState title="Chưa có workspace hồ sơ" description="Backend chưa trả dữ liệu workspace cho lựa chọn case hiện tại." />
         )}

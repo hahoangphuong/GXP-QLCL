@@ -36,14 +36,19 @@ export function BusinessEligibilityWorkspace({
   }
 
   return (
-    <div className="certificate-workspace-split">
-      <section className="panel panel-tight certificate-list-panel">
+    <div className="certificate-workspace-split eligibility-workspace-split master-detail-split master-detail-split-eligibility">
+      <section className="panel panel-tight certificate-list-panel master-list-pane">
         <div className="panel-header">
           <h3>Danh mục GCN đủ điều kiện</h3>
           <span className="panel-meta">{items.length} giấy</span>
         </div>
         <div className="table-scroll table-scroll-history">
           <table className="dense-table eligibility-history-table">
+            <colgroup>
+              <col className="col-cert-number" />
+              <col className="col-date" />
+              <col className="col-sequence" />
+            </colgroup>
             <thead>
               <tr>
                 <th className="col-cert-number">Số GCN</th>
@@ -81,7 +86,7 @@ export function BusinessEligibilityWorkspace({
         </div>
       </section>
 
-      <section className="panel panel-tight certificate-detail-panel">
+      <section className="panel panel-tight certificate-detail-panel detail-pane">
         {detailError ? (
           <ErrorState message={detailError} />
         ) : detailLoading || !detail ? (

@@ -109,11 +109,11 @@ export function FacilityWorkspaceTabs({
         ) : null}
 
         {selectedFacilityTab === "Các đợt kiểm tra & thay đổi" ? (
-          <div className="event-workspace-split">
-            <div className="event-workspace-history-pane">
+          <div className="event-workspace-split master-detail-split master-detail-split-history">
+            <div className="event-workspace-history-pane master-list-pane">
               <HistoryTable rows={history} selectedHistoryId={selectedHistoryId} onSelect={onHistorySelect} />
             </div>
-            <div className="event-workspace-detail-pane">
+            <div className="event-workspace-detail-pane detail-pane">
               <EventWorkspace
                 activeTab={activeEventTab}
                 caseWorkspace={caseWorkspace}

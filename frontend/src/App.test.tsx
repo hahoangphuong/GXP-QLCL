@@ -416,6 +416,11 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.queryByRole("combobox", { name: "Chứng nhận" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Xử lý" })).not.toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Công ty mới" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dây chuyền mới" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "D.chuyền mới" })).not.toBeInTheDocument();
+    for (const label of ["Công ty mới", "Cơ sở mới", "Dây chuyền mới", "Tái đánh giá", "Thay đổi"]) {
+      expect(screen.getByRole("button", { name: label })).toBeDisabled();
+    }
     expect(screen.queryByText(/^Prev$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Next$/)).not.toBeInTheDocument();
     expect(container.querySelector(".search-toolbar")).toBeNull();
@@ -612,9 +617,9 @@ describe("App Slice A.4 search workspace", () => {
     expect(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi")).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Hồ sơ" })).not.toBeInTheDocument();
     expect(container.querySelector(".workspace-context-strip")).toBeNull();
-    expect(container.querySelector(".event-workspace-split")).not.toBeNull();
-    expect(container.querySelector(".event-workspace-history-pane .history-panel")).not.toBeNull();
-    expect(container.querySelector(".event-workspace-detail-pane .event-workspace")).not.toBeNull();
+    expect(container.querySelector(".event-workspace-split.master-detail-split.master-detail-split-history")).not.toBeNull();
+    expect(container.querySelector(".event-workspace-history-pane.master-list-pane .history-panel")).not.toBeNull();
+    expect(container.querySelector(".event-workspace-detail-pane.detail-pane .event-workspace")).not.toBeNull();
   });
 
   it("updates only the right event pane when history selection changes and keeps ActionCard free of duplicated facility context", async () => {
@@ -843,6 +848,9 @@ describe("App Slice A.4 search workspace", () => {
     renderApp(["/search?facility_tab=Gi%E1%BA%A5y%20ch%E1%BB%A9ng%20nh%E1%BA%ADn%20GxP"]);
 
     expect(await screen.findByRole("heading", { name: "Danh mục GCN GxP" })).toBeInTheDocument();
+    expect(document.querySelector(".certificate-workspace-split.master-detail-split.master-detail-split-certificate")).not.toBeNull();
+    expect(document.querySelector(".certificate-list-panel.master-list-pane")).not.toBeNull();
+    expect(document.querySelector(".certificate-detail-panel.detail-pane")).not.toBeNull();
     expect(screen.getByText("195/GCN-QLD")).toBeInTheDocument();
     expect(screen.getByText("533/GCN-QLD")).toBeInTheDocument();
     expect(await screen.findByText("Thuốc không vô trùng")).toBeInTheDocument();
@@ -919,6 +927,9 @@ describe("App Slice A.4 search workspace", () => {
     renderApp(["/search?facility_tab=Gi%E1%BA%A5y%20ch%E1%BB%A9ng%20nh%E1%BA%ADn%20%C4%91%E1%BB%A7%20%C4%91i%E1%BB%81u%20ki%E1%BB%87n"]);
 
     expect(await screen.findByRole("heading", { name: "Danh mục GCN đủ điều kiện" })).toBeInTheDocument();
+    expect(document.querySelector(".eligibility-workspace-split.master-detail-split.master-detail-split-eligibility")).not.toBeNull();
+    expect(document.querySelector(".certificate-list-panel.master-list-pane")).not.toBeNull();
+    expect(document.querySelector(".certificate-detail-panel.detail-pane")).not.toBeNull();
     expect(screen.getByText("1201/ĐKKDD-BYT")).toBeInTheDocument();
     expect(await screen.findByText("Nguyễn Khắc Minh")).toBeInTheDocument();
     expect(screen.getByText("Võ Việt Hùng")).toBeInTheDocument();

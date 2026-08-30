@@ -36,14 +36,20 @@ export function GxpCertificateWorkspace({
   }
 
   return (
-    <div className="certificate-workspace-split">
-      <section className="panel panel-tight certificate-list-panel">
+    <div className="certificate-workspace-split master-detail-split master-detail-split-certificate">
+      <section className="panel panel-tight certificate-list-panel master-list-pane">
         <div className="panel-header">
           <h3>Danh mục GCN GxP</h3>
           <span className="panel-meta">{items.length} giấy</span>
         </div>
         <div className="table-scroll table-scroll-history">
           <table className="dense-table certificate-history-table">
+            <colgroup>
+              <col className="col-gxp" />
+              <col className="col-line" />
+              <col className="col-cert-number" />
+              <col className="col-date" />
+            </colgroup>
             <thead>
               <tr>
                 <th className="col-gxp">GxP</th>
@@ -85,7 +91,7 @@ export function GxpCertificateWorkspace({
         </div>
       </section>
 
-      <section className="panel panel-tight certificate-detail-panel">
+      <section className="panel panel-tight certificate-detail-panel detail-pane">
         {detailError ? (
           <ErrorState message={detailError} />
         ) : detailLoading || !detail ? (

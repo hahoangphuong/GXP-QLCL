@@ -19,6 +19,12 @@ export function HistoryTable({
       </div>
       <div className="table-scroll table-scroll-history">
         <table className="dense-table history-table">
+          <colgroup>
+            <col className="col-event-type" />
+            <col className="col-standard" />
+            <col className="col-date" />
+            <col className="col-state" />
+          </colgroup>
           <thead>
             <tr>
               <th className="col-event-type">Phân loại</th>

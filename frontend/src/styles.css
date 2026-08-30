@@ -475,8 +475,9 @@ tr:focus-visible {
 
 .search-workspace-split {
   display: grid;
-  grid-template-columns: minmax(0, 5.6fr) minmax(180px, 1fr);
+  grid-template-columns: minmax(0, 1fr) clamp(154px, 12vw, 188px);
   gap: 0.55rem;
+  align-items: stretch;
 }
 
 .results-panel,
@@ -530,7 +531,7 @@ tr:focus-visible {
 .dense-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.81rem;
+  font-size: 0.83rem;
   table-layout: fixed;
 }
 
@@ -547,7 +548,7 @@ tr:focus-visible {
 
 .dense-table th,
 .dense-table td {
-  padding: 0.34rem 0.48rem;
+  padding: 0.31rem 0.42rem;
   border-bottom: 1px solid #e0eaed;
   vertical-align: top;
 }
@@ -600,19 +601,19 @@ tr:focus-visible {
 }
 
 .history-table .col-event-type {
-  width: 5.3rem;
+  width: 4.7rem;
 }
 
 .history-table .col-standard {
-  width: 43%;
+  width: auto;
 }
 
 .history-table .col-date {
-  width: 5.1rem;
+  width: 6.2rem;
 }
 
 .history-table .col-state {
-  width: 6.5rem;
+  width: 7.2rem;
 }
 
 .multiline-cell {
@@ -753,19 +754,30 @@ tr:focus-visible {
   gap: 0.55rem;
 }
 
-.event-workspace-split {
+.master-detail-split {
   display: grid;
-  grid-template-columns: minmax(220px, 0.88fr) minmax(0, 2.2fr);
   gap: 0.55rem;
   min-height: 0;
   height: 100%;
 }
 
-.event-workspace-history-pane,
-.event-workspace-detail-pane {
+.master-list-pane,
+.detail-pane {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+.master-detail-split-history {
+  grid-template-columns: clamp(240px, 26vw, 360px) minmax(0, 1fr);
+}
+
+.master-detail-split-certificate {
+  grid-template-columns: clamp(300px, 34vw, 430px) minmax(0, 1fr);
+}
+
+.master-detail-split-eligibility {
+  grid-template-columns: clamp(270px, 31vw, 380px) minmax(0, 1fr);
 }
 
 .event-workspace-history-pane .history-panel,
@@ -862,7 +874,7 @@ tr:focus-visible {
 
 .action-panel {
   justify-content: flex-start;
-  padding-top: 0.65rem;
+  padding: 0.45rem 0.45rem 0.5rem;
 }
 
 .action-grid {
@@ -874,27 +886,24 @@ tr:focus-visible {
 .action-grid button {
   justify-content: flex-start;
   border-radius: 8px;
-  min-height: 34px;
-  font-size: 0.81rem;
+  min-height: 36px;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.97rem;
+  font-weight: 600;
+  line-height: 1.15;
 }
 
 .certificate-workspace-split {
-  display: grid;
-  grid-template-columns: minmax(240px, 0.92fr) minmax(0, 2.1fr);
-  gap: 0.6rem;
   min-height: 0;
   height: 100%;
 }
 
-.certificate-list-panel,
-.certificate-detail-panel {
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+.certificate-history-table .col-gxp {
+  width: 3.2rem;
 }
 
 .certificate-history-table .col-line {
-  width: 5.2rem;
+  width: 4.4rem;
 }
 
 .certificate-history-table .col-cert-number,
@@ -904,11 +913,11 @@ tr:focus-visible {
 
 .certificate-history-table .col-date,
 .eligibility-history-table .col-date {
-  width: 6rem;
+  width: 6.4rem;
 }
 
 .eligibility-history-table .col-sequence {
-  width: 5rem;
+  width: 4.15rem;
 }
 
 .certificate-detail-grid {
@@ -1011,7 +1020,7 @@ tr:focus-visible {
   .summary-grid,
   .summary-panel-grouped,
   .detail-grid,
-  .event-workspace-split,
+  .master-detail-split,
   .metric-grid {
     grid-template-columns: 1fr;
   }

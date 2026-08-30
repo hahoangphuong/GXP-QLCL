@@ -1,4 +1,4 @@
-const ACTIONS = ["Công ty mới", "Cơ sở mới", "D.chuyền mới", "Tái đánh giá", "Thay đổi"] as const;
+const ACTIONS = ["Công ty mới", "Cơ sở mới", "Dây chuyền mới", "Tái đánh giá", "Thay đổi"] as const;
 
 export function ActionCard() {
   return (

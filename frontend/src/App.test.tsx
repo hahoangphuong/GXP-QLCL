@@ -52,6 +52,62 @@ vi.mock("./lib/storage", () => ({
   clearOidcSession: vi.fn(),
 }));
 
+function resetApiMocks() {
+  apiMocks.getAppStatus.mockReset();
+  apiMocks.getDashboardSummary.mockReset();
+  apiMocks.searchFacilities.mockReset();
+  apiMocks.getFacilityWorkspace.mockReset();
+  apiMocks.getCaseDetail.mockReset();
+  apiMocks.getCaseWorkspace.mockReset();
+  apiMocks.getChangeRequestWorkspace.mockReset();
+  apiMocks.listSiteGxpCertificates.mockReset();
+  apiMocks.getGxpCertificateDetail.mockReset();
+  apiMocks.listSiteBusinessEligibilityCertificates.mockReset();
+  apiMocks.getBusinessEligibilityDetail.mockReset();
+  apiMocks.getDocumentDetail.mockReset();
+  apiMocks.getGenerationRun.mockReset();
+  apiMocks.listCases.mockReset();
+  apiMocks.listCompanies.mockReset();
+  apiMocks.listSites.mockReset();
+  apiMocks.prepareDocument.mockReset();
+  apiMocks.renderTemplateDocx.mockReset();
+
+  apiMocks.getDashboardSummary.mockResolvedValue({
+    total_facilities: 18,
+    total_cases: 42,
+    active_cases: 12,
+    waiting_inspection: 4,
+    waiting_certificate_decision: 3,
+    active_certificates: 9,
+    expiring_certificates_90_days: 2,
+    incomplete_changes: 1,
+    queue: [],
+  });
+  apiMocks.searchFacilities.mockResolvedValue({ items: [], total_count: 0, offset: 0, limit: 100 });
+  apiMocks.getFacilityWorkspace.mockResolvedValue(null);
+  apiMocks.getCaseDetail.mockResolvedValue(null);
+  apiMocks.getCaseWorkspace.mockResolvedValue(null);
+  apiMocks.getChangeRequestWorkspace.mockResolvedValue(null);
+  apiMocks.listSiteGxpCertificates.mockResolvedValue({ items: [] });
+  apiMocks.getGxpCertificateDetail.mockResolvedValue(null);
+  apiMocks.listSiteBusinessEligibilityCertificates.mockResolvedValue({ items: [] });
+  apiMocks.getBusinessEligibilityDetail.mockResolvedValue(null);
+  apiMocks.getDocumentDetail.mockResolvedValue(null);
+  apiMocks.getGenerationRun.mockResolvedValue(null);
+  apiMocks.listCases.mockResolvedValue([]);
+  apiMocks.listCompanies.mockResolvedValue([]);
+  apiMocks.listSites.mockResolvedValue([]);
+}
+
+function resetOidcMocks() {
+  oidcMocks.loadGoogleIdentityScript.mockReset();
+  oidcMocks.decodeOidcCredential.mockReset();
+  oidcMocks.isOidcSessionValid.mockReset();
+
+  oidcMocks.loadGoogleIdentityScript.mockResolvedValue(undefined);
+  oidcMocks.isOidcSessionValid.mockImplementation(() => false);
+}
+
 function buildStatus(authMode: "header_stub" | "google_oidc", oidcClientId: string | null) {
   return {
     auth_mode: authMode,
@@ -364,7 +420,8 @@ function renderApp(initialEntries: string[] = ["/"]) {
 
 describe("App Slice A.4 search workspace", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    resetApiMocks();
+    resetOidcMocks();
     window.google = {
       accounts: {
         id: {
@@ -388,6 +445,81 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByRole("button", { name: "Đăng xuất" })).toBeInTheDocument();
     expect(container.querySelector(".header-identity-group")).not.toBeNull();
     expect(container.querySelector(".primary-nav")).not.toBeNull();
+    expect(screen.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute("href", "/privacy");
+    expect(screen.getByRole("link", { name: "Terms of Service" })).toHaveAttribute("href", "/terms");
+  });
+
+  it("renders the privacy page publicly without login and keeps legal navigation available", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("google_oidc", "client-id.apps.googleusercontent.com"));
+
+    const { container } = renderApp(["/privacy"]);
+
+    expect(await screen.findByRole("heading", { name: "GXP QLCL Privacy Policy" })).toBeInTheDocument();
+    expect(screen.getByText("Chính sách bảo mật GXP QLCL")).toBeInTheDocument();
+    expect(screen.getAllByText("30 August 2026 / 30/08/2026").length).toBeGreaterThan(0);
+    const legalFooterNav = screen.getByRole("navigation", { name: "Legal page navigation" });
+    expect(within(legalFooterNav).getByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
+    expect(within(legalFooterNav).getByRole("link", { name: "Privacy Policy" })).toHaveAttribute("href", "/privacy");
+    expect(within(legalFooterNav).getByRole("link", { name: "Terms of Service" })).toHaveAttribute("href", "/terms");
+    expect(container.querySelector(".legal-page-scroll")).not.toBeNull();
+    expect(apiMocks.getDashboardSummary).not.toHaveBeenCalled();
+    expect(apiMocks.searchFacilities).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(document.title).toContain("GXP QLCL Privacy Policy");
+    });
+  });
+
+  it("renders the terms page publicly without login and sets the legal title", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("google_oidc", "client-id.apps.googleusercontent.com"));
+
+    renderApp(["/terms"]);
+
+    expect(await screen.findByRole("heading", { name: "GXP QLCL Terms of Service" })).toBeInTheDocument();
+    expect(screen.getByText("Điều khoản sử dụng GXP QLCL")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Legal page navigation" })).toBeInTheDocument();
+    expect(apiMocks.getDashboardSummary).not.toHaveBeenCalled();
+    expect(apiMocks.searchFacilities).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(document.title).toContain("GXP QLCL Terms of Service");
+    });
+  });
+
+  it("still renders privacy publicly when getAppStatus rejects", async () => {
+    apiMocks.getAppStatus.mockRejectedValue(new Error("status unavailable"));
+
+    renderApp(["/privacy"]);
+
+    expect(await screen.findByRole("heading", { name: "GXP QLCL Privacy Policy" })).toBeInTheDocument();
+    expect(screen.getByText("Chính sách bảo mật GXP QLCL")).toBeInTheDocument();
+    expect(screen.queryByText("status unavailable")).not.toBeInTheDocument();
+  });
+
+  it("still renders terms publicly when getAppStatus rejects", async () => {
+    apiMocks.getAppStatus.mockRejectedValue(new Error("status unavailable"));
+
+    renderApp(["/terms"]);
+
+    expect(await screen.findByRole("heading", { name: "GXP QLCL Terms of Service" })).toBeInTheDocument();
+    expect(screen.getByText("Điều khoản sử dụng GXP QLCL")).toBeInTheDocument();
+    expect(screen.queryByText("status unavailable")).not.toBeInTheDocument();
+  });
+
+  it("restores the previous document title when leaving a legal page", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+
+    renderApp(["/privacy"]);
+
+    const legalFooterNav = await screen.findByRole("navigation", { name: "Legal page navigation" });
+    await waitFor(() => {
+      expect(document.title).toContain("GXP QLCL Privacy Policy");
+    });
+
+    fireEvent.click(within(legalFooterNav).getByRole("link", { name: "Home" }));
+
+    expect(await screen.findByText("Bảng điều phối nghiệp vụ")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.title).toBe("GxP Web Operator Shell");
+    });
   });
 
   it("prompts sign-in instead of loading search data in google_oidc mode without session", async () => {
@@ -578,6 +710,7 @@ describe("App Slice A.4 search workspace", () => {
     renderApp(["/search"]);
 
     expect(await screen.findByText("1.1A")).toBeInTheDocument();
+    expect(await screen.findByText("Đã tải 2 / 3")).toBeInTheDocument();
     const scrollRegion = screen.getByTestId("facility-table-scroll");
     Object.defineProperty(scrollRegion, "scrollTop", { configurable: true, value: 260 });
     Object.defineProperty(scrollRegion, "clientHeight", { configurable: true, value: 200 });
@@ -585,9 +718,11 @@ describe("App Slice A.4 search workspace", () => {
 
     fireEvent.scroll(scrollRegion);
 
+    await waitFor(() => {
+      expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2);
+    });
     expect(await screen.findByText("1.1C")).toBeInTheDocument();
     expect(screen.getByText("3 dòng")).toBeInTheDocument();
-    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2);
     expect(screen.queryByText(/^Prev$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Next$/)).not.toBeInTheDocument();
 
@@ -646,6 +781,7 @@ describe("App Slice A.4 search workspace", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "TD-01" })).toBeInTheDocument();
     });
+    expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Đề nghị" })).toBeInTheDocument();
     expect(within(container.querySelector(".event-workspace") as HTMLElement).getByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
     expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
@@ -701,7 +837,7 @@ describe("App Slice A.4 search workspace", () => {
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
 
     expect(await screen.findByRole("heading", { name: "TD-01" })).toBeInTheDocument();
-    expect(screen.getByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
+    expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Thông tin hồ sơ" })).not.toBeInTheDocument();
     expect(screen.queryByText("Không tải được workspace thay đổi")).not.toBeInTheDocument();
 
@@ -938,11 +1074,13 @@ describe("App Slice A.4 search workspace", () => {
 
     fireEvent.click(screen.getByText("533/GCN-QLD"));
 
+    await waitFor(() => {
+      expect(apiMocks.getGxpCertificateDetail).toHaveBeenCalledTimes(2);
+    });
     expect(await screen.findByText("Thuốc không vô trùng cũ")).toBeInTheDocument();
     expect(screen.getByText("Đã được thay thế")).toBeInTheDocument();
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(apiMocks.listSiteGxpCertificates).toHaveBeenCalledTimes(1);
-    expect(apiMocks.getGxpCertificateDetail).toHaveBeenCalledTimes(2);
   });
 
   it("renders the business eligibility workspace as list plus detail with linked GxP basis", async () => {

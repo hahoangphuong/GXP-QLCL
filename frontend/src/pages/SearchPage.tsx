@@ -101,6 +101,7 @@ export function SearchPage({
   const [eligibilityCertificateDetail, setEligibilityCertificateDetail] = useState<BusinessEligibilityDetail | null>(null);
   const [eligibilityCertificateDetailLoading, setEligibilityCertificateDetailLoading] = useState(false);
   const [eligibilityCertificateDetailError, setEligibilityCertificateDetailError] = useState<string | null>(null);
+  const { auth, useStubAuth, bearerToken, canLoadSecureApi } = access;
 
   const selectedResult = results.find((item) => item.result_key === selectedResultKey) ?? null;
   const selectedHistory = workspace?.history.find((item) => item.id === selectedHistoryId) ?? null;
@@ -186,7 +187,7 @@ export function SearchPage({
   ]);
 
   useEffect(() => {
-    if (!access.canLoadSecureApi) {
+    if (!canLoadSecureApi) {
       setResultsLoading(false);
       setResults([]);
       setResultsTotalCount(0);
@@ -212,9 +213,9 @@ export function SearchPage({
         offset: resultsOffset,
         limit: RESULT_PAGE_SIZE,
       },
-      access.auth,
-      access.useStubAuth,
-      access.bearerToken,
+      auth,
+      useStubAuth,
+      bearerToken,
     )
       .then((payload) => {
         if (cancelled) {
@@ -252,8 +253,10 @@ export function SearchPage({
       cancelled = true;
     };
   }, [
-    access,
+    auth,
+    bearerToken,
     caseStates,
+    canLoadSecureApi,
     certificateExpiringWithinDays,
     certificateState,
     changeRequestStates,
@@ -262,10 +265,11 @@ export function SearchPage({
     gxpType,
     province,
     resultsOffset,
+    useStubAuth,
   ]);
 
   useEffect(() => {
-    if (!selectedResult || !access.canLoadSecureApi) {
+    if (!selectedResult || !canLoadSecureApi) {
       setWorkspace(null);
       setSelectedCaseWorkspace(null);
       setCaseWorkspaceError(null);
@@ -281,11 +285,11 @@ export function SearchPage({
     resetCertificateWorkspaceState();
     void getFacilityWorkspace(
       selectedResult.site_id,
-      access.auth,
-      access.useStubAuth,
+      auth,
+      useStubAuth,
       selectedResult.gxp_type,
       selectedResult.line_code,
-      access.bearerToken,
+      bearerToken,
     )
       .then((payload) => {
         if (!cancelled) {
@@ -306,7 +310,7 @@ export function SearchPage({
     return () => {
       cancelled = true;
     };
-  }, [access, selectedResult]);
+  }, [auth, bearerToken, canLoadSecureApi, selectedResult, useStubAuth]);
 
   useEffect(() => {
     setSelectedCaseWorkspace(null);
@@ -317,7 +321,7 @@ export function SearchPage({
     }
     let cancelled = false;
     setCaseWorkspaceLoading(true);
-    void getCaseWorkspace(selectedHistory.id, access.auth, access.useStubAuth, access.bearerToken)
+    void getCaseWorkspace(selectedHistory.id, auth, useStubAuth, bearerToken)
       .then((payload) => {
         if (!cancelled) {
           setSelectedCaseWorkspace(payload);
@@ -335,7 +339,7 @@ export function SearchPage({
     return () => {
       cancelled = true;
     };
-  }, [access, selectedHistory]);
+  }, [auth, bearerToken, selectedHistory, useStubAuth]);
 
   useEffect(() => {
     setSelectedChangeRequestWorkspace(null);
@@ -346,7 +350,7 @@ export function SearchPage({
     }
     let cancelled = false;
     setChangeRequestWorkspaceLoading(true);
-    void getChangeRequestWorkspace(selectedHistory.id, access.auth, access.useStubAuth, access.bearerToken)
+    void getChangeRequestWorkspace(selectedHistory.id, auth, useStubAuth, bearerToken)
       .then((payload) => {
         if (!cancelled) {
           setSelectedChangeRequestWorkspace(payload);
@@ -364,21 +368,21 @@ export function SearchPage({
     return () => {
       cancelled = true;
     };
-  }, [access, selectedHistory]);
+  }, [auth, bearerToken, selectedHistory, useStubAuth]);
 
   useEffect(() => {
-    if (!selectedResult || !access.canLoadSecureApi || selectedFacilityTab !== "Giấy chứng nhận GxP") {
+    if (!selectedResult || !canLoadSecureApi || selectedFacilityTab !== "Giấy chứng nhận GxP") {
       return;
     }
     let cancelled = false;
     setGxpCertificatesLoading(true);
     void listSiteGxpCertificates(
       selectedResult.site_id,
-      access.auth,
-      access.useStubAuth,
+      auth,
+      useStubAuth,
       selectedResult.gxp_type,
       selectedResult.line_code,
-      access.bearerToken,
+      bearerToken,
     )
       .then((payload) => {
         if (cancelled) {
@@ -401,18 +405,18 @@ export function SearchPage({
     return () => {
       cancelled = true;
     };
-  }, [access, selectedFacilityTab, selectedResult]);
+  }, [auth, bearerToken, canLoadSecureApi, selectedFacilityTab, selectedResult, useStubAuth]);
 
   useEffect(() => {
     setGxpCertificateDetail(null);
     setGxpCertificateDetailError(null);
     setGxpCertificateDetailLoading(false);
-    if (!selectedGxpCertificateId || !access.canLoadSecureApi || selectedFacilityTab !== "Giấy chứng nhận GxP") {
+    if (!selectedGxpCertificateId || !canLoadSecureApi || selectedFacilityTab !== "Giấy chứng nhận GxP") {
       return;
     }
     let cancelled = false;
     setGxpCertificateDetailLoading(true);
-    void getGxpCertificateDetail(selectedGxpCertificateId, access.auth, access.useStubAuth, access.bearerToken)
+    void getGxpCertificateDetail(selectedGxpCertificateId, auth, useStubAuth, bearerToken)
       .then((payload) => {
         if (!cancelled) {
           setGxpCertificateDetail(payload);
@@ -430,19 +434,19 @@ export function SearchPage({
     return () => {
       cancelled = true;
     };
-  }, [access, selectedFacilityTab, selectedGxpCertificateId]);
+  }, [auth, bearerToken, canLoadSecureApi, selectedFacilityTab, selectedGxpCertificateId, useStubAuth]);
 
   useEffect(() => {
-    if (!selectedResult || !access.canLoadSecureApi || selectedFacilityTab !== "Giấy chứng nhận đủ điều kiện") {
+    if (!selectedResult || !canLoadSecureApi || selectedFacilityTab !== "Giấy chứng nhận đủ điều kiện") {
       return;
     }
     let cancelled = false;
     setEligibilityCertificatesLoading(true);
     void listSiteBusinessEligibilityCertificates(
       selectedResult.site_id,
-      access.auth,
-      access.useStubAuth,
-      access.bearerToken,
+      auth,
+      useStubAuth,
+      bearerToken,
     )
       .then((payload) => {
         if (cancelled) {
@@ -467,18 +471,18 @@ export function SearchPage({
     return () => {
       cancelled = true;
     };
-  }, [access, selectedFacilityTab, selectedResult]);
+  }, [auth, bearerToken, canLoadSecureApi, selectedFacilityTab, selectedResult, useStubAuth]);
 
   useEffect(() => {
     setEligibilityCertificateDetail(null);
     setEligibilityCertificateDetailError(null);
     setEligibilityCertificateDetailLoading(false);
-    if (!selectedEligibilityCertificateId || !access.canLoadSecureApi || selectedFacilityTab !== "Giấy chứng nhận đủ điều kiện") {
+    if (!selectedEligibilityCertificateId || !canLoadSecureApi || selectedFacilityTab !== "Giấy chứng nhận đủ điều kiện") {
       return;
     }
     let cancelled = false;
     setEligibilityCertificateDetailLoading(true);
-    void getBusinessEligibilityDetail(selectedEligibilityCertificateId, access.auth, access.useStubAuth, access.bearerToken)
+    void getBusinessEligibilityDetail(selectedEligibilityCertificateId, auth, useStubAuth, bearerToken)
       .then((payload) => {
         if (!cancelled) {
           setEligibilityCertificateDetail(payload);
@@ -496,7 +500,7 @@ export function SearchPage({
     return () => {
       cancelled = true;
     };
-  }, [access, selectedEligibilityCertificateId, selectedFacilityTab]);
+  }, [auth, bearerToken, canLoadSecureApi, selectedEligibilityCertificateId, selectedFacilityTab, useStubAuth]);
 
   function resetDependentContext() {
     setResultsOffset(0);
@@ -548,7 +552,7 @@ export function SearchPage({
   if (statusError) {
     return <ErrorState message={statusError} />;
   }
-  if (!access.canLoadSecureApi) {
+  if (!canLoadSecureApi) {
     return <EmptyState title="Cần đăng nhập" description="Đăng nhập để dùng Tra cứu trên authenticated API thật." />;
   }
   if (resultsError && results.length === 0) {

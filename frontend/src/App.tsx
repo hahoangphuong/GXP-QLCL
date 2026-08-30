@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { AppShell } from "./components/AppShell";
 import { getAppStatus } from "./lib/api";
@@ -7,7 +7,9 @@ import { decodeOidcCredential, isOidcSessionValid, loadGoogleIdentityScript } fr
 import { clearOidcSession, loadAuthState, loadOidcSession, saveOidcSession } from "./lib/storage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { PrivacyPage } from "./pages/PrivacyPage";
 import { SearchPage } from "./pages/SearchPage";
+import { TermsPage } from "./pages/TermsPage";
 import type { AppStatus, OidcSession, StubAuthState } from "./types";
 
 export type ApiAccess = {
@@ -120,6 +122,7 @@ function AppHeader({
 }
 
 export function App() {
+  const location = useLocation();
   const [auth] = useState<StubAuthState>(() => loadAuthState());
   const [oidcSession, setOidcSession] = useState<OidcSession | null>(() => {
     const stored = loadOidcSession();
@@ -127,6 +130,18 @@ export function App() {
   });
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (location.pathname === "/privacy") {
+      document.title = "GXP QLCL Privacy Policy";
+      return;
+    }
+    if (location.pathname === "/terms") {
+      document.title = "GXP QLCL Terms of Service";
+      return;
+    }
+    document.title = "GxP Web Operator Shell";
+  }, [location.pathname]);
 
   useEffect(() => {
     if (oidcSession && !isOidcSessionValid(oidcSession)) {
@@ -186,7 +201,9 @@ export function App() {
     >
       <Routes>
         <Route path="/" element={<DashboardPage access={apiAccess} statusError={statusError} />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/search" element={<SearchPage access={apiAccess} statusError={statusError} />} />
+        <Route path="/terms" element={<TermsPage />} />
         <Route
           path="/workflow"
           element={

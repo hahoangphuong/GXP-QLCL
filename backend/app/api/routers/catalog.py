@@ -23,14 +23,22 @@ from backend.app.read_models import (
     SiteDetailRead,
     SiteRead,
 )
-from backend.app.services import CatalogReadService
+from backend.app.services import CatalogReadService, CaseWorkflowService
 
 
 def _optional_string_query(value: str | None) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
-def _build_facility_action_readiness(*, selected_gxp_type: str | None) -> list[dict[str, object]]:
+def _build_facility_action_readiness(
+    *,
+    workflow_service: CaseWorkflowService,
+    session: Session,
+    site_id: str,
+    selected_gxp_type: str | None,
+    selected_line_code: str | None,
+    user: AuthenticatedUser,
+) -> list[dict[str, object]]:
     selected_gxp_detail = f" cho ngữ cảnh {selected_gxp_type}" if selected_gxp_type else ""
     return [
         {
@@ -54,16 +62,13 @@ def _build_facility_action_readiness(*, selected_gxp_type: str | None) -> list[d
             "detail": "Chưa có canonical backend write contract để tạo dây chuyền sản xuất mới.",
             "required_permissions": [],
         },
-        {
-            "action_key": "create_inspection_case",
-            "label": "Hồ sơ kiểm tra",
-            "readiness_status": "missing_contract",
-            "detail": (
-                "Hiện chỉ có workflow mutation cho case đã tồn tại; chưa có create contract owner-safe "
-                f"để mở hồ sơ kiểm tra mới{selected_gxp_detail}."
-            ),
-            "required_permissions": [],
-        },
+        workflow_service.get_create_inspection_case_action_readiness(
+            session,
+            site_id=site_id,
+            gxp_type=selected_gxp_type,
+            line_code=selected_line_code,
+            user=user,
+        ),
         {
             "action_key": "create_reassessment_case",
             "label": "Tái đánh giá",
@@ -84,6 +89,7 @@ def _build_facility_action_readiness(*, selected_gxp_type: str | None) -> list[d
 def register_catalog_routes(app, session_factory) -> None:
     dependency = Depends(get_session_from_request_factory(session_factory))
     service = CatalogReadService()
+    workflow_service = CaseWorkflowService()
 
     def list_companies(
         q: str | None = Query(default=None),
@@ -274,7 +280,12 @@ def register_catalog_routes(app, session_factory) -> None:
         require_role(user, ALLOWED_READ_ROLES)
         payload = service.get_facility_workspace(session, site_id=site_id, gxp_type=gxp_type, line_code=line_code)
         payload["action_readiness"] = _build_facility_action_readiness(
+            workflow_service=workflow_service,
+            session=session,
+            site_id=site_id,
             selected_gxp_type=payload["summary"].get("selected_gxp_type"),
+            selected_line_code=payload["summary"].get("selected_line_code"),
+            user=user,
         )
         return FacilityWorkspaceRead(**payload)
 

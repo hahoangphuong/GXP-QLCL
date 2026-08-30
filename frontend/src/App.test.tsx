@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 
 const apiMocks = vi.hoisted(() => ({
+  createInspectionCase: vi.fn(),
   getAppStatus: vi.fn(),
   getDashboardSummary: vi.fn().mockResolvedValue({
     total_facilities: 18,
@@ -54,6 +55,7 @@ vi.mock("./lib/storage", () => ({
 
 function resetApiMocks() {
   apiMocks.getAppStatus.mockReset();
+  apiMocks.createInspectionCase.mockReset();
   apiMocks.getDashboardSummary.mockReset();
   apiMocks.searchFacilities.mockReset();
   apiMocks.getFacilityWorkspace.mockReset();
@@ -84,6 +86,7 @@ function resetApiMocks() {
     queue: [],
   });
   apiMocks.searchFacilities.mockResolvedValue({ items: [], total_count: 0, offset: 0, limit: 100 });
+  apiMocks.createInspectionCase.mockResolvedValue(null);
   apiMocks.getFacilityWorkspace.mockResolvedValue(null);
   apiMocks.getCaseDetail.mockResolvedValue(null);
   apiMocks.getCaseWorkspace.mockResolvedValue(null);
@@ -608,6 +611,197 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".search-workspace-split .history-panel")).toBeNull();
     expect(container.querySelector(".facility-workspace-panel .history-panel")).not.toBeNull();
   }, 10000);
+
+  it("enables only Hồ sơ kiểm tra when backend readiness says available and keeps other actions disabled", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(
+      buildWorkspace({
+        action_readiness: buildWorkspace().action_readiness.map((item) =>
+          item.action_key === "create_inspection_case"
+            ? {
+                ...item,
+                readiness_status: "available",
+                detail: "Có thể tạo hồ sơ kiểm tra mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
+                required_permissions: ["case.edit"],
+              }
+            : item,
+        ),
+      }),
+    );
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+
+    renderApp(["/search"]);
+
+    expect(await screen.findByText("1.1A")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Hồ sơ kiểm tra" })).toBeEnabled();
+    });
+    expect(screen.getByRole("button", { name: "Công ty mới" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cơ sở mới" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Dây chuyền mới" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Thay đổi" })).toBeDisabled();
+  });
+
+  it("creates a new inspection case without refetching search and refreshes workspace/history to the new case", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace
+      .mockResolvedValueOnce(
+        buildWorkspace({
+          action_readiness: buildWorkspace().action_readiness.map((item) =>
+            item.action_key === "create_inspection_case"
+              ? {
+                  ...item,
+                  readiness_status: "available",
+                  detail: "Có thể tạo hồ sơ kiểm tra mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
+                  required_permissions: ["case.edit"],
+                }
+              : item,
+          ),
+        }),
+      )
+      .mockResolvedValueOnce(
+        buildWorkspace({
+          history: [
+            {
+              id: "case-new",
+              source_type: "case",
+              reference_code: null,
+              event_type: "Định kỳ",
+              gxp_type: "GMP",
+              standard: "WHO-GMP",
+              occurred_on: null,
+              state: "draft",
+            },
+            ...buildWorkspace().history,
+          ],
+          action_readiness: buildWorkspace().action_readiness.map((item) =>
+            item.action_key === "create_inspection_case"
+              ? {
+                  ...item,
+                  readiness_status: "conflict",
+                  detail: "Đã có một hồ sơ kiểm tra chưa kết thúc cho đúng cơ sở/GxP/dây chuyền này.",
+                  required_permissions: ["case.edit"],
+                }
+              : item,
+          ),
+        }),
+      );
+    apiMocks.createInspectionCase.mockResolvedValue({
+      case_id: "case-new",
+      site_id: "site-1",
+      gxp_type: "GMP",
+      line_code: "A",
+      inspection_type: "Định kỳ",
+      applicable_standard: "WHO-GMP",
+      state: "draft",
+      row_version: 1,
+      legacy_inspection_id: null,
+      legacy_inspection_code: null,
+      audit_event_id: "audit-1",
+    });
+    apiMocks.getCaseWorkspace
+      .mockResolvedValueOnce(buildCaseWorkspace())
+      .mockResolvedValueOnce(
+        buildCaseWorkspace({
+          case_summary: {
+            ...buildCaseWorkspace().case_summary,
+            id: "case-new",
+            legacy_inspection_id: null,
+            legacy_inspection_code: null,
+            state: "draft",
+          },
+          application: {
+            ...buildCaseWorkspace().application,
+            dossier_code: null,
+          },
+        }),
+      );
+
+    const { container } = renderApp(["/search"]);
+
+    expect(await screen.findByText("1.1A")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Hồ sơ kiểm tra" })).toBeEnabled();
+    });
+    const createAction = screen.getByRole("button", { name: "Hồ sơ kiểm tra" });
+    fireEvent.click(createAction);
+
+    expect(await screen.findByRole("heading", { name: "Tạo hồ sơ kiểm tra" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Tạo hồ sơ" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Loại kiểm tra là bắt buộc.");
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Loại kiểm tra" }), { target: { value: "Định kỳ" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Tiêu chuẩn áp dụng" }), { target: { value: "WHO-GMP" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tạo hồ sơ" }));
+
+    await waitFor(() => {
+      expect(apiMocks.createInspectionCase).toHaveBeenCalledTimes(1);
+    });
+    expect(apiMocks.createInspectionCase).toHaveBeenCalledWith(
+      "site-1",
+      {
+        gxp_type: "GMP",
+        line_code: "A",
+        inspection_type: "Định kỳ",
+        applicable_standard: "WHO-GMP",
+      },
+      expect.objectContaining({
+        username: "operator.local",
+        role: "inspector",
+      }),
+      true,
+      null,
+    );
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
+    });
+    expect(await screen.findByRole("heading", { name: "Thông tin hồ sơ" })).toBeInTheDocument();
+    expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
+  });
+
+  it("shows backend 409 conflict for inspection-case create clearly and keeps selected facility intact", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(
+      buildWorkspace({
+        action_readiness: buildWorkspace().action_readiness.map((item) =>
+          item.action_key === "create_inspection_case"
+            ? {
+                ...item,
+                readiness_status: "available",
+                detail: "Có thể tạo hồ sơ kiểm tra mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
+                required_permissions: ["case.edit"],
+              }
+            : item,
+        ),
+      }),
+    );
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.createInspectionCase.mockRejectedValue(new Error("An open inspection case already exists for the selected facility/GxP/line context."));
+
+    renderApp(["/search"]);
+
+    expect(await screen.findByText("1.1A")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Hồ sơ kiểm tra" })).toBeEnabled();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Hồ sơ kiểm tra" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Loại kiểm tra" }), { target: { value: "Định kỳ" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tạo hồ sơ" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "An open inspection case already exists for the selected facility/GxP/line context.",
+    );
+    expect(screen.getByText("1.1A")).toBeInTheDocument();
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+  });
 
   it("uses the canonical GMPbb value and hides the GxP column outside the Tất cả view", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));

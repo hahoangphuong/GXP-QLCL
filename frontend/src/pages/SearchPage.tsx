@@ -1,4 +1,4 @@
-import { startTransition, useDeferredValue, useEffect, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import type { ApiAccess } from "../App";
@@ -8,6 +8,7 @@ import { ActionCard } from "../features/search/ActionCard";
 import { FacilityTable } from "../features/search/FacilityTable";
 import { FacilityWorkspaceTabs } from "../features/search/FacilityWorkspaceTabs";
 import {
+  createInspectionCase,
   getBusinessEligibilityDetail,
   getCaseWorkspace,
   getChangeRequestWorkspace,
@@ -81,6 +82,11 @@ export function SearchPage({
   const [workspace, setWorkspace] = useState<FacilityWorkspace | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [selectedActionKey, setSelectedActionKey] = useState<string | null>(null);
+  const [inspectionTypeInput, setInspectionTypeInput] = useState("");
+  const [applicableStandardInput, setApplicableStandardInput] = useState("");
+  const [createInspectionCasePending, setCreateInspectionCasePending] = useState(false);
+  const [createInspectionCaseError, setCreateInspectionCaseError] = useState<string | null>(null);
   const [selectedCaseWorkspace, setSelectedCaseWorkspace] = useState<CaseWorkspace | null>(null);
   const [caseWorkspaceLoading, setCaseWorkspaceLoading] = useState(false);
   const [caseWorkspaceError, setCaseWorkspaceError] = useState<string | null>(null);
@@ -106,6 +112,8 @@ export function SearchPage({
   const selectedResult = results.find((item) => item.result_key === selectedResultKey) ?? null;
   const selectedHistory = workspace?.history.find((item) => item.id === selectedHistoryId) ?? null;
   const hasMoreResults = results.length < resultsTotalCount;
+  const createInspectionCaseAction =
+    workspace?.action_readiness.find((item) => item.action_key === "create_inspection_case") ?? null;
 
   function resetCertificateWorkspaceState() {
     setGxpCertificates([]);
@@ -122,6 +130,14 @@ export function SearchPage({
     setEligibilityCertificateDetail(null);
     setEligibilityCertificateDetailLoading(false);
     setEligibilityCertificateDetailError(null);
+  }
+
+  function resetCreateInspectionCaseState() {
+    setSelectedActionKey(null);
+    setInspectionTypeInput("");
+    setApplicableStandardInput("");
+    setCreateInspectionCasePending(false);
+    setCreateInspectionCaseError(null);
   }
 
   useEffect(() => {
@@ -271,6 +287,7 @@ export function SearchPage({
   useEffect(() => {
     if (!selectedResult || !canLoadSecureApi) {
       setWorkspace(null);
+      resetCreateInspectionCaseState();
       setSelectedCaseWorkspace(null);
       setCaseWorkspaceError(null);
       setCaseWorkspaceLoading(false);
@@ -282,6 +299,7 @@ export function SearchPage({
     }
     let cancelled = false;
     setWorkspaceLoading(true);
+    setCreateInspectionCaseError(null);
     resetCertificateWorkspaceState();
     void getFacilityWorkspace(
       selectedResult.site_id,
@@ -296,6 +314,14 @@ export function SearchPage({
           setWorkspace(payload);
           setWorkspaceError(null);
           setWorkspaceLoading(false);
+          setSelectedActionKey((current) =>
+            current === "create_inspection_case" &&
+            payload.action_readiness.some(
+              (item) => item.action_key === "create_inspection_case" && item.readiness_status === "available",
+            )
+              ? current
+              : null,
+          );
           setSelectedHistoryId((current) =>
             current && payload.history.some((row) => row.id === current) ? current : payload.history[0]?.id ?? null,
           );
@@ -510,6 +536,7 @@ export function SearchPage({
     setActiveTab(DEFAULT_EVENT_TAB);
     setWorkspace(null);
     setWorkspaceError(null);
+    resetCreateInspectionCaseState();
     setSelectedCaseWorkspace(null);
     setCaseWorkspaceError(null);
     setCaseWorkspaceLoading(false);
@@ -549,6 +576,67 @@ export function SearchPage({
     setResultsOffset(results.length);
   }
 
+  async function refreshWorkspaceAfterCreate(createdCaseId: string) {
+    if (!selectedResult) {
+      return;
+    }
+    setWorkspaceLoading(true);
+    resetCertificateWorkspaceState();
+    try {
+      const payload = await getFacilityWorkspace(
+        selectedResult.site_id,
+        auth,
+        useStubAuth,
+        selectedResult.gxp_type,
+        selectedResult.line_code,
+        bearerToken,
+      );
+      setWorkspace(payload);
+      setWorkspaceError(null);
+      setSelectedFacilityTab(DEFAULT_FACILITY_TAB);
+      setActiveTab(DEFAULT_EVENT_TAB);
+      setSelectedHistoryId(
+        payload.history.some((row) => row.id === createdCaseId) ? createdCaseId : payload.history[0]?.id ?? null,
+      );
+    } finally {
+      setWorkspaceLoading(false);
+    }
+  }
+
+  async function handleCreateInspectionCaseSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedResult) {
+      return;
+    }
+    const normalizedInspectionType = inspectionTypeInput.trim();
+    if (!normalizedInspectionType) {
+      setCreateInspectionCaseError("Loại kiểm tra là bắt buộc.");
+      return;
+    }
+    setCreateInspectionCasePending(true);
+    setCreateInspectionCaseError(null);
+    try {
+      const created = await createInspectionCase(
+        selectedResult.site_id,
+        {
+          gxp_type: selectedResult.gxp_type ?? "",
+          line_code: selectedResult.line_code ?? null,
+          inspection_type: normalizedInspectionType,
+          applicable_standard: applicableStandardInput.trim() || null,
+        },
+        auth,
+        useStubAuth,
+        bearerToken,
+      );
+      await refreshWorkspaceAfterCreate(created.case_id);
+      resetCreateInspectionCaseState();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Không tạo được hồ sơ kiểm tra.";
+      setCreateInspectionCaseError(message);
+      setCreateInspectionCasePending(false);
+    }
+  }
+
   if (statusError) {
     return <ErrorState message={statusError} />;
   }
@@ -586,7 +674,78 @@ export function SearchPage({
           showGxpColumn={gxpType === "ALL"}
           totalCount={resultsTotalCount}
         />
-        <ActionCard actions={workspace?.action_readiness} />
+        <div className="action-stack">
+          <ActionCard
+            actions={workspace?.action_readiness}
+            onActionSelect={(actionKey) => {
+              if (actionKey !== "create_inspection_case") {
+                return;
+              }
+              setSelectedActionKey((current) => (current === actionKey ? null : actionKey));
+              setCreateInspectionCaseError(null);
+            }}
+            selectedActionKey={selectedActionKey}
+          />
+          {selectedActionKey === "create_inspection_case" && selectedResult && createInspectionCaseAction ? (
+            <section className="panel panel-tight create-inspection-case-panel">
+              <header className="panel-header">
+                <div>
+                  <h2>Tạo hồ sơ kiểm tra</h2>
+                  <p>{createInspectionCaseAction.detail}</p>
+                </div>
+              </header>
+              <dl className="detail-grid compact-detail-grid">
+                <div>
+                  <dt>Cơ sở</dt>
+                  <dd>{selectedResult.facility_name}</dd>
+                </div>
+                <div>
+                  <dt>GxP</dt>
+                  <dd>{selectedResult.gxp_type ?? "Chưa chọn"}</dd>
+                </div>
+                <div>
+                  <dt>Dây chuyền</dt>
+                  <dd>{selectedResult.line_code ?? "Toàn cơ sở"}</dd>
+                </div>
+              </dl>
+              <form className="stack-form" onSubmit={handleCreateInspectionCaseSubmit}>
+                <label>
+                  <span>Loại kiểm tra</span>
+                  <input
+                    aria-label="Loại kiểm tra"
+                    disabled={createInspectionCasePending}
+                    name="inspection_type"
+                    onChange={(event) => setInspectionTypeInput(event.target.value)}
+                    value={inspectionTypeInput}
+                  />
+                </label>
+                <label>
+                  <span>Tiêu chuẩn áp dụng</span>
+                  <input
+                    aria-label="Tiêu chuẩn áp dụng"
+                    disabled={createInspectionCasePending}
+                    name="applicable_standard"
+                    onChange={(event) => setApplicableStandardInput(event.target.value)}
+                    value={applicableStandardInput}
+                  />
+                </label>
+                {createInspectionCaseError ? (
+                  <p className="form-error" role="alert">
+                    {createInspectionCaseError}
+                  </p>
+                ) : null}
+                <div className="panel-actions">
+                  <button disabled={createInspectionCasePending} type="submit">
+                    {createInspectionCasePending ? "Đang tạo..." : "Tạo hồ sơ"}
+                  </button>
+                  <button disabled={createInspectionCasePending} onClick={resetCreateInspectionCaseState} type="button">
+                    Hủy
+                  </button>
+                </div>
+              </form>
+            </section>
+          ) : null}
+        </div>
       </div>
 
       {!resultsLoading && resultsTotalCount === 0 ? (

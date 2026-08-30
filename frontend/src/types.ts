@@ -65,6 +65,28 @@ export type CaseDetail = {
   opened_year: number | null;
 };
 
+export type InspectionCaseCreateRequest = {
+  gxp_type: string;
+  line_code: string | null;
+  inspection_type: string;
+  applicable_standard: string | null;
+  reason?: string | null;
+};
+
+export type InspectionCaseCreateResponse = {
+  case_id: string;
+  site_id: string;
+  gxp_type: string;
+  line_code: string | null;
+  inspection_type: string;
+  applicable_standard: string | null;
+  state: string;
+  row_version: number;
+  legacy_inspection_id: number | null;
+  legacy_inspection_code: string | null;
+  audit_event_id: string;
+};
+
 export type DashboardQueueItem = {
   case_id: string;
   site_id: string;

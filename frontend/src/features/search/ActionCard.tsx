@@ -47,8 +47,12 @@ const FALLBACK_ACTIONS: WorkspaceActionReadiness[] = [
 
 export function ActionCard({
   actions = FALLBACK_ACTIONS,
+  onActionSelect,
+  selectedActionKey,
 }: {
   actions?: WorkspaceActionReadiness[];
+  onActionSelect?: (actionKey: string) => void;
+  selectedActionKey?: string | null;
 }) {
   return (
     <section className="panel panel-tight action-panel">
@@ -56,9 +60,11 @@ export function ActionCard({
         {actions.map((action) => (
           <button
             aria-label={action.label}
+            aria-pressed={selectedActionKey === action.action_key}
             data-readiness-status={action.readiness_status}
-            disabled
+            disabled={action.readiness_status !== "available"}
             key={action.action_key}
+            onClick={() => onActionSelect?.(action.action_key)}
             title={action.detail}
             type="button"
           >

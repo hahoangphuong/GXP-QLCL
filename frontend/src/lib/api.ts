@@ -17,6 +17,8 @@ import type {
   FacilityWorkspace,
   GxpCertificateDetail,
   GxpCertificateList,
+  InspectionCaseCreateRequest,
+  InspectionCaseCreateResponse,
   Site,
   StubAuthState,
 } from "../types";
@@ -234,6 +236,22 @@ export function getCaseWorkspace(
   bearerToken?: string | null,
 ): Promise<CaseWorkspace> {
   return requestJson<CaseWorkspace>(`/cases/${caseId}/workspace`, { auth, useStubAuth, bearerToken });
+}
+
+export function createInspectionCase(
+  siteId: string,
+  payload: InspectionCaseCreateRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<InspectionCaseCreateResponse> {
+  return requestJson<InspectionCaseCreateResponse>(`/sites/${siteId}/inspection-cases`, {
+    method: "POST",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
 }
 
 export function getChangeRequestWorkspace(

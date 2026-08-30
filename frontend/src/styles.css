@@ -1029,6 +1029,11 @@ tr:focus-visible {
   padding: 0.45rem 0.45rem 0.5rem;
 }
 
+.action-stack {
+  display: grid;
+  gap: 0.45rem;
+}
+
 .action-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -1043,6 +1048,27 @@ tr:focus-visible {
   font-size: 0.97rem;
   font-weight: 600;
   line-height: 1.15;
+}
+
+.stack-form {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.stack-form label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.compact-detail-grid {
+  margin: 0.2rem 0 0.45rem;
+}
+
+.form-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.82rem;
+  font-weight: 600;
 }
 
 .certificate-workspace-split {

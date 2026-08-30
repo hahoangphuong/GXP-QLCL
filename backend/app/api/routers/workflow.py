@@ -23,6 +23,8 @@ from backend.app.read_models import (
     CertificateLatestVersionUpsertRequest,
     CertificateMutationRead,
     CertificatePromoteCurrentRequest,
+    InspectionCaseCreateRead,
+    InspectionCaseCreateRequest,
     CaseTransitionRead,
     CaseTransitionRequest,
     InspectionOutcomeRead,
@@ -37,6 +39,26 @@ from backend.app.services import CaseWorkflowService
 def register_workflow_routes(app, session_factory) -> None:
     dependency = Depends(get_session_from_request_factory(session_factory))
     service = CaseWorkflowService()
+
+    def create_inspection_case(
+        site_id: str,
+        payload: InspectionCaseCreateRequest,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"case.edit"})
+        result = service.create_inspection_case(
+            session,
+            site_id=site_id,
+            gxp_type=payload.gxp_type,
+            line_code=payload.line_code,
+            inspection_type=payload.inspection_type,
+            applicable_standard=payload.applicable_standard,
+            reason=payload.reason,
+            user=user,
+        )
+        commit_or_409(session)
+        return InspectionCaseCreateRead(**result)
 
     def transition_case(
         case_id: str,
@@ -369,6 +391,13 @@ def register_workflow_routes(app, session_factory) -> None:
         commit_or_409(session)
         return BusinessEligibilityMutationRead(**result)
 
+    app.add_api_route(
+        "/sites/{site_id}/inspection-cases",
+        create_inspection_case,
+        methods=["POST"],
+        response_model=InspectionCaseCreateRead,
+        tags=["workflow"],
+    )
     app.add_api_route(
         "/cases/{case_id}/transition",
         transition_case,

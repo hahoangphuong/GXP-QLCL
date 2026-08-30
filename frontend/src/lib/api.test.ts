@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createInspectionCase,
   getAppStatus,
   getCaseDetail,
   getChangeRequestWorkspace,
@@ -243,5 +244,40 @@ describe("frontend API routing contract", () => {
     await getFacilityWorkspace("site-123", { username: "operator.local", role: "manager" }, true, "GLP");
 
     expect(fetchMock).toHaveBeenCalledWith("/api/sites/site-123/workspace?gxp_type=GLP", expect.any(Object));
+  });
+
+  it("posts inspection-case creation to the canonical site workflow endpoint with exactly one /api prefix", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: { case_id: "case-123" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createInspectionCase(
+      "site-123",
+      {
+        gxp_type: "GMP",
+        line_code: "A",
+        inspection_type: "Định kỳ",
+        applicable_standard: "WHO-GMP",
+      },
+      { username: "operator.local", role: "manager" },
+      true,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/sites/site-123/inspection-cases",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "X-Auth-User": "operator.local",
+          "X-Auth-Role": "manager",
+        }),
+        body: JSON.stringify({
+          gxp_type: "GMP",
+          line_code: "A",
+          inspection_type: "Định kỳ",
+          applicable_standard: "WHO-GMP",
+        }),
+      }),
+    );
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain("/api/api/");
   });
 });

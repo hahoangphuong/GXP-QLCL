@@ -12,6 +12,7 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
 from backend.app.auth import (
+    ROLE_PERMISSIONS,
     authenticate_google_iap_request,
     build_authenticated_user,
     parse_role_map,
@@ -1877,7 +1878,7 @@ def test_case_workspace_ignores_legacy_processing_free_text_without_structured_o
     assert payload.case_summary.state == "application_received"
 
 
-def test_facility_workspace_exposes_fail_closed_action_readiness_from_backend_contract(tmp_path):
+def test_facility_workspace_exposes_owner_managed_action_readiness_for_create_inspection_case(tmp_path):
     database_path = tmp_path / "catalog-facility-action-readiness.sqlite"
     database_url = f"sqlite:///{database_path.as_posix()}"
     engine = create_engine(database_url, future=True)
@@ -1907,13 +1908,52 @@ def test_facility_workspace_exposes_fail_closed_action_readiness_from_backend_co
         "create_reassessment_case",
         "create_change_request",
     ]
-    assert all(item.readiness_status == "missing_contract" for item in action_readiness.values())
     assert action_readiness["create_company"].detail == "Chưa có canonical backend write contract để tạo công ty mới."
-    assert action_readiness["create_inspection_case"].detail.endswith("để mở hồ sơ kiểm tra mới cho ngữ cảnh GMP.")
+    assert action_readiness["create_company"].readiness_status == "missing_contract"
+    assert action_readiness["create_inspection_case"].readiness_status == "forbidden"
+    assert action_readiness["create_inspection_case"].required_permissions == ["case.edit"]
+    assert action_readiness["create_inspection_case"].detail == "Tài khoản hiện tại không có quyền tạo hồ sơ kiểm tra."
     assert action_readiness["create_change_request"].detail == (
         "Change request hiện mới có canonical read model; chưa có authenticated write contract để tạo mới."
     )
-    assert all(item.required_permissions == [] for item in action_readiness.values())
+    assert action_readiness["create_change_request"].required_permissions == []
+
+
+def test_facility_workspace_marks_create_inspection_case_available_or_conflict_by_context_contract(tmp_path):
+    database_path = tmp_path / "catalog-facility-action-readiness-available.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+
+    app = create_app(database_url)
+    facility_workspace_route = next(route for route in app.routes if getattr(route, "path", "") == "/sites/{site_id}/workspace")
+
+    with Session(engine) as session:
+        available_payload = facility_workspace_route.endpoint(
+            site_id=seeded["site_id"],
+            gxp_type="GMP",
+            line_code="A",
+            session=session,
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
+        )
+        conflict_payload = facility_workspace_route.endpoint(
+            site_id=seeded["site_id"],
+            gxp_type="GMP",
+            line_code="B",
+            session=session,
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
+        )
+
+    available = {item.action_key: item for item in available_payload.action_readiness}["create_inspection_case"]
+    conflict = {item.action_key: item for item in conflict_payload.action_readiness}["create_inspection_case"]
+    assert available.readiness_status == "available"
+    assert available.required_permissions == ["case.edit"]
+    assert "Có thể tạo hồ sơ kiểm tra mới" in available.detail
+    assert conflict.readiness_status == "conflict"
+    assert "Đã có một hồ sơ kiểm tra chưa kết thúc" in conflict.detail
 
 
 def test_change_request_workspace_reads_authoritative_change_sections_and_document_checklist(tmp_path):

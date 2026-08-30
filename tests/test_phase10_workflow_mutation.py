@@ -1,10 +1,11 @@
 import json
 from datetime import date, datetime, timezone
+from types import SimpleNamespace
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from backend.app.auth import build_authenticated_user
+from backend.app.auth import ROLE_PERMISSIONS, build_authenticated_user, get_authenticated_user
 from backend.app.db.base import Base
 from backend.app.db.enums import CaseState
 from backend.app.db.models.phase1 import (
@@ -28,6 +29,7 @@ from backend.app.db.models.phase1 import (
     Site,
 )
 from backend.app.main import create_app
+from backend.app.read_models import InspectionCaseCreateRequest
 from backend.app.services.workflow import CaseWorkflowService
 
 
@@ -44,6 +46,63 @@ def seed_case(session: Session) -> str:
     return case.id
 
 
+def seed_create_inspection_case_context(
+    session: Session,
+    *,
+    gxp_type: str = "GMP",
+    line_code: str | None = "A",
+    case_state: CaseState = CaseState.CLOSED,
+    include_case: bool = True,
+    include_certificate: bool = False,
+    site_name: str = "Create Case Site",
+) -> dict[str, str | None]:
+    company = Company(legal_name=f"{site_name} Company", short_name="CCS")
+    session.add(company)
+    session.flush()
+    site = Site(company_id=company.id, site_name=site_name)
+    session.add(site)
+    session.flush()
+
+    seeded_case_id: str | None = None
+    if include_case:
+        seeded_case = Case(
+            site_id=site.id,
+            gxp_type=gxp_type,
+            scope_code=line_code,
+            applicable_standard="WHO-GMP",
+            inspection_type="Định kỳ",
+            state=case_state,
+        )
+        session.add(seeded_case)
+        session.flush()
+        seeded_case_id = seeded_case.id
+
+    if include_certificate:
+        certificate = Certificate(
+            site_id=site.id,
+            case_id=seeded_case_id,
+            certificate_type=gxp_type,
+            line_code=line_code,
+            latest_flag=True,
+        )
+        session.add(certificate)
+        session.flush()
+        session.add(
+            CertificateVersion(
+                certificate_id=certificate.id,
+                version_no=1,
+                certificate_number="GCN-CREATE-001",
+                issue_date=date(2026, 8, 1),
+                expiry_date=date(2027, 8, 1),
+                applicable_standard="WHO-GMP",
+                is_latest_version=True,
+            )
+        )
+
+    session.commit()
+    return {"site_id": site.id, "seeded_case_id": seeded_case_id}
+
+
 def test_phase10_transition_route_is_registered():
     app = create_app("sqlite:///:memory:")
     routes = {route.path for route in app.routes if hasattr(route, "path")}
@@ -54,6 +113,7 @@ def test_phase10_transition_route_is_registered():
     assert "/cases/{case_id}/plan" in routes
     assert "/cases/{case_id}/outcome" in routes
     assert "/cases/{case_id}/team" in routes
+    assert "/sites/{site_id}/inspection-cases" in routes
     assert "/cases/{case_id}/capa-cycles" in routes
     assert "/capa-cycles/{capa_cycle_id}" in routes
     assert "/capa-cycles/{capa_cycle_id}/submit" in routes
@@ -64,6 +124,325 @@ def test_phase10_transition_route_is_registered():
     assert "/sites/{site_id}/business-eligibility-certificates" in routes
     assert "/business-eligibility-certificates/{business_eligibility_certificate_id}/latest-version" in routes
     assert "/business-eligibility-certificates/{business_eligibility_certificate_id}/promote-current" in routes
+
+
+def test_create_inspection_case_persists_draft_case_without_downstream_rows():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        seeded = seed_create_inspection_case_context(session, line_code="A", case_state=CaseState.CLOSED)
+
+    with Session(engine) as session:
+        result = service.create_inspection_case(
+            session,
+            site_id=seeded["site_id"],
+            gxp_type="GMP",
+            line_code="A",
+            inspection_type="Định kỳ",
+            applicable_standard="WHO-GMP",
+            reason="Open new inspection case.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+
+    assert result["site_id"] == seeded["site_id"]
+    assert result["gxp_type"] == "GMP"
+    assert result["line_code"] == "A"
+    assert result["inspection_type"] == "Định kỳ"
+    assert result["applicable_standard"] == "WHO-GMP"
+    assert result["state"] == "draft"
+    assert result["legacy_inspection_id"] is None
+    assert result["legacy_inspection_code"] is None
+    assert result["audit_event_id"] is not None
+
+    with Session(engine) as session:
+        created = session.get(Case, result["case_id"])
+        assert created is not None
+        assert created.state == CaseState.DRAFT
+        assert created.scope_code == "A"
+        assert session.scalar(select(CaseApplication).where(CaseApplication.case_id == created.id)) is None
+        assert session.scalar(select(CaseAssessment).where(CaseAssessment.case_id == created.id)) is None
+        assert session.scalar(select(InspectionPlan).where(InspectionPlan.case_id == created.id)) is None
+        assert session.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == created.id)) is None
+        assert session.scalar(select(InspectionEvent).where(InspectionEvent.case_id == created.id)) is None
+        audit_event = session.get(AuditEvent, result["audit_event_id"])
+        assert audit_event is not None
+        assert audit_event.action == "case.create_inspection_case"
+        assert json.loads(audit_event.payload_redacted)["line_code"] == "A"
+
+
+def test_create_inspection_case_allows_authoritative_certificate_only_line_context():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        seeded = seed_create_inspection_case_context(
+            session,
+            line_code="B",
+            include_case=False,
+            include_certificate=True,
+            site_name="Certificate Only Site",
+        )
+
+    with Session(engine) as session:
+        result = service.create_inspection_case(
+            session,
+            site_id=seeded["site_id"],
+            gxp_type="GMP",
+            line_code="B",
+            inspection_type="Định kỳ",
+            applicable_standard=None,
+            reason="Create from certificate-owned line context.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+
+    assert result["line_code"] == "B"
+    assert result["applicable_standard"] is None
+
+
+def test_create_inspection_case_allows_facility_wide_context_without_inventing_line():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        seeded = seed_create_inspection_case_context(session, line_code=None, case_state=CaseState.CLOSED)
+
+    with Session(engine) as session:
+        result = service.create_inspection_case(
+            session,
+            site_id=seeded["site_id"],
+            gxp_type="GMP",
+            line_code=None,
+            inspection_type="Đột xuất",
+            applicable_standard=None,
+            reason="Facility-wide create.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+
+    assert result["line_code"] is None
+
+
+def test_create_inspection_case_rejects_invalid_site_gxp_or_line_context():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        seeded = seed_create_inspection_case_context(session, line_code="A", case_state=CaseState.CLOSED)
+
+    with Session(engine) as session:
+        try:
+            service.create_inspection_case(
+                session,
+                site_id="missing-site",
+                gxp_type="GMP",
+                line_code="A",
+                inspection_type="Định kỳ",
+                applicable_standard=None,
+                reason="Missing site.",
+                user=build_authenticated_user("manager01", "manager"),
+            )
+        except Exception as exc:
+            assert "Site not found" in str(exc)
+        else:
+            raise AssertionError("Expected missing site to fail")
+
+    with Session(engine) as session:
+        for gxp_type, line_code, expected_detail in [
+            ("GDP", "A", "Unsupported GxP context"),
+            ("GMP", "Z", "authoritative existing context"),
+        ]:
+            try:
+                service.create_inspection_case(
+                    session,
+                    site_id=seeded["site_id"],
+                    gxp_type=gxp_type,
+                    line_code=line_code,
+                    inspection_type="Định kỳ",
+                    applicable_standard=None,
+                    reason="Invalid context.",
+                    user=build_authenticated_user("manager01", "manager"),
+                )
+            except Exception as exc:
+                assert expected_detail in str(exc)
+            else:
+                raise AssertionError("Expected invalid create context to fail")
+
+
+def test_create_inspection_case_rejects_duplicate_open_case_and_is_retry_safe():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        seeded = seed_create_inspection_case_context(session, line_code="A", case_state=CaseState.DRAFT)
+
+    with Session(engine) as session:
+        try:
+            service.create_inspection_case(
+                session,
+                site_id=seeded["site_id"],
+                gxp_type="GMP",
+                line_code="A",
+                inspection_type="Định kỳ",
+                applicable_standard=None,
+                reason="Duplicate.",
+                user=build_authenticated_user("manager01", "manager"),
+            )
+        except Exception as exc:
+            assert "open inspection case already exists" in str(exc)
+        else:
+            raise AssertionError("Expected duplicate create to fail")
+
+    with Session(engine) as session:
+        seeded = seed_create_inspection_case_context(session, line_code="B", case_state=CaseState.CLOSED, site_name="Retry Site")
+
+    with Session(engine) as session:
+        created = service.create_inspection_case(
+            session,
+            site_id=seeded["site_id"],
+            gxp_type="GMP",
+            line_code="B",
+            inspection_type="Định kỳ",
+            applicable_standard=None,
+            reason="First create.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        try:
+            service.create_inspection_case(
+                session,
+                site_id=seeded["site_id"],
+                gxp_type="GMP",
+                line_code="B",
+                inspection_type="Định kỳ",
+                applicable_standard=None,
+                reason="Retry create.",
+                user=build_authenticated_user("manager01", "manager"),
+            )
+        except Exception as exc:
+            assert "open inspection case already exists" in str(exc)
+        else:
+            raise AssertionError("Expected retry create to fail")
+        assert session.scalar(select(Case).where(Case.id == created["case_id"])) is not None
+
+
+def test_create_inspection_case_duplicate_rule_is_site_scoped():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        seed_create_inspection_case_context(session, line_code="A", case_state=CaseState.DRAFT, site_name="Open Site")
+        seeded = seed_create_inspection_case_context(session, line_code="A", case_state=CaseState.CLOSED, site_name="Target Site")
+
+    with Session(engine) as session:
+        result = service.create_inspection_case(
+            session,
+            site_id=seeded["site_id"],
+            gxp_type="GMP",
+            line_code="A",
+            inspection_type="Định kỳ",
+            applicable_standard=None,
+            reason="Different site context.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+
+    assert result["site_id"] == seeded["site_id"]
+
+
+def test_create_inspection_case_rolls_back_cleanly_after_validation_failure():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        seeded = seed_create_inspection_case_context(session, line_code="A", case_state=CaseState.CLOSED)
+        baseline_case_count = len(list(session.scalars(select(Case))))
+
+    with Session(engine) as session:
+        try:
+            service.create_inspection_case(
+                session,
+                site_id=seeded["site_id"],
+                gxp_type="GMP",
+                line_code="A",
+                inspection_type="   ",
+                applicable_standard=None,
+                reason="Blank type.",
+                user=build_authenticated_user("manager01", "manager"),
+            )
+        except Exception as exc:
+            assert "inspection_type is required" in str(exc)
+            session.rollback()
+        else:
+            raise AssertionError("Expected blank inspection_type to fail")
+
+    with Session(engine) as session:
+        assert len(list(session.scalars(select(Case)))) == baseline_case_count
+
+
+def test_create_inspection_case_route_enforces_auth_and_returns_created_read_model(tmp_path):
+    database_path = tmp_path / "workflow-create-route.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        seeded = seed_create_inspection_case_context(session, line_code="A", case_state=CaseState.CLOSED)
+
+    app = create_app(database_url)
+    route = next(route for route in app.routes if getattr(route, "path", "") == "/sites/{site_id}/inspection-cases")
+    payload = InspectionCaseCreateRequest(
+        gxp_type="GMP",
+        line_code="A",
+        inspection_type="Định kỳ",
+        applicable_standard="WHO-GMP",
+        reason="HTTP create",
+    )
+
+    try:
+        get_authenticated_user(SimpleNamespace(app=app, headers={}))
+    except Exception as exc:
+        assert "Missing authenticated username" in str(exc)
+    else:
+        raise AssertionError("Expected missing auth headers to fail closed")
+
+    with Session(engine) as session:
+        try:
+            route.endpoint(
+                site_id=seeded["site_id"],
+                payload=payload,
+                session=session,
+                user=build_authenticated_user("reader01", "reader"),
+            )
+        except Exception as exc:
+            assert "missing required permission" in str(exc).lower()
+        else:
+            raise AssertionError("Expected reader create to fail")
+
+    with Session(engine) as session:
+        body = route.endpoint(
+            site_id=seeded["site_id"],
+            payload=payload,
+            session=session,
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
+        ).model_dump(mode="json")
+
+    assert body["site_id"] == seeded["site_id"]
+    assert body["gxp_type"] == "GMP"
+    assert body["line_code"] == "A"
+    assert body["inspection_type"] == "Định kỳ"
+    assert body["state"] == "draft"
 
 
 def test_transition_case_persists_audit_and_event():

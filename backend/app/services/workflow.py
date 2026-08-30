@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app.audit_payload import normalize_and_redact_audit_payload
@@ -61,9 +61,28 @@ CASE_STATE_TO_EVENT: dict[CaseState, InspectionEventType] = {
 CAPA_BLOCKING_STATUSES = {"requested", "submitted"}
 CAPA_ACCEPTED_STATUS = "accepted"
 CAPA_REJECTED_STATUS = "rejected"
+SUPPORTED_CASE_GXP_TYPES = frozenset({"GMP", "GLP", "GMPbb"})
+OPEN_CASE_STATES = frozenset(
+    {
+        CaseState.DRAFT,
+        CaseState.APPLICATION_RECEIVED,
+        CaseState.UNDER_ASSESSMENT,
+        CaseState.PLANNED,
+        CaseState.DECISION_ISSUED,
+        CaseState.INSPECTION_IN_PROGRESS,
+        CaseState.INSPECTION_COMPLETED,
+        CaseState.AWAITING_CERTIFICATE_DECISION,
+    }
+)
+CREATE_INSPECTION_CASE_PERMISSION = "case.edit"
 
 
 class CaseWorkflowService:
+    @staticmethod
+    def _normalize_line_code(value: str | None) -> str | None:
+        normalized = str(value or "").strip()
+        return normalized or None
+
     def _assert_expected_version(self, entity, expected_version: int | None, *, label: str) -> None:
         if expected_version is None:
             return
@@ -102,6 +121,12 @@ class CaseWorkflowService:
 
     def _get_site(self, session: Session, site_id: str) -> Site:
         row = session.get(Site, site_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Site not found.")
+        return row
+
+    def _lock_site(self, session: Session, site_id: str) -> Site:
+        row = session.scalars(select(Site).where(Site.id == site_id).with_for_update()).first()
         if row is None:
             raise HTTPException(status_code=404, detail="Site not found.")
         return row
@@ -372,6 +397,149 @@ class CaseWorkflowService:
             raise HTTPException(status_code=404, detail="CAPA cycle not found.")
         return row
 
+    def _site_has_gxp_context(
+        self,
+        session: Session,
+        *,
+        site_id: str,
+        gxp_type: str,
+        line_code: str | None,
+    ) -> bool:
+        normalized_line_code = self._normalize_line_code(line_code)
+        case_match = session.scalars(
+            select(Case.id).where(
+                Case.site_id == site_id,
+                Case.gxp_type == gxp_type,
+                func.nullif(func.trim(Case.scope_code), "") == normalized_line_code,
+            )
+        ).first()
+        if case_match is not None:
+            return True
+        certificate_match = session.scalars(
+            select(Certificate.id).where(
+                Certificate.site_id == site_id,
+                Certificate.certificate_type == gxp_type,
+                Certificate.latest_flag.is_(True),
+                func.nullif(func.trim(Certificate.line_code), "") == normalized_line_code,
+            )
+        ).first()
+        return certificate_match is not None
+
+    def _find_open_context_case(
+        self,
+        session: Session,
+        *,
+        site_id: str,
+        gxp_type: str,
+        line_code: str | None,
+    ) -> Case | None:
+        normalized_line_code = self._normalize_line_code(line_code)
+        return session.scalars(
+            select(Case)
+            .where(
+                Case.site_id == site_id,
+                Case.gxp_type == gxp_type,
+                func.nullif(func.trim(Case.scope_code), "") == normalized_line_code,
+                Case.state.in_(tuple(OPEN_CASE_STATES)),
+            )
+            .order_by(Case.created_at.desc(), Case.id.desc())
+        ).first()
+
+    def _validate_create_inspection_case_context(
+        self,
+        session: Session,
+        *,
+        site_id: str,
+        gxp_type: str,
+        line_code: str | None,
+    ) -> tuple[str, str | None]:
+        normalized_gxp_type = str(gxp_type or "").strip()
+        if normalized_gxp_type not in SUPPORTED_CASE_GXP_TYPES:
+            raise HTTPException(status_code=422, detail="Unsupported GxP context for inspection-case creation.")
+        normalized_line_code = self._normalize_line_code(line_code)
+        if not self._site_has_gxp_context(
+            session,
+            site_id=site_id,
+            gxp_type=normalized_gxp_type,
+            line_code=normalized_line_code,
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Selected facility/GxP/line context is not an authoritative existing context for inspection-case creation.",
+            )
+        return normalized_gxp_type, normalized_line_code
+
+    def get_create_inspection_case_action_readiness(
+        self,
+        session: Session,
+        *,
+        site_id: str,
+        gxp_type: str | None,
+        line_code: str | None,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        required_permissions = [CREATE_INSPECTION_CASE_PERMISSION]
+        normalized_gxp_type = str(gxp_type or "").strip() or None
+        normalized_line_code = self._normalize_line_code(line_code)
+        if normalized_gxp_type is None:
+            return {
+                "action_key": "create_inspection_case",
+                "label": "Hồ sơ kiểm tra",
+                "readiness_status": "unavailable",
+                "detail": "Chọn một ngữ cảnh GxP cụ thể trước khi tạo hồ sơ kiểm tra.",
+                "required_permissions": required_permissions,
+            }
+        if CREATE_INSPECTION_CASE_PERMISSION not in user.permissions:
+            return {
+                "action_key": "create_inspection_case",
+                "label": "Hồ sơ kiểm tra",
+                "readiness_status": "forbidden",
+                "detail": "Tài khoản hiện tại không có quyền tạo hồ sơ kiểm tra.",
+                "required_permissions": required_permissions,
+            }
+        if normalized_gxp_type not in SUPPORTED_CASE_GXP_TYPES:
+            return {
+                "action_key": "create_inspection_case",
+                "label": "Hồ sơ kiểm tra",
+                "readiness_status": "unavailable",
+                "detail": "Ngữ cảnh GxP đã chọn không hỗ trợ tạo hồ sơ kiểm tra mới.",
+                "required_permissions": required_permissions,
+            }
+        if not self._site_has_gxp_context(
+            session,
+            site_id=site_id,
+            gxp_type=normalized_gxp_type,
+            line_code=normalized_line_code,
+        ):
+            return {
+                "action_key": "create_inspection_case",
+                "label": "Hồ sơ kiểm tra",
+                "readiness_status": "unavailable",
+                "detail": "Ngữ cảnh cơ sở/GxP/dây chuyền đã chọn không khớp với context authoritative hiện có.",
+                "required_permissions": required_permissions,
+            }
+        existing_case = self._find_open_context_case(
+            session,
+            site_id=site_id,
+            gxp_type=normalized_gxp_type,
+            line_code=normalized_line_code,
+        )
+        if existing_case is not None:
+            return {
+                "action_key": "create_inspection_case",
+                "label": "Hồ sơ kiểm tra",
+                "readiness_status": "conflict",
+                "detail": "Đã có một hồ sơ kiểm tra chưa kết thúc cho đúng cơ sở/GxP/dây chuyền này.",
+                "required_permissions": required_permissions,
+            }
+        return {
+            "action_key": "create_inspection_case",
+            "label": "Hồ sơ kiểm tra",
+            "readiness_status": "available",
+            "detail": "Có thể tạo hồ sơ kiểm tra mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
+            "required_permissions": required_permissions,
+        }
+
     def _serialize_capa_cycle(self, row: CapaCycle, *, audit_event_id: str | None = None) -> dict[str, Any]:
         return {
             "capa_cycle_id": row.id,
@@ -516,6 +684,100 @@ class CaseWorkflowService:
             "row_version": row.row_version,
             "audit_event_id": audit_event.id,
             "inspection_event_id": None if inspection_event is None else inspection_event.id,
+        }
+
+    def create_inspection_case(
+        self,
+        session: Session,
+        *,
+        site_id: str,
+        gxp_type: str,
+        line_code: str | None,
+        inspection_type: str,
+        applicable_standard: str | None,
+        reason: str | None,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        locked_site = self._lock_site(session, site_id)
+        normalized_gxp_type, normalized_line_code = self._validate_create_inspection_case_context(
+            session,
+            site_id=locked_site.id,
+            gxp_type=gxp_type,
+            line_code=line_code,
+        )
+        normalized_inspection_type = str(inspection_type or "").strip()
+        if not normalized_inspection_type:
+            raise HTTPException(status_code=422, detail="inspection_type is required for inspection-case creation.")
+        normalized_applicable_standard = str(applicable_standard or "").strip() or None
+        existing_case = self._find_open_context_case(
+            session,
+            site_id=locked_site.id,
+            gxp_type=normalized_gxp_type,
+            line_code=normalized_line_code,
+        )
+        if existing_case is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="An open inspection case already exists for the selected facility/GxP/line context.",
+            )
+        actor = self._get_or_create_app_user(session, user)
+        case = Case(
+            site_id=locked_site.id,
+            gxp_type=normalized_gxp_type,
+            scope_code=normalized_line_code,
+            applicable_standard=normalized_applicable_standard,
+            inspection_type=normalized_inspection_type,
+            state=CaseState.DRAFT,
+            opened_year=None,
+            legacy_inspection_id=None,
+            legacy_inspection_code=None,
+        )
+        session.add(case)
+        session.flush()
+        after = {
+            "case_id": case.id,
+            "site_id": case.site_id,
+            "gxp_type": case.gxp_type,
+            "line_code": case.scope_code,
+            "inspection_type": case.inspection_type,
+            "applicable_standard": case.applicable_standard,
+            "state": case.state.value,
+            "row_version": case.row_version,
+            "legacy_inspection_id": case.legacy_inspection_id,
+            "legacy_inspection_code": case.legacy_inspection_code,
+        }
+        audit_event = self._write_audit_event(
+            session,
+            actor=actor,
+            entity_type="case",
+            entity_id=case.id,
+            action="case.create_inspection_case",
+            payload={
+                "site_id": case.site_id,
+                "gxp_type": case.gxp_type,
+                "line_code": case.scope_code,
+                "inspection_type": case.inspection_type,
+                "applicable_standard": case.applicable_standard,
+                "state": case.state.value,
+                "reason": reason,
+            },
+            before=None,
+            after=after,
+            reason=reason,
+        )
+        session.flush()
+        return {
+            "case_id": case.id,
+            "site_id": case.site_id,
+            "gxp_type": case.gxp_type,
+            "line_code": case.scope_code,
+            "inspection_type": case.inspection_type,
+            "applicable_standard": case.applicable_standard,
+            "state": case.state.value,
+            "row_version": case.row_version,
+            "legacy_inspection_id": case.legacy_inspection_id,
+            "legacy_inspection_code": case.legacy_inspection_code,
+            "audit_event_id": audit_event.id,
         }
 
     def list_capa_cycles(

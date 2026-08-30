@@ -418,6 +418,28 @@ class CaseTransitionRead(BaseModel):
     inspection_event_id: str | None
 
 
+class InspectionCaseCreateRequest(BaseModel):
+    gxp_type: str
+    line_code: str | None = None
+    inspection_type: str
+    applicable_standard: str | None = None
+    reason: str | None = None
+
+
+class InspectionCaseCreateRead(BaseModel):
+    case_id: str
+    site_id: str
+    gxp_type: str
+    line_code: str | None
+    inspection_type: str
+    applicable_standard: str | None
+    state: str
+    row_version: int
+    legacy_inspection_id: int | None
+    legacy_inspection_code: str | None
+    audit_event_id: str
+
+
 class CaseApplicationUpsertRequest(BaseModel):
     expected_version: int | None = None
     submitted_on: datetime | None = None

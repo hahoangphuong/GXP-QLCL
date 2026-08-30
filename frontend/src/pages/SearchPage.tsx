@@ -586,7 +586,7 @@ export function SearchPage({
           showGxpColumn={gxpType === "ALL"}
           totalCount={resultsTotalCount}
         />
-        <ActionCard />
+        <ActionCard actions={workspace?.action_readiness} />
       </div>
 
       {!resultsLoading && resultsTotalCount === 0 ? (

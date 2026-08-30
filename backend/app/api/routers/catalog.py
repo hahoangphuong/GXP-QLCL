@@ -30,6 +30,57 @@ def _optional_string_query(value: str | None) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
+def _build_facility_action_readiness(*, selected_gxp_type: str | None) -> list[dict[str, object]]:
+    selected_gxp_detail = f" cho ngữ cảnh {selected_gxp_type}" if selected_gxp_type else ""
+    return [
+        {
+            "action_key": "create_company",
+            "label": "Công ty mới",
+            "readiness_status": "missing_contract",
+            "detail": "Chưa có canonical backend write contract để tạo công ty mới.",
+            "required_permissions": [],
+        },
+        {
+            "action_key": "create_site",
+            "label": "Cơ sở mới",
+            "readiness_status": "missing_contract",
+            "detail": "Chưa có canonical backend write contract để tạo cơ sở mới.",
+            "required_permissions": [],
+        },
+        {
+            "action_key": "create_production_line",
+            "label": "Dây chuyền mới",
+            "readiness_status": "missing_contract",
+            "detail": "Chưa có canonical backend write contract để tạo dây chuyền sản xuất mới.",
+            "required_permissions": [],
+        },
+        {
+            "action_key": "create_inspection_case",
+            "label": "Hồ sơ kiểm tra",
+            "readiness_status": "missing_contract",
+            "detail": (
+                "Hiện chỉ có workflow mutation cho case đã tồn tại; chưa có create contract owner-safe "
+                f"để mở hồ sơ kiểm tra mới{selected_gxp_detail}."
+            ),
+            "required_permissions": [],
+        },
+        {
+            "action_key": "create_reassessment_case",
+            "label": "Tái đánh giá",
+            "readiness_status": "missing_contract",
+            "detail": f"Chưa có create contract owner-safe để mở hồ sơ tái đánh giá mới{selected_gxp_detail}.",
+            "required_permissions": [],
+        },
+        {
+            "action_key": "create_change_request",
+            "label": "Thay đổi",
+            "readiness_status": "missing_contract",
+            "detail": "Change request hiện mới có canonical read model; chưa có authenticated write contract để tạo mới.",
+            "required_permissions": [],
+        },
+    ]
+
+
 def register_catalog_routes(app, session_factory) -> None:
     dependency = Depends(get_session_from_request_factory(session_factory))
     service = CatalogReadService()
@@ -221,9 +272,11 @@ def register_catalog_routes(app, session_factory) -> None:
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
         require_role(user, ALLOWED_READ_ROLES)
-        return FacilityWorkspaceRead(
-            **service.get_facility_workspace(session, site_id=site_id, gxp_type=gxp_type, line_code=line_code)
+        payload = service.get_facility_workspace(session, site_id=site_id, gxp_type=gxp_type, line_code=line_code)
+        payload["action_readiness"] = _build_facility_action_readiness(
+            selected_gxp_type=payload["summary"].get("selected_gxp_type"),
         )
+        return FacilityWorkspaceRead(**payload)
 
     def list_site_gxp_certificates(
         site_id: str,

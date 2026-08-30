@@ -218,6 +218,50 @@ function buildWorkspace(overrides: Record<string, unknown> = {}) {
         state: "under_review",
       },
     ],
+    action_readiness: [
+      {
+        action_key: "create_company",
+        label: "Công ty mới",
+        readiness_status: "missing_contract",
+        detail: "Chưa có canonical backend write contract để tạo công ty mới.",
+        required_permissions: [],
+      },
+      {
+        action_key: "create_site",
+        label: "Cơ sở mới",
+        readiness_status: "missing_contract",
+        detail: "Chưa có canonical backend write contract để tạo cơ sở mới.",
+        required_permissions: [],
+      },
+      {
+        action_key: "create_production_line",
+        label: "Dây chuyền mới",
+        readiness_status: "missing_contract",
+        detail: "Chưa có canonical backend write contract để tạo dây chuyền sản xuất mới.",
+        required_permissions: [],
+      },
+      {
+        action_key: "create_inspection_case",
+        label: "Hồ sơ kiểm tra",
+        readiness_status: "missing_contract",
+        detail: "Hiện chỉ có workflow mutation cho case đã tồn tại; chưa có create contract owner-safe để mở hồ sơ kiểm tra mới cho ngữ cảnh GMP.",
+        required_permissions: [],
+      },
+      {
+        action_key: "create_reassessment_case",
+        label: "Tái đánh giá",
+        readiness_status: "missing_contract",
+        detail: "Chưa có create contract owner-safe để mở hồ sơ tái đánh giá mới cho ngữ cảnh GMP.",
+        required_permissions: [],
+      },
+      {
+        action_key: "create_change_request",
+        label: "Thay đổi",
+        readiness_status: "missing_contract",
+        detail: "Change request hiện mới có canonical read model; chưa có authenticated write contract để tạo mới.",
+        required_permissions: [],
+      },
+    ],
     ...overrides,
   };
 }
@@ -548,11 +592,16 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.queryByRole("combobox", { name: "Chứng nhận" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Xử lý" })).not.toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Công ty mới" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hồ sơ kiểm tra" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dây chuyền mới" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "D.chuyền mới" })).not.toBeInTheDocument();
-    for (const label of ["Công ty mới", "Cơ sở mới", "Dây chuyền mới", "Tái đánh giá", "Thay đổi"]) {
+    for (const label of ["Công ty mới", "Cơ sở mới", "Dây chuyền mới", "Hồ sơ kiểm tra", "Tái đánh giá", "Thay đổi"]) {
       expect(screen.getByRole("button", { name: label })).toBeDisabled();
     }
+    expect(screen.getByRole("button", { name: "Hồ sơ kiểm tra" })).toHaveAttribute(
+      "title",
+      "Hiện chỉ có workflow mutation cho case đã tồn tại; chưa có create contract owner-safe để mở hồ sơ kiểm tra mới cho ngữ cảnh GMP.",
+    );
     expect(screen.queryByText(/^Prev$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Next$/)).not.toBeInTheDocument();
     expect(container.querySelector(".search-toolbar")).toBeNull();

@@ -1812,6 +1812,110 @@ def test_case_workspace_reads_owner_correct_sections_and_direct_links_only(tmp_p
     assert document_items["Đánh giá CAPA 2"].status == "missing"
 
 
+def test_case_workspace_ignores_legacy_processing_free_text_without_structured_owner_mapping(tmp_path):
+    database_path = tmp_path / "catalog-case-processing-free-text.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+    snapshot = {
+        "db.cty": [
+            {"ID": "1", "TÊN CÔNG TY": "Công ty UAT", "COMPANY NAME": "UAT Co", "TÊN VIẾT TẮT": "UAT"},
+        ],
+        "db.cso": [
+            {
+                "ID": "2",
+                "ID Cty": "1",
+                "TÊN CƠ SỞ": "Cơ sở UAT",
+                "SITE NAME": "UAT Site",
+                "ĐỊA CHỈ CƠ SỞ": "Địa chỉ cơ sở",
+                "SITE ADDRESS": "Site address",
+                "TỈNH/TP": "Hồ Chí Minh",
+            },
+        ],
+        "db.ktra": [
+            {
+                "ID": "4201",
+                "ID CƠ SỞ": "2",
+                "LOẠI KT": "GMP",
+                "MÃ DC": "A",
+                "LOẠI KIỂM TRA": "Tái đánh giá",
+                "TIẾN ĐỘ XỬ LÝ": "Chờ trình lãnh đạo ký quyết định",
+                "Ngày nộp": "",
+                "Ngày thẩm định": "",
+                "Kết quả": "",
+                "Q. định": "",
+                "B. bản": "",
+                "Ngày K.tra": "",
+            },
+        ],
+        "db.cc": [],
+        "db.dkkd": [],
+        "db.Tdoi": [],
+        "db.Tdoi2": [],
+    }
+
+    with Session(engine) as session:
+        import_snapshot(session, snapshot)
+        session.commit()
+
+    app = create_app(database_url)
+    case_workspace_route = next(route for route in app.routes if getattr(route, "path", "") == "/cases/{case_id}/workspace")
+
+    with Session(engine) as session:
+        case = session.scalar(select(Case).where(Case.legacy_inspection_id == 4201))
+        payload = case_workspace_route.endpoint(
+            case_id=case.id,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+
+    assert payload.processing.assessed_on is None
+    assert payload.processing.assessor_name is None
+    assert payload.processing.assessment_result is None
+    assert payload.processing.notes is None
+    assert payload.processing.events == []
+    assert payload.case_summary.state == "application_received"
+
+
+def test_facility_workspace_exposes_fail_closed_action_readiness_from_backend_contract(tmp_path):
+    database_path = tmp_path / "catalog-facility-action-readiness.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+
+    app = create_app(database_url)
+    facility_workspace_route = next(route for route in app.routes if getattr(route, "path", "") == "/sites/{site_id}/workspace")
+
+    with Session(engine) as session:
+        payload = facility_workspace_route.endpoint(
+            site_id=seeded["site_id"],
+            gxp_type="GMP",
+            line_code="A",
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+
+    action_readiness = {item.action_key: item for item in payload.action_readiness}
+    assert list(action_readiness) == [
+        "create_company",
+        "create_site",
+        "create_production_line",
+        "create_inspection_case",
+        "create_reassessment_case",
+        "create_change_request",
+    ]
+    assert all(item.readiness_status == "missing_contract" for item in action_readiness.values())
+    assert action_readiness["create_company"].detail == "Chưa có canonical backend write contract để tạo công ty mới."
+    assert action_readiness["create_inspection_case"].detail.endswith("để mở hồ sơ kiểm tra mới cho ngữ cảnh GMP.")
+    assert action_readiness["create_change_request"].detail == (
+        "Change request hiện mới có canonical read model; chưa có authenticated write contract để tạo mới."
+    )
+    assert all(item.required_permissions == [] for item in action_readiness.values())
+
+
 def test_change_request_workspace_reads_authoritative_change_sections_and_document_checklist(tmp_path):
     database_path = tmp_path / "catalog-change-request-workspace.sqlite"
     database_url = f"sqlite:///{database_path.as_posix()}"

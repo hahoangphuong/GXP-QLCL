@@ -161,6 +161,7 @@ export type FacilityHistoryItem = {
 export type FacilityWorkspace = {
   summary: FacilityWorkspaceSummary;
   history: FacilityHistoryItem[];
+  action_readiness: WorkspaceActionReadiness[];
 };
 
 export type CaseWorkspaceSummary = {
@@ -229,6 +230,14 @@ export type CaseWorkspaceProcessing = {
   assessment_result: string | null;
   notes: string | null;
   events: CaseWorkspaceProcessingEvent[];
+};
+
+export type WorkspaceActionReadiness = {
+  action_key: string;
+  label: string;
+  readiness_status: string;
+  detail: string;
+  required_permissions: string[];
 };
 
 export type DocumentChecklistItem = {

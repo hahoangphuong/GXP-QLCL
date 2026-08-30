@@ -149,6 +149,14 @@ class FacilityWorkspaceSummaryRead(BaseModel):
     certificate_scope_summary: str | None
 
 
+class WorkspaceActionReadinessRead(BaseModel):
+    action_key: str
+    label: str
+    readiness_status: str
+    detail: str
+    required_permissions: list[str]
+
+
 class FacilityHistoryItemRead(BaseModel):
     id: str
     source_type: Literal["case", "change_request"]
@@ -163,6 +171,8 @@ class FacilityHistoryItemRead(BaseModel):
 class FacilityWorkspaceRead(BaseModel):
     summary: FacilityWorkspaceSummaryRead
     history: list[FacilityHistoryItemRead]
+    action_readiness: list[WorkspaceActionReadinessRead]
+
 
 
 class CaseWorkspaceSummaryRead(BaseModel):

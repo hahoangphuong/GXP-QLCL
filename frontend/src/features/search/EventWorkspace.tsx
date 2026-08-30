@@ -659,7 +659,7 @@ export function EventWorkspace({
           ) : changeRequestWorkspaceError ? (
             <EmptyState
               title="Không tải được workspace thay đổi"
-              description="Workspace read model cho yêu cầu thay đổi đang chọn hiện không sẵn sàng. Vui lòng chọn lại hoặc thử sau."
+              description={changeRequestWorkspaceError}
             />
           ) : changeRequestWorkspace ? (
             renderChangeRequestStepContent(effectiveActiveTab, changeRequestWorkspace)
@@ -671,7 +671,7 @@ export function EventWorkspace({
         ) : caseWorkspaceError ? (
           <EmptyState
             title="Không tải được workspace hồ sơ"
-            description="Workspace read model cho hồ sơ đang chọn hiện không sẵn sàng. Vui lòng chọn lại hoặc thử sau."
+            description={caseWorkspaceError}
           />
         ) : caseWorkspace ? (
           renderCaseStepContent(effectiveActiveTab, caseWorkspace)

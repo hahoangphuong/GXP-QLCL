@@ -1830,6 +1830,157 @@ def test_change_request_workspace_reads_authoritative_change_sections_and_docume
     assert document_items["CV đồng ý thay đổi"].status == "missing"
 
 
+def test_imported_change_request_workspace_handles_effective_without_explicit_approval_fields(tmp_path):
+    database_path = tmp_path / "catalog-imported-change-request-189.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+    snapshot = {
+        "db.cty": [
+            {"ID": "1", "TÊN CÔNG TY": "Công ty UAT", "COMPANY NAME": "UAT Co", "TÊN VIẾT TẮT": "UAT"},
+        ],
+        "db.cso": [
+            {
+                "ID": "2",
+                "ID Cty": "1",
+                "TÊN CƠ SỞ": "Cơ sở UAT",
+                "SITE NAME": "UAT Site",
+                "ĐỊA CHỈ CƠ SỞ": "Địa chỉ cơ sở",
+                "SITE ADDRESS": "Site address",
+                "TỈNH/TP": "Hồ Chí Minh",
+            },
+        ],
+        "db.ktra": [],
+        "db.cc": [],
+        "db.dkkd": [],
+        "db.Tdoi": [
+            {
+                "ID": "189",
+                "PHẠM VI": "",
+                "MÔ TẢ": "Điều chỉnh cách ghi địa chỉ",
+                "ID CƠ SỞ": "2",
+                "Hồ sơ đề nghị": "237",
+                "ĐƠN VỊ ĐỀ NGHỊ": "",
+                "Ngày nộp": "2026-01-09 00:00:00+00:00",
+                "Ngày xử lý": "",
+                "Người xử lý": "",
+                "Kết quả": "",
+                "CV chấp nhận & ngày": "",
+                "Ngày hiệu lực của TĐ": "2026-03-10 00:00:00+00:00",
+                "GHI CHÚ": "",
+            },
+        ],
+        "db.Tdoi2": [
+            {
+                "ID": "157",
+                "ID Gốc": "189",
+                "ID Phân loại": "",
+                "PHÂN LOẠI": "Điều chỉnh cách ghi địa chỉ",
+                "TÌNH TRẠNG CHẤP NHẬN": "",
+                "THÔNG TIN CŨ": "Nº 22, road Nº 2, Viet Nam - Singapore II industrial zone",
+                "THÔNG TIN MỚI": "No. 22, street no. 2, Viet Nam-Singapore industrial park II",
+                "GHI CHÚ": "",
+            },
+        ],
+    }
+
+    with Session(engine) as session:
+        import_snapshot(session, snapshot)
+        session.commit()
+
+    app = create_app(database_url)
+    change_workspace_route = next(
+        route for route in app.routes if getattr(route, "path", "") == "/change-requests/{change_request_id}/workspace"
+    )
+
+    with Session(engine) as session:
+        change_request = session.scalar(select(ChangeRequest).where(ChangeRequest.legacy_change_request_id == 189))
+        payload = change_workspace_route.endpoint(
+            change_request_id=change_request.id,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+
+    assert payload.legacy_change_request_id == 189
+    assert payload.scope_label is None
+    assert payload.requester_name is None
+    assert payload.handled_on is None
+    assert payload.handled_by_name is None
+    assert payload.result_label is None
+    assert payload.approval_reference is None
+    assert payload.effective_on == date(2026, 3, 10)
+    assert len(payload.details) == 1
+    assert payload.details[0].legacy_change_detail_id == 157
+    assert payload.details[0].classification_label == "Điều chỉnh cách ghi địa chỉ"
+    assert payload.details[0].new_value == "No. 22, street no. 2, Viet Nam-Singapore industrial park II"
+    assert all(item.parent_scope == "change_request" for item in payload.documents.items)
+    assert all(item.parent_id == change_request.id for item in payload.documents.items)
+
+
+def test_change_request_workspace_allows_missing_approval_row(tmp_path):
+    database_path = tmp_path / "catalog-change-request-no-approval.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+        session.query(ChangeApproval).where(ChangeApproval.change_request_id == seeded["change_request_ids"]["primary"]).delete()
+        session.commit()
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        payload = service.get_change_request_workspace(session, change_request_id=seeded["change_request_ids"]["primary"])
+
+    assert payload["handled_on"] is None
+    assert payload["handled_by_name"] is None
+    assert payload["result_label"] is None
+    assert payload["effective_on"] is None
+    assert payload["approval_reference"] is None
+    assert len(payload["details"]) == 1
+
+
+def test_change_request_workspace_allows_missing_detail_rows_without_attaching_unrelated_details(tmp_path):
+    database_path = tmp_path / "catalog-change-request-no-details.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+        other_change_request = ChangeRequest(
+            site_id=seeded["site_id"],
+            legacy_change_request_id=9102,
+            scope_label="Đổi kho",
+            submitted_on=date(2026, 8, 8),
+            state=ChangeRequestState.RECEIVED,
+        )
+        session.add(other_change_request)
+        session.flush()
+        session.add(
+            ChangeRequestDetail(
+                change_request_id=other_change_request.id,
+                legacy_change_detail_id=777,
+                classification_id=9,
+                classification_label="Chi tiết không liên quan",
+                approval_status="Không áp dụng",
+                old_value="Old unrelated",
+                new_value="New unrelated",
+                note="Không được gắn sang request khác",
+            )
+        )
+        session.query(ChangeRequestDetail).where(
+            ChangeRequestDetail.change_request_id == seeded["change_request_ids"]["primary"]
+        ).delete()
+        session.commit()
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        payload = service.get_change_request_workspace(session, change_request_id=seeded["change_request_ids"]["primary"])
+
+    assert payload["legacy_change_request_id"] == 9101
+    assert payload["details"] == []
+
 def test_case_workspace_document_checklist_keeps_multi_parent_document_inside_allowed_case_owner(tmp_path):
     database_path = tmp_path / "catalog-case-document-ownership.sqlite"
     database_url = f"sqlite:///{database_path.as_posix()}"

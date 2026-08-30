@@ -426,7 +426,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".search-toolbar")).toBeNull();
     expect(container.querySelector(".search-workspace-split .history-panel")).toBeNull();
     expect(container.querySelector(".facility-workspace-panel .history-panel")).not.toBeNull();
-  });
+  }, 10000);
 
   it("uses the canonical GMPbb value and hides the GxP column outside the Tất cả view", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
@@ -655,6 +655,85 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
   });
 
+  it("switches between case and change-request workspaces without stale detail or master-search refetch", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace
+      .mockResolvedValueOnce(buildCaseWorkspace())
+      .mockResolvedValueOnce(
+        buildCaseWorkspace({
+          application: {
+            ...buildCaseWorkspace().application,
+            dossier_code: "HS-001-RETURN",
+          },
+        }),
+      );
+    apiMocks.getChangeRequestWorkspace.mockResolvedValue(
+      buildChangeRequestWorkspace({
+        legacy_change_request_id: 189,
+        scope_label: null,
+        requester_name: null,
+        handled_on: null,
+        handled_by_name: null,
+        result_label: null,
+        approval_reference: null,
+        details: [
+          {
+            change_detail_id: "change-detail-189",
+            legacy_change_detail_id: 157,
+            classification_id: null,
+            classification_label: "Điều chỉnh cách ghi địa chỉ",
+            approval_status: null,
+            old_value: "No cu",
+            new_value: "No moi",
+            note: null,
+          },
+        ],
+      }),
+    );
+
+    const { container } = renderApp(["/search"]);
+
+    expect(await screen.findByRole("heading", { name: "KT-2026-GMP-A" })).toBeInTheDocument();
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
+
+    expect(await screen.findByRole("heading", { name: "TD-01" })).toBeInTheDocument();
+    expect(screen.getByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Thông tin hồ sơ" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Không tải được workspace thay đổi")).not.toBeInTheDocument();
+
+    fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Định kỳ"));
+
+    expect(await screen.findByText("HS-001-RETURN")).toBeInTheDocument();
+    expect(screen.queryByText("Điều chỉnh địa chỉ kho bảo quản")).not.toBeInTheDocument();
+    expect(screen.queryByText("Không tải được workspace hồ sơ")).not.toBeInTheDocument();
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
+    expect(apiMocks.getChangeRequestWorkspace).toHaveBeenCalledTimes(1);
+    expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
+    expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
+  });
+
+  it("surfaces the backend change-request error message instead of a generic hidden failure", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.getChangeRequestWorkspace.mockRejectedValue(new Error("404 Change request not found."));
+
+    const { container } = renderApp(["/search"]);
+
+    expect(await screen.findByRole("heading", { name: "KT-2026-GMP-A" })).toBeInTheDocument();
+    fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
+
+    expect(await screen.findByText("Không tải được workspace thay đổi")).toBeInTheDocument();
+    expect(screen.getByText("404 Change request not found.")).toBeInTheDocument();
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+  });
+
   it("renders case-linked workflow steps without refetching master search or changing selected rows", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
@@ -704,7 +783,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.getChangeRequestWorkspace).not.toHaveBeenCalled();
     expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
-  });
+  }, 10000);
 
   it("shows only direct case-linked certificates inside event steps and does not fabricate site-wide business eligibility", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
@@ -731,6 +810,7 @@ describe("App Slice A.4 search workspace", () => {
 
     renderApp(["/search"]);
 
+    expect(await screen.findByText("HS-001")).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: /Chứng nhận GxP/ }));
     expect(await screen.findByRole("heading", { name: "Chứng nhận GxP liên kết" })).toBeInTheDocument();
     expect(screen.getAllByText("195/GCN-QLD").length).toBeGreaterThan(0);

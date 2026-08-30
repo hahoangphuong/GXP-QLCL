@@ -227,6 +227,21 @@ if str(payload.get("current_sha", "")).strip() != expected_sha:
 PY
 }
 
+validate_release_runtime_artifacts() {
+  local release_root="$1"
+  local release_python="$2"
+  [[ -d "${release_root}" ]] || fail "Release root is missing before runtime artifact validation: ${release_root}"
+  [[ -x "${release_python}" ]] || fail "Release Python is missing before runtime artifact validation: ${release_python}"
+  env -u PYTHONHOME \
+    PYTHONPATH="${release_root}" \
+    GXP_ARTIFACTS_ROOT="${release_root}/artifacts" \
+    "${release_python}" - <<'PY'
+from backend.app.document.runtime_artifacts import assert_required_phase5_runtime_artifacts_exist
+
+assert_required_phase5_runtime_artifacts_exist()
+PY
+}
+
 cleanup() {
   if [[ "${SUCCESS}" != "1" && "${SWITCHED_CONFIG}" == "1" ]]; then
     if [[ "${SYSTEMD_SERVICE_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_SERVICE_FILE}" ]]; then
@@ -616,6 +631,9 @@ service = create_storage_service_from_env(dict(os.environ))
 service.list('')
 PY
 "
+
+CURRENT_STAGE="document_runtime_artifact_check"
+validate_release_runtime_artifacts "${NEW_BACKEND_RELEASE}" "${NEW_BACKEND_VENV}/bin/python"
 
 CURRENT_STAGE="render_runtime_assets"
 assert_tls_files_exist

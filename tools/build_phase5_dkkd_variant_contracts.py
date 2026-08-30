@@ -19,8 +19,8 @@ NSMAP = {"w": WORD_NS}
 
 TEMPLATES_ROOT = ROOT / "legacy" / "Templates"
 RECONCILED_PATH = ROOT / "artifacts" / "phase5" / "template_contract_reconciled.json"
-OUTPUT_JSON = ROOT / "artifacts" / "phase5" / "ddkd_template_variants.json"
-OUTPUT_MD = ROOT / "artifacts" / "phase5" / "ddkd_template_variants.md"
+OUTPUT_JSON = ROOT / "artifacts" / "phase5" / "dkkd_template_variants.json"
+OUTPUT_MD = ROOT / "artifacts" / "phase5" / "dkkd_template_variants.md"
 
 
 def _bookmark_names(path: Path) -> list[str]:

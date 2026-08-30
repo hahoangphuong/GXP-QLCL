@@ -238,6 +238,12 @@ def test_vm_deploy_script_uses_vm_runtime_requirements_and_db_backup():
     assert 'CURRENT_STAGE="storage_readiness_check"' in text
     assert "from backend.app.storage.factory import create_storage_service_from_env" in text
     assert "service.list('')" in text
+    assert 'CURRENT_STAGE="document_runtime_artifact_check"' in text
+    assert 'validate_release_runtime_artifacts "${NEW_BACKEND_RELEASE}" "${NEW_BACKEND_VENV}/bin/python"' in text
+    assert 'GXP_ARTIFACTS_ROOT="${release_root}/artifacts"' in text
+    assert "from backend.app.document.runtime_artifacts import assert_required_phase5_runtime_artifacts_exist" in text
+    assert text.index('CURRENT_STAGE="storage_readiness_check"') < text.index('CURRENT_STAGE="document_runtime_artifact_check"')
+    assert text.index('CURRENT_STAGE="document_runtime_artifact_check"') < text.index('CURRENT_STAGE="render_runtime_assets"')
     assert "GXP_FRONTEND_DIST_ROOT" in text
     assert 'systemctl enable "${SYSTEMD_SERVICE_NAME}"' in text
     assert 'systemctl enable nginx' in text

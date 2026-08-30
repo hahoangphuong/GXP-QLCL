@@ -1,0 +1,1093 @@
+{
+  "scope_exclusions": [
+    "PowerPoint-backed certificate flow"
+  ],
+  "entries": [
+    {
+      "family_code": "INSPECTION_BBTD_HOSO_DK",
+      "logical_name": "Bien ban tham dinh ho so dang ky",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_numbers": [
+        1
+      ],
+      "template_pattern": "1. BBTD Ho so DK - {GP} - Moi/Tai.dotx",
+      "selection_legacy_mode": "moi_or_tai",
+      "population_procedures": [
+        "RecordForm.Tao_BBTD"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "Template branch depends on Moi/Tai state from Get_Tpl.",
+      "bookmarks": [
+        "Daychuyen",
+        "Diachicoso",
+        "Fulldate",
+        "Tencoso"
+      ]
+    },
+    {
+      "family_code": "INSPECTION_QD_KT",
+      "logical_name": "Quyet dinh kiem tra",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_numbers": [
+        2
+      ],
+      "template_pattern": "2. QD KT - {GP}.dotx",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "RecordForm.Tao_QDKT_KHKT_BBKT"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "Shares payload builder with inspection plan and inspection minutes.",
+      "bookmarks": [
+        "Daychuyen",
+        "Diachicoso",
+        "Diadiem",
+        "Diadiemx",
+        "Fulldate",
+        "GhPviCN",
+        "GhPviDG",
+        "GioiHanPvi",
+        "HsDK",
+        "MoiDel",
+        "NgayKT",
+        "NgayKTx",
+        "NgaynopHsDK",
+        "NgayQDKT",
+        "PVCepha",
+        "PVDuoclieu",
+        "PVNangmem",
+        "PVNhomat",
+        "PVPeni",
+        "PVSuibot",
+        "PVTiem",
+        "QDKT",
+        "TaiDel",
+        "Tencoso",
+        "ThoigianKT",
+        "TieuchuanKT",
+        "TT",
+        "TT1",
+        "TT2",
+        "TT3Del",
+        "TT3x",
+        "TT_SYTx",
+        "TT_VKNx",
+        "VKN",
+        "VKNx"
+      ]
+    },
+    {
+      "family_code": "INSPECTION_KE_HOACH_KT",
+      "logical_name": "Ke hoach kiem tra",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_numbers": [
+        3
+      ],
+      "template_pattern": "3. Ke hoach kiem tra {GP}.dotx",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "RecordForm.Tao_QDKT_KHKT_BBKT"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "Uses same payload procedure with mode-specific bookmark deletion.",
+      "bookmarks": [
+        "Daychuyen",
+        "Diachicoso",
+        "Diadiem",
+        "Diadiemx",
+        "Fulldate",
+        "GhPviCN",
+        "GhPviDG",
+        "GioiHanPvi",
+        "HsDK",
+        "MoiDel",
+        "NgayKT",
+        "NgayKTx",
+        "NgaynopHsDK",
+        "NgayQDKT",
+        "PVCepha",
+        "PVDuoclieu",
+        "PVNangmem",
+        "PVNhomat",
+        "PVPeni",
+        "PVSuibot",
+        "PVTiem",
+        "QDKT",
+        "TaiDel",
+        "Tencoso",
+        "ThoigianKT",
+        "TieuchuanKT",
+        "TT",
+        "TT1",
+        "TT2",
+        "TT3Del",
+        "TT3x",
+        "TT_SYTx",
+        "TT_VKNx",
+        "VKN",
+        "VKNx"
+      ]
+    },
+    {
+      "family_code": "INSPECTION_BB_KT",
+      "logical_name": "Bien ban kiem tra",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_numbers": [
+        4
+      ],
+      "template_pattern": "4. BB KT - {GP}.dotx",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "RecordForm.Tao_QDKT_KHKT_BBKT"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "Same builder as cases 2 and 3 with additional reference-row suppression.",
+      "bookmarks": [
+        "Daychuyen",
+        "Diachicoso",
+        "Diadiem",
+        "Diadiemx",
+        "Fulldate",
+        "GhPviCN",
+        "GhPviDG",
+        "GioiHanPvi",
+        "HsDK",
+        "MoiDel",
+        "NgayKT",
+        "NgayKTx",
+        "NgaynopHsDK",
+        "NgayQDKT",
+        "PVCepha",
+        "PVDuoclieu",
+        "PVNangmem",
+        "PVNhomat",
+        "PVPeni",
+        "PVSuibot",
+        "PVTiem",
+        "QDKT",
+        "TaiDel",
+        "Tencoso",
+        "ThoigianKT",
+        "TieuchuanKT",
+        "TT",
+        "TT1",
+        "TT2",
+        "TT3Del",
+        "TT3x",
+        "TT_SYTx",
+        "TT_VKNx",
+        "VKN",
+        "VKNx"
+      ]
+    },
+    {
+      "family_code": "INSPECTION_CAPA_LAN_1",
+      "logical_name": "Danh gia CAPA lan 1",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_numbers": [
+        5
+      ],
+      "template_pattern": "5. Danh gia CAPA - {GP}.dotx",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "RecordForm.Tao_BB_CAPA"
+      ],
+      "copy_forward_dependencies": [
+        {
+          "source_family_code": "INSPECTION_BB_KT",
+          "condition": "If prior BBKT exists and bookmark DsTT is present, copy deficiency table into CAPA document.",
+          "source_bookmarks": [
+            "DsTT"
+          ]
+        }
+      ],
+      "notes": "Copy-forward from prior BBKT is evidenced by BBKT_goc and bookmark DsTT copy.",
+      "bookmarks": [
+        "CAPAx",
+        "CV_BCKP",
+        "DsTT",
+        "LanKP",
+        "LanKT",
+        "Ngay_BCKP",
+        "NXL",
+        "Tday",
+        "Tencoso",
+        "ThoigianKT",
+        "TTV1"
+      ]
+    },
+    {
+      "family_code": "INSPECTION_CAPA_LAN_2",
+      "logical_name": "Danh gia CAPA lan 2",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_numbers": [
+        6
+      ],
+      "template_pattern": "5. Danh gia CAPA - {GP}.dotx",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "RecordForm.Tao_BB_CAPA"
+      ],
+      "copy_forward_dependencies": [
+        {
+          "source_family_code": "INSPECTION_CAPA_LAN_1",
+          "condition": "If CopyPT is enabled and prior CAPA round 1 exists, copy CAPAx table into round 2 document.",
+          "source_bookmarks": [
+            "CAPAx"
+          ]
+        }
+      ],
+      "notes": "Round 2 can reuse prior CAPA table when prior document exists.",
+      "bookmarks": [
+        "CAPAx",
+        "CV_BCKP",
+        "DsTT",
+        "LanKP",
+        "LanKT",
+        "Ngay_BCKP",
+        "NXL",
+        "Tday",
+        "Tencoso",
+        "ThoigianKT",
+        "TTV1"
+      ]
+    },
+    {
+      "family_code": "INSPECTION_PT_PCT",
+      "logical_name": "Phieu trinh PCT",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_numbers": [
+        7
+      ],
+      "template_pattern": "6. PT.PCT - {GP}.dotx",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "RecordForm.Tao_PT_PCT_CT"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "Primary PCT document does not require copy-forward in observed path.",
+      "bookmarks": [
+        "cacBCKP",
+        "Daychuyen",
+        "Daychuyen2",
+        "Diachicoso",
+        "GioihanPvi",
+        "HsDK",
+        "NgayBCKP",
+        "NgayKT2",
+        "NgayQDKT",
+        "Noidung",
+        "QDKT",
+        "Tencoso",
+        "ThoigianKT",
+        "TT2"
+      ]
+    },
+    {
+      "family_code": "INSPECTION_PT_CT",
+      "logical_name": "Phieu trinh CT",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_numbers": [
+        8
+      ],
+      "template_pattern": "7. PT.CT - {GP}.dotx",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "RecordForm.Tao_PT_PCT_CT"
+      ],
+      "copy_forward_dependencies": [
+        {
+          "source_family_code": "INSPECTION_PT_PCT",
+          "condition": "If CopyPT is enabled and prior PCT exists, copy bookmark Noidung from prior PCT document.",
+          "source_bookmarks": [
+            "Noidung"
+          ]
+        }
+      ],
+      "notes": "Observed bookmark-level copy-forward from PT.PCT into PT.CT.",
+      "bookmarks": [
+        "cacBCKP",
+        "Daychuyen",
+        "Daychuyen2",
+        "Diachicoso",
+        "GioihanPvi",
+        "HsDK",
+        "NgayBCKP",
+        "NgayKT2",
+        "NgayQDKT",
+        "Noidung",
+        "QDKT",
+        "Tencoso",
+        "ThoigianKT",
+        "TT2"
+      ]
+    },
+    {
+      "family_code": "CERTIFICATE_DECISION",
+      "logical_name": "Quyet dinh cap chung chi",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_numbers": [
+        9
+      ],
+      "template_pattern": "8. QD cap CC - {GP}.dotx",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "RecordForm.Tao_QD_CapCC"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "Decision document contains conditional suppression for product-type sections and corrective-action timing.",
+      "bookmarks": [
+        "cacBCKP",
+        "Chuthich",
+        "ChuthichDel",
+        "Daychuyen",
+        "Diachicoso",
+        "iBoth",
+        "iNgLieu",
+        "iThanhpham",
+        "NgayBCKP",
+        "NgayHethan",
+        "NgayKT",
+        "TenCoso",
+        "Tencoso5",
+        "TenCty",
+        "TenCtyCoso"
+      ]
+    },
+    {
+      "family_code": "CERTIFICATE_ISSUANCE_WORD",
+      "logical_name": "Chung chi GPs (Word-scoped baseline)",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_numbers": [
+        10
+      ],
+      "template_pattern": "9. Chung chi {GP} (moi).dotx",
+      "selection_legacy_mode": "moi",
+      "population_procedures": [
+        "RecordForm.Tao_CC_GPs_moi",
+        "RecordForm.Tao_CC_Thongtinchung",
+        "RecordForm.Tao_CC_ThongtinKT"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "PowerPoint-backed legacy branch is excluded; current baseline keeps only Word-backed issuance contract.",
+      "bookmarks": [
+        "Chuthich",
+        "ChuthichE",
+        "DiachiCoso",
+        "DiachiCosoE",
+        "DiachiVPCty",
+        "DiachiVPCtyE",
+        "NgayKT1",
+        "NgayKT2",
+        "NoEU_Del",
+        "NoPICS_Del",
+        "NoWHO_Del",
+        "OECD_Del",
+        "TenCoso",
+        "TenCosoE",
+        "TenCty",
+        "TenCtyE",
+        "WHO_Del"
+      ]
+    },
+    {
+      "family_code": "RISK_MANAGEMENT_WORKSHEET",
+      "logical_name": "Bang cong cu quan ly rui ro",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_numbers": [
+        11
+      ],
+      "template_pattern": "10. Bang cong cu quan ly rui ro.dotx",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "RecordForm.Tao_BB_QLRR"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "Only enabled for selected GPs path in observed VBA.",
+      "bookmarks": [
+        "Daychuyen",
+        "Diachi",
+        "NgayKT",
+        "NXL",
+        "Tday",
+        "TenCty",
+        "TTV1"
+      ]
+    },
+    {
+      "family_code": "STATUS_CONFIRMATION_LETTER",
+      "logical_name": "Cong van xac nhan tinh trang",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_numbers": [
+        12
+      ],
+      "template_pattern": "a. CV xac nhan tinh trang.dotx",
+      "selection_legacy_mode": "cho_kiem_tra_or_cho_cap_chung_chi",
+      "population_procedures": [
+        "RecordForm.Tao_CV_XNTT"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "Template naming branches depend on whether inspection is pending or certificate issuance already exists.",
+      "bookmarks": [
+        "ChoKT",
+        "CoQDKT",
+        "DaKT",
+        "DiachiCty",
+        "MahsDKKT",
+        "MahsDKKT2",
+        "MahsDKKT3",
+        "NgaycapDDK",
+        "NgaycapDDK2",
+        "NgayDKKT",
+        "NgayDKKT2",
+        "NgayDKKT3",
+        "NgayGCN",
+        "NgayGCN2",
+        "NgayGCN3",
+        "NgayKT",
+        "NgayKT2",
+        "NgayKT3",
+        "NgayQDKT",
+        "NgayQDKT2",
+        "NgayQDKT3",
+        "PhamviKT",
+        "QDcapDDK",
+        "QDcapDDK2",
+        "QDGCN",
+        "QDGCN2",
+        "QDGCN3",
+        "QDKT",
+        "QDKT2",
+        "QDKT3",
+        "SoDDK",
+        "SoDDK_2",
+        "SoDDK_3",
+        "SoGCN",
+        "SoGCN2",
+        "SoGCN3",
+        "TenCtydd"
+      ]
+    },
+    {
+      "family_code": "NAME_ADDRESS_CHANGE_LETTER",
+      "logical_name": "Cong van dong y doi ten dia chi",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_numbers": [
+        13
+      ],
+      "template_pattern": "b. CV tra loi dong y doi ten, dia chi.dotx",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "RecordForm.Tao_CV_Doiten_diachi"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "Uses certificate identity and translated company/address text.",
+      "bookmarks": [
+        "DiachiCty",
+        "NgayGCN",
+        "SoGCN",
+        "SoQD",
+        "TenCtydd",
+        "TenCtyTA"
+      ]
+    },
+    {
+      "family_code": "CHANGE_REPORT_ROUTE_LETTER",
+      "logical_name": "Cong van chuyen ho so thay doi cho phong kinh doanh",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_numbers": [
+        14
+      ],
+      "template_pattern": "11. Danh gia bao cao thay doi.dotx / c-family legacy letter path",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "RecordForm.Tao_CV_ChuyenKD"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "Observed comments indicate historical ambiguity between change-evaluation minutes and routing letter; treat as review-required family.",
+      "bookmarks": [
+        "HsDKKT",
+        "NgayDKKT",
+        "NgayGCN",
+        "QDGCN",
+        "SoGCN",
+        "TenCtydd"
+      ]
+    },
+    {
+      "family_code": "ASSESSMENT_MINUTES",
+      "logical_name": "Bien ban danh gia",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_numbers": [
+        15
+      ],
+      "template_pattern": "3.2. Bien ban danh gia {GP}.dotx",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "RecordForm.Tao_BB_Danhgia"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "Raw parser misses direct writes in Tao_BB_Danhgia path; nearest proven payload shape comes from assessment-style builder procedures and should be revalidated when templates are available.",
+      "bookmarks": [
+        "Daychuyen",
+        "Diachi",
+        "NXL",
+        "Tday",
+        "TenCty"
+      ]
+    },
+    {
+      "family_code": "CONSENT_CHANGE_LETTER",
+      "logical_name": "Cong van dong y thay doi",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_numbers": [
+        16
+      ],
+      "template_pattern": "d. CV dong y thay doi.dotx",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "RecordForm.Tao_CV_XNTT"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "Shares payload builder with status-confirmation letter but uses a different template family.",
+      "bookmarks": [
+        "ChoKT",
+        "CoQDKT",
+        "DaKT",
+        "DiachiCty",
+        "MahsDKKT",
+        "MahsDKKT2",
+        "MahsDKKT3",
+        "NgaycapDDK",
+        "NgaycapDDK2",
+        "NgayDKKT",
+        "NgayDKKT2",
+        "NgayDKKT3",
+        "NgayGCN",
+        "NgayGCN2",
+        "NgayGCN3",
+        "NgayKT",
+        "NgayKT2",
+        "NgayKT3",
+        "NgayQDKT",
+        "NgayQDKT2",
+        "NgayQDKT3",
+        "PhamviKT",
+        "QDcapDDK",
+        "QDcapDDK2",
+        "QDGCN",
+        "QDGCN2",
+        "QDGCN3",
+        "QDKT",
+        "QDKT2",
+        "QDKT3",
+        "SoDDK",
+        "SoDDK_2",
+        "SoDDK_3",
+        "SoGCN",
+        "SoGCN2",
+        "SoGCN3",
+        "TenCtydd"
+      ]
+    },
+    {
+      "family_code": "DDKD_PRESENTATION",
+      "logical_name": "Phieu trinh cap DDK",
+      "source_application": "Word",
+      "storage_scope": "dkkd_folder",
+      "legacy_host_procedure": "RecordForm.CreateFilez",
+      "legacy_case_numbers": [
+        1
+      ],
+      "template_pattern": "DDKD presentation template family from Get_Tplz case 1",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "RecordForm.Tao_PT_cap_DDK"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "Template literal is partially obscured by ChrW concatenation in VBA; bookmark contract is proven.",
+      "bookmarks": [
+        "Cap_DC",
+        "cb",
+        "Co_Doiten",
+        "Co_KSDB",
+        "Comment",
+        "DiachiCoso",
+        "Diachicoso1",
+        "DiachiCoso_cu",
+        "DiachiVPCty",
+        "DiachiVPCty_cu",
+        "Diadiemx",
+        "GCN_GPs",
+        "GiayDK_cu",
+        "Loaihinh",
+        "NgaycapDK_cu",
+        "Nguoi_DBCL_CCHN",
+        "Nguoi_DBCL_Ten",
+        "Nguoi_DBCL_Ten_cu1",
+        "Nguoi_PTCM_CCHN",
+        "Nguoi_PTCM_Ten",
+        "Nguoi_PTCM_Ten_cu1",
+        "NXL",
+        "Pvi_Cam",
+        "Pvi_DLDoc",
+        "Pvi_Doc",
+        "Pvi_GN",
+        "Pvi_PHGN",
+        "PviCN_Rg",
+        "QDcap_cu",
+        "Tencoso1",
+        "TenCty",
+        "TenCty_cu",
+        "Thay_DBCL",
+        "Thay_PTCM"
+      ]
+    },
+    {
+      "family_code": "DDKD_CERTIFICATE",
+      "logical_name": "Giay DDK",
+      "source_application": "Word",
+      "storage_scope": "dkkd_folder",
+      "legacy_host_procedure": "RecordForm.CreateFilez",
+      "legacy_case_numbers": [
+        2
+      ],
+      "template_pattern": "DDKD certificate template family from Get_Tplz case 2",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "RecordForm.Tao_Giay_DDK"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "Contains responsible-person and operating-scope bookmarks.",
+      "bookmarks": [
+        "Cap_lan",
+        "Co_Ng_DBCL",
+        "DiachiCoso",
+        "DiachiVPCty",
+        "GCN_thaythe",
+        "HoatdongKD",
+        "Nguoi_DBCL_CCHN",
+        "Nguoi_DBCL_CCHN_Ngaycap",
+        "Nguoi_DBCL_CCHN_Noicap",
+        "Nguoi_DBCL_Ten",
+        "Nguoi_DBCL_Trinhdo",
+        "Nguoi_PTCM_CCHN",
+        "Nguoi_PTCM_CCHN_Ngaycap",
+        "Nguoi_PTCM_CCHN_Noicap",
+        "Nguoi_PTCM_Ten",
+        "Nguoi_PTCM_Trinhdo",
+        "TenCoso",
+        "TenCty"
+      ]
+    },
+    {
+      "family_code": "DDKD_APPENDIX_OR_DECISION",
+      "logical_name": "Phu luc Giay DDK",
+      "source_application": "Word",
+      "storage_scope": "dkkd_folder",
+      "legacy_host_procedure": "RecordForm.CreateFilez",
+      "legacy_case_numbers": [
+        3
+      ],
+      "template_pattern": "z3. Phụ lục GCN ĐĐKKDD.dotx",
+      "selection_legacy_mode": "appendix",
+      "population_procedures": [
+        "RecordForm.Tao_PL_QD_GiayDDK",
+        "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "CreateFilez case 3 resolves the active appendix template.",
+      "bookmarks": [
+        "All",
+        "Chuthich",
+        "Co_Chuthich",
+        "Co_Doiten",
+        "Co_Ng_DBCL",
+        "CoDieuChinh",
+        "DiachiCoso",
+        "DiachiVPCty",
+        "Diadiemx",
+        "GCN_GMP",
+        "GiayDK_cu",
+        "HoatdongKD",
+        "NgaycapDK_cu",
+        "Nguoi_DBCL_CCHN",
+        "Nguoi_DBCL_CCHN_Ngaycap",
+        "Nguoi_DBCL_CCHN_Noicap",
+        "Nguoi_DBCL_Ten",
+        "Nguoi_DBCL_Trinhdo",
+        "Nguoi_PTCM_CCHN",
+        "Nguoi_PTCM_CCHN_Ngaycap",
+        "Nguoi_PTCM_CCHN_Noicap",
+        "Nguoi_PTCM_Ten",
+        "Nguoi_PTCM_Trinhdo",
+        "QD_GMP",
+        "QDcap_cu",
+        "TenCso",
+        "TenCty",
+        "TenCty_ddk_cu"
+      ]
+    },
+    {
+      "family_code": "DDKD_APPENDIX_OR_DECISION",
+      "logical_name": "Quyet dinh cap DDK",
+      "source_application": "Word",
+      "storage_scope": "dkkd_folder",
+      "legacy_host_procedure": "RecordForm.CreateFilez",
+      "legacy_case_numbers": [
+        4
+      ],
+      "template_pattern": "z4. QĐ cấp ĐĐKKDD.dotx",
+      "selection_legacy_mode": "issuance_decision",
+      "population_procedures": [
+        "RecordForm.Tao_PL_QD_GiayDDK",
+        "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "CreateFilez case 4 resolves the active issuance-decision template.",
+      "bookmarks": [
+        "All",
+        "Chuthich",
+        "Co_Chuthich",
+        "Co_Doiten",
+        "Co_Ng_DBCL",
+        "CoDieuChinh",
+        "DiachiCoso",
+        "DiachiVPCty",
+        "Diadiemx",
+        "GCN_GMP",
+        "GiayDK_cu",
+        "HoatdongKD",
+        "NgaycapDK_cu",
+        "Nguoi_DBCL_CCHN",
+        "Nguoi_DBCL_CCHN_Ngaycap",
+        "Nguoi_DBCL_CCHN_Noicap",
+        "Nguoi_DBCL_Ten",
+        "Nguoi_DBCL_Trinhdo",
+        "Nguoi_PTCM_CCHN",
+        "Nguoi_PTCM_CCHN_Ngaycap",
+        "Nguoi_PTCM_CCHN_Noicap",
+        "Nguoi_PTCM_Ten",
+        "Nguoi_PTCM_Trinhdo",
+        "QD_GMP",
+        "QDcap_cu",
+        "TenCso",
+        "TenCty",
+        "TenCty_ddk_cu"
+      ]
+    },
+    {
+      "family_code": "SUPPORT_TRAVEL_AUTHORIZATION",
+      "logical_name": "Giay di duong",
+      "source_application": "Word",
+      "storage_scope": "support_document",
+      "legacy_host_procedure": "ExtRecordForm.CreateFile",
+      "legacy_case_numbers": [
+        1
+      ],
+      "template_pattern": "Giay di duong.dotx",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "ExtRecordForm.CreateFile"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "One document can be generated per selected inspector.",
+      "bookmarks": [
+        "Chucvu",
+        "Congtac",
+        "Diachicoso",
+        "GPs",
+        "NganHang",
+        "NgaycapCMT",
+        "NgayQDKT",
+        "NgayQDKTx",
+        "NoicapCMT",
+        "Phongve",
+        "QDKT",
+        "Sanbay",
+        "SoCMT",
+        "SoTien",
+        "SoTienBangChu",
+        "SoTK",
+        "TenCoSo",
+        "TenCty",
+        "Tinhthanh",
+        "Tinhthanh2",
+        "TinhTP_Cty",
+        "TT1x",
+        "TT2x",
+        "TT2xx",
+        "TT3",
+        "TT_ext",
+        "TT_SYT",
+        "TT_VKN",
+        "TTV",
+        "TTV2",
+        "TTV_2",
+        "TTV_2x",
+        "TTxx"
+      ]
+    },
+    {
+      "family_code": "SUPPORT_FLIGHT_REQUEST",
+      "logical_name": "Giay xin di may bay",
+      "source_application": "Word",
+      "storage_scope": "support_document",
+      "legacy_host_procedure": "ExtRecordForm.CreateFile",
+      "legacy_case_numbers": [
+        2
+      ],
+      "template_pattern": "Xin di may bay.dotx",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "ExtRecordForm.CreateFile"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "Uses airport and team composition bookmarks.",
+      "bookmarks": [
+        "Chucvu",
+        "Congtac",
+        "Diachicoso",
+        "GPs",
+        "NganHang",
+        "NgaycapCMT",
+        "NgayQDKT",
+        "NgayQDKTx",
+        "NoicapCMT",
+        "Phongve",
+        "QDKT",
+        "Sanbay",
+        "SoCMT",
+        "SoTien",
+        "SoTienBangChu",
+        "SoTK",
+        "TenCoSo",
+        "TenCty",
+        "Tinhthanh",
+        "Tinhthanh2",
+        "TinhTP_Cty",
+        "TT1x",
+        "TT2x",
+        "TT2xx",
+        "TT3",
+        "TT_ext",
+        "TT_SYT",
+        "TT_VKN",
+        "TTV",
+        "TTV2",
+        "TTV_2",
+        "TTV_2x",
+        "TTxx"
+      ]
+    },
+    {
+      "family_code": "SUPPORT_ATTENDEE_LIST",
+      "logical_name": "Danh sach tham du dot kiem tra",
+      "source_application": "Word",
+      "storage_scope": "support_document",
+      "legacy_host_procedure": "ExtRecordForm.CreateFile",
+      "legacy_case_numbers": [
+        3
+      ],
+      "template_pattern": "Ds tham du dot kiem tra.dotx",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "ExtRecordForm.CreateFile"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "Expands row sections for inspector, VKN, and SYT lists.",
+      "bookmarks": [
+        "Chucvu",
+        "Congtac",
+        "Diachicoso",
+        "GPs",
+        "NganHang",
+        "NgaycapCMT",
+        "NgayQDKT",
+        "NgayQDKTx",
+        "NoicapCMT",
+        "Phongve",
+        "QDKT",
+        "Sanbay",
+        "SoCMT",
+        "SoTien",
+        "SoTienBangChu",
+        "SoTK",
+        "TenCoSo",
+        "TenCty",
+        "Tinhthanh",
+        "Tinhthanh2",
+        "TinhTP_Cty",
+        "TT1x",
+        "TT2x",
+        "TT2xx",
+        "TT3",
+        "TT_ext",
+        "TT_SYT",
+        "TT_VKN",
+        "TTV",
+        "TTV2",
+        "TTV_2",
+        "TTV_2x",
+        "TTxx"
+      ]
+    },
+    {
+      "family_code": "SUPPORT_DOSSIER_CHECKLIST",
+      "logical_name": "Checklist ho so GPs",
+      "source_application": "Word",
+      "storage_scope": "support_document",
+      "legacy_host_procedure": "ExtRecordForm.CreateFile",
+      "legacy_case_numbers": [
+        4,
+        7
+      ],
+      "template_pattern": "Checklist ho so GPs.dotx / Checklist kiem tra GPs.dotx",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "ExtRecordForm.CreateFile"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "Case 4 and 7 are separate checklist families within ExtRecordForm.",
+      "bookmarks": [
+        "Chucvu",
+        "Congtac",
+        "Diachicoso",
+        "GPs",
+        "NganHang",
+        "NgaycapCMT",
+        "NgayQDKT",
+        "NgayQDKTx",
+        "NoicapCMT",
+        "Phongve",
+        "QDKT",
+        "Sanbay",
+        "SoCMT",
+        "SoTien",
+        "SoTienBangChu",
+        "SoTK",
+        "TenCoSo",
+        "TenCty",
+        "Tinhthanh",
+        "Tinhthanh2",
+        "TinhTP_Cty",
+        "TT1x",
+        "TT2x",
+        "TT2xx",
+        "TT3",
+        "TT_ext",
+        "TT_SYT",
+        "TT_VKN",
+        "TTV",
+        "TTV2",
+        "TTV_2",
+        "TTV_2x",
+        "TTxx"
+      ]
+    },
+    {
+      "family_code": "SUPPORT_PAYMENT_TRANSFER",
+      "logical_name": "Giay xin sec chuyen khoan",
+      "source_application": "Word",
+      "storage_scope": "support_document",
+      "legacy_host_procedure": "ExtRecordForm.CreateFile",
+      "legacy_case_numbers": [
+        5,
+        9
+      ],
+      "template_pattern": "Giay xin sec chuyen khoan.dotx / Uy quyen thanh toan CTP.dotx",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "ExtRecordForm.CreateFile"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "Payment-support family covers transfer request and authorization letter variants.",
+      "bookmarks": [
+        "Chucvu",
+        "Congtac",
+        "Diachicoso",
+        "GPs",
+        "NganHang",
+        "NgaycapCMT",
+        "NgayQDKT",
+        "NgayQDKTx",
+        "NoicapCMT",
+        "Phongve",
+        "QDKT",
+        "Sanbay",
+        "SoCMT",
+        "SoTien",
+        "SoTienBangChu",
+        "SoTK",
+        "TenCoSo",
+        "TenCty",
+        "Tinhthanh",
+        "Tinhthanh2",
+        "TinhTP_Cty",
+        "TT1x",
+        "TT2x",
+        "TT2xx",
+        "TT3",
+        "TT_ext",
+        "TT_SYT",
+        "TT_VKN",
+        "TTV",
+        "TTV2",
+        "TTV_2",
+        "TTV_2x",
+        "TTxx"
+      ]
+    },
+    {
+      "family_code": "SUPPORT_PAYMENT_WORKBOOK",
+      "logical_name": "Thanh toan tam ung / De nghi thanh toan",
+      "source_application": "Excel",
+      "storage_scope": "support_document",
+      "legacy_host_procedure": "ExtRecordForm.CreateFile",
+      "legacy_case_numbers": [
+        6,
+        8
+      ],
+      "template_pattern": "Thanh toan tam ung.xltx / De nghi thanh toan.xltx",
+      "selection_legacy_mode": null,
+      "population_procedures": [
+        "ExtRecordForm.CreateFile"
+      ],
+      "copy_forward_dependencies": [],
+      "notes": "Excel template branch in ExtRecordForm; kept in registry because it is still an active legacy support flow.",
+      "bookmarks": []
+    }
+  ]
+}

@@ -1,0 +1,2926 @@
+{
+  "payload_builders": [
+    {
+      "family_code": "ASSESSMENT_MINUTES",
+      "source_procedures": [
+        "RecordForm.Tao_BB_Danhgia"
+      ],
+      "fields": [
+        {
+          "field_name": "Daychuyen",
+          "source_procedure": "RecordForm.Tao_BB_Danhgia",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diachi",
+          "source_procedure": "RecordForm.Tao_BB_Danhgia",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NXL",
+          "source_procedure": "RecordForm.Tao_BB_Danhgia",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tday",
+          "source_procedure": "RecordForm.Tao_BB_Danhgia",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCty",
+          "source_procedure": "RecordForm.Tao_BB_Danhgia",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Raw parser misses direct writes in Tao_BB_Danhgia path; nearest proven payload shape comes from assessment-style builder procedures and should be revalidated when templates are available."
+    },
+    {
+      "family_code": "CERTIFICATE_DECISION",
+      "source_procedures": [
+        "RecordForm.Tao_QD_CapCC"
+      ],
+      "fields": [
+        {
+          "field_name": "cacBCKP",
+          "source_procedure": "RecordForm.Tao_QD_CapCC",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Chuthich",
+          "source_procedure": "RecordForm.Tao_QD_CapCC",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "ChuthichDel",
+          "source_procedure": "RecordForm.Tao_QD_CapCC",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Daychuyen",
+          "source_procedure": "RecordForm.Tao_QD_CapCC",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diachicoso",
+          "source_procedure": "RecordForm.Tao_QD_CapCC",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "iBoth",
+          "source_procedure": "RecordForm.Tao_QD_CapCC",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "iNgLieu",
+          "source_procedure": "RecordForm.Tao_QD_CapCC",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "iThanhpham",
+          "source_procedure": "RecordForm.Tao_QD_CapCC",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayBCKP",
+          "source_procedure": "RecordForm.Tao_QD_CapCC",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayHethan",
+          "source_procedure": "RecordForm.Tao_QD_CapCC",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayKT",
+          "source_procedure": "RecordForm.Tao_QD_CapCC",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCoso",
+          "source_procedure": "RecordForm.Tao_QD_CapCC",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tencoso5",
+          "source_procedure": "RecordForm.Tao_QD_CapCC",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCty",
+          "source_procedure": "RecordForm.Tao_QD_CapCC",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCtyCoso",
+          "source_procedure": "RecordForm.Tao_QD_CapCC",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Decision document contains conditional suppression for product-type sections and corrective-action timing."
+    },
+    {
+      "family_code": "CERTIFICATE_ISSUANCE_WORD",
+      "source_procedures": [
+        "RecordForm.Tao_CC_GPs_moi",
+        "RecordForm.Tao_CC_Thongtinchung",
+        "RecordForm.Tao_CC_ThongtinKT"
+      ],
+      "fields": [
+        {
+          "field_name": "Chuthich",
+          "source_procedure": "RecordForm.Tao_CC_GPs_moi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "ChuthichE",
+          "source_procedure": "RecordForm.Tao_CC_GPs_moi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "DiachiCoso",
+          "source_procedure": "RecordForm.Tao_CC_GPs_moi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "DiachiCosoE",
+          "source_procedure": "RecordForm.Tao_CC_GPs_moi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "DiachiVPCty",
+          "source_procedure": "RecordForm.Tao_CC_GPs_moi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "DiachiVPCtyE",
+          "source_procedure": "RecordForm.Tao_CC_GPs_moi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayKT1",
+          "source_procedure": "RecordForm.Tao_CC_GPs_moi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayKT2",
+          "source_procedure": "RecordForm.Tao_CC_GPs_moi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NoEU_Del",
+          "source_procedure": "RecordForm.Tao_CC_GPs_moi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NoPICS_Del",
+          "source_procedure": "RecordForm.Tao_CC_GPs_moi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NoWHO_Del",
+          "source_procedure": "RecordForm.Tao_CC_GPs_moi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "OECD_Del",
+          "source_procedure": "RecordForm.Tao_CC_GPs_moi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCoso",
+          "source_procedure": "RecordForm.Tao_CC_GPs_moi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCosoE",
+          "source_procedure": "RecordForm.Tao_CC_GPs_moi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCty",
+          "source_procedure": "RecordForm.Tao_CC_GPs_moi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCtyE",
+          "source_procedure": "RecordForm.Tao_CC_GPs_moi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "WHO_Del",
+          "source_procedure": "RecordForm.Tao_CC_GPs_moi",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "PowerPoint-backed legacy branch is excluded; current baseline keeps only Word-backed issuance contract."
+    },
+    {
+      "family_code": "CHANGE_REPORT_ROUTE_LETTER",
+      "source_procedures": [
+        "RecordForm.Tao_CV_ChuyenKD"
+      ],
+      "fields": [
+        {
+          "field_name": "HsDKKT",
+          "source_procedure": "RecordForm.Tao_CV_ChuyenKD",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayDKKT",
+          "source_procedure": "RecordForm.Tao_CV_ChuyenKD",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayGCN",
+          "source_procedure": "RecordForm.Tao_CV_ChuyenKD",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDGCN",
+          "source_procedure": "RecordForm.Tao_CV_ChuyenKD",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoGCN",
+          "source_procedure": "RecordForm.Tao_CV_ChuyenKD",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCtydd",
+          "source_procedure": "RecordForm.Tao_CV_ChuyenKD",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Observed comments indicate historical ambiguity between change-evaluation minutes and routing letter; treat as review-required family."
+    },
+    {
+      "family_code": "CONSENT_CHANGE_LETTER",
+      "source_procedures": [
+        "RecordForm.Tao_CV_XNTT"
+      ],
+      "fields": [
+        {
+          "field_name": "ChoKT",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "CoQDKT",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "DaKT",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "DiachiCty",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "MahsDKKT",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "MahsDKKT2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "MahsDKKT3",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgaycapDDK",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgaycapDDK2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayDKKT",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayDKKT2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayDKKT3",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayGCN",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayGCN2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayGCN3",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayKT",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayKT2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayKT3",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayQDKT",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayQDKT2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayQDKT3",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PhamviKT",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDcapDDK",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDcapDDK2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDGCN",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDGCN2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDGCN3",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDKT",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDKT2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDKT3",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoDDK",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoDDK_2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoDDK_3",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoGCN",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoGCN2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoGCN3",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCtydd",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Shares payload builder with status-confirmation letter but uses a different template family."
+    },
+    {
+      "family_code": "DDKD_APPENDIX_OR_DECISION",
+      "source_procedures": [
+        "RecordForm.Tao_PL_QD_GiayDDK",
+        "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung"
+      ],
+      "fields": [
+        {
+          "field_name": "All",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Chuthich",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Co_Chuthich",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Co_Doiten",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Co_Ng_DBCL",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "CoDieuChinh",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "DiachiCoso",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "DiachiVPCty",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diadiemx",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GCN_GMP",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GiayDK_cu",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "HoatdongKD",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgaycapDK_cu",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_DBCL_CCHN",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_DBCL_CCHN_Ngaycap",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_DBCL_CCHN_Noicap",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_DBCL_Ten",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_DBCL_Trinhdo",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_PTCM_CCHN",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_PTCM_CCHN_Ngaycap",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_PTCM_CCHN_Noicap",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_PTCM_Ten",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_PTCM_Trinhdo",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QD_GMP",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDcap_cu",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCso",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCty",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCty_ddk_cu",
+          "source_procedure": "RecordForm.Tao_PL_QD_GiayDDK",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "CreateFilez case 3 resolves the active appendix template. | CreateFilez case 4 resolves the active issuance-decision template."
+    },
+    {
+      "family_code": "DDKD_CERTIFICATE",
+      "source_procedures": [
+        "RecordForm.Tao_Giay_DDK"
+      ],
+      "fields": [
+        {
+          "field_name": "Cap_lan",
+          "source_procedure": "RecordForm.Tao_Giay_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Co_Ng_DBCL",
+          "source_procedure": "RecordForm.Tao_Giay_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "DiachiCoso",
+          "source_procedure": "RecordForm.Tao_Giay_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "DiachiVPCty",
+          "source_procedure": "RecordForm.Tao_Giay_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GCN_thaythe",
+          "source_procedure": "RecordForm.Tao_Giay_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "HoatdongKD",
+          "source_procedure": "RecordForm.Tao_Giay_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_DBCL_CCHN",
+          "source_procedure": "RecordForm.Tao_Giay_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_DBCL_CCHN_Ngaycap",
+          "source_procedure": "RecordForm.Tao_Giay_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_DBCL_CCHN_Noicap",
+          "source_procedure": "RecordForm.Tao_Giay_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_DBCL_Ten",
+          "source_procedure": "RecordForm.Tao_Giay_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_DBCL_Trinhdo",
+          "source_procedure": "RecordForm.Tao_Giay_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_PTCM_CCHN",
+          "source_procedure": "RecordForm.Tao_Giay_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_PTCM_CCHN_Ngaycap",
+          "source_procedure": "RecordForm.Tao_Giay_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_PTCM_CCHN_Noicap",
+          "source_procedure": "RecordForm.Tao_Giay_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_PTCM_Ten",
+          "source_procedure": "RecordForm.Tao_Giay_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_PTCM_Trinhdo",
+          "source_procedure": "RecordForm.Tao_Giay_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCoso",
+          "source_procedure": "RecordForm.Tao_Giay_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCty",
+          "source_procedure": "RecordForm.Tao_Giay_DDK",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Contains responsible-person and operating-scope bookmarks."
+    },
+    {
+      "family_code": "DDKD_PRESENTATION",
+      "source_procedures": [
+        "RecordForm.Tao_PT_cap_DDK"
+      ],
+      "fields": [
+        {
+          "field_name": "Cap_DC",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "cb",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Co_Doiten",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Co_KSDB",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Comment",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "DiachiCoso",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diachicoso1",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "DiachiCoso_cu",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "DiachiVPCty",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "DiachiVPCty_cu",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diadiemx",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GCN_GPs",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GiayDK_cu",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Loaihinh",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgaycapDK_cu",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_DBCL_CCHN",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_DBCL_Ten",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_DBCL_Ten_cu1",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_PTCM_CCHN",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_PTCM_Ten",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Nguoi_PTCM_Ten_cu1",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NXL",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Pvi_Cam",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Pvi_DLDoc",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Pvi_Doc",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Pvi_GN",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Pvi_PHGN",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PviCN_Rg",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDcap_cu",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tencoso1",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCty",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCty_cu",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Thay_DBCL",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Thay_PTCM",
+          "source_procedure": "RecordForm.Tao_PT_cap_DDK",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Template literal is partially obscured by ChrW concatenation in VBA; bookmark contract is proven."
+    },
+    {
+      "family_code": "INSPECTION_BB_KT",
+      "source_procedures": [
+        "RecordForm.Tao_QDKT_KHKT_BBKT"
+      ],
+      "fields": [
+        {
+          "field_name": "Daychuyen",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diachicoso",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diadiem",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diadiemx",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Fulldate",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GhPviCN",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GhPviDG",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GioiHanPvi",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "HsDK",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "MoiDel",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayKT",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayKTx",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgaynopHsDK",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayQDKT",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVCepha",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVDuoclieu",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVNangmem",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVNhomat",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVPeni",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVSuibot",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVTiem",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDKT",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TaiDel",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tencoso",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "ThoigianKT",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TieuchuanKT",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT1",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT2",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT3Del",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT3x",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_SYTx",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_VKNx",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "VKN",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "VKNx",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Same builder as cases 2 and 3 with additional reference-row suppression."
+    },
+    {
+      "family_code": "INSPECTION_BBTD_HOSO_DK",
+      "source_procedures": [
+        "RecordForm.Tao_BBTD"
+      ],
+      "fields": [
+        {
+          "field_name": "Daychuyen",
+          "source_procedure": "RecordForm.Tao_BBTD",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diachicoso",
+          "source_procedure": "RecordForm.Tao_BBTD",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Fulldate",
+          "source_procedure": "RecordForm.Tao_BBTD",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tencoso",
+          "source_procedure": "RecordForm.Tao_BBTD",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Template branch depends on Moi/Tai state from Get_Tpl."
+    },
+    {
+      "family_code": "INSPECTION_CAPA_LAN_1",
+      "source_procedures": [
+        "RecordForm.Tao_BB_CAPA"
+      ],
+      "fields": [
+        {
+          "field_name": "CAPAx",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "CV_BCKP",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "DsTT",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "LanKP",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "LanKT",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Ngay_BCKP",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NXL",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tday",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tencoso",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "ThoigianKT",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV1",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": true,
+      "notes": "Copy-forward from prior BBKT is evidenced by BBKT_goc and bookmark DsTT copy."
+    },
+    {
+      "family_code": "INSPECTION_CAPA_LAN_2",
+      "source_procedures": [
+        "RecordForm.Tao_BB_CAPA"
+      ],
+      "fields": [
+        {
+          "field_name": "CAPAx",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "CV_BCKP",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "DsTT",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "LanKP",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "LanKT",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Ngay_BCKP",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NXL",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tday",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tencoso",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "ThoigianKT",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV1",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": true,
+      "notes": "Round 2 can reuse prior CAPA table when prior document exists."
+    },
+    {
+      "family_code": "INSPECTION_KE_HOACH_KT",
+      "source_procedures": [
+        "RecordForm.Tao_QDKT_KHKT_BBKT"
+      ],
+      "fields": [
+        {
+          "field_name": "Daychuyen",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diachicoso",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diadiem",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diadiemx",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Fulldate",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GhPviCN",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GhPviDG",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GioiHanPvi",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "HsDK",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "MoiDel",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayKT",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayKTx",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgaynopHsDK",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayQDKT",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVCepha",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVDuoclieu",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVNangmem",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVNhomat",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVPeni",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVSuibot",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVTiem",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDKT",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TaiDel",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tencoso",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "ThoigianKT",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TieuchuanKT",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT1",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT2",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT3Del",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT3x",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_SYTx",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_VKNx",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "VKN",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "VKNx",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Uses same payload procedure with mode-specific bookmark deletion."
+    },
+    {
+      "family_code": "INSPECTION_PT_CT",
+      "source_procedures": [
+        "RecordForm.Tao_PT_PCT_CT"
+      ],
+      "fields": [
+        {
+          "field_name": "cacBCKP",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Daychuyen",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Daychuyen2",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diachicoso",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GioihanPvi",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "HsDK",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayBCKP",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayKT2",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayQDKT",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Noidung",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDKT",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tencoso",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "ThoigianKT",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT2",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": true,
+      "notes": "Observed bookmark-level copy-forward from PT.PCT into PT.CT."
+    },
+    {
+      "family_code": "INSPECTION_PT_PCT",
+      "source_procedures": [
+        "RecordForm.Tao_PT_PCT_CT"
+      ],
+      "fields": [
+        {
+          "field_name": "cacBCKP",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Daychuyen",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Daychuyen2",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diachicoso",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GioihanPvi",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "HsDK",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayBCKP",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayKT2",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayQDKT",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Noidung",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDKT",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tencoso",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "ThoigianKT",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT2",
+          "source_procedure": "RecordForm.Tao_PT_PCT_CT",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Primary PCT document does not require copy-forward in observed path."
+    },
+    {
+      "family_code": "INSPECTION_QD_KT",
+      "source_procedures": [
+        "RecordForm.Tao_QDKT_KHKT_BBKT"
+      ],
+      "fields": [
+        {
+          "field_name": "Daychuyen",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diachicoso",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diadiem",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diadiemx",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Fulldate",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GhPviCN",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GhPviDG",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GioiHanPvi",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "HsDK",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "MoiDel",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayKT",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayKTx",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgaynopHsDK",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayQDKT",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVCepha",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVDuoclieu",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVNangmem",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVNhomat",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVPeni",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVSuibot",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PVTiem",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDKT",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TaiDel",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tencoso",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "ThoigianKT",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TieuchuanKT",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT1",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT2",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT3Del",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT3x",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_SYTx",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_VKNx",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "VKN",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "VKNx",
+          "source_procedure": "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Shares payload builder with inspection plan and inspection minutes."
+    },
+    {
+      "family_code": "NAME_ADDRESS_CHANGE_LETTER",
+      "source_procedures": [
+        "RecordForm.Tao_CV_Doiten_diachi"
+      ],
+      "fields": [
+        {
+          "field_name": "DiachiCty",
+          "source_procedure": "RecordForm.Tao_CV_Doiten_diachi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayGCN",
+          "source_procedure": "RecordForm.Tao_CV_Doiten_diachi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoGCN",
+          "source_procedure": "RecordForm.Tao_CV_Doiten_diachi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoQD",
+          "source_procedure": "RecordForm.Tao_CV_Doiten_diachi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCtydd",
+          "source_procedure": "RecordForm.Tao_CV_Doiten_diachi",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCtyTA",
+          "source_procedure": "RecordForm.Tao_CV_Doiten_diachi",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Uses certificate identity and translated company/address text."
+    },
+    {
+      "family_code": "RISK_MANAGEMENT_WORKSHEET",
+      "source_procedures": [
+        "RecordForm.Tao_BB_QLRR"
+      ],
+      "fields": [
+        {
+          "field_name": "Daychuyen",
+          "source_procedure": "RecordForm.Tao_BB_QLRR",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diachi",
+          "source_procedure": "RecordForm.Tao_BB_QLRR",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayKT",
+          "source_procedure": "RecordForm.Tao_BB_QLRR",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NXL",
+          "source_procedure": "RecordForm.Tao_BB_QLRR",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tday",
+          "source_procedure": "RecordForm.Tao_BB_QLRR",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCty",
+          "source_procedure": "RecordForm.Tao_BB_QLRR",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV1",
+          "source_procedure": "RecordForm.Tao_BB_QLRR",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Only enabled for selected GPs path in observed VBA."
+    },
+    {
+      "family_code": "STATUS_CONFIRMATION_LETTER",
+      "source_procedures": [
+        "RecordForm.Tao_CV_XNTT"
+      ],
+      "fields": [
+        {
+          "field_name": "ChoKT",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "CoQDKT",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "DaKT",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "DiachiCty",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "MahsDKKT",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "MahsDKKT2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "MahsDKKT3",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgaycapDDK",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgaycapDDK2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayDKKT",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayDKKT2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayDKKT3",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayGCN",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayGCN2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayGCN3",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayKT",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayKT2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayKT3",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayQDKT",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayQDKT2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayQDKT3",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "PhamviKT",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDcapDDK",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDcapDDK2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDGCN",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDGCN2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDGCN3",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDKT",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDKT2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDKT3",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoDDK",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoDDK_2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoDDK_3",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoGCN",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoGCN2",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoGCN3",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCtydd",
+          "source_procedure": "RecordForm.Tao_CV_XNTT",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Template naming branches depend on whether inspection is pending or certificate issuance already exists."
+    },
+    {
+      "family_code": "SUPPORT_ATTENDEE_LIST",
+      "source_procedures": [
+        "ExtRecordForm.CreateFile"
+      ],
+      "fields": [
+        {
+          "field_name": "Chucvu",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Congtac",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diachicoso",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GPs",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NganHang",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "NgaycapCMT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "NgayQDKT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayQDKTx",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NoicapCMT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "Phongve",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDKT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Sanbay",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoCMT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "SoTien",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoTienBangChu",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoTK",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "TenCoSo",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCty",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tinhthanh",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tinhthanh2",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TinhTP_Cty",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT1x",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT2x",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT2xx",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT3",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_ext",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_SYT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_VKN",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV2",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV_2",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV_2x",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTxx",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Expands row sections for inspector, VKN, and SYT lists."
+    },
+    {
+      "family_code": "SUPPORT_DOSSIER_CHECKLIST",
+      "source_procedures": [
+        "ExtRecordForm.CreateFile"
+      ],
+      "fields": [
+        {
+          "field_name": "Chucvu",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Congtac",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diachicoso",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GPs",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NganHang",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "NgaycapCMT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "NgayQDKT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayQDKTx",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NoicapCMT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "Phongve",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDKT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Sanbay",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoCMT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "SoTien",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoTienBangChu",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoTK",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "TenCoSo",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCty",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tinhthanh",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tinhthanh2",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TinhTP_Cty",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT1x",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT2x",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT2xx",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT3",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_ext",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_SYT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_VKN",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV2",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV_2",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV_2x",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTxx",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Case 4 and 7 are separate checklist families within ExtRecordForm."
+    },
+    {
+      "family_code": "SUPPORT_FLIGHT_REQUEST",
+      "source_procedures": [
+        "ExtRecordForm.CreateFile"
+      ],
+      "fields": [
+        {
+          "field_name": "Chucvu",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Congtac",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diachicoso",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GPs",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NganHang",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "NgaycapCMT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "NgayQDKT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayQDKTx",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NoicapCMT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "Phongve",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDKT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Sanbay",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoCMT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "SoTien",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoTienBangChu",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoTK",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "TenCoSo",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCty",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tinhthanh",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tinhthanh2",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TinhTP_Cty",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT1x",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT2x",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT2xx",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT3",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_ext",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_SYT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_VKN",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV2",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV_2",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV_2x",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTxx",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Uses airport and team composition bookmarks."
+    },
+    {
+      "family_code": "SUPPORT_PAYMENT_TRANSFER",
+      "source_procedures": [
+        "ExtRecordForm.CreateFile"
+      ],
+      "fields": [
+        {
+          "field_name": "Chucvu",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Congtac",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diachicoso",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GPs",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NganHang",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "NgaycapCMT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "NgayQDKT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayQDKTx",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NoicapCMT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "Phongve",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDKT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Sanbay",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoCMT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "SoTien",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoTienBangChu",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoTK",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "TenCoSo",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCty",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tinhthanh",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tinhthanh2",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TinhTP_Cty",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT1x",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT2x",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT2xx",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT3",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_ext",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_SYT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_VKN",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV2",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV_2",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV_2x",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTxx",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Payment-support family covers transfer request and authorization letter variants."
+    },
+    {
+      "family_code": "SUPPORT_PAYMENT_WORKBOOK",
+      "source_procedures": [
+        "ExtRecordForm.CreateFile"
+      ],
+      "fields": [],
+      "copy_forward_required": false,
+      "notes": "Excel template branch in ExtRecordForm; kept in registry because it is still an active legacy support flow."
+    },
+    {
+      "family_code": "SUPPORT_TRAVEL_AUTHORIZATION",
+      "source_procedures": [
+        "ExtRecordForm.CreateFile"
+      ],
+      "fields": [
+        {
+          "field_name": "Chucvu",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Congtac",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Diachicoso",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "GPs",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NganHang",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "NgaycapCMT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "NgayQDKT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NgayQDKTx",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "NoicapCMT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "Phongve",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "QDKT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Sanbay",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoCMT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "SoTien",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoTienBangChu",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "SoTK",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "sensitive"
+        },
+        {
+          "field_name": "TenCoSo",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TenCty",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tinhthanh",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "Tinhthanh2",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TinhTP_Cty",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT1x",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT2x",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT2xx",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT3",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_ext",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_SYT",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TT_VKN",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV2",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV_2",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTV_2x",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        },
+        {
+          "field_name": "TTxx",
+          "source_procedure": "ExtRecordForm.CreateFile",
+          "sensitivity": "normal"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "One document can be generated per selected inspector."
+    }
+  ]
+}

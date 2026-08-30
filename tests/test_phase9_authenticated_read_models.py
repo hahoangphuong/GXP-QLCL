@@ -2,6 +2,8 @@ import ast
 import anyio
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+import shutil
+import subprocess
 from types import SimpleNamespace
 
 from fastapi import HTTPException
@@ -16,6 +18,7 @@ from backend.app.auth import (
     require_role,
     resolve_mapped_role,
 )
+from backend.app.document.runtime_artifacts import assert_required_phase5_runtime_artifacts_exist
 from backend.app.db.base import Base
 from backend.app.db.enums import CaseState, ChangeRequestState, DocumentVariantType
 from backend.app.db.models.phase1 import (
@@ -79,6 +82,25 @@ WAITING_INSPECTION_CASE_STATES = [
     "decision_issued",
     "inspection_in_progress",
 ]
+
+
+def _extract_git_archive(export_root: Path) -> Path:
+    export_root.mkdir(parents=True, exist_ok=True)
+    completed = subprocess.run(
+        ["git", "ls-files"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    for relative_path in completed.stdout.splitlines():
+        if not relative_path:
+            continue
+        source = ROOT / relative_path
+        target = export_root / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    return export_root
 
 
 def test_build_authenticated_user_accepts_valid_stub_headers():
@@ -1828,6 +1850,46 @@ def test_change_request_workspace_reads_authoritative_change_sections_and_docume
     assert document_items["Đổi tên, địa chỉ"].status == "available"
     assert document_items["Đổi tên, địa chỉ"].original_filename == "doi-ten-dia-chi.docx"
     assert document_items["CV đồng ý thay đổi"].status == "missing"
+
+
+def test_case_and_change_request_workspace_load_document_checklists_from_clean_git_export(tmp_path, monkeypatch):
+    database_path = tmp_path / "catalog-clean-export-workspace.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+
+    export_root = _extract_git_archive(tmp_path / "clean-export")
+    assert_required_phase5_runtime_artifacts_exist(export_root / "artifacts")
+    assert not export_root.joinpath("artifacts", "phase5", "template_seed.db").exists()
+    monkeypatch.setenv("GXP_ARTIFACTS_ROOT", export_root.joinpath("artifacts").as_posix())
+
+    app = create_app(database_url)
+    case_workspace_route = next(route for route in app.routes if getattr(route, "path", "") == "/cases/{case_id}/workspace")
+    change_workspace_route = next(
+        route for route in app.routes if getattr(route, "path", "") == "/change-requests/{change_request_id}/workspace"
+    )
+
+    with Session(engine) as session:
+        case_payload = case_workspace_route.endpoint(
+            case_id=seeded["case_ids"]["a"],
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+        change_payload = change_workspace_route.endpoint(
+            change_request_id=seeded["change_request_ids"]["primary"],
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
+        )
+
+    case_document_items = {item.label: item for item in case_payload.documents.items}
+    change_document_items = {item.label: item for item in change_payload.documents.items}
+    assert case_document_items["QĐ cấp CC"].status == "available"
+    assert change_document_items["Đổi tên, địa chỉ"].status == "available"
+    assert all(item.parent_scope != "change_request" for item in case_payload.documents.items if item.label == "QĐ cấp CC")
+    assert all(item.parent_scope == "change_request" for item in change_payload.documents.items if item.label == "Đổi tên, địa chỉ")
 
 
 def test_imported_change_request_workspace_handles_effective_without_explicit_approval_fields(tmp_path):

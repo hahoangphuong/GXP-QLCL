@@ -11,8 +11,8 @@
       "sha256": "715b449a2ca7ad919813bc5330dbf2ae97b87cc9a6323b6e69e0489ffce01cca"
     },
     "ddkd_template_variants": {
-      "path": "artifacts/phase5/ddkd_template_variants.json",
-      "sha256": "0383c44d8028d2f14b0f8bfdd0bc5f75a29a5141c49728ad1bda2035e9d69738"
+      "path": "artifacts/phase5/dkkd_template_variants.json",
+      "sha256": "f9ebef7652f0aa1fb552c66d291f2b906225ca286b0376d3847d61e07d4bee0a"
     },
     "bbtd_template_variants": {
       "path": "artifacts/phase5/bbtd_template_variants.json",

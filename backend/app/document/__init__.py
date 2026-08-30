@@ -33,6 +33,11 @@ from backend.app.document.payload_builders import (
     load_default_payload_builder_registry,
     load_payload_builder_registry,
 )
+from backend.app.document.runtime_artifacts import (
+    PHASE5_RUNTIME_ARTIFACTS,
+    assert_required_phase5_runtime_artifacts_exist,
+    required_phase5_runtime_artifact_paths,
+)
 from backend.app.document.source_resolver_contract import (
     SourceDocumentCandidate,
     SourceDocumentLookupRequest,
@@ -133,6 +138,7 @@ __all__ = [
     "load_default_registry",
     "load_default_payload_builder_registry",
     "load_payload_builder_registry",
+    "PHASE5_RUNTIME_ARTIFACTS",
     "PayloadBuilderFieldSpec",
     "PayloadBuilderSpec",
     "PayloadBuildInput",
@@ -210,4 +216,6 @@ __all__ = [
     "build_payload_builder_specs",
     "build_template_binding_seeds",
     "build_template_definition_seeds",
+    "assert_required_phase5_runtime_artifacts_exist",
+    "required_phase5_runtime_artifact_paths",
 ]

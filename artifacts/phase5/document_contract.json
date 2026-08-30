@@ -1,0 +1,2049 @@
+{
+  "summary": {
+    "procedure_count": 25,
+    "application_counts": {
+      "Excel": 2,
+      "Word": 3
+    },
+    "templates": [
+      {
+        "template": "(moi).dotx",
+        "procedures": [
+          "RecordForm.Get_Tpl"
+        ]
+      },
+      {
+        "template": "*.docx",
+        "procedures": [
+          "Module1.Mo_QDKT"
+        ]
+      },
+      {
+        "template": "- Moi.dotx",
+        "procedures": [
+          "RecordForm.Get_Tpl"
+        ]
+      },
+      {
+        "template": "- Tai.dotx",
+        "procedures": [
+          "RecordForm.Get_Tpl"
+        ]
+      },
+      {
+        "template": ".Uy quyen thanh toan CTP.dotx",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "template": "GPs.dotx",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "template": "KHKT.xltx",
+        "procedures": [
+          "Module1.UNItoVBA"
+        ]
+      },
+      {
+        "template": "KKDD.dotx",
+        "procedures": [
+          "RecordForm.Get_Tpl",
+          "RecordForm.Get_Tplz"
+        ]
+      },
+      {
+        "template": "i máy bay.dotx",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "template": "i ro.dotx",
+        "procedures": [
+          "RecordForm.Get_Tpl"
+        ]
+      },
+      {
+        "template": "i).dotx",
+        "procedures": [
+          "RecordForm.Get_Tplz"
+        ]
+      },
+      {
+        "template": "i.dotx",
+        "procedures": [
+          "RecordForm.Get_Tpl"
+        ]
+      },
+      {
+        "template": "m tra GPs.dotx",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "template": "m tra.dotx",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "template": "n.dotx",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "template": "ng.dotx",
+        "procedures": [
+          "ExtRecordForm.CreateFile",
+          "RecordForm.Get_Tpl"
+        ]
+      },
+      {
+        "template": "ng.xltx",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "template": "nh).dotx",
+        "procedures": [
+          "RecordForm.Get_Tplz"
+        ]
+      },
+      {
+        "template": "thanh toán.xltx",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      }
+    ],
+    "bookmark_registry": [
+      {
+        "bookmark": "All",
+        "procedures": [
+          "RecordForm.Tao_PL_QD_GiayDDK"
+        ]
+      },
+      {
+        "bookmark": "CAPAx",
+        "procedures": [
+          "RecordForm.Tao_BB_CAPA"
+        ]
+      },
+      {
+        "bookmark": "CV_BCKP",
+        "procedures": [
+          "RecordForm.Tao_BB_CAPA"
+        ]
+      },
+      {
+        "bookmark": "Cap_DC",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "Cap_lan",
+        "procedures": [
+          "RecordForm.Tao_Giay_DDK"
+        ]
+      },
+      {
+        "bookmark": "ChoKT",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "Chucvu",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "Chuthich",
+        "procedures": [
+          "RecordForm.Tao_CC_GPs_moi",
+          "RecordForm.Tao_PL_QD_GiayDDK",
+          "RecordForm.Tao_QD_CapCC"
+        ]
+      },
+      {
+        "bookmark": "ChuthichDel",
+        "procedures": [
+          "RecordForm.Tao_QD_CapCC"
+        ]
+      },
+      {
+        "bookmark": "ChuthichE",
+        "procedures": [
+          "RecordForm.Tao_CC_GPs_moi"
+        ]
+      },
+      {
+        "bookmark": "CoDieuChinh",
+        "procedures": [
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung"
+        ]
+      },
+      {
+        "bookmark": "CoQDKT",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "Co_Chuthich",
+        "procedures": [
+          "RecordForm.Tao_PL_QD_GiayDDK"
+        ]
+      },
+      {
+        "bookmark": "Co_Doiten",
+        "procedures": [
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung",
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "Co_KSDB",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "Co_Ng_DBCL",
+        "procedures": [
+          "RecordForm.Tao_Giay_DDK",
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung"
+        ]
+      },
+      {
+        "bookmark": "Comment",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "Congtac",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "DaKT",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "Daychuyen",
+        "procedures": [
+          "RecordForm.Tao_BBTD",
+          "RecordForm.Tao_BB_DGTD",
+          "RecordForm.Tao_BB_QLRR",
+          "RecordForm.Tao_PT_PCT_CT",
+          "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "RecordForm.Tao_QD_CapCC"
+        ]
+      },
+      {
+        "bookmark": "Daychuyen2",
+        "procedures": [
+          "RecordForm.Tao_PT_PCT_CT"
+        ]
+      },
+      {
+        "bookmark": "Diachi",
+        "procedures": [
+          "RecordForm.Tao_BB_DGTD",
+          "RecordForm.Tao_BB_QLRR"
+        ]
+      },
+      {
+        "bookmark": "DiachiCoso",
+        "procedures": [
+          "RecordForm.Tao_CC_Thongtinchung",
+          "RecordForm.Tao_Giay_DDK",
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung",
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "DiachiCosoE",
+        "procedures": [
+          "RecordForm.Tao_CC_Thongtinchung"
+        ]
+      },
+      {
+        "bookmark": "DiachiCoso_cu",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "DiachiCty",
+        "procedures": [
+          "RecordForm.Tao_CV_Doiten_diachi",
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "DiachiVPCty",
+        "procedures": [
+          "RecordForm.Tao_CC_Thongtinchung",
+          "RecordForm.Tao_Giay_DDK",
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung",
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "DiachiVPCtyE",
+        "procedures": [
+          "RecordForm.Tao_CC_Thongtinchung"
+        ]
+      },
+      {
+        "bookmark": "DiachiVPCty_cu",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "Diachicoso",
+        "procedures": [
+          "ExtRecordForm.CreateFile",
+          "RecordForm.Tao_BBTD",
+          "RecordForm.Tao_PT_PCT_CT",
+          "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "RecordForm.Tao_QD_CapCC"
+        ]
+      },
+      {
+        "bookmark": "Diachicoso1",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "Diadiem",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "Diadiemx",
+        "procedures": [
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung",
+          "RecordForm.Tao_PT_cap_DDK",
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "DsTT",
+        "procedures": [
+          "RecordForm.Tao_BB_CAPA"
+        ]
+      },
+      {
+        "bookmark": "Fulldate",
+        "procedures": [
+          "RecordForm.Tao_BBTD",
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "GCN_GMP",
+        "procedures": [
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung"
+        ]
+      },
+      {
+        "bookmark": "GCN_GPs",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "GCN_thaythe",
+        "procedures": [
+          "RecordForm.Tao_Giay_DDK"
+        ]
+      },
+      {
+        "bookmark": "GPs",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "GhPviCN",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "GhPviDG",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "GiayDK_cu",
+        "procedures": [
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung",
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "GioiHanPvi",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "GioihanPvi",
+        "procedures": [
+          "RecordForm.Tao_PT_PCT_CT"
+        ]
+      },
+      {
+        "bookmark": "HoatdongKD",
+        "procedures": [
+          "RecordForm.Tao_Giay_DDK",
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung"
+        ]
+      },
+      {
+        "bookmark": "HsDK",
+        "procedures": [
+          "RecordForm.Tao_PT_PCT_CT",
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "HsDKKT",
+        "procedures": [
+          "RecordForm.Tao_CV_ChuyenKD"
+        ]
+      },
+      {
+        "bookmark": "LanKP",
+        "procedures": [
+          "RecordForm.Tao_BB_CAPA"
+        ]
+      },
+      {
+        "bookmark": "LanKT",
+        "procedures": [
+          "RecordForm.Tao_BB_CAPA"
+        ]
+      },
+      {
+        "bookmark": "Loaihinh",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "MahsDKKT",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "MahsDKKT2",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "MahsDKKT3",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "MoiDel",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "NXL",
+        "procedures": [
+          "RecordForm.Tao_BB_CAPA",
+          "RecordForm.Tao_BB_DGTD",
+          "RecordForm.Tao_BB_QLRR",
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "NganHang",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "NgayBCKP",
+        "procedures": [
+          "RecordForm.Tao_PT_PCT_CT",
+          "RecordForm.Tao_QD_CapCC"
+        ]
+      },
+      {
+        "bookmark": "NgayDKKT",
+        "procedures": [
+          "RecordForm.Tao_CV_ChuyenKD",
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "NgayDKKT2",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "NgayDKKT3",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "NgayGCN",
+        "procedures": [
+          "RecordForm.Tao_CV_ChuyenKD",
+          "RecordForm.Tao_CV_Doiten_diachi",
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "NgayGCN2",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "NgayGCN3",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "NgayHethan",
+        "procedures": [
+          "RecordForm.Tao_QD_CapCC"
+        ]
+      },
+      {
+        "bookmark": "NgayKT",
+        "procedures": [
+          "RecordForm.Tao_BB_QLRR",
+          "RecordForm.Tao_CV_XNTT",
+          "RecordForm.Tao_QDKT_KHKT_BBKT",
+          "RecordForm.Tao_QD_CapCC"
+        ]
+      },
+      {
+        "bookmark": "NgayKT1",
+        "procedures": [
+          "RecordForm.Tao_CC_ThongtinKT"
+        ]
+      },
+      {
+        "bookmark": "NgayKT2",
+        "procedures": [
+          "RecordForm.Tao_CC_ThongtinKT",
+          "RecordForm.Tao_CV_XNTT",
+          "RecordForm.Tao_PT_PCT_CT"
+        ]
+      },
+      {
+        "bookmark": "NgayKT3",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "NgayKTx",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "NgayQDKT",
+        "procedures": [
+          "ExtRecordForm.CreateFile",
+          "RecordForm.Tao_CV_XNTT",
+          "RecordForm.Tao_PT_PCT_CT",
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "NgayQDKT2",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "NgayQDKT3",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "NgayQDKTx",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "Ngay_BCKP",
+        "procedures": [
+          "RecordForm.Tao_BB_CAPA"
+        ]
+      },
+      {
+        "bookmark": "NgaycapCMT",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "NgaycapDDK",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "NgaycapDDK2",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "NgaycapDK_cu",
+        "procedures": [
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung",
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "NgaynopHsDK",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "Nguoi_DBCL_CCHN",
+        "procedures": [
+          "RecordForm.Tao_Giay_DDK",
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung",
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "Nguoi_DBCL_CCHN_Ngaycap",
+        "procedures": [
+          "RecordForm.Tao_Giay_DDK",
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung"
+        ]
+      },
+      {
+        "bookmark": "Nguoi_DBCL_CCHN_Noicap",
+        "procedures": [
+          "RecordForm.Tao_Giay_DDK",
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung"
+        ]
+      },
+      {
+        "bookmark": "Nguoi_DBCL_Ten",
+        "procedures": [
+          "RecordForm.Tao_Giay_DDK",
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung",
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "Nguoi_DBCL_Ten_cu1",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "Nguoi_DBCL_Trinhdo",
+        "procedures": [
+          "RecordForm.Tao_Giay_DDK",
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung"
+        ]
+      },
+      {
+        "bookmark": "Nguoi_PTCM_CCHN",
+        "procedures": [
+          "RecordForm.Tao_Giay_DDK",
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung",
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "Nguoi_PTCM_CCHN_Ngaycap",
+        "procedures": [
+          "RecordForm.Tao_Giay_DDK",
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung"
+        ]
+      },
+      {
+        "bookmark": "Nguoi_PTCM_CCHN_Noicap",
+        "procedures": [
+          "RecordForm.Tao_Giay_DDK",
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung"
+        ]
+      },
+      {
+        "bookmark": "Nguoi_PTCM_Ten",
+        "procedures": [
+          "RecordForm.Tao_Giay_DDK",
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung",
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "Nguoi_PTCM_Ten_cu1",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "Nguoi_PTCM_Trinhdo",
+        "procedures": [
+          "RecordForm.Tao_Giay_DDK",
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung"
+        ]
+      },
+      {
+        "bookmark": "NoEU_Del",
+        "procedures": [
+          "RecordForm.Tao_CC_ThongtinKT"
+        ]
+      },
+      {
+        "bookmark": "NoPICS_Del",
+        "procedures": [
+          "RecordForm.Tao_CC_ThongtinKT"
+        ]
+      },
+      {
+        "bookmark": "NoWHO_Del",
+        "procedures": [
+          "RecordForm.Tao_CC_ThongtinKT"
+        ]
+      },
+      {
+        "bookmark": "NoicapCMT",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "Noidung",
+        "procedures": [
+          "RecordForm.Tao_PT_PCT_CT"
+        ]
+      },
+      {
+        "bookmark": "OECD_Del",
+        "procedures": [
+          "RecordForm.Tao_CC_ThongtinKT"
+        ]
+      },
+      {
+        "bookmark": "PVCepha",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "PVDuoclieu",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "PVNangmem",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "PVNhomat",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "PVPeni",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "PVSuibot",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "PVTiem",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "PhamviKT",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "Phongve",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "PviCN_Rg",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "Pvi_Cam",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "Pvi_DLDoc",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "Pvi_Doc",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "Pvi_GN",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "Pvi_PHGN",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "QDGCN",
+        "procedures": [
+          "RecordForm.Tao_CV_ChuyenKD",
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "QDGCN2",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "QDGCN3",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "QDKT",
+        "procedures": [
+          "ExtRecordForm.CreateFile",
+          "RecordForm.Tao_CV_XNTT",
+          "RecordForm.Tao_PT_PCT_CT",
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "QDKT2",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "QDKT3",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "QD_GMP",
+        "procedures": [
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung"
+        ]
+      },
+      {
+        "bookmark": "QDcapDDK",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "QDcapDDK2",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "QDcap_cu",
+        "procedures": [
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung",
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "Sanbay",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "SoCMT",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "SoDDK",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "SoDDK_2",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "SoDDK_3",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "SoGCN",
+        "procedures": [
+          "RecordForm.Tao_CV_ChuyenKD",
+          "RecordForm.Tao_CV_Doiten_diachi",
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "SoGCN2",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "SoGCN3",
+        "procedures": [
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "SoQD",
+        "procedures": [
+          "RecordForm.Tao_CV_Doiten_diachi"
+        ]
+      },
+      {
+        "bookmark": "SoTK",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "SoTien",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "SoTienBangChu",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "TT",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "TT1",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "TT1x",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "TT2",
+        "procedures": [
+          "RecordForm.Tao_PT_PCT_CT",
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "TT2x",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "TT2xx",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "TT3",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "TT3Del",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "TT3x",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "TTV",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "TTV1",
+        "procedures": [
+          "RecordForm.Tao_BB_CAPA",
+          "RecordForm.Tao_BB_QLRR"
+        ]
+      },
+      {
+        "bookmark": "TTV2",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "TTV_2",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "TTV_2x",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "TT_SYT",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "TT_SYTx",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "TT_VKN",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "TT_VKNx",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "TT_ext",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "TTxx",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "TaiDel",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "Tday",
+        "procedures": [
+          "RecordForm.Tao_BB_CAPA",
+          "RecordForm.Tao_BB_DGTD",
+          "RecordForm.Tao_BB_QLRR"
+        ]
+      },
+      {
+        "bookmark": "TenCoSo",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "TenCoso",
+        "procedures": [
+          "RecordForm.Tao_CC_Thongtinchung",
+          "RecordForm.Tao_Giay_DDK",
+          "RecordForm.Tao_QD_CapCC"
+        ]
+      },
+      {
+        "bookmark": "TenCosoE",
+        "procedures": [
+          "RecordForm.Tao_CC_Thongtinchung"
+        ]
+      },
+      {
+        "bookmark": "TenCso",
+        "procedures": [
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung"
+        ]
+      },
+      {
+        "bookmark": "TenCty",
+        "procedures": [
+          "ExtRecordForm.CreateFile",
+          "RecordForm.Tao_BB_DGTD",
+          "RecordForm.Tao_BB_QLRR",
+          "RecordForm.Tao_CC_Thongtinchung",
+          "RecordForm.Tao_Giay_DDK",
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung",
+          "RecordForm.Tao_PT_cap_DDK",
+          "RecordForm.Tao_QD_CapCC"
+        ]
+      },
+      {
+        "bookmark": "TenCtyCoso",
+        "procedures": [
+          "RecordForm.Tao_QD_CapCC"
+        ]
+      },
+      {
+        "bookmark": "TenCtyE",
+        "procedures": [
+          "RecordForm.Tao_CC_Thongtinchung"
+        ]
+      },
+      {
+        "bookmark": "TenCtyTA",
+        "procedures": [
+          "RecordForm.Tao_CV_Doiten_diachi"
+        ]
+      },
+      {
+        "bookmark": "TenCty_cu",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "TenCty_ddk_cu",
+        "procedures": [
+          "RecordForm.Tao_PL_QD_GiayDDK_Thongtinchung"
+        ]
+      },
+      {
+        "bookmark": "TenCtydd",
+        "procedures": [
+          "RecordForm.Tao_CV_ChuyenKD",
+          "RecordForm.Tao_CV_Doiten_diachi",
+          "RecordForm.Tao_CV_XNTT"
+        ]
+      },
+      {
+        "bookmark": "Tencoso",
+        "procedures": [
+          "RecordForm.Tao_BBTD",
+          "RecordForm.Tao_BB_CAPA",
+          "RecordForm.Tao_PT_PCT_CT",
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "Tencoso1",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "Tencoso5",
+        "procedures": [
+          "RecordForm.Tao_QD_CapCC"
+        ]
+      },
+      {
+        "bookmark": "Thay_DBCL",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "Thay_PTCM",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "ThoigianKT",
+        "procedures": [
+          "RecordForm.Tao_BB_CAPA",
+          "RecordForm.Tao_PT_PCT_CT",
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "TieuchuanKT",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "TinhTP_Cty",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "Tinhthanh",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "Tinhthanh2",
+        "procedures": [
+          "ExtRecordForm.CreateFile"
+        ]
+      },
+      {
+        "bookmark": "VKN",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "VKNx",
+        "procedures": [
+          "RecordForm.Tao_QDKT_KHKT_BBKT"
+        ]
+      },
+      {
+        "bookmark": "WHO_Del",
+        "procedures": [
+          "RecordForm.Tao_CC_ThongtinKT"
+        ]
+      },
+      {
+        "bookmark": "cacBCKP",
+        "procedures": [
+          "RecordForm.Tao_PT_PCT_CT",
+          "RecordForm.Tao_QD_CapCC"
+        ]
+      },
+      {
+        "bookmark": "cb",
+        "procedures": [
+          "RecordForm.Tao_PT_cap_DDK"
+        ]
+      },
+      {
+        "bookmark": "iBoth",
+        "procedures": [
+          "RecordForm.Tao_QD_CapCC"
+        ]
+      },
+      {
+        "bookmark": "iNgLieu",
+        "procedures": [
+          "RecordForm.Tao_QD_CapCC"
+        ]
+      },
+      {
+        "bookmark": "iThanhpham",
+        "procedures": [
+          "RecordForm.Tao_QD_CapCC"
+        ]
+      }
+    ],
+    "copy_forward_procedures": [
+      "RecordForm.Tao_BB_CAPA",
+      "RecordForm.Tao_PT_PCT_CT"
+    ],
+    "procedures_with_templates": [
+      "ExtRecordForm.CreateFile",
+      "Module1.Mo_QDKT",
+      "Module1.UNItoVBA",
+      "RecordForm.Get_Tpl",
+      "RecordForm.Get_Tplz"
+    ],
+    "legacy_template_files_found": [],
+    "excluded_legacy_branches": [
+      "PowerPoint-backed certificate flow"
+    ]
+  },
+  "procedures": [
+    {
+      "module": "ExtRecordForm",
+      "procedure": "CreateFile",
+      "applications": [
+        "Word",
+        "Excel"
+      ],
+      "templates": [
+        ".Uy quyen thanh toan CTP.dotx",
+        "GPs.dotx",
+        "i máy bay.dotx",
+        "m tra GPs.dotx",
+        "m tra.dotx",
+        "n.dotx",
+        "ng.dotx",
+        "ng.xltx",
+        "thanh toán.xltx"
+      ],
+      "bookmark_writes": [
+        "Chucvu",
+        "Congtac",
+        "Diachicoso",
+        "GPs",
+        "NganHang",
+        "NgaycapCMT",
+        "NgayQDKT",
+        "NgayQDKTx",
+        "NoicapCMT",
+        "Phongve",
+        "QDKT",
+        "Sanbay",
+        "SoCMT",
+        "SoTien",
+        "SoTienBangChu",
+        "SoTK",
+        "TenCoSo",
+        "TenCty",
+        "Tinhthanh",
+        "Tinhthanh2",
+        "TinhTP_Cty",
+        "TT1x",
+        "TT2x",
+        "TT2xx",
+        "TT3",
+        "TT_ext",
+        "TT_SYT",
+        "TT_VKN",
+        "TTV",
+        "TTV2",
+        "TTV_2",
+        "TTV_2x",
+        "TTxx"
+      ],
+      "bookmark_deletes": [],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [
+        ".dotx",
+        ".xltx"
+      ],
+      "opens_existing_documents": true,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "MainForm",
+      "procedure": "btnExport_Click",
+      "applications": [
+        "Excel"
+      ],
+      "templates": [],
+      "bookmark_writes": [],
+      "bookmark_deletes": [],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [
+        "dynamic"
+      ],
+      "opens_existing_documents": false,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "Module1",
+      "procedure": "Mo_QDKT",
+      "applications": [],
+      "templates": [
+        "*.docx"
+      ],
+      "bookmark_writes": [],
+      "bookmark_deletes": [],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [
+        ".docx"
+      ],
+      "opens_existing_documents": false,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "Module1",
+      "procedure": "UNItoVBA",
+      "applications": [],
+      "templates": [
+        "KHKT.xltx"
+      ],
+      "bookmark_writes": [],
+      "bookmark_deletes": [],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [
+        ".xltx"
+      ],
+      "opens_existing_documents": false,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "Get_Tplz",
+      "applications": [],
+      "templates": [
+        "i).dotx",
+        "KKDD.dotx",
+        "nh).dotx"
+      ],
+      "bookmark_writes": [],
+      "bookmark_deletes": [],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [
+        ".dotx"
+      ],
+      "opens_existing_documents": false,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "Get_Tpl",
+      "applications": [],
+      "templates": [
+        "(moi).dotx",
+        "- Moi.dotx",
+        "- Tai.dotx",
+        "i ro.dotx",
+        "i.dotx",
+        "KKDD.dotx",
+        "ng.dotx"
+      ],
+      "bookmark_writes": [],
+      "bookmark_deletes": [],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [
+        ".dotx"
+      ],
+      "opens_existing_documents": false,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "Tao_BBTD",
+      "applications": [],
+      "templates": [],
+      "bookmark_writes": [
+        "Daychuyen",
+        "Diachicoso",
+        "Fulldate",
+        "Tencoso"
+      ],
+      "bookmark_deletes": [],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [],
+      "opens_existing_documents": false,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "Tao_QDKT_KHKT_BBKT",
+      "applications": [],
+      "templates": [],
+      "bookmark_writes": [
+        "Daychuyen",
+        "Diachicoso",
+        "Diadiem",
+        "Diadiemx",
+        "Fulldate",
+        "GhPviCN",
+        "GhPviDG",
+        "GioiHanPvi",
+        "HsDK",
+        "NgayKT",
+        "NgayKTx",
+        "NgaynopHsDK",
+        "NgayQDKT",
+        "QDKT",
+        "Tencoso",
+        "ThoigianKT",
+        "TieuchuanKT",
+        "TT",
+        "TT1",
+        "TT2",
+        "TT3x",
+        "TT_SYTx",
+        "TT_VKNx",
+        "VKN",
+        "VKNx"
+      ],
+      "bookmark_deletes": [
+        "MoiDel",
+        "PVCepha",
+        "PVDuoclieu",
+        "PVNangmem",
+        "PVNhomat",
+        "PVPeni",
+        "PVSuibot",
+        "PVTiem",
+        "TaiDel",
+        "TT3Del"
+      ],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [],
+      "opens_existing_documents": false,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "Tao_BB_CAPA",
+      "applications": [],
+      "templates": [],
+      "bookmark_writes": [
+        "CV_BCKP",
+        "LanKP",
+        "LanKT",
+        "Ngay_BCKP",
+        "NXL",
+        "Tday",
+        "Tencoso",
+        "ThoigianKT",
+        "TTV1"
+      ],
+      "bookmark_deletes": [],
+      "bookmark_exists_checks": [
+        "CAPAx",
+        "DsTT"
+      ],
+      "bookmark_copy_sources": [
+        "CAPAx",
+        "DsTT"
+      ],
+      "bookmark_paste_targets": [],
+      "output_extensions": [],
+      "opens_existing_documents": true,
+      "reuses_existing_document_content": true
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "Tao_PT_PCT_CT",
+      "applications": [],
+      "templates": [],
+      "bookmark_writes": [
+        "Daychuyen",
+        "Daychuyen2",
+        "Diachicoso",
+        "GioihanPvi",
+        "HsDK",
+        "NgayBCKP",
+        "NgayKT2",
+        "NgayQDKT",
+        "QDKT",
+        "Tencoso",
+        "ThoigianKT",
+        "TT2"
+      ],
+      "bookmark_deletes": [
+        "cacBCKP"
+      ],
+      "bookmark_exists_checks": [
+        "Noidung"
+      ],
+      "bookmark_copy_sources": [
+        "Noidung"
+      ],
+      "bookmark_paste_targets": [
+        "Noidung"
+      ],
+      "output_extensions": [],
+      "opens_existing_documents": true,
+      "reuses_existing_document_content": true
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "Tao_QD_CapCC",
+      "applications": [],
+      "templates": [],
+      "bookmark_writes": [
+        "Chuthich",
+        "ChuthichDel",
+        "Daychuyen",
+        "Diachicoso",
+        "NgayBCKP",
+        "NgayHethan",
+        "NgayKT",
+        "TenCoso",
+        "Tencoso5",
+        "TenCty",
+        "TenCtyCoso"
+      ],
+      "bookmark_deletes": [
+        "cacBCKP",
+        "iBoth",
+        "iNgLieu",
+        "iThanhpham"
+      ],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [],
+      "opens_existing_documents": false,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "Tao_CC_Thongtinchung",
+      "applications": [],
+      "templates": [],
+      "bookmark_writes": [
+        "DiachiCoso",
+        "DiachiCosoE",
+        "DiachiVPCty",
+        "DiachiVPCtyE",
+        "TenCoso",
+        "TenCosoE",
+        "TenCty",
+        "TenCtyE"
+      ],
+      "bookmark_deletes": [],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [],
+      "opens_existing_documents": false,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "Tao_CC_ThongtinKT",
+      "applications": [],
+      "templates": [],
+      "bookmark_writes": [
+        "NgayKT1",
+        "NgayKT2"
+      ],
+      "bookmark_deletes": [
+        "NoEU_Del",
+        "NoPICS_Del",
+        "NoWHO_Del",
+        "OECD_Del",
+        "WHO_Del"
+      ],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [],
+      "opens_existing_documents": false,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "Tao_PL_QD_GiayDDK_Thongtinchung",
+      "applications": [],
+      "templates": [],
+      "bookmark_writes": [
+        "DiachiCoso",
+        "DiachiVPCty",
+        "Diadiemx",
+        "GCN_GMP",
+        "GiayDK_cu",
+        "HoatdongKD",
+        "NgaycapDK_cu",
+        "Nguoi_DBCL_CCHN",
+        "Nguoi_DBCL_CCHN_Ngaycap",
+        "Nguoi_DBCL_CCHN_Noicap",
+        "Nguoi_DBCL_Ten",
+        "Nguoi_DBCL_Trinhdo",
+        "Nguoi_PTCM_CCHN",
+        "Nguoi_PTCM_CCHN_Ngaycap",
+        "Nguoi_PTCM_CCHN_Noicap",
+        "Nguoi_PTCM_Ten",
+        "Nguoi_PTCM_Trinhdo",
+        "QD_GMP",
+        "QDcap_cu",
+        "TenCso",
+        "TenCty",
+        "TenCty_ddk_cu"
+      ],
+      "bookmark_deletes": [
+        "Co_Doiten",
+        "Co_Ng_DBCL",
+        "CoDieuChinh"
+      ],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [],
+      "opens_existing_documents": false,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "Tao_PL_QD_GiayDDK",
+      "applications": [],
+      "templates": [],
+      "bookmark_writes": [
+        "Chuthich"
+      ],
+      "bookmark_deletes": [
+        "All",
+        "Co_Chuthich"
+      ],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [],
+      "opens_existing_documents": true,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "Tao_CC_GPs_moi",
+      "applications": [],
+      "templates": [],
+      "bookmark_writes": [
+        "Chuthich",
+        "ChuthichE"
+      ],
+      "bookmark_deletes": [],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [],
+      "opens_existing_documents": true,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "Tao_BB_QLRR",
+      "applications": [],
+      "templates": [],
+      "bookmark_writes": [
+        "Daychuyen",
+        "Diachi",
+        "NgayKT",
+        "NXL",
+        "Tday",
+        "TenCty",
+        "TTV1"
+      ],
+      "bookmark_deletes": [],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [],
+      "opens_existing_documents": false,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "Tao_BB_DGTD",
+      "applications": [],
+      "templates": [],
+      "bookmark_writes": [
+        "Daychuyen",
+        "Diachi",
+        "NXL",
+        "Tday",
+        "TenCty"
+      ],
+      "bookmark_deletes": [],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [],
+      "opens_existing_documents": false,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "Tao_CV_XNTT",
+      "applications": [],
+      "templates": [],
+      "bookmark_writes": [
+        "DiachiCty",
+        "MahsDKKT",
+        "MahsDKKT2",
+        "MahsDKKT3",
+        "NgaycapDDK",
+        "NgaycapDDK2",
+        "NgayDKKT",
+        "NgayDKKT2",
+        "NgayDKKT3",
+        "NgayGCN",
+        "NgayGCN2",
+        "NgayGCN3",
+        "NgayKT",
+        "NgayKT2",
+        "NgayKT3",
+        "NgayQDKT",
+        "NgayQDKT2",
+        "NgayQDKT3",
+        "PhamviKT",
+        "QDcapDDK",
+        "QDcapDDK2",
+        "QDGCN",
+        "QDGCN2",
+        "QDGCN3",
+        "QDKT",
+        "QDKT2",
+        "QDKT3",
+        "SoDDK",
+        "SoDDK_2",
+        "SoDDK_3",
+        "SoGCN",
+        "SoGCN2",
+        "SoGCN3",
+        "TenCtydd"
+      ],
+      "bookmark_deletes": [
+        "ChoKT",
+        "CoQDKT",
+        "DaKT"
+      ],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [],
+      "opens_existing_documents": false,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "Tao_CV_Doiten_diachi",
+      "applications": [],
+      "templates": [],
+      "bookmark_writes": [
+        "DiachiCty",
+        "NgayGCN",
+        "SoGCN",
+        "SoQD",
+        "TenCtydd",
+        "TenCtyTA"
+      ],
+      "bookmark_deletes": [],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [],
+      "opens_existing_documents": false,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "Tao_CV_ChuyenKD",
+      "applications": [],
+      "templates": [],
+      "bookmark_writes": [
+        "HsDKKT",
+        "NgayDKKT",
+        "NgayGCN",
+        "QDGCN",
+        "SoGCN",
+        "TenCtydd"
+      ],
+      "bookmark_deletes": [],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [],
+      "opens_existing_documents": false,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "Tao_PT_cap_DDK",
+      "applications": [],
+      "templates": [],
+      "bookmark_writes": [
+        "DiachiCoso",
+        "Diachicoso1",
+        "DiachiCoso_cu",
+        "DiachiVPCty",
+        "DiachiVPCty_cu",
+        "Diadiemx",
+        "GCN_GPs",
+        "GiayDK_cu",
+        "Loaihinh",
+        "NgaycapDK_cu",
+        "Nguoi_DBCL_CCHN",
+        "Nguoi_DBCL_Ten",
+        "Nguoi_DBCL_Ten_cu1",
+        "Nguoi_PTCM_CCHN",
+        "Nguoi_PTCM_Ten",
+        "Nguoi_PTCM_Ten_cu1",
+        "NXL",
+        "PviCN_Rg",
+        "QDcap_cu",
+        "Tencoso1",
+        "TenCty",
+        "TenCty_cu"
+      ],
+      "bookmark_deletes": [
+        "Cap_DC",
+        "cb",
+        "Co_Doiten",
+        "Co_KSDB",
+        "Comment",
+        "Pvi_Cam",
+        "Pvi_DLDoc",
+        "Pvi_Doc",
+        "Pvi_GN",
+        "Pvi_PHGN",
+        "Thay_DBCL",
+        "Thay_PTCM"
+      ],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [],
+      "opens_existing_documents": false,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "Tao_Giay_DDK",
+      "applications": [],
+      "templates": [],
+      "bookmark_writes": [
+        "Cap_lan",
+        "DiachiCoso",
+        "DiachiVPCty",
+        "GCN_thaythe",
+        "HoatdongKD",
+        "Nguoi_DBCL_CCHN",
+        "Nguoi_DBCL_CCHN_Ngaycap",
+        "Nguoi_DBCL_CCHN_Noicap",
+        "Nguoi_DBCL_Ten",
+        "Nguoi_DBCL_Trinhdo",
+        "Nguoi_PTCM_CCHN",
+        "Nguoi_PTCM_CCHN_Ngaycap",
+        "Nguoi_PTCM_CCHN_Noicap",
+        "Nguoi_PTCM_Ten",
+        "Nguoi_PTCM_Trinhdo",
+        "TenCoso",
+        "TenCty"
+      ],
+      "bookmark_deletes": [
+        "Co_Ng_DBCL"
+      ],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [],
+      "opens_existing_documents": false,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "CreateFile",
+      "applications": [
+        "Word"
+      ],
+      "templates": [],
+      "bookmark_writes": [],
+      "bookmark_deletes": [],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [
+        ".docx"
+      ],
+      "opens_existing_documents": true,
+      "reuses_existing_document_content": false
+    },
+    {
+      "module": "RecordForm",
+      "procedure": "CreateFilez",
+      "applications": [
+        "Word"
+      ],
+      "templates": [],
+      "bookmark_writes": [],
+      "bookmark_deletes": [],
+      "bookmark_exists_checks": [],
+      "bookmark_copy_sources": [],
+      "bookmark_paste_targets": [],
+      "output_extensions": [
+        ".docx"
+      ],
+      "opens_existing_documents": true,
+      "reuses_existing_document_content": false
+    }
+  ]
+}

@@ -19,7 +19,7 @@ def _patch_phase5_paths(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(phase5, "PHASE5_DIR", tmp_path)
     monkeypatch.setattr(phase5, "AUDIT_PATH", tmp_path / "template_compatibility_audit.json")
     monkeypatch.setattr(phase5, "RECON_PATH", tmp_path / "template_contract_reconciled.json")
-    monkeypatch.setattr(phase5, "DDKD_VARIANTS_PATH", tmp_path / "ddkd_template_variants.json")
+    monkeypatch.setattr(phase5, "DDKD_VARIANTS_PATH", tmp_path / "dkkd_template_variants.json")
     monkeypatch.setattr(phase5, "BBTD_VARIANTS_PATH", tmp_path / "bbtd_template_variants.json")
     monkeypatch.setattr(phase5, "DDKD_APPENDIX_PATH", tmp_path / "ddkd_appendix_field_adjudication.json")
     monkeypatch.setattr(phase5, "JSON_OUT", tmp_path / "phase5_final_closeout.json")
@@ -48,7 +48,7 @@ def _write_valid_phase5_inputs(tmp_path: Path) -> None:
         },
     )
     _write_json(
-        tmp_path / "ddkd_template_variants.json",
+        tmp_path / "dkkd_template_variants.json",
         {
             "family_code": "DDKD_CERTIFICATE",
             "variants": [{"variant_key": "ddkd_certificate_new"}],
@@ -88,7 +88,7 @@ def test_build_summary_records_authoritative_phase5_provenance(tmp_path: Path, m
         "template_compatibility_audit.json"
     ).as_posix()
     assert summary["artifact_sources"]["ddkd_template_variants"]["path"] == tmp_path.joinpath(
-        "ddkd_template_variants.json"
+        "dkkd_template_variants.json"
     ).as_posix()
 
 
@@ -113,4 +113,4 @@ def test_repo_phase5_closeout_matches_current_authoritative_inputs() -> None:
     assert summary["document_generation_baseline"]["registry_family_count"] == 26
     assert summary["document_generation_baseline"]["matched_family_count"] == 26
     assert summary["document_generation_baseline"]["active_template_file_count"] == 91
-    assert summary["artifact_sources"]["ddkd_template_variants"]["path"] == "artifacts/phase5/ddkd_template_variants.json"
+    assert summary["artifact_sources"]["ddkd_template_variants"]["path"] == "artifacts/phase5/dkkd_template_variants.json"

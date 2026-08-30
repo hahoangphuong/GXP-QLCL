@@ -1,0 +1,57 @@
+# Curated Template Seed Baseline
+
+## Template Definitions
+- `INSPECTION_BBTD_HOSO_DK` -> `1. BBTD Ho so DK - {GP} - Moi/Tai.dotx` | variant=`editable_docx` | scope=`inspection_folder` | source_app=`Word`
+- `INSPECTION_QD_KT` -> `2. QD KT - {GP}.dotx` | variant=`editable_docx` | scope=`inspection_folder` | source_app=`Word`
+- `INSPECTION_KE_HOACH_KT` -> `3. Ke hoach kiem tra {GP}.dotx` | variant=`editable_docx` | scope=`inspection_folder` | source_app=`Word`
+- `INSPECTION_BB_KT` -> `4. BB KT - {GP}.dotx` | variant=`editable_docx` | scope=`inspection_folder` | source_app=`Word`
+- `INSPECTION_CAPA_LAN_1` -> `5. Danh gia CAPA - {GP}.dotx` | variant=`editable_docx` | scope=`inspection_folder` | source_app=`Word`
+- `INSPECTION_CAPA_LAN_2` -> `5. Danh gia CAPA - {GP}.dotx` | variant=`editable_docx` | scope=`inspection_folder` | source_app=`Word`
+- `INSPECTION_PT_PCT` -> `6. PT.PCT - {GP}.dotx` | variant=`editable_docx` | scope=`inspection_folder` | source_app=`Word`
+- `INSPECTION_PT_CT` -> `7. PT.CT - {GP}.dotx` | variant=`editable_docx` | scope=`inspection_folder` | source_app=`Word`
+- `CERTIFICATE_DECISION` -> `8. QD cap CC - {GP}.dotx` | variant=`editable_docx` | scope=`inspection_folder` | source_app=`Word`
+- `CERTIFICATE_ISSUANCE_WORD` -> `9. Chung chi {GP} (moi).dotx` | variant=`editable_docx` | scope=`inspection_folder` | source_app=`Word`
+- `RISK_MANAGEMENT_WORKSHEET` -> `10. Bang cong cu quan ly rui ro.dotx` | variant=`editable_docx` | scope=`inspection_folder` | source_app=`Word`
+- `STATUS_CONFIRMATION_LETTER` -> `a. CV xac nhan tinh trang.dotx` | variant=`editable_docx` | scope=`inspection_folder` | source_app=`Word`
+- `NAME_ADDRESS_CHANGE_LETTER` -> `b. CV tra loi dong y doi ten, dia chi.dotx` | variant=`editable_docx` | scope=`inspection_folder` | source_app=`Word`
+- `CHANGE_REPORT_ROUTE_LETTER` -> `11. Danh gia bao cao thay doi.dotx` | variant=`editable_docx` | scope=`inspection_folder` | source_app=`Word`
+- `ASSESSMENT_MINUTES` -> `3.2. Bien ban danh gia {GP}.dotx` | variant=`editable_docx` | scope=`inspection_folder` | source_app=`Word`
+- `CONSENT_CHANGE_LETTER` -> `d. CV dong y thay doi.dotx` | variant=`editable_docx` | scope=`inspection_folder` | source_app=`Word`
+- `DDKD_PRESENTATION` -> `DDKD presentation template family from Get_Tplz case 1` | variant=`editable_docx` | scope=`dkkd_folder` | source_app=`Word`
+- `DDKD_CERTIFICATE` -> `DDKD certificate template family from Get_Tplz case 2` | variant=`editable_docx` | scope=`dkkd_folder` | source_app=`Word`
+- `DDKD_APPENDIX_OR_DECISION` -> `z3. Phụ lục GCN ĐĐKKDD.dotx` | variant=`editable_docx` | scope=`dkkd_folder` | source_app=`Word`
+- `DDKD_APPENDIX_OR_DECISION` -> `z4. QĐ cấp ĐĐKKDD.dotx` | variant=`editable_docx` | scope=`dkkd_folder` | source_app=`Word`
+- `SUPPORT_TRAVEL_AUTHORIZATION` -> `Giay di duong.dotx` | variant=`editable_docx` | scope=`support_document` | source_app=`Word`
+- `SUPPORT_FLIGHT_REQUEST` -> `Xin di may bay.dotx` | variant=`editable_docx` | scope=`support_document` | source_app=`Word`
+- `SUPPORT_ATTENDEE_LIST` -> `Ds tham du dot kiem tra.dotx` | variant=`editable_docx` | scope=`support_document` | source_app=`Word`
+- `SUPPORT_DOSSIER_CHECKLIST` -> `Checklist ho so GPs.dotx` | variant=`editable_docx` | scope=`support_document` | source_app=`Word`
+- `SUPPORT_PAYMENT_TRANSFER` -> `Giay xin sec chuyen khoan.dotx` | variant=`editable_docx` | scope=`support_document` | source_app=`Word`
+- `SUPPORT_PAYMENT_WORKBOOK` -> `Thanh toan tam ung.xltx` | variant=`editable_xlsx` | scope=`support_document` | source_app=`Excel`
+
+## Template Bindings
+- `INSPECTION_BBTD_HOSO_DK` -> `1. BBTD Ho so DK - {GP} - Moi/Tai.dotx` | gxp=`{GP}` | legacy_mode=`moi_or_tai` | scope=`inspection_folder`
+- `INSPECTION_QD_KT` -> `2. QD KT - {GP}.dotx` | gxp=`{GP}` | legacy_mode=`*` | scope=`inspection_folder`
+- `INSPECTION_KE_HOACH_KT` -> `3. Ke hoach kiem tra {GP}.dotx` | gxp=`{GP}` | legacy_mode=`*` | scope=`inspection_folder`
+- `INSPECTION_BB_KT` -> `4. BB KT - {GP}.dotx` | gxp=`{GP}` | legacy_mode=`*` | scope=`inspection_folder`
+- `INSPECTION_CAPA_LAN_1` -> `5. Danh gia CAPA - {GP}.dotx` | gxp=`{GP}` | legacy_mode=`*` | scope=`inspection_folder`
+- `INSPECTION_CAPA_LAN_2` -> `5. Danh gia CAPA - {GP}.dotx` | gxp=`{GP}` | legacy_mode=`*` | scope=`inspection_folder`
+- `INSPECTION_PT_PCT` -> `6. PT.PCT - {GP}.dotx` | gxp=`{GP}` | legacy_mode=`*` | scope=`inspection_folder`
+- `INSPECTION_PT_CT` -> `7. PT.CT - {GP}.dotx` | gxp=`{GP}` | legacy_mode=`*` | scope=`inspection_folder`
+- `CERTIFICATE_DECISION` -> `8. QD cap CC - {GP}.dotx` | gxp=`{GP}` | legacy_mode=`*` | scope=`inspection_folder`
+- `CERTIFICATE_ISSUANCE_WORD` -> `9. Chung chi {GP} (moi).dotx` | gxp=`{GP}` | legacy_mode=`moi` | scope=`inspection_folder`
+- `RISK_MANAGEMENT_WORKSHEET` -> `10. Bang cong cu quan ly rui ro.dotx` | gxp=`*` | legacy_mode=`*` | scope=`inspection_folder`
+- `STATUS_CONFIRMATION_LETTER` -> `a. CV xac nhan tinh trang.dotx` | gxp=`*` | legacy_mode=`cho_kiem_tra_or_cho_cap_chung_chi` | scope=`inspection_folder`
+- `NAME_ADDRESS_CHANGE_LETTER` -> `b. CV tra loi dong y doi ten, dia chi.dotx` | gxp=`*` | legacy_mode=`*` | scope=`inspection_folder`
+- `CHANGE_REPORT_ROUTE_LETTER` -> `11. Danh gia bao cao thay doi.dotx` | gxp=`*` | legacy_mode=`*` | scope=`inspection_folder`
+- `ASSESSMENT_MINUTES` -> `3.2. Bien ban danh gia {GP}.dotx` | gxp=`{GP}` | legacy_mode=`*` | scope=`inspection_folder`
+- `CONSENT_CHANGE_LETTER` -> `d. CV dong y thay doi.dotx` | gxp=`*` | legacy_mode=`*` | scope=`inspection_folder`
+- `DDKD_PRESENTATION` -> `DDKD presentation template family from Get_Tplz case 1` | gxp=`*` | legacy_mode=`*` | scope=`dkkd_folder`
+- `DDKD_CERTIFICATE` -> `DDKD certificate template family from Get_Tplz case 2` | gxp=`*` | legacy_mode=`*` | scope=`dkkd_folder`
+- `DDKD_APPENDIX_OR_DECISION` -> `z3. Phụ lục GCN ĐĐKKDD.dotx` | gxp=`*` | legacy_mode=`appendix` | scope=`dkkd_folder`
+- `DDKD_APPENDIX_OR_DECISION` -> `z4. QĐ cấp ĐĐKKDD.dotx` | gxp=`*` | legacy_mode=`issuance_decision` | scope=`dkkd_folder`
+- `SUPPORT_TRAVEL_AUTHORIZATION` -> `Giay di duong.dotx` | gxp=`*` | legacy_mode=`*` | scope=`support_document`
+- `SUPPORT_FLIGHT_REQUEST` -> `Xin di may bay.dotx` | gxp=`*` | legacy_mode=`*` | scope=`support_document`
+- `SUPPORT_ATTENDEE_LIST` -> `Ds tham du dot kiem tra.dotx` | gxp=`*` | legacy_mode=`*` | scope=`support_document`
+- `SUPPORT_DOSSIER_CHECKLIST` -> `Checklist ho so GPs.dotx` | gxp=`*` | legacy_mode=`*` | scope=`support_document`
+- `SUPPORT_PAYMENT_TRANSFER` -> `Giay xin sec chuyen khoan.dotx` | gxp=`*` | legacy_mode=`*` | scope=`support_document`
+- `SUPPORT_PAYMENT_WORKBOOK` -> `Thanh toan tam ung.xltx` | gxp=`*` | legacy_mode=`*` | scope=`support_document`

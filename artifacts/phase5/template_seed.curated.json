@@ -1,0 +1,552 @@
+{
+  "template_definitions": [
+    {
+      "family_code": "INSPECTION_BBTD_HOSO_DK",
+      "document_type_code": "inspection_bbtd_hoso_dk",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_number": 1,
+      "variant_type": "editable_docx",
+      "template_name": "1. BBTD Ho so DK - {GP} - Moi/Tai.dotx",
+      "template_pattern": "1. BBTD Ho so DK - {GP} - Moi/Tai.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"Daychuyen\", \"Diachicoso\", \"Fulldate\", \"Tencoso\"], \"copy_forward_dependencies\": []}",
+      "notes": "Template branch depends on Moi/Tai state from Get_Tpl."
+    },
+    {
+      "family_code": "INSPECTION_QD_KT",
+      "document_type_code": "inspection_qd_kt",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_number": 2,
+      "variant_type": "editable_docx",
+      "template_name": "2. QD KT - {GP}.dotx",
+      "template_pattern": "2. QD KT - {GP}.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"Daychuyen\", \"Diachicoso\", \"Diadiem\", \"Diadiemx\", \"Fulldate\", \"GhPviCN\", \"GhPviDG\", \"GioiHanPvi\", \"HsDK\", \"MoiDel\", \"NgayKT\", \"NgayKTx\", \"NgaynopHsDK\", \"NgayQDKT\", \"PVCepha\", \"PVDuoclieu\", \"PVNangmem\", \"PVNhomat\", \"PVPeni\", \"PVSuibot\", \"PVTiem\", \"QDKT\", \"TaiDel\", \"Tencoso\", \"ThoigianKT\", \"TieuchuanKT\", \"TT\", \"TT1\", \"TT2\", \"TT3Del\", \"TT3x\", \"TT_SYTx\", \"TT_VKNx\", \"VKN\", \"VKNx\"], \"copy_forward_dependencies\": []}",
+      "notes": "Shares payload builder with inspection plan and inspection minutes."
+    },
+    {
+      "family_code": "INSPECTION_KE_HOACH_KT",
+      "document_type_code": "inspection_ke_hoach_kt",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_number": 3,
+      "variant_type": "editable_docx",
+      "template_name": "3. Ke hoach kiem tra {GP}.dotx",
+      "template_pattern": "3. Ke hoach kiem tra {GP}.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"Daychuyen\", \"Diachicoso\", \"Diadiem\", \"Diadiemx\", \"Fulldate\", \"GhPviCN\", \"GhPviDG\", \"GioiHanPvi\", \"HsDK\", \"MoiDel\", \"NgayKT\", \"NgayKTx\", \"NgaynopHsDK\", \"NgayQDKT\", \"PVCepha\", \"PVDuoclieu\", \"PVNangmem\", \"PVNhomat\", \"PVPeni\", \"PVSuibot\", \"PVTiem\", \"QDKT\", \"TaiDel\", \"Tencoso\", \"ThoigianKT\", \"TieuchuanKT\", \"TT\", \"TT1\", \"TT2\", \"TT3Del\", \"TT3x\", \"TT_SYTx\", \"TT_VKNx\", \"VKN\", \"VKNx\"], \"copy_forward_dependencies\": []}",
+      "notes": "Uses same payload procedure with mode-specific bookmark deletion."
+    },
+    {
+      "family_code": "INSPECTION_BB_KT",
+      "document_type_code": "inspection_bb_kt",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_number": 4,
+      "variant_type": "editable_docx",
+      "template_name": "4. BB KT - {GP}.dotx",
+      "template_pattern": "4. BB KT - {GP}.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"Daychuyen\", \"Diachicoso\", \"Diadiem\", \"Diadiemx\", \"Fulldate\", \"GhPviCN\", \"GhPviDG\", \"GioiHanPvi\", \"HsDK\", \"MoiDel\", \"NgayKT\", \"NgayKTx\", \"NgaynopHsDK\", \"NgayQDKT\", \"PVCepha\", \"PVDuoclieu\", \"PVNangmem\", \"PVNhomat\", \"PVPeni\", \"PVSuibot\", \"PVTiem\", \"QDKT\", \"TaiDel\", \"Tencoso\", \"ThoigianKT\", \"TieuchuanKT\", \"TT\", \"TT1\", \"TT2\", \"TT3Del\", \"TT3x\", \"TT_SYTx\", \"TT_VKNx\", \"VKN\", \"VKNx\"], \"copy_forward_dependencies\": []}",
+      "notes": "Same builder as cases 2 and 3 with additional reference-row suppression."
+    },
+    {
+      "family_code": "INSPECTION_CAPA_LAN_1",
+      "document_type_code": "inspection_capa_lan_1",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_number": 5,
+      "variant_type": "editable_docx",
+      "template_name": "5. Danh gia CAPA - {GP}.dotx",
+      "template_pattern": "5. Danh gia CAPA - {GP}.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"CAPAx\", \"CV_BCKP\", \"DsTT\", \"LanKP\", \"LanKT\", \"Ngay_BCKP\", \"NXL\", \"Tday\", \"Tencoso\", \"ThoigianKT\", \"TTV1\"], \"copy_forward_dependencies\": [{\"condition\": \"If prior BBKT exists and bookmark DsTT is present, copy deficiency table into CAPA document.\", \"source_bookmarks\": [\"DsTT\"], \"source_family_code\": \"INSPECTION_BB_KT\"}]}",
+      "notes": "Copy-forward from prior BBKT is evidenced by BBKT_goc and bookmark DsTT copy."
+    },
+    {
+      "family_code": "INSPECTION_CAPA_LAN_2",
+      "document_type_code": "inspection_capa_lan_2",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_number": 6,
+      "variant_type": "editable_docx",
+      "template_name": "5. Danh gia CAPA - {GP}.dotx",
+      "template_pattern": "5. Danh gia CAPA - {GP}.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"CAPAx\", \"CV_BCKP\", \"DsTT\", \"LanKP\", \"LanKT\", \"Ngay_BCKP\", \"NXL\", \"Tday\", \"Tencoso\", \"ThoigianKT\", \"TTV1\"], \"copy_forward_dependencies\": [{\"condition\": \"If CopyPT is enabled and prior CAPA round 1 exists, copy CAPAx table into round 2 document.\", \"source_bookmarks\": [\"CAPAx\"], \"source_family_code\": \"INSPECTION_CAPA_LAN_1\"}]}",
+      "notes": "Round 2 can reuse prior CAPA table when prior document exists."
+    },
+    {
+      "family_code": "INSPECTION_PT_PCT",
+      "document_type_code": "inspection_pt_pct",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_number": 7,
+      "variant_type": "editable_docx",
+      "template_name": "6. PT.PCT - {GP}.dotx",
+      "template_pattern": "6. PT.PCT - {GP}.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"cacBCKP\", \"Daychuyen\", \"Daychuyen2\", \"Diachicoso\", \"GioihanPvi\", \"HsDK\", \"NgayBCKP\", \"NgayKT2\", \"NgayQDKT\", \"Noidung\", \"QDKT\", \"Tencoso\", \"ThoigianKT\", \"TT2\"], \"copy_forward_dependencies\": []}",
+      "notes": "Primary PCT document does not require copy-forward in observed path."
+    },
+    {
+      "family_code": "INSPECTION_PT_CT",
+      "document_type_code": "inspection_pt_ct",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_number": 8,
+      "variant_type": "editable_docx",
+      "template_name": "7. PT.CT - {GP}.dotx",
+      "template_pattern": "7. PT.CT - {GP}.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"cacBCKP\", \"Daychuyen\", \"Daychuyen2\", \"Diachicoso\", \"GioihanPvi\", \"HsDK\", \"NgayBCKP\", \"NgayKT2\", \"NgayQDKT\", \"Noidung\", \"QDKT\", \"Tencoso\", \"ThoigianKT\", \"TT2\"], \"copy_forward_dependencies\": [{\"condition\": \"If CopyPT is enabled and prior PCT exists, copy bookmark Noidung from prior PCT document.\", \"source_bookmarks\": [\"Noidung\"], \"source_family_code\": \"INSPECTION_PT_PCT\"}]}",
+      "notes": "Observed bookmark-level copy-forward from PT.PCT into PT.CT."
+    },
+    {
+      "family_code": "CERTIFICATE_DECISION",
+      "document_type_code": "certificate_decision",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_number": 9,
+      "variant_type": "editable_docx",
+      "template_name": "8. QD cap CC - {GP}.dotx",
+      "template_pattern": "8. QD cap CC - {GP}.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"cacBCKP\", \"Chuthich\", \"ChuthichDel\", \"Daychuyen\", \"Diachicoso\", \"iBoth\", \"iNgLieu\", \"iThanhpham\", \"NgayBCKP\", \"NgayHethan\", \"NgayKT\", \"TenCoso\", \"Tencoso5\", \"TenCty\", \"TenCtyCoso\"], \"copy_forward_dependencies\": []}",
+      "notes": "Decision document contains conditional suppression for product-type sections and corrective-action timing."
+    },
+    {
+      "family_code": "CERTIFICATE_ISSUANCE_WORD",
+      "document_type_code": "certificate_issuance_word",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_number": 10,
+      "variant_type": "editable_docx",
+      "template_name": "9. Chung chi {GP} (moi).dotx",
+      "template_pattern": "9. Chung chi {GP} (moi).dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"Chuthich\", \"ChuthichE\", \"DiachiCoso\", \"DiachiCosoE\", \"DiachiVPCty\", \"DiachiVPCtyE\", \"NgayKT1\", \"NgayKT2\", \"NoEU_Del\", \"NoPICS_Del\", \"NoWHO_Del\", \"OECD_Del\", \"TenCoso\", \"TenCosoE\", \"TenCty\", \"TenCtyE\", \"WHO_Del\"], \"copy_forward_dependencies\": []}",
+      "notes": "PowerPoint-backed legacy branch is excluded; current baseline keeps only Word-backed issuance contract."
+    },
+    {
+      "family_code": "RISK_MANAGEMENT_WORKSHEET",
+      "document_type_code": "risk_management_worksheet",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_number": 11,
+      "variant_type": "editable_docx",
+      "template_name": "10. Bang cong cu quan ly rui ro.dotx",
+      "template_pattern": "10. Bang cong cu quan ly rui ro.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"Daychuyen\", \"Diachi\", \"NgayKT\", \"NXL\", \"Tday\", \"TenCty\", \"TTV1\"], \"copy_forward_dependencies\": []}",
+      "notes": "Only enabled for selected GPs path in observed VBA."
+    },
+    {
+      "family_code": "STATUS_CONFIRMATION_LETTER",
+      "document_type_code": "status_confirmation_letter",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_number": 12,
+      "variant_type": "editable_docx",
+      "template_name": "a. CV xac nhan tinh trang.dotx",
+      "template_pattern": "a. CV xac nhan tinh trang.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"ChoKT\", \"CoQDKT\", \"DaKT\", \"DiachiCty\", \"MahsDKKT\", \"MahsDKKT2\", \"MahsDKKT3\", \"NgaycapDDK\", \"NgaycapDDK2\", \"NgayDKKT\", \"NgayDKKT2\", \"NgayDKKT3\", \"NgayGCN\", \"NgayGCN2\", \"NgayGCN3\", \"NgayKT\", \"NgayKT2\", \"NgayKT3\", \"NgayQDKT\", \"NgayQDKT2\", \"NgayQDKT3\", \"PhamviKT\", \"QDcapDDK\", \"QDcapDDK2\", \"QDGCN\", \"QDGCN2\", \"QDGCN3\", \"QDKT\", \"QDKT2\", \"QDKT3\", \"SoDDK\", \"SoDDK_2\", \"SoDDK_3\", \"SoGCN\", \"SoGCN2\", \"SoGCN3\", \"TenCtydd\"], \"copy_forward_dependencies\": []}",
+      "notes": "Template naming branches depend on whether inspection is pending or certificate issuance already exists."
+    },
+    {
+      "family_code": "NAME_ADDRESS_CHANGE_LETTER",
+      "document_type_code": "name_address_change_letter",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_number": 13,
+      "variant_type": "editable_docx",
+      "template_name": "b. CV tra loi dong y doi ten, dia chi.dotx",
+      "template_pattern": "b. CV tra loi dong y doi ten, dia chi.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"DiachiCty\", \"NgayGCN\", \"SoGCN\", \"SoQD\", \"TenCtydd\", \"TenCtyTA\"], \"copy_forward_dependencies\": []}",
+      "notes": "Uses certificate identity and translated company/address text."
+    },
+    {
+      "family_code": "CHANGE_REPORT_ROUTE_LETTER",
+      "document_type_code": "change_report_route_letter",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_number": 14,
+      "variant_type": "editable_docx",
+      "template_name": "11. Danh gia bao cao thay doi.dotx",
+      "template_pattern": "11. Danh gia bao cao thay doi.dotx / c-family legacy letter path",
+      "bookmark_contract_json": "{\"bookmarks\": [\"HsDKKT\", \"NgayDKKT\", \"NgayGCN\", \"QDGCN\", \"SoGCN\", \"TenCtydd\"], \"copy_forward_dependencies\": []}",
+      "notes": "Observed comments indicate historical ambiguity between change-evaluation minutes and routing letter; treat as review-required family."
+    },
+    {
+      "family_code": "ASSESSMENT_MINUTES",
+      "document_type_code": "assessment_minutes",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_number": 15,
+      "variant_type": "editable_docx",
+      "template_name": "3.2. Bien ban danh gia {GP}.dotx",
+      "template_pattern": "3.2. Bien ban danh gia {GP}.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"Daychuyen\", \"Diachi\", \"NXL\", \"Tday\", \"TenCty\"], \"copy_forward_dependencies\": []}",
+      "notes": "Raw parser misses direct writes in Tao_BB_Danhgia path; nearest proven payload shape comes from assessment-style builder procedures and should be revalidated when templates are available."
+    },
+    {
+      "family_code": "CONSENT_CHANGE_LETTER",
+      "document_type_code": "consent_change_letter",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.CreateFile",
+      "legacy_case_number": 16,
+      "variant_type": "editable_docx",
+      "template_name": "d. CV dong y thay doi.dotx",
+      "template_pattern": "d. CV dong y thay doi.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"ChoKT\", \"CoQDKT\", \"DaKT\", \"DiachiCty\", \"MahsDKKT\", \"MahsDKKT2\", \"MahsDKKT3\", \"NgaycapDDK\", \"NgaycapDDK2\", \"NgayDKKT\", \"NgayDKKT2\", \"NgayDKKT3\", \"NgayGCN\", \"NgayGCN2\", \"NgayGCN3\", \"NgayKT\", \"NgayKT2\", \"NgayKT3\", \"NgayQDKT\", \"NgayQDKT2\", \"NgayQDKT3\", \"PhamviKT\", \"QDcapDDK\", \"QDcapDDK2\", \"QDGCN\", \"QDGCN2\", \"QDGCN3\", \"QDKT\", \"QDKT2\", \"QDKT3\", \"SoDDK\", \"SoDDK_2\", \"SoDDK_3\", \"SoGCN\", \"SoGCN2\", \"SoGCN3\", \"TenCtydd\"], \"copy_forward_dependencies\": []}",
+      "notes": "Shares payload builder with status-confirmation letter but uses a different template family."
+    },
+    {
+      "family_code": "DDKD_PRESENTATION",
+      "document_type_code": "ddkd_presentation",
+      "source_application": "Word",
+      "storage_scope": "dkkd_folder",
+      "legacy_host_procedure": "RecordForm.CreateFilez",
+      "legacy_case_number": 1,
+      "variant_type": "editable_docx",
+      "template_name": "DDKD presentation template family from Get_Tplz case 1",
+      "template_pattern": "DDKD presentation template family from Get_Tplz case 1",
+      "bookmark_contract_json": "{\"bookmarks\": [\"Cap_DC\", \"cb\", \"Co_Doiten\", \"Co_KSDB\", \"Comment\", \"DiachiCoso\", \"Diachicoso1\", \"DiachiCoso_cu\", \"DiachiVPCty\", \"DiachiVPCty_cu\", \"Diadiemx\", \"GCN_GPs\", \"GiayDK_cu\", \"Loaihinh\", \"NgaycapDK_cu\", \"Nguoi_DBCL_CCHN\", \"Nguoi_DBCL_Ten\", \"Nguoi_DBCL_Ten_cu1\", \"Nguoi_PTCM_CCHN\", \"Nguoi_PTCM_Ten\", \"Nguoi_PTCM_Ten_cu1\", \"NXL\", \"Pvi_Cam\", \"Pvi_DLDoc\", \"Pvi_Doc\", \"Pvi_GN\", \"Pvi_PHGN\", \"PviCN_Rg\", \"QDcap_cu\", \"Tencoso1\", \"TenCty\", \"TenCty_cu\", \"Thay_DBCL\", \"Thay_PTCM\"], \"copy_forward_dependencies\": []}",
+      "notes": "Template literal is partially obscured by ChrW concatenation in VBA; bookmark contract is proven."
+    },
+    {
+      "family_code": "DDKD_CERTIFICATE",
+      "document_type_code": "ddkd_certificate",
+      "source_application": "Word",
+      "storage_scope": "dkkd_folder",
+      "legacy_host_procedure": "RecordForm.CreateFilez",
+      "legacy_case_number": 2,
+      "variant_type": "editable_docx",
+      "template_name": "DDKD certificate template family from Get_Tplz case 2",
+      "template_pattern": "DDKD certificate template family from Get_Tplz case 2",
+      "bookmark_contract_json": "{\"bookmarks\": [\"Cap_lan\", \"Co_Ng_DBCL\", \"DiachiCoso\", \"DiachiVPCty\", \"GCN_thaythe\", \"HoatdongKD\", \"Nguoi_DBCL_CCHN\", \"Nguoi_DBCL_CCHN_Ngaycap\", \"Nguoi_DBCL_CCHN_Noicap\", \"Nguoi_DBCL_Ten\", \"Nguoi_DBCL_Trinhdo\", \"Nguoi_PTCM_CCHN\", \"Nguoi_PTCM_CCHN_Ngaycap\", \"Nguoi_PTCM_CCHN_Noicap\", \"Nguoi_PTCM_Ten\", \"Nguoi_PTCM_Trinhdo\", \"TenCoso\", \"TenCty\"], \"copy_forward_dependencies\": []}",
+      "notes": "Contains responsible-person and operating-scope bookmarks."
+    },
+    {
+      "family_code": "DDKD_APPENDIX_OR_DECISION",
+      "document_type_code": "ddkd_appendix_or_decision",
+      "source_application": "Word",
+      "storage_scope": "dkkd_folder",
+      "legacy_host_procedure": "RecordForm.CreateFilez",
+      "legacy_case_number": 3,
+      "variant_type": "editable_docx",
+      "template_name": "z3. Phụ lục GCN ĐĐKKDD.dotx",
+      "template_pattern": "z3. Phụ lục GCN ĐĐKKDD.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"All\", \"Chuthich\", \"Co_Chuthich\", \"Co_Doiten\", \"Co_Ng_DBCL\", \"CoDieuChinh\", \"DiachiCoso\", \"DiachiVPCty\", \"Diadiemx\", \"GCN_GMP\", \"GiayDK_cu\", \"HoatdongKD\", \"NgaycapDK_cu\", \"Nguoi_DBCL_CCHN\", \"Nguoi_DBCL_CCHN_Ngaycap\", \"Nguoi_DBCL_CCHN_Noicap\", \"Nguoi_DBCL_Ten\", \"Nguoi_DBCL_Trinhdo\", \"Nguoi_PTCM_CCHN\", \"Nguoi_PTCM_CCHN_Ngaycap\", \"Nguoi_PTCM_CCHN_Noicap\", \"Nguoi_PTCM_Ten\", \"Nguoi_PTCM_Trinhdo\", \"QD_GMP\", \"QDcap_cu\", \"TenCso\", \"TenCty\", \"TenCty_ddk_cu\"], \"copy_forward_dependencies\": []}",
+      "notes": "CreateFilez case 3 resolves the active appendix template."
+    },
+    {
+      "family_code": "DDKD_APPENDIX_OR_DECISION",
+      "document_type_code": "ddkd_appendix_or_decision",
+      "source_application": "Word",
+      "storage_scope": "dkkd_folder",
+      "legacy_host_procedure": "RecordForm.CreateFilez",
+      "legacy_case_number": 4,
+      "variant_type": "editable_docx",
+      "template_name": "z4. QĐ cấp ĐĐKKDD.dotx",
+      "template_pattern": "z4. QĐ cấp ĐĐKKDD.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"All\", \"Chuthich\", \"Co_Chuthich\", \"Co_Doiten\", \"Co_Ng_DBCL\", \"CoDieuChinh\", \"DiachiCoso\", \"DiachiVPCty\", \"Diadiemx\", \"GCN_GMP\", \"GiayDK_cu\", \"HoatdongKD\", \"NgaycapDK_cu\", \"Nguoi_DBCL_CCHN\", \"Nguoi_DBCL_CCHN_Ngaycap\", \"Nguoi_DBCL_CCHN_Noicap\", \"Nguoi_DBCL_Ten\", \"Nguoi_DBCL_Trinhdo\", \"Nguoi_PTCM_CCHN\", \"Nguoi_PTCM_CCHN_Ngaycap\", \"Nguoi_PTCM_CCHN_Noicap\", \"Nguoi_PTCM_Ten\", \"Nguoi_PTCM_Trinhdo\", \"QD_GMP\", \"QDcap_cu\", \"TenCso\", \"TenCty\", \"TenCty_ddk_cu\"], \"copy_forward_dependencies\": []}",
+      "notes": "CreateFilez case 4 resolves the active issuance-decision template."
+    },
+    {
+      "family_code": "SUPPORT_TRAVEL_AUTHORIZATION",
+      "document_type_code": "support_travel_authorization",
+      "source_application": "Word",
+      "storage_scope": "support_document",
+      "legacy_host_procedure": "ExtRecordForm.CreateFile",
+      "legacy_case_number": 1,
+      "variant_type": "editable_docx",
+      "template_name": "Giay di duong.dotx",
+      "template_pattern": "Giay di duong.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"Chucvu\", \"Congtac\", \"Diachicoso\", \"GPs\", \"NganHang\", \"NgaycapCMT\", \"NgayQDKT\", \"NgayQDKTx\", \"NoicapCMT\", \"Phongve\", \"QDKT\", \"Sanbay\", \"SoCMT\", \"SoTien\", \"SoTienBangChu\", \"SoTK\", \"TenCoSo\", \"TenCty\", \"Tinhthanh\", \"Tinhthanh2\", \"TinhTP_Cty\", \"TT1x\", \"TT2x\", \"TT2xx\", \"TT3\", \"TT_ext\", \"TT_SYT\", \"TT_VKN\", \"TTV\", \"TTV2\", \"TTV_2\", \"TTV_2x\", \"TTxx\"], \"copy_forward_dependencies\": []}",
+      "notes": "One document can be generated per selected inspector."
+    },
+    {
+      "family_code": "SUPPORT_FLIGHT_REQUEST",
+      "document_type_code": "support_flight_request",
+      "source_application": "Word",
+      "storage_scope": "support_document",
+      "legacy_host_procedure": "ExtRecordForm.CreateFile",
+      "legacy_case_number": 2,
+      "variant_type": "editable_docx",
+      "template_name": "Xin di may bay.dotx",
+      "template_pattern": "Xin di may bay.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"Chucvu\", \"Congtac\", \"Diachicoso\", \"GPs\", \"NganHang\", \"NgaycapCMT\", \"NgayQDKT\", \"NgayQDKTx\", \"NoicapCMT\", \"Phongve\", \"QDKT\", \"Sanbay\", \"SoCMT\", \"SoTien\", \"SoTienBangChu\", \"SoTK\", \"TenCoSo\", \"TenCty\", \"Tinhthanh\", \"Tinhthanh2\", \"TinhTP_Cty\", \"TT1x\", \"TT2x\", \"TT2xx\", \"TT3\", \"TT_ext\", \"TT_SYT\", \"TT_VKN\", \"TTV\", \"TTV2\", \"TTV_2\", \"TTV_2x\", \"TTxx\"], \"copy_forward_dependencies\": []}",
+      "notes": "Uses airport and team composition bookmarks."
+    },
+    {
+      "family_code": "SUPPORT_ATTENDEE_LIST",
+      "document_type_code": "support_attendee_list",
+      "source_application": "Word",
+      "storage_scope": "support_document",
+      "legacy_host_procedure": "ExtRecordForm.CreateFile",
+      "legacy_case_number": 3,
+      "variant_type": "editable_docx",
+      "template_name": "Ds tham du dot kiem tra.dotx",
+      "template_pattern": "Ds tham du dot kiem tra.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"Chucvu\", \"Congtac\", \"Diachicoso\", \"GPs\", \"NganHang\", \"NgaycapCMT\", \"NgayQDKT\", \"NgayQDKTx\", \"NoicapCMT\", \"Phongve\", \"QDKT\", \"Sanbay\", \"SoCMT\", \"SoTien\", \"SoTienBangChu\", \"SoTK\", \"TenCoSo\", \"TenCty\", \"Tinhthanh\", \"Tinhthanh2\", \"TinhTP_Cty\", \"TT1x\", \"TT2x\", \"TT2xx\", \"TT3\", \"TT_ext\", \"TT_SYT\", \"TT_VKN\", \"TTV\", \"TTV2\", \"TTV_2\", \"TTV_2x\", \"TTxx\"], \"copy_forward_dependencies\": []}",
+      "notes": "Expands row sections for inspector, VKN, and SYT lists."
+    },
+    {
+      "family_code": "SUPPORT_DOSSIER_CHECKLIST",
+      "document_type_code": "support_dossier_checklist",
+      "source_application": "Word",
+      "storage_scope": "support_document",
+      "legacy_host_procedure": "ExtRecordForm.CreateFile",
+      "legacy_case_number": null,
+      "variant_type": "editable_docx",
+      "template_name": "Checklist ho so GPs.dotx",
+      "template_pattern": "Checklist ho so GPs.dotx / Checklist kiem tra GPs.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"Chucvu\", \"Congtac\", \"Diachicoso\", \"GPs\", \"NganHang\", \"NgaycapCMT\", \"NgayQDKT\", \"NgayQDKTx\", \"NoicapCMT\", \"Phongve\", \"QDKT\", \"Sanbay\", \"SoCMT\", \"SoTien\", \"SoTienBangChu\", \"SoTK\", \"TenCoSo\", \"TenCty\", \"Tinhthanh\", \"Tinhthanh2\", \"TinhTP_Cty\", \"TT1x\", \"TT2x\", \"TT2xx\", \"TT3\", \"TT_ext\", \"TT_SYT\", \"TT_VKN\", \"TTV\", \"TTV2\", \"TTV_2\", \"TTV_2x\", \"TTxx\"], \"copy_forward_dependencies\": []}",
+      "notes": "Case 4 and 7 are separate checklist families within ExtRecordForm."
+    },
+    {
+      "family_code": "SUPPORT_PAYMENT_TRANSFER",
+      "document_type_code": "support_payment_transfer",
+      "source_application": "Word",
+      "storage_scope": "support_document",
+      "legacy_host_procedure": "ExtRecordForm.CreateFile",
+      "legacy_case_number": null,
+      "variant_type": "editable_docx",
+      "template_name": "Giay xin sec chuyen khoan.dotx",
+      "template_pattern": "Giay xin sec chuyen khoan.dotx / Uy quyen thanh toan CTP.dotx",
+      "bookmark_contract_json": "{\"bookmarks\": [\"Chucvu\", \"Congtac\", \"Diachicoso\", \"GPs\", \"NganHang\", \"NgaycapCMT\", \"NgayQDKT\", \"NgayQDKTx\", \"NoicapCMT\", \"Phongve\", \"QDKT\", \"Sanbay\", \"SoCMT\", \"SoTien\", \"SoTienBangChu\", \"SoTK\", \"TenCoSo\", \"TenCty\", \"Tinhthanh\", \"Tinhthanh2\", \"TinhTP_Cty\", \"TT1x\", \"TT2x\", \"TT2xx\", \"TT3\", \"TT_ext\", \"TT_SYT\", \"TT_VKN\", \"TTV\", \"TTV2\", \"TTV_2\", \"TTV_2x\", \"TTxx\"], \"copy_forward_dependencies\": []}",
+      "notes": "Payment-support family covers transfer request and authorization letter variants."
+    },
+    {
+      "family_code": "SUPPORT_PAYMENT_WORKBOOK",
+      "document_type_code": "support_payment_workbook",
+      "source_application": "Excel",
+      "storage_scope": "support_document",
+      "legacy_host_procedure": "ExtRecordForm.CreateFile",
+      "legacy_case_number": null,
+      "variant_type": "editable_xlsx",
+      "template_name": "Thanh toan tam ung.xltx",
+      "template_pattern": "Thanh toan tam ung.xltx / De nghi thanh toan.xltx",
+      "bookmark_contract_json": "{\"bookmarks\": [], \"copy_forward_dependencies\": []}",
+      "notes": "Excel template branch in ExtRecordForm; kept in registry because it is still an active legacy support flow."
+    }
+  ],
+  "template_bindings": [
+    {
+      "family_code": "INSPECTION_BBTD_HOSO_DK",
+      "template_name": "1. BBTD Ho so DK - {GP} - Moi/Tai.dotx",
+      "gxp_type": "{GP}",
+      "legacy_mode": "moi_or_tai",
+      "storage_scope": "inspection_folder",
+      "selection_notes": "Template branch depends on Moi/Tai state from Get_Tpl."
+    },
+    {
+      "family_code": "INSPECTION_QD_KT",
+      "template_name": "2. QD KT - {GP}.dotx",
+      "gxp_type": "{GP}",
+      "legacy_mode": null,
+      "storage_scope": "inspection_folder",
+      "selection_notes": "Shares payload builder with inspection plan and inspection minutes."
+    },
+    {
+      "family_code": "INSPECTION_KE_HOACH_KT",
+      "template_name": "3. Ke hoach kiem tra {GP}.dotx",
+      "gxp_type": "{GP}",
+      "legacy_mode": null,
+      "storage_scope": "inspection_folder",
+      "selection_notes": "Uses same payload procedure with mode-specific bookmark deletion."
+    },
+    {
+      "family_code": "INSPECTION_BB_KT",
+      "template_name": "4. BB KT - {GP}.dotx",
+      "gxp_type": "{GP}",
+      "legacy_mode": null,
+      "storage_scope": "inspection_folder",
+      "selection_notes": "Same builder as cases 2 and 3 with additional reference-row suppression."
+    },
+    {
+      "family_code": "INSPECTION_CAPA_LAN_1",
+      "template_name": "5. Danh gia CAPA - {GP}.dotx",
+      "gxp_type": "{GP}",
+      "legacy_mode": null,
+      "storage_scope": "inspection_folder",
+      "selection_notes": "Copy-forward from prior BBKT is evidenced by BBKT_goc and bookmark DsTT copy."
+    },
+    {
+      "family_code": "INSPECTION_CAPA_LAN_2",
+      "template_name": "5. Danh gia CAPA - {GP}.dotx",
+      "gxp_type": "{GP}",
+      "legacy_mode": null,
+      "storage_scope": "inspection_folder",
+      "selection_notes": "Round 2 can reuse prior CAPA table when prior document exists."
+    },
+    {
+      "family_code": "INSPECTION_PT_PCT",
+      "template_name": "6. PT.PCT - {GP}.dotx",
+      "gxp_type": "{GP}",
+      "legacy_mode": null,
+      "storage_scope": "inspection_folder",
+      "selection_notes": "Primary PCT document does not require copy-forward in observed path."
+    },
+    {
+      "family_code": "INSPECTION_PT_CT",
+      "template_name": "7. PT.CT - {GP}.dotx",
+      "gxp_type": "{GP}",
+      "legacy_mode": null,
+      "storage_scope": "inspection_folder",
+      "selection_notes": "Observed bookmark-level copy-forward from PT.PCT into PT.CT."
+    },
+    {
+      "family_code": "CERTIFICATE_DECISION",
+      "template_name": "8. QD cap CC - {GP}.dotx",
+      "gxp_type": "{GP}",
+      "legacy_mode": null,
+      "storage_scope": "inspection_folder",
+      "selection_notes": "Decision document contains conditional suppression for product-type sections and corrective-action timing."
+    },
+    {
+      "family_code": "CERTIFICATE_ISSUANCE_WORD",
+      "template_name": "9. Chung chi {GP} (moi).dotx",
+      "gxp_type": "{GP}",
+      "legacy_mode": "moi",
+      "storage_scope": "inspection_folder",
+      "selection_notes": "PowerPoint-backed legacy branch is excluded; current baseline keeps only Word-backed issuance contract."
+    },
+    {
+      "family_code": "RISK_MANAGEMENT_WORKSHEET",
+      "template_name": "10. Bang cong cu quan ly rui ro.dotx",
+      "gxp_type": null,
+      "legacy_mode": null,
+      "storage_scope": "inspection_folder",
+      "selection_notes": "Only enabled for selected GPs path in observed VBA."
+    },
+    {
+      "family_code": "STATUS_CONFIRMATION_LETTER",
+      "template_name": "a. CV xac nhan tinh trang.dotx",
+      "gxp_type": null,
+      "legacy_mode": "cho_kiem_tra_or_cho_cap_chung_chi",
+      "storage_scope": "inspection_folder",
+      "selection_notes": "Template naming branches depend on whether inspection is pending or certificate issuance already exists."
+    },
+    {
+      "family_code": "NAME_ADDRESS_CHANGE_LETTER",
+      "template_name": "b. CV tra loi dong y doi ten, dia chi.dotx",
+      "gxp_type": null,
+      "legacy_mode": null,
+      "storage_scope": "inspection_folder",
+      "selection_notes": "Uses certificate identity and translated company/address text."
+    },
+    {
+      "family_code": "CHANGE_REPORT_ROUTE_LETTER",
+      "template_name": "11. Danh gia bao cao thay doi.dotx",
+      "gxp_type": null,
+      "legacy_mode": null,
+      "storage_scope": "inspection_folder",
+      "selection_notes": "Observed comments indicate historical ambiguity between change-evaluation minutes and routing letter; treat as review-required family."
+    },
+    {
+      "family_code": "ASSESSMENT_MINUTES",
+      "template_name": "3.2. Bien ban danh gia {GP}.dotx",
+      "gxp_type": "{GP}",
+      "legacy_mode": null,
+      "storage_scope": "inspection_folder",
+      "selection_notes": "Raw parser misses direct writes in Tao_BB_Danhgia path; nearest proven payload shape comes from assessment-style builder procedures and should be revalidated when templates are available."
+    },
+    {
+      "family_code": "CONSENT_CHANGE_LETTER",
+      "template_name": "d. CV dong y thay doi.dotx",
+      "gxp_type": null,
+      "legacy_mode": null,
+      "storage_scope": "inspection_folder",
+      "selection_notes": "Shares payload builder with status-confirmation letter but uses a different template family."
+    },
+    {
+      "family_code": "DDKD_PRESENTATION",
+      "template_name": "DDKD presentation template family from Get_Tplz case 1",
+      "gxp_type": null,
+      "legacy_mode": null,
+      "storage_scope": "dkkd_folder",
+      "selection_notes": "Template literal is partially obscured by ChrW concatenation in VBA; bookmark contract is proven."
+    },
+    {
+      "family_code": "DDKD_CERTIFICATE",
+      "template_name": "DDKD certificate template family from Get_Tplz case 2",
+      "gxp_type": null,
+      "legacy_mode": null,
+      "storage_scope": "dkkd_folder",
+      "selection_notes": "Contains responsible-person and operating-scope bookmarks."
+    },
+    {
+      "family_code": "DDKD_APPENDIX_OR_DECISION",
+      "template_name": "z3. Phụ lục GCN ĐĐKKDD.dotx",
+      "gxp_type": null,
+      "legacy_mode": "appendix",
+      "storage_scope": "dkkd_folder",
+      "selection_notes": "CreateFilez case 3 resolves the active appendix template."
+    },
+    {
+      "family_code": "DDKD_APPENDIX_OR_DECISION",
+      "template_name": "z4. QĐ cấp ĐĐKKDD.dotx",
+      "gxp_type": null,
+      "legacy_mode": "issuance_decision",
+      "storage_scope": "dkkd_folder",
+      "selection_notes": "CreateFilez case 4 resolves the active issuance-decision template."
+    },
+    {
+      "family_code": "SUPPORT_TRAVEL_AUTHORIZATION",
+      "template_name": "Giay di duong.dotx",
+      "gxp_type": null,
+      "legacy_mode": null,
+      "storage_scope": "support_document",
+      "selection_notes": "One document can be generated per selected inspector."
+    },
+    {
+      "family_code": "SUPPORT_FLIGHT_REQUEST",
+      "template_name": "Xin di may bay.dotx",
+      "gxp_type": null,
+      "legacy_mode": null,
+      "storage_scope": "support_document",
+      "selection_notes": "Uses airport and team composition bookmarks."
+    },
+    {
+      "family_code": "SUPPORT_ATTENDEE_LIST",
+      "template_name": "Ds tham du dot kiem tra.dotx",
+      "gxp_type": null,
+      "legacy_mode": null,
+      "storage_scope": "support_document",
+      "selection_notes": "Expands row sections for inspector, VKN, and SYT lists."
+    },
+    {
+      "family_code": "SUPPORT_DOSSIER_CHECKLIST",
+      "template_name": "Checklist ho so GPs.dotx",
+      "gxp_type": null,
+      "legacy_mode": null,
+      "storage_scope": "support_document",
+      "selection_notes": "Case 4 and 7 are separate checklist families within ExtRecordForm."
+    },
+    {
+      "family_code": "SUPPORT_PAYMENT_TRANSFER",
+      "template_name": "Giay xin sec chuyen khoan.dotx",
+      "gxp_type": null,
+      "legacy_mode": null,
+      "storage_scope": "support_document",
+      "selection_notes": "Payment-support family covers transfer request and authorization letter variants."
+    },
+    {
+      "family_code": "SUPPORT_PAYMENT_WORKBOOK",
+      "template_name": "Thanh toan tam ung.xltx",
+      "gxp_type": null,
+      "legacy_mode": null,
+      "storage_scope": "support_document",
+      "selection_notes": "Excel template branch in ExtRecordForm; kept in registry because it is still an active legacy support flow."
+    }
+  ]
+}

@@ -1178,6 +1178,473 @@ def test_search_facilities_and_workspace_preserve_production_line_context_and_ce
     assert any(item.source_type == "change_request" for item in workspace_payload.history)
 
 
+def test_search_facilities_suppresses_facility_context_when_same_site_gxp_has_authoritative_lines(tmp_path):
+    database_path = tmp_path / "catalog-search-null-suppression.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        company = Company(legal_name="Công ty suppress", short_name="SUP")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="Cơ sở suppress", province_name="Hà Nội", legacy_site_id=12, legacy_gmp_site_code="1.2")
+        session.add(site)
+        session.flush()
+        session.add_all(
+            [
+                Case(site_id=site.id, gxp_type="GMP", scope_code=None, state=CaseState.PLANNED, opened_year=2026),
+                Case(site_id=site.id, gxp_type="GMP", scope_code="A", state=CaseState.UNDER_ASSESSMENT, opened_year=2026),
+                Case(site_id=site.id, gxp_type="GMP", scope_code="B", state=CaseState.INSPECTION_IN_PROGRESS, opened_year=2026),
+            ]
+        )
+        session.commit()
+        site_id = site.id
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        payload = service.search_facilities(
+            session,
+            q=None,
+            gxp_type="GMP",
+            province=None,
+            case_states=None,
+            change_request_states=None,
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            offset=0,
+            limit=50,
+        )
+        workspace = service.get_facility_workspace(session, site_id=site_id, gxp_type="GMP", line_code="A")
+
+    assert payload["total_count"] == 2
+    assert [row["context_code"] for row in payload["items"]] == ["1.2A", "1.2B"]
+    assert [row["line_code"] for row in payload["items"]] == ["A", "B"]
+    assert all(row["result_grain"] == "production_line" for row in payload["items"])
+    assert {row["result_key"] for row in payload["items"]} == {f"{site_id}:GMP:A", f"{site_id}:GMP:B"}
+    assert workspace["summary"]["selected_line_code"] == "A"
+
+
+def test_search_facilities_keeps_facility_context_when_site_gxp_has_no_authoritative_lines(tmp_path):
+    database_path = tmp_path / "catalog-search-facility-only.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        company = Company(legal_name="Công ty facility", short_name="FAC")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="Cơ sở facility", province_name="Đà Nẵng", legacy_site_id=54, legacy_gmp_site_code="5.4")
+        session.add(site)
+        session.flush()
+        session.add(Case(site_id=site.id, gxp_type="GMP", scope_code=None, state=CaseState.PLANNED, opened_year=2026))
+        session.commit()
+        site_id = site.id
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        payload = service.search_facilities(
+            session,
+            q=None,
+            gxp_type="GMP",
+            province=None,
+            case_states=None,
+            change_request_states=None,
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            offset=0,
+            limit=50,
+        )
+        workspace = service.get_facility_workspace(session, site_id=site_id, gxp_type="GMP", line_code=None)
+
+    assert payload["total_count"] == 1
+    assert [row["context_code"] for row in payload["items"]] == ["5.4"]
+    assert payload["items"][0]["line_code"] is None
+    assert payload["items"][0]["result_grain"] == "facility"
+    assert workspace["summary"]["selected_line_code"] is None
+
+
+def test_search_facilities_suppresses_facility_row_when_line_case_uses_facility_wide_current_certificate(tmp_path):
+    database_path = tmp_path / "catalog-search-facility-cert-fallback.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        company = Company(legal_name="Công ty cert fallback", short_name="CFB")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="Cơ sở cert fallback", province_name="Hà Nội", legacy_site_id=88, legacy_gmp_site_code="8.8")
+        session.add(site)
+        session.flush()
+        case_a = Case(
+            site_id=site.id,
+            gxp_type="GMP",
+            scope_code="A",
+            state=CaseState.AWAITING_CERTIFICATE_DECISION,
+            legacy_inspection_code="KT-88-A",
+            opened_year=2026,
+        )
+        session.add(case_a)
+        session.flush()
+        certificate = Certificate(site_id=site.id, case_id=None, certificate_type="GMP", line_code=None, latest_flag=True)
+        session.add(certificate)
+        session.flush()
+        session.add(
+            CertificateVersion(
+                certificate_id=certificate.id,
+                version_no=1,
+                issue_date=date(2026, 5, 1),
+                expiry_date=date(2027, 5, 1),
+                certificate_number="GCN-FACILITY",
+                is_latest_version=True,
+            )
+        )
+        session.commit()
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        payload = service.search_facilities(
+            session,
+            q=None,
+            gxp_type="GMP",
+            province=None,
+            case_states=None,
+            change_request_states=None,
+            certificate_state="active",
+            certificate_expiring_within_days=None,
+            offset=0,
+            limit=50,
+        )
+
+    assert payload["total_count"] == 1
+    assert [row["context_code"] for row in payload["items"]] == ["8.8A"]
+    assert payload["items"][0]["line_code"] == "A"
+    assert payload["items"][0]["current_certificate_number"] == "GCN-FACILITY"
+
+
+def test_search_facilities_suppresses_facility_row_when_certificate_has_line_and_facility_versions(tmp_path):
+    database_path = tmp_path / "catalog-search-certificate-line-and-facility.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        company = Company(legal_name="Công ty cert line", short_name="CCL")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="Cơ sở cert line", province_name="Hà Nội", legacy_site_id=99, legacy_gmp_site_code="9.9")
+        session.add(site)
+        session.flush()
+        certificate_line = Certificate(site_id=site.id, case_id=None, certificate_type="GMP", line_code="A", latest_flag=True)
+        certificate_facility = Certificate(site_id=site.id, case_id=None, certificate_type="GMP", line_code=None, latest_flag=True)
+        session.add_all([certificate_line, certificate_facility])
+        session.flush()
+        session.add_all(
+            [
+                CertificateVersion(
+                    certificate_id=certificate_line.id,
+                    version_no=1,
+                    issue_date=date(2026, 5, 1),
+                    expiry_date=date(2027, 5, 1),
+                    certificate_number="GCN-A",
+                    is_latest_version=True,
+                ),
+                CertificateVersion(
+                    certificate_id=certificate_facility.id,
+                    version_no=1,
+                    issue_date=date(2026, 4, 1),
+                    expiry_date=date(2027, 4, 1),
+                    certificate_number="GCN-FACILITY",
+                    is_latest_version=True,
+                ),
+            ]
+        )
+        session.commit()
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        payload = service.search_facilities(
+            session,
+            q=None,
+            gxp_type="GMP",
+            province=None,
+            case_states=None,
+            change_request_states=None,
+            certificate_state="active",
+            certificate_expiring_within_days=None,
+            offset=0,
+            limit=50,
+        )
+
+    assert payload["total_count"] == 1
+    assert [row["context_code"] for row in payload["items"]] == ["9.9A"]
+    assert payload["items"][0]["line_code"] == "A"
+    assert payload["items"][0]["result_grain"] == "production_line"
+
+
+def test_search_facilities_keeps_line_contexts_per_gxp_and_facility_context_for_other_gxp(tmp_path):
+    database_path = tmp_path / "catalog-search-cross-gxp-null-suppression.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        company = Company(legal_name="Công ty cross gxp", short_name="XGP")
+        session.add(company)
+        session.flush()
+        site = Site(
+            company_id=company.id,
+            site_name="Cơ sở cross gxp",
+            province_name="Hải Phòng",
+            legacy_site_id=71,
+            legacy_gmp_site_code="7.1",
+            legacy_glp_site_code="7.1",
+        )
+        session.add(site)
+        session.flush()
+        session.add_all(
+            [
+                Case(site_id=site.id, gxp_type="GMP", scope_code=None, state=CaseState.PLANNED, opened_year=2026),
+                Case(site_id=site.id, gxp_type="GMP", scope_code="A", state=CaseState.UNDER_ASSESSMENT, opened_year=2026),
+                Case(site_id=site.id, gxp_type="GLP", scope_code=None, state=CaseState.PLANNED, opened_year=2026),
+            ]
+        )
+        session.commit()
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        payload = service.search_facilities(
+            session,
+            q=None,
+            gxp_type=None,
+            province=None,
+            case_states=None,
+            change_request_states=None,
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            offset=0,
+            limit=50,
+        )
+
+    assert payload["total_count"] == 2
+    assert [row["context_code"] for row in payload["items"]] == ["7.1", "7.1A"]
+    assert [row["gxp_type"] for row in payload["items"]] == ["GLP", "GMP"]
+    assert [row["line_code"] for row in payload["items"]] == [None, "A"]
+
+
+def test_search_facilities_applies_null_context_suppression_before_filters_and_paging(tmp_path):
+    database_path = tmp_path / "catalog-search-filtered-null-suppression.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        company = Company(legal_name="Công ty filter suppress", short_name="FSUP")
+        session.add(company)
+        session.flush()
+        site = Site(
+            company_id=company.id,
+            site_name="Nhà máy Filter",
+            province_name="Hà Nội",
+            legacy_site_id=120,
+            legacy_gmp_site_code="1.2",
+        )
+        session.add(site)
+        session.flush()
+        session.add_all(
+            [
+                Case(
+                    site_id=site.id,
+                    gxp_type="GMP",
+                    scope_code=None,
+                    state=CaseState.PLANNED,
+                    legacy_inspection_code="KT-NULL",
+                    applicable_standard="WHO-GMP",
+                    opened_year=2026,
+                ),
+                Case(
+                    site_id=site.id,
+                    gxp_type="GMP",
+                    scope_code="A",
+                    state=CaseState.INSPECTION_IN_PROGRESS,
+                    legacy_inspection_code="KT-LINE-A",
+                    applicable_standard="WHO-GMP",
+                    opened_year=2026,
+                ),
+                Case(
+                    site_id=site.id,
+                    gxp_type="GMP",
+                    scope_code="B",
+                    state=CaseState.PLANNED,
+                    legacy_inspection_code="KT-LINE-B",
+                    applicable_standard="PIC/S-GMP",
+                    opened_year=2026,
+                ),
+            ]
+        )
+        facility_certificate = Certificate(site_id=site.id, case_id=None, certificate_type="GMP", line_code=None, latest_flag=True)
+        line_certificate = Certificate(site_id=site.id, case_id=None, certificate_type="GMP", line_code="A", latest_flag=True)
+        session.add_all([facility_certificate, line_certificate])
+        session.flush()
+        facility_version = CertificateVersion(
+            certificate_id=facility_certificate.id,
+            version_no=1,
+            issue_date=date.today() - timedelta(days=30),
+            expiry_date=date.today() + timedelta(days=30),
+            certificate_number="GCN-FILTER-FACILITY",
+            is_latest_version=True,
+        )
+        line_version = CertificateVersion(
+            certificate_id=line_certificate.id,
+            version_no=1,
+            issue_date=date.today() - timedelta(days=10),
+            expiry_date=date.today() + timedelta(days=10),
+            certificate_number="GCN-FILTER-A",
+            is_latest_version=True,
+        )
+        session.add_all([facility_version, line_version])
+        session.flush()
+        session.add_all(
+            [
+                CertificateScope(
+                    certificate_version_id=facility_version.id,
+                    scope_key=None,
+                    scope_text="Phạm vi dùng chung facility",
+                    sort_order=1,
+                ),
+                CertificateScope(
+                    certificate_version_id=line_version.id,
+                    scope_key="A",
+                    scope_text="Dây chuyền A filter",
+                    sort_order=1,
+                ),
+            ]
+        )
+        session.commit()
+
+    service = CatalogReadService()
+    search_kwargs = dict(
+        province=None,
+        gxp_type="GMP",
+        change_request_states=None,
+        offset=0,
+        limit=10,
+    )
+    with Session(engine) as session:
+        unfiltered = service.search_facilities(
+            session,
+            q=None,
+            facility_name=None,
+            certificate_scope=None,
+            case_states=None,
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            **search_kwargs,
+        )
+        by_name = service.search_facilities(
+            session,
+            q=None,
+            facility_name="Filter",
+            certificate_scope=None,
+            case_states=None,
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            **search_kwargs,
+        )
+        by_q = service.search_facilities(
+            session,
+            q="GCN-FILTER",
+            facility_name=None,
+            certificate_scope=None,
+            case_states=None,
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            **search_kwargs,
+        )
+        by_scope = service.search_facilities(
+            session,
+            q=None,
+            facility_name=None,
+            certificate_scope="facility",
+            case_states=None,
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            **search_kwargs,
+        )
+        by_case_state = service.search_facilities(
+            session,
+            q=None,
+            facility_name=None,
+            certificate_scope=None,
+            case_states=[CaseState.PLANNED.value, CaseState.INSPECTION_IN_PROGRESS.value],
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            **search_kwargs,
+        )
+        by_active_certificate = service.search_facilities(
+            session,
+            q=None,
+            facility_name=None,
+            certificate_scope=None,
+            case_states=None,
+            certificate_state="active",
+            certificate_expiring_within_days=None,
+            **search_kwargs,
+        )
+        by_expiring_certificate = service.search_facilities(
+            session,
+            q=None,
+            facility_name=None,
+            certificate_scope=None,
+            case_states=None,
+            certificate_state=None,
+            certificate_expiring_within_days=90,
+            **search_kwargs,
+        )
+        first_page = service.search_facilities(
+            session,
+            q=None,
+            facility_name=None,
+            certificate_scope=None,
+            case_states=None,
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            province=None,
+            gxp_type="GMP",
+            change_request_states=None,
+            offset=0,
+            limit=1,
+        )
+        second_page = service.search_facilities(
+            session,
+            q=None,
+            facility_name=None,
+            certificate_scope=None,
+            case_states=None,
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            province=None,
+            gxp_type="GMP",
+            change_request_states=None,
+            offset=1,
+            limit=1,
+        )
+
+    expected_contexts = ["1.2A", "1.2B"]
+    for payload in [unfiltered, by_name, by_q, by_scope, by_case_state, by_active_certificate, by_expiring_certificate]:
+        assert payload["total_count"] == 2
+        assert [row["context_code"] for row in payload["items"]] == expected_contexts
+        assert all(row["line_code"] in {"A", "B"} for row in payload["items"])
+
+    assert first_page["total_count"] == 2
+    assert second_page["total_count"] == 2
+    assert [row["context_code"] for row in first_page["items"]] == ["1.2A"]
+    assert [row["context_code"] for row in second_page["items"]] == ["1.2B"]
+    assert {row["result_key"] for row in first_page["items"]}.isdisjoint({row["result_key"] for row in second_page["items"]})
+
+
 def test_gxp_certificate_workspace_reads_history_and_detail_with_line_safe_filtering(tmp_path):
     database_path = tmp_path / "catalog-gxp-workspace.sqlite"
     database_url = f"sqlite:///{database_path.as_posix()}"
@@ -2087,6 +2554,8 @@ def test_search_context_query_preserves_postgresql_paging_semantics():
     assert "site_name" in normalized
     assert "gxp_type" in normalized
     assert "line_code" in normalized
+    assert "search_contexts_non_null_peer.line_code IS NOT NULL" in normalized
+    assert "search_contexts_filtered.line_code IS NULL" not in normalized
     assert "ORDER BY search_contexts.legacy_site_id IS NULL, search_contexts.legacy_site_id ASC, search_contexts.site_name ASC, search_contexts.gxp_type IS NULL, search_contexts.gxp_type ASC, search_contexts.line_code IS NULL, search_contexts.line_code ASC, search_contexts.site_id ASC" in normalized
     assert "LIMIT 20" in normalized
     assert "OFFSET 10" in normalized

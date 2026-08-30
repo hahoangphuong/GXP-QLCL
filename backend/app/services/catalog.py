@@ -958,14 +958,38 @@ class CatalogReadService:
             context_selects.append(facility_fallback_contexts)
 
         unioned_contexts = union_all(*context_selects).subquery("search_context_candidates")
-        contexts_stmt = select(
+        distinct_contexts = select(
             unioned_contexts.c.site_id,
             unioned_contexts.c.legacy_site_id,
             unioned_contexts.c.site_name,
             unioned_contexts.c.gxp_type,
             unioned_contexts.c.line_code,
         ).distinct()
-        contexts = contexts_stmt.subquery("search_contexts_filtered")
+        contexts = distinct_contexts.subquery("search_contexts_distinct")
+        non_null_peer = contexts.alias("search_contexts_non_null_peer")
+        suppressed_contexts_stmt = select(
+            contexts.c.site_id,
+            contexts.c.legacy_site_id,
+            contexts.c.site_name,
+            contexts.c.gxp_type,
+            contexts.c.line_code,
+        ).where(
+            ~and_(
+                contexts.c.line_code.is_(None),
+                select(non_null_peer.c.site_id)
+                .where(non_null_peer.c.site_id == contexts.c.site_id)
+                .where(
+                    or_(
+                        non_null_peer.c.gxp_type == contexts.c.gxp_type,
+                        and_(non_null_peer.c.gxp_type.is_(None), contexts.c.gxp_type.is_(None)),
+                    )
+                )
+                .where(non_null_peer.c.line_code.is_not(None))
+                .correlate(contexts)
+                .exists(),
+            )
+        )
+        contexts = suppressed_contexts_stmt.subquery("search_contexts_filtered")
         filtered_contexts_stmt = select(
             contexts.c.site_id,
             contexts.c.legacy_site_id,

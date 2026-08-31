@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
@@ -10,9 +10,11 @@ import type {
   CapaCycleSubmitRequest,
   CapaCycleUpdateRequest,
   CaseApplicationUpsertRequest,
+  CaseAssessmentUpsertRequest,
   CaseWorkspace,
   ChangeRequestWorkspace,
   DocumentChecklistItem,
+  DocumentDetail,
   FacilityHistoryItem,
   GxpCertificateDetail,
   InspectionOutcomeUpsertRequest,
@@ -21,22 +23,13 @@ import type {
 import { BusinessEligibilityDetailFields } from "./BusinessEligibilityDetailFields";
 import { CaseApplicationWorkspace } from "./CaseApplicationWorkspace";
 import { CaseInspectionWorkspace } from "./CaseInspectionWorkspace";
+import { CaseProcessingWorkspace } from "./CaseProcessingWorkspace";
 import { CaseRemediationWorkspace } from "./CaseRemediationWorkspace";
 import { DetailValue } from "./DetailValue";
 import { GxpCertificateDetailFields } from "./GxpCertificateDetailFields";
 
-const CASE_EVENT_TABS = ["Hồ sơ", "Kiểm tra", "Khắc phục", "Xử lý", "Tài liệu", "Chứng nhận GxP", "Chứng nhận ĐĐK"] as const;
+const CASE_EVENT_TABS = ["Hồ sơ", "Kiểm tra", "Khắc phục", "Xử lý", "Chứng nhận GxP", "Chứng nhận ĐĐK"] as const;
 const CHANGE_REQUEST_EVENT_TABS = ["Đề nghị", "Chi tiết", "Xử lý", "Tài liệu"] as const;
-
-const PROCESSING_EVENT_LABELS: Record<string, string> = {
-  application_submitted: "Tiếp nhận hồ sơ",
-  assessment_completed: "Thẩm định hoàn tất",
-  plan_created: "Lập kế hoạch",
-  decision_issued: "Ban hành quyết định",
-  inspection_executed: "Thực hiện kiểm tra",
-  outcome_recorded: "Ghi nhận kết quả",
-  certificate_issued: "Cấp chứng nhận",
-};
 
 const DOCUMENT_STATUS_LABELS: Record<string, string> = {
   available: "Đã có tài liệu",
@@ -47,6 +40,26 @@ const DOCUMENT_PARENT_SCOPE_LABELS: Record<string, string> = {
   case: "Hồ sơ",
   capa_cycle: "CAPA",
   change_request: "Thay đổi",
+};
+
+const CASE_DOCUMENT_STEP_FAMILIES: Record<string, ReadonlySet<string>> = {
+  "Hồ sơ": new Set(["ASSESSMENT_MINUTES"]),
+  "Kiểm tra": new Set([
+    "INSPECTION_QD_KT",
+    "INSPECTION_KE_HOACH_KT",
+    "INSPECTION_BB_KT",
+    "INSPECTION_BBTD_HOSO_DK",
+  ]),
+  "Khắc phục": new Set(["INSPECTION_CAPA_LAN_1", "INSPECTION_CAPA_LAN_2"]),
+  "Xử lý": new Set([
+    "INSPECTION_PT_PCT",
+    "INSPECTION_PT_CT",
+    "CERTIFICATE_DECISION",
+    "RISK_MANAGEMENT_WORKSHEET",
+    "STATUS_CONFIRMATION_LETTER",
+  ]),
+  "Chứng nhận GxP": new Set(["CERTIFICATE_ISSUANCE_WORD"]),
+  "Chứng nhận ĐĐK": new Set(),
 };
 
 function WorkspaceSection({
@@ -108,6 +121,138 @@ function DocumentChecklistSection({
       </table>
     </div>
   );
+}
+
+function ContextualDocumentSection({
+  items,
+  onLoadDocumentDetail,
+}: {
+  items: DocumentChecklistItem[];
+  onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
+}) {
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<DocumentDetail | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const currentItem = useMemo(
+    () => items.find((item) => item.document_id === selectedDocumentId) ?? null,
+    [items, selectedDocumentId],
+  );
+
+  useEffect(() => {
+    if (!currentItem) {
+      setDetail(null);
+      setLoading(false);
+      setError(null);
+    }
+  }, [currentItem]);
+
+  async function handleOpen(item: DocumentChecklistItem) {
+    if (!item.document_id) {
+      return;
+    }
+    setSelectedDocumentId(item.document_id);
+    setLoading(true);
+    setError(null);
+    try {
+      const payload = await onLoadDocumentDetail(item.document_id);
+      setDetail(payload);
+    } catch (nextError) {
+      setDetail(null);
+      setError(nextError instanceof Error ? nextError.message : "Không mở được chi tiết tài liệu.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <WorkspaceSection title="Tài liệu liên quan">
+      <div className="contextual-document-list">
+        {items.map((item) => (
+          <div className="contextual-document-row" key={item.checklist_key}>
+            <div className="contextual-document-main">
+              <strong>{item.label}</strong>
+              <span>{item.original_filename ?? DOCUMENT_STATUS_LABELS[item.status] ?? item.status}</span>
+            </div>
+            <div className="contextual-document-actions">
+              <span className={`document-status-pill document-status-${item.status}`}>{DOCUMENT_STATUS_LABELS[item.status] ?? item.status}</span>
+              {item.detail_available && item.document_id ? (
+                <button onClick={() => void handleOpen(item)} type="button">
+                  Mở
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ))}
+      </div>
+      {loading ? <p className="workspace-note">Đang tải chi tiết tài liệu...</p> : null}
+      {error ? (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {detail ? (
+        <div className="document-detail-shell">
+          <div className="detail-grid compact-grid">
+            <DetailValue label="Tài liệu" value={currentItem?.label ?? detail.title ?? detail.family_code} />
+            <DetailValue label="Tiêu đề" value={detail.title} />
+            <DetailValue label="Loại" value={detail.family_code} />
+          </div>
+          <div className="table-scroll table-scroll-history">
+            <table className="dense-table event-document-table">
+              <thead>
+                <tr>
+                  <th>Biến thể</th>
+                  <th>Ngôn ngữ</th>
+                  <th>Phiên bản hiện có</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detail.variants.map((variant) => (
+                  <tr key={variant.id}>
+                    <td>{variant.variant_type}</td>
+                    <td>{variant.language_code}</td>
+                    <td>
+                      {variant.versions.length > 0
+                        ? variant.versions
+                            .map((version) => `${version.original_filename ?? `v${version.version_no}`}${version.is_current ? " (hiện hành)" : ""}`)
+                            .join(", ")
+                        : "Chưa có"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+    </WorkspaceSection>
+  );
+}
+
+function filterCaseDocumentsForStep(
+  items: DocumentChecklistItem[],
+  activeTab: string,
+  selectedRemediationCycleId: string | null,
+): DocumentChecklistItem[] {
+  const familyCodes = CASE_DOCUMENT_STEP_FAMILIES[activeTab];
+  if (!familyCodes || familyCodes.size === 0) {
+    return [];
+  }
+  return items.filter((item) => {
+    if (!item.family_code || !familyCodes.has(item.family_code)) {
+      return false;
+    }
+    if (item.parent_scope === "capa_cycle") {
+      return activeTab === "Khắc phục" && item.parent_id === selectedRemediationCycleId;
+    }
+    return item.parent_scope === "case";
+  });
 }
 
 function LinkedGxpCertificates({
@@ -275,6 +420,7 @@ function renderCaseStepContent(
   activeTab: string,
   caseWorkspace: CaseWorkspace,
   onCaseApplicationSave: (payload: CaseApplicationUpsertRequest) => Promise<void>,
+  onCaseAssessmentSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>,
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>,
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>,
   selectedRemediationCycleId: string | null,
@@ -283,104 +429,64 @@ function renderCaseStepContent(
   onUpdateCapaCycle: (cycleId: string, payload: CapaCycleUpdateRequest) => Promise<void>,
   onSubmitCapaCycle: (cycleId: string, payload: CapaCycleSubmitRequest) => Promise<void>,
   onAssessCapaCycle: (cycleId: string, payload: CapaCycleAssessRequest) => Promise<void>,
+  onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>,
 ) {
+  const documentItems = filterCaseDocumentsForStep(caseWorkspace.documents.items, activeTab, selectedRemediationCycleId);
+
   if (activeTab === "Hồ sơ") {
-    return <CaseApplicationWorkspace caseWorkspace={caseWorkspace} onSave={onCaseApplicationSave} />;
+    return (
+      <div className="event-step-stack">
+        <CaseApplicationWorkspace caseWorkspace={caseWorkspace} onSave={onCaseApplicationSave} />
+        <ContextualDocumentSection items={documentItems} onLoadDocumentDetail={onLoadDocumentDetail} />
+      </div>
+    );
   }
 
   if (activeTab === "Kiểm tra") {
     return (
-      <CaseInspectionWorkspace
-        caseWorkspace={caseWorkspace}
-        onInspectionOutcomeSave={onInspectionOutcomeSave}
-        onInspectionPlanSave={onInspectionPlanSave}
-      />
+      <div className="event-step-stack">
+        <CaseInspectionWorkspace
+          caseWorkspace={caseWorkspace}
+          onInspectionOutcomeSave={onInspectionOutcomeSave}
+          onInspectionPlanSave={onInspectionPlanSave}
+        />
+        <ContextualDocumentSection items={documentItems} onLoadDocumentDetail={onLoadDocumentDetail} />
+      </div>
     );
   }
 
   if (activeTab === "Khắc phục") {
     return (
-      <CaseRemediationWorkspace
-        caseWorkspace={caseWorkspace}
-        onAssessCycle={onAssessCapaCycle}
-        onCreateCycle={onCreateCapaCycle}
-        onSelectedCycleChange={onSelectedRemediationCycleChange}
-        onSubmitCycle={onSubmitCapaCycle}
-        onUpdateCycle={onUpdateCapaCycle}
-        selectedCycleId={selectedRemediationCycleId}
-      />
+      <div className="event-step-stack">
+        <CaseRemediationWorkspace
+          caseWorkspace={caseWorkspace}
+          onAssessCycle={onAssessCapaCycle}
+          onCreateCycle={onCreateCapaCycle}
+          onSelectedCycleChange={onSelectedRemediationCycleChange}
+          onSubmitCycle={onSubmitCapaCycle}
+          onUpdateCycle={onUpdateCapaCycle}
+          selectedCycleId={selectedRemediationCycleId}
+        />
+        <ContextualDocumentSection items={documentItems} onLoadDocumentDetail={onLoadDocumentDetail} />
+      </div>
     );
   }
 
   if (activeTab === "Xử lý") {
-    const processing = caseWorkspace.processing;
-    const hasProcessingData = Boolean(
-      processing.assessed_on ||
-        processing.assessor_name ||
-        processing.assessment_result ||
-        processing.notes ||
-        processing.events.length > 0,
-    );
-    if (!hasProcessingData) {
-      return (
-        <EmptyState
-          title="Chưa có dữ liệu xử lý"
-          description="Canonical model hiện chưa có đủ dữ liệu xử lý hành chính riêng cho hồ sơ này."
-        />
-      );
-    }
     return (
       <div className="event-step-stack">
-        <WorkspaceSection title="Kết luận xử lý">
-          <div className="detail-grid compact-grid">
-            <DetailValue label="Ngày xử lý" value={formatCompactDate(processing.assessed_on)} />
-            <DetailValue label="Người xử lý" value={processing.assessor_name} />
-            <DetailValue label="Kết luận" multiline value={processing.assessment_result} />
-            <DetailValue label="Ghi chú" multiline value={processing.notes} />
-          </div>
-        </WorkspaceSection>
-        <WorkspaceSection title="Các mốc xử lý hành chính">
-          {processing.events.length > 0 ? (
-            <div className="table-scroll table-scroll-history">
-              <table className="dense-table event-milestone-table">
-                <thead>
-                  <tr>
-                    <th>Mốc</th>
-                    <th>Ngày</th>
-                    <th>Nội dung</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {processing.events.map((event, index) => (
-                    <tr key={`${event.event_type}:${event.occurred_at ?? "none"}:${index}`}>
-                      <td>{PROCESSING_EVENT_LABELS[event.event_type] ?? event.event_type}</td>
-                      <td>{formatCompactDate(event.occurred_at)}</td>
-                      <td>{event.payload ?? "Chưa có"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <EmptyState title="Chưa có mốc xử lý" description="Chưa có inspection event hành chính nào được canonicalize cho hồ sơ này." />
-          )}
-        </WorkspaceSection>
+        <CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} />
+        <ContextualDocumentSection items={documentItems} onLoadDocumentDetail={onLoadDocumentDetail} />
       </div>
     );
   }
 
   if (activeTab === "Chứng nhận GxP") {
-    return <LinkedGxpCertificates items={caseWorkspace.linked_gxp_certificates} />;
-  }
-
-  if (activeTab === "Tài liệu") {
     return (
-      <WorkspaceSection title="Checklist tài liệu hồ sơ">
-        <DocumentChecklistSection
-          emptyDescription="Canonical document owner hiện chưa có document row nào cho hồ sơ hoặc các vòng CAPA đang chọn."
-          items={caseWorkspace.documents.items}
-        />
-      </WorkspaceSection>
+      <div className="event-step-stack">
+        <LinkedGxpCertificates items={caseWorkspace.linked_gxp_certificates} />
+        <ContextualDocumentSection items={documentItems} onLoadDocumentDetail={onLoadDocumentDetail} />
+      </div>
     );
   }
 
@@ -481,8 +587,10 @@ export function EventWorkspace({
   activeTab,
   onTabChange,
   onCaseApplicationSave,
+  onCaseAssessmentSave,
   onInspectionPlanSave,
   onInspectionOutcomeSave,
+  onLoadDocumentDetail,
   selectedRemediationCycleId,
   onSelectedRemediationCycleChange,
   onCreateCapaCycle,
@@ -500,8 +608,10 @@ export function EventWorkspace({
   activeTab: string;
   onTabChange: (tab: string) => void;
   onCaseApplicationSave: (payload: CaseApplicationUpsertRequest) => Promise<void>;
+  onCaseAssessmentSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>;
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
+  onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
   selectedRemediationCycleId: string | null;
   onSelectedRemediationCycleChange: (cycleId: string | null) => void;
   onCreateCapaCycle: (payload: CapaCycleCreateRequest) => Promise<void>;
@@ -573,6 +683,7 @@ export function EventWorkspace({
             effectiveActiveTab,
             caseWorkspace,
             onCaseApplicationSave,
+            onCaseAssessmentSave,
             onInspectionPlanSave,
             onInspectionOutcomeSave,
             selectedRemediationCycleId,
@@ -581,6 +692,7 @@ export function EventWorkspace({
             onUpdateCapaCycle,
             onSubmitCapaCycle,
             onAssessCapaCycle,
+            onLoadDocumentDetail,
           )
         ) : (
           <EmptyState title="Chưa có workspace hồ sơ" description="Backend chưa trả dữ liệu workspace cho lựa chọn case hiện tại." />

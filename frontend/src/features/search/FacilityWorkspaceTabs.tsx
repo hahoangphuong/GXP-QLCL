@@ -4,10 +4,12 @@ import type {
   CapaCycleCreateRequest,
   CapaCycleSubmitRequest,
   CapaCycleUpdateRequest,
-  CaseApplicationUpsertRequest,
   BusinessEligibilityListItem,
+  CaseApplicationUpsertRequest,
+  CaseAssessmentUpsertRequest,
   CaseWorkspace,
   ChangeRequestWorkspace,
+  DocumentDetail,
   FacilityHistoryItem,
   FacilityWorkspaceSummary,
   GxpCertificateDetail,
@@ -61,8 +63,10 @@ export function FacilityWorkspaceTabs({
   eligibilityCertificateDetailLoading,
   eligibilityCertificateDetailError,
   onCaseApplicationSave,
+  onCaseAssessmentSave,
   onInspectionPlanSave,
   onInspectionOutcomeSave,
+  onLoadDocumentDetail,
   selectedRemediationCycleId,
   onSelectedRemediationCycleChange,
   onCreateCapaCycle,
@@ -102,8 +106,10 @@ export function FacilityWorkspaceTabs({
   eligibilityCertificateDetailLoading: boolean;
   eligibilityCertificateDetailError: string | null;
   onCaseApplicationSave: (payload: CaseApplicationUpsertRequest) => Promise<void>;
+  onCaseAssessmentSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>;
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
+  onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
   selectedRemediationCycleId: string | null;
   onSelectedRemediationCycleChange: (cycleId: string | null) => void;
   onCreateCapaCycle: (payload: CapaCycleCreateRequest) => Promise<void>;
@@ -148,10 +154,12 @@ export function FacilityWorkspaceTabs({
                 changeRequestWorkspaceError={changeRequestWorkspaceError}
                 changeRequestWorkspaceLoading={changeRequestWorkspaceLoading}
                 onCaseApplicationSave={onCaseApplicationSave}
+                onCaseAssessmentSave={onCaseAssessmentSave}
                 onAssessCapaCycle={onAssessCapaCycle}
                 onCreateCapaCycle={onCreateCapaCycle}
                 onInspectionOutcomeSave={onInspectionOutcomeSave}
                 onInspectionPlanSave={onInspectionPlanSave}
+                onLoadDocumentDetail={onLoadDocumentDetail}
                 onSelectedRemediationCycleChange={onSelectedRemediationCycleChange}
                 onSubmitCapaCycle={onSubmitCapaCycle}
                 onTabChange={onEventTabChange}

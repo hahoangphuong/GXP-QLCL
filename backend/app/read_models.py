@@ -241,6 +241,7 @@ class CaseWorkspaceProcessingEventRead(BaseModel):
 
 
 class CaseWorkspaceProcessingRead(BaseModel):
+    row_version: int | None = None
     assessed_on: datetime | None
     assessor_name: str | None
     assessment_result: str | None

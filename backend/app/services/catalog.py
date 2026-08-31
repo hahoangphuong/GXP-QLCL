@@ -2146,6 +2146,7 @@ class CatalogReadService:
                 ]
             },
             "processing": {
+                "row_version": None if assessment is None else assessment.row_version,
                 "assessed_on": None if assessment is None else assessment.assessed_on,
                 "assessor_name": None if assessment is None else assessment.assessor_name,
                 "assessment_result": None if assessment is None else assessment.assessment_result,

@@ -9,6 +9,8 @@ import type {
   CapaCycleUpdateRequest,
   CaseApplicationUpsertRequest,
   CaseApplicationUpsertResponse,
+  CaseAssessmentUpsertRequest,
+  CaseAssessmentUpsertResponse,
   CaseDetail,
   CaseListItem,
   CaseWorkspace,
@@ -275,6 +277,22 @@ export function upsertCaseApplication(
   bearerToken?: string | null,
 ): Promise<CaseApplicationUpsertResponse> {
   return requestJson<CaseApplicationUpsertResponse>(`/cases/${caseId}/application`, {
+    method: "PUT",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function upsertCaseAssessment(
+  caseId: string,
+  payload: CaseAssessmentUpsertRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<CaseAssessmentUpsertResponse> {
+  return requestJson<CaseAssessmentUpsertResponse>(`/cases/${caseId}/assessment`, {
     method: "PUT",
     body: payload,
     auth,

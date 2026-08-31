@@ -359,11 +359,32 @@ export type CaseWorkspaceProcessingEvent = {
 };
 
 export type CaseWorkspaceProcessing = {
+  row_version: number | null;
   assessed_on: string | null;
   assessor_name: string | null;
   assessment_result: string | null;
   notes: string | null;
   events: CaseWorkspaceProcessingEvent[];
+};
+
+export type CaseAssessmentUpsertRequest = {
+  expected_version: number | null;
+  assessed_on: string | null;
+  assessor_name: string | null;
+  assessment_result: string | null;
+  notes: string | null;
+  reason?: string | null;
+};
+
+export type CaseAssessmentUpsertResponse = {
+  case_id: string;
+  row_version: number;
+  assessed_on: string | null;
+  assessor_name: string | null;
+  assessment_result: string | null;
+  notes: string | null;
+  audit_event_id: string;
+  inspection_event_id: string | null;
 };
 
 export type WorkspaceActionReadiness = {

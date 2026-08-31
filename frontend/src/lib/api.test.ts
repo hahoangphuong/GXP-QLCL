@@ -19,6 +19,7 @@ import {
   searchFacilities,
   submitCapaCycle,
   upsertCaseApplication,
+  upsertCaseAssessment,
   updateCapaCycle,
   upsertInspectionOutcome,
   upsertInspectionPlan,
@@ -317,6 +318,43 @@ describe("frontend API routing contract", () => {
           dossier_code: "HS-2026-01",
           dossier_reference: "CV-123",
           applicant_name: "Nguyễn Văn A",
+        }),
+      }),
+    );
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain("/api/api/");
+  });
+
+  it("puts case assessment updates to the canonical assessment endpoint with optimistic concurrency payload", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: { case_id: "case-123", row_version: 3 } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await upsertCaseAssessment(
+      "case-123",
+      {
+        expected_version: 2,
+        assessed_on: "2026-09-07T00:00:00Z",
+        assessor_name: "Chuyên viên C",
+        assessment_result: "Đề xuất trình ký",
+        notes: null,
+      },
+      { username: "operator.local", role: "manager" },
+      true,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/cases/case-123/assessment",
+      expect.objectContaining({
+        method: "PUT",
+        headers: expect.objectContaining({
+          "X-Auth-User": "operator.local",
+          "X-Auth-Role": "manager",
+        }),
+        body: JSON.stringify({
+          expected_version: 2,
+          assessed_on: "2026-09-07T00:00:00Z",
+          assessor_name: "Chuyên viên C",
+          assessment_result: "Đề xuất trình ký",
+          notes: null,
         }),
       }),
     );

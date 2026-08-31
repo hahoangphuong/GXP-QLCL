@@ -1,7 +1,8 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { formatCompactDate } from "../../lib/presentation";
 import type { CaseWorkspace, InspectionOutcomeUpsertRequest, InspectionPlanUpsertRequest } from "../../types";
+import { EditableDetailValue } from "./EditableDetailValue";
 import { DetailValue } from "./DetailValue";
 
 type InspectionPlanDraft = {
@@ -35,6 +36,20 @@ function getErrorStatus(error: Error): number | null {
   return typeof status === "number" ? status : null;
 }
 
+function getSectionErrorMessage(error: Error, sectionLabel: string): string {
+  const status = getErrorStatus(error);
+  if (status === 409) {
+    return `Không thể lưu ${sectionLabel.toLowerCase()} vì hồ sơ đã bị thay đổi hoặc đã ở trạng thái kết thúc. Tải lại workspace rồi thử lại.`;
+  }
+  if (status === 403) {
+    return `Bạn không có quyền cập nhật ${sectionLabel.toLowerCase()}. ${error.message}`;
+  }
+  if (status === 422) {
+    return `Dữ liệu ${sectionLabel.toLowerCase()} chưa hợp lệ. ${error.message}`;
+  }
+  return error.message || `Không lưu được ${sectionLabel.toLowerCase()}.`;
+}
+
 function buildPlanDraft(caseWorkspace: CaseWorkspace): InspectionPlanDraft {
   return {
     plan_start_on: normalizeDateInputValue(caseWorkspace.inspection.plan_start_on),
@@ -54,42 +69,28 @@ function buildOutcomeDraft(caseWorkspace: CaseWorkspace): InspectionOutcomeDraft
   };
 }
 
-function getSectionErrorMessage(error: Error, sectionLabel: string): string {
-  const status = getErrorStatus(error);
-  if (status === 409) {
-    return `Không thể lưu ${sectionLabel.toLowerCase()} vì hồ sơ đã bị thay đổi hoặc đã ở trạng thái kết thúc. Tải lại workspace rồi thử lại.`;
-  }
-  if (status === 403) {
-    return `Bạn không có quyền cập nhật ${sectionLabel.toLowerCase()}. ${error.message}`;
-  }
-  if (status === 422) {
-    return `Dữ liệu ${sectionLabel.toLowerCase()} chưa hợp lệ. ${error.message}`;
-  }
-  return error.message || `Không lưu được ${sectionLabel.toLowerCase()}.`;
-}
-
-function InspectionPlanEditor({
+function InspectionPlanSection({
   caseWorkspace,
   onSave,
 }: {
   caseWorkspace: CaseWorkspace;
   onSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
 }) {
-  const [isEditing, setIsEditing] = useState(false);
+  const currentDraft = useMemo(() => buildPlanDraft(caseWorkspace), [caseWorkspace]);
+  const [draft, setDraft] = useState<InspectionPlanDraft>(currentDraft);
+  const [editingField, setEditingField] = useState<"plan_start_on" | "plan_end_on" | null>(null);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [draft, setDraft] = useState<InspectionPlanDraft>(() => buildPlanDraft(caseWorkspace));
 
   useEffect(() => {
-    if (!isEditing) {
-      setDraft(buildPlanDraft(caseWorkspace));
+    if (!editingField) {
+      setDraft(currentDraft);
       setErrorMessage(null);
     }
-  }, [caseWorkspace, isEditing]);
+  }, [currentDraft, editingField]);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (pending) {
+  async function saveField() {
+    if (!editingField || pending) {
       return;
     }
     setPending(true);
@@ -102,98 +103,71 @@ function InspectionPlanEditor({
         planning_sheet_name: normalizeText(draft.planning_sheet_name),
         decision_document_hint: normalizeText(draft.decision_document_hint),
       });
-      setIsEditing(false);
+      setEditingField(null);
     } catch (error) {
       const nextError = error instanceof Error ? error : new Error("Không lưu được kế hoạch kiểm tra.");
-      setErrorMessage(getSectionErrorMessage(nextError, "Kế hoạch / quyết định"));
+      setErrorMessage(getSectionErrorMessage(nextError, "Kế hoạch kiểm tra"));
     } finally {
       setPending(false);
     }
   }
 
+  function cancelEdit() {
+    setDraft(currentDraft);
+    setErrorMessage(null);
+    setEditingField(null);
+  }
+
   return (
     <section className="workspace-section">
-      <div className="workspace-section-header">
-        <h4>Kế hoạch / quyết định</h4>
-        {!isEditing ? (
-          <button className="secondary" onClick={() => setIsEditing(true)} type="button">
-            Chỉnh sửa
-          </button>
-        ) : null}
+      <h4>Kế hoạch kiểm tra</h4>
+      <div className="detail-grid compact-grid">
+        <EditableDetailValue
+          editButtonLabel="Sửa Từ ngày kế hoạch"
+          error={editingField === "plan_start_on" ? errorMessage : null}
+          isEditing={editingField === "plan_start_on"}
+          label="Từ ngày"
+          onCancel={cancelEdit}
+          onEdit={() => {
+            setEditingField("plan_start_on");
+            setErrorMessage(null);
+          }}
+          onSave={() => void saveField()}
+          pending={pending}
+          value={formatCompactDate(caseWorkspace.inspection.plan_start_on)}
+        >
+          <input
+            aria-label="Từ ngày kế hoạch"
+            disabled={pending}
+            onChange={(event) => setDraft((current) => ({ ...current, plan_start_on: event.target.value }))}
+            type="date"
+            value={draft.plan_start_on}
+          />
+        </EditableDetailValue>
+
+        <EditableDetailValue
+          editButtonLabel="Sửa Đến ngày kế hoạch"
+          error={editingField === "plan_end_on" ? errorMessage : null}
+          isEditing={editingField === "plan_end_on"}
+          label="Đến ngày"
+          onCancel={cancelEdit}
+          onEdit={() => {
+            setEditingField("plan_end_on");
+            setErrorMessage(null);
+          }}
+          onSave={() => void saveField()}
+          pending={pending}
+          value={formatCompactDate(caseWorkspace.inspection.plan_end_on)}
+        >
+          <input
+            aria-label="Đến ngày kế hoạch"
+            disabled={pending}
+            onChange={(event) => setDraft((current) => ({ ...current, plan_end_on: event.target.value }))}
+            type="date"
+            value={draft.plan_end_on}
+          />
+        </EditableDetailValue>
       </div>
-      {!isEditing ? (
-        <div className="detail-grid compact-grid">
-          <DetailValue label="Từ ngày" value={formatCompactDate(caseWorkspace.inspection.plan_start_on)} />
-          <DetailValue label="Đến ngày" value={formatCompactDate(caseWorkspace.inspection.plan_end_on)} />
-          <DetailValue label="Tên kế hoạch" value={caseWorkspace.inspection.planning_sheet_name} />
-          <DetailValue label="Gợi ý tài liệu quyết định" value={caseWorkspace.inspection.decision_document_hint} />
-        </div>
-      ) : (
-        <form className="case-application-form" onSubmit={handleSubmit}>
-          <div className="detail-grid compact-grid case-application-form-grid">
-            <label className="case-application-field">
-              <span>Từ ngày</span>
-              <input
-                aria-label="Từ ngày kế hoạch"
-                disabled={pending}
-                onChange={(event) => setDraft((current) => ({ ...current, plan_start_on: event.target.value }))}
-                type="date"
-                value={draft.plan_start_on}
-              />
-            </label>
-            <label className="case-application-field">
-              <span>Đến ngày</span>
-              <input
-                aria-label="Đến ngày kế hoạch"
-                disabled={pending}
-                onChange={(event) => setDraft((current) => ({ ...current, plan_end_on: event.target.value }))}
-                type="date"
-                value={draft.plan_end_on}
-              />
-            </label>
-            <label className="case-application-field">
-              <span>Tên kế hoạch</span>
-              <input
-                aria-label="Tên kế hoạch"
-                disabled={pending}
-                onChange={(event) => setDraft((current) => ({ ...current, planning_sheet_name: event.target.value }))}
-                value={draft.planning_sheet_name}
-              />
-            </label>
-            <label className="case-application-field">
-              <span>Gợi ý tài liệu quyết định</span>
-              <input
-                aria-label="Gợi ý tài liệu quyết định"
-                disabled={pending}
-                onChange={(event) => setDraft((current) => ({ ...current, decision_document_hint: event.target.value }))}
-                value={draft.decision_document_hint}
-              />
-            </label>
-          </div>
-          {errorMessage ? (
-            <p className="form-error" role="alert">
-              {errorMessage}
-            </p>
-          ) : null}
-          <div className="panel-actions panel-actions-tight">
-            <button disabled={pending} type="submit">
-              {pending ? "Đang lưu..." : "Lưu"}
-            </button>
-            <button
-              className="secondary"
-              disabled={pending}
-              onClick={() => {
-                setDraft(buildPlanDraft(caseWorkspace));
-                setErrorMessage(null);
-                setIsEditing(false);
-              }}
-              type="button"
-            >
-              Hủy
-            </button>
-          </div>
-        </form>
-      )}
     </section>
   );
 }
@@ -205,9 +179,7 @@ function InspectionTeamSection({
 }) {
   return (
     <section className="workspace-section">
-      <div className="workspace-section-header">
-        <h4>Đoàn kiểm tra</h4>
-      </div>
+      <h4>Đoàn kiểm tra</h4>
       <div className="detail-grid compact-grid">
         <DetailValue label="Mô tả đoàn kiểm tra" multiline value={caseWorkspace.inspection.team_display_text} />
       </div>
@@ -219,28 +191,30 @@ function InspectionTeamSection({
   );
 }
 
-function InspectionOutcomeEditor({
+function InspectionOutcomeSection({
   caseWorkspace,
   onSave,
 }: {
   caseWorkspace: CaseWorkspace;
   onSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
 }) {
-  const [isEditing, setIsEditing] = useState(false);
+  const currentDraft = useMemo(() => buildOutcomeDraft(caseWorkspace), [caseWorkspace]);
+  const [draft, setDraft] = useState<InspectionOutcomeDraft>(currentDraft);
+  const [editingField, setEditingField] = useState<
+    "inspected_on" | "inspected_to_on" | "decision_reference" | "bbkt_reference" | "outcome_result" | null
+  >(null);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [draft, setDraft] = useState<InspectionOutcomeDraft>(() => buildOutcomeDraft(caseWorkspace));
 
   useEffect(() => {
-    if (!isEditing) {
-      setDraft(buildOutcomeDraft(caseWorkspace));
+    if (!editingField) {
+      setDraft(currentDraft);
       setErrorMessage(null);
     }
-  }, [caseWorkspace, isEditing]);
+  }, [currentDraft, editingField]);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (pending) {
+  async function saveField() {
+    if (!editingField || pending) {
       return;
     }
     setPending(true);
@@ -254,114 +228,142 @@ function InspectionOutcomeEditor({
         bbkt_reference: normalizeText(draft.bbkt_reference),
         outcome_result: normalizeText(draft.outcome_result),
       });
-      setIsEditing(false);
+      setEditingField(null);
     } catch (error) {
       const nextError = error instanceof Error ? error : new Error("Không lưu được kết quả kiểm tra.");
-      setErrorMessage(getSectionErrorMessage(nextError, "Thực hiện & kết quả"));
+      setErrorMessage(getSectionErrorMessage(nextError, "kết quả kiểm tra"));
     } finally {
       setPending(false);
     }
   }
 
+  function cancelEdit() {
+    setDraft(currentDraft);
+    setErrorMessage(null);
+    setEditingField(null);
+  }
+
   return (
     <section className="workspace-section">
-      <div className="workspace-section-header">
-        <h4>Thực hiện & kết quả</h4>
-        {!isEditing ? (
-          <button className="secondary" onClick={() => setIsEditing(true)} type="button">
-            Chỉnh sửa
-          </button>
-        ) : null}
+      <h4>Thực hiện & kết quả</h4>
+      <div className="detail-grid compact-grid">
+        <EditableDetailValue
+          editButtonLabel="Sửa Từ ngày kiểm tra"
+          error={editingField === "inspected_on" ? errorMessage : null}
+          isEditing={editingField === "inspected_on"}
+          label="Từ ngày kiểm tra"
+          onCancel={cancelEdit}
+          onEdit={() => {
+            setEditingField("inspected_on");
+            setErrorMessage(null);
+          }}
+          onSave={() => void saveField()}
+          pending={pending}
+          value={formatCompactDate(caseWorkspace.inspection.inspected_on)}
+        >
+          <input
+            aria-label="Từ ngày kiểm tra"
+            disabled={pending}
+            onChange={(event) => setDraft((current) => ({ ...current, inspected_on: event.target.value }))}
+            type="date"
+            value={draft.inspected_on}
+          />
+        </EditableDetailValue>
+
+        <EditableDetailValue
+          editButtonLabel="Sửa Đến ngày kiểm tra"
+          error={editingField === "inspected_to_on" ? errorMessage : null}
+          isEditing={editingField === "inspected_to_on"}
+          label="Đến ngày kiểm tra"
+          onCancel={cancelEdit}
+          onEdit={() => {
+            setEditingField("inspected_to_on");
+            setErrorMessage(null);
+          }}
+          onSave={() => void saveField()}
+          pending={pending}
+          value={formatCompactDate(caseWorkspace.inspection.inspected_to_on)}
+        >
+          <input
+            aria-label="Đến ngày kiểm tra"
+            disabled={pending}
+            onChange={(event) => setDraft((current) => ({ ...current, inspected_to_on: event.target.value }))}
+            type="date"
+            value={draft.inspected_to_on}
+          />
+        </EditableDetailValue>
+
+        <EditableDetailValue
+          editButtonLabel="Sửa Quyết định kiểm tra"
+          error={editingField === "decision_reference" ? errorMessage : null}
+          isEditing={editingField === "decision_reference"}
+          label="Quyết định kiểm tra"
+          onCancel={cancelEdit}
+          onEdit={() => {
+            setEditingField("decision_reference");
+            setErrorMessage(null);
+          }}
+          onSave={() => void saveField()}
+          pending={pending}
+          value={caseWorkspace.inspection.decision_reference}
+        >
+          <input
+            aria-label="Quyết định kiểm tra"
+            disabled={pending}
+            onChange={(event) => setDraft((current) => ({ ...current, decision_reference: event.target.value }))}
+            value={draft.decision_reference}
+          />
+        </EditableDetailValue>
+
+        <EditableDetailValue
+          editButtonLabel="Sửa Biên bản kiểm tra"
+          error={editingField === "bbkt_reference" ? errorMessage : null}
+          isEditing={editingField === "bbkt_reference"}
+          label="Biên bản kiểm tra"
+          onCancel={cancelEdit}
+          onEdit={() => {
+            setEditingField("bbkt_reference");
+            setErrorMessage(null);
+          }}
+          onSave={() => void saveField()}
+          pending={pending}
+          value={caseWorkspace.inspection.bbkt_reference}
+        >
+          <input
+            aria-label="Biên bản kiểm tra"
+            disabled={pending}
+            onChange={(event) => setDraft((current) => ({ ...current, bbkt_reference: event.target.value }))}
+            value={draft.bbkt_reference}
+          />
+        </EditableDetailValue>
+
+        <DetailValue label="Thời điểm thực hiện" value={formatCompactDate(caseWorkspace.inspection.executed_on)} />
+
+        <EditableDetailValue
+          editButtonLabel="Sửa Kết quả kiểm tra"
+          error={editingField === "outcome_result" ? errorMessage : null}
+          isEditing={editingField === "outcome_result"}
+          label="Kết quả kiểm tra"
+          multiline
+          onCancel={cancelEdit}
+          onEdit={() => {
+            setEditingField("outcome_result");
+            setErrorMessage(null);
+          }}
+          onSave={() => void saveField()}
+          pending={pending}
+          value={caseWorkspace.inspection.outcome_result}
+        >
+          <textarea
+            aria-label="Kết quả kiểm tra"
+            className="inspection-textarea"
+            disabled={pending}
+            onChange={(event) => setDraft((current) => ({ ...current, outcome_result: event.target.value }))}
+            rows={4}
+            value={draft.outcome_result}
+          />
+        </EditableDetailValue>
       </div>
-      {!isEditing ? (
-        <div className="detail-grid compact-grid">
-          <DetailValue label="Từ ngày kiểm tra" value={formatCompactDate(caseWorkspace.inspection.inspected_on)} />
-          <DetailValue label="Đến ngày kiểm tra" value={formatCompactDate(caseWorkspace.inspection.inspected_to_on)} />
-          <DetailValue label="Quyết định kiểm tra" value={caseWorkspace.inspection.decision_reference} />
-          <DetailValue label="Biên bản kiểm tra" value={caseWorkspace.inspection.bbkt_reference} />
-          <DetailValue label="Thời điểm thực hiện" value={formatCompactDate(caseWorkspace.inspection.executed_on)} />
-          <DetailValue label="Kết quả kiểm tra" multiline value={caseWorkspace.inspection.outcome_result} />
-        </div>
-      ) : (
-        <form className="case-application-form" onSubmit={handleSubmit}>
-          <div className="detail-grid compact-grid case-application-form-grid">
-            <label className="case-application-field">
-              <span>Từ ngày kiểm tra</span>
-              <input
-                aria-label="Từ ngày kiểm tra"
-                disabled={pending}
-                onChange={(event) => setDraft((current) => ({ ...current, inspected_on: event.target.value }))}
-                type="date"
-                value={draft.inspected_on}
-              />
-            </label>
-            <label className="case-application-field">
-              <span>Đến ngày kiểm tra</span>
-              <input
-                aria-label="Đến ngày kiểm tra"
-                disabled={pending}
-                onChange={(event) => setDraft((current) => ({ ...current, inspected_to_on: event.target.value }))}
-                type="date"
-                value={draft.inspected_to_on}
-              />
-            </label>
-            <label className="case-application-field">
-              <span>Quyết định kiểm tra</span>
-              <input
-                aria-label="Quyết định kiểm tra"
-                disabled={pending}
-                onChange={(event) => setDraft((current) => ({ ...current, decision_reference: event.target.value }))}
-                value={draft.decision_reference}
-              />
-            </label>
-            <label className="case-application-field">
-              <span>Biên bản kiểm tra</span>
-              <input
-                aria-label="Biên bản kiểm tra"
-                disabled={pending}
-                onChange={(event) => setDraft((current) => ({ ...current, bbkt_reference: event.target.value }))}
-                value={draft.bbkt_reference}
-              />
-            </label>
-            <div className="case-application-readonly">
-              <DetailValue label="Thời điểm thực hiện" value={formatCompactDate(caseWorkspace.inspection.executed_on)} />
-            </div>
-            <label className="case-application-field case-application-field-full">
-              <span>Kết quả kiểm tra</span>
-              <textarea
-                aria-label="Kết quả kiểm tra"
-                className="inspection-textarea"
-                disabled={pending}
-                onChange={(event) => setDraft((current) => ({ ...current, outcome_result: event.target.value }))}
-                rows={4}
-                value={draft.outcome_result}
-              />
-            </label>
-          </div>
-          {errorMessage ? (
-            <p className="form-error" role="alert">
-              {errorMessage}
-            </p>
-          ) : null}
-          <div className="panel-actions panel-actions-tight">
-            <button disabled={pending} type="submit">
-              {pending ? "Đang lưu..." : "Lưu"}
-            </button>
-            <button
-              className="secondary"
-              disabled={pending}
-              onClick={() => {
-                setDraft(buildOutcomeDraft(caseWorkspace));
-                setErrorMessage(null);
-                setIsEditing(false);
-              }}
-              type="button"
-            >
-              Hủy
-            </button>
-          </div>
-        </form>
-      )}
     </section>
   );
 }
@@ -377,9 +379,9 @@ export function CaseInspectionWorkspace({
 }) {
   return (
     <div className="event-step-stack">
-      <InspectionPlanEditor caseWorkspace={caseWorkspace} onSave={onInspectionPlanSave} />
+      <InspectionPlanSection caseWorkspace={caseWorkspace} onSave={onInspectionPlanSave} />
       <InspectionTeamSection caseWorkspace={caseWorkspace} />
-      <InspectionOutcomeEditor caseWorkspace={caseWorkspace} onSave={onInspectionOutcomeSave} />
+      <InspectionOutcomeSection caseWorkspace={caseWorkspace} onSave={onInspectionOutcomeSave} />
     </div>
   );
 }

@@ -1063,6 +1063,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         row = self._get_case(session, case_id)
+        self._assert_case_not_terminal(row, operation="assessment update")
         actor = self._get_or_create_app_user(session, user)
         stage = session.scalars(select(CaseAssessment).where(CaseAssessment.case_id == row.id)).first()
         if stage is None:
@@ -1082,10 +1083,14 @@ class CaseWorkflowService:
             stage,
             ["assessed_on", "assessor_name", "assessment_result", "notes"],
         )
+        milestone_changed = any(
+            before.get(field_name) != after.get(field_name)
+            for field_name in ("assessed_on", "assessor_name", "assessment_result")
+        )
         inspection_event = self._write_inspection_event(
             session,
             case_id=row.id,
-            event_type=InspectionEventType.ASSESSMENT_COMPLETED if assessed_on is not None else None,
+            event_type=InspectionEventType.ASSESSMENT_COMPLETED if assessed_on is not None and milestone_changed else None,
             payload=self._build_stage_payload(
                 stage="case_assessment",
                 assessed_on=None if assessed_on is None else assessed_on.isoformat(),

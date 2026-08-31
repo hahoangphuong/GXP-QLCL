@@ -14,6 +14,7 @@ import {
   getBusinessEligibilityDetail,
   getCaseWorkspace,
   getChangeRequestWorkspace,
+  getDocumentDetail,
   getFacilityWorkspace,
   getGxpCertificateDetail,
   listSiteBusinessEligibilityCertificates,
@@ -21,20 +22,23 @@ import {
   searchFacilities,
   submitCapaCycle,
   upsertCaseApplication,
+  upsertCaseAssessment,
   updateCapaCycle,
   upsertInspectionOutcome,
   upsertInspectionPlan,
 } from "../lib/api";
 import type {
   BusinessEligibilityDetail,
+  BusinessEligibilityListItem,
   CapaCycleAssessRequest,
   CapaCycleCreateRequest,
   CapaCycleSubmitRequest,
   CapaCycleUpdateRequest,
   CaseApplicationUpsertRequest,
-  BusinessEligibilityListItem,
+  CaseAssessmentUpsertRequest,
   CaseWorkspace,
   ChangeRequestWorkspace,
+  DocumentDetail,
   FacilitySearchResult,
   FacilityWorkspace,
   GxpCertificateDetail,
@@ -772,6 +776,33 @@ export function SearchPage({
     await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
   }
 
+  async function handleCaseAssessmentSave(payload: CaseAssessmentUpsertRequest) {
+    if (!selectedHistory || selectedHistory.source_type !== "case") {
+      throw new Error("Chưa chọn hồ sơ để cập nhật.");
+    }
+    const caseId = selectedHistory.id;
+    const currentCaseWorkspace = selectedCaseWorkspace;
+    const response = await upsertCaseAssessment(caseId, payload, auth, useStubAuth, bearerToken);
+    const refreshedCaseWorkspace = await getCaseWorkspace(caseId, auth, useStubAuth, bearerToken).catch(() => {
+      if (!currentCaseWorkspace) {
+        throw new Error("Đã lưu nhưng không tải lại được workspace xử lý.");
+      }
+      return {
+        ...currentCaseWorkspace,
+        processing: {
+          ...currentCaseWorkspace.processing,
+          row_version: response.row_version,
+          assessed_on: response.assessed_on,
+          assessor_name: response.assessor_name,
+          assessment_result: response.assessment_result,
+          notes: response.notes,
+        },
+      };
+    });
+    setSelectedCaseWorkspace(refreshedCaseWorkspace);
+    setCaseWorkspaceError(null);
+  }
+
   async function refreshSelectedCaseWorkspace(caseId: string, preferredCycleId?: string | null) {
     const payload = await getCaseWorkspace(caseId, auth, useStubAuth, bearerToken);
     setSelectedCaseWorkspace(payload);
@@ -814,6 +845,10 @@ export function SearchPage({
     const caseId = selectedHistory.id;
     await assessCapaCycle(cycleId, payload, auth, useStubAuth, bearerToken);
     await refreshSelectedCaseWorkspace(caseId, cycleId);
+  }
+
+  async function handleLoadDocumentDetail(documentId: string): Promise<DocumentDetail> {
+    return getDocumentDetail(documentId, auth, useStubAuth, bearerToken);
   }
 
   async function handleCreateInspectionCaseSubmit(event: FormEvent<HTMLFormElement>) {
@@ -998,10 +1033,12 @@ export function SearchPage({
             onGxpCertificateSelect={setSelectedGxpCertificateId}
             onHistorySelect={setSelectedHistoryId}
             onCaseApplicationSave={handleCaseApplicationSave}
+            onCaseAssessmentSave={handleCaseAssessmentSave}
             onAssessCapaCycle={handleAssessCapaCycle}
             onCreateCapaCycle={handleCreateCapaCycle}
             onInspectionOutcomeSave={handleInspectionOutcomeSave}
             onInspectionPlanSave={handleInspectionPlanSave}
+            onLoadDocumentDetail={handleLoadDocumentDetail}
             onSelectedRemediationCycleChange={setSelectedRemediationCycleId}
             onSubmitCapaCycle={handleSubmitCapaCycle}
             onUpdateCapaCycle={handleUpdateCapaCycle}

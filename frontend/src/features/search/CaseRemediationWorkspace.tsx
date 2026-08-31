@@ -11,6 +11,7 @@ import type {
   CaseWorkspace,
   CaseWorkspaceRemediationCycle,
 } from "../../types";
+import { EditableDetailValue } from "./EditableDetailValue";
 import { DetailValue } from "./DetailValue";
 
 type CycleDraft = {
@@ -173,7 +174,7 @@ export function CaseRemediationWorkspace({
   const currentDraft = useMemo(() => buildCycleDraft(selectedCycle), [selectedCycle]);
   const [draft, setDraft] = useState<CycleDraft>(currentDraft);
   const [isCreating, setIsCreating] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
+  const [editingField, setEditingField] = useState<"requested_on" | "notes" | null>(null);
   const [pendingAction, setPendingAction] = useState<"create" | "update" | "submit" | "assess" | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -184,17 +185,17 @@ export function CaseRemediationWorkspace({
   }, [effectiveSelectedCycleId, onSelectedCycleChange, selectedCycleId]);
 
   useEffect(() => {
-    if (!isCreating && !isEditing) {
+    if (!isCreating && !editingField) {
       setDraft(currentDraft);
       setErrorMessage(null);
     }
-  }, [currentDraft, isCreating, isEditing]);
+  }, [currentDraft, editingField, isCreating]);
 
   const createAvailable = isCreateAvailable(caseWorkspace);
   const updateAvailable = isUpdateAvailable(selectedCycle);
   const submitAvailable = isSubmitAvailable(selectedCycle);
   const assessAvailable = isAssessAvailable(selectedCycle);
-  const hasOpenEditor = isCreating || isEditing;
+  const hasOpenEditor = isCreating || editingField !== null;
   const isPending = pendingAction !== null;
 
   async function handleCreateSubmit(event: FormEvent<HTMLFormElement>) {
@@ -219,9 +220,8 @@ export function CaseRemediationWorkspace({
     }
   }
 
-  async function handleUpdateSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedCycle || isPending) {
+  async function handleUpdateField() {
+    if (!selectedCycle || !editingField || isPending) {
       return;
     }
     setPendingAction("update");
@@ -232,7 +232,7 @@ export function CaseRemediationWorkspace({
         requested_on: normalizeText(draft.requested_on),
         notes: normalizeText(draft.notes),
       });
-      setIsEditing(false);
+      setEditingField(null);
     } catch (error) {
       const nextError = error instanceof Error ? error : new Error("Không lưu được vòng khắc phục.");
       setErrorMessage(getCycleErrorMessage(nextError));
@@ -285,7 +285,7 @@ export function CaseRemediationWorkspace({
   function startCreate() {
     setDraft(buildCycleDraft(null));
     setErrorMessage(null);
-    setIsEditing(false);
+    setEditingField(null);
     setIsCreating(true);
   }
 
@@ -293,7 +293,7 @@ export function CaseRemediationWorkspace({
     setDraft(currentDraft);
     setErrorMessage(null);
     setIsCreating(false);
-    setIsEditing(false);
+    setEditingField(null);
   }
 
   return (
@@ -335,7 +335,7 @@ export function CaseRemediationWorkspace({
                         return;
                       }
                       setIsCreating(false);
-                      setIsEditing(false);
+                      setEditingField(null);
                       setErrorMessage(null);
                       onSelectedCycleChange(cycle.capa_cycle_id);
                     }}
@@ -343,7 +343,7 @@ export function CaseRemediationWorkspace({
                       if ((event.key === "Enter" || event.key === " ") && !isPending) {
                         event.preventDefault();
                         setIsCreating(false);
-                        setIsEditing(false);
+                        setEditingField(null);
                         setErrorMessage(null);
                         onSelectedCycleChange(cycle.capa_cycle_id);
                       }
@@ -370,9 +370,7 @@ export function CaseRemediationWorkspace({
 
       {isCreating ? (
         <section className="workspace-section">
-          <div className="workspace-section-header">
-            <h4>Vòng khắc phục mới</h4>
-          </div>
+          <h4>Vòng khắc phục mới</h4>
           <form className="case-application-form" onSubmit={handleCreateSubmit}>
             <div className="detail-grid compact-grid case-application-form-grid">
               <label className="case-application-field">
@@ -385,12 +383,8 @@ export function CaseRemediationWorkspace({
                   value={draft.requested_on}
                 />
               </label>
-              <div className="case-application-readonly">
-                <DetailValue label="Trạng thái ban đầu" value={formatStatusLabel("requested")} />
-              </div>
-              <div className="case-application-readonly">
-                <DetailValue label="Hồ sơ" value={caseWorkspace.case_summary.legacy_inspection_code} />
-              </div>
+              <DetailValue label="Trạng thái ban đầu" value={formatStatusLabel("requested")} />
+              <DetailValue label="Hồ sơ" value={caseWorkspace.case_summary.legacy_inspection_code} />
               <label className="case-application-field case-application-field-full">
                 <span>Ghi chú</span>
                 <textarea
@@ -419,19 +413,14 @@ export function CaseRemediationWorkspace({
           </form>
         </section>
       ) : selectedCycle ? (
-        <section className="workspace-section">
-          <div className="workspace-section-header">
-            <div className="panel-heading-inline">
-              <h4>Chi tiết vòng khắc phục {selectedCycle.round_no}</h4>
-              <StatusBadge value={selectedCycle.status} />
-            </div>
-            {!isEditing ? (
+        <>
+          <section className="workspace-section">
+            <div className="workspace-section-header">
+              <div className="panel-heading-inline">
+                <h4>Chi tiết vòng khắc phục {selectedCycle.round_no}</h4>
+                <StatusBadge value={selectedCycle.status} />
+              </div>
               <div className="panel-actions panel-actions-tight">
-                {updateAvailable ? (
-                  <button className="secondary" disabled={isPending} onClick={() => setIsEditing(true)} type="button">
-                    Chỉnh sửa
-                  </button>
-                ) : null}
                 {submitAvailable ? (
                   <button
                     disabled={isPending || !draft.submitted_on.trim()}
@@ -451,111 +440,129 @@ export function CaseRemediationWorkspace({
                   </button>
                 ) : null}
               </div>
-            ) : null}
-          </div>
-
-          {!isEditing ? (
+            </div>
             <div className="detail-grid compact-grid remediation-detail-grid">
-              <DetailValue label="Ngày yêu cầu" value={formatCompactDate(selectedCycle.requested_on)} />
+              <EditableDetailValue
+                editButtonLabel="Sửa Ngày yêu cầu"
+                error={editingField === "requested_on" ? errorMessage : null}
+                isEditing={editingField === "requested_on"}
+                label="Ngày yêu cầu"
+                onCancel={cancelEditor}
+                onEdit={
+                  updateAvailable
+                    ? () => {
+                        setEditingField("requested_on");
+                        setErrorMessage(null);
+                      }
+                    : null
+                }
+                onSave={() => void handleUpdateField()}
+                pending={isPending}
+                value={formatCompactDate(selectedCycle.requested_on)}
+              >
+                <input
+                  aria-label="Ngày yêu cầu"
+                  disabled={isPending}
+                  onChange={(event) => setDraft((current) => ({ ...current, requested_on: event.target.value }))}
+                  type="date"
+                  value={draft.requested_on}
+                />
+              </EditableDetailValue>
+
               <DetailValue label="Ngày nhận" value={formatCompactDate(selectedCycle.submitted_on)} />
               <DetailValue label="Ngày xử lý" value={formatCompactDate(selectedCycle.assessed_on)} />
               <DetailValue label="Người đánh giá" value={selectedCycle.assessor_name} />
               <DetailValue label="Kết quả" value={selectedCycle.result} />
               <DetailValue label="Trạng thái" value={formatStatusLabel(selectedCycle.status)} />
-              <label className="case-application-field">
-                <span>Ngày ghi nhận tiếp nhận</span>
-                <input
-                  aria-label="Ngày ghi nhận tiếp nhận"
-                  disabled={isPending || !submitAvailable}
-                  onChange={(event) => setDraft((current) => ({ ...current, submitted_on: event.target.value }))}
-                  type="date"
-                  value={draft.submitted_on}
-                />
-              </label>
-              <label className="case-application-field">
-                <span>Ngày đánh giá</span>
-                <input
-                  aria-label="Ngày đánh giá khắc phục"
-                  disabled={isPending || !assessAvailable}
-                  onChange={(event) => setDraft((current) => ({ ...current, assessed_on: event.target.value }))}
-                  type="date"
-                  value={draft.assessed_on}
-                />
-              </label>
-              <label className="case-application-field">
-                <span>Kết quả đánh giá</span>
-                <input
-                  aria-label="Kết quả đánh giá khắc phục"
-                  disabled={isPending || !assessAvailable}
-                  onChange={(event) => setDraft((current) => ({ ...current, result: event.target.value }))}
-                  value={draft.result}
-                />
-              </label>
-              <label className="case-application-field case-application-field-full">
-                <span>Ghi chú</span>
+
+              <EditableDetailValue
+                editButtonLabel="Sửa Ghi chú"
+                error={editingField === "notes" ? errorMessage : null}
+                isEditing={editingField === "notes"}
+                label="Ghi chú"
+                multiline
+                onCancel={cancelEditor}
+                onEdit={
+                  updateAvailable
+                    ? () => {
+                        setEditingField("notes");
+                        setErrorMessage(null);
+                      }
+                    : null
+                }
+                onSave={() => void handleUpdateField()}
+                pending={isPending}
+                value={selectedCycle.notes}
+              >
                 <textarea
                   aria-label="Ghi chú khắc phục"
                   className="inspection-textarea"
-                  disabled={isPending || (!submitAvailable && !assessAvailable)}
+                  disabled={isPending}
                   onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))}
                   rows={4}
                   value={draft.notes}
                 />
-              </label>
+              </EditableDetailValue>
             </div>
-          ) : (
-            <form className="case-application-form" onSubmit={handleUpdateSubmit}>
-              <div className="detail-grid compact-grid case-application-form-grid remediation-detail-grid">
+          </section>
+
+          {(submitAvailable || assessAvailable) ? (
+            <section className="workspace-section">
+              <h4>Thao tác vòng khắc phục</h4>
+              <div className="detail-grid compact-grid remediation-detail-grid">
                 <label className="case-application-field">
-                  <span>Ngày yêu cầu</span>
+                  <span>Ngày ghi nhận tiếp nhận</span>
                   <input
-                    aria-label="Ngày yêu cầu"
-                    disabled={isPending}
-                    onChange={(event) => setDraft((current) => ({ ...current, requested_on: event.target.value }))}
+                    aria-label="Ngày ghi nhận tiếp nhận"
+                    disabled={isPending || !submitAvailable}
+                    onChange={(event) => setDraft((current) => ({ ...current, submitted_on: event.target.value }))}
                     type="date"
-                    value={draft.requested_on}
+                    value={draft.submitted_on}
                   />
                 </label>
-                <div className="case-application-readonly">
-                  <DetailValue label="Ngày nhận" value={formatCompactDate(selectedCycle.submitted_on)} />
-                </div>
-                <div className="case-application-readonly">
-                  <DetailValue label="Ngày xử lý" value={formatCompactDate(selectedCycle.assessed_on)} />
-                </div>
+                <label className="case-application-field">
+                  <span>Ngày đánh giá</span>
+                  <input
+                    aria-label="Ngày đánh giá khắc phục"
+                    disabled={isPending || !assessAvailable}
+                    onChange={(event) => setDraft((current) => ({ ...current, assessed_on: event.target.value }))}
+                    type="date"
+                    value={draft.assessed_on}
+                  />
+                </label>
+                <label className="case-application-field">
+                  <span>Kết quả đánh giá</span>
+                  <input
+                    aria-label="Kết quả đánh giá khắc phục"
+                    disabled={isPending || !assessAvailable}
+                    onChange={(event) => setDraft((current) => ({ ...current, result: event.target.value }))}
+                    value={draft.result}
+                  />
+                </label>
                 <label className="case-application-field case-application-field-full">
-                  <span>Ghi chú</span>
+                  <span>Ghi chú dùng cho thao tác</span>
                   <textarea
-                    aria-label="Ghi chú khắc phục"
+                    aria-label="Ghi chú thao tác khắc phục"
                     className="inspection-textarea"
-                    disabled={isPending}
+                    disabled={isPending || (!submitAvailable && !assessAvailable)}
                     onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))}
                     rows={4}
                     value={draft.notes}
                   />
                 </label>
               </div>
-              {errorMessage ? (
+              {editingField === null && errorMessage ? (
                 <p className="form-error" role="alert">
                   {errorMessage}
                 </p>
               ) : null}
-              <div className="panel-actions panel-actions-tight">
-                <button disabled={isPending} type="submit">
-                  {pendingAction === "update" ? "Đang lưu..." : "Lưu"}
-                </button>
-                <button className="secondary" disabled={isPending} onClick={cancelEditor} type="button">
-                  Hủy
-                </button>
-              </div>
-            </form>
-          )}
-
-          {!isEditing && errorMessage ? (
+            </section>
+          ) : editingField === null && errorMessage ? (
             <p className="form-error" role="alert">
               {errorMessage}
             </p>
           ) : null}
-        </section>
+        </>
       ) : (
         <section className="workspace-section">
           <EmptyState

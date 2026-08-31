@@ -1911,7 +1911,7 @@ def test_facility_workspace_exposes_owner_managed_action_readiness_for_reassessm
     assert action_readiness["create_company"].readiness_status == "missing_contract"
     assert action_readiness["create_reassessment_case"].readiness_status == "forbidden"
     assert action_readiness["create_reassessment_case"].required_permissions == ["case.edit"]
-    assert action_readiness["create_reassessment_case"].detail == "Tài khoản hiện tại không có quyền mở hồ sơ tái đánh giá."
+    assert action_readiness["create_reassessment_case"].detail == "Tài khoản hiện tại không có quyền tạo hồ sơ tái đánh giá."
     assert action_readiness["create_change_request"].detail == (
         "Change request hiện mới có canonical read model; chưa có authenticated write contract để tạo mới."
     )
@@ -1950,9 +1950,76 @@ def test_facility_workspace_marks_reassessment_available_or_conflict_by_context_
     conflict = {item.action_key: item for item in conflict_payload.action_readiness}["create_reassessment_case"]
     assert available.readiness_status == "available"
     assert available.required_permissions == ["case.edit"]
-    assert "Có thể mở hồ sơ tái đánh giá mới" in available.detail
+    assert "Có thể tạo hồ sơ tái đánh giá mới" in available.detail
     assert conflict.readiness_status == "conflict"
     assert "Đã có một hồ sơ tái đánh giá chưa kết thúc" in conflict.detail
+
+
+def test_facility_workspace_history_orders_new_draft_reassessment_before_older_completed_case(tmp_path):
+    database_path = tmp_path / "catalog-facility-history-order.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    created_case_id: str
+    historical_case_id: str
+    site_id: str
+    with Session(engine) as session:
+        company = Company(legal_name="Công ty lịch sử", short_name="HIS")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="Cơ sở lịch sử", legacy_site_id=31, legacy_gmp_site_code="3.1")
+        session.add(site)
+        session.flush()
+        historical_case = Case(
+            site_id=site.id,
+            gxp_type="GMP",
+            scope_code="A",
+            applicable_standard="WHO-GMP cũ",
+            inspection_type="Định kỳ",
+            state=CaseState.INSPECTION_COMPLETED,
+            opened_year=2025,
+            legacy_inspection_id=250,
+            legacy_inspection_code="KT-GMP-2025",
+            created_at=datetime(2025, 6, 1, 8, 0, tzinfo=timezone.utc),
+            updated_at=datetime(2025, 6, 10, 8, 0, tzinfo=timezone.utc),
+        )
+        session.add(historical_case)
+        session.flush()
+        session.add(
+            InspectionEvent(
+                case_id=historical_case.id,
+                event_type=InspectionEventType.INSPECTION_EXECUTED,
+                occurred_at=datetime(2025, 6, 9, 10, 0, tzinfo=timezone.utc),
+            )
+        )
+        created_case = Case(
+            site_id=site.id,
+            gxp_type="GMP",
+            scope_code="A",
+            applicable_standard="WHO-GMP mới",
+            inspection_type="Tái",
+            state=CaseState.DRAFT,
+            opened_year=2026,
+            legacy_inspection_id=None,
+            legacy_inspection_code=None,
+            created_at=datetime(2026, 8, 31, 9, 0, tzinfo=timezone.utc),
+            updated_at=datetime(2026, 8, 31, 9, 0, tzinfo=timezone.utc),
+        )
+        session.add(created_case)
+        session.commit()
+        created_case_id = created_case.id
+        historical_case_id = historical_case.id
+        site_id = site.id
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        payload = service.get_facility_workspace(session, site_id=site_id, gxp_type="GMP", line_code="A")
+
+    assert [item["id"] for item in payload["history"][:2]] == [created_case_id, historical_case_id]
+    assert payload["history"][0]["event_type"] == "Tái"
+    assert payload["history"][0]["occurred_on"] is None
+    assert payload["history"][1]["reference_code"] == "KT-GMP-2025"
 
 
 def test_change_request_workspace_reads_authoritative_change_sections_and_document_checklist(tmp_path):

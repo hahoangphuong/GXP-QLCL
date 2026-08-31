@@ -26,6 +26,14 @@ const CERTIFICATE_STATUS_LABELS: Record<string, string> = {
   expired: "Hết hiệu lực",
 };
 
+const HISTORY_COMPLETED_STATES = new Set([
+  "inspection_completed",
+  "certified",
+  "closed",
+  "accepted",
+  "effective",
+]);
+
 const STATUS_TONES: Record<string, string> = {
   draft: "info",
   application_received: "warning",
@@ -130,4 +138,9 @@ export function formatHistoryEventType(value: string | null | undefined): string
     return "Thay đổi";
   }
   return normalized;
+}
+
+export function isCompletedHistoryState(value: string | null | undefined): boolean {
+  const normalized = String(value ?? "").trim();
+  return HISTORY_COMPLETED_STATES.has(normalized);
 }

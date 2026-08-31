@@ -487,7 +487,7 @@ class CaseWorkflowService:
                 "action_key": "create_reassessment_case",
                 "label": "Tái đánh giá",
                 "readiness_status": "unavailable",
-                "detail": "Chọn một ngữ cảnh GxP cụ thể trước khi mở hồ sơ tái đánh giá.",
+                "detail": "Chọn một ngữ cảnh GxP cụ thể trước khi tạo hồ sơ tái đánh giá.",
                 "required_permissions": required_permissions,
             }
         if CREATE_INSPECTION_CASE_PERMISSION not in user.permissions:
@@ -495,7 +495,7 @@ class CaseWorkflowService:
                 "action_key": "create_reassessment_case",
                 "label": "Tái đánh giá",
                 "readiness_status": "forbidden",
-                "detail": "Tài khoản hiện tại không có quyền mở hồ sơ tái đánh giá.",
+                "detail": "Tài khoản hiện tại không có quyền tạo hồ sơ tái đánh giá.",
                 "required_permissions": required_permissions,
             }
         if normalized_gxp_type not in SUPPORTED_CASE_GXP_TYPES:
@@ -503,7 +503,7 @@ class CaseWorkflowService:
                 "action_key": "create_reassessment_case",
                 "label": "Tái đánh giá",
                 "readiness_status": "unavailable",
-                "detail": "Ngữ cảnh GxP đã chọn không hỗ trợ mở hồ sơ tái đánh giá mới.",
+                "detail": "Ngữ cảnh GxP đã chọn không hỗ trợ tạo hồ sơ tái đánh giá mới.",
                 "required_permissions": required_permissions,
             }
         if not self._site_has_gxp_context(
@@ -537,7 +537,7 @@ class CaseWorkflowService:
             "action_key": "create_reassessment_case",
             "label": "Tái đánh giá",
             "readiness_status": "available",
-            "detail": "Có thể mở hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
+            "detail": "Có thể tạo hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
             "required_permissions": required_permissions,
         }
 

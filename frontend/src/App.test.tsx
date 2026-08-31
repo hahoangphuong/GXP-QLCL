@@ -247,7 +247,7 @@ function buildWorkspace(overrides: Record<string, unknown> = {}) {
         action_key: "create_reassessment_case",
         label: "Tái đánh giá",
         readiness_status: "missing_contract",
-        detail: "Chưa có create contract owner-safe để mở hồ sơ tái đánh giá mới cho ngữ cảnh GMP.",
+        detail: "Chưa có create contract owner-safe để tạo hồ sơ tái đánh giá mới cho ngữ cảnh GMP.",
         required_permissions: [],
       },
       {
@@ -596,7 +596,7 @@ describe("App Slice A.4 search workspace", () => {
     }
     expect(screen.getByRole("button", { name: "Tái đánh giá" })).toHaveAttribute(
       "title",
-      "Chưa có create contract owner-safe để mở hồ sơ tái đánh giá mới cho ngữ cảnh GMP.",
+      "Chưa có create contract owner-safe để tạo hồ sơ tái đánh giá mới cho ngữ cảnh GMP.",
     );
     expect(screen.queryByText(/^Prev$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Next$/)).not.toBeInTheDocument();
@@ -615,7 +615,7 @@ describe("App Slice A.4 search workspace", () => {
             ? {
                 ...item,
                 readiness_status: "available",
-                detail: "Có thể mở hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
+                detail: "Có thể tạo hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
                 required_permissions: ["case.edit"],
               }
             : item,
@@ -643,13 +643,13 @@ describe("App Slice A.4 search workspace", () => {
       buildWorkspace({
         action_readiness: buildWorkspace().action_readiness.map((item) =>
           item.action_key === "create_reassessment_case"
-            ? {
-                ...item,
-                readiness_status: "available",
-                detail: "Có thể mở hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
-                required_permissions: ["case.edit"],
-              }
-            : item,
+              ? {
+                  ...item,
+                  readiness_status: "available",
+                  detail: "Có thể tạo hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
+                  required_permissions: ["case.edit"],
+                }
+              : item,
         ),
       }),
     );
@@ -663,7 +663,7 @@ describe("App Slice A.4 search workspace", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
 
-    const dialog = await screen.findByRole("dialog", { name: "Mở hồ sơ tái đánh giá" });
+    const dialog = await screen.findByRole("dialog", { name: "Tạo hồ sơ tái đánh giá" });
     expect(within(dialog).getByText("Công ty cổ phần dược phẩm Trung ương I")).toBeInTheDocument();
     expect(within(dialog).getByText("GMP")).toBeInTheDocument();
     expect(within(dialog).getByText("A")).toBeInTheDocument();
@@ -674,7 +674,7 @@ describe("App Slice A.4 search workspace", () => {
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Hủy" }));
     await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: "Mở hồ sơ tái đánh giá" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog", { name: "Tạo hồ sơ tái đánh giá" })).not.toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: "Tái đánh giá" })).toHaveFocus();
   });
@@ -690,7 +690,7 @@ describe("App Slice A.4 search workspace", () => {
               ? {
                   ...item,
                   readiness_status: "available",
-                  detail: "Có thể mở hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
+                  detail: "Có thể tạo hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
                   required_permissions: ["case.edit"],
                 }
               : item,
@@ -764,7 +764,7 @@ describe("App Slice A.4 search workspace", () => {
     const createAction = screen.getByRole("button", { name: "Tái đánh giá" });
     fireEvent.click(createAction);
 
-    const dialog = await screen.findByRole("dialog", { name: "Mở hồ sơ tái đánh giá" });
+    const dialog = await screen.findByRole("dialog", { name: "Tạo hồ sơ tái đánh giá" });
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Tiêu chuẩn áp dụng" }), { target: { value: "WHO-GMP" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" }));
 
@@ -793,7 +793,7 @@ describe("App Slice A.4 search workspace", () => {
       expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
     });
     await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: "Mở hồ sơ tái đánh giá" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog", { name: "Tạo hồ sơ tái đánh giá" })).not.toBeInTheDocument();
     });
     expect(await screen.findByRole("heading", { name: "Thông tin hồ sơ" })).toBeInTheDocument();
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
@@ -801,14 +801,14 @@ describe("App Slice A.4 search workspace", () => {
 
   it("keeps the reassessment dialog open while submit is pending and allows escape close when idle", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
-   apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     const reassessmentReadyWorkspace = buildWorkspace({
       action_readiness: buildWorkspace().action_readiness.map((item) =>
         item.action_key === "create_reassessment_case"
           ? {
               ...item,
               readiness_status: "available",
-              detail: "Có thể mở hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
+              detail: "Có thể tạo hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
               required_permissions: ["case.edit"],
             }
           : item,
@@ -846,28 +846,28 @@ describe("App Slice A.4 search workspace", () => {
       expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeEnabled();
     });
     fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
-    let dialog = await screen.findByRole("dialog", { name: "Mở hồ sơ tái đánh giá" });
+    let dialog = await screen.findByRole("dialog", { name: "Tạo hồ sơ tái đánh giá" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" }));
 
     await waitFor(() => {
-      expect(within(screen.getByRole("dialog", { name: "Mở hồ sơ tái đánh giá" })).getByRole("button", { name: "Đang tạo..." })).toBeDisabled();
+      expect(within(screen.getByRole("dialog", { name: "Tạo hồ sơ tái đánh giá" })).getByRole("button", { name: "Đang tạo..." })).toBeDisabled();
     });
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.getByRole("dialog", { name: "Mở hồ sơ tái đánh giá" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Tạo hồ sơ tái đánh giá" })).toBeInTheDocument();
 
      releaseCreate();
-     await waitFor(() => {
-       expect(screen.queryByRole("dialog", { name: "Mở hồ sơ tái đánh giá" })).not.toBeInTheDocument();
-     });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Tạo hồ sơ tái đánh giá" })).not.toBeInTheDocument();
+    });
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeEnabled();
     });
     fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
-    dialog = await screen.findByRole("dialog", { name: "Mở hồ sơ tái đánh giá" });
+    dialog = await screen.findByRole("dialog", { name: "Tạo hồ sơ tái đánh giá" });
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: "Mở hồ sơ tái đánh giá" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog", { name: "Tạo hồ sơ tái đánh giá" })).not.toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: "Tái đánh giá" })).toHaveFocus();
   });
@@ -882,7 +882,7 @@ describe("App Slice A.4 search workspace", () => {
             ? {
                 ...item,
                 readiness_status: "available",
-                detail: "Có thể mở hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
+                detail: "Có thể tạo hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
                 required_permissions: ["case.edit"],
               }
             : item,
@@ -899,13 +899,13 @@ describe("App Slice A.4 search workspace", () => {
       expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeEnabled();
     });
     fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
-    const dialog = await screen.findByRole("dialog", { name: "Mở hồ sơ tái đánh giá" });
+    const dialog = await screen.findByRole("dialog", { name: "Tạo hồ sơ tái đánh giá" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" }));
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "An open inspection case already exists for the selected facility/GxP/line context.",
     );
-    expect(screen.getByRole("dialog", { name: "Mở hồ sơ tái đánh giá" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Tạo hồ sơ tái đánh giá" })).toBeInTheDocument();
     expect(screen.getByText("1.1A")).toBeInTheDocument();
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
   });
@@ -958,14 +958,27 @@ describe("App Slice A.4 search workspace", () => {
   it("formats result and history dates as dd-mm-yyyy and keeps selected rows highlighted in the workspace", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
-    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getFacilityWorkspace.mockResolvedValue(
+      buildWorkspace({
+        history: [
+          {
+            ...buildWorkspace().history[0],
+            state: "inspection_completed",
+          },
+          buildWorkspace().history[1],
+        ],
+      }),
+    );
     apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
 
     const { container } = renderApp(["/search"]);
 
     expect(await screen.findByText("01-08-2026")).toBeInTheDocument();
     await screen.findByText("Lịch sử kiểm tra & thay đổi");
+    const historyTable = container.querySelector(".history-table");
     expect(screen.getByText("05-08-2026")).toBeInTheDocument();
+    expect(historyTable?.querySelector("thead .col-state .sr-only")?.textContent).toBe("Trạng thái");
+    expect(container.querySelectorAll(".history-status-check")).toHaveLength(1);
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Thông tin chung" }));
     expect(await screen.findByText("01-06-2026")).toBeInTheDocument();
@@ -1417,6 +1430,9 @@ describe("App Slice A.4 search workspace", () => {
     expect(document.querySelector(".certificate-workspace-split.master-detail-split.master-detail-split-certificate")).not.toBeNull();
     expect(document.querySelector(".certificate-list-panel.master-list-pane")).not.toBeNull();
     expect(document.querySelector(".certificate-detail-panel.detail-pane")).not.toBeNull();
+    const gxpCertificateTable = document.querySelector(".certificate-history-table");
+    expect(within(gxpCertificateTable as HTMLElement).queryByRole("columnheader", { name: "GxP" })).not.toBeInTheDocument();
+    expect(within(gxpCertificateTable as HTMLElement).getByRole("columnheader", { name: "DC" })).toBeInTheDocument();
     expect(screen.getByText("195/GCN-QLD")).toBeInTheDocument();
     expect(screen.getByText("533/GCN-QLD")).toBeInTheDocument();
     expect(await screen.findByText("Thuốc không vô trùng")).toBeInTheDocument();
@@ -1498,6 +1514,8 @@ describe("App Slice A.4 search workspace", () => {
     expect(document.querySelector(".eligibility-workspace-split.master-detail-split.master-detail-split-eligibility")).not.toBeNull();
     expect(document.querySelector(".certificate-list-panel.master-list-pane")).not.toBeNull();
     expect(document.querySelector(".certificate-detail-panel.detail-pane")).not.toBeNull();
+    expect(screen.getByRole("columnheader", { name: "Số GCN" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Lần" })).toBeInTheDocument();
     expect(screen.getByText("1201/ĐKKDD-BYT")).toBeInTheDocument();
     expect(await screen.findByText("Nguyễn Khắc Minh")).toBeInTheDocument();
     expect(screen.getByText("Võ Việt Hùng")).toBeInTheDocument();

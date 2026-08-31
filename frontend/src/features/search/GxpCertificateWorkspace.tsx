@@ -45,15 +45,13 @@ export function GxpCertificateWorkspace({
         <div className="table-scroll table-scroll-history">
           <table className="dense-table certificate-history-table">
             <colgroup>
-              <col className="col-gxp" />
               <col className="col-line" />
               <col className="col-cert-number" />
               <col className="col-date" />
             </colgroup>
             <thead>
               <tr>
-                <th className="col-gxp">GxP</th>
-                <th className="col-line">Dây chuyền</th>
+                <th className="col-line">DC</th>
                 <th className="col-cert-number">Số GCN</th>
                 <th className="col-date">Ngày cấp</th>
               </tr>
@@ -73,7 +71,6 @@ export function GxpCertificateWorkspace({
                   }}
                   tabIndex={0}
                 >
-                  <td>{item.certificate_type}</td>
                   <td title={item.line_code ?? "Toàn cơ sở"}>
                     {item.line_code ?? (item.context_match_kind === "site_wide" ? "Toàn cơ sở" : "Cơ sở")}
                   </td>

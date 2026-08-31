@@ -728,7 +728,7 @@ export function SearchPage({
           >
             <header className="panel-header reassessment-dialog-header">
               <div>
-                <h2 id="reassessment-dialog-title">Mở hồ sơ tái đánh giá</h2>
+                <h2 id="reassessment-dialog-title">Tạo hồ sơ tái đánh giá</h2>
                 <p>{createReassessmentAction.detail}</p>
               </div>
             </header>
@@ -747,7 +747,7 @@ export function SearchPage({
               </div>
             </dl>
             <form className="stack-form reassessment-form" onSubmit={handleCreateInspectionCaseSubmit}>
-              <label>
+              <label className="reassessment-form-field">
                 <span>Tiêu chuẩn áp dụng</span>
                 <input
                   aria-label="Tiêu chuẩn áp dụng"

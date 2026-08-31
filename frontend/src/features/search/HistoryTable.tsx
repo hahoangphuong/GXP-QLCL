@@ -1,5 +1,4 @@
-import { StatusBadge } from "../../components/StatusBadge";
-import { formatCompactDate, formatHistoryEventType } from "../../lib/presentation";
+import { formatCompactDate, formatHistoryEventType, formatStatusLabel, isCompletedHistoryState } from "../../lib/presentation";
 import type { FacilityHistoryItem } from "../../types";
 
 export function HistoryTable({
@@ -30,7 +29,9 @@ export function HistoryTable({
               <th className="col-event-type">Phân loại</th>
               <th className="col-standard">Tiêu chuẩn</th>
               <th className="col-date">Ngày</th>
-              <th className="col-state">Trạng thái</th>
+              <th aria-label="Trạng thái" className="col-state">
+                <span className="sr-only">Trạng thái</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -51,8 +52,14 @@ export function HistoryTable({
                 <td title={row.event_type}>{formatHistoryEventType(row.event_type)}</td>
                 <td title={row.standard ?? ""}>{row.standard ?? "Chưa có"}</td>
                 <td>{formatCompactDate(row.occurred_on)}</td>
-                <td>
-                  <StatusBadge value={row.state} />
+                <td className="history-status-cell">
+                  {isCompletedHistoryState(row.state) ? (
+                    <span aria-label={formatStatusLabel(row.state)} className="history-status-check" title={formatStatusLabel(row.state)}>
+                      ✓
+                    </span>
+                  ) : (
+                    <span className="sr-only">{formatStatusLabel(row.state)}</span>
+                  )}
                 </td>
               </tr>
             ))}

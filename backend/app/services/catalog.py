@@ -195,6 +195,27 @@ class CatalogReadService:
         )
 
     @staticmethod
+    def _history_order_key(
+        *,
+        occurred_on: date | None,
+        created_at: datetime,
+        updated_at: datetime,
+        source_type: str,
+        reference_code: str | None,
+        item_id: str,
+    ) -> tuple[date, datetime, datetime, int, str, str]:
+        effective_date = occurred_on or created_at.date()
+        source_rank = 1 if source_type == "case" else 0
+        return (
+            effective_date,
+            created_at,
+            updated_at,
+            source_rank,
+            reference_code or "",
+            item_id,
+        )
+
+    @staticmethod
     def _build_certificate_scope_summary(rows: list[CertificateScope]) -> str | None:
         parts = [
             row.scope_text.strip()
@@ -1485,40 +1506,56 @@ class CatalogReadService:
             line_code=normalized_line_code,
         )
 
-        history = [
-            {
-                "id": row.id,
-                "source_type": "case",
-                "reference_code": row.legacy_inspection_code,
-                "event_type": row.inspection_type or "Đợt kiểm tra",
-                "gxp_type": row.gxp_type,
-                "standard": row.applicable_standard or row.scope_code,
-                "occurred_on": event_dates.get(row.id),
-                "state": row.state.value,
-            }
-            for row in scoped_cases
-        ]
-        history.extend(
-            {
-                "id": row.id,
-                "source_type": "change_request",
-                "reference_code": None if row.legacy_change_request_id is None else str(row.legacy_change_request_id),
-                "event_type": "Thay đổi cơ sở",
-                "gxp_type": None,
-                "standard": row.scope_label,
-                "occurred_on": row.submitted_on,
-                "state": row.state.value,
-            }
-            for row in change_requests
-        )
-        history.sort(
-            key=lambda item: (
-                item["occurred_on"] is not None,
-                item["occurred_on"] or date.min,
-                item["reference_code"] or "",
-            ),
-            reverse=True,
-        )
+        history_entries: list[tuple[tuple[date, datetime, datetime, int, str, str], dict[str, object]]] = []
+        for row in scoped_cases:
+            occurred_on = event_dates.get(row.id)
+            history_entries.append(
+                (
+                    self._history_order_key(
+                        occurred_on=occurred_on,
+                        created_at=row.created_at,
+                        updated_at=row.updated_at,
+                        source_type="case",
+                        reference_code=row.legacy_inspection_code,
+                        item_id=row.id,
+                    ),
+                    {
+                        "id": row.id,
+                        "source_type": "case",
+                        "reference_code": row.legacy_inspection_code,
+                        "event_type": row.inspection_type or "Đợt kiểm tra",
+                        "gxp_type": row.gxp_type,
+                        "standard": row.applicable_standard or row.scope_code,
+                        "occurred_on": occurred_on,
+                        "state": row.state.value,
+                    },
+                )
+            )
+        for row in change_requests:
+            occurred_on = row.submitted_on
+            history_entries.append(
+                (
+                    self._history_order_key(
+                        occurred_on=occurred_on,
+                        created_at=row.created_at,
+                        updated_at=row.updated_at,
+                        source_type="change_request",
+                        reference_code=None if row.legacy_change_request_id is None else str(row.legacy_change_request_id),
+                        item_id=row.id,
+                    ),
+                    {
+                        "id": row.id,
+                        "source_type": "change_request",
+                        "reference_code": None if row.legacy_change_request_id is None else str(row.legacy_change_request_id),
+                        "event_type": "Thay đổi cơ sở",
+                        "gxp_type": None,
+                        "standard": row.scope_label,
+                        "occurred_on": occurred_on,
+                        "state": row.state.value,
+                    },
+                )
+            )
+        history = [payload for _, payload in sorted(history_entries, key=lambda item: item[0], reverse=True)]
 
         return {
             "summary": {

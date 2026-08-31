@@ -807,6 +807,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         row = self._get_case(session, case_id)
+        self._assert_case_not_terminal(row, operation="CAPA create")
         self._assert_expected_version(row, expected_case_version, label="case")
         self._assert_case_allows_capa_request(row)
         self._assert_case_has_no_open_capa_cycle(session, row.id)
@@ -857,9 +858,14 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         row = self._get_capa_cycle(session, capa_cycle_id)
+        case = self._get_case(session, row.case_id)
+        self._assert_case_not_terminal(case, operation="CAPA update")
         self._assert_expected_version(row, expected_version, label="capa_cycle")
-        if row.status == CAPA_ACCEPTED_STATUS:
-            raise HTTPException(status_code=409, detail="Accepted CAPA cycles are immutable.")
+        if row.status not in {"requested", CAPA_REJECTED_STATUS}:
+            raise HTTPException(
+                status_code=409,
+                detail="CAPA cycle can only be updated while requested or rejected.",
+            )
         actor = self._get_or_create_app_user(session, user)
         before = self._snapshot_fields(row, ["requested_on", "notes", "status"])
         row.requested_on = requested_on
@@ -891,6 +897,8 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         row = self._get_capa_cycle(session, capa_cycle_id)
+        case = self._get_case(session, row.case_id)
+        self._assert_case_not_terminal(case, operation="CAPA submit")
         self._assert_expected_version(row, expected_version, label="capa_cycle")
         if row.status not in {"requested", CAPA_REJECTED_STATUS}:
             raise HTTPException(status_code=409, detail="CAPA cycle cannot be submitted from its current status.")
@@ -928,6 +936,8 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         row = self._get_capa_cycle(session, capa_cycle_id)
+        case = self._get_case(session, row.case_id)
+        self._assert_case_not_terminal(case, operation="CAPA assess")
         self._assert_expected_version(row, expected_version, label="capa_cycle")
         normalized_result = (result or "").strip().lower()
         if normalized_result not in {CAPA_ACCEPTED_STATUS, CAPA_REJECTED_STATUS}:

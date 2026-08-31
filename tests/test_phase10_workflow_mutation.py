@@ -30,6 +30,8 @@ from backend.app.db.models.phase1 import (
 )
 from backend.app.main import create_app
 from backend.app.read_models import (
+    CapaCycleAssessRequest,
+    CapaCycleCreateRequest,
     CaseApplicationUpsertRequest,
     InspectionCaseCreateRequest,
     InspectionOutcomeUpsertRequest,
@@ -1215,11 +1217,13 @@ def test_capa_cycle_workflow_blocks_case_transition_until_latest_round_accepted(
 
     assert created["round_no"] == 1
     assert created["status"] == "requested"
+    assert created["row_version"] == 1
 
     with Session(engine) as session:
         listed = service.list_capa_cycles(session, case_id=case_id)
         assert len(listed) == 1
         assert listed[0]["capa_cycle_id"] == created["capa_cycle_id"]
+        assert listed[0]["row_version"] == 1
         try:
             service.transition_case(
                 session,
@@ -1343,6 +1347,57 @@ def test_create_capa_cycle_rejects_case_already_awaiting_certificate_decision():
             raise AssertionError("Expected CAPA creation in awaiting_certificate_decision to fail")
 
 
+def test_create_capa_cycle_route_enforces_permission_and_returns_read_model(tmp_path):
+    database_path = tmp_path / "workflow-capa-create-route.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        case_row = session.get(Case, case_id)
+        assert case_row is not None
+        case_row.state = CaseState.INSPECTION_COMPLETED
+        session.commit()
+
+    app = create_app(database_url)
+    route = next(
+        route
+        for route in app.routes
+        if getattr(route, "path", "") == "/cases/{case_id}/capa-cycles" and "POST" in getattr(route, "methods", set())
+    )
+    payload = CapaCycleCreateRequest(
+        expected_case_version=2,
+        requested_on=date(2026, 8, 24),
+        notes="Tạo vòng CAPA",
+    )
+
+    with Session(engine) as session:
+        try:
+            route.endpoint(
+                case_id=case_id,
+                payload=payload,
+                session=session,
+                user=build_authenticated_user("reader01", "reader"),
+            )
+        except Exception as exc:
+            assert "missing required permission" in str(exc).lower()
+        else:
+            raise AssertionError("Expected reader CAPA create to fail")
+
+    with Session(engine) as session:
+        body = route.endpoint(
+            case_id=case_id,
+            payload=payload,
+            session=session,
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
+        ).model_dump(mode="json")
+
+    assert body["case_id"] == case_id
+    assert body["round_no"] == 1
+    assert body["row_version"] == 1
+
+
 def test_update_capa_cycle_rejects_mutation_after_acceptance():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
@@ -1404,9 +1459,170 @@ def test_update_capa_cycle_rejects_mutation_after_acceptance():
                 user=build_authenticated_user("manager01", "manager"),
             )
         except Exception as exc:
-            assert "immutable" in str(exc)
+            assert "requested or rejected" in str(exc)
         else:
             raise AssertionError("Expected accepted CAPA cycle to reject updates")
+
+
+def test_update_capa_cycle_rejects_mutation_while_submitted():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        case_row = session.get(Case, case_id)
+        assert case_row is not None
+        case_row.state = CaseState.INSPECTION_COMPLETED
+        session.commit()
+
+    with Session(engine) as session:
+        created = service.create_capa_cycle(
+            session,
+            case_id=case_id,
+            requested_on=date(2026, 8, 18),
+            notes="Round 1.",
+            reason="Need CAPA.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        submitted = service.submit_capa_cycle(
+            session,
+            capa_cycle_id=created["capa_cycle_id"],
+            expected_version=created["row_version"],
+            submitted_on=date(2026, 8, 19),
+            notes="Submitted.",
+            reason="Submit.",
+            user=build_authenticated_user("inspector01", "inspector"),
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        try:
+            service.update_capa_cycle(
+                session,
+                capa_cycle_id=created["capa_cycle_id"],
+                expected_version=submitted["row_version"],
+                requested_on=date(2026, 8, 18),
+                notes="Should fail.",
+                reason="Attempt mutate submitted cycle.",
+                user=build_authenticated_user("manager01", "manager"),
+            )
+        except Exception as exc:
+            assert "requested or rejected" in str(exc)
+        else:
+            raise AssertionError("Expected submitted CAPA cycle to reject updates")
+
+
+def test_capa_mutations_block_terminal_case():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        case_row = session.get(Case, case_id)
+        assert case_row is not None
+        case_row.state = CaseState.INSPECTION_COMPLETED
+        session.commit()
+
+    with Session(engine) as session:
+        created = service.create_capa_cycle(
+            session,
+            case_id=case_id,
+            requested_on=date(2026, 8, 18),
+            notes="Round 1.",
+            reason="Need CAPA.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        case_row = session.get(Case, case_id)
+        assert case_row is not None
+        case_row.state = CaseState.CLOSED
+        session.commit()
+
+    with Session(engine) as session:
+        for action in (
+            lambda: service.create_capa_cycle(
+                session,
+                case_id=case_id,
+                expected_case_version=created["row_version"],
+                requested_on=date(2026, 8, 24),
+                notes="Should fail.",
+                reason="Terminal create.",
+                user=build_authenticated_user("manager01", "manager"),
+            ),
+            lambda: service.update_capa_cycle(
+                session,
+                capa_cycle_id=created["capa_cycle_id"],
+                expected_version=created["row_version"],
+                requested_on=date(2026, 8, 18),
+                notes="Should fail.",
+                reason="Terminal update.",
+                user=build_authenticated_user("manager01", "manager"),
+            ),
+            lambda: service.submit_capa_cycle(
+                session,
+                capa_cycle_id=created["capa_cycle_id"],
+                expected_version=created["row_version"],
+                submitted_on=date(2026, 8, 19),
+                notes="Should fail.",
+                reason="Terminal submit.",
+                user=build_authenticated_user("inspector01", "inspector"),
+            ),
+        ):
+            try:
+                action()
+            except Exception as exc:
+                assert "terminal state closed" in str(exc)
+            else:
+                raise AssertionError("Expected terminal CAPA mutation to fail")
+
+    with Session(engine) as session:
+        case_row = session.get(Case, case_id)
+        assert case_row is not None
+        case_row.state = CaseState.INSPECTION_COMPLETED
+        session.commit()
+
+    with Session(engine) as session:
+        submitted = service.submit_capa_cycle(
+            session,
+            capa_cycle_id=created["capa_cycle_id"],
+            expected_version=created["row_version"],
+            submitted_on=date(2026, 8, 19),
+            notes="Submitted.",
+            reason="Submit.",
+            user=build_authenticated_user("inspector01", "inspector"),
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        case_row = session.get(Case, case_id)
+        assert case_row is not None
+        case_row.state = CaseState.CANCELLED
+        session.commit()
+
+    with Session(engine) as session:
+        try:
+            service.assess_capa_cycle(
+                session,
+                capa_cycle_id=created["capa_cycle_id"],
+                expected_version=submitted["row_version"],
+                assessed_on=date(2026, 8, 20),
+                assessor_name="Should not persist",
+                result="accepted",
+                notes="Should fail.",
+                reason="Terminal assess.",
+                user=build_authenticated_user("manager01", "manager"),
+            )
+        except Exception as exc:
+            assert "terminal state cancelled" in str(exc)
+        else:
+            raise AssertionError("Expected terminal CAPA assess to fail")
 
 
 def test_issue_certificate_allows_administrative_no_case_and_persists_scope():
@@ -1726,6 +1942,75 @@ def test_assess_capa_cycle_binds_assessor_to_authenticated_actor():
         assert payload["assessor_name_input"] == "Fake Client Value"
         assert payload["assessor_name_resolved"] == "manager01"
         assert payload["assessor_user_id"] == row.assessor_user_id
+
+
+def test_assess_capa_cycle_route_requires_capa_assess_permission(tmp_path):
+    database_path = tmp_path / "workflow-capa-assess-route.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        case_row = session.get(Case, case_id)
+        assert case_row is not None
+        case_row.state = CaseState.INSPECTION_COMPLETED
+        created = service.create_capa_cycle(
+            session,
+            case_id=case_id,
+            requested_on=date(2026, 8, 18),
+            notes="Round 1.",
+            reason="Need CAPA.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        submitted = service.submit_capa_cycle(
+            session,
+            capa_cycle_id=created["capa_cycle_id"],
+            expected_version=created["row_version"],
+            submitted_on=date(2026, 8, 19),
+            notes="Submitted.",
+            reason="Submit.",
+            user=build_authenticated_user("inspector01", "inspector"),
+        )
+        session.commit()
+
+    app = create_app(database_url)
+    route = next(route for route in app.routes if getattr(route, "path", "") == "/capa-cycles/{capa_cycle_id}/assess")
+    payload = CapaCycleAssessRequest(
+        expected_version=submitted["row_version"],
+        assessed_on=date(2026, 8, 20),
+        assessor_name="Client supplied",
+        result="accepted",
+        notes="Accepted.",
+    )
+
+    with Session(engine) as session:
+        try:
+            route.endpoint(
+                capa_cycle_id=created["capa_cycle_id"],
+                payload=payload,
+                session=session,
+                user=build_authenticated_user("inspector01", "inspector", permissions=ROLE_PERMISSIONS["inspector"]),
+            )
+        except Exception as exc:
+            assert "missing required permission" in str(exc).lower()
+        else:
+            raise AssertionError("Expected inspector assess route to fail without capa.assess")
+
+    with Session(engine) as session:
+        body = route.endpoint(
+            capa_cycle_id=created["capa_cycle_id"],
+            payload=payload,
+            session=session,
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
+        ).model_dump(mode="json")
+
+    assert body["status"] == "accepted"
+    assert body["assessor_name"] == "manager01"
 
 
 def test_transition_case_to_certified_rejects_latest_rejected_capa():

@@ -1,5 +1,9 @@
 import type {
   BusinessEligibilityDetail,
+  CapaCycleAssessRequest,
+  CapaCycleCreateRequest,
+  CapaCycleSubmitRequest,
+  CapaCycleUpdateRequest,
   CaseApplicationUpsertRequest,
   BusinessEligibilityListItem,
   CaseWorkspace,
@@ -59,6 +63,12 @@ export function FacilityWorkspaceTabs({
   onCaseApplicationSave,
   onInspectionPlanSave,
   onInspectionOutcomeSave,
+  selectedRemediationCycleId,
+  onSelectedRemediationCycleChange,
+  onCreateCapaCycle,
+  onUpdateCapaCycle,
+  onSubmitCapaCycle,
+  onAssessCapaCycle,
 }: {
   summary: FacilityWorkspaceSummary;
   history: FacilityHistoryItem[];
@@ -94,6 +104,12 @@ export function FacilityWorkspaceTabs({
   onCaseApplicationSave: (payload: CaseApplicationUpsertRequest) => Promise<void>;
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
+  selectedRemediationCycleId: string | null;
+  onSelectedRemediationCycleChange: (cycleId: string | null) => void;
+  onCreateCapaCycle: (payload: CapaCycleCreateRequest) => Promise<void>;
+  onUpdateCapaCycle: (cycleId: string, payload: CapaCycleUpdateRequest) => Promise<void>;
+  onSubmitCapaCycle: (cycleId: string, payload: CapaCycleSubmitRequest) => Promise<void>;
+  onAssessCapaCycle: (cycleId: string, payload: CapaCycleAssessRequest) => Promise<void>;
 }) {
   return (
     <section className="panel panel-tight facility-workspace-panel">
@@ -132,9 +148,15 @@ export function FacilityWorkspaceTabs({
                 changeRequestWorkspaceError={changeRequestWorkspaceError}
                 changeRequestWorkspaceLoading={changeRequestWorkspaceLoading}
                 onCaseApplicationSave={onCaseApplicationSave}
+                onAssessCapaCycle={onAssessCapaCycle}
+                onCreateCapaCycle={onCreateCapaCycle}
                 onInspectionOutcomeSave={onInspectionOutcomeSave}
                 onInspectionPlanSave={onInspectionPlanSave}
+                onSelectedRemediationCycleChange={onSelectedRemediationCycleChange}
+                onSubmitCapaCycle={onSubmitCapaCycle}
                 onTabChange={onEventTabChange}
+                onUpdateCapaCycle={onUpdateCapaCycle}
+                selectedRemediationCycleId={selectedRemediationCycleId}
                 selectedHistory={selectedHistory}
               />
             </div>

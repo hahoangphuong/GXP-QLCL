@@ -26,6 +26,13 @@ const CERTIFICATE_STATUS_LABELS: Record<string, string> = {
   expired: "Hết hiệu lực",
 };
 
+const CAPA_STATUS_LABELS: Record<string, string> = {
+  requested: "Yêu cầu khắc phục",
+  submitted: "Đã tiếp nhận khắc phục",
+  accepted: "Đạt",
+  rejected: "Chưa đạt",
+};
+
 const HISTORY_COMPLETED_STATES = new Set([
   "inspection_completed",
   "certified",
@@ -54,6 +61,8 @@ const STATUS_TONES: Record<string, string> = {
   superseded: "muted",
   active: "success",
   expired: "danger",
+  requested: "warning",
+  submitted: "info",
 };
 
 const FACILITY_NAME_ABBREVIATIONS: Array<[RegExp, string]> = [
@@ -95,7 +104,13 @@ export function formatStatusLabel(value: string | null | undefined): string {
   if (!normalized) {
     return "Chưa có";
   }
-  return CASE_STATE_LABELS[normalized] ?? CHANGE_REQUEST_STATE_LABELS[normalized] ?? CERTIFICATE_STATUS_LABELS[normalized] ?? normalized;
+  return (
+    CASE_STATE_LABELS[normalized] ??
+    CHANGE_REQUEST_STATE_LABELS[normalized] ??
+    CERTIFICATE_STATUS_LABELS[normalized] ??
+    CAPA_STATUS_LABELS[normalized] ??
+    normalized
+  );
 }
 
 export function getStatusTone(value: string | null | undefined): string {

@@ -6,6 +6,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 
 const apiMocks = vi.hoisted(() => ({
+  assessCapaCycle: vi.fn(),
+  createCapaCycle: vi.fn(),
   createInspectionCase: vi.fn(),
   getAppStatus: vi.fn(),
   getDashboardSummary: vi.fn().mockResolvedValue({
@@ -38,6 +40,8 @@ const apiMocks = vi.hoisted(() => ({
   listSites: vi.fn().mockResolvedValue([]),
   prepareDocument: vi.fn(),
   renderTemplateDocx: vi.fn(),
+  submitCapaCycle: vi.fn(),
+  updateCapaCycle: vi.fn(),
 }));
 
 const oidcMocks = vi.hoisted(() => ({
@@ -58,6 +62,8 @@ vi.mock("./lib/storage", () => ({
 
 function resetApiMocks() {
   apiMocks.getAppStatus.mockReset();
+  apiMocks.assessCapaCycle.mockReset();
+  apiMocks.createCapaCycle.mockReset();
   apiMocks.createInspectionCase.mockReset();
   apiMocks.getDashboardSummary.mockReset();
   apiMocks.searchFacilities.mockReset();
@@ -79,6 +85,8 @@ function resetApiMocks() {
   apiMocks.listSites.mockReset();
   apiMocks.prepareDocument.mockReset();
   apiMocks.renderTemplateDocx.mockReset();
+  apiMocks.submitCapaCycle.mockReset();
+  apiMocks.updateCapaCycle.mockReset();
 
   apiMocks.getDashboardSummary.mockResolvedValue({
     total_facilities: 18,
@@ -92,6 +100,8 @@ function resetApiMocks() {
     queue: [],
   });
   apiMocks.searchFacilities.mockResolvedValue({ items: [], total_count: 0, offset: 0, limit: 100 });
+  apiMocks.assessCapaCycle.mockResolvedValue(null);
+  apiMocks.createCapaCycle.mockResolvedValue(null);
   apiMocks.createInspectionCase.mockResolvedValue(null);
   apiMocks.getFacilityWorkspace.mockResolvedValue(null);
   apiMocks.getCaseDetail.mockResolvedValue(null);
@@ -109,6 +119,8 @@ function resetApiMocks() {
   apiMocks.listCases.mockResolvedValue([]);
   apiMocks.listCompanies.mockResolvedValue([]);
   apiMocks.listSites.mockResolvedValue([]);
+  apiMocks.submitCapaCycle.mockResolvedValue(null);
+  apiMocks.updateCapaCycle.mockResolvedValue(null);
 }
 
 function resetOidcMocks() {
@@ -275,6 +287,7 @@ function buildCaseWorkspace(overrides: Record<string, unknown> = {}) {
   return {
     case_summary: {
       id: "case-1",
+      row_version: 8,
       legacy_inspection_id: 1,
       legacy_inspection_code: "KT-2026-GMP-A",
       site_id: "site-1",
@@ -391,6 +404,22 @@ function buildCaseWorkspace(overrides: Record<string, unknown> = {}) {
       },
     ],
     linked_business_eligibility_certificates: [],
+    ...overrides,
+  };
+}
+
+function buildRemediationCycle(overrides: Record<string, unknown> = {}) {
+  return {
+    capa_cycle_id: "capa-1",
+    row_version: 1,
+    round_no: 1,
+    requested_on: "2026-08-07",
+    submitted_on: null,
+    assessed_on: null,
+    assessor_name: null,
+    result: null,
+    status: "requested",
+    notes: "Thiếu bằng chứng vệ sinh",
     ...overrides,
   };
 }
@@ -1258,19 +1287,7 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getCaseWorkspace.mockResolvedValue(
       buildCaseWorkspace({
         remediation: {
-          cycles: [
-            {
-              capa_cycle_id: "capa-1",
-              round_no: 1,
-              requested_on: "2026-08-07",
-              submitted_on: "2026-08-09",
-              assessed_on: "2026-08-12",
-              assessor_name: "Chuyên viên B",
-              result: "Đạt",
-              status: "accepted",
-              notes: "Đã hoàn tất",
-            },
-          ],
+          cycles: [buildRemediationCycle({ submitted_on: "2026-08-09", assessed_on: "2026-08-12", assessor_name: "Chuyên viên B", result: "Đạt", status: "accepted", notes: "Đã hoàn tất" })],
         },
       }),
     );
@@ -1285,7 +1302,7 @@ describe("App Slice A.4 search workspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Khắc phục/ }));
     expect(await screen.findByText("Lịch sử khắc phục")).toBeInTheDocument();
-    expect(screen.getByText("Đã hoàn tất")).toBeInTheDocument();
+    expect(screen.getByText("Đạt")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Xử lý/ }));
     expect(await screen.findByText("Đề xuất cấp chứng nhận")).toBeInTheDocument();
@@ -1360,6 +1377,249 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByText("HS-001")).toBeInTheDocument();
     expect(screen.queryByLabelText("Mã hồ sơ")).not.toBeInTheDocument();
     expect(apiMocks.upsertCaseApplication).not.toHaveBeenCalled();
+  });
+
+  it("creates a new CAPA cycle from the Khắc phục tab, refreshes only case workspace, and selects the created round", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace
+      .mockResolvedValueOnce(
+        buildCaseWorkspace({
+          case_summary: {
+            ...buildCaseWorkspace().case_summary,
+            row_version: 8,
+            state: "inspection_completed",
+          },
+          remediation: {
+            cycles: [],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        buildCaseWorkspace({
+          case_summary: {
+            ...buildCaseWorkspace().case_summary,
+            row_version: 8,
+            state: "inspection_completed",
+          },
+          remediation: {
+            cycles: [buildRemediationCycle({ capa_cycle_id: "capa-2", row_version: 1, round_no: 1, requested_on: "2026-09-02", notes: "Yêu cầu vòng 1" })],
+          },
+        }),
+      );
+    apiMocks.createCapaCycle.mockResolvedValue({
+      capa_cycle_id: "capa-2",
+      case_id: "case-1",
+      row_version: 1,
+      round_no: 1,
+      requested_on: "2026-09-02",
+      submitted_on: null,
+      assessed_on: null,
+      assessor_user_id: null,
+      assessor_name: null,
+      result: null,
+      status: "requested",
+      notes: "Yêu cầu vòng 1",
+      audit_event_id: "audit-capa-1",
+    });
+
+    const { container } = renderApp(["/search?event_tab=Kh%E1%BA%AFc+ph%E1%BB%A5c"]);
+
+    expect(await screen.findByText("Lịch sử khắc phục")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Thêm vòng khắc phục" }));
+    fireEvent.change(screen.getByLabelText("Ngày yêu cầu"), { target: { value: "2026-09-02" } });
+    fireEvent.change(screen.getByLabelText("Ghi chú khắc phục"), { target: { value: "Yêu cầu vòng 1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tạo vòng khắc phục" }));
+
+    await waitFor(() => {
+      expect(apiMocks.createCapaCycle).toHaveBeenCalledTimes(1);
+    });
+    expect(apiMocks.createCapaCycle).toHaveBeenCalledWith(
+      "case-1",
+      {
+        expected_case_version: 8,
+        requested_on: "2026-09-02",
+        notes: "Yêu cầu vòng 1",
+      },
+      expect.objectContaining({ username: "operator.local", role: "inspector" }),
+      true,
+      null,
+    );
+    await waitFor(() => {
+      expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
+    });
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Chi tiết vòng khắc phục 1")).toBeInTheDocument();
+    expect(screen.getByLabelText("Ghi chú khắc phục")).toHaveValue("Yêu cầu vòng 1");
+    expect(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" })).toBeInTheDocument();
+    expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
+  });
+
+  it("updates a requested CAPA cycle with cycle row_version and preserves unsaved draft on 409 conflict", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(
+      buildCaseWorkspace({
+        case_summary: {
+          ...buildCaseWorkspace().case_summary,
+          state: "inspection_completed",
+        },
+        remediation: {
+          cycles: [buildRemediationCycle({ capa_cycle_id: "capa-1", row_version: 4, notes: "Bản nháp cũ" })],
+        },
+      }),
+    );
+    apiMocks.updateCapaCycle.mockRejectedValue(
+      buildApiError("Stale CAPA cycle update. Expected version 4, current version is 5.", 409),
+    );
+
+    renderApp(["/search?event_tab=Kh%E1%BA%AFc+ph%E1%BB%A5c"]);
+
+    expect(await screen.findByText("Chi tiết vòng khắc phục 1")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Chỉnh sửa" }));
+    fireEvent.change(screen.getByLabelText("Ghi chú khắc phục"), { target: { value: "Bản nháp mới" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu" }));
+
+    await waitFor(() => {
+      expect(apiMocks.updateCapaCycle).toHaveBeenCalledTimes(1);
+    });
+    expect(apiMocks.updateCapaCycle).toHaveBeenCalledWith(
+      "capa-1",
+      {
+        expected_version: 4,
+        requested_on: "2026-08-07",
+        notes: "Bản nháp mới",
+      },
+      expect.objectContaining({ username: "operator.local", role: "inspector" }),
+      true,
+      null,
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Không thể lưu vì vòng khắc phục đã bị thay đổi hoặc hồ sơ đã ở trạng thái kết thúc. Tải lại workspace rồi thử lại.",
+    );
+    expect(screen.getByLabelText("Ghi chú khắc phục")).toHaveValue("Bản nháp mới");
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+  });
+
+  it("submits a requested CAPA cycle without refetching master search and keeps the Khắc phục tab active", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace
+      .mockResolvedValueOnce(
+        buildCaseWorkspace({
+          case_summary: {
+            ...buildCaseWorkspace().case_summary,
+            state: "inspection_completed",
+          },
+          remediation: {
+            cycles: [buildRemediationCycle({ capa_cycle_id: "capa-1", row_version: 2 })],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        buildCaseWorkspace({
+          case_summary: {
+            ...buildCaseWorkspace().case_summary,
+            state: "inspection_completed",
+          },
+          remediation: {
+            cycles: [buildRemediationCycle({ capa_cycle_id: "capa-1", row_version: 3, submitted_on: "2026-09-05", status: "submitted", notes: "Đã nhận hồ sơ" })],
+          },
+        }),
+      );
+    apiMocks.submitCapaCycle.mockResolvedValue({
+      capa_cycle_id: "capa-1",
+      case_id: "case-1",
+      row_version: 3,
+      round_no: 1,
+      requested_on: "2026-08-07",
+      submitted_on: "2026-09-05",
+      assessed_on: null,
+      assessor_user_id: null,
+      assessor_name: null,
+      result: null,
+      status: "submitted",
+      notes: "Đã nhận hồ sơ",
+      audit_event_id: "audit-capa-submit",
+    });
+
+    renderApp(["/search?event_tab=Kh%E1%BA%AFc+ph%E1%BB%A5c"]);
+
+    expect(await screen.findByText("Chi tiết vòng khắc phục 1")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-05" } });
+    fireEvent.change(screen.getByLabelText("Ghi chú khắc phục"), { target: { value: "Đã nhận hồ sơ" } });
+    fireEvent.click(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" }));
+
+    await waitFor(() => {
+      expect(apiMocks.submitCapaCycle).toHaveBeenCalledTimes(1);
+    });
+    expect(apiMocks.submitCapaCycle).toHaveBeenCalledWith(
+      "capa-1",
+      {
+        expected_version: 2,
+        submitted_on: "2026-09-05",
+        notes: "Đã nhận hồ sơ",
+      },
+      expect.objectContaining({ username: "operator.local", role: "inspector" }),
+      true,
+      null,
+    );
+    await waitFor(() => {
+      expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
+    });
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByText("Đã tiếp nhận khắc phục").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /Khắc phục/ })).toHaveAttribute("aria-current", "step");
+  });
+
+  it("surfaces assess permission errors clearly and sends only the canonical assess payload", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(
+      buildCaseWorkspace({
+        case_summary: {
+          ...buildCaseWorkspace().case_summary,
+          state: "inspection_completed",
+        },
+        remediation: {
+          cycles: [buildRemediationCycle({ capa_cycle_id: "capa-1", row_version: 3, submitted_on: "2026-09-05", status: "submitted", notes: "Đã nhận hồ sơ" })],
+        },
+      }),
+    );
+    apiMocks.assessCapaCycle.mockRejectedValue(buildApiError("User is missing required permission: capa.assess", 403));
+
+    renderApp(["/search?event_tab=Kh%E1%BA%AFc+ph%E1%BB%A5c"]);
+
+    expect(await screen.findByText("Chi tiết vòng khắc phục 1")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Ngày đánh giá khắc phục"), { target: { value: "2026-09-06" } });
+    fireEvent.change(screen.getByLabelText("Kết quả đánh giá khắc phục"), { target: { value: "accepted" } });
+    fireEvent.change(screen.getByLabelText("Ghi chú khắc phục"), { target: { value: "Đạt yêu cầu" } });
+    fireEvent.click(screen.getByRole("button", { name: "Đánh giá" }));
+
+    await waitFor(() => {
+      expect(apiMocks.assessCapaCycle).toHaveBeenCalledTimes(1);
+    });
+    expect(apiMocks.assessCapaCycle).toHaveBeenCalledWith(
+      "capa-1",
+      {
+        expected_version: 3,
+        assessed_on: "2026-09-06",
+        result: "accepted",
+        notes: "Đạt yêu cầu",
+      },
+      expect.objectContaining({ username: "operator.local", role: "inspector" }),
+      true,
+      null,
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("Bạn không có quyền thực hiện thao tác này.");
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
   });
 
   it("saves inspection plan with plan row_version, refreshes only selected case workspace, and preserves Kiểm tra context", async () => {

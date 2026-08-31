@@ -1774,6 +1774,7 @@ def test_case_workspace_reads_owner_correct_sections_and_direct_links_only(tmp_p
         )
 
     assert payload.case_summary.legacy_inspection_code == "KT-GMP-A-2025"
+    assert payload.case_summary.row_version == 1
     assert payload.case_summary.gxp_type == "GMP"
     assert payload.case_summary.scope_code == "A"
     assert payload.application.row_version == 1
@@ -1787,6 +1788,7 @@ def test_case_workspace_reads_owner_correct_sections_and_direct_links_only(tmp_p
     assert payload.inspection.bbkt_reference == "BBKT-4201"
     assert payload.inspection.team_display_text == "Đoàn kiểm tra GMP dây chuyền A"
     assert payload.inspection.outcome_result == "Đạt WHO-GMP dây chuyền A"
+    assert [cycle.row_version for cycle in payload.remediation.cycles] == [1, 1]
     assert [cycle.round_no for cycle in payload.remediation.cycles] == [1, 2]
     assert payload.processing.assessment_result == "Đề xuất cấp chứng nhận GMP"
     assert [event.event_type for event in payload.processing.events] == [

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  assessCapaCycle,
+  createCapaCycle,
   createInspectionCase,
   getAppStatus,
   getCaseDetail,
@@ -13,11 +15,13 @@ import {
   listCompanies,
   listSites,
   prepareDocument,
+  renderTemplateDocx,
   searchFacilities,
+  submitCapaCycle,
   upsertCaseApplication,
+  updateCapaCycle,
   upsertInspectionOutcome,
   upsertInspectionPlan,
-  renderTemplateDocx,
 } from "./api";
 
 type MockJsonResponse = {
@@ -380,6 +384,114 @@ describe("frontend API routing contract", () => {
           decision_reference: "QD-02",
           bbkt_reference: "BBKT-02",
           outcome_result: "Đạt",
+        }),
+      }),
+    );
+  });
+
+  it("posts CAPA cycle creation to the canonical case endpoint with case row_version concurrency", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: { capa_cycle_id: "capa-1", row_version: 1 } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createCapaCycle(
+      "case-123",
+      {
+        expected_case_version: 8,
+        requested_on: "2026-09-01",
+        notes: "Yêu cầu khắc phục vòng 1",
+      },
+      { username: "operator.local", role: "inspector" },
+      true,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/cases/case-123/capa-cycles",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          expected_case_version: 8,
+          requested_on: "2026-09-01",
+          notes: "Yêu cầu khắc phục vòng 1",
+        }),
+      }),
+    );
+  });
+
+  it("puts CAPA cycle updates to the canonical cycle endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: { capa_cycle_id: "capa-1", row_version: 2 } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await updateCapaCycle(
+      "capa-1",
+      {
+        expected_version: 1,
+        requested_on: "2026-09-02",
+        notes: "Bổ sung bằng chứng",
+      },
+      { username: "operator.local", role: "inspector" },
+      true,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/capa-cycles/capa-1",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({
+          expected_version: 1,
+          requested_on: "2026-09-02",
+          notes: "Bổ sung bằng chứng",
+        }),
+      }),
+    );
+  });
+
+  it("posts CAPA submit and assess commands to their dedicated endpoints", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: { capa_cycle_id: "capa-1", row_version: 3 } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await submitCapaCycle(
+      "capa-1",
+      {
+        expected_version: 2,
+        submitted_on: "2026-09-03",
+        notes: "Đã nhận khắc phục",
+      },
+      { username: "operator.local", role: "inspector" },
+      true,
+    );
+
+    await assessCapaCycle(
+      "capa-1",
+      {
+        expected_version: 3,
+        assessed_on: "2026-09-04",
+        result: "accepted",
+        notes: "Đạt yêu cầu",
+      },
+      { username: "operator.local", role: "manager" },
+      true,
+    );
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/capa-cycles/capa-1/submit");
+    expect(fetchMock.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          expected_version: 2,
+          submitted_on: "2026-09-03",
+          notes: "Đã nhận khắc phục",
+        }),
+      }),
+    );
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/capa-cycles/capa-1/assess");
+    expect(fetchMock.mock.calls[1][1]).toEqual(
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          expected_version: 3,
+          assessed_on: "2026-09-04",
+          result: "accepted",
+          notes: "Đạt yêu cầu",
         }),
       }),
     );

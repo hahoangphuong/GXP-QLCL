@@ -5,9 +5,12 @@ import { StatusBadge } from "../../components/StatusBadge";
 import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
 import type {
   BusinessEligibilityDetail,
+  CapaCycleAssessRequest,
+  CapaCycleCreateRequest,
+  CapaCycleSubmitRequest,
+  CapaCycleUpdateRequest,
   CaseApplicationUpsertRequest,
   CaseWorkspace,
-  CaseWorkspaceRemediationCycle,
   ChangeRequestWorkspace,
   DocumentChecklistItem,
   FacilityHistoryItem,
@@ -18,6 +21,7 @@ import type {
 import { BusinessEligibilityDetailFields } from "./BusinessEligibilityDetailFields";
 import { CaseApplicationWorkspace } from "./CaseApplicationWorkspace";
 import { CaseInspectionWorkspace } from "./CaseInspectionWorkspace";
+import { CaseRemediationWorkspace } from "./CaseRemediationWorkspace";
 import { DetailValue } from "./DetailValue";
 import { GxpCertificateDetailFields } from "./GxpCertificateDetailFields";
 
@@ -267,96 +271,18 @@ function LinkedBusinessEligibilityCertificates({
   );
 }
 
-function RemediationWorkspace({
-  cycles,
-}: {
-  cycles: CaseWorkspaceRemediationCycle[];
-}) {
-  const [selectedCycleId, setSelectedCycleId] = useState<string | null>(cycles.at(-1)?.capa_cycle_id ?? null);
-
-  useEffect(() => {
-    setSelectedCycleId((current) =>
-      current && cycles.some((item) => item.capa_cycle_id === current) ? current : cycles.at(-1)?.capa_cycle_id ?? null,
-    );
-  }, [cycles]);
-
-  const selectedCycle = cycles.find((item) => item.capa_cycle_id === selectedCycleId) ?? cycles.at(-1) ?? null;
-
-  if (cycles.length === 0) {
-    return (
-      <EmptyState
-        title="Chưa có vòng khắc phục"
-        description="Legacy snapshot hiện chưa cung cấp round CAPA cho lựa chọn này hoặc hồ sơ chưa phát sinh khắc phục."
-      />
-    );
-  }
-
-  return (
-    <div className="event-step-stack">
-      <section className="panel panel-tight">
-        <div className="panel-header">
-          <h3>Lịch sử khắc phục</h3>
-          <span className="panel-meta">{cycles.length} vòng</span>
-        </div>
-        <div className="table-scroll table-scroll-history">
-          <table className="dense-table capa-cycle-table">
-            <thead>
-              <tr>
-                <th>Lần</th>
-                <th>Ngày nhận</th>
-                <th>Ngày xử lý</th>
-                <th>Trạng thái</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cycles.map((cycle) => (
-                <tr
-                  aria-selected={selectedCycleId === cycle.capa_cycle_id}
-                  className={selectedCycleId === cycle.capa_cycle_id ? "selected" : ""}
-                  key={cycle.capa_cycle_id}
-                  onClick={() => setSelectedCycleId(cycle.capa_cycle_id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      setSelectedCycleId(cycle.capa_cycle_id);
-                    }
-                  }}
-                  tabIndex={0}
-                >
-                  <td>{cycle.round_no}</td>
-                  <td>{formatCompactDate(cycle.submitted_on)}</td>
-                  <td>{formatCompactDate(cycle.assessed_on)}</td>
-                  <td>{formatStatusLabel(cycle.status)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {selectedCycle ? (
-        <WorkspaceSection title={`Chi tiết vòng CAPA ${selectedCycle.round_no}`}>
-          <div className="detail-grid compact-grid">
-            <DetailValue label="Ngày yêu cầu" value={formatCompactDate(selectedCycle.requested_on)} />
-            <DetailValue label="Ngày nhận" value={formatCompactDate(selectedCycle.submitted_on)} />
-            <DetailValue label="Ngày xử lý" value={formatCompactDate(selectedCycle.assessed_on)} />
-            <DetailValue label="Người xử lý" value={selectedCycle.assessor_name} />
-            <DetailValue label="Kết quả" value={selectedCycle.result} />
-            <DetailValue label="Trạng thái" value={formatStatusLabel(selectedCycle.status)} />
-            <DetailValue label="Ghi chú" multiline value={selectedCycle.notes} />
-          </div>
-        </WorkspaceSection>
-      ) : null}
-    </div>
-  );
-}
-
 function renderCaseStepContent(
   activeTab: string,
   caseWorkspace: CaseWorkspace,
   onCaseApplicationSave: (payload: CaseApplicationUpsertRequest) => Promise<void>,
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>,
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>,
+  selectedRemediationCycleId: string | null,
+  onSelectedRemediationCycleChange: (cycleId: string | null) => void,
+  onCreateCapaCycle: (payload: CapaCycleCreateRequest) => Promise<void>,
+  onUpdateCapaCycle: (cycleId: string, payload: CapaCycleUpdateRequest) => Promise<void>,
+  onSubmitCapaCycle: (cycleId: string, payload: CapaCycleSubmitRequest) => Promise<void>,
+  onAssessCapaCycle: (cycleId: string, payload: CapaCycleAssessRequest) => Promise<void>,
 ) {
   if (activeTab === "Hồ sơ") {
     return <CaseApplicationWorkspace caseWorkspace={caseWorkspace} onSave={onCaseApplicationSave} />;
@@ -373,7 +299,17 @@ function renderCaseStepContent(
   }
 
   if (activeTab === "Khắc phục") {
-    return <RemediationWorkspace cycles={caseWorkspace.remediation.cycles} />;
+    return (
+      <CaseRemediationWorkspace
+        caseWorkspace={caseWorkspace}
+        onAssessCycle={onAssessCapaCycle}
+        onCreateCycle={onCreateCapaCycle}
+        onSelectedCycleChange={onSelectedRemediationCycleChange}
+        onSubmitCycle={onSubmitCapaCycle}
+        onUpdateCycle={onUpdateCapaCycle}
+        selectedCycleId={selectedRemediationCycleId}
+      />
+    );
   }
 
   if (activeTab === "Xử lý") {
@@ -547,6 +483,12 @@ export function EventWorkspace({
   onCaseApplicationSave,
   onInspectionPlanSave,
   onInspectionOutcomeSave,
+  selectedRemediationCycleId,
+  onSelectedRemediationCycleChange,
+  onCreateCapaCycle,
+  onUpdateCapaCycle,
+  onSubmitCapaCycle,
+  onAssessCapaCycle,
 }: {
   selectedHistory: FacilityHistoryItem | null;
   caseWorkspace: CaseWorkspace | null;
@@ -560,6 +502,12 @@ export function EventWorkspace({
   onCaseApplicationSave: (payload: CaseApplicationUpsertRequest) => Promise<void>;
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
+  selectedRemediationCycleId: string | null;
+  onSelectedRemediationCycleChange: (cycleId: string | null) => void;
+  onCreateCapaCycle: (payload: CapaCycleCreateRequest) => Promise<void>;
+  onUpdateCapaCycle: (cycleId: string, payload: CapaCycleUpdateRequest) => Promise<void>;
+  onSubmitCapaCycle: (cycleId: string, payload: CapaCycleSubmitRequest) => Promise<void>;
+  onAssessCapaCycle: (cycleId: string, payload: CapaCycleAssessRequest) => Promise<void>;
 }) {
   if (!selectedHistory) {
     return (
@@ -627,6 +575,12 @@ export function EventWorkspace({
             onCaseApplicationSave,
             onInspectionPlanSave,
             onInspectionOutcomeSave,
+            selectedRemediationCycleId,
+            onSelectedRemediationCycleChange,
+            onCreateCapaCycle,
+            onUpdateCapaCycle,
+            onSubmitCapaCycle,
+            onAssessCapaCycle,
           )
         ) : (
           <EmptyState title="Chưa có workspace hồ sơ" description="Backend chưa trả dữ liệu workspace cho lựa chọn case hiện tại." />

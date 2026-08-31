@@ -207,6 +207,7 @@ export type FacilityWorkspace = {
 
 export type CaseWorkspaceSummary = {
   id: string;
+  row_version: number;
   legacy_inspection_id: number | null;
   legacy_inspection_code: string | null;
   site_id: string;
@@ -290,6 +291,7 @@ export type InspectionOutcomeUpsertResponse = {
 
 export type CaseWorkspaceRemediationCycle = {
   capa_cycle_id: string;
+  row_version: number;
   round_no: number;
   requested_on: string | null;
   submitted_on: string | null;
@@ -302,6 +304,52 @@ export type CaseWorkspaceRemediationCycle = {
 
 export type CaseWorkspaceRemediation = {
   cycles: CaseWorkspaceRemediationCycle[];
+};
+
+export type CapaCycleCreateRequest = {
+  expected_case_version: number | null;
+  requested_on: string | null;
+  notes: string | null;
+  reason?: string | null;
+};
+
+export type CapaCycleUpdateRequest = {
+  expected_version: number;
+  requested_on: string | null;
+  notes: string | null;
+  reason?: string | null;
+};
+
+export type CapaCycleSubmitRequest = {
+  expected_version: number;
+  submitted_on: string | null;
+  notes: string | null;
+  reason?: string | null;
+};
+
+export type CapaCycleAssessRequest = {
+  expected_version: number;
+  assessed_on: string | null;
+  assessor_name?: string | null;
+  result: string;
+  notes: string | null;
+  reason?: string | null;
+};
+
+export type CapaCycleMutationResponse = {
+  capa_cycle_id: string;
+  case_id: string;
+  row_version: number;
+  round_no: number;
+  requested_on: string | null;
+  submitted_on: string | null;
+  assessed_on: string | null;
+  assessor_user_id: string | null;
+  assessor_name: string | null;
+  result: string | null;
+  status: string;
+  notes: string | null;
+  audit_event_id: string | null;
 };
 
 export type CaseWorkspaceProcessingEvent = {

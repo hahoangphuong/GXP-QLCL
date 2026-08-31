@@ -2,6 +2,11 @@ import type {
   AppStatus,
   BusinessEligibilityDetail,
   BusinessEligibilityList,
+  CapaCycleAssessRequest,
+  CapaCycleCreateRequest,
+  CapaCycleMutationResponse,
+  CapaCycleSubmitRequest,
+  CapaCycleUpdateRequest,
   CaseApplicationUpsertRequest,
   CaseApplicationUpsertResponse,
   CaseDetail,
@@ -303,6 +308,70 @@ export function upsertInspectionOutcome(
 ): Promise<InspectionOutcomeUpsertResponse> {
   return requestJson<InspectionOutcomeUpsertResponse>(`/cases/${caseId}/outcome`, {
     method: "PUT",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function createCapaCycle(
+  caseId: string,
+  payload: CapaCycleCreateRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<CapaCycleMutationResponse> {
+  return requestJson<CapaCycleMutationResponse>(`/cases/${caseId}/capa-cycles`, {
+    method: "POST",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function updateCapaCycle(
+  capaCycleId: string,
+  payload: CapaCycleUpdateRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<CapaCycleMutationResponse> {
+  return requestJson<CapaCycleMutationResponse>(`/capa-cycles/${capaCycleId}`, {
+    method: "PUT",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function submitCapaCycle(
+  capaCycleId: string,
+  payload: CapaCycleSubmitRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<CapaCycleMutationResponse> {
+  return requestJson<CapaCycleMutationResponse>(`/capa-cycles/${capaCycleId}/submit`, {
+    method: "POST",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function assessCapaCycle(
+  capaCycleId: string,
+  payload: CapaCycleAssessRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<CapaCycleMutationResponse> {
+  return requestJson<CapaCycleMutationResponse>(`/capa-cycles/${capaCycleId}/assess`, {
+    method: "POST",
     body: payload,
     auth,
     useStubAuth,

@@ -1065,6 +1065,24 @@ tr:focus-visible {
   width: 3.2rem;
 }
 
+.capa-cycle-table th:nth-child(2),
+.capa-cycle-table td:nth-child(2),
+.capa-cycle-table th:nth-child(3),
+.capa-cycle-table td:nth-child(3),
+.capa-cycle-table th:nth-child(4),
+.capa-cycle-table td:nth-child(4) {
+  width: 6.7rem;
+}
+
+.capa-cycle-table th:last-child,
+.capa-cycle-table td:last-child {
+  width: 9.2rem;
+}
+
+.remediation-detail-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .event-milestone-table th:first-child,
 .event-milestone-table td:first-child {
   width: 11rem;

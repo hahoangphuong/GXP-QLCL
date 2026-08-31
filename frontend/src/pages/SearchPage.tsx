@@ -8,6 +8,8 @@ import { ActionCard } from "../features/search/ActionCard";
 import { FacilityTable } from "../features/search/FacilityTable";
 import { FacilityWorkspaceTabs } from "../features/search/FacilityWorkspaceTabs";
 import {
+  assessCapaCycle,
+  createCapaCycle,
   createInspectionCase,
   getBusinessEligibilityDetail,
   getCaseWorkspace,
@@ -17,12 +19,18 @@ import {
   listSiteBusinessEligibilityCertificates,
   listSiteGxpCertificates,
   searchFacilities,
+  submitCapaCycle,
   upsertCaseApplication,
+  updateCapaCycle,
   upsertInspectionOutcome,
   upsertInspectionPlan,
 } from "../lib/api";
 import type {
   BusinessEligibilityDetail,
+  CapaCycleAssessRequest,
+  CapaCycleCreateRequest,
+  CapaCycleSubmitRequest,
+  CapaCycleUpdateRequest,
   CaseApplicationUpsertRequest,
   BusinessEligibilityListItem,
   CaseWorkspace,
@@ -57,6 +65,18 @@ function appendUniqueResults(current: FacilitySearchResult[], incoming: Facility
   return next;
 }
 
+function resolveSelectedRemediationCycleId(
+  caseWorkspace: CaseWorkspace | null,
+  preferredCycleId: string | null,
+): string | null {
+  if (!caseWorkspace) {
+    return null;
+  }
+  return preferredCycleId && caseWorkspace.remediation.cycles.some((cycle) => cycle.capa_cycle_id === preferredCycleId)
+    ? preferredCycleId
+    : caseWorkspace.remediation.cycles.at(-1)?.capa_cycle_id ?? null;
+}
+
 export function SearchPage({
   access,
   statusError,
@@ -78,6 +98,7 @@ export function SearchPage({
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(searchParams.get("history_id"));
   const [selectedFacilityTab, setSelectedFacilityTab] = useState(searchParams.get("facility_tab") ?? DEFAULT_FACILITY_TAB);
   const [activeTab, setActiveTab] = useState(searchParams.get("event_tab") ?? DEFAULT_EVENT_TAB);
+  const [selectedRemediationCycleId, setSelectedRemediationCycleId] = useState<string | null>(null);
   const deferredFacilityName = useDeferredValue(facilityName);
   const deferredCertificateScope = useDeferredValue(certificateScope);
 
@@ -306,6 +327,7 @@ export function SearchPage({
       setSelectedCaseWorkspace(null);
       setCaseWorkspaceError(null);
       setCaseWorkspaceLoading(false);
+      setSelectedRemediationCycleId(null);
       setSelectedChangeRequestWorkspace(null);
       setChangeRequestWorkspaceError(null);
       setChangeRequestWorkspaceLoading(false);
@@ -357,6 +379,7 @@ export function SearchPage({
     setSelectedCaseWorkspace(null);
     setCaseWorkspaceError(null);
     setCaseWorkspaceLoading(false);
+    setSelectedRemediationCycleId(null);
     if (!selectedHistoryId || selectedHistory?.source_type !== "case") {
       return;
     }
@@ -366,6 +389,7 @@ export function SearchPage({
       .then((payload) => {
         if (!cancelled) {
           setSelectedCaseWorkspace(payload);
+          setSelectedRemediationCycleId((current) => resolveSelectedRemediationCycleId(payload, current));
           setCaseWorkspaceError(null);
           setCaseWorkspaceLoading(false);
         }
@@ -373,6 +397,7 @@ export function SearchPage({
       .catch((error: Error) => {
         if (!cancelled) {
           setSelectedCaseWorkspace(null);
+          setSelectedRemediationCycleId(null);
           setCaseWorkspaceError(error.message);
           setCaseWorkspaceLoading(false);
         }
@@ -576,6 +601,7 @@ export function SearchPage({
     setSelectedCaseWorkspace(null);
     setCaseWorkspaceError(null);
     setCaseWorkspaceLoading(false);
+    setSelectedRemediationCycleId(null);
     setSelectedChangeRequestWorkspace(null);
     setChangeRequestWorkspaceError(null);
     setChangeRequestWorkspaceLoading(false);
@@ -744,6 +770,50 @@ export function SearchPage({
     setSelectedCaseWorkspace(refreshedCaseWorkspace);
     setCaseWorkspaceError(null);
     await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
+  }
+
+  async function refreshSelectedCaseWorkspace(caseId: string, preferredCycleId?: string | null) {
+    const payload = await getCaseWorkspace(caseId, auth, useStubAuth, bearerToken);
+    setSelectedCaseWorkspace(payload);
+    setCaseWorkspaceError(null);
+    setSelectedRemediationCycleId((current) => resolveSelectedRemediationCycleId(payload, preferredCycleId ?? current));
+    return payload;
+  }
+
+  async function handleCreateCapaCycle(payload: CapaCycleCreateRequest) {
+    if (!selectedHistory || selectedHistory.source_type !== "case") {
+      throw new Error("Chưa chọn hồ sơ để cập nhật.");
+    }
+    const caseId = selectedHistory.id;
+    const response = await createCapaCycle(caseId, payload, auth, useStubAuth, bearerToken);
+    await refreshSelectedCaseWorkspace(caseId, response.capa_cycle_id);
+  }
+
+  async function handleUpdateCapaCycle(cycleId: string, payload: CapaCycleUpdateRequest) {
+    if (!selectedHistory || selectedHistory.source_type !== "case") {
+      throw new Error("Chưa chọn hồ sơ để cập nhật.");
+    }
+    const caseId = selectedHistory.id;
+    await updateCapaCycle(cycleId, payload, auth, useStubAuth, bearerToken);
+    await refreshSelectedCaseWorkspace(caseId, cycleId);
+  }
+
+  async function handleSubmitCapaCycle(cycleId: string, payload: CapaCycleSubmitRequest) {
+    if (!selectedHistory || selectedHistory.source_type !== "case") {
+      throw new Error("Chưa chọn hồ sơ để cập nhật.");
+    }
+    const caseId = selectedHistory.id;
+    await submitCapaCycle(cycleId, payload, auth, useStubAuth, bearerToken);
+    await refreshSelectedCaseWorkspace(caseId, cycleId);
+  }
+
+  async function handleAssessCapaCycle(cycleId: string, payload: CapaCycleAssessRequest) {
+    if (!selectedHistory || selectedHistory.source_type !== "case") {
+      throw new Error("Chưa chọn hồ sơ để cập nhật.");
+    }
+    const caseId = selectedHistory.id;
+    await assessCapaCycle(cycleId, payload, auth, useStubAuth, bearerToken);
+    await refreshSelectedCaseWorkspace(caseId, cycleId);
   }
 
   async function handleCreateInspectionCaseSubmit(event: FormEvent<HTMLFormElement>) {
@@ -928,13 +998,19 @@ export function SearchPage({
             onGxpCertificateSelect={setSelectedGxpCertificateId}
             onHistorySelect={setSelectedHistoryId}
             onCaseApplicationSave={handleCaseApplicationSave}
+            onAssessCapaCycle={handleAssessCapaCycle}
+            onCreateCapaCycle={handleCreateCapaCycle}
             onInspectionOutcomeSave={handleInspectionOutcomeSave}
             onInspectionPlanSave={handleInspectionPlanSave}
+            onSelectedRemediationCycleChange={setSelectedRemediationCycleId}
+            onSubmitCapaCycle={handleSubmitCapaCycle}
+            onUpdateCapaCycle={handleUpdateCapaCycle}
             selectedEligibilityCertificateId={selectedEligibilityCertificateId}
             selectedFacilityTab={selectedFacilityTab}
             selectedGxpCertificateId={selectedGxpCertificateId}
             selectedHistory={selectedHistory}
             selectedHistoryId={selectedHistoryId}
+            selectedRemediationCycleId={selectedRemediationCycleId}
             summary={workspace.summary}
           />
         )

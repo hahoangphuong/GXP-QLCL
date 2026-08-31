@@ -177,6 +177,7 @@ class FacilityWorkspaceRead(BaseModel):
 
 class CaseWorkspaceSummaryRead(BaseModel):
     id: str
+    row_version: int
     legacy_inspection_id: int | None
     legacy_inspection_code: str | None
     site_id: str
@@ -218,6 +219,7 @@ class CaseWorkspaceInspectionRead(BaseModel):
 
 class CaseWorkspaceRemediationCycleRead(BaseModel):
     capa_cycle_id: str
+    row_version: int
     round_no: int
     requested_on: date | None
     submitted_on: date | None

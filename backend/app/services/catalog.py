@@ -2084,6 +2084,7 @@ class CatalogReadService:
         return {
             "case_summary": {
                 "id": case.id,
+                "row_version": case.row_version,
                 "legacy_inspection_id": case.legacy_inspection_id,
                 "legacy_inspection_code": case.legacy_inspection_code,
                 "site_id": case.site_id,
@@ -2131,6 +2132,7 @@ class CatalogReadService:
                 "cycles": [
                     {
                         "capa_cycle_id": row.id,
+                        "row_version": row.row_version,
                         "round_no": row.round_no,
                         "requested_on": row.requested_on,
                         "submitted_on": row.submitted_on,

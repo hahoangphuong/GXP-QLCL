@@ -2106,11 +2106,13 @@ class CatalogReadService:
                 "assigned_specialist_source": None if company.assigned_specialist_text is None else "company_master",
             },
             "inspection": {
+                "plan_row_version": None if plan is None else plan.row_version,
                 "decision_reference": None if outcome is None else outcome.decision_reference,
                 "decision_document_hint": None if plan is None else plan.decision_document_hint,
                 "plan_start_on": None if plan is None else plan.plan_start_on,
                 "plan_end_on": None if plan is None else plan.plan_end_on,
                 "planning_sheet_name": None if plan is None else plan.planning_sheet_name,
+                "outcome_row_version": None if outcome is None else outcome.row_version,
                 "inspected_on": None if outcome is None else outcome.inspected_on,
                 "inspected_to_on": None if outcome is None else outcome.inspected_to_on,
                 "executed_on": next(

@@ -231,17 +231,61 @@ export type CaseWorkspaceApplication = {
 };
 
 export type CaseWorkspaceInspection = {
+  plan_row_version: number | null;
   decision_reference: string | null;
   decision_document_hint: string | null;
   plan_start_on: string | null;
   plan_end_on: string | null;
   planning_sheet_name: string | null;
+  outcome_row_version: number | null;
   inspected_on: string | null;
   inspected_to_on: string | null;
   executed_on: string | null;
   bbkt_reference: string | null;
   outcome_result: string | null;
   team_display_text: string | null;
+};
+
+export type InspectionPlanUpsertRequest = {
+  expected_version: number | null;
+  plan_start_on: string | null;
+  plan_end_on: string | null;
+  planning_sheet_name: string | null;
+  decision_document_hint: string | null;
+  reason?: string | null;
+};
+
+export type InspectionPlanUpsertResponse = {
+  case_id: string;
+  row_version: number;
+  plan_start_on: string | null;
+  plan_end_on: string | null;
+  planning_sheet_name: string | null;
+  decision_document_hint: string | null;
+  audit_event_id: string;
+  inspection_event_id: string | null;
+};
+
+export type InspectionOutcomeUpsertRequest = {
+  expected_version: number | null;
+  inspected_on: string | null;
+  inspected_to_on: string | null;
+  decision_reference: string | null;
+  bbkt_reference: string | null;
+  outcome_result: string | null;
+  reason?: string | null;
+};
+
+export type InspectionOutcomeUpsertResponse = {
+  case_id: string;
+  row_version: number;
+  inspected_on: string | null;
+  inspected_to_on: string | null;
+  decision_reference: string | null;
+  bbkt_reference: string | null;
+  outcome_result: string | null;
+  audit_event_id: string;
+  inspection_event_id: string | null;
 };
 
 export type CaseWorkspaceRemediationCycle = {

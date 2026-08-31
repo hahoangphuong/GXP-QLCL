@@ -12,9 +12,12 @@ import type {
   DocumentChecklistItem,
   FacilityHistoryItem,
   GxpCertificateDetail,
+  InspectionOutcomeUpsertRequest,
+  InspectionPlanUpsertRequest,
 } from "../../types";
 import { BusinessEligibilityDetailFields } from "./BusinessEligibilityDetailFields";
 import { CaseApplicationWorkspace } from "./CaseApplicationWorkspace";
+import { CaseInspectionWorkspace } from "./CaseInspectionWorkspace";
 import { DetailValue } from "./DetailValue";
 import { GxpCertificateDetailFields } from "./GxpCertificateDetailFields";
 
@@ -352,54 +355,20 @@ function renderCaseStepContent(
   activeTab: string,
   caseWorkspace: CaseWorkspace,
   onCaseApplicationSave: (payload: CaseApplicationUpsertRequest) => Promise<void>,
+  onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>,
+  onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>,
 ) {
   if (activeTab === "Hồ sơ") {
     return <CaseApplicationWorkspace caseWorkspace={caseWorkspace} onSave={onCaseApplicationSave} />;
   }
 
   if (activeTab === "Kiểm tra") {
-    const inspection = caseWorkspace.inspection;
-    const hasInspectionData = Boolean(
-      inspection.decision_reference ||
-        inspection.decision_document_hint ||
-        inspection.plan_start_on ||
-        inspection.plan_end_on ||
-        inspection.planning_sheet_name ||
-        inspection.inspected_on ||
-        inspection.inspected_to_on ||
-        inspection.executed_on ||
-        inspection.bbkt_reference ||
-        inspection.outcome_result ||
-        inspection.team_display_text,
-    );
-    if (!hasInspectionData) {
-      return (
-        <EmptyState
-          title="Chưa có dữ liệu kiểm tra"
-          description="Case này chưa có inspection plan/team/outcome canonical đủ để hiển thị chi tiết kiểm tra."
-        />
-      );
-    }
     return (
-      <div className="event-step-stack">
-        <WorkspaceSection title="Điều phối kiểm tra">
-          <div className="detail-grid compact-grid">
-            <DetailValue label="Quyết định kiểm tra" value={inspection.decision_reference} />
-            <DetailValue label="Kế hoạch" value={inspection.planning_sheet_name} />
-            <DetailValue label="Gợi ý tài liệu quyết định" value={inspection.decision_document_hint} />
-            <DetailValue label="Ngày kiểm tra từ" value={formatCompactDate(inspection.inspected_on || inspection.plan_start_on)} />
-            <DetailValue label="Ngày kiểm tra đến" value={formatCompactDate(inspection.inspected_to_on || inspection.plan_end_on)} />
-            <DetailValue label="Thời điểm thực hiện" value={formatCompactDate(inspection.executed_on)} />
-          </div>
-        </WorkspaceSection>
-        <WorkspaceSection title="Kết quả đánh giá">
-          <div className="detail-grid compact-grid">
-            <DetailValue label="Biên bản đánh giá" value={inspection.bbkt_reference} />
-            <DetailValue label="Đoàn kiểm tra" multiline value={inspection.team_display_text} />
-            <DetailValue label="Kết quả / phạm vi đánh giá" multiline value={inspection.outcome_result} />
-          </div>
-        </WorkspaceSection>
-      </div>
+      <CaseInspectionWorkspace
+        caseWorkspace={caseWorkspace}
+        onInspectionOutcomeSave={onInspectionOutcomeSave}
+        onInspectionPlanSave={onInspectionPlanSave}
+      />
     );
   }
 
@@ -576,6 +545,8 @@ export function EventWorkspace({
   activeTab,
   onTabChange,
   onCaseApplicationSave,
+  onInspectionPlanSave,
+  onInspectionOutcomeSave,
 }: {
   selectedHistory: FacilityHistoryItem | null;
   caseWorkspace: CaseWorkspace | null;
@@ -587,6 +558,8 @@ export function EventWorkspace({
   activeTab: string;
   onTabChange: (tab: string) => void;
   onCaseApplicationSave: (payload: CaseApplicationUpsertRequest) => Promise<void>;
+  onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
+  onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
 }) {
   if (!selectedHistory) {
     return (
@@ -648,7 +621,13 @@ export function EventWorkspace({
             description={caseWorkspaceError}
           />
         ) : caseWorkspace ? (
-          renderCaseStepContent(effectiveActiveTab, caseWorkspace, onCaseApplicationSave)
+          renderCaseStepContent(
+            effectiveActiveTab,
+            caseWorkspace,
+            onCaseApplicationSave,
+            onInspectionPlanSave,
+            onInspectionOutcomeSave,
+          )
         ) : (
           <EmptyState title="Chưa có workspace hồ sơ" description="Backend chưa trả dữ liệu workspace cho lựa chọn case hiện tại." />
         )}

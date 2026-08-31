@@ -15,6 +15,8 @@ import {
   prepareDocument,
   searchFacilities,
   upsertCaseApplication,
+  upsertInspectionOutcome,
+  upsertInspectionPlan,
   renderTemplateDocx,
 } from "./api";
 
@@ -315,5 +317,71 @@ describe("frontend API routing contract", () => {
       }),
     );
     expect(String(fetchMock.mock.calls[0][0])).not.toContain("/api/api/");
+  });
+
+  it("puts inspection plan updates to the canonical plan endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: { case_id: "case-123", row_version: 2 } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await upsertInspectionPlan(
+      "case-123",
+      {
+        expected_version: 1,
+        plan_start_on: "2026-09-01",
+        plan_end_on: "2026-09-02",
+        planning_sheet_name: "KHKT-01",
+        decision_document_hint: "QD-01",
+      },
+      { username: "operator.local", role: "manager" },
+      true,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/cases/case-123/plan",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({
+          expected_version: 1,
+          plan_start_on: "2026-09-01",
+          plan_end_on: "2026-09-02",
+          planning_sheet_name: "KHKT-01",
+          decision_document_hint: "QD-01",
+        }),
+      }),
+    );
+  });
+
+  it("puts inspection outcome updates to the canonical outcome endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: { case_id: "case-123", row_version: 2 } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await upsertInspectionOutcome(
+      "case-123",
+      {
+        expected_version: 1,
+        inspected_on: "2026-09-03",
+        inspected_to_on: "2026-09-04",
+        decision_reference: "QD-02",
+        bbkt_reference: "BBKT-02",
+        outcome_result: "Đạt",
+      },
+      { username: "operator.local", role: "manager" },
+      true,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/cases/case-123/outcome",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({
+          expected_version: 1,
+          inspected_on: "2026-09-03",
+          inspected_to_on: "2026-09-04",
+          decision_reference: "QD-02",
+          bbkt_reference: "BBKT-02",
+          outcome_result: "Đạt",
+        }),
+      }),
+    );
   });
 });

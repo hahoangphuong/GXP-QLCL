@@ -201,11 +201,13 @@ class CaseWorkspaceApplicationRead(BaseModel):
 
 
 class CaseWorkspaceInspectionRead(BaseModel):
+    plan_row_version: int | None = None
     decision_reference: str | None
     decision_document_hint: str | None
     plan_start_on: date | None
     plan_end_on: date | None
     planning_sheet_name: str | None
+    outcome_row_version: int | None = None
     inspected_on: date | None
     inspected_to_on: date | None
     executed_on: datetime | None

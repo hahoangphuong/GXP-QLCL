@@ -1026,6 +1026,10 @@ tr:focus-visible {
   gap: 0.28rem;
 }
 
+.case-application-field-full {
+  grid-column: 1 / -1;
+}
+
 .case-application-field span,
 .case-application-readonly span {
   font-size: 0.78rem;
@@ -1038,6 +1042,18 @@ tr:focus-visible {
   border: 1px solid #d7e5e9;
   border-radius: 10px;
   background: #f8fbfc;
+}
+
+.inspection-textarea {
+  min-height: 6.5rem;
+  resize: vertical;
+}
+
+.workspace-note {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: #5f7278;
 }
 
 .event-linked-certificate-workspace {

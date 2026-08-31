@@ -8,6 +8,8 @@ import type {
   FacilityWorkspaceSummary,
   GxpCertificateDetail,
   GxpCertificateListItem,
+  InspectionOutcomeUpsertRequest,
+  InspectionPlanUpsertRequest,
 } from "../../types";
 import { EventWorkspace } from "./EventWorkspace";
 import { BusinessEligibilityWorkspace } from "./BusinessEligibilityWorkspace";
@@ -55,6 +57,8 @@ export function FacilityWorkspaceTabs({
   eligibilityCertificateDetailLoading,
   eligibilityCertificateDetailError,
   onCaseApplicationSave,
+  onInspectionPlanSave,
+  onInspectionOutcomeSave,
 }: {
   summary: FacilityWorkspaceSummary;
   history: FacilityHistoryItem[];
@@ -88,6 +92,8 @@ export function FacilityWorkspaceTabs({
   eligibilityCertificateDetailLoading: boolean;
   eligibilityCertificateDetailError: string | null;
   onCaseApplicationSave: (payload: CaseApplicationUpsertRequest) => Promise<void>;
+  onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
+  onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
 }) {
   return (
     <section className="panel panel-tight facility-workspace-panel">
@@ -126,6 +132,8 @@ export function FacilityWorkspaceTabs({
                 changeRequestWorkspaceError={changeRequestWorkspaceError}
                 changeRequestWorkspaceLoading={changeRequestWorkspaceLoading}
                 onCaseApplicationSave={onCaseApplicationSave}
+                onInspectionOutcomeSave={onInspectionOutcomeSave}
+                onInspectionPlanSave={onInspectionPlanSave}
                 onTabChange={onEventTabChange}
                 selectedHistory={selectedHistory}
               />

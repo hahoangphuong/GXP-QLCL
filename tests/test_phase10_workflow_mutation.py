@@ -29,7 +29,12 @@ from backend.app.db.models.phase1 import (
     Site,
 )
 from backend.app.main import create_app
-from backend.app.read_models import CaseApplicationUpsertRequest, InspectionCaseCreateRequest
+from backend.app.read_models import (
+    CaseApplicationUpsertRequest,
+    InspectionCaseCreateRequest,
+    InspectionOutcomeUpsertRequest,
+    InspectionPlanUpsertRequest,
+)
 from backend.app.services.workflow import CaseWorkflowService
 
 
@@ -789,6 +794,119 @@ def test_upsert_inspection_plan_persists_stage():
         assert row.decision_document_hint == "QD-01"
 
 
+def test_upsert_inspection_plan_route_enforces_auth_and_returns_read_model(tmp_path):
+    database_path = tmp_path / "workflow-plan-route.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+
+    app = create_app(database_url)
+    route = next(route for route in app.routes if getattr(route, "path", "") == "/cases/{case_id}/plan")
+    payload = InspectionPlanUpsertRequest(
+        expected_version=None,
+        plan_start_on=date(2026, 8, 20),
+        plan_end_on=date(2026, 8, 21),
+        planning_sheet_name="KHKT-HTTP",
+        decision_document_hint="QD-HTTP",
+    )
+
+    with Session(engine) as session:
+        try:
+            route.endpoint(
+                case_id=case_id,
+                payload=payload,
+                session=session,
+                user=build_authenticated_user("reader01", "reader"),
+            )
+        except Exception as exc:
+            assert "missing required permission" in str(exc).lower()
+        else:
+            raise AssertionError("Expected reader inspection-plan upsert to fail")
+
+    with Session(engine) as session:
+        body = route.endpoint(
+            case_id=case_id,
+            payload=payload,
+            session=session,
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
+        ).model_dump(mode="json")
+        persisted = session.scalar(select(InspectionPlan).where(InspectionPlan.case_id == case_id))
+
+    assert body["case_id"] == case_id
+    assert persisted is not None
+    assert body["row_version"] == persisted.row_version
+    assert body["plan_start_on"] == "2026-08-20"
+
+
+def test_upsert_inspection_plan_blocks_terminal_cases_and_skips_duplicate_event():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+
+    with Session(engine) as session:
+        first = service.upsert_inspection_plan(
+            session,
+            case_id=case_id,
+            plan_start_on=date(2026, 8, 20),
+            plan_end_on=date(2026, 8, 22),
+            planning_sheet_name="KHKT-2026-08",
+            decision_document_hint="QD-01",
+            reason="Initial plan.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+
+    assert first["inspection_event_id"] is not None
+
+    with Session(engine) as session:
+        second = service.upsert_inspection_plan(
+            session,
+            case_id=case_id,
+            expected_version=first["row_version"],
+            plan_start_on=date(2026, 8, 20),
+            plan_end_on=date(2026, 8, 22),
+            planning_sheet_name="KHKT-2026-08",
+            decision_document_hint="QD-01",
+            reason="No-op save.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+
+    assert second["inspection_event_id"] is None
+
+    with Session(engine) as session:
+        events = list(session.scalars(select(InspectionEvent).where(InspectionEvent.case_id == case_id)))
+        assert [event.event_type for event in events] == ["plan_created"]
+        case_row = session.get(Case, case_id)
+        assert case_row is not None
+        case_row.state = CaseState.CLOSED
+        session.commit()
+
+    with Session(engine) as session:
+        try:
+            service.upsert_inspection_plan(
+                session,
+                case_id=case_id,
+                expected_version=second["row_version"],
+                plan_start_on=date(2026, 8, 23),
+                plan_end_on=date(2026, 8, 24),
+                planning_sheet_name="KHKT-2026-09",
+                decision_document_hint="QD-02",
+                reason="Should fail.",
+                user=build_authenticated_user("manager01", "manager"),
+            )
+        except Exception as exc:
+            assert "terminal state closed" in str(exc)
+        else:
+            raise AssertionError("Expected terminal inspection plan update to fail")
+
+
 def test_upsert_inspection_outcome_persists_stage_and_event():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
@@ -818,6 +936,123 @@ def test_upsert_inspection_outcome_persists_stage_and_event():
         row = session.scalars(select(InspectionOutcome)).first()
         assert row is not None
         assert row.bbkt_reference == "BBKT-02"
+
+
+def test_upsert_inspection_outcome_route_enforces_auth_and_returns_read_model(tmp_path):
+    database_path = tmp_path / "workflow-outcome-route.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+
+    app = create_app(database_url)
+    route = next(route for route in app.routes if getattr(route, "path", "") == "/cases/{case_id}/outcome")
+    payload = InspectionOutcomeUpsertRequest(
+        expected_version=None,
+        inspected_on=date(2026, 8, 25),
+        inspected_to_on=date(2026, 8, 26),
+        decision_reference="QD-OUTCOME",
+        bbkt_reference="BBKT-OUTCOME",
+        outcome_result="Đạt",
+    )
+
+    with Session(engine) as session:
+        try:
+            route.endpoint(
+                case_id=case_id,
+                payload=payload,
+                session=session,
+                user=build_authenticated_user("reader01", "reader"),
+            )
+        except Exception as exc:
+            assert "missing required permission" in str(exc).lower()
+        else:
+            raise AssertionError("Expected reader inspection-outcome upsert to fail")
+
+    with Session(engine) as session:
+        body = route.endpoint(
+            case_id=case_id,
+            payload=payload,
+            session=session,
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
+        ).model_dump(mode="json")
+        persisted = session.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == case_id))
+
+    assert body["case_id"] == case_id
+    assert persisted is not None
+    assert body["row_version"] == persisted.row_version
+    assert body["inspected_on"] == "2026-08-25"
+
+
+def test_upsert_inspection_outcome_blocks_terminal_cases_and_skips_duplicate_event():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+
+    with Session(engine) as session:
+        first = service.upsert_inspection_outcome(
+            session,
+            case_id=case_id,
+            inspected_on=date(2026, 8, 25),
+            inspected_to_on=date(2026, 8, 26),
+            decision_reference="QD-02",
+            bbkt_reference="BBKT-02",
+            outcome_result="compliant",
+            reason="Initial outcome.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+
+    assert first["inspection_event_id"] is not None
+
+    with Session(engine) as session:
+        second = service.upsert_inspection_outcome(
+            session,
+            case_id=case_id,
+            expected_version=first["row_version"],
+            inspected_on=date(2026, 8, 25),
+            inspected_to_on=date(2026, 8, 26),
+            decision_reference="QD-02",
+            bbkt_reference="BBKT-02",
+            outcome_result="compliant",
+            reason="No-op save.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+
+    assert second["inspection_event_id"] is None
+
+    with Session(engine) as session:
+        events = list(session.scalars(select(InspectionEvent).where(InspectionEvent.case_id == case_id)))
+        assert [event.event_type for event in events] == ["outcome_recorded"]
+        case_row = session.get(Case, case_id)
+        assert case_row is not None
+        case_row.state = CaseState.CANCELLED
+        session.commit()
+
+    with Session(engine) as session:
+        try:
+            service.upsert_inspection_outcome(
+                session,
+                case_id=case_id,
+                expected_version=second["row_version"],
+                inspected_on=date(2026, 8, 27),
+                inspected_to_on=date(2026, 8, 28),
+                decision_reference="QD-03",
+                bbkt_reference="BBKT-03",
+                outcome_result="needs-follow-up",
+                reason="Should fail.",
+                user=build_authenticated_user("manager01", "manager"),
+            )
+        except Exception as exc:
+            assert "terminal state cancelled" in str(exc)
+        else:
+            raise AssertionError("Expected terminal inspection outcome update to fail")
 
 
 def test_upsert_inspection_team_replaces_member_list_and_writes_audit():
@@ -898,6 +1133,61 @@ def test_upsert_inspection_team_rejects_member_without_identity():
             assert "exactly one" in str(exc)
         else:
             raise AssertionError("Expected invalid inspection team member to fail")
+
+
+def test_upsert_inspection_team_blocks_terminal_case_before_replacing_members():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        team = InspectionTeam(case_id=case_id, display_text="Legacy team")
+        session.add(team)
+        session.flush()
+        session.add(
+            InspectionTeamMember(
+                team_id=team.id,
+                person_id="00000000-0000-0000-0000-0000000000a1",
+                inspector_profile_id=None,
+                role_label="lead",
+                sort_order=1,
+            )
+        )
+        case_row = session.get(Case, case_id)
+        assert case_row is not None
+        case_row.state = CaseState.CLOSED
+        session.commit()
+
+    with Session(engine) as session:
+        try:
+            service.upsert_inspection_team(
+                session,
+                case_id=case_id,
+                expected_version=1,
+                display_text="Should stay unchanged",
+                members=[
+                    {
+                        "person_id": "00000000-0000-0000-0000-0000000000b2",
+                        "inspector_profile_id": None,
+                        "role_label": "member",
+                        "sort_order": 1,
+                    },
+                ],
+                reason="Blocked terminal case.",
+                user=build_authenticated_user("manager01", "manager"),
+            )
+        except Exception as exc:
+            assert "terminal state closed" in str(exc)
+        else:
+            raise AssertionError("Expected terminal inspection team update to fail")
+
+    with Session(engine) as session:
+        team = session.scalars(select(InspectionTeam).where(InspectionTeam.case_id == case_id)).first()
+        assert team is not None
+        members = list(session.scalars(select(InspectionTeamMember).where(InspectionTeamMember.team_id == team.id)))
+        assert team.display_text == "Legacy team"
+        assert len(members) == 1
 
 
 def test_capa_cycle_workflow_blocks_case_transition_until_latest_round_accepted():

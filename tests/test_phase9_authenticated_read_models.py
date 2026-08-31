@@ -1780,8 +1780,10 @@ def test_case_workspace_reads_owner_correct_sections_and_direct_links_only(tmp_p
     assert payload.application.dossier_code == "HS-GMP-A"
     assert payload.application.assigned_specialist == "Hà Hoàng Phương"
     assert payload.application.assigned_specialist_source == "company_master"
+    assert payload.inspection.plan_row_version == 1
     assert payload.inspection.decision_reference == "QĐ-KT-4201"
     assert payload.inspection.planning_sheet_name == "KH-KT-4201"
+    assert payload.inspection.outcome_row_version == 1
     assert payload.inspection.bbkt_reference == "BBKT-4201"
     assert payload.inspection.team_display_text == "Đoàn kiểm tra GMP dây chuyền A"
     assert payload.inspection.outcome_result == "Đạt WHO-GMP dây chuyền A"

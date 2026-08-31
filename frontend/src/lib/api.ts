@@ -19,8 +19,12 @@ import type {
   FacilityWorkspace,
   GxpCertificateDetail,
   GxpCertificateList,
+  InspectionOutcomeUpsertRequest,
+  InspectionOutcomeUpsertResponse,
   InspectionCaseCreateRequest,
   InspectionCaseCreateResponse,
+  InspectionPlanUpsertRequest,
+  InspectionPlanUpsertResponse,
   Site,
   StubAuthState,
 } from "../types";
@@ -266,6 +270,38 @@ export function upsertCaseApplication(
   bearerToken?: string | null,
 ): Promise<CaseApplicationUpsertResponse> {
   return requestJson<CaseApplicationUpsertResponse>(`/cases/${caseId}/application`, {
+    method: "PUT",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function upsertInspectionPlan(
+  caseId: string,
+  payload: InspectionPlanUpsertRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<InspectionPlanUpsertResponse> {
+  return requestJson<InspectionPlanUpsertResponse>(`/cases/${caseId}/plan`, {
+    method: "PUT",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function upsertInspectionOutcome(
+  caseId: string,
+  payload: InspectionOutcomeUpsertRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<InspectionOutcomeUpsertResponse> {
+  return requestJson<InspectionOutcomeUpsertResponse>(`/cases/${caseId}/outcome`, {
     method: "PUT",
     body: payload,
     auth,

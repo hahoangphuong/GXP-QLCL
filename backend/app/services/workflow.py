@@ -1128,6 +1128,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         row = self._get_case(session, case_id)
+        self._assert_case_not_terminal(row, operation="inspection plan update")
         actor = self._get_or_create_app_user(session, user)
         stage = session.scalars(select(InspectionPlan).where(InspectionPlan.case_id == row.id)).first()
         if stage is None:
@@ -1147,10 +1148,13 @@ class CaseWorkflowService:
             stage,
             ["plan_start_on", "plan_end_on", "planning_sheet_name", "decision_document_hint"],
         )
+        has_stage_changes = before != after
         inspection_event = self._write_inspection_event(
             session,
             case_id=row.id,
-            event_type=InspectionEventType.PLAN_CREATED if plan_start_on is not None or plan_end_on is not None else None,
+            event_type=InspectionEventType.PLAN_CREATED
+            if has_stage_changes and (plan_start_on is not None or plan_end_on is not None)
+            else None,
             payload=self._build_stage_payload(
                 stage="inspection_plan",
                 plan_start_on=None if plan_start_on is None else plan_start_on.isoformat(),
@@ -1205,6 +1209,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         row = self._get_case(session, case_id)
+        self._assert_case_not_terminal(row, operation="inspection outcome update")
         actor = self._get_or_create_app_user(session, user)
         stage = session.scalars(select(InspectionOutcome).where(InspectionOutcome.case_id == row.id)).first()
         if stage is None:
@@ -1225,10 +1230,11 @@ class CaseWorkflowService:
             stage,
             ["inspected_on", "inspected_to_on", "decision_reference", "bbkt_reference", "outcome_result"],
         )
+        has_stage_changes = before != after
         inspection_event = self._write_inspection_event(
             session,
             case_id=row.id,
-            event_type=InspectionEventType.OUTCOME_RECORDED if outcome_result is not None else None,
+            event_type=InspectionEventType.OUTCOME_RECORDED if has_stage_changes and outcome_result is not None else None,
             payload=self._build_stage_payload(
                 stage="inspection_outcome",
                 inspected_on=None if inspected_on is None else inspected_on.isoformat(),
@@ -1283,6 +1289,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         row = self._get_case(session, case_id)
+        self._assert_case_not_terminal(row, operation="inspection team update")
         self._validate_team_members(members)
         actor = self._get_or_create_app_user(session, user)
 

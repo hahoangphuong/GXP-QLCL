@@ -25,6 +25,8 @@ const apiMocks = vi.hoisted(() => ({
   getCaseWorkspace: vi.fn().mockResolvedValue(null),
   getChangeRequestWorkspace: vi.fn().mockResolvedValue(null),
   upsertCaseApplication: vi.fn(),
+  upsertInspectionPlan: vi.fn(),
+  upsertInspectionOutcome: vi.fn(),
   listSiteGxpCertificates: vi.fn().mockResolvedValue({ items: [] }),
   getGxpCertificateDetail: vi.fn().mockResolvedValue(null),
   listSiteBusinessEligibilityCertificates: vi.fn().mockResolvedValue({ items: [] }),
@@ -64,6 +66,8 @@ function resetApiMocks() {
   apiMocks.getCaseWorkspace.mockReset();
   apiMocks.getChangeRequestWorkspace.mockReset();
   apiMocks.upsertCaseApplication.mockReset();
+  apiMocks.upsertInspectionPlan.mockReset();
+  apiMocks.upsertInspectionOutcome.mockReset();
   apiMocks.listSiteGxpCertificates.mockReset();
   apiMocks.getGxpCertificateDetail.mockReset();
   apiMocks.listSiteBusinessEligibilityCertificates.mockReset();
@@ -94,6 +98,8 @@ function resetApiMocks() {
   apiMocks.getCaseWorkspace.mockResolvedValue(null);
   apiMocks.getChangeRequestWorkspace.mockResolvedValue(null);
   apiMocks.upsertCaseApplication.mockResolvedValue(null);
+  apiMocks.upsertInspectionPlan.mockResolvedValue(null);
+  apiMocks.upsertInspectionOutcome.mockResolvedValue(null);
   apiMocks.listSiteGxpCertificates.mockResolvedValue({ items: [] });
   apiMocks.getGxpCertificateDetail.mockResolvedValue(null);
   apiMocks.listSiteBusinessEligibilityCertificates.mockResolvedValue({ items: [] });
@@ -291,11 +297,13 @@ function buildCaseWorkspace(overrides: Record<string, unknown> = {}) {
       assigned_specialist_source: "company_master",
     },
     inspection: {
+      plan_row_version: 3,
       decision_reference: "QĐ-KT-01",
       decision_document_hint: null,
       plan_start_on: null,
       plan_end_on: null,
       planning_sheet_name: null,
+      outcome_row_version: 6,
       inspected_on: "2026-08-05",
       inspected_to_on: "2026-08-06",
       executed_on: "2026-08-06T09:30:00Z",
@@ -1294,6 +1302,35 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
   }, 10000);
 
+  it("renders inspection owners with editable plan/outcome sections and readonly team section", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(
+      buildCaseWorkspace({
+        inspection: {
+          ...buildCaseWorkspace().inspection,
+          plan_start_on: "2026-08-04",
+          plan_end_on: "2026-08-05",
+          planning_sheet_name: "KHKT-01",
+          decision_document_hint: "QĐ-KT dự thảo",
+          team_display_text: "Trưởng đoàn A; Thành viên B",
+        },
+      }),
+    );
+
+    renderApp(["/search"]);
+
+    expect(await screen.findByText("HS-001")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Kiểm tra/ }));
+
+    expect(await screen.findByText("Kế hoạch / quyết định")).toBeInTheDocument();
+    expect(screen.getByText("Thực hiện & kết quả")).toBeInTheDocument();
+    expect(screen.getByText("Đoàn kiểm tra")).toBeInTheDocument();
+    expect(screen.getByText(/canonical write owner yêu cầu `members\[\]` đầy đủ/i)).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Chỉnh sửa" })).toHaveLength(2);
+  });
+
   it("lets the operator edit only CaseApplication owner fields and cancel back to authoritative values", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
@@ -1323,6 +1360,85 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByText("HS-001")).toBeInTheDocument();
     expect(screen.queryByLabelText("Mã hồ sơ")).not.toBeInTheDocument();
     expect(apiMocks.upsertCaseApplication).not.toHaveBeenCalled();
+  });
+
+  it("saves inspection plan with plan row_version, refreshes only selected case workspace, and preserves Kiểm tra context", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace
+      .mockResolvedValueOnce(
+        buildCaseWorkspace({
+          inspection: {
+            ...buildCaseWorkspace().inspection,
+            plan_row_version: 3,
+            plan_start_on: "2026-08-04",
+            plan_end_on: "2026-08-05",
+            planning_sheet_name: "KHKT-OLD",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        buildCaseWorkspace({
+          inspection: {
+            ...buildCaseWorkspace().inspection,
+            plan_row_version: 4,
+            plan_start_on: "2026-09-01",
+            plan_end_on: "2026-09-02",
+            planning_sheet_name: "KHKT-NEW",
+            decision_document_hint: "QĐ-KT-NEW",
+          },
+        }),
+      );
+    apiMocks.upsertInspectionPlan.mockResolvedValue({
+      case_id: "case-1",
+      row_version: 4,
+      plan_start_on: "2026-09-01",
+      plan_end_on: "2026-09-02",
+      planning_sheet_name: "KHKT-NEW",
+      decision_document_hint: "QĐ-KT-NEW",
+      audit_event_id: "audit-plan-1",
+      inspection_event_id: "event-plan-1",
+    });
+
+    const { container } = renderApp(["/search?event_tab=Ki%E1%BB%83m+tra"]);
+
+    expect(await screen.findByText("Kế hoạch / quyết định")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Kiểm tra" })).toHaveAttribute("aria-current", "step");
+    fireEvent.click(screen.getAllByRole("button", { name: "Chỉnh sửa" })[0]);
+    fireEvent.change(screen.getByLabelText("Từ ngày kế hoạch"), { target: { value: "2026-09-01" } });
+    fireEvent.change(screen.getByLabelText("Đến ngày kế hoạch"), { target: { value: "2026-09-02" } });
+    fireEvent.change(screen.getByLabelText("Tên kế hoạch"), { target: { value: "KHKT-NEW" } });
+    fireEvent.change(screen.getByLabelText("Gợi ý tài liệu quyết định"), { target: { value: "QĐ-KT-NEW" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu" }));
+
+    await waitFor(() => {
+      expect(apiMocks.upsertInspectionPlan).toHaveBeenCalledTimes(1);
+    });
+    expect(apiMocks.upsertInspectionPlan).toHaveBeenCalledWith(
+      "case-1",
+      {
+        expected_version: 3,
+        plan_start_on: "2026-09-01",
+        plan_end_on: "2026-09-02",
+        planning_sheet_name: "KHKT-NEW",
+        decision_document_hint: "QĐ-KT-NEW",
+      },
+      expect.objectContaining({
+        username: "operator.local",
+        role: "inspector",
+      }),
+      true,
+      null,
+    );
+    await waitFor(() => {
+      expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
+    });
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("KHKT-NEW")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Kiểm tra" })).toHaveAttribute("aria-current", "step");
+    expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
   });
 
   it("saves case application with expected_version, refreshes only selected workspace, and keeps selection intact", async () => {
@@ -1395,6 +1511,117 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByText("HS-2026-31")).toBeInTheDocument();
     expect(screen.getByText("31-08-2026")).toBeInTheDocument();
     expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
+    expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
+  });
+
+  it("keeps unsaved inspection outcome draft on 409 conflict and does not refetch master search", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.upsertInspectionOutcome.mockRejectedValue(
+      buildApiError("Stale inspection_outcome update. Expected version 6, current version is 7.", 409),
+    );
+
+    renderApp(["/search?event_tab=Ki%E1%BB%83m+tra"]);
+
+    expect(await screen.findByText("Thực hiện & kết quả")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Chỉnh sửa" })[1]);
+    fireEvent.change(screen.getByLabelText("Kết quả kiểm tra"), { target: { value: "Kết quả draft mới" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Không thể lưu thực hiện & kết quả vì hồ sơ đã bị thay đổi hoặc đã ở trạng thái kết thúc. Tải lại workspace rồi thử lại.",
+    );
+    expect(screen.getByLabelText("Kết quả kiểm tra")).toHaveValue("Kết quả draft mới");
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it("saves inspection outcome with outcome row_version and refreshes facility history plus selected case only", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace
+      .mockResolvedValueOnce(buildWorkspace())
+      .mockResolvedValueOnce(
+        buildWorkspace({
+          history: [
+            {
+              ...buildWorkspace().history[0],
+              occurred_on: "2026-09-04",
+            },
+            ...buildWorkspace().history.slice(1),
+          ],
+        }),
+      );
+    apiMocks.getCaseWorkspace
+      .mockResolvedValueOnce(buildCaseWorkspace())
+      .mockResolvedValueOnce(
+        buildCaseWorkspace({
+          inspection: {
+            ...buildCaseWorkspace().inspection,
+            outcome_row_version: 7,
+            inspected_on: "2026-09-03",
+            inspected_to_on: "2026-09-04",
+            decision_reference: "QĐ-KT-UPDATED",
+            bbkt_reference: "BBKT-UPDATED",
+            outcome_result: "Đạt sau cập nhật",
+          },
+        }),
+      );
+    apiMocks.upsertInspectionOutcome.mockResolvedValue({
+      case_id: "case-1",
+      row_version: 7,
+      inspected_on: "2026-09-03",
+      inspected_to_on: "2026-09-04",
+      decision_reference: "QĐ-KT-UPDATED",
+      bbkt_reference: "BBKT-UPDATED",
+      outcome_result: "Đạt sau cập nhật",
+      audit_event_id: "audit-outcome-1",
+      inspection_event_id: "event-outcome-1",
+    });
+
+    const { container } = renderApp(["/search?event_tab=Ki%E1%BB%83m+tra"]);
+
+    expect(await screen.findByText("Thực hiện & kết quả")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Chỉnh sửa" })[1]);
+    fireEvent.change(screen.getByLabelText("Từ ngày kiểm tra"), { target: { value: "2026-09-03" } });
+    fireEvent.change(screen.getByLabelText("Đến ngày kiểm tra"), { target: { value: "2026-09-04" } });
+    fireEvent.change(screen.getByLabelText("Quyết định kiểm tra"), { target: { value: "QĐ-KT-UPDATED" } });
+    fireEvent.change(screen.getByLabelText("Biên bản kiểm tra"), { target: { value: "BBKT-UPDATED" } });
+    fireEvent.change(screen.getByLabelText("Kết quả kiểm tra"), { target: { value: "Đạt sau cập nhật" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu" }));
+
+    await waitFor(() => {
+      expect(apiMocks.upsertInspectionOutcome).toHaveBeenCalledTimes(1);
+    });
+    expect(apiMocks.upsertInspectionOutcome).toHaveBeenCalledWith(
+      "case-1",
+      {
+        expected_version: 6,
+        inspected_on: "2026-09-03",
+        inspected_to_on: "2026-09-04",
+        decision_reference: "QĐ-KT-UPDATED",
+        bbkt_reference: "BBKT-UPDATED",
+        outcome_result: "Đạt sau cập nhật",
+      },
+      expect.objectContaining({
+        username: "operator.local",
+        role: "inspector",
+      }),
+      true,
+      null,
+    );
+    await waitFor(() => {
+      expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2);
+    });
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Đạt sau cập nhật")).toBeInTheDocument();
+    expect(within(container.querySelector(".history-panel") as HTMLElement).getByText("04-09-2026")).toBeInTheDocument();
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
   });
 

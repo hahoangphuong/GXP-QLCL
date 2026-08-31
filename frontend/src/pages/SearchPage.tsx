@@ -18,6 +18,8 @@ import {
   listSiteGxpCertificates,
   searchFacilities,
   upsertCaseApplication,
+  upsertInspectionOutcome,
+  upsertInspectionPlan,
 } from "../lib/api";
 import type {
   BusinessEligibilityDetail,
@@ -29,6 +31,8 @@ import type {
   FacilityWorkspace,
   GxpCertificateDetail,
   GxpCertificateListItem,
+  InspectionOutcomeUpsertRequest,
+  InspectionPlanUpsertRequest,
 } from "../types";
 
 const DEFAULT_EVENT_TAB = "Hồ sơ";
@@ -686,6 +690,62 @@ export function SearchPage({
     await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
   }
 
+  async function handleInspectionPlanSave(payload: InspectionPlanUpsertRequest) {
+    if (!selectedHistory || selectedHistory.source_type !== "case") {
+      throw new Error("Chưa chọn hồ sơ để cập nhật.");
+    }
+    const caseId = selectedHistory.id;
+    const currentCaseWorkspace = selectedCaseWorkspace;
+    const response = await upsertInspectionPlan(caseId, payload, auth, useStubAuth, bearerToken);
+    const refreshedCaseWorkspace = await getCaseWorkspace(caseId, auth, useStubAuth, bearerToken).catch(() => {
+      if (!currentCaseWorkspace) {
+        throw new Error("Đã lưu nhưng không tải lại được workspace hồ sơ.");
+      }
+      return {
+        ...currentCaseWorkspace,
+        inspection: {
+          ...currentCaseWorkspace.inspection,
+          plan_row_version: response.row_version,
+          plan_start_on: response.plan_start_on,
+          plan_end_on: response.plan_end_on,
+          planning_sheet_name: response.planning_sheet_name,
+          decision_document_hint: response.decision_document_hint,
+        },
+      };
+    });
+    setSelectedCaseWorkspace(refreshedCaseWorkspace);
+    setCaseWorkspaceError(null);
+  }
+
+  async function handleInspectionOutcomeSave(payload: InspectionOutcomeUpsertRequest) {
+    if (!selectedHistory || selectedHistory.source_type !== "case") {
+      throw new Error("Chưa chọn hồ sơ để cập nhật.");
+    }
+    const caseId = selectedHistory.id;
+    const currentCaseWorkspace = selectedCaseWorkspace;
+    const response = await upsertInspectionOutcome(caseId, payload, auth, useStubAuth, bearerToken);
+    const refreshedCaseWorkspace = await getCaseWorkspace(caseId, auth, useStubAuth, bearerToken).catch(() => {
+      if (!currentCaseWorkspace) {
+        throw new Error("Đã lưu nhưng không tải lại được workspace hồ sơ.");
+      }
+      return {
+        ...currentCaseWorkspace,
+        inspection: {
+          ...currentCaseWorkspace.inspection,
+          outcome_row_version: response.row_version,
+          inspected_on: response.inspected_on,
+          inspected_to_on: response.inspected_to_on,
+          decision_reference: response.decision_reference,
+          bbkt_reference: response.bbkt_reference,
+          outcome_result: response.outcome_result,
+        },
+      };
+    });
+    setSelectedCaseWorkspace(refreshedCaseWorkspace);
+    setCaseWorkspaceError(null);
+    await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
+  }
+
   async function handleCreateInspectionCaseSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedResult) {
@@ -868,6 +928,8 @@ export function SearchPage({
             onGxpCertificateSelect={setSelectedGxpCertificateId}
             onHistorySelect={setSelectedHistoryId}
             onCaseApplicationSave={handleCaseApplicationSave}
+            onInspectionOutcomeSave={handleInspectionOutcomeSave}
+            onInspectionPlanSave={handleInspectionPlanSave}
             selectedEligibilityCertificateId={selectedEligibilityCertificateId}
             selectedFacilityTab={selectedFacilityTab}
             selectedGxpCertificateId={selectedGxpCertificateId}

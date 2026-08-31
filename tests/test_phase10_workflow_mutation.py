@@ -29,7 +29,7 @@ from backend.app.db.models.phase1 import (
     Site,
 )
 from backend.app.main import create_app
-from backend.app.read_models import InspectionCaseCreateRequest
+from backend.app.read_models import CaseApplicationUpsertRequest, InspectionCaseCreateRequest
 from backend.app.services.workflow import CaseWorkflowService
 
 
@@ -535,6 +535,154 @@ def test_upsert_case_application_persists_stage_and_audit():
             "dossier_reference": "REF-001",
             "submitted_on": None,
         }
+        case_row = session.get(Case, case_id)
+        assert case_row is not None
+        assert case_row.state == CaseState.DRAFT
+        assert session.scalar(select(InspectionEvent).where(InspectionEvent.case_id == case_id)) is None
+
+
+def test_upsert_case_application_writes_submission_event_without_transitioning_case_state():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+
+    with Session(engine) as session:
+        result = service.upsert_case_application(
+            session,
+            case_id=case_id,
+            submitted_on=datetime(2026, 8, 31, 0, 0, tzinfo=timezone.utc),
+            dossier_code="HS-003",
+            dossier_reference="REF-003",
+            applicant_name="Applicant C",
+            reason="Submission captured.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+
+    assert result["inspection_event_id"] is not None
+
+    with Session(engine) as session:
+        case_row = session.get(Case, case_id)
+        assert case_row is not None
+        assert case_row.state == CaseState.DRAFT
+        event = session.scalar(select(InspectionEvent).where(InspectionEvent.case_id == case_id))
+        assert event is not None
+        assert event.event_type == "application_submitted"
+
+
+def test_upsert_case_application_rejects_stale_version_and_terminal_states():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        draft_case_id = seed_case(session)
+
+    with Session(engine) as session:
+        created = service.upsert_case_application(
+            session,
+            case_id=draft_case_id,
+            submitted_on=None,
+            dossier_code="HS-004",
+            dossier_reference="REF-004",
+            applicant_name="Applicant D",
+            reason="Initial create.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        try:
+            service.upsert_case_application(
+                session,
+                case_id=draft_case_id,
+                expected_version=created["row_version"] - 1,
+                submitted_on=None,
+                dossier_code="HS-004-STALE",
+                dossier_reference="REF-004",
+                applicant_name="Applicant D",
+                reason="Should conflict.",
+                user=build_authenticated_user("manager01", "manager"),
+            )
+        except Exception as exc:
+            assert "Stale case_application update" in str(exc)
+        else:
+            raise AssertionError("Expected stale case application update to fail")
+
+    for terminal_state in (CaseState.CLOSED, CaseState.CANCELLED):
+        with Session(engine) as session:
+            case_id = seed_case(session)
+            case_row = session.get(Case, case_id)
+            assert case_row is not None
+            case_row.state = terminal_state
+            session.commit()
+
+        with Session(engine) as session:
+            try:
+                service.upsert_case_application(
+                    session,
+                    case_id=case_id,
+                    submitted_on=None,
+                    dossier_code="HS-TERMINAL",
+                    dossier_reference="REF-TERMINAL",
+                    applicant_name="Applicant Terminal",
+                    reason="Should be blocked.",
+                    user=build_authenticated_user("manager01", "manager"),
+                )
+            except Exception as exc:
+                assert f"terminal state {terminal_state.value}" in str(exc)
+            else:
+                raise AssertionError("Expected terminal case application update to fail")
+
+
+def test_upsert_case_application_route_enforces_auth_and_returns_read_model(tmp_path):
+    database_path = tmp_path / "workflow-application-route.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+
+    app = create_app(database_url)
+    route = next(route for route in app.routes if getattr(route, "path", "") == "/cases/{case_id}/application")
+    payload = CaseApplicationUpsertRequest(
+        expected_version=None,
+        submitted_on=datetime(2026, 8, 31, 0, 0, tzinfo=timezone.utc),
+        dossier_code="HS-HTTP",
+        dossier_reference="REF-HTTP",
+        applicant_name="Applicant HTTP",
+    )
+
+    with Session(engine) as session:
+        try:
+            route.endpoint(
+                case_id=case_id,
+                payload=payload,
+                session=session,
+                user=build_authenticated_user("reader01", "reader"),
+            )
+        except Exception as exc:
+            assert "missing required permission" in str(exc).lower()
+        else:
+            raise AssertionError("Expected reader application upsert to fail")
+
+    with Session(engine) as session:
+        body = route.endpoint(
+            case_id=case_id,
+            payload=payload,
+            session=session,
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
+        ).model_dump(mode="json")
+        persisted = session.scalar(select(CaseApplication).where(CaseApplication.case_id == case_id))
+
+    assert body["case_id"] == case_id
+    assert persisted is not None
+    assert body["row_version"] == persisted.row_version
+    assert body["submitted_on"] == "2026-08-31T00:00:00Z"
 
 
 def test_workflow_audit_payload_redacts_sensitive_keys():

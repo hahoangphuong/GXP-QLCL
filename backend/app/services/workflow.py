@@ -76,6 +76,7 @@ OPEN_CASE_STATES = frozenset(
 )
 CREATE_INSPECTION_CASE_PERMISSION = "case.edit"
 REASSESSMENT_INSPECTION_TYPE = "Tái"
+TERMINAL_CASE_STATES = frozenset({CaseState.CLOSED, CaseState.CANCELLED})
 
 
 class CaseWorkflowService:
@@ -137,6 +138,13 @@ class CaseWorkflowService:
         if row is None:
             raise HTTPException(status_code=404, detail="Case not found.")
         return row
+
+    def _assert_case_not_terminal(self, row: Case, *, operation: str) -> None:
+        if row.state in TERMINAL_CASE_STATES:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Case {operation} is blocked for terminal state {row.state.value}.",
+            )
 
     def _get_certificate(self, session: Session, certificate_id: str) -> Certificate:
         row = session.get(Certificate, certificate_id)
@@ -969,6 +977,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         row = self._get_case(session, case_id)
+        self._assert_case_not_terminal(row, operation="application update")
         actor = self._get_or_create_app_user(session, user)
         stage = session.scalars(select(CaseApplication).where(CaseApplication.case_id == row.id)).first()
         if stage is None:

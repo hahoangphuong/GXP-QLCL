@@ -2,6 +2,8 @@ import type {
   AppStatus,
   BusinessEligibilityDetail,
   BusinessEligibilityList,
+  CaseApplicationUpsertRequest,
+  CaseApplicationUpsertResponse,
   CaseDetail,
   CaseListItem,
   CaseWorkspace,
@@ -108,7 +110,9 @@ async function requestJson<T>(path: string, options: RequestOptions): Promise<T>
     } catch {
       // Preserve the original HTTP detail.
     }
-    throw new Error(detail);
+    const error = new Error(detail) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
   }
 
   return (await response.json()) as T;
@@ -247,6 +251,22 @@ export function createInspectionCase(
 ): Promise<InspectionCaseCreateResponse> {
   return requestJson<InspectionCaseCreateResponse>(`/sites/${siteId}/inspection-cases`, {
     method: "POST",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function upsertCaseApplication(
+  caseId: string,
+  payload: CaseApplicationUpsertRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<CaseApplicationUpsertResponse> {
+  return requestJson<CaseApplicationUpsertResponse>(`/cases/${caseId}/application`, {
+    method: "PUT",
     body: payload,
     auth,
     useStubAuth,

@@ -86,6 +86,26 @@ export type InspectionCaseCreateResponse = {
   audit_event_id: string;
 };
 
+export type CaseApplicationUpsertRequest = {
+  expected_version: number | null;
+  submitted_on: string | null;
+  dossier_code: string | null;
+  dossier_reference: string | null;
+  applicant_name: string | null;
+  reason?: string | null;
+};
+
+export type CaseApplicationUpsertResponse = {
+  case_id: string;
+  row_version: number;
+  submitted_on: string | null;
+  dossier_code: string | null;
+  dossier_reference: string | null;
+  applicant_name: string | null;
+  audit_event_id: string;
+  inspection_event_id: string | null;
+};
+
 export type DashboardQueueItem = {
   case_id: string;
   site_id: string;
@@ -201,6 +221,7 @@ export type CaseWorkspaceSummary = {
 };
 
 export type CaseWorkspaceApplication = {
+  row_version: number | null;
   submitted_on: string | null;
   dossier_code: string | null;
   dossier_reference: string | null;

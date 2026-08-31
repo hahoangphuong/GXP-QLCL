@@ -5,6 +5,7 @@ import { StatusBadge } from "../../components/StatusBadge";
 import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
 import type {
   BusinessEligibilityDetail,
+  CaseApplicationUpsertRequest,
   CaseWorkspace,
   CaseWorkspaceRemediationCycle,
   ChangeRequestWorkspace,
@@ -13,6 +14,7 @@ import type {
   GxpCertificateDetail,
 } from "../../types";
 import { BusinessEligibilityDetailFields } from "./BusinessEligibilityDetailFields";
+import { CaseApplicationWorkspace } from "./CaseApplicationWorkspace";
 import { DetailValue } from "./DetailValue";
 import { GxpCertificateDetailFields } from "./GxpCertificateDetailFields";
 
@@ -346,43 +348,13 @@ function RemediationWorkspace({
   );
 }
 
-function renderCaseStepContent(activeTab: string, caseWorkspace: CaseWorkspace) {
+function renderCaseStepContent(
+  activeTab: string,
+  caseWorkspace: CaseWorkspace,
+  onCaseApplicationSave: (payload: CaseApplicationUpsertRequest) => Promise<void>,
+) {
   if (activeTab === "Hồ sơ") {
-    return (
-      <div className="event-step-stack">
-        <WorkspaceSection title="Thông tin hồ sơ">
-          <div className="detail-grid compact-grid">
-            <DetailValue label="Mã hồ sơ" value={caseWorkspace.application.dossier_code ?? caseWorkspace.case_summary.legacy_inspection_code} />
-            <DetailValue label="Loại kiểm tra" value={caseWorkspace.case_summary.inspection_type} />
-            <DetailValue label="GxP" value={caseWorkspace.case_summary.gxp_type} />
-            <DetailValue label="Dây chuyền" value={caseWorkspace.case_summary.scope_code} />
-            <DetailValue label="Tiêu chuẩn" value={caseWorkspace.case_summary.applicable_standard} />
-            <DetailValue label="Năm mở hồ sơ" value={String(caseWorkspace.case_summary.opened_year ?? "")} />
-            <DetailValue label="Ngày nộp" value={formatCompactDate(caseWorkspace.application.submitted_on)} />
-            <DetailValue label="Trạng thái hồ sơ" value={formatStatusLabel(caseWorkspace.case_summary.state)} />
-          </div>
-        </WorkspaceSection>
-        <WorkspaceSection title="Phạm vi">
-          <div className="detail-grid compact-grid">
-            <DetailValue label="Phạm vi đề nghị" value={caseWorkspace.application.dossier_reference} multiline />
-            <DetailValue label="Phạm vi đánh giá" value={caseWorkspace.inspection.outcome_result} multiline />
-          </div>
-        </WorkspaceSection>
-        <WorkspaceSection title="Đầu mối cơ sở">
-          <div className="detail-grid compact-grid">
-            <DetailValue
-              label={
-                caseWorkspace.application.assigned_specialist_source === "company_master"
-                  ? "Chuyên viên phụ trách cơ sở"
-                  : "Chuyên viên phụ trách"
-              }
-              value={caseWorkspace.application.assigned_specialist}
-            />
-            <DetailValue label="Người nộp hồ sơ" value={caseWorkspace.application.applicant_name} />
-          </div>
-        </WorkspaceSection>
-      </div>
-    );
+    return <CaseApplicationWorkspace caseWorkspace={caseWorkspace} onSave={onCaseApplicationSave} />;
   }
 
   if (activeTab === "Kiểm tra") {
@@ -603,6 +575,7 @@ export function EventWorkspace({
   changeRequestWorkspaceError,
   activeTab,
   onTabChange,
+  onCaseApplicationSave,
 }: {
   selectedHistory: FacilityHistoryItem | null;
   caseWorkspace: CaseWorkspace | null;
@@ -613,6 +586,7 @@ export function EventWorkspace({
   changeRequestWorkspaceError: string | null;
   activeTab: string;
   onTabChange: (tab: string) => void;
+  onCaseApplicationSave: (payload: CaseApplicationUpsertRequest) => Promise<void>;
 }) {
   if (!selectedHistory) {
     return (
@@ -674,7 +648,7 @@ export function EventWorkspace({
             description={caseWorkspaceError}
           />
         ) : caseWorkspace ? (
-          renderCaseStepContent(effectiveActiveTab, caseWorkspace)
+          renderCaseStepContent(effectiveActiveTab, caseWorkspace, onCaseApplicationSave)
         ) : (
           <EmptyState title="Chưa có workspace hồ sơ" description="Backend chưa trả dữ liệu workspace cho lựa chọn case hiện tại." />
         )}

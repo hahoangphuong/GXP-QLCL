@@ -14,6 +14,7 @@ import {
   listSites,
   prepareDocument,
   searchFacilities,
+  upsertCaseApplication,
   renderTemplateDocx,
 } from "./api";
 
@@ -273,6 +274,43 @@ describe("frontend API routing contract", () => {
           gxp_type: "GMP",
           line_code: "A",
           applicable_standard: "WHO-GMP",
+        }),
+      }),
+    );
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain("/api/api/");
+  });
+
+  it("puts case application updates to the canonical case workflow endpoint with optimistic concurrency payload", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: { case_id: "case-123", row_version: 2 } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await upsertCaseApplication(
+      "case-123",
+      {
+        expected_version: 1,
+        submitted_on: "2026-08-31T00:00:00Z",
+        dossier_code: "HS-2026-01",
+        dossier_reference: "CV-123",
+        applicant_name: "Nguyễn Văn A",
+      },
+      { username: "operator.local", role: "manager" },
+      true,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/cases/case-123/application",
+      expect.objectContaining({
+        method: "PUT",
+        headers: expect.objectContaining({
+          "X-Auth-User": "operator.local",
+          "X-Auth-Role": "manager",
+        }),
+        body: JSON.stringify({
+          expected_version: 1,
+          submitted_on: "2026-08-31T00:00:00Z",
+          dossier_code: "HS-2026-01",
+          dossier_reference: "CV-123",
+          applicant_name: "Nguyễn Văn A",
         }),
       }),
     );

@@ -191,6 +191,7 @@ class CaseWorkspaceSummaryRead(BaseModel):
 
 
 class CaseWorkspaceApplicationRead(BaseModel):
+    row_version: int | None
     submitted_on: datetime | None
     dossier_code: str | None
     dossier_reference: str | None

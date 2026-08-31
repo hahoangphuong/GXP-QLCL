@@ -17,9 +17,11 @@ import {
   listSiteBusinessEligibilityCertificates,
   listSiteGxpCertificates,
   searchFacilities,
+  upsertCaseApplication,
 } from "../lib/api";
 import type {
   BusinessEligibilityDetail,
+  CaseApplicationUpsertRequest,
   BusinessEligibilityListItem,
   CaseWorkspace,
   ChangeRequestWorkspace,
@@ -351,12 +353,12 @@ export function SearchPage({
     setSelectedCaseWorkspace(null);
     setCaseWorkspaceError(null);
     setCaseWorkspaceLoading(false);
-    if (!selectedHistory || selectedHistory.source_type !== "case") {
+    if (!selectedHistoryId || selectedHistory?.source_type !== "case") {
       return;
     }
     let cancelled = false;
     setCaseWorkspaceLoading(true);
-    void getCaseWorkspace(selectedHistory.id, auth, useStubAuth, bearerToken)
+    void getCaseWorkspace(selectedHistoryId, auth, useStubAuth, bearerToken)
       .then((payload) => {
         if (!cancelled) {
           setSelectedCaseWorkspace(payload);
@@ -374,18 +376,18 @@ export function SearchPage({
     return () => {
       cancelled = true;
     };
-  }, [auth, bearerToken, selectedHistory, useStubAuth]);
+  }, [auth, bearerToken, selectedHistoryId, selectedHistory?.source_type, useStubAuth]);
 
   useEffect(() => {
     setSelectedChangeRequestWorkspace(null);
     setChangeRequestWorkspaceError(null);
     setChangeRequestWorkspaceLoading(false);
-    if (!selectedHistory || selectedHistory.source_type !== "change_request") {
+    if (!selectedHistoryId || selectedHistory?.source_type !== "change_request") {
       return;
     }
     let cancelled = false;
     setChangeRequestWorkspaceLoading(true);
-    void getChangeRequestWorkspace(selectedHistory.id, auth, useStubAuth, bearerToken)
+    void getChangeRequestWorkspace(selectedHistoryId, auth, useStubAuth, bearerToken)
       .then((payload) => {
         if (!cancelled) {
           setSelectedChangeRequestWorkspace(payload);
@@ -403,7 +405,7 @@ export function SearchPage({
     return () => {
       cancelled = true;
     };
-  }, [auth, bearerToken, selectedHistory, useStubAuth]);
+  }, [auth, bearerToken, selectedHistoryId, selectedHistory?.source_type, useStubAuth]);
 
   useEffect(() => {
     if (!selectedResult || !canLoadSecureApi || selectedFacilityTab !== "Giấy chứng nhận GxP") {
@@ -633,6 +635,57 @@ export function SearchPage({
     }
   }
 
+  async function refreshSelectedFacilityWorkspace(preferredHistoryId: string | null) {
+    if (!selectedResult) {
+      return null;
+    }
+    const payload = await getFacilityWorkspace(
+      selectedResult.site_id,
+      auth,
+      useStubAuth,
+      selectedResult.gxp_type,
+      selectedResult.line_code,
+      bearerToken,
+    );
+    setWorkspace(payload);
+    setWorkspaceError(null);
+    setSelectedHistoryId((current) => {
+      const nextPreferredHistoryId = preferredHistoryId ?? current;
+      return nextPreferredHistoryId && payload.history.some((row) => row.id === nextPreferredHistoryId)
+        ? nextPreferredHistoryId
+        : payload.history[0]?.id ?? null;
+    });
+    return payload;
+  }
+
+  async function handleCaseApplicationSave(payload: CaseApplicationUpsertRequest) {
+    if (!selectedHistory || selectedHistory.source_type !== "case") {
+      throw new Error("Chưa chọn hồ sơ để cập nhật.");
+    }
+    const caseId = selectedHistory.id;
+    const currentCaseWorkspace = selectedCaseWorkspace;
+    const response = await upsertCaseApplication(caseId, payload, auth, useStubAuth, bearerToken);
+    const refreshedCaseWorkspace = await getCaseWorkspace(caseId, auth, useStubAuth, bearerToken).catch(() => {
+      if (!currentCaseWorkspace) {
+        throw new Error("Đã lưu nhưng không tải lại được workspace hồ sơ.");
+      }
+      return {
+        ...currentCaseWorkspace,
+        application: {
+          ...currentCaseWorkspace.application,
+          row_version: response.row_version,
+          submitted_on: response.submitted_on,
+          dossier_code: response.dossier_code,
+          dossier_reference: response.dossier_reference,
+          applicant_name: response.applicant_name,
+        },
+      };
+    });
+    setSelectedCaseWorkspace(refreshedCaseWorkspace);
+    setCaseWorkspaceError(null);
+    await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
+  }
+
   async function handleCreateInspectionCaseSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedResult) {
@@ -814,6 +867,7 @@ export function SearchPage({
             onFacilityTabChange={setSelectedFacilityTab}
             onGxpCertificateSelect={setSelectedGxpCertificateId}
             onHistorySelect={setSelectedHistoryId}
+            onCaseApplicationSave={handleCaseApplicationSave}
             selectedEligibilityCertificateId={selectedEligibilityCertificateId}
             selectedFacilityTab={selectedFacilityTab}
             selectedGxpCertificateId={selectedGxpCertificateId}

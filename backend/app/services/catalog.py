@@ -2097,6 +2097,7 @@ class CatalogReadService:
                 "opened_year": case.opened_year,
             },
             "application": {
+                "row_version": None if application is None else application.row_version,
                 "submitted_on": None if application is None else application.submitted_on,
                 "dossier_code": None if application is None else application.dossier_code,
                 "dossier_reference": None if application is None else application.dossier_reference,

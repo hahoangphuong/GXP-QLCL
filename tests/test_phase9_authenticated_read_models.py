@@ -1776,6 +1776,7 @@ def test_case_workspace_reads_owner_correct_sections_and_direct_links_only(tmp_p
     assert payload.case_summary.legacy_inspection_code == "KT-GMP-A-2025"
     assert payload.case_summary.gxp_type == "GMP"
     assert payload.case_summary.scope_code == "A"
+    assert payload.application.row_version == 1
     assert payload.application.dossier_code == "HS-GMP-A"
     assert payload.application.assigned_specialist == "Hà Hoàng Phương"
     assert payload.application.assigned_specialist_source == "company_master"

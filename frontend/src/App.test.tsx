@@ -24,6 +24,7 @@ const apiMocks = vi.hoisted(() => ({
   getCaseDetail: vi.fn().mockResolvedValue(null),
   getCaseWorkspace: vi.fn().mockResolvedValue(null),
   getChangeRequestWorkspace: vi.fn().mockResolvedValue(null),
+  upsertCaseApplication: vi.fn(),
   listSiteGxpCertificates: vi.fn().mockResolvedValue({ items: [] }),
   getGxpCertificateDetail: vi.fn().mockResolvedValue(null),
   listSiteBusinessEligibilityCertificates: vi.fn().mockResolvedValue({ items: [] }),
@@ -62,6 +63,7 @@ function resetApiMocks() {
   apiMocks.getCaseDetail.mockReset();
   apiMocks.getCaseWorkspace.mockReset();
   apiMocks.getChangeRequestWorkspace.mockReset();
+  apiMocks.upsertCaseApplication.mockReset();
   apiMocks.listSiteGxpCertificates.mockReset();
   apiMocks.getGxpCertificateDetail.mockReset();
   apiMocks.listSiteBusinessEligibilityCertificates.mockReset();
@@ -91,6 +93,7 @@ function resetApiMocks() {
   apiMocks.getCaseDetail.mockResolvedValue(null);
   apiMocks.getCaseWorkspace.mockResolvedValue(null);
   apiMocks.getChangeRequestWorkspace.mockResolvedValue(null);
+  apiMocks.upsertCaseApplication.mockResolvedValue(null);
   apiMocks.listSiteGxpCertificates.mockResolvedValue({ items: [] });
   apiMocks.getGxpCertificateDetail.mockResolvedValue(null);
   apiMocks.listSiteBusinessEligibilityCertificates.mockResolvedValue({ items: [] });
@@ -279,6 +282,7 @@ function buildCaseWorkspace(overrides: Record<string, unknown> = {}) {
       opened_year: 2026,
     },
     application: {
+      row_version: 4,
       submitted_on: "2026-01-15T00:00:00Z",
       dossier_code: "HS-001",
       dossier_reference: "QĐ-TN-01",
@@ -448,6 +452,12 @@ function buildChangeRequestWorkspace(overrides: Record<string, unknown> = {}) {
     ],
     ...overrides,
   };
+}
+
+function buildApiError(message: string, status: number) {
+  const error = new Error(message) as Error & { status: number };
+  error.status = status;
+  return error;
 }
 
 function renderApp(initialEntries: string[] = ["/"]) {
@@ -1283,6 +1293,201 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
   }, 10000);
+
+  it("lets the operator edit only CaseApplication owner fields and cancel back to authoritative values", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+
+    renderApp(["/search"]);
+
+    expect(await screen.findByText("HS-001")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Chỉnh sửa" }));
+
+    expect(screen.getByLabelText("Ngày nộp")).toBeInTheDocument();
+    expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("HS-001");
+    expect(screen.getByLabelText("Tham chiếu hồ sơ")).toHaveValue("QĐ-TN-01");
+    expect(screen.getByLabelText("Người nộp hồ sơ")).toHaveValue("Nguyễn Văn A");
+    const applicationForm = screen.getByRole("button", { name: "Lưu" }).closest("form");
+    expect(applicationForm).not.toBeNull();
+    expect(within(applicationForm as HTMLElement).queryByLabelText("Loại kiểm tra")).not.toBeInTheDocument();
+    expect(within(applicationForm as HTMLElement).queryByLabelText("GxP")).not.toBeInTheDocument();
+    expect(within(applicationForm as HTMLElement).queryByLabelText("Dây chuyền")).not.toBeInTheDocument();
+    expect(within(applicationForm as HTMLElement).queryByLabelText("Tiêu chuẩn áp dụng")).not.toBeInTheDocument();
+    expect(within(applicationForm as HTMLElement).queryByLabelText("Trạng thái hồ sơ")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "HS-EDIT-DRAFT" } });
+    fireEvent.click(screen.getByRole("button", { name: "Hủy" }));
+
+    expect(await screen.findByText("HS-001")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Mã hồ sơ")).not.toBeInTheDocument();
+    expect(apiMocks.upsertCaseApplication).not.toHaveBeenCalled();
+  });
+
+  it("saves case application with expected_version, refreshes only selected workspace, and keeps selection intact", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace
+      .mockResolvedValueOnce(buildWorkspace())
+      .mockResolvedValueOnce(buildWorkspace());
+    apiMocks.getCaseWorkspace
+      .mockResolvedValueOnce(buildCaseWorkspace())
+      .mockResolvedValueOnce(
+        buildCaseWorkspace({
+          application: {
+            ...buildCaseWorkspace().application,
+            row_version: 5,
+            submitted_on: "2026-08-31T00:00:00Z",
+            dossier_code: "HS-2026-31",
+            dossier_reference: "CV-31",
+            applicant_name: "Công ty A",
+          },
+        }),
+      );
+    apiMocks.upsertCaseApplication.mockResolvedValue({
+      case_id: "case-1",
+      row_version: 5,
+      submitted_on: "2026-08-31T00:00:00Z",
+      dossier_code: "HS-2026-31",
+      dossier_reference: "CV-31",
+      applicant_name: "Công ty A",
+      audit_event_id: "audit-application-1",
+      inspection_event_id: "event-application-1",
+    });
+
+    const { container } = renderApp(["/search"]);
+
+    expect(await screen.findByText("HS-001")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Chỉnh sửa" }));
+    fireEvent.change(screen.getByLabelText("Ngày nộp"), { target: { value: "2026-08-31" } });
+    fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "HS-2026-31" } });
+    fireEvent.change(screen.getByLabelText("Tham chiếu hồ sơ"), { target: { value: "CV-31" } });
+    fireEvent.change(screen.getByLabelText("Người nộp hồ sơ"), { target: { value: "Công ty A" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu" }));
+
+    await waitFor(() => {
+      expect(apiMocks.upsertCaseApplication).toHaveBeenCalledTimes(1);
+    });
+    expect(apiMocks.upsertCaseApplication).toHaveBeenCalledWith(
+      "case-1",
+      {
+        expected_version: 4,
+        submitted_on: "2026-08-31T00:00:00Z",
+        dossier_code: "HS-2026-31",
+        dossier_reference: "CV-31",
+        applicant_name: "Công ty A",
+      },
+      expect.objectContaining({
+        username: "operator.local",
+        role: "inspector",
+      }),
+      true,
+      null,
+    );
+    await waitFor(() => {
+      expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
+    });
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("HS-2026-31")).toBeInTheDocument();
+    expect(screen.getByText("31-08-2026")).toBeInTheDocument();
+    expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
+    expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
+  });
+
+  it("shows a clear Vietnamese conflict message and preserves unsaved values on stale case application save", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.upsertCaseApplication.mockRejectedValue(
+      buildApiError("Stale case_application update. Expected version 4, current version is 5.", 409),
+    );
+
+    renderApp(["/search"]);
+
+    expect(await screen.findByText("HS-001")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Chỉnh sửa" }));
+    fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "HS-CONFLICT" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Không thể lưu vì hồ sơ đã bị thay đổi hoặc đã ở trạng thái kết thúc. Tải lại workspace rồi thử lại.",
+    );
+    expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("HS-CONFLICT");
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces backend 403 and 422 validation errors clearly in the case application form", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.upsertCaseApplication
+      .mockRejectedValueOnce(buildApiError("User is missing required permission: case.edit", 403))
+      .mockRejectedValueOnce(buildApiError("Input should be a valid datetime", 422));
+
+    renderApp(["/search"]);
+
+    expect(await screen.findByText("HS-001")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Chỉnh sửa" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lưu" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Bạn không có quyền cập nhật hồ sơ này.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Lưu" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Dữ liệu hồ sơ chưa hợp lệ.");
+  });
+
+  it("prevents double-submit while case application save is pending", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace
+      .mockResolvedValueOnce(buildWorkspace())
+      .mockResolvedValueOnce(buildWorkspace());
+    apiMocks.getCaseWorkspace
+      .mockResolvedValueOnce(buildCaseWorkspace())
+      .mockResolvedValueOnce(buildCaseWorkspace());
+    let releaseSave: () => void = () => {};
+    apiMocks.upsertCaseApplication.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseSave = () =>
+            resolve({
+              case_id: "case-1",
+              row_version: 5,
+              submitted_on: "2026-01-15T00:00:00Z",
+              dossier_code: "HS-001",
+              dossier_reference: "QĐ-TN-01",
+              applicant_name: "Nguyễn Văn A",
+              audit_event_id: "audit-pending",
+              inspection_event_id: null,
+            });
+        }),
+    );
+
+    renderApp(["/search"]);
+
+    expect(await screen.findByText("HS-001")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Chỉnh sửa" }));
+    const submitButton = screen.getByRole("button", { name: "Lưu" });
+    fireEvent.click(submitButton);
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Đang lưu..." })).toBeDisabled();
+    });
+    expect(apiMocks.upsertCaseApplication).toHaveBeenCalledTimes(1);
+
+    releaseSave();
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Đang lưu..." })).not.toBeInTheDocument();
+    });
+  });
 
   it("shows only direct case-linked certificates inside event steps and does not fabricate site-wide business eligibility", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));

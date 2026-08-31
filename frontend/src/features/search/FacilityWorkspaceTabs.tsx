@@ -1,5 +1,6 @@
 import type {
   BusinessEligibilityDetail,
+  CaseApplicationUpsertRequest,
   BusinessEligibilityListItem,
   CaseWorkspace,
   ChangeRequestWorkspace,
@@ -53,6 +54,7 @@ export function FacilityWorkspaceTabs({
   eligibilityCertificateDetail,
   eligibilityCertificateDetailLoading,
   eligibilityCertificateDetailError,
+  onCaseApplicationSave,
 }: {
   summary: FacilityWorkspaceSummary;
   history: FacilityHistoryItem[];
@@ -85,6 +87,7 @@ export function FacilityWorkspaceTabs({
   eligibilityCertificateDetail: BusinessEligibilityDetail | null;
   eligibilityCertificateDetailLoading: boolean;
   eligibilityCertificateDetailError: string | null;
+  onCaseApplicationSave: (payload: CaseApplicationUpsertRequest) => Promise<void>;
 }) {
   return (
     <section className="panel panel-tight facility-workspace-panel">
@@ -122,6 +125,7 @@ export function FacilityWorkspaceTabs({
                 changeRequestWorkspace={changeRequestWorkspace}
                 changeRequestWorkspaceError={changeRequestWorkspaceError}
                 changeRequestWorkspaceLoading={changeRequestWorkspaceLoading}
+                onCaseApplicationSave={onCaseApplicationSave}
                 onTabChange={onEventTabChange}
                 selectedHistory={selectedHistory}
               />

@@ -999,10 +999,45 @@ tr:focus-visible {
   gap: 0.4rem;
 }
 
+.workspace-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 .workspace-section h4 {
   margin: 0;
   font-size: 0.86rem;
   color: var(--text-strong);
+}
+
+.case-application-form {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.case-application-form-grid {
+  margin-top: 0.1rem;
+}
+
+.case-application-field {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.case-application-field span,
+.case-application-readonly span {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #47626b;
+}
+
+.case-application-readonly {
+  padding: 0.4rem 0.55rem;
+  border: 1px solid #d7e5e9;
+  border-radius: 10px;
+  background: #f8fbfc;
 }
 
 .event-linked-certificate-workspace {

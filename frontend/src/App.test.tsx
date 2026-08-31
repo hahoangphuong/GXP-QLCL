@@ -636,6 +636,49 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByRole("button", { name: "Thay đổi" })).toBeDisabled();
   });
 
+  it("opens the reassessment dialog with selected context, closes on cancel, and keeps the action rail button-only", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(
+      buildWorkspace({
+        action_readiness: buildWorkspace().action_readiness.map((item) =>
+          item.action_key === "create_reassessment_case"
+            ? {
+                ...item,
+                readiness_status: "available",
+                detail: "Có thể mở hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
+                required_permissions: ["case.edit"],
+              }
+            : item,
+        ),
+      }),
+    );
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+
+    const { container } = renderApp(["/search"]);
+
+    expect(await screen.findByText("1.1A")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeEnabled();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Mở hồ sơ tái đánh giá" });
+    expect(within(dialog).getByText("Công ty cổ phần dược phẩm Trung ương I")).toBeInTheDocument();
+    expect(within(dialog).getByText("GMP")).toBeInTheDocument();
+    expect(within(dialog).getByText("A")).toBeInTheDocument();
+    expect(within(dialog).getByRole("textbox", { name: "Tiêu chuẩn áp dụng" })).toHaveFocus();
+    expect(within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Hủy" })).toBeInTheDocument();
+    expect(container.querySelector(".action-stack .create-inspection-case-panel")).toBeNull();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Hủy" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Mở hồ sơ tái đánh giá" })).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Tái đánh giá" })).toHaveFocus();
+  });
+
   it("creates a reassessment case without refetching search and refreshes workspace/history to the new case", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
@@ -721,9 +764,9 @@ describe("App Slice A.4 search workspace", () => {
     const createAction = screen.getByRole("button", { name: "Tái đánh giá" });
     fireEvent.click(createAction);
 
-    expect(await screen.findByRole("heading", { name: "Mở hồ sơ tái đánh giá" })).toBeInTheDocument();
-    fireEvent.change(screen.getByRole("textbox", { name: "Tiêu chuẩn áp dụng" }), { target: { value: "WHO-GMP" } });
-    fireEvent.click(screen.getByRole("button", { name: "Mở tái đánh giá" }));
+    const dialog = await screen.findByRole("dialog", { name: "Mở hồ sơ tái đánh giá" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Tiêu chuẩn áp dụng" }), { target: { value: "WHO-GMP" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" }));
 
     await waitFor(() => {
       expect(apiMocks.createInspectionCase).toHaveBeenCalledTimes(1);
@@ -749,8 +792,84 @@ describe("App Slice A.4 search workspace", () => {
     await waitFor(() => {
       expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
     });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Mở hồ sơ tái đánh giá" })).not.toBeInTheDocument();
+    });
     expect(await screen.findByRole("heading", { name: "Thông tin hồ sơ" })).toBeInTheDocument();
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
+  });
+
+  it("keeps the reassessment dialog open while submit is pending and allows escape close when idle", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+   apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    const reassessmentReadyWorkspace = buildWorkspace({
+      action_readiness: buildWorkspace().action_readiness.map((item) =>
+        item.action_key === "create_reassessment_case"
+          ? {
+              ...item,
+              readiness_status: "available",
+              detail: "Có thể mở hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
+              required_permissions: ["case.edit"],
+            }
+          : item,
+      ),
+    });
+    apiMocks.getFacilityWorkspace
+      .mockResolvedValueOnce(reassessmentReadyWorkspace)
+      .mockResolvedValueOnce(reassessmentReadyWorkspace);
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    let releaseCreate: () => void = () => {};
+    apiMocks.createInspectionCase.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseCreate = () =>
+            resolve({
+              case_id: "case-pending",
+              site_id: "site-1",
+              gxp_type: "GMP",
+              line_code: "A",
+              inspection_type: "Tái",
+              applicable_standard: null,
+              state: "draft",
+              row_version: 1,
+              legacy_inspection_id: null,
+              legacy_inspection_code: null,
+              audit_event_id: "audit-pending",
+            });
+        }),
+    );
+
+    renderApp(["/search"]);
+
+    expect(await screen.findByText("1.1A")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeEnabled();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
+    let dialog = await screen.findByRole("dialog", { name: "Mở hồ sơ tái đánh giá" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" }));
+
+    await waitFor(() => {
+      expect(within(screen.getByRole("dialog", { name: "Mở hồ sơ tái đánh giá" })).getByRole("button", { name: "Đang tạo..." })).toBeDisabled();
+    });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: "Mở hồ sơ tái đánh giá" })).toBeInTheDocument();
+
+     releaseCreate();
+     await waitFor(() => {
+       expect(screen.queryByRole("dialog", { name: "Mở hồ sơ tái đánh giá" })).not.toBeInTheDocument();
+     });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeEnabled();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
+    dialog = await screen.findByRole("dialog", { name: "Mở hồ sơ tái đánh giá" });
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Mở hồ sơ tái đánh giá" })).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Tái đánh giá" })).toHaveFocus();
   });
 
   it("shows backend 409 conflict for reassessment create clearly and keeps selected facility intact", async () => {
@@ -780,11 +899,13 @@ describe("App Slice A.4 search workspace", () => {
       expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeEnabled();
     });
     fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
-    fireEvent.click(screen.getByRole("button", { name: "Mở tái đánh giá" }));
+    const dialog = await screen.findByRole("dialog", { name: "Mở hồ sơ tái đánh giá" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "An open inspection case already exists for the selected facility/GxP/line context.",
     );
+    expect(screen.getByRole("dialog", { name: "Mở hồ sơ tái đánh giá" })).toBeInTheDocument();
     expect(screen.getByText("1.1A")).toBeInTheDocument();
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
   });

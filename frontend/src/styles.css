@@ -1064,6 +1064,46 @@ tr:focus-visible {
   margin: 0.2rem 0 0.45rem;
 }
 
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(17, 41, 50, 0.28);
+}
+
+.reassessment-dialog {
+  width: min(100%, 38rem);
+  max-height: min(100vh - 2rem, 34rem);
+  padding: 0.9rem 1rem 1rem;
+}
+
+.reassessment-dialog-header {
+  margin-bottom: 0.55rem;
+}
+
+.reassessment-dialog-header p {
+  margin: 0.2rem 0 0;
+  color: var(--text-muted);
+}
+
+.reassessment-context-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-bottom: 0.75rem;
+}
+
+.reassessment-form {
+  gap: 0.7rem;
+}
+
+.reassessment-dialog-actions {
+  justify-content: flex-end;
+  margin-left: 0;
+}
+
 .form-error {
   margin: 0;
   color: var(--danger);

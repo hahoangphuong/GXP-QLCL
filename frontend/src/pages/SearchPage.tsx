@@ -1,4 +1,4 @@
-import { startTransition, useDeferredValue, useEffect, useState, type FormEvent } from "react";
+import { startTransition, useDeferredValue, useEffect, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import type { ApiAccess } from "../App";
@@ -107,12 +107,15 @@ export function SearchPage({
   const [eligibilityCertificateDetailLoading, setEligibilityCertificateDetailLoading] = useState(false);
   const [eligibilityCertificateDetailError, setEligibilityCertificateDetailError] = useState<string | null>(null);
   const { auth, useStubAuth, bearerToken, canLoadSecureApi } = access;
+  const reassessmentInputRef = useRef<HTMLInputElement | null>(null);
+  const reassessmentTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   const selectedResult = results.find((item) => item.result_key === selectedResultKey) ?? null;
   const selectedHistory = workspace?.history.find((item) => item.id === selectedHistoryId) ?? null;
   const hasMoreResults = results.length < resultsTotalCount;
   const createReassessmentAction =
     workspace?.action_readiness.find((item) => item.action_key === "create_reassessment_case") ?? null;
+  const reassessmentDialogOpen = selectedActionKey === "create_reassessment_case" && selectedResult && createReassessmentAction;
 
   function resetCertificateWorkspaceState() {
     setGxpCertificates([]);
@@ -136,6 +139,14 @@ export function SearchPage({
     setApplicableStandardInput("");
     setCreateInspectionCasePending(false);
     setCreateInspectionCaseError(null);
+  }
+
+  function closeReassessmentDialog() {
+    if (createInspectionCasePending) {
+      return;
+    }
+    resetCreateInspectionCaseState();
+    reassessmentTriggerRef.current?.focus();
   }
 
   useEffect(() => {
@@ -526,6 +537,27 @@ export function SearchPage({
     };
   }, [auth, bearerToken, canLoadSecureApi, selectedEligibilityCertificateId, selectedFacilityTab, useStubAuth]);
 
+  useEffect(() => {
+    if (!reassessmentDialogOpen) {
+      return;
+    }
+    reassessmentInputRef.current?.focus();
+  }, [reassessmentDialogOpen]);
+
+  useEffect(() => {
+    if (!reassessmentDialogOpen) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !createInspectionCasePending) {
+        event.preventDefault();
+        closeReassessmentDialog();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [createInspectionCasePending, reassessmentDialogOpen]);
+
   function resetDependentContext() {
     setResultsOffset(0);
     setSelectedResultKey(null);
@@ -676,59 +708,73 @@ export function SearchPage({
               setSelectedActionKey((current) => (current === actionKey ? null : actionKey));
               setCreateInspectionCaseError(null);
             }}
+            onActionButtonRef={(actionKey, element) => {
+              if (actionKey === "create_reassessment_case") {
+                reassessmentTriggerRef.current = element;
+              }
+            }}
             selectedActionKey={selectedActionKey}
           />
-          {selectedActionKey === "create_reassessment_case" && selectedResult && createReassessmentAction ? (
-            <section className="panel panel-tight create-inspection-case-panel">
-              <header className="panel-header">
-                <div>
-                  <h2>Mở hồ sơ tái đánh giá</h2>
-                  <p>{createReassessmentAction.detail}</p>
-                </div>
-              </header>
-              <dl className="detail-grid compact-detail-grid">
-                <div>
-                  <dt>Cơ sở</dt>
-                  <dd>{selectedResult.facility_name}</dd>
-                </div>
-                <div>
-                  <dt>GxP</dt>
-                  <dd>{selectedResult.gxp_type ?? "Chưa chọn"}</dd>
-                </div>
-                <div>
-                  <dt>Dây chuyền</dt>
-                  <dd>{selectedResult.line_code ?? "Toàn cơ sở"}</dd>
-                </div>
-              </dl>
-              <form className="stack-form" onSubmit={handleCreateInspectionCaseSubmit}>
-                <label>
-                  <span>Tiêu chuẩn áp dụng</span>
-                  <input
-                    aria-label="Tiêu chuẩn áp dụng"
-                    disabled={createInspectionCasePending}
-                    name="applicable_standard"
-                    onChange={(event) => setApplicableStandardInput(event.target.value)}
-                    value={applicableStandardInput}
-                  />
-                </label>
-                {createInspectionCaseError ? (
-                  <p className="form-error" role="alert">
-                    {createInspectionCaseError}
-                  </p>
-                ) : null}
-                <div className="panel-actions">
-                  <button disabled={createInspectionCasePending} type="submit">
-                    {createInspectionCasePending ? "Đang mở..." : "Mở tái đánh giá"}
-                  </button>
-                  <button disabled={createInspectionCasePending} onClick={resetCreateInspectionCaseState} type="button">
-                    Hủy
-                  </button>
-                </div>
-              </form>
-            </section>
-          ) : null}
         </div>
       </div>
+
+      {reassessmentDialogOpen ? (
+        <div className="dialog-backdrop" role="presentation">
+          <section
+            aria-labelledby="reassessment-dialog-title"
+            aria-modal="true"
+            className="panel reassessment-dialog"
+            role="dialog"
+          >
+            <header className="panel-header reassessment-dialog-header">
+              <div>
+                <h2 id="reassessment-dialog-title">Mở hồ sơ tái đánh giá</h2>
+                <p>{createReassessmentAction.detail}</p>
+              </div>
+            </header>
+            <dl className="detail-grid compact-detail-grid reassessment-context-grid">
+              <div>
+                <dt>Cơ sở</dt>
+                <dd>{selectedResult.facility_name}</dd>
+              </div>
+              <div>
+                <dt>GxP</dt>
+                <dd>{selectedResult.gxp_type ?? "Chưa chọn"}</dd>
+              </div>
+              <div>
+                <dt>Dây chuyền</dt>
+                <dd>{selectedResult.line_code ?? "Toàn cơ sở"}</dd>
+              </div>
+            </dl>
+            <form className="stack-form reassessment-form" onSubmit={handleCreateInspectionCaseSubmit}>
+              <label>
+                <span>Tiêu chuẩn áp dụng</span>
+                <input
+                  aria-label="Tiêu chuẩn áp dụng"
+                  disabled={createInspectionCasePending}
+                  name="applicable_standard"
+                  onChange={(event) => setApplicableStandardInput(event.target.value)}
+                  ref={reassessmentInputRef}
+                  value={applicableStandardInput}
+                />
+              </label>
+              {createInspectionCaseError ? (
+                <p className="form-error" role="alert">
+                  {createInspectionCaseError}
+                </p>
+              ) : null}
+              <div className="panel-actions reassessment-dialog-actions">
+                <button disabled={createInspectionCasePending} type="submit">
+                  {createInspectionCasePending ? "Đang tạo..." : "Tạo hồ sơ tái đánh giá"}
+                </button>
+                <button disabled={createInspectionCasePending} onClick={closeReassessmentDialog} type="button">
+                  Hủy
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
 
       {!resultsLoading && resultsTotalCount === 0 ? (
         <EmptyState title="Không có kết quả" description="Không tìm thấy cơ sở phù hợp với bộ lọc hiện tại." />

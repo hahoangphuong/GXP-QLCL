@@ -41,10 +41,12 @@ const FALLBACK_ACTIONS: WorkspaceActionReadiness[] = [
 export function ActionCard({
   actions = FALLBACK_ACTIONS,
   onActionSelect,
+  onActionButtonRef,
   selectedActionKey,
 }: {
   actions?: WorkspaceActionReadiness[];
   onActionSelect?: (actionKey: string) => void;
+  onActionButtonRef?: (actionKey: string, element: HTMLButtonElement | null) => void;
   selectedActionKey?: string | null;
 }) {
   return (
@@ -58,6 +60,7 @@ export function ActionCard({
             disabled={action.readiness_status !== "available"}
             key={action.action_key}
             onClick={() => onActionSelect?.(action.action_key)}
+            ref={(element) => onActionButtonRef?.(action.action_key, element)}
             title={action.detail}
             type="button"
           >

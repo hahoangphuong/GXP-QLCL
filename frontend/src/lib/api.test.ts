@@ -255,7 +255,6 @@ describe("frontend API routing contract", () => {
       {
         gxp_type: "GMP",
         line_code: "A",
-        inspection_type: "Định kỳ",
         applicable_standard: "WHO-GMP",
       },
       { username: "operator.local", role: "manager" },
@@ -273,7 +272,6 @@ describe("frontend API routing contract", () => {
         body: JSON.stringify({
           gxp_type: "GMP",
           line_code: "A",
-          inspection_type: "Định kỳ",
           applicable_standard: "WHO-GMP",
         }),
       }),

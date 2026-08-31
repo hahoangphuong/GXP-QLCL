@@ -39,7 +39,6 @@ def _build_facility_action_readiness(
     selected_line_code: str | None,
     user: AuthenticatedUser,
 ) -> list[dict[str, object]]:
-    selected_gxp_detail = f" cho ngữ cảnh {selected_gxp_type}" if selected_gxp_type else ""
     return [
         {
             "action_key": "create_company",
@@ -62,20 +61,13 @@ def _build_facility_action_readiness(
             "detail": "Chưa có canonical backend write contract để tạo dây chuyền sản xuất mới.",
             "required_permissions": [],
         },
-        workflow_service.get_create_inspection_case_action_readiness(
+        workflow_service.get_create_reassessment_case_action_readiness(
             session,
             site_id=site_id,
             gxp_type=selected_gxp_type,
             line_code=selected_line_code,
             user=user,
         ),
-        {
-            "action_key": "create_reassessment_case",
-            "label": "Tái đánh giá",
-            "readiness_status": "missing_contract",
-            "detail": f"Chưa có create contract owner-safe để mở hồ sơ tái đánh giá mới{selected_gxp_detail}.",
-            "required_permissions": [],
-        },
         {
             "action_key": "create_change_request",
             "label": "Thay đổi",

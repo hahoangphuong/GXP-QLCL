@@ -244,13 +244,6 @@ function buildWorkspace(overrides: Record<string, unknown> = {}) {
         required_permissions: [],
       },
       {
-        action_key: "create_inspection_case",
-        label: "Hồ sơ kiểm tra",
-        readiness_status: "missing_contract",
-        detail: "Hiện chỉ có workflow mutation cho case đã tồn tại; chưa có create contract owner-safe để mở hồ sơ kiểm tra mới cho ngữ cảnh GMP.",
-        required_permissions: [],
-      },
-      {
         action_key: "create_reassessment_case",
         label: "Tái đánh giá",
         readiness_status: "missing_contract",
@@ -281,7 +274,7 @@ function buildCaseWorkspace(overrides: Record<string, unknown> = {}) {
       gxp_type: "GMP",
       scope_code: "A",
       applicable_standard: "WHO-GMP",
-      inspection_type: "Định kỳ",
+      inspection_type: "Tái",
       state: "awaiting_certificate_decision",
       opened_year: 2026,
     },
@@ -595,15 +588,15 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.queryByRole("combobox", { name: "Chứng nhận" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Xử lý" })).not.toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Công ty mới" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Hồ sơ kiểm tra" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Hồ sơ kiểm tra" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dây chuyền mới" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "D.chuyền mới" })).not.toBeInTheDocument();
-    for (const label of ["Công ty mới", "Cơ sở mới", "Dây chuyền mới", "Hồ sơ kiểm tra", "Tái đánh giá", "Thay đổi"]) {
+    for (const label of ["Công ty mới", "Cơ sở mới", "Dây chuyền mới", "Tái đánh giá", "Thay đổi"]) {
       expect(screen.getByRole("button", { name: label })).toBeDisabled();
     }
-    expect(screen.getByRole("button", { name: "Hồ sơ kiểm tra" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Tái đánh giá" })).toHaveAttribute(
       "title",
-      "Hiện chỉ có workflow mutation cho case đã tồn tại; chưa có create contract owner-safe để mở hồ sơ kiểm tra mới cho ngữ cảnh GMP.",
+      "Chưa có create contract owner-safe để mở hồ sơ tái đánh giá mới cho ngữ cảnh GMP.",
     );
     expect(screen.queryByText(/^Prev$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Next$/)).not.toBeInTheDocument();
@@ -612,17 +605,17 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".facility-workspace-panel .history-panel")).not.toBeNull();
   }, 10000);
 
-  it("enables only Hồ sơ kiểm tra when backend readiness says available and keeps other actions disabled", async () => {
+  it("enables only Tái đánh giá when backend readiness says available and keeps other actions disabled", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(
       buildWorkspace({
         action_readiness: buildWorkspace().action_readiness.map((item) =>
-          item.action_key === "create_inspection_case"
+          item.action_key === "create_reassessment_case"
             ? {
                 ...item,
                 readiness_status: "available",
-                detail: "Có thể tạo hồ sơ kiểm tra mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
+                detail: "Có thể mở hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
                 required_permissions: ["case.edit"],
               }
             : item,
@@ -635,27 +628,26 @@ describe("App Slice A.4 search workspace", () => {
 
     expect(await screen.findByText("1.1A")).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Hồ sơ kiểm tra" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeEnabled();
     });
     expect(screen.getByRole("button", { name: "Công ty mới" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cơ sở mới" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Dây chuyền mới" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Thay đổi" })).toBeDisabled();
   });
 
-  it("creates a new inspection case without refetching search and refreshes workspace/history to the new case", async () => {
+  it("creates a reassessment case without refetching search and refreshes workspace/history to the new case", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace
       .mockResolvedValueOnce(
         buildWorkspace({
           action_readiness: buildWorkspace().action_readiness.map((item) =>
-            item.action_key === "create_inspection_case"
+            item.action_key === "create_reassessment_case"
               ? {
                   ...item,
                   readiness_status: "available",
-                  detail: "Có thể tạo hồ sơ kiểm tra mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
+                  detail: "Có thể mở hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
                   required_permissions: ["case.edit"],
                 }
               : item,
@@ -666,23 +658,23 @@ describe("App Slice A.4 search workspace", () => {
         buildWorkspace({
           history: [
             {
-              id: "case-new",
-              source_type: "case",
-              reference_code: null,
-              event_type: "Định kỳ",
-              gxp_type: "GMP",
-              standard: "WHO-GMP",
-              occurred_on: null,
+                id: "case-new",
+                source_type: "case",
+                reference_code: null,
+                event_type: "Tái",
+                gxp_type: "GMP",
+                standard: "WHO-GMP",
+                occurred_on: null,
               state: "draft",
             },
             ...buildWorkspace().history,
           ],
           action_readiness: buildWorkspace().action_readiness.map((item) =>
-            item.action_key === "create_inspection_case"
+            item.action_key === "create_reassessment_case"
               ? {
                   ...item,
                   readiness_status: "conflict",
-                  detail: "Đã có một hồ sơ kiểm tra chưa kết thúc cho đúng cơ sở/GxP/dây chuyền này.",
+                  detail: "Đã có một hồ sơ tái đánh giá chưa kết thúc cho đúng cơ sở/GxP/dây chuyền này.",
                   required_permissions: ["case.edit"],
                 }
               : item,
@@ -694,7 +686,7 @@ describe("App Slice A.4 search workspace", () => {
       site_id: "site-1",
       gxp_type: "GMP",
       line_code: "A",
-      inspection_type: "Định kỳ",
+      inspection_type: "Tái",
       applicable_standard: "WHO-GMP",
       state: "draft",
       row_version: 1,
@@ -724,18 +716,14 @@ describe("App Slice A.4 search workspace", () => {
 
     expect(await screen.findByText("1.1A")).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Hồ sơ kiểm tra" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeEnabled();
     });
-    const createAction = screen.getByRole("button", { name: "Hồ sơ kiểm tra" });
+    const createAction = screen.getByRole("button", { name: "Tái đánh giá" });
     fireEvent.click(createAction);
 
-    expect(await screen.findByRole("heading", { name: "Tạo hồ sơ kiểm tra" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Tạo hồ sơ" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Loại kiểm tra là bắt buộc.");
-
-    fireEvent.change(screen.getByRole("textbox", { name: "Loại kiểm tra" }), { target: { value: "Định kỳ" } });
+    expect(await screen.findByRole("heading", { name: "Mở hồ sơ tái đánh giá" })).toBeInTheDocument();
     fireEvent.change(screen.getByRole("textbox", { name: "Tiêu chuẩn áp dụng" }), { target: { value: "WHO-GMP" } });
-    fireEvent.click(screen.getByRole("button", { name: "Tạo hồ sơ" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mở tái đánh giá" }));
 
     await waitFor(() => {
       expect(apiMocks.createInspectionCase).toHaveBeenCalledTimes(1);
@@ -745,7 +733,6 @@ describe("App Slice A.4 search workspace", () => {
       {
         gxp_type: "GMP",
         line_code: "A",
-        inspection_type: "Định kỳ",
         applicable_standard: "WHO-GMP",
       },
       expect.objectContaining({
@@ -766,17 +753,17 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
   });
 
-  it("shows backend 409 conflict for inspection-case create clearly and keeps selected facility intact", async () => {
+  it("shows backend 409 conflict for reassessment create clearly and keeps selected facility intact", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(
       buildWorkspace({
         action_readiness: buildWorkspace().action_readiness.map((item) =>
-          item.action_key === "create_inspection_case"
+          item.action_key === "create_reassessment_case"
             ? {
                 ...item,
                 readiness_status: "available",
-                detail: "Có thể tạo hồ sơ kiểm tra mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
+                detail: "Có thể mở hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
                 required_permissions: ["case.edit"],
               }
             : item,
@@ -790,11 +777,10 @@ describe("App Slice A.4 search workspace", () => {
 
     expect(await screen.findByText("1.1A")).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Hồ sơ kiểm tra" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeEnabled();
     });
-    fireEvent.click(screen.getByRole("button", { name: "Hồ sơ kiểm tra" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Loại kiểm tra" }), { target: { value: "Định kỳ" } });
-    fireEvent.click(screen.getByRole("button", { name: "Tạo hồ sơ" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mở tái đánh giá" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "An open inspection case already exists for the selected facility/GxP/line context.",

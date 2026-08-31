@@ -68,7 +68,6 @@ export type CaseDetail = {
 export type InspectionCaseCreateRequest = {
   gxp_type: string;
   line_code: string | null;
-  inspection_type: string;
   applicable_standard: string | null;
   reason?: string | null;
 };

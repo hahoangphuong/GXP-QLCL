@@ -23,13 +23,6 @@ const FALLBACK_ACTIONS: WorkspaceActionReadiness[] = [
     required_permissions: [],
   },
   {
-    action_key: "create_inspection_case",
-    label: "Hồ sơ kiểm tra",
-    readiness_status: "loading",
-    detail: "Đang chờ ngữ cảnh và contract từ backend.",
-    required_permissions: [],
-  },
-  {
     action_key: "create_reassessment_case",
     label: "Tái đánh giá",
     readiness_status: "loading",

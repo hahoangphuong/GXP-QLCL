@@ -83,7 +83,6 @@ export function SearchPage({
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [selectedActionKey, setSelectedActionKey] = useState<string | null>(null);
-  const [inspectionTypeInput, setInspectionTypeInput] = useState("");
   const [applicableStandardInput, setApplicableStandardInput] = useState("");
   const [createInspectionCasePending, setCreateInspectionCasePending] = useState(false);
   const [createInspectionCaseError, setCreateInspectionCaseError] = useState<string | null>(null);
@@ -112,8 +111,8 @@ export function SearchPage({
   const selectedResult = results.find((item) => item.result_key === selectedResultKey) ?? null;
   const selectedHistory = workspace?.history.find((item) => item.id === selectedHistoryId) ?? null;
   const hasMoreResults = results.length < resultsTotalCount;
-  const createInspectionCaseAction =
-    workspace?.action_readiness.find((item) => item.action_key === "create_inspection_case") ?? null;
+  const createReassessmentAction =
+    workspace?.action_readiness.find((item) => item.action_key === "create_reassessment_case") ?? null;
 
   function resetCertificateWorkspaceState() {
     setGxpCertificates([]);
@@ -134,7 +133,6 @@ export function SearchPage({
 
   function resetCreateInspectionCaseState() {
     setSelectedActionKey(null);
-    setInspectionTypeInput("");
     setApplicableStandardInput("");
     setCreateInspectionCasePending(false);
     setCreateInspectionCaseError(null);
@@ -315,9 +313,9 @@ export function SearchPage({
           setWorkspaceError(null);
           setWorkspaceLoading(false);
           setSelectedActionKey((current) =>
-            current === "create_inspection_case" &&
+            current === "create_reassessment_case" &&
             payload.action_readiness.some(
-              (item) => item.action_key === "create_inspection_case" && item.readiness_status === "available",
+              (item) => item.action_key === "create_reassessment_case" && item.readiness_status === "available",
             )
               ? current
               : null,
@@ -608,11 +606,6 @@ export function SearchPage({
     if (!selectedResult) {
       return;
     }
-    const normalizedInspectionType = inspectionTypeInput.trim();
-    if (!normalizedInspectionType) {
-      setCreateInspectionCaseError("Loại kiểm tra là bắt buộc.");
-      return;
-    }
     setCreateInspectionCasePending(true);
     setCreateInspectionCaseError(null);
     try {
@@ -621,7 +614,6 @@ export function SearchPage({
         {
           gxp_type: selectedResult.gxp_type ?? "",
           line_code: selectedResult.line_code ?? null,
-          inspection_type: normalizedInspectionType,
           applicable_standard: applicableStandardInput.trim() || null,
         },
         auth,
@@ -631,7 +623,7 @@ export function SearchPage({
       await refreshWorkspaceAfterCreate(created.case_id);
       resetCreateInspectionCaseState();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Không tạo được hồ sơ kiểm tra.";
+      const message = error instanceof Error ? error.message : "Không mở được hồ sơ tái đánh giá.";
       setCreateInspectionCaseError(message);
       setCreateInspectionCasePending(false);
     }
@@ -678,7 +670,7 @@ export function SearchPage({
           <ActionCard
             actions={workspace?.action_readiness}
             onActionSelect={(actionKey) => {
-              if (actionKey !== "create_inspection_case") {
+              if (actionKey !== "create_reassessment_case") {
                 return;
               }
               setSelectedActionKey((current) => (current === actionKey ? null : actionKey));
@@ -686,12 +678,12 @@ export function SearchPage({
             }}
             selectedActionKey={selectedActionKey}
           />
-          {selectedActionKey === "create_inspection_case" && selectedResult && createInspectionCaseAction ? (
+          {selectedActionKey === "create_reassessment_case" && selectedResult && createReassessmentAction ? (
             <section className="panel panel-tight create-inspection-case-panel">
               <header className="panel-header">
                 <div>
-                  <h2>Tạo hồ sơ kiểm tra</h2>
-                  <p>{createInspectionCaseAction.detail}</p>
+                  <h2>Mở hồ sơ tái đánh giá</h2>
+                  <p>{createReassessmentAction.detail}</p>
                 </div>
               </header>
               <dl className="detail-grid compact-detail-grid">
@@ -710,16 +702,6 @@ export function SearchPage({
               </dl>
               <form className="stack-form" onSubmit={handleCreateInspectionCaseSubmit}>
                 <label>
-                  <span>Loại kiểm tra</span>
-                  <input
-                    aria-label="Loại kiểm tra"
-                    disabled={createInspectionCasePending}
-                    name="inspection_type"
-                    onChange={(event) => setInspectionTypeInput(event.target.value)}
-                    value={inspectionTypeInput}
-                  />
-                </label>
-                <label>
                   <span>Tiêu chuẩn áp dụng</span>
                   <input
                     aria-label="Tiêu chuẩn áp dụng"
@@ -736,7 +718,7 @@ export function SearchPage({
                 ) : null}
                 <div className="panel-actions">
                   <button disabled={createInspectionCasePending} type="submit">
-                    {createInspectionCasePending ? "Đang tạo..." : "Tạo hồ sơ"}
+                    {createInspectionCasePending ? "Đang mở..." : "Mở tái đánh giá"}
                   </button>
                   <button disabled={createInspectionCasePending} onClick={resetCreateInspectionCaseState} type="button">
                     Hủy

@@ -421,7 +421,6 @@ class CaseTransitionRead(BaseModel):
 class InspectionCaseCreateRequest(BaseModel):
     gxp_type: str
     line_code: str | None = None
-    inspection_type: str
     applicable_standard: str | None = None
     reason: str | None = None
 

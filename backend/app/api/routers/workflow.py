@@ -52,7 +52,6 @@ def register_workflow_routes(app, session_factory) -> None:
             site_id=site_id,
             gxp_type=payload.gxp_type,
             line_code=payload.line_code,
-            inspection_type=payload.inspection_type,
             applicable_standard=payload.applicable_standard,
             reason=payload.reason,
             user=user,

@@ -140,7 +140,6 @@ def test_create_inspection_case_persists_draft_case_without_downstream_rows():
             site_id=seeded["site_id"],
             gxp_type="GMP",
             line_code="A",
-            inspection_type="Định kỳ",
             applicable_standard="WHO-GMP",
             reason="Open new inspection case.",
             user=build_authenticated_user("manager01", "manager"),
@@ -150,7 +149,7 @@ def test_create_inspection_case_persists_draft_case_without_downstream_rows():
     assert result["site_id"] == seeded["site_id"]
     assert result["gxp_type"] == "GMP"
     assert result["line_code"] == "A"
-    assert result["inspection_type"] == "Định kỳ"
+    assert result["inspection_type"] == "Tái"
     assert result["applicable_standard"] == "WHO-GMP"
     assert result["state"] == "draft"
     assert result["legacy_inspection_id"] is None
@@ -169,7 +168,7 @@ def test_create_inspection_case_persists_draft_case_without_downstream_rows():
         assert session.scalar(select(InspectionEvent).where(InspectionEvent.case_id == created.id)) is None
         audit_event = session.get(AuditEvent, result["audit_event_id"])
         assert audit_event is not None
-        assert audit_event.action == "case.create_inspection_case"
+        assert audit_event.action == "case.create_reassessment_case"
         assert json.loads(audit_event.payload_redacted)["line_code"] == "A"
 
 
@@ -193,7 +192,6 @@ def test_create_inspection_case_allows_authoritative_certificate_only_line_conte
             site_id=seeded["site_id"],
             gxp_type="GMP",
             line_code="B",
-            inspection_type="Định kỳ",
             applicable_standard=None,
             reason="Create from certificate-owned line context.",
             user=build_authenticated_user("manager01", "manager"),
@@ -218,7 +216,6 @@ def test_create_inspection_case_allows_facility_wide_context_without_inventing_l
             site_id=seeded["site_id"],
             gxp_type="GMP",
             line_code=None,
-            inspection_type="Đột xuất",
             applicable_standard=None,
             reason="Facility-wide create.",
             user=build_authenticated_user("manager01", "manager"),
@@ -243,7 +240,6 @@ def test_create_inspection_case_rejects_invalid_site_gxp_or_line_context():
                 site_id="missing-site",
                 gxp_type="GMP",
                 line_code="A",
-                inspection_type="Định kỳ",
                 applicable_standard=None,
                 reason="Missing site.",
                 user=build_authenticated_user("manager01", "manager"),
@@ -264,7 +260,6 @@ def test_create_inspection_case_rejects_invalid_site_gxp_or_line_context():
                     site_id=seeded["site_id"],
                     gxp_type=gxp_type,
                     line_code=line_code,
-                    inspection_type="Định kỳ",
                     applicable_standard=None,
                     reason="Invalid context.",
                     user=build_authenticated_user("manager01", "manager"),
@@ -290,7 +285,6 @@ def test_create_inspection_case_rejects_duplicate_open_case_and_is_retry_safe():
                 site_id=seeded["site_id"],
                 gxp_type="GMP",
                 line_code="A",
-                inspection_type="Định kỳ",
                 applicable_standard=None,
                 reason="Duplicate.",
                 user=build_authenticated_user("manager01", "manager"),
@@ -309,7 +303,6 @@ def test_create_inspection_case_rejects_duplicate_open_case_and_is_retry_safe():
             site_id=seeded["site_id"],
             gxp_type="GMP",
             line_code="B",
-            inspection_type="Định kỳ",
             applicable_standard=None,
             reason="First create.",
             user=build_authenticated_user("manager01", "manager"),
@@ -323,7 +316,6 @@ def test_create_inspection_case_rejects_duplicate_open_case_and_is_retry_safe():
                 site_id=seeded["site_id"],
                 gxp_type="GMP",
                 line_code="B",
-                inspection_type="Định kỳ",
                 applicable_standard=None,
                 reason="Retry create.",
                 user=build_authenticated_user("manager01", "manager"),
@@ -350,7 +342,6 @@ def test_create_inspection_case_duplicate_rule_is_site_scoped():
             site_id=seeded["site_id"],
             gxp_type="GMP",
             line_code="A",
-            inspection_type="Định kỳ",
             applicable_standard=None,
             reason="Different site context.",
             user=build_authenticated_user("manager01", "manager"),
@@ -360,35 +351,27 @@ def test_create_inspection_case_duplicate_rule_is_site_scoped():
     assert result["site_id"] == seeded["site_id"]
 
 
-def test_create_inspection_case_rolls_back_cleanly_after_validation_failure():
+def test_create_inspection_case_server_owns_reassessment_type():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
 
     with Session(engine) as session:
         seeded = seed_create_inspection_case_context(session, line_code="A", case_state=CaseState.CLOSED)
-        baseline_case_count = len(list(session.scalars(select(Case))))
 
     with Session(engine) as session:
-        try:
-            service.create_inspection_case(
-                session,
-                site_id=seeded["site_id"],
-                gxp_type="GMP",
-                line_code="A",
-                inspection_type="   ",
-                applicable_standard=None,
-                reason="Blank type.",
-                user=build_authenticated_user("manager01", "manager"),
-            )
-        except Exception as exc:
-            assert "inspection_type is required" in str(exc)
-            session.rollback()
-        else:
-            raise AssertionError("Expected blank inspection_type to fail")
+        result = service.create_inspection_case(
+            session,
+            site_id=seeded["site_id"],
+            gxp_type="GMP",
+            line_code="A",
+            applicable_standard=None,
+            reason="Server-owned reassessment type.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
 
-    with Session(engine) as session:
-        assert len(list(session.scalars(select(Case)))) == baseline_case_count
+    assert result["inspection_type"] == "Tái"
 
 
 def test_create_inspection_case_route_enforces_auth_and_returns_created_read_model(tmp_path):
@@ -405,7 +388,6 @@ def test_create_inspection_case_route_enforces_auth_and_returns_created_read_mod
     payload = InspectionCaseCreateRequest(
         gxp_type="GMP",
         line_code="A",
-        inspection_type="Định kỳ",
         applicable_standard="WHO-GMP",
         reason="HTTP create",
     )
@@ -441,7 +423,7 @@ def test_create_inspection_case_route_enforces_auth_and_returns_created_read_mod
     assert body["site_id"] == seeded["site_id"]
     assert body["gxp_type"] == "GMP"
     assert body["line_code"] == "A"
-    assert body["inspection_type"] == "Định kỳ"
+    assert body["inspection_type"] == "Tái"
     assert body["state"] == "draft"
 
 

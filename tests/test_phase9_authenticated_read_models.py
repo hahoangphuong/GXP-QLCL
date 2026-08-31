@@ -1878,7 +1878,7 @@ def test_case_workspace_ignores_legacy_processing_free_text_without_structured_o
     assert payload.case_summary.state == "application_received"
 
 
-def test_facility_workspace_exposes_owner_managed_action_readiness_for_create_inspection_case(tmp_path):
+def test_facility_workspace_exposes_owner_managed_action_readiness_for_reassessment(tmp_path):
     database_path = tmp_path / "catalog-facility-action-readiness.sqlite"
     database_url = f"sqlite:///{database_path.as_posix()}"
     engine = create_engine(database_url, future=True)
@@ -1904,22 +1904,21 @@ def test_facility_workspace_exposes_owner_managed_action_readiness_for_create_in
         "create_company",
         "create_site",
         "create_production_line",
-        "create_inspection_case",
         "create_reassessment_case",
         "create_change_request",
     ]
     assert action_readiness["create_company"].detail == "Chưa có canonical backend write contract để tạo công ty mới."
     assert action_readiness["create_company"].readiness_status == "missing_contract"
-    assert action_readiness["create_inspection_case"].readiness_status == "forbidden"
-    assert action_readiness["create_inspection_case"].required_permissions == ["case.edit"]
-    assert action_readiness["create_inspection_case"].detail == "Tài khoản hiện tại không có quyền tạo hồ sơ kiểm tra."
+    assert action_readiness["create_reassessment_case"].readiness_status == "forbidden"
+    assert action_readiness["create_reassessment_case"].required_permissions == ["case.edit"]
+    assert action_readiness["create_reassessment_case"].detail == "Tài khoản hiện tại không có quyền mở hồ sơ tái đánh giá."
     assert action_readiness["create_change_request"].detail == (
         "Change request hiện mới có canonical read model; chưa có authenticated write contract để tạo mới."
     )
     assert action_readiness["create_change_request"].required_permissions == []
 
 
-def test_facility_workspace_marks_create_inspection_case_available_or_conflict_by_context_contract(tmp_path):
+def test_facility_workspace_marks_reassessment_available_or_conflict_by_context_contract(tmp_path):
     database_path = tmp_path / "catalog-facility-action-readiness-available.sqlite"
     database_url = f"sqlite:///{database_path.as_posix()}"
     engine = create_engine(database_url, future=True)
@@ -1947,13 +1946,13 @@ def test_facility_workspace_marks_create_inspection_case_available_or_conflict_b
             user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
 
-    available = {item.action_key: item for item in available_payload.action_readiness}["create_inspection_case"]
-    conflict = {item.action_key: item for item in conflict_payload.action_readiness}["create_inspection_case"]
+    available = {item.action_key: item for item in available_payload.action_readiness}["create_reassessment_case"]
+    conflict = {item.action_key: item for item in conflict_payload.action_readiness}["create_reassessment_case"]
     assert available.readiness_status == "available"
     assert available.required_permissions == ["case.edit"]
-    assert "Có thể tạo hồ sơ kiểm tra mới" in available.detail
+    assert "Có thể mở hồ sơ tái đánh giá mới" in available.detail
     assert conflict.readiness_status == "conflict"
-    assert "Đã có một hồ sơ kiểm tra chưa kết thúc" in conflict.detail
+    assert "Đã có một hồ sơ tái đánh giá chưa kết thúc" in conflict.detail
 
 
 def test_change_request_workspace_reads_authoritative_change_sections_and_document_checklist(tmp_path):

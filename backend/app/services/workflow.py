@@ -75,6 +75,7 @@ OPEN_CASE_STATES = frozenset(
     }
 )
 CREATE_INSPECTION_CASE_PERMISSION = "case.edit"
+REASSESSMENT_INSPECTION_TYPE = "Tái"
 
 
 class CaseWorkflowService:
@@ -455,7 +456,7 @@ class CaseWorkflowService:
     ) -> tuple[str, str | None]:
         normalized_gxp_type = str(gxp_type or "").strip()
         if normalized_gxp_type not in SUPPORTED_CASE_GXP_TYPES:
-            raise HTTPException(status_code=422, detail="Unsupported GxP context for inspection-case creation.")
+            raise HTTPException(status_code=422, detail="Unsupported GxP context for reassessment creation.")
         normalized_line_code = self._normalize_line_code(line_code)
         if not self._site_has_gxp_context(
             session,
@@ -465,11 +466,11 @@ class CaseWorkflowService:
         ):
             raise HTTPException(
                 status_code=422,
-                detail="Selected facility/GxP/line context is not an authoritative existing context for inspection-case creation.",
+                detail="Selected facility/GxP/line context is not an authoritative existing context for reassessment creation.",
             )
         return normalized_gxp_type, normalized_line_code
 
-    def get_create_inspection_case_action_readiness(
+    def get_create_reassessment_case_action_readiness(
         self,
         session: Session,
         *,
@@ -483,26 +484,26 @@ class CaseWorkflowService:
         normalized_line_code = self._normalize_line_code(line_code)
         if normalized_gxp_type is None:
             return {
-                "action_key": "create_inspection_case",
-                "label": "Hồ sơ kiểm tra",
+                "action_key": "create_reassessment_case",
+                "label": "Tái đánh giá",
                 "readiness_status": "unavailable",
-                "detail": "Chọn một ngữ cảnh GxP cụ thể trước khi tạo hồ sơ kiểm tra.",
+                "detail": "Chọn một ngữ cảnh GxP cụ thể trước khi mở hồ sơ tái đánh giá.",
                 "required_permissions": required_permissions,
             }
         if CREATE_INSPECTION_CASE_PERMISSION not in user.permissions:
             return {
-                "action_key": "create_inspection_case",
-                "label": "Hồ sơ kiểm tra",
+                "action_key": "create_reassessment_case",
+                "label": "Tái đánh giá",
                 "readiness_status": "forbidden",
-                "detail": "Tài khoản hiện tại không có quyền tạo hồ sơ kiểm tra.",
+                "detail": "Tài khoản hiện tại không có quyền mở hồ sơ tái đánh giá.",
                 "required_permissions": required_permissions,
             }
         if normalized_gxp_type not in SUPPORTED_CASE_GXP_TYPES:
             return {
-                "action_key": "create_inspection_case",
-                "label": "Hồ sơ kiểm tra",
+                "action_key": "create_reassessment_case",
+                "label": "Tái đánh giá",
                 "readiness_status": "unavailable",
-                "detail": "Ngữ cảnh GxP đã chọn không hỗ trợ tạo hồ sơ kiểm tra mới.",
+                "detail": "Ngữ cảnh GxP đã chọn không hỗ trợ mở hồ sơ tái đánh giá mới.",
                 "required_permissions": required_permissions,
             }
         if not self._site_has_gxp_context(
@@ -512,10 +513,10 @@ class CaseWorkflowService:
             line_code=normalized_line_code,
         ):
             return {
-                "action_key": "create_inspection_case",
-                "label": "Hồ sơ kiểm tra",
+                "action_key": "create_reassessment_case",
+                "label": "Tái đánh giá",
                 "readiness_status": "unavailable",
-                "detail": "Ngữ cảnh cơ sở/GxP/dây chuyền đã chọn không khớp với context authoritative hiện có.",
+                "detail": "Ngữ cảnh cơ sở/GxP/dây chuyền đã chọn không khớp với context authoritative hiện có để tái đánh giá.",
                 "required_permissions": required_permissions,
             }
         existing_case = self._find_open_context_case(
@@ -526,17 +527,17 @@ class CaseWorkflowService:
         )
         if existing_case is not None:
             return {
-                "action_key": "create_inspection_case",
-                "label": "Hồ sơ kiểm tra",
+                "action_key": "create_reassessment_case",
+                "label": "Tái đánh giá",
                 "readiness_status": "conflict",
-                "detail": "Đã có một hồ sơ kiểm tra chưa kết thúc cho đúng cơ sở/GxP/dây chuyền này.",
+                "detail": "Đã có một hồ sơ tái đánh giá chưa kết thúc cho đúng cơ sở/GxP/dây chuyền này.",
                 "required_permissions": required_permissions,
             }
         return {
-            "action_key": "create_inspection_case",
-            "label": "Hồ sơ kiểm tra",
+            "action_key": "create_reassessment_case",
+            "label": "Tái đánh giá",
             "readiness_status": "available",
-            "detail": "Có thể tạo hồ sơ kiểm tra mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
+            "detail": "Có thể mở hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
             "required_permissions": required_permissions,
         }
 
@@ -693,7 +694,6 @@ class CaseWorkflowService:
         site_id: str,
         gxp_type: str,
         line_code: str | None,
-        inspection_type: str,
         applicable_standard: str | None,
         reason: str | None,
         user: AuthenticatedUser,
@@ -705,9 +705,7 @@ class CaseWorkflowService:
             gxp_type=gxp_type,
             line_code=line_code,
         )
-        normalized_inspection_type = str(inspection_type or "").strip()
-        if not normalized_inspection_type:
-            raise HTTPException(status_code=422, detail="inspection_type is required for inspection-case creation.")
+        normalized_inspection_type = REASSESSMENT_INSPECTION_TYPE
         normalized_applicable_standard = str(applicable_standard or "").strip() or None
         existing_case = self._find_open_context_case(
             session,
@@ -751,7 +749,7 @@ class CaseWorkflowService:
             actor=actor,
             entity_type="case",
             entity_id=case.id,
-            action="case.create_inspection_case",
+            action="case.create_reassessment_case",
             payload={
                 "site_id": case.site_id,
                 "gxp_type": case.gxp_type,

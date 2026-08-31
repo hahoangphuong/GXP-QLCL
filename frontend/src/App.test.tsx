@@ -368,7 +368,7 @@ function buildCaseWorkspace(overrides: Record<string, unknown> = {}) {
         },
         {
           checklist_key: "case:case-1:CERTIFICATE_DECISION",
-          label: "QĐ cấp CC",
+          label: "Quyết định cấp CC",
           family_code: "CERTIFICATE_DECISION",
           parent_scope: "case",
           parent_id: "case-1",
@@ -383,6 +383,50 @@ function buildCaseWorkspace(overrides: Record<string, unknown> = {}) {
         },
       ],
     },
+    contextual_document_actions: [
+      {
+        checklist_key: "case:case-1:INSPECTION_QD_KT",
+        label: "Quyết định kiểm tra",
+        family_code: "INSPECTION_QD_KT",
+        workflow_step: "Kiểm tra",
+        parent_scope: "case",
+        parent_id: "case-1",
+        status: "missing",
+        document_id: null,
+        document_type_code: null,
+        title: null,
+        original_filename: null,
+        issued_on: null,
+        available_variant_types: [],
+        detail_available: false,
+        actions: [
+          { action_key: "open", label: "Mở", available: false, disabled_reason: "Chưa có tài liệu để mở.", required_permissions: ["document.read"] },
+          { action_key: "create", label: "Tạo", available: false, disabled_reason: "Chưa có typed backend create contract owner-safe cho loại tài liệu này.", required_permissions: ["document.write"] },
+          { action_key: "history", label: "Lịch sử", available: false, disabled_reason: "Chưa có lịch sử tài liệu để xem.", required_permissions: ["document.read"] },
+        ],
+      },
+      {
+        checklist_key: "case:case-1:CERTIFICATE_DECISION",
+        label: "Quyết định cấp CC",
+        family_code: "CERTIFICATE_DECISION",
+        workflow_step: "Xử lý",
+        parent_scope: "case",
+        parent_id: "case-1",
+        status: "available",
+        document_id: "doc-cert-decision",
+        document_type_code: "CERTIFICATE_DECISION",
+        title: "Certificate Decision",
+        original_filename: "8 qd cap cc GMP.docx",
+        issued_on: "2026-08-09T00:00:00Z",
+        available_variant_types: ["editable_docx"],
+        detail_available: true,
+        actions: [
+          { action_key: "open", label: "Mở", available: true, disabled_reason: null, required_permissions: ["document.read"] },
+          { action_key: "create", label: "Tạo", available: false, disabled_reason: "Chưa có typed backend create contract owner-safe cho loại tài liệu này.", required_permissions: ["document.write"] },
+          { action_key: "history", label: "Lịch sử", available: true, disabled_reason: null, required_permissions: ["document.read"] },
+        ],
+      },
+    ],
     linked_gxp_certificates: [
       {
         certificate_id: "cert-a-new",
@@ -1313,8 +1357,11 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByText("Tiếp nhận hồ sơ")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Tài liệu" })).not.toBeInTheDocument();
     expect(screen.getByText("Tài liệu liên quan")).toBeInTheDocument();
-    expect(await screen.findByText("QĐ cấp CC")).toBeInTheDocument();
+    expect(await screen.findByText("Quyết định cấp CC")).toBeInTheDocument();
     expect(screen.getByText("8 qd cap cc GMP.docx")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mở Quyết định cấp CC" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Lịch sử Quyết định cấp CC" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Tạo Quyết định cấp CC" })).toBeDisabled();
 
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
@@ -1322,6 +1369,66 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
   }, 10000);
+
+  it("renders contextual documents from backend workflow_step without local family mapping", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(
+      buildCaseWorkspace({
+        contextual_document_actions: [
+          {
+            checklist_key: "case:case-1:CUSTOM_OWNER_DOC",
+            label: "Tài liệu owner test",
+            family_code: "CUSTOM_OWNER_DOC",
+            workflow_step: "Xử lý",
+            parent_scope: "case",
+            parent_id: "case-1",
+            status: "available",
+            document_id: "doc-owner-test",
+            document_type_code: "CUSTOM_OWNER_DOC",
+            title: "Owner test",
+            original_filename: "owner-test.docx",
+            issued_on: "2026-08-09T00:00:00Z",
+            available_variant_types: ["editable_docx"],
+            detail_available: true,
+            actions: [
+              { action_key: "open", label: "Mở", available: true, disabled_reason: null, required_permissions: ["document.read"] },
+              { action_key: "create", label: "Tạo", available: false, disabled_reason: "not-ready", required_permissions: ["document.write"] },
+              { action_key: "history", label: "Lịch sử", available: true, disabled_reason: null, required_permissions: ["document.read"] },
+            ],
+          },
+        ],
+      }),
+    );
+
+    renderApp(["/search"]);
+
+    expect(await screen.findByText("HS-001")).toBeInTheDocument();
+    expect(screen.queryByText("Tài liệu owner test")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Xử lý/ }));
+    expect(await screen.findByText("Tài liệu owner test")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Kiểm tra/ }));
+    expect(screen.queryByText("Tài liệu owner test")).not.toBeInTheDocument();
+  });
+
+  it("shows document action errors locally and keeps the selected workspace context", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.getDocumentDetail.mockRejectedValue(buildApiError("403 User is missing required permission.", 403));
+
+    renderApp(["/search"]);
+
+    expect(await screen.findByText("HS-001")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Xử lý/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Mở Quyết định cấp CC" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("403 User is missing required permission.");
+    expect(screen.getByRole("button", { name: /Xử lý/ })).toHaveAttribute("aria-current", "step");
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+  });
 
   it("renders inspection owners with editable plan/outcome sections and readonly team section", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));

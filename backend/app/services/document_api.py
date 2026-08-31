@@ -326,11 +326,7 @@ class DocumentWorkflowService:
                         {
                             "id": version.id,
                             "version_no": version.version_no,
-                            "storage_binding_id": version.storage_binding_id,
-                            "storage_root": version.storage_root,
-                            "storage_relative_path": version.storage_relative_path,
                             "original_filename": version.original_filename,
-                            "checksum_sha256": version.checksum_sha256,
                             "is_current": version.is_current,
                             "issued_on": version.issued_on,
                         }

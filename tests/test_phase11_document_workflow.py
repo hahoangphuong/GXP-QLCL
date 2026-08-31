@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.auth import build_authenticated_user
 from backend.app.db.base import Base
-from backend.app.db.enums import CaseState
+from backend.app.db.enums import CaseState, DocumentVariantType
 from backend.app.db.models.phase1 import (
     AuditEvent,
     BusinessEligibilityCertificate,
@@ -25,6 +25,7 @@ from backend.app.db.models.phase1 import (
     Site,
     TemplateDefinition,
 )
+from backend.app.document.contextual_actions import get_case_document_context_spec, list_case_document_context_specs
 from backend.app.document.seed_runtime import seed_default_template_metadata
 from backend.app.document.template_binary import assign_template_binary_locator
 from backend.app.main import create_app
@@ -480,3 +481,66 @@ def test_capa_round_documents_do_not_cross_link_between_rounds():
         assert first_document.capa_cycle_id == round_1_cycle_id
         assert second_document.capa_cycle_id == round_2_cycle_id
         assert first_document.capa_cycle_id != second_document.capa_cycle_id
+
+
+def test_case_document_context_registry_keeps_only_proven_step_assignments_active():
+    specs = {spec.family_code: spec for spec in list_case_document_context_specs()}
+
+    assert specs["INSPECTION_BBTD_HOSO_DK"].classification == "PROVEN"
+    assert specs["INSPECTION_BBTD_HOSO_DK"].workflow_step == "Hồ sơ"
+    assert specs["CERTIFICATE_ISSUANCE_WORD"].classification == "PROVEN"
+    assert specs["CERTIFICATE_ISSUANCE_WORD"].workflow_step == "Chứng nhận GxP"
+    assert specs["INSPECTION_CAPA_LAN_1"].parent_scope == "capa_cycle"
+    assert specs["ASSESSMENT_MINUTES"].classification == "AMBIGUOUS"
+    assert specs["ASSESSMENT_MINUTES"].workflow_step is None
+    assert get_case_document_context_spec("UNKNOWN_FAMILY") is None
+
+
+def test_get_document_detail_hides_storage_locator_fields_from_ui_projection():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = DocumentWorkflowService()
+    document_id: str
+
+    with Session(engine) as session:
+        case_id, _ = _seed_case(session)
+        document = Document(
+            family_code="CERTIFICATE_DECISION",
+            document_type_code="CERTIFICATE_DECISION",
+            title="Quyết định cấp CC",
+            case_id=case_id,
+        )
+        session.add(document)
+        session.flush()
+        document_id = document.id
+        variant = DocumentVariant(
+            document_id=document.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="vi",
+            is_active=True,
+        )
+        session.add(variant)
+        session.flush()
+        session.add(
+            DocumentVersion(
+                document_variant_id=variant.id,
+                version_no=1,
+                storage_binding_id=None,
+                storage_root="inspection",
+                storage_relative_path="2026/file.docx",
+                original_filename="file.docx",
+                checksum_sha256="abc123",
+                is_current=True,
+                issued_on=None,
+            )
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        detail = service.get_document(session, document_id)
+
+    version_payload = detail["variants"][0]["versions"][0]
+    assert "storage_binding_id" not in version_payload
+    assert "storage_root" not in version_payload
+    assert "storage_relative_path" not in version_payload
+    assert "checksum_sha256" not in version_payload

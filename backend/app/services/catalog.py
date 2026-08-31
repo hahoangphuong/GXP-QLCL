@@ -9,7 +9,15 @@ from fastapi import HTTPException
 from sqlalchemy import and_, cast, func, or_, select, String, union_all
 from sqlalchemy.orm import Session, aliased
 
+from backend.app.auth import AuthenticatedUser
 from backend.app.db.enums import CaseState, ChangeRequestState
+from backend.app.document.contextual_actions import (
+    build_case_contextual_document_specs,
+    build_document_action_states,
+    get_case_document_context_spec,
+    list_case_document_labels,
+)
+from backend.app.rbac import ROLE_PERMISSIONS
 from backend.app.document.service_contract import load_default_registry
 from backend.app.db.models.phase1 import (
     BusinessEligibilityCertificate,
@@ -78,17 +86,7 @@ class DocumentChecklistDefinition:
 
 
 CASE_DOCUMENT_FAMILY_LABELS = {
-    "ASSESSMENT_MINUTES": "Biên bản thẩm định",
-    "INSPECTION_QD_KT": "Quyết định kiểm tra",
-    "INSPECTION_KE_HOACH_KT": "Kế hoạch kiểm tra",
-    "INSPECTION_BB_KT": "Biên bản đánh giá",
-    "INSPECTION_BBTD_HOSO_DK": "Báo cáo đánh giá",
-    "INSPECTION_PT_PCT": "Phiếu trình PCT",
-    "INSPECTION_PT_CT": "Phiếu trình CT",
-    "CERTIFICATE_DECISION": "QĐ cấp CC",
-    "CERTIFICATE_ISSUANCE_WORD": "Chứng chỉ GPs",
-    "RISK_MANAGEMENT_WORKSHEET": "Đánh giá rủi ro",
-    "STATUS_CONFIRMATION_LETTER": "Xác nhận tình trạng",
+    **list_case_document_labels(),
 }
 
 CHANGE_REQUEST_DOCUMENT_FAMILY_LABELS = {
@@ -99,6 +97,15 @@ CHANGE_REQUEST_DOCUMENT_FAMILY_LABELS = {
 
 
 class CatalogReadService:
+    @staticmethod
+    def _effective_permissions(user: AuthenticatedUser) -> frozenset[str]:
+        if user.permissions:
+            return user.permissions
+        derived: set[str] = set()
+        for role_code in user.role_codes:
+            derived.update(ROLE_PERMISSIONS.get(role_code, frozenset()))
+        return frozenset(derived)
+
     @staticmethod
     @lru_cache(maxsize=1)
     def _document_registry_labels() -> dict[str, str]:
@@ -451,13 +458,14 @@ class CatalogReadService:
                 parent_id=case_id,
             )
             for family_code, label in CASE_DOCUMENT_FAMILY_LABELS.items()
+            if (spec := get_case_document_context_spec(family_code)) is None or spec.parent_scope == "case"
         ]
         for cycle in capa_cycles:
             if cycle.round_no == 1:
                 definitions.append(
                     DocumentChecklistDefinition(
                         checklist_key=f"capa_cycle:{cycle.id}:INSPECTION_CAPA_LAN_1",
-                        label="Đánh giá CAPA 1",
+                        label=CASE_DOCUMENT_FAMILY_LABELS["INSPECTION_CAPA_LAN_1"],
                         family_code="INSPECTION_CAPA_LAN_1",
                         parent_scope="capa_cycle",
                         parent_id=cycle.id,
@@ -467,13 +475,62 @@ class CatalogReadService:
                 definitions.append(
                     DocumentChecklistDefinition(
                         checklist_key=f"capa_cycle:{cycle.id}:INSPECTION_CAPA_LAN_2",
-                        label="Đánh giá CAPA 2",
+                        label=CASE_DOCUMENT_FAMILY_LABELS["INSPECTION_CAPA_LAN_2"],
                         family_code="INSPECTION_CAPA_LAN_2",
                         parent_scope="capa_cycle",
                         parent_id=cycle.id,
                     )
                 )
         return {"items": self._serialize_document_checklist_items(session, definitions=definitions)}
+
+    def _build_case_contextual_document_actions(
+        self,
+        session: Session,
+        *,
+        case_id: str,
+        capa_cycles: list[CapaCycle],
+        user: AuthenticatedUser,
+    ) -> list[dict[str, object]]:
+        definitions = []
+        spec_by_key: dict[tuple[str, str, str], dict[str, object]] = {}
+        for spec, parent_id in build_case_contextual_document_specs(capa_cycles):
+            resolved_parent_id = case_id if spec.parent_scope == "case" else parent_id
+            definition = DocumentChecklistDefinition(
+                checklist_key=f"{spec.parent_scope}:{resolved_parent_id}:{spec.family_code}",
+                label=spec.label,
+                family_code=spec.family_code,
+                parent_scope=spec.parent_scope,
+                parent_id=resolved_parent_id,
+            )
+            definitions.append(definition)
+            spec_by_key[(spec.parent_scope, resolved_parent_id, spec.family_code)] = {
+                "workflow_step": spec.workflow_step,
+                "readiness": spec.readiness,
+            }
+
+        items = self._serialize_document_checklist_items(session, definitions=definitions)
+        contextual_items: list[dict[str, object]] = []
+        permissions = self._effective_permissions(user)
+        for item in items:
+            family_code = item.get("family_code")
+            if not isinstance(family_code, str):
+                continue
+            spec = spec_by_key.get((str(item["parent_scope"]), str(item["parent_id"]), family_code))
+            if spec is None:
+                continue
+            contextual_items.append(
+                {
+                    **item,
+                    "workflow_step": spec["workflow_step"],
+                    "actions": build_document_action_states(
+                        has_document=bool(item["document_id"]),
+                        detail_available=bool(item["detail_available"]),
+                        readiness=spec["readiness"],
+                        permissions=permissions,
+                    ),
+                }
+            )
+        return contextual_items
 
     def _build_change_request_document_checklist(
         self,
@@ -1870,7 +1927,7 @@ class CatalogReadService:
             replacement_map=replacement_map,
         )
 
-    def get_case_workspace(self, session: Session, *, case_id: str):
+    def get_case_workspace(self, session: Session, *, case_id: str, user: AuthenticatedUser):
         case = self.get_case(session, case_id)
         site = self.get_site(session, case.site_id)
         company = self.get_company(session, site.company_id)
@@ -2171,6 +2228,12 @@ class CatalogReadService:
                 ],
             },
             "documents": self._build_case_document_checklist(session, case_id=case.id, capa_cycles=capa_cycles),
+            "contextual_document_actions": self._build_case_contextual_document_actions(
+                session,
+                case_id=case.id,
+                capa_cycles=capa_cycles,
+                user=user,
+            ),
             "linked_gxp_certificates": linked_gxp_certificates,
             "linked_business_eligibility_certificates": linked_business_eligibility_certificates,
         }

@@ -205,7 +205,7 @@ def register_catalog_routes(app, session_factory) -> None:
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
         require_role(user, ALLOWED_READ_ROLES)
-        return CaseWorkspaceRead(**service.get_case_workspace(session, case_id=case_id))
+        return CaseWorkspaceRead(**service.get_case_workspace(session, case_id=case_id, user=user))
 
     def get_change_request_workspace(
         change_request_id: str,

@@ -13,6 +13,7 @@ import type {
   CaseAssessmentUpsertRequest,
   CaseWorkspace,
   ChangeRequestWorkspace,
+  ContextualDocumentAction,
   DocumentChecklistItem,
   DocumentDetail,
   FacilityHistoryItem,
@@ -40,26 +41,6 @@ const DOCUMENT_PARENT_SCOPE_LABELS: Record<string, string> = {
   case: "Hồ sơ",
   capa_cycle: "CAPA",
   change_request: "Thay đổi",
-};
-
-const CASE_DOCUMENT_STEP_FAMILIES: Record<string, ReadonlySet<string>> = {
-  "Hồ sơ": new Set(["ASSESSMENT_MINUTES"]),
-  "Kiểm tra": new Set([
-    "INSPECTION_QD_KT",
-    "INSPECTION_KE_HOACH_KT",
-    "INSPECTION_BB_KT",
-    "INSPECTION_BBTD_HOSO_DK",
-  ]),
-  "Khắc phục": new Set(["INSPECTION_CAPA_LAN_1", "INSPECTION_CAPA_LAN_2"]),
-  "Xử lý": new Set([
-    "INSPECTION_PT_PCT",
-    "INSPECTION_PT_CT",
-    "CERTIFICATE_DECISION",
-    "RISK_MANAGEMENT_WORKSHEET",
-    "STATUS_CONFIRMATION_LETTER",
-  ]),
-  "Chứng nhận GxP": new Set(["CERTIFICATE_ISSUANCE_WORD"]),
-  "Chứng nhận ĐĐK": new Set(),
 };
 
 function WorkspaceSection({
@@ -127,13 +108,14 @@ function ContextualDocumentSection({
   items,
   onLoadDocumentDetail,
 }: {
-  items: DocumentChecklistItem[];
+  items: ContextualDocumentAction[];
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
 }) {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [detail, setDetail] = useState<DocumentDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [detailMode, setDetailMode] = useState<"open" | "history">("open");
 
   const currentItem = useMemo(
     () => items.find((item) => item.document_id === selectedDocumentId) ?? null,
@@ -148,11 +130,13 @@ function ContextualDocumentSection({
     }
   }, [currentItem]);
 
-  async function handleOpen(item: DocumentChecklistItem) {
+  async function handleLoad(item: ContextualDocumentAction, mode: "open" | "history") {
     if (!item.document_id) {
       return;
     }
     setSelectedDocumentId(item.document_id);
+    setDetailMode(mode);
+    setDetail(null);
     setLoading(true);
     setError(null);
     try {
@@ -181,11 +165,22 @@ function ContextualDocumentSection({
             </div>
             <div className="contextual-document-actions">
               <span className={`document-status-pill document-status-${item.status}`}>{DOCUMENT_STATUS_LABELS[item.status] ?? item.status}</span>
-              {item.detail_available && item.document_id ? (
-                <button onClick={() => void handleOpen(item)} type="button">
-                  Mở
+              {item.actions.map((action) => (
+                <button
+                  aria-label={`${action.label} ${item.label}`}
+                  disabled={!action.available}
+                  key={action.action_key}
+                  onClick={() => {
+                    if (action.action_key === "open" || action.action_key === "history") {
+                      void handleLoad(item, action.action_key);
+                    }
+                  }}
+                  title={action.disabled_reason ?? `${action.label} ${item.label}`}
+                  type="button"
+                >
+                  {action.label}
                 </button>
-              ) : null}
+              ))}
             </div>
           </div>
         ))}
@@ -202,6 +197,7 @@ function ContextualDocumentSection({
             <DetailValue label="Tài liệu" value={currentItem?.label ?? detail.title ?? detail.family_code} />
             <DetailValue label="Tiêu đề" value={detail.title} />
             <DetailValue label="Loại" value={detail.family_code} />
+            <DetailValue label="Chế độ" value={detailMode === "history" ? "Lịch sử tài liệu" : "Chi tiết tài liệu"} />
           </div>
           <div className="table-scroll table-scroll-history">
             <table className="dense-table event-document-table">
@@ -233,26 +229,6 @@ function ContextualDocumentSection({
       ) : null}
     </WorkspaceSection>
   );
-}
-
-function filterCaseDocumentsForStep(
-  items: DocumentChecklistItem[],
-  activeTab: string,
-  selectedRemediationCycleId: string | null,
-): DocumentChecklistItem[] {
-  const familyCodes = CASE_DOCUMENT_STEP_FAMILIES[activeTab];
-  if (!familyCodes || familyCodes.size === 0) {
-    return [];
-  }
-  return items.filter((item) => {
-    if (!item.family_code || !familyCodes.has(item.family_code)) {
-      return false;
-    }
-    if (item.parent_scope === "capa_cycle") {
-      return activeTab === "Khắc phục" && item.parent_id === selectedRemediationCycleId;
-    }
-    return item.parent_scope === "case";
-  });
 }
 
 function LinkedGxpCertificates({
@@ -431,7 +407,15 @@ function renderCaseStepContent(
   onAssessCapaCycle: (cycleId: string, payload: CapaCycleAssessRequest) => Promise<void>,
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>,
 ) {
-  const documentItems = filterCaseDocumentsForStep(caseWorkspace.documents.items, activeTab, selectedRemediationCycleId);
+  const documentItems = caseWorkspace.contextual_document_actions.filter((item) => {
+    if (item.workflow_step !== activeTab) {
+      return false;
+    }
+    if (item.parent_scope === "capa_cycle") {
+      return item.parent_id === selectedRemediationCycleId;
+    }
+    return item.parent_scope === "case";
+  });
 
   if (activeTab === "Hồ sơ") {
     return (

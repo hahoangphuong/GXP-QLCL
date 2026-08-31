@@ -1811,11 +1811,22 @@ def test_case_workspace_reads_owner_correct_sections_and_direct_links_only(tmp_p
     assert basis_certificates[0].issue_date == date(2025, 4, 17)
     assert basis_certificates[0].link_role == "source_certificate"
     document_items = {item.label: item for item in payload.documents.items}
-    assert document_items["QĐ cấp CC"].status == "available"
-    assert document_items["QĐ cấp CC"].original_filename == "8 qd cap cc GMP.docx"
+    assert document_items["Quyết định cấp CC"].status == "available"
+    assert document_items["Quyết định cấp CC"].original_filename == "8 qd cap cc GMP.docx"
     assert document_items["Quyết định kiểm tra"].status == "missing"
     assert document_items["Đánh giá CAPA 1"].status == "available"
     assert document_items["Đánh giá CAPA 2"].status == "missing"
+    contextual_items = {item.label: item for item in payload.contextual_document_actions}
+    assert contextual_items["Biên bản thẩm định"].workflow_step == "Hồ sơ"
+    assert contextual_items["Quyết định kiểm tra"].workflow_step == "Kiểm tra"
+    assert contextual_items["Đánh giá CAPA 1"].parent_scope == "capa_cycle"
+    assert contextual_items["Đánh giá CAPA 1"].actions[0].action_key == "open"
+    assert contextual_items["Đánh giá CAPA 1"].actions[0].available is True
+    assert contextual_items["Quyết định cấp CC"].actions[2].action_key == "history"
+    assert contextual_items["Quyết định cấp CC"].actions[2].available is True
+    assert contextual_items["Quyết định cấp CC"].actions[1].action_key == "create"
+    assert contextual_items["Quyết định cấp CC"].actions[1].available is False
+    assert all(item.family_code != "ASSESSMENT_MINUTES" for item in payload.contextual_document_actions)
 
 
 def test_case_workspace_ignores_legacy_processing_free_text_without_structured_owner_mapping(tmp_path):
@@ -2101,9 +2112,9 @@ def test_case_and_change_request_workspace_load_document_checklists_from_clean_g
 
     case_document_items = {item.label: item for item in case_payload.documents.items}
     change_document_items = {item.label: item for item in change_payload.documents.items}
-    assert case_document_items["QĐ cấp CC"].status == "available"
+    assert case_document_items["Quyết định cấp CC"].status == "available"
     assert change_document_items["Đổi tên, địa chỉ"].status == "available"
-    assert all(item.parent_scope != "change_request" for item in case_payload.documents.items if item.label == "QĐ cấp CC")
+    assert all(item.parent_scope != "change_request" for item in case_payload.documents.items if item.label == "Quyết định cấp CC")
     assert all(item.parent_scope == "change_request" for item in change_payload.documents.items if item.label == "Đổi tên, địa chỉ")
 
 
@@ -2491,6 +2502,8 @@ def test_document_checklist_response_keeps_storage_fields_hidden(tmp_path):
     forbidden_fields = {"storage_root", "storage_relative_path", "storage_binding_id", "checksum", "checksum_sha256"}
     for item in [*case_payload.documents.items, *change_payload.documents.items]:
         assert forbidden_fields.isdisjoint(item.model_dump().keys())
+    for item in case_payload.contextual_document_actions:
+        assert forbidden_fields.isdisjoint(item.model_dump().keys())
 
 
 def test_case_workspace_does_not_fabricate_business_eligibility_for_unlinked_case(tmp_path):
@@ -2504,10 +2517,40 @@ def test_case_workspace_does_not_fabricate_business_eligibility_for_unlinked_cas
 
     service = CatalogReadService()
     with Session(engine) as session:
-        payload = service.get_case_workspace(session, case_id=seeded["case_ids"]["b"])
+        payload = service.get_case_workspace(
+            session,
+            case_id=seeded["case_ids"]["b"],
+            user=build_authenticated_user("reader01", "reader", permissions=ROLE_PERMISSIONS["reader"]),
+        )
 
     assert payload["linked_gxp_certificates"][0]["certificate_number"] == "B-001"
     assert payload["linked_business_eligibility_certificates"] == []
+
+
+def test_case_workspace_contextual_document_create_stays_disabled_when_backend_action_is_not_ready(tmp_path):
+    database_path = tmp_path / "catalog-case-contextual-create-disabled.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+
+    app = create_app(database_url)
+    case_workspace_route = next(route for route in app.routes if getattr(route, "path", "") == "/cases/{case_id}/workspace")
+
+    with Session(engine) as session:
+        payload = case_workspace_route.endpoint(
+            case_id=seeded["case_ids"]["a"],
+            session=session,
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
+        )
+
+    certificate_decision = next(item for item in payload.contextual_document_actions if item.family_code == "CERTIFICATE_DECISION")
+    create_action = next(action for action in certificate_decision.actions if action.action_key == "create")
+    assert create_action.available is False
+    assert create_action.required_permissions == ["document.write"]
+    assert create_action.disabled_reason == "Chưa có typed backend create contract owner-safe cho loại tài liệu này."
 
 
 def test_search_facilities_supports_field_specific_name_scope_and_gmpbb_filters(tmp_path):

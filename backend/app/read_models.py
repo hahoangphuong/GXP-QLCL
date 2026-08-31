@@ -269,6 +269,32 @@ class DocumentChecklistRead(BaseModel):
     items: list[DocumentChecklistItemRead]
 
 
+class ContextualDocumentActionAvailabilityRead(BaseModel):
+    action_key: Literal["open", "create", "history"]
+    label: str
+    available: bool
+    disabled_reason: str | None = None
+    required_permissions: list[str]
+
+
+class ContextualDocumentActionRead(BaseModel):
+    checklist_key: str
+    label: str
+    family_code: str
+    workflow_step: Literal["Hồ sơ", "Kiểm tra", "Khắc phục", "Xử lý", "Chứng nhận GxP", "Chứng nhận ĐĐK"]
+    parent_scope: Literal["case", "capa_cycle"]
+    parent_id: str
+    status: Literal["available", "missing"]
+    document_id: str | None
+    document_type_code: str | None
+    title: str | None
+    original_filename: str | None
+    issued_on: datetime | None
+    available_variant_types: list[str]
+    detail_available: bool
+    actions: list[ContextualDocumentActionAvailabilityRead]
+
+
 class CaseWorkspaceRead(BaseModel):
     case_summary: CaseWorkspaceSummaryRead
     application: CaseWorkspaceApplicationRead
@@ -276,6 +302,7 @@ class CaseWorkspaceRead(BaseModel):
     remediation: CaseWorkspaceRemediationRead
     processing: CaseWorkspaceProcessingRead
     documents: DocumentChecklistRead
+    contextual_document_actions: list[ContextualDocumentActionRead]
     linked_gxp_certificates: list[GxpCertificateDetailRead]
     linked_business_eligibility_certificates: list[BusinessEligibilityDetailRead]
 
@@ -828,11 +855,7 @@ class DocumentRenderRead(BaseModel):
 class DocumentVersionRead(BaseModel):
     id: str
     version_no: int
-    storage_binding_id: str | None
-    storage_root: str | None
-    storage_relative_path: str | None
     original_filename: str | None
-    checksum_sha256: str | None
     is_current: bool
     issued_on: datetime | None
 

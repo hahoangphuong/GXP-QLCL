@@ -415,6 +415,32 @@ export type DocumentChecklist = {
   items: DocumentChecklistItem[];
 };
 
+export type ContextualDocumentActionAvailability = {
+  action_key: "open" | "create" | "history";
+  label: string;
+  available: boolean;
+  disabled_reason: string | null;
+  required_permissions: string[];
+};
+
+export type ContextualDocumentAction = {
+  checklist_key: string;
+  label: string;
+  family_code: string;
+  workflow_step: "Hồ sơ" | "Kiểm tra" | "Khắc phục" | "Xử lý" | "Chứng nhận GxP" | "Chứng nhận ĐĐK";
+  parent_scope: "case" | "capa_cycle";
+  parent_id: string;
+  status: "available" | "missing";
+  document_id: string | null;
+  document_type_code: string | null;
+  title: string | null;
+  original_filename: string | null;
+  issued_on: string | null;
+  available_variant_types: string[];
+  detail_available: boolean;
+  actions: ContextualDocumentActionAvailability[];
+};
+
 export type GxpCertificateListItem = {
   certificate_id: string;
   site_id: string;
@@ -520,6 +546,7 @@ export type CaseWorkspace = {
   remediation: CaseWorkspaceRemediation;
   processing: CaseWorkspaceProcessing;
   documents: DocumentChecklist;
+  contextual_document_actions: ContextualDocumentAction[];
   linked_gxp_certificates: GxpCertificateDetail[];
   linked_business_eligibility_certificates: BusinessEligibilityDetail[];
 };
@@ -677,6 +704,7 @@ export type DocumentDetail = {
   title: string | null;
   legacy_entity_type: string | null;
   case_id: string | null;
+  capa_cycle_id?: string | null;
   certificate_id: string | null;
   business_eligibility_certificate_id: string | null;
   change_request_id: string | null;
@@ -688,11 +716,7 @@ export type DocumentDetail = {
     versions: Array<{
       id: string;
       version_no: number;
-      storage_binding_id: string | null;
-      storage_root: string | null;
-      storage_relative_path: string | null;
       original_filename: string | null;
-      checksum_sha256: string | null;
       is_current: boolean;
       issued_on: string | null;
     }>;

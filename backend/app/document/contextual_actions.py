@@ -200,8 +200,8 @@ def build_case_contextual_document_specs(capa_cycles: list[CapaCycle]) -> tuple[
 
 def build_document_action_states(
     *,
-    has_document: bool,
-    detail_available: bool,
+    open_available: bool,
+    history_available: bool,
     readiness: ContextReadiness,
     permissions: frozenset[str],
 ) -> list[dict[str, object]]:
@@ -255,8 +255,8 @@ def build_document_action_states(
             action_key="open",
             label="Mở",
             required_permissions=("document.read",),
-            supported=has_document and detail_available,
-            unavailable_reason="Chưa có tài liệu để mở.",
+            supported=open_available,
+            unavailable_reason="Chưa có tệp hiện hành để mở.",
         ),
         available_or_reason(
             action_key="create",
@@ -269,7 +269,7 @@ def build_document_action_states(
             action_key="history",
             label="Lịch sử",
             required_permissions=("document.read",),
-            supported=has_document and detail_available,
+            supported=history_available,
             unavailable_reason="Chưa có lịch sử tài liệu để xem.",
         ),
     ]

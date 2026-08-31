@@ -402,6 +402,11 @@ class CatalogReadService:
                     "issued_on": None if best_version is None else best_version.issued_on,
                     "available_variant_types": variant_types,
                     "detail_available": best_document is not None,
+                    "open_available": (
+                        best_version is not None
+                        and best_version.storage_root is not None
+                        and best_version.storage_relative_path is not None
+                    ),
                 }
             )
 
@@ -428,6 +433,11 @@ class CatalogReadService:
                     "issued_on": None if best_version is None else best_version.issued_on,
                     "available_variant_types": variant_types,
                     "detail_available": True,
+                    "open_available": (
+                        best_version is not None
+                        and best_version.storage_root is not None
+                        and best_version.storage_relative_path is not None
+                    ),
                 }
             )
 
@@ -523,8 +533,8 @@ class CatalogReadService:
                     **item,
                     "workflow_step": spec["workflow_step"],
                     "actions": build_document_action_states(
-                        has_document=bool(item["document_id"]),
-                        detail_available=bool(item["detail_available"]),
+                        open_available=bool(item["open_available"]),
+                        history_available=bool(item["detail_available"]),
                         readiness=spec["readiness"],
                         permissions=permissions,
                     ),

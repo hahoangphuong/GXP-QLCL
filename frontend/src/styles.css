@@ -1024,6 +1024,18 @@ tr:focus-visible {
   gap: 0.45rem;
 }
 
+.editable-detail-header-activator {
+  cursor: pointer;
+  border-radius: 10px;
+  outline: none;
+}
+
+.editable-detail-header-activator:hover,
+.editable-detail-header-activator:focus-visible {
+  background: rgba(19, 133, 146, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(19, 133, 146, 0.22);
+}
+
 .editable-detail-header > div,
 .editable-detail-header > .summary-span {
   flex: 1 1 auto;

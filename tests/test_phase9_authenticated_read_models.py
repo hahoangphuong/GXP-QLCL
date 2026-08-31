@@ -1821,7 +1821,8 @@ def test_case_workspace_reads_owner_correct_sections_and_direct_links_only(tmp_p
     assert contextual_items["Quyết định kiểm tra"].workflow_step == "Kiểm tra"
     assert contextual_items["Đánh giá CAPA 1"].parent_scope == "capa_cycle"
     assert contextual_items["Đánh giá CAPA 1"].actions[0].action_key == "open"
-    assert contextual_items["Đánh giá CAPA 1"].actions[0].available is True
+    assert contextual_items["Đánh giá CAPA 1"].actions[0].available is False
+    assert contextual_items["Đánh giá CAPA 1"].actions[0].disabled_reason == "Chưa có tệp hiện hành để mở."
     assert contextual_items["Quyết định cấp CC"].actions[2].action_key == "history"
     assert contextual_items["Quyết định cấp CC"].actions[2].available is True
     assert contextual_items["Quyết định cấp CC"].actions[1].action_key == "create"

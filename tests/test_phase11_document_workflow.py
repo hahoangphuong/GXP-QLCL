@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import shutil
 import tempfile
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from fastapi import HTTPException, Request
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
@@ -32,6 +34,32 @@ from backend.app.main import create_app
 from backend.app.services.document_api import DocumentWorkflowService
 from backend.app.storage.filesystem import FilesystemStorageService
 from backend.app.storage.types import StorageConfig
+
+
+def _document_content_endpoint(app):
+    route = next(
+        route
+        for route in app.routes
+        if getattr(route, "path", None) == "/documents/{document_id}/content"
+    )
+    return route.endpoint
+
+
+def _request_for_app(app) -> Request:
+    return Request(
+        {
+            "type": "http",
+            "app": app,
+            "headers": [],
+        }
+    )
+
+
+async def _read_streaming_response_body(response) -> bytes:
+    chunks = []
+    async for chunk in response.body_iterator:
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _build_minimal_docx_with_bookmarks(path: Path, bookmark_names: list[str]) -> None:
@@ -141,6 +169,7 @@ def test_phase11_document_routes_are_registered():
     assert "/documents/render-template-docx" in routes
     assert "/document-generation-runs/{generation_run_id}" in routes
     assert "/documents/{document_id}" in routes
+    assert "/documents/{document_id}/content" in routes
 
 
 def test_prepare_generation_persists_pending_run_and_status():
@@ -544,3 +573,180 @@ def test_get_document_detail_hides_storage_locator_fields_from_ui_projection():
     assert "storage_root" not in version_payload
     assert "storage_relative_path" not in version_payload
     assert "checksum_sha256" not in version_payload
+
+
+def test_get_current_document_binary_locator_prefers_current_version_and_guesses_media_type():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = DocumentWorkflowService()
+
+    with Session(engine) as session:
+        case_id, _ = _seed_case(session)
+        document = Document(
+            family_code="CERTIFICATE_DECISION",
+            document_type_code="CERTIFICATE_DECISION",
+            title="Quyết định cấp CC",
+            case_id=case_id,
+        )
+        session.add(document)
+        session.flush()
+        variant = DocumentVariant(
+            document_id=document.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="vi",
+            is_active=True,
+        )
+        session.add(variant)
+        session.flush()
+        session.add_all(
+            [
+                DocumentVersion(
+                    document_variant_id=variant.id,
+                    version_no=1,
+                    storage_binding_id=None,
+                    storage_root="inspection",
+                    storage_relative_path="2026/old.docx",
+                    original_filename="old.docx",
+                    checksum_sha256="old",
+                    is_current=False,
+                    issued_on=None,
+                ),
+                DocumentVersion(
+                    document_variant_id=variant.id,
+                    version_no=2,
+                    storage_binding_id=None,
+                    storage_root="inspection",
+                    storage_relative_path="2026/current.docx",
+                    original_filename="current.docx",
+                    checksum_sha256="new",
+                    is_current=True,
+                    issued_on=None,
+                ),
+            ]
+        )
+        session.commit()
+        locator = service.get_current_document_binary_locator(session, document.id)
+
+    assert locator.storage_root == "inspection"
+    assert locator.storage_relative_path == "2026/current.docx"
+    assert locator.original_filename == "current.docx"
+    assert locator.media_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+def test_document_content_route_streams_current_binary_without_locator_leakage(tmp_path: Path):
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    storage, root = _build_storage()
+    try:
+        with Session(engine) as session:
+            case_id, _ = _seed_case(session)
+            target_dir = root / "inspection" / "2026"
+            target_dir.mkdir(parents=True, exist_ok=True)
+            target_file = target_dir / "decision.docx"
+            target_file.write_bytes(b"docx-binary")
+            document = Document(
+                family_code="CERTIFICATE_DECISION",
+                document_type_code="CERTIFICATE_DECISION",
+                title="Quyết định cấp CC",
+                case_id=case_id,
+            )
+            session.add(document)
+            session.flush()
+            variant = DocumentVariant(
+                document_id=document.id,
+                variant_type=DocumentVariantType.EDITABLE_DOCX,
+                language_code="vi",
+                is_active=True,
+            )
+            session.add(variant)
+            session.flush()
+            session.add(
+                DocumentVersion(
+                    document_variant_id=variant.id,
+                    version_no=1,
+                    storage_binding_id=None,
+                    storage_root="inspection",
+                    storage_relative_path="2026/decision.docx",
+                    original_filename="decision.docx",
+                    checksum_sha256="checksum",
+                    is_current=True,
+                    issued_on=None,
+                )
+            )
+            session.commit()
+            document_id = document.id
+
+        app = create_app(str(engine.url), storage_service=storage)
+        with Session(engine) as read_session:
+            response = _document_content_endpoint(app)(
+                document_id,
+                _request_for_app(app),
+                read_session,
+                build_authenticated_user("reader.local", permissions={"document.read"}),
+            )
+
+            assert response.status_code == 200
+            assert asyncio.run(_read_streaming_response_body(response)) == b"docx-binary"
+            assert response.headers["content-type"].startswith(
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+            assert "filename*=UTF-8''decision.docx" in response.headers["content-disposition"]
+            assert "2026/decision.docx" not in str(response.headers)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_document_content_route_requires_document_read_permission(tmp_path: Path):
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    storage, root = _build_storage()
+    try:
+        with Session(engine) as session:
+            case_id, _ = _seed_case(session)
+            document = Document(
+                family_code="CERTIFICATE_DECISION",
+                document_type_code="CERTIFICATE_DECISION",
+                title="Quyết định cấp CC",
+                case_id=case_id,
+            )
+            session.add(document)
+            session.flush()
+            variant = DocumentVariant(
+                document_id=document.id,
+                variant_type=DocumentVariantType.EDITABLE_DOCX,
+                language_code="vi",
+                is_active=True,
+            )
+            session.add(variant)
+            session.flush()
+            session.add(
+                DocumentVersion(
+                    document_variant_id=variant.id,
+                    version_no=1,
+                    storage_binding_id=None,
+                    storage_root="inspection",
+                    storage_relative_path="2026/decision.docx",
+                    original_filename="decision.docx",
+                    checksum_sha256="checksum",
+                    is_current=True,
+                    issued_on=None,
+                )
+            )
+            session.commit()
+            document_id = document.id
+
+        app = create_app(str(engine.url), storage_service=storage)
+        with Session(engine) as read_session:
+            try:
+                _document_content_endpoint(app)(
+                    document_id,
+                    _request_for_app(app),
+                    read_session,
+                    build_authenticated_user("blocked.local", permissions={"case.read"}),
+                )
+            except HTTPException as exc:
+                assert exc.status_code == 403
+            else:
+                raise AssertionError("Expected document content route to require document.read permission")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)

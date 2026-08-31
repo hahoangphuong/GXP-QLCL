@@ -66,6 +66,7 @@ export function FacilityWorkspaceTabs({
   onCaseAssessmentSave,
   onInspectionPlanSave,
   onInspectionOutcomeSave,
+  onOpenDocument,
   onLoadDocumentDetail,
   selectedRemediationCycleId,
   onSelectedRemediationCycleChange,
@@ -109,6 +110,7 @@ export function FacilityWorkspaceTabs({
   onCaseAssessmentSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>;
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
+  onOpenDocument: (documentId: string) => Promise<void>;
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
   selectedRemediationCycleId: string | null;
   onSelectedRemediationCycleChange: (cycleId: string | null) => void;
@@ -160,6 +162,7 @@ export function FacilityWorkspaceTabs({
                 onInspectionOutcomeSave={onInspectionOutcomeSave}
                 onInspectionPlanSave={onInspectionPlanSave}
                 onLoadDocumentDetail={onLoadDocumentDetail}
+                onOpenDocument={onOpenDocument}
                 onSelectedRemediationCycleChange={onSelectedRemediationCycleChange}
                 onSubmitCapaCycle={onSubmitCapaCycle}
                 onTabChange={onEventTabChange}

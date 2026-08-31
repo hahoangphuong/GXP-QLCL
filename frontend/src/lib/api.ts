@@ -89,6 +89,22 @@ function getContentTypeLabel(contentType: string | null): string {
   return normalized || "loại nội dung không rõ";
 }
 
+function parseContentDispositionFilename(contentDisposition: string | null): string | null {
+  if (!contentDisposition) {
+    return null;
+  }
+  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+  const basicMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+  return basicMatch?.[1]?.trim() || null;
+}
+
 async function requestJson<T>(path: string, options: RequestOptions): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -127,6 +143,48 @@ async function requestJson<T>(path: string, options: RequestOptions): Promise<T>
   }
 
   return (await response.json()) as T;
+}
+
+async function requestBlob(
+  path: string,
+  options: RequestOptions,
+): Promise<{ blob: Blob; contentType: string | null; filename: string | null }> {
+  const headers: Record<string, string> = {};
+  if (options.useStubAuth && options.auth) {
+    headers["X-Auth-User"] = options.auth.username;
+    headers["X-Auth-Role"] = options.auth.role;
+  } else if (options.bearerToken) {
+    headers.Authorization = `Bearer ${options.bearerToken}`;
+  }
+  const requestUrl = buildApiUrl(path);
+  const response = await fetch(requestUrl, {
+    method: options.method ?? "GET",
+    headers,
+  });
+
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type");
+    let detail = `${response.status} ${response.statusText}`;
+    if (isJsonContentType(contentType)) {
+      try {
+        const payload = (await response.json()) as { detail?: string };
+        if (payload.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // Preserve the original HTTP detail.
+      }
+    }
+    const error = new Error(detail) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
+  }
+
+  return {
+    blob: await response.blob(),
+    contentType: response.headers.get("content-type"),
+    filename: parseContentDispositionFilename(response.headers.get("content-disposition")),
+  };
 }
 
 export function getAppStatus(): Promise<AppStatus> {
@@ -517,4 +575,13 @@ export function getDocumentDetail(
   bearerToken?: string | null,
 ): Promise<DocumentDetail> {
   return requestJson<DocumentDetail>(`/documents/${documentId}`, { auth, useStubAuth, bearerToken });
+}
+
+export function openDocumentCurrentContent(
+  documentId: string,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<{ blob: Blob; contentType: string | null; filename: string | null }> {
+  return requestBlob(`/documents/${documentId}/content`, { auth, useStubAuth, bearerToken });
 }

@@ -10,6 +10,7 @@ import {
   getCaseWorkspace,
   getFacilityWorkspace,
   getDocumentDetail,
+  openDocumentCurrentContent,
   getGenerationRun,
   listCases,
   listCompanies,
@@ -30,7 +31,9 @@ type MockJsonResponse = {
   status?: number;
   statusText?: string;
   json?: unknown;
+  blob?: Blob;
   contentType?: string;
+  contentDisposition?: string | null;
 };
 
 function mockJsonResponse({
@@ -38,16 +41,28 @@ function mockJsonResponse({
   status = 200,
   statusText = "OK",
   json = [],
+  blob = new Blob(),
   contentType = "application/json; charset=utf-8",
+  contentDisposition = null,
 }: MockJsonResponse = {}) {
   return {
     ok,
     status,
     statusText,
     headers: {
-      get: (name: string) => (name.toLowerCase() === "content-type" ? contentType : null),
+      get: (name: string) => {
+        const normalized = name.toLowerCase();
+        if (normalized === "content-type") {
+          return contentType;
+        }
+        if (normalized === "content-disposition") {
+          return contentDisposition;
+        }
+        return null;
+      },
     },
     json: async () => json,
+    blob: async () => blob,
   };
 }
 
@@ -123,6 +138,7 @@ describe("frontend API routing contract", () => {
     );
     await getGenerationRun("run-123", { username: "operator.local", role: "manager" }, true);
     await getDocumentDetail("doc-123", { username: "operator.local", role: "manager" }, true);
+    await openDocumentCurrentContent("doc-123", { username: "operator.local", role: "manager" }, true);
 
     const urls = fetchMock.mock.calls.map((call) => call[0]);
     expect(urls).toEqual([
@@ -133,6 +149,7 @@ describe("frontend API routing contract", () => {
       "/api/documents/render-template-docx",
       "/api/document-generation-runs/run-123",
       "/api/documents/doc-123",
+      "/api/documents/doc-123/content",
     ]);
     for (const url of urls) {
       expect(String(url)).not.toContain("/api/api/");
@@ -180,6 +197,36 @@ describe("frontend API routing contract", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(getAppStatus()).rejects.toThrow("Kỳ vọng JSON từ /api/app/status nhưng nhận được text/html");
+  });
+
+  it("opens document binary with auth headers and parses content disposition filename", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      mockJsonResponse({
+        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        contentDisposition: "inline; filename*=UTF-8''ke-hoach-kiem-tra.docx",
+        blob: new Blob(["demo"]),
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await openDocumentCurrentContent(
+      "doc-123",
+      { username: "operator.local", role: "manager" },
+      false,
+      "oidc-token",
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/documents/doc-123/content",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          Authorization: "Bearer oidc-token",
+        }),
+      }),
+    );
+    expect(result.filename).toBe("ke-hoach-kiem-tra.docx");
+    expect(result.contentType).toBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
   });
 
   it("sends Authorization bearer token in google_oidc mode", async () => {

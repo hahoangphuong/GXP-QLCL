@@ -106,14 +106,17 @@ function DocumentChecklistSection({
 
 function ContextualDocumentSection({
   items,
+  onOpenDocument,
   onLoadDocumentDetail,
 }: {
   items: ContextualDocumentAction[];
+  onOpenDocument: (documentId: string) => Promise<void>;
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
 }) {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [detail, setDetail] = useState<DocumentDetail | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [detailMode, setDetailMode] = useState<"open" | "history">("open");
 
@@ -126,18 +129,20 @@ function ContextualDocumentSection({
     if (!currentItem) {
       setDetail(null);
       setLoading(false);
+      setLoadingMessage(null);
       setError(null);
     }
   }, [currentItem]);
 
-  async function handleLoad(item: ContextualDocumentAction, mode: "open" | "history") {
+  async function handleLoadHistory(item: ContextualDocumentAction) {
     if (!item.document_id) {
       return;
     }
     setSelectedDocumentId(item.document_id);
-    setDetailMode(mode);
+    setDetailMode("history");
     setDetail(null);
     setLoading(true);
+    setLoadingMessage("Đang tải lịch sử tài liệu...");
     setError(null);
     try {
       const payload = await onLoadDocumentDetail(item.document_id);
@@ -147,6 +152,25 @@ function ContextualDocumentSection({
       setError(nextError instanceof Error ? nextError.message : "Không mở được chi tiết tài liệu.");
     } finally {
       setLoading(false);
+      setLoadingMessage(null);
+    }
+  }
+
+  async function handleOpen(item: ContextualDocumentAction) {
+    if (!item.document_id) {
+      return;
+    }
+    setSelectedDocumentId(item.document_id);
+    setLoading(true);
+    setLoadingMessage("Đang mở tài liệu...");
+    setError(null);
+    try {
+      await onOpenDocument(item.document_id);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Không mở được tài liệu.");
+    } finally {
+      setLoading(false);
+      setLoadingMessage(null);
     }
   }
 
@@ -171,8 +195,11 @@ function ContextualDocumentSection({
                   disabled={!action.available}
                   key={action.action_key}
                   onClick={() => {
-                    if (action.action_key === "open" || action.action_key === "history") {
-                      void handleLoad(item, action.action_key);
+                    if (action.action_key === "open") {
+                      void handleOpen(item);
+                    }
+                    if (action.action_key === "history") {
+                      void handleLoadHistory(item);
                     }
                   }}
                   title={action.disabled_reason ?? `${action.label} ${item.label}`}
@@ -185,7 +212,7 @@ function ContextualDocumentSection({
           </div>
         ))}
       </div>
-      {loading ? <p className="workspace-note">Đang tải chi tiết tài liệu...</p> : null}
+      {loading && loadingMessage ? <p className="workspace-note">{loadingMessage}</p> : null}
       {error ? (
         <p className="form-error" role="alert">
           {error}
@@ -405,6 +432,7 @@ function renderCaseStepContent(
   onUpdateCapaCycle: (cycleId: string, payload: CapaCycleUpdateRequest) => Promise<void>,
   onSubmitCapaCycle: (cycleId: string, payload: CapaCycleSubmitRequest) => Promise<void>,
   onAssessCapaCycle: (cycleId: string, payload: CapaCycleAssessRequest) => Promise<void>,
+  onOpenDocument: (documentId: string) => Promise<void>,
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>,
 ) {
   const documentItems = caseWorkspace.contextual_document_actions.filter((item) => {
@@ -421,7 +449,7 @@ function renderCaseStepContent(
     return (
       <div className="event-step-stack">
         <CaseApplicationWorkspace caseWorkspace={caseWorkspace} onSave={onCaseApplicationSave} />
-        <ContextualDocumentSection items={documentItems} onLoadDocumentDetail={onLoadDocumentDetail} />
+        <ContextualDocumentSection items={documentItems} onLoadDocumentDetail={onLoadDocumentDetail} onOpenDocument={onOpenDocument} />
       </div>
     );
   }
@@ -434,7 +462,7 @@ function renderCaseStepContent(
           onInspectionOutcomeSave={onInspectionOutcomeSave}
           onInspectionPlanSave={onInspectionPlanSave}
         />
-        <ContextualDocumentSection items={documentItems} onLoadDocumentDetail={onLoadDocumentDetail} />
+        <ContextualDocumentSection items={documentItems} onLoadDocumentDetail={onLoadDocumentDetail} onOpenDocument={onOpenDocument} />
       </div>
     );
   }
@@ -451,7 +479,7 @@ function renderCaseStepContent(
           onUpdateCycle={onUpdateCapaCycle}
           selectedCycleId={selectedRemediationCycleId}
         />
-        <ContextualDocumentSection items={documentItems} onLoadDocumentDetail={onLoadDocumentDetail} />
+        <ContextualDocumentSection items={documentItems} onLoadDocumentDetail={onLoadDocumentDetail} onOpenDocument={onOpenDocument} />
       </div>
     );
   }
@@ -460,7 +488,7 @@ function renderCaseStepContent(
     return (
       <div className="event-step-stack">
         <CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} />
-        <ContextualDocumentSection items={documentItems} onLoadDocumentDetail={onLoadDocumentDetail} />
+        <ContextualDocumentSection items={documentItems} onLoadDocumentDetail={onLoadDocumentDetail} onOpenDocument={onOpenDocument} />
       </div>
     );
   }
@@ -469,7 +497,7 @@ function renderCaseStepContent(
     return (
       <div className="event-step-stack">
         <LinkedGxpCertificates items={caseWorkspace.linked_gxp_certificates} />
-        <ContextualDocumentSection items={documentItems} onLoadDocumentDetail={onLoadDocumentDetail} />
+        <ContextualDocumentSection items={documentItems} onLoadDocumentDetail={onLoadDocumentDetail} onOpenDocument={onOpenDocument} />
       </div>
     );
   }
@@ -574,6 +602,7 @@ export function EventWorkspace({
   onCaseAssessmentSave,
   onInspectionPlanSave,
   onInspectionOutcomeSave,
+  onOpenDocument,
   onLoadDocumentDetail,
   selectedRemediationCycleId,
   onSelectedRemediationCycleChange,
@@ -595,6 +624,7 @@ export function EventWorkspace({
   onCaseAssessmentSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>;
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
+  onOpenDocument: (documentId: string) => Promise<void>;
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
   selectedRemediationCycleId: string | null;
   onSelectedRemediationCycleChange: (cycleId: string | null) => void;
@@ -676,6 +706,7 @@ export function EventWorkspace({
             onUpdateCapaCycle,
             onSubmitCapaCycle,
             onAssessCapaCycle,
+            onOpenDocument,
             onLoadDocumentDetail,
           )
         ) : (

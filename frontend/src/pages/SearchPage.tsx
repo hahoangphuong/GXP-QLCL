@@ -15,6 +15,7 @@ import {
   getCaseWorkspace,
   getChangeRequestWorkspace,
   getDocumentDetail,
+  openDocumentCurrentContent,
   getFacilityWorkspace,
   getGxpCertificateDetail,
   listSiteBusinessEligibilityCertificates,
@@ -851,6 +852,13 @@ export function SearchPage({
     return getDocumentDetail(documentId, auth, useStubAuth, bearerToken);
   }
 
+  async function handleOpenDocument(documentId: string): Promise<void> {
+    const { blob } = await openDocumentCurrentContent(documentId, auth, useStubAuth, bearerToken);
+    const objectUrl = URL.createObjectURL(blob);
+    window.open(objectUrl, "_blank", "noopener");
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  }
+
   async function handleCreateInspectionCaseSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedResult) {
@@ -1039,6 +1047,7 @@ export function SearchPage({
             onInspectionOutcomeSave={handleInspectionOutcomeSave}
             onInspectionPlanSave={handleInspectionPlanSave}
             onLoadDocumentDetail={handleLoadDocumentDetail}
+            onOpenDocument={handleOpenDocument}
             onSelectedRemediationCycleChange={setSelectedRemediationCycleId}
             onSubmitCapaCycle={handleSubmitCapaCycle}
             onUpdateCapaCycle={handleUpdateCapaCycle}

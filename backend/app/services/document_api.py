@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
@@ -61,6 +62,16 @@ class TemplateReadiness:
     checksum_sha256: str | None
     scalar_replacement_mode: str | None
     template_variant_key: str | None
+
+
+@dataclass(frozen=True)
+class DocumentBinaryLocator:
+    document_id: str
+    document_version_id: str
+    storage_root: str
+    storage_relative_path: str
+    original_filename: str
+    media_type: str
 
 
 class DocumentWorkflowService:
@@ -543,3 +554,50 @@ class DocumentWorkflowService:
 
     def get_document(self, session: Session, document_id: str) -> dict[str, Any]:
         return self._serialize_document_detail(session, document_id)
+
+    def get_current_document_binary_locator(self, session: Session, document_id: str) -> DocumentBinaryLocator:
+        row = session.get(Document, document_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Document not found.")
+        variants = list(session.scalars(select(DocumentVariant).where(DocumentVariant.document_id == row.id)))
+        versions = [
+            version
+            for variant in variants
+            for version in session.scalars(
+                select(DocumentVersion).where(DocumentVersion.document_variant_id == variant.id)
+            )
+        ]
+        document_version = self._pick_current_document_version(versions)
+        if document_version is None:
+            raise HTTPException(status_code=409, detail="Document does not have a current binary version.")
+        if (
+            document_version.storage_root is None
+            or document_version.storage_relative_path is None
+            or document_version.original_filename is None
+        ):
+            raise HTTPException(status_code=409, detail="Document current version locator is incomplete.")
+        media_type, _ = mimetypes.guess_type(document_version.original_filename)
+        return DocumentBinaryLocator(
+            document_id=row.id,
+            document_version_id=document_version.id,
+            storage_root=document_version.storage_root,
+            storage_relative_path=document_version.storage_relative_path,
+            original_filename=document_version.original_filename,
+            media_type=media_type or "application/octet-stream",
+        )
+
+    @staticmethod
+    def _pick_current_document_version(versions: list[DocumentVersion]) -> DocumentVersion | None:
+        if not versions:
+            return None
+        current_versions = [row for row in versions if row.is_current]
+        candidates = current_versions or versions
+        return max(
+            candidates,
+            key=lambda row: (
+                row.is_current,
+                row.issued_on or row.created_at,
+                row.version_no,
+                row.id,
+            ),
+        )

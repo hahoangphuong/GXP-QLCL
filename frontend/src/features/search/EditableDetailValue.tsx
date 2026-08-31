@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 
 import { DetailValue } from "./DetailValue";
 
@@ -30,17 +30,6 @@ function IconButton({
     >
       {children}
     </button>
-  );
-}
-
-function EditIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 16 16">
-      <path
-        d="M11.9 1.6a1.5 1.5 0 0 1 2.1 0l.4.4a1.5 1.5 0 0 1 0 2.1l-8.8 8.8-3.2.6.6-3.2zM10.8 2.7 4.1 9.4l-.3 1.5 1.5-.3L12 3.9zM2 13.5h12v1H2z"
-        fill="currentColor"
-      />
-    </svg>
   );
 }
 
@@ -90,16 +79,30 @@ export function EditableDetailValue({
   value: ReactNode;
   children: ReactNode;
 }) {
+  function handleReadOnlyKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (!onEdit) {
+      return;
+    }
+    if (event.key !== "Enter" && event.key !== "F2") {
+      return;
+    }
+    event.preventDefault();
+    onEdit();
+  }
+
   if (!isEditing) {
     return (
       <div className={multiline ? "summary-span editable-detail-value" : "editable-detail-value"}>
-        <div className="editable-detail-header">
+        <div
+          aria-label={editButtonLabel}
+          className={onEdit ? "editable-detail-header editable-detail-header-activator" : "editable-detail-header"}
+          onDoubleClick={onEdit ?? undefined}
+          onKeyDown={handleReadOnlyKeyDown}
+          role={onEdit ? "button" : undefined}
+          tabIndex={onEdit ? 0 : undefined}
+          title={onEdit ? `${label}: nhấp đúp, Enter hoặc F2 để sửa` : undefined}
+        >
           <DetailValue label={label} multiline={multiline} value={value} />
-          {onEdit ? (
-            <IconButton ariaLabel={editButtonLabel} onClick={onEdit} title={editButtonLabel}>
-              <EditIcon />
-            </IconButton>
-          ) : null}
         </div>
       </div>
     );

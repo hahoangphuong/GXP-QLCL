@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from fastapi import Depends, Request
+from urllib.parse import quote
+
+from fastapi import Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from backend.app.api.session import commit_or_409, get_session_from_request_factory
@@ -69,6 +72,37 @@ def register_document_routes(app, session_factory) -> None:
         result = service.get_document(session, document_id)
         return DocumentDetailRead(**result)
 
+    def open_document_current_content(
+        document_id: str,
+        request: Request,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"document.read"})
+        storage = request.app.state.storage_service
+        if storage is None:
+            raise HTTPException(status_code=503, detail="StorageService is unavailable for document content access.")
+        locator = service.get_current_document_binary_locator(session, document_id)
+        stream_context = storage.read_stream(locator.storage_relative_path, root=locator.storage_root)
+        stream = stream_context.__enter__()
+
+        def iter_chunks():
+            try:
+                while True:
+                    chunk = stream.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    yield chunk
+            finally:
+                stream_context.__exit__(None, None, None)
+
+        response = StreamingResponse(iter_chunks(), media_type=locator.media_type)
+        response.headers["Content-Disposition"] = (
+            f"inline; filename*=UTF-8''{quote(locator.original_filename)}"
+        )
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
+
     app.add_api_route(
         "/documents/prepare",
         prepare_document_generation,
@@ -95,5 +129,11 @@ def register_document_routes(app, session_factory) -> None:
         get_document_detail,
         methods=["GET"],
         response_model=DocumentDetailRead,
+        tags=["documents"],
+    )
+    app.add_api_route(
+        "/documents/{document_id}/content",
+        open_document_current_content,
+        methods=["GET"],
         tags=["documents"],
     )

@@ -10,7 +10,8 @@ import {
   getCaseWorkspace,
   getFacilityWorkspace,
   getDocumentDetail,
-  openDocumentCurrentContent,
+  openCapaCycleDocumentCurrentContent,
+  openCaseDocumentCurrentContent,
   getGenerationRun,
   listCases,
   listCompanies,
@@ -138,7 +139,14 @@ describe("frontend API routing contract", () => {
     );
     await getGenerationRun("run-123", { username: "operator.local", role: "manager" }, true);
     await getDocumentDetail("doc-123", { username: "operator.local", role: "manager" }, true);
-    await openDocumentCurrentContent("doc-123", { username: "operator.local", role: "manager" }, true);
+    await openCaseDocumentCurrentContent("case-123", "doc-123", { username: "operator.local", role: "manager" }, true);
+    await openCapaCycleDocumentCurrentContent(
+      "case-123",
+      "capa-123",
+      "doc-456",
+      { username: "operator.local", role: "manager" },
+      true,
+    );
 
     const urls = fetchMock.mock.calls.map((call) => call[0]);
     expect(urls).toEqual([
@@ -149,7 +157,8 @@ describe("frontend API routing contract", () => {
       "/api/documents/render-template-docx",
       "/api/document-generation-runs/run-123",
       "/api/documents/doc-123",
-      "/api/documents/doc-123/content",
+      "/api/cases/case-123/documents/doc-123/content",
+      "/api/cases/case-123/capa-cycles/capa-123/documents/doc-456/content",
     ]);
     for (const url of urls) {
       expect(String(url)).not.toContain("/api/api/");
@@ -209,7 +218,8 @@ describe("frontend API routing contract", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await openDocumentCurrentContent(
+    const result = await openCaseDocumentCurrentContent(
+      "case-123",
       "doc-123",
       { username: "operator.local", role: "manager" },
       false,
@@ -217,7 +227,7 @@ describe("frontend API routing contract", () => {
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/documents/doc-123/content",
+      "/api/cases/case-123/documents/doc-123/content",
       expect.objectContaining({
         method: "GET",
         headers: expect.objectContaining({

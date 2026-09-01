@@ -13,12 +13,13 @@ from sqlalchemy.orm import Session
 
 from backend.app.auth import build_authenticated_user
 from backend.app.db.base import Base
-from backend.app.db.enums import CaseState, DocumentVariantType
+from backend.app.db.enums import CaseState, ChangeRequestState, DocumentVariantType
 from backend.app.db.models.phase1 import (
     AuditEvent,
     BusinessEligibilityCertificate,
     Case,
     CapaCycle,
+    ChangeRequest,
     Company,
     Document,
     DocumentGenerationRun,
@@ -36,11 +37,11 @@ from backend.app.storage.filesystem import FilesystemStorageService
 from backend.app.storage.types import StorageConfig
 
 
-def _document_content_endpoint(app):
+def _document_content_endpoint(app, path: str):
     route = next(
         route
         for route in app.routes
-        if getattr(route, "path", None) == "/documents/{document_id}/content"
+        if getattr(route, "path", None) == path
     )
     return route.endpoint
 
@@ -169,7 +170,9 @@ def test_phase11_document_routes_are_registered():
     assert "/documents/render-template-docx" in routes
     assert "/document-generation-runs/{generation_run_id}" in routes
     assert "/documents/{document_id}" in routes
-    assert "/documents/{document_id}/content" in routes
+    assert "/cases/{case_id}/documents/{document_id}/content" in routes
+    assert "/cases/{case_id}/capa-cycles/{capa_cycle_id}/documents/{document_id}/content" in routes
+    assert "/documents/{document_id}/content" not in routes
 
 
 def test_prepare_generation_persists_pending_run_and_status():
@@ -625,7 +628,12 @@ def test_get_current_document_binary_locator_prefers_current_version_and_guesses
             ]
         )
         session.commit()
-        locator = service.get_current_document_binary_locator(session, document.id)
+        locator = service.get_current_document_binary_locator_for_parent(
+            session,
+            document_id=document.id,
+            expected_parent_scope="case",
+            expected_parent_id=case_id,
+        )
 
     assert locator.storage_root == "inspection"
     assert locator.storage_relative_path == "2026/current.docx"
@@ -678,7 +686,8 @@ def test_document_content_route_streams_current_binary_without_locator_leakage(t
 
         app = create_app(str(engine.url), storage_service=storage)
         with Session(engine) as read_session:
-            response = _document_content_endpoint(app)(
+            response = _document_content_endpoint(app, "/cases/{case_id}/documents/{document_id}/content")(
+                case_id,
                 document_id,
                 _request_for_app(app),
                 read_session,
@@ -694,6 +703,148 @@ def test_document_content_route_streams_current_binary_without_locator_leakage(t
             assert "2026/decision.docx" not in str(response.headers)
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+def test_document_content_routes_enforce_exact_case_and_capa_parent_ownership():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    storage, root = _build_storage()
+    try:
+        with Session(engine) as session:
+            case_id, site_id = _seed_case(session)
+            other_case = Case(
+                legacy_inspection_id=201,
+                legacy_inspection_code="KT-2024-GMP-OTHER",
+                site_id=site_id,
+                gxp_type="GMP",
+                state=CaseState.PLANNED,
+                opened_year=2024,
+            )
+            session.add(other_case)
+            session.flush()
+            first_cycle_id = _seed_capa_cycle(session, case_id, round_no=1)
+            second_cycle_id = _seed_capa_cycle(session, case_id, round_no=2)
+            change_request = ChangeRequest(
+                site_id=site_id,
+                legacy_change_request_id=400,
+                scope_label="Thay đổi độc lập",
+                state=ChangeRequestState.RECEIVED,
+            )
+            session.add(change_request)
+            session.flush()
+            case_document = Document(
+                family_code="INSPECTION_QD_KT",
+                document_type_code="INSPECTION_QD_KT",
+                case_id=case_id,
+            )
+            capa_document = Document(
+                family_code="INSPECTION_CAPA_LAN_1",
+                document_type_code="INSPECTION_CAPA_LAN_1",
+                capa_cycle_id=first_cycle_id,
+            )
+            change_document = Document(
+                family_code="CHANGE_NOTICE",
+                document_type_code="CHANGE_NOTICE",
+                change_request_id=change_request.id,
+            )
+            ambiguous_document = Document(
+                family_code="INVALID_MULTI_PARENT",
+                document_type_code="INVALID_MULTI_PARENT",
+                case_id=case_id,
+                change_request_id=change_request.id,
+            )
+            session.add_all([case_document, capa_document, change_document, ambiguous_document])
+            session.commit()
+            other_case_id = other_case.id
+            case_document_id = case_document.id
+            capa_document_id = capa_document.id
+            change_document_id = change_document.id
+            ambiguous_document_id = ambiguous_document.id
+
+        app = create_app(str(engine.url), storage_service=storage)
+        case_endpoint = _document_content_endpoint(app, "/cases/{case_id}/documents/{document_id}/content")
+        capa_endpoint = _document_content_endpoint(
+            app,
+            "/cases/{case_id}/capa-cycles/{capa_cycle_id}/documents/{document_id}/content",
+        )
+        user = build_authenticated_user("reader.local", permissions={"document.read"})
+        with Session(engine) as read_session:
+            rejected_calls = [
+                lambda: case_endpoint(other_case_id, case_document_id, _request_for_app(app), read_session, user),
+                lambda: capa_endpoint(case_id, second_cycle_id, capa_document_id, _request_for_app(app), read_session, user),
+                lambda: case_endpoint(case_id, capa_document_id, _request_for_app(app), read_session, user),
+                lambda: case_endpoint(case_id, change_document_id, _request_for_app(app), read_session, user),
+                lambda: case_endpoint(case_id, ambiguous_document_id, _request_for_app(app), read_session, user),
+            ]
+            for invoke in rejected_calls:
+                try:
+                    invoke()
+                except HTTPException as exc:
+                    assert exc.status_code == 404
+                else:
+                    raise AssertionError("Expected binary document route to reject an unrelated business owner")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_owner_scoped_binary_locator_fails_closed_for_missing_or_incomplete_current_version():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = DocumentWorkflowService()
+
+    with Session(engine) as session:
+        case_id, _ = _seed_case(session)
+        missing_version_document = Document(
+            family_code="INSPECTION_QD_KT",
+            document_type_code="INSPECTION_QD_KT",
+            case_id=case_id,
+        )
+        incomplete_locator_document = Document(
+            family_code="INSPECTION_KE_HOACH_KT",
+            document_type_code="INSPECTION_KE_HOACH_KT",
+            case_id=case_id,
+        )
+        session.add_all([missing_version_document, incomplete_locator_document])
+        session.flush()
+        variant = DocumentVariant(
+            document_id=incomplete_locator_document.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="vi",
+            is_active=True,
+        )
+        session.add(variant)
+        session.flush()
+        session.add(
+            DocumentVersion(
+                document_variant_id=variant.id,
+                version_no=1,
+                storage_binding_id=None,
+                storage_root="inspection",
+                storage_relative_path="",
+                original_filename="incomplete.docx",
+                checksum_sha256="checksum",
+                is_current=True,
+                issued_on=None,
+            )
+        )
+        session.commit()
+
+        for document_id, expected_detail in [
+            (missing_version_document.id, "Document does not have a current binary version."),
+            (incomplete_locator_document.id, "Document current version locator is incomplete."),
+        ]:
+            try:
+                service.get_current_document_binary_locator_for_parent(
+                    session,
+                    document_id=document_id,
+                    expected_parent_scope="case",
+                    expected_parent_id=case_id,
+                )
+            except HTTPException as exc:
+                assert exc.status_code == 409
+                assert exc.detail == expected_detail
+            else:
+                raise AssertionError("Expected incomplete document binary state to fail closed")
 
 
 def test_document_content_route_requires_document_read_permission(tmp_path: Path):
@@ -738,7 +889,8 @@ def test_document_content_route_requires_document_read_permission(tmp_path: Path
         app = create_app(str(engine.url), storage_service=storage)
         with Session(engine) as read_session:
             try:
-                _document_content_endpoint(app)(
+                _document_content_endpoint(app, "/cases/{case_id}/documents/{document_id}/content")(
+                    case_id,
                     document_id,
                     _request_for_app(app),
                     read_session,

@@ -9,6 +9,7 @@ import type {
   CaseAssessmentUpsertRequest,
   CaseWorkspace,
   ChangeRequestWorkspace,
+  ContextualDocumentAction,
   DocumentDetail,
   FacilityHistoryItem,
   FacilityWorkspaceSummary,
@@ -110,7 +111,7 @@ export function FacilityWorkspaceTabs({
   onCaseAssessmentSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>;
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
-  onOpenDocument: (documentId: string) => Promise<void>;
+  onOpenDocument: (caseId: string, item: ContextualDocumentAction) => Promise<void>;
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
   selectedRemediationCycleId: string | null;
   onSelectedRemediationCycleChange: (cycleId: string | null) => void;

@@ -72,17 +72,14 @@ def register_document_routes(app, session_factory) -> None:
         result = service.get_document(session, document_id)
         return DocumentDetailRead(**result)
 
-    def open_document_current_content(
-        document_id: str,
+    def _open_document_current_content(
+        *,
+        locator,
         request: Request,
-        session: Session = dependency,
-        user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
-        require_permissions(user, {"document.read"})
         storage = request.app.state.storage_service
         if storage is None:
             raise HTTPException(status_code=503, detail="StorageService is unavailable for document content access.")
-        locator = service.get_current_document_binary_locator(session, document_id)
         stream_context = storage.read_stream(locator.storage_relative_path, root=locator.storage_root)
         stream = stream_context.__enter__()
 
@@ -102,6 +99,40 @@ def register_document_routes(app, session_factory) -> None:
         )
         response.headers["X-Content-Type-Options"] = "nosniff"
         return response
+
+    def open_case_document_current_content(
+        case_id: str,
+        document_id: str,
+        request: Request,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"document.read"})
+        locator = service.get_current_document_binary_locator_for_parent(
+            session,
+            document_id=document_id,
+            expected_parent_scope="case",
+            expected_parent_id=case_id,
+        )
+        return _open_document_current_content(locator=locator, request=request)
+
+    def open_capa_cycle_document_current_content(
+        case_id: str,
+        capa_cycle_id: str,
+        document_id: str,
+        request: Request,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"document.read"})
+        locator = service.get_current_document_binary_locator_for_parent(
+            session,
+            document_id=document_id,
+            expected_parent_scope="capa_cycle",
+            expected_parent_id=capa_cycle_id,
+            expected_case_id=case_id,
+        )
+        return _open_document_current_content(locator=locator, request=request)
 
     app.add_api_route(
         "/documents/prepare",
@@ -132,8 +163,14 @@ def register_document_routes(app, session_factory) -> None:
         tags=["documents"],
     )
     app.add_api_route(
-        "/documents/{document_id}/content",
-        open_document_current_content,
+        "/cases/{case_id}/documents/{document_id}/content",
+        open_case_document_current_content,
+        methods=["GET"],
+        tags=["documents"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/capa-cycles/{capa_cycle_id}/documents/{document_id}/content",
+        open_capa_cycle_document_current_content,
         methods=["GET"],
         tags=["documents"],
     )

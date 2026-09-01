@@ -577,11 +577,27 @@ export function getDocumentDetail(
   return requestJson<DocumentDetail>(`/documents/${documentId}`, { auth, useStubAuth, bearerToken });
 }
 
-export function openDocumentCurrentContent(
+export function openCaseDocumentCurrentContent(
+  caseId: string,
   documentId: string,
   auth: StubAuthState,
   useStubAuth: boolean,
   bearerToken?: string | null,
 ): Promise<{ blob: Blob; contentType: string | null; filename: string | null }> {
-  return requestBlob(`/documents/${documentId}/content`, { auth, useStubAuth, bearerToken });
+  return requestBlob(`/cases/${caseId}/documents/${documentId}/content`, { auth, useStubAuth, bearerToken });
+}
+
+export function openCapaCycleDocumentCurrentContent(
+  caseId: string,
+  capaCycleId: string,
+  documentId: string,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<{ blob: Blob; contentType: string | null; filename: string | null }> {
+  return requestBlob(`/cases/${caseId}/capa-cycles/${capaCycleId}/documents/${documentId}/content`, {
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
 }

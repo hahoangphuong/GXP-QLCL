@@ -35,7 +35,12 @@ const apiMocks = vi.hoisted(() => ({
   listSiteBusinessEligibilityCertificates: vi.fn().mockResolvedValue({ items: [] }),
   getBusinessEligibilityDetail: vi.fn().mockResolvedValue(null),
   getDocumentDetail: vi.fn().mockResolvedValue(null),
-  openDocumentCurrentContent: vi.fn().mockResolvedValue({
+  openCaseDocumentCurrentContent: vi.fn().mockResolvedValue({
+    blob: new Blob(["doc"]),
+    contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    filename: "document.docx",
+  }),
+  openCapaCycleDocumentCurrentContent: vi.fn().mockResolvedValue({
     blob: new Blob(["doc"]),
     contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     filename: "document.docx",
@@ -86,7 +91,8 @@ function resetApiMocks() {
   apiMocks.listSiteBusinessEligibilityCertificates.mockReset();
   apiMocks.getBusinessEligibilityDetail.mockReset();
   apiMocks.getDocumentDetail.mockReset();
-  apiMocks.openDocumentCurrentContent.mockReset();
+  apiMocks.openCaseDocumentCurrentContent.mockReset();
+  apiMocks.openCapaCycleDocumentCurrentContent.mockReset();
   apiMocks.getGenerationRun.mockReset();
   apiMocks.listCases.mockReset();
   apiMocks.listCompanies.mockReset();
@@ -124,7 +130,12 @@ function resetApiMocks() {
   apiMocks.listSiteBusinessEligibilityCertificates.mockResolvedValue({ items: [] });
   apiMocks.getBusinessEligibilityDetail.mockResolvedValue(null);
   apiMocks.getDocumentDetail.mockResolvedValue(null);
-  apiMocks.openDocumentCurrentContent.mockResolvedValue({
+  apiMocks.openCaseDocumentCurrentContent.mockResolvedValue({
+    blob: new Blob(["doc"]),
+    contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    filename: "document.docx",
+  });
+  apiMocks.openCapaCycleDocumentCurrentContent.mockResolvedValue({
     blob: new Blob(["doc"]),
     contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     filename: "document.docx",
@@ -1431,7 +1442,7 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
     apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
-    apiMocks.openDocumentCurrentContent.mockRejectedValue(buildApiError("403 User is missing required permission.", 403));
+    apiMocks.openCaseDocumentCurrentContent.mockRejectedValue(buildApiError("403 User is missing required permission.", 403));
 
     renderApp(["/search"]);
 
@@ -1472,7 +1483,8 @@ describe("App Slice A.4 search workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Mở Quyết định cấp CC" }));
 
     await waitFor(() => {
-      expect(apiMocks.openDocumentCurrentContent).toHaveBeenCalledWith(
+      expect(apiMocks.openCaseDocumentCurrentContent).toHaveBeenCalledWith(
+        "case-1",
         "doc-cert-decision",
         expect.objectContaining({ username: "operator.local", role: "inspector" }),
         true,

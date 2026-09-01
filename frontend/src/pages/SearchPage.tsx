@@ -15,7 +15,8 @@ import {
   getCaseWorkspace,
   getChangeRequestWorkspace,
   getDocumentDetail,
-  openDocumentCurrentContent,
+  openCapaCycleDocumentCurrentContent,
+  openCaseDocumentCurrentContent,
   getFacilityWorkspace,
   getGxpCertificateDetail,
   listSiteBusinessEligibilityCertificates,
@@ -39,6 +40,7 @@ import type {
   CaseAssessmentUpsertRequest,
   CaseWorkspace,
   ChangeRequestWorkspace,
+  ContextualDocumentAction,
   DocumentDetail,
   FacilitySearchResult,
   FacilityWorkspace,
@@ -852,8 +854,19 @@ export function SearchPage({
     return getDocumentDetail(documentId, auth, useStubAuth, bearerToken);
   }
 
-  async function handleOpenDocument(documentId: string): Promise<void> {
-    const { blob } = await openDocumentCurrentContent(documentId, auth, useStubAuth, bearerToken);
+  async function handleOpenDocument(caseId: string, item: ContextualDocumentAction): Promise<void> {
+    if (!item.document_id) {
+      throw new Error("Tài liệu chưa có binary hiện hành để mở.");
+    }
+    let response: Awaited<ReturnType<typeof openCaseDocumentCurrentContent>>;
+    if (item.parent_scope === "case") {
+      response = await openCaseDocumentCurrentContent(item.parent_id, item.document_id, auth, useStubAuth, bearerToken);
+    } else if (item.parent_scope === "capa_cycle") {
+      response = await openCapaCycleDocumentCurrentContent(caseId, item.parent_id, item.document_id, auth, useStubAuth, bearerToken);
+    } else {
+      throw new Error("Phạm vi sở hữu tài liệu chưa được hỗ trợ để mở.");
+    }
+    const { blob } = response;
     const objectUrl = URL.createObjectURL(blob);
     window.open(objectUrl, "_blank", "noopener");
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);

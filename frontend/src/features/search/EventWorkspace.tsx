@@ -110,7 +110,7 @@ function ContextualDocumentSection({
   onLoadDocumentDetail,
 }: {
   items: ContextualDocumentAction[];
-  onOpenDocument: (documentId: string) => Promise<void>;
+  onOpenDocument: (item: ContextualDocumentAction) => Promise<void>;
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
 }) {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
@@ -165,7 +165,7 @@ function ContextualDocumentSection({
     setLoadingMessage("Đang mở tài liệu...");
     setError(null);
     try {
-      await onOpenDocument(item.document_id);
+      await onOpenDocument(item);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Không mở được tài liệu.");
     } finally {
@@ -432,7 +432,7 @@ function renderCaseStepContent(
   onUpdateCapaCycle: (cycleId: string, payload: CapaCycleUpdateRequest) => Promise<void>,
   onSubmitCapaCycle: (cycleId: string, payload: CapaCycleSubmitRequest) => Promise<void>,
   onAssessCapaCycle: (cycleId: string, payload: CapaCycleAssessRequest) => Promise<void>,
-  onOpenDocument: (documentId: string) => Promise<void>,
+  onOpenDocument: (caseId: string, item: ContextualDocumentAction) => Promise<void>,
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>,
 ) {
   const documentItems = caseWorkspace.contextual_document_actions.filter((item) => {
@@ -449,7 +449,11 @@ function renderCaseStepContent(
     return (
       <div className="event-step-stack">
         <CaseApplicationWorkspace caseWorkspace={caseWorkspace} onSave={onCaseApplicationSave} />
-        <ContextualDocumentSection items={documentItems} onLoadDocumentDetail={onLoadDocumentDetail} onOpenDocument={onOpenDocument} />
+        <ContextualDocumentSection
+          items={documentItems}
+          onLoadDocumentDetail={onLoadDocumentDetail}
+          onOpenDocument={(item) => onOpenDocument(caseWorkspace.case_summary.id, item)}
+        />
       </div>
     );
   }
@@ -462,7 +466,11 @@ function renderCaseStepContent(
           onInspectionOutcomeSave={onInspectionOutcomeSave}
           onInspectionPlanSave={onInspectionPlanSave}
         />
-        <ContextualDocumentSection items={documentItems} onLoadDocumentDetail={onLoadDocumentDetail} onOpenDocument={onOpenDocument} />
+        <ContextualDocumentSection
+          items={documentItems}
+          onLoadDocumentDetail={onLoadDocumentDetail}
+          onOpenDocument={(item) => onOpenDocument(caseWorkspace.case_summary.id, item)}
+        />
       </div>
     );
   }
@@ -479,7 +487,11 @@ function renderCaseStepContent(
           onUpdateCycle={onUpdateCapaCycle}
           selectedCycleId={selectedRemediationCycleId}
         />
-        <ContextualDocumentSection items={documentItems} onLoadDocumentDetail={onLoadDocumentDetail} onOpenDocument={onOpenDocument} />
+        <ContextualDocumentSection
+          items={documentItems}
+          onLoadDocumentDetail={onLoadDocumentDetail}
+          onOpenDocument={(item) => onOpenDocument(caseWorkspace.case_summary.id, item)}
+        />
       </div>
     );
   }
@@ -488,7 +500,11 @@ function renderCaseStepContent(
     return (
       <div className="event-step-stack">
         <CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} />
-        <ContextualDocumentSection items={documentItems} onLoadDocumentDetail={onLoadDocumentDetail} onOpenDocument={onOpenDocument} />
+        <ContextualDocumentSection
+          items={documentItems}
+          onLoadDocumentDetail={onLoadDocumentDetail}
+          onOpenDocument={(item) => onOpenDocument(caseWorkspace.case_summary.id, item)}
+        />
       </div>
     );
   }
@@ -497,7 +513,11 @@ function renderCaseStepContent(
     return (
       <div className="event-step-stack">
         <LinkedGxpCertificates items={caseWorkspace.linked_gxp_certificates} />
-        <ContextualDocumentSection items={documentItems} onLoadDocumentDetail={onLoadDocumentDetail} onOpenDocument={onOpenDocument} />
+        <ContextualDocumentSection
+          items={documentItems}
+          onLoadDocumentDetail={onLoadDocumentDetail}
+          onOpenDocument={(item) => onOpenDocument(caseWorkspace.case_summary.id, item)}
+        />
       </div>
     );
   }
@@ -624,7 +644,7 @@ export function EventWorkspace({
   onCaseAssessmentSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>;
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
-  onOpenDocument: (documentId: string) => Promise<void>;
+  onOpenDocument: (caseId: string, item: ContextualDocumentAction) => Promise<void>;
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
   selectedRemediationCycleId: string | null;
   onSelectedRemediationCycleChange: (cycleId: string | null) => void;

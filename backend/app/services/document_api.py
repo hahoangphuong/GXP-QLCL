@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import mimetypes
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -16,6 +16,8 @@ from backend.app.db.enums import AuditActorType, DocumentGenerationStatus
 from backend.app.db.models.phase1 import (
     AppUser,
     AuditEvent,
+    CapaCycle,
+    Case,
     Document,
     DocumentGenerationRun,
     DocumentSourceDependency,
@@ -72,6 +74,9 @@ class DocumentBinaryLocator:
     storage_relative_path: str
     original_filename: str
     media_type: str
+
+
+DocumentBinaryParentScope = Literal["case", "capa_cycle"]
 
 
 class DocumentWorkflowService:
@@ -555,10 +560,42 @@ class DocumentWorkflowService:
     def get_document(self, session: Session, document_id: str) -> dict[str, Any]:
         return self._serialize_document_detail(session, document_id)
 
-    def get_current_document_binary_locator(self, session: Session, document_id: str) -> DocumentBinaryLocator:
+    def get_current_document_binary_locator_for_parent(
+        self,
+        session: Session,
+        *,
+        document_id: str,
+        expected_parent_scope: DocumentBinaryParentScope,
+        expected_parent_id: str,
+        expected_case_id: str | None = None,
+    ) -> DocumentBinaryLocator:
         row = session.get(Document, document_id)
         if row is None:
             raise HTTPException(status_code=404, detail="Document not found.")
+        parent_ids = {
+            scope: parent_id
+            for scope, parent_id in {
+                "case": row.case_id,
+                "capa_cycle": row.capa_cycle_id,
+                "certificate": row.certificate_id,
+                "business_eligibility_certificate": row.business_eligibility_certificate_id,
+                "change_request": row.change_request_id,
+            }.items()
+            if parent_id is not None
+        }
+        if parent_ids != {expected_parent_scope: expected_parent_id}:
+            raise HTTPException(status_code=404, detail="Document not found for requested business owner.")
+        if expected_parent_scope == "case":
+            if session.get(Case, expected_parent_id) is None:
+                raise HTTPException(status_code=404, detail="Case not found.")
+        else:
+            cycle = session.get(CapaCycle, expected_parent_id)
+            if cycle is None:
+                raise HTTPException(status_code=404, detail="CAPA cycle not found.")
+            if expected_case_id is None or cycle.case_id != expected_case_id:
+                raise HTTPException(status_code=404, detail="CAPA cycle not found for requested case.")
+            if session.get(Case, expected_case_id) is None:
+                raise HTTPException(status_code=404, detail="Case not found.")
         variants = list(session.scalars(select(DocumentVariant).where(DocumentVariant.document_id == row.id)))
         versions = [
             version
@@ -570,10 +607,13 @@ class DocumentWorkflowService:
         document_version = self._pick_current_document_version(versions)
         if document_version is None:
             raise HTTPException(status_code=409, detail="Document does not have a current binary version.")
-        if (
-            document_version.storage_root is None
-            or document_version.storage_relative_path is None
-            or document_version.original_filename is None
+        if not all(
+            value is not None and value.strip()
+            for value in (
+                document_version.storage_root,
+                document_version.storage_relative_path,
+                document_version.original_filename,
+            )
         ):
             raise HTTPException(status_code=409, detail="Document current version locator is incomplete.")
         media_type, _ = mimetypes.guess_type(document_version.original_filename)

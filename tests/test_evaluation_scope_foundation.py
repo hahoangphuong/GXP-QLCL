@@ -14,7 +14,6 @@ def source_ranges() -> dict[str, dict[str, object]]:
         "PVCN_GMP": {"sheet_name": "Danh muc", "start_row": 10, "values": [["2", "Thuốc không vô trùng", "", "", "", "Chủ đề", "", ""], ["2.1", "Penicillin", "", "Gợi ý", "", "", "Penicillin", ""], ["2.1.13", "Viên nén", "", "", "", "", "", "x"]]},
         "PVCN_GLP": {"sheet_name": "Danh muc", "start_row": 30, "values": [["1", "Phép thử vật lý", "", "", "", "Chủ đề", "", ""], ["1.1", "Quang phổ", "", "", "", "", "Quang phổ", ""]]},
         "PVCN_GSP": {"sheet_name": "Danh muc", "start_row": 50, "values": [["1", "Kho", "", "", "", "", "Kho", ""]]},
-        "PVCN_GDP": {"sheet_name": "Danh muc", "start_row": 70, "values": [["1", "Phân phối", "", "", "", "", "Phân phối", ""]]},
     }
 
 
@@ -29,6 +28,8 @@ def test_taxonomy_export_preserves_vba_columns_order_and_deterministic_hash():
     assert [row["key"] for row in gmp["rows"]] == ["2", "2.1", "2.1.13"]
     assert gmp["rows"][1]["hint"] == "Gợi ý"
     assert gmp["rows"][2]["no_expand"] == "x"
+    assert "PVCN_GDP" not in artifact["named_ranges"]
+    assert artifact["taxonomy_availability"]["GDP"] == {"status": "unavailable", "reason": "not_defined_in_legacy_workbook"}
     assert artifact["taxonomy_content_sha256"] == taxonomy_content_hash(artifact["named_ranges"])
     assert taxonomy()["taxonomy_content_sha256"] == artifact["taxonomy_content_sha256"]
 
@@ -40,6 +41,18 @@ def test_taxonomy_validation_reports_duplicates_malformed_and_synthetic_parents(
     anomalies = report["ranges"]["PVCN_GMP"]["anomalies"]
     assert {row["kind"] for row in anomalies} == {"duplicate_key", "malformed_key"}
     assert report["ranges"]["PVCN_GMP"]["synthetic_structural_parent_keys"] == ["2", "2.1"]
+
+
+def test_missing_each_vba_required_range_fails_closed():
+    for required_range in ("PVCN_GMP", "PVCN_GLP", "PVCN_GSP"):
+        ranges = source_ranges()
+        del ranges[required_range]
+        try:
+            build_taxonomy_artifact(workbook_name="GPs.xlsb", workbook_sha256=None, ranges=ranges)
+        except ValueError as exc:
+            assert required_range in str(exc)
+        else:
+            raise AssertionError(f"{required_range} must be required")
 
 
 def test_parser_preserves_structured_payload_limitations_multiscope_and_custom_text():
@@ -77,3 +90,15 @@ def test_corpus_report_reconciles_blank_prose_and_structured_classes_without_tax
     )
     assert report["taxonomy_validation_available"] is False
     assert report["counts"] == {"BLANK": 1, "PROSE_ONLY": 1, "STRUCTURED_VALID": 1}
+
+
+def test_parser_distinguishes_unavailable_taxonomy_from_unknown_node_key():
+    unavailable = parse_legacy_evaluation_scope("R{1: Distribution}*", gxp_type="GDP", taxonomy=taxonomy())
+    assert unavailable["classification"] == "STRUCTURED_VALID"
+    assert unavailable["taxonomy_validation"] == {"status": "unavailable", "reason": "not_defined_in_legacy_workbook"}
+    assert unavailable["scopes"][0]["selected_nodes"][0]["taxonomy_status"] == "TAXONOMY_UNAVAILABLE"
+    assert not unavailable["diagnostics"]
+
+    unknown = parse_legacy_evaluation_scope("R{9.9: Unknown}*", gxp_type="GMP", taxonomy=taxonomy())
+    assert unknown["classification"] == "STRUCTURED_PARTIAL"
+    assert unknown["scopes"][0]["selected_nodes"][0]["taxonomy_status"] == "UNKNOWN_NODE"

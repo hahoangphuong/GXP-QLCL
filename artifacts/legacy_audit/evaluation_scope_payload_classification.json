@@ -22,6 +22,20 @@
       "PROSE_ONLY": 36
     }
   },
+  "taxonomy_validation_by_gxp": {
+    "(blank)": {
+      "not_provided": 47
+    },
+    "GLP": {
+      "not_provided": 109
+    },
+    "GMP": {
+      "not_provided": 1351
+    },
+    "GMPbb": {
+      "not_provided": 36
+    }
+  },
   "diagnostic_counts": {},
   "anomaly_records": [],
   "source_snapshot": "artifacts/phase3c/legacy_snapshot.json",

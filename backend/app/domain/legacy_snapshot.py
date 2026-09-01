@@ -5,7 +5,7 @@ from hashlib import sha256
 import time
 from typing import Any
 
-from backend.app.domain.evaluation_scope import build_taxonomy_artifact
+from backend.app.domain.evaluation_scope import TAXONOMY_RANGE_DEFINITIONS, build_taxonomy_artifact
 
 CORE_SHEETS = ["db.cty", "db.cso", "db.ktra", "db.cc", "db.dkkd", "db.Tdoi", "db.Tdoi2"]
 
@@ -119,8 +119,13 @@ def read_evaluation_scope_taxonomy(workbook_path: str | Path) -> dict[str, Any]:
 
     try:
         ranges: dict[str, dict[str, Any]] = {}
-        for name in ("PVCN_GMP", "PVCN_GLP", "PVCN_GSP", "PVCN_GDP"):
-            named_range = wb.Names(name).RefersToRange
+        for name, _, required in TAXONOMY_RANGE_DEFINITIONS:
+            try:
+                named_range = wb.Names(name).RefersToRange
+            except pywintypes.com_error:
+                if required:
+                    raise RuntimeError(f"Required evaluation-scope named range is missing: {name}") from None
+                continue
             ranges[name] = {
                 "sheet_name": str(named_range.Worksheet.Name),
                 "start_row": int(named_range.Row),

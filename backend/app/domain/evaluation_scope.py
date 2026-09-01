@@ -25,6 +25,9 @@ TAXONOMY_RANGE_DEFINITIONS = (
     ("PVCN_GDP", "GDP", False),
 )
 KEY_PATTERN = re.compile(r"^[0-9]+(?:\.[0-9]+)*$")
+# DCForm.SetNodeValue appends an ordinal and '+' when it renders a temporary
+# semicolon subnode.  It is not a source-taxonomy key.
+RUNTIME_SYNTHETIC_KEY_PATTERN = re.compile(r"^[0-9]+(?:\.[0-9]+)+\+$")
 
 
 def _canonical_json(value: object) -> bytes:
@@ -153,6 +156,81 @@ def validate_taxonomy_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
     return results
 
 
+def validate_taxonomy_integrity(artifact: dict[str, Any]) -> dict[str, Any]:
+    """Fail closed on unsupported or internally inconsistent taxonomy evidence."""
+    if artifact.get("schema_version") != TAXONOMY_SCHEMA_VERSION:
+        raise ValueError(f"Unsupported taxonomy schema version: {artifact.get('schema_version')!r}")
+    named_ranges = artifact.get("named_ranges")
+    if not isinstance(named_ranges, dict):
+        raise ValueError("Taxonomy artifact named_ranges must be an object.")
+    expected_range_names = {source_name for source_name, _, _ in TAXONOMY_RANGE_DEFINITIONS}
+    unexpected_ranges = sorted(set(named_ranges) - expected_range_names)
+    if unexpected_ranges:
+        raise ValueError(f"Taxonomy artifact has unsupported named ranges: {', '.join(unexpected_ranges)}")
+    expected_hash = artifact.get("taxonomy_content_sha256")
+    actual_hash = taxonomy_content_hash(named_ranges)
+    if expected_hash != actual_hash:
+        raise ValueError("Taxonomy artifact semantic hash does not match its named ranges.")
+
+    availability = artifact.get("taxonomy_availability")
+    if not isinstance(availability, dict):
+        raise ValueError("Taxonomy artifact taxonomy_availability must be an object.")
+    for source_name, gxp_type, required in TAXONOMY_RANGE_DEFINITIONS:
+        definition = named_ranges.get(source_name)
+        declared = availability.get(gxp_type)
+        if required and definition is None:
+            raise ValueError(f"Required taxonomy range is missing: {source_name}")
+        if definition is not None:
+            if definition.get("source_name") != source_name or definition.get("gxp_type") != gxp_type:
+                raise ValueError(f"Taxonomy range source consistency failure: {source_name}")
+            if not isinstance(definition.get("rows"), list):
+                raise ValueError(f"Taxonomy range rows must be a list: {source_name}")
+            if declared != {"status": "available", "source_name": source_name}:
+                raise ValueError(f"Taxonomy availability consistency failure: {gxp_type}")
+        elif declared is None or declared.get("status") != "unavailable":
+            raise ValueError(f"Taxonomy availability is missing for {gxp_type}")
+
+    validation = validate_taxonomy_artifact(artifact)
+    for source_name, _, required in TAXONOMY_RANGE_DEFINITIONS:
+        if not required:
+            continue
+        duplicate = any(item["kind"] == "duplicate_key" for item in validation["ranges"][source_name]["anomalies"])
+        if duplicate:
+            raise ValueError(f"Required taxonomy range has duplicate source keys: {source_name}")
+    return {
+        "schema_version": artifact["schema_version"],
+        "taxonomy_content_sha256": actual_hash,
+        "taxonomy_availability": availability,
+        "validation": validation,
+    }
+
+
+def taxonomy_statistics(artifact: dict[str, Any], validation: dict[str, Any]) -> dict[str, Any]:
+    """Produce deterministic source-shape facts for the future canonical model."""
+    result: dict[str, Any] = {}
+    for name, definition in artifact["named_ranges"].items():
+        rows = definition["rows"]
+        valid_keys = [row["key"] for row in rows if KEY_PATTERN.fullmatch(row["key"])]
+        range_validation = validation["ranges"][name]
+        result[definition["gxp_type"]] = {
+            "source_name": name,
+            "source_sheet": definition["sheet_name"],
+            "source_row_count": len(rows),
+            "source_node_count": range_validation["source_node_count"],
+            "source_row_span": [min(row["source_excel_row"] for row in rows), max(row["source_excel_row"] for row in rows)] if rows else None,
+            "duplicate_key_count": sum(item["kind"] == "duplicate_key" for item in range_validation["anomalies"]),
+            "malformed_key_count": sum(item["kind"] == "malformed_key" for item in range_validation["anomalies"]),
+            "synthetic_structural_parent_count": len(range_validation["synthetic_structural_parent_keys"]),
+            "synthetic_structural_parent_keys": range_validation["synthetic_structural_parent_keys"],
+            "maximum_hierarchy_depth": max((key.count(".") + 1 for key in valid_keys), default=0),
+            "root_level_node_count": sum("." not in key for key in valid_keys),
+            "main_topic_count": sum(bool(row["main_topic"]) for row in rows),
+            "no_expand_count": sum(bool(row["no_expand"]) for row in rows),
+            "semicolon_runtime_candidate_count": sum(";" in row["description"] for row in rows),
+        }
+    return dict(sorted(result.items()))
+
+
 def _parse_entries(payload: str, diagnostics: list[dict[str, str]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     selected: list[dict[str, Any]] = []
     unkeyed: list[dict[str, Any]] = []
@@ -166,17 +244,18 @@ def _parse_entries(payload: str, diagnostics: list[dict[str, str]]) -> tuple[lis
         separator = ":" if ":" in line else (" " if " " in line else None)
         key, description = (line.split(separator, 1) if separator else (line, ""))
         key, description = key.strip(), description.strip()
-        if not KEY_PATTERN.fullmatch(key):
+        key_kind = "SOURCE_NODE" if KEY_PATTERN.fullmatch(key) else "RUNTIME_SYNTHETIC_NODE" if RUNTIME_SYNTHETIC_KEY_PATTERN.fullmatch(key) else None
+        if key_kind is None:
             # DCForm.LoadNodeList preserves non-taxonomy lines as free entries.
             unkeyed.append({"source_order": order, "text": line})
             continue
-        selected.append({"source_order": order, "key": key, "description": description})
+        selected.append({"source_order": order, "key": key, "description": description, "key_kind": key_kind})
     return selected, unkeyed
 
 
 def _taxonomy_validation_state(taxonomy: dict[str, Any], gxp_type: str | None) -> dict[str, str]:
     if gxp_type is None:
-        return {"status": "UNAVAILABLE", "reason": "missing_gxp_context"}
+        return {"status": "unavailable", "reason": "missing_gxp_context"}
     availability = taxonomy.get("taxonomy_availability", {})
     declared = availability.get(gxp_type)
     if declared is not None:
@@ -199,6 +278,8 @@ def parse_legacy_evaluation_scope(raw_value: str | None, *, gxp_type: str | None
         "diagnostics": [],
         "taxonomy_validation": {"status": "not_provided"},
     }
+    if taxonomy is not None:
+        result["taxonomy_validation"] = _taxonomy_validation_state(taxonomy, gxp_type)
     if not raw.strip():
         return result
     if not raw.rstrip().endswith("}*"):
@@ -255,9 +336,7 @@ def parse_legacy_evaluation_scope(raw_value: str | None, *, gxp_type: str | None
         result["diagnostics"].append({"kind": "empty_structured_payload"})
         return result
     if taxonomy is not None:
-        validation = _taxonomy_validation_state(taxonomy, gxp_type)
-        result["taxonomy_validation"] = validation
-        is_available = validation["status"] == "available"
+        is_available = result["taxonomy_validation"]["status"] == "available"
         known = {
             row["key"]
             for definition in taxonomy["named_ranges"].values()
@@ -267,18 +346,97 @@ def parse_legacy_evaluation_scope(raw_value: str | None, *, gxp_type: str | None
         }
         for scope in result["scopes"]:
             for item in scope["selected_nodes"]:
-                item["taxonomy_status"] = (
-                    "KNOWN_NODE"
-                    if is_available and item["key"] in known
-                    else "UNKNOWN_NODE"
-                    if is_available
-                    else "TAXONOMY_UNAVAILABLE"
-                )
+                if item["key_kind"] == "RUNTIME_SYNTHETIC_NODE":
+                    parent_key = item["key"][:-1].rsplit(".", 1)[0]
+                    item["runtime_parent_key"] = parent_key
+                    item["taxonomy_status"] = "RUNTIME_SYNTHETIC_NODE"
+                    if is_available and parent_key not in known:
+                        item["taxonomy_status"] = "UNRESOLVED_RUNTIME_NODE"
+                        result["diagnostics"].append({"kind": "unresolved_runtime_node", "key": item["key"]})
+                else:
+                    item["taxonomy_status"] = (
+                        "KNOWN_NODE"
+                        if is_available and item["key"] in known
+                        else "UNKNOWN_NODE"
+                        if is_available
+                        else "TAXONOMY_UNAVAILABLE"
+                    )
                 if item["taxonomy_status"] == "UNKNOWN_NODE":
                     result["diagnostics"].append({"kind": "unknown_node_key", "key": item["key"]})
     diagnostic_kinds = {item["kind"] for item in result["diagnostics"]}
-    result["classification"] = "STRUCTURED_PARTIAL" if diagnostic_kinds & {"duplicate_selected_key", "unknown_node_key", "invalid_selection_line"} else "STRUCTURED_VALID"
+    result["classification"] = "STRUCTURED_PARTIAL" if diagnostic_kinds & {"duplicate_selected_key", "unknown_node_key", "invalid_selection_line", "unresolved_runtime_node"} else "STRUCTURED_VALID"
     return result
+
+
+def _record_identity(row: dict[str, Any]) -> dict[str, Any]:
+    code = row.get("Mã hồ sơ")
+    return {
+        "legacy_inspection_id": row.get("ID"),
+        "legacy_inspection_code": code if code not in {None, "", "-"} else None,
+    }
+
+
+def _selection_record(row: dict[str, Any], parsed: dict[str, Any], scope: dict[str, Any], item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **_record_identity(row),
+        "gxp_type": parsed["gxp_type"],
+        "scope_ordinal": scope["source_order"],
+        "source_order": item["source_order"],
+        "key": item["key"],
+        "description": item["description"],
+        "taxonomy_status": item["taxonomy_status"],
+        "raw_value": parsed["raw_value"],
+    }
+
+
+def _unknown_record(row: dict[str, Any], parsed: dict[str, Any], scope: dict[str, Any], item: dict[str, Any], taxonomy: dict[str, Any] | None) -> dict[str, Any]:
+    record = _selection_record(row, parsed, scope, item)
+    other_gxps = sorted(
+        {
+            definition["gxp_type"]
+            for definition in (taxonomy or {}).get("named_ranges", {}).values()
+            if definition["gxp_type"] != parsed["gxp_type"]
+            for source_row in definition["rows"]
+            if source_row["key"] == item["key"]
+        }
+    )
+    record["unknown_key_family"] = "FOREIGN_GXP_KEY" if other_gxps else "UNRESOLVED_UNKNOWN"
+    if other_gxps:
+        record["foreign_gxp_types"] = other_gxps
+    return record
+
+
+def _unknown_key_analysis(records: list[dict[str, Any]]) -> dict[str, Any]:
+    by_key: Counter[str] = Counter(record["key"] for record in records)
+    by_gxp: Counter[str] = Counter(str(record["gxp_type"] or "(blank)") for record in records)
+    by_family: Counter[str] = Counter(record["unknown_key_family"] for record in records)
+    representatives: dict[str, Any] = {}
+    for record in records:
+        representatives.setdefault(record["key"], record["legacy_inspection_id"])
+    return {
+        "count": len(records),
+        "count_by_key": dict(sorted(by_key.items())),
+        "count_by_gxp": dict(sorted(by_gxp.items())),
+        "count_by_family": dict(sorted(by_family.items())),
+        "representative_legacy_inspection_id_by_key": dict(sorted(representatives.items())),
+        "records": records,
+    }
+
+
+def _update_importability(counts: Counter[str], parsed: dict[str, Any]) -> None:
+    classification = parsed["classification"]
+    if classification == "BLANK":
+        counts["BLANK"] += 1
+    elif classification == "PROSE_ONLY":
+        counts["RAW_ONLY_PROSE"] += 1
+    elif classification == "STRUCTURED_MALFORMED":
+        counts["RAW_ONLY_MALFORMED"] += 1
+    elif classification == "STRUCTURED_PARTIAL":
+        counts["PARTIAL_REVIEW_REQUIRED"] += 1
+    elif parsed["taxonomy_validation"]["status"] != "available":
+        counts["TAXONOMY_UNAVAILABLE"] += 1
+    else:
+        counts["CANONICALIZABLE"] += 1
 
 
 def classify_scope_corpus(rows: Iterable[dict[str, Any]], *, taxonomy: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -286,6 +444,20 @@ def classify_scope_corpus(rows: Iterable[dict[str, Any]], *, taxonomy: dict[str,
     by_gxp: dict[str, Counter[str]] = defaultdict(Counter)
     diagnostics: Counter[str] = Counter()
     validation: dict[str, Counter[str]] = defaultdict(Counter)
+    node_statuses: Counter[str] = Counter()
+    node_statuses_by_gxp: dict[str, Counter[str]] = defaultdict(Counter)
+    node_statuses_by_classification: dict[str, dict[str, Counter[str]]] = defaultdict(lambda: defaultdict(Counter))
+    importability: Counter[str] = Counter()
+    custom_descriptions: Counter[str] = Counter()
+    multi_scope: Counter[str] = Counter()
+    unknown_records: list[dict[str, Any]] = []
+    runtime_records: list[dict[str, Any]] = []
+    known_descriptions = {
+        (definition["gxp_type"], row["key"]): row["description"]
+        for definition in (taxonomy or {}).get("named_ranges", {}).values()
+        for row in definition["rows"]
+        if row["key"]
+    }
     records: list[dict[str, Any]] = []
     for row in rows:
         gxp_type = str(row.get("LOẠI KT") or "") or None
@@ -293,16 +465,47 @@ def classify_scope_corpus(rows: Iterable[dict[str, Any]], *, taxonomy: dict[str,
         counts[parsed["classification"]] += 1
         by_gxp[gxp_type or "(blank)"][parsed["classification"]] += 1
         validation[gxp_type or "(blank)"][parsed["taxonomy_validation"]["status"]] += 1
+        _update_importability(importability, parsed)
+        if len(parsed["scopes"]) > 1:
+            multi_scope["cases_with_multiple_scope_blocks"] += 1
+        if parsed["limitation_text"] is not None:
+            multi_scope["cases_with_limitation"] += 1
         for diagnostic in parsed["diagnostics"]:
             diagnostics[diagnostic["kind"]] += 1
+        for scope in parsed["scopes"]:
+            if scope["name"]:
+                multi_scope["named_scope_blocks"] += 1
+            if scope["note"]:
+                multi_scope["scope_notes"] += 1
+            multi_scope["unkeyed_entries"] += len(scope["unkeyed_entries"])
+            for item in scope["selected_nodes"]:
+                status = item["taxonomy_status"]
+                node_statuses[status] += 1
+                node_statuses_by_gxp[gxp_type or "(blank)"][status] += 1
+                node_statuses_by_classification[gxp_type or "(blank)"][parsed["classification"]][status] += 1
+                if status == "KNOWN_NODE":
+                    source_description = known_descriptions[(gxp_type, item["key"])]
+                    custom_descriptions["blank_custom_description" if not item["description"] else "exact_source_description" if item["description"] == source_description else "changed_custom_description"] += 1
+                if status == "UNKNOWN_NODE":
+                    unknown_records.append(_unknown_record(row, parsed, scope, item, taxonomy))
+                if status in {"RUNTIME_SYNTHETIC_NODE", "UNRESOLVED_RUNTIME_NODE"}:
+                    runtime_records.append(_selection_record(row, parsed, scope, item))
         if parsed["classification"] not in {"BLANK", "STRUCTURED_VALID", "PROSE_ONLY"}:
-            records.append({"legacy_inspection_id": row.get("ID"), "gxp_type": gxp_type, "classification": parsed["classification"], "diagnostics": parsed["diagnostics"]})
+            records.append({**_record_identity(row), "gxp_type": gxp_type, "classification": parsed["classification"], "diagnostics": parsed["diagnostics"], "raw_value": parsed["raw_value"]})
     return {
         "parser_schema_version": PARSER_SCHEMA_VERSION,
         "taxonomy_validation_available": taxonomy is not None,
         "counts": dict(sorted(counts.items())),
         "counts_by_gxp": {key: dict(sorted(value.items())) for key, value in sorted(by_gxp.items())},
         "taxonomy_validation_by_gxp": {key: dict(sorted(value.items())) for key, value in sorted(validation.items())},
+        "selected_node_status_counts": dict(sorted(node_statuses.items())),
+        "selected_node_status_counts_by_gxp": {key: dict(sorted(value.items())) for key, value in sorted(node_statuses_by_gxp.items())},
+        "selected_node_status_counts_by_gxp_and_classification": {gxp: {classification: dict(sorted(statuses.items())) for classification, statuses in sorted(classifications.items())} for gxp, classifications in sorted(node_statuses_by_classification.items())},
+        "custom_description_counts": dict(sorted(custom_descriptions.items())),
+        "multi_scope_statistics": dict(sorted(multi_scope.items())),
+        "importability_counts": dict(sorted(importability.items())),
+        "unknown_key_analysis": _unknown_key_analysis(unknown_records),
+        "runtime_synthetic_node_records": runtime_records,
         "diagnostic_counts": dict(sorted(diagnostics.items())),
         "anomaly_records": records,
     }

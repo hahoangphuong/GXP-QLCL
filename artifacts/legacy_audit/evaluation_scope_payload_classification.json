@@ -1,6 +1,6 @@
 {
   "parser_schema_version": "evaluation-scope-parser/v1",
-  "taxonomy_validation_available": false,
+  "taxonomy_validation_available": true,
   "counts": {
     "BLANK": 47,
     "PROSE_ONLY": 819,
@@ -24,21 +24,177 @@
   },
   "taxonomy_validation_by_gxp": {
     "(blank)": {
-      "not_provided": 47
+      "unavailable": 47
     },
     "GLP": {
-      "not_provided": 109
+      "available": 109
     },
     "GMP": {
-      "not_provided": 1351
+      "available": 1351
     },
     "GMPbb": {
-      "not_provided": 36
+      "unavailable": 36
     }
   },
+  "selected_node_status_counts": {
+    "KNOWN_NODE": 9762
+  },
+  "selected_node_status_counts_by_gxp": {
+    "GLP": {
+      "KNOWN_NODE": 1508
+    },
+    "GMP": {
+      "KNOWN_NODE": 8254
+    }
+  },
+  "selected_node_status_counts_by_gxp_and_classification": {
+    "GLP": {
+      "STRUCTURED_VALID": {
+        "KNOWN_NODE": 1508
+      }
+    },
+    "GMP": {
+      "STRUCTURED_VALID": {
+        "KNOWN_NODE": 8254
+      }
+    }
+  },
+  "custom_description_counts": {
+    "blank_custom_description": 4856,
+    "changed_custom_description": 4905,
+    "exact_source_description": 1
+  },
+  "multi_scope_statistics": {
+    "cases_with_limitation": 454,
+    "cases_with_multiple_scope_blocks": 22,
+    "named_scope_blocks": 54,
+    "scope_notes": 12,
+    "unkeyed_entries": 903
+  },
+  "importability_counts": {
+    "BLANK": 47,
+    "CANONICALIZABLE": 677,
+    "RAW_ONLY_PROSE": 819
+  },
+  "unknown_key_analysis": {
+    "count": 0,
+    "count_by_key": {},
+    "count_by_gxp": {},
+    "count_by_family": {},
+    "representative_legacy_inspection_id_by_key": {},
+    "records": []
+  },
+  "runtime_synthetic_node_records": [],
   "diagnostic_counts": {},
   "anomaly_records": [],
   "source_snapshot": "artifacts/phase3c/legacy_snapshot.json",
   "source_snapshot_sha256": "b3bde05963e4e4d14d5b244e7c62b0f810f1cbbe206750574def6a366bdf7296",
-  "taxonomy_artifact": null
+  "taxonomy_artifact": "artifacts/legacy_snapshot/evaluation_scope_taxonomy.json",
+  "taxonomy_schema_version": "evaluation-scope-taxonomy/v1",
+  "taxonomy_content_sha256": "d0d7b3e591c20623c3d281ab986af5e09ae8739be1af16fc0bcc60c3340bc244",
+  "source_workbook_sha256": "c12537ea5a5c9f470e42fb5bdbe214f36983e310fceac7c560ad38885209fe3d",
+  "taxonomy_integrity": {
+    "schema_version": "evaluation-scope-taxonomy/v1",
+    "taxonomy_content_sha256": "d0d7b3e591c20623c3d281ab986af5e09ae8739be1af16fc0bcc60c3340bc244",
+    "taxonomy_availability": {
+      "GMP": {
+        "status": "available",
+        "source_name": "PVCN_GMP"
+      },
+      "GLP": {
+        "status": "available",
+        "source_name": "PVCN_GLP"
+      },
+      "GSP": {
+        "status": "available",
+        "source_name": "PVCN_GSP"
+      },
+      "GDP": {
+        "status": "unavailable",
+        "reason": "not_defined_in_legacy_workbook"
+      }
+    },
+    "validation": {
+      "ranges": {
+        "PVCN_GMP": {
+          "gxp_type": "GMP",
+          "source_node_count": 112,
+          "synthetic_structural_parent_keys": [],
+          "anomalies": []
+        },
+        "PVCN_GLP": {
+          "gxp_type": "GLP",
+          "source_node_count": 237,
+          "synthetic_structural_parent_keys": [],
+          "anomalies": []
+        },
+        "PVCN_GSP": {
+          "gxp_type": "GSP",
+          "source_node_count": 52,
+          "synthetic_structural_parent_keys": [],
+          "anomalies": []
+        }
+      },
+      "anomaly_count": 0
+    }
+  },
+  "taxonomy_statistics": {
+    "GLP": {
+      "source_name": "PVCN_GLP",
+      "source_sheet": "Phạm vi CN",
+      "source_row_count": 237,
+      "source_node_count": 237,
+      "source_row_span": [
+        124,
+        360
+      ],
+      "duplicate_key_count": 0,
+      "malformed_key_count": 0,
+      "synthetic_structural_parent_count": 0,
+      "synthetic_structural_parent_keys": [],
+      "maximum_hierarchy_depth": 3,
+      "root_level_node_count": 3,
+      "main_topic_count": 24,
+      "no_expand_count": 0,
+      "semicolon_runtime_candidate_count": 0
+    },
+    "GMP": {
+      "source_name": "PVCN_GMP",
+      "source_sheet": "Phạm vi CN",
+      "source_row_count": 112,
+      "source_node_count": 112,
+      "source_row_span": [
+        4,
+        115
+      ],
+      "duplicate_key_count": 0,
+      "malformed_key_count": 0,
+      "synthetic_structural_parent_count": 0,
+      "synthetic_structural_parent_keys": [],
+      "maximum_hierarchy_depth": 3,
+      "root_level_node_count": 7,
+      "main_topic_count": 19,
+      "no_expand_count": 2,
+      "semicolon_runtime_candidate_count": 0
+    },
+    "GSP": {
+      "source_name": "PVCN_GSP",
+      "source_sheet": "Phạm vi CN",
+      "source_row_count": 52,
+      "source_node_count": 52,
+      "source_row_span": [
+        370,
+        421
+      ],
+      "duplicate_key_count": 0,
+      "malformed_key_count": 0,
+      "synthetic_structural_parent_count": 0,
+      "synthetic_structural_parent_keys": [],
+      "maximum_hierarchy_depth": 3,
+      "root_level_node_count": 2,
+      "main_topic_count": 13,
+      "no_expand_count": 0,
+      "semicolon_runtime_candidate_count": 0
+    }
+  }
 }

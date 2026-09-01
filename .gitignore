@@ -14,6 +14,10 @@ artifacts/phase3c/*
 artifacts/legacy_audit/*
 !artifacts/legacy_audit/duplicate_current_analysis.json
 !artifacts/legacy_audit/duplicate_current_analysis.md
+!artifacts/legacy_audit/evaluation_scope_payload_classification.json
+!artifacts/legacy_snapshot/
+artifacts/legacy_snapshot/*
+!artifacts/legacy_snapshot/evaluation_scope_taxonomy.json
 !artifacts/phase3p/
 artifacts/phase3p/*
 !artifacts/phase3p/current_projection_conflicts.json

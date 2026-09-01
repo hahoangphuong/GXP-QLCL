@@ -1,0 +1,30 @@
+{
+  "parser_schema_version": "evaluation-scope-parser/v1",
+  "taxonomy_validation_available": false,
+  "counts": {
+    "BLANK": 47,
+    "PROSE_ONLY": 819,
+    "STRUCTURED_VALID": 677
+  },
+  "counts_by_gxp": {
+    "(blank)": {
+      "BLANK": 47
+    },
+    "GLP": {
+      "PROSE_ONLY": 69,
+      "STRUCTURED_VALID": 40
+    },
+    "GMP": {
+      "PROSE_ONLY": 714,
+      "STRUCTURED_VALID": 637
+    },
+    "GMPbb": {
+      "PROSE_ONLY": 36
+    }
+  },
+  "diagnostic_counts": {},
+  "anomaly_records": [],
+  "source_snapshot": "artifacts/phase3c/legacy_snapshot.json",
+  "source_snapshot_sha256": "b3bde05963e4e4d14d5b244e7c62b0f810f1cbbe206750574def6a366bdf7296",
+  "taxonomy_artifact": null
+}

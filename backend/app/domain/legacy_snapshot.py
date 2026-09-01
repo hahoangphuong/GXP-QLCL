@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from hashlib import sha256
 import time
 from typing import Any
+
+from backend.app.domain.evaluation_scope import build_taxonomy_artifact
 
 CORE_SHEETS = ["db.cty", "db.cso", "db.ktra", "db.cc", "db.dkkd", "db.Tdoi", "db.Tdoi2"]
 
@@ -79,6 +82,55 @@ def read_core_sheet_rows(workbook_path: str | Path) -> dict[str, list[dict[str, 
                 data.append(record)
             snapshot[sheet_name] = data
         return snapshot
+    finally:
+        wb.Close(False)
+        app.Quit()
+
+
+def _range_rows(value: Any) -> list[list[object]]:
+    if isinstance(value, tuple):
+        if value and isinstance(value[0], tuple):
+            return [list(row) for row in value]
+        return [list(value)]
+    return [[value]]
+
+
+def read_evaluation_scope_taxonomy(workbook_path: str | Path) -> dict[str, Any]:
+    """Read the authoritative DCForm named ranges from the Windows Excel owner."""
+    try:
+        import pywintypes
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("legacy_snapshot requires pywin32 on Windows-compatible tooling hosts.") from exc
+
+    workbook_path = Path(workbook_path)
+    app = _excel_app()
+    wb = None
+    last_error = None
+    for _ in range(3):
+        try:
+            wb = app.Workbooks.Open(str(workbook_path.resolve()))
+            break
+        except pywintypes.com_error as exc:
+            last_error = exc
+            time.sleep(1)
+    if wb is None:
+        app.Quit()
+        raise last_error
+
+    try:
+        ranges: dict[str, dict[str, Any]] = {}
+        for name in ("PVCN_GMP", "PVCN_GLP", "PVCN_GSP", "PVCN_GDP"):
+            named_range = wb.Names(name).RefersToRange
+            ranges[name] = {
+                "sheet_name": str(named_range.Worksheet.Name),
+                "start_row": int(named_range.Row),
+                "values": _range_rows(named_range.Value),
+            }
+        return build_taxonomy_artifact(
+            workbook_name=workbook_path.name,
+            workbook_sha256=sha256(workbook_path.read_bytes()).hexdigest(),
+            ranges=ranges,
+        )
     finally:
         wb.Close(False)
         app.Quit()

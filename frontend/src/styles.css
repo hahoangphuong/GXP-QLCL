@@ -1151,19 +1151,36 @@ tr:focus-visible {
   color: #5f7278;
 }
 
-.evaluation-scope-layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(18rem, 2fr); gap: .5rem; min-height: 20rem; }
-.evaluation-scope-tree { overflow: auto; border: 1px solid var(--border-color); background: #fbfcf8; }
-.evaluation-scope-node { display: flex; align-items: center; gap: .35rem; min-height: 1.65rem; border-bottom: 1px solid #edf0ea; font-size: .82rem; }
-.evaluation-scope-node > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.evaluation-scope-node button { min-width: 1.45rem; min-height: 1.35rem; padding: 0; }
-.tree-check.mixed { color: #6f6300; background: #fff3b0; }
-.tree-spacer { width: 1.45rem; }
-.evaluation-scope-detail { overflow: auto; display: grid; align-content: start; gap: .35rem; }
-.evaluation-scope-detail label { display: grid; gap: .15rem; font-size: .78rem; }
-.evaluation-scope-detail textarea { min-height: 3.5rem; resize: vertical; }
-.evaluation-scope-block-tabs { display: flex; gap: .2rem; margin-bottom: .4rem; overflow-x: auto; }
+.evaluation-scope-block { min-width: 0; }
+.evaluation-scope-block-header { display: grid; grid-template-columns: minmax(14rem, 1fr) minmax(18rem, 2fr); gap: .35rem; margin-bottom: .35rem; }
+.evaluation-scope-block-header label, .evaluation-scope-limitation { display: grid; gap: .12rem; font-size: .76rem; color: #455a61; }
+.evaluation-scope-block-header input, .evaluation-scope-block-header textarea, .evaluation-scope-limitation textarea { min-height: 1.75rem; padding: .22rem .35rem; font: inherit; }
+.evaluation-scope-block-header textarea { min-height: 1.75rem; resize: vertical; }
+.evaluation-scope-tree { max-height: min(46vh, 28rem); overflow: auto; border: 1px solid var(--border-color); background: #fbfcf8; }
+.evaluation-scope-node { display: grid; grid-template-columns: 1rem 1rem minmax(3.5rem, auto) minmax(0, 1fr); column-gap: .28rem; align-items: start; padding-block: .18rem; padding-inline-end: .35rem; border-bottom: 1px solid #edf0ea; font-size: .79rem; line-height: 1.25; }
+.evaluation-scope-node:hover, .evaluation-scope-node:focus-within { background: #f0f7f4; }
+.evaluation-scope-node.is-selected { background: #eef7f2; }
+.evaluation-scope-node.depth-0 .tree-key { font-weight: 750; color: #173f35; }
+.evaluation-scope-node.depth-1 .tree-key { font-weight: 650; }
+.tree-expand, .tree-check { display: grid; place-items: center; width: 1rem; height: 1rem; min-width: 1rem; min-height: 1rem; margin-top: .05rem; padding: 0; border: 0; background: transparent; }
+.tree-expand span { width: .42rem; height: .42rem; border-right: 1px solid #4d6269; border-bottom: 1px solid #4d6269; transform: rotate(-45deg); transition: transform .12s ease; }
+.tree-expand.is-expanded span { transform: rotate(45deg); margin-top: -.2rem; }
+.tree-check { border: 1px solid #8ba1a2; border-radius: .12rem; }
+.tree-check.checked { border-color: #23735f; background: #23735f; }
+.tree-check.checked span { width: .42rem; height: .22rem; border-left: 1px solid #fff; border-bottom: 1px solid #fff; transform: rotate(-45deg) translateY(-.06rem); }
+.tree-check.mixed { border-color: #927b18; background: #fff8d7; }
+.tree-check.mixed span { width: .48rem; border-top: 1px solid #735f00; }
+.tree-spacer { width: 1rem; }
+.tree-key { padding-top: .04rem; white-space: nowrap; font-variant-numeric: tabular-nums; color: #23454d; }
+.tree-copy { min-width: 0; }
+.tree-taxonomy-description { display: block; overflow-wrap: anywhere; }
+.tree-custom-description { margin: .1rem 0 0; padding-left: .55rem; border-left: 2px solid #79a896; color: #376355; overflow-wrap: anywhere; }
+.tree-custom-input { display: block; width: 100%; min-height: 2.7rem; margin-top: .18rem; padding: .22rem .32rem; resize: vertical; font: inherit; }
+.evaluation-scope-limitation { margin-top: .4rem; }
+.evaluation-scope-limitation textarea { min-height: 2.5rem; resize: vertical; }
+.evaluation-scope-block-tabs { display: flex; gap: .2rem; margin-bottom: .35rem; overflow-x: auto; }
 .evaluation-scope-block-tabs button.active { font-weight: 700; background: #dfeef4; }
-.evaluation-scope-prose { white-space: pre-wrap; max-height: 20rem; overflow: auto; margin: 0; font: inherit; }
+.evaluation-scope-prose { white-space: pre-wrap; max-height: min(46vh, 28rem); overflow: auto; margin: 0; font: inherit; }
 
 .contextual-document-list {
   display: grid;

@@ -22,7 +22,7 @@ function workspace(overrides: Partial<CaseWorkspace["evaluation_scope"]> = {}): 
         ordinal: 1,
         name: "Khối một",
         note: null,
-        selections: [{ taxonomy_node_id: "child", node_key_snapshot: "1.1", taxonomy_description_snapshot: "Child", custom_description: "" , source_order: 1 }],
+        selections: [{ taxonomy_node_id: "child", node_key_snapshot: "1.1", taxonomy_description_snapshot: "Child", custom_description: "Chi tiết riêng" , source_order: 1 }],
         unkeyed_entries: [],
       }],
       taxonomy_nodes: [
@@ -35,14 +35,20 @@ function workspace(overrides: Partial<CaseWorkspace["evaluation_scope"]> = {}): 
 }
 
 describe("EvaluationScopeWorkspace", () => {
-  it("renders the canonical tree, calculates mixed state, and supports keyboard edit/save", async () => {
+  it("renders inline custom text beneath its selected node, retains tri-state, and supports keyboard edit/save", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<EvaluationScopeWorkspace caseWorkspace={workspace()} onSave={onSave} />);
 
     expect(screen.getByText("Root")).toBeVisible();
-    expect(screen.queryByText("Child")).not.toBeInTheDocument();
-    expect(screen.getByRole("checkbox")).toHaveAttribute("aria-checked", "mixed");
+    expect(screen.getByText("Child")).toBeVisible();
+    const custom = screen.getByText("Chi tiết riêng");
+    expect(custom).toHaveClass("tree-custom-description");
+    expect(custom.closest(".evaluation-scope-node")).toHaveTextContent("1.1ChildChi tiết riêng");
+    expect(document.querySelector(".evaluation-scope-detail")).toBeNull();
+    expect(screen.getByRole("checkbox", { name: "Chọn 1" })).toHaveAttribute("aria-checked", "mixed");
 
+    fireEvent.click(screen.getByRole("button", { name: "Thu gọn 1" }));
+    expect(screen.queryByText("Child")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Mở rộng 1" }));
     expect(screen.getByText("Child")).toBeVisible();
     fireEvent.keyDown(screen.getByRole("tree").parentElement!, { key: "F2" });
@@ -57,6 +63,28 @@ describe("EvaluationScopeWorkspace", () => {
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ expected_version: 3, blocks: expect.any(Array) })));
   });
 
+  it("edits only the selected node custom description inline and cancel restores its canonical value", () => {
+    render(<EvaluationScopeWorkspace caseWorkspace={workspace()} onSave={vi.fn()} />);
+
+    fireEvent.doubleClick(screen.getByText("Child"));
+    const input = screen.getByRole("textbox", { name: "Mô tả tùy chỉnh 1.1" });
+    fireEvent.change(input, { target: { value: "Nội dung sửa" } });
+    expect(screen.getByDisplayValue("Nội dung sửa")).toBeVisible();
+    expect(screen.queryByRole("textbox", { name: "Mô tả tùy chỉnh 1" })).not.toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("tree").parentElement!, { key: "Escape" });
+    fireEvent.keyDown(screen.getByRole("tree").parentElement!, { key: "F2" });
+    expect(screen.getByRole("textbox", { name: "Mô tả tùy chỉnh 1.1" })).toHaveValue("Chi tiết riêng");
+  });
+
+  it("keeps a blank custom description blank instead of repeating the taxonomy label", () => {
+    render(<EvaluationScopeWorkspace caseWorkspace={workspace({ blocks: [{ id: "block-1", ordinal: 1, name: "Khối một", note: null, selections: [{ taxonomy_node_id: "child", node_key_snapshot: "1.1", taxonomy_description_snapshot: "Child", custom_description: "", source_order: 1 }], unkeyed_entries: [] }] })} onSave={vi.fn()} />);
+
+    expect(screen.getByText("Child")).toBeVisible();
+    expect(document.querySelector(".tree-custom-description")).toBeNull();
+    fireEvent.doubleClick(screen.getByText("Child"));
+    expect(screen.getByRole("textbox", { name: "Mô tả tùy chỉnh 1.1" })).toHaveValue("");
+  });
+
   it("renders prose-only scope as historical read-only projection", () => {
     render(<EvaluationScopeWorkspace caseWorkspace={workspace({ source_classification: "PROSE_ONLY", rendered_prose: "Văn bản lưu trữ", editable: false, taxonomy_nodes: [] })} onSave={vi.fn()} />);
 
@@ -69,7 +97,7 @@ describe("EvaluationScopeWorkspace", () => {
     const onSave = vi.fn().mockRejectedValue(conflict);
     render(<EvaluationScopeWorkspace caseWorkspace={workspace()} onSave={onSave} />);
 
-    fireEvent.doubleClick(screen.getByRole("tree").parentElement!);
+    fireEvent.doubleClick(screen.getByText("Child"));
     fireEvent.click(screen.getByRole("button", { name: "Lưu" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Stale evaluation scope update.");

@@ -4,9 +4,29 @@ from backend.app.domain.evaluation_scope import (
     build_taxonomy_artifact,
     classify_scope_corpus,
     parse_legacy_evaluation_scope,
+    render_evaluation_scope_summary,
     taxonomy_content_hash,
     validate_taxonomy_artifact,
 )
+
+
+def test_canonical_projection_composes_parent_child_groups_blocks_and_limitation_cleanly():
+    nodes = [
+        {"id": "parent", "key": "1", "short_render": "* Chủ đề ($$):", "source_order": 1},
+        {"id": "child", "key": "1.1", "short_render": "<Mục con ($$)", "source_order": 2},
+        {"id": "group", "key": "1.2", "short_render": "<Nhóm ($$) (", "source_order": 3},
+        {"id": "leaf", "key": "1.2.1", "short_render": "<Lá ($$)", "source_order": 4},
+    ]
+    result = render_evaluation_scope_summary(
+        taxonomy_nodes=nodes,
+        blocks=[
+            {"id": "second", "ordinal": 2, "name": "Khối hai", "note": None, "selections": [{"taxonomy_node_id": "parent", "source_order": 9, "custom_description": ""}], "unkeyed_entries": []},
+            {"id": "first", "ordinal": 1, "name": "Khối một", "note": "Ghi chú", "selections": [{"taxonomy_node_id": "leaf", "source_order": 9, "custom_description": "Nội dung riêng"}, {"taxonomy_node_id": "child", "source_order": 1, "custom_description": ""}], "unkeyed_entries": []},
+        ],
+        limitation_text="Giới hạn",
+    )
+    assert result == "« Khối một » (Ghi chú)\n* Chủ đề: Mục con; Nhóm (Lá (Nội dung riêng)).\n\n« Khối hai »\n* Chủ đề.\n(*Giới hạn*)"
+    assert all(token not in result for token in (":;", ";;", "()", "\n\n\n"))
 
 
 def source_ranges() -> dict[str, dict[str, object]]:

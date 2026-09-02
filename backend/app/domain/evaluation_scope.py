@@ -35,26 +35,49 @@ def _clean_vba_short_render(value: str) -> str:
     return value.replace(" ($$)", "", 1).replace("($$)", "", 1).replace(" $$", "", 1).replace("$$", "", 1)
 
 
-def _compile_vba_node(short_render: str | None, custom_description: str) -> str:
-    """Port the node-level substitutions from DCForm.Compile_Node."""
+def _canonical_node_text(short_render: str | None, custom_description: str) -> tuple[str, bool, bool]:
+    """Interpret DCForm short-render markers without inheriting its old prose quirks."""
     source = (short_render or "").strip()
     if not source:
-        return ""
-    prefix = "<" if source.startswith("<") else ""
-    if prefix:
-        source = source[1:]
-    has_template = "$$" in source
-    if not (source.startswith("&") and custom_description):
-        prefix += source[1:] if source.startswith("&") else source
-    if custom_description:
-        prefix = prefix.replace("$$", custom_description, 1) if has_template else f"{prefix}: {custom_description}"
-    result = _clean_vba_short_render(prefix).strip()
-    if result and not result.endswith("("):
-        result += "; "
-    return (
-        result.replace("; ;", ";").replace(";;", ";").replace("::", ":")
-        .replace(": ;", ":").replace("; )", ")").replace(";)", ")")
-    )
+        return "", False, False
+    continuation = source.startswith("<")
+    if continuation:
+        source = source[1:].lstrip()
+    if source.startswith("&"):
+        source = source[1:].lstrip()
+    custom = custom_description.strip()
+    if "$$" in source:
+        source = source.replace("$$", custom, 1) if custom else _clean_vba_short_render(source)
+        source = source.replace("$$", "")
+    elif custom:
+        source = f"{source} {custom}" if source.endswith((":", "(")) else f"{source}: {custom}"
+    source = re.sub(r"[ \t]+", " ", source).strip()
+    return source, continuation, source.endswith("(")
+
+
+def _finish_canonical_line(value: str) -> str:
+    value = re.sub(r"\s+([;:).])", r"\1", value.strip())
+    value = re.sub(r";{2,}", ";", value).replace(":;", ":").replace(";)", ")").replace("()", "")
+    value = re.sub(r"\s+", " ", value).strip()
+    # The canonical formatter owns delimiter pairing, including legacy custom
+    # values that finish a group without its closing token.
+    balanced: list[str] = []
+    depth = 0
+    for char in value:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            if depth == 0:
+                continue
+            depth -= 1
+        balanced.append(char)
+    value = "".join(balanced) + ")" * depth
+    value = value.replace(").).", ").")
+    if value.endswith(";") or value.endswith(":"):
+        value = value[:-1].rstrip() + "."
+    elif value and value[-1] not in ".!?":
+        value += "."
+    return value
 
 
 def render_evaluation_scope_summary(
@@ -75,52 +98,56 @@ def render_evaluation_scope_summary(
     rendered_blocks: list[str] = []
     for block in sorted(blocks, key=lambda row: (int(row["ordinal"]), str(row["id"]))):
         rendered: list[str] = []
-        seen: set[str] = set()
-        last_parent_key: str | None = None
-        group_key: str | None = None
-        selections = sorted(block.get("selections", []), key=lambda row: (int(row["source_order"]), str(row["taxonomy_node_id"])))
+        current = ""
+        emitted: set[str] = set()
+        groups: list[str] = []
+        selections = sorted(
+            (row for row in block.get("selections", []) if str(row["taxonomy_node_id"]) in node_by_id),
+            key=lambda row: (int(node_by_id[str(row["taxonomy_node_id"])]["source_order"]), int(row["source_order"]), str(row["taxonomy_node_id"])),
+        )
+        selected = {str(row["taxonomy_node_id"]): str(row.get("custom_description") or "") for row in selections}
+
+        def emit(node: dict[str, Any], custom: str) -> None:
+            nonlocal current
+            node_id, key = str(node["id"]), str(node["key"])
+            if node_id in emitted:
+                return
+            while groups and not key.startswith(f"{groups[-1]}.") and key != groups[-1]:
+                current = current.rstrip() + ")"
+                groups.pop()
+            text, continuation, opens_group = _canonical_node_text(node.get("short_render"), custom)
+            emitted.add(node_id)
+            if not text:
+                return
+            if current and (continuation or groups):
+                current += " " if current.endswith(":") else "" if current.endswith("(") else "; "
+                current += text
+            else:
+                if current:
+                    rendered.append(_finish_canonical_line(current))
+                current = text
+            if opens_group:
+                groups.append(key)
+
         for selection in selections:
             node = node_by_id.get(str(selection["taxonomy_node_id"]))
-            if node is None:
-                continue
             key = str(node["key"])
-            parent_key = key.rsplit(".", 1)[0] if "." in key else ""
-            if parent_key != last_parent_key:
-                last_parent_key = parent_key
-                ancestor_key = parent_key
-                ancestors: list[str] = []
-                while ancestor_key:
-                    ancestors.append(ancestor_key)
-                    ancestor_key = ancestor_key.rsplit(".", 1)[0] if "." in ancestor_key else ""
-                for ancestor in reversed(ancestors):
-                    ancestor_node = node_by_key.get(ancestor)
-                    if ancestor_node is None or str(ancestor_node["id"]) in seen:
-                        continue
-                    seen.add(str(ancestor_node["id"]))
-                    text = _clean_vba_short_render(str(ancestor_node.get("short_render") or "")).strip()
-                    if text:
-                        if group_key and not key.startswith(f"{group_key}."):
-                            rendered.append("<)")
-                            group_key = None
-                        rendered.append(text)
-                        if not group_key and text.endswith("("):
-                            group_key = ancestor
-            compiled = _compile_vba_node(node.get("short_render"), str(selection.get("custom_description") or ""))
-            seen.add(str(node["id"]))
-            if group_key and not key.startswith(f"{group_key}."):
-                rendered.append("<)")
-                group_key = None
-            if compiled:
-                rendered.append(compiled)
-                if not group_key and compiled.endswith("("):
-                    group_key = key
-        if group_key:
-            rendered.append(").")
+            ancestors = key.split(".")[:-1]
+            for index in range(1, len(ancestors) + 1):
+                ancestor = node_by_key.get(".".join(ancestors[:index]))
+                if ancestor is not None:
+                    emit(ancestor, selected.get(str(ancestor["id"]), ""))
+            emit(node, selected[str(node["id"])])
+        while groups:
+            current = current.rstrip() + ")"
+            groups.pop()
+        if current:
+            rendered.append(_finish_canonical_line(current))
         for entry in sorted(block.get("unkeyed_entries", []), key=lambda row: int(row["source_order"])):
             text = str(entry.get("text") or "").strip()
             if text:
-                rendered.append(text)
-        compiled_block = "\n".join(rendered).replace("\n<", "").replace("; \n", ".\n").replace(";\n", ".\n").strip()
+                rendered.append(_finish_canonical_line(text))
+        compiled_block = "\n".join(line for line in rendered if line).strip()
         header = ""
         if block.get("name"):
             header = f"« {block['name']} »"
@@ -129,7 +156,21 @@ def render_evaluation_scope_summary(
         rendered_blocks.append("\n".join(part for part in (header, compiled_block) if part).strip())
     result = "\n\n".join(part for part in rendered_blocks if part).strip()
     if limitation_text:
-        result = "\n".join(part for part in (result, f"(*{limitation_text.strip()}*)") if part)
+        limitation = limitation_text.strip()
+        # Limitation is preserved once, while its surrounding marker stays a
+        # syntactically balanced generated contribution.
+        depth = 0
+        normalized_limitation: list[str] = []
+        for char in limitation:
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                if depth == 0:
+                    continue
+                depth -= 1
+            normalized_limitation.append(char)
+        limitation = "".join(normalized_limitation) + ")" * depth
+        result = "\n".join(part for part in (result, f"(*{limitation}*)") if part)
     return result
 
 

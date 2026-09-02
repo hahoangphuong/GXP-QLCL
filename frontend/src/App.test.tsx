@@ -597,19 +597,19 @@ describe("App Slice A.4 search workspace", () => {
     window.open = vi.fn();
   });
 
-  it("renders compact header without the old subtitle and keeps identity beside the brand", async () => {
+  it("renders the compact authenticated logo header without public legal chrome", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
 
     const { container } = renderApp();
 
-    expect(await screen.findByText("GxP QLCL")).toBeInTheDocument();
+    expect(await screen.findByRole("img", { name: "GXP QLCL" })).toHaveAttribute("src", "/gxp-qlcl-logo.png");
+    expect(screen.queryByText("GxP QLCL")).not.toBeInTheDocument();
     expect(screen.queryByText("Tra cứu và điều phối nghiệp vụ")).not.toBeInTheDocument();
     expect(screen.getByText("operator.local (inspector)")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Đăng xuất" })).toBeInTheDocument();
     expect(container.querySelector(".header-identity-group")).not.toBeNull();
     expect(container.querySelector(".primary-nav")).not.toBeNull();
-    expect(screen.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute("href", "/privacy");
-    expect(screen.getByRole("link", { name: "Terms of Service" })).toHaveAttribute("href", "/terms");
+    await waitFor(() => expect(screen.queryByRole("navigation", { name: "Liên kết pháp lý công khai" })).not.toBeInTheDocument());
   });
 
   it("renders the privacy page publicly without login and keeps legal navigation available", async () => {
@@ -1265,9 +1265,8 @@ describe("App Slice A.4 search workspace", () => {
     });
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
 
-    await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "TD-01" })).toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.getByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument());
+    expect(screen.queryByRole("heading", { name: "TD-01" })).not.toBeInTheDocument();
     expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Đề nghị" })).toBeInTheDocument();
     expect(within(container.querySelector(".event-workspace") as HTMLElement).getByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
@@ -1318,12 +1317,13 @@ describe("App Slice A.4 search workspace", () => {
 
     const { container } = renderApp(["/search"]);
 
-    expect(await screen.findByRole("heading", { name: "KT-2026-GMP-A" })).toBeInTheDocument();
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("heading", { name: "KT-2026-GMP-A" })).not.toBeInTheDocument();
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
 
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
 
-    expect(await screen.findByRole("heading", { name: "TD-01" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "TD-01" })).not.toBeInTheDocument();
     expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Thông tin hồ sơ" })).not.toBeInTheDocument();
     expect(screen.queryByText("Không tải được workspace thay đổi")).not.toBeInTheDocument();
@@ -1349,7 +1349,8 @@ describe("App Slice A.4 search workspace", () => {
 
     const { container } = renderApp(["/search"]);
 
-    expect(await screen.findByRole("heading", { name: "KT-2026-GMP-A" })).toBeInTheDocument();
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("heading", { name: "KT-2026-GMP-A" })).not.toBeInTheDocument();
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
 
     expect(await screen.findByText("Không tải được workspace thay đổi")).toBeInTheDocument();

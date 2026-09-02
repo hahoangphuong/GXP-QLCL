@@ -10,6 +10,7 @@ from sqlalchemy import and_, cast, func, or_, select, String, union_all
 from sqlalchemy.orm import Session, aliased
 
 from backend.app.auth import AuthenticatedUser
+from backend.app.domain.evaluation_scope import render_evaluation_scope_summary
 from backend.app.db.enums import CaseState, ChangeRequestState
 from backend.app.document.contextual_actions import (
     build_case_contextual_document_specs,
@@ -114,6 +115,8 @@ class CatalogReadService:
                 "row_version": None,
                 "source_classification": None,
                 "rendered_prose": None,
+                "summary_text": None,
+                "summary_source": None,
                 "limitation_text": None,
                 "editable": False,
                 "read_only_reason": "Chưa có phạm vi đánh giá canonical cho hồ sơ này.",
@@ -185,6 +188,26 @@ class CatalogReadService:
             ]
 
         prose_only = scope.source_classification == "PROSE_ONLY"
+        serialized_blocks = [
+            {
+                "id": block.id,
+                "ordinal": block.ordinal,
+                "name": block.name,
+                "note": block.note,
+                "selections": selections_by_block[block.id],
+                "unkeyed_entries": unkeyed_by_block[block.id],
+            }
+            for block in blocks
+        ]
+        # Imported legacy prose remains evidence.  Once an operator changes the
+        # aggregate, project the current canonical selections instead of showing
+        # the stale import-era string.
+        summary_source = "historical_prose" if prose_only else "legacy_rendered_prose" if scope.row_version == 1 and scope.rendered_prose else "canonical_projection"
+        summary_text = (
+            scope.rendered_prose
+            if summary_source in {"historical_prose", "legacy_rendered_prose"}
+            else render_evaluation_scope_summary(blocks=serialized_blocks, taxonomy_nodes=nodes, limitation_text=scope.limitation_text)
+        )
         has_unkeyed_entries = any(unkeyed_by_block.values())
         read_only_reason = (
             "Phạm vi lịch sử dạng văn bản chỉ đọc."
@@ -200,22 +223,14 @@ class CatalogReadService:
             "row_version": scope.row_version,
             "source_classification": scope.source_classification,
             "rendered_prose": scope.rendered_prose,
+            "summary_text": summary_text,
+            "summary_source": summary_source,
             "limitation_text": scope.limitation_text,
             "editable": not terminal and not prose_only and not has_unkeyed_entries and scope.source_classification == "STRUCTURED_VALID",
             "read_only_reason": read_only_reason,
             "taxonomy_version_id": scope.taxonomy_version_id,
             "gxp_type": case.gxp_type,
-            "blocks": [
-                {
-                    "id": block.id,
-                    "ordinal": block.ordinal,
-                    "name": block.name,
-                    "note": block.note,
-                    "selections": selections_by_block[block.id],
-                    "unkeyed_entries": unkeyed_by_block[block.id],
-                }
-                for block in blocks
-            ],
+            "blocks": serialized_blocks,
             "taxonomy_nodes": nodes,
         }
 

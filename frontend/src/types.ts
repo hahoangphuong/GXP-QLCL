@@ -403,6 +403,8 @@ export type CaseWorkspaceEvaluationScope = {
   row_version: number | null;
   source_classification: string | null;
   rendered_prose: string | null;
+  summary_text: string | null;
+  summary_source: "historical_prose" | "legacy_rendered_prose" | "canonical_projection" | null;
   limitation_text: string | null;
   editable: boolean;
   read_only_reason: string | null;

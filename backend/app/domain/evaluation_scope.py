@@ -30,6 +30,109 @@ KEY_PATTERN = re.compile(r"^[0-9]+(?:\.[0-9]+)*$")
 RUNTIME_SYNTHETIC_KEY_PATTERN = re.compile(r"^[0-9]+(?:\.[0-9]+)+\+$")
 
 
+def _clean_vba_short_render(value: str) -> str:
+    """Port DCForm.CleanText for the summary projection."""
+    return value.replace(" ($$)", "", 1).replace("($$)", "", 1).replace(" $$", "", 1).replace("$$", "", 1)
+
+
+def _compile_vba_node(short_render: str | None, custom_description: str) -> str:
+    """Port the node-level substitutions from DCForm.Compile_Node."""
+    source = (short_render or "").strip()
+    if not source:
+        return ""
+    prefix = "<" if source.startswith("<") else ""
+    if prefix:
+        source = source[1:]
+    has_template = "$$" in source
+    if not (source.startswith("&") and custom_description):
+        prefix += source[1:] if source.startswith("&") else source
+    if custom_description:
+        prefix = prefix.replace("$$", custom_description, 1) if has_template else f"{prefix}: {custom_description}"
+    result = _clean_vba_short_render(prefix).strip()
+    if result and not result.endswith("("):
+        result += "; "
+    return (
+        result.replace("; ;", ";").replace(";;", ";").replace("::", ":")
+        .replace(": ;", ":").replace("; )", ")").replace(";)", ")")
+    )
+
+
+def render_evaluation_scope_summary(
+    *,
+    blocks: Iterable[dict[str, Any]],
+    taxonomy_nodes: Iterable[dict[str, Any]],
+    limitation_text: str | None,
+) -> str:
+    """Deterministically project the current aggregate using DCForm compiler rules.
+
+    This intentionally leaves GMP's historical positional post-processing in the
+    imported evidence; it cannot be reproduced without the legacy form constants.
+    Changed aggregates use this canonical, taxonomy-versioned projection.
+    """
+    nodes = sorted(taxonomy_nodes, key=lambda row: (int(row["source_order"]), str(row["id"])))
+    node_by_id = {str(row["id"]): row for row in nodes}
+    node_by_key = {str(row["key"]): row for row in nodes}
+    rendered_blocks: list[str] = []
+    for block in sorted(blocks, key=lambda row: (int(row["ordinal"]), str(row["id"]))):
+        rendered: list[str] = []
+        seen: set[str] = set()
+        last_parent_key: str | None = None
+        group_key: str | None = None
+        selections = sorted(block.get("selections", []), key=lambda row: (int(row["source_order"]), str(row["taxonomy_node_id"])))
+        for selection in selections:
+            node = node_by_id.get(str(selection["taxonomy_node_id"]))
+            if node is None:
+                continue
+            key = str(node["key"])
+            parent_key = key.rsplit(".", 1)[0] if "." in key else ""
+            if parent_key != last_parent_key:
+                last_parent_key = parent_key
+                ancestor_key = parent_key
+                ancestors: list[str] = []
+                while ancestor_key:
+                    ancestors.append(ancestor_key)
+                    ancestor_key = ancestor_key.rsplit(".", 1)[0] if "." in ancestor_key else ""
+                for ancestor in reversed(ancestors):
+                    ancestor_node = node_by_key.get(ancestor)
+                    if ancestor_node is None or str(ancestor_node["id"]) in seen:
+                        continue
+                    seen.add(str(ancestor_node["id"]))
+                    text = _clean_vba_short_render(str(ancestor_node.get("short_render") or "")).strip()
+                    if text:
+                        if group_key and not key.startswith(f"{group_key}."):
+                            rendered.append("<)")
+                            group_key = None
+                        rendered.append(text)
+                        if not group_key and text.endswith("("):
+                            group_key = ancestor
+            compiled = _compile_vba_node(node.get("short_render"), str(selection.get("custom_description") or ""))
+            seen.add(str(node["id"]))
+            if group_key and not key.startswith(f"{group_key}."):
+                rendered.append("<)")
+                group_key = None
+            if compiled:
+                rendered.append(compiled)
+                if not group_key and compiled.endswith("("):
+                    group_key = key
+        if group_key:
+            rendered.append(").")
+        for entry in sorted(block.get("unkeyed_entries", []), key=lambda row: int(row["source_order"])):
+            text = str(entry.get("text") or "").strip()
+            if text:
+                rendered.append(text)
+        compiled_block = "\n".join(rendered).replace("\n<", "").replace("; \n", ".\n").replace(";\n", ".\n").strip()
+        header = ""
+        if block.get("name"):
+            header = f"« {block['name']} »"
+        if block.get("note"):
+            header = f"{header} ({block['note']})" if header else f"({block['note']})"
+        rendered_blocks.append("\n".join(part for part in (header, compiled_block) if part).strip())
+    result = "\n\n".join(part for part in rendered_blocks if part).strip()
+    if limitation_text:
+        result = "\n".join(part for part in (result, f"(*{limitation_text.strip()}*)") if part)
+    return result
+
+
 def _canonical_json(value: object) -> bytes:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
 

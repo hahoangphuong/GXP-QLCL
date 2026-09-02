@@ -100,7 +100,7 @@ function AppHeader({
   return (
     <header className="topbar">
       <div className="header-identity-group">
-        <span className="brand-mark">GxP QLCL</span>
+        <img alt="GXP QLCL" className="app-logo" src="/gxp-qlcl-logo.png" />
         {usesStubAuth || oidcSession ? (
           <div className="auth-cluster auth-cluster-compact">
             <span className="auth-label">{identityLabel}</span>
@@ -181,10 +181,12 @@ export function App() {
     bearerToken: oidcSession?.token ?? null,
     canLoadSecureApi: status?.auth_mode === "header_stub" || Boolean(oidcSession?.token),
   };
+  const isAuthenticated = status?.auth_mode === "header_stub" || Boolean(oidcSession);
 
   return (
     <AppShell
       canAccessAdmin={auth.role === "admin" || auth.role === "manager"}
+      showPublicLegalNav={!isAuthenticated}
       header={
         <AppHeader
           auth={auth}

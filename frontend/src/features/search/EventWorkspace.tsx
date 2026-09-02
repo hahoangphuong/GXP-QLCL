@@ -673,9 +673,6 @@ export function EventWorkspace({
   return (
     <section className="event-workspace">
       <div className="panel-header">
-        <div>
-          <h3>{selectedHistory.reference_code ?? selectedHistory.event_type}</h3>
-        </div>
         <StatusBadge value={selectedHistory.state} />
       </div>
       <nav aria-label="Quy trình xử lý sự kiện" className="workflow-stepper">

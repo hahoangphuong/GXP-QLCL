@@ -49,7 +49,7 @@ def _seed_scope(session: Session, *, classification: str = "STRUCTURED_VALID", s
     root = EvaluationScopeTaxonomyNode(taxonomy_version_id=version.id, gxp_type="GMP", source_name="PVCN_GMP", node_key="1", description="Root", hint="Root hint", main_topic="MAIN", short_render="Root", no_expand=None, source_order=1, source_excel_row=4)
     session.add(root)
     session.flush()
-    child = EvaluationScopeTaxonomyNode(taxonomy_version_id=version.id, parent_node_id=root.id, gxp_type="GMP", source_name="PVCN_GMP", node_key="1.1", description="Child", hint=None, main_topic=None, short_render=None, no_expand=None, source_order=2, source_excel_row=5)
+    child = EvaluationScopeTaxonomyNode(taxonomy_version_id=version.id, parent_node_id=root.id, gxp_type="GMP", source_name="PVCN_GMP", node_key="1.1", description="Child", hint=None, main_topic=None, short_render="Child $$", no_expand=None, source_order=2, source_excel_row=5)
     foreign = EvaluationScopeTaxonomyNode(taxonomy_version_id=version.id, gxp_type="GLP", source_name="PVCN_GLP", node_key="1", description="Foreign", hint=None, main_topic=None, short_render=None, no_expand=None, source_order=1, source_excel_row=124)
     session.add_all([child, foreign])
     session.flush()
@@ -87,6 +87,8 @@ def test_case_workspace_projects_structured_scope_exactly_and_locks_unkeyed_entr
     assert scope["blocks"][0]["selections"][0]["custom_description"] == "Mô tả riêng"
     assert scope["blocks"][1]["selections"][0]["custom_description"] == ""
     assert scope["blocks"][0]["unkeyed_entries"] == [{"source_order": 2, "text": "Mục lịch sử chưa gắn khóa"}]
+    assert scope["summary_source"] == "canonical_projection"
+    assert "« Khối một » (Ghi chú một)" in scope["summary_text"]
 
 
 def test_case_workspace_projects_prose_only_as_read_only_without_tree_inference():
@@ -99,6 +101,8 @@ def test_case_workspace_projects_prose_only_as_read_only_without_tree_inference(
     scope = payload["evaluation_scope"]
     assert scope["source_classification"] == "PROSE_ONLY"
     assert scope["rendered_prose"] == "Văn bản lịch sử"
+    assert scope["summary_text"] == "Văn bản lịch sử"
+    assert scope["summary_source"] == "historical_prose"
     assert scope["taxonomy_nodes"] == []
     assert scope["editable"] is False
 
@@ -148,6 +152,14 @@ def test_structured_scope_mutation_validates_taxonomy_and_writes_one_aggregate_a
         assert [item.custom_description for item in selections_by_block[blocks[0].id]] == [""]
         assert [item.custom_description for item in selections_by_block[blocks[1].id]] == ["Tùy chỉnh"]
         assert session.scalar(select(func.count()).select_from(AuditEvent).where(AuditEvent.action == "case.evaluation_scope.update")) == 1
+
+    with Session(engine) as session:
+        payload = CatalogReadService().get_case_workspace(session, case_id=seeded["case_id"], user=_user())["evaluation_scope"]
+        assert payload["rendered_prose"] is None
+        assert payload["summary_source"] == "canonical_projection"
+        assert "« Khối A » (Ghi chú A)" in payload["summary_text"]
+        assert "Child Tùy chỉnh" in payload["summary_text"]
+        assert "Giới hạn mới" in payload["summary_text"]
 
     with Session(engine) as session:
         with pytest.raises(HTTPException, match="Stale"):

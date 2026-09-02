@@ -289,6 +289,8 @@ class CaseWorkspaceEvaluationScopeRead(BaseModel):
     row_version: int | None
     source_classification: str | None
     rendered_prose: str | None
+    summary_text: str | None
+    summary_source: Literal["historical_prose", "legacy_rendered_prose", "canonical_projection"] | None
     limitation_text: str | None
     editable: bool
     read_only_reason: str | None

@@ -218,6 +218,13 @@ tr:focus-visible {
   text-transform: uppercase;
 }
 
+.app-logo {
+  display: block;
+  width: 2.35rem;
+  height: 2.35rem;
+  object-fit: contain;
+}
+
 .brand-copy strong {
   font-size: 0.9rem;
 }
@@ -1151,12 +1158,12 @@ tr:focus-visible {
   color: #5f7278;
 }
 
-.evaluation-scope-block { min-width: 0; }
+.evaluation-scope-editor { min-width: 0; }
 .evaluation-scope-block-header { display: grid; grid-template-columns: minmax(14rem, 1fr) minmax(18rem, 2fr); gap: .35rem; margin-bottom: .35rem; }
 .evaluation-scope-block-header label, .evaluation-scope-limitation { display: grid; gap: .12rem; font-size: .76rem; color: #455a61; }
 .evaluation-scope-block-header input, .evaluation-scope-block-header textarea, .evaluation-scope-limitation textarea { min-height: 1.75rem; padding: .22rem .35rem; font: inherit; }
 .evaluation-scope-block-header textarea { min-height: 1.75rem; resize: vertical; }
-.evaluation-scope-tree { max-height: min(46vh, 28rem); overflow: auto; border: 1px solid var(--border-color); background: #fbfcf8; }
+.evaluation-scope-tree { max-height: min(58vh, 43rem); overflow: auto; border: 1px solid var(--border-color); background: #fbfcf8; }
 .evaluation-scope-node { display: grid; grid-template-columns: 1rem 1rem minmax(3.5rem, auto) minmax(0, 1fr); column-gap: .28rem; align-items: start; padding-block: .18rem; padding-inline-end: .35rem; border-bottom: 1px solid #edf0ea; font-size: .79rem; line-height: 1.25; }
 .evaluation-scope-node:hover, .evaluation-scope-node:focus-within { background: #f0f7f4; }
 .evaluation-scope-node.is-selected { background: #eef7f2; }
@@ -1180,7 +1187,12 @@ tr:focus-visible {
 .evaluation-scope-limitation textarea { min-height: 2.5rem; resize: vertical; }
 .evaluation-scope-block-tabs { display: flex; gap: .2rem; margin-bottom: .35rem; overflow-x: auto; }
 .evaluation-scope-block-tabs button.active { font-weight: 700; background: #dfeef4; }
-.evaluation-scope-prose { white-space: pre-wrap; max-height: min(46vh, 28rem); overflow: auto; margin: 0; font: inherit; }
+.evaluation-scope-summary { max-height: 10rem; overflow: auto; margin: 0; padding: .55rem .65rem; border: 1px solid #d7e5e9; border-radius: 8px; background: #f8fbfc; white-space: pre-wrap; font: inherit; line-height: 1.45; }
+.evaluation-scope-dialog { width: min(90vw, 82rem); max-height: 88vh; display: flex; flex-direction: column; padding: .9rem 1rem; box-shadow: 0 24px 48px rgba(17, 41, 50, .22); }
+.evaluation-scope-dialog-header { margin-bottom: .55rem; }
+.evaluation-scope-dialog-header p { margin: .2rem 0 0; color: var(--text-muted); }
+.evaluation-scope-dialog .evaluation-scope-editor { min-height: 0; overflow: auto; padding-right: .15rem; }
+.evaluation-scope-dialog-actions { justify-content: flex-end; margin: .55rem 0 0; }
 
 .contextual-document-list {
   display: grid;

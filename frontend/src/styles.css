@@ -1151,6 +1151,20 @@ tr:focus-visible {
   color: #5f7278;
 }
 
+.evaluation-scope-layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(18rem, 2fr); gap: .5rem; min-height: 20rem; }
+.evaluation-scope-tree { overflow: auto; border: 1px solid var(--border-color); background: #fbfcf8; }
+.evaluation-scope-node { display: flex; align-items: center; gap: .35rem; min-height: 1.65rem; border-bottom: 1px solid #edf0ea; font-size: .82rem; }
+.evaluation-scope-node > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.evaluation-scope-node button { min-width: 1.45rem; min-height: 1.35rem; padding: 0; }
+.tree-check.mixed { color: #6f6300; background: #fff3b0; }
+.tree-spacer { width: 1.45rem; }
+.evaluation-scope-detail { overflow: auto; display: grid; align-content: start; gap: .35rem; }
+.evaluation-scope-detail label { display: grid; gap: .15rem; font-size: .78rem; }
+.evaluation-scope-detail textarea { min-height: 3.5rem; resize: vertical; }
+.evaluation-scope-block-tabs { display: flex; gap: .2rem; margin-bottom: .4rem; overflow-x: auto; }
+.evaluation-scope-block-tabs button.active { font-weight: 700; background: #dfeef4; }
+.evaluation-scope-prose { white-space: pre-wrap; max-height: 20rem; overflow: auto; margin: 0; font: inherit; }
+
 .contextual-document-list {
   display: grid;
   gap: 0.45rem;

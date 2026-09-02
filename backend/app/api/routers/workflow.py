@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.api.session import commit_or_409, get_session_from_request_factory
 from backend.app.auth import AuthenticatedUser, get_authenticated_user, require_permissions
+from backend.app.db.models.phase1 import Case
 from backend.app.read_models import (
     BusinessEligibilityIssueRequest,
     BusinessEligibilityLatestVersionUpsertRequest,
@@ -25,6 +26,8 @@ from backend.app.read_models import (
     CertificatePromoteCurrentRequest,
     InspectionCaseCreateRead,
     InspectionCaseCreateRequest,
+    EvaluationScopeMutationRead,
+    EvaluationScopeUpsertRequest,
     CaseTransitionRead,
     CaseTransitionRequest,
     InspectionOutcomeRead,
@@ -34,7 +37,7 @@ from backend.app.read_models import (
     InspectionTeamRead,
     InspectionTeamUpsertRequest,
 )
-from backend.app.services import CaseWorkflowService
+from backend.app.services import CatalogReadService, CaseWorkflowService
 
 def register_workflow_routes(app, session_factory) -> None:
     dependency = Depends(get_session_from_request_factory(session_factory))
@@ -53,6 +56,7 @@ def register_workflow_routes(app, session_factory) -> None:
             gxp_type=payload.gxp_type,
             line_code=payload.line_code,
             applicable_standard=payload.applicable_standard,
+            source_case_id=payload.source_case_id,
             reason=payload.reason,
             user=user,
         )
@@ -97,6 +101,29 @@ def register_workflow_routes(app, session_factory) -> None:
         )
         commit_or_409(session)
         return CaseApplicationRead(**result)
+
+    def upsert_evaluation_scope(
+        case_id: str,
+        payload: EvaluationScopeUpsertRequest,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"case.edit"})
+        result = service.upsert_evaluation_scope(
+            session,
+            case_id=case_id,
+            expected_version=payload.expected_version,
+            limitation_text=payload.limitation_text,
+            blocks=[item.model_dump() for item in payload.blocks],
+            reason=payload.reason,
+            user=user,
+        )
+        commit_or_409(session)
+        case = session.get(Case, case_id)
+        if case is None:
+            raise RuntimeError("Updated case disappeared before evaluation-scope response rendering.")
+        result["evaluation_scope"] = CatalogReadService._serialize_evaluation_scope(session, case=case)
+        return EvaluationScopeMutationRead(**result)
 
     def upsert_case_assessment(
         case_id: str,
@@ -409,6 +436,13 @@ def register_workflow_routes(app, session_factory) -> None:
         upsert_case_application,
         methods=["PUT"],
         response_model=CaseApplicationRead,
+        tags=["workflow"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/evaluation-scope",
+        upsert_evaluation_scope,
+        methods=["PUT"],
+        response_model=EvaluationScopeMutationRead,
         tags=["workflow"],
     )
     app.add_api_route(

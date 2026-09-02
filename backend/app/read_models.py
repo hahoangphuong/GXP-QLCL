@@ -249,6 +249,55 @@ class CaseWorkspaceProcessingRead(BaseModel):
     events: list[CaseWorkspaceProcessingEventRead]
 
 
+class EvaluationScopeNodeRead(BaseModel):
+    id: str
+    key: str
+    parent_id: str | None
+    parent_key: str | None
+    description: str
+    hint: str | None
+    main_topic: str | None
+    short_render: str | None
+    no_expand: str | None
+    source_order: int
+
+
+class EvaluationScopeSelectionRead(BaseModel):
+    taxonomy_node_id: str
+    node_key_snapshot: str
+    taxonomy_description_snapshot: str
+    custom_description: str
+    source_order: int
+
+
+class EvaluationScopeUnkeyedEntryRead(BaseModel):
+    source_order: int
+    text: str
+
+
+class EvaluationScopeBlockRead(BaseModel):
+    id: str
+    ordinal: int
+    name: str | None
+    note: str | None
+    selections: list[EvaluationScopeSelectionRead]
+    unkeyed_entries: list[EvaluationScopeUnkeyedEntryRead]
+
+
+class CaseWorkspaceEvaluationScopeRead(BaseModel):
+    id: str | None
+    row_version: int | None
+    source_classification: str | None
+    rendered_prose: str | None
+    limitation_text: str | None
+    editable: bool
+    read_only_reason: str | None
+    taxonomy_version_id: str | None
+    gxp_type: str
+    blocks: list[EvaluationScopeBlockRead]
+    taxonomy_nodes: list[EvaluationScopeNodeRead]
+
+
 class DocumentChecklistItemRead(BaseModel):
     checklist_key: str
     label: str
@@ -301,6 +350,7 @@ class CaseWorkspaceRead(BaseModel):
     inspection: CaseWorkspaceInspectionRead
     remediation: CaseWorkspaceRemediationRead
     processing: CaseWorkspaceProcessingRead
+    evaluation_scope: CaseWorkspaceEvaluationScopeRead
     documents: DocumentChecklistRead
     contextual_document_actions: list[ContextualDocumentActionRead]
     linked_gxp_certificates: list[GxpCertificateDetailRead]
@@ -455,6 +505,7 @@ class InspectionCaseCreateRequest(BaseModel):
     gxp_type: str
     line_code: str | None = None
     applicable_standard: str | None = None
+    source_case_id: str | None = None
     reason: str | None = None
 
 
@@ -470,6 +521,32 @@ class InspectionCaseCreateRead(BaseModel):
     legacy_inspection_id: int | None
     legacy_inspection_code: str | None
     audit_event_id: str
+
+
+class EvaluationScopeSelectionWrite(BaseModel):
+    taxonomy_node_id: str
+    custom_description: str = ""
+
+
+class EvaluationScopeBlockWrite(BaseModel):
+    name: str | None = None
+    note: str | None = None
+    selections: list[EvaluationScopeSelectionWrite]
+
+
+class EvaluationScopeUpsertRequest(BaseModel):
+    expected_version: int
+    limitation_text: str | None = None
+    blocks: list[EvaluationScopeBlockWrite]
+    reason: str | None = None
+
+
+class EvaluationScopeMutationRead(BaseModel):
+    case_id: str
+    evaluation_scope_id: str
+    row_version: int
+    audit_event_id: str
+    evaluation_scope: CaseWorkspaceEvaluationScopeRead
 
 
 class CaseApplicationUpsertRequest(BaseModel):

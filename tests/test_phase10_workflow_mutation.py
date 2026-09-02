@@ -117,6 +117,7 @@ def test_phase10_transition_route_is_registered():
     assert "/cases/{case_id}/transition" in routes
     assert "/cases/{case_id}/application" in routes
     assert "/cases/{case_id}/assessment" in routes
+    assert "/cases/{case_id}/evaluation-scope" in routes
     assert "/cases/{case_id}/plan" in routes
     assert "/cases/{case_id}/outcome" in routes
     assert "/cases/{case_id}/team" in routes

@@ -28,6 +28,7 @@ const apiMocks = vi.hoisted(() => ({
   getChangeRequestWorkspace: vi.fn().mockResolvedValue(null),
   upsertCaseApplication: vi.fn(),
   upsertCaseAssessment: vi.fn(),
+  upsertEvaluationScope: vi.fn(),
   upsertInspectionPlan: vi.fn(),
   upsertInspectionOutcome: vi.fn(),
   listSiteGxpCertificates: vi.fn().mockResolvedValue({ items: [] }),
@@ -84,6 +85,7 @@ function resetApiMocks() {
   apiMocks.getChangeRequestWorkspace.mockReset();
   apiMocks.upsertCaseApplication.mockReset();
   apiMocks.upsertCaseAssessment.mockReset();
+  apiMocks.upsertEvaluationScope.mockReset();
   apiMocks.upsertInspectionPlan.mockReset();
   apiMocks.upsertInspectionOutcome.mockReset();
   apiMocks.listSiteGxpCertificates.mockReset();
@@ -123,6 +125,7 @@ function resetApiMocks() {
   apiMocks.getChangeRequestWorkspace.mockResolvedValue(null);
   apiMocks.upsertCaseApplication.mockResolvedValue(null);
   apiMocks.upsertCaseAssessment.mockResolvedValue(null);
+  apiMocks.upsertEvaluationScope.mockResolvedValue(null);
   apiMocks.upsertInspectionPlan.mockResolvedValue(null);
   apiMocks.upsertInspectionOutcome.mockResolvedValue(null);
   apiMocks.listSiteGxpCertificates.mockResolvedValue({ items: [] });
@@ -897,6 +900,7 @@ describe("App Slice A.4 search workspace", () => {
         gxp_type: "GMP",
         line_code: "A",
         applicable_standard: "WHO-GMP",
+        source_case_id: "case-1",
       },
       expect.objectContaining({
         username: "operator.local",

@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from backend.app.audit_payload import normalize_and_redact_audit_payload
@@ -19,6 +19,10 @@ from backend.app.db.models.phase1 import (
     BusinessEligibilityVersion,
     CapaCycle,
     Case,
+    CaseEvaluationScope,
+    CaseEvaluationScopeBlock,
+    CaseEvaluationScopeSelection,
+    CaseEvaluationScopeUnkeyedEntry,
     CaseApplication,
     CaseAssessment,
     Certificate,
@@ -31,6 +35,8 @@ from backend.app.db.models.phase1 import (
     InspectionOutcome,
     InspectionPlan,
     Site,
+    EvaluationScopeTaxonomyNode,
+    EvaluationScopeTaxonomyVersion,
 )
 
 
@@ -705,6 +711,7 @@ class CaseWorkflowService:
         applicable_standard: str | None,
         reason: str | None,
         user: AuthenticatedUser,
+        source_case_id: str | None = None,
     ) -> dict[str, Any]:
         locked_site = self._lock_site(session, site_id)
         normalized_gxp_type, normalized_line_code = self._validate_create_inspection_case_context(
@@ -740,6 +747,8 @@ class CaseWorkflowService:
         )
         session.add(case)
         session.flush()
+        if source_case_id:
+            self._copy_evaluation_scope_for_reassessment(session, source_case_id=source_case_id, target_case=case)
         after = {
             "case_id": case.id,
             "site_id": case.site_id,
@@ -785,6 +794,182 @@ class CaseWorkflowService:
             "legacy_inspection_code": case.legacy_inspection_code,
             "audit_event_id": audit_event.id,
         }
+
+    def _copy_evaluation_scope_for_reassessment(self, session: Session, *, source_case_id: str, target_case: Case) -> None:
+        source_case = self._get_case(session, source_case_id)
+        if (
+            source_case.site_id != target_case.site_id
+            or source_case.gxp_type != target_case.gxp_type
+            or self._normalize_line_code(source_case.scope_code) != self._normalize_line_code(target_case.scope_code)
+        ):
+            raise HTTPException(status_code=422, detail="Selected source case does not match the reassessment facility/GxP/line context.")
+        source_scope = session.scalar(select(CaseEvaluationScope).where(CaseEvaluationScope.case_id == source_case.id))
+        if source_scope is None:
+            return
+        copied = CaseEvaluationScope(
+            case_id=target_case.id,
+            taxonomy_version_id=source_scope.taxonomy_version_id,
+            source_classification=source_scope.source_classification,
+            raw_legacy_value=source_scope.raw_legacy_value,
+            rendered_prose=source_scope.rendered_prose,
+            limitation_text=source_scope.limitation_text,
+        )
+        session.add(copied)
+        session.flush()
+        source_blocks = list(session.scalars(select(CaseEvaluationScopeBlock).where(CaseEvaluationScopeBlock.case_evaluation_scope_id == source_scope.id).order_by(CaseEvaluationScopeBlock.ordinal.asc())))
+        for source_block in source_blocks:
+            copied_block = CaseEvaluationScopeBlock(case_evaluation_scope_id=copied.id, ordinal=source_block.ordinal, name=source_block.name, note=source_block.note, raw_block_value=source_block.raw_block_value)
+            session.add(copied_block)
+            session.flush()
+            for source_selection in session.scalars(select(CaseEvaluationScopeSelection).where(CaseEvaluationScopeSelection.block_id == source_block.id).order_by(CaseEvaluationScopeSelection.source_order.asc())):
+                session.add(CaseEvaluationScopeSelection(block_id=copied_block.id, taxonomy_node_id=source_selection.taxonomy_node_id, source_order=source_selection.source_order, custom_description=source_selection.custom_description, node_key_snapshot=source_selection.node_key_snapshot, taxonomy_description_snapshot=source_selection.taxonomy_description_snapshot))
+            for source_entry in session.scalars(select(CaseEvaluationScopeUnkeyedEntry).where(CaseEvaluationScopeUnkeyedEntry.block_id == source_block.id).order_by(CaseEvaluationScopeUnkeyedEntry.source_order.asc())):
+                session.add(CaseEvaluationScopeUnkeyedEntry(block_id=copied_block.id, source_order=source_entry.source_order, text=source_entry.text))
+        session.flush()
+
+    def upsert_evaluation_scope(
+        self,
+        session: Session,
+        *,
+        case_id: str,
+        expected_version: int,
+        limitation_text: str | None,
+        blocks: list[dict[str, Any]],
+        reason: str | None,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        case = self._get_case(session, case_id)
+        self._assert_case_not_terminal(case, operation="evaluation-scope edit")
+        scope = session.scalar(select(CaseEvaluationScope).where(CaseEvaluationScope.case_id == case.id))
+        if scope is None:
+            raise HTTPException(status_code=409, detail="Case has no canonical evaluation scope to edit.")
+        if scope.source_classification != "STRUCTURED_VALID" or scope.taxonomy_version_id is None:
+            raise HTTPException(status_code=409, detail="Historical prose-only evaluation scope is read-only.")
+        if session.get(EvaluationScopeTaxonomyVersion, scope.taxonomy_version_id) is None:
+            raise HTTPException(status_code=409, detail="Evaluation scope taxonomy version is no longer available.")
+        self._assert_expected_version(scope, expected_version, label="evaluation scope")
+        if not blocks:
+            raise HTTPException(status_code=422, detail="Evaluation scope requires at least one scope block.")
+        if len(blocks) > 50:
+            raise HTTPException(status_code=422, detail="Evaluation scope has too many blocks.")
+        if len(limitation_text or "") > 10000:
+            raise HTTPException(status_code=422, detail="Evaluation scope limitation is too long.")
+
+        existing_block_ids = list(
+            session.scalars(
+                select(CaseEvaluationScopeBlock.id).where(
+                    CaseEvaluationScopeBlock.case_evaluation_scope_id == scope.id
+                )
+            )
+        )
+        if existing_block_ids and session.scalar(
+            select(func.count())
+            .select_from(CaseEvaluationScopeUnkeyedEntry)
+            .where(CaseEvaluationScopeUnkeyedEntry.block_id.in_(existing_block_ids))
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Evaluation scope has imported unkeyed entries and remains read-only until their VBA mutation contract is proven.",
+            )
+
+        taxonomy_nodes = {
+            row.id: row
+            for row in session.scalars(
+                select(EvaluationScopeTaxonomyNode).where(
+                    EvaluationScopeTaxonomyNode.taxonomy_version_id == scope.taxonomy_version_id,
+                    EvaluationScopeTaxonomyNode.gxp_type == case.gxp_type,
+                )
+            )
+        }
+
+        def validate_ancestor_chain(node: EvaluationScopeTaxonomyNode) -> None:
+            # Tree state is presentation-only. Resolve ancestry from the persisted taxonomy so a
+            # forged frontend parent/child relationship cannot change the aggregate's semantics.
+            current = node
+            visited: set[str] = set()
+            while current.parent_node_id is not None:
+                if current.id in visited:
+                    raise HTTPException(status_code=422, detail="Evaluation scope taxonomy contains a parent cycle.")
+                visited.add(current.id)
+                parent = taxonomy_nodes.get(current.parent_node_id)
+                if parent is None:
+                    raise HTTPException(status_code=422, detail="Selected taxonomy node has no valid ancestor in the case taxonomy.")
+                current = parent
+        for ordinal, block in enumerate(blocks, start=1):
+            if len(str(block.get("name") or "")) > 2000 or len(str(block.get("note") or "")) > 5000:
+                raise HTTPException(status_code=422, detail="Evaluation scope block name or note is too long.")
+            selections = block.get("selections", [])
+            if not selections:
+                raise HTTPException(status_code=422, detail=f"Evaluation scope block {ordinal} requires at least one selected node.")
+            seen: set[str] = set()
+            for selection in selections:
+                node_id = str(selection.get("taxonomy_node_id") or "")
+                if node_id in seen:
+                    raise HTTPException(status_code=422, detail=f"Evaluation scope block {ordinal} contains a duplicate selected node.")
+                seen.add(node_id)
+                node = taxonomy_nodes.get(node_id)
+                if node is None:
+                    raise HTTPException(status_code=422, detail="Selected taxonomy node does not belong to the case GxP taxonomy version.")
+                validate_ancestor_chain(node)
+                if len(str(selection.get("custom_description") or "")) > 10000:
+                    raise HTTPException(status_code=422, detail="Evaluation scope custom description is too long.")
+
+        actor = self._get_or_create_app_user(session, user)
+        before = {
+            "row_version": scope.row_version,
+            "block_count": len(existing_block_ids),
+            "selection_count": session.scalar(
+                select(func.count())
+                .select_from(CaseEvaluationScopeSelection)
+                .where(CaseEvaluationScopeSelection.block_id.in_(existing_block_ids))
+            ) if existing_block_ids else 0,
+        }
+        if existing_block_ids:
+            session.execute(delete(CaseEvaluationScopeSelection).where(CaseEvaluationScopeSelection.block_id.in_(existing_block_ids)))
+            session.execute(delete(CaseEvaluationScopeBlock).where(CaseEvaluationScopeBlock.id.in_(existing_block_ids)))
+        scope.limitation_text = str(limitation_text) if limitation_text is not None else None
+        # VersionedMixin protects aggregate replacement; force a new version even when only children changed.
+        scope.row_version += 1
+        session.flush()
+        selection_count = 0
+        for ordinal, block_payload in enumerate(blocks, start=1):
+            block = CaseEvaluationScopeBlock(
+                case_evaluation_scope_id=scope.id,
+                ordinal=ordinal,
+                name=str(block_payload.get("name") or "") or None,
+                note=str(block_payload.get("note") or "") or None,
+                raw_block_value=None,
+            )
+            session.add(block)
+            session.flush()
+            for source_order, selection in enumerate(block_payload["selections"], start=1):
+                node = taxonomy_nodes[str(selection["taxonomy_node_id"])]
+                session.add(
+                    CaseEvaluationScopeSelection(
+                        block_id=block.id,
+                        taxonomy_node_id=node.id,
+                        source_order=source_order,
+                        custom_description=str(selection.get("custom_description") or ""),
+                        node_key_snapshot=node.node_key,
+                        taxonomy_description_snapshot=node.description,
+                    )
+                )
+                selection_count += 1
+        session.flush()
+        after = {"row_version": scope.row_version, "block_count": len(blocks), "selection_count": selection_count}
+        audit_event = self._write_audit_event(
+            session,
+            actor=actor,
+            entity_type="case_evaluation_scope",
+            entity_id=scope.id,
+            action="case.evaluation_scope.update",
+            payload={"case_id": case.id, "old_row_version": before["row_version"], "new_row_version": scope.row_version, **after},
+            before=before,
+            after=after,
+            reason=reason,
+        )
+        session.flush()
+        return {"case_id": case.id, "evaluation_scope_id": scope.id, "row_version": scope.row_version, "audit_event_id": audit_event.id}
 
     def list_capa_cycles(
         self,

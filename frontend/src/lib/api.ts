@@ -13,6 +13,7 @@ import type {
   CaseAssessmentUpsertResponse,
   CaseDetail,
   CaseListItem,
+  CaseWorkspaceEvaluationScope,
   CaseWorkspace,
   ChangeRequestWorkspace,
   Company,
@@ -22,6 +23,7 @@ import type {
   DocumentGenerationRunStatus,
   DocumentPreparationResponse,
   DocumentRenderResponse,
+  EvaluationScopeUpsertRequest,
   FacilitySearchPage,
   FacilityWorkspace,
   GxpCertificateDetail,
@@ -101,7 +103,7 @@ function parseContentDispositionFilename(contentDisposition: string | null): str
       return utf8Match[1];
     }
   }
-  const basicMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+  const basicMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
   return basicMatch?.[1]?.trim() || null;
 }
 
@@ -335,6 +337,22 @@ export function upsertCaseApplication(
   bearerToken?: string | null,
 ): Promise<CaseApplicationUpsertResponse> {
   return requestJson<CaseApplicationUpsertResponse>(`/cases/${caseId}/application`, {
+    method: "PUT",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function upsertEvaluationScope(
+  caseId: string,
+  payload: EvaluationScopeUpsertRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<{ case_id: string; evaluation_scope_id: string; row_version: number; audit_event_id: string; evaluation_scope: CaseWorkspaceEvaluationScope }> {
+  return requestJson(`/cases/${caseId}/evaluation-scope`, {
     method: "PUT",
     body: payload,
     auth,

@@ -28,6 +28,7 @@ import {
   updateCapaCycle,
   upsertInspectionOutcome,
   upsertInspectionPlan,
+  upsertEvaluationScope,
 } from "../lib/api";
 import type {
   BusinessEligibilityDetail,
@@ -48,6 +49,7 @@ import type {
   GxpCertificateListItem,
   InspectionOutcomeUpsertRequest,
   InspectionPlanUpsertRequest,
+  EvaluationScopeUpsertRequest,
 } from "../types";
 
 const DEFAULT_EVENT_TAB = "Hồ sơ";
@@ -779,6 +781,15 @@ export function SearchPage({
     await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
   }
 
+  async function handleEvaluationScopeSave(payload: EvaluationScopeUpsertRequest) {
+    if (!selectedHistory || selectedHistory.source_type !== "case") {
+      throw new Error("Chưa chọn hồ sơ để cập nhật.");
+    }
+    const caseId = selectedHistory.id;
+    await upsertEvaluationScope(caseId, payload, auth, useStubAuth, bearerToken);
+    await refreshSelectedCaseWorkspace(caseId);
+  }
+
   async function handleCaseAssessmentSave(payload: CaseAssessmentUpsertRequest) {
     if (!selectedHistory || selectedHistory.source_type !== "case") {
       throw new Error("Chưa chọn hồ sơ để cập nhật.");
@@ -886,6 +897,7 @@ export function SearchPage({
           gxp_type: selectedResult.gxp_type ?? "",
           line_code: selectedResult.line_code ?? null,
           applicable_standard: applicableStandardInput.trim() || null,
+          source_case_id: selectedHistory?.source_type === "case" ? selectedHistory.id : null,
         },
         auth,
         useStubAuth,
@@ -1058,6 +1070,7 @@ export function SearchPage({
             onAssessCapaCycle={handleAssessCapaCycle}
             onCreateCapaCycle={handleCreateCapaCycle}
             onInspectionOutcomeSave={handleInspectionOutcomeSave}
+            onEvaluationScopeSave={handleEvaluationScopeSave}
             onInspectionPlanSave={handleInspectionPlanSave}
             onLoadDocumentDetail={handleLoadDocumentDetail}
             onOpenDocument={handleOpenDocument}

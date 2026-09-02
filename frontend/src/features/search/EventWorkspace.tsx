@@ -20,6 +20,7 @@ import type {
   GxpCertificateDetail,
   InspectionOutcomeUpsertRequest,
   InspectionPlanUpsertRequest,
+  EvaluationScopeUpsertRequest,
 } from "../../types";
 import { BusinessEligibilityDetailFields } from "./BusinessEligibilityDetailFields";
 import { CaseApplicationWorkspace } from "./CaseApplicationWorkspace";
@@ -426,6 +427,7 @@ function renderCaseStepContent(
   onCaseAssessmentSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>,
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>,
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>,
+  onEvaluationScopeSave: (payload: EvaluationScopeUpsertRequest) => Promise<void>,
   selectedRemediationCycleId: string | null,
   onSelectedRemediationCycleChange: (cycleId: string | null) => void,
   onCreateCapaCycle: (payload: CapaCycleCreateRequest) => Promise<void>,
@@ -465,6 +467,7 @@ function renderCaseStepContent(
           caseWorkspace={caseWorkspace}
           onInspectionOutcomeSave={onInspectionOutcomeSave}
           onInspectionPlanSave={onInspectionPlanSave}
+          onEvaluationScopeSave={onEvaluationScopeSave}
         />
         <ContextualDocumentSection
           items={documentItems}
@@ -622,6 +625,7 @@ export function EventWorkspace({
   onCaseAssessmentSave,
   onInspectionPlanSave,
   onInspectionOutcomeSave,
+  onEvaluationScopeSave,
   onOpenDocument,
   onLoadDocumentDetail,
   selectedRemediationCycleId,
@@ -644,6 +648,7 @@ export function EventWorkspace({
   onCaseAssessmentSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>;
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
+  onEvaluationScopeSave: (payload: EvaluationScopeUpsertRequest) => Promise<void>;
   onOpenDocument: (caseId: string, item: ContextualDocumentAction) => Promise<void>;
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
   selectedRemediationCycleId: string | null;
@@ -720,6 +725,7 @@ export function EventWorkspace({
             onCaseAssessmentSave,
             onInspectionPlanSave,
             onInspectionOutcomeSave,
+            onEvaluationScopeSave,
             selectedRemediationCycleId,
             onSelectedRemediationCycleChange,
             onCreateCapaCycle,

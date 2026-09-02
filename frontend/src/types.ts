@@ -69,6 +69,7 @@ export type InspectionCaseCreateRequest = {
   gxp_type: string;
   line_code: string | null;
   applicable_standard: string | null;
+  source_case_id?: string | null;
   reason?: string | null;
 };
 
@@ -367,6 +368,57 @@ export type CaseWorkspaceProcessing = {
   events: CaseWorkspaceProcessingEvent[];
 };
 
+export type EvaluationScopeNode = {
+  id: string;
+  key: string;
+  parent_id: string | null;
+  parent_key: string | null;
+  description: string;
+  hint: string | null;
+  main_topic: string | null;
+  short_render: string | null;
+  no_expand: string | null;
+  source_order: number;
+};
+
+export type EvaluationScopeSelection = {
+  taxonomy_node_id: string;
+  node_key_snapshot: string;
+  taxonomy_description_snapshot: string;
+  custom_description: string;
+  source_order: number;
+};
+
+export type EvaluationScopeBlock = {
+  id: string;
+  ordinal: number;
+  name: string | null;
+  note: string | null;
+  selections: EvaluationScopeSelection[];
+  unkeyed_entries: { source_order: number; text: string }[];
+};
+
+export type CaseWorkspaceEvaluationScope = {
+  id: string | null;
+  row_version: number | null;
+  source_classification: string | null;
+  rendered_prose: string | null;
+  limitation_text: string | null;
+  editable: boolean;
+  read_only_reason: string | null;
+  taxonomy_version_id: string | null;
+  gxp_type: string;
+  blocks: EvaluationScopeBlock[];
+  taxonomy_nodes: EvaluationScopeNode[];
+};
+
+export type EvaluationScopeUpsertRequest = {
+  expected_version: number;
+  limitation_text: string | null;
+  blocks: { name: string | null; note: string | null; selections: { taxonomy_node_id: string; custom_description: string }[] }[];
+  reason?: string | null;
+};
+
 export type CaseAssessmentUpsertRequest = {
   expected_version: number | null;
   assessed_on: string | null;
@@ -545,6 +597,7 @@ export type CaseWorkspace = {
   inspection: CaseWorkspaceInspection;
   remediation: CaseWorkspaceRemediation;
   processing: CaseWorkspaceProcessing;
+  evaluation_scope: CaseWorkspaceEvaluationScope;
   documents: DocumentChecklist;
   contextual_document_actions: ContextualDocumentAction[];
   linked_gxp_certificates: GxpCertificateDetail[];

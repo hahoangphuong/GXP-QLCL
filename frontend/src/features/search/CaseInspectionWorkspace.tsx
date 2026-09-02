@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { formatCompactDate } from "../../lib/presentation";
-import type { CaseWorkspace, InspectionOutcomeUpsertRequest, InspectionPlanUpsertRequest } from "../../types";
+import type { CaseWorkspace, EvaluationScopeUpsertRequest, InspectionOutcomeUpsertRequest, InspectionPlanUpsertRequest } from "../../types";
 import { EditableDetailValue } from "./EditableDetailValue";
 import { DetailValue } from "./DetailValue";
+import { EvaluationScopeWorkspace } from "./EvaluationScopeWorkspace";
 
 type InspectionPlanDraft = {
   plan_start_on: string;
@@ -372,16 +373,19 @@ export function CaseInspectionWorkspace({
   caseWorkspace,
   onInspectionPlanSave,
   onInspectionOutcomeSave,
+  onEvaluationScopeSave,
 }: {
   caseWorkspace: CaseWorkspace;
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
+  onEvaluationScopeSave: (payload: EvaluationScopeUpsertRequest) => Promise<void>;
 }) {
   return (
     <div className="event-step-stack">
       <InspectionPlanSection caseWorkspace={caseWorkspace} onSave={onInspectionPlanSave} />
       <InspectionTeamSection caseWorkspace={caseWorkspace} />
       <InspectionOutcomeSection caseWorkspace={caseWorkspace} onSave={onInspectionOutcomeSave} />
+      <EvaluationScopeWorkspace caseWorkspace={caseWorkspace} onSave={onEvaluationScopeSave} />
     </div>
   );
 }

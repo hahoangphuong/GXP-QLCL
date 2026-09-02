@@ -24,6 +24,10 @@ from backend.app.db.models.phase1 import (
     BusinessEligibilityCertificateLink,
     BusinessEligibilityVersion,
     Case,
+    CaseEvaluationScope,
+    CaseEvaluationScopeBlock,
+    CaseEvaluationScopeSelection,
+    CaseEvaluationScopeUnkeyedEntry,
     CaseApplication,
     CaseAssessment,
     CapaCycle,
@@ -42,6 +46,7 @@ from backend.app.db.models.phase1 import (
     InspectionOutcome,
     InspectionTeam,
     Site,
+    EvaluationScopeTaxonomyNode,
 )
 from backend.app.db.enums import InspectionEventType
 
@@ -97,6 +102,123 @@ CHANGE_REQUEST_DOCUMENT_FAMILY_LABELS = {
 
 
 class CatalogReadService:
+    @staticmethod
+    def _serialize_evaluation_scope(session: Session, *, case: Case) -> dict[str, object]:
+        scope = session.scalar(
+            select(CaseEvaluationScope).where(CaseEvaluationScope.case_id == case.id)
+        )
+        terminal = case.state in {CaseState.CLOSED, CaseState.CANCELLED}
+        if scope is None:
+            return {
+                "id": None,
+                "row_version": None,
+                "source_classification": None,
+                "rendered_prose": None,
+                "limitation_text": None,
+                "editable": False,
+                "read_only_reason": "Chưa có phạm vi đánh giá canonical cho hồ sơ này.",
+                "taxonomy_version_id": None,
+                "gxp_type": case.gxp_type,
+                "blocks": [],
+                "taxonomy_nodes": [],
+            }
+
+        blocks = list(
+            session.scalars(
+                select(CaseEvaluationScopeBlock)
+                .where(CaseEvaluationScopeBlock.case_evaluation_scope_id == scope.id)
+                .order_by(CaseEvaluationScopeBlock.ordinal.asc(), CaseEvaluationScopeBlock.id.asc())
+            )
+        )
+        block_ids = [block.id for block in blocks]
+        selections_by_block: dict[str, list[dict[str, object]]] = defaultdict(list)
+        unkeyed_by_block: dict[str, list[dict[str, object]]] = defaultdict(list)
+        if block_ids:
+            for row in session.scalars(
+                select(CaseEvaluationScopeSelection)
+                .where(CaseEvaluationScopeSelection.block_id.in_(block_ids))
+                .order_by(CaseEvaluationScopeSelection.block_id.asc(), CaseEvaluationScopeSelection.source_order.asc())
+            ):
+                selections_by_block[row.block_id].append(
+                    {
+                        "taxonomy_node_id": row.taxonomy_node_id,
+                        "node_key_snapshot": row.node_key_snapshot,
+                        "taxonomy_description_snapshot": row.taxonomy_description_snapshot,
+                        "custom_description": row.custom_description,
+                        "source_order": row.source_order,
+                    }
+                )
+            for row in session.scalars(
+                select(CaseEvaluationScopeUnkeyedEntry)
+                .where(CaseEvaluationScopeUnkeyedEntry.block_id.in_(block_ids))
+                .order_by(CaseEvaluationScopeUnkeyedEntry.block_id.asc(), CaseEvaluationScopeUnkeyedEntry.source_order.asc())
+            ):
+                unkeyed_by_block[row.block_id].append({"source_order": row.source_order, "text": row.text})
+
+        nodes: list[dict[str, object]] = []
+        if scope.taxonomy_version_id is not None:
+            rows = list(
+                session.scalars(
+                    select(EvaluationScopeTaxonomyNode)
+                    .where(
+                        EvaluationScopeTaxonomyNode.taxonomy_version_id == scope.taxonomy_version_id,
+                        EvaluationScopeTaxonomyNode.gxp_type == case.gxp_type,
+                    )
+                    .order_by(EvaluationScopeTaxonomyNode.source_order.asc(), EvaluationScopeTaxonomyNode.id.asc())
+                )
+            )
+            keys = {row.id: row.node_key for row in rows}
+            nodes = [
+                {
+                    "id": row.id,
+                    "key": row.node_key,
+                    "parent_id": row.parent_node_id,
+                    "parent_key": None if row.parent_node_id is None else keys.get(row.parent_node_id),
+                    "description": row.description,
+                    "hint": row.hint,
+                    "main_topic": row.main_topic,
+                    "short_render": row.short_render,
+                    "no_expand": row.no_expand,
+                    "source_order": row.source_order,
+                }
+                for row in rows
+            ]
+
+        prose_only = scope.source_classification == "PROSE_ONLY"
+        has_unkeyed_entries = any(unkeyed_by_block.values())
+        read_only_reason = (
+            "Phạm vi lịch sử dạng văn bản chỉ đọc."
+            if prose_only
+            else "Phạm vi có mục lịch sử chưa gắn taxonomy; chưa có contract VBA để chỉnh sửa các mục này."
+            if has_unkeyed_entries
+            else "Hồ sơ đã ở trạng thái kết thúc."
+            if terminal
+            else None
+        )
+        return {
+            "id": scope.id,
+            "row_version": scope.row_version,
+            "source_classification": scope.source_classification,
+            "rendered_prose": scope.rendered_prose,
+            "limitation_text": scope.limitation_text,
+            "editable": not terminal and not prose_only and not has_unkeyed_entries and scope.source_classification == "STRUCTURED_VALID",
+            "read_only_reason": read_only_reason,
+            "taxonomy_version_id": scope.taxonomy_version_id,
+            "gxp_type": case.gxp_type,
+            "blocks": [
+                {
+                    "id": block.id,
+                    "ordinal": block.ordinal,
+                    "name": block.name,
+                    "note": block.note,
+                    "selections": selections_by_block[block.id],
+                    "unkeyed_entries": unkeyed_by_block[block.id],
+                }
+                for block in blocks
+            ],
+            "taxonomy_nodes": nodes,
+        }
+
     @staticmethod
     def _effective_permissions(user: AuthenticatedUser) -> frozenset[str]:
         if user.permissions:
@@ -2237,6 +2359,7 @@ class CatalogReadService:
                     }
                 ],
             },
+            "evaluation_scope": self._serialize_evaluation_scope(session, case=case),
             "documents": self._build_case_document_checklist(session, case_id=case.id, capa_cycles=capa_cycles),
             "contextual_document_actions": self._build_case_contextual_document_actions(
                 session,

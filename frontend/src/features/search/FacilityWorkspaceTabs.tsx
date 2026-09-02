@@ -16,6 +16,7 @@ import type {
   GxpCertificateDetail,
   GxpCertificateListItem,
   InspectionOutcomeUpsertRequest,
+  EvaluationScopeUpsertRequest,
   InspectionPlanUpsertRequest,
 } from "../../types";
 import { EventWorkspace } from "./EventWorkspace";
@@ -67,6 +68,7 @@ export function FacilityWorkspaceTabs({
   onCaseAssessmentSave,
   onInspectionPlanSave,
   onInspectionOutcomeSave,
+  onEvaluationScopeSave,
   onOpenDocument,
   onLoadDocumentDetail,
   selectedRemediationCycleId,
@@ -111,6 +113,7 @@ export function FacilityWorkspaceTabs({
   onCaseAssessmentSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>;
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
+  onEvaluationScopeSave: (payload: EvaluationScopeUpsertRequest) => Promise<void>;
   onOpenDocument: (caseId: string, item: ContextualDocumentAction) => Promise<void>;
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
   selectedRemediationCycleId: string | null;
@@ -161,6 +164,7 @@ export function FacilityWorkspaceTabs({
                 onAssessCapaCycle={onAssessCapaCycle}
                 onCreateCapaCycle={onCreateCapaCycle}
                 onInspectionOutcomeSave={onInspectionOutcomeSave}
+                onEvaluationScopeSave={onEvaluationScopeSave}
                 onInspectionPlanSave={onInspectionPlanSave}
                 onLoadDocumentDetail={onLoadDocumentDetail}
                 onOpenDocument={onOpenDocument}

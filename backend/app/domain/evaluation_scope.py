@@ -63,11 +63,11 @@ def render_evaluation_scope_summary(
     taxonomy_nodes: Iterable[dict[str, Any]],
     limitation_text: str | None,
 ) -> str:
-    """Deterministically project the current aggregate using DCForm compiler rules.
+    """Project the current aggregate under the app's canonical taxonomy contract.
 
-    This intentionally leaves GMP's historical positional post-processing in the
-    imported evidence; it cannot be reproduced without the legacy form constants.
-    Changed aggregates use this canonical, taxonomy-versioned projection.
+    This is not a VBA-fidelity renderer.  It intentionally does not apply the
+    active GMP post-processors from DCForm, so imported historical prose remains
+    the authoritative presentation evidence until roundtrip fidelity is proven.
     """
     nodes = sorted(taxonomy_nodes, key=lambda row: (int(row["source_order"]), str(row["id"])))
     node_by_id = {str(row["id"]): row for row in nodes}

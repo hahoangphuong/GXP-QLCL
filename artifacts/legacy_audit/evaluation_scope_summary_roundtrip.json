@@ -1,0 +1,58 @@
+{
+  "schema_version": "evaluation-scope-summary-roundtrip/v1",
+  "baseline_commit": "ecda86f5f019577e0db88680aae35db2873f23be",
+  "corpus_source": "artifacts/phase3c/legacy_snapshot.json",
+  "taxonomy_source": "artifacts/legacy_snapshot/evaluation_scope_taxonomy.json",
+  "comparison_normalization": {
+    "line_endings": "CRLF and CR normalize to LF",
+    "trailing_whitespace": "removed at each line end",
+    "harmless_spacing": "a present space run directly after a colon normalizes to one space",
+    "not_normalized": [
+      "missing or additional scope terms",
+      "punctuation",
+      "ordering",
+      "custom descriptions",
+      "grouping",
+      "limitations"
+    ]
+  },
+  "structured_valid_total": 677,
+  "exact_match_count": 0,
+  "normalized_equivalent_match_count": 0,
+  "mismatch_count": 677,
+  "mismatch_rate": 1.0,
+  "by_gxp": {
+    "GLP": { "total": 40, "exact": 0, "normalized_equivalent": 0, "mismatch": 40 },
+    "GMP": { "total": 637, "exact": 0, "normalized_equivalent": 0, "mismatch": 637 }
+  },
+  "mismatch_families": {
+    "mixed_missing_and_extra_terms": 211,
+    "extra_generated_terms": 421,
+    "punctuation_or_ordering": 39,
+    "missing_legacy_terms": 6
+  },
+  "representative_mismatches": [
+    {
+      "legacy_inspection_id": "17",
+      "gxp_type": "GMP",
+      "family": "mixed_missing_and_extra_terms",
+      "actual_fragment": "* Thuốc không vô trùng (Penicillin): Viên nang cứng; Dạng bào chế rắn khác",
+      "generated_fragment": "* Thuốc không vô trùng (Penicillin):; Viên nang cứng; Dạng bào chế rắn khác"
+    },
+    {
+      "legacy_inspection_id": "115",
+      "gxp_type": "GMP",
+      "family": "mixed_missing_and_extra_terms",
+      "actual_fragment": "* Thuốc không vô trùng: Viên nang cứng; Thuốc uống dạng lỏng",
+      "generated_fragment": "* Thuốc không vô trùng:Viên nang cứng; Thuốc uống dạng lỏng"
+    },
+    {
+      "legacy_inspection_id": "245",
+      "gxp_type": "GMP",
+      "family": "extra_generated_terms",
+      "actual_fragment": "* Thuốc sản xuất vô trùng: Thuốc sản xuất vô trùng khác",
+      "generated_fragment": "* Thuốc sản xuất vô trùng:Thuốc sản xuất vô trùng khác"
+    }
+  ],
+  "conclusion": "The current canonical projection is not proven VBA-fidelity and must not be used for C.5e document generation. Historical rendered_prose remains the presentation evidence."
+}

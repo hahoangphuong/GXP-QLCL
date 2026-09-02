@@ -9,12 +9,14 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -133,6 +135,87 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
     inspection_type: Mapped[str | None] = mapped_column(String(255))
     state: Mapped[CaseState] = mapped_column(Enum(CaseState, name="case_state"), nullable=False, index=True)
     opened_year: Mapped[int | None] = mapped_column(Integer)
+
+
+class EvaluationScopeTaxonomyVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "evaluation_scope_taxonomy_version"
+
+    taxonomy_content_sha256: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    source_workbook_sha256: Mapped[str | None] = mapped_column(String(64))
+    schema_version: Mapped[str] = mapped_column(String(128), nullable=False)
+
+
+class EvaluationScopeTaxonomyNode(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "evaluation_scope_taxonomy_node"
+
+    taxonomy_version_id: Mapped[str] = mapped_column(ForeignKey("evaluation_scope_taxonomy_version.id"), nullable=False, index=True)
+    parent_node_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), index=True)
+    gxp_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    node_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    hint: Mapped[str | None] = mapped_column(Text)
+    main_topic: Mapped[str | None] = mapped_column(String(32))
+    short_render: Mapped[str | None] = mapped_column(Text)
+    no_expand: Mapped[str | None] = mapped_column(String(32))
+    source_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_excel_row: Mapped[int] = mapped_column(Integer, nullable=False)
+    __table_args__ = (
+        UniqueConstraint("taxonomy_version_id", "gxp_type", "node_key"),
+        # A parent must belong to this exact taxonomy version and GxP family.
+        UniqueConstraint("id", "taxonomy_version_id", "gxp_type"),
+        ForeignKeyConstraint(
+            ["parent_node_id", "taxonomy_version_id", "gxp_type"],
+            [
+                "evaluation_scope_taxonomy_node.id",
+                "evaluation_scope_taxonomy_node.taxonomy_version_id",
+                "evaluation_scope_taxonomy_node.gxp_type",
+            ],
+        ),
+    )
+
+
+class CaseEvaluationScope(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
+    __tablename__ = "case_evaluation_scope"
+
+    case_id: Mapped[str] = mapped_column(ForeignKey("case.id"), nullable=False, unique=True)
+    taxonomy_version_id: Mapped[str | None] = mapped_column(ForeignKey("evaluation_scope_taxonomy_version.id"), index=True)
+    source_classification: Mapped[str] = mapped_column(String(64), nullable=False)
+    raw_legacy_value: Mapped[str] = mapped_column(Text, nullable=False)
+    rendered_prose: Mapped[str | None] = mapped_column(Text)
+    limitation_text: Mapped[str | None] = mapped_column(Text)
+
+
+class CaseEvaluationScopeBlock(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "case_evaluation_scope_block"
+
+    case_evaluation_scope_id: Mapped[str] = mapped_column(ForeignKey("case_evaluation_scope.id"), nullable=False, index=True)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str | None] = mapped_column(Text)
+    note: Mapped[str | None] = mapped_column(Text)
+    raw_block_value: Mapped[str | None] = mapped_column(Text)
+    __table_args__ = (UniqueConstraint("case_evaluation_scope_id", "ordinal"),)
+
+
+class CaseEvaluationScopeSelection(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "case_evaluation_scope_selection"
+
+    block_id: Mapped[str] = mapped_column(ForeignKey("case_evaluation_scope_block.id"), nullable=False, index=True)
+    taxonomy_node_id: Mapped[str] = mapped_column(ForeignKey("evaluation_scope_taxonomy_node.id"), nullable=False, index=True)
+    source_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    custom_description: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    node_key_snapshot: Mapped[str] = mapped_column(String(64), nullable=False)
+    taxonomy_description_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
+    __table_args__ = (UniqueConstraint("block_id", "source_order"),)
+
+
+class CaseEvaluationScopeUnkeyedEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "case_evaluation_scope_unkeyed_entry"
+
+    block_id: Mapped[str] = mapped_column(ForeignKey("case_evaluation_scope_block.id"), nullable=False, index=True)
+    source_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    __table_args__ = (UniqueConstraint("block_id", "source_order"),)
 
 
 class CaseApplication(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):

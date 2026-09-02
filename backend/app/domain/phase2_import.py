@@ -28,10 +28,16 @@ from backend.app.db.models.phase1 import (
     Certificate,
     CertificateScope,
     CertificateVersion,
+    CaseEvaluationScope,
+    CaseEvaluationScopeBlock,
+    CaseEvaluationScopeSelection,
+    CaseEvaluationScopeUnkeyedEntry,
     ChangeApproval,
     ChangeRequest,
     ChangeRequestDetail,
     Company,
+    EvaluationScopeTaxonomyNode,
+    EvaluationScopeTaxonomyVersion,
     InspectionEvent,
     InspectionOutcome,
     LegacyIdMap,
@@ -39,11 +45,13 @@ from backend.app.db.models.phase1 import (
     Site,
 )
 from backend.app.domain.legacy_snapshot import read_core_sheet_rows
+from backend.app.domain.evaluation_scope import parse_legacy_evaluation_scope, validate_taxonomy_integrity
 
 CONFIRMED_BLANKED_ROWS_PATH = Path(__file__).resolve().parents[3] / "artifacts" / "phase3q" / "confirmed_blanked_rows.json"
 CONFIRMED_BLANKED_RESURRECTIONS_PATH = (
     Path(__file__).resolve().parents[3] / "artifacts" / "phase3q" / "confirmed_blanked_resurrections.json"
 )
+EVALUATION_SCOPE_TAXONOMY_PATH = Path(__file__).resolve().parents[3] / "artifacts" / "legacy_snapshot" / "evaluation_scope_taxonomy.json"
 
 
 PRIMARY_TARGET_MAP = {
@@ -75,6 +83,7 @@ FIELD_ALIASES = {
     "province_name": {"TÃ¡Â»Ë†NH/TP", "TÃƒÂ¡Ã‚Â»Ã‹â€ NH/TP", "Tá»ˆNH/TP", "TỈNH/TP"},
     "site_legacy_id_ref": {"ID CÃ†Â  SÃ¡Â»Å¾", "ID CÃƒâ€ Ã‚Â  SÃƒÂ¡Ã‚Â»Ã…Â¾", "ID CÆ  Sá»ž", "ID CƠ SỞ"},
     "inspection_gxp_type": {"LOÃ¡ÂºÂ I KT", "LOÃƒÂ¡Ã‚ÂºÃ‚Â I KT", "LOẠI KT"},
+    "evaluation_scope_raw": {"PHẠM VI KIỂM TRA"},
     "scope_code": {"MÃƒÆ’ DC", "MÃƒÆ’Ã†â€™ DC", "MÃ DC"},
     "applicable_standard": {"TIÃƒÅ U CHUÃ¡ÂºÂ¨N ÃƒÂP DÃ¡Â»Â¤NG", "TIÃƒÆ’Ã…Â U CHUÃƒÂ¡Ã‚ÂºÃ‚Â¨N ÃƒÆ’Ã‚ÂP DÃƒÂ¡Ã‚Â»Ã‚Â¤NG", "TIÃŠU CHUáº¨N ÃP Dá»¤NG", "TIÊU CHUẨN ÁP DỤNG"},
     "inspection_type": {"LOÃ¡ÂºÂ I KIÃ¡Â»â€šM TRA", "LOÃƒÂ¡Ã‚ÂºÃ‚Â I KIÃƒÂ¡Ã‚Â»Ã¢â‚¬Å¡M TRA", "LOáº I KIá»‚M TRA", "LOẠI KIỂM TRA"},
@@ -862,6 +871,12 @@ def _add_legacy_map(session: Session, entity_type: LegacyEntityType, legacy_id: 
 def _reset_import_tables(session: Session) -> None:
     for model in [
         AuditEvent,
+        CaseEvaluationScopeUnkeyedEntry,
+        CaseEvaluationScopeSelection,
+        CaseEvaluationScopeBlock,
+        CaseEvaluationScope,
+        EvaluationScopeTaxonomyNode,
+        EvaluationScopeTaxonomyVersion,
         BusinessEligibilityCertificateLink,
         BusinessEligibilityVersion,
         BusinessEligibilityCertificate,
@@ -1268,6 +1283,15 @@ def import_snapshot(
         create_schema(session)
     if resolved_options.reset_existing_data:
         _reset_import_tables(session)
+    taxonomy_artifact, taxonomy_version = _load_evaluation_scope_taxonomy(session)
+    taxonomy_nodes = {
+        (node.gxp_type, node.node_key): node
+        for node in session.scalars(
+            select(EvaluationScopeTaxonomyNode).where(
+                EvaluationScopeTaxonomyNode.taxonomy_version_id == taxonomy_version.id
+            )
+        )
+    }
     confirmed_blanked_row_keys = load_confirmed_blanked_row_keys()
     confirmed_blanked_null_key_budgets = load_confirmed_blanked_null_key_budgets()
     approved_confirmed_blanked_resurrections = load_confirmed_blanked_resurrections()
@@ -1436,6 +1460,15 @@ def import_snapshot(
         )
         if legacy_id is not None:
             case_ids[legacy_id] = entity.id
+        _import_case_evaluation_scope(
+            session,
+            case=entity,
+            raw_value=row.get("evaluation_scope_raw", ""),
+            taxonomy=taxonomy_artifact,
+            version=taxonomy_version,
+            taxonomy_nodes=taxonomy_nodes,
+            options=resolved_options,
+        )
         _ensure_single_child(
             session,
             stats,
@@ -1909,6 +1942,110 @@ def import_snapshot(
     )
 
 
+def _load_evaluation_scope_taxonomy(session: Session) -> tuple[dict[str, Any], EvaluationScopeTaxonomyVersion]:
+    artifact = json.loads(EVALUATION_SCOPE_TAXONOMY_PATH.read_text(encoding="utf-8"))
+    validate_taxonomy_integrity(artifact)
+    version = session.scalar(select(EvaluationScopeTaxonomyVersion).where(EvaluationScopeTaxonomyVersion.taxonomy_content_sha256 == artifact["taxonomy_content_sha256"]))
+    if version is not None:
+        return artifact, version
+    version = EvaluationScopeTaxonomyVersion(taxonomy_content_sha256=artifact["taxonomy_content_sha256"], source_workbook_sha256=artifact.get("source_workbook_sha256"), schema_version=artifact["schema_version"])
+    session.add(version)
+    session.flush()
+    pending: list[tuple[EvaluationScopeTaxonomyNode, str | None]] = []
+    for definition in artifact["named_ranges"].values():
+        gxp_type = definition["gxp_type"]
+        for row in definition["rows"]:
+            key = row["key"]
+            parent_key = key.rsplit(".", 1)[0] if "." in key else None
+            node = EvaluationScopeTaxonomyNode(
+                taxonomy_version_id=version.id,
+                gxp_type=gxp_type,
+                source_name=definition["source_name"],
+                node_key=key,
+                description=row["description"],
+                hint=row["hint"] or None,
+                main_topic=row["main_topic"] or None,
+                short_render=row["short_render"] or None,
+                no_expand=row["no_expand"] or None,
+                source_order=row["source_order"],
+                source_excel_row=row["source_excel_row"],
+            )
+            pending.append((node, parent_key))
+    session.add_all(node for node, _ in pending)
+    # A single flush assigns all node identities before parent links are resolved.
+    session.flush()
+    node_ids = {(node.gxp_type, node.node_key): node.id for node, _ in pending}
+    for node, parent_key in pending:
+        if parent_key is not None:
+            parent_id = node_ids.get((node.gxp_type, parent_key))
+            if parent_id is None:
+                raise ImportCollisionError(
+                    f"Taxonomy node {node.node_key!r} has no authoritative parent {parent_key!r}."
+                )
+            node.parent_node_id = parent_id
+    session.flush()
+    return artifact, version
+
+
+def _import_case_evaluation_scope(
+    session: Session,
+    *,
+    case: Case,
+    raw_value: str,
+    taxonomy: dict[str, Any],
+    version: EvaluationScopeTaxonomyVersion,
+    taxonomy_nodes: dict[tuple[str, str], EvaluationScopeTaxonomyNode],
+    options: ImportExecutionOptions,
+) -> None:
+    parsed = parse_legacy_evaluation_scope(raw_value, gxp_type=case.gxp_type, taxonomy=taxonomy)
+    if parsed["classification"] == "BLANK":
+        return
+    existing = session.scalar(
+        select(CaseEvaluationScope).where(CaseEvaluationScope.case_id == case.id)
+    )
+    if existing is not None:
+        if not options.allow_existing_records:
+            raise ImportCollisionError(
+                f"Case {case.legacy_inspection_id!r} already has a canonical evaluation scope; "
+                "reset the target before importing."
+            )
+        if (
+            existing.source_classification != parsed["classification"]
+            or existing.raw_legacy_value != parsed["raw_value"]
+        ):
+            raise ImportCollisionError(
+                f"Existing canonical evaluation scope does not match case {case.legacy_inspection_id!r}."
+            )
+        return
+    scope = CaseEvaluationScope(
+        case_id=case.id,
+        taxonomy_version_id=version.id if parsed["classification"].startswith("STRUCTURED") and parsed["taxonomy_validation"]["status"] == "available" else None,
+        source_classification=parsed["classification"],
+        raw_legacy_value=parsed["raw_value"],
+        rendered_prose=parsed["rendered_prose"] or None,
+        limitation_text=parsed["limitation_text"],
+    )
+    session.add(scope)
+    session.flush()
+    if parsed["classification"] == "PROSE_ONLY":
+        return
+    if parsed["classification"] != "STRUCTURED_VALID" or parsed["taxonomy_validation"]["status"] != "available":
+        raise ImportCollisionError(f"Cannot canonically import evaluation scope for case {case.legacy_inspection_id!r}: {parsed['classification']}")
+    for parsed_block in parsed["scopes"]:
+        block = CaseEvaluationScopeBlock(case_evaluation_scope_id=scope.id, ordinal=parsed_block["source_order"], name=parsed_block["name"] or None, note=parsed_block["note"] or None, raw_block_value=parsed_block["raw_value"])
+        session.add(block)
+        session.flush()
+        for item in parsed_block["selected_nodes"]:
+            if item["taxonomy_status"] != "KNOWN_NODE":
+                raise ImportCollisionError(f"Unresolved evaluation-scope node {item['key']!r} for case {case.legacy_inspection_id!r}")
+            node = taxonomy_nodes.get((case.gxp_type, item["key"]))
+            if node is None:
+                raise ImportCollisionError(f"Missing seeded taxonomy node {item['key']!r}")
+            session.add(CaseEvaluationScopeSelection(block_id=block.id, taxonomy_node_id=node.id, source_order=item["source_order"], custom_description=item["description"], node_key_snapshot=node.node_key, taxonomy_description_snapshot=node.description))
+        for item in parsed_block["unkeyed_entries"]:
+            session.add(CaseEvaluationScopeUnkeyedEntry(block_id=block.id, source_order=item["source_order"], text=item["text"]))
+
+
 def build_reconciliation(
     session: Session,
     snapshot: dict[str, list[dict[str, str]]],
@@ -1997,6 +2134,24 @@ def build_reconciliation(
         "existing_counts": dict(sorted(resolved_stats.existing_counts.items())),
         "source_balance": source_balance,
         "derived_counts": {
+            "evaluation_scope_taxonomy_version": session.scalar(
+                select(func.count()).select_from(EvaluationScopeTaxonomyVersion)
+            ),
+            "evaluation_scope_taxonomy_node": session.scalar(
+                select(func.count()).select_from(EvaluationScopeTaxonomyNode)
+            ),
+            "case_evaluation_scope": session.scalar(
+                select(func.count()).select_from(CaseEvaluationScope)
+            ),
+            "case_evaluation_scope_block": session.scalar(
+                select(func.count()).select_from(CaseEvaluationScopeBlock)
+            ),
+            "case_evaluation_scope_selection": session.scalar(
+                select(func.count()).select_from(CaseEvaluationScopeSelection)
+            ),
+            "case_evaluation_scope_unkeyed_entry": session.scalar(
+                select(func.count()).select_from(CaseEvaluationScopeUnkeyedEntry)
+            ),
             "case_application": session.scalar(select(func.count()).select_from(CaseApplication)),
             "case_assessment": session.scalar(select(func.count()).select_from(CaseAssessment)),
             "inspection_outcome": session.scalar(select(func.count()).select_from(InspectionOutcome)),

@@ -1,0 +1,18 @@
+{
+  "schema_version": "c5e-evaluation-scope-document-projection/v1",
+  "status": "SCALAR_PROJECTION_CONTRACT_READY",
+  "semantic_owner": "backend/app/domain/evaluation_scope_document_projection.py",
+  "source_evidence": "active RecordForm.frm branches captured by c5e_evaluation_scope_document_mapping audit",
+  "compact_summary_reuse_authorized": false,
+  "historical_prose_oracle_authorized": false,
+  "unkeyed_entries_semantic_input_authorized": false,
+  "branch_contract_count": 9,
+  "branch_contract_mismatches": [],
+  "blockers": [],
+  "deferred_separate_path": {
+    "name": "Input_DC_to_CC certificate detail",
+    "status": "NOT_IMPLEMENTED_IN_SCALAR_CONTRACT",
+    "compact_summary_substitution_authorized": false
+  },
+  "next_safe_slice": "integrate scalar projection into document payload resolution per family while keeping Input_DC_to_CC certificate detail separate"
+}

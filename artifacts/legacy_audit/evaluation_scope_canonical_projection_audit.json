@@ -1,0 +1,154 @@
+{
+  "schema_version": "evaluation-scope-canonical-projection-audit/v1",
+  "renderer_contract": "canonical_projection/v1-not-vba-fidelity",
+  "structured_records": 677,
+  "counts": {
+    "custom_descriptions": 4906,
+    "empty_generated_line": 22,
+    "missing_custom_descriptions": 4282,
+    "records": 677,
+    "renderer_punctuation": 8,
+    "selected_nodes": 9762,
+    "structural_only_nodes": 21,
+    "unkeyed_entries": 903
+  },
+  "per_gxp": {
+    "GLP": {
+      "custom_descriptions": 61,
+      "records": 40,
+      "selected_nodes": 1508
+    },
+    "GMP": {
+      "custom_descriptions": 4845,
+      "empty_generated_line": 22,
+      "records": 637,
+      "renderer_punctuation": 8,
+      "selected_nodes": 8254,
+      "structural_only_nodes": 21
+    }
+  },
+  "representative_findings": [
+    {
+      "legacy_inspection_id": "17",
+      "gxp_type": "GMP",
+      "category": "missing_custom_description",
+      "node_key": "2.1.8"
+    },
+    {
+      "legacy_inspection_id": "17",
+      "gxp_type": "GMP",
+      "category": "missing_custom_description",
+      "node_key": "2.1.13"
+    },
+    {
+      "legacy_inspection_id": "17",
+      "gxp_type": "GMP",
+      "category": "missing_custom_description",
+      "node_key": "6.1.1"
+    },
+    {
+      "legacy_inspection_id": "17",
+      "gxp_type": "GMP",
+      "category": "missing_custom_description",
+      "node_key": "6.2.1"
+    },
+    {
+      "legacy_inspection_id": "115",
+      "gxp_type": "GMP",
+      "category": "missing_custom_description",
+      "node_key": "2.1.6"
+    },
+    {
+      "legacy_inspection_id": "115",
+      "gxp_type": "GMP",
+      "category": "missing_custom_description",
+      "node_key": "2.1.8"
+    },
+    {
+      "legacy_inspection_id": "115",
+      "gxp_type": "GMP",
+      "category": "missing_custom_description",
+      "node_key": "2.1.13"
+    },
+    {
+      "legacy_inspection_id": "115",
+      "gxp_type": "GMP",
+      "category": "missing_custom_description",
+      "node_key": "6.1.1"
+    },
+    {
+      "legacy_inspection_id": "115",
+      "gxp_type": "GMP",
+      "category": "missing_custom_description",
+      "node_key": "6.2.1"
+    },
+    {
+      "legacy_inspection_id": "180",
+      "gxp_type": "GMP",
+      "category": "missing_custom_description",
+      "node_key": "2.1.8"
+    },
+    {
+      "legacy_inspection_id": "180",
+      "gxp_type": "GMP",
+      "category": "missing_custom_description",
+      "node_key": "2.1.13"
+    },
+    {
+      "legacy_inspection_id": "220",
+      "gxp_type": "GMP",
+      "category": "missing_custom_description",
+      "node_key": "2.1.1"
+    },
+    {
+      "legacy_inspection_id": "220",
+      "gxp_type": "GMP",
+      "category": "missing_custom_description",
+      "node_key": "2.1.5"
+    },
+    {
+      "legacy_inspection_id": "220",
+      "gxp_type": "GMP",
+      "category": "missing_custom_description",
+      "node_key": "2.1.8"
+    },
+    {
+      "legacy_inspection_id": "220",
+      "gxp_type": "GMP",
+      "category": "missing_custom_description",
+      "node_key": "2.1.13"
+    },
+    {
+      "legacy_inspection_id": "220",
+      "gxp_type": "GMP",
+      "category": "missing_custom_description",
+      "node_key": "6.1.1"
+    },
+    {
+      "legacy_inspection_id": "220",
+      "gxp_type": "GMP",
+      "category": "missing_custom_description",
+      "node_key": "6.2.1"
+    },
+    {
+      "legacy_inspection_id": "245",
+      "gxp_type": "GMP",
+      "category": "missing_custom_description",
+      "node_key": "1.1.6"
+    },
+    {
+      "legacy_inspection_id": "245",
+      "gxp_type": "GMP",
+      "category": "missing_custom_description",
+      "node_key": "1.2.3"
+    },
+    {
+      "legacy_inspection_id": "245",
+      "gxp_type": "GMP",
+      "category": "missing_custom_description",
+      "node_key": "2.1.6"
+    }
+  ],
+  "snapshot_sha256": "b3bde05963e4e4d14d5b244e7c62b0f810f1cbbe206750574def6a366bdf7296",
+  "taxonomy_sha256": "ce2781832d33ca73330851828e5437b0cb716b8e4fa34dc5a52779cf70f5cc47"
+}

@@ -7,7 +7,9 @@ from hashlib import sha256
 import json
 from pathlib import Path
 import re
+import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from backend.app.domain.evaluation_scope import parse_legacy_evaluation_scope, render_evaluation_scope_summary
 
 

@@ -41,16 +41,16 @@ def _seed_scope(session: Session, *, classification: str = "STRUCTURED_VALID", s
     site = Site(company_id=company.id, site_name="Scope site")
     session.add(site)
     session.flush()
-    case = Case(site_id=site.id, gxp_type="GMP", scope_code="A", state=state, inspection_type="Định kỳ")
+    case = Case(site_id=site.id, gxp_type="GLP", scope_code="A", state=state, inspection_type="Định kỳ")
     session.add(case)
     version = EvaluationScopeTaxonomyVersion(taxonomy_content_sha256="a" * 64, source_workbook_sha256="b" * 64, schema_version="evaluation-scope-taxonomy/v1")
     session.add(version)
     session.flush()
-    root = EvaluationScopeTaxonomyNode(taxonomy_version_id=version.id, gxp_type="GMP", source_name="PVCN_GMP", node_key="1", description="Root", hint="Root hint", main_topic="MAIN", short_render="Root", no_expand=None, source_order=1, source_excel_row=4)
+    root = EvaluationScopeTaxonomyNode(taxonomy_version_id=version.id, gxp_type="GLP", source_name="PVCN_GLP", node_key="1", description="Root", hint="Root hint", main_topic="MAIN", short_render="Root", no_expand=None, source_order=1, source_excel_row=4)
     session.add(root)
     session.flush()
-    child = EvaluationScopeTaxonomyNode(taxonomy_version_id=version.id, parent_node_id=root.id, gxp_type="GMP", source_name="PVCN_GMP", node_key="1.1", description="Child", hint=None, main_topic=None, short_render="Child $$", no_expand=None, source_order=2, source_excel_row=5)
-    foreign = EvaluationScopeTaxonomyNode(taxonomy_version_id=version.id, gxp_type="GLP", source_name="PVCN_GLP", node_key="1", description="Foreign", hint=None, main_topic=None, short_render=None, no_expand=None, source_order=1, source_excel_row=124)
+    child = EvaluationScopeTaxonomyNode(taxonomy_version_id=version.id, parent_node_id=root.id, gxp_type="GLP", source_name="PVCN_GLP", node_key="1.1", description="Child", hint=None, main_topic=None, short_render="Child $$", no_expand=None, source_order=2, source_excel_row=5)
+    foreign = EvaluationScopeTaxonomyNode(taxonomy_version_id=version.id, gxp_type="GMP", source_name="PVCN_GMP", node_key="1", description="Foreign", hint=None, main_topic=None, short_render=None, no_expand=None, source_order=1, source_excel_row=124)
     session.add_all([child, foreign])
     session.flush()
     scope = CaseEvaluationScope(case_id=case.id, taxonomy_version_id=None if classification == "PROSE_ONLY" else version.id, source_classification=classification, raw_legacy_value="{1.1: legacy}*", rendered_prose="Văn bản lịch sử" if classification == "PROSE_ONLY" else None, limitation_text="Giới hạn cũ")
@@ -89,6 +89,7 @@ def test_case_workspace_projects_structured_scope_exactly_and_locks_unkeyed_entr
     assert scope["blocks"][0]["unkeyed_entries"] == [{"source_order": 2, "text": "Mục lịch sử chưa gắn khóa"}]
     assert scope["summary_source"] == "canonical_projection"
     assert "« Khối một » (Ghi chú một)" in scope["summary_text"]
+    assert "Mục lịch sử chưa gắn khóa" not in scope["summary_text"]
 
 
 def test_case_workspace_projects_prose_only_as_read_only_without_tree_inference():
@@ -198,7 +199,7 @@ def test_reassessment_copies_exact_scope_snapshot_without_certificate_dependency
     with Session(engine) as session:
         seeded = _seed_scope(session, state=CaseState.CERTIFIED, unkeyed=True)
     with Session(engine) as session:
-        created = service.create_inspection_case(session, site_id=seeded["site_id"], gxp_type="GMP", line_code="A", applicable_standard="WHO-GMP", reason="Tái đánh giá", user=_user(), source_case_id=seeded["case_id"])
+        created = service.create_inspection_case(session, site_id=seeded["site_id"], gxp_type="GLP", line_code="A", applicable_standard="OECD-GLP", reason="Tái đánh giá", user=_user(), source_case_id=seeded["case_id"])
         session.commit()
         copied = session.scalar(select(CaseEvaluationScope).where(CaseEvaluationScope.case_id == created["case_id"]))
         assert copied is not None and copied.id != seeded["scope_id"] and copied.taxonomy_version_id == seeded["version_id"]
@@ -220,7 +221,7 @@ def test_reassessment_carries_prose_only_scope_as_prose_without_synthesizing_nod
     with Session(engine) as session:
         seeded = _seed_scope(session, classification="PROSE_ONLY", state=CaseState.CERTIFIED)
     with Session(engine) as session:
-        created = service.create_inspection_case(session, site_id=seeded["site_id"], gxp_type="GMP", line_code="A", applicable_standard="WHO-GMP", reason=None, user=_user(), source_case_id=seeded["case_id"])
+        created = service.create_inspection_case(session, site_id=seeded["site_id"], gxp_type="GLP", line_code="A", applicable_standard="OECD-GLP", reason=None, user=_user(), source_case_id=seeded["case_id"])
         session.commit()
         copied = session.scalar(select(CaseEvaluationScope).where(CaseEvaluationScope.case_id == created["case_id"]))
         assert copied is not None

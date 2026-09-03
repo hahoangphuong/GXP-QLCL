@@ -10,7 +10,7 @@ from sqlalchemy import and_, cast, func, or_, select, String, union_all
 from sqlalchemy.orm import Session, aliased
 
 from backend.app.auth import AuthenticatedUser
-from backend.app.domain.evaluation_scope import render_evaluation_scope_summary
+from backend.app.domain.evaluation_scope_vba_renderer import compile_vba_readable_scope
 from backend.app.db.enums import CaseState, ChangeRequestState
 from backend.app.document.contextual_actions import (
     build_case_contextual_document_specs,
@@ -187,6 +187,7 @@ class CatalogReadService:
                 for row in rows
             ]
 
+        node_key_by_id = {str(node["id"]): str(node["key"]) for node in nodes}
         prose_only = scope.source_classification == "PROSE_ONLY"
         serialized_blocks = [
             {
@@ -206,7 +207,21 @@ class CatalogReadService:
         summary_text = (
             scope.rendered_prose
             if summary_source in {"historical_prose", "legacy_rendered_prose"}
-            else render_evaluation_scope_summary(blocks=serialized_blocks, taxonomy_nodes=nodes, limitation_text=scope.limitation_text)
+            else compile_vba_readable_scope(
+                blocks=[
+                    {
+                        **block,
+                        "selections": [
+                            {**selection, "key": node_key_by_id[str(selection["taxonomy_node_id"])]}
+                            for selection in block["selections"]
+                        ],
+                    }
+                    for block in serialized_blocks
+                ],
+                taxonomy_nodes=nodes,
+                limitation_text=scope.limitation_text,
+                gxp_type=case.gxp_type,
+            ).text
         )
         has_unkeyed_entries = any(unkeyed_by_block.values())
         read_only_reason = (

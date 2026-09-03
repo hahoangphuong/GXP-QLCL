@@ -614,14 +614,132 @@ Primary source references used in this contract:
 - `backend/app/db/models/phase1.py :: EvaluationScopeTaxonomy* / CaseEvaluationScope*`
 - `artifacts/legacy_snapshot/evaluation_scope_taxonomy.json :: taxonomy_availability`
 
-## 18. Open questions intentionally deferred
+## 18. C.5d.2c readiness clarifications proven after the initial port
 
-The following are intentionally **not** filled from inference:
+The following contracts were closed by source-derived renderer work and the
+subsequent corpus/taxonomy audits.  They are part of the current specification,
+not inferences from historical prose or from the old Python renderer.
 
-1. whether any other active caller enables `VietGop_PVCN_GMP` in a production path;
-2. whether unkeyed rows should appear in the new application's compact summary despite VBA core compilation skipping them;
-3. exact semantic-key mapping for every GMP positional row constant across taxonomy versions;
-4. GDP compilation behavior until a real `PVCN_GDP` taxonomy source is supplied;
-5. document-specific mappings (`Daychuyen`, `GhPviDG`, `GhPviCN`, `GioiHanPvi`) until the C.5e VBA/document-builder audit is performed.
+### 18.1 Explicit product correction over legacy `PV_Incl_Pos`
 
-These items must remain explicit gates, not be resolved by convenience or by current Python output.
+The active legacy GMP post-processing routines
+`VietChitiet_PVDG_GMP` / `VietChitiet_PVXX_GMP` locate taxonomy keys
+inside compiled parenthesized detail lists through `PV_Incl_Pos`.
+
+Legacy `PV_Incl_Pos` did not match the first key when it began immediately
+after `"("`.  The product intentionally corrects that legacy defect.  For
+example:
+
+```text
+* Xuất xưởng thuốc vô trùng (1.1; 1.2).
+```
+
+must become:
+
+```text
+* Xuất xưởng thuốc vô trùng (Thuốc sản xuất vô trùng; Thuốc tiệt trùng cuối).
+```
+
+Both keys are expanded.  This is the one documented product correction over
+the source VBA behavior and must not be removed in the name of literal fidelity.
+The renderer records the first expansion with
+`matched_after_open_parenthesis = true`, preserving forward provenance.
+
+### 18.2 Active `GetData` beta/Lactam normalization
+
+Before persistence, `DCForm.GetData` normalizes the composed scope string in
+this order:
+
+1. case-insensitive `beta` -> `β`;
+2. case-insensitive `lactam` -> `Lactam`;
+3. `" Lactam"` -> `"-Lactam"`.
+
+The VBA-derived renderer performs this same ordered normalization on owned
+output characters and records it as forward provenance.  Corpus coverage is
+therefore evidence for the active `GetData` path rather than a historical-prose
+repair rule.
+
+### 18.3 Unkeyed entries: legacy items skipped by design
+
+Project-owner policy is explicit: all imported `unkeyed_entries` are **legacy
+items deliberately marked with a leading `-` so they are skipped**. They are
+not unresolved taxonomy content and must not be brought back by the new
+renderer.
+
+For controlled cutover the contract is therefore:
+
+- classify them as `LEGACY_SKIPPED_BY_DESIGN`;
+- never append them to readable output;
+- never infer/recover a taxonomy key for them by substring, regex, fuzzy match,
+  or any other rescue mechanism;
+- never use their text as semantic input to reconstruct a structured summary;
+- their presence in imported storage is **not a cutover blocker**;
+- existing persistence may retain them as legacy evidence, but retention does
+  not authorize rendering or semantic resurrection;
+- any current read-only/fail-closed mutation guard is an implementation detail,
+  not a requirement to treat these rows as unresolved semantics.
+
+The corpus count (currently 903) remains useful only as accounting evidence: the
+readiness gate must prove that the full legacy population is recognized and
+uniformly skipped. It must not divide the rows into content categories in a way
+that could later justify rendering some of them.
+
+This policy is intentionally stronger than merely observing that active VBA
+`Compile_PVCN` skips blank-key nodes: it records the project owner's data intent
+so future maintenance cannot accidentally re-key or resurrect these legacy
+items.
+
+### 18.4 GDP, GMPbb, and `PROSE_ONLY`
+
+`GDP` remains fail-closed while `PVCN_GDP` is unavailable in the extracted
+source taxonomy.  No other family may be substituted for it.
+
+`GMPbb` is a distinct prose-only legacy family and must never be aliased to
+`GMP` merely to obtain taxonomy compilation.
+
+Application records classified `PROSE_ONLY` remain read-only historical prose.
+They bypass the structured renderer entirely.  A renderer-owner cutover changes
+only the readable projection of eligible structured canonical aggregates; it
+does not rewrite imported historical evidence.
+
+### 18.5 Taxonomy and provenance closure
+
+The exhaustive taxonomy gate compiles every available `GMP`, `GLP`, and `GSP`
+taxonomy row with both blank and nonblank custom descriptions and also compiles
+each entire family in source order.  The corpus gate separately requires zero
+compile exceptions, zero deferred semantic-rule records, and zero span
+integrity failures.
+
+Consequently production cutover does not require reverse-provenance recovery.
+Ownership is generated forward by the same compiler that produces the text.
+
+### 18.6 Controlled production readable-summary cutover
+
+After the C.5d.2 readiness gate passed on the real Windows repository, the
+production read-time owner for eligible structured evaluation-scope summaries
+was switched in `CatalogReadService._serialize_evaluation_scope` from the old
+Python projection to `compile_vba_readable_scope`.
+
+The cutover adapter resolves each selected key from the current canonical
+`taxonomy_node_id`; `node_key_snapshot` remains historical evidence and is not
+the semantic owner. The external workspace payload is unchanged. `PROSE_ONLY`
+and import-era historical prose bypasses remain unchanged, and
+`unkeyed_entries` remain persisted legacy evidence only: they are never passed
+to the compiler and never appended to `summary_text`.
+
+The readiness audit is state-aware after this cutover. It accepts the original
+`PRE_CUTOVER_READY` state or the exact `CUTOVER_ACTIVE_VERIFIED` ownership
+state, and fails closed on mixed/unknown ownership.
+
+## 19. Open questions intentionally deferred beyond the summary-renderer cutover
+
+The following remain intentionally **not** filled from inference:
+
+1. whether any other active caller outside the audited `DCForm.GetData` compile
+   path enables `VietGop_PVCN_GMP`;
+2. GDP compilation behavior until a real `PVCN_GDP` taxonomy source is supplied;
+3. document-specific mappings (`Daychuyen`, `GhPviDG`, `GhPviCN`, `GioiHanPvi`)
+   until the C.5e VBA/document-builder audit is performed.
+
+These questions do not authorize renderer fallback or family aliasing.  They
+remain fail-closed boundaries for the scopes they affect.

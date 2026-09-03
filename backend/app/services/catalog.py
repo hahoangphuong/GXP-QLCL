@@ -210,7 +210,10 @@ class CatalogReadService:
             else compile_vba_readable_scope(
                 blocks=[
                     {
-                        **block,
+                        "id": block["id"],
+                        "ordinal": block["ordinal"],
+                        "name": block["name"],
+                        "note": block["note"],
                         "selections": [
                             {**selection, "key": node_key_by_id[str(selection["taxonomy_node_id"])]}
                             for selection in block["selections"]

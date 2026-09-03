@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import HTTPException
+from types import SimpleNamespace
 import pytest
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
@@ -90,6 +91,40 @@ def test_case_workspace_projects_structured_scope_exactly_and_locks_unkeyed_entr
     assert scope["summary_source"] == "canonical_projection"
     assert "« Khối một » (Ghi chú một)" in scope["summary_text"]
     assert "Mục lịch sử chưa gắn khóa" not in scope["summary_text"]
+
+
+def test_case_workspace_never_passes_unkeyed_entries_to_vba_renderer(monkeypatch):
+    engine = _engine()
+    captured: dict[str, object] = {}
+
+    def fake_compile_vba_readable_scope(*, blocks, taxonomy_nodes, limitation_text, gxp_type):
+        captured["blocks"] = blocks
+        captured["taxonomy_nodes"] = taxonomy_nodes
+        captured["limitation_text"] = limitation_text
+        captured["gxp_type"] = gxp_type
+        return SimpleNamespace(text="Compiled without legacy unkeyed input")
+
+    monkeypatch.setattr(
+        "backend.app.services.catalog.compile_vba_readable_scope",
+        fake_compile_vba_readable_scope,
+    )
+
+    with Session(engine) as session:
+        seeded = _seed_scope(session, unkeyed=True)
+    with Session(engine) as session:
+        payload = CatalogReadService().get_case_workspace(
+            session, case_id=seeded["case_id"], user=_user()
+        )
+
+    scope = payload["evaluation_scope"]
+    assert scope["blocks"][0]["unkeyed_entries"] == [
+        {"source_order": 2, "text": "Mục lịch sử chưa gắn khóa"}
+    ]
+    assert scope["summary_text"] == "Compiled without legacy unkeyed input"
+    compiler_blocks = captured["blocks"]
+    assert isinstance(compiler_blocks, list)
+    assert compiler_blocks
+    assert all("unkeyed_entries" not in block for block in compiler_blocks)
 
 
 def test_case_workspace_projects_prose_only_as_read_only_without_tree_inference():

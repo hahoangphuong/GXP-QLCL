@@ -1,0 +1,28 @@
+{
+  "schema_version": "evaluation-scope-shadow-node-parity/v1",
+  "snapshot_sha256": "b3bde05963e4e4d14d5b244e7c62b0f810f1cbbe206750574def6a366bdf7296",
+  "taxonomy_sha256": "ce2781832d33ca73330851828e5437b0cb716b8e4fa34dc5a52779cf70f5cc47",
+  "structured_records": 677,
+  "selected_node_occurrences": 9762,
+  "required_ancestor_occurrences": 5251,
+  "total_render_occurrences": 15013,
+  "unique_combinations": 1418,
+  "marker_distribution": {
+    "BLANK": 1699,
+    "CONTINUATIONDOLLAR_TEMPLATE": 9098,
+    "DOLLAR_TEMPLATE": 4216
+  },
+  "custom_description_disposition": {
+    "NOT_APPLICABLE": 8412,
+    "STRUCTURAL_ONLY": 1699,
+    "TEMPLATE_SUBSTITUTED": 4902
+  },
+  "structural_only": 1699,
+  "text_mismatches": 0,
+  "continuation_mismatches": 0,
+  "opens_group_mismatches": 0,
+  "ownership_failures": 0,
+  "span_integrity_failures": 0,
+  "unexpected_empty_spans": 0,
+  "bounded_findings": []
+}

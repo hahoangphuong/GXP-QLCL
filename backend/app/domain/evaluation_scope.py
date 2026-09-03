@@ -48,6 +48,15 @@ class EvaluationScopeRenderSpan:
     metadata: dict[str, Any] | None = None
 
 
+@dataclass(frozen=True)
+class EvaluationScopeShadowNodeResult:
+    spans: tuple[EvaluationScopeRenderSpan, ...]
+    continuation: bool
+    opens_group: bool
+    disposition: str
+    marker_family: str
+
+
 def finalize_evaluation_scope_spans(spans: Iterable[EvaluationScopeRenderSpan]) -> tuple[str, tuple[EvaluationScopeRenderSpan, ...]]:
     """Assign half-open Python-string offsets to one ordered owned-span stream."""
     finalized: list[EvaluationScopeRenderSpan] = []
@@ -98,6 +107,41 @@ def _canonical_node_text(short_render: str | None, custom_description: str) -> t
         source = f"{source} {custom}" if source.endswith((":", "(")) else f"{source}: {custom}"
     source = re.sub(r"[ \t]+", " ", source).strip()
     return source, continuation, source.endswith("(")
+
+
+def build_shadow_node_render_spans(node: dict[str, Any], custom_description: str, contribution_id: str) -> EvaluationScopeShadowNodeResult:
+    """Shadow B1 node composer; its concatenation is frozen to current helper output."""
+    text, continuation, opens_group = _canonical_node_text(node.get("short_render"), custom_description)
+    raw = str(node.get("short_render") or "")
+    custom = custom_description.strip()
+    # `_canonical_node_text` normalizes horizontal whitespace after inserting
+    # the custom value.  The span must use that rendered slice while retaining
+    # the custom-description source ownership.
+    rendered_custom = re.sub(r"[ \t]+", " ", custom).strip()
+    marker_family = ("<" if raw.strip().startswith("<") else "") + ("&" if raw.strip().lstrip("<").startswith("&") else "") + ("$$" if "$$" in raw else "")
+    metadata = {"raw_short_render": raw, "marker_family": marker_family}
+    if not text:
+        return EvaluationScopeShadowNodeResult((), continuation, opens_group, "STRUCTURAL_ONLY", marker_family)
+    spans: list[EvaluationScopeRenderSpan] = []
+    if rendered_custom and "$$" in raw:
+        custom_start = text.find(rendered_custom)
+        prefix = text[:custom_start]
+        if prefix: spans.append(EvaluationScopeRenderSpan("SOURCE_TAXONOMY", prefix, "source", contribution_id, metadata={"source_field":"short_render","transformation_kind":"marker_cleanup"}))
+        spans.append(EvaluationScopeRenderSpan("SOURCE_CUSTOM_DESCRIPTION", rendered_custom, "source", contribution_id, metadata={"source_field":"custom_description", "transformation_kind":"whitespace_normalization"}))
+        remainder = text[custom_start + len(rendered_custom):]
+        if remainder: spans.append(EvaluationScopeRenderSpan("SOURCE_TAXONOMY", remainder, "source", contribution_id, metadata={"source_field":"short_render","transformation_kind":"marker_cleanup"}))
+    elif rendered_custom and text.endswith(rendered_custom):
+        prefix = text[:-len(rendered_custom)]
+        separator = ": " if prefix.endswith(": ") else " " if prefix.endswith(" ") else ""
+        taxonomy = prefix[:-len(separator)] if separator else prefix
+        if taxonomy: spans.append(EvaluationScopeRenderSpan("SOURCE_TAXONOMY", taxonomy, "source", contribution_id, metadata={"source_field":"short_render"}))
+        if separator: spans.append(EvaluationScopeRenderSpan("RENDERER_SEPARATOR", separator, "renderer", contribution_id))
+        spans.append(EvaluationScopeRenderSpan("SOURCE_CUSTOM_DESCRIPTION", rendered_custom, "source", contribution_id, metadata={"source_field":"custom_description", "transformation_kind":"whitespace_normalization"}))
+    else:
+        spans.append(EvaluationScopeRenderSpan("SOURCE_TAXONOMY", text, "source", contribution_id, metadata={"source_field":"short_render"}))
+    final_text, finalized = finalize_evaluation_scope_spans(spans)
+    if final_text != text: raise ValueError("Shadow node span parity failure.")
+    return EvaluationScopeShadowNodeResult(finalized, continuation, opens_group, "VISIBLE", marker_family)
 
 
 def _finish_canonical_line(value: str) -> str:

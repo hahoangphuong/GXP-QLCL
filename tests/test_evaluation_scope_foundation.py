@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from backend.app.domain.evaluation_scope import (
     EvaluationScopeRenderSpan,
+    build_shadow_node_render_spans,
     build_taxonomy_artifact,
     classify_scope_corpus,
     parse_legacy_evaluation_scope,
@@ -11,6 +12,29 @@ from backend.app.domain.evaluation_scope import (
     validate_evaluation_scope_spans,
     validate_taxonomy_artifact,
 )
+
+
+def test_shadow_node_spans_match_current_marker_helper():
+    from backend.app.domain.evaluation_scope import _canonical_node_text
+    cases = [
+        ("Thuốc", ""), ("Thuốc", "Viên nén"), ("Thuốc $$ dạng", "Viên nén"),
+        ("<Thuốc ($$)", "Viên nén"), ("&Thuốc", "Viên nén"), ("", "Metadata"),
+        ("<Thuốc ($$)", "Viên  nén\tbao phim"),
+    ]
+    for short_render, custom in cases:
+        expected, continuation, opens_group = _canonical_node_text(short_render, custom)
+        result = build_shadow_node_render_spans({"short_render": short_render}, custom, "selected:1:node")
+        assert "".join(span.text for span in result.spans) == expected
+        assert result.continuation is continuation
+        assert result.opens_group is opens_group
+    structural = build_shadow_node_render_spans({"short_render": ""}, "Metadata", "selected:1:node")
+    assert structural.spans == () and structural.disposition == "STRUCTURAL_ONLY"
+    appended = build_shadow_node_render_spans({"short_render": "Thuốc"}, "Viên nén", "selected:1:node")
+    assert [span.kind for span in appended.spans] == ["SOURCE_TAXONOMY", "RENDERER_SEPARATOR", "SOURCE_CUSTOM_DESCRIPTION"]
+    templated = build_shadow_node_render_spans({"short_render": "<Thuốc ($$)"}, "Viên nén", "selected:1:node")
+    assert [span.kind for span in templated.spans] == ["SOURCE_TAXONOMY", "SOURCE_CUSTOM_DESCRIPTION", "SOURCE_TAXONOMY"]
+    assert [span.owner_type for span in templated.spans] == ["source", "source", "source"]
+    assert templated.marker_family == "<$$"
 
 
 def test_owned_span_finalizer_uses_contiguous_half_open_unicode_offsets():

@@ -543,3 +543,327 @@ def compile_vba_scope_core(
         contributions=tuple(contributions),
         deferred_rules=deferred,
     )
+
+
+@dataclass(frozen=True)
+class VbaBlockCompileResult:
+    """Source-faithful projection of ``DCForm.Get_DC_Name_Desc`` for one block."""
+
+    text: str
+    spans: tuple[EvaluationScopeRenderSpan, ...]
+    contributions: tuple[dict[str, Any], ...]
+    core: VbaScopeCompileResult
+
+
+@dataclass(frozen=True)
+class VbaReadableScopeResult:
+    """Human-readable multi-block projection plus the optional VBA limitation line."""
+
+    text: str
+    spans: tuple[EvaluationScopeRenderSpan, ...]
+    blocks: tuple[VbaBlockCompileResult, ...]
+    contributions: tuple[dict[str, Any], ...]
+    deferred_rules: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class VbaNewFormatEnvelopeResult:
+    """Exact outer ``GetData`` new-format envelope when raw block payloads are supplied."""
+
+    text: str
+    readable: VbaReadableScopeResult
+    structured_payload: str
+
+
+def _extend_span_chars(target: list[_OwnedChar], spans: Sequence[EvaluationScopeRenderSpan]) -> None:
+    """Append already-owned span text without re-inferring source ownership."""
+    for span in spans:
+        target.extend(
+            _chars(
+                span.text,
+                kind=span.kind,
+                owner_type=span.owner_type,
+                contribution_id=span.contribution_id,
+                metadata=span.metadata,
+            )
+        )
+
+
+def compile_vba_block(
+    *,
+    ordinal: int,
+    name: str | None,
+    note: str | None,
+    selections: Iterable[dict[str, Any]],
+    taxonomy_nodes: Iterable[dict[str, Any]],
+    gxp_type: str | None = None,
+) -> VbaBlockCompileResult:
+    """Port the human-readable part of ``DCForm.Get_DC_Name_Desc``.
+
+    Canonical persistence has already parsed the ``¶`` and ``¿`` delimiters, so
+    this function accepts ``name`` and ``note`` directly.  The emitted text is
+    nevertheless the VBA text, including its unusual leading space when a note
+    exists without a block name.
+    """
+    block_ordinal = int(ordinal)
+    core = compile_vba_scope_core(
+        selections=selections,
+        taxonomy_nodes=taxonomy_nodes,
+        block_ordinal=block_ordinal,
+        gxp_type=gxp_type,
+    )
+    chars: list[_OwnedChar] = []
+    contributions: list[dict[str, Any]] = list(core.contributions)
+    block_name = "" if name is None else str(name)
+    block_note = "" if note is None else str(note)
+
+    header_present = False
+    if block_name != "":
+        contribution_id = f"block-name:{block_ordinal}"
+        chars.extend(
+            _chars(
+                "« ",
+                kind="VBA_BLOCK_HEADER_DECORATION",
+                owner_type="renderer",
+                contribution_id=contribution_id,
+                metadata={"vba_operation": "Get_DC_Name_Desc name prefix"},
+            )
+        )
+        chars.extend(
+            _chars(
+                block_name,
+                kind="SOURCE_BLOCK_NAME",
+                owner_type="source",
+                contribution_id=contribution_id,
+                metadata={"source_field": "block.name", "vba_delimiter": "¶"},
+            )
+        )
+        chars.extend(
+            _chars(
+                " »",
+                kind="VBA_BLOCK_HEADER_DECORATION",
+                owner_type="renderer",
+                contribution_id=contribution_id,
+                metadata={"vba_operation": "Get_DC_Name_Desc name suffix"},
+            )
+        )
+        contributions.append(
+            {"contribution_id": contribution_id, "role": "block_name", "block_ordinal": block_ordinal, "visible": True}
+        )
+        header_present = True
+
+    if block_note != "":
+        contribution_id = f"block-note:{block_ordinal}"
+        # VBA always prefixes the note with one literal space, even when there
+        # is no block name: IIf(note <> "", " (" & note & ")", "").
+        chars.extend(
+            _chars(
+                " (",
+                kind="VBA_BLOCK_NOTE_DECORATION",
+                owner_type="renderer",
+                contribution_id=contribution_id,
+                metadata={"vba_operation": "Get_DC_Name_Desc note prefix"},
+            )
+        )
+        chars.extend(
+            _chars(
+                block_note,
+                kind="SOURCE_BLOCK_NOTE",
+                owner_type="source",
+                contribution_id=contribution_id,
+                metadata={"source_field": "block.note", "vba_delimiter": "¿"},
+            )
+        )
+        chars.extend(
+            _chars(
+                ")",
+                kind="VBA_BLOCK_NOTE_DECORATION",
+                owner_type="renderer",
+                contribution_id=contribution_id,
+                metadata={"vba_operation": "Get_DC_Name_Desc note suffix"},
+            )
+        )
+        contributions.append(
+            {"contribution_id": contribution_id, "role": "block_note", "block_ordinal": block_ordinal, "visible": True}
+        )
+        header_present = True
+
+    if header_present:
+        chars.extend(
+            _chars(
+                "\r\n",
+                kind="VBA_RENDERER_LINE_BREAK",
+                owner_type="renderer",
+                contribution_id=f"block-header-break:{block_ordinal}",
+                metadata={"vba_operation": "Get_DC_Name_Desc header vbCrLf"},
+            )
+        )
+    _extend_span_chars(chars, core.spans)
+    text, spans = _result_from_chars(chars)
+    return VbaBlockCompileResult(
+        text=text,
+        spans=spans,
+        contributions=tuple(contributions),
+        core=core,
+    )
+
+
+def compile_vba_readable_scope(
+    *,
+    blocks: Iterable[dict[str, Any]],
+    taxonomy_nodes: Iterable[dict[str, Any]],
+    limitation_text: str | None = None,
+    gxp_type: str | None = None,
+) -> VbaReadableScopeResult:
+    """Port ``SplitDC``/``Get_DC_Name_Desc`` + readable ``GetData`` composition.
+
+    The block order is the persisted ``ordinal`` order.  Exactly one ``vbCrLf``
+    is inserted between compiled blocks, matching ``Join(iDC_Comp, vbCrLf)``.
+    A nonblank limitation is then appended as ``vbCrLf & \"(*...*)\"``.
+
+    This function intentionally stops before the ``{...}*`` structured suffix;
+    use :func:`compile_vba_new_format_envelope` only when the original per-block
+    serialized values are available.
+    """
+    taxonomy = tuple(dict(node) for node in taxonomy_nodes)
+    ordered_blocks = sorted(
+        (dict(block) for block in blocks),
+        key=lambda row: (int(row.get("ordinal") or 0), str(row.get("id") or "")),
+    )
+    compiled_blocks: list[VbaBlockCompileResult] = []
+    chars: list[_OwnedChar] = []
+    contributions: list[dict[str, Any]] = []
+    deferred: list[str] = []
+
+    for index, block in enumerate(ordered_blocks):
+        ordinal = int(block.get("ordinal") or index + 1)
+        compiled = compile_vba_block(
+            ordinal=ordinal,
+            name=block.get("name"),
+            note=block.get("note"),
+            selections=block.get("selections") or (),
+            taxonomy_nodes=taxonomy,
+            gxp_type=gxp_type,
+        )
+        if index:
+            chars.extend(
+                _chars(
+                    "\r\n",
+                    kind="VBA_RENDERER_BLOCK_SEPARATOR",
+                    owner_type="renderer",
+                    contribution_id=f"block-separator:{ordinal}",
+                    metadata={"vba_operation": "GetData Join(iDC_Comp, vbCrLf)"},
+                )
+            )
+        _extend_span_chars(chars, compiled.spans)
+        compiled_blocks.append(compiled)
+        contributions.extend(compiled.contributions)
+        for rule in compiled.core.deferred_rules:
+            if rule not in deferred:
+                deferred.append(rule)
+
+    raw_limitation = "" if limitation_text is None else str(limitation_text)
+    if raw_limitation.strip() != "":
+        if chars:
+            chars.extend(
+                _chars(
+                    "\r\n",
+                    kind="VBA_RENDERER_LINE_BREAK",
+                    owner_type="renderer",
+                    contribution_id="limitation:break",
+                    metadata={"vba_operation": "GetData limitation vbCrLf"},
+                )
+            )
+        contribution_id = "limitation"
+        chars.extend(
+            _chars(
+                "(*",
+                kind="VBA_LIMITATION_DECORATION",
+                owner_type="renderer",
+                contribution_id=contribution_id,
+                metadata={"vba_operation": "GetData limitation prefix"},
+            )
+        )
+        chars.extend(
+            _chars(
+                raw_limitation,
+                kind="SOURCE_LIMITATION",
+                owner_type="source",
+                contribution_id=contribution_id,
+                metadata={"source_field": "limitation_text"},
+            )
+        )
+        chars.extend(
+            _chars(
+                "*)",
+                kind="VBA_LIMITATION_DECORATION",
+                owner_type="renderer",
+                contribution_id=contribution_id,
+                metadata={"vba_operation": "GetData limitation suffix"},
+            )
+        )
+        contributions.append({"contribution_id": contribution_id, "role": "limitation", "visible": True})
+
+    text, spans = _result_from_chars(chars)
+    return VbaReadableScopeResult(
+        text=text,
+        spans=spans,
+        blocks=tuple(compiled_blocks),
+        contributions=tuple(contributions),
+        deferred_rules=tuple(deferred),
+    )
+
+
+def _vba_getdata_normalize(value: str) -> str:
+    """Port the three case-insensitive normalization calls at the end of GetData."""
+    import re
+
+    # VBA Trim removes leading/trailing ASCII spaces, not internal CR/LF.
+    result = value.strip(" ")
+    result = re.sub("beta", "β", result, flags=re.IGNORECASE)
+    result = re.sub("lactam", "Lactam", result, flags=re.IGNORECASE)
+    result = re.sub(" Lactam", "-Lactam", result, flags=re.IGNORECASE)
+    return result
+
+
+def compile_vba_new_format_envelope(
+    *,
+    blocks: Iterable[dict[str, Any]],
+    taxonomy_nodes: Iterable[dict[str, Any]],
+    limitation_text: str | None = None,
+    gxp_type: str | None = None,
+) -> VbaNewFormatEnvelopeResult:
+    """Port the ``New_Form`` branch of ``DCForm.GetData`` including ``{...}*``.
+
+    This helper deliberately fails closed unless every block supplies
+    ``raw_block_value``.  Reconstructing the serialized node payload from
+    selections would create a second persistence serializer and could alter
+    source ordering or delimiter details.  Canonical persistence already keeps
+    this exact legacy block value, so the faithful path is to reuse it.
+    """
+    materialized = tuple(dict(block) for block in blocks)
+    missing = [int(block.get("ordinal") or index + 1) for index, block in enumerate(materialized) if block.get("raw_block_value") is None]
+    if missing:
+        raise ValueError(
+            "VBA new-format envelope requires original raw_block_value for every block; "
+            f"missing ordinals: {missing}."
+        )
+
+    readable = compile_vba_readable_scope(
+        blocks=materialized,
+        taxonomy_nodes=taxonomy_nodes,
+        limitation_text=limitation_text,
+        gxp_type=gxp_type,
+    )
+    structured_payload = "§".join(str(block.get("raw_block_value") or "") for block in sorted(materialized, key=lambda row: (int(row.get("ordinal") or 0), str(row.get("id") or ""))))
+
+    # GetData first builds Join(iDC_Comp), conditionally appends limitation, then
+    # always inserts vbCrLf before the structured suffix.  readable.text already
+    # contains the first two pieces exactly.
+    envelope = readable.text + "\r\n{" + structured_payload + "}*"
+    envelope = _vba_getdata_normalize(envelope)
+    return VbaNewFormatEnvelopeResult(
+        text=envelope,
+        readable=readable,
+        structured_payload=structured_payload,
+    )

@@ -169,3 +169,130 @@ def test_compile_scope_core_fails_closed_when_required_taxonomy_ancestor_is_miss
         assert "Missing VBA taxonomy ancestor" in str(exc)
     else:
         raise AssertionError("VBA shadow compiler must fail closed on missing ancestors")
+
+
+def test_compile_vba_block_ports_name_note_header_and_get_dc_name_desc_linebreak():
+    from backend.app.domain.evaluation_scope_vba_renderer import compile_vba_block
+
+    taxonomy = _taxonomy(("1", "Nội dung"))
+    result = compile_vba_block(
+        ordinal=1,
+        name="Dây chuyền 1",
+        note="Ghi chú",
+        selections=[{"key": "1", "source_order": 1, "custom_description": ""}],
+        taxonomy_nodes=taxonomy,
+        gxp_type="GLP",
+    )
+    assert result.text == "« Dây chuyền 1 » (Ghi chú)\r\nNội dung."
+    assert any(span.kind == "SOURCE_BLOCK_NAME" and span.text == "Dây chuyền 1" for span in result.spans)
+    assert any(span.kind == "SOURCE_BLOCK_NOTE" and span.text == "Ghi chú" for span in result.spans)
+
+
+def test_compile_vba_block_preserves_vba_note_without_name_leading_space():
+    from backend.app.domain.evaluation_scope_vba_renderer import compile_vba_block
+
+    taxonomy = _taxonomy(("1", "Nội dung"))
+    result = compile_vba_block(
+        ordinal=1,
+        name="",
+        note="Ghi chú",
+        selections=[{"key": "1", "source_order": 1, "custom_description": ""}],
+        taxonomy_nodes=taxonomy,
+        gxp_type="GLP",
+    )
+    # Directly mirrors IIf(note <> "", " (" & note & ")", "") in VBA.
+    assert result.text == " (Ghi chú)\r\nNội dung."
+
+
+def test_compile_vba_readable_scope_joins_blocks_and_limitation_like_getdata():
+    from backend.app.domain.evaluation_scope_vba_renderer import compile_vba_readable_scope
+
+    taxonomy = _taxonomy(("1", "Một"), ("2", "Hai"))
+    result = compile_vba_readable_scope(
+        blocks=[
+            {"ordinal": 2, "name": "B", "note": "", "selections": [{"key": "2", "source_order": 1, "custom_description": ""}]},
+            {"ordinal": 1, "name": "A", "note": "N", "selections": [{"key": "1", "source_order": 1, "custom_description": ""}]},
+        ],
+        taxonomy_nodes=taxonomy,
+        limitation_text="Giới hạn",
+        gxp_type="GLP",
+    )
+    assert result.text == "« A » (N)\r\nMột.\r\n« B »\r\nHai.\r\n(*Giới hạn*)"
+    assert result.deferred_rules == ()
+    assert [block.core.text for block in result.blocks] == ["Một.", "Hai."]
+    assert any(span.kind == "SOURCE_LIMITATION" and span.text == "Giới hạn" for span in result.spans)
+
+
+def test_compile_vba_readable_scope_uses_raw_nonblank_limitation_after_trim_gate():
+    from backend.app.domain.evaluation_scope_vba_renderer import compile_vba_readable_scope
+
+    taxonomy = _taxonomy(("1", "Một"))
+    blank = compile_vba_readable_scope(
+        blocks=[{"ordinal": 1, "selections": [{"key": "1", "source_order": 1, "custom_description": ""}]}],
+        taxonomy_nodes=taxonomy,
+        limitation_text="   ",
+        gxp_type="GLP",
+    )
+    raw = compile_vba_readable_scope(
+        blocks=[{"ordinal": 1, "selections": [{"key": "1", "source_order": 1, "custom_description": ""}]}],
+        taxonomy_nodes=taxonomy,
+        limitation_text="  giữ khoảng trắng  ",
+        gxp_type="GLP",
+    )
+    assert blank.text == "Một."
+    assert raw.text == "Một.\r\n(*  giữ khoảng trắng  *)"
+
+
+def test_compile_vba_new_format_envelope_ports_structured_suffix_and_getdata_normalization():
+    from backend.app.domain.evaluation_scope_vba_renderer import compile_vba_new_format_envelope
+
+    taxonomy = _taxonomy(("1", "beta lactam"))
+    result = compile_vba_new_format_envelope(
+        blocks=[
+            {
+                "ordinal": 1,
+                "name": "",
+                "note": "",
+                "raw_block_value": "1: beta lactam",
+                "selections": [{"key": "1", "source_order": 1, "custom_description": ""}],
+            }
+        ],
+        taxonomy_nodes=taxonomy,
+        limitation_text=None,
+        gxp_type="GLP",
+    )
+    assert result.structured_payload == "1: beta lactam"
+    assert result.text == "β-Lactam.\r\n{1: β-Lactam}*"
+
+
+def test_compile_vba_new_format_envelope_preserves_section_delimiter_source_order():
+    from backend.app.domain.evaluation_scope_vba_renderer import compile_vba_new_format_envelope
+
+    taxonomy = _taxonomy(("1", "Một"), ("2", "Hai"))
+    result = compile_vba_new_format_envelope(
+        blocks=[
+            {"ordinal": 2, "raw_block_value": "B¶2: x¿n2", "selections": [{"key": "2", "source_order": 1, "custom_description": ""}]},
+            {"ordinal": 1, "raw_block_value": "A¶1: x¿n1", "selections": [{"key": "1", "source_order": 1, "custom_description": ""}]},
+        ],
+        taxonomy_nodes=taxonomy,
+        limitation_text="G",
+        gxp_type="GLP",
+    )
+    assert result.structured_payload == "A¶1: x¿n1§B¶2: x¿n2"
+    assert result.text.endswith("\r\n{A¶1: x¿n1§B¶2: x¿n2}*")
+
+
+def test_compile_vba_new_format_envelope_fails_closed_without_raw_block_value():
+    from backend.app.domain.evaluation_scope_vba_renderer import compile_vba_new_format_envelope
+
+    taxonomy = _taxonomy(("1", "Một"))
+    try:
+        compile_vba_new_format_envelope(
+            blocks=[{"ordinal": 1, "selections": [{"key": "1", "source_order": 1, "custom_description": ""}]}],
+            taxonomy_nodes=taxonomy,
+            gxp_type="GLP",
+        )
+    except ValueError as exc:
+        assert "raw_block_value" in str(exc)
+    else:
+        raise AssertionError("Envelope reconstruction must fail closed without original structured block data")

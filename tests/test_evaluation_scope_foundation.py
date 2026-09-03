@@ -1,13 +1,36 @@
 from __future__ import annotations
 
 from backend.app.domain.evaluation_scope import (
+    EvaluationScopeRenderSpan,
     build_taxonomy_artifact,
     classify_scope_corpus,
     parse_legacy_evaluation_scope,
     render_evaluation_scope_summary,
     taxonomy_content_hash,
+    finalize_evaluation_scope_spans,
+    validate_evaluation_scope_spans,
     validate_taxonomy_artifact,
 )
+
+
+def test_owned_span_finalizer_uses_contiguous_half_open_unicode_offsets():
+    text, spans = finalize_evaluation_scope_spans((
+        EvaluationScopeRenderSpan("SOURCE_TAXONOMY", "Thuốc", "source", "node:1"),
+        EvaluationScopeRenderSpan("RENDERER_SEPARATOR", ": ", "renderer", "node:1"),
+        EvaluationScopeRenderSpan("SOURCE_CUSTOM_DESCRIPTION", "viên nén", "source", "node:1"),
+        EvaluationScopeRenderSpan("RENDERER_LINE_BREAK", "\n", "renderer", "line:1"),
+    ))
+    assert text == "Thuốc: viên nén\n"
+    assert [(item.start_offset, item.end_offset) for item in spans] == [(0, 5), (5, 7), (7, 15), (15, 16)]
+    validate_evaluation_scope_spans(text, spans)
+
+
+def test_owned_span_finalizer_rejects_empty_and_invalid_offsets():
+    import pytest
+    with pytest.raises(ValueError, match="cannot be empty"):
+        finalize_evaluation_scope_spans((EvaluationScopeRenderSpan("SOURCE", "", "source", "x"),))
+    with pytest.raises(ValueError, match="Invalid"):
+        validate_evaluation_scope_spans("abc", (EvaluationScopeRenderSpan("SOURCE", "abc", "source", "x", 1, 4),))
 
 
 def test_canonical_projection_composes_parent_child_groups_blocks_and_limitation_cleanly():

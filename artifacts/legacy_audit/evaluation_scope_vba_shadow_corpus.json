@@ -1,0 +1,745 @@
+{
+  "schema_version": "evaluation-scope-vba-shadow-corpus/v1",
+  "contract": {
+    "semantic_owner": "legacy_vba_with_explicit_product_corrections",
+    "historical_prose_role": "history_diagnostic_not_oracle",
+    "current_python_renderer_role": "compatibility_reference_not_oracle",
+    "hard_failure_fields": [
+      "taxonomy_unavailable",
+      "compile_exceptions",
+      "deferred_rule_records",
+      "span_integrity_failures"
+    ],
+    "known_product_corrections": [
+      "expand_first_gmp_detail_key_immediately_after_open_parenthesis"
+    ],
+    "port_coverage": {
+      "core_compile_node_and_ancestors": "ported",
+      "group_and_continuation": "ported",
+      "block_name_note_limitation": "ported",
+      "multi_block_join": "ported",
+      "gmp_packaging_detail_expansion": "ported",
+      "gmp_batch_release_detail_expansion": "ported_with_explicit_product_correction",
+      "getdata_beta_lactam_normalization": "ported_with_forward_provenance",
+      "unkeyed_entries": "preserved_but_not_rendered_by_vba_core",
+      "historical_prose": "diagnostic_only"
+    }
+  },
+  "counts": {
+    "blocks": 717,
+    "first_key_product_correction_expansions": 0,
+    "getdata_text_normalization_replacements": 18,
+    "gmp_batch_release_expansions": 335,
+    "gmp_packaging_expansions": 1527,
+    "historical_vs_python_exact_equal": 15,
+    "historical_vs_python_exact_mismatch": 662,
+    "historical_vs_python_whitespace_only_mismatch": 0,
+    "historical_vs_vba_exact_equal": 0,
+    "historical_vs_vba_exact_mismatch": 677,
+    "historical_vs_vba_whitespace_only_mismatch": 0,
+    "python_vs_vba_exact_equal": 0,
+    "python_vs_vba_exact_mismatch": 677,
+    "python_vs_vba_whitespace_only_mismatch": 0,
+    "records_using_first_key_product_correction": 0,
+    "records_with_getdata_text_normalization": 14,
+    "selected_nodes": 9762,
+    "structured_records": 677,
+    "unkeyed_entries": 903
+  },
+  "hard_failures": {
+    "taxonomy_unavailable": 0,
+    "compile_exceptions": 0,
+    "deferred_rule_records": 0,
+    "span_integrity_failures": 0
+  },
+  "per_gxp": {
+    "GLP": {
+      "blocks": 40,
+      "structured_records": 40
+    },
+    "GMP": {
+      "blocks": 677,
+      "structured_records": 637
+    }
+  },
+  "similarity_buckets": {
+    "historical_vs_vba::0.80-0.95": 252,
+    "historical_vs_vba::0.95-0.99": 56,
+    "historical_vs_vba::0.99+": 101,
+    "historical_vs_vba::<0.80": 268,
+    "python_vs_vba::0.80-0.95": 429,
+    "python_vs_vba::0.95-0.99": 150,
+    "python_vs_vba::0.99+": 63,
+    "python_vs_vba::<0.80": 35
+  },
+  "mismatch_signal_counts": {
+    "historical_vs_vba::block_name": 24,
+    "historical_vs_vba::block_note": 8,
+    "historical_vs_vba::continuation_marker": 676,
+    "historical_vs_vba::custom_description": 657,
+    "historical_vs_vba::dollar_template": 677,
+    "historical_vs_vba::getdata_beta_lactam_normalization": 9,
+    "historical_vs_vba::getdata_normalization_applied": 14,
+    "historical_vs_vba::gmp_batch_release_detail_expansion": 251,
+    "historical_vs_vba::gmp_packaging_detail_expansion": 549,
+    "historical_vs_vba::group_parenthesis": 102,
+    "historical_vs_vba::limitation": 454,
+    "historical_vs_vba::multi_block": 22,
+    "historical_vs_vba::unkeyed_entries": 374,
+    "historical_vs_vba::vba_line_and_separator_formatting": 677,
+    "python_vs_vba::block_name": 24,
+    "python_vs_vba::block_note": 8,
+    "python_vs_vba::continuation_marker": 676,
+    "python_vs_vba::custom_description": 657,
+    "python_vs_vba::dollar_template": 677,
+    "python_vs_vba::getdata_beta_lactam_normalization": 9,
+    "python_vs_vba::getdata_normalization_applied": 14,
+    "python_vs_vba::gmp_batch_release_detail_expansion": 251,
+    "python_vs_vba::gmp_packaging_detail_expansion": 549,
+    "python_vs_vba::group_parenthesis": 102,
+    "python_vs_vba::limitation": 454,
+    "python_vs_vba::multi_block": 22,
+    "python_vs_vba::unkeyed_entries": 374,
+    "python_vs_vba::vba_line_and_separator_formatting": 677
+  },
+  "top_mismatch_profiles": [
+    {
+      "comparison_and_profile": "historical_vs_vba::continuation_marker+custom_description+dollar_template+gmp_packaging_detail_expansion+limitation+unkeyed_entries+vba_line_and_separator_formatting",
+      "records": 107
+    },
+    {
+      "comparison_and_profile": "python_vs_vba::continuation_marker+custom_description+dollar_template+gmp_packaging_detail_expansion+limitation+unkeyed_entries+vba_line_and_separator_formatting",
+      "records": 107
+    },
+    {
+      "comparison_and_profile": "historical_vs_vba::continuation_marker+custom_description+dollar_template+gmp_batch_release_detail_expansion+gmp_packaging_detail_expansion+limitation+unkeyed_entries+vba_line_and_separator_formatting",
+      "records": 72
+    },
+    {
+      "comparison_and_profile": "python_vs_vba::continuation_marker+custom_description+dollar_template+gmp_batch_release_detail_expansion+gmp_packaging_detail_expansion+limitation+unkeyed_entries+vba_line_and_separator_formatting",
+      "records": 72
+    },
+    {
+      "comparison_and_profile": "historical_vs_vba::continuation_marker+custom_description+dollar_template+gmp_packaging_detail_expansion+limitation+vba_line_and_separator_formatting",
+      "records": 68
+    },
+    {
+      "comparison_and_profile": "python_vs_vba::continuation_marker+custom_description+dollar_template+gmp_packaging_detail_expansion+limitation+vba_line_and_separator_formatting",
+      "records": 68
+    },
+    {
+      "comparison_and_profile": "historical_vs_vba::continuation_marker+custom_description+dollar_template+gmp_batch_release_detail_expansion+gmp_packaging_detail_expansion+limitation+vba_line_and_separator_formatting",
+      "records": 61
+    },
+    {
+      "comparison_and_profile": "python_vs_vba::continuation_marker+custom_description+dollar_template+gmp_batch_release_detail_expansion+gmp_packaging_detail_expansion+limitation+vba_line_and_separator_formatting",
+      "records": 61
+    },
+    {
+      "comparison_and_profile": "historical_vs_vba::continuation_marker+custom_description+dollar_template+gmp_packaging_detail_expansion+vba_line_and_separator_formatting",
+      "records": 41
+    },
+    {
+      "comparison_and_profile": "python_vs_vba::continuation_marker+custom_description+dollar_template+gmp_packaging_detail_expansion+vba_line_and_separator_formatting",
+      "records": 41
+    },
+    {
+      "comparison_and_profile": "historical_vs_vba::continuation_marker+custom_description+dollar_template+vba_line_and_separator_formatting",
+      "records": 31
+    },
+    {
+      "comparison_and_profile": "python_vs_vba::continuation_marker+custom_description+dollar_template+vba_line_and_separator_formatting",
+      "records": 31
+    },
+    {
+      "comparison_and_profile": "historical_vs_vba::continuation_marker+custom_description+dollar_template+unkeyed_entries+vba_line_and_separator_formatting",
+      "records": 26
+    },
+    {
+      "comparison_and_profile": "python_vs_vba::continuation_marker+custom_description+dollar_template+unkeyed_entries+vba_line_and_separator_formatting",
+      "records": 26
+    },
+    {
+      "comparison_and_profile": "historical_vs_vba::continuation_marker+custom_description+dollar_template+gmp_batch_release_detail_expansion+gmp_packaging_detail_expansion+group_parenthesis+limitation+unkeyed_entries+vba_line_and_separator_formatting",
+      "records": 25
+    },
+    {
+      "comparison_and_profile": "python_vs_vba::continuation_marker+custom_description+dollar_template+gmp_batch_release_detail_expansion+gmp_packaging_detail_expansion+group_parenthesis+limitation+unkeyed_entries+vba_line_and_separator_formatting",
+      "records": 25
+    },
+    {
+      "comparison_and_profile": "historical_vs_vba::continuation_marker+custom_description+dollar_template+gmp_packaging_detail_expansion+unkeyed_entries+vba_line_and_separator_formatting",
+      "records": 24
+    },
+    {
+      "comparison_and_profile": "python_vs_vba::continuation_marker+custom_description+dollar_template+gmp_packaging_detail_expansion+unkeyed_entries+vba_line_and_separator_formatting",
+      "records": 24
+    },
+    {
+      "comparison_and_profile": "historical_vs_vba::continuation_marker+custom_description+dollar_template+gmp_packaging_detail_expansion+group_parenthesis+limitation+unkeyed_entries+vba_line_and_separator_formatting",
+      "records": 24
+    },
+    {
+      "comparison_and_profile": "python_vs_vba::continuation_marker+custom_description+dollar_template+gmp_packaging_detail_expansion+group_parenthesis+limitation+unkeyed_entries+vba_line_and_separator_formatting",
+      "records": 24
+    },
+    {
+      "comparison_and_profile": "historical_vs_vba::continuation_marker+custom_description+dollar_template+gmp_batch_release_detail_expansion+gmp_packaging_detail_expansion+vba_line_and_separator_formatting",
+      "records": 24
+    },
+    {
+      "comparison_and_profile": "python_vs_vba::continuation_marker+custom_description+dollar_template+gmp_batch_release_detail_expansion+gmp_packaging_detail_expansion+vba_line_and_separator_formatting",
+      "records": 24
+    },
+    {
+      "comparison_and_profile": "historical_vs_vba::continuation_marker+custom_description+dollar_template+gmp_batch_release_detail_expansion+gmp_packaging_detail_expansion+unkeyed_entries+vba_line_and_separator_formatting",
+      "records": 23
+    },
+    {
+      "comparison_and_profile": "python_vs_vba::continuation_marker+custom_description+dollar_template+gmp_batch_release_detail_expansion+gmp_packaging_detail_expansion+unkeyed_entries+vba_line_and_separator_formatting",
+      "records": 23
+    },
+    {
+      "comparison_and_profile": "historical_vs_vba::continuation_marker+custom_description+dollar_template+limitation+unkeyed_entries+vba_line_and_separator_formatting",
+      "records": 18
+    },
+    {
+      "comparison_and_profile": "python_vs_vba::continuation_marker+custom_description+dollar_template+limitation+unkeyed_entries+vba_line_and_separator_formatting",
+      "records": 18
+    },
+    {
+      "comparison_and_profile": "historical_vs_vba::continuation_marker+custom_description+dollar_template+limitation+vba_line_and_separator_formatting",
+      "records": 16
+    },
+    {
+      "comparison_and_profile": "python_vs_vba::continuation_marker+custom_description+dollar_template+limitation+vba_line_and_separator_formatting",
+      "records": 16
+    },
+    {
+      "comparison_and_profile": "historical_vs_vba::continuation_marker+custom_description+dollar_template+gmp_batch_release_detail_expansion+gmp_packaging_detail_expansion+group_parenthesis+limitation+vba_line_and_separator_formatting",
+      "records": 13
+    },
+    {
+      "comparison_and_profile": "python_vs_vba::continuation_marker+custom_description+dollar_template+gmp_batch_release_detail_expansion+gmp_packaging_detail_expansion+group_parenthesis+limitation+vba_line_and_separator_formatting",
+      "records": 13
+    }
+  ],
+  "bounded_examples": {
+    "historical_vs_vba": [
+      {
+        "legacy_inspection_id": "17",
+        "gxp_type": "GMP",
+        "similarity": 0.903226,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "gmp_packaging_detail_expansion",
+          "unkeyed_entries",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 36,
+          "left_fragment": "* Thuốc không vô trùng (Penicillin): Viên nang cứng; Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, viên ba",
+          "right_fragment": "* Thuốc không vô trùng (Penicillin):; Viên nang cứng; Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, viên b"
+        },
+        "historical_fragment": "* Thuốc không vô trùng (Penicillin): Viên nang cứng; Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, viên bao). \r\n     * Xuất xưởng thuốc không vô trùng. \r\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r\n* Đóng gói thứ cấp: Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r\n* Kiểm tra chất lượng: Vi sinh (Giới hạn nhiễm khuẩn; Định lượng hoạt lực kháng sinh bằng vi sinh vật); Hóa học / Vật lý.",
+        "python_fragment": "* Thuốc không vô trùng (Penicillin): Viên nang cứng; Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, viên bao).\n* Thuốc không vô trùng (thuốc hóa dược không kê đơn).\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục 2.1.\n* Đóng gói thứ cấp: Tất cả các dạng thuốc ở mục 2.1.\n* Kiểm tra chất lượng: Vi sinh (Giới hạn nhiễm khuẩn; Định lượng hoạt lực kháng sinh bằng vi sinh vật); Hóa học / Vật lý.\n- Penicillin: Thuốc chứa kháng sinh nhóm Penicillin:.",
+        "vba_fragment": "* Thuốc không vô trùng (Penicillin):; Viên nang cứng; Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, viên bao). \r* Thuốc không vô trùng (thuốc hóa dược không kê đơn):. \r* Đóng gói sơ cấp:Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r* Đóng gói thứ cấp:Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r* Kiểm tra chất lượng:Vi sinh (Giới hạn nhiễm khuẩn; Định lượng hoạt lực kháng sinh bằng vi sinh vật); Hóa học / Vật lý."
+      },
+      {
+        "legacy_inspection_id": "115",
+        "gxp_type": "GMP",
+        "similarity": 0.794351,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "gmp_packaging_detail_expansion",
+          "limitation",
+          "unkeyed_entries",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 23,
+          "left_fragment": "* Thuốc không vô trùng: Viên nang cứng; Thuốc uống dạng lỏng (Dung dịch, Hỗn dịch, Sirô, Gel); Dạng bào chế rắn k",
+          "right_fragment": "* Thuốc không vô trùng:Viên nang cứng; Thuốc uống dạng lỏng (Dung dịch, Hỗn dịch, Sirô, Gel); Dạng bào chế rắn kh"
+        },
+        "historical_fragment": "* Thuốc không vô trùng: Viên nang cứng; Thuốc uống dạng lỏng (Dung dịch, Hỗn dịch, Sirô, Gel); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm; Viên nén sủi bọt, thuốc bột sủi bọt, thuốc cốm sủi bọt); Viên nén (Viên nén, viên nén bao phim). \r\n* Xuất xưởng thuốc không vô trùng. \r\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r\n* Đóng gói thứ cấp: Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r\n* Kiểm tra chất lượng: Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vật lý.",
+        "python_fragment": "* Thuốc không vô trùng: Viên nang cứng; Thuốc uống dạng lỏng (Dung dịch, Hỗn dịch, Sirô, Gel); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm; Viên nén sủi bọt, thuốc bột sủi bọt, thuốc cốm sủi bọt); Viên nén (Viên nén, viên nén bao phim).\n* Thuốc không vô trùng (thuốc hóa dược không kê đơn).\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục 2.1.\n* Đóng gói thứ cấp: Tất cả các dạng thuốc ở mục 2.1.\n* Kiểm tra chất lượng: Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vật lý.\n- Non-β: Thuốc không chứa kháng",
+        "vba_fragment": "* Thuốc không vô trùng:Viên nang cứng; Thuốc uống dạng lỏng (Dung dịch, Hỗn dịch, Sirô, Gel); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm; Viên nén sủi bọt, thuốc bột sủi bọt, thuốc cốm sủi bọt); Viên nén (Viên nén, viên nén bao phim). \r* Thuốc không vô trùng (thuốc hóa dược không kê đơn):. \r* Đóng gói sơ cấp:Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r* Đóng gói thứ cấp:; Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r* Kiểm tra chất lượng:Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vậ"
+      },
+      {
+        "legacy_inspection_id": "180",
+        "gxp_type": "GMP",
+        "similarity": 0.874251,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "gmp_packaging_detail_expansion",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 57,
+          "left_fragment": "* Thuốc không vô trùng (chứa kháng sinh nhóm Penicillin): Viên nang cứng; Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, viên né",
+          "right_fragment": "* Thuốc không vô trùng (chứa kháng sinh nhóm Penicillin):; Viên nang cứng; Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, viên n"
+        },
+        "historical_fragment": "* Thuốc không vô trùng (chứa kháng sinh nhóm Penicillin): Viên nang cứng; Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, viên nén bao phim). \r\n     * Xuất xưởng thuốc không vô trùng. \r\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r\n* Đóng gói thứ cấp. \r\n* Kiểm tra chất lượng: Hóa học / Vật lý.",
+        "python_fragment": "* Thuốc không vô trùng (chứa kháng sinh nhóm Penicillin): Viên nang cứng; Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, viên nén bao phim).\n* Thuốc không vô trùng (thuốc hóa dược không kê đơn).\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục 2.1.\n* Đóng gói thứ cấp.\n* Kiểm tra chất lượng: Hóa học / Vật lý.",
+        "vba_fragment": "* Thuốc không vô trùng (chứa kháng sinh nhóm Penicillin):; Viên nang cứng; Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, viên nén bao phim). \r* Thuốc không vô trùng (thuốc hóa dược không kê đơn):. \r* Đóng gói sơ cấp:Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r* Đóng gói thứ cấp:. \r* Kiểm tra chất lượng:Hóa học / Vật lý."
+      },
+      {
+        "legacy_inspection_id": "220",
+        "gxp_type": "GMP",
+        "similarity": 0.933121,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "gmp_packaging_detail_expansion",
+          "group_parenthesis",
+          "unkeyed_entries",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 23,
+          "left_fragment": "* Thuốc không vô trùng: Viên nang cứng (Non-β; Cephalosporin); Thuốc dùng ngoài dạng lỏng (Thuốc nhỏ mũi; Thuốc n",
+          "right_fragment": "* Thuốc không vô trùng:Viên nang cứng (Non-β; Cephalosporin); Thuốc dùng ngoài dạng lỏng (Thuốc nhỏ mũi; Thuốc nh"
+        },
+        "historical_fragment": "* Thuốc không vô trùng: Viên nang cứng (Non-β; Cephalosporin); Thuốc dùng ngoài dạng lỏng (Thuốc nhỏ mũi; Thuốc nhỏ tai); Dạng bào chế rắn khác (Non-β: Thuốc bột, thuốc cốm; Cephalosporin: Thuốc bột, thuốc cốm); Viên nén (Non-β: Viên nén, viên nén bao phim, viên nén bao đường; Cephalosporin: Viên nén, viên nén bao phim). \r\n* Xuất xưởng thuốc không vô trùng. \r\n\r\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r\n* Đóng gói thứ cấp: Tất cả các dạng thuốc ở mục Thuốc không vô tr",
+        "python_fragment": "* Thuốc không vô trùng: Viên nang cứng (Non-β; Cephalosporin); Thuốc dùng ngoài dạng lỏng (Thuốc nhỏ mũi; Thuốc nhỏ tai); Dạng bào chế rắn khác (Non-β: Thuốc bột, thuốc cốm; Cephalosporin: Thuốc bột, thuốc cốm); Viên nén (Non-β: Viên nén, viên nén bao phim, viên nén bao đường; Cephalosporin: Viên nén, viên nén bao phim).\n* Thuốc không vô trùng (thuốc hóa dược không kê đơn).\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục 2.1.\n* Đóng gói thứ cấp: Tất cả các dạng thuốc ở mục 2.1.\n* Kiểm tra chất lư",
+        "vba_fragment": "* Thuốc không vô trùng:Viên nang cứng (Non-β; Cephalosporin); Thuốc dùng ngoài dạng lỏng (Thuốc nhỏ mũi; Thuốc nhỏ tai); Dạng bào chế rắn khác (Non-β: Thuốc bột, thuốc cốm; Cephalosporin: Thuốc bột, thuốc cốm); Viên nén (Non-β: Viên nén, viên nén bao phim, viên nén bao đường; Cephalosporin: Viên nén, viên nén bao phim). \r* Thuốc không vô trùng (thuốc hóa dược không kê đơn):. \r\r* Đóng gói sơ cấp:; Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r* Đóng gói thứ cấp:; Tất cả các dạng thuốc ở mục "
+      },
+      {
+        "legacy_inspection_id": "245",
+        "gxp_type": "GMP",
+        "similarity": 0.843118,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "group_parenthesis",
+          "limitation",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 26,
+          "left_fragment": "* Thuốc sản xuất vô trùng: Thuốc sản xuất vô trùng khác (Thuốc nhỏ mắt).\n* Thuốc tiệt trùng cuối: Thuốc dạng lỏng th",
+          "right_fragment": "* Thuốc sản xuất vô trùng:Thuốc sản xuất vô trùng khác (Thuốc nhỏ mắt).\n* Thuốc tiệt trùng cuối:Thuốc dạng lỏng thể "
+        },
+        "historical_fragment": "* Thuốc sản xuất vô trùng: Thuốc sản xuất vô trùng khác (Thuốc nhỏ mắt). \r\n* Thuốc tiệt trùng cuối: Thuốc dạng lỏng thể tích nhỏ (Dung dịch tiêm). \r\n     * Xuất xưởng thuốc vô trùng. \r\n* Thuốc không vô trùng: Viên nang cứng (Viên nang cứng (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin và Penicillin)); Thuốc uống dạng lỏng (Dung dịch uống; Sirô uống; Hỗn dịch uống); Dạng bào chế rắn khác (Thuốc bột, Thuốc cốm (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin và Penicillin)); Viên nén (V",
+        "python_fragment": "* Thuốc sản xuất vô trùng: Thuốc sản xuất vô trùng khác (Thuốc nhỏ mắt).\n* Thuốc tiệt trùng cuối: Thuốc dạng lỏng thể tích nhỏ (Dung dịch tiêm).\n* Xuất xưởng thuốc vô trùng.\n* Thuốc không vô trùng: Viên nang cứng (Viên nang cứng (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin và Penicillin)); Thuốc uống dạng lỏng (Dung dịch uống; Sirô uống; Hỗn dịch uống); Dạng bào chế rắn khác (Thuốc bột, Thuốc cốm (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin và Penicillin)); Viên nén (Viên nén, Vi",
+        "vba_fragment": "* Thuốc sản xuất vô trùng:Thuốc sản xuất vô trùng khác (Thuốc nhỏ mắt). \r* Thuốc tiệt trùng cuối:Thuốc dạng lỏng thể tích nhỏ (Dung dịch tiêm). \r* Xuất xưởng thuốc vô trùng. \r* Thuốc không vô trùng:Viên nang cứng (Viên nang cứng (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin và Penicillin)); Thuốc uống dạng lỏng (Dung dịch uống; Sirô uống; Hỗn dịch uống); Dạng bào chế rắn khác (Thuốc bột, Thuốc cốm (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin và Penicillin)); Viên nén (Viên nén, Vi"
+      },
+      {
+        "legacy_inspection_id": "254",
+        "gxp_type": "GMP",
+        "similarity": 0.889447,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "gmp_packaging_detail_expansion",
+          "limitation",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 35,
+          "left_fragment": "* Thuốc dược liệu, thuốc cổ truyền: Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Cồn thuốc); Thuốc uống dạng lỏng (Dung dịch t",
+          "right_fragment": "* Thuốc dược liệu, thuốc cổ truyền:Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Cồn thuốc); Thuốc uống dạng lỏng (Dung dịch th"
+        },
+        "historical_fragment": "* Thuốc dược liệu, thuốc cổ truyền: Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Cồn thuốc); Thuốc uống dạng lỏng (Dung dịch thuốc uống, xi rô thuốc; Chè thuốc); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, Viên nén bao phim, Viên nén bao đường); Viên hoàn (Viên hoàn cứng). \r\n* Xuất xưởng thuốc dược liệu, thuốc cổ truyền. \r\n* Nguyên liệu từ dược liệu: Cao dược liệu (Cao đặc, cao khô). \r\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục Thuốc dược liệu, thuốc cổ truyền. \r\n* Đóng ",
+        "python_fragment": "* Thuốc dược liệu, thuốc cổ truyền: Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Cồn thuốc); Thuốc uống dạng lỏng (Dung dịch thuốc uống, xi rô thuốc; Chè thuốc); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, Viên nén bao phim, Viên nén bao đường); Viên hoàn (Viên hoàn cứng).\n* Xuất xưởng thuốc dược liệu, thuốc cổ truyền.\n* Nguyên liệu từ dược liệu: Cao dược liệu (Cao đặc, cao khô).\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục 4.1.\n* Đóng gói thứ cấp: Tất cả các dạng thuốc ở ",
+        "vba_fragment": "* Thuốc dược liệu, thuốc cổ truyền:Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Cồn thuốc); Thuốc uống dạng lỏng (Dung dịch thuốc uống, xi rô thuốc; Chè thuốc); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, Viên nén bao phim, Viên nén bao đường); Viên hoàn (Viên hoàn cứng). \r* Xuất xưởng thuốc dược liệu, thuốc cổ truyền. \r* Nguyên liệu từ dược liệu:Cao dược liệu (Cao đặc, cao khô). \r* Đóng gói sơ cấp:Tất cả các dạng thuốc ở mục Thuốc dược liệu, thuốc cổ truyền. \r* Đóng gói thứ"
+      },
+      {
+        "legacy_inspection_id": "268",
+        "gxp_type": "GMP",
+        "similarity": 0.930796,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "gmp_packaging_detail_expansion",
+          "limitation",
+          "unkeyed_entries",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 26,
+          "left_fragment": "* Thuốc sản xuất vô trùng: Thuốc dạng bán rắn (Thuốc mỡ tra mắt); Thuốc dạng lỏng thể tích nhỏ (Thuốc nhỏ mắt).\n    ",
+          "right_fragment": "* Thuốc sản xuất vô trùng:Thuốc dạng bán rắn (Thuốc mỡ tra mắt); Thuốc dạng lỏng thể tích nhỏ (Thuốc nhỏ mắt).\n* Xuấ"
+        },
+        "historical_fragment": "* Thuốc sản xuất vô trùng: Thuốc dạng bán rắn (Thuốc mỡ tra mắt); Thuốc dạng lỏng thể tích nhỏ (Thuốc nhỏ mắt). \r\n     * Xuất xưởng thuốc vô trùng. \r\n* Thuốc không vô trùng: Viên nang cứng (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin); Thuốc dùng ngoài dạng lỏng; Thuốc uống dạng lỏng (Thuốc nước, thuốc gel và hỗn dịch uống đóng túi); Dạng bào chế rắn khác (Thuốc bột và thuốc cốm (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin)); Thuốc dạng bán rắn (Thuốc kem, thuốc mỡ, thuốc gel dùn",
+        "python_fragment": "* Thuốc sản xuất vô trùng: Thuốc dạng bán rắn (Thuốc mỡ tra mắt); Thuốc dạng lỏng thể tích nhỏ (Thuốc nhỏ mắt).\n* Xuất xưởng thuốc vô trùng.\n* Thuốc không vô trùng: Viên nang cứng (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin); Thuốc dùng ngoài dạng lỏng; Thuốc uống dạng lỏng (Thuốc nước, thuốc gel và hỗn dịch uống đóng túi); Dạng bào chế rắn khác (Thuốc bột và thuốc cốm (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin)); Thuốc dạng bán rắn (Thuốc kem, thuốc mỡ, thuốc gel dùng ngoài);",
+        "vba_fragment": "* Thuốc sản xuất vô trùng:Thuốc dạng bán rắn (Thuốc mỡ tra mắt); Thuốc dạng lỏng thể tích nhỏ (Thuốc nhỏ mắt). \r* Xuất xưởng thuốc vô trùng. \r* Thuốc không vô trùng:Viên nang cứng (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin); Thuốc dùng ngoài dạng lỏng; Thuốc uống dạng lỏng (Thuốc nước, thuốc gel và hỗn dịch uống đóng túi); Dạng bào chế rắn khác (Thuốc bột và thuốc cốm (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin)); Thuốc dạng bán rắn (Thuốc kem, thuốc mỡ, thuốc gel dùng ngoài);"
+      },
+      {
+        "legacy_inspection_id": "278",
+        "gxp_type": "GMP",
+        "similarity": 0.994889,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "group_parenthesis",
+          "unkeyed_entries",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 24,
+          "left_fragment": "* Thuốc tiệt trùng cuối: Thuốc dạng lỏng thể tích lớn (Dung dịch tiêm truyền).\n     * Xuất xưởng thuốc vô trùng.\n*",
+          "right_fragment": "* Thuốc tiệt trùng cuối:Thuốc dạng lỏng thể tích lớn (Dung dịch tiêm truyền).\n* Xuất xưởng thuốc vô trùng.\n* Đóng "
+        },
+        "historical_fragment": "* Thuốc tiệt trùng cuối: Thuốc dạng lỏng thể tích lớn (Dung dịch tiêm truyền). \r\n     * Xuất xưởng thuốc vô trùng. \r\n* Đóng gói thứ cấp. \r\n* Kiểm tra chất lượng: Vi sinh (Độ vô trùng; Giới hạn nhiễm khuẩn; Định lượng hoạt lực kháng sinh bằng vi sinh vật); Hóa học / Vật lý; Sinh học (Nội độc tố vi khuẩn).",
+        "python_fragment": "* Thuốc tiệt trùng cuối: Thuốc dạng lỏng thể tích lớn (Dung dịch tiêm truyền).\n* Xuất xưởng thuốc vô trùng.\n* Đóng gói thứ cấp.\n* Kiểm tra chất lượng: Vi sinh (Độ vô trùng; Giới hạn nhiễm khuẩn; Định lượng hoạt lực kháng sinh bằng vi sinh vật); Hóa học / Vật lý; Sinh học (Nội độc tố vi khuẩn).\n- 6.2.1: 1.2.",
+        "vba_fragment": "* Thuốc tiệt trùng cuối:Thuốc dạng lỏng thể tích lớn (Dung dịch tiêm truyền). \r* Xuất xưởng thuốc vô trùng. \r* Đóng gói thứ cấp:. \r* Kiểm tra chất lượng:Vi sinh (Độ vô trùng; Giới hạn nhiễm khuẩn; Định lượng hoạt lực kháng sinh bằng vi sinh vật); Hóa học / Vật lý; Sinh học (Nội độc tố vi khuẩn)."
+      },
+      {
+        "legacy_inspection_id": "317",
+        "gxp_type": "GMP",
+        "similarity": 0.672149,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "gmp_packaging_detail_expansion",
+          "group_parenthesis",
+          "limitation",
+          "unkeyed_entries",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 26,
+          "left_fragment": "* Thuốc sản xuất vô trùng: Thuốc dạng bán rắn (Thuốc mỡ tra mắt).\n* Xuất xưởng thuốc vô trùng.\n* Thuốc không vô trùn",
+          "right_fragment": "* Thuốc sản xuất vô trùng:Thuốc dạng bán rắn (Thuốc mỡ tra mắt).\n* Xuất xưởng thuốc vô trùng.\n* Thuốc không vô trùng"
+        },
+        "historical_fragment": "* Thuốc sản xuất vô trùng: Thuốc dạng bán rắn (Thuốc mỡ tra mắt). \r\n* Xuất xưởng thuốc vô trùng. \r\n* Thuốc không vô trùng: Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Dung dịch thuốc dùng ngoài, thuốc xịt mũi); Thuốc uống dạng lỏng (Dung dịch thuốc uống; Sirô thuốc); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Thuốc dạng bán rắn (Kem, gel, mỡ dùng ngoài); Viên nén (Viên nén, viên nén bao phim, viên nén bao đường); Thuốc không vô trùng khác (Viên nén sủi bọt, Thuốc bột sủi bọt, Thuốc cốm sủi bọ",
+        "python_fragment": "* Thuốc sản xuất vô trùng: Thuốc dạng bán rắn (Thuốc mỡ tra mắt).\n* Xuất xưởng thuốc vô trùng.\n* Thuốc không vô trùng: Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Dung dịch thuốc dùng ngoài, thuốc xịt mũi); Thuốc uống dạng lỏng (Dung dịch thuốc uống; Sirô thuốc); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Thuốc dạng bán rắn (Kem, gel, mỡ dùng ngoài); Viên nén (Viên nén, viên nén bao phim, viên nén bao đường); Thuốc không vô trùng khác (Viên nén sủi bọt, Thuốc bột sủi bọt, Thuốc cốm sủi bọt).\n",
+        "vba_fragment": "* Thuốc sản xuất vô trùng:Thuốc dạng bán rắn (Thuốc mỡ tra mắt). \r* Xuất xưởng thuốc vô trùng. \r* Thuốc không vô trùng:Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Dung dịch thuốc dùng ngoài, thuốc xịt mũi); Thuốc uống dạng lỏng (Dung dịch thuốc uống; Sirô thuốc); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Thuốc dạng bán rắn (Kem, gel, mỡ dùng ngoài); Viên nén (Viên nén, viên nén bao phim, viên nén bao đường); Thuốc không vô trùng khác (Viên nén sủi bọt, Thuốc bột sủi bọt, Thuốc cốm sủi bọt). "
+      },
+      {
+        "legacy_inspection_id": "337",
+        "gxp_type": "GMP",
+        "similarity": 0.915152,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "gmp_packaging_detail_expansion",
+          "unkeyed_entries",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 23,
+          "left_fragment": "* Thuốc không vô trùng: Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Thuốc nước dùng ngoài); Dạng bào chế rắn khác",
+          "right_fragment": "* Thuốc không vô trùng:Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Thuốc nước dùng ngoài); Dạng bào chế rắn khác "
+        },
+        "historical_fragment": "* Thuốc không vô trùng: Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Thuốc nước dùng ngoài); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Thuốc dạng bán rắn (Thuốc kem, thuốc mỡ, cao xoa); Viên nén (Viên nén, viên bao phim, viên bao đường). \r\n* Xuất xưởng thuốc không vô trùng. \r\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r\n* Đóng gói thứ cấp: Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r\n* Kiểm tra chất lượng: Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vật lý.",
+        "python_fragment": "* Thuốc không vô trùng: Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Thuốc nước dùng ngoài); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Thuốc dạng bán rắn (Thuốc kem, thuốc mỡ, cao xoa); Viên nén (Viên nén, viên bao phim, viên bao đường).\n* Thuốc không vô trùng (thuốc hóa dược không kê đơn).\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục 2.1.\n* Đóng gói thứ cấp: Tất cả các dạng thuốc ở mục 2.1.\n* Kiểm tra chất lượng: Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vật lý.\n- Non-β: Thuốc không chứa k",
+        "vba_fragment": "* Thuốc không vô trùng:Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Thuốc nước dùng ngoài); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Thuốc dạng bán rắn (Thuốc kem, thuốc mỡ, cao xoa); Viên nén (Viên nén, viên bao phim, viên bao đường). \r* Thuốc không vô trùng (thuốc hóa dược không kê đơn):. \r* Đóng gói sơ cấp:Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r* Đóng gói thứ cấp:Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r* Kiểm tra chất lượng:Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / "
+      },
+      {
+        "legacy_inspection_id": "391",
+        "gxp_type": "GMP",
+        "similarity": 0.906344,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "gmp_packaging_detail_expansion",
+          "unkeyed_entries",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 27,
+          "left_fragment": "* Nguyên liệu từ dược liệu: Cao dược liệu (Cao đặc, cao lỏng, cao khô); Cốm, bột dược liệu; Khác (Tinh dầu; Dược liệu",
+          "right_fragment": "* Nguyên liệu từ dược liệu:Cao dược liệu (Cao đặc, cao lỏng, cao khô); Cốm, bột dược liệu; Khác (Tinh dầu; Dược liệu "
+        },
+        "historical_fragment": "* Nguyên liệu từ dược liệu: Cao dược liệu (Cao đặc, cao lỏng, cao khô); Cốm, bột dược liệu; Khác (Tinh dầu; Dược liệu sơ chế - chế biến\r\nTinh dầu; Vị thuốc cổ truyền; Vị thuốc cổ truyền dạng cốm). \r\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục Nguyên liệu từ dược liệu. \r\n* Đóng gói thứ cấp. \r\n* Kiểm tra chất lượng: Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vật lý.",
+        "python_fragment": "* Nguyên liệu từ dược liệu: Cao dược liệu (Cao đặc, cao lỏng, cao khô); Cốm, bột dược liệu; Khác (Tinh dầu; Dược liệu sơ chế - chế biến).\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục 5.2.\n* Đóng gói thứ cấp.\n* Kiểm tra chất lượng: Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vật lý.\nTinh dầu; Vị thuốc cổ truyền; Vị thuốc cổ truyền dạng cốm.",
+        "vba_fragment": "* Nguyên liệu từ dược liệu:Cao dược liệu (Cao đặc, cao lỏng, cao khô); Cốm, bột dược liệu; Khác (Tinh dầu; Dược liệu sơ chế - chế biến). \r* Đóng gói sơ cấp:Tất cả các dạng thuốc ở mục Nguyên liệu từ dược liệu. \r* Đóng gói thứ cấp:. \r* Kiểm tra chất lượng:Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vật lý."
+      },
+      {
+        "legacy_inspection_id": "416",
+        "gxp_type": "GMP",
+        "similarity": 0.992537,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "unkeyed_entries",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 23,
+          "left_fragment": "* Thuốc không vô trùng: Thuốc dùng ngoài dạng lỏng (Dung dịch dùng ngoài, cồn thuốc); Thuốc dạng bán rắn (Thuốc k",
+          "right_fragment": "* Thuốc không vô trùng:Thuốc dùng ngoài dạng lỏng (Dung dịch dùng ngoài, cồn thuốc); Thuốc dạng bán rắn (Thuốc ke"
+        },
+        "historical_fragment": "* Thuốc không vô trùng: Thuốc dùng ngoài dạng lỏng (Dung dịch dùng ngoài, cồn thuốc); Thuốc dạng bán rắn (Thuốc kem, thuốc gel). \r\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục. \r\n* Đóng gói thứ cấp. \r\n* Kiểm tra chất lượng: Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vật lý.",
+        "python_fragment": "* Thuốc không vô trùng: Thuốc dùng ngoài dạng lỏng (Dung dịch dùng ngoài, cồn thuốc); Thuốc dạng bán rắn (Thuốc kem, thuốc gel).\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục.\n* Đóng gói thứ cấp.\n* Kiểm tra chất lượng: Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vật lý.\n- Non-β: Thuốc không chứa kháng sinh nhóm β-Lactam:.",
+        "vba_fragment": "* Thuốc không vô trùng:Thuốc dùng ngoài dạng lỏng (Dung dịch dùng ngoài, cồn thuốc); Thuốc dạng bán rắn (Thuốc kem, thuốc gel). \r* Đóng gói sơ cấp:Tất cả các dạng thuốc ở mục. \r* Đóng gói thứ cấp:. \r* Kiểm tra chất lượng:Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vật lý."
+      }
+    ],
+    "python_vs_vba": [
+      {
+        "legacy_inspection_id": "17",
+        "gxp_type": "GMP",
+        "similarity": 0.884234,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "gmp_packaging_detail_expansion",
+          "unkeyed_entries",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 36,
+          "left_fragment": "* Thuốc không vô trùng (Penicillin): Viên nang cứng; Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, viên ba",
+          "right_fragment": "* Thuốc không vô trùng (Penicillin):; Viên nang cứng; Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, viên b"
+        },
+        "historical_fragment": "* Thuốc không vô trùng (Penicillin): Viên nang cứng; Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, viên bao). \r\n     * Xuất xưởng thuốc không vô trùng. \r\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r\n* Đóng gói thứ cấp: Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r\n* Kiểm tra chất lượng: Vi sinh (Giới hạn nhiễm khuẩn; Định lượng hoạt lực kháng sinh bằng vi sinh vật); Hóa học / Vật lý.",
+        "python_fragment": "* Thuốc không vô trùng (Penicillin): Viên nang cứng; Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, viên bao).\n* Thuốc không vô trùng (thuốc hóa dược không kê đơn).\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục 2.1.\n* Đóng gói thứ cấp: Tất cả các dạng thuốc ở mục 2.1.\n* Kiểm tra chất lượng: Vi sinh (Giới hạn nhiễm khuẩn; Định lượng hoạt lực kháng sinh bằng vi sinh vật); Hóa học / Vật lý.\n- Penicillin: Thuốc chứa kháng sinh nhóm Penicillin:.",
+        "vba_fragment": "* Thuốc không vô trùng (Penicillin):; Viên nang cứng; Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, viên bao). \r* Thuốc không vô trùng (thuốc hóa dược không kê đơn):. \r* Đóng gói sơ cấp:Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r* Đóng gói thứ cấp:Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r* Kiểm tra chất lượng:Vi sinh (Giới hạn nhiễm khuẩn; Định lượng hoạt lực kháng sinh bằng vi sinh vật); Hóa học / Vật lý."
+      },
+      {
+        "legacy_inspection_id": "115",
+        "gxp_type": "GMP",
+        "similarity": 0.917044,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "gmp_packaging_detail_expansion",
+          "limitation",
+          "unkeyed_entries",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 23,
+          "left_fragment": "* Thuốc không vô trùng: Viên nang cứng; Thuốc uống dạng lỏng (Dung dịch, Hỗn dịch, Sirô, Gel); Dạng bào chế rắn k",
+          "right_fragment": "* Thuốc không vô trùng:Viên nang cứng; Thuốc uống dạng lỏng (Dung dịch, Hỗn dịch, Sirô, Gel); Dạng bào chế rắn kh"
+        },
+        "historical_fragment": "* Thuốc không vô trùng: Viên nang cứng; Thuốc uống dạng lỏng (Dung dịch, Hỗn dịch, Sirô, Gel); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm; Viên nén sủi bọt, thuốc bột sủi bọt, thuốc cốm sủi bọt); Viên nén (Viên nén, viên nén bao phim). \r\n* Xuất xưởng thuốc không vô trùng. \r\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r\n* Đóng gói thứ cấp: Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r\n* Kiểm tra chất lượng: Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vật lý.",
+        "python_fragment": "* Thuốc không vô trùng: Viên nang cứng; Thuốc uống dạng lỏng (Dung dịch, Hỗn dịch, Sirô, Gel); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm; Viên nén sủi bọt, thuốc bột sủi bọt, thuốc cốm sủi bọt); Viên nén (Viên nén, viên nén bao phim).\n* Thuốc không vô trùng (thuốc hóa dược không kê đơn).\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục 2.1.\n* Đóng gói thứ cấp: Tất cả các dạng thuốc ở mục 2.1.\n* Kiểm tra chất lượng: Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vật lý.\n- Non-β: Thuốc không chứa kháng",
+        "vba_fragment": "* Thuốc không vô trùng:Viên nang cứng; Thuốc uống dạng lỏng (Dung dịch, Hỗn dịch, Sirô, Gel); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm; Viên nén sủi bọt, thuốc bột sủi bọt, thuốc cốm sủi bọt); Viên nén (Viên nén, viên nén bao phim). \r* Thuốc không vô trùng (thuốc hóa dược không kê đơn):. \r* Đóng gói sơ cấp:Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r* Đóng gói thứ cấp:; Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r* Kiểm tra chất lượng:Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vậ"
+      },
+      {
+        "legacy_inspection_id": "180",
+        "gxp_type": "GMP",
+        "similarity": 0.958209,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "gmp_packaging_detail_expansion",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 57,
+          "left_fragment": "* Thuốc không vô trùng (chứa kháng sinh nhóm Penicillin): Viên nang cứng; Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, viên né",
+          "right_fragment": "* Thuốc không vô trùng (chứa kháng sinh nhóm Penicillin):; Viên nang cứng; Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, viên n"
+        },
+        "historical_fragment": "* Thuốc không vô trùng (chứa kháng sinh nhóm Penicillin): Viên nang cứng; Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, viên nén bao phim). \r\n     * Xuất xưởng thuốc không vô trùng. \r\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r\n* Đóng gói thứ cấp. \r\n* Kiểm tra chất lượng: Hóa học / Vật lý.",
+        "python_fragment": "* Thuốc không vô trùng (chứa kháng sinh nhóm Penicillin): Viên nang cứng; Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, viên nén bao phim).\n* Thuốc không vô trùng (thuốc hóa dược không kê đơn).\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục 2.1.\n* Đóng gói thứ cấp.\n* Kiểm tra chất lượng: Hóa học / Vật lý.",
+        "vba_fragment": "* Thuốc không vô trùng (chứa kháng sinh nhóm Penicillin):; Viên nang cứng; Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, viên nén bao phim). \r* Thuốc không vô trùng (thuốc hóa dược không kê đơn):. \r* Đóng gói sơ cấp:Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r* Đóng gói thứ cấp:. \r* Kiểm tra chất lượng:Hóa học / Vật lý."
+      },
+      {
+        "legacy_inspection_id": "220",
+        "gxp_type": "GMP",
+        "similarity": 0.866084,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "gmp_packaging_detail_expansion",
+          "group_parenthesis",
+          "unkeyed_entries",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 23,
+          "left_fragment": "* Thuốc không vô trùng: Viên nang cứng (Non-β; Cephalosporin); Thuốc dùng ngoài dạng lỏng (Thuốc nhỏ mũi; Thuốc n",
+          "right_fragment": "* Thuốc không vô trùng:Viên nang cứng (Non-β; Cephalosporin); Thuốc dùng ngoài dạng lỏng (Thuốc nhỏ mũi; Thuốc nh"
+        },
+        "historical_fragment": "* Thuốc không vô trùng: Viên nang cứng (Non-β; Cephalosporin); Thuốc dùng ngoài dạng lỏng (Thuốc nhỏ mũi; Thuốc nhỏ tai); Dạng bào chế rắn khác (Non-β: Thuốc bột, thuốc cốm; Cephalosporin: Thuốc bột, thuốc cốm); Viên nén (Non-β: Viên nén, viên nén bao phim, viên nén bao đường; Cephalosporin: Viên nén, viên nén bao phim). \r\n* Xuất xưởng thuốc không vô trùng. \r\n\r\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r\n* Đóng gói thứ cấp: Tất cả các dạng thuốc ở mục Thuốc không vô tr",
+        "python_fragment": "* Thuốc không vô trùng: Viên nang cứng (Non-β; Cephalosporin); Thuốc dùng ngoài dạng lỏng (Thuốc nhỏ mũi; Thuốc nhỏ tai); Dạng bào chế rắn khác (Non-β: Thuốc bột, thuốc cốm; Cephalosporin: Thuốc bột, thuốc cốm); Viên nén (Non-β: Viên nén, viên nén bao phim, viên nén bao đường; Cephalosporin: Viên nén, viên nén bao phim).\n* Thuốc không vô trùng (thuốc hóa dược không kê đơn).\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục 2.1.\n* Đóng gói thứ cấp: Tất cả các dạng thuốc ở mục 2.1.\n* Kiểm tra chất lư",
+        "vba_fragment": "* Thuốc không vô trùng:Viên nang cứng (Non-β; Cephalosporin); Thuốc dùng ngoài dạng lỏng (Thuốc nhỏ mũi; Thuốc nhỏ tai); Dạng bào chế rắn khác (Non-β: Thuốc bột, thuốc cốm; Cephalosporin: Thuốc bột, thuốc cốm); Viên nén (Non-β: Viên nén, viên nén bao phim, viên nén bao đường; Cephalosporin: Viên nén, viên nén bao phim). \r* Thuốc không vô trùng (thuốc hóa dược không kê đơn):. \r\r* Đóng gói sơ cấp:; Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r* Đóng gói thứ cấp:; Tất cả các dạng thuốc ở mục "
+      },
+      {
+        "legacy_inspection_id": "245",
+        "gxp_type": "GMP",
+        "similarity": 0.997025,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "group_parenthesis",
+          "limitation",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 26,
+          "left_fragment": "* Thuốc sản xuất vô trùng: Thuốc sản xuất vô trùng khác (Thuốc nhỏ mắt).\n* Thuốc tiệt trùng cuối: Thuốc dạng lỏng th",
+          "right_fragment": "* Thuốc sản xuất vô trùng:Thuốc sản xuất vô trùng khác (Thuốc nhỏ mắt).\n* Thuốc tiệt trùng cuối:Thuốc dạng lỏng thể "
+        },
+        "historical_fragment": "* Thuốc sản xuất vô trùng: Thuốc sản xuất vô trùng khác (Thuốc nhỏ mắt). \r\n* Thuốc tiệt trùng cuối: Thuốc dạng lỏng thể tích nhỏ (Dung dịch tiêm). \r\n     * Xuất xưởng thuốc vô trùng. \r\n* Thuốc không vô trùng: Viên nang cứng (Viên nang cứng (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin và Penicillin)); Thuốc uống dạng lỏng (Dung dịch uống; Sirô uống; Hỗn dịch uống); Dạng bào chế rắn khác (Thuốc bột, Thuốc cốm (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin và Penicillin)); Viên nén (V",
+        "python_fragment": "* Thuốc sản xuất vô trùng: Thuốc sản xuất vô trùng khác (Thuốc nhỏ mắt).\n* Thuốc tiệt trùng cuối: Thuốc dạng lỏng thể tích nhỏ (Dung dịch tiêm).\n* Xuất xưởng thuốc vô trùng.\n* Thuốc không vô trùng: Viên nang cứng (Viên nang cứng (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin và Penicillin)); Thuốc uống dạng lỏng (Dung dịch uống; Sirô uống; Hỗn dịch uống); Dạng bào chế rắn khác (Thuốc bột, Thuốc cốm (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin và Penicillin)); Viên nén (Viên nén, Vi",
+        "vba_fragment": "* Thuốc sản xuất vô trùng:Thuốc sản xuất vô trùng khác (Thuốc nhỏ mắt). \r* Thuốc tiệt trùng cuối:Thuốc dạng lỏng thể tích nhỏ (Dung dịch tiêm). \r* Xuất xưởng thuốc vô trùng. \r* Thuốc không vô trùng:Viên nang cứng (Viên nang cứng (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin và Penicillin)); Thuốc uống dạng lỏng (Dung dịch uống; Sirô uống; Hỗn dịch uống); Dạng bào chế rắn khác (Thuốc bột, Thuốc cốm (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin và Penicillin)); Viên nén (Viên nén, Vi"
+      },
+      {
+        "legacy_inspection_id": "254",
+        "gxp_type": "GMP",
+        "similarity": 0.94127,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "gmp_packaging_detail_expansion",
+          "limitation",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 35,
+          "left_fragment": "* Thuốc dược liệu, thuốc cổ truyền: Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Cồn thuốc); Thuốc uống dạng lỏng (Dung dịch t",
+          "right_fragment": "* Thuốc dược liệu, thuốc cổ truyền:Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Cồn thuốc); Thuốc uống dạng lỏng (Dung dịch th"
+        },
+        "historical_fragment": "* Thuốc dược liệu, thuốc cổ truyền: Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Cồn thuốc); Thuốc uống dạng lỏng (Dung dịch thuốc uống, xi rô thuốc; Chè thuốc); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, Viên nén bao phim, Viên nén bao đường); Viên hoàn (Viên hoàn cứng). \r\n* Xuất xưởng thuốc dược liệu, thuốc cổ truyền. \r\n* Nguyên liệu từ dược liệu: Cao dược liệu (Cao đặc, cao khô). \r\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục Thuốc dược liệu, thuốc cổ truyền. \r\n* Đóng ",
+        "python_fragment": "* Thuốc dược liệu, thuốc cổ truyền: Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Cồn thuốc); Thuốc uống dạng lỏng (Dung dịch thuốc uống, xi rô thuốc; Chè thuốc); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, Viên nén bao phim, Viên nén bao đường); Viên hoàn (Viên hoàn cứng).\n* Xuất xưởng thuốc dược liệu, thuốc cổ truyền.\n* Nguyên liệu từ dược liệu: Cao dược liệu (Cao đặc, cao khô).\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục 4.1.\n* Đóng gói thứ cấp: Tất cả các dạng thuốc ở ",
+        "vba_fragment": "* Thuốc dược liệu, thuốc cổ truyền:Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Cồn thuốc); Thuốc uống dạng lỏng (Dung dịch thuốc uống, xi rô thuốc; Chè thuốc); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Viên nén (Viên nén, Viên nén bao phim, Viên nén bao đường); Viên hoàn (Viên hoàn cứng). \r* Xuất xưởng thuốc dược liệu, thuốc cổ truyền. \r* Nguyên liệu từ dược liệu:Cao dược liệu (Cao đặc, cao khô). \r* Đóng gói sơ cấp:Tất cả các dạng thuốc ở mục Thuốc dược liệu, thuốc cổ truyền. \r* Đóng gói thứ"
+      },
+      {
+        "legacy_inspection_id": "268",
+        "gxp_type": "GMP",
+        "similarity": 0.949757,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "gmp_packaging_detail_expansion",
+          "limitation",
+          "unkeyed_entries",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 26,
+          "left_fragment": "* Thuốc sản xuất vô trùng: Thuốc dạng bán rắn (Thuốc mỡ tra mắt); Thuốc dạng lỏng thể tích nhỏ (Thuốc nhỏ mắt).\n* Xu",
+          "right_fragment": "* Thuốc sản xuất vô trùng:Thuốc dạng bán rắn (Thuốc mỡ tra mắt); Thuốc dạng lỏng thể tích nhỏ (Thuốc nhỏ mắt).\n* Xuấ"
+        },
+        "historical_fragment": "* Thuốc sản xuất vô trùng: Thuốc dạng bán rắn (Thuốc mỡ tra mắt); Thuốc dạng lỏng thể tích nhỏ (Thuốc nhỏ mắt). \r\n     * Xuất xưởng thuốc vô trùng. \r\n* Thuốc không vô trùng: Viên nang cứng (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin); Thuốc dùng ngoài dạng lỏng; Thuốc uống dạng lỏng (Thuốc nước, thuốc gel và hỗn dịch uống đóng túi); Dạng bào chế rắn khác (Thuốc bột và thuốc cốm (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin)); Thuốc dạng bán rắn (Thuốc kem, thuốc mỡ, thuốc gel dùn",
+        "python_fragment": "* Thuốc sản xuất vô trùng: Thuốc dạng bán rắn (Thuốc mỡ tra mắt); Thuốc dạng lỏng thể tích nhỏ (Thuốc nhỏ mắt).\n* Xuất xưởng thuốc vô trùng.\n* Thuốc không vô trùng: Viên nang cứng (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin); Thuốc dùng ngoài dạng lỏng; Thuốc uống dạng lỏng (Thuốc nước, thuốc gel và hỗn dịch uống đóng túi); Dạng bào chế rắn khác (Thuốc bột và thuốc cốm (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin)); Thuốc dạng bán rắn (Thuốc kem, thuốc mỡ, thuốc gel dùng ngoài);",
+        "vba_fragment": "* Thuốc sản xuất vô trùng:Thuốc dạng bán rắn (Thuốc mỡ tra mắt); Thuốc dạng lỏng thể tích nhỏ (Thuốc nhỏ mắt). \r* Xuất xưởng thuốc vô trùng. \r* Thuốc không vô trùng:Viên nang cứng (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin); Thuốc dùng ngoài dạng lỏng; Thuốc uống dạng lỏng (Thuốc nước, thuốc gel và hỗn dịch uống đóng túi); Dạng bào chế rắn khác (Thuốc bột và thuốc cốm (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin)); Thuốc dạng bán rắn (Thuốc kem, thuốc mỡ, thuốc gel dùng ngoài);"
+      },
+      {
+        "legacy_inspection_id": "278",
+        "gxp_type": "GMP",
+        "similarity": 0.971714,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "group_parenthesis",
+          "unkeyed_entries",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 24,
+          "left_fragment": "* Thuốc tiệt trùng cuối: Thuốc dạng lỏng thể tích lớn (Dung dịch tiêm truyền).\n* Xuất xưởng thuốc vô trùng.\n* Đóng",
+          "right_fragment": "* Thuốc tiệt trùng cuối:Thuốc dạng lỏng thể tích lớn (Dung dịch tiêm truyền).\n* Xuất xưởng thuốc vô trùng.\n* Đóng "
+        },
+        "historical_fragment": "* Thuốc tiệt trùng cuối: Thuốc dạng lỏng thể tích lớn (Dung dịch tiêm truyền). \r\n     * Xuất xưởng thuốc vô trùng. \r\n* Đóng gói thứ cấp. \r\n* Kiểm tra chất lượng: Vi sinh (Độ vô trùng; Giới hạn nhiễm khuẩn; Định lượng hoạt lực kháng sinh bằng vi sinh vật); Hóa học / Vật lý; Sinh học (Nội độc tố vi khuẩn).",
+        "python_fragment": "* Thuốc tiệt trùng cuối: Thuốc dạng lỏng thể tích lớn (Dung dịch tiêm truyền).\n* Xuất xưởng thuốc vô trùng.\n* Đóng gói thứ cấp.\n* Kiểm tra chất lượng: Vi sinh (Độ vô trùng; Giới hạn nhiễm khuẩn; Định lượng hoạt lực kháng sinh bằng vi sinh vật); Hóa học / Vật lý; Sinh học (Nội độc tố vi khuẩn).\n- 6.2.1: 1.2.",
+        "vba_fragment": "* Thuốc tiệt trùng cuối:Thuốc dạng lỏng thể tích lớn (Dung dịch tiêm truyền). \r* Xuất xưởng thuốc vô trùng. \r* Đóng gói thứ cấp:. \r* Kiểm tra chất lượng:Vi sinh (Độ vô trùng; Giới hạn nhiễm khuẩn; Định lượng hoạt lực kháng sinh bằng vi sinh vật); Hóa học / Vật lý; Sinh học (Nội độc tố vi khuẩn)."
+      },
+      {
+        "legacy_inspection_id": "317",
+        "gxp_type": "GMP",
+        "similarity": 0.885902,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "gmp_packaging_detail_expansion",
+          "group_parenthesis",
+          "limitation",
+          "unkeyed_entries",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 26,
+          "left_fragment": "* Thuốc sản xuất vô trùng: Thuốc dạng bán rắn (Thuốc mỡ tra mắt).\n* Xuất xưởng thuốc vô trùng.\n* Thuốc không vô trùn",
+          "right_fragment": "* Thuốc sản xuất vô trùng:Thuốc dạng bán rắn (Thuốc mỡ tra mắt).\n* Xuất xưởng thuốc vô trùng.\n* Thuốc không vô trùng"
+        },
+        "historical_fragment": "* Thuốc sản xuất vô trùng: Thuốc dạng bán rắn (Thuốc mỡ tra mắt). \r\n* Xuất xưởng thuốc vô trùng. \r\n* Thuốc không vô trùng: Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Dung dịch thuốc dùng ngoài, thuốc xịt mũi); Thuốc uống dạng lỏng (Dung dịch thuốc uống; Sirô thuốc); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Thuốc dạng bán rắn (Kem, gel, mỡ dùng ngoài); Viên nén (Viên nén, viên nén bao phim, viên nén bao đường); Thuốc không vô trùng khác (Viên nén sủi bọt, Thuốc bột sủi bọt, Thuốc cốm sủi bọ",
+        "python_fragment": "* Thuốc sản xuất vô trùng: Thuốc dạng bán rắn (Thuốc mỡ tra mắt).\n* Xuất xưởng thuốc vô trùng.\n* Thuốc không vô trùng: Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Dung dịch thuốc dùng ngoài, thuốc xịt mũi); Thuốc uống dạng lỏng (Dung dịch thuốc uống; Sirô thuốc); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Thuốc dạng bán rắn (Kem, gel, mỡ dùng ngoài); Viên nén (Viên nén, viên nén bao phim, viên nén bao đường); Thuốc không vô trùng khác (Viên nén sủi bọt, Thuốc bột sủi bọt, Thuốc cốm sủi bọt).\n",
+        "vba_fragment": "* Thuốc sản xuất vô trùng:Thuốc dạng bán rắn (Thuốc mỡ tra mắt). \r* Xuất xưởng thuốc vô trùng. \r* Thuốc không vô trùng:Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Dung dịch thuốc dùng ngoài, thuốc xịt mũi); Thuốc uống dạng lỏng (Dung dịch thuốc uống; Sirô thuốc); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Thuốc dạng bán rắn (Kem, gel, mỡ dùng ngoài); Viên nén (Viên nén, viên nén bao phim, viên nén bao đường); Thuốc không vô trùng khác (Viên nén sủi bọt, Thuốc bột sủi bọt, Thuốc cốm sủi bọt). "
+      },
+      {
+        "legacy_inspection_id": "337",
+        "gxp_type": "GMP",
+        "similarity": 0.898833,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "gmp_packaging_detail_expansion",
+          "unkeyed_entries",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 23,
+          "left_fragment": "* Thuốc không vô trùng: Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Thuốc nước dùng ngoài); Dạng bào chế rắn khác",
+          "right_fragment": "* Thuốc không vô trùng:Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Thuốc nước dùng ngoài); Dạng bào chế rắn khác "
+        },
+        "historical_fragment": "* Thuốc không vô trùng: Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Thuốc nước dùng ngoài); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Thuốc dạng bán rắn (Thuốc kem, thuốc mỡ, cao xoa); Viên nén (Viên nén, viên bao phim, viên bao đường). \r\n* Xuất xưởng thuốc không vô trùng. \r\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r\n* Đóng gói thứ cấp: Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r\n* Kiểm tra chất lượng: Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vật lý.",
+        "python_fragment": "* Thuốc không vô trùng: Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Thuốc nước dùng ngoài); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Thuốc dạng bán rắn (Thuốc kem, thuốc mỡ, cao xoa); Viên nén (Viên nén, viên bao phim, viên bao đường).\n* Thuốc không vô trùng (thuốc hóa dược không kê đơn).\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục 2.1.\n* Đóng gói thứ cấp: Tất cả các dạng thuốc ở mục 2.1.\n* Kiểm tra chất lượng: Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vật lý.\n- Non-β: Thuốc không chứa k",
+        "vba_fragment": "* Thuốc không vô trùng:Viên nang cứng; Thuốc dùng ngoài dạng lỏng (Thuốc nước dùng ngoài); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm); Thuốc dạng bán rắn (Thuốc kem, thuốc mỡ, cao xoa); Viên nén (Viên nén, viên bao phim, viên bao đường). \r* Thuốc không vô trùng (thuốc hóa dược không kê đơn):. \r* Đóng gói sơ cấp:Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r* Đóng gói thứ cấp:Tất cả các dạng thuốc ở mục Thuốc không vô trùng. \r* Kiểm tra chất lượng:Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / "
+      },
+      {
+        "legacy_inspection_id": "391",
+        "gxp_type": "GMP",
+        "similarity": 0.859813,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "gmp_packaging_detail_expansion",
+          "unkeyed_entries",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 27,
+          "left_fragment": "* Nguyên liệu từ dược liệu: Cao dược liệu (Cao đặc, cao lỏng, cao khô); Cốm, bột dược liệu; Khác (Tinh dầu; Dược liệu",
+          "right_fragment": "* Nguyên liệu từ dược liệu:Cao dược liệu (Cao đặc, cao lỏng, cao khô); Cốm, bột dược liệu; Khác (Tinh dầu; Dược liệu "
+        },
+        "historical_fragment": "* Nguyên liệu từ dược liệu: Cao dược liệu (Cao đặc, cao lỏng, cao khô); Cốm, bột dược liệu; Khác (Tinh dầu; Dược liệu sơ chế - chế biến\r\nTinh dầu; Vị thuốc cổ truyền; Vị thuốc cổ truyền dạng cốm). \r\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục Nguyên liệu từ dược liệu. \r\n* Đóng gói thứ cấp. \r\n* Kiểm tra chất lượng: Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vật lý.",
+        "python_fragment": "* Nguyên liệu từ dược liệu: Cao dược liệu (Cao đặc, cao lỏng, cao khô); Cốm, bột dược liệu; Khác (Tinh dầu; Dược liệu sơ chế - chế biến).\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục 5.2.\n* Đóng gói thứ cấp.\n* Kiểm tra chất lượng: Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vật lý.\nTinh dầu; Vị thuốc cổ truyền; Vị thuốc cổ truyền dạng cốm.",
+        "vba_fragment": "* Nguyên liệu từ dược liệu:Cao dược liệu (Cao đặc, cao lỏng, cao khô); Cốm, bột dược liệu; Khác (Tinh dầu; Dược liệu sơ chế - chế biến). \r* Đóng gói sơ cấp:Tất cả các dạng thuốc ở mục Nguyên liệu từ dược liệu. \r* Đóng gói thứ cấp:. \r* Kiểm tra chất lượng:Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vật lý."
+      },
+      {
+        "legacy_inspection_id": "416",
+        "gxp_type": "GMP",
+        "similarity": 0.903226,
+        "semantic_signals": [
+          "continuation_marker",
+          "custom_description",
+          "dollar_template",
+          "unkeyed_entries",
+          "vba_line_and_separator_formatting"
+        ],
+        "first_difference": {
+          "offset": 23,
+          "left_fragment": "* Thuốc không vô trùng: Thuốc dùng ngoài dạng lỏng (Dung dịch dùng ngoài, cồn thuốc); Thuốc dạng bán rắn (Thuốc k",
+          "right_fragment": "* Thuốc không vô trùng:Thuốc dùng ngoài dạng lỏng (Dung dịch dùng ngoài, cồn thuốc); Thuốc dạng bán rắn (Thuốc ke"
+        },
+        "historical_fragment": "* Thuốc không vô trùng: Thuốc dùng ngoài dạng lỏng (Dung dịch dùng ngoài, cồn thuốc); Thuốc dạng bán rắn (Thuốc kem, thuốc gel). \r\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục. \r\n* Đóng gói thứ cấp. \r\n* Kiểm tra chất lượng: Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vật lý.",
+        "python_fragment": "* Thuốc không vô trùng: Thuốc dùng ngoài dạng lỏng (Dung dịch dùng ngoài, cồn thuốc); Thuốc dạng bán rắn (Thuốc kem, thuốc gel).\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục.\n* Đóng gói thứ cấp.\n* Kiểm tra chất lượng: Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vật lý.\n- Non-β: Thuốc không chứa kháng sinh nhóm β-Lactam:.",
+        "vba_fragment": "* Thuốc không vô trùng:Thuốc dùng ngoài dạng lỏng (Dung dịch dùng ngoài, cồn thuốc); Thuốc dạng bán rắn (Thuốc kem, thuốc gel). \r* Đóng gói sơ cấp:Tất cả các dạng thuốc ở mục. \r* Đóng gói thứ cấp:. \r* Kiểm tra chất lượng:Vi sinh (Giới hạn nhiễm khuẩn); Hóa học / Vật lý."
+      }
+    ]
+  },
+  "snapshot_sha256": "b3bde05963e4e4d14d5b244e7c62b0f810f1cbbe206750574def6a366bdf7296",
+  "taxonomy_sha256": "ce2781832d33ca73330851828e5437b0cb716b8e4fa34dc5a52779cf70f5cc47"
+}

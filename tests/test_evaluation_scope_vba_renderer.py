@@ -346,3 +346,32 @@ def test_compile_vba_new_format_envelope_fails_closed_without_raw_block_value():
         assert "raw_block_value" in str(exc)
     else:
         raise AssertionError("Envelope reconstruction must fail closed without original structured block data")
+
+
+def test_compile_vba_readable_scope_applies_final_getdata_beta_lactam_normalization():
+    from backend.app.domain.evaluation_scope import validate_evaluation_scope_spans
+    from backend.app.domain.evaluation_scope_vba_renderer import compile_vba_readable_scope
+
+    taxonomy = _taxonomy(("1", "Hoạt động $$"))
+    result = compile_vba_readable_scope(
+        blocks=[
+            {
+                "id": "1",
+                "ordinal": 1,
+                "name": "",
+                "note": "",
+                "selections": [
+                    {"key": "1", "source_order": 1, "custom_description": "beta lactam"}
+                ],
+            }
+        ],
+        taxonomy_nodes=taxonomy,
+        gxp_type="GLP",
+    )
+
+    assert result.text == "Hoạt động β-Lactam."
+    assert any(item.get("role") == "getdata_text_normalization" for item in result.contributions)
+    normalized = [span for span in result.spans if span.kind == "VBA_GETDATA_NORMALIZATION"]
+    assert normalized
+    assert any(span.metadata and span.metadata.get("transformation_kind") == "GetData beta->β" for span in normalized)
+    validate_evaluation_scope_spans(result.text, result.spans)

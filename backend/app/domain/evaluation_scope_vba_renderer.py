@@ -987,6 +987,79 @@ def compile_vba_block(
     )
 
 
+def _replace_all_case_insensitive_preserve_origin(
+    items: list[_OwnedChar],
+    old: str,
+    new: str,
+    *,
+    transformation_kind: str,
+) -> int:
+    """Port case-insensitive VBA ``Replace`` on an already-owned stream.
+
+    Ownership is carried forward from the exact characters being transformed;
+    mixed-origin replacements are renderer-owned but retain all origin metadata.
+    This is forward provenance propagation, not text-based reverse attribution.
+    """
+    if not old:
+        return 0
+    count = 0
+    start = 0
+    old_folded = old.casefold()
+    while True:
+        haystack = "".join(item.char for item in items)
+        index = haystack.casefold().find(old_folded, start)
+        if index < 0:
+            return count
+        origin = items[index : index + len(old)]
+        owner_types = {item.owner_type for item in origin}
+        contribution_ids = {item.contribution_id for item in origin}
+        kinds = {item.kind for item in origin}
+        owner_type = next(iter(owner_types)) if len(owner_types) == 1 else "renderer"
+        contribution_id = (
+            next(iter(contribution_ids))
+            if len(contribution_ids) == 1
+            else "getdata-normalization"
+        )
+        metadata = {
+            "transformation_kind": transformation_kind,
+            "origin_text": haystack[index : index + len(old)],
+            "origin_kinds": sorted(kinds),
+            "origin_owner_types": sorted(owner_types),
+            "origin_contribution_ids": sorted(contribution_ids),
+        }
+        replacement = _chars(
+            new,
+            kind="VBA_GETDATA_NORMALIZATION",
+            owner_type=owner_type,
+            contribution_id=contribution_id,
+            metadata=metadata,
+        )
+        items[index : index + len(old)] = replacement
+        start = index + len(replacement)
+        count += 1
+
+
+def _vba_getdata_normalize_chars(items: list[_OwnedChar]) -> tuple[list[_OwnedChar], int]:
+    """Apply the final three ``GetData`` text replacements with provenance."""
+    result = list(items)
+    # VBA Trim at this stage removes leading/trailing ASCII spaces.
+    while result and result[0].char == " ":
+        del result[0]
+    while result and result[-1].char == " ":
+        result.pop()
+    changes = 0
+    changes += _replace_all_case_insensitive_preserve_origin(
+        result, "beta", "β", transformation_kind="GetData beta->β"
+    )
+    changes += _replace_all_case_insensitive_preserve_origin(
+        result, "lactam", "Lactam", transformation_kind="GetData lactam->Lactam"
+    )
+    changes += _replace_all_case_insensitive_preserve_origin(
+        result, " Lactam", "-Lactam", transformation_kind="GetData space-Lactam hyphenation"
+    )
+    return result, changes
+
+
 def compile_vba_readable_scope(
     *,
     blocks: Iterable[dict[str, Any]],
@@ -1083,6 +1156,16 @@ def compile_vba_readable_scope(
         )
         contributions.append({"contribution_id": contribution_id, "role": "limitation", "visible": True})
 
+    chars, normalization_changes = _vba_getdata_normalize_chars(chars)
+    if normalization_changes:
+        contributions.append(
+            {
+                "contribution_id": "getdata-normalization",
+                "role": "getdata_text_normalization",
+                "visible": True,
+                "replacement_count": normalization_changes,
+            }
+        )
     text, spans = _result_from_chars(chars)
     return VbaReadableScopeResult(
         text=text,

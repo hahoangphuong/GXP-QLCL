@@ -147,12 +147,87 @@ def _build_inputs(parsed: dict[str, Any], taxonomy_rows: list[dict[str, Any]]) -
     return vba_blocks, canonical_blocks
 
 
+
+
+def _record_semantic_signals(
+    *,
+    parsed: dict[str, Any],
+    taxonomy_rows: list[dict[str, Any]],
+    vba_blocks: list[dict[str, Any]],
+    canonical_blocks: list[dict[str, Any]],
+    vba_result: Any,
+) -> tuple[str, ...]:
+    """Return deterministic input/output features that can explain projection deltas.
+
+    These are diagnostic *signals*, not claims that historical prose is correct.
+    Multiple signals may apply to one record.  The purpose is to partition corpus
+    differences by concrete source-owned semantics before any production cutover.
+    """
+    by_key = {str(row.get("key") or ""): row for row in taxonomy_rows}
+    signals: set[str] = set()
+
+    if len(vba_blocks) > 1:
+        signals.add("multi_block")
+    if any(str(block.get("name") or "") for block in vba_blocks):
+        signals.add("block_name")
+    if any(str(block.get("note") or "") for block in vba_blocks):
+        signals.add("block_note")
+    if str(parsed.get("limitation_text") or "").strip():
+        signals.add("limitation")
+    if any(block.get("unkeyed_entries") for block in canonical_blocks):
+        signals.add("unkeyed_entries")
+
+    for block in vba_blocks:
+        for selected in block.get("selections") or ():
+            key = str(selected.get("key") or "")
+            node = by_key.get(key) or {}
+            short_render = str(node.get("short_render") or "")
+            custom = str(selected.get("custom_description") or "")
+            marker_body = short_render[1:] if short_render.startswith("<") else short_render
+            if custom:
+                signals.add("custom_description")
+            if "$$" in short_render:
+                signals.add("dollar_template")
+            if marker_body.startswith("&"):
+                signals.add("ampersand_marker")
+            if short_render.startswith("<"):
+                signals.add("continuation_marker")
+            cleaned = short_render.replace(" ($$)", "", 1).replace("($$)", "", 1)
+            cleaned = cleaned.replace(" $$", "", 1).replace("$$", "", 1)
+            if cleaned.strip().endswith("("):
+                signals.add("group_parenthesis")
+            source_text = " ".join((short_render, custom, str(node.get("description") or ""))).lower()
+            if "beta" in source_text or "lactam" in source_text:
+                signals.add("getdata_beta_lactam_normalization")
+
+    roles = [str(item.get("role") or "") for item in vba_result.contributions]
+    if "getdata_text_normalization" in roles:
+        signals.add("getdata_normalization_applied")
+    if "gmp_packaging_detail_expansion" in roles:
+        signals.add("gmp_packaging_detail_expansion")
+    if "gmp_batch_release_detail_expansion" in roles:
+        signals.add("gmp_batch_release_detail_expansion")
+    if any(
+        item.get("role") == "gmp_batch_release_detail_expansion"
+        and item.get("matched_after_open_parenthesis") is True
+        for item in vba_result.contributions
+    ):
+        signals.add("product_correction_first_key_after_parenthesis")
+
+    # The VBA core intentionally emits CR-separated lines and often no space
+    # after a colon before a child contribution.  These are renderer-format
+    # semantics, not missing source data.
+    signals.add("vba_line_and_separator_formatting")
+    return tuple(sorted(signals))
+
 def audit(snapshot: dict[str, Any], taxonomy: dict[str, Any]) -> dict[str, Any]:
     rows_by_gxp = _taxonomy_by_gxp(taxonomy)
     counts: Counter[str] = Counter()
     per_gxp: defaultdict[str, Counter[str]] = defaultdict(Counter)
     examples: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
     similarity_buckets: Counter[str] = Counter()
+    mismatch_signal_counts: Counter[str] = Counter()
+    mismatch_profiles: Counter[str] = Counter()
 
     for row in snapshot["db.ktra"]:
         gxp = str(row.get("LOẠI KT") or "")
@@ -203,6 +278,10 @@ def audit(snapshot: dict[str, Any], taxonomy: dict[str, Any]) -> dict[str, Any]:
         counts["unkeyed_entries"] += sum(len(block["unkeyed_entries"]) for block in canonical_blocks)
         counts["gmp_packaging_expansions"] += sum(1 for item in vba.contributions if item.get("role") == "gmp_packaging_detail_expansion")
         counts["gmp_batch_release_expansions"] += sum(1 for item in vba.contributions if item.get("role") == "gmp_batch_release_detail_expansion")
+        normalization_items = [item for item in vba.contributions if item.get("role") == "getdata_text_normalization"]
+        if normalization_items:
+            counts["records_with_getdata_text_normalization"] += 1
+            counts["getdata_text_normalization_replacements"] += sum(int(item.get("replacement_count") or 0) for item in normalization_items)
 
         if vba.deferred_rules:
             counts["deferred_rule_records"] += 1
@@ -227,6 +306,13 @@ def audit(snapshot: dict[str, Any], taxonomy: dict[str, Any]) -> dict[str, Any]:
         historical = str(parsed.get("rendered_prose") or "")
         python_text = str(canonical.text)
         vba_text = str(vba.text)
+        semantic_signals = _record_semantic_signals(
+            parsed=parsed,
+            taxonomy_rows=taxonomy_rows,
+            vba_blocks=vba_blocks,
+            canonical_blocks=canonical_blocks,
+            vba_result=vba,
+        )
 
         pairs = (
             ("historical_vs_vba", historical, vba_text),
@@ -240,6 +326,10 @@ def audit(snapshot: dict[str, Any], taxonomy: dict[str, Any]) -> dict[str, Any]:
             counts[f"{label}_exact_mismatch"] += int(not exact)
             counts[f"{label}_whitespace_only_mismatch"] += int(not exact and compact)
             if label in {"historical_vs_vba", "python_vs_vba"} and not exact:
+                for signal in semantic_signals:
+                    mismatch_signal_counts[f"{label}::{signal}"] += 1
+                profile = "+".join(semantic_signals) if semantic_signals else "NO_KNOWN_SIGNAL"
+                mismatch_profiles[f"{label}::{profile}"] += 1
                 score = _similarity(left, right)
                 bucket = "0.99+" if score >= 0.99 else "0.95-0.99" if score >= 0.95 else "0.80-0.95" if score >= 0.80 else "<0.80"
                 similarity_buckets[f"{label}::{bucket}"] += 1
@@ -250,6 +340,7 @@ def audit(snapshot: dict[str, Any], taxonomy: dict[str, Any]) -> dict[str, Any]:
                         "legacy_inspection_id": _record_id(row),
                         "gxp_type": gxp,
                         "similarity": score,
+                        "semantic_signals": list(semantic_signals),
                         "first_difference": _first_difference(left, right),
                         "historical_fragment": historical[:500],
                         "python_fragment": python_text[:500],
@@ -275,6 +366,8 @@ def audit(snapshot: dict[str, Any], taxonomy: dict[str, Any]) -> dict[str, Any]:
     for key in (
         "records_using_first_key_product_correction",
         "first_key_product_correction_expansions",
+        "records_with_getdata_text_normalization",
+        "getdata_text_normalization_replacements",
     ):
         counts[key] += 0
 
@@ -292,11 +385,27 @@ def audit(snapshot: dict[str, Any], taxonomy: dict[str, Any]) -> dict[str, Any]:
             "current_python_renderer_role": "compatibility_reference_not_oracle",
             "hard_failure_fields": list(hard_failures),
             "known_product_corrections": ["expand_first_gmp_detail_key_immediately_after_open_parenthesis"],
+            "port_coverage": {
+                "core_compile_node_and_ancestors": "ported",
+                "group_and_continuation": "ported",
+                "block_name_note_limitation": "ported",
+                "multi_block_join": "ported",
+                "gmp_packaging_detail_expansion": "ported",
+                "gmp_batch_release_detail_expansion": "ported_with_explicit_product_correction",
+                "getdata_beta_lactam_normalization": "ported_with_forward_provenance",
+                "unkeyed_entries": "preserved_but_not_rendered_by_vba_core",
+                "historical_prose": "diagnostic_only",
+            },
         },
         "counts": dict(sorted(counts.items())),
         "hard_failures": hard_failures,
         "per_gxp": {key: dict(sorted(value.items())) for key, value in sorted(per_gxp.items())},
         "similarity_buckets": dict(sorted(similarity_buckets.items())),
+        "mismatch_signal_counts": dict(sorted(mismatch_signal_counts.items())),
+        "top_mismatch_profiles": [
+            {"comparison_and_profile": key, "records": value}
+            for key, value in mismatch_profiles.most_common(30)
+        ],
         "bounded_examples": {key: value for key, value in sorted(examples.items())},
     }
 

@@ -1,0 +1,105 @@
+{
+  "schema_version": "evaluation-scope-vba-taxonomy-coverage/v1",
+  "contract": {
+    "semantic_owner": "legacy_vba_with_explicit_product_corrections",
+    "purpose": "exhaustive_structural_taxonomy_coverage_not_historical_parity",
+    "available_families_must_compile_every_row_blank_and_nonblank_custom": true,
+    "available_families_must_compile_full_source_order_sequence": true,
+    "gdp_policy": "fail_closed_when_taxonomy_unavailable",
+    "gmpbb_policy": "distinct_legacy_prose_family_never_alias_to_gmp",
+    "known_product_corrections": [
+      "expand_first_gmp_detail_key_immediately_after_open_parenthesis"
+    ]
+  },
+  "families": {
+    "GLP": {
+      "source_name": "PVCN_GLP",
+      "historical_corpus_exercised": true,
+      "coverage_role": "historical_plus_exhaustive_taxonomy",
+      "counts": {
+        "blank_custom_pass": 237,
+        "family_blank_custom_pass": 1,
+        "family_nonblank_custom_pass": 1,
+        "family_sequence_probes": 2,
+        "legacy_records": 109,
+        "marker::continuation": 210,
+        "marker::dollar_template": 237,
+        "marker::nonblank": 237,
+        "node_compile_probes": 474,
+        "nonblank_custom_pass": 237,
+        "taxonomy_rows": 237
+      }
+    },
+    "GMP": {
+      "source_name": "PVCN_GMP",
+      "historical_corpus_exercised": true,
+      "coverage_role": "historical_plus_exhaustive_taxonomy",
+      "counts": {
+        "blank_custom_pass": 112,
+        "family_blank_custom_pass": 1,
+        "family_nonblank_custom_pass": 1,
+        "family_sequence_probes": 2,
+        "legacy_records": 1351,
+        "marker::blank": 6,
+        "marker::continuation": 89,
+        "marker::dollar_template": 106,
+        "marker::group_open": 2,
+        "marker::nonblank": 106,
+        "node_compile_probes": 224,
+        "nonblank_custom_pass": 112,
+        "taxonomy_rows": 112
+      }
+    },
+    "GSP": {
+      "source_name": "PVCN_GSP",
+      "historical_corpus_exercised": false,
+      "coverage_role": "exhaustive_taxonomy_synthetic_only",
+      "counts": {
+        "blank_custom_pass": 52,
+        "family_blank_custom_pass": 1,
+        "family_nonblank_custom_pass": 1,
+        "family_sequence_probes": 2,
+        "legacy_records": 0,
+        "marker::blank": 2,
+        "marker::continuation": 39,
+        "marker::dollar_template": 11,
+        "marker::nonblank": 50,
+        "node_compile_probes": 104,
+        "nonblank_custom_pass": 52,
+        "taxonomy_rows": 52
+      }
+    }
+  },
+  "taxonomy_unavailable": {
+    "GDP": {
+      "status": "unavailable",
+      "reason": "not_defined_in_legacy_workbook"
+    }
+  },
+  "non_taxonomy_legacy_types": {
+    "GMPbb": 36
+  },
+  "counts": {
+    "family_sequence_probes": 6,
+    "marker::GLP::continuation": 210,
+    "marker::GLP::dollar_template": 237,
+    "marker::GLP::nonblank": 237,
+    "marker::GMP::blank": 6,
+    "marker::GMP::continuation": 89,
+    "marker::GMP::dollar_template": 106,
+    "marker::GMP::group_open": 2,
+    "marker::GMP::nonblank": 106,
+    "marker::GSP::blank": 2,
+    "marker::GSP::continuation": 39,
+    "marker::GSP::dollar_template": 11,
+    "marker::GSP::nonblank": 50,
+    "node_compile_probes": 802
+  },
+  "hard_failures": {
+    "node_compile_failures": 0,
+    "family_sequence_failures": 0
+  },
+  "bounded_failures": [],
+  "taxonomy_sha256": "ce2781832d33ca73330851828e5437b0cb716b8e4fa34dc5a52779cf70f5cc47",
+  "snapshot_sha256": "b3bde05963e4e4d14d5b244e7c62b0f810f1cbbe206750574def6a366bdf7296"
+}

@@ -16,6 +16,7 @@ artifacts/legacy_audit/*
 !artifacts/legacy_audit/duplicate_current_analysis.md
 !artifacts/legacy_audit/evaluation_scope_payload_classification.json
 !artifacts/legacy_audit/evaluation_scope_vba_shadow_corpus.json
+!artifacts/legacy_audit/evaluation_scope_vba_taxonomy_coverage.json
 !artifacts/legacy_snapshot/
 artifacts/legacy_snapshot/*
 !artifacts/legacy_snapshot/evaluation_scope_taxonomy.json

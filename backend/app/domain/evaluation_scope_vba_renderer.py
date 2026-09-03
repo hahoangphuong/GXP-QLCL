@@ -503,11 +503,20 @@ def _vba_get_in_line_pos(text: str, needle: str) -> tuple[int, int, int]:
 
 
 def _vba_pv_incl_pos(pvi: str, key: str) -> int:
-    """Zero-based port of ``PV_Incl_Pos``; ``-1`` means VBA returned 0."""
+    """Return the delimiter position immediately before ``key``.
+
+    The matching starts from legacy ``PV_Incl_Pos`` but intentionally fixes one
+    product-level gap: a key immediately after an opening parenthesis is also
+    eligible for GMP detail expansion.  The returned index still points at the
+    delimiter so existing ``+1`` replacement offsets remain unchanged.
+    """
     if not pvi or not key:
         return -1
     first = key[:1]
     for needle in (
+        f"({key};",
+        f"({key})",
+        f"({key} ",
         f" {first} ",
         f" {key} ",
         f" {key})",

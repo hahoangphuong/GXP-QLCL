@@ -175,19 +175,21 @@ def test_compile_scope_core_ports_vba_gmp_packaging_detail_expansion():
     )
 
 
-def test_compile_scope_core_ports_vba_gmp_batch_release_detail_quirk():
+def test_compile_scope_core_expands_first_gmp_key_after_open_parenthesis():
     taxonomy = _gmp_taxonomy()
     result = compile_vba_scope_core(
         taxonomy_nodes=taxonomy,
         selections=[{"key": "1.3", "source_order": 1, "custom_description": "1.1; 1.2"}],
         gxp_type="GMP",
     )
-    # PV_Incl_Pos requires a leading space.  Because Get_PV_XXuong preserves
-    # the opening parenthesis, the first key in "(1.1; 1.2)" is not expanded;
-    # the second one is.  This oddity is direct legacy VBA behavior.
-    assert result.text == "* Xuất xưởng thuốc vô trùng (1.1; Thuốc tiệt trùng cuối)."
+    # Intentional product correction over legacy PV_Incl_Pos: the first key
+    # immediately after '(' expands just like later semicolon-delimited keys.
+    assert result.text == "* Xuất xưởng thuốc vô trùng (Thuốc sản xuất vô trùng; Thuốc tiệt trùng cuối)."
     expansions = [item for item in result.contributions if item["role"] == "gmp_batch_release_detail_expansion"]
-    assert [(item["release_family"], item["node_key"]) for item in expansions] == [("sterile", "1.2")]
+    assert [(item["release_family"], item["node_key"]) for item in expansions] == [
+        ("sterile", "1.1"),
+        ("sterile", "1.2"),
+    ]
 
 
 def test_compile_scope_core_gmp_fails_closed_without_required_anchor_rows():

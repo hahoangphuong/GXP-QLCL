@@ -7,6 +7,7 @@ rendered prose.  Canonical persistence is intentionally deferred to Slice C.5c.
 """
 
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from hashlib import sha256
 import json
 import re
@@ -28,6 +29,50 @@ KEY_PATTERN = re.compile(r"^[0-9]+(?:\.[0-9]+)*$")
 # DCForm.SetNodeValue appends an ordinal and '+' when it renders a temporary
 # semicolon subnode.  It is not a source-taxonomy key.
 RUNTIME_SYNTHETIC_KEY_PATTERN = re.compile(r"^[0-9]+(?:\.[0-9]+)+\+$")
+
+
+@dataclass(frozen=True)
+class EvaluationScopeRenderResult:
+    text: str
+    contributions: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class EvaluationScopeRenderSpan:
+    kind: str
+    text: str
+    owner_type: str
+    contribution_id: str
+    start_offset: int | None = None
+    end_offset: int | None = None
+    metadata: dict[str, Any] | None = None
+
+
+def finalize_evaluation_scope_spans(spans: Iterable[EvaluationScopeRenderSpan]) -> tuple[str, tuple[EvaluationScopeRenderSpan, ...]]:
+    """Assign half-open Python-string offsets to one ordered owned-span stream."""
+    finalized: list[EvaluationScopeRenderSpan] = []
+    offset = 0
+    for span in spans:
+        if not span.text:
+            raise ValueError("Evaluation-scope render spans cannot be empty.")
+        end = offset + len(span.text)
+        finalized.append(EvaluationScopeRenderSpan(**{**span.__dict__, "start_offset": offset, "end_offset": end}))
+        offset = end
+    text = "".join(span.text for span in finalized)
+    validate_evaluation_scope_spans(text, finalized)
+    return text, tuple(finalized)
+
+
+def validate_evaluation_scope_spans(text: str, spans: Iterable[EvaluationScopeRenderSpan]) -> None:
+    """Fail closed when finalized owned spans do not cover text contiguously."""
+    expected = 0
+    materialized = tuple(spans)
+    for span in materialized:
+        if not span.text or span.start_offset != expected or span.end_offset != expected + len(span.text):
+            raise ValueError("Invalid evaluation-scope render span offsets.")
+        expected = span.end_offset
+    if expected != len(text) or text != "".join(span.text for span in materialized):
+        raise ValueError("Evaluation-scope render span concatenation mismatch.")
 
 
 def _clean_vba_short_render(value: str) -> str:
@@ -85,7 +130,8 @@ def render_evaluation_scope_summary(
     blocks: Iterable[dict[str, Any]],
     taxonomy_nodes: Iterable[dict[str, Any]],
     limitation_text: str | None,
-) -> str:
+    include_provenance: bool = False,
+) -> str | EvaluationScopeRenderResult:
     """Project the current aggregate under the app's canonical taxonomy contract.
 
     This is not a VBA-fidelity renderer.  It intentionally does not apply the
@@ -96,6 +142,7 @@ def render_evaluation_scope_summary(
     node_by_id = {str(row["id"]): row for row in nodes}
     node_by_key = {str(row["key"]): row for row in nodes}
     rendered_blocks: list[str] = []
+    contributions: list[dict[str, Any]] = []
     for block in sorted(blocks, key=lambda row: (int(row["ordinal"]), str(row["id"]))):
         rendered: list[str] = []
         current = ""
@@ -117,6 +164,7 @@ def render_evaluation_scope_summary(
                 groups.pop()
             text, continuation, opens_group = _canonical_node_text(node.get("short_render"), custom)
             emitted.add(node_id)
+            contributions.append({"block_ordinal": block["ordinal"], "taxonomy_node_id": node_id, "node_key": key, "source_kind": "selected_node" if node_id in selected else "required_ancestor", "short_render": node.get("short_render"), "custom_description": custom, "rendered_fragment": text, "custom_description_disposition": "TEMPLATE_SUBSTITUTED" if custom and "$$" in str(node.get("short_render") or "") else "APPENDED" if custom else "STRUCTURAL_ONLY" if not text else "NOT_APPLICABLE"})
             if not text:
                 return
             if current and (continuation or groups):
@@ -151,8 +199,10 @@ def render_evaluation_scope_summary(
         header = ""
         if block.get("name"):
             header = f"« {block['name']} »"
+            contributions.append({"block_ordinal": block["ordinal"], "source_kind": "block_name", "rendered_fragment": header})
         if block.get("note"):
             header = f"{header} ({block['note']})" if header else f"({block['note']})"
+            contributions.append({"block_ordinal": block["ordinal"], "source_kind": "block_note", "rendered_fragment": str(block["note"])})
         rendered_blocks.append("\n".join(part for part in (header, compiled_block) if part).strip())
     result = "\n\n".join(part for part in rendered_blocks if part).strip()
     if limitation_text:
@@ -171,7 +221,8 @@ def render_evaluation_scope_summary(
             normalized_limitation.append(char)
         limitation = "".join(normalized_limitation) + ")" * depth
         result = "\n".join(part for part in (result, f"(*{limitation}*)") if part)
-    return result
+        contributions.append({"source_kind": "limitation", "rendered_fragment": limitation})
+    return EvaluationScopeRenderResult(result, tuple(contributions)) if include_provenance else result
 
 
 def _canonical_json(value: object) -> bytes:

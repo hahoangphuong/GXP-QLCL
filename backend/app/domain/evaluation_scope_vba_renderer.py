@@ -6,9 +6,10 @@ This module intentionally does not replace ``render_evaluation_scope_summary``.
 The business semantics here are ported from ``DCForm.frm``:
 ``Compile_Node`` -> ``Compile_Node_Full`` -> ``Compile_PVCN``.
 
-GMP-specific post-processing (``VietChitiet_PVDG_GMP`` and
-``VietChitiet_PVXX_GMP``) is deliberately deferred until its row-anchor
-semantics have been ported and proven separately.
+The active GMP-specific post-processing procedures ``VietChitiet_PVDG_GMP``
+and ``VietChitiet_PVXX_GMP`` are ported here as part of the shadow compiler.
+The product additionally corrects legacy ``PV_Incl_Pos`` so the first detail
+key immediately after ``(" is expanded consistently with later keys.
 """
 
 from dataclasses import dataclass, replace
@@ -687,6 +688,7 @@ def _apply_vietchitiet_pvxx_gmp(
             j = _vba_pv_incl_pos(pvi, key)
             if j < 0:
                 continue
+            matched_after_open_parenthesis = pvi[j : j + 1] == "("
             # VBA intentionally re-locates the replacement line by the full
             # taxonomy description, not by short_render.  Preserve that quirk.
             anchor_description = str(rows[anchor_order].get("description") or "")
@@ -715,6 +717,7 @@ def _apply_vietchitiet_pvxx_gmp(
                     "release_family": label,
                     "visible": True,
                     "length_delta": delta,
+                    "matched_after_open_parenthesis": matched_after_open_parenthesis,
                 }
             )
     return result

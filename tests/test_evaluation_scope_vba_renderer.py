@@ -190,6 +190,7 @@ def test_compile_scope_core_expands_first_gmp_key_after_open_parenthesis():
         ("sterile", "1.1"),
         ("sterile", "1.2"),
     ]
+    assert [item["matched_after_open_parenthesis"] for item in expansions] == [True, False]
 
 
 def test_compile_scope_core_gmp_fails_closed_without_required_anchor_rows():

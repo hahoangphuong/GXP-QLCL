@@ -428,15 +428,38 @@ def audit(
     )
 
     expected_call_prefix = "backend/app/services/catalog.py:"
+    document_projection_call_prefix = "backend/app/domain/evaluation_scope_document_projection.py:"
+    catalog_vba_renderer_calls = [
+        call for call in vba_renderer_calls if call.startswith(expected_call_prefix)
+    ]
+    document_projection_vba_renderer_calls = [
+        call for call in vba_renderer_calls if call.startswith(document_projection_call_prefix)
+    ]
+    unexpected_vba_renderer_calls = [
+        call
+        for call in vba_renderer_calls
+        if not call.startswith(expected_call_prefix)
+        and not call.startswith(document_projection_call_prefix)
+    ]
+    document_projection_owner_valid = (
+        not document_projection_vba_renderer_calls
+        or (
+            len(document_projection_vba_renderer_calls) == 2
+            and (REPOSITORY_ROOT / "backend/app/domain/evaluation_scope_document_projection.py").is_file()
+        )
+    )
     pre_cutover = (
         len(old_renderer_calls) == 2
         and all(call.startswith(expected_call_prefix) for call in old_renderer_calls)
-        and not vba_renderer_calls
+        and not catalog_vba_renderer_calls
+        and document_projection_owner_valid
+        and not unexpected_vba_renderer_calls
     )
     cutover_active = (
         not old_renderer_calls
-        and len(vba_renderer_calls) == 2
-        and all(call.startswith(expected_call_prefix) for call in vba_renderer_calls)
+        and len(catalog_vba_renderer_calls) == 2
+        and document_projection_owner_valid
+        and not unexpected_vba_renderer_calls
         and 'node_key_by_id[str(selection["taxonomy_node_id"])]' in read_service_text
         and "gxp_type=case.gxp_type" in read_service_text
     )
@@ -458,6 +481,10 @@ def audit(
             "renderer_state": renderer_state,
             "old_renderer_symbol_occurrences_outside_domain": old_renderer_calls,
             "vba_renderer_symbol_occurrences_outside_domain": vba_renderer_calls,
+            "workspace_vba_renderer_calls": catalog_vba_renderer_calls,
+            "document_projection_vba_renderer_calls": document_projection_vba_renderer_calls,
+            "unexpected_vba_renderer_calls": unexpected_vba_renderer_calls,
+            "allowed_document_projection_owner": "backend/app/domain/evaluation_scope_document_projection.py",
             "production_summary_owner": "backend/app/services/catalog.py::CatalogReadService._serialize_evaluation_scope",
             "read_api": "GET /cases/{case_id}/workspace",
             "mutation_api": "PUT /cases/{case_id}/evaluation-scope",

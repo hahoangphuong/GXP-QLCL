@@ -136,6 +136,7 @@ class DocumentWorkflowService:
             payload_values=dict(payload.get("payload") or {}),
             payload_notes=payload.get("payload_notes"),
             strict_payload=bool(payload.get("strict_payload", True)),
+            copy_pt=bool(payload.get("copy_pt", False)),
         )
 
     def _load_template_definition(self, session: Session, template_definition_id: str | None) -> TemplateDefinition | None:

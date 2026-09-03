@@ -838,6 +838,7 @@ class DocumentGenerationPrepareRequest(BaseModel):
     payload: dict[str, str]
     payload_notes: str | None = None
     strict_payload: bool = True
+    copy_pt: bool = False
 
 
 class DocumentTemplateRenderRequest(DocumentGenerationPrepareRequest):

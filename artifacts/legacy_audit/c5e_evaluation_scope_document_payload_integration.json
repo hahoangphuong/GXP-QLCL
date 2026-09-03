@@ -1,0 +1,86 @@
+{
+  "schema_version": "c5e-evaluation-scope-document-payload-integration/v1",
+  "status": "SCALAR_PAYLOAD_INTEGRATION_READY",
+  "blockers": [],
+  "checks": {
+    "SCALAR_PROJECTION_CONTRACT_READY": {
+      "status": "PASS",
+      "evidence": {
+        "status": "SCALAR_PROJECTION_CONTRACT_READY",
+        "blockers": []
+      }
+    },
+    "SERVICE_ENRICHMENT_ACTIVE": {
+      "status": "PASS",
+      "evidence": {
+        "path": "backend/app/document/service.py"
+      }
+    },
+    "CANONICAL_DB_OWNER_ONLY": {
+      "status": "PASS",
+      "evidence": {
+        "historical_prose_oracle": false,
+        "workspace_summary_oracle": false,
+        "unkeyed_entries_queried": false,
+        "taxonomy_key_owner": "taxonomy_node_id -> current taxonomy node key"
+      }
+    },
+    "CALLER_SCOPE_OVERRIDE_BLOCKED": {
+      "status": "PASS",
+      "evidence": {
+        "reserved_fields": [
+          "DayChuyen",
+          "Daychuyen",
+          "Daychuyen2",
+          "GhPviCN",
+          "GhPviDG",
+          "GioiHanPvi",
+          "GioihanPvi"
+        ]
+      }
+    },
+    "GENERIC_REGISTRY_NOT_SCOPE_OWNER": {
+      "status": "PASS",
+      "evidence": {
+        "generic_registry_role": "non-scope inventory/validation",
+        "scope_fields_appended_after_generic_validation": true
+      }
+    },
+    "COPY_PT_BRANCH_EXPLICIT": {
+      "status": "PASS",
+      "evidence": {
+        "family": "INSPECTION_PT_CT",
+        "condition": "CopyPT"
+      }
+    },
+    "BRANCH_FAMILY_SET_EXACT": {
+      "status": "PASS",
+      "evidence": {
+        "family_count": 9,
+        "families": [
+          "ASSESSMENT_MINUTES",
+          "CERTIFICATE_DECISION",
+          "INSPECTION_BBTD_HOSO_DK",
+          "INSPECTION_BB_KT",
+          "INSPECTION_KE_HOACH_KT",
+          "INSPECTION_PT_CT",
+          "INSPECTION_PT_PCT",
+          "INSPECTION_QD_KT",
+          "RISK_MANAGEMENT_WORKSHEET"
+        ]
+      }
+    }
+  },
+  "semantic_owner": "backend/app/domain/evaluation_scope_document_projection.py",
+  "integration_owner": "backend/app/document/evaluation_scope_payload.py",
+  "generic_registry_scope_semantic_owner": false,
+  "caller_scope_override_authorized": false,
+  "historical_prose_oracle_authorized": false,
+  "unkeyed_entries_semantic_input_authorized": false,
+  "deferred_separate_path": {
+    "name": "Input_DC_to_CC certificate detail",
+    "status": "NOT_IMPLEMENTED_IN_SCALAR_PAYLOAD_INTEGRATION",
+    "compact_summary_substitution_authorized": false
+  },
+  "next_safe_slice": "audit and port Input_DC_to_CC certificate-detail structured taxonomy/bookmark path separately"
+}

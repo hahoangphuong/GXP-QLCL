@@ -21,6 +21,10 @@ from backend.app.document.payload_builders import (
     load_default_payload_builder_registry,
 )
 from backend.app.document.persistence import PersistedGenerationState, prepare_generation_persistence
+from backend.app.document.evaluation_scope_payload import (
+    assert_no_c5e_scope_field_override,
+    enrich_payload_result_with_c5e_scope,
+)
 from backend.app.document.service_contract import (
     DocumentGenerationPlan,
     DocumentGenerationRequest,
@@ -44,6 +48,7 @@ class DocumentPreparationInput:
     table_regions: tuple["TableRegionRenderInput", ...] = ()
     payload_notes: str | None = None
     strict_payload: bool = True
+    copy_pt: bool = False
 
 
 @dataclass(frozen=True)
@@ -77,11 +82,16 @@ class TemplateAwareAllocatedDocumentGeneration:
     template_render_ready: bool
 
 
-def prepare_document_generation_job(
+def build_document_payload_result(
     session: Session,
     preparation_input: DocumentPreparationInput,
-) -> PreparedDocumentGeneration:
+) -> PayloadBuildResult:
+    """Build generic payload values, then apply C.5e scope ownership."""
     payload_registry = load_default_payload_builder_registry()
+    assert_no_c5e_scope_field_override(
+        family_code=preparation_input.request.family_code,
+        values=preparation_input.payload_values,
+    )
     payload_result = build_payload_envelope(
         payload_registry,
         PayloadBuildInput(
@@ -91,6 +101,20 @@ def prepare_document_generation_job(
             strict=preparation_input.strict_payload,
         ),
     )
+    return enrich_payload_result_with_c5e_scope(
+        session,
+        family_code=preparation_input.request.family_code,
+        case_id=preparation_input.request.case_id,
+        copy_pt=preparation_input.copy_pt,
+        payload_result=payload_result,
+    )
+
+
+def prepare_document_generation_job(
+    session: Session,
+    preparation_input: DocumentPreparationInput,
+) -> PreparedDocumentGeneration:
+    payload_result = build_document_payload_result(session, preparation_input)
     registry = load_default_registry()
     generation_plan = plan_document_generation(
         registry,

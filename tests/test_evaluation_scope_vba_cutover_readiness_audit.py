@@ -78,8 +78,17 @@ def test_c5d2_readiness_artifact_makes_unkeyed_and_cutover_boundaries_explicit()
     assert blast_radius["renderer_state"] == "CUTOVER_ACTIVE_VERIFIED"
     assert blast_radius["old_renderer_symbol_occurrences_outside_domain"] == []
     vba_calls = blast_radius["vba_renderer_symbol_occurrences_outside_domain"]
-    assert len(vba_calls) == 2
-    assert all(call.startswith("backend/app/services/catalog.py:") for call in vba_calls)
+    workspace_calls = blast_radius["workspace_vba_renderer_calls"]
+    document_projection_calls = blast_radius["document_projection_vba_renderer_calls"]
+    assert len(workspace_calls) == 2
+    assert all(call.startswith("backend/app/services/catalog.py:") for call in workspace_calls)
+    assert len(document_projection_calls) in {0, 2}
+    assert all(
+        call.startswith("backend/app/domain/evaluation_scope_document_projection.py:")
+        for call in document_projection_calls
+    )
+    assert blast_radius["unexpected_vba_renderer_calls"] == []
+    assert set(workspace_calls + document_projection_calls) == set(vba_calls)
 
     persistence = report["persistence_contract"]
     assert persistence["prose_only_read_path"] is True

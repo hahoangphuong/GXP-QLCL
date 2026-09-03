@@ -144,6 +144,16 @@ def _clean_text_chars(items: list[_OwnedChar], *, ext: bool = False) -> list[_Ow
     return result
 
 
+def _clean_text_string(text: str, *, ext: bool = False) -> str:
+    items = _chars(
+        text,
+        kind="SOURCE_TAXONOMY",
+        owner_type="source",
+        contribution_id="clean-text-probe",
+    )
+    return "".join(item.char for item in _clean_text_chars(items, ext=ext))
+
+
 def _coalesce_spans(items: Sequence[_OwnedChar]) -> tuple[EvaluationScopeRenderSpan, ...]:
     spans: list[EvaluationScopeRenderSpan] = []
     for item in items:
@@ -455,6 +465,252 @@ def _trim_trailing_cr_vba(chars: list[_OwnedChar]) -> list[_OwnedChar]:
     return result
 
 
+
+_GMP_ROW_ASEPTIC = 2
+_GMP_ROW_PRI_PACK = 93
+_GMP_ROW_SEC_PACK = 96
+_GMP_ROW_XX_VT = 15
+_GMP_ROW_XX_KVT = 49
+_GMP_ROW_XX_SH = 60
+_GMP_ROW_XX_DL = 78
+
+
+def _taxonomy_by_source_order(nodes: Sequence[dict[str, Any]]) -> dict[int, dict[str, Any]]:
+    return {int(node.get("source_order") or 0): node for node in nodes if int(node.get("source_order") or 0) > 0}
+
+
+def _vba_find_ci(text: str, needle: str, start: int = 0) -> int:
+    if not needle:
+        return -1
+    return text.casefold().find(needle.casefold(), start)
+
+
+def _vba_get_in_line_pos(text: str, needle: str) -> tuple[int, int, int]:
+    """Return zero-based ``(start, end_inclusive, line_end)`` for GetInLinePos.
+
+    ``line_end`` is the index of the following VBA CR, or ``len(text)`` when
+    there is no following CR.  Only the fields used by the two active GMP
+    detail procedures are exposed.
+    """
+    start = _vba_find_ci(text, needle)
+    if start < 0:
+        return -1, -1, -1
+    end = start + len(needle) - 1
+    line_end = text.find(VBA_CR, start + 1)
+    if line_end < 0:
+        line_end = len(text)
+    return start, end, line_end
+
+
+def _vba_pv_incl_pos(pvi: str, key: str) -> int:
+    """Zero-based port of ``PV_Incl_Pos``; ``-1`` means VBA returned 0."""
+    if not pvi or not key:
+        return -1
+    first = key[:1]
+    for needle in (
+        f" {first} ",
+        f" {key} ",
+        f" {key})",
+        f" {first}. ",
+        f" {key}. ",
+    ):
+        pos = _vba_find_ci(pvi, needle)
+        if pos >= 0:
+            return pos
+    return -1
+
+
+def _replace_owned_range_with_taxonomy_description(
+    chars: list[_OwnedChar],
+    *,
+    start: int,
+    length: int,
+    description: str,
+    contribution_id: str,
+    node_key: str,
+    procedure: str,
+) -> int:
+    if start < 0 or length < 0 or start + length > len(chars):
+        return 0
+    replacement = _chars(
+        description,
+        kind="SOURCE_TAXONOMY_DESCRIPTION",
+        owner_type="source",
+        contribution_id=contribution_id,
+        metadata={
+            "source_field": "description",
+            "node_key": node_key,
+            "vba_operation": procedure,
+        },
+    )
+    chars[start : start + length] = replacement
+    return len(description) - length
+
+
+def _gmp_extract_line_payload(text: str, anchor: str) -> tuple[str, int] | None:
+    start, end, line_end = _vba_get_in_line_pos(text, anchor)
+    if start < 0 or line_end < 0:
+        return None
+    payload = text[end + 1 : line_end]
+    pvi = " " + payload.replace(",", " ").replace(";", " ") + " "
+    return pvi, end + 1
+
+
+def _apply_vietchitiet_pvdg_gmp(
+    chars: list[_OwnedChar],
+    *,
+    taxonomy_nodes: Sequence[dict[str, Any]],
+    block_ordinal: int,
+    contributions: list[dict[str, Any]],
+) -> list[_OwnedChar]:
+    """Port active ``VietChitiet_PVDG_GMP`` from ``DCForm.frm``.
+
+    The procedure expands compact node keys that appear in the primary and
+    secondary packaging lines into the taxonomy's full descriptions.
+    """
+    rows = _taxonomy_by_source_order(taxonomy_nodes)
+    pri_anchor_row = rows.get(_GMP_ROW_PRI_PACK - 1)
+    sec_anchor_row = rows.get(_GMP_ROW_SEC_PACK - 1)
+    if pri_anchor_row is None or sec_anchor_row is None:
+        raise ValueError("Missing GMP packaging anchor rows required by VBA detail expansion.")
+
+    result = list(chars)
+    working_pvi: dict[str, str] = {}
+    for label, row, ext in (
+        ("primary", pri_anchor_row, True),
+        ("secondary", sec_anchor_row, True),
+    ):
+        anchor = _clean_text_string(str(row.get("short_render") or ""), ext=ext)
+        extracted = _gmp_extract_line_payload("".join(item.char for item in result), anchor)
+        if extracted is not None:
+            working_pvi[label] = extracted[0]
+
+    for source_order in range(_GMP_ROW_ASEPTIC - 1, _GMP_ROW_PRI_PACK):
+        row = rows.get(source_order)
+        if row is None:
+            continue
+        key = str(row.get("key") or "")
+        description = str(row.get("description") or "")
+        if not key:
+            continue
+        for label, anchor_row in (("primary", pri_anchor_row), ("secondary", sec_anchor_row)):
+            pvi = working_pvi.get(label)
+            if pvi is None:
+                continue
+            j = _vba_pv_incl_pos(pvi, key)
+            if j < 0:
+                continue
+            anchor = _clean_text_string(str(anchor_row.get("short_render") or ""), ext=True)
+            current_text = "".join(item.char for item in result)
+            _st, ed, _line_end = _vba_get_in_line_pos(current_text, anchor)
+            if ed < 0:
+                continue
+            # VBA: ReplaceMidStrS(rs, ed + j - 1, ..., desc).  ReplaceMidStrS
+            # keeps Left$(s, DStart), so the Python replacement starts at the
+            # zero-based offset ``(ed + 1) + j``.
+            replace_start = (ed + 1) + j
+            contribution_id = f"gmp-pvdg:{block_ordinal}:{label}:{key}"
+            delta = _replace_owned_range_with_taxonomy_description(
+                result,
+                start=replace_start,
+                length=len(key),
+                description=description,
+                contribution_id=contribution_id,
+                node_key=key,
+                procedure="VietChitiet_PVDG_GMP",
+            )
+            pvi_start = j + 1
+            # Same ReplaceMidStrS semantics on the local Pvi string.
+            working_pvi[label] = pvi[:pvi_start] + description + pvi[pvi_start + len(key) :]
+            contributions.append(
+                {
+                    "contribution_id": contribution_id,
+                    "role": "gmp_packaging_detail_expansion",
+                    "node_key": key,
+                    "packaging": label,
+                    "visible": True,
+                    "length_delta": delta,
+                }
+            )
+    return result
+
+
+def _apply_vietchitiet_pvxx_gmp(
+    chars: list[_OwnedChar],
+    *,
+    taxonomy_nodes: Sequence[dict[str, Any]],
+    block_ordinal: int,
+    contributions: list[dict[str, Any]],
+) -> list[_OwnedChar]:
+    """Port active ``VietChitiet_PVXX_GMP`` from ``DCForm.frm``."""
+    rows = _taxonomy_by_source_order(taxonomy_nodes)
+    anchors = (
+        ("sterile", _GMP_ROW_XX_VT),
+        ("nonsterile", _GMP_ROW_XX_KVT),
+        ("biologic", _GMP_ROW_XX_SH),
+        ("herbal", _GMP_ROW_XX_DL),
+    )
+    for _label, source_order in anchors:
+        if rows.get(source_order) is None:
+            raise ValueError(f"Missing GMP batch-release anchor row {source_order} required by VBA detail expansion.")
+
+    result = list(chars)
+    working_pvi: dict[str, str] = {}
+    for label, source_order in anchors:
+        row = rows[source_order]
+        locate_anchor = _clean_text_string(str(row.get("short_render") or "")).replace("()", "")
+        extracted = _gmp_extract_line_payload("".join(item.char for item in result), locate_anchor)
+        if extracted is not None:
+            working_pvi[label] = extracted[0]
+
+    for source_order in range(_GMP_ROW_ASEPTIC - 1, _GMP_ROW_PRI_PACK):
+        row = rows.get(source_order)
+        if row is None:
+            continue
+        key = str(row.get("key") or "")
+        description = str(row.get("description") or "")
+        if not key:
+            continue
+        for label, anchor_order in anchors:
+            pvi = working_pvi.get(label)
+            if pvi is None:
+                continue
+            j = _vba_pv_incl_pos(pvi, key)
+            if j < 0:
+                continue
+            # VBA intentionally re-locates the replacement line by the full
+            # taxonomy description, not by short_render.  Preserve that quirk.
+            anchor_description = str(rows[anchor_order].get("description") or "")
+            current_text = "".join(item.char for item in result)
+            _st, ed, _line_end = _vba_get_in_line_pos(current_text, anchor_description)
+            if ed < 0:
+                continue
+            replace_start = (ed + 1) + j
+            contribution_id = f"gmp-pvxx:{block_ordinal}:{label}:{key}"
+            delta = _replace_owned_range_with_taxonomy_description(
+                result,
+                start=replace_start,
+                length=len(key),
+                description=description,
+                contribution_id=contribution_id,
+                node_key=key,
+                procedure="VietChitiet_PVXX_GMP",
+            )
+            pvi_start = j + 1
+            working_pvi[label] = pvi[:pvi_start] + description + pvi[pvi_start + len(key) :]
+            contributions.append(
+                {
+                    "contribution_id": contribution_id,
+                    "role": "gmp_batch_release_detail_expansion",
+                    "node_key": key,
+                    "release_family": label,
+                    "visible": True,
+                    "length_delta": delta,
+                }
+            )
+    return result
+
+
 def compile_vba_scope_core(
     *,
     selections: Iterable[dict[str, Any]],
@@ -533,10 +789,21 @@ def compile_vba_scope_core(
         )
 
     chars = _trim_trailing_cr_vba(chars)
-    text, spans = _result_from_chars(chars)
     deferred: tuple[str, ...] = ()
     if (gxp_type or "").upper() == "GMP":
-        deferred = ("VietChitiet_PVDG_GMP", "VietChitiet_PVXX_GMP")
+        chars = _apply_vietchitiet_pvdg_gmp(
+            chars,
+            taxonomy_nodes=nodes,
+            block_ordinal=block_ordinal,
+            contributions=contributions,
+        )
+        chars = _apply_vietchitiet_pvxx_gmp(
+            chars,
+            taxonomy_nodes=nodes,
+            block_ordinal=block_ordinal,
+            contributions=contributions,
+        )
+    text, spans = _result_from_chars(chars)
     return VbaScopeCompileResult(
         text=text,
         spans=spans,

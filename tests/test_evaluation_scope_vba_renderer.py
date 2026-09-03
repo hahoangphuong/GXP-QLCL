@@ -146,15 +146,62 @@ def test_compile_scope_core_preserves_vba_source_order_and_deduplicates_ancestor
     assert sum(item["role"] == "required_ancestor" for item in result.contributions) == 1
 
 
-def test_compile_scope_core_defers_gmp_detail_postprocessing_explicitly():
-    taxonomy = _taxonomy(("1", "Nội dung"))
+def _gmp_taxonomy():
+    import json
+    from pathlib import Path
+
+    artifact = Path(__file__).resolve().parents[1] / "artifacts" / "legacy_snapshot" / "evaluation_scope_taxonomy.json"
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+    return payload["named_ranges"]["PVCN_GMP"]["rows"]
+
+
+def test_compile_scope_core_ports_vba_gmp_packaging_detail_expansion():
+    taxonomy = _gmp_taxonomy()
     result = compile_vba_scope_core(
         taxonomy_nodes=taxonomy,
-        selections=[{"key": "1", "source_order": 1, "custom_description": ""}],
+        selections=[{"key": "6.1.1", "source_order": 1, "custom_description": "1.1; 2.1"}],
         gxp_type="GMP",
     )
-    assert result.text == "Nội dung."
-    assert result.deferred_rules == ("VietChitiet_PVDG_GMP", "VietChitiet_PVXX_GMP")
+    assert result.text == "* Đóng gói sơ cấp:Tất cả các dạng thuốc ở mục Thuốc sản xuất vô trùng; Thuốc không vô trùng."
+    expansions = [item for item in result.contributions if item["role"] == "gmp_packaging_detail_expansion"]
+    assert [(item["packaging"], item["node_key"]) for item in expansions] == [
+        ("primary", "1.1"),
+        ("primary", "2.1"),
+    ]
+    assert result.deferred_rules == ()
+    assert any(
+        span.kind == "SOURCE_TAXONOMY_DESCRIPTION" and span.text == "Thuốc sản xuất vô trùng"
+        for span in result.spans
+    )
+
+
+def test_compile_scope_core_ports_vba_gmp_batch_release_detail_quirk():
+    taxonomy = _gmp_taxonomy()
+    result = compile_vba_scope_core(
+        taxonomy_nodes=taxonomy,
+        selections=[{"key": "1.3", "source_order": 1, "custom_description": "1.1; 1.2"}],
+        gxp_type="GMP",
+    )
+    # PV_Incl_Pos requires a leading space.  Because Get_PV_XXuong preserves
+    # the opening parenthesis, the first key in "(1.1; 1.2)" is not expanded;
+    # the second one is.  This oddity is direct legacy VBA behavior.
+    assert result.text == "* Xuất xưởng thuốc vô trùng (1.1; Thuốc tiệt trùng cuối)."
+    expansions = [item for item in result.contributions if item["role"] == "gmp_batch_release_detail_expansion"]
+    assert [(item["release_family"], item["node_key"]) for item in expansions] == [("sterile", "1.2")]
+
+
+def test_compile_scope_core_gmp_fails_closed_without_required_anchor_rows():
+    taxonomy = _taxonomy(("1", "Nội dung"))
+    try:
+        compile_vba_scope_core(
+            taxonomy_nodes=taxonomy,
+            selections=[{"key": "1", "source_order": 1, "custom_description": ""}],
+            gxp_type="GMP",
+        )
+    except ValueError as exc:
+        assert "GMP packaging anchor rows" in str(exc)
+    else:
+        raise AssertionError("GMP VBA compiler must fail closed when source row anchors are unavailable")
 
 
 def test_compile_scope_core_fails_closed_when_required_taxonomy_ancestor_is_missing():

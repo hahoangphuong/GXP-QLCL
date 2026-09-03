@@ -1,0 +1,90 @@
+{
+  "schema_version": "c5e-certificate-detail-readiness/v1",
+  "status": "BLOCKED_PENDING_EXACT_VBA_AND_TEMPLATE_EVIDENCE",
+  "semantic_target": "active VBA Input_DC_to_CC certificate-detail structured taxonomy/bookmark path",
+  "compact_summary_substitution_authorized": false,
+  "scalar_projection_substitution_authorized": false,
+  "historical_prose_oracle_authorized": false,
+  "unkeyed_entries_semantic_input_authorized": false,
+  "commented_Input_DC_to_CC2_as_active_oracle_authorized": false,
+  "checks": [
+    {
+      "code": "DURABLE_VBA_EVIDENCE",
+      "pass": true,
+      "evidence": {
+        "function_map": "docs/VBA_FUNCTION_MAP.md",
+        "commented_variant_recorded": true,
+        "exact_active_Input_DC_to_CC_body_retained": false
+      }
+    },
+    {
+      "code": "CERTIFICATE_DETAIL_TEMPLATE_CONTRACT",
+      "pass": false,
+      "evidence": {
+        "family_code": "CERTIFICATE_ISSUANCE_WORD",
+        "entry_count": 1,
+        "registered_bookmarks": [
+          "Chuthich",
+          "ChuthichE",
+          "DiachiCoso",
+          "DiachiCosoE",
+          "DiachiVPCty",
+          "DiachiVPCtyE",
+          "NgayKT1",
+          "NgayKT2",
+          "NoEU_Del",
+          "NoPICS_Del",
+          "NoWHO_Del",
+          "OECD_Del",
+          "TenCoso",
+          "TenCosoE",
+          "TenCty",
+          "TenCtyE",
+          "WHO_Del"
+        ],
+        "candidate_detail_bookmarks_beyond_general_fields": []
+      }
+    },
+    {
+      "code": "DOCX_RENDERER_CAPABILITY_BOUNDARY",
+      "pass": true,
+      "evidence": {
+        "generic_table_region_clone_supported": true,
+        "Input_DC_to_CC_specific_owner_present": false,
+        "renderer": "backend/app/document/docx_template_render.py"
+      }
+    },
+    {
+      "code": "SCALAR_DETAIL_SEPARATION",
+      "pass": true,
+      "evidence": {
+        "scalar_projection_explicitly_defers_detail_path": true,
+        "scalar_payload_integration_does_not_claim_detail_owner": true
+      }
+    }
+  ],
+  "blockers": [
+    {
+      "code": "ACTIVE_INPUT_DC_TO_CC_BODY_NOT_DURABLY_CAPTURED",
+      "message": "The repository does not retain the exact active Input_DC_to_CC VBA body. Do not reconstruct certificate-detail row semantics from procedure names, compact summary behavior, or the commented Input_DC_to_CC2 variant.",
+      "evidence": "docs/VBA_FUNCTION_MAP.md records Input_DC_to_CC2 as a commented legacy variant only."
+    },
+    {
+      "code": "CERTIFICATE_DETAIL_TEMPLATE_REGIONS_NOT_PROVEN",
+      "message": "The curated CERTIFICATE_ISSUANCE_WORD template contract contains only the known general-information bookmarks; no taxonomy-detail row/region contract is durably proven for Input_DC_to_CC.",
+      "evidence": "artifacts/phase5/template_registry.curated.json"
+    },
+    {
+      "code": "INPUT_DC_TO_CC_RENDER_CONTRACT_NOT_IMPLEMENTED",
+      "message": "The current DOCX renderer supports generic bookmarked-row cloning but has no Input_DC_to_CC-specific structured taxonomy/detail contract. Generic table cloning must not be assumed equivalent without source/template parity evidence.",
+      "evidence": "backend/app/document/docx_template_render.py"
+    }
+  ],
+  "required_evidence_to_unblock": [
+    "exact active Input_DC_to_CC VBA procedure body and directly called helpers",
+    "exact certificate template row/bookmark structure used by that procedure",
+    "row-level mapping from selected taxonomy node/custom description to destination bookmark/row behavior",
+    "proof of formatting/copy rules that must survive server-side DOCX rendering"
+  ],
+  "next_safe_slice": "capture the exact active Input_DC_to_CC VBA body plus certificate template row/bookmark evidence as durable sanitized fixtures, then port the detailed projection with parity tests"
+}

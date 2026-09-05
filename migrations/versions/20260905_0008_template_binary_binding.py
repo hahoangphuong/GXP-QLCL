@@ -25,7 +25,7 @@ def upgrade() -> None:
         sa.Column("id", _uuid(), primary_key=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
-        sa.Column("template_binding_id", _uuid(), nullable=False, unique=True),
+        sa.Column("template_binding_id", _uuid(), nullable=False),
         sa.Column("storage_root", sa.String(32), nullable=False),
         sa.Column("storage_relative_path", sa.Text(), nullable=False),
         sa.Column("original_filename", sa.String(255)),

@@ -7,6 +7,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from backend.app.db.models import Base
+from migrations.target_resolution import resolve_alembic_database_url
 
 
 config = context.config
@@ -18,10 +19,7 @@ target_metadata = Base.metadata
 
 
 def _configured_database_url() -> str:
-    env_url = os.environ.get("DATABASE_URL", "").strip()
-    if env_url:
-        return env_url
-    return config.get_main_option("sqlalchemy.url")
+    return resolve_alembic_database_url(os.environ, config.get_main_option("sqlalchemy.url"))
 
 
 def run_migrations_offline() -> None:

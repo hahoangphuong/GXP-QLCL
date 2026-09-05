@@ -1,11 +1,13 @@
 # Phase 7 Final Closeout
 
 ## Purpose
-Record the truthful current state of cutover readiness.
+Record the truthful final Phase 7 state after cutover and post-go-live archive work.
 
 ## Status
 Phase 7 is **not closed** in the current repository state.
-It is **blocked** because cutover readiness depends on operational evidence and approvals that are not yet complete.
+It is **blocked** because the pre-switch conditions and post-go-live archive evidence are not yet complete.
+
+Cutover readiness is not final closeout: the first seven required conditions can make the runtime switch ready while `excel_read_only_archive_mode` remains pending. Final closeout remains pending until all eight checklist rows and the Phase 7b operational pack are complete.
 
 ## Current blockers
 - Phase 6 desktop/private-share evidence is still blocked.

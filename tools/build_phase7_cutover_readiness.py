@@ -8,7 +8,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from tools.validate_phase7_cutover_checklist import load_json as load_checklist_json, validate_rows
+from tools.validate_phase7_cutover_checklist import (
+    PRE_SWITCH_REQUIRED_ITEM_IDS,
+    load_json as load_checklist_json,
+    validate_rows,
+)
 from tools.phase7_execution_evidence import (
     Phase7ExecutionEvidenceError,
     require_execution_evidence,
@@ -23,9 +27,9 @@ PHASE6_PATH = ROOT / "artifacts" / "phase6" / "phase6_final_closeout.json"
 PHASE6_SUMMARY_PATH = ROOT / "artifacts" / "phase6" / "desktop_validation_summary.json"
 PHASE3P_PATH = ROOT / "artifacts" / "phase3p" / "current_projection_conflicts.json"
 PHASE3S_PATH = ROOT / "artifacts" / "phase3s" / "current_projection_conflict_decisions.summary.json"
-FREEZE_ITEM_IDS = (
+PRE_SWITCH_FREEZE_ITEM_IDS = (
     "legacy_write_freeze_window_approved", "legacy_write_freeze_announced",
-    "final_phase2_import_rerun", "final_reconciliation_signed_off", "excel_read_only_archive_mode",
+    "final_phase2_import_rerun", "final_reconciliation_signed_off",
 )
 ROLLBACK_ITEM_IDS = ("rollback_contacts_confirmed",)
 
@@ -355,11 +359,15 @@ def build_readiness(*, evidence_dir: Path) -> dict[str, Any]:
     gates["current_projection_conflicts"] = build_current_projection_gate(phase3p, phase3s)
 
     gates["legacy_write_freeze_execution"] = build_operational_gate(
-        FREEZE_ITEM_IDS, "Legacy write freeze", checklist_path=evidence_paths.checklist_path
+        PRE_SWITCH_FREEZE_ITEM_IDS, "Legacy write freeze", checklist_path=evidence_paths.checklist_path
     )
     gates["rollback_window_execution"] = build_operational_gate(
         ROLLBACK_ITEM_IDS, "Rollback window", checklist_path=evidence_paths.checklist_path
     )
+
+    checklist_item_ids = set(PRE_SWITCH_FREEZE_ITEM_IDS + ROLLBACK_ITEM_IDS)
+    if checklist_item_ids != (PRE_SWITCH_REQUIRED_ITEM_IDS - {"desktop_phase6_complete", "projection_conflicts_resolved"}):
+        raise RuntimeError("Phase 7 pre-switch readiness membership is inconsistent.")
 
     statuses = [payload["status"] for payload in gates.values()]
     if any(status == "blocked" for status in statuses):

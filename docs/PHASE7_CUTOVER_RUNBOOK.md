@@ -99,7 +99,7 @@ unset CANDIDATE_DATABASE_URL
 Archive the successful verifier output with the cutover evidence. A failed verifier is a no-go result; it never provisions users or repairs the RBAC baseline.
 
 ## Cutover sequence
-1. Initialize and retain an external evidence directory before the change window. The path must be outside the release tree:
+Initialize and retain an external evidence directory before the change window. The path must be outside the release tree:
 
 ```bash
 cd /opt/gxp/src/GXP-QLCL
@@ -107,8 +107,10 @@ cd /opt/gxp/src/GXP-QLCL
   --output-dir /var/lib/gxp/phase7-execution
 ```
 
-2. Announce legacy write-freeze start time.
-3. Disable or administratively block new legacy business writes.
+### Pre-switch
+1. Confirm the Phase 6 desktop/private-share and current-projection prerequisites.
+2. Approve the change window and confirm rollback contacts.
+3. Announce and enforce the legacy write freeze.
 4. Export a fresh `artifacts/phase3c/legacy_snapshot.json` from the frozen workbook baseline.
 5. Run the canonical VM validation dry-run and review `artifacts/legacy-production/<timestamp>/report.json` and `report.md`.
 6. Rebuild the final candidate database from the frozen snapshot with `--import-mode final --reset-from-snapshot`.
@@ -120,7 +122,25 @@ cd /opt/gxp/src/GXP-QLCL
    - deployment SHA
    - Alembic revision
 8. Explicitly provision required candidate identities and run the required-user RBAC readiness verification; archive its successful output.
-9. Update only the external `cutover_execution_checklist.json`, then generate and archive all Phase 7 outputs in the same directory:
+9. Review reconciliation outputs, obtain sign-off, update the external `cutover_execution_checklist.json`, and build the cutover readiness report:
+
+```bash
+cd /opt/gxp/src/GXP-QLCL
+/opt/gxp/current-venv/bin/python tools/build_phase7_cutover_readiness.py --evidence-dir /var/lib/gxp/phase7-execution
+/opt/gxp/current-venv/bin/python tools/validate_phase7_cutover_checklist.py --evidence-dir /var/lib/gxp/phase7-execution
+```
+
+`CUTOVER READY` means the seven pre-switch conditions are complete. It does not mean final Phase 7 closeout is complete; `excel_read_only_archive_mode` remains required after go-live.
+
+### Switch
+10. Switch the application to the validated candidate DB only after cutover readiness is `ready`.
+11. Verify application health and retain the previous production DB for the rollback window.
+
+### Post-go-live
+12. Put the legacy Excel workflow into read-only/archive mode.
+13. Capture `excel_read_only_archive_mode` evidence in the external execution checklist.
+14. Build the Phase 7b operational pack.
+15. Build final Phase 7 closeout only after all eight checklist rows and the operational pack are complete:
 
 ```bash
 cd /opt/gxp/src/GXP-QLCL
@@ -129,12 +149,6 @@ cd /opt/gxp/src/GXP-QLCL
 /opt/gxp/current-venv/bin/python tools/build_phase7b_operational_pack.py --evidence-dir /var/lib/gxp/phase7-execution
 /opt/gxp/current-venv/bin/python tools/build_phase7_final_closeout.py --evidence-dir /var/lib/gxp/phase7-execution
 ```
-
-10. Review reconciliation outputs and obtain sign-off.
-11. Switch the application to the validated candidate DB only after all gates pass.
-12. Retain the previous production DB for the rollback window.
-13. Put legacy Excel workflow into read-only/archive mode.
-14. Monitor the first production operations closely.
 
 ## Rollback trigger examples
 - unresolved reconciliation mismatch

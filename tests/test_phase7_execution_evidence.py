@@ -25,6 +25,25 @@ def _initialize(tmp_path: Path, name: str = "evidence") -> Path:
     return evidence_dir
 
 
+def _mark_operational_rows_pass(evidence_dir: Path, *, include_excel: bool) -> None:
+    checklist_path = evidence_dir / "cutover_execution_checklist.json"
+    payload = json.loads(checklist_path.read_text(encoding="utf-8"))
+    fields_by_item = {
+        "legacy_write_freeze_window_approved": {"approver": "approver", "freeze_start": "2026-09-05T10:00:00+00:00", "freeze_end": "2026-09-05T11:00:00+00:00", "approval_ref": "approval"},
+        "legacy_write_freeze_announced": {"audience": "audience", "announcement_channel": "channel", "announcement_ref": "announcement"},
+        "final_phase2_import_rerun": {"command_refs": ["command"], "reconciliation_ref": "reconciliation", "operator": "operator"},
+        "final_reconciliation_signed_off": {"signoff_by": "signer", "signoff_ref": "signoff"},
+        "rollback_contacts_confirmed": {"primary_contact": "primary", "backup_contact": "backup", "escalation_path": "path"},
+        "excel_read_only_archive_mode": {"archive_owner": "archive", "archive_step_ref": "step"},
+    }
+    for row in payload["items"]:
+        if row["item_id"] not in fields_by_item or (row["item_id"] == "excel_read_only_archive_mode" and not include_excel):
+            continue
+        row.update({"status": "pass", "owner": "owner", "executed_on": "2026-09-05T10:00:00+00:00", "notes": "done", "evidence_refs": ["evidence"]})
+        row.update(fields_by_item[row["item_id"]])
+    checklist_path.write_text(json.dumps(payload), encoding="utf-8")
+
+
 def test_initializer_copies_template_without_mutating_it_and_refuses_overwrite(tmp_path: Path) -> None:
     template_bytes = TEMPLATE_PATH.read_bytes()
     evidence_dir = _initialize(tmp_path)
@@ -72,6 +91,33 @@ def test_final_closeout_requires_operational_pack_from_the_same_evidence_dir(tmp
     assert checklist_validator.main(["--evidence-dir", str(evidence_dir)]) == 0
     assert final_closeout.main(["--evidence-dir", str(evidence_dir)]) == 1
     assert not (evidence_dir / "phase7_final_closeout.json").exists()
+
+
+def test_final_closeout_is_pending_until_excel_archive_is_passed(tmp_path: Path) -> None:
+    evidence_dir = _initialize(tmp_path)
+    _mark_operational_rows_pass(evidence_dir, include_excel=False)
+    (evidence_dir / "cutover_readiness.json").write_text(json.dumps({"phase7_status": "ready", "gates": {}}), encoding="utf-8")
+    assert checklist_validator.main(["--evidence-dir", str(evidence_dir)]) == 0
+    assert operational_pack.main(["--evidence-dir", str(evidence_dir)]) == 0
+
+    assert final_closeout.main(["--evidence-dir", str(evidence_dir)]) == 0
+    summary = json.loads((evidence_dir / "phase7_final_closeout.json").read_text(encoding="utf-8"))
+
+    assert summary["phase7_status"] == "ready"
+    assert summary["final_closeout_status"] == "pending"
+
+
+def test_final_closeout_is_complete_only_when_all_eight_rows_and_pack_are_ready(tmp_path: Path) -> None:
+    evidence_dir = _initialize(tmp_path)
+    _mark_operational_rows_pass(evidence_dir, include_excel=True)
+    (evidence_dir / "cutover_readiness.json").write_text(json.dumps({"phase7_status": "ready", "gates": {}}), encoding="utf-8")
+    assert checklist_validator.main(["--evidence-dir", str(evidence_dir)]) == 0
+    assert operational_pack.main(["--evidence-dir", str(evidence_dir)]) == 0
+
+    assert final_closeout.main(["--evidence-dir", str(evidence_dir)]) == 0
+    summary = json.loads((evidence_dir / "phase7_final_closeout.json").read_text(encoding="utf-8"))
+
+    assert summary["final_closeout_status"] == "complete"
 
 
 def test_two_execution_directories_are_isolated_and_template_changes_do_not_reset_evidence(tmp_path: Path) -> None:

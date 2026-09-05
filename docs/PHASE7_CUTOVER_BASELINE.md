@@ -31,7 +31,10 @@ Operators update only `/var/lib/gxp/phase7-execution/cutover_execution_checklist
 ## Gate model
 Phase 7 separates:
 - readiness gates derived from prior phase artifacts
-- operational checklist items that must be executed during the cutover window
+- seven pre-switch checklist items required for cutover readiness
+- the post-go-live Excel archive item required for final Phase 7 closeout
+
+`CUTOVER READY` is intentionally distinct from final Phase 7 closeout. `excel_read_only_archive_mode` remains structurally required and is included in final closeout, but it does not block the pre-switch runtime change once the other seven required conditions are complete.
 
 ## Current blocking facts
 - Phase 6 is still blocked on private-share/desktop operational evidence.

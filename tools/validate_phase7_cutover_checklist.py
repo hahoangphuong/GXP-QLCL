@@ -20,6 +20,13 @@ AUTHORITATIVE_ITEM_IDS = {
     "final_phase2_import_rerun", "final_reconciliation_signed_off",
     "rollback_contacts_confirmed", "excel_read_only_archive_mode",
 }
+PRE_SWITCH_REQUIRED_ITEM_IDS = {
+    "desktop_phase6_complete", "projection_conflicts_resolved",
+    "legacy_write_freeze_window_approved", "legacy_write_freeze_announced",
+    "final_phase2_import_rerun", "final_reconciliation_signed_off",
+    "rollback_contacts_confirmed",
+}
+FINAL_CLOSEOUT_REQUIRED_ITEM_IDS = AUTHORITATIVE_ITEM_IDS
 
 OPERATIONAL_EVIDENCE_FIELDS = {
     "legacy_write_freeze_window_approved": ("owner", "executed_on", "notes", "approver", "freeze_start", "freeze_end", "approval_ref"),
@@ -100,11 +107,15 @@ def build_summary(*, evidence_dir: Path) -> dict[str, Any]:
 
     status_counts = {status: 0 for status in sorted(ALLOWED_STATUSES)}
     required_outstanding: list[str] = []
+    pre_switch_outstanding: list[str] = []
     for row in rows:
         status = row["status"]
         status_counts[status] += 1
-        if row.get("required_for_cutover") and status != "pass":
+        item_id = row["item_id"]
+        if item_id in FINAL_CLOSEOUT_REQUIRED_ITEM_IDS and status != "pass":
             required_outstanding.append(row["item_id"])
+        if item_id in PRE_SWITCH_REQUIRED_ITEM_IDS and status != "pass":
+            pre_switch_outstanding.append(item_id)
 
     if errors:
         overall_status = "invalid"
@@ -121,6 +132,7 @@ def build_summary(*, evidence_dir: Path) -> dict[str, Any]:
         "readiness_status": readiness["phase7_status"],
         "status_counts": status_counts,
         "required_outstanding": required_outstanding,
+        "pre_switch_outstanding": pre_switch_outstanding,
         "validation_errors": errors,
     }
 

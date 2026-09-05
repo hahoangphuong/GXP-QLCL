@@ -26,17 +26,27 @@ def build_summary(*, evidence_dir: Path) -> dict[str, Any]:
     readiness = load_json(evidence_paths.readiness_json_path)
     checklist = load_json(evidence_paths.checklist_summary_json_path)
     operational_pack = load_json(evidence_paths.operational_pack_json_path)
+    readiness_status = readiness["phase7_status"]
+    checklist_status = checklist["overall_status"]
+    operational_pack_status = operational_pack["checklist_status"]
+    if readiness_status == "ready" and checklist_status == "ready" and operational_pack_status == "ready":
+        final_closeout_status = "complete"
+    elif "blocked" in {readiness_status, checklist_status, operational_pack_status} or checklist_status == "invalid":
+        final_closeout_status = "blocked"
+    else:
+        final_closeout_status = "pending"
     return {
         "generated_on": "2026-08-26",
-        "phase7_status": readiness["phase7_status"],
-        "checklist_status": checklist["overall_status"],
+        "phase7_status": readiness_status,
+        "checklist_status": checklist_status,
         "blocked_gates": [
             gate_name
             for gate_name, payload in readiness["gates"].items()
             if payload["status"] == "blocked"
         ],
         "required_outstanding": checklist["required_outstanding"],
-        "operational_pack_status": operational_pack["checklist_status"],
+        "operational_pack_status": operational_pack_status,
+        "final_closeout_status": final_closeout_status,
     }
 
 
@@ -48,6 +58,7 @@ def render_markdown(summary: dict[str, Any]) -> str:
         "",
         f"- Phase 7 status: `{summary['phase7_status']}`",
         f"- Checklist status: `{summary['checklist_status']}`",
+        f"- Final closeout status: `{summary['final_closeout_status']}`",
         "",
         "## Blocked Gates",
         "",

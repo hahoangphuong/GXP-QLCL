@@ -2,7 +2,7 @@ from pathlib import Path
 import json
 
 from tools import build_phase7_cutover_readiness as readiness
-from tools.validate_phase7_cutover_checklist import validate_rows
+from tools.validate_phase7_cutover_checklist import AUTHORITATIVE_ITEM_IDS, validate_rows
 
 
 def test_cutover_runbook_requires_explicit_identity_provisioning_and_readiness_verification():
@@ -13,6 +13,8 @@ def test_cutover_runbook_requires_explicit_identity_provisioning_and_readiness_v
     assert '--require-user "<operator-email>:<role-code>"' in text
     assert text.index("tools/provision_app_user.py") < text.index("tools/verify_rbac_readiness.py")
     assert "@" not in text
+    assert text.index("### Switch") < text.index("### Post-go-live")
+    assert text.index("Capture `excel_read_only_archive_mode` evidence") > text.index("### Post-go-live")
 
 
 def test_validate_rows_accepts_known_statuses():
@@ -20,7 +22,9 @@ def test_validate_rows_accepts_known_statuses():
         [
             {"item_id": "desktop_phase6_complete", "status": "pass"},
             {"item_id": "projection_conflicts_resolved", "status": "blocked"},
-            *[_operational_item(item_id) for item_id in readiness.FREEZE_ITEM_IDS + readiness.ROLLBACK_ITEM_IDS],
+            *[_operational_item(item_id) for item_id in AUTHORITATIVE_ITEM_IDS - {
+                "desktop_phase6_complete", "projection_conflicts_resolved",
+            }],
         ]
     )
 
@@ -37,6 +41,15 @@ def test_validate_rows_rejects_duplicate_ids_and_unknown_status():
 
     assert any("duplicate item_id: desktop_phase6_complete" in error for error in errors)
     assert any("desktop_phase6_complete: invalid status 'mystery'" in error for error in errors)
+
+
+def test_validate_rows_requires_excel_archive_row_and_rejects_its_invalid_status():
+    rows = [_operational_item(item_id) for item_id in AUTHORITATIVE_ITEM_IDS]
+    rows = [row for row in rows if row["item_id"] != "excel_read_only_archive_mode"]
+    assert "missing item_id: excel_read_only_archive_mode" in validate_rows(rows)
+
+    rows.append(_operational_item("excel_read_only_archive_mode", "invalid"))
+    assert any("excel_read_only_archive_mode: invalid status 'invalid'" in error for error in validate_rows(rows))
 
 
 def _write_json(path: Path, payload) -> None:
@@ -259,7 +272,7 @@ def test_operational_evidence_can_make_ready(tmp_path: Path, monkeypatch) -> Non
     _write_valid_phase3s_summary(tmp_path, phase3p_sha256=phase3p_sha256, conflict_count=0)
     payload = json.loads((tmp_path / "evidence" / "cutover_execution_checklist.json").read_text(encoding="utf-8"))
     for row in payload["items"]:
-        if row["item_id"] not in readiness.FREEZE_ITEM_IDS + readiness.ROLLBACK_ITEM_IDS:
+        if row["item_id"] not in readiness.PRE_SWITCH_FREEZE_ITEM_IDS + readiness.ROLLBACK_ITEM_IDS:
             continue
         row.update({"status": "pass", "owner": "owner", "executed_on": "2026-09-05T10:00:00+00:00", "notes": "done", "evidence_refs": ["evidence"]})
         item_id = row["item_id"]
@@ -276,6 +289,31 @@ def test_operational_evidence_can_make_ready(tmp_path: Path, monkeypatch) -> Non
     assert report["phase7_status"] == "ready"
     assert report["gates"]["legacy_write_freeze_execution"]["status"] == "pass"
     assert report["gates"]["rollback_window_execution"]["status"] == "pass"
+
+
+def test_excel_archive_pending_does_not_block_pre_switch_readiness(tmp_path: Path, monkeypatch) -> None:
+    _patch_phase7_paths(monkeypatch, tmp_path)
+    _write_valid_phase7_artifacts(tmp_path)
+    phase3p_sha256 = readiness.safe_load_json(tmp_path / "phase3p.json", "phase3p").payload_sha256 or ""
+    _write_valid_phase3s_summary(tmp_path, phase3p_sha256=phase3p_sha256, conflict_count=0)
+    payload = json.loads((tmp_path / "evidence" / "cutover_execution_checklist.json").read_text(encoding="utf-8"))
+    for row in payload["items"]:
+        if row["item_id"] in readiness.PRE_SWITCH_FREEZE_ITEM_IDS + readiness.ROLLBACK_ITEM_IDS:
+            row.update({"status": "pass", "owner": "owner", "executed_on": "2026-09-05T10:00:00+00:00", "notes": "done", "evidence_refs": ["evidence"]})
+            row.update({
+                "legacy_write_freeze_window_approved": {"approver": "approver", "freeze_start": "2026-09-05T10:00:00+00:00", "freeze_end": "2026-09-05T11:00:00+00:00", "approval_ref": "approval"},
+                "legacy_write_freeze_announced": {"audience": "audience", "announcement_channel": "channel", "announcement_ref": "announcement"},
+                "final_phase2_import_rerun": {"command_refs": ["command"], "reconciliation_ref": "reconciliation", "operator": "operator"},
+                "final_reconciliation_signed_off": {"signoff_by": "signer", "signoff_ref": "signoff"},
+                "rollback_contacts_confirmed": {"primary_contact": "primary", "backup_contact": "backup", "escalation_path": "path"},
+            }[row["item_id"]])
+    _write_json(tmp_path / "evidence" / "cutover_execution_checklist.json", payload)
+
+    report = _build_readiness(tmp_path)
+
+    assert report["phase7_status"] == "ready"
+    assert next(row for row in payload["items"] if row["item_id"] == "excel_read_only_archive_mode")["status"] == "pending"
+    assert "excel_read_only_archive_mode" not in readiness.PRE_SWITCH_FREEZE_ITEM_IDS
 
 
 def test_pass_operational_evidence_missing_field_blocks(tmp_path: Path, monkeypatch) -> None:

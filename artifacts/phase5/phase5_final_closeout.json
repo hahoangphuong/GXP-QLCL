@@ -12,7 +12,7 @@
     },
     "ddkd_template_variants": {
       "path": "artifacts/phase5/dkkd_template_variants.json",
-      "sha256": "f9ebef7652f0aa1fb552c66d291f2b906225ca286b0376d3847d61e07d4bee0a"
+      "sha256": "deba508c1c41aeb0e0474e2545e266ad9e4bfb22a9abacff65dd4d1e0e10fe6f"
     },
     "bbtd_template_variants": {
       "path": "artifacts/phase5/bbtd_template_variants.json",

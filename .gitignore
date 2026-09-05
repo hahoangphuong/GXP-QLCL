@@ -104,3 +104,14 @@ frontend/*.tsbuildinfo
 !backend/.env.cloudrun.production.example
 !backend/.env.storage_bridge.cloudrun.example
 !backend/.env.vm.production.example
+# Authoritative Phase 3 closeout required by runtime Phase 7 readiness.
+!artifacts/phase3r/
+artifacts/phase3r/*
+!artifacts/phase3r/phase3_final_closeout.json
+!artifacts/phase3r/phase3_final_closeout.md
+
+# Authoritative Phase 4 closeout required by runtime Phase 7 readiness.
+!artifacts/phase4/
+artifacts/phase4/*
+!artifacts/phase4/phase4_final_closeout.json
+!artifacts/phase4/phase4_final_closeout.md

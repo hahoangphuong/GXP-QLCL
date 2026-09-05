@@ -1,0 +1,7 @@
+# Runtime/provenance artifacts must have platform-independent exact bytes.
+artifacts/phase3r/phase3_final_closeout.json text eol=lf
+artifacts/phase3r/phase3_final_closeout.md text eol=lf
+artifacts/phase4/phase4_final_closeout.json text eol=lf
+artifacts/phase4/phase4_final_closeout.md text eol=lf
+artifacts/phase5/dkkd_template_variants.json text eol=lf
+artifacts/phase5/phase5_final_closeout.json text eol=lf

@@ -1,0 +1,55 @@
+{
+  "generated_on": "2026-08-14",
+  "phase3_status": "closed",
+  "structured_import_baseline": {
+    "total_anomalies": 151,
+    "open_anomalies": 0,
+    "overridden_anomalies": 0,
+    "excluded_confirmed_blanked_anomalies": 151,
+    "effective_mismatch_count": 0,
+    "excluded_rows": {
+      "db.cso": 3,
+      "db.ktra": 47,
+      "db.cc": 27,
+      "db.dkkd": 50,
+      "db.Tdoi": 22,
+      "db.Tdoi2": 2
+    }
+  },
+  "confirmed_blanked_scope": {
+    "total_row_count": 151,
+    "by_sheet": {
+      "db.Tdoi": 22,
+      "db.Tdoi2": 2,
+      "db.cc": 27,
+      "db.cso": 3,
+      "db.dkkd": 50,
+      "db.ktra": 47
+    }
+  },
+  "current_projection_conflicts": {
+    "conflict_count": 14,
+    "manual_review_count": 14,
+    "auto_resolvable_count": 0,
+    "projection_type_counts": {
+      "current_case_projection": 4,
+      "current_certificate_projection": 10
+    },
+    "classification_counts": {
+      "blank_ma_dc_non_case_backed_multi_current": 10,
+      "completed_plus_pending_both_current": 3,
+      "multiple_completed_both_current": 1
+    }
+  },
+  "phase3_exit_criteria": {
+    "structured_import_branch_closed": true,
+    "confirmed_blanked_rows_excluded": true,
+    "effective_import_mismatches_zero": true,
+    "remaining_work_moved_out_of_phase3": true
+  },
+  "remaining_follow_on_work": [
+    "Phase 4 storage integration and private-share execution path",
+    "Phase 5 document/template fidelity and source/output lineage",
+    "Current projection conflict adjudication beyond legacy import baseline"
+  ]
+}

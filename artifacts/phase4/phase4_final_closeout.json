@@ -1,0 +1,27 @@
+{
+  "generated_on": "2026-08-14",
+  "phase4_status": "closed",
+  "storage_capabilities": {
+    "inspection_binding_first_lookup": true,
+    "inspection_fail_closed_resolution": true,
+    "dkkd_site_token_resolution": true,
+    "path_traversal_protection": true,
+    "root_boundary_enforcement": true,
+    "read_only_probe_endpoints": [
+      "/storage/inspection-folder",
+      "/storage/dkkd-folder"
+    ],
+    "probe_cli": "tools/probe_phase4_storage_nonprod.py"
+  },
+  "ddkd_contract": {
+    "resolver_key": "(<site_id>)",
+    "display_name_is_identity": false,
+    "issuance_cycle_folder_is_identity": false,
+    "binding_persistence_in_scope": false
+  },
+  "remaining_operational_follow_on": [
+    "Non-production private-share execution evidence over Tailscale or equivalent private transport",
+    "Inspector desktop workflow validation with Windows Explorer and Microsoft Word direct save",
+    "Network interruption and file-lock behavior under real NAS conditions"
+  ]
+}

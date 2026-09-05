@@ -656,6 +656,9 @@ run_as_app_user "${NEW_BACKEND_RELEASE}/infra/vm/backup_postgres.sh"
 CURRENT_STAGE="alembic_upgrade"
 run_as_app_user env DATABASE_URL="${DATABASE_URL}" "${NEW_BACKEND_VENV}/bin/alembic" -c "${NEW_BACKEND_RELEASE}/alembic.ini" upgrade head
 
+CURRENT_STAGE="rbac_baseline_verification"
+run_as_app_user "${NEW_BACKEND_VENV}/bin/python" "${NEW_BACKEND_RELEASE}/tools/verify_rbac_readiness.py" --database-url "${DATABASE_URL}"
+
 CURRENT_STAGE="switch_release_symlinks"
 if [[ -f "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service" ]]; then
   cp "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service" "${PREVIOUS_SERVICE_FILE}"

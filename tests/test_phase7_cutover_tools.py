@@ -5,6 +5,16 @@ from tools import build_phase7_cutover_readiness as readiness
 from tools.validate_phase7_cutover_checklist import validate_rows
 
 
+def test_cutover_runbook_requires_explicit_identity_provisioning_and_readiness_verification():
+    text = (Path(__file__).resolve().parents[1] / "docs" / "PHASE7_CUTOVER_RUNBOOK.md").read_text(encoding="utf-8")
+
+    assert "tools/provision_app_user.py" in text
+    assert "tools/verify_rbac_readiness.py" in text
+    assert '--require-user "<operator-email>:<role-code>"' in text
+    assert text.index("tools/provision_app_user.py") < text.index("tools/verify_rbac_readiness.py")
+    assert "@" not in text
+
+
 def test_validate_rows_accepts_known_statuses():
     errors = validate_rows(
         [

@@ -205,12 +205,13 @@ Current template:
 10. verify TLS files exist and render staged systemd/Nginx assets into temporary files
 11. run PostgreSQL backup
 12. run `alembic upgrade head` from the staged venv
-13. install active systemd/Nginx config from staged files and preserve previous active config for rollback
-14. switch backend/frontend symlinks atomically enough for the service restart
-15. restart backend and Nginx
-16. verify `/healthz` and `/readyz`
-17. record successful release metadata only after the new release is healthy
-18. prune old staged releases with bounded retention
+13. verify the deterministic database RBAC baseline against the same resolved `DATABASE_URL`
+14. install active systemd/Nginx config from staged files and preserve previous active config for rollback
+15. switch backend/frontend symlinks atomically enough for the service restart
+16. restart backend and Nginx
+17. verify `/healthz` and `/readyz`
+18. record successful release metadata only after the new release is healthy
+19. prune old staged releases with bounded retention
 
 If the working tree is dirty:
 
@@ -241,11 +242,7 @@ database migrations are not automatically downgraded
 - Current production DB baseline is `DB_MODE=local_postgres`.
 - PostgreSQL listens only on local/private address.
 - Application runtime user must not be `postgres`.
-- Normal deploy order is:
-  - backup
-  - migration
-  - restart
-  - readiness verification
+- Normal deploy order is backup, migration, read-only RBAC baseline verification against the exact migration target, restart, then readiness verification.
 - `DB_MODE=cloud_sql` remains supported as a dormant rollback/future mode.
 
 ## Legacy structured-data import contract
@@ -325,6 +322,9 @@ Detailed operator steps live in:
 ## Auth contract
 - Current VM production auth baseline is `AUTH_PROVIDER=google_oidc`.
 - Production RBAC remains database-backed.
+- Deployment verifies only the deterministic roles/permissions baseline; it does not provision or require named users during an ordinary release.
+- Candidate cutover requires explicit named-user provisioning and required-user readiness verification before the runtime DB switch; see [Phase 7 Cutover Runbook](D:/GXP-QLCL/docs/PHASE7_CUTOVER_RUNBOOK.md).
+- `/etc/gxp/runtime.env` remains the persistent runtime target authority. The rehearsal deploy path continues to derive an ephemeral rehearsal runtime env without modifying that canonical file.
 - `header_stub`, `AUTH_ROLE_MAP`, and trusted-header fallback remain non-production only.
 - `AUTH_PROVIDER=google_iap_jwt` remains supported for dormant Cloud Run mode.
 

@@ -151,9 +151,9 @@ cd /opt/gxp/src/GXP-QLCL
 python3 tools/provision_app_user.py \
   --runtime-env /etc/gxp/runtime.env \
   --target-db gxp_legacy_rehearsal \
-  --email hahoangphuong@gmail.com \
-  --username hahoangphuong \
-  --role admin
+  --email "<operator-email>" \
+  --username "<operator-username>" \
+  --role "<role-code>"
 ```
 
 6. Review the rehearsal report and application behavior against the rehearsal target.

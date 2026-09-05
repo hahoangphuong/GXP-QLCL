@@ -7,6 +7,16 @@ from typing import TYPE_CHECKING
 from xml.etree import ElementTree as ET
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from backend.app.document.c5e_certificate_detail_runtime import (
+    CertificateDetailRuntimeError,
+    build_certificate_detail_runtime_docx,
+)
+from backend.app.document.c5e_certificate_detail_semantic_projection import (
+    CERTIFICATE_DETAIL_DESTINATION_BOOKMARK,
+)
+from backend.app.document.c5e_certificate_detail_source_asset_locator import (
+    build_runtime_source_asset_locator,
+)
 from backend.app.document.output_version import finalize_output_document_version_write
 from backend.app.document.template_contract_runtime import (
     build_scalar_replacement_plan_for_template,
@@ -167,6 +177,54 @@ def _apply_table_regions(
     return tuple(replaced_regions)
 
 
+def _apply_certificate_detail_before_generic_render(
+    storage: "StorageServiceProtocol",
+    *,
+    prepared: object,
+    template_bytes: bytes,
+    replacements: dict[str, str],
+) -> bytes:
+    projection = getattr(prepared, "certificate_detail_projection", None)
+    if projection is None:
+        return template_bytes
+
+    if CERTIFICATE_DETAIL_DESTINATION_BOOKMARK in replacements:
+        raise DocxTemplateRenderError(
+            "C.5e certificate-detail destination bookmark 'Pvi' is owned by "
+            "Input_DC_to_CC composition and must not appear in the generic "
+            "scalar replacement plan."
+        )
+
+    table_regions = getattr(prepared, "table_regions", ())
+    if any(
+        region.region_bookmark_name == CERTIFICATE_DETAIL_DESTINATION_BOOKMARK
+        for region in table_regions
+    ):
+        raise DocxTemplateRenderError(
+            "C.5e certificate-detail destination bookmark 'Pvi' is owned by "
+            "Input_DC_to_CC composition and must not be used as a generic "
+            "table-region bookmark."
+        )
+
+    source_locator = build_runtime_source_asset_locator(
+        gxp_type=projection.gxp_type,
+    )
+
+    try:
+        result = build_certificate_detail_runtime_docx(
+            storage,
+            destination_template_bytes=template_bytes,
+            projection=projection,
+            source_locator=source_locator,
+        )
+    except CertificateDetailRuntimeError as exc:
+        raise DocxTemplateRenderError(
+            f"C.5e certificate-detail runtime render failed: {exc}"
+        ) from exc
+
+    return result.render_result.binary_payload
+
+
 def build_template_aware_docx_bytes(
     storage: "StorageServiceProtocol",
     allocated: "TemplateAwareAllocatedDocumentGeneration",
@@ -189,6 +247,17 @@ def build_template_aware_docx_bytes(
         template_bytes=template_bytes,
     )
     replacements = replacement_plan.bookmark_replacements
+
+    # Build the generic replacement plan against the untouched destination
+    # package so ownership conflicts are detected before mutation. The C.5e
+    # composer then owns Pvi and removes only that bookmark markup; generic
+    # scalar/table mutation continues against the composed package.
+    template_bytes = _apply_certificate_detail_before_generic_render(
+        storage,
+        prepared=prepared,
+        template_bytes=template_bytes,
+        replacements=replacements,
+    )
 
     source_buffer = BytesIO(template_bytes)
     target_buffer = BytesIO()

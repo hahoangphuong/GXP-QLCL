@@ -1,0 +1,25 @@
+{
+  "schema_version": "c5e-certificate-destination-assets-v1",
+  "family_code": "CERTIFICATE_ISSUANCE_WORD",
+  "source_variant": "certificate_9",
+  "assets": [
+    {
+      "gxp_type": "GMP",
+      "filename": "9. Chung chi GMP (moi).dotx",
+      "storage_root": "template",
+      "storage_relative_path": "9. Chung chi GMP (moi).dotx",
+      "checksum_sha256": "1cb661d70bb7badb2dd0260a4fdde82c07db9cbf670bc09da737576d053fbfcb"
+    },
+    {
+      "gxp_type": "GLP",
+      "filename": "9. Chung chi GLP (moi).dotx",
+      "storage_root": "template",
+      "storage_relative_path": "9. Chung chi GLP (moi).dotx",
+      "checksum_sha256": "e5565b9b2cca73cb19438aa61b456d7d99ac4223cf2c6764a0e2f5d7dc36b07d"
+    }
+  ],
+  "unsupported_gxp_types": {
+    "GSP": "Destination template 9. Chung chi GSP (moi).dotx was not present on production template storage when the contract was locked; fail closed until the asset is added and its checksum is audited.",
+    "GDP": "Excluded from C.5e by project contract."
+  }
+}

@@ -4,8 +4,6 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 
-from backend.app.project_paths import phase_artifact_path
-
 
 CONTRACT_PATH = Path(__file__).with_name("c5e_certificate_destination_assets.json")
 CERTIFICATE_DETAIL_FAMILY = "CERTIFICATE_ISSUANCE_WORD"

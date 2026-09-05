@@ -9,6 +9,7 @@ import pytest
 
 from backend.app.document import template_binary
 from backend.app.document.c5e_certificate_destination_asset_contract import (
+    CertificateDestinationAsset,
     CertificateDestinationAssetContractError,
     get_certificate_destination_asset,
     load_certificate_destination_assets,
@@ -21,8 +22,13 @@ from backend.app.document.template_binary import (
 )
 from backend.app.document.template_binary_binding import (
     TemplateBinaryBindingError,
+    TemplateBinaryBindingLocator,
     normalize_template_binary_checksum,
     normalize_template_binary_relative_path,
+)
+from tools.seed_c5e_certificate_template_metadata import (
+    C5ECertificateTemplateMetadataSeedError,
+    _validate_binary_locator_matches_asset,
 )
 
 
@@ -179,3 +185,52 @@ def test_open_template_binary_stream_fails_closed_on_checksum_mismatch():
     with pytest.raises(TemplateBinaryError, match="checksum mismatch"):
         with open_template_binary_stream(storage, requirement):
             pass
+
+
+def _asset() -> CertificateDestinationAsset:
+    return CertificateDestinationAsset(
+        gxp_type="GMP",
+        filename="9. Chung chi GMP (moi).dotx",
+        storage_root="template",
+        storage_relative_path="9. Chung chi GMP (moi).dotx",
+        checksum_sha256=(
+            "1cb661d70bb7badb2dd0260a4fdde82c07db9cbf670bc09da737576d053fbfcb"
+        ),
+    )
+
+
+def _locator(**overrides) -> TemplateBinaryBindingLocator:
+    asset = _asset()
+    values = {
+        "template_binding_id": "tb1",
+        "storage_root": asset.storage_root,
+        "storage_relative_path": asset.storage_relative_path,
+        "original_filename": asset.filename,
+        "checksum_sha256": asset.checksum_sha256,
+    }
+    values.update(overrides)
+    return TemplateBinaryBindingLocator(**values)
+
+
+def test_existing_binary_locator_exact_match_is_idempotent():
+    _validate_binary_locator_matches_asset(_locator(), _asset())
+
+
+@pytest.mark.parametrize(
+    ("field_name", "wrong_value"),
+    [
+        ("storage_root", "inspection"),
+        ("storage_relative_path", "wrong.dotx"),
+        ("original_filename", "wrong.dotx"),
+        ("checksum_sha256", "0" * 64),
+    ],
+)
+def test_existing_binary_locator_conflict_fails_closed(field_name, wrong_value):
+    with pytest.raises(
+        C5ECertificateTemplateMetadataSeedError,
+        match="Existing template binary binding conflicts",
+    ):
+        _validate_binary_locator_matches_asset(
+            _locator(**{field_name: wrong_value}),
+            _asset(),
+        )

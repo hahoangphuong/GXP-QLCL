@@ -1,14 +1,20 @@
 from __future__ import annotations
 
-"""C.5e DB-backed evaluation-scope enrichment for document payloads.
+"""C.5e DB-backed evaluation-scope input and scalar payload enrichment.
 
 The generic Phase 5 payload registry remains an inventory for non-scope fields.
 Evaluation-scope bookmark values are owned by the branch-aware C.5e projection
-and are appended after generic registry validation.  Legacy ``unkeyed_entries``
-are never queried or passed into the projection boundary.
+and are appended after generic registry validation. Legacy ``unkeyed_entries``
+are never queried or passed into any C.5e projection boundary.
+
+The canonical scope loader in this module is shared by:
+- scalar document-scope projection; and
+- certificate-detail ``Input_DC_to_CC`` semantic projection.
+
+This keeps canonical DB access in one owner and prevents duplicate query logic.
 """
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any
 
 from sqlalchemy import select
@@ -47,6 +53,14 @@ C5E_SCOPE_FAMILIES = frozenset(DOCUMENT_SCOPE_BRANCHES)
 C5E_SCOPE_PROJECTION_SOURCE = "C5e.project_vba_document_scope_fields"
 
 
+@dataclass(frozen=True)
+class C5EEvaluationScopeProjectionInput:
+    blocks: tuple[dict[str, Any], ...]
+    taxonomy_nodes: tuple[dict[str, Any], ...]
+    limitation_text: str | None
+    gxp_type: str
+
+
 def _family_emits_scalar_scope_fields(family_code: str, *, copy_pt: bool) -> bool:
     if family_code in {"INSPECTION_QD_KT", "CERTIFICATE_DECISION"}:
         return False
@@ -66,11 +80,18 @@ def assert_no_c5e_scope_field_override(*, family_code: str, values: dict[str, st
         )
 
 
-def _load_projection_input(
+def load_c5e_evaluation_scope_projection_input(
     session: Session,
     *,
     case_id: str,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str | None, str]:
+) -> C5EEvaluationScopeProjectionInput:
+    """Load the canonical structured scope used by all C.5e projections.
+
+    The loader deliberately reads only the case, canonical structured scope,
+    exact-version taxonomy nodes, ordered blocks, and ordered keyed selections.
+    Historical ``unkeyed_entries`` remain outside this boundary by design.
+    """
+
     case = session.get(Case, case_id)
     if case is None:
         raise DocumentPayloadBuildError(f"C.5e evaluation-scope projection case was not found: {case_id}")
@@ -101,7 +122,7 @@ def _load_projection_input(
         )
 
     node_key_by_id = {row.id: row.node_key for row in taxonomy_rows}
-    taxonomy_nodes = [
+    taxonomy_nodes = tuple(
         {
             "id": row.id,
             "key": row.node_key,
@@ -114,7 +135,7 @@ def _load_projection_input(
             "source_order": row.source_order,
         }
         for row in taxonomy_rows
-    ]
+    )
 
     blocks = list(
         session.scalars(
@@ -146,17 +167,42 @@ def _load_projection_input(
                 }
             )
 
-    projection_blocks = [
+    projection_blocks = tuple(
         {
             "id": block.id,
             "ordinal": block.ordinal,
             "name": block.name,
             "note": block.note,
-            "selections": selections_by_block[block.id],
+            "selections": tuple(selections_by_block[block.id]),
         }
         for block in blocks
-    ]
-    return projection_blocks, taxonomy_nodes, scope.limitation_text, case.gxp_type
+    )
+
+    return C5EEvaluationScopeProjectionInput(
+        blocks=projection_blocks,
+        taxonomy_nodes=taxonomy_nodes,
+        limitation_text=scope.limitation_text,
+        gxp_type=case.gxp_type,
+    )
+
+
+def _load_projection_input(
+    session: Session,
+    *,
+    case_id: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str | None, str]:
+    """Backward-compatible private adapter for existing scalar callers/tests."""
+
+    projection_input = load_c5e_evaluation_scope_projection_input(
+        session,
+        case_id=case_id,
+    )
+    return (
+        list(projection_input.blocks),
+        list(projection_input.taxonomy_nodes),
+        projection_input.limitation_text,
+        projection_input.gxp_type,
+    )
 
 
 def enrich_payload_result_with_c5e_scope(
@@ -171,7 +217,7 @@ def enrich_payload_result_with_c5e_scope(
 
     Scope-like registry fields are removed from ``missing_registry_fields`` for
     C.5e families because the generic inventory is explicitly not their semantic
-    owner.  Families/branches with no active scalar scope writes do not require
+    owner. Families/branches with no active scalar scope writes do not require
     a canonical scope row.
     """
     if family_code not in C5E_SCOPE_FAMILIES:
@@ -191,14 +237,17 @@ def enrich_payload_result_with_c5e_scope(
             f"C.5e document scope projection requires case_id for family_code={family_code!r}."
         )
 
-    blocks, taxonomy_nodes, limitation_text, gxp_type = _load_projection_input(session, case_id=case_id)
+    projection_input = load_c5e_evaluation_scope_projection_input(
+        session,
+        case_id=case_id,
+    )
     try:
         projection = project_vba_document_scope_fields(
             family_code=family_code,
-            blocks=blocks,
-            taxonomy_nodes=taxonomy_nodes,
-            limitation_text=limitation_text,
-            gxp_type=gxp_type,
+            blocks=projection_input.blocks,
+            taxonomy_nodes=projection_input.taxonomy_nodes,
+            limitation_text=projection_input.limitation_text,
+            gxp_type=projection_input.gxp_type,
             copy_pt=copy_pt,
         )
     except (AssertionError, ValueError) as exc:

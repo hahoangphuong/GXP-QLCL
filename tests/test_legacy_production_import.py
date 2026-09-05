@@ -12,6 +12,7 @@ from sqlalchemy.engine import URL, make_url
 from backend.app.db.models import Base, MigrationAnomaly
 from backend.app.runtime_schema import expected_alembic_head_revision
 from tools import build_phase7_cutover_readiness as readiness
+from tools.phase7_execution_evidence import TEMPLATE_PATH
 from tools import import_legacy_production as ilp
 
 
@@ -326,6 +327,9 @@ def patch_phase7_artifact_paths(monkeypatch, tmp_path: Path) -> None:
 
 
 def write_phase7_closeout_artifacts(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "phase7-evidence"
+    evidence_dir.mkdir()
+    (evidence_dir / "cutover_execution_checklist.json").write_bytes(TEMPLATE_PATH.read_bytes())
     (tmp_path / "phase4.json").write_text(json.dumps({"phase4_status": "closed"}), encoding="utf-8")
     (tmp_path / "phase5_audit.json").write_text(json.dumps({"registry_family_count": 26, "matched_family_count": 26, "active_file_count": 91}), encoding="utf-8")
     (tmp_path / "phase5_recon.json").write_text(json.dumps({"families": []}), encoding="utf-8")
@@ -351,14 +355,42 @@ def write_phase7_closeout_artifacts(tmp_path: Path) -> None:
     )
 
 
-def load_real_phase7_gate() -> tuple[str, dict[str, str], bool]:
-    report = readiness.build_readiness()
+def load_real_phase7_gate(evidence_dir: Path) -> tuple[str, dict[str, str], bool]:
+    report = readiness.build_readiness(evidence_dir=evidence_dir)
     phase7_status = str(report.get("phase7_status", "blocked"))
     current_projection_gate = report.get("gates", {}).get(
         "current_projection_conflicts",
         {"status": "blocked", "reason": "Current projection gate is unavailable."},
     )
     return phase7_status, current_projection_gate, phase7_status == "ready"
+
+
+def test_phase7_gate_without_external_evidence_is_blocked_without_template_fallback() -> None:
+    status, gate, cutover_ready = ilp._load_phase7_gate()
+
+    assert status == "blocked"
+    assert gate["status"] == "blocked"
+    assert "external execution evidence directory was not provided" in gate["reason"]
+    assert cutover_ready is False
+
+
+def test_phase7_gate_uses_only_the_explicit_external_evidence_directory(tmp_path: Path, monkeypatch) -> None:
+    evidence_dir = (tmp_path / "external-evidence").resolve()
+    observed: list[Path] = []
+
+    def fake_build_readiness(*, evidence_dir: Path) -> dict:
+        observed.append(evidence_dir)
+        return {
+            "phase7_status": "ready",
+            "gates": {"current_projection_conflicts": {"status": "pass", "reason": "ok"}},
+        }
+
+    monkeypatch.setattr(ilp, "build_readiness", fake_build_readiness)
+    status, _gate, cutover_ready = ilp._load_phase7_gate(evidence_dir)
+
+    assert observed == [evidence_dir]
+    assert status == "ready"
+    assert cutover_ready is True
 
 
 def test_snapshot_only_apply_path_does_not_require_xlsb(tmp_path: Path, monkeypatch) -> None:
@@ -1262,7 +1294,7 @@ def test_dry_run_with_missing_phase7_artifacts_creates_report_without_traceback(
     patch_target_schema_upgrade(monkeypatch)
     patch_phase7_artifact_paths(monkeypatch, tmp_path)
     write_phase7_closeout_artifacts(tmp_path)
-    monkeypatch.setattr(ilp, "_load_phase7_gate", load_real_phase7_gate)
+    monkeypatch.setattr(ilp, "_load_phase7_gate", lambda: load_real_phase7_gate(tmp_path / "phase7-evidence"))
 
     stdout = io.StringIO()
     stderr = io.StringIO()
@@ -1303,7 +1335,7 @@ def test_import_validation_failure_is_not_masked_by_cutover_status(tmp_path: Pat
     patch_target_schema_upgrade(monkeypatch)
     patch_phase7_artifact_paths(monkeypatch, tmp_path)
     write_phase7_closeout_artifacts(tmp_path)
-    monkeypatch.setattr(ilp, "_load_phase7_gate", load_real_phase7_gate)
+    monkeypatch.setattr(ilp, "_load_phase7_gate", lambda: load_real_phase7_gate(tmp_path / "phase7-evidence"))
 
     stderr = io.StringIO()
     with redirect_stderr(stderr):
@@ -1336,7 +1368,7 @@ def test_main_reports_schema_length_preflight_failures_without_raw_db_traceback(
     patch_target_schema_upgrade(monkeypatch)
     patch_phase7_artifact_paths(monkeypatch, tmp_path)
     write_phase7_closeout_artifacts(tmp_path)
-    monkeypatch.setattr(ilp, "_load_phase7_gate", load_real_phase7_gate)
+    monkeypatch.setattr(ilp, "_load_phase7_gate", lambda: load_real_phase7_gate(tmp_path / "phase7-evidence"))
 
     stdout = io.StringIO()
     stderr = io.StringIO()

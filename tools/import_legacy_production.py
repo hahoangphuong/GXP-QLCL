@@ -33,6 +33,7 @@ from backend.app.project_paths import phase_artifact_path
 from backend.app.rbac import ensure_builtin_rbac_baseline
 from backend.app.runtime_schema import expected_alembic_head_revision
 from tools.build_phase7_cutover_readiness import build_readiness
+from tools.phase7_execution_evidence import Phase7ExecutionEvidenceError
 from tools.env_utils import parse_env_file
 
 
@@ -215,8 +216,17 @@ def _run_backup(runtime_env_path: Path) -> None:
         raise ProductionImportError(f"PostgreSQL backup gate failed: {stderr}")
 
 
-def _load_phase7_gate() -> tuple[str, dict[str, Any], bool]:
-    report = build_readiness()
+def _load_phase7_gate(evidence_dir: Path | None = None) -> tuple[str, dict[str, Any], bool]:
+    if evidence_dir is None:
+        return (
+            "blocked",
+            {"status": "blocked", "reason": "Phase 7 external execution evidence directory was not provided."},
+            False,
+        )
+    try:
+        report = build_readiness(evidence_dir=evidence_dir)
+    except Phase7ExecutionEvidenceError as exc:
+        return "blocked", {"status": "blocked", "reason": str(exc)}, False
     phase7_status = str(report.get("phase7_status", "blocked"))
     current_projection_gate = report.get("gates", {}).get(
         "current_projection_conflicts",
@@ -605,10 +615,13 @@ def execute_import(
     target_database_name: str | None = None,
     reset_from_snapshot: bool = False,
     report_root: Path = DEFAULT_REPORT_ROOT,
+    phase7_evidence_dir: Path | None = None,
 ) -> ImportReport:
     contract, _env = _load_runtime_database_contract(runtime_env_path)
     snapshot, snapshot_sha, snapshot_metadata = _load_snapshot(snapshot_path)
-    phase7_status, current_projection_gate, cutover_ready = _load_phase7_gate()
+    phase7_status, current_projection_gate, cutover_ready = (
+        _load_phase7_gate() if phase7_evidence_dir is None else _load_phase7_gate(phase7_evidence_dir)
+    )
     report_dir = _build_report_dir(report_root)
     started_at = datetime.now(timezone.utc).isoformat()
     exported_at = _snapshot_metadata_value(snapshot_metadata, "exported_at")
@@ -768,6 +781,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--runtime-env", type=Path, default=DEFAULT_RUNTIME_ENV_PATH)
     parser.add_argument("--report-root", type=Path, default=DEFAULT_REPORT_ROOT)
     parser.add_argument(
+        "--phase7-evidence-dir",
+        type=Path,
+        help="External Phase 7 execution evidence directory used only for the cutover-readiness report gate.",
+    )
+    parser.add_argument(
         "--import-mode",
         choices=("validation", "rehearsal", "final"),
         default="validation",
@@ -803,6 +821,7 @@ def main(argv: list[str] | None = None) -> int:
             target_database_name=args.target_db,
             reset_from_snapshot=args.reset_from_snapshot,
             report_root=args.report_root,
+            phase7_evidence_dir=args.phase7_evidence_dir,
         )
     except (ProductionImportError, ImportCollisionError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

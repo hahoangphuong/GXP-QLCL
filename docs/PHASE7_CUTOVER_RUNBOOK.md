@@ -26,6 +26,7 @@ cd /opt/gxp/src/GXP-QLCL
 python3 tools/import_legacy_production.py \
   --snapshot artifacts/phase3c/legacy_snapshot.json \
   --runtime-env /etc/gxp/runtime.env \
+  --phase7-evidence-dir /var/lib/gxp/phase7-execution \
   --import-mode validation \
   --dry-run
 ```
@@ -37,6 +38,7 @@ cd /opt/gxp/src/GXP-QLCL
 python3 tools/import_legacy_production.py \
   --snapshot artifacts/phase3c/legacy_snapshot.json \
   --runtime-env /etc/gxp/runtime.env \
+  --phase7-evidence-dir /var/lib/gxp/phase7-execution \
   --import-mode rehearsal \
   --target-db gxp_legacy_rehearsal \
   --reset-from-snapshot \
@@ -50,6 +52,7 @@ cd /opt/gxp/src/GXP-QLCL
 python3 tools/import_legacy_production.py \
   --snapshot artifacts/phase3c/legacy_snapshot.json \
   --runtime-env /etc/gxp/runtime.env \
+  --phase7-evidence-dir /var/lib/gxp/phase7-execution \
   --import-mode final \
   --target-db gxp_qlcl_candidate \
   --reset-from-snapshot \
@@ -96,25 +99,42 @@ unset CANDIDATE_DATABASE_URL
 Archive the successful verifier output with the cutover evidence. A failed verifier is a no-go result; it never provisions users or repairs the RBAC baseline.
 
 ## Cutover sequence
-1. Announce legacy write-freeze start time.
-2. Disable or administratively block new legacy business writes.
-3. Export a fresh `artifacts/phase3c/legacy_snapshot.json` from the frozen workbook baseline.
-4. Run the canonical VM validation dry-run and review `artifacts/legacy-production/<timestamp>/report.json` and `report.md`.
-5. Rebuild the final candidate database from the frozen snapshot with `--import-mode final --reset-from-snapshot`.
-6. Review the candidate report:
+1. Initialize and retain an external evidence directory before the change window. The path must be outside the release tree:
+
+```bash
+cd /opt/gxp/src/GXP-QLCL
+/opt/gxp/current-venv/bin/python tools/init_phase7_execution.py \
+  --output-dir /var/lib/gxp/phase7-execution
+```
+
+2. Announce legacy write-freeze start time.
+3. Disable or administratively block new legacy business writes.
+4. Export a fresh `artifacts/phase3c/legacy_snapshot.json` from the frozen workbook baseline.
+5. Run the canonical VM validation dry-run and review `artifacts/legacy-production/<timestamp>/report.json` and `report.md`.
+6. Rebuild the final candidate database from the frozen snapshot with `--import-mode final --reset-from-snapshot`.
+7. Review the candidate report:
    - snapshot SHA-256
    - target database
    - source counts
    - reconciliation/source-balance
    - deployment SHA
    - Alembic revision
-7. Explicitly provision required candidate identities and run the required-user RBAC readiness verification; archive its successful output.
-8. Rebuild Phase 7 readiness with `python3 tools/build_phase7_cutover_readiness.py`.
-9. Review reconciliation outputs and obtain sign-off.
-10. Switch the application to the validated candidate DB only after all gates pass.
-11. Retain the previous production DB for the rollback window.
-12. Put legacy Excel workflow into read-only/archive mode.
-13. Monitor the first production operations closely.
+8. Explicitly provision required candidate identities and run the required-user RBAC readiness verification; archive its successful output.
+9. Update only the external `cutover_execution_checklist.json`, then generate and archive all Phase 7 outputs in the same directory:
+
+```bash
+cd /opt/gxp/src/GXP-QLCL
+/opt/gxp/current-venv/bin/python tools/build_phase7_cutover_readiness.py --evidence-dir /var/lib/gxp/phase7-execution
+/opt/gxp/current-venv/bin/python tools/validate_phase7_cutover_checklist.py --evidence-dir /var/lib/gxp/phase7-execution
+/opt/gxp/current-venv/bin/python tools/build_phase7b_operational_pack.py --evidence-dir /var/lib/gxp/phase7-execution
+/opt/gxp/current-venv/bin/python tools/build_phase7_final_closeout.py --evidence-dir /var/lib/gxp/phase7-execution
+```
+
+10. Review reconciliation outputs and obtain sign-off.
+11. Switch the application to the validated candidate DB only after all gates pass.
+12. Retain the previous production DB for the rollback window.
+13. Put legacy Excel workflow into read-only/archive mode.
+14. Monitor the first production operations closely.
 
 ## Rollback trigger examples
 - unresolved reconciliation mismatch
@@ -132,6 +152,7 @@ Archive the successful verifier output with the cutover evidence. A failed verif
 ## Required evidence to archive
 - final reconciliation artifacts
 - final cutover checklist
+- external Phase 7 readiness, checklist summary, operational pack, and final closeout outputs
 - desktop/private-share validation evidence
 - decision log for go/no-go
 - rollback notes if rollback occurs

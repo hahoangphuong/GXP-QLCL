@@ -2,19 +2,16 @@ from __future__ import annotations
 
 import csv
 import json
+import argparse
+import sys
 from pathlib import Path
 from typing import Any
 
+from tools.phase7_execution_evidence import (
+    Phase7ExecutionEvidenceError,
+    require_execution_evidence,
+)
 
-ROOT = Path(__file__).resolve().parents[1]
-PHASE7_DIR = ROOT / "artifacts" / "phase7"
-READINESS_PATH = PHASE7_DIR / "cutover_readiness.json"
-CHECKLIST_PATH = PHASE7_DIR / "cutover_execution_checklist.template.json"
-CHECKLIST_SUMMARY_PATH = PHASE7_DIR / "cutover_checklist_summary.json"
-OUT_DIR = ROOT / "artifacts" / "phase7b"
-JSON_OUT = OUT_DIR / "cutover_operational_pack.json"
-CSV_OUT = OUT_DIR / "cutover_operational_pack.csv"
-MD_OUT = OUT_DIR / "cutover_operational_pack.md"
 
 
 def load_json(path: Path) -> Any:
@@ -53,10 +50,11 @@ def required_fields(item_id: str) -> list[str]:
     return base
 
 
-def build_operational_pack() -> dict[str, Any]:
-    readiness = load_json(READINESS_PATH)
-    checklist = load_json(CHECKLIST_PATH)
-    checklist_summary = load_json(CHECKLIST_SUMMARY_PATH)
+def build_operational_pack(*, evidence_dir: Path) -> dict[str, Any]:
+    evidence_paths = require_execution_evidence(evidence_dir)
+    readiness = load_json(evidence_paths.readiness_json_path)
+    checklist = load_json(evidence_paths.checklist_path)
+    checklist_summary = load_json(evidence_paths.checklist_summary_json_path)
 
     items: list[dict[str, Any]] = []
     for row in checklist.get("items", []):
@@ -89,8 +87,8 @@ def build_operational_pack() -> dict[str, Any]:
     }
 
 
-def write_csv(items: list[dict[str, Any]]) -> None:
-    with CSV_OUT.open("w", encoding="utf-8", newline="") as fh:
+def write_csv(path: Path, items: list[dict[str, Any]]) -> None:
+    with path.open("w", encoding="utf-8", newline="") as fh:
         writer = csv.DictWriter(
             fh,
             fieldnames=[
@@ -149,15 +147,26 @@ def render_markdown(report: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def main() -> int:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    report = build_operational_pack()
-    JSON_OUT.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    write_csv(report["pending_items"])
-    MD_OUT.write_text(render_markdown(report), encoding="utf-8")
-    print(f"Wrote {JSON_OUT}")
-    print(f"Wrote {CSV_OUT}")
-    print(f"Wrote {MD_OUT}")
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Build Phase 7b operational pack from external execution evidence.")
+    parser.add_argument("--evidence-dir", required=True, type=Path)
+    args = parser.parse_args(argv)
+    try:
+        evidence_paths = require_execution_evidence(args.evidence_dir)
+        report = build_operational_pack(evidence_dir=args.evidence_dir)
+    except (Phase7ExecutionEvidenceError, OSError, ValueError, KeyError, json.JSONDecodeError, TypeError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    evidence_paths.operational_pack_json_path.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
+    write_csv(evidence_paths.operational_pack_csv_path, report["pending_items"])
+    evidence_paths.operational_pack_markdown_path.write_text(
+        render_markdown(report), encoding="utf-8", newline="\n"
+    )
+    print(f"Wrote {evidence_paths.operational_pack_json_path}")
+    print(f"Wrote {evidence_paths.operational_pack_csv_path}")
+    print(f"Wrote {evidence_paths.operational_pack_markdown_path}")
     return 0
 
 

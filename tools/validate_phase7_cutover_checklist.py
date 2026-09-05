@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 import json
+import argparse
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from tools.phase7_execution_evidence import (
+    Phase7ExecutionEvidenceError,
+    require_execution_evidence,
+)
 
-ROOT = Path(__file__).resolve().parents[1]
-OUT_DIR = ROOT / "artifacts" / "phase7"
-CHECKLIST_PATH = OUT_DIR / "cutover_execution_checklist.template.json"
-READINESS_PATH = OUT_DIR / "cutover_readiness.json"
-JSON_OUT = OUT_DIR / "cutover_checklist_summary.json"
-MD_OUT = OUT_DIR / "cutover_checklist_summary.md"
 
 ALLOWED_STATUSES = {"pass", "fail", "blocked", "pending", "not_started"}
 AUTHORITATIVE_ITEM_IDS = {
@@ -91,9 +91,10 @@ def validate_rows(rows: list[dict[str, Any]]) -> list[str]:
     return errors
 
 
-def build_summary() -> dict[str, Any]:
-    checklist = load_json(CHECKLIST_PATH)
-    readiness = load_json(READINESS_PATH)
+def build_summary(*, evidence_dir: Path) -> dict[str, Any]:
+    evidence_paths = require_execution_evidence(evidence_dir)
+    checklist = load_json(evidence_paths.checklist_path)
+    readiness = load_json(evidence_paths.readiness_json_path)
     rows = checklist["items"]
     errors = validate_rows(rows)
 
@@ -144,13 +145,24 @@ def render_markdown(summary: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def main() -> int:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    summary = build_summary()
-    JSON_OUT.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
-    MD_OUT.write_text(render_markdown(summary), encoding="utf-8", newline="\n")
-    print(f"Wrote {JSON_OUT}")
-    print(f"Wrote {MD_OUT}")
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Validate external Phase 7 execution evidence.")
+    parser.add_argument("--evidence-dir", required=True, type=Path)
+    args = parser.parse_args(argv)
+    try:
+        evidence_paths = require_execution_evidence(args.evidence_dir)
+        summary = build_summary(evidence_dir=args.evidence_dir)
+    except (Phase7ExecutionEvidenceError, OSError, ValueError, KeyError, json.JSONDecodeError, TypeError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    evidence_paths.checklist_summary_json_path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
+    evidence_paths.checklist_summary_markdown_path.write_text(
+        render_markdown(summary), encoding="utf-8", newline="\n"
+    )
+    print(f"Wrote {evidence_paths.checklist_summary_json_path}")
+    print(f"Wrote {evidence_paths.checklist_summary_markdown_path}")
     return 0
 
 

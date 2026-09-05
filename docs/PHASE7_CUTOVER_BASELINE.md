@@ -9,6 +9,25 @@ Prepare a truthful, evidence-driven cutover gate for switching authority from le
 - final closeout builder: [tools/build_phase7_final_closeout.py](/D:/GXP-QLCL/tools/build_phase7_final_closeout.py)
 - checklist template: [cutover_execution_checklist.template.json](/D:/GXP-QLCL/artifacts/phase7/cutover_execution_checklist.template.json)
 
+## External Execution Evidence
+The tracked checklist is an immutable release template, not live operator evidence. Before the cutover window, initialize one external absolute directory that is outside `/opt/gxp/src/GXP-QLCL` and retain it across releases:
+
+```bash
+/opt/gxp/current-venv/bin/python tools/init_phase7_execution.py \
+  --output-dir /var/lib/gxp/phase7-execution
+```
+
+Operators update only `/var/lib/gxp/phase7-execution/cutover_execution_checklist.json`. All Phase 7 generated outputs are written back to that same directory and every operational tool requires the explicit directory:
+
+```bash
+/opt/gxp/current-venv/bin/python tools/build_phase7_cutover_readiness.py --evidence-dir /var/lib/gxp/phase7-execution
+/opt/gxp/current-venv/bin/python tools/validate_phase7_cutover_checklist.py --evidence-dir /var/lib/gxp/phase7-execution
+/opt/gxp/current-venv/bin/python tools/build_phase7b_operational_pack.py --evidence-dir /var/lib/gxp/phase7-execution
+/opt/gxp/current-venv/bin/python tools/build_phase7_final_closeout.py --evidence-dir /var/lib/gxp/phase7-execution
+```
+
+`/var/lib/gxp/phase7-execution` is an example only; deployment configuration does not hardcode an evidence path. Missing, malformed, or release-local evidence is rejected without fallback to the template.
+
 ## Gate model
 Phase 7 separates:
 - readiness gates derived from prior phase artifacts

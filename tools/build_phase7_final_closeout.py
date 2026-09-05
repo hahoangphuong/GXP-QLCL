@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import json
+import argparse
+import sys
 from pathlib import Path
 from typing import Any
 
+from tools.phase7_execution_evidence import (
+    Phase7ExecutionEvidenceError,
+    require_execution_evidence,
+)
 
-ROOT = Path(__file__).resolve().parents[1]
-OUT_DIR = ROOT / "artifacts" / "phase7"
-READINESS_PATH = OUT_DIR / "cutover_readiness.json"
-CHECKLIST_PATH = OUT_DIR / "cutover_checklist_summary.json"
-JSON_OUT = OUT_DIR / "phase7_final_closeout.json"
-MD_OUT = OUT_DIR / "phase7_final_closeout.md"
 
 
 def load_json(path: Path) -> Any:
@@ -21,9 +21,11 @@ def _write_utf8(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8", newline="\n")
 
 
-def build_summary() -> dict[str, Any]:
-    readiness = load_json(READINESS_PATH)
-    checklist = load_json(CHECKLIST_PATH)
+def build_summary(*, evidence_dir: Path) -> dict[str, Any]:
+    evidence_paths = require_execution_evidence(evidence_dir)
+    readiness = load_json(evidence_paths.readiness_json_path)
+    checklist = load_json(evidence_paths.checklist_summary_json_path)
+    operational_pack = load_json(evidence_paths.operational_pack_json_path)
     return {
         "generated_on": "2026-08-26",
         "phase7_status": readiness["phase7_status"],
@@ -34,6 +36,7 @@ def build_summary() -> dict[str, Any]:
             if payload["status"] == "blocked"
         ],
         "required_outstanding": checklist["required_outstanding"],
+        "operational_pack_status": operational_pack["checklist_status"],
     }
 
 
@@ -63,13 +66,20 @@ def render_markdown(summary: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def main() -> int:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    summary = build_summary()
-    _write_utf8(JSON_OUT, json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
-    _write_utf8(MD_OUT, render_markdown(summary))
-    print(f"Wrote {JSON_OUT}")
-    print(f"Wrote {MD_OUT}")
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Build Phase 7 final closeout from external execution evidence.")
+    parser.add_argument("--evidence-dir", required=True, type=Path)
+    args = parser.parse_args(argv)
+    try:
+        evidence_paths = require_execution_evidence(args.evidence_dir)
+        summary = build_summary(evidence_dir=args.evidence_dir)
+    except (Phase7ExecutionEvidenceError, OSError, ValueError, KeyError, json.JSONDecodeError, TypeError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    _write_utf8(evidence_paths.final_closeout_json_path, json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
+    _write_utf8(evidence_paths.final_closeout_markdown_path, render_markdown(summary))
+    print(f"Wrote {evidence_paths.final_closeout_json_path}")
+    print(f"Wrote {evidence_paths.final_closeout_markdown_path}")
     return 0
 
 

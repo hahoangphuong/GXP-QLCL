@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import json
+import argparse
+import sys
 from hashlib import sha256
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from tools.validate_phase7_cutover_checklist import load_json as load_checklist_json, validate_rows
+from tools.phase7_execution_evidence import (
+    Phase7ExecutionEvidenceError,
+    require_execution_evidence,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,10 +23,6 @@ PHASE6_PATH = ROOT / "artifacts" / "phase6" / "phase6_final_closeout.json"
 PHASE6_SUMMARY_PATH = ROOT / "artifacts" / "phase6" / "desktop_validation_summary.json"
 PHASE3P_PATH = ROOT / "artifacts" / "phase3p" / "current_projection_conflicts.json"
 PHASE3S_PATH = ROOT / "artifacts" / "phase3s" / "current_projection_conflict_decisions.summary.json"
-OUT_DIR = ROOT / "artifacts" / "phase7"
-JSON_OUT = OUT_DIR / "cutover_readiness.json"
-MD_OUT = OUT_DIR / "cutover_readiness.md"
-CHECKLIST_PATH = OUT_DIR / "cutover_execution_checklist.template.json"
 FREEZE_ITEM_IDS = (
     "legacy_write_freeze_window_approved", "legacy_write_freeze_announced",
     "final_phase2_import_rerun", "final_reconciliation_signed_off", "excel_read_only_archive_mode",
@@ -102,9 +104,9 @@ def _blocked_artifact_gate(reason: str) -> dict[str, Any]:
     return gate("blocked", reason)
 
 
-def build_operational_gate(item_ids: tuple[str, ...], label: str) -> dict[str, Any]:
+def build_operational_gate(item_ids: tuple[str, ...], label: str, *, checklist_path: Path) -> dict[str, Any]:
     try:
-        checklist = load_checklist_json(CHECKLIST_PATH)
+        checklist = load_checklist_json(checklist_path)
         rows = checklist["items"]
         if not isinstance(rows, list):
             raise ValueError("items must be a list")
@@ -324,7 +326,8 @@ def build_phase6_gate(
     )
 
 
-def build_readiness() -> dict[str, Any]:
+def build_readiness(*, evidence_dir: Path) -> dict[str, Any]:
+    evidence_paths = require_execution_evidence(evidence_dir)
     phase3 = safe_load_json(PHASE3_PATH, "Phase 3 closeout")
     phase4 = safe_load_json(PHASE4_PATH, "Phase 4 closeout")
     phase5 = safe_load_json(PHASE5_PATH, "Phase 5 closeout")
@@ -351,8 +354,12 @@ def build_readiness() -> dict[str, Any]:
 
     gates["current_projection_conflicts"] = build_current_projection_gate(phase3p, phase3s)
 
-    gates["legacy_write_freeze_execution"] = build_operational_gate(FREEZE_ITEM_IDS, "Legacy write freeze")
-    gates["rollback_window_execution"] = build_operational_gate(ROLLBACK_ITEM_IDS, "Rollback window")
+    gates["legacy_write_freeze_execution"] = build_operational_gate(
+        FREEZE_ITEM_IDS, "Legacy write freeze", checklist_path=evidence_paths.checklist_path
+    )
+    gates["rollback_window_execution"] = build_operational_gate(
+        ROLLBACK_ITEM_IDS, "Rollback window", checklist_path=evidence_paths.checklist_path
+    )
 
     statuses = [payload["status"] for payload in gates.values()]
     if any(status == "blocked" for status in statuses):
@@ -387,13 +394,24 @@ def render_markdown(report: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def main() -> int:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    report = build_readiness()
-    JSON_OUT.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
-    MD_OUT.write_text(render_markdown(report), encoding="utf-8", newline="\n")
-    print(f"Wrote {JSON_OUT}")
-    print(f"Wrote {MD_OUT}")
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Build Phase 7 cutover readiness from external execution evidence.")
+    parser.add_argument("--evidence-dir", required=True, type=Path)
+    args = parser.parse_args(argv)
+    try:
+        evidence_paths = require_execution_evidence(args.evidence_dir)
+        report = build_readiness(evidence_dir=args.evidence_dir)
+    except Phase7ExecutionEvidenceError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    evidence_paths.readiness_json_path.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
+    evidence_paths.readiness_markdown_path.write_text(
+        render_markdown(report), encoding="utf-8", newline="\n"
+    )
+    print(f"Wrote {evidence_paths.readiness_json_path}")
+    print(f"Wrote {evidence_paths.readiness_markdown_path}")
     return 0
 
 

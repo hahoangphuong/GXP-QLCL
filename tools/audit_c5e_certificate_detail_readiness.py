@@ -9,6 +9,8 @@ OUTPUT = ROOT / "artifacts" / "legacy_audit" / "c5e_certificate_detail_readiness
 FUNCTION_MAP = ROOT / "docs" / "VBA_FUNCTION_MAP.md"
 TEMPLATE_REGISTRY = ROOT / "artifacts" / "phase5" / "template_registry.curated.json"
 DOCX_RENDERER = ROOT / "backend" / "app" / "document" / "docx_template_render.py"
+CERTIFICATE_RUNTIME = ROOT / "backend" / "app" / "document" / "c5e_certificate_detail_runtime.py"
+CERTIFICATE_PROJECTION = ROOT / "backend" / "app" / "document" / "c5e_certificate_detail_semantic_projection.py"
 SCALAR_PROJECTION = ROOT / "backend" / "app" / "domain" / "evaluation_scope_document_projection.py"
 SCALAR_INTEGRATION = ROOT / "backend" / "app" / "document" / "evaluation_scope_payload.py"
 
@@ -35,7 +37,7 @@ def audit() -> dict[str, object]:
     checks.append(
         {
             "code": "DURABLE_VBA_EVIDENCE",
-            "pass": function_map_has_commented_variant and not exact_active_body_retained,
+            "pass": function_map_has_commented_variant and exact_active_body_retained,
             "evidence": {
                 "function_map": "docs/VBA_FUNCTION_MAP.md",
                 "commented_variant_recorded": function_map_has_commented_variant,
@@ -97,6 +99,8 @@ def audit() -> dict[str, object]:
         )
 
     renderer_text = _read(DOCX_RENDERER)
+    runtime_text = _read(CERTIFICATE_RUNTIME) if CERTIFICATE_RUNTIME.is_file() else ""
+    projection_text = _read(CERTIFICATE_PROJECTION) if CERTIFICATE_PROJECTION.is_file() else ""
     has_generic_table_region = all(
         token in renderer_text
         for token in (
@@ -106,49 +110,61 @@ def audit() -> dict[str, object]:
             "deepcopy(template_row)",
         )
     )
-    has_input_dc_owner = "Input_DC_to_CC" in renderer_text
+    has_dedicated_runtime_owner = (
+        "def build_certificate_detail_runtime_docx(" in runtime_text
+        and "project_certificate_detail_semantic_operations" in projection_text
+        and "build_certificate_detail_runtime_docx" in renderer_text
+    )
     checks.append(
         {
             "code": "DOCX_RENDERER_CAPABILITY_BOUNDARY",
-            "pass": has_generic_table_region and not has_input_dc_owner,
+            "pass": has_generic_table_region and has_dedicated_runtime_owner,
             "evidence": {
                 "generic_table_region_clone_supported": has_generic_table_region,
-                "Input_DC_to_CC_specific_owner_present": has_input_dc_owner,
+                "dedicated_certificate_detail_runtime_owner_present": has_dedicated_runtime_owner,
                 "renderer": "backend/app/document/docx_template_render.py",
+                "runtime_owner": "backend/app/document/c5e_certificate_detail_runtime.py",
+                "semantic_owner": "backend/app/document/c5e_certificate_detail_semantic_projection.py",
             },
         }
     )
-    if not has_input_dc_owner:
+    if not has_dedicated_runtime_owner:
         blockers.append(
             {
                 "code": "INPUT_DC_TO_CC_RENDER_CONTRACT_NOT_IMPLEMENTED",
                 "message": (
-                    "The current DOCX renderer supports generic bookmarked-row cloning but has no "
-                    "Input_DC_to_CC-specific structured taxonomy/detail contract. Generic table "
-                    "cloning must not be assumed equivalent without source/template parity evidence."
+                    "No dedicated Input_DC_to_CC certificate-detail runtime/semantic owner is wired "
+                    "into template rendering. Generic table cloning must not be treated as equivalent."
                 ),
-                "evidence": "backend/app/document/docx_template_render.py",
+                "evidence": [
+                    "backend/app/document/c5e_certificate_detail_runtime.py",
+                    "backend/app/document/c5e_certificate_detail_semantic_projection.py",
+                    "backend/app/document/docx_template_render.py",
+                ],
             }
         )
 
     scalar_text = _read(SCALAR_PROJECTION) if SCALAR_PROJECTION.is_file() else ""
     integration_text = _read(SCALAR_INTEGRATION) if SCALAR_INTEGRATION.is_file() else ""
-    scalar_explicitly_separate = (
-        "Input_DC_to_CC" in scalar_text
-        and "not implemented" in scalar_text.lower()
+    scalar_does_not_claim_detail = all(
+        token not in scalar_text and token not in integration_text
+        for token in (
+            "project_certificate_detail_semantic_operations",
+            "build_certificate_detail_runtime_docx",
+            "CERTIFICATE_DETAIL_DESTINATION_BOOKMARK",
+        )
     )
-    scalar_does_not_claim_detail = "Input_DC_to_CC" not in integration_text
     checks.append(
         {
             "code": "SCALAR_DETAIL_SEPARATION",
-            "pass": scalar_explicitly_separate and scalar_does_not_claim_detail,
+            "pass": scalar_does_not_claim_detail,
             "evidence": {
-                "scalar_projection_explicitly_defers_detail_path": scalar_explicitly_separate,
-                "scalar_payload_integration_does_not_claim_detail_owner": scalar_does_not_claim_detail,
+                "scalar_projection_and_payload_do_not_claim_certificate_detail_owner": scalar_does_not_claim_detail,
+                "dedicated_owner": "backend/app/document/c5e_certificate_detail_semantic_projection.py",
             },
         }
     )
-    if not (scalar_explicitly_separate and scalar_does_not_claim_detail):
+    if not scalar_does_not_claim_detail:
         blockers.append(
             {
                 "code": "SCALAR_DETAIL_BOUNDARY_VIOLATION",
@@ -163,7 +179,7 @@ def audit() -> dict[str, object]:
         )
 
     report = {
-        "schema_version": "c5e-certificate-detail-readiness/v1",
+        "schema_version": "c5e-certificate-detail-readiness/v2",
         "status": (
             "READY_FOR_CERTIFICATE_DETAIL_IMPLEMENTATION"
             if not blockers
@@ -184,8 +200,8 @@ def audit() -> dict[str, object]:
             "proof of formatting/copy rules that must survive server-side DOCX rendering",
         ],
         "next_safe_slice": (
-            "capture the exact active Input_DC_to_CC VBA body plus certificate template row/bookmark "
-            "evidence as durable sanitized fixtures, then port the detailed projection with parity tests"
+            "durably capture the remaining exact legacy/template evidence needed by this historical audit; "
+            "do not alter the implemented certificate-detail runtime merely to satisfy stale readiness assumptions"
         ),
     }
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)

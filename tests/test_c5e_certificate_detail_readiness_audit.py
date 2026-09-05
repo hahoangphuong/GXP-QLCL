@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_c5e_certificate_detail_gate_blocks_without_exact_active_vba_and_template_evidence():
+def test_c5e_certificate_detail_gate_blocks_only_on_remaining_durable_evidence_gaps():
     proc = subprocess.run(
         [sys.executable, "tools/audit_c5e_certificate_detail_readiness.py"],
         cwd=ROOT,
@@ -23,7 +23,12 @@ def test_c5e_certificate_detail_gate_blocks_without_exact_active_vba_and_templat
     codes = {item["code"] for item in report["blockers"]}
     assert "ACTIVE_INPUT_DC_TO_CC_BODY_NOT_DURABLY_CAPTURED" in codes
     assert "CERTIFICATE_DETAIL_TEMPLATE_REGIONS_NOT_PROVEN" in codes
-    assert "INPUT_DC_TO_CC_RENDER_CONTRACT_NOT_IMPLEMENTED" in codes
+    assert "INPUT_DC_TO_CC_RENDER_CONTRACT_NOT_IMPLEMENTED" not in codes
+    assert "SCALAR_DETAIL_BOUNDARY_VIOLATION" not in codes
+
+    checks = {item["code"]: item for item in report["checks"]}
+    assert checks["DOCX_RENDERER_CAPABILITY_BOUNDARY"]["pass"] is True
+    assert checks["SCALAR_DETAIL_SEPARATION"]["pass"] is True
 
 
 def test_c5e_certificate_detail_gate_forbids_summary_scalar_and_unkeyed_substitution():

@@ -13,11 +13,13 @@ from backend.app.db.models.phase1 import TemplateBinding, TemplateDefinition
 from backend.app.db.session import build_session_factory
 from backend.app.document.c5e_certificate_destination_asset_contract import (
     CERTIFICATE_DETAIL_FAMILY,
+    CertificateDestinationAsset,
     load_certificate_destination_assets,
 )
 from backend.app.document.seed_contract import build_template_definition_seeds
 from backend.app.document.service_contract import load_default_registry
 from backend.app.document.template_binary_binding import (
+    TemplateBinaryBindingLocator,
     assign_template_binary_binding,
     get_template_binary_binding_locator,
 )
@@ -107,12 +109,11 @@ def _validate_definition(existing: TemplateDefinition, seed) -> None:
         )
 
 
-def _ensure_definition(session, seed) -> tuple[TemplateDefinition, bool]:
+def _find_definition(session) -> TemplateDefinition | None:
     matches = list(
         session.scalars(
             select(TemplateDefinition).where(
-                TemplateDefinition.family_code == seed.family_code,
-                TemplateDefinition.template_name == seed.template_name,
+                TemplateDefinition.family_code == CERTIFICATE_DETAIL_FAMILY
             )
         )
     )
@@ -120,8 +121,12 @@ def _ensure_definition(session, seed) -> tuple[TemplateDefinition, bool]:
         raise C5ECertificateTemplateMetadataSeedError(
             "Ambiguous existing certificate TemplateDefinition rows."
         )
-    if matches:
-        existing = matches[0]
+    return matches[0] if matches else None
+
+
+def _ensure_definition(session, seed) -> tuple[TemplateDefinition, bool]:
+    existing = _find_definition(session)
+    if existing is not None:
         _validate_definition(existing, seed)
         if not existing.is_active:
             raise C5ECertificateTemplateMetadataSeedError(
@@ -171,13 +176,13 @@ def _assert_no_generic_binding(session, definition: TemplateDefinition, *, stora
         )
 
 
-def _ensure_binding(
+def _find_binding(
     session,
     definition: TemplateDefinition,
     *,
     gxp_type: str,
     storage_scope: str,
-) -> tuple[TemplateBinding, bool]:
+) -> TemplateBinding | None:
     matches = list(
         session.scalars(
             select(TemplateBinding).where(
@@ -193,8 +198,23 @@ def _ensure_binding(
         raise C5ECertificateTemplateMetadataSeedError(
             f"Ambiguous existing certificate TemplateBinding rows for {gxp_type}."
         )
-    if matches:
-        binding = matches[0]
+    return matches[0] if matches else None
+
+
+def _ensure_binding(
+    session,
+    definition: TemplateDefinition,
+    *,
+    gxp_type: str,
+    storage_scope: str,
+) -> tuple[TemplateBinding, bool]:
+    binding = _find_binding(
+        session,
+        definition,
+        gxp_type=gxp_type,
+        storage_scope=storage_scope,
+    )
+    if binding is not None:
         if not binding.is_active:
             raise C5ECertificateTemplateMetadataSeedError(
                 f"Existing certificate TemplateBinding for {gxp_type} is inactive."
@@ -214,6 +234,72 @@ def _ensure_binding(
     return binding, True
 
 
+def _validate_binary_locator_matches_asset(
+    locator: TemplateBinaryBindingLocator,
+    asset: CertificateDestinationAsset,
+) -> None:
+    expected = {
+        "storage_root": asset.storage_root,
+        "storage_relative_path": asset.storage_relative_path,
+        "original_filename": asset.filename,
+        "checksum_sha256": asset.checksum_sha256,
+    }
+    mismatches = []
+    for field_name, expected_value in expected.items():
+        actual_value = getattr(locator, field_name)
+        if actual_value != expected_value:
+            mismatches.append(
+                f"{field_name}: expected={expected_value!r}, actual={actual_value!r}"
+            )
+    if mismatches:
+        raise C5ECertificateTemplateMetadataSeedError(
+            f"Existing template binary binding conflicts for {asset.gxp_type}: "
+            + "; ".join(mismatches)
+        )
+
+
+def _preflight_database_state(
+    session,
+    *,
+    definition_seed,
+    storage_scope: str,
+    assets: tuple[CertificateDestinationAsset, ...],
+) -> None:
+    definition = _find_definition(session)
+    if definition is None:
+        print("EXISTING_DEFINITIONS= 0")
+        return
+
+    print("EXISTING_DEFINITIONS= 1")
+    _validate_definition(definition, definition_seed)
+    if not definition.is_active:
+        raise C5ECertificateTemplateMetadataSeedError(
+            "Existing certificate TemplateDefinition is inactive; refusing implicit reactivation."
+        )
+    _assert_no_generic_binding(
+        session,
+        definition,
+        storage_scope=storage_scope,
+    )
+
+    for asset in assets:
+        binding = _find_binding(
+            session,
+            definition,
+            gxp_type=asset.gxp_type,
+            storage_scope=storage_scope,
+        )
+        if binding is None:
+            continue
+        if not binding.is_active:
+            raise C5ECertificateTemplateMetadataSeedError(
+                f"Existing certificate TemplateBinding for {asset.gxp_type} is inactive."
+            )
+        locator = get_template_binary_binding_locator(session, binding.id)
+        if locator is not None:
+            _validate_binary_locator_matches_asset(locator, asset)
+
+
 def seed(*, runtime_env: Path, dry_run: bool) -> None:
     env = parse_env_file(runtime_env)
     storage = create_storage_service_from_env(env)
@@ -229,14 +315,12 @@ def seed(*, runtime_env: Path, dry_run: bool) -> None:
     session_factory = build_session_factory(database_url)
     session = session_factory()
     try:
-        existing_definitions = list(
-            session.scalars(
-                select(TemplateDefinition).where(
-                    TemplateDefinition.family_code == CERTIFICATE_DETAIL_FAMILY
-                )
-            )
+        _preflight_database_state(
+            session,
+            definition_seed=definition_seed,
+            storage_scope=entry.storage_scope,
+            assets=assets,
         )
-        print("EXISTING_DEFINITIONS=", len(existing_definitions))
 
         if dry_run:
             print("DRY_RUN=1")
@@ -270,20 +354,19 @@ def seed(*, runtime_env: Path, dry_run: bool) -> None:
             if binding_created:
                 created_bindings += 1
 
-            assign_template_binary_binding(
-                session,
-                template_binding_id=binding.id,
-                storage_root=asset.storage_root,
-                storage_relative_path=asset.storage_relative_path,
-                original_filename=asset.filename,
-                checksum_sha256=asset.checksum_sha256,
-            )
-
             locator = get_template_binary_binding_locator(session, binding.id)
-            if locator is None or locator.checksum_sha256 != asset.checksum_sha256:
-                raise C5ECertificateTemplateMetadataSeedError(
-                    f"Failed to reopen exact binary locator for {asset.gxp_type}."
+            if locator is None:
+                locator = assign_template_binary_binding(
+                    session,
+                    template_binding_id=binding.id,
+                    storage_root=asset.storage_root,
+                    storage_relative_path=asset.storage_relative_path,
+                    original_filename=asset.filename,
+                    checksum_sha256=asset.checksum_sha256,
                 )
+            else:
+                _validate_binary_locator_matches_asset(locator, asset)
+
             print(
                 "BOUND=",
                 asset.gxp_type,

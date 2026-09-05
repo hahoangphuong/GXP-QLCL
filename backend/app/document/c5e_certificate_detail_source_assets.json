@@ -1,0 +1,55 @@
+{
+  "schema_version": "c5e-certificate-detail-source-assets/v1",
+  "scope": {
+    "gxp_types": [
+      "GMP",
+      "GLP",
+      "GSP"
+    ],
+    "excluded_gxp_types": [
+      "GDP"
+    ],
+    "source_variants": [
+      "certificate_9",
+      "appendix_z3"
+    ]
+  },
+  "assets": [
+    {
+      "source_variant": "certificate_9",
+      "gxp_type": "GMP",
+      "filename": "9. PhamviGMP.docx",
+      "sha256": "b1449563fb18e3913f8fa120fa5b9a53d0ceace3e091833844fe0d10f6cf61fd"
+    },
+    {
+      "source_variant": "certificate_9",
+      "gxp_type": "GLP",
+      "filename": "9. PhamviGLP.docx",
+      "sha256": "25f2a1fd62c97e058d888400c864e0ec3bea103cae6987389d394f5ca80d7aab"
+    },
+    {
+      "source_variant": "certificate_9",
+      "gxp_type": "GSP",
+      "filename": "9. PhamviGSP.docx",
+      "sha256": "998331935ed87fdef9904a2c0537629ce5e75c5a708fc3e1a6c90ac1e69d4cc6"
+    },
+    {
+      "source_variant": "appendix_z3",
+      "gxp_type": "GMP",
+      "filename": "z3. PhamviGMP.docx",
+      "sha256": "c2e8c22cf786ac886f8f71173f95a4667f7683f4f306d6b1d86781101211f3f0"
+    },
+    {
+      "source_variant": "appendix_z3",
+      "gxp_type": "GLP",
+      "filename": "z3. PhamviGLP.docx",
+      "sha256": "55e25d5de8f8c4f02a4d8691ae00790db969a3c05dd40273437cc4cedbbdb2d2"
+    },
+    {
+      "source_variant": "appendix_z3",
+      "gxp_type": "GSP",
+      "filename": "z3. PhamviGSP.docx",
+      "sha256": "a2a452a4f7ce5700fdf21eef2400c66c35f2ab3bc815fae8d9d56d4cad743d48"
+    }
+  ]
+}

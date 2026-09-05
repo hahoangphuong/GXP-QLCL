@@ -1,0 +1,4045 @@
+{
+  "schema_version": "c5e-certificate-detail-translation-dictionary/v1",
+  "source": {
+    "workbook": "Danh sách Kiểm tra GPs.xlsb",
+    "workbook_sha256": "c12537ea5a5c9f470e42fb5bdbe214f36983e310fceac7c560ad38885209fe3d",
+    "dictionary_capture_schema": "c5e-certificate-detail-translation-dictionary-capture/v4",
+    "character_capture_schema": "c5e-certificate-detail-character-mapping-capture/v3"
+  },
+  "character_mapping": {
+    "AcChS": "àáảãạÀÁẢÃẠăằắẳẵặĂẰẮẲẴẶâầấẩẫậÂẦẤẨẪẬèéẻẽẹÈÉẺẼẸêềếểễệÊỀẾỂỄỆìíỉĩịÌÍỈĨỊòóỏõọÒÓỎÕỌôồốổỗộÔỒỐỔỖỘơờớởỡợƠỜỚỞỠỢùúủũụÙÚỦŨỤưừứửữựƯỪỨỬỮỰỳýỷỹỵỲÝỶỸỴĐđ",
+    "RgChS": "aaaaaAAAAAaaaaaaAAAAAAaaaaaaAAAAAAeeeeeEEEEEeeeeeeEEEEEEiiiiiIIIIIoooooOOOOOooooooOOOOOOooooooOOOOOOuuuuuUUUUUuuuuuuUUUUUUyyyyyYYYYYDd",
+    "length": 134,
+    "AcChS_refers_to_sha256": "e2c11944987d991cff291d40429b6d1fbe733ab847487ec9b42e650f013d3422",
+    "RgChS_refers_to_sha256": "e69c5ba617a3b7a6f0453baac433507231ed16a860768823e9ba59d3d92359da",
+    "AcChS_value_sha256": "896a98e92e66ce6d5123f617b2f2fdb66dac55a499b4c046b24d3f96c86ae798",
+    "RgChS_value_sha256": "836682c783b32586ba75cc9052cf2ca04af246c70922c380f7639fa454c1d392"
+  },
+  "dictionaries": {
+    "TV_Words": {
+      "shape": {
+        "rows": 426,
+        "columns": 1
+      },
+      "values_sha256": "2575dfd1f3bef3ee97d5fa7fd85353b01b1858e908581cfa84373838767c964b",
+      "values": [
+        [
+          "Dây chuyền sản xuất |Dây chuyền "
+        ],
+        [
+          "Thuốc thành phẩm"
+        ],
+        [
+          "Thuốc không chứa kháng sinh nhóm β-Lactam|sản phẩm không chứa kháng sinh nhóm β-Lactam|thành phẩm không chứa kháng sinh nhóm β-Lactam|Thuốc không chứa kháng sinh β-Lactam|sản phẩm không chứa kháng sinh β-Lactam|thành phẩm không chứa kháng sinh β-Lactam"
+        ],
+        [
+          "Thuốc chứa kháng sinh nhóm β-Lactam|sản phẩm chứa kháng sinh nhóm β-Lactam|thành phẩm chứa kháng sinh nhóm β-Lactam|Thuốc chứa kháng sinh β-Lactam|sản phẩm chứa kháng sinh β-Lactam|thành phẩm chứa kháng sinh β-Lactam"
+        ],
+        [
+          "Thuốc chứa kháng sinh nhóm Penicillin|sản phẩm chứa kháng sinh nhóm Penicillin|thành phẩm chứa kháng sinh nhóm Penicillin|Thuốc chứa kháng sinh Penicillin|sản phẩm chứa kháng sinh Penicillin|thành phẩm chứa kháng sinh Penicillin"
+        ],
+        [
+          "Thuốc chứa kháng sinh nhóm Cephalosporin|sản phẩm chứa kháng sinh nhóm Cephalosporin|thành phẩm chứa kháng sinh nhóm Cephalosporin|Thuốc chứa kháng sinh Cephalosporin|sản phẩm chứa kháng sinh Cephalosporin|thành phẩm chứa kháng sinh Cephalosporin"
+        ],
+        [
+          "không chứa kháng sinh nhóm β-Lactam|không chứa kháng sinh β-Lactam"
+        ],
+        [
+          "chứa kháng sinh nhóm β-Lactam|chứa kháng sinh β-Lactam"
+        ],
+        [
+          "kháng sinh nhóm β-Lactam|kháng sinh β-Lactam"
+        ],
+        [
+          "chứa kháng sinh nhóm Cephalosporin và Penicillin|chứa kháng sinh Cephalosporin và Penicillin"
+        ],
+        [
+          "chứa kháng sinh nhóm Penicillin và Cephalosporin|chứa kháng sinh Penicillin và Cephalosporin"
+        ],
+        [
+          "chứa kháng sinh nhóm Penicillin|chứa kháng sinh Penicillin"
+        ],
+        [
+          "kháng sinh nhóm Penicillin|kháng sinh Penicillin"
+        ],
+        [
+          "chứa kháng sinh nhóm Cephalosporin|chứa kháng sinh Cephalosporin"
+        ],
+        [
+          "kháng sinh nhóm Cephalosporin|kháng sinh Cephalosporin"
+        ],
+        [
+          "Thuốc chứa hóc môn - nội tiết tố|Thuốc chứa hóc môn|Thuốc chứa nội tiết tố|Thuốc chứa hormon - nội tiết tố|Thuốc chứa hormon|sản phẩm chứa hóc môn - nội tiết tố|sản phẩm chứa hóc môn|sản phẩm chứa nội tiết tố|sản phẩm chứa hormon - nội tiết tố|sản phẩm chứa hormon"
+        ],
+        [
+          "chứa hóc môn - nội tiết tố|chứa hóc môn|chứa nội tiết tố"
+        ],
+        [
+          "Thuốc chứa hóc môn - nội tiết tố"
+        ],
+        [
+          "Thuốc chống ung thư|thuốc điều trị ung thư"
+        ],
+        [
+          "Thuốc chứa vi sinh vật|thuốc chứa vi sinh|Thuốc có chứa vi sinh"
+        ],
+        [
+          "chứa vi sinh vật|chứa vi sinh"
+        ],
+        [
+          "sản phẩm chứa men vi sinh"
+        ],
+        [
+          "thuốc thuộc Danh mục thuốc, dược chất thuộc Danh mục chất cấm sử dụng trong một số ngành, lĩnh vực"
+        ],
+        [
+          "thuốc thuộc Danh mục thuốc độc, nguyên liệu độc làm thuốc|thuốc thuộc Danh mục thuốc độc, nguyên liệu độc dùng làm thuốc"
+        ],
+        [
+          "thuốc và nguyên liệu làm thuốc chứa dược liệu trong Danh mục dược liệu độc làm thuốc|thuốc và nguyên liệu làm thuốc chứa dược liệu thuộc Danh mục dược liệu độc làm thuốc"
+        ],
+        [
+          "Danh mục thuốc, dược chất thuộc Danh mục chất cấm sử dụng trong một số ngành, lĩnh vực"
+        ],
+        [
+          "Danh mục chất cấm sử dụng trong một số ngành, lĩnh vực"
+        ],
+        [
+          "Danh mục thuốc độc, nguyên liệu độc làm thuốc|Danh mục thuốc độc, nguyên liệu độc dùng làm thuốc"
+        ],
+        [
+          "chứa dược liệu trong Danh mục dược liệu độc làm thuốc|chứa dược liệu thuộc Danh mục dược liệu độc làm thuốc"
+        ],
+        [
+          "dược liệu trong Danh mục dược liệu độc làm thuốc|dược liệu thuộc Danh mục dược liệu độc làm thuốc"
+        ],
+        [
+          "thuốc chứa chất độc tế bào/kìm tế bào, hormon sinh dục|thuốc chứa hormon sinh dục, chất độc tế bào/kìm tế bào"
+        ],
+        [
+          "thuốc chứa chất độc tế bào/kìm tế bào, hormon sinh dục có tác dụng tránh thai|thuốc chứa hormon sinh dục có tác dụng tránh thai, chất độc tế bào/kìm tế bào"
+        ],
+        [
+          "thuốc chứa chất độc tế bào, hormon sinh dục có tác dụng tránh thai|thuốc chứa hormon sinh dục có tác dụng tránh thai, chất độc tế bào"
+        ],
+        [
+          "thuốc dạng phối hợp chứa dược chất gây nghiện, hướng thần, tiền chất dùng làm thuốc|thuốc dạng phối hợp chứa dược chất gây nghiện, hướng thần, tiền chất|thuốc dạng phối hợp chứa dược chất gây nghiện, thuốc dạng phối hợp chứa dược chất hướng thần, thuốc dạng phối hợp chứa tiền chất|thuốc dạng phối hợp chứa dược chất gây nghiện, thuốc dạng phối hợp chứa dược chất hướng thần, thuốc dạng phối hợp chứa tiền chất dùng làm thuốc"
+        ],
+        [
+          "thuốc gây nghiện, hướng thần, tiền chất|thuốc gây nghiện, thuốc hướng thần, thuốc tiền chất"
+        ],
+        [
+          "Thuốc có chứa|Thuốc chứa"
+        ],
+        [
+          "Sản phẩm có chứa|Sản phẩm chứa"
+        ],
+        [
+          "Thuốc viên nén sủi bọt|Viên nén sủi bọt|thuốc viên sủi bọt|viên sủi bọt|viên nén sủi"
+        ],
+        [
+          "Thuốc viên nén phân tán|viên nén phân tán"
+        ],
+        [
+          "Thuốc viên nén phóng thích biến đổi|viên nén phóng thích biến đổi"
+        ],
+        [
+          "Thuốc viên nén phóng thích kéo dài|viên nén phóng thích kéo dài|Thuốc viên nén phóng thích chậm|viên nén phóng thích chậm"
+        ],
+        [
+          "Thuốc bột-thuốc cốm sủi bọt|Thuốc cốm-thuốc bột sủi bọt|Thuốc bột-cốm sủi bọt|bột-cốm sủi bọt|Thuốc cốm-bột sủi bọt|cốm-bột sủi bọt"
+        ],
+        [
+          "Thuốc cốm sủi bọt|cốm sủi bọt"
+        ],
+        [
+          "Thuốc bột sủi bọt|bột sủi bọt"
+        ],
+        [
+          "Viên bao phim|Viên nén bao phim"
+        ],
+        [
+          "Viên bao đường|Viên nén bao đường"
+        ],
+        [
+          "Thuốc viên nén bao|Viên nén bao|Viên bao"
+        ],
+        [
+          "Thuốc viên ngậm|Viên ngậm|viên kẹo ngậm|Kẹo ngậm"
+        ],
+        [
+          "Thuốc viên nén ngậm|viên nén ngậm"
+        ],
+        [
+          "Thuốc viên nhai|Viên nhai|viên kẹo nhai|Kẹo nhai"
+        ],
+        [
+          "Thuốc viên nén nhai|Viên nén nhai"
+        ],
+        [
+          "Viên nhiều lớp|Viên đa lớp"
+        ],
+        [
+          "Thuốc viên nang cứng|Viên nang cứng"
+        ],
+        [
+          "Thuốc viên nang mềm|Viên nang mềm"
+        ],
+        [
+          "Thuốc viên nang|Viên nang"
+        ],
+        [
+          "Viên nén đặt âm đạo"
+        ],
+        [
+          "Thuốc viên nén|Viên nén trần|Viên nén"
+        ],
+        [
+          "Thuốc khí dung"
+        ],
+        [
+          "Thuốc bột pha tiêm đông khô|bột pha tiêm đông khô|Thuốc bột đông khô pha tiêm|bột đông khô pha tiêm|Thuốc tiêm bột đông khô|Thuốc tiêm đông khô"
+        ],
+        [
+          "Thuốc bột pha tiêm|bột pha tiêm|thuốc tiêm bột"
+        ],
+        [
+          "Thuốc bột dùng ngoài"
+        ],
+        [
+          "Thuốc bột nhão|Bột nhão"
+        ],
+        [
+          "Gói bột|Thuốc bột đóng túi|Bột đóng túi"
+        ],
+        [
+          "Thuốc bột"
+        ],
+        [
+          "Gói cốm|Thuốc cốm đóng túi|Cốm đóng túi"
+        ],
+        [
+          "Thuốc cốm"
+        ],
+        [
+          "Thuốc đạn|thuốc đặt"
+        ],
+        [
+          "Thuốc trứng"
+        ],
+        [
+          "Thuốc nước uống dược liệu"
+        ],
+        [
+          "pha hỗn dịch uống|pha hỗn dịch"
+        ],
+        [
+          "Dung dịch, hỗn dịch và nhũ dịch thuốc uống|Dung dịch, nhũ dịch và hỗn dịch thuốc uống|Hỗn dịch, dung dịch và nhũ dịch thuốc uống|Hỗn dịch, nhũ dịch và dung dịch thuốc uống|Nhũ dịch, hỗn dịch và dung dịch thuốc uống|Nhũ dịch, dung dịch và hỗn dịch thuốc uống|Dung dịch, hỗn dịch và nhũ dịch uống|Dung dịch, nhũ dịch và hỗn dịch uống|Hỗn dịch, dung dịch và nhũ dịch uống|Hỗn dịch, nhũ dịch và dung dịch uống|Nhũ dịch, hỗn dịch và dung dịch uống|Nhũ dịch, dung dịch và hỗn dịch uống"
+        ],
+        [
+          "Hỗn dịch và nhũ dịch uống|Nhũ dịch và hỗn dịch uống|Hỗn dịch và nhũ dịch thuốc uống|Nhũ dịch và hỗn dịch thuốc uống|Thuốc uống hỗn dịch và nhũ dịch|Thuốc uống nhũ dịch và hỗn dịch"
+        ],
+        [
+          "Dung dịch-hỗn dịch uống|dung dịch-hỗn dịch thuốc uống|thuốc uống dung dịch-hỗn dịch|Hỗn dịch-dung dịch uống|hỗn dịch-dung dịch thuốc uống|thuốc uống hỗn dịch-dung dịch"
+        ],
+        [
+          "Dung dịch-nhũ dịch uống|dung dịch-nhũ dịch thuốc uống|thuốc uống dung dịch-nhũ dịch|nhũ dịch-dung dịch uống|nhũ dịch-dung dịch thuốc uống|thuốc uống nhũ dịch-dung dịch"
+        ],
+        [
+          "Nhũ dịch-hỗn dịch uống|nhũ dịch-hỗn dịch thuốc uống|thuốc uống nhũ dịch-hỗn dịch|hỗn dịch-nhũ dịch uống|hỗn dịch-nhũ dịch thuốc uống|thuốc uống hỗn dịch-nhũ dịch"
+        ],
+        [
+          "Thuốc nước uống|thuốc uống dạng lỏng"
+        ],
+        [
+          "Dung dịch thuốc uống|dung dịch uống"
+        ],
+        [
+          "Hỗn dịch uống|hỗn dịch thuốc uống"
+        ],
+        [
+          "Nhũ dịch uống|nhũ dịch thuốc uống"
+        ],
+        [
+          "Thuốc kem, gel, mỡ dùng ngoài"
+        ],
+        [
+          "Thuốc nước dùng ngoài"
+        ],
+        [
+          "Dung dịch thuốc dùng ngoài|Dung dịch dùng ngoài"
+        ],
+        [
+          "Dung dịch rửa phụ khoa"
+        ],
+        [
+          "Thuốc kem dùng ngoài"
+        ],
+        [
+          "Thuốc kem"
+        ],
+        [
+          "Thuốc mỡ dùng ngoài"
+        ],
+        [
+          "Thuốc mỡ tra mắt"
+        ],
+        [
+          "Thuốc mỡ"
+        ],
+        [
+          "Gel uống|Gel thuốc uống"
+        ],
+        [
+          "Gel dùng ngoài"
+        ],
+        [
+          "Thuốc gel"
+        ],
+        [
+          "Thuốc ống hít|Thuốc hít|ống hít"
+        ],
+        [
+          "Dung dịch nhỏ mắt|Dung dịch thuốc nhỏ mắt"
+        ],
+        [
+          "Hỗn dịch nhỏ mắt|Hỗn dịch thuốc nhỏ mắt"
+        ],
+        [
+          "Nhũ dịch nhỏ mắt|Nhũ tương nhỏ mắt|Nhũ dịch thuốc nhỏ mắt|Nhũ tương thuốc nhỏ mắt"
+        ],
+        [
+          "Thuốc nhỏ mắt|nhỏ mắt"
+        ],
+        [
+          "Dung dịch nhỏ mũi|Dung dịch thuốc nhỏ mũi"
+        ],
+        [
+          "Hỗn dịch nhỏ mũi|Hỗn dịch thuốc nhỏ mũi"
+        ],
+        [
+          "Nhũ dịch nhỏ mũi|Nhũ tương nhỏ mũi|Nhũ dịch thuốc nhỏ mũi|Nhũ tương thuốc nhỏ mũi"
+        ],
+        [
+          "Thuốc nhỏ mũi|nhỏ mũi"
+        ],
+        [
+          "Dung dịch nhỏ tai|Dung dịch thuốc nhỏ tai"
+        ],
+        [
+          "Hỗn dịch nhỏ tai|Hỗn dịch thuốc nhỏ tai"
+        ],
+        [
+          "Nhũ dịch nhỏ tai|Nhũ tương nhỏ tai|Nhũ dịch thuốc nhỏ tai|Nhũ tương thuốc nhỏ tai"
+        ],
+        [
+          "Thuốc nhỏ tai|nhỏ tai"
+        ],
+        [
+          "Dung dịch xịt mũi|Dung dịch thuốc xịt mũi"
+        ],
+        [
+          "Hỗn dịch xịt mũi|Hỗn dịch thuốc xịt mũi"
+        ],
+        [
+          "Nhũ dịch xịt mũi|Nhũ tương xịt mũi|Nhũ dịch thuốc xịt mũi|Nhũ tương thuốc xịt mũi"
+        ],
+        [
+          "Thuốc xịt mũi|xịt mũi"
+        ],
+        [
+          "Thuốc súc miệng|Nước súc miệng"
+        ],
+        [
+          "Dung dịch súc miệng"
+        ],
+        [
+          "Sirô uống"
+        ],
+        [
+          "Sirô thuốc|Si rô thuốc|Siro thuốc|Si ro thuốc|Sirô|Si rô|Siro|Si ro|Xirô thuốc|Xi rô thuốc|Xirô|Xiro|Xi rô|Xi ro"
+        ],
+        [
+          "từ dược liệu đã chế biến"
+        ],
+        [
+          "Nguyên liệu hóa dược"
+        ],
+        [
+          "Nguyên liệu từ dược liệu|Nguyên liệu dược liệu|Nguyên liệu làm thuốc từ dược liệu"
+        ],
+        [
+          "Dược liệu đã chế biến|Dược liệu chế biến|Dược liệu đã sơ chế, chế biến"
+        ],
+        [
+          "Thuốc từ dược liệu|Thuốc dược liệu|sản phẩm từ dược liệu|thành phẩm từ dược liệu|thành phẩm dược liệu|dược liệu thành phẩm"
+        ],
+        [
+          "Thuốc từ cao, cốm, bột dược liệu|Thuốc từ cao, cốm dược liệu|Thuốc từ cao, bột dược liệu|Thuốc từ cốm, bột dược liệu|Thuốc từ cao dược liệu|Thuốc từ cốm dược liệu|Thuốc từ bột dược liệu"
+        ],
+        [
+          "Vị thuốc cổ truyền"
+        ],
+        [
+          "Viên hoàn cứng|thuốc hoàn cứng|hoàn cứng"
+        ],
+        [
+          "Viên hoàn mềm|thuốc hoàn mềm|hoàn mềm"
+        ],
+        [
+          "Viên hoàn"
+        ],
+        [
+          "Gói trà thuốc|Trà túi lọc|Chè túi lọc|Trà nhúng|Chè nhúng"
+        ],
+        [
+          "Trà thuốc|Chè thuốc"
+        ],
+        [
+          "Trà hòa tan|Chè hòa tan"
+        ],
+        [
+          "Thuốc thang"
+        ],
+        [
+          "Cồn thuốc dùng ngoài|Cồn thuốc|Cồn xoa bóp|Cồn xoa"
+        ],
+        [
+          "Rượu thuốc"
+        ],
+        [
+          "Dung dịch thuốc tiêm tiệt trùng cuối|thuốc tiêm tiệt trùng cuối"
+        ],
+        [
+          "Hỗn dịch tiêm|thuốc tiêm hỗn dịch"
+        ],
+        [
+          "Nhũ dịch tiêm|thuốc tiêm nhũ dịch"
+        ],
+        [
+          "Dung dịch thuốc tiêm thể tích lớn|Thuốc tiêm thể tích lớn"
+        ],
+        [
+          "Dung dịch tiêm truyền tĩnh mạch|Dung dịch truyền tĩnh mạch|Dung dịch tiêm truyền|Dung dịch thuốc tiêm truyền tĩnh mạch|Dung dịch thuốc tiêm truyền|Thuốc tiêm truyền tĩnh mạch|Thuốc tiêm truyền|Dịch tiêm truyền tĩnh mạch|Dịch tiêm truyền|Dịch truyền tĩnh mạch|Dịch truyền"
+        ],
+        [
+          "Dung dịch thuốc tiêm thể tích nhỏ|Thuốc tiêm thể tích nhỏ"
+        ],
+        [
+          "Dung dịch thuốc tiêm|Dung dịch tiêm|Thuốc tiêm nước|Thuốc tiêm dung dịch"
+        ],
+        [
+          "Dung dịch đậm đặc pha tiêm"
+        ],
+        [
+          "Dung môi pha tiêm"
+        ],
+        [
+          " dùng trong phẫu thuật| dùng cho phẫu thuật| trong phẫu thuật| cho phẫu thuật"
+        ],
+        [
+          "Cao dán Salonpas"
+        ],
+        [
+          "Cao dán"
+        ],
+        [
+          "dầu xoa Salonpas Liniment"
+        ],
+        [
+          "Thuốc dầu xoa|dầu xoa|dầu gió|dầu thuốc"
+        ],
+        [
+          "cao xoa"
+        ],
+        [
+          "Cao, cốm, bột dược liệu"
+        ],
+        [
+          "Cao dược liệu"
+        ],
+        [
+          "Bột dược liệu"
+        ],
+        [
+          "Phiến dược liệu"
+        ],
+        [
+          "Cao lỏng"
+        ],
+        [
+          "Cao đặc|cao mềm"
+        ],
+        [
+          "Cao khô"
+        ],
+        [
+          "Vỏ nang cứng gelatin"
+        ],
+        [
+          "Vỏ nang cứng"
+        ],
+        [
+          "nguyên liệu làm thuốc"
+        ],
+        [
+          "nguyên liệu dạng cốm"
+        ],
+        [
+          "Dung dịch bơm trực tràng"
+        ],
+        [
+          "Dung dịch thẩm phân phúc mạc|dung dịch chạy thận nhân tạo|dịch chạy thận nhân tạo"
+        ],
+        [
+          "Dung dịch thẩm phân máu|Dung dịch thẩm phân"
+        ],
+        [
+          "Dung dịch vô trùng rửa vết thương"
+        ],
+        [
+          "Dung dịch rửa vết thương"
+        ],
+        [
+          "Dung dịch vô trùng|Dung dịch vô khuẩn"
+        ],
+        [
+          "Đóng gói cấp 1|Đóng gói sơ cấp"
+        ],
+        [
+          "Đóng gói cấp 2|Đóng gói thứ cấp"
+        ],
+        [
+          "Đóng gói"
+        ],
+        [
+          "đóng túi"
+        ],
+        [
+          "Thuốc bảo quản lạnh|Thuốc bảo quản điều kiện lạnh|Thuốc bảo quản ở điều kiện lạnh"
+        ],
+        [
+          "Thuốc bảo quản điều kiện thường|Thuốc bảo quản ở điều kiện thường"
+        ],
+        [
+          "vắc xin|vắcxin|vac xin|vacxin|văc xin|văcxin"
+        ],
+        [
+          "Đóng lọ, ampoule vắc xin, sinh phẩm"
+        ],
+        [
+          "đóng ống vaccine thành phẩm|đóng ống vắc xin thành phẩm"
+        ],
+        [
+          "đóng lọ vaccine thành phẩm|đóng lọ vắc xin thành phẩm"
+        ],
+        [
+          "thành phẩm Vaccine|Vaccine thành phẩm|Vắc xin thành phẩm"
+        ],
+        [
+          "Vaccine sống, giảm độc lực, đông khô|Vaccine sống, giảm độc, đông khô|Vắc xin sống, giảm độc lực, đông khô|Vắc xin sống, giảm độc, đông khô"
+        ],
+        [
+          "Vaccine Thương hàn Vi polysaccharide|Vắc xin Thương hàn Vi polysaccharide"
+        ],
+        [
+          "Vaccine Viêm não Nhật Bản|Vắc xin Viêm não Nhật Bản"
+        ],
+        [
+          "Vaccine Viêm gan A tinh khiết bất hoạt|Vắc xin Viêm gan A tinh khiết bất hoạt"
+        ],
+        [
+          "Vaccine Viêm gan A|Vắc xin Viêm gan A"
+        ],
+        [
+          "Vaccine Viêm gan B tái tổ hợp|Vắc xin Viêm gan B tái tổ hợp"
+        ],
+        [
+          "Vaccine Viêm gan B|Vắc xin Viêm gan B"
+        ],
+        [
+          "Vaccine Tả uống|Vắc xin Tả uống"
+        ],
+        [
+          "Vaccine Cúm bất hoạt|Vắc xin Cúm bất hoạt"
+        ],
+        [
+          "Vaccine Cúm|Vắc xin Cúm"
+        ],
+        [
+          "Vaccine Bạch hầu - Ho gà toàn tế bào - Uốn ván|Vắc xin Bạch hầu - Ho gà toàn tế bào - Uốn ván"
+        ],
+        [
+          "Vaccine Bạch hầu - Ho gà - Uốn ván|Vắc xin Bạch hầu - Ho gà - Uốn ván"
+        ],
+        [
+          "Vaccine Bạch hầu - Uốn ván|Vắc xin Bạch hầu - Uốn ván"
+        ],
+        [
+          "Vaccine Uốn ván - Bạch hầu|Vắc xin Uốn ván - Bạch hầu"
+        ],
+        [
+          "Vaccine Bạch hầu|Vắc xin Bạch hầu"
+        ],
+        [
+          "Vaccine Ho gà|Vắc xin Ho gà"
+        ],
+        [
+          "Vaccine Uốn ván hấp phụ|Vaccine Uốn ván hấp thụ|Vắc xin Uốn ván hấp phụ|Vắc xin Uốn ván hấp thụ"
+        ],
+        [
+          "Vaccine Uốn ván|Vắc xin Uốn ván"
+        ],
+        [
+          "Vaccine Phòng Lao|Vaccine Lao|Vaccine BCG|Vắc xin phòng Lao|Vắc xin Lao|Vắc xin BCG"
+        ],
+        [
+          "Vaccine Sởi-Rubella phối hợp|Vaccine Sởi-Rubella|Vắc xin Sởi-Rubella phối hợp|Vắc xin Sởi-Rubella"
+        ],
+        [
+          "Vaccine Sởi sống, giảm độc lực, đông khô|Vaccine Sởi sống, giảm độc, đông khô|Vắc xin Sởi sống, giảm độc lực, đông khô|Vắc xin Sởi sống, giảm độc, đông khô"
+        ],
+        [
+          "Vaccine Sởi sống, giảm độc lực|Vaccine Sởi sống, giảm độc|Vắc xin Sởi sống, giảm độc lực|Vắc xin Sởi sống, giảm độc"
+        ],
+        [
+          "Vaccine Sởi|Vắc xin Sởi"
+        ],
+        [
+          "Vaccine Rubella|Vắc xin Rubella"
+        ],
+        [
+          "Vaccine Bại liệt uống, sống, giảm độc lực|Vaccine Bại liệt uống, sống, giảm độc|Vắc xin Bại liệt uống, sống, giảm độc lực|Vắc xin Bại liệt uống, sống, giảm độc"
+        ],
+        [
+          "Vaccine Bại liệt uống|Vắc xin Bại liệt uống"
+        ],
+        [
+          "Vaccine Bại liệt|Vắc xin Bại liệt"
+        ],
+        [
+          "Vaccine Rota uống, sống, giảm độc lực|Vaccine Rota uống, sống, giảm độc|Vắc xin Rota uống, sống, giảm độc lực|Vắc xin Rota uống, sống, giảm độc"
+        ],
+        [
+          "Vaccine Rota|Vắc xin Rota"
+        ],
+        [
+          "Vaccine Polysaccharide cộng hợp|Vắc xin Polysaccharide cộng hợp"
+        ],
+        [
+          "tinh chế huyết thanh từ máu ngựa|huyết thanh tinh chế từ máu ngựa|tinh chế huyết thanh từ ngựa|huyết thanh tinh chế từ ngựa"
+        ],
+        [
+          "Bạch hầu"
+        ],
+        [
+          "Ho gà toàn tế bào"
+        ],
+        [
+          "Ho gà"
+        ],
+        [
+          "Uốn ván"
+        ],
+        [
+          "Sởi"
+        ],
+        [
+          "Bại liệt"
+        ],
+        [
+          "Viêm gan A"
+        ],
+        [
+          "Viêm gan B tái tổ hợp"
+        ],
+        [
+          "Thương hàn Vi polysaccharide"
+        ],
+        [
+          "Viêm não Nhật Bản"
+        ],
+        [
+          "Viêm gan A tinh khiết bất hoạt"
+        ],
+        [
+          "Tả uống"
+        ],
+        [
+          "Cúm bất hoạt"
+        ],
+        [
+          "Cúm"
+        ],
+        [
+          "tinh chế huyết thanh|huyết thanh tinh chế"
+        ],
+        [
+          "huyết thanh kháng dại"
+        ],
+        [
+          "huyết thanh kháng uốn ván"
+        ],
+        [
+          "huyết thanh kháng nọc rắn"
+        ],
+        [
+          "huyết thanh kháng|kháng huyết thanh"
+        ],
+        [
+          "sinh phẩm y tế"
+        ],
+        [
+          "sinh phẩm"
+        ],
+        [
+          "Thuốc vô trùng"
+        ],
+        [
+          "Thuốc sản xuất vô trùng"
+        ],
+        [
+          "Thuốc tiệt trùng cuối"
+        ],
+        [
+          "Thuốc không vô trùng"
+        ],
+        [
+          "Thuốc sinh học"
+        ],
+        [
+          "Kiểm tra chất lượng"
+        ],
+        [
+          "Phạm vi chứng nhận bao gồm cả"
+        ],
+        [
+          "Giấy chứng nhận này có hiệu lực đến "
+        ],
+        [
+          "Giấy chứng nhận này"
+        ],
+        [
+          "Giấy chứng nhận"
+        ],
+        [
+          "Các phép thử khác trong kiểm định|Các phép thử khác trong kiểm nghiệm|Các phép thử khác cho kiểm định|Các phép thử khác cho kiểm nghiệm"
+        ],
+        [
+          "Viện Kiểm nghiệm thuốc Trung ương"
+        ],
+        [
+          "Viện Kiểm nghiệm thuốc Tp. Hồ Chí Minh|Viện Kiểm nghiệm thuốc thành phố Hồ Chí Minh"
+        ],
+        [
+          "Viện Kiểm định quốc gia vắc xin và sinh phẩm y tế"
+        ],
+        [
+          "Kiểm nghiệm thuốc, mỹ phẩm và thực phẩm"
+        ],
+        [
+          "Kiểm nghiệm thuốc, mỹ phẩm, thực phẩm"
+        ],
+        [
+          "Kiểm nghiệm thuốc"
+        ],
+        [
+          "thuốc thuộc "
+        ],
+        [
+          "thuốc chứa dược chất thuộc "
+        ],
+        [
+          "thuốc dạng phối hợp"
+        ],
+        [
+          "dược chất"
+        ],
+        [
+          "thuộc "
+        ],
+        [
+          "Tất cả các dạng thuốc ở mục:"
+        ],
+        [
+          "Thuốc phóng xạ"
+        ],
+        [
+          "Thuốc tiêm phóng xạ"
+        ],
+        [
+          "Độ tinh khiết hạt nhân phóng xạ"
+        ],
+        [
+          "Độ tinh khiết hóa phóng xạ"
+        ],
+        [
+          "Miếng dán"
+        ],
+        [
+          "Định tính và định lượng vi sinh"
+        ],
+        [
+          "Thử nghiệm "
+        ],
+        [
+          "Dung dịch ống uống"
+        ],
+        [
+          "Thuốc uống dạng lỏng chứa vi sinh"
+        ],
+        [
+          "các hoạt chất sinh học"
+        ],
+        [
+          "hoạt chất sinh học"
+        ],
+        [
+          "Thử hoạt tính sinh học"
+        ],
+        [
+          "Đóng lọ, ampoule"
+        ],
+        [
+          "Đóng lọ"
+        ],
+        [
+          "Đóng ống"
+        ],
+        [
+          "đóng ống"
+        ],
+        [
+          "đóng bút tiêm"
+        ],
+        [
+          "đóng bơm tiêm"
+        ],
+        [
+          "đóng lọ"
+        ],
+        [
+          "(dạng ống)"
+        ],
+        [
+          " ống"
+        ],
+        [
+          "(dạng lọ)"
+        ],
+        [
+          " lọ"
+        ],
+        [
+          "(dạng bơm tiêm)"
+        ],
+        [
+          " bơm tiêm"
+        ],
+        [
+          "Nước hồi chỉnh vắc xin đông khô"
+        ],
+        [
+          "Nước hồi chỉnh"
+        ],
+        [
+          "vắc xin đông khô"
+        ],
+        [
+          "sản phẩm đông khô"
+        ],
+        [
+          "thuốc gây nghiện"
+        ],
+        [
+          "thuốc hướng thần|thuốc hướng tâm thần"
+        ],
+        [
+          "thuốc tiền chất|thuốc chứa tiền chất"
+        ],
+        [
+          "Thuốc xịt"
+        ],
+        [
+          "Định tính, định lượng"
+        ],
+        [
+          "Định tính|định tính"
+        ],
+        [
+          "Định lượng|định lượng"
+        ],
+        [
+          "Xác định tạp chất liên quan"
+        ],
+        [
+          "tạp chất liên quan"
+        ],
+        [
+          "các kim loại nặng|kim loại nặng"
+        ],
+        [
+          "dung môi tồn dư"
+        ],
+        [
+          "dư lượng hóa chất bảo vệ thực vật"
+        ],
+        [
+          "hóa chất bảo vệ thực vật"
+        ],
+        [
+          "hệ số khúc xạ"
+        ],
+        [
+          "góc quay cực|độ quay cực"
+        ],
+        [
+          "Sắc ký lỏng siêu tới hạn"
+        ],
+        [
+          "Chì trong đường"
+        ],
+        [
+          "Nickel trong Polyol"
+        ],
+        [
+          "trong dược liệu"
+        ],
+        [
+          "trong dầu béo"
+        ],
+        [
+          "kim loại kiềm thổ"
+        ],
+        [
+          "Phân tích nhiệt trọng"
+        ],
+        [
+          "Phân tích nhiệt vi sai"
+        ],
+        [
+          "Quét nhiệt vi sai"
+        ],
+        [
+          "Tiểu phân nhìn bằng mắt thường"
+        ],
+        [
+          "Tiểu phân không nhìn bằng mắt thường"
+        ],
+        [
+          "chỉ số trương nở"
+        ],
+        [
+          "Cỡ hạt của bột|Kích thước hạt của bột"
+        ],
+        [
+          "Độ trơn chảy"
+        ],
+        [
+          "Độ mài mòn"
+        ],
+        [
+          "Thử nghiệm trong da"
+        ],
+        [
+          "Thử nghiệm kích ứng da"
+        ],
+        [
+          "Thử khả năng gây nhạy cảm da"
+        ],
+        [
+          "Thử độc tính cấp qua da|Độc tính cấp qua da"
+        ],
+        [
+          "Protein mang "
+        ],
+        [
+          "cho sản xuất"
+        ],
+        [
+          "Thử quá mẫn miễn dịch muộn|Quá mẫn miễn dịch muộn"
+        ],
+        [
+          "Hợp đồng với "
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          "hợp đồng"
+        ],
+        [
+          "khí dung"
+        ],
+        [
+          "đồ"
+        ],
+        [
+          "nướng"
+        ],
+        [
+          "nấu"
+        ],
+        [
+          "chưng"
+        ],
+        [
+          "nung"
+        ],
+        [
+          "chích"
+        ],
+        [
+          "sao"
+        ],
+        [
+          "sấy"
+        ],
+        [
+          "phơi"
+        ],
+        [
+          "thái"
+        ],
+        [
+          "ngâm|tẩm"
+        ],
+        [
+          "ủ"
+        ],
+        [
+          "rửa"
+        ],
+        [
+          "Làm sạch"
+        ],
+        [
+          "Magiê|Magnesi"
+        ],
+        [
+          "Sulfat"
+        ],
+        [
+          "Sắt"
+        ],
+        [
+          "Phosphat"
+        ],
+        [
+          "Nhôm"
+        ],
+        [
+          "Kali"
+        ],
+        [
+          "Fluorid"
+        ],
+        [
+          "Clorid"
+        ],
+        [
+          "Calci"
+        ],
+        [
+          "Asen"
+        ],
+        [
+          "Amoni"
+        ],
+        [
+          "độ phóng xạ"
+        ],
+        [
+          "đo lường"
+        ],
+        [
+          "phát hiện"
+        ],
+        [
+          "màu sắc|mầu sắc"
+        ],
+        [
+          "độ trong"
+        ],
+        [
+          "siêu tới hạn"
+        ],
+        [
+          "giấy"
+        ],
+        [
+          "hệ số|chỉ số"
+        ],
+        [
+          "sắc ký"
+        ],
+        [
+          "hạt nhân"
+        ],
+        [
+          "cộng hưởng"
+        ],
+        [
+          "cảm ứng"
+        ],
+        [
+          "nguyên tử"
+        ],
+        [
+          "phát xạ"
+        ],
+        [
+          "huỳnh quang"
+        ],
+        [
+          "hồng ngoại"
+        ],
+        [
+          "hấp thụ"
+        ],
+        [
+          "quang phổ|phổ"
+        ],
+        [
+          "khả kiến"
+        ],
+        [
+          "tử ngoại"
+        ],
+        [
+          "Xác định "
+        ],
+        [
+          "có hiệu lực"
+        ],
+        [
+          "đến ngày|đến"
+        ],
+        [
+          "chất độc tế bào/kìm tế bào"
+        ],
+        [
+          "chất độc tế bào|độc tế bào"
+        ],
+        [
+          "chất kìm tế bào|kìm tế bào"
+        ],
+        [
+          "hormon sinh dục có tác dụng tránh thai"
+        ],
+        [
+          "hormon sinh dục"
+        ],
+        [
+          "không vô trùng"
+        ],
+        [
+          "độ vô trùng|thử vô khuẩn"
+        ],
+        [
+          "Sinh học"
+        ],
+        [
+          "Hóa học / Vật lý"
+        ],
+        [
+          "Vi sinh"
+        ],
+        [
+          "sống, giảm độc lực, đông khô|sống, giảm độc, đông khô"
+        ],
+        [
+          "sống, giảm độc lực|sống, giảm độc"
+        ],
+        [
+          "Thuốc tiêm"
+        ],
+        [
+          "máu ngựa"
+        ],
+        [
+          "máu"
+        ],
+        [
+          "tinh chế|tinh sạch"
+        ],
+        [
+          "huyết thanh"
+        ],
+        [
+          "uống"
+        ],
+        [
+          "dùng ngoài"
+        ],
+        [
+          "không bao gồm"
+        ],
+        [
+          "bao gồm cả"
+        ],
+        [
+          "bao gồm"
+        ],
+        [
+          "vô trùng"
+        ],
+        [
+          "khí"
+        ],
+        [
+          "hỗn dịch"
+        ],
+        [
+          "nhũ dịch|nhũ tương"
+        ],
+        [
+          "dung dịch"
+        ],
+        [
+          "Thuốc nước|dạng lỏng|lỏng"
+        ],
+        [
+          "dạng rắn"
+        ],
+        [
+          "dạng bán rắn"
+        ],
+        [
+          "Thuốc từ"
+        ],
+        [
+          "từ dược liệu"
+        ],
+        [
+          "dược liệu"
+        ],
+        [
+          "từ hóa dược"
+        ],
+        [
+          "hóa dược"
+        ],
+        [
+          "hoạt chất phóng xạ"
+        ],
+        [
+          "phóng xạ"
+        ],
+        [
+          "Nguyên liệu"
+        ],
+        [
+          "dược dụng|dùng làm thuốc|làm thuốc"
+        ],
+        [
+          "đông khô"
+        ],
+        [
+          "tinh dầu"
+        ],
+        [
+          "dịch chiết|Cao thuốc|Cao"
+        ],
+        [
+          "phiến"
+        ],
+        [
+          "kem"
+        ],
+        [
+          "mỡ"
+        ],
+        [
+          "cốm"
+        ],
+        [
+          "bột"
+        ],
+        [
+          "gel;"
+        ],
+        [
+          "gel,"
+        ],
+        [
+          "gel "
+        ],
+        [
+          "trừ |ngoại trừ "
+        ],
+        [
+          "chứa "
+        ],
+        [
+          " từ "
+        ],
+        [
+          " cho "
+        ],
+        [
+          " với "
+        ],
+        [
+          " và "
+        ]
+      ]
+    },
+    "TA_Words": {
+      "shape": {
+        "rows": 426,
+        "columns": 1
+      },
+      "values_sha256": "25a73e6bcbaa0928492c004ff6559db116d1e55da434ca7c580c2ec227d50944",
+      "values": [
+        [
+          null
+        ],
+        [
+          "Thuốc"
+        ],
+        [
+          "products not containing β-Lactam antibiotics"
+        ],
+        [
+          "products containing β-Lactams"
+        ],
+        [
+          "products containing Penicillins"
+        ],
+        [
+          "products containing Cephalosporins"
+        ],
+        [
+          "not containing β-Lactams"
+        ],
+        [
+          "containing β-Lactams"
+        ],
+        [
+          "β-Lactam antibiotics"
+        ],
+        [
+          "containing Cephalosporin and Penicillin antibiotics"
+        ],
+        [
+          "containing Penicillin and Cephalosporin antibiotics"
+        ],
+        [
+          "containing Penicillin antibiotics"
+        ],
+        [
+          "Penicillin antibiotics"
+        ],
+        [
+          "containing Cephalosporin antibiotics"
+        ],
+        [
+          "Cephalosporin antibiotics"
+        ],
+        [
+          "products containing hormones"
+        ],
+        [
+          "containing hormones"
+        ],
+        [
+          "products containing hormones"
+        ],
+        [
+          "Anti-cancer drugs"
+        ],
+        [
+          "products containing microorganisms"
+        ],
+        [
+          "containing microorganisms"
+        ],
+        [
+          "products containing Probiotics"
+        ],
+        [
+          "drugs in the List of drugs and active pharmaceutical ingredients belonging to the List of substances prohibited from using in certain sectors, fields"
+        ],
+        [
+          "drugs in the List of toxic drugs and toxic pharmaceutical ingredients"
+        ],
+        [
+          "drugs and materials containing herbal in the list of toxic herbal medicines"
+        ],
+        [
+          "the List of drugs and active pharmaceutical ingredients belonging to the List of substances prohibited from using in certain sectors, fields"
+        ],
+        [
+          "the List of substances prohibited from using in certain sectors, fields"
+        ],
+        [
+          "the List of toxic drugs and toxic pharmaceutical ingredients"
+        ],
+        [
+          "containing herbal in the List of toxic herbal medicines"
+        ],
+        [
+          "herbal in the List of toxic herbal medicines"
+        ],
+        [
+          "drugs containing cytotoxic/cytostatic substances, sex hormones"
+        ],
+        [
+          "drugs containing cytotoxic/cytostatic substances, contraceptive sex hormones"
+        ],
+        [
+          "drugs containing cytotoxic substances, contraceptive sex hormones"
+        ],
+        [
+          "combined drugs containing narcotic substances, psychotropic substances, precursors"
+        ],
+        [
+          "narcotic drugs, psychotropic drugs, precursors drugs"
+        ],
+        [
+          "drugs containing"
+        ],
+        [
+          "products containing"
+        ],
+        [
+          "Effervescent tablets"
+        ],
+        [
+          "Dispersible tablets"
+        ],
+        [
+          "Modified release tablets"
+        ],
+        [
+          "Extended release tablets"
+        ],
+        [
+          "Effervescent powders-granules"
+        ],
+        [
+          "Effervescent granules"
+        ],
+        [
+          "Effervescent powders"
+        ],
+        [
+          "Film-coated tablets"
+        ],
+        [
+          "Sugar-coated tablets"
+        ],
+        [
+          "Coated tablets"
+        ],
+        [
+          "Lozenges"
+        ],
+        [
+          "Lozenge tablets"
+        ],
+        [
+          "Gums"
+        ],
+        [
+          "Chewable tablets"
+        ],
+        [
+          "Multilayer tablets"
+        ],
+        [
+          "Hard capsules"
+        ],
+        [
+          "Soft capsules"
+        ],
+        [
+          "Capsules"
+        ],
+        [
+          "Vaginal tablets"
+        ],
+        [
+          "Uncoated tablets"
+        ],
+        [
+          "Nebulisers"
+        ],
+        [
+          "Lyophilized powders for injections"
+        ],
+        [
+          "Powders for injections"
+        ],
+        [
+          "Topical powders"
+        ],
+        [
+          "Pastes"
+        ],
+        [
+          "Powders in sachets"
+        ],
+        [
+          "Powders"
+        ],
+        [
+          "Granules in sachets"
+        ],
+        [
+          "Granules"
+        ],
+        [
+          "Suppositories"
+        ],
+        [
+          "Pessaries"
+        ],
+        [
+          "Oral liquids from herbs"
+        ],
+        [
+          "for oral suspensions"
+        ],
+        [
+          "Oral solutions, suspensions and emulsions"
+        ],
+        [
+          "Oral suspensions and emulsions"
+        ],
+        [
+          "Oral solutions-suspensions"
+        ],
+        [
+          "Oral solutions-emulsions"
+        ],
+        [
+          "Oral suspensions-emulsions"
+        ],
+        [
+          "Oral liquids"
+        ],
+        [
+          "Oral solutions"
+        ],
+        [
+          "Oral suspensions"
+        ],
+        [
+          "Oral emulsions"
+        ],
+        [
+          "Topical creams, gels, ointments"
+        ],
+        [
+          "Topical liquids"
+        ],
+        [
+          "Topical solutions"
+        ],
+        [
+          "Gynecological washing solution"
+        ],
+        [
+          "Topical creams"
+        ],
+        [
+          "Creams"
+        ],
+        [
+          "Topical ointments"
+        ],
+        [
+          "Ophthalmic ointments"
+        ],
+        [
+          "Ointments"
+        ],
+        [
+          "Oral gels"
+        ],
+        [
+          "Topical gels"
+        ],
+        [
+          "Gels"
+        ],
+        [
+          "Inhalers"
+        ],
+        [
+          "Eye drop solutions"
+        ],
+        [
+          "Eye drop suspensions"
+        ],
+        [
+          "Eye drop emulsions"
+        ],
+        [
+          "Eye drops"
+        ],
+        [
+          "Nasal drop solutions"
+        ],
+        [
+          "Nasal drop suspensions"
+        ],
+        [
+          "Nasal drop emulsions"
+        ],
+        [
+          "Nasal drops"
+        ],
+        [
+          "Ear drop solutions"
+        ],
+        [
+          "Ear drop suspensions"
+        ],
+        [
+          "Ear drop emulsions"
+        ],
+        [
+          "Ear drops"
+        ],
+        [
+          "Nasal spray solutions"
+        ],
+        [
+          "Nasal spray suspensions"
+        ],
+        [
+          "Nasal spray emulsions"
+        ],
+        [
+          "Nasal sprays"
+        ],
+        [
+          "Gargles"
+        ],
+        [
+          "Gargle solutions"
+        ],
+        [
+          "Oral syrups"
+        ],
+        [
+          "Syrups"
+        ],
+        [
+          "from herbal preparations"
+        ],
+        [
+          "Chemical medicinal materials"
+        ],
+        [
+          "Herbal medicinal materials"
+        ],
+        [
+          "Herbal preparations"
+        ],
+        [
+          "Finished herbal products"
+        ],
+        [
+          "Herbal medicines from herbal preparations"
+        ],
+        [
+          "Traditional herbal medicine ingredients"
+        ],
+        [
+          "Hard pills"
+        ],
+        [
+          "Soft pills"
+        ],
+        [
+          "Pills"
+        ],
+        [
+          "Herbal tea bags"
+        ],
+        [
+          "Herbal teas"
+        ],
+        [
+          "Soluble teas"
+        ],
+        [
+          "Traditional remedies"
+        ],
+        [
+          "Tinctures"
+        ],
+        [
+          "Alcoholatures"
+        ],
+        [
+          "Terminal sterillized injections"
+        ],
+        [
+          "Suspensions for injections"
+        ],
+        [
+          "Emulsions for injections"
+        ],
+        [
+          "Large volume parenterals"
+        ],
+        [
+          "Solutions for infusions"
+        ],
+        [
+          "Small volume injections"
+        ],
+        [
+          "Solutions for injections"
+        ],
+        [
+          "Concentrated solutions for dilution for injections"
+        ],
+        [
+          "Solvents for dilution for injections"
+        ],
+        [
+          " for surgery"
+        ],
+        [
+          "Salonpas patch"
+        ],
+        [
+          "Patches"
+        ],
+        [
+          "Salonpas liniment"
+        ],
+        [
+          "Liniments"
+        ],
+        [
+          "Balms"
+        ],
+        [
+          "Herbal extracts, Granules, Powders"
+        ],
+        [
+          "Herbal extracts"
+        ],
+        [
+          "Herbal powders"
+        ],
+        [
+          "Slices of herbal medicines"
+        ],
+        [
+          "Liquid extracts"
+        ],
+        [
+          "Viscous extracts"
+        ],
+        [
+          "Dry extracts"
+        ],
+        [
+          "Empty gelatin hard capsules"
+        ],
+        [
+          "Empty hard capsules"
+        ],
+        [
+          "Pharmaceutical materials"
+        ],
+        [
+          "granules"
+        ],
+        [
+          "Rectal solutions"
+        ],
+        [
+          "Peritoneal dialysis solutions"
+        ],
+        [
+          "Hemodialysis solutions"
+        ],
+        [
+          "Sterile irrigation solutions"
+        ],
+        [
+          "Irrigation solutions"
+        ],
+        [
+          "Sterile solutions"
+        ],
+        [
+          "Primary packaging"
+        ],
+        [
+          "Secondary packaging"
+        ],
+        [
+          "Packaging"
+        ],
+        [
+          "in sachets"
+        ],
+        [
+          "Drugs require cold storage condition"
+        ],
+        [
+          "Drugs require normal storage condition"
+        ],
+        [
+          "Vaccine"
+        ],
+        [
+          "Filling in vials, ampoules for vaccines, biological products"
+        ],
+        [
+          "Vaccine finished product ampoule filling"
+        ],
+        [
+          "Vaccine finished product vial filling"
+        ],
+        [
+          "Vaccine finished product"
+        ],
+        [
+          "Freeze-dried, live, attenuated vaccines"
+        ],
+        [
+          "Typhoid Vi polysaccharide vaccine"
+        ],
+        [
+          "Japanese Encephalitis vaccine"
+        ],
+        [
+          "Purified Inactivated Hepatitis A vaccine"
+        ],
+        [
+          "Hepatitis A vaccine"
+        ],
+        [
+          "Recombinant Hepatitis B vaccine"
+        ],
+        [
+          "Hepatitis B vaccine"
+        ],
+        [
+          "Oral Cholera vaccine"
+        ],
+        [
+          "Inactivated influenza vaccine"
+        ],
+        [
+          "Influenza vaccine"
+        ],
+        [
+          "Diphtheria - Whole-cell Pertussis - Tetanus (DPT) vaccine"
+        ],
+        [
+          "Diphtheria - Pertussis - Tetanus (DPT) vaccine"
+        ],
+        [
+          "Diphtheria - Tetanus (DT) vaccine"
+        ],
+        [
+          "Tetanus - Diphtheria vaccine"
+        ],
+        [
+          "Diphtheria vaccine"
+        ],
+        [
+          "Pertussis vaccine"
+        ],
+        [
+          "Adsorbed Tetanus toxoid vaccine"
+        ],
+        [
+          "Tetanus vaccine"
+        ],
+        [
+          "Tuberculosis vaccine"
+        ],
+        [
+          "Measles-Rubella combined vaccine"
+        ],
+        [
+          "Freeze-dried, live, attenuated Measles vaccine"
+        ],
+        [
+          "Live, attenuated Measles vaccine"
+        ],
+        [
+          "Measles vaccine"
+        ],
+        [
+          "Rubella vaccine"
+        ],
+        [
+          "Live, attenuated Oral Polio vaccine"
+        ],
+        [
+          "Oral Polio vaccine"
+        ],
+        [
+          "Polio vaccine"
+        ],
+        [
+          "Live, attenuated Oral Rotavirus vaccine"
+        ],
+        [
+          "Rotavirus vaccine"
+        ],
+        [
+          "Conjugated Polysaccharide vaccine"
+        ],
+        [
+          "Horse's purified serum"
+        ],
+        [
+          "Diphtheria"
+        ],
+        [
+          "Whole-cell Pertussis"
+        ],
+        [
+          "Pertussis"
+        ],
+        [
+          "Tetanus"
+        ],
+        [
+          "Measles"
+        ],
+        [
+          "Polio"
+        ],
+        [
+          "Hepatitis A"
+        ],
+        [
+          "Recombinant Hepatitis B"
+        ],
+        [
+          "Typhoid Vi polysaccharide"
+        ],
+        [
+          "Japanese Encephalitis"
+        ],
+        [
+          "Purified Inactivated Hepatitis A"
+        ],
+        [
+          "Oral Cholera"
+        ],
+        [
+          "Inactivated influenza"
+        ],
+        [
+          "Influenza"
+        ],
+        [
+          "Purified Serum"
+        ],
+        [
+          "Anti-rabies serum"
+        ],
+        [
+          "Anti-tetanus serum"
+        ],
+        [
+          "Snake anti-venom"
+        ],
+        [
+          "antiserum"
+        ],
+        [
+          "medical biological products"
+        ],
+        [
+          "biological products"
+        ],
+        [
+          "Sterile products"
+        ],
+        [
+          "Aseptically prepared products"
+        ],
+        [
+          "Terminally sterilised products"
+        ],
+        [
+          "Non-sterile products"
+        ],
+        [
+          "Biological medicinal products"
+        ],
+        [
+          "Quality control testing"
+        ],
+        [
+          "The certified scope including also"
+        ],
+        [
+          "This certificate is valid until "
+        ],
+        [
+          "This certificate"
+        ],
+        [
+          "The certificate"
+        ],
+        [
+          "Other tests for control of"
+        ],
+        [
+          "National institute for Drug quality control"
+        ],
+        [
+          "Institute for Drug quality control of Ho Chi Minh city"
+        ],
+        [
+          "National institute for control of vaccines and biologicals"
+        ],
+        [
+          "Quality testing for Drugs, Cosmetics and Foods"
+        ],
+        [
+          "Quality testing for Drugs, Cosmetics, Foods"
+        ],
+        [
+          "Quality testing for Drugs"
+        ],
+        [
+          "drugs in "
+        ],
+        [
+          "drugs containing active pharmaceutical ingredients in "
+        ],
+        [
+          "combined drugs"
+        ],
+        [
+          "active pharmaceutical ingredients"
+        ],
+        [
+          "belonging to "
+        ],
+        [
+          "All dosage forms listed in section:"
+        ],
+        [
+          "Radioactive drugs"
+        ],
+        [
+          "Radioactive injections"
+        ],
+        [
+          "Radionuclidic purity test"
+        ],
+        [
+          "Radichemical purity test"
+        ],
+        [
+          "Patches"
+        ],
+        [
+          "Microbial Identification and Quantification"
+        ],
+        [
+          "Test for "
+        ],
+        [
+          "Oral solution (ampoule)"
+        ],
+        [
+          "Oral liquids containing microorganisms"
+        ],
+        [
+          "biological substances"
+        ],
+        [
+          "biological substance"
+        ],
+        [
+          "Tests for biological activity"
+        ],
+        [
+          "Filling in vials, ampoules"
+        ],
+        [
+          "Filling in vials"
+        ],
+        [
+          "Filling in ampoules"
+        ],
+        [
+          "in ampoules"
+        ],
+        [
+          "in catridges"
+        ],
+        [
+          "in syringes"
+        ],
+        [
+          "in vials"
+        ],
+        [
+          "(ampoule)"
+        ],
+        [
+          " ampoule"
+        ],
+        [
+          "(vial)"
+        ],
+        [
+          " vial"
+        ],
+        [
+          "(syringe)"
+        ],
+        [
+          " syringe"
+        ],
+        [
+          "Reconstituted water for lyophilized vaccines"
+        ],
+        [
+          "Reconstituted water"
+        ],
+        [
+          "lyophilized vaccines"
+        ],
+        [
+          "lyophilized products"
+        ],
+        [
+          "narcotic drugs"
+        ],
+        [
+          "psychotropic drugs"
+        ],
+        [
+          "precursors drugs"
+        ],
+        [
+          "Sprays"
+        ],
+        [
+          "Identification, quantification"
+        ],
+        [
+          "Identification"
+        ],
+        [
+          "Quantification"
+        ],
+        [
+          "Determination of related substances"
+        ],
+        [
+          "related substances"
+        ],
+        [
+          "heavy metals"
+        ],
+        [
+          "residual solvents"
+        ],
+        [
+          "pesticides residues"
+        ],
+        [
+          "pesticides"
+        ],
+        [
+          "refractive index"
+        ],
+        [
+          "optical rotation"
+        ],
+        [
+          "Supercritical Fluid Chromatography"
+        ],
+        [
+          "Lead in Sugars"
+        ],
+        [
+          "Nickel in Polyols"
+        ],
+        [
+          "in Herbals"
+        ],
+        [
+          "in Fatty Oils"
+        ],
+        [
+          "Alkaline-earth Metals"
+        ],
+        [
+          "Thermal Gravimetric Analysis"
+        ],
+        [
+          "Differental Thermal Analysis"
+        ],
+        [
+          "Differential Scanning Calorimetry"
+        ],
+        [
+          "Visible Particles"
+        ],
+        [
+          "Sub-visible Particles"
+        ],
+        [
+          "Swelling Index"
+        ],
+        [
+          "Particle Size of Powders"
+        ],
+        [
+          "Flowability"
+        ],
+        [
+          "Friability"
+        ],
+        [
+          "Intracutaneous test"
+        ],
+        [
+          "Skin irritation test"
+        ],
+        [
+          "Skin sensitization test"
+        ],
+        [
+          "Acute dermal toxicity test"
+        ],
+        [
+          "Carrier proteins "
+        ],
+        [
+          "for production of"
+        ],
+        [
+          "Delayed-type hypersensitivity test"
+        ],
+        [
+          "Contract with "
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          "contract"
+        ],
+        [
+          "aerosol"
+        ],
+        [
+          "steaming"
+        ],
+        [
+          "roasting"
+        ],
+        [
+          "cooking"
+        ],
+        [
+          "boiling"
+        ],
+        [
+          "incinerating"
+        ],
+        [
+          "stinging"
+        ],
+        [
+          "pan-drying"
+        ],
+        [
+          "drying"
+        ],
+        [
+          "airing"
+        ],
+        [
+          "cutting"
+        ],
+        [
+          "immersioning"
+        ],
+        [
+          "incubationing"
+        ],
+        [
+          "washing"
+        ],
+        [
+          "Cleaning"
+        ],
+        [
+          "Magnesium"
+        ],
+        [
+          "Sulfates"
+        ],
+        [
+          "Iron"
+        ],
+        [
+          "Phosphates"
+        ],
+        [
+          "Aluminium"
+        ],
+        [
+          "Potassium"
+        ],
+        [
+          "Fluorides"
+        ],
+        [
+          "Chlorides"
+        ],
+        [
+          "Calcium"
+        ],
+        [
+          "Arsenic"
+        ],
+        [
+          "Ammonium"
+        ],
+        [
+          "radioactivity"
+        ],
+        [
+          "measurement"
+        ],
+        [
+          "detection"
+        ],
+        [
+          "colour"
+        ],
+        [
+          "clarity"
+        ],
+        [
+          "supercritical"
+        ],
+        [
+          "paper"
+        ],
+        [
+          "index"
+        ],
+        [
+          "chromatography"
+        ],
+        [
+          "nuclear"
+        ],
+        [
+          "resonance"
+        ],
+        [
+          "inductive"
+        ],
+        [
+          "atom"
+        ],
+        [
+          "emission"
+        ],
+        [
+          "fluorescence"
+        ],
+        [
+          "infrared"
+        ],
+        [
+          "absorption"
+        ],
+        [
+          "spectrophotometry"
+        ],
+        [
+          "visible"
+        ],
+        [
+          "ultraviole"
+        ],
+        [
+          "Determination of "
+        ],
+        [
+          "is valid"
+        ],
+        [
+          "until"
+        ],
+        [
+          "cytotoxic/cytostatic substances"
+        ],
+        [
+          "cytotoxic substances"
+        ],
+        [
+          "cytostatic substances"
+        ],
+        [
+          "contraceptive sex hormones"
+        ],
+        [
+          "sex hormones"
+        ],
+        [
+          "non-sterility"
+        ],
+        [
+          "sterility"
+        ],
+        [
+          "Biological"
+        ],
+        [
+          "Chemical/Physical"
+        ],
+        [
+          "Microbiological"
+        ],
+        [
+          "freeze-dried, live, attenuated"
+        ],
+        [
+          "live, attenuated"
+        ],
+        [
+          "Injections"
+        ],
+        [
+          "Horse blood"
+        ],
+        [
+          "blood"
+        ],
+        [
+          "purified"
+        ],
+        [
+          "Serum"
+        ],
+        [
+          "Oral"
+        ],
+        [
+          "Topical"
+        ],
+        [
+          "excluding"
+        ],
+        [
+          "including also"
+        ],
+        [
+          "including"
+        ],
+        [
+          "sterile"
+        ],
+        [
+          "gas"
+        ],
+        [
+          "Suspensions"
+        ],
+        [
+          "Emulsions"
+        ],
+        [
+          "Solutions"
+        ],
+        [
+          "Liquids"
+        ],
+        [
+          "Solids"
+        ],
+        [
+          "Semi-solids"
+        ],
+        [
+          "Products from"
+        ],
+        [
+          "from herbs"
+        ],
+        [
+          "herbal materials"
+        ],
+        [
+          "from pharmaceutical"
+        ],
+        [
+          "pharmaceutical"
+        ],
+        [
+          "radioactive substance"
+        ],
+        [
+          "radioactive"
+        ],
+        [
+          "Materials"
+        ],
+        [
+          "for Pharmaceutical Use"
+        ],
+        [
+          "Lyophilized"
+        ],
+        [
+          "Volatile oils"
+        ],
+        [
+          "Extracts"
+        ],
+        [
+          "Slices"
+        ],
+        [
+          "Creams"
+        ],
+        [
+          "Ointments"
+        ],
+        [
+          "Granules"
+        ],
+        [
+          "Powders"
+        ],
+        [
+          "Gels;"
+        ],
+        [
+          "Gels,"
+        ],
+        [
+          "Gel "
+        ],
+        [
+          "except "
+        ],
+        [
+          "containing "
+        ],
+        [
+          " from "
+        ],
+        [
+          " for "
+        ],
+        [
+          " with "
+        ],
+        [
+          " and "
+        ]
+      ]
+    },
+    "TV_Words2": {
+      "shape": {
+        "rows": 36,
+        "columns": 1
+      },
+      "values_sha256": "81d9a402fb85cddb0a6ba3b20a5d2fe17da96f97ce779442c77974d8a8aa75e4",
+      "values": [
+        [
+          "Tỉnh"
+        ],
+        [
+          "Thành phố|Tp.|Tp"
+        ],
+        [
+          "Quận|Huyện"
+        ],
+        [
+          "Phường"
+        ],
+        [
+          "Xã"
+        ],
+        [
+          "Thôn|Làng"
+        ],
+        [
+          "Thị xã|Thị trấn"
+        ],
+        [
+          "Ấp|Xóm"
+        ],
+        [
+          "Tổ dân phố|Khu dân cư| Cụm dân cư"
+        ],
+        [
+          "Tổ|Nhóm"
+        ],
+        [
+          "Quốc lộ|Đại lộ"
+        ],
+        [
+          "Đường số|Hương lộ"
+        ],
+        [
+          "Đường|Phố"
+        ],
+        [
+          "Khu công nghiệp|KCN"
+        ],
+        [
+          "Cụm công nghiệp"
+        ],
+        [
+          "Khu công nghệ cao"
+        ],
+        [
+          "Khu liên hợp công nghiệp - dịch vụ - đô thị"
+        ],
+        [
+          "Khu kinh tế"
+        ],
+        [
+          "Khu đô thị công nghiệp và dịch vụ"
+        ],
+        [
+          "Nhà máy sản xuất dược phẩm"
+        ],
+        [
+          "Khu vực"
+        ],
+        [
+          "Lô số|Lô đất số|Lô đất"
+        ],
+        [
+          "Lô "
+        ],
+        [
+          "Số "
+        ],
+        [
+          "Khu phố "
+        ],
+        [
+          "Khóm "
+        ],
+        [
+          "Khu "
+        ],
+        [
+          "Nhóm"
+        ],
+        [
+          "Công nghiệp"
+        ],
+        [
+          "và "
+        ],
+        [
+          "Kho"
+        ],
+        [
+          "Xưởng"
+        ],
+        [
+          "Cơ sở "
+        ],
+        [
+          "Cụm "
+        ],
+        [
+          "Việt Nam"
+        ],
+        [
+          null
+        ]
+      ]
+    },
+    "TA_Words2": {
+      "shape": {
+        "rows": 36,
+        "columns": 1
+      },
+      "values_sha256": "4ed6f856298642518a9075aa9fa4e01c7da700f2ab91f7fad80a93dc4754a901",
+      "values": [
+        [
+          "province"
+        ],
+        [
+          "city"
+        ],
+        [
+          "district"
+        ],
+        [
+          "ward"
+        ],
+        [
+          "commune"
+        ],
+        [
+          "village"
+        ],
+        [
+          "town"
+        ],
+        [
+          "hamlet"
+        ],
+        [
+          "population group"
+        ],
+        [
+          "group"
+        ],
+        [
+          "highway"
+        ],
+        [
+          "road Nº"
+        ],
+        [
+          "street"
+        ],
+        [
+          "industrial zone"
+        ],
+        [
+          "industrial group"
+        ],
+        [
+          "hitech zone"
+        ],
+        [
+          "Industrial - Services - Urban Complex"
+        ],
+        [
+          "economic zone"
+        ],
+        [
+          "township, industrial and service park"
+        ],
+        [
+          "Pharmaceutical manufacturing factory"
+        ],
+        [
+          "area"
+        ],
+        [
+          "Lot No."
+        ],
+        [
+          "Lot "
+        ],
+        [
+          "No. "
+        ],
+        [
+          "quarter "
+        ],
+        [
+          "colony "
+        ],
+        [
+          "zone "
+        ],
+        [
+          "group"
+        ],
+        [
+          "industry"
+        ],
+        [
+          "and "
+        ],
+        [
+          "Warehouse"
+        ],
+        [
+          "workshop"
+        ],
+        [
+          "Site "
+        ],
+        [
+          "sector "
+        ],
+        [
+          "Vietnam"
+        ],
+        [
+          null
+        ]
+      ]
+    },
+    "TA_Words2_Loc": {
+      "shape": {
+        "rows": 36,
+        "columns": 2
+      },
+      "values_sha256": "d4758cd89c3c7386e38c00267639ee8314aadb57c2b34ec428786216323a23a3",
+      "values": [
+        [
+          "s",
+          "s"
+        ],
+        [
+          "s",
+          "s"
+        ],
+        [
+          "s",
+          "t"
+        ],
+        [
+          "s",
+          "t"
+        ],
+        [
+          "s",
+          "t"
+        ],
+        [
+          "s",
+          "t"
+        ],
+        [
+          "s",
+          "s"
+        ],
+        [
+          "s",
+          "t"
+        ],
+        [
+          "t",
+          "t"
+        ],
+        [
+          "t",
+          "t"
+        ],
+        [
+          "s",
+          "t"
+        ],
+        [
+          "t",
+          "t"
+        ],
+        [
+          "s",
+          "t"
+        ],
+        [
+          "s",
+          "s"
+        ],
+        [
+          "s",
+          "s"
+        ],
+        [
+          "s",
+          "t"
+        ],
+        [
+          "s",
+          "t"
+        ],
+        [
+          "s",
+          "t"
+        ],
+        [
+          "s",
+          "t"
+        ],
+        [
+          "t",
+          "t"
+        ],
+        [
+          "s",
+          "t"
+        ],
+        [
+          "t",
+          "t"
+        ],
+        [
+          "t",
+          "t"
+        ],
+        [
+          "t",
+          "t"
+        ],
+        [
+          "t",
+          "t"
+        ],
+        [
+          "t",
+          "t"
+        ],
+        [
+          "t",
+          "t"
+        ],
+        [
+          "t",
+          "t"
+        ],
+        [
+          "s",
+          "t"
+        ],
+        [
+          "s",
+          "s"
+        ],
+        [
+          "s",
+          "t"
+        ],
+        [
+          "s",
+          "t"
+        ],
+        [
+          "t",
+          "t"
+        ],
+        [
+          "t",
+          "t"
+        ],
+        [
+          "s",
+          "t"
+        ],
+        [
+          null,
+          null
+        ]
+      ]
+    },
+    "TV_Words4": {
+      "shape": {
+        "rows": 108,
+        "columns": 1
+      },
+      "values_sha256": "cd5278393c1eef25ae0cd7b3ff33ae5240d76c96fdabe0f781962d98df77ea33",
+      "values": [
+        [
+          "Bảo quản"
+        ],
+        [
+          "các"
+        ],
+        [
+          "β Lactam|βLactam|Beta-Lactam|Beta Lactam|Betalactam"
+        ],
+        [
+          "Thuốc thành phẩm ở nhiệt độ thường và nhiệt độ lạnh"
+        ],
+        [
+          "Thuốc thành phẩm ở nhiệt độ thường|Thuốc thành phẩm ở điều kiện thường"
+        ],
+        [
+          "Thuốc thành phẩm ở nhiệt độ lạnh"
+        ],
+        [
+          "Thuốc thành phẩm"
+        ],
+        [
+          "nguyên liệu làm thuốc"
+        ],
+        [
+          "thuốc thuộc danh mục phải kiểm soát đặc biệt"
+        ],
+        [
+          "thuộc danh mục phải kiểm soát đặc biệt"
+        ],
+        [
+          "nguyên liệu kháng sinh β-Lactam|nguyên liệu β-Lactam"
+        ],
+        [
+          "không chứa kháng sinh nhóm β-Lactam|không chứa kháng sinh β-Lactam"
+        ],
+        [
+          "chứa kháng sinh nhóm β-Lactam|chứa kháng sinh β-Lactam"
+        ],
+        [
+          "kháng sinh nhóm β-Lactam|kháng sinh β-Lactam"
+        ],
+        [
+          "chứa kháng sinh nhóm Penicillin|chứa kháng sinh Penicillin"
+        ],
+        [
+          "kháng sinh nhóm Penicillin|kháng sinh Penicillin"
+        ],
+        [
+          "chứa kháng sinh nhóm Cephalosporin|chứa kháng sinh Cephalosporin"
+        ],
+        [
+          "kháng sinh nhóm Cephalosporin|kháng sinh Cephalosporin"
+        ],
+        [
+          "ở nhiệt độ thường và nhiệt độ lạnh|ở điều kiện thường và điều kiện lạnh|ở nhiệt độ lạnh và nhiệt độ thường|ở điều kiện lạnh và điều kiện thường"
+        ],
+        [
+          "ở nhiệt độ thường|ở điều kiện thường"
+        ],
+        [
+          "nhiệt độ thường|điều kiện thường"
+        ],
+        [
+          "ở nhiệt độ lạnh|ở điều kiện lạnh"
+        ],
+        [
+          "nhiệt độ lạnh|điều kiện lạnh"
+        ],
+        [
+          "Thuốc gây nghiện, thuốc hướng tâm thần và tiền chất dùng làm thuốc|Thuốc gây nghiện, hướng tâm thần và tiền chất dùng làm thuốc|Thuốc gây nghiện, thuốc hướng tâm thần và tiền chất làm thuốc|Thuốc gây nghiện, hướng tâm thần và tiền chất làm thuốc|Thuốc gây nghiện, thuốc hướng tâm thần và tiền chất|Thuốc gây nghiện, hướng tâm thần và tiền chất"
+        ],
+        [
+          "Thuốc gây nghiện, thuốc hướng tâm thần, tiền chất dùng làm thuốc|Thuốc gây nghiện, hướng tâm thần, tiền chất dùng làm thuốc|Thuốc gây nghiện, thuốc hướng tâm thần, tiền chất làm thuốc|Thuốc gây nghiện, hướng tâm thần, tiền chất làm thuốc"
+        ],
+        [
+          "nguyên liệu gây nghiện, hướng tâm thần, tiền chất dùng làm thuốc|nguyên liệu thuốc gây nghiện, hướng tâm thần, tiền chất dùng làm thuốc|nguyên liệu gây nghiện, hướng tâm thần và tiền chất dùng làm thuốc|nguyên liệu thuốc gây nghiện, hướng tâm thần và tiền chất dùng làm thuốc|nguyên liệu gây nghiện, hướng tâm thần, tiền chất làm thuốc|nguyên liệu thuốc gây nghiện, hướng tâm thần, tiền chất làm thuốc|nguyên liệu gây nghiện, hướng tâm thần và tiền chất làm thuốc|nguyên liệu thuốc gây nghiện, hướng tâm thần và tiền chất làm thuốc"
+        ],
+        [
+          "nguyên liệu gây nghiện|nguyên liệu thuốc gây nghiện"
+        ],
+        [
+          "thuốc gây nghiện"
+        ],
+        [
+          "thuốc hướng tâm thần"
+        ],
+        [
+          "thuốc chứa tiền chất"
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          "nguyên liệu hướng tâm thần"
+        ],
+        [
+          "tiền chất dùng làm thuốc|tiền chất làm thuốc"
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          "Vắc xin và Sinh phẩm Y tế|Vắc xin và Sinh phẩm"
+        ],
+        [
+          "bao gồm cả"
+        ],
+        [
+          "sinh phẩm y tế"
+        ],
+        [
+          "vắc xin|vắcxin|vac xin|vacxin|văc xin|văcxin"
+        ],
+        [
+          "không bao gồm"
+        ],
+        [
+          "và"
+        ],
+        [
+          "nguyên liệu"
+        ],
+        [
+          "theo hợp đồng với"
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ]
+      ]
+    },
+    "TA_Words4": {
+      "shape": {
+        "rows": 108,
+        "columns": 1
+      },
+      "values_sha256": "5eea18b6d90a0ebd17f04466d1ca114215de9a17130e931fbf7fcb24dbabceef",
+      "values": [
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          "β-Lactam"
+        ],
+        [
+          "Pharmaceutical finished products at room and cold temperature"
+        ],
+        [
+          "Pharmaceutical finished products at room temperature"
+        ],
+        [
+          "Pharmaceutical finished products at cold temperature"
+        ],
+        [
+          "Pharmaceutical  finished products"
+        ],
+        [
+          "Pharmaceutical materials"
+        ],
+        [
+          "drugs on the list of drugs subject to strictly controls"
+        ],
+        [
+          "on the list of strictly controlled drugs"
+        ],
+        [
+          "β-Lactam antibiotics materials"
+        ],
+        [
+          "not containing β-Lactam antibiotics"
+        ],
+        [
+          "containing β-Lactam antibiotics"
+        ],
+        [
+          "β-Lactam antibiotics"
+        ],
+        [
+          "containing Penicillin antibiotics"
+        ],
+        [
+          "Penicillin antibiotics"
+        ],
+        [
+          "containing Cephalosporin antibiotics"
+        ],
+        [
+          "Cephalosporin antibiotics"
+        ],
+        [
+          "at cold and room temperature"
+        ],
+        [
+          "at room temperature"
+        ],
+        [
+          "room temperature"
+        ],
+        [
+          "at cold temperature"
+        ],
+        [
+          "cold temperature"
+        ],
+        [
+          "Narcotic drugs, psychotropic drugs and precursors"
+        ],
+        [
+          "Narcotic drugs, psychotropic drugs, precursors"
+        ],
+        [
+          "Narcotic, psychotropic, precursor materials"
+        ],
+        [
+          "Narcotic materials"
+        ],
+        [
+          "Narcotic drugs"
+        ],
+        [
+          "psychotropic drugs"
+        ],
+        [
+          "precursor drugs"
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          "psychotropic materials"
+        ],
+        [
+          "precursors"
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          "Vaccines and Biologicals"
+        ],
+        [
+          "including also"
+        ],
+        [
+          "Biologicals"
+        ],
+        [
+          "Vaccines"
+        ],
+        [
+          "excluding"
+        ],
+        [
+          "and"
+        ],
+        [
+          "materials"
+        ],
+        [
+          "following the contract with"
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ]
+      ]
+    },
+    "TV_Words6": {
+      "shape": {
+        "rows": 60,
+        "columns": 1
+      },
+      "values_sha256": "17454b736211b89f846fce7abfc3a74b4ef25318a19f7ce8829b7966e01d0289",
+      "values": [
+        [
+          "Các dạng |các "
+        ],
+        [
+          "Bao bì đóng gói"
+        ],
+        [
+          null
+        ],
+        [
+          "Bộ nắp nút đôi Polypropylene"
+        ],
+        [
+          "Gói hút ẩm Silicagel"
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          "Bao bì dược phẩm vô trùng|Bao bì vô trùng"
+        ],
+        [
+          "Bao bì dược phẩm không vô trùng|Bao bì không vô trùng"
+        ],
+        [
+          "Bao bì dược phẩm"
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          "Màng chất dẻo"
+        ],
+        [
+          "Màng nhôm ghép giấy"
+        ],
+        [
+          "Màng nhôm ghép chất dẻo"
+        ],
+        [
+          "Màng nhôm tráng"
+        ],
+        [
+          "Màng nhôm"
+        ],
+        [
+          "Màng PVDC"
+        ],
+        [
+          "Màng PVC"
+        ],
+        [
+          "đã in và chưa in"
+        ],
+        [
+          "đã in"
+        ],
+        [
+          "chưa in"
+        ],
+        [
+          "đơn lớp và đa lớp"
+        ],
+        [
+          "đơn lớp"
+        ],
+        [
+          "đa lớp"
+        ],
+        [
+          " và"
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          "dùng cho dược phẩm|dùng trong dược phẩm"
+        ],
+        [
+          "đóng thuốc nhỏ mắt|cho thuốc nhỏ mắt"
+        ],
+        [
+          "chai dung dịch tiêm truyền"
+        ],
+        [
+          "dùng cho"
+        ],
+        [
+          "từ nhựa|bằng nhựa"
+        ],
+        [
+          "từ thủy tinh|bằng thủy tinh"
+        ],
+        [
+          "chai lọ|chai|lọ"
+        ],
+        [
+          "nút"
+        ],
+        [
+          "nắp"
+        ],
+        [
+          "bông"
+        ],
+        [
+          "ly|cốc"
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ]
+      ]
+    },
+    "TA_Words6": {
+      "shape": {
+        "rows": 60,
+        "columns": 1
+      },
+      "values_sha256": "e0329e80d4167c3ab2048e2b866a9b6adc1fc8fbf7100ac5d91d947b819a01f1",
+      "values": [
+        [
+          null
+        ],
+        [
+          "Bao bì"
+        ],
+        [
+          null
+        ],
+        [
+          "Pair of Rubber stoppers and Polypropylene caps"
+        ],
+        [
+          "Silicagel sachets"
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          "Pharmaceutical sterile packagings"
+        ],
+        [
+          "Pharmaceutical non-sterile packagings"
+        ],
+        [
+          "Pharmaceutical packagings"
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          "Plastic Films"
+        ],
+        [
+          "Paper laminated Aluminium Foils"
+        ],
+        [
+          "Plastic laminated Aluminium Foils"
+        ],
+        [
+          "Coated Aluminium Foils"
+        ],
+        [
+          "Aluminium Foils"
+        ],
+        [
+          "PVDC Films"
+        ],
+        [
+          "PVC Films"
+        ],
+        [
+          "Printed and Unprinted"
+        ],
+        [
+          "Printed"
+        ],
+        [
+          "Unprinted"
+        ],
+        [
+          "Mono-layer and Multi-layer"
+        ],
+        [
+          "Mono-layer"
+        ],
+        [
+          "Multi-layer"
+        ],
+        [
+          " and"
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          "for Pharmaceutical use"
+        ],
+        [
+          "for Eye Drops"
+        ],
+        [
+          "Infusion bottles"
+        ],
+        [
+          "for"
+        ],
+        [
+          "from Plastic"
+        ],
+        [
+          "from Glass"
+        ],
+        [
+          "Bottles"
+        ],
+        [
+          "Stoppers"
+        ],
+        [
+          "Caps"
+        ],
+        [
+          "Cottons"
+        ],
+        [
+          "Cups"
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ],
+        [
+          null
+        ]
+      ]
+    }
+  },
+  "runtime_scope": {
+    "supported_gxp_types": [
+      "GMP",
+      "GLP",
+      "GSP"
+    ],
+    "gdp_supported": false,
+    "source_variant": "certificate_9",
+    "family_code": "CERTIFICATE_ISSUANCE_WORD"
+  },
+  "invariants": {
+    "blank_values_preserved": true,
+    "duplicate_values_preserved": true,
+    "row_order_preserved": true,
+    "runtime_excel_dependency": false,
+    "runtime_legacy_workbook_dependency": false,
+    "unicode_mapping_reconstructed_manually": false,
+    "gdp_in_scope": false,
+    "unkeyed_entries_used": false
+  }
+}

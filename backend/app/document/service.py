@@ -4,6 +4,12 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from backend.app.document.c5e_certificate_detail_semantic_projection import (
+    CERTIFICATE_DETAIL_FAMILY,
+    CertificateDetailSemanticProjection,
+    CertificateDetailSemanticProjectionError,
+    project_certificate_detail_semantic_operations,
+)
 from backend.app.document.output_version import (
     OutputVersionAllocation,
     allocate_output_document_version,
@@ -15,6 +21,7 @@ from backend.app.document.docx_template_render import (
 )
 from backend.app.document.template_binary import TemplateBinaryRequirement, build_template_binary_requirement
 from backend.app.document.payload_builders import (
+    DocumentPayloadBuildError,
     PayloadBuildInput,
     PayloadBuildResult,
     build_payload_envelope,
@@ -24,6 +31,7 @@ from backend.app.document.persistence import PersistedGenerationState, prepare_g
 from backend.app.document.evaluation_scope_payload import (
     assert_no_c5e_scope_field_override,
     enrich_payload_result_with_c5e_scope,
+    load_c5e_evaluation_scope_projection_input,
 )
 from backend.app.document.service_contract import (
     DocumentGenerationPlan,
@@ -67,6 +75,7 @@ class PreparedDocumentGeneration:
     source_binary_requirements: tuple[SourceBinaryRequirement, ...]
     persisted_state: PersistedGenerationState
     render_ready: bool
+    certificate_detail_projection: CertificateDetailSemanticProjection | None = None
 
 
 @dataclass(frozen=True)
@@ -110,6 +119,46 @@ def build_document_payload_result(
     )
 
 
+def _build_certificate_detail_projection(
+    session: Session,
+    *,
+    request: DocumentGenerationRequest,
+) -> CertificateDetailSemanticProjection | None:
+    """Build the production legacy Input_DC_to_CC semantic projection."""
+
+    if request.family_code != CERTIFICATE_DETAIL_FAMILY:
+        return None
+
+    if request.case_id is None:
+        raise DocumentPayloadBuildError(
+            f"C.5e certificate-detail projection requires case_id for family_code={CERTIFICATE_DETAIL_FAMILY!r}."
+        )
+
+    projection_input = load_c5e_evaluation_scope_projection_input(
+        session,
+        case_id=request.case_id,
+    )
+
+    if request.gxp_type is not None and request.gxp_type != projection_input.gxp_type:
+        raise DocumentPayloadBuildError(
+            "C.5e certificate-detail request/case GxP mismatch: "
+            f"request={request.gxp_type!r}, case={projection_input.gxp_type!r}."
+        )
+
+    try:
+        return project_certificate_detail_semantic_operations(
+            family_code=request.family_code,
+            blocks=projection_input.blocks,
+            taxonomy_nodes=projection_input.taxonomy_nodes,
+            gxp_type=projection_input.gxp_type,
+            eng_part=True,
+        )
+    except CertificateDetailSemanticProjectionError as exc:
+        raise DocumentPayloadBuildError(
+            f"C.5e certificate-detail semantic projection failed: {exc}"
+        ) from exc
+
+
 def prepare_document_generation_job(
     session: Session,
     preparation_input: DocumentPreparationInput,
@@ -120,6 +169,10 @@ def prepare_document_generation_job(
         registry,
         preparation_input.request,
         payload_result.envelope,
+    )
+    certificate_detail_projection = _build_certificate_detail_projection(
+        session,
+        request=preparation_input.request,
     )
     source_lookup_requests = build_source_lookup_requests(generation_plan)
     source_resolutions = tuple(resolve_source_document_from_db(session, request) for request in source_lookup_requests)
@@ -141,6 +194,7 @@ def prepare_document_generation_job(
         source_binary_requirements=source_binary_requirements,
         persisted_state=persisted_state,
         render_ready=render_ready,
+        certificate_detail_projection=certificate_detail_projection,
     )
 
 

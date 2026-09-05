@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from tools.validate_phase7_cutover_checklist import load_json as load_checklist_json, validate_rows
+
 
 ROOT = Path(__file__).resolve().parents[1]
 PHASE3_PATH = ROOT / "artifacts" / "phase3r" / "phase3_final_closeout.json"
@@ -18,6 +20,12 @@ PHASE3S_PATH = ROOT / "artifacts" / "phase3s" / "current_projection_conflict_dec
 OUT_DIR = ROOT / "artifacts" / "phase7"
 JSON_OUT = OUT_DIR / "cutover_readiness.json"
 MD_OUT = OUT_DIR / "cutover_readiness.md"
+CHECKLIST_PATH = OUT_DIR / "cutover_execution_checklist.template.json"
+FREEZE_ITEM_IDS = (
+    "legacy_write_freeze_window_approved", "legacy_write_freeze_announced",
+    "final_phase2_import_rerun", "final_reconciliation_signed_off", "excel_read_only_archive_mode",
+)
+ROLLBACK_ITEM_IDS = ("rollback_contacts_confirmed",)
 
 
 @dataclass(frozen=True)
@@ -92,6 +100,34 @@ def safe_load_json(path: Path, artifact_label: str, *, required: bool = True) ->
 
 def _blocked_artifact_gate(reason: str) -> dict[str, Any]:
     return gate("blocked", reason)
+
+
+def build_operational_gate(item_ids: tuple[str, ...], label: str) -> dict[str, Any]:
+    try:
+        checklist = load_checklist_json(CHECKLIST_PATH)
+        rows = checklist["items"]
+        if not isinstance(rows, list):
+            raise ValueError("items must be a list")
+    except (OSError, ValueError, KeyError, json.JSONDecodeError, TypeError) as exc:
+        return gate("blocked", f"Operational checklist is missing or invalid: {exc}")
+    errors = validate_rows(rows)
+    by_id: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if isinstance(row, dict):
+            item_id = str(row.get("item_id", "")).strip()
+            if item_id:
+                by_id[item_id] = row
+    missing = [item_id for item_id in item_ids if item_id not in by_id]
+    if missing or errors:
+        return gate("blocked", f"{label} checklist evidence is invalid.", detail={"missing": missing, "validation_errors": errors})
+    statuses = {item_id: str(by_id[item_id].get("status", "")) for item_id in item_ids}
+    if any(status in {"fail", "blocked"} for status in statuses.values()):
+        return gate("blocked", f"{label} checklist execution failed or is blocked.", detail={"statuses": statuses})
+    if any(status in {"pending", "not_started"} for status in statuses.values()):
+        return gate("pending", f"{label} checklist execution is pending.", detail={"statuses": statuses})
+    if any(status != "pass" for status in statuses.values()):
+        return gate("blocked", f"{label} checklist has an invalid status.", detail={"statuses": statuses})
+    return gate("pass", f"{label} operational evidence is complete.", detail={"statuses": statuses})
 
 
 def build_current_projection_gate(
@@ -315,14 +351,8 @@ def build_readiness() -> dict[str, Any]:
 
     gates["current_projection_conflicts"] = build_current_projection_gate(phase3p, phase3s)
 
-    gates["legacy_write_freeze_execution"] = gate(
-        "pending",
-        "Legacy write freeze cannot be executed until desktop/private-share evidence and cutover window approval are complete.",
-    )
-    gates["rollback_window_execution"] = gate(
-        "pending",
-        "Rollback execution remains pending until production cutover window is approved.",
-    )
+    gates["legacy_write_freeze_execution"] = build_operational_gate(FREEZE_ITEM_IDS, "Legacy write freeze")
+    gates["rollback_window_execution"] = build_operational_gate(ROLLBACK_ITEM_IDS, "Rollback window")
 
     statuses = [payload["status"] for payload in gates.values()]
     if any(status == "blocked" for status in statuses):

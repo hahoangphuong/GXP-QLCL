@@ -13,20 +13,24 @@ Prepare a truthful, evidence-driven cutover gate for switching authority from le
 The tracked checklist is an immutable release template, not live operator evidence. Before the cutover window, initialize one external absolute directory that is outside `/opt/gxp/src/GXP-QLCL` and retain it across releases:
 
 ```bash
-/opt/gxp/current-venv/bin/python tools/init_phase7_execution.py \
-  --output-dir /var/lib/gxp/phase7-execution
+cd /opt/gxp/current-backend
+PY=/opt/gxp/current-venv/bin/python
+export PYTHONPATH=/opt/gxp/current-backend
+EVIDENCE_DIR=/var/lib/gxp/phase7-execution
+
+"$PY" -m tools.init_phase7_execution --output-dir "$EVIDENCE_DIR"
 ```
 
 Operators update only `/var/lib/gxp/phase7-execution/cutover_execution_checklist.json`. All Phase 7 generated outputs are written back to that same directory and every operational tool requires the explicit directory:
 
 ```bash
-/opt/gxp/current-venv/bin/python tools/build_phase7_cutover_readiness.py --evidence-dir /var/lib/gxp/phase7-execution
-/opt/gxp/current-venv/bin/python tools/validate_phase7_cutover_checklist.py --evidence-dir /var/lib/gxp/phase7-execution
-/opt/gxp/current-venv/bin/python tools/build_phase7b_operational_pack.py --evidence-dir /var/lib/gxp/phase7-execution
-/opt/gxp/current-venv/bin/python tools/build_phase7_final_closeout.py --evidence-dir /var/lib/gxp/phase7-execution
+"$PY" -m tools.build_phase7_cutover_readiness --evidence-dir "$EVIDENCE_DIR"
+"$PY" -m tools.validate_phase7_cutover_checklist --evidence-dir "$EVIDENCE_DIR"
+"$PY" -m tools.build_phase7b_operational_pack --evidence-dir "$EVIDENCE_DIR"
+"$PY" -m tools.build_phase7_final_closeout --evidence-dir "$EVIDENCE_DIR"
 ```
 
-`/var/lib/gxp/phase7-execution` is an example only; deployment configuration does not hardcode an evidence path. Missing, malformed, or release-local evidence is rejected without fallback to the template.
+`/var/lib/gxp/phase7-execution` is an example only; deployment configuration does not hardcode an evidence path. The validator consumes `cutover_readiness.json`, so readiness must be built before validation. Missing, malformed, or release-local evidence is rejected without fallback to the template.
 
 ## Gate model
 Phase 7 separates:

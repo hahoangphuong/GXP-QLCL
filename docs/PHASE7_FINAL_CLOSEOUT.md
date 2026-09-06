@@ -15,7 +15,7 @@ Cutover readiness is not final closeout: the first seven required conditions can
 - Rollback-window execution approval is still pending.
 
 ## Outputs
-The release contains only the immutable [checklist template](/D:/GXP-QLCL/artifacts/phase7/cutover_execution_checklist.template.json). Operator-mutated evidence and every generated Phase 7 output belong in the same explicit external evidence directory. That directory is initialized with `tools/init_phase7_execution.py --output-dir <absolute-external-path>` and then used with `--evidence-dir <same-path>` for readiness, checklist validation, the Phase 7b pack, and this final closeout builder.
+The release contains only the immutable [checklist template](/D:/GXP-QLCL/artifacts/phase7/cutover_execution_checklist.template.json). Operator-mutated evidence and every generated Phase 7 output belong in the same explicit external evidence directory. From `/opt/gxp/current-backend`, set `PY=/opt/gxp/current-venv/bin/python` and `PYTHONPATH=/opt/gxp/current-backend`, then invoke `"$PY" -m tools.init_phase7_execution --output-dir <absolute-external-path>` followed by the other `"$PY" -m tools.<module>` commands with `--evidence-dir <same-path>`.
 
 The external directory contains:
 - `cutover_execution_checklist.json`

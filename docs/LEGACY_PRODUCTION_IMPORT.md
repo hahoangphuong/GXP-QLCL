@@ -173,8 +173,10 @@ python3 tools/import_legacy_production.py \
 8. Rebuild/read the Phase 7 gate:
 
 ```bash
-cd /opt/gxp/src/GXP-QLCL
-python3 tools/build_phase7_cutover_readiness.py
+cd /opt/gxp/current-backend
+PY=/opt/gxp/current-venv/bin/python
+export PYTHONPATH=/opt/gxp/current-backend
+"$PY" -m tools.build_phase7_cutover_readiness --evidence-dir "$EVIDENCE_DIR"
 ```
 
 9. Verify runtime health:

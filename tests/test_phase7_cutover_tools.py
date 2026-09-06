@@ -17,6 +17,32 @@ def test_cutover_runbook_requires_explicit_identity_provisioning_and_readiness_v
     assert text.index("Capture `excel_read_only_archive_mode` evidence") > text.index("### Post-go-live")
 
 
+def test_phase7_operator_docs_use_module_invocation_in_dependency_order():
+    root = Path(__file__).resolve().parents[1]
+    documents = [
+        root / "docs" / "PHASE7_CUTOVER_BASELINE.md",
+        root / "docs" / "PHASE7_CUTOVER_RUNBOOK.md",
+        root / "docs" / "PHASE7_FINAL_CLOSEOUT.md",
+        root / "docs" / "PHASE7B_OPERATIONAL_PACK.md",
+        root / "docs" / "LEGACY_PRODUCTION_IMPORT.md",
+    ]
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in documents)
+
+    assert "PYTHONPATH=/opt/gxp/current-backend" in combined
+    for module in (
+        "tools.init_phase7_execution",
+        "tools.build_phase7_cutover_readiness",
+        "tools.validate_phase7_cutover_checklist",
+        "tools.build_phase7b_operational_pack",
+        "tools.build_phase7_final_closeout",
+    ):
+        assert f'"$PY" -m {module}' in combined
+    assert "python tools.init_phase7_execution.py" not in combined
+    runbook = (root / "docs" / "PHASE7_CUTOVER_RUNBOOK.md").read_text(encoding="utf-8")
+    assert runbook.index("tools.build_phase7_cutover_readiness") < runbook.index("tools.validate_phase7_cutover_checklist")
+    assert runbook.index("tools.build_phase7b_operational_pack") < runbook.index("tools.build_phase7_final_closeout")
+
+
 def test_validate_rows_accepts_known_statuses():
     errors = validate_rows(
         [

@@ -102,9 +102,12 @@ Archive the successful verifier output with the cutover evidence. A failed verif
 Initialize and retain an external evidence directory before the change window. The path must be outside the release tree:
 
 ```bash
-cd /opt/gxp/src/GXP-QLCL
-/opt/gxp/current-venv/bin/python tools/init_phase7_execution.py \
-  --output-dir /var/lib/gxp/phase7-execution
+cd /opt/gxp/current-backend
+PY=/opt/gxp/current-venv/bin/python
+export PYTHONPATH=/opt/gxp/current-backend
+EVIDENCE_DIR=/var/lib/gxp/phase7-execution
+
+"$PY" -m tools.init_phase7_execution --output-dir "$EVIDENCE_DIR"
 ```
 
 ### Pre-switch
@@ -125,10 +128,11 @@ cd /opt/gxp/src/GXP-QLCL
 9. Review reconciliation outputs, obtain sign-off, update the external `cutover_execution_checklist.json`, and build the cutover readiness report:
 
 ```bash
-cd /opt/gxp/src/GXP-QLCL
-/opt/gxp/current-venv/bin/python tools/build_phase7_cutover_readiness.py --evidence-dir /var/lib/gxp/phase7-execution
-/opt/gxp/current-venv/bin/python tools/validate_phase7_cutover_checklist.py --evidence-dir /var/lib/gxp/phase7-execution
+"$PY" -m tools.build_phase7_cutover_readiness --evidence-dir "$EVIDENCE_DIR"
+"$PY" -m tools.validate_phase7_cutover_checklist --evidence-dir "$EVIDENCE_DIR"
 ```
+
+The validator consumes `cutover_readiness.json`; do not run it before the readiness builder.
 
 `CUTOVER READY` means the seven pre-switch conditions are complete. It does not mean final Phase 7 closeout is complete; `excel_read_only_archive_mode` remains required after go-live.
 
@@ -143,11 +147,10 @@ cd /opt/gxp/src/GXP-QLCL
 15. Build final Phase 7 closeout only after all eight checklist rows and the operational pack are complete:
 
 ```bash
-cd /opt/gxp/src/GXP-QLCL
-/opt/gxp/current-venv/bin/python tools/build_phase7_cutover_readiness.py --evidence-dir /var/lib/gxp/phase7-execution
-/opt/gxp/current-venv/bin/python tools/validate_phase7_cutover_checklist.py --evidence-dir /var/lib/gxp/phase7-execution
-/opt/gxp/current-venv/bin/python tools/build_phase7b_operational_pack.py --evidence-dir /var/lib/gxp/phase7-execution
-/opt/gxp/current-venv/bin/python tools/build_phase7_final_closeout.py --evidence-dir /var/lib/gxp/phase7-execution
+"$PY" -m tools.build_phase7_cutover_readiness --evidence-dir "$EVIDENCE_DIR"
+"$PY" -m tools.validate_phase7_cutover_checklist --evidence-dir "$EVIDENCE_DIR"
+"$PY" -m tools.build_phase7b_operational_pack --evidence-dir "$EVIDENCE_DIR"
+"$PY" -m tools.build_phase7_final_closeout --evidence-dir "$EVIDENCE_DIR"
 ```
 
 ## Rollback trigger examples

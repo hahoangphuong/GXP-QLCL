@@ -20,11 +20,14 @@ It turns the remaining pending items into explicit execution/evidence tasks.
 - required evidence fields per remaining cutover item
 
 ## Intended workflow
-1. Use [cutover_operational_pack.md](/D:/GXP-QLCL/artifacts/phase7b/cutover_operational_pack.md) during cutover preparation.
+1. Use `"$PY" -m tools.build_phase7b_operational_pack --evidence-dir "$EVIDENCE_DIR"` after post-go-live archive evidence is captured.
 2. Collect evidence for each remaining item.
-3. Update the Phase 7 checklist template and rerun:
-   - [tools/validate_phase7_cutover_checklist.py](/D:/GXP-QLCL/tools/validate_phase7_cutover_checklist.py)
-   - [tools/build_phase7_final_closeout.py](/D:/GXP-QLCL/tools/build_phase7_final_closeout.py)
+3. Update the external execution checklist, then rerun readiness before validation because validation consumes `cutover_readiness.json`:
+   - `"$PY" -m tools.build_phase7_cutover_readiness --evidence-dir "$EVIDENCE_DIR"`
+   - `"$PY" -m tools.validate_phase7_cutover_checklist --evidence-dir "$EVIDENCE_DIR"`
+   - `"$PY" -m tools.build_phase7_final_closeout --evidence-dir "$EVIDENCE_DIR"`
+
+All commands run from `/opt/gxp/current-backend` with `PY=/opt/gxp/current-venv/bin/python` and `PYTHONPATH=/opt/gxp/current-backend`.
 
 ## Scope boundary
 This pack does not replace the live operational work.

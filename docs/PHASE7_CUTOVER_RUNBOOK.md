@@ -110,6 +110,33 @@ EVIDENCE_DIR=/var/lib/gxp/phase7-execution
 "$PY" -m tools.init_phase7_execution --output-dir "$EVIDENCE_DIR"
 ```
 
+Use the external execution checklist only. Never hand-edit the tracked template in
+the release tree. Before changing one operational row, dry-run the owner tool and
+then apply the exact update. The tool creates a same-directory backup but does not
+refresh generated readiness or summary artifacts:
+
+```bash
+"$PY" -m tools.update_phase7_execution_item \
+  --evidence-dir "$EVIDENCE_DIR" \
+  --item-id "<exact-authoritative-item-id>" \
+  --status "<status>" \
+  --set "notes=<operator-note>" \
+  --dry-run
+
+"$PY" -m tools.update_phase7_execution_item \
+  --evidence-dir "$EVIDENCE_DIR" \
+  --item-id "<exact-authoritative-item-id>" \
+  --status "<status>" \
+  --set "notes=<operator-note>"
+
+"$PY" -m tools.build_phase7_cutover_readiness --evidence-dir "$EVIDENCE_DIR"
+"$PY" -m tools.validate_phase7_cutover_checklist --evidence-dir "$EVIDENCE_DIR"
+```
+
+Use repeatable `--evidence-ref` and, where required, `--command-ref` options for
+list evidence fields. Archive the resulting external checklist, its backup, and
+the regenerated outputs with the cutover evidence.
+
 ### Pre-switch
 1. Confirm the Phase 6 desktop/private-share and current-projection prerequisites.
 2. Approve the change window and confirm rollback contacts.

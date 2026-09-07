@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.db.enums import StorageResolutionStatus
-from backend.app.db.models.phase1 import CaseApplication, StorageBinding, StorageResolutionLog
+from backend.app.db.models.phase1 import StorageBinding, StorageResolutionLog
 from backend.app.storage.types import StorageResolution, StorageServiceProtocol
 
 
@@ -61,48 +61,6 @@ class StorageBindingService:
             StorageBinding.inspection_legacy_code == inspection_legacy_code,
         )
         return session.scalars(stmt).one_or_none()
-
-    @staticmethod
-    def _submission_year(session: Session, *, case_id: str | None) -> int | None:
-        if not case_id:
-            return None
-        submitted_on = session.scalar(
-            select(CaseApplication.submitted_on).where(CaseApplication.case_id == case_id)
-        )
-        return None if submitted_on is None else submitted_on.year
-
-    def _resolve_submission_window(
-        self,
-        session: Session,
-        *,
-        case_id: str | None,
-        site_legacy_id: int,
-        inspection_legacy_code: str,
-    ) -> tuple[StorageResolution, int | None]:
-        submission_year = self._submission_year(session, case_id=case_id)
-        if submission_year is None:
-            return (
-                StorageResolution(
-                    status=StorageResolutionStatus.INVALID,
-                    relative_path=None,
-                    absolute_path=None,
-                    candidate_count=0,
-                    detail="Case application submitted_on is required for bounded inspection folder resolution.",
-                ),
-                None,
-            )
-
-        for lookup_year in (submission_year, submission_year + 1):
-            resolution = self.storage.resolve_inspection_folder(
-                case_id=case_id,
-                year=lookup_year,
-                site_legacy_id=site_legacy_id,
-                inspection_legacy_code=inspection_legacy_code,
-            )
-            # A match or ambiguity in the current priority year is authoritative.
-            if resolution.status != StorageResolutionStatus.NOT_FOUND:
-                return resolution, lookup_year
-        return resolution, submission_year + 1
 
     @staticmethod
     def _resolved_year(resolution: StorageResolution) -> int:
@@ -190,25 +148,16 @@ class StorageBindingService:
                 source="binding",
             )
 
-        if year is None:
-            resolution, lookup_year = self._resolve_submission_window(
-                session,
-                case_id=case_id,
-                site_legacy_id=site_legacy_id,
-                inspection_legacy_code=inspection_legacy_code,
-            )
-        else:
-            lookup_year = year
-            resolution = self.storage.resolve_inspection_folder(
-                case_id=case_id,
-                year=year,
-                site_legacy_id=site_legacy_id,
-                inspection_legacy_code=inspection_legacy_code,
-            )
+        resolution = self.storage.resolve_inspection_folder(
+            case_id=case_id,
+            year=year,
+            site_legacy_id=site_legacy_id,
+            inspection_legacy_code=inspection_legacy_code,
+        )
         self._persist_resolution_log(
             session,
             case_id=case_id,
-            year=lookup_year if resolution.status != StorageResolutionStatus.RESOLVED else self._resolved_year(resolution),
+            year=year if resolution.status != StorageResolutionStatus.RESOLVED else self._resolved_year(resolution),
             site_legacy_id=site_legacy_id,
             inspection_legacy_code=inspection_legacy_code,
             resolution=resolution,

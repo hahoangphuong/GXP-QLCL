@@ -14,6 +14,7 @@ from backend.app.storage.types import (
     StorageEntry,
     StorageOperationError,
     StorageResolution,
+    is_numeric_inspection_year,
     matches_inspection_identity,
 )
 
@@ -65,18 +66,27 @@ class LocalStorageService:
         site_legacy_id: int,
         inspection_legacy_code: str,
     ) -> StorageResolution:
-        if year is None or year <= 0 or site_legacy_id <= 0 or not str(inspection_legacy_code or "").strip():
+        if (year is not None and year <= 0) or site_legacy_id <= 0 or not str(inspection_legacy_code or "").strip():
             return StorageResolution(
                 status=StorageResolutionStatus.INVALID,
                 relative_path=None,
                 absolute_path=None,
                 candidate_count=0,
-                detail="A specific inspection year and exact legacy identity are required.",
+                detail="Missing or invalid inspection folder identity input.",
             )
-        year_root = self.inspection_root / str(year)
+
+        if year is not None:
+            year_roots = [self.inspection_root / str(year)]
+        else:
+            year_roots = sorted(
+                (path for path in self.inspection_root.iterdir() if path.is_dir() and is_numeric_inspection_year(path.name)),
+                key=lambda path: path.name,
+            )
         matches = [
             path
-            for path in (year_root.iterdir() if year_root.exists() and year_root.is_dir() else [])
+            for year_root in year_roots
+            if year_root.exists() and year_root.is_dir()
+            for path in year_root.iterdir()
             if path.is_dir()
             and matches_inspection_identity(
                 path.name,

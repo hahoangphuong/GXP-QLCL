@@ -21,7 +21,6 @@ from backend.app.storage.types import (
     StorageOperationError,
     StorageResolution,
 )
-from backend.app.db.enums import StorageResolutionStatus
 
 
 class ExternalBridgeStorageService:
@@ -150,14 +149,6 @@ class ExternalBridgeStorageService:
         site_legacy_id: int,
         inspection_legacy_code: str,
     ) -> StorageResolution:
-        if year is None or year <= 0:
-            return StorageResolution(
-                status=StorageResolutionStatus.INVALID,
-                relative_path=None,
-                absolute_path=None,
-                candidate_count=0,
-                detail="A specific inspection year and exact legacy identity are required.",
-            )
         payload = self._request_json(
             "POST",
             "/bridge/storage/inspection-folder/resolve",

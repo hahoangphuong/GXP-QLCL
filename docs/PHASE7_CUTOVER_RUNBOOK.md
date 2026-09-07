@@ -137,6 +137,13 @@ Use repeatable `--evidence-ref` and, where required, `--command-ref` options for
 list evidence fields. Archive the resulting external checklist, its backup, and
 the regenerated outputs with the cutover evidence.
 
+For a single-person test or rehearsal only, `rollback_contacts_confirmed` may use
+`--set "operator_mode=single_operator_test"`, `--set "backup_contact=N/A"`, and
+`--set "escalation_path=N/A"` with its normal owner, primary-contact, timestamp,
+notes, and evidence requirements. This is not a production shortcut. Before a
+production cutover, review the mode and normally set `operator_mode=standard` with
+real backup and escalation contacts for multi-operator operation.
+
 ### Pre-switch
 1. Confirm the Phase 6 desktop/private-share and current-projection prerequisites.
 2. Approve the change window and confirm rollback contacts.

@@ -7,7 +7,7 @@ from pathlib import Path
 from tools import init_phase7_execution as initializer
 from tools import update_phase7_execution_item as updater
 from tools.phase7_execution_evidence import ROOT, TEMPLATE_PATH
-from tools.validate_phase7_cutover_checklist import AUTHORITATIVE_ITEM_IDS
+from tools.validate_phase7_cutover_checklist import AUTHORITATIVE_ITEM_IDS, validate_rows
 
 
 def _evidence_dir(tmp_path: Path) -> Path:
@@ -35,6 +35,16 @@ def _rollback_pass_args() -> list[str]:
         "--set", "notes=confirmed", "--set", "primary_contact=primary",
         "--set", "backup_contact=backup", "--set", "escalation_path=path",
         "--evidence-ref", "ticket-1",
+    ]
+
+
+def _rollback_single_operator_args() -> list[str]:
+    return [
+        "--item-id", "rollback_contacts_confirmed", "--status", "pass",
+        "--set", "owner=owner", "--set", "executed_on=2026-09-06T10:00:00+00:00",
+        "--set", "notes=confirmed", "--set", "primary_contact=primary",
+        "--set", "operator_mode=single_operator_test", "--set", "backup_contact=N/A",
+        "--set", "escalation_path=N/A", "--evidence-ref", "ticket-1",
     ]
 
 
@@ -108,6 +118,12 @@ def test_rejects_list_fields_and_duplicate_scalars_through_set(tmp_path: Path) -
     assert _checklist_path(evidence_dir).read_bytes() == original
 
 
+def test_operator_mode_is_mutable_only_for_rollback_contacts(tmp_path: Path) -> None:
+    evidence_dir = _evidence_dir(tmp_path)
+    assert _update(evidence_dir, "--item-id", "desktop_phase6_complete", "--status", "pending", "--set", "operator_mode=single_operator_test") == 1
+    assert _update(evidence_dir, "--item-id", "rollback_contacts_confirmed", "--status", "pending", "--set", "operator_mode=standard") == 0
+
+
 def test_pass_validation_for_rollback_and_freeze_timestamps(tmp_path: Path) -> None:
     evidence_dir = _evidence_dir(tmp_path)
     assert _update(evidence_dir, *_rollback_pass_args()) == 0
@@ -117,6 +133,40 @@ def test_pass_validation_for_rollback_and_freeze_timestamps(tmp_path: Path) -> N
     assert _update(evidence_dir, *_replace_set(_freeze_pass_args(), "executed_on", "invalid")) == 1
     assert _update(evidence_dir, *_replace_set(_freeze_pass_args(), "freeze_start", "invalid")) == 1
     assert _update(evidence_dir, *_freeze_pass_args()) == 0
+
+
+def test_rollback_operator_modes_fail_closed_without_weakening_standard_mode(tmp_path: Path) -> None:
+    evidence_dir = _evidence_dir(tmp_path)
+    assert _update(evidence_dir, *_rollback_pass_args()) == 0
+    assert _update(evidence_dir, *_replace_set(_rollback_pass_args(), "backup_contact", "N/A")) == 1
+    assert _update(evidence_dir, *_replace_set(_rollback_pass_args(), "escalation_path", "N/A")) == 1
+
+    single = _rollback_single_operator_args()
+    assert _update(evidence_dir, *_replace_set(single, "backup_contact", "backup")) == 1
+    assert _update(evidence_dir, *_replace_set(single, "escalation_path", "path")) == 1
+    assert _update(evidence_dir, *_replace_set(single, "owner", "")) == 1
+    assert _update(evidence_dir, *_replace_set(single, "primary_contact", "")) == 1
+    assert _update(evidence_dir, *_replace_set(single, "operator_mode", "unknown")) == 1
+
+    isolated = _evidence_dir(tmp_path / "single")
+    assert _update(isolated, *_rollback_single_operator_args()) == 0
+    row = next(row for row in _payload(isolated)["items"] if row["item_id"] == "rollback_contacts_confirmed")
+    assert row["operator_mode"] == "single_operator_test"
+
+
+def test_single_operator_mode_requires_evidence_and_preserves_authoritative_ids(tmp_path: Path) -> None:
+    evidence_dir = _evidence_dir(tmp_path)
+    without_evidence = [argument for argument in _rollback_single_operator_args() if argument not in {"--evidence-ref", "ticket-1"}]
+    assert _update(evidence_dir, *without_evidence) == 1
+    payload = _payload(evidence_dir)
+    rollback = next(row for row in payload["items"] if row["item_id"] == "rollback_contacts_confirmed")
+    rollback.update({
+        "status": "pass", "owner": "owner", "executed_on": "2026-09-06T10:00:00+00:00",
+        "notes": "done", "primary_contact": "primary", "operator_mode": "single_operator_test",
+        "backup_contact": "N/A", "escalation_path": "N/A", "evidence_refs": ["evidence"],
+    })
+    assert validate_rows(payload["items"]) == []
+    assert {row["item_id"] for row in payload["items"]} == AUTHORITATIVE_ITEM_IDS
 
 
 def test_list_fields_are_typed_deterministic_and_dry_run_has_no_filesystem_effects(tmp_path: Path) -> None:

@@ -18,6 +18,7 @@ from tools.validate_phase7_cutover_checklist import (
     ALLOWED_STATUSES,
     AUTHORITATIVE_ITEM_IDS,
     OPERATIONAL_EVIDENCE_FIELDS,
+    OPERATIONAL_OPTIONAL_FIELDS,
     validate_rows,
 )
 
@@ -33,6 +34,7 @@ LIST_FIELDS = frozenset({"evidence_refs", "command_refs"})
 def _allowed_scalar_fields(item_id: str) -> frozenset[str]:
     fields = set(COMMON_MUTABLE_FIELDS)
     fields.update(OPERATIONAL_EVIDENCE_FIELDS.get(item_id, ()))
+    fields.update(OPERATIONAL_OPTIONAL_FIELDS.get(item_id, ()))
     return frozenset(fields)
 
 

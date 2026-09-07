@@ -36,6 +36,11 @@ OPERATIONAL_EVIDENCE_FIELDS = {
     "rollback_contacts_confirmed": ("owner", "executed_on", "notes", "primary_contact", "backup_contact", "escalation_path"),
     "excel_read_only_archive_mode": ("owner", "executed_on", "notes", "archive_owner", "archive_step_ref"),
 }
+OPERATIONAL_OPTIONAL_FIELDS = {
+    "rollback_contacts_confirmed": ("operator_mode",),
+}
+ROLLBACK_OPERATOR_MODES = {"standard", "single_operator_test"}
+ROLLBACK_SINGLE_OPERATOR_VALUE = "N/A"
 
 
 def _parse_timestamp(value: str) -> datetime | None:
@@ -50,6 +55,24 @@ def _parse_timestamp(value: str) -> datetime | None:
 
 def _nonblank_strings(value: Any) -> bool:
     return isinstance(value, list) and bool(value) and all(isinstance(item, str) and item.strip() for item in value)
+
+
+def _validate_rollback_contacts(row: dict[str, Any], errors: list[str]) -> None:
+    item_id = "rollback_contacts_confirmed"
+    operator_mode = row.get("operator_mode", "standard")
+    if operator_mode not in ROLLBACK_OPERATOR_MODES:
+        errors.append(f"{item_id}: invalid operator_mode {operator_mode!r}")
+        return
+    backup_contact = row.get("backup_contact")
+    escalation_path = row.get("escalation_path")
+    if operator_mode == "single_operator_test":
+        for field, value in (("backup_contact", backup_contact), ("escalation_path", escalation_path)):
+            if value != ROLLBACK_SINGLE_OPERATOR_VALUE:
+                errors.append(f"{item_id}: {field} must equal {ROLLBACK_SINGLE_OPERATOR_VALUE!r} in single_operator_test mode")
+        return
+    for field, value in (("backup_contact", backup_contact), ("escalation_path", escalation_path)):
+        if not isinstance(value, str) or not value.strip() or value == ROLLBACK_SINGLE_OPERATOR_VALUE:
+            errors.append(f"{item_id}: missing or invalid {field} in standard mode")
 
 
 def load_json(path: Path) -> Any:
@@ -80,8 +103,12 @@ def validate_rows(rows: list[dict[str, Any]]) -> list[str]:
         if status != "pass" or item_id not in OPERATIONAL_EVIDENCE_FIELDS:
             continue
         for field in OPERATIONAL_EVIDENCE_FIELDS[item_id]:
+            if item_id == "rollback_contacts_confirmed" and field in {"backup_contact", "escalation_path"}:
+                continue
             if not isinstance(row.get(field), str) or not row[field].strip():
                 errors.append(f"{item_id}: missing or invalid {field}")
+        if item_id == "rollback_contacts_confirmed":
+            _validate_rollback_contacts(row, errors)
         if not _nonblank_strings(row.get("evidence_refs")):
             errors.append(f"{item_id}: missing or invalid evidence_refs")
         if item_id == "final_phase2_import_rerun" and not _nonblank_strings(row.get("command_refs")):

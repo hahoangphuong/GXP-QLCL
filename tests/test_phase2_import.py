@@ -132,6 +132,38 @@ def test_import_snapshot_loads_primary_entities():
         assert reconciliation["mismatches"] == {}
 
 
+def test_import_snapshot_projects_canonical_inspection_folder_code_from_legacy_identity():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        import_snapshot(session, sample_snapshot())
+        session.commit()
+
+        case = session.scalars(select(Case)).one()
+
+    assert case.legacy_inspection_id == 100
+    assert case.legacy_inspection_code == "KT-100-GMP"
+
+
+def test_import_snapshot_projects_gmpbb_and_glp_inspection_folder_codes_without_fabricating_unknown_type():
+    snapshot = sample_snapshot()
+    snapshot["db.ktra"] = [
+        {**snapshot["db.ktra"][0], "ID": "101", "LOẠI KT": " GMPbb "},
+        {**snapshot["db.ktra"][0], "ID": "102", "LOẠI KT": "GLP"},
+        {**snapshot["db.ktra"][0], "ID": "103", "LOẠI KT": "UNKNOWN"},
+    ]
+    snapshot["db.cc"] = []
+    snapshot["db.dkkd"] = []
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        import_snapshot(session, snapshot)
+        session.commit()
+        cases = {case.legacy_inspection_id: case for case in session.scalars(select(Case))}
+
+    assert cases[101].legacy_inspection_code == "KT-101-GMPbb"
+    assert cases[102].legacy_inspection_code == "KT-102-GLP"
+    assert cases[103].legacy_inspection_code is None
+
+
 def test_import_snapshot_populates_general_info_owner_fields_from_legacy_db_cso():
     engine = create_engine("sqlite:///:memory:", future=True)
     with Session(engine) as session:

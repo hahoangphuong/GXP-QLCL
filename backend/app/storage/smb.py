@@ -8,7 +8,14 @@ from uuid import uuid4
 
 from backend.app.db.enums import StorageResolutionStatus
 from backend.app.storage.local import _normalize_relative
-from backend.app.storage.types import SmbStorageConfig, StorageEntry, StorageOperationError, StorageResolution
+from backend.app.storage.types import (
+    SmbStorageConfig,
+    StorageEntry,
+    StorageOperationError,
+    StorageResolution,
+    is_numeric_inspection_year,
+    matches_inspection_identity,
+)
 
 try:
     import smbclient
@@ -113,11 +120,11 @@ class SmbStorageService:
         self,
         *,
         case_id: str | None = None,
-        year: int,
+        year: int | None = None,
         site_legacy_id: int,
         inspection_legacy_code: str,
     ) -> StorageResolution:
-        if year <= 0 or site_legacy_id <= 0 or not str(inspection_legacy_code or "").strip():
+        if (year is not None and year <= 0) or site_legacy_id <= 0 or not str(inspection_legacy_code or "").strip():
             return StorageResolution(
                 status=StorageResolutionStatus.INVALID,
                 relative_path=None,
@@ -125,21 +132,25 @@ class SmbStorageService:
                 candidate_count=0,
                 detail="Missing or invalid inspection folder identity input.",
             )
-        year_root = self._join_root(self.inspection_root, str(year))
-        if not smbpath.exists(year_root) or not smbpath.isdir(year_root):
-            return StorageResolution(
-                status=StorageResolutionStatus.NOT_FOUND,
-                relative_path=None,
-                absolute_path=None,
-                candidate_count=0,
-                detail=f"Year folder '{year}' not found under inspection root.",
-            )
-        site_token = f"(ID-{site_legacy_id})".lower()
-        inspection_token = f"({inspection_legacy_code})".lower()
+        if year is not None:
+            year_roots = [self._join_root(self.inspection_root, str(year))]
+        else:
+            year_roots = [
+                entry.path
+                for entry in smbclient.scandir(self.inspection_root)
+                if entry.is_dir() and is_numeric_inspection_year(entry.name)
+            ]
         matches = [
             entry.path
+            for year_root in year_roots
+            if smbpath.exists(year_root) and smbpath.isdir(year_root)
             for entry in smbclient.scandir(year_root)
-            if entry.is_dir() and site_token in entry.name.lower() and inspection_token in entry.name.lower()
+            if entry.is_dir()
+            and matches_inspection_identity(
+                entry.name,
+                site_legacy_id=site_legacy_id,
+                inspection_legacy_code=inspection_legacy_code,
+            )
         ]
         return self._resolution_from_matches(
             root=self.inspection_root,

@@ -23,7 +23,7 @@ def register_storage_routes(app, session_factory) -> None:
     session_dependency = Depends(get_session_from_request_factory(session_factory))
 
     def lookup_inspection_folder(
-        year: int = Query(..., gt=0),
+        year: int | None = Query(default=None, gt=0),
         site_legacy_id: int = Query(..., gt=0),
         inspection_legacy_code: str = Query(..., min_length=1),
         case_id: str | None = Query(default=None),

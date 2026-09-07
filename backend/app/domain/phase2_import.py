@@ -315,6 +315,12 @@ def parse_int(value: str | int | None) -> int | None:
         return None
 
 
+def normalize_inspection_gxp_type(value: str | None) -> str | None:
+    raw_value = str(value or "").strip()
+    canonical_values = {"gmp": "GMP", "glp": "GLP", "gmpbb": "GMPbb"}
+    return canonical_values.get(raw_value.lower())
+
+
 def source_row_number(row: dict[str, str]) -> int | None:
     return parse_int(row.get("__excel_row_number"))
 
@@ -1436,10 +1442,14 @@ def import_snapshot(
         assessed_at = parse_dt(row.get("assessed_at", ""))
         inspected_at = parse_dt(row.get("bbkt_reference", "")) or parse_dt(row.get("inspected_at", ""))
         identity_key = _source_identity_key(legacy_id, row_number)
+        normalized_gxp_type = normalize_inspection_gxp_type(row.get("inspection_gxp_type"))
         expected_fields = {
             "legacy_inspection_id": legacy_id,
             "site_id": site_id,
-            "gxp_type": row.get("inspection_gxp_type") or "UNKNOWN",
+            "gxp_type": normalized_gxp_type or str(row.get("inspection_gxp_type") or "").strip() or "UNKNOWN",
+            "legacy_inspection_code": (
+                f"KT-{legacy_id}-{normalized_gxp_type}" if legacy_id is not None and normalized_gxp_type is not None else None
+            ),
             "scope_code": row.get("scope_code") or None,
             "applicable_standard": row.get("applicable_standard") or None,
             "inspection_type": row.get("inspection_type") or None,

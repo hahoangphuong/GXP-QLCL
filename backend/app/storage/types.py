@@ -61,6 +61,23 @@ class StorageEntry:
     size: int | None
 
 
+def is_numeric_inspection_year(value: str) -> bool:
+    return len(value) == 4 and value.isascii() and value.isdigit()
+
+
+def matches_inspection_identity(
+    folder_name: str,
+    *,
+    site_legacy_id: int,
+    inspection_legacy_code: str,
+) -> bool:
+    """Match the two literal legacy identity tokens without name-based recovery."""
+    site_token = f"(ID-{site_legacy_id})".lower()
+    inspection_token = f"({inspection_legacy_code.strip()})".lower()
+    normalized_name = folder_name.lower()
+    return site_token in normalized_name and inspection_token in normalized_name
+
+
 class StorageServiceProtocol(Protocol):
     config: StorageConfig | SmbStorageConfig | ExternalBridgeStorageConfig
 
@@ -68,7 +85,7 @@ class StorageServiceProtocol(Protocol):
         self,
         *,
         case_id: str | None = None,
-        year: int,
+        year: int | None = None,
         site_legacy_id: int,
         inspection_legacy_code: str,
     ) -> StorageResolution: ...

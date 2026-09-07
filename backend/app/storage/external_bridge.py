@@ -145,7 +145,7 @@ class ExternalBridgeStorageService:
         self,
         *,
         case_id: str | None = None,
-        year: int,
+        year: int | None = None,
         site_legacy_id: int,
         inspection_legacy_code: str,
     ) -> StorageResolution:

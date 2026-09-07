@@ -62,6 +62,28 @@ class StorageBindingService:
         )
         return session.scalars(stmt).one_or_none()
 
+    def _load_bindings_for_identity(
+        self,
+        session: Session,
+        *,
+        site_legacy_id: int,
+        inspection_legacy_code: str,
+    ) -> list[StorageBinding]:
+        stmt = select(StorageBinding).where(
+            StorageBinding.site_legacy_id == site_legacy_id,
+            StorageBinding.inspection_legacy_code == inspection_legacy_code,
+        ).order_by(StorageBinding.year.asc())
+        return list(session.scalars(stmt))
+
+    @staticmethod
+    def _resolved_year(resolution: StorageResolution) -> int:
+        if resolution.relative_path is None:
+            raise RuntimeError("Resolved inspection folder is missing relative_path.")
+        first_component = resolution.relative_path.replace("\\", "/").split("/", 1)[0]
+        if len(first_component) != 4 or not first_component.isascii() or not first_component.isdigit():
+            raise RuntimeError("Resolved inspection folder must begin with a four-digit NAS year.")
+        return int(first_component)
+
     def _upsert_binding(
         self,
         session: Session,
@@ -105,16 +127,41 @@ class StorageBindingService:
         session: Session,
         *,
         case_id: str | None,
-        year: int,
+        year: int | None = None,
         site_legacy_id: int,
         inspection_legacy_code: str,
     ) -> InspectionFolderBindingResult:
-        binding = self._load_binding(
-            session,
-            year=year,
-            site_legacy_id=site_legacy_id,
-            inspection_legacy_code=inspection_legacy_code,
-        )
+        if year is None:
+            candidate_bindings = self._load_bindings_for_identity(
+                session,
+                site_legacy_id=site_legacy_id,
+                inspection_legacy_code=inspection_legacy_code,
+            )
+            if len(candidate_bindings) > 1:
+                resolution = StorageResolution(
+                    status=StorageResolutionStatus.AMBIGUOUS,
+                    relative_path=None,
+                    absolute_path=None,
+                    candidate_count=len(candidate_bindings),
+                    detail="More than one persisted storage_binding matched the legacy identity tokens.",
+                )
+                self._persist_resolution_log(
+                    session,
+                    case_id=case_id,
+                    year=None,
+                    site_legacy_id=site_legacy_id,
+                    inspection_legacy_code=inspection_legacy_code,
+                    resolution=resolution,
+                )
+                return InspectionFolderBindingResult(resolution=resolution, binding=None, source="binding")
+            binding = candidate_bindings[0] if candidate_bindings else None
+        else:
+            binding = self._load_binding(
+                session,
+                year=year,
+                site_legacy_id=site_legacy_id,
+                inspection_legacy_code=inspection_legacy_code,
+            )
         if binding is not None and self.storage.exists(binding.relative_path):
             resolution = StorageResolution(
                 status=StorageResolutionStatus.RESOLVED,
@@ -126,7 +173,7 @@ class StorageBindingService:
             self._persist_resolution_log(
                 session,
                 case_id=case_id,
-                year=year,
+                year=binding.year,
                 site_legacy_id=site_legacy_id,
                 inspection_legacy_code=inspection_legacy_code,
                 resolution=resolution,
@@ -146,7 +193,7 @@ class StorageBindingService:
         self._persist_resolution_log(
             session,
             case_id=case_id,
-            year=year,
+            year=year if resolution.status != StorageResolutionStatus.RESOLVED else self._resolved_year(resolution),
             site_legacy_id=site_legacy_id,
             inspection_legacy_code=inspection_legacy_code,
             resolution=resolution,
@@ -158,7 +205,7 @@ class StorageBindingService:
                     refreshed_binding = self._upsert_binding(
                         session,
                         case_id=case_id,
-                        year=year,
+                        year=year if year is not None else self._resolved_year(resolution),
                         site_legacy_id=site_legacy_id,
                         inspection_legacy_code=inspection_legacy_code,
                         resolution=resolution,
@@ -166,7 +213,7 @@ class StorageBindingService:
             except IntegrityError:
                 refreshed_binding = self._load_binding(
                     session,
-                    year=year,
+                    year=year if year is not None else self._resolved_year(resolution),
                     site_legacy_id=site_legacy_id,
                     inspection_legacy_code=inspection_legacy_code,
                 )

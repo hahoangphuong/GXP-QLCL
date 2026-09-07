@@ -123,7 +123,7 @@ def create_storage_bridge_app(storage_service: FilesystemStorageService | None =
         try:
             resolution = storage.resolve_inspection_folder(
                 case_id=payload.get("case_id"),
-                year=int(payload["year"]),
+                year=None if payload.get("year") is None else int(payload["year"]),
                 site_legacy_id=int(payload["site_legacy_id"]),
                 inspection_legacy_code=str(payload["inspection_legacy_code"]),
             )

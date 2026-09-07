@@ -33,7 +33,7 @@ class StorageBindingLookupService:
         session: Session,
         *,
         case_id: str | None,
-        year: int,
+        year: int | None = None,
         site_legacy_id: int,
         inspection_legacy_code: str,
     ) -> InspectionFolderLookup:

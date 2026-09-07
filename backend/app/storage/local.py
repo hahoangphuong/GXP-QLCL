@@ -9,7 +9,14 @@ import tempfile
 from typing import BinaryIO, Iterator
 
 from backend.app.db.enums import StorageResolutionStatus
-from backend.app.storage.types import StorageConfig, StorageEntry, StorageOperationError, StorageResolution
+from backend.app.storage.types import (
+    StorageConfig,
+    StorageEntry,
+    StorageOperationError,
+    StorageResolution,
+    is_numeric_inspection_year,
+    matches_inspection_identity,
+)
 
 
 def _normalize_relative(relative_path: str) -> str:
@@ -55,11 +62,11 @@ class LocalStorageService:
         self,
         *,
         case_id: str | None = None,
-        year: int,
+        year: int | None = None,
         site_legacy_id: int,
         inspection_legacy_code: str,
     ) -> StorageResolution:
-        if year <= 0 or site_legacy_id <= 0 or not str(inspection_legacy_code or "").strip():
+        if (year is not None and year <= 0) or site_legacy_id <= 0 or not str(inspection_legacy_code or "").strip():
             return StorageResolution(
                 status=StorageResolutionStatus.INVALID,
                 relative_path=None,
@@ -68,24 +75,24 @@ class LocalStorageService:
                 detail="Missing or invalid inspection folder identity input.",
             )
 
-        year_root = self.inspection_root / str(year)
-        if not year_root.exists() or not year_root.is_dir():
-            return StorageResolution(
-                status=StorageResolutionStatus.NOT_FOUND,
-                relative_path=None,
-                absolute_path=None,
-                candidate_count=0,
-                detail=f"Year folder '{year}' not found under inspection root.",
+        if year is not None:
+            year_roots = [self.inspection_root / str(year)]
+        else:
+            year_roots = sorted(
+                (path for path in self.inspection_root.iterdir() if path.is_dir() and is_numeric_inspection_year(path.name)),
+                key=lambda path: path.name,
             )
-
-        site_token = f"(ID-{site_legacy_id})".lower()
-        inspection_token = f"({inspection_legacy_code})".lower()
         matches = [
             path
+            for year_root in year_roots
+            if year_root.exists() and year_root.is_dir()
             for path in year_root.iterdir()
             if path.is_dir()
-            and site_token in path.name.lower()
-            and inspection_token in path.name.lower()
+            and matches_inspection_identity(
+                path.name,
+                site_legacy_id=site_legacy_id,
+                inspection_legacy_code=inspection_legacy_code,
+            )
         ]
         return self._resolution_from_matches(
             root=self.inspection_root,

@@ -20,6 +20,7 @@ class _FakeSmbClient:
         self.registered_sessions: list[tuple[str, dict[str, object]]] = []
         self.connection_cache_available = True
         self.directory_names = directory_names
+        self.directories_by_path: dict[str, list[str]] = {}
 
     def ClientConfig(self, **kwargs: str | None) -> None:
         self.client_config_calls.append(kwargs)
@@ -33,11 +34,18 @@ class _FakeSmbClient:
     def scandir(self, path: str) -> list[_DirectoryEntry]:
         if not self.connection_cache_available:
             assert self.client_config_calls == [{"username": "test-user", "password": "test-password"}]
-        return [_DirectoryEntry(path + "\\" + name, name) for name in self.directory_names]
+        names = self.directories_by_path.get(path, self.directory_names)
+        return [_DirectoryEntry(path + "\\" + name, name) for name in names]
 
 
 class _FakeSmbPath:
-    pass
+    @staticmethod
+    def exists(path: str) -> bool:
+        return True
+
+    @staticmethod
+    def isdir(path: str) -> bool:
+        return True
 
 
 def _service(monkeypatch, directory_names: list[str]) -> tuple[_FakeSmbClient, smb_storage.SmbStorageService]:
@@ -105,3 +113,19 @@ def test_smb_dkkd_resolution_rejects_obsolete_unkeyed_and_duplicate_identity_for
     assert duplicate.status is StorageResolutionStatus.AMBIGUOUS
     assert duplicate.candidate_count == 2
     assert duplicate.relative_path is None
+
+
+def test_smb_inspection_resolution_scans_numeric_years_for_exact_identity_only(monkeypatch) -> None:
+    fake_client, service = _service(monkeypatch, [])
+    root = service.inspection_root
+    fake_client.directories_by_path = {
+        root: ["2024", "2025", "Templates"],
+        root + r"\2024": ["Wrong - (ID-10) - (KT-1-GMP)"],
+        root + r"\2025": ["Exact - (ID-1) - (KT-1-GMP)", "Legacy - (1) - (KT-1-GMP)"],
+        root + r"\Templates": ["Ignored - (ID-1) - (KT-1-GMP)"],
+    }
+
+    resolution = service.resolve_inspection_folder(site_legacy_id=1, inspection_legacy_code="KT-1-GMP")
+
+    assert resolution.status is StorageResolutionStatus.RESOLVED
+    assert resolution.relative_path == "2025/Exact - (ID-1) - (KT-1-GMP)"

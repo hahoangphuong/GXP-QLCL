@@ -59,6 +59,17 @@ def test_storage_probe_route_is_registered():
     assert "/storage/dkkd-folder" in routes
 
 
+def test_inspection_folder_route_accepts_optional_year_without_changing_dkkd_contract():
+    app = create_app("sqlite:///:memory:")
+    schema = app.openapi()
+    inspection_parameters = schema["paths"]["/storage/inspection-folder"]["get"]["parameters"]
+    dkkd_parameters = schema["paths"]["/storage/dkkd-folder"]["get"]["parameters"]
+
+    year = next(parameter for parameter in inspection_parameters if parameter["name"] == "year")
+    assert year["required"] is False
+    assert all(parameter["name"] != "year" for parameter in dkkd_parameters)
+
+
 def test_storage_lookup_state_can_use_existing_binding(tmp_path: Path):
     storage = build_storage_service(tmp_path)
     folder = storage.inspection_root / "2026" / "Folder - (ID-103) - (KT-1376-GMP)"

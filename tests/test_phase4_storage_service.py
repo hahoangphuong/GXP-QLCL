@@ -107,9 +107,32 @@ def test_cross_year_resolution_persists_actual_nas_year_and_never_binds_nonresol
     assert bindings[0].year == 2024
 
 
-def test_cross_year_binding_lookup_rejects_multiple_persisted_year_bindings(tmp_path: Path):
+def test_cross_year_lookup_uses_live_namespace_when_persisted_binding_becomes_duplicate(tmp_path: Path):
     service = build_service(tmp_path)
     binding_service = StorageBindingService(service)
+    (service.inspection_root / "2024" / "A - (ID-103) - (KT-1376-GMP)").mkdir(parents=True)
+    with build_session() as session:
+        first = binding_service.resolve_inspection_folder(
+            session, case_id=None, year=None, site_legacy_id=103, inspection_legacy_code="KT-1376-GMP"
+        )
+        session.commit()
+        (service.inspection_root / "2025" / "B - (ID-103) - (KT-1376-GMP)").mkdir(parents=True)
+
+        result = binding_service.resolve_inspection_folder(
+            session, case_id=None, year=None, site_legacy_id=103, inspection_legacy_code="KT-1376-GMP"
+        )
+
+    assert first.resolution.status == StorageResolutionStatus.RESOLVED
+    assert result.resolution.status == StorageResolutionStatus.AMBIGUOUS
+    assert result.resolution.candidate_count == 2
+    assert result.binding is None
+
+
+def test_cross_year_lookup_ignores_stale_bindings_when_one_live_identity_remains(tmp_path: Path):
+    service = build_service(tmp_path)
+    binding_service = StorageBindingService(service)
+    live_folder = service.inspection_root / "2025" / "Live - (ID-103) - (KT-1376-GMP)"
+    live_folder.mkdir(parents=True)
     with build_session() as session:
         for year in (2024, 2025):
             session.add(
@@ -128,9 +151,70 @@ def test_cross_year_binding_lookup_rejects_multiple_persisted_year_bindings(tmp_
         result = binding_service.resolve_inspection_folder(
             session, case_id=None, year=None, site_legacy_id=103, inspection_legacy_code="KT-1376-GMP"
         )
+        binding_year = result.binding.year if result.binding is not None else None
+        session.commit()
+
+    assert result.resolution.status == StorageResolutionStatus.RESOLVED
+    assert result.resolution.relative_path == "2025/Live - (ID-103) - (KT-1376-GMP)"
+    assert result.binding is not None
+    assert binding_year == 2025
+
+
+def test_cross_year_lookup_returns_ambiguous_when_live_namespace_has_two_matches_despite_persisted_rows(tmp_path: Path):
+    service = build_service(tmp_path)
+    binding_service = StorageBindingService(service)
+    for year in (2024, 2025):
+        (service.inspection_root / str(year) / f"Live {year} - (ID-103) - (KT-1376-GMP)").mkdir(parents=True)
+    with build_session() as session:
+        for year in (2024, 2025):
+            session.add(
+                StorageBinding(
+                    case_id=None,
+                    year=year,
+                    site_legacy_id=103,
+                    inspection_legacy_code="KT-1376-GMP",
+                    relative_path=f"{year}/Stale - (ID-103) - (KT-1376-GMP)",
+                    observed_folder_label="Stale",
+                    storage_class=service.config.storage_class,
+                )
+            )
+        session.commit()
+
+        result = binding_service.resolve_inspection_folder(
+            session, case_id=None, year=None, site_legacy_id=103, inspection_legacy_code="KT-1376-GMP"
+        )
 
     assert result.resolution.status == StorageResolutionStatus.AMBIGUOUS
+    assert result.resolution.candidate_count == 2
     assert result.binding is None
+
+
+def test_cross_year_lookup_refreshes_single_live_binding_without_using_it_as_authority(tmp_path: Path):
+    service = build_service(tmp_path)
+    binding_service = StorageBindingService(service)
+    folder = service.inspection_root / "2024" / "Live - (ID-103) - (KT-1376-GMP)"
+    folder.mkdir(parents=True)
+    with build_session() as session:
+        session.add(
+            StorageBinding(
+                case_id=None,
+                year=2024,
+                site_legacy_id=103,
+                inspection_legacy_code="KT-1376-GMP",
+                relative_path="2024/Live - (ID-103) - (KT-1376-GMP)",
+                observed_folder_label="Live - (ID-103) - (KT-1376-GMP)",
+                storage_class=service.config.storage_class,
+            )
+        )
+        session.commit()
+
+        result = binding_service.resolve_inspection_folder(
+            session, case_id=None, year=None, site_legacy_id=103, inspection_legacy_code="KT-1376-GMP"
+        )
+
+    assert result.source == "live_resolution"
+    assert result.resolution.status == StorageResolutionStatus.RESOLVED
+    assert result.binding is not None
 
 
 def test_resolve_dkkd_folder_uses_site_token_match(tmp_path: Path):

@@ -62,19 +62,6 @@ class StorageBindingService:
         )
         return session.scalars(stmt).one_or_none()
 
-    def _load_bindings_for_identity(
-        self,
-        session: Session,
-        *,
-        site_legacy_id: int,
-        inspection_legacy_code: str,
-    ) -> list[StorageBinding]:
-        stmt = select(StorageBinding).where(
-            StorageBinding.site_legacy_id == site_legacy_id,
-            StorageBinding.inspection_legacy_code == inspection_legacy_code,
-        ).order_by(StorageBinding.year.asc())
-        return list(session.scalars(stmt))
-
     @staticmethod
     def _resolved_year(resolution: StorageResolution) -> int:
         if resolution.relative_path is None:
@@ -131,31 +118,8 @@ class StorageBindingService:
         site_legacy_id: int,
         inspection_legacy_code: str,
     ) -> InspectionFolderBindingResult:
-        if year is None:
-            candidate_bindings = self._load_bindings_for_identity(
-                session,
-                site_legacy_id=site_legacy_id,
-                inspection_legacy_code=inspection_legacy_code,
-            )
-            if len(candidate_bindings) > 1:
-                resolution = StorageResolution(
-                    status=StorageResolutionStatus.AMBIGUOUS,
-                    relative_path=None,
-                    absolute_path=None,
-                    candidate_count=len(candidate_bindings),
-                    detail="More than one persisted storage_binding matched the legacy identity tokens.",
-                )
-                self._persist_resolution_log(
-                    session,
-                    case_id=case_id,
-                    year=None,
-                    site_legacy_id=site_legacy_id,
-                    inspection_legacy_code=inspection_legacy_code,
-                    resolution=resolution,
-                )
-                return InspectionFolderBindingResult(resolution=resolution, binding=None, source="binding")
-            binding = candidate_bindings[0] if candidate_bindings else None
-        else:
+        binding = None
+        if year is not None:
             binding = self._load_binding(
                 session,
                 year=year,

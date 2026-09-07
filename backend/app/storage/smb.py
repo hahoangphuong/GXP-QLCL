@@ -170,7 +170,7 @@ class SmbStorageService:
                 candidate_count=0,
                 detail="Missing or invalid site legacy ID for DDKD folder resolution.",
             )
-        site_token = f"({site_legacy_id})".lower()
+        site_token = f"(ID-{site_legacy_id})".lower()
         matches = [
             entry.path
             for entry in smbclient.scandir(self.dkkd_root)

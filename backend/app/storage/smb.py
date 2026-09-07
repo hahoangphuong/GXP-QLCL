@@ -26,6 +26,8 @@ class SmbStorageService:
         self.inspection_root = self._normalize_root(config.inspection_root)
         self.dkkd_root = self._normalize_root(config.dkkd_root) if config.dkkd_root else None
         self.template_root = self._normalize_root(config.template_root) if config.template_root else None
+        # Preserve credentials for implicit smbclient reconnects after its session cache expires.
+        smbclient.ClientConfig(username=config.username, password=config.password)
         self._register_root_session(self.inspection_root)
         if self.dkkd_root:
             self._register_root_session(self.dkkd_root)

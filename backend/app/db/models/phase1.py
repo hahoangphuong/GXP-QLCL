@@ -228,6 +228,36 @@ class CaseApplication(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base)
     applicant_name: Mapped[str | None] = mapped_column(String(255))
 
 
+class LegacyInspectionStorageAnchor(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Immutable legacy date/year evidence used by the storage lookup owner."""
+
+    __tablename__ = "legacy_inspection_storage_anchor"
+
+    case_id: Mapped[str] = mapped_column(ForeignKey("case.id"), nullable=False, unique=True)
+    source_sheet: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_row: Mapped[int] = mapped_column(Integer, nullable=False)
+    registration_submission_raw: Mapped[str] = mapped_column(Text, nullable=False)
+    registration_submission_year: Mapped[int | None] = mapped_column(Integer)
+    registration_submission_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    inspection_date_raw: Mapped[str] = mapped_column(Text, nullable=False)
+    inspection_year: Mapped[int | None] = mapped_column(Integer)
+    inspection_year_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_version: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("source_sheet", "source_row"),
+        CheckConstraint(
+            "registration_submission_status IN ('usable', 'unavailable', 'conflict')",
+            name="storage_anchor_registration_status",
+        ),
+        CheckConstraint(
+            "inspection_year_status IN ('usable', 'unavailable', 'conflict')",
+            name="storage_anchor_inspection_status",
+        ),
+    )
+
+
 class CaseAssessment(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
     __tablename__ = "case_assessment"
 

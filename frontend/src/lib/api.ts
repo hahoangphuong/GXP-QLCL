@@ -34,6 +34,7 @@ import type {
   InspectionCaseCreateResponse,
   InspectionPlanUpsertRequest,
   InspectionPlanUpsertResponse,
+  InspectionFolderLookup,
   Site,
   StubAuthState,
 } from "../types";
@@ -311,6 +312,24 @@ export function getCaseWorkspace(
   bearerToken?: string | null,
 ): Promise<CaseWorkspace> {
   return requestJson<CaseWorkspace>(`/cases/${caseId}/workspace`, { auth, useStubAuth, bearerToken });
+}
+
+export function getInspectionFolder(
+  identity: { caseId: string; siteLegacyId: number; inspectionLegacyCode: string },
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<InspectionFolderLookup> {
+  const searchParams = new URLSearchParams({
+    case_id: identity.caseId,
+    site_legacy_id: String(identity.siteLegacyId),
+    inspection_legacy_code: identity.inspectionLegacyCode,
+  });
+  return requestJson<InspectionFolderLookup>(buildApiPath("/storage/inspection-folder", searchParams), {
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
 }
 
 export function createInspectionCase(

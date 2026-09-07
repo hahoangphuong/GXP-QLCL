@@ -2310,6 +2310,7 @@ class CatalogReadService:
                 "legacy_inspection_id": case.legacy_inspection_id,
                 "legacy_inspection_code": case.legacy_inspection_code,
                 "site_id": case.site_id,
+                "legacy_site_id": site.legacy_site_id,
                 "facility_name": site.site_name,
                 "company_name": company.legal_name,
                 "gxp_type": case.gxp_type,

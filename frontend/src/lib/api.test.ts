@@ -8,6 +8,7 @@ import {
   getCaseDetail,
   getChangeRequestWorkspace,
   getCaseWorkspace,
+  getInspectionFolder,
   getFacilityWorkspace,
   getDocumentDetail,
   openCapaCycleDocumentCurrentContent,
@@ -163,6 +164,23 @@ describe("frontend API routing contract", () => {
     for (const url of urls) {
       expect(String(url)).not.toContain("/api/api/");
     }
+  });
+
+  it("looks up inspection folders from exact case identity without sending a year", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: { status: "not_found" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getInspectionFolder(
+      { caseId: "case-123", siteLegacyId: 103, inspectionLegacyCode: "KT-1376-GMP" },
+      { username: "operator.local", role: "manager" },
+      true,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/storage/inspection-folder?case_id=case-123&site_legacy_id=103&inspection_legacy_code=KT-1376-GMP",
+      expect.any(Object),
+    );
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain("year=");
   });
 
   it("supports VITE_API_BASE_URL override without double slash or double api", async () => {

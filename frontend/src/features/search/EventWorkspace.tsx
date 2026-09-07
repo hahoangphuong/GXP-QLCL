@@ -19,6 +19,7 @@ import type {
   FacilityHistoryItem,
   GxpCertificateDetail,
   InspectionOutcomeUpsertRequest,
+  InspectionFolderLookup,
   InspectionPlanUpsertRequest,
   EvaluationScopeUpsertRequest,
 } from "../../types";
@@ -434,6 +435,7 @@ function renderCaseStepContent(
   onUpdateCapaCycle: (cycleId: string, payload: CapaCycleUpdateRequest) => Promise<void>,
   onSubmitCapaCycle: (cycleId: string, payload: CapaCycleSubmitRequest) => Promise<void>,
   onAssessCapaCycle: (cycleId: string, payload: CapaCycleAssessRequest) => Promise<void>,
+  onResolveInspectionFolder: () => Promise<InspectionFolderLookup>,
   onOpenDocument: (caseId: string, item: ContextualDocumentAction) => Promise<void>,
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>,
 ) {
@@ -450,7 +452,11 @@ function renderCaseStepContent(
   if (activeTab === "Hồ sơ") {
     return (
       <div className="event-step-stack">
-        <CaseApplicationWorkspace caseWorkspace={caseWorkspace} onSave={onCaseApplicationSave} />
+        <CaseApplicationWorkspace
+          caseWorkspace={caseWorkspace}
+          onResolveInspectionFolder={onResolveInspectionFolder}
+          onSave={onCaseApplicationSave}
+        />
         <ContextualDocumentSection
           items={documentItems}
           onLoadDocumentDetail={onLoadDocumentDetail}
@@ -634,6 +640,7 @@ export function EventWorkspace({
   onUpdateCapaCycle,
   onSubmitCapaCycle,
   onAssessCapaCycle,
+  onResolveInspectionFolder,
 }: {
   selectedHistory: FacilityHistoryItem | null;
   caseWorkspace: CaseWorkspace | null;
@@ -657,6 +664,7 @@ export function EventWorkspace({
   onUpdateCapaCycle: (cycleId: string, payload: CapaCycleUpdateRequest) => Promise<void>;
   onSubmitCapaCycle: (cycleId: string, payload: CapaCycleSubmitRequest) => Promise<void>;
   onAssessCapaCycle: (cycleId: string, payload: CapaCycleAssessRequest) => Promise<void>;
+  onResolveInspectionFolder: () => Promise<InspectionFolderLookup>;
 }) {
   if (!selectedHistory) {
     return (
@@ -729,6 +737,7 @@ export function EventWorkspace({
             onUpdateCapaCycle,
             onSubmitCapaCycle,
             onAssessCapaCycle,
+            onResolveInspectionFolder,
             onOpenDocument,
             onLoadDocumentDetail,
           )

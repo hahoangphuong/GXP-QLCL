@@ -13,6 +13,7 @@ import {
   createInspectionCase,
   getBusinessEligibilityDetail,
   getCaseWorkspace,
+  getInspectionFolder,
   getChangeRequestWorkspace,
   getDocumentDetail,
   openCapaCycleDocumentCurrentContent,
@@ -725,6 +726,23 @@ export function SearchPage({
     await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
   }
 
+  async function handleResolveInspectionFolder() {
+    const summary = selectedCaseWorkspace?.case_summary;
+    if (!summary || summary.legacy_site_id === null || !summary.legacy_inspection_code) {
+      throw new Error("Hồ sơ chưa có đủ định danh legacy để tra cứu thư mục kiểm tra.");
+    }
+    return getInspectionFolder(
+      {
+        caseId: summary.id,
+        siteLegacyId: summary.legacy_site_id,
+        inspectionLegacyCode: summary.legacy_inspection_code,
+      },
+      auth,
+      useStubAuth,
+      bearerToken,
+    );
+  }
+
   async function handleInspectionPlanSave(payload: InspectionPlanUpsertRequest) {
     if (!selectedHistory || selectedHistory.source_type !== "case") {
       throw new Error("Chưa chọn hồ sơ để cập nhật.");
@@ -1074,6 +1092,7 @@ export function SearchPage({
             onInspectionPlanSave={handleInspectionPlanSave}
             onLoadDocumentDetail={handleLoadDocumentDetail}
             onOpenDocument={handleOpenDocument}
+            onResolveInspectionFolder={handleResolveInspectionFolder}
             onSelectedRemediationCycleChange={setSelectedRemediationCycleId}
             onSubmitCapaCycle={handleSubmitCapaCycle}
             onUpdateCapaCycle={handleUpdateCapaCycle}

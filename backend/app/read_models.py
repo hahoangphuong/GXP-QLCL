@@ -181,6 +181,7 @@ class CaseWorkspaceSummaryRead(BaseModel):
     legacy_inspection_id: int | None
     legacy_inspection_code: str | None
     site_id: str
+    legacy_site_id: int | None
     facility_name: str
     company_name: str
     gxp_type: str

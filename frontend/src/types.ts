@@ -212,6 +212,7 @@ export type CaseWorkspaceSummary = {
   legacy_inspection_id: number | null;
   legacy_inspection_code: string | null;
   site_id: string;
+  legacy_site_id: number | null;
   facility_name: string;
   company_name: string;
   gxp_type: string;
@@ -220,6 +221,15 @@ export type CaseWorkspaceSummary = {
   inspection_type: string | null;
   state: string;
   opened_year: number | null;
+};
+
+export type InspectionFolderLookup = {
+  status: "resolved" | "ambiguous" | "not_found" | "invalid";
+  source: string;
+  relative_path: string | null;
+  candidate_count: number;
+  detail: string | null;
+  storage_class: string;
 };
 
 export type CaseWorkspaceApplication = {

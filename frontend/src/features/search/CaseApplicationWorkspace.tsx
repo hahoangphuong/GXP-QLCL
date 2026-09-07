@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
-import type { CaseApplicationUpsertRequest, CaseWorkspace } from "../../types";
+import type { CaseApplicationUpsertRequest, CaseWorkspace, InspectionFolderLookup } from "../../types";
 import { EditableDetailValue } from "./EditableDetailValue";
 import { DetailValue } from "./DetailValue";
 
@@ -62,15 +62,20 @@ function getErrorMessage(error: Error): string {
 export function CaseApplicationWorkspace({
   caseWorkspace,
   onSave,
+  onResolveInspectionFolder,
 }: {
   caseWorkspace: CaseWorkspace;
   onSave: (payload: CaseApplicationUpsertRequest) => Promise<void>;
+  onResolveInspectionFolder: () => Promise<InspectionFolderLookup>;
 }) {
   const currentDraft = useMemo(() => buildDraft(caseWorkspace), [caseWorkspace]);
   const [draft, setDraft] = useState<FormDraft>(currentDraft);
   const [editingField, setEditingField] = useState<"submitted_on" | "dossier_code" | null>(null);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [folderLookup, setFolderLookup] = useState<InspectionFolderLookup | null>(null);
+  const [folderLookupError, setFolderLookupError] = useState<string | null>(null);
+  const [folderLookupPending, setFolderLookupPending] = useState(false);
 
   useEffect(() => {
     if (!editingField) {
@@ -107,6 +112,22 @@ export function CaseApplicationWorkspace({
     setErrorMessage(null);
     setEditingField(null);
   }
+
+  async function resolveInspectionFolder() {
+    setFolderLookupPending(true);
+    setFolderLookup(null);
+    setFolderLookupError(null);
+    try {
+      setFolderLookup(await onResolveInspectionFolder());
+    } catch (error) {
+      setFolderLookupError(error instanceof Error ? error.message : "Không thể tra cứu thư mục kiểm tra.");
+    } finally {
+      setFolderLookupPending(false);
+    }
+  }
+
+  const canResolveInspectionFolder =
+    caseWorkspace.case_summary.legacy_site_id !== null && caseWorkspace.case_summary.legacy_inspection_code !== null;
 
   return (
     <div className="event-step-stack">
@@ -165,6 +186,16 @@ export function CaseApplicationWorkspace({
           <DetailValue label="Năm mở hồ sơ" value={String(caseWorkspace.case_summary.opened_year ?? "")} />
           <DetailValue label="Trạng thái hồ sơ" value={formatStatusLabel(caseWorkspace.case_summary.state)} />
         </div>
+        <div className="panel-actions panel-actions-tight">
+          <button disabled={!canResolveInspectionFolder || folderLookupPending} onClick={() => void resolveInspectionFolder()} type="button">
+            {folderLookupPending ? "Đang tra cứu..." : "Tra cứu thư mục kiểm tra"}
+          </button>
+        </div>
+        {folderLookup?.status === "resolved" ? <p>Đã tìm thấy thư mục: {folderLookup.relative_path}</p> : null}
+        {folderLookup?.status === "ambiguous" ? <p role="alert">Có {folderLookup.candidate_count} thư mục trùng khớp; không chọn tự động.</p> : null}
+        {folderLookup?.status === "not_found" ? <p role="alert">Không tìm thấy thư mục kiểm tra khớp chính xác.</p> : null}
+        {folderLookup?.status === "invalid" ? <p role="alert">Không đủ định danh legacy để tra cứu thư mục kiểm tra.</p> : null}
+        {folderLookupError ? <p className="form-error" role="alert">Không thể truy cập lưu trữ: {folderLookupError}</p> : null}
       </section>
     </div>
   );

@@ -18,6 +18,7 @@ import type {
   InspectionOutcomeUpsertRequest,
   EvaluationScopeUpsertRequest,
   InspectionPlanUpsertRequest,
+  InspectionFolderLookup,
 } from "../../types";
 import { EventWorkspace } from "./EventWorkspace";
 import { BusinessEligibilityWorkspace } from "./BusinessEligibilityWorkspace";
@@ -77,6 +78,7 @@ export function FacilityWorkspaceTabs({
   onUpdateCapaCycle,
   onSubmitCapaCycle,
   onAssessCapaCycle,
+  onResolveInspectionFolder,
 }: {
   summary: FacilityWorkspaceSummary;
   history: FacilityHistoryItem[];
@@ -122,6 +124,7 @@ export function FacilityWorkspaceTabs({
   onUpdateCapaCycle: (cycleId: string, payload: CapaCycleUpdateRequest) => Promise<void>;
   onSubmitCapaCycle: (cycleId: string, payload: CapaCycleSubmitRequest) => Promise<void>;
   onAssessCapaCycle: (cycleId: string, payload: CapaCycleAssessRequest) => Promise<void>;
+  onResolveInspectionFolder: () => Promise<InspectionFolderLookup>;
 }) {
   return (
     <section className="panel panel-tight facility-workspace-panel">
@@ -162,6 +165,7 @@ export function FacilityWorkspaceTabs({
                 onCaseApplicationSave={onCaseApplicationSave}
                 onCaseAssessmentSave={onCaseAssessmentSave}
                 onAssessCapaCycle={onAssessCapaCycle}
+                onResolveInspectionFolder={onResolveInspectionFolder}
                 onCreateCapaCycle={onCreateCapaCycle}
                 onInspectionOutcomeSave={onInspectionOutcomeSave}
                 onEvaluationScopeSave={onEvaluationScopeSave}

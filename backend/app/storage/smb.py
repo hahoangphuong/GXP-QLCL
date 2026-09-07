@@ -13,7 +13,6 @@ from backend.app.storage.types import (
     StorageEntry,
     StorageOperationError,
     StorageResolution,
-    is_numeric_inspection_year,
     matches_inspection_identity,
 )
 
@@ -124,22 +123,15 @@ class SmbStorageService:
         site_legacy_id: int,
         inspection_legacy_code: str,
     ) -> StorageResolution:
-        if (year is not None and year <= 0) or site_legacy_id <= 0 or not str(inspection_legacy_code or "").strip():
+        if year is None or year <= 0 or site_legacy_id <= 0 or not str(inspection_legacy_code or "").strip():
             return StorageResolution(
                 status=StorageResolutionStatus.INVALID,
                 relative_path=None,
                 absolute_path=None,
                 candidate_count=0,
-                detail="Missing or invalid inspection folder identity input.",
+                detail="A specific inspection year and exact legacy identity are required.",
             )
-        if year is not None:
-            year_roots = [self._join_root(self.inspection_root, str(year))]
-        else:
-            year_roots = [
-                entry.path
-                for entry in smbclient.scandir(self.inspection_root)
-                if entry.is_dir() and is_numeric_inspection_year(entry.name)
-            ]
+        year_roots = [self._join_root(self.inspection_root, str(year))]
         matches = [
             entry.path
             for year_root in year_roots

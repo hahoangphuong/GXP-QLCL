@@ -612,6 +612,9 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".header-brand-group")).not.toBeNull();
     expect(container.querySelector(".header-identity-group")).not.toBeNull();
     expect(container.querySelector(".primary-nav")).not.toBeNull();
+    expect(container.querySelector(".topbar > .header-brand-group")).not.toBeNull();
+    expect(container.querySelector(".topbar > .primary-nav")).not.toBeNull();
+    expect(container.querySelector(".topbar > .header-identity-group")).not.toBeNull();
     await waitFor(() => expect(screen.queryByRole("navigation", { name: "Liên kết pháp lý công khai" })).not.toBeInTheDocument());
   });
 
@@ -780,6 +783,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByText("Thuốc không vô trùng")).toBeInTheDocument();
     expect(container.querySelector(".event-scope-context .scope-information-grid")).not.toBeNull();
     expect(container.querySelector(".inspection-workspace .scope-information-grid")).toBeNull();
+    expect(container.querySelector(".event-workspace-body.has-scope-context > .event-step-content + .event-scope-context")).not.toBeNull();
     expect(container.querySelectorAll(".workflow-stepper")).toHaveLength(1);
 
     for (const step of ["Hồ sơ", "Kiểm tra", "Khắc phục", "Xử lý", "Chứng nhận GxP", "Chứng nhận ĐĐK"]) {

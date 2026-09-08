@@ -131,9 +131,9 @@ export function CaseApplicationWorkspace({
 
   return (
     <div className="event-step-stack">
-      <section className="workspace-section">
+      <section className="workspace-section case-application-section">
         <h4>Thông tin hồ sơ</h4>
-        <div className="detail-grid compact-grid">
+        <div className="detail-grid compact-grid detail-form-grid case-application-grid">
           <EditableDetailValue
             editButtonLabel="Sửa Ngày nộp"
             error={editingField === "submitted_on" ? errorMessage : null}

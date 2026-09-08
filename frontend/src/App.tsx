@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { AppShell } from "./components/AppShell";
+import { PrimaryNav } from "./components/PrimaryNav";
 import { getAppStatus } from "./lib/api";
 import { decodeOidcCredential, isOidcSessionValid, loadGoogleIdentityScript } from "./lib/oidc";
 import { clearOidcSession, loadAuthState, loadOidcSession, saveOidcSession } from "./lib/storage";
@@ -84,6 +85,7 @@ function AppHeader({
   authMode,
   oidcClientId,
   oidcSession,
+  canAccessAdmin,
   onOidcSession,
   onOidcLogout,
 }: {
@@ -91,6 +93,7 @@ function AppHeader({
   authMode: string | null;
   oidcClientId: string | null;
   oidcSession: OidcSession | null;
+  canAccessAdmin: boolean;
   onOidcSession: (session: OidcSession) => void;
   onOidcLogout: () => void;
 }) {
@@ -106,6 +109,7 @@ function AppHeader({
           <span>Cơ sở sản xuất, kinh doanh dược phẩm</span>
         </div>
       </div>
+      <PrimaryNav canAccessAdmin={canAccessAdmin} />
       <div className="header-identity-group">
         {usesStubAuth || oidcSession ? (
           <div className="auth-cluster auth-cluster-compact">
@@ -191,12 +195,12 @@ export function App() {
 
   return (
     <AppShell
-      canAccessAdmin={auth.role === "admin" || auth.role === "manager"}
       showPublicLegalNav={!isAuthenticated}
       header={
         <AppHeader
           auth={auth}
           authMode={status?.auth_mode ?? null}
+          canAccessAdmin={auth.role === "admin" || auth.role === "manager"}
           oidcClientId={status?.auth.oidc_client_id ?? null}
           oidcSession={oidcSession}
           onOidcSession={setOidcSession}

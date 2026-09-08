@@ -5,8 +5,17 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from backend.app.auth import build_authenticated_user
 from backend.app.db.base import Base
-from backend.app.db.models.phase1 import StorageBinding
+from backend.app.db.enums import CaseState, StorageResolutionStatus
+from backend.app.db.models.phase1 import (
+    Case,
+    Company,
+    LegacyInspectionStorageAnchor,
+    Site,
+    StorageBinding,
+    StorageResolutionLog,
+)
 from backend.app.main import create_app
 from backend.app.storage import LocalStorageService, StorageBindingLookupService, StorageConfig
 
@@ -68,6 +77,72 @@ def test_inspection_folder_route_accepts_optional_year_without_changing_dkkd_con
     year = next(parameter for parameter in inspection_parameters if parameter["name"] == "year")
     assert year["required"] is False
     assert all(parameter["name"] != "year" for parameter in dkkd_parameters)
+
+
+def test_inspection_folder_route_commits_automatic_lookup_observation(tmp_path: Path):
+    storage = build_storage_service(tmp_path)
+    folder = storage.inspection_root / "2024" / "Facility - (ID-103) - (KT-1376-GMP)"
+    folder.mkdir(parents=True)
+    engine = create_engine(f"sqlite:///{tmp_path / 'storage-api.db'}", future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        company = Company(legal_name="Storage API Company")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, legacy_site_id=103, site_name="Storage API Facility")
+        session.add(site)
+        session.flush()
+        case = Case(
+            site_id=site.id,
+            legacy_inspection_id=1376,
+            legacy_inspection_code="KT-1376-GMP",
+            gxp_type="GMP",
+            state=CaseState.INSPECTION_COMPLETED,
+        )
+        session.add(case)
+        session.flush()
+        session.add(
+            LegacyInspectionStorageAnchor(
+                case_id=case.id,
+                source_sheet="db.ktra",
+                source_row=1376,
+                registration_submission_raw="2024-01-01",
+                registration_submission_year=2024,
+                registration_submission_status="usable",
+                inspection_date_raw="-",
+                inspection_year=None,
+                inspection_year_status="unavailable",
+                source_hash="a" * 64,
+                source_version="b" * 64,
+            )
+        )
+        session.commit()
+        case_id = case.id
+
+    app = create_app(str(engine.url), storage_service=storage)
+    endpoint = next(route.endpoint for route in app.routes if getattr(route, "path", None) == "/storage/inspection-folder")
+    with Session(engine) as session:
+        response = endpoint(
+            year=None,
+            case_id=case_id,
+            site_legacy_id=103,
+            inspection_legacy_code="KT-1376-GMP",
+            session=session,
+            lookup_service=app.state.storage_lookup_service,
+            user=build_authenticated_user("storage-reader", "reader", permissions={"document.read"}),
+        )
+
+    assert response.status == "resolved"
+    assert response.relative_path == "2024/Facility - (ID-103) - (KT-1376-GMP)"
+    with Session(engine) as session:
+        log = session.query(StorageResolutionLog).one()
+        binding = session.query(StorageBinding).one()
+
+    assert log.case_id == case_id
+    assert log.status is StorageResolutionStatus.RESOLVED
+    assert binding.case_id == case_id
+    assert binding.relative_path == "2024/Facility - (ID-103) - (KT-1376-GMP)"
 
 
 def test_storage_lookup_state_can_use_existing_binding(tmp_path: Path):

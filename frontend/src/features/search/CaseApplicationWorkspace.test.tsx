@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CaseWorkspace } from "../../types";
@@ -53,5 +53,94 @@ describe("CaseApplicationWorkspace inspection-folder lookup", () => {
     fireEvent.click(screen.getByRole("button", { name: "Tra cứu thư mục kiểm tra" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Không tìm thấy thư mục kiểm tra khớp chính xác");
+  });
+
+  it("renders a resolved relative path", async () => {
+    render(
+      <CaseApplicationWorkspace
+        caseWorkspace={workspace}
+        onResolveInspectionFolder={vi.fn().mockResolvedValue({
+          status: "resolved",
+          candidate_count: 1,
+          relative_path: "2024/Facility - (ID-16) - (KT-139-GMP)",
+        })}
+        onSave={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Tra cứu thư mục kiểm tra" }));
+
+    expect(await screen.findByText("Đã tìm thấy thư mục: 2024/Facility - (ID-16) - (KT-139-GMP)")).toBeInTheDocument();
+  });
+
+  it("surfaces INVALID as an anchor state rather than a storage failure", async () => {
+    render(
+      <CaseApplicationWorkspace
+        caseWorkspace={workspace}
+        onResolveInspectionFolder={vi.fn().mockResolvedValue({ status: "invalid", candidate_count: 0, relative_path: null })}
+        onSave={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Tra cứu thư mục kiểm tra" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Không đủ định danh legacy");
+    expect(screen.queryByText("Không thể truy cập lưu trữ:")).not.toBeInTheDocument();
+  });
+
+  it("prevents duplicate submissions while the lookup is pending", async () => {
+    let resolveLookup: (value: {
+      status: "resolved";
+      candidate_count: number;
+      relative_path: string;
+      source: string;
+      detail: string | null;
+      storage_class: string;
+    }) => void;
+    const onResolveInspectionFolder = vi.fn(
+      () => new Promise<{
+        status: "resolved";
+        candidate_count: number;
+        relative_path: string;
+        source: string;
+        detail: string | null;
+        storage_class: string;
+      }>((resolve) => {
+        resolveLookup = resolve;
+      }),
+    );
+    render(<CaseApplicationWorkspace caseWorkspace={workspace} onResolveInspectionFolder={onResolveInspectionFolder} onSave={vi.fn()} />);
+
+    const button = screen.getByRole("button", { name: "Tra cứu thư mục kiểm tra" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(onResolveInspectionFolder).toHaveBeenCalledOnce();
+    expect(button).toBeDisabled();
+    await act(async () => {
+      resolveLookup!({
+        status: "resolved",
+        candidate_count: 1,
+        relative_path: "2024/folder",
+        source: "live_resolution",
+        detail: null,
+        storage_class: "synology_legacy",
+      });
+    });
+  });
+
+  it("keeps infrastructure failures distinct from semantic lookup states", async () => {
+    render(
+      <CaseApplicationWorkspace
+        caseWorkspace={workspace}
+        onResolveInspectionFolder={vi.fn().mockRejectedValue(new Error("SMB unavailable"))}
+        onSave={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Tra cứu thư mục kiểm tra" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Không thể truy cập lưu trữ: SMB unavailable");
+    expect(screen.queryByText("Không đủ định danh legacy")).not.toBeInTheDocument();
   });
 });

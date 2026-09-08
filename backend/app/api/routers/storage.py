@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
-from backend.app.api.session import get_session_from_request_factory
+from backend.app.api.session import commit_or_409, get_session_from_request_factory
 from backend.app.auth import AuthenticatedUser, get_authenticated_user, require_permissions
 from backend.app.read_models import (
     DkkdFolderLookupRead,
@@ -39,6 +39,8 @@ def register_storage_routes(app, session_factory) -> None:
             site_legacy_id=site_legacy_id,
             inspection_legacy_code=inspection_legacy_code,
         )
+        # Resolution observations and refreshed bindings are owner-managed persistence.
+        commit_or_409(session)
         binding = result.binding
         return InspectionFolderLookupRead(
             status=result.resolution.status.value,

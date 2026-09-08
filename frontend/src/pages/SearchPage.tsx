@@ -937,7 +937,6 @@ export function SearchPage({
           filters={{
             facilityName,
             certificateScope,
-            caseState: caseStates.length === 1 ? caseStates[0] : "",
           }}
           hasMore={hasMoreResults}
           hiddenFilters={{

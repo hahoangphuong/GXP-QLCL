@@ -26,7 +26,7 @@ export function HistoryTable({
           </colgroup>
           <thead>
             <tr>
-              <th className="col-event-type">Phân loại</th>
+              <th className="col-event-type">Loại</th>
               <th className="col-standard">Tiêu chuẩn</th>
               <th className="col-date">Ngày</th>
               <th aria-label="Trạng thái" className="col-state">

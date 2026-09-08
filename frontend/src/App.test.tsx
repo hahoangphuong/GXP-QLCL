@@ -704,8 +704,8 @@ describe("App Slice A.4 search workspace", () => {
 
     expect((await screen.findAllByText("1.1A")).length).toBeGreaterThan(0);
     expect(screen.getByRole("textbox", { name: "Tên cơ sở" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Phạm vi chứng nhận" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Trạng thái hồ sơ" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Phạm vi" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Trạng thái hồ sơ" })).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Tỉnh/thành" })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Chứng nhận" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Xử lý" })).not.toBeInTheDocument();
@@ -720,8 +720,10 @@ describe("App Slice A.4 search workspace", () => {
     expect(within(gxpRail).queryByRole("tab", { name: "Tất cả" })).not.toBeInTheDocument();
     expect(within(gxpRail).getByRole("tab", { name: "GMP" })).toHaveAttribute("aria-selected", "true");
     expect(within(tableHead).getByRole("textbox", { name: "Tên cơ sở" })).toBeInTheDocument();
-    expect(within(tableHead).getByRole("textbox", { name: "Phạm vi chứng nhận" })).toBeInTheDocument();
-    expect(within(tableHead).getByRole("combobox", { name: "Trạng thái hồ sơ" })).toBeInTheDocument();
+    expect(within(tableHead).getByRole("textbox", { name: "Phạm vi" })).toBeInTheDocument();
+    expect(within(tableHead).queryByRole("combobox", { name: "Trạng thái hồ sơ" })).not.toBeInTheDocument();
+    expect(within(tableHead).getByRole("columnheader", { name: "Trạng thái hồ sơ gần nhất" })).toBeInTheDocument();
+    expect(tableHead.querySelectorAll("tr")).toHaveLength(1);
     expect(await screen.findByRole("button", { name: "Công ty mới" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Hồ sơ kiểm tra" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dây chuyền mới" })).toBeInTheDocument();
@@ -740,6 +742,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".facility-workspace-panel .history-panel")).not.toBeNull();
     expect(container.querySelector(".event-workspace > .panel-header")).toBeNull();
     expect(container.querySelectorAll(".facility-context-facts .status-badge")).toHaveLength(1);
+    expect(container.querySelector(".facility-context-code")).not.toBeNull();
   }, 10000);
 
   it("renders the inspection and certificate scope panes from their separate canonical owners", async () => {
@@ -1184,6 +1187,7 @@ describe("App Slice A.4 search workspace", () => {
     await screen.findByText("Lịch sử kiểm tra & thay đổi");
     const historyTable = container.querySelector(".history-table");
     expect(screen.getByText("05-08-2026")).toBeInTheDocument();
+    expect(within(historyTable as HTMLElement).getByRole("columnheader", { name: "Loại" })).toBeInTheDocument();
     expect(historyTable?.querySelector("thead .col-state .sr-only")?.textContent).toBe("Trạng thái");
     expect(container.querySelectorAll(".history-status-check")).toHaveLength(1);
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();

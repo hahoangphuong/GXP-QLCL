@@ -1,7 +1,7 @@
 import { useRef } from "react";
 
 import { StatusBadge } from "../../components/StatusBadge";
-import { CASE_STATE_OPTIONS, formatCompactDate, formatFacilityNameForGrid, formatStatusLabel } from "../../lib/presentation";
+import { formatCompactDate, formatFacilityNameForGrid, formatStatusLabel } from "../../lib/presentation";
 import type { FacilitySearchResult } from "../../types";
 
 type HiddenFilters = {
@@ -50,10 +50,9 @@ export function FacilityTable({
   filters: {
     facilityName: string;
     certificateScope: string;
-    caseState: string;
   };
   hiddenFilters: HiddenFilters;
-  onFilterChange: (field: "facilityName" | "certificateScope" | "caseState", value: string) => void;
+  onFilterChange: (field: "facilityName" | "certificateScope", value: string) => void;
   onGxpTypeChange: (value: "GMP" | "GLP" | "GMPbb") => void;
   onReachEnd: () => void;
   onSelect: (resultKey: string) => void;
@@ -123,9 +122,9 @@ export function FacilityTable({
               {showGxpColumn ? <th className="col-gxp"><span className="table-header-label">GxP</span></th> : null}
               <th className="col-scope">
                 <label className="table-header-filter">
-                  <span>Phạm vi chứng nhận</span>
+                  <span>Phạm vi</span>
                   <input
-                    aria-label="Phạm vi chứng nhận"
+                    aria-label="Phạm vi"
                     onChange={(event) => onFilterChange("certificateScope", event.target.value)}
                     placeholder="Lọc theo phạm vi..."
                     value={filters.certificateScope}
@@ -134,17 +133,7 @@ export function FacilityTable({
               </th>
               <th className="col-province"><span className="table-header-label">Tỉnh/thành</span></th>
               <th className="col-reference"><span className="table-header-label">Ktra gần nhất</span></th>
-              <th className="col-status">
-                <label className="table-header-filter">
-                  <span>Trạng thái hồ sơ gần nhất</span>
-                  <select aria-label="Trạng thái hồ sơ" onChange={(event) => onFilterChange("caseState", event.target.value)} value={filters.caseState}>
-                    <option value="">Tất cả trạng thái</option>
-                    {CASE_STATE_OPTIONS.map((option) => (
-                      <option key={option} value={option}>{formatStatusLabel(option)}</option>
-                    ))}
-                  </select>
-                </label>
-              </th>
+              <th className="col-status"><span className="table-header-label">Trạng thái hồ sơ gần nhất</span></th>
             </tr>
           </thead>
           <tbody>

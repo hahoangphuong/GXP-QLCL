@@ -383,9 +383,9 @@ export function CaseInspectionWorkspace({
   return (
     <div className="event-step-stack">
       <InspectionPlanSection caseWorkspace={caseWorkspace} onSave={onInspectionPlanSave} />
+      <EvaluationScopeWorkspace caseWorkspace={caseWorkspace} onSave={onEvaluationScopeSave} />
       <InspectionTeamSection caseWorkspace={caseWorkspace} />
       <InspectionOutcomeSection caseWorkspace={caseWorkspace} onSave={onInspectionOutcomeSave} />
-      <EvaluationScopeWorkspace caseWorkspace={caseWorkspace} onSave={onEvaluationScopeSave} />
     </div>
   );
 }

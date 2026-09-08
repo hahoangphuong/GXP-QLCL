@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.db.enums import StorageResolutionStatus
-from backend.app.db.models.phase1 import StorageBinding, StorageResolutionLog
+from backend.app.db.models.phase1 import LegacyInspectionStorageAnchor, StorageBinding, StorageResolutionLog
 from backend.app.storage.types import StorageResolution, StorageServiceProtocol
 
 
@@ -61,6 +61,33 @@ class StorageBindingService:
             StorageBinding.inspection_legacy_code == inspection_legacy_code,
         )
         return session.scalars(stmt).one_or_none()
+
+    @staticmethod
+    def _load_storage_anchor(session: Session, *, case_id: str | None) -> LegacyInspectionStorageAnchor | None:
+        if not case_id:
+            return None
+        stmt = select(LegacyInspectionStorageAnchor).where(LegacyInspectionStorageAnchor.case_id == case_id)
+        return session.scalars(stmt).one_or_none()
+
+    @staticmethod
+    def _anchor_year(anchor: LegacyInspectionStorageAnchor | None) -> int | None:
+        if anchor is None:
+            return None
+        if anchor.registration_submission_status == "usable":
+            return anchor.registration_submission_year
+        if anchor.inspection_year_status == "usable":
+            return anchor.inspection_year
+        return None
+
+    @staticmethod
+    def _invalid_anchor_resolution() -> StorageResolution:
+        return StorageResolution(
+            status=StorageResolutionStatus.INVALID,
+            relative_path=None,
+            absolute_path=None,
+            candidate_count=0,
+            detail="A usable legacy inspection storage anchor is required for automatic folder resolution.",
+        )
 
     @staticmethod
     def _resolved_year(resolution: StorageResolution) -> int:
@@ -148,16 +175,36 @@ class StorageBindingService:
                 source="binding",
             )
 
-        resolution = self.storage.resolve_inspection_folder(
-            case_id=case_id,
-            year=year,
-            site_legacy_id=site_legacy_id,
-            inspection_legacy_code=inspection_legacy_code,
-        )
+        lookup_year = year
+        if year is None:
+            lookup_year = self._anchor_year(self._load_storage_anchor(session, case_id=case_id))
+            resolution = self._invalid_anchor_resolution()
+            if lookup_year is not None:
+                resolution = self.storage.resolve_inspection_folder(
+                    case_id=case_id,
+                    year=lookup_year,
+                    site_legacy_id=site_legacy_id,
+                    inspection_legacy_code=inspection_legacy_code,
+                )
+                if resolution.status == StorageResolutionStatus.NOT_FOUND:
+                    lookup_year += 1
+                    resolution = self.storage.resolve_inspection_folder(
+                        case_id=case_id,
+                        year=lookup_year,
+                        site_legacy_id=site_legacy_id,
+                        inspection_legacy_code=inspection_legacy_code,
+                    )
+        else:
+            resolution = self.storage.resolve_inspection_folder(
+                case_id=case_id,
+                year=year,
+                site_legacy_id=site_legacy_id,
+                inspection_legacy_code=inspection_legacy_code,
+            )
         self._persist_resolution_log(
             session,
             case_id=case_id,
-            year=year if resolution.status != StorageResolutionStatus.RESOLVED else self._resolved_year(resolution),
+            year=lookup_year if resolution.status != StorageResolutionStatus.RESOLVED else self._resolved_year(resolution),
             site_legacy_id=site_legacy_id,
             inspection_legacy_code=inspection_legacy_code,
             resolution=resolution,

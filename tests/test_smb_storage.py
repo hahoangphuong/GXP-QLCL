@@ -115,7 +115,7 @@ def test_smb_dkkd_resolution_rejects_obsolete_unkeyed_and_duplicate_identity_for
     assert duplicate.relative_path is None
 
 
-def test_smb_inspection_resolution_scans_numeric_years_for_exact_identity_only(monkeypatch) -> None:
+def test_smb_inspection_resolution_requires_explicit_year(monkeypatch) -> None:
     fake_client, service = _service(monkeypatch, [])
     root = service.inspection_root
     fake_client.directories_by_path = {
@@ -125,7 +125,23 @@ def test_smb_inspection_resolution_scans_numeric_years_for_exact_identity_only(m
         root + r"\Templates": ["Ignored - (ID-1) - (KT-1-GMP)"],
     }
 
-    resolution = service.resolve_inspection_folder(site_legacy_id=1, inspection_legacy_code="KT-1-GMP")
+    resolution = service.resolve_inspection_folder(year=None, site_legacy_id=1, inspection_legacy_code="KT-1-GMP")
+
+    assert resolution.status is StorageResolutionStatus.INVALID
+    assert fake_client.directories_by_path == {
+        root: ["2024", "2025", "Templates"],
+        root + r"\2024": ["Wrong - (ID-10) - (KT-1-GMP)"],
+        root + r"\2025": ["Exact - (ID-1) - (KT-1-GMP)", "Legacy - (1) - (KT-1-GMP)"],
+        root + r"\Templates": ["Ignored - (ID-1) - (KT-1-GMP)"],
+    }
+
+
+def test_smb_inspection_resolution_keeps_explicit_year_exact_identity(monkeypatch) -> None:
+    fake_client, service = _service(monkeypatch, [])
+    root = service.inspection_root
+    fake_client.directories_by_path = {root + r"\2025": ["Exact - (ID-1) - (KT-1-GMP)"]}
+
+    resolution = service.resolve_inspection_folder(year=2025, site_legacy_id=1, inspection_legacy_code="KT-1-GMP")
 
     assert resolution.status is StorageResolutionStatus.RESOLVED
     assert resolution.relative_path == "2025/Exact - (ID-1) - (KT-1-GMP)"

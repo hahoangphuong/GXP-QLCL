@@ -144,7 +144,7 @@ export function FacilityWorkspaceTabs({
           <div><dt>GxP</dt><dd>{summary.selected_gxp_type ?? (summary.gxp_types.join(", ") || "Chưa có")}</dd></div>
           <div><dt>Dây chuyền</dt><dd>{summary.selected_line_code ?? "Toàn cơ sở"}</dd></div>
           <div><dt>Tỉnh/thành</dt><dd>{summary.province_name ?? "Chưa có"}</dd></div>
-          <div><dt>Trạng thái hồ sơ gần nhất</dt><dd><StatusBadge value={summary.current_state} /></dd></div>
+          <div><dt>Trạng thái gần nhất</dt><dd><StatusBadge value={summary.current_state} /></dd></div>
         </dl>
       </header>
       <div className="workspace-tabs facility-tabs tab-strip tab-strip-primary" role="tablist" aria-label="Tab nghiệp vụ cơ sở">

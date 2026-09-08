@@ -28,6 +28,7 @@ import { CaseInspectionWorkspace } from "./CaseInspectionWorkspace";
 import { CaseProcessingWorkspace } from "./CaseProcessingWorkspace";
 import { CaseRemediationWorkspace } from "./CaseRemediationWorkspace";
 import { DetailValue } from "./DetailValue";
+import { EvaluationScopeWorkspace } from "./EvaluationScopeWorkspace";
 import { GxpCertificateDetailFields } from "./GxpCertificateDetailFields";
 
 const CASE_EVENT_TABS = ["Hồ sơ", "Kiểm tra", "Khắc phục", "Xử lý", "Chứng nhận GxP", "Chứng nhận ĐĐK"] as const;
@@ -427,7 +428,6 @@ function renderCaseStepContent(
   onCaseAssessmentSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>,
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>,
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>,
-  onEvaluationScopeSave: (payload: EvaluationScopeUpsertRequest) => Promise<void>,
   selectedRemediationCycleId: string | null,
   onSelectedRemediationCycleChange: (cycleId: string | null) => void,
   onCreateCapaCycle: (payload: CapaCycleCreateRequest) => Promise<void>,
@@ -472,7 +472,6 @@ function renderCaseStepContent(
           caseWorkspace={caseWorkspace}
           onInspectionOutcomeSave={onInspectionOutcomeSave}
           onInspectionPlanSave={onInspectionPlanSave}
-          onEvaluationScopeSave={onEvaluationScopeSave}
         />
         <ContextualDocumentSection
           items={documentItems}
@@ -697,7 +696,8 @@ export function EventWorkspace({
           ))}
         </ol>
       </nav>
-      <div className="workspace-body event-workspace-body">
+      <div className={selectedHistory.source_type === "case" && caseWorkspace ? "workspace-body event-workspace-body has-scope-context" : "workspace-body event-workspace-body"}>
+        <div className="event-step-content">
         {selectedHistory.source_type === "change_request" ? (
           changeRequestWorkspaceLoading ? (
             <EmptyState title="Đang tải workspace thay đổi" description="Đang lấy dữ liệu đọc theo yêu cầu thay đổi đã chọn từ authenticated API." />
@@ -726,7 +726,6 @@ export function EventWorkspace({
             onCaseAssessmentSave,
             onInspectionPlanSave,
             onInspectionOutcomeSave,
-            onEvaluationScopeSave,
             selectedRemediationCycleId,
             onSelectedRemediationCycleChange,
             onCreateCapaCycle,
@@ -740,6 +739,12 @@ export function EventWorkspace({
         ) : (
           <EmptyState title="Chưa có workspace hồ sơ" description="Backend chưa trả dữ liệu workspace cho lựa chọn case hiện tại." />
         )}
+        </div>
+        {selectedHistory.source_type === "case" && caseWorkspace ? (
+          <div className="event-scope-context">
+            <EvaluationScopeWorkspace caseWorkspace={caseWorkspace} onSave={onEvaluationScopeSave} />
+          </div>
+        ) : null}
       </div>
     </section>
   );

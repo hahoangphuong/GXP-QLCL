@@ -99,8 +99,14 @@ function AppHeader({
 
   return (
     <header className="topbar">
-      <div className="header-identity-group">
+      <div className="header-brand-group">
         <img alt="GXP QLCL" className="app-logo" src="/gxp-qlcl-logo.png" />
+        <div className="brand-copy">
+          <strong>Quản lý GxP</strong>
+          <span>Cơ sở sản xuất, kinh doanh dược phẩm</span>
+        </div>
+      </div>
+      <div className="header-identity-group">
         {usesStubAuth || oidcSession ? (
           <div className="auth-cluster auth-cluster-compact">
             <span className="auth-label">{identityLabel}</span>

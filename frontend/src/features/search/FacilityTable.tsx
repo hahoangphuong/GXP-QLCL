@@ -130,7 +130,7 @@ export function FacilityTable({
               </th>
               <th className="col-province"><span className="table-header-label">Tỉnh/thành</span></th>
               <th className="col-reference"><span className="table-header-label">Ktra gần nhất</span></th>
-              <th className="col-status"><span className="table-header-label">Trạng thái hồ sơ gần nhất</span></th>
+              <th className="col-status"><span className="table-header-label">Trạng thái gần nhất</span></th>
             </tr>
           </thead>
           <tbody>

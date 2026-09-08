@@ -607,6 +607,9 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.queryByText("Tra cứu và điều phối nghiệp vụ")).not.toBeInTheDocument();
     expect(screen.getByText("operator.local (inspector)")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Đăng xuất" })).toBeInTheDocument();
+    expect(screen.getByText("Quản lý GxP")).toBeInTheDocument();
+    expect(screen.getByText("Cơ sở sản xuất, kinh doanh dược phẩm")).toBeInTheDocument();
+    expect(container.querySelector(".header-brand-group")).not.toBeNull();
     expect(container.querySelector(".header-identity-group")).not.toBeNull();
     expect(container.querySelector(".primary-nav")).not.toBeNull();
     await waitFor(() => expect(screen.queryByRole("navigation", { name: "Liên kết pháp lý công khai" })).not.toBeInTheDocument());
@@ -722,7 +725,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(within(tableHead).getByRole("textbox", { name: "Tên cơ sở" })).toBeInTheDocument();
     expect(within(tableHead).getByRole("textbox", { name: "Phạm vi" })).toBeInTheDocument();
     expect(within(tableHead).queryByRole("combobox", { name: "Trạng thái hồ sơ" })).not.toBeInTheDocument();
-    expect(within(tableHead).getByRole("columnheader", { name: "Trạng thái hồ sơ gần nhất" })).toBeInTheDocument();
+    expect(within(tableHead).getByRole("columnheader", { name: "Trạng thái gần nhất" })).toBeInTheDocument();
     expect(tableHead.querySelectorAll("tr")).toHaveLength(1);
     expect(await screen.findByRole("button", { name: "Công ty mới" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Hồ sơ kiểm tra" })).not.toBeInTheDocument();
@@ -745,7 +748,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".facility-context-code")).not.toBeNull();
   }, 10000);
 
-  it("renders the inspection and certificate scope panes from their separate canonical owners", async () => {
+  it("keeps the inspection and certificate scopes as one permanent sibling context for every case step", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
@@ -771,25 +774,23 @@ describe("App Slice A.4 search workspace", () => {
 
     const { container } = renderApp(["/search"]);
 
-    await screen.findByRole("button", { name: "Kiểm tra" });
-    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra" }));
-
     expect(await screen.findByRole("heading", { name: "Phạm vi đánh giá" })).toBeInTheDocument();
     expect(screen.getByText("Phạm vi đánh giá canonical của đợt kiểm tra A")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Phạm vi chứng nhận GPs" })).toBeInTheDocument();
     expect(screen.getByText("Thuốc không vô trùng")).toBeInTheDocument();
-    expect(document.querySelector(".inspection-workspace .inspection-detail-grid")).not.toBeNull();
-    expect(document.querySelector(".inspection-workspace .scope-information-grid")).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Kiểm tra" })).toHaveClass("active");
+    expect(container.querySelector(".event-scope-context .scope-information-grid")).not.toBeNull();
+    expect(container.querySelector(".inspection-workspace .scope-information-grid")).toBeNull();
     expect(container.querySelectorAll(".workflow-stepper")).toHaveLength(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Hồ sơ" }));
-    expect(screen.queryByRole("heading", { name: "Phạm vi đánh giá" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Phạm vi chứng nhận GPs" })).not.toBeInTheDocument();
+    for (const step of ["Hồ sơ", "Kiểm tra", "Khắc phục", "Xử lý", "Chứng nhận GxP", "Chứng nhận ĐĐK"]) {
+      fireEvent.click(screen.getByRole("button", { name: step }));
+      expect(screen.getByRole("button", { name: step })).toHaveClass("active");
+      expect(screen.getAllByRole("heading", { name: "Phạm vi đánh giá" })).toHaveLength(1);
+      expect(screen.getAllByRole("heading", { name: "Phạm vi chứng nhận GPs" })).toHaveLength(1);
+    }
 
-    fireEvent.click(screen.getByRole("button", { name: "Khắc phục" }));
-    expect(screen.queryByRole("heading", { name: "Phạm vi đánh giá" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Phạm vi chứng nhận GPs" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra" }));
+    expect(container.querySelector(".inspection-workspace .inspection-detail-grid")).not.toBeNull();
   });
 
   it("keeps unavailable evaluation and certificate scopes empty instead of copying either value", async () => {

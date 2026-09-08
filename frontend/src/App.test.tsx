@@ -769,7 +769,7 @@ describe("App Slice A.4 search workspace", () => {
       }),
     );
 
-    renderApp(["/search"]);
+    const { container } = renderApp(["/search"]);
 
     await screen.findByRole("button", { name: "Kiểm tra" });
     fireEvent.click(screen.getByRole("button", { name: "Kiểm tra" }));
@@ -780,6 +780,16 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByText("Thuốc không vô trùng")).toBeInTheDocument();
     expect(document.querySelector(".inspection-workspace .inspection-detail-grid")).not.toBeNull();
     expect(document.querySelector(".inspection-workspace .scope-information-grid")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Kiểm tra" })).toHaveClass("active");
+    expect(container.querySelectorAll(".workflow-stepper")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Hồ sơ" }));
+    expect(screen.queryByRole("heading", { name: "Phạm vi đánh giá" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Phạm vi chứng nhận GPs" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Khắc phục" }));
+    expect(screen.queryByRole("heading", { name: "Phạm vi đánh giá" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Phạm vi chứng nhận GPs" })).not.toBeInTheDocument();
   });
 
   it("keeps unavailable evaluation and certificate scopes empty instead of copying either value", async () => {
@@ -1153,10 +1163,10 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByText("Nhà máy GMPbb")).toBeInTheDocument();
     expect(apiMocks.searchFacilities.mock.calls[0][0].gxp_type).toBe("GMPbb");
     expect(screen.getByRole("tab", { name: "GMPbb" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("columnheader", { name: "GxP" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "GxP" })).not.toBeInTheDocument();
   });
 
-  it("shows the GxP column with the default GMP result rail", async () => {
+  it("keeps the default GMP result rail while hiding the redundant GxP column", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
@@ -1164,7 +1174,8 @@ describe("App Slice A.4 search workspace", () => {
 
     renderApp(["/search"]);
 
-    expect(await screen.findByRole("columnheader", { name: "GxP" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "GMP" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("columnheader", { name: "GxP" })).not.toBeInTheDocument();
   });
 
   it("formats result and history dates as dd-mm-yyyy and keeps selected rows highlighted in the workspace", async () => {
@@ -1177,7 +1188,7 @@ describe("App Slice A.4 search workspace", () => {
             ...buildWorkspace().history[0],
             state: "inspection_completed",
           },
-          buildWorkspace().history[1],
+          { ...buildWorkspace().history[1], event_type: "Tái + Mới" },
         ],
       }),
     );
@@ -1190,6 +1201,7 @@ describe("App Slice A.4 search workspace", () => {
     const historyTable = container.querySelector(".history-table");
     expect(screen.getByText("05-08-2026")).toBeInTheDocument();
     expect(within(historyTable as HTMLElement).getByRole("columnheader", { name: "Loại" })).toBeInTheDocument();
+    expect(within(historyTable as HTMLElement).getByText("Tái + Mới")).toBeInTheDocument();
     expect(historyTable?.querySelector("thead .col-state .sr-only")?.textContent).toBe("Trạng thái");
     expect(container.querySelectorAll(".history-status-check")).toHaveLength(1);
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();

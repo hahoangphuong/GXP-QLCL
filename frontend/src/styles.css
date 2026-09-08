@@ -591,10 +591,14 @@ tr:focus-visible {
 }
 
 .tab-strip .workspace-tab.active {
+  position: relative;
+  z-index: 1;
+  margin-bottom: -1px;
   background: var(--surface);
   color: var(--accent-strong);
   border-color: var(--border-strong);
   border-bottom-color: var(--surface);
+  box-shadow: 0 1px 0 var(--surface);
 }
 
 .tab-strip-secondary .workspace-tab {
@@ -804,7 +808,7 @@ tr:focus-visible {
 .table-header-label,
 .table-header-filter > span {
   color: #284b68;
-  font-size: 0.7rem;
+  font-size: 0.76rem;
   font-weight: 750;
   line-height: 1.1;
   white-space: nowrap;
@@ -834,7 +838,7 @@ tr:focus-visible {
   border-color: #b7cbd8;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.94);
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   font-weight: 500;
 }
 
@@ -862,43 +866,39 @@ tr:focus-visible {
 }
 
 .facility-table .col-code {
-  width: 4.3rem;
+  width: 4rem;
 }
 
 .facility-table .col-facility {
-  width: 27.5%;
-}
-
-.facility-table .col-gxp {
-  width: 4.8rem;
+  width: 27%;
 }
 
 .facility-table .col-scope {
-  width: 25.5%;
+  width: auto;
 }
 
 .facility-table .col-province {
-  width: 12%;
+  width: 8.4rem;
 }
 
 .facility-table .col-reference {
-  width: 9.2%;
+  width: 6.3rem;
 }
 
 .facility-table .col-status {
-  width: 10.8rem;
+  width: 10.25rem;
 }
 
 .history-table .col-event-type {
-  width: 3.5rem;
+  width: 4.25rem;
 }
 
 .history-table .col-standard {
-  width: 5.65rem;
+  width: 5.25rem;
 }
 
 .history-table .col-date {
-  width: 5.8rem;
+  width: 5.55rem;
 }
 
 .history-table .col-state {
@@ -1275,18 +1275,49 @@ tr:focus-visible {
 .inspection-detail-grid {
   display: grid;
   grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
-  gap: 0.55rem;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid #cedfe8;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #fbfdfe 0%, #f5f9fb 100%);
 }
 
 .inspection-detail-grid .workspace-section {
-  padding: 0.55rem 0.65rem;
-  border: 1px solid #d4e2ea;
-  border-radius: 9px;
-  background: #fbfdfe;
+  padding: 0.58rem 0.7rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.inspection-detail-grid .inspection-plan-section {
+  border-right: 1px solid #d8e5ec;
 }
 
 .inspection-detail-grid .inspection-outcome-section {
   grid-column: 1 / -1;
+  border-top: 1px solid #d8e5ec;
+}
+
+.inspection-detail-grid .workspace-section h4 {
+  color: #155f91;
+  font-size: 0.82rem;
+}
+
+.inspection-detail-grid .detail-grid span,
+.inspection-detail-grid .editable-detail-label {
+  color: #76909f;
+  font-size: 0.7rem;
+  font-weight: 650;
+}
+
+.inspection-detail-grid .detail-grid strong {
+  color: #203f50;
+  font-size: 0.87rem;
+}
+
+.inspection-detail-grid .compact-grid {
+  gap: 0.42rem 0.7rem;
+  margin-top: 0.35rem;
 }
 
 .scope-information-grid {

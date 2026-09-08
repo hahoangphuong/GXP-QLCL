@@ -33,7 +33,6 @@ export function FacilityTable({
   selectedResultKey,
   loading,
   hasMore,
-  showGxpColumn,
   filters,
   hiddenFilters,
   onFilterChange,
@@ -46,7 +45,6 @@ export function FacilityTable({
   selectedResultKey: string | null;
   loading: boolean;
   hasMore: boolean;
-  showGxpColumn: boolean;
   filters: {
     facilityName: string;
     certificateScope: string;
@@ -119,7 +117,6 @@ export function FacilityTable({
                   />
                 </label>
               </th>
-              {showGxpColumn ? <th className="col-gxp"><span className="table-header-label">GxP</span></th> : null}
               <th className="col-scope">
                 <label className="table-header-filter">
                   <span>Phạm vi</span>
@@ -153,7 +150,6 @@ export function FacilityTable({
               >
                 <td title={row.context_code ?? row.facility_code ?? ""}>{row.context_code ?? row.facility_code ?? "Chưa có"}</td>
                 <td title={row.facility_name}>{formatFacilityNameForGrid(row.facility_name)}</td>
-                {showGxpColumn ? <td>{row.gxp_type ?? "Chưa có"}</td> : null}
                 <td className="multiline-cell" title={row.certificate_scope_summary ?? ""}>
                   {row.certificate_scope_summary ?? "Chưa có"}
                 </td>

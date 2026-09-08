@@ -953,7 +953,6 @@ export function SearchPage({
           rows={results}
           selectedResultKey={selectedResultKey}
           selectedGxpType={gxpType}
-          showGxpColumn
         />
         <div className="action-stack">
           <ActionCard

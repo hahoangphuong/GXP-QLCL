@@ -20,6 +20,7 @@ import type {
   InspectionPlanUpsertRequest,
   InspectionFolderLookup,
 } from "../../types";
+import { StatusBadge } from "../../components/StatusBadge";
 import { EventWorkspace } from "./EventWorkspace";
 import { BusinessEligibilityWorkspace } from "./BusinessEligibilityWorkspace";
 import { FacilitySummary } from "./FacilitySummary";
@@ -128,6 +129,24 @@ export function FacilityWorkspaceTabs({
 }) {
   return (
     <section className="panel panel-tight facility-workspace-panel">
+      <header className="facility-context-bar">
+        <div className="facility-context-identity">
+          <span className="facility-context-icon" aria-hidden="true">CS</span>
+          <div>
+            <div className="facility-context-title-line">
+              <h2>{summary.facility_name}</h2>
+              <span className="facility-context-code">{summary.context_code ?? summary.facility_code ?? "Chưa có mã"}</span>
+            </div>
+            <p>{summary.address ?? summary.company_name}</p>
+          </div>
+        </div>
+        <dl className="facility-context-facts">
+          <div><dt>GxP</dt><dd>{summary.selected_gxp_type ?? (summary.gxp_types.join(", ") || "Chưa có")}</dd></div>
+          <div><dt>Dây chuyền</dt><dd>{summary.selected_line_code ?? "Toàn cơ sở"}</dd></div>
+          <div><dt>Tỉnh/thành</dt><dd>{summary.province_name ?? "Chưa có"}</dd></div>
+          <div><dt>Trạng thái hồ sơ gần nhất</dt><dd><StatusBadge value={summary.current_state} /></dd></div>
+        </dl>
+      </header>
       <div className="workspace-tabs facility-tabs tab-strip tab-strip-primary" role="tablist" aria-label="Tab nghiệp vụ cơ sở">
         {FACILITY_TABS.map((tab) => (
           <button

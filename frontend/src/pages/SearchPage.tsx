@@ -633,14 +633,6 @@ export function SearchPage({
     });
   }
 
-  function clearFilters() {
-    setFacilityName("");
-    setCertificateScope("");
-    setGxpType("ALL");
-    setCaseStates([]);
-    resetDependentContext();
-  }
-
   function loadMoreResults() {
     if (resultsLoading || !hasMoreResults) {
       return;
@@ -942,13 +934,35 @@ export function SearchPage({
 
   return (
     <section className="page-section search-page">
+      <header className="search-page-header">
+        <div className="search-page-heading">
+          <span className="search-page-mark" aria-hidden="true">GxP</span>
+          <div>
+            <h1>Quản lý GxP</h1>
+            <p>Tra cứu cơ sở, dây chuyền và hồ sơ nghiệp vụ</p>
+          </div>
+        </div>
+        <div className="gxp-toggle search-page-gxp-toggle" role="tablist" aria-label="Bộ lọc GxP">
+          {["ALL", "GMP", "GLP", "GMPbb"].map((option) => (
+            <button
+              aria-selected={gxpType === option}
+              className={gxpType === option ? "toggle-chip active" : "toggle-chip"}
+              key={option}
+              onClick={() => updateFilter("gxpType", option)}
+              role="tab"
+              type="button"
+            >
+              {option === "ALL" ? "Tất cả" : option}
+            </button>
+          ))}
+        </div>
+      </header>
       <div className="search-workspace search-workspace-split search-workspace-a4">
         <FacilityTable
           filters={{
             facilityName,
             certificateScope,
             caseState: caseStates.length === 1 ? caseStates[0] : "",
-            gxpType,
           }}
           hasMore={hasMoreResults}
           hiddenFilters={{
@@ -958,14 +972,12 @@ export function SearchPage({
             certificateExpiringWithinDays,
           }}
           loading={resultsLoading}
-          onClear={clearFilters}
           onFilterChange={updateFilter}
           onReachEnd={loadMoreResults}
           onSelect={setSelectedResultKey}
           rows={results}
           selectedResultKey={selectedResultKey}
           showGxpColumn={gxpType === "ALL"}
-          totalCount={resultsTotalCount}
         />
         <div className="action-stack">
           <ActionCard

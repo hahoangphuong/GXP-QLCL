@@ -31,20 +31,17 @@ function buildHiddenFilterChips(filters: HiddenFilters): string[] {
 export function FacilityTable({
   rows,
   selectedResultKey,
-  totalCount,
   loading,
   hasMore,
   showGxpColumn,
   filters,
   hiddenFilters,
   onFilterChange,
-  onClear,
   onReachEnd,
   onSelect,
 }: {
   rows: FacilitySearchResult[];
   selectedResultKey: string | null;
-  totalCount: number;
   loading: boolean;
   hasMore: boolean;
   showGxpColumn: boolean;
@@ -52,11 +49,9 @@ export function FacilityTable({
     facilityName: string;
     certificateScope: string;
     caseState: string;
-    gxpType: string;
   };
   hiddenFilters: HiddenFilters;
-  onFilterChange: (field: "facilityName" | "certificateScope" | "caseState" | "gxpType", value: string) => void;
-  onClear: () => void;
+  onFilterChange: (field: "facilityName" | "certificateScope" | "caseState", value: string) => void;
   onReachEnd: () => void;
   onSelect: (resultKey: string) => void;
 }) {
@@ -75,73 +70,6 @@ export function FacilityTable({
 
   return (
     <section className="panel panel-tight results-panel">
-      <div className="results-toolbar">
-        <div className="panel-header results-toolbar-head">
-          <div className="panel-heading-inline panel-heading-inline-wrap">
-            <h3>Cơ sở/dây chuyền</h3>
-            <div className="gxp-toggle" role="tablist" aria-label="Bộ lọc GxP">
-              {["ALL", "GMP", "GLP", "GMPbb"].map((option) => (
-                <button
-                  aria-selected={filters.gxpType === option}
-                  className={filters.gxpType === option ? "toggle-chip active" : "toggle-chip"}
-                  key={option}
-                  onClick={() => onFilterChange("gxpType", option)}
-                  type="button"
-                >
-                  {option === "ALL" ? "Tất cả" : option}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="panel-actions panel-actions-tight">
-            <span className="panel-meta">{rows.length >= totalCount ? `${totalCount} dòng` : `Đã tải ${rows.length} / ${totalCount}`}</span>
-            {loading && rows.length > 0 ? <span className="panel-subtle-loading">Đang tải...</span> : null}
-            <button className="secondary" onClick={onClear} type="button">
-              Xóa lọc
-            </button>
-          </div>
-        </div>
-        <div className="inline-filter-row" aria-label="Bộ lọc tra cứu trực tiếp">
-          <label className="inline-filter-field">
-            <span className="sr-only">Tên cơ sở</span>
-            <input
-              aria-label="Tên cơ sở"
-              onChange={(event) => onFilterChange("facilityName", event.target.value)}
-              placeholder="Tên cơ sở"
-              value={filters.facilityName}
-            />
-          </label>
-          <label className="inline-filter-field">
-            <span className="sr-only">Phạm vi chứng nhận</span>
-            <input
-              aria-label="Phạm vi chứng nhận"
-              onChange={(event) => onFilterChange("certificateScope", event.target.value)}
-              placeholder="Phạm vi chứng nhận"
-              value={filters.certificateScope}
-            />
-          </label>
-          <label className="inline-filter-field inline-filter-select">
-            <span className="sr-only">Trạng thái hồ sơ</span>
-            <select aria-label="Trạng thái hồ sơ" onChange={(event) => onFilterChange("caseState", event.target.value)} value={filters.caseState}>
-              <option value="">Trạng thái hồ sơ</option>
-              {CASE_STATE_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {formatStatusLabel(option)}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        {chips.length > 0 ? (
-          <div className="active-filter-strip" aria-label="Bộ lọc đang áp dụng">
-            {chips.map((chip) => (
-              <span className="filter-chip" key={chip}>
-                {chip}
-              </span>
-            ))}
-          </div>
-        ) : null}
-      </div>
       {loading && rows.length === 0 ? (
         <div className="panel-inline-loading">
           <span className="panel-subtle-loading">Đang tải danh sách cơ sở...</span>
@@ -149,15 +77,54 @@ export function FacilityTable({
       ) : null}
       <div className="table-scroll table-scroll-fill" data-testid="facility-table-scroll" onScroll={maybeLoadMore} ref={scrollRef}>
         <table className="dense-table facility-table">
+          {chips.length > 0 ? (
+            <caption>
+              <div className="active-filter-strip" aria-label="Bộ lọc đang áp dụng">
+                {chips.map((chip) => (
+                  <span className="filter-chip" key={chip}>{chip}</span>
+                ))}
+              </div>
+            </caption>
+          ) : null}
           <thead>
-            <tr>
-              <th className="col-code">#</th>
-              <th className="col-facility">Tên cơ sở</th>
-              {showGxpColumn ? <th className="col-gxp">GxP</th> : null}
-              <th className="col-scope">Phạm vi chứng nhận</th>
-              <th className="col-province">Tỉnh/thành</th>
-              <th className="col-reference">Ktra gần nhất</th>
-              <th className="col-status">Trạng thái hồ sơ gần nhất</th>
+            <tr className="facility-filter-row">
+              <th className="col-code"><span className="table-header-label">#</span></th>
+              <th className="col-facility">
+                <label className="table-header-filter">
+                  <span>Tên cơ sở</span>
+                  <input
+                    aria-label="Tên cơ sở"
+                    onChange={(event) => onFilterChange("facilityName", event.target.value)}
+                    placeholder="Lọc theo tên..."
+                    value={filters.facilityName}
+                  />
+                </label>
+              </th>
+              {showGxpColumn ? <th className="col-gxp"><span className="table-header-label">GxP</span></th> : null}
+              <th className="col-scope">
+                <label className="table-header-filter">
+                  <span>Phạm vi chứng nhận</span>
+                  <input
+                    aria-label="Phạm vi chứng nhận"
+                    onChange={(event) => onFilterChange("certificateScope", event.target.value)}
+                    placeholder="Lọc theo phạm vi..."
+                    value={filters.certificateScope}
+                  />
+                </label>
+              </th>
+              <th className="col-province"><span className="table-header-label">Tỉnh/thành</span></th>
+              <th className="col-reference"><span className="table-header-label">Ktra gần nhất</span></th>
+              <th className="col-status">
+                <label className="table-header-filter">
+                  <span>Trạng thái hồ sơ gần nhất</span>
+                  <select aria-label="Trạng thái hồ sơ" onChange={(event) => onFilterChange("caseState", event.target.value)} value={filters.caseState}>
+                    <option value="">Tất cả trạng thái</option>
+                    {CASE_STATE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>{formatStatusLabel(option)}</option>
+                    ))}
+                  </select>
+                </label>
+              </th>
             </tr>
           </thead>
           <tbody>

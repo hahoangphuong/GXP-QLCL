@@ -702,14 +702,24 @@ describe("App Slice A.4 search workspace", () => {
 
     const { container } = renderApp(["/search"]);
 
-    expect(await screen.findByRole("heading", { name: "Cơ sở/dây chuyền" })).toBeInTheDocument();
-    expect(await screen.findByText("1.1A")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Quản lý GxP" })).toBeInTheDocument();
+    expect((await screen.findAllByText("1.1A")).length).toBeGreaterThan(0);
     expect(screen.getByRole("textbox", { name: "Tên cơ sở" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Phạm vi chứng nhận" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Trạng thái hồ sơ" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Tỉnh/thành" })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Chứng nhận" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Xử lý" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Cơ sở/dây chuyền" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Xóa lọc" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Đã tải \d+ \/ \d+/)).not.toBeInTheDocument();
+    const pageHeader = container.querySelector(".search-page-header") as HTMLElement;
+    const tableHead = container.querySelector(".facility-table thead") as HTMLElement;
+    expect(within(pageHeader).getByRole("tab", { name: "Tất cả" })).toBeInTheDocument();
+    expect(within(pageHeader).getByRole("tab", { name: "GMP" })).toBeInTheDocument();
+    expect(within(tableHead).getByRole("textbox", { name: "Tên cơ sở" })).toBeInTheDocument();
+    expect(within(tableHead).getByRole("textbox", { name: "Phạm vi chứng nhận" })).toBeInTheDocument();
+    expect(within(tableHead).getByRole("combobox", { name: "Trạng thái hồ sơ" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Công ty mới" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Hồ sơ kiểm tra" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dây chuyền mới" })).toBeInTheDocument();
@@ -749,7 +759,7 @@ describe("App Slice A.4 search workspace", () => {
 
     renderApp(["/search"]);
 
-    expect(await screen.findByText("1.1A")).toBeInTheDocument();
+    expect((await screen.findAllByText("1.1A")).length).toBeGreaterThan(0);
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeEnabled();
     });
@@ -780,7 +790,7 @@ describe("App Slice A.4 search workspace", () => {
 
     const { container } = renderApp(["/search"]);
 
-    expect(await screen.findByText("1.1A")).toBeInTheDocument();
+    expect((await screen.findAllByText("1.1A")).length).toBeGreaterThan(0);
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeEnabled();
     });
@@ -880,7 +890,7 @@ describe("App Slice A.4 search workspace", () => {
 
     const { container } = renderApp(["/search"]);
 
-    expect(await screen.findByText("1.1A")).toBeInTheDocument();
+    expect((await screen.findAllByText("1.1A")).length).toBeGreaterThan(0);
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeEnabled();
     });
@@ -965,7 +975,7 @@ describe("App Slice A.4 search workspace", () => {
 
     renderApp(["/search"]);
 
-    expect(await screen.findByText("1.1A")).toBeInTheDocument();
+    expect((await screen.findAllByText("1.1A")).length).toBeGreaterThan(0);
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeEnabled();
     });
@@ -1018,7 +1028,7 @@ describe("App Slice A.4 search workspace", () => {
 
     renderApp(["/search"]);
 
-    expect(await screen.findByText("1.1A")).toBeInTheDocument();
+    expect((await screen.findAllByText("1.1A")).length).toBeGreaterThan(0);
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeEnabled();
     });
@@ -1030,7 +1040,7 @@ describe("App Slice A.4 search workspace", () => {
       "An open inspection case already exists for the selected facility/GxP/line context.",
     );
     expect(screen.getByRole("dialog", { name: "Tạo hồ sơ tái đánh giá" })).toBeInTheDocument();
-    expect(screen.getByText("1.1A")).toBeInTheDocument();
+    expect(screen.getAllByText("1.1A").length).toBeGreaterThan(0);
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
   });
 
@@ -1064,7 +1074,7 @@ describe("App Slice A.4 search workspace", () => {
 
     expect(await screen.findByText("Nhà máy GMPbb")).toBeInTheDocument();
     expect(apiMocks.searchFacilities.mock.calls[0][0].gxp_type).toBe("GMPbb");
-    expect(screen.getByRole("button", { name: "GMPbb" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "GMPbb" })).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByRole("columnheader", { name: "GxP" })).not.toBeInTheDocument();
   });
 
@@ -1139,8 +1149,8 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByText("Rajesh Kamat, Tổng Giám đốc")).toBeInTheDocument();
     expect(screen.getByText("Nhật Bản")).toBeInTheDocument();
     expect(screen.getByText("Hà Hoàng Phương")).toBeInTheDocument();
-    expect(screen.getByText("Nhà máy A")).toBeInTheDocument();
-    expect(screen.getByText("KCN A")).toBeInTheDocument();
+    expect(screen.getAllByText("Nhà máy A").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("KCN A").length).toBeGreaterThan(0);
     expect(screen.getByText("QA: 0903 000 000")).toBeInTheDocument();
     expect(screen.getByText("Dược sĩ A")).toBeInTheDocument();
     expect(screen.getByText("QA Lead B")).toBeInTheDocument();
@@ -1196,8 +1206,8 @@ describe("App Slice A.4 search workspace", () => {
 
     renderApp(["/search"]);
 
-    expect(await screen.findByText("1.1A")).toBeInTheDocument();
-    expect(await screen.findByText("Đã tải 2 / 3")).toBeInTheDocument();
+    expect((await screen.findAllByText("1.1A")).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Đã tải 2 / 3")).not.toBeInTheDocument();
     const scrollRegion = screen.getByTestId("facility-table-scroll");
     Object.defineProperty(scrollRegion, "scrollTop", { configurable: true, value: 260 });
     Object.defineProperty(scrollRegion, "clientHeight", { configurable: true, value: 200 });
@@ -1209,7 +1219,7 @@ describe("App Slice A.4 search workspace", () => {
       expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2);
     });
     expect(await screen.findByText("1.1C")).toBeInTheDocument();
-    expect(screen.getByText("3 dòng")).toBeInTheDocument();
+    expect(screen.queryByText("3 dòng")).not.toBeInTheDocument();
     expect(screen.queryByText(/^Prev$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Next$/)).not.toBeInTheDocument();
 

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { EmptyState } from "../../components/EmptyState";
-import { StatusBadge } from "../../components/StatusBadge";
 import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
 import type {
   BusinessEligibilityDetail,
@@ -680,9 +679,6 @@ export function EventWorkspace({
 
   return (
     <section className="event-workspace">
-      <div className="panel-header">
-        <StatusBadge value={selectedHistory.state} />
-      </div>
       <nav aria-label="Quy trình xử lý sự kiện" className="workflow-stepper">
         <ol className="workflow-step-list">
           {tabs.map((tab, index) => (

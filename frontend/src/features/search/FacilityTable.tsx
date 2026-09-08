@@ -37,8 +37,10 @@ export function FacilityTable({
   filters,
   hiddenFilters,
   onFilterChange,
+  onGxpTypeChange,
   onReachEnd,
   onSelect,
+  selectedGxpType,
 }: {
   rows: FacilitySearchResult[];
   selectedResultKey: string | null;
@@ -52,8 +54,10 @@ export function FacilityTable({
   };
   hiddenFilters: HiddenFilters;
   onFilterChange: (field: "facilityName" | "certificateScope" | "caseState", value: string) => void;
+  onGxpTypeChange: (value: "GMP" | "GLP" | "GMPbb") => void;
   onReachEnd: () => void;
   onSelect: (resultKey: string) => void;
+  selectedGxpType: string;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const chips = buildHiddenFilterChips(hiddenFilters);
@@ -70,13 +74,29 @@ export function FacilityTable({
 
   return (
     <section className="panel panel-tight results-panel">
-      {loading && rows.length === 0 ? (
-        <div className="panel-inline-loading">
-          <span className="panel-subtle-loading">Đang tải danh sách cơ sở...</span>
-        </div>
-      ) : null}
-      <div className="table-scroll table-scroll-fill" data-testid="facility-table-scroll" onScroll={maybeLoadMore} ref={scrollRef}>
-        <table className="dense-table facility-table">
+      <div className="facility-table-layout">
+        <nav aria-label="Bộ lọc GxP" className="facility-gxp-rail" role="tablist">
+          {(["GMP", "GLP", "GMPbb"] as const).map((option) => (
+            <button
+              aria-selected={selectedGxpType === option}
+              className={selectedGxpType === option ? "facility-gxp-tab active" : "facility-gxp-tab"}
+              key={option}
+              onClick={() => onGxpTypeChange(option)}
+              role="tab"
+              type="button"
+            >
+              {option}
+            </button>
+          ))}
+        </nav>
+        <div className="facility-table-frame">
+          {loading && rows.length === 0 ? (
+            <div className="panel-inline-loading">
+              <span className="panel-subtle-loading">Đang tải danh sách cơ sở...</span>
+            </div>
+          ) : null}
+          <div className="table-scroll table-scroll-fill" data-testid="facility-table-scroll" onScroll={maybeLoadMore} ref={scrollRef}>
+            <table className="dense-table facility-table">
           {chips.length > 0 ? (
             <caption>
               <div className="active-filter-strip" aria-label="Bộ lọc đang áp dụng">
@@ -156,7 +176,9 @@ export function FacilityTable({
               </tr>
             ))}
           </tbody>
-        </table>
+            </table>
+          </div>
+        </div>
       </div>
     </section>
   );

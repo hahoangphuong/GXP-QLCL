@@ -135,7 +135,6 @@ export function FacilityWorkspaceTabs({
           <div>
             <div className="facility-context-title-line">
               <h2>{summary.facility_name}</h2>
-              <span className="facility-context-code">{summary.context_code ?? summary.facility_code ?? "Chưa có mã"}</span>
             </div>
             <p>{summary.address ?? summary.company_name}</p>
           </div>

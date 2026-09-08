@@ -702,7 +702,6 @@ describe("App Slice A.4 search workspace", () => {
 
     const { container } = renderApp(["/search"]);
 
-    expect(await screen.findByRole("heading", { name: "Quản lý GxP" })).toBeInTheDocument();
     expect((await screen.findAllByText("1.1A")).length).toBeGreaterThan(0);
     expect(screen.getByRole("textbox", { name: "Tên cơ sở" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Phạm vi chứng nhận" })).toBeInTheDocument();
@@ -713,10 +712,13 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.queryByRole("heading", { name: "Cơ sở/dây chuyền" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Xóa lọc" })).not.toBeInTheDocument();
     expect(screen.queryByText(/Đã tải \d+ \/ \d+/)).not.toBeInTheDocument();
-    const pageHeader = container.querySelector(".search-page-header") as HTMLElement;
     const tableHead = container.querySelector(".facility-table thead") as HTMLElement;
-    expect(within(pageHeader).getByRole("tab", { name: "Tất cả" })).toBeInTheDocument();
-    expect(within(pageHeader).getByRole("tab", { name: "GMP" })).toBeInTheDocument();
+    expect(container.querySelector(".search-page-header")).toBeNull();
+    expect(screen.getByRole("navigation", { name: "Điều hướng chính" })).toBeInTheDocument();
+    const gxpRail = container.querySelector(".facility-gxp-rail") as HTMLElement;
+    expect(within(gxpRail).getAllByRole("tab").map((item) => item.textContent)).toEqual(["GMP", "GLP", "GMPbb"]);
+    expect(within(gxpRail).queryByRole("tab", { name: "Tất cả" })).not.toBeInTheDocument();
+    expect(within(gxpRail).getByRole("tab", { name: "GMP" })).toHaveAttribute("aria-selected", "true");
     expect(within(tableHead).getByRole("textbox", { name: "Tên cơ sở" })).toBeInTheDocument();
     expect(within(tableHead).getByRole("textbox", { name: "Phạm vi chứng nhận" })).toBeInTheDocument();
     expect(within(tableHead).getByRole("combobox", { name: "Trạng thái hồ sơ" })).toBeInTheDocument();
@@ -736,7 +738,78 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".search-toolbar")).toBeNull();
     expect(container.querySelector(".search-workspace-split .history-panel")).toBeNull();
     expect(container.querySelector(".facility-workspace-panel .history-panel")).not.toBeNull();
+    expect(container.querySelector(".event-workspace > .panel-header")).toBeNull();
+    expect(container.querySelectorAll(".facility-context-facts .status-badge")).toHaveLength(1);
   }, 10000);
+
+  it("renders the inspection and certificate scope panes from their separate canonical owners", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(
+      buildCaseWorkspace({
+        evaluation_scope: {
+          id: "scope-1",
+          row_version: 1,
+          source_classification: "STRUCTURED_VALID",
+          rendered_prose: null,
+          summary_text: "Phạm vi đánh giá canonical của đợt kiểm tra A",
+          summary_source: "canonical_projection",
+          limitation_text: null,
+          editable: false,
+          read_only_reason: null,
+          taxonomy_version_id: "taxonomy-1",
+          gxp_type: "GMP",
+          blocks: [],
+          taxonomy_nodes: [],
+        },
+      }),
+    );
+
+    renderApp(["/search"]);
+
+    await screen.findByRole("button", { name: "Kiểm tra" });
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra" }));
+
+    expect(await screen.findByRole("heading", { name: "Phạm vi đánh giá" })).toBeInTheDocument();
+    expect(screen.getByText("Phạm vi đánh giá canonical của đợt kiểm tra A")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Phạm vi chứng nhận GPs" })).toBeInTheDocument();
+    expect(screen.getByText("Thuốc không vô trùng")).toBeInTheDocument();
+  });
+
+  it("keeps unavailable evaluation and certificate scopes empty instead of copying either value", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(
+      buildCaseWorkspace({
+        evaluation_scope: {
+          id: null,
+          row_version: null,
+          source_classification: null,
+          rendered_prose: null,
+          summary_text: null,
+          summary_source: null,
+          limitation_text: null,
+          editable: false,
+          read_only_reason: "Chưa có phạm vi đánh giá canonical cho hồ sơ này.",
+          taxonomy_version_id: null,
+          gxp_type: "GMP",
+          blocks: [],
+          taxonomy_nodes: [],
+        },
+        linked_gxp_certificates: [{ ...buildCaseWorkspace().linked_gxp_certificates[0], scope_summary: null }],
+      }),
+    );
+
+    renderApp(["/search"]);
+
+    await screen.findByRole("button", { name: "Kiểm tra" });
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra" }));
+
+    expect(await screen.findByText("Chưa có nội dung phạm vi đánh giá để hiển thị.")).toBeInTheDocument();
+    expect(screen.getByText("Chưa có phạm vi chứng nhận GPs canonical liên kết trực tiếp với hồ sơ này.")).toBeInTheDocument();
+  });
 
   it("enables only Tái đánh giá when backend readiness says available and keeps other actions disabled", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
@@ -1044,7 +1117,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
   });
 
-  it("uses the canonical GMPbb value and hides the GxP column outside the Tất cả view", async () => {
+  it("uses the canonical GMPbb value in the vertical result rail", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({
       items: [
@@ -1075,10 +1148,10 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByText("Nhà máy GMPbb")).toBeInTheDocument();
     expect(apiMocks.searchFacilities.mock.calls[0][0].gxp_type).toBe("GMPbb");
     expect(screen.getByRole("tab", { name: "GMPbb" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.queryByRole("columnheader", { name: "GxP" })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "GxP" })).toBeInTheDocument();
   });
 
-  it("shows the GxP column only under the Tất cả view", async () => {
+  it("shows the GxP column with the default GMP result rail", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());

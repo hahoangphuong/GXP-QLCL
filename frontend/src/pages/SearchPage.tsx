@@ -56,10 +56,10 @@ import type {
 const DEFAULT_EVENT_TAB = "Hồ sơ";
 const DEFAULT_FACILITY_TAB = "Các đợt kiểm tra & thay đổi";
 const RESULT_PAGE_SIZE = 100;
-const GXP_FILTER_OPTIONS = new Set(["ALL", "GMP", "GLP", "GMPbb"]);
+const GXP_FILTER_OPTIONS = new Set(["GMP", "GLP", "GMPbb"]);
 
 function normalizeGxpSelection(value: string | null): string {
-  return value && GXP_FILTER_OPTIONS.has(value) ? value : "ALL";
+  return value && GXP_FILTER_OPTIONS.has(value) ? value : "GMP";
 }
 
 function appendUniqueResults(current: FacilitySearchResult[], incoming: FacilitySearchResult[]) {
@@ -194,9 +194,7 @@ export function SearchPage({
     if (deferredCertificateScope.trim()) {
       nextParams.set("certificate_scope", deferredCertificateScope.trim());
     }
-    if (gxpType !== "ALL") {
-      nextParams.set("gxp_type", gxpType);
-    }
+    nextParams.set("gxp_type", gxpType);
     if (province.trim()) {
       nextParams.set("province", province.trim());
     }
@@ -266,7 +264,7 @@ export function SearchPage({
       {
         facility_name: deferredFacilityName.trim() || undefined,
         certificate_scope: deferredCertificateScope.trim() || undefined,
-        gxp_type: gxpType === "ALL" ? null : gxpType,
+        gxp_type: gxpType,
         province: province.trim() || undefined,
         case_state: caseStates,
         change_request_state: changeRequestStates,
@@ -934,29 +932,6 @@ export function SearchPage({
 
   return (
     <section className="page-section search-page">
-      <header className="search-page-header">
-        <div className="search-page-heading">
-          <span className="search-page-mark" aria-hidden="true">GxP</span>
-          <div>
-            <h1>Quản lý GxP</h1>
-            <p>Tra cứu cơ sở, dây chuyền và hồ sơ nghiệp vụ</p>
-          </div>
-        </div>
-        <div className="gxp-toggle search-page-gxp-toggle" role="tablist" aria-label="Bộ lọc GxP">
-          {["ALL", "GMP", "GLP", "GMPbb"].map((option) => (
-            <button
-              aria-selected={gxpType === option}
-              className={gxpType === option ? "toggle-chip active" : "toggle-chip"}
-              key={option}
-              onClick={() => updateFilter("gxpType", option)}
-              role="tab"
-              type="button"
-            >
-              {option === "ALL" ? "Tất cả" : option}
-            </button>
-          ))}
-        </div>
-      </header>
       <div className="search-workspace search-workspace-split search-workspace-a4">
         <FacilityTable
           filters={{
@@ -973,11 +948,13 @@ export function SearchPage({
           }}
           loading={resultsLoading}
           onFilterChange={updateFilter}
+          onGxpTypeChange={(value) => updateFilter("gxpType", value)}
           onReachEnd={loadMoreResults}
           onSelect={setSelectedResultKey}
           rows={results}
           selectedResultKey={selectedResultKey}
-          showGxpColumn={gxpType === "ALL"}
+          selectedGxpType={gxpType}
+          showGxpColumn
         />
         <div className="action-stack">
           <ActionCard

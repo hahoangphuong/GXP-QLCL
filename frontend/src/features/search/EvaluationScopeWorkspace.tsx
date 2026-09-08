@@ -140,18 +140,35 @@ export function EvaluationScopeWorkspace({ caseWorkspace, onSave }: {
   onSave: (payload: EvaluationScopeUpsertRequest) => Promise<void>;
 }) {
   const scope = caseWorkspace.evaluation_scope ?? emptyEvaluationScope;
+  const linkedCertificates = caseWorkspace.linked_gxp_certificates ?? [];
+  const currentCertificates = linkedCertificates.filter((item) => item.latest_flag);
+  const certificate = currentCertificates.length === 1
+    ? currentCertificates[0]
+    : currentCertificates.length === 0 && linkedCertificates.length === 1
+      ? linkedCertificates[0]
+      : null;
   const [editorOpen, setEditorOpen] = useState(false);
   useEffect(() => setEditorOpen(false), [scope.id, scope.row_version]);
-  if (!scope.id) return <p className="workspace-note">{scope.read_only_reason}</p>;
   const isHistorical = scope.summary_source === "historical_prose";
-  return <section className="workspace-section evaluation-scope-workspace">
-    <header className="workspace-section-header">
-      <h4>{isHistorical ? "Phạm vi đánh giá lịch sử" : "Phạm vi đánh giá"}</h4>
-      {scope.editable ? <button className="secondary" onClick={() => setEditorOpen(true)} type="button">Sửa phạm vi</button> : null}
-    </header>
-    {scope.read_only_reason ? <p className="workspace-note">{scope.read_only_reason}</p> : null}
-    <pre className="evaluation-scope-summary">{scope.summary_text || "Chưa có nội dung phạm vi để hiển thị."}</pre>
-    {scope.summary_source === "legacy_rendered_prose" ? <p className="workspace-note">Hiển thị theo văn bản legacy đã lưu; sau khi chỉnh sửa, summary sẽ được tạo từ aggregate canonical hiện hành.</p> : null}
+  return <section className="evaluation-scope-workspace">
+    <div className="scope-information-grid">
+      <section className="workspace-section scope-information-pane">
+        <header className="workspace-section-header">
+          <h4>{isHistorical ? "Phạm vi đánh giá lịch sử" : "Phạm vi đánh giá"}</h4>
+          {scope.id && scope.editable ? <button className="secondary" onClick={() => setEditorOpen(true)} type="button">Sửa phạm vi</button> : null}
+        </header>
+        {scope.read_only_reason ? <p className="workspace-note">{scope.read_only_reason}</p> : null}
+        <pre className="evaluation-scope-summary">{scope.summary_text || "Chưa có nội dung phạm vi đánh giá để hiển thị."}</pre>
+        {scope.summary_source === "legacy_rendered_prose" ? <p className="workspace-note">Hiển thị theo văn bản legacy đã lưu; sau khi chỉnh sửa, summary sẽ được tạo từ aggregate canonical hiện hành.</p> : null}
+      </section>
+      <section className="workspace-section scope-information-pane">
+        <header className="workspace-section-header">
+          <h4>Phạm vi chứng nhận GPs</h4>
+          {certificate?.certificate_number ? <span className="scope-information-source">GCN {certificate.certificate_number}</span> : null}
+        </header>
+        <pre className="evaluation-scope-summary">{certificate?.scope_summary || "Chưa có phạm vi chứng nhận GPs canonical liên kết trực tiếp với hồ sơ này."}</pre>
+      </section>
+    </div>
     {editorOpen ? <EvaluationScopeEditorDialog scope={scope} onClose={() => setEditorOpen(false)} onSave={onSave} /> : null}
   </section>;
 }

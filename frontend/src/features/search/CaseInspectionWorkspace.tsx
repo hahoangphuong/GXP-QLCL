@@ -120,7 +120,7 @@ function InspectionPlanSection({
   }
 
   return (
-    <section className="workspace-section">
+    <section className="workspace-section inspection-plan-section">
       <h4>Kế hoạch kiểm tra</h4>
       <div className="detail-grid compact-grid">
         <EditableDetailValue
@@ -179,7 +179,7 @@ function InspectionTeamSection({
   caseWorkspace: CaseWorkspace;
 }) {
   return (
-    <section className="workspace-section">
+    <section className="workspace-section inspection-team-section">
       <h4>Đoàn kiểm tra</h4>
       <div className="detail-grid compact-grid">
         <DetailValue label="Mô tả đoàn kiểm tra" multiline value={caseWorkspace.inspection.team_display_text} />
@@ -245,7 +245,7 @@ function InspectionOutcomeSection({
   }
 
   return (
-    <section className="workspace-section">
+    <section className="workspace-section inspection-outcome-section">
       <h4>Thực hiện & kết quả</h4>
       <div className="detail-grid compact-grid">
         <EditableDetailValue
@@ -381,11 +381,13 @@ export function CaseInspectionWorkspace({
   onEvaluationScopeSave: (payload: EvaluationScopeUpsertRequest) => Promise<void>;
 }) {
   return (
-    <div className="event-step-stack">
-      <InspectionPlanSection caseWorkspace={caseWorkspace} onSave={onInspectionPlanSave} />
+    <div className="inspection-workspace">
+      <div className="inspection-detail-grid">
+        <InspectionPlanSection caseWorkspace={caseWorkspace} onSave={onInspectionPlanSave} />
+        <InspectionTeamSection caseWorkspace={caseWorkspace} />
+        <InspectionOutcomeSection caseWorkspace={caseWorkspace} onSave={onInspectionOutcomeSave} />
+      </div>
       <EvaluationScopeWorkspace caseWorkspace={caseWorkspace} onSave={onEvaluationScopeSave} />
-      <InspectionTeamSection caseWorkspace={caseWorkspace} />
-      <InspectionOutcomeSection caseWorkspace={caseWorkspace} onSave={onInspectionOutcomeSave} />
     </div>
   );
 }

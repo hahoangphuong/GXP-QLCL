@@ -650,6 +650,14 @@ tr:focus-visible {
   flex-direction: column;
 }
 
+.action-stack {
+  min-height: 0;
+}
+
+.action-stack .action-panel {
+  height: 100%;
+}
+
 .results-panel {
   overflow: hidden;
   padding: 0;
@@ -1162,7 +1170,7 @@ tr:focus-visible {
 }
 
 .master-detail-split-history {
-  grid-template-columns: clamp(230px, 25vw, 340px) minmax(0, 1fr);
+  grid-template-columns: clamp(220px, 22vw, 320px) minmax(0, 1fr);
 }
 
 .master-detail-split-certificate {
@@ -1181,6 +1189,10 @@ tr:focus-visible {
 
 .workflow-stepper {
   margin-top: 0.2rem;
+  padding: 0.3rem 0.38rem;
+  border: 1px solid #d4e2ea;
+  border-radius: 9px;
+  background: linear-gradient(180deg, #f9fcfe 0%, #edf5f9 100%);
 }
 
 .workflow-step-list {
@@ -1205,7 +1217,7 @@ tr:focus-visible {
   height: 1px;
   flex: 1 1 18px;
   min-width: 8px;
-  background: #b9cfdb;
+  background: #aac8d9;
 }
 
 .workflow-step {
@@ -1222,7 +1234,7 @@ tr:focus-visible {
 }
 
 .workflow-step.active {
-  background: #eaf4fe;
+  background: #dceffd;
   color: #0e67ba;
 }
 
@@ -1255,20 +1267,46 @@ tr:focus-visible {
   gap: 0.65rem;
 }
 
+.inspection-workspace {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.inspection-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+  gap: 0.55rem;
+}
+
+.inspection-detail-grid .workspace-section {
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #d4e2ea;
+  border-radius: 9px;
+  background: #fbfdfe;
+}
+
+.inspection-detail-grid .inspection-outcome-section {
+  grid-column: 1 / -1;
+}
+
 .scope-information-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.55rem;
-  min-height: 230px;
+  gap: 0.65rem;
+  min-height: 250px;
+  padding: 0.6rem;
+  border: 1px solid #c5dce9;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #edf7fc 0%, #f7fbfd 100%);
 }
 
 .scope-information-pane {
   min-height: 0;
-  padding: 0.45rem 0.55rem;
-  border: 1px solid #cddfe9;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #bad7e7;
   border-radius: 8px;
   background: linear-gradient(180deg, #f9fdff 0%, #e7f4fb 100%);
-  box-shadow: inset 0 3px 0 #5ab0e5;
+  box-shadow: inset 0 3px 0 #258fd0, 0 1px 2px rgba(37, 105, 142, 0.08);
 }
 
 .scope-information-pane .workspace-section-header {
@@ -1276,7 +1314,8 @@ tr:focus-visible {
 }
 
 .scope-information-pane h4 {
-  color: #0e67ba;
+  color: #075da5;
+  font-size: 0.9rem;
 }
 
 .scope-information-source {
@@ -1287,14 +1326,14 @@ tr:focus-visible {
 
 .scope-information-pane .evaluation-scope-summary {
   flex: 1 1 auto;
-  min-height: 156px;
-  max-height: 250px;
+  min-height: 175px;
+  max-height: 280px;
   margin: 0;
   overflow: auto;
   padding: 0.5rem 0.55rem;
   border-color: #c8dce9;
   background: rgba(255, 255, 255, 0.9);
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   line-height: 1.42;
   white-space: pre-wrap;
 }
@@ -1886,6 +1925,14 @@ tr:focus-visible {
 
   .scope-information-grid {
     grid-template-columns: 1fr;
+  }
+
+  .inspection-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inspection-detail-grid .inspection-outcome-section {
+    grid-column: auto;
   }
 
   .auth-cluster {

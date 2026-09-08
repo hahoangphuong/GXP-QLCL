@@ -778,6 +778,8 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByText("Phạm vi đánh giá canonical của đợt kiểm tra A")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Phạm vi chứng nhận GPs" })).toBeInTheDocument();
     expect(screen.getByText("Thuốc không vô trùng")).toBeInTheDocument();
+    expect(document.querySelector(".inspection-workspace .inspection-detail-grid")).not.toBeNull();
+    expect(document.querySelector(".inspection-workspace .scope-information-grid")).not.toBeNull();
   });
 
   it("keeps unavailable evaluation and certificate scopes empty instead of copying either value", async () => {

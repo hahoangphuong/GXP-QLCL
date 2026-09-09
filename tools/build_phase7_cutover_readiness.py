@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from tools.validate_phase7_cutover_checklist import (
+    FREEZE_EXECUTION_ITEM_IDS,
     PRE_SWITCH_REQUIRED_ITEM_IDS,
     load_json as load_checklist_json,
     validate_rows,
@@ -108,7 +109,14 @@ def _blocked_artifact_gate(reason: str) -> dict[str, Any]:
     return gate("blocked", reason)
 
 
-def build_operational_gate(item_ids: tuple[str, ...], label: str, *, checklist_path: Path) -> dict[str, Any]:
+def build_operational_gate(
+    item_ids: tuple[str, ...],
+    label: str,
+    *,
+    checklist_path: Path,
+    required_execution_scope: str | None = None,
+    execution_scope_item_ids: frozenset[str] = frozenset(),
+) -> dict[str, Any]:
     try:
         checklist = load_checklist_json(checklist_path)
         rows = checklist["items"]
@@ -133,6 +141,24 @@ def build_operational_gate(item_ids: tuple[str, ...], label: str, *, checklist_p
         return gate("pending", f"{label} checklist execution is pending.", detail={"statuses": statuses})
     if any(status != "pass" for status in statuses.values()):
         return gate("blocked", f"{label} checklist has an invalid status.", detail={"statuses": statuses})
+    if required_execution_scope is not None:
+        scopes = {
+            item_id: by_id[item_id].get("execution_scope")
+            for item_id in item_ids
+            if item_id in execution_scope_item_ids
+        }
+        if any(scope == "rehearsal" for scope in scopes.values()):
+            return gate(
+                "pending",
+                f"{label} evidence is rehearsal-only and cannot satisfy a cutover gate.",
+                detail={"statuses": statuses, "execution_scopes": scopes},
+            )
+        if any(scope != required_execution_scope for scope in scopes.values()):
+            return gate(
+                "blocked",
+                f"{label} evidence does not have the required execution scope.",
+                detail={"statuses": statuses, "execution_scopes": scopes},
+            )
     return gate("pass", f"{label} operational evidence is complete.", detail={"statuses": statuses})
 
 
@@ -359,7 +385,11 @@ def build_readiness(*, evidence_dir: Path) -> dict[str, Any]:
     gates["current_projection_conflicts"] = build_current_projection_gate(phase3p, phase3s)
 
     gates["legacy_write_freeze_execution"] = build_operational_gate(
-        PRE_SWITCH_FREEZE_ITEM_IDS, "Legacy write freeze", checklist_path=evidence_paths.checklist_path
+        PRE_SWITCH_FREEZE_ITEM_IDS,
+        "Legacy write freeze",
+        checklist_path=evidence_paths.checklist_path,
+        required_execution_scope="cutover",
+        execution_scope_item_ids=FREEZE_EXECUTION_ITEM_IDS,
     )
     gates["rollback_window_execution"] = build_operational_gate(
         ROLLBACK_ITEM_IDS, "Rollback window", checklist_path=evidence_paths.checklist_path

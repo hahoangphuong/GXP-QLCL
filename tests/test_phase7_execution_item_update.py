@@ -53,6 +53,7 @@ def _freeze_pass_args() -> list[str]:
         "--item-id", "legacy_write_freeze_window_approved", "--status", "pass",
         "--set", "owner=owner", "--set", "executed_on=2026-09-06T10:00:00+00:00",
         "--set", "notes=approved", "--set", "approver=approver",
+        "--set", "execution_scope=cutover",
         "--set", "freeze_start=2026-09-06T10:00:00+00:00",
         "--set", "freeze_end=2026-09-06T11:00:00+00:00",
         "--set", "approval_ref=approval", "--evidence-ref", "ticket-1",
@@ -122,6 +123,17 @@ def test_operator_mode_is_mutable_only_for_rollback_contacts(tmp_path: Path) -> 
     evidence_dir = _evidence_dir(tmp_path)
     assert _update(evidence_dir, "--item-id", "desktop_phase6_complete", "--status", "pending", "--set", "operator_mode=single_operator_test") == 1
     assert _update(evidence_dir, "--item-id", "rollback_contacts_confirmed", "--status", "pending", "--set", "operator_mode=standard") == 0
+
+
+def test_execution_scope_is_mutable_only_for_freeze_items_and_uses_closed_values(tmp_path: Path) -> None:
+    evidence_dir = _evidence_dir(tmp_path)
+    assert _update(evidence_dir, "--item-id", "desktop_phase6_complete", "--status", "pending", "--set", "execution_scope=cutover") == 1
+    assert _update(evidence_dir, "--item-id", "legacy_write_freeze_window_approved", "--status", "pending", "--set", "execution_scope=unknown") == 1
+    assert _update(evidence_dir, "--item-id", "legacy_write_freeze_window_approved", "--status", "pending", "--set", "execution_scope=rehearsal") == 0
+    assert _update(evidence_dir, *_replace_set(_freeze_pass_args(), "execution_scope", "unknown")) == 1
+    assert _update(evidence_dir, *_replace_set(_freeze_pass_args(), "execution_scope", "rehearsal")) == 0
+    row = next(row for row in _payload(evidence_dir)["items"] if row["item_id"] == "legacy_write_freeze_window_approved")
+    assert row["execution_scope"] == "rehearsal"
 
 
 def test_pass_validation_for_rollback_and_freeze_timestamps(tmp_path: Path) -> None:

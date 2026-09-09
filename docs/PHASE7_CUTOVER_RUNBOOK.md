@@ -137,6 +137,13 @@ Use repeatable `--evidence-ref` and, where required, `--command-ref` options for
 list evidence fields. Archive the resulting external checklist, its backup, and
 the regenerated outputs with the cutover evidence.
 
+For `legacy_write_freeze_window_approved` and
+`legacy_write_freeze_announced`, a `pass` row also requires the exact closed
+`execution_scope` value. Set `--set "execution_scope=cutover"` only for evidence
+from the real cutover window. `execution_scope=rehearsal` preserves rehearsal
+evidence but leaves the pre-switch gate pending. The tools never infer scope from
+notes, dates, contacts, or evidence references.
+
 For a single-person test or rehearsal only, `rollback_contacts_confirmed` may use
 `--set "operator_mode=single_operator_test"`, `--set "backup_contact=N/A"`, and
 `--set "escalation_path=N/A"` with its normal owner, primary-contact, timestamp,
@@ -147,7 +154,8 @@ real backup and escalation contacts for multi-operator operation.
 ### Pre-switch
 1. Confirm the Phase 6 desktop/private-share and current-projection prerequisites.
 2. Approve the change window and confirm rollback contacts.
-3. Announce and enforce the legacy write freeze.
+3. Announce and enforce the legacy write freeze, then record both freeze rows as
+   `pass` with `--set "execution_scope=cutover"` and their operational evidence.
 4. Export a fresh `artifacts/phase3c/legacy_snapshot.json` from the frozen workbook baseline.
 5. Run the canonical VM validation dry-run and review `artifacts/legacy-production/<timestamp>/report.json` and `report.md`.
 6. Rebuild the final candidate database from the frozen snapshot with `--import-mode final --reset-from-snapshot`.

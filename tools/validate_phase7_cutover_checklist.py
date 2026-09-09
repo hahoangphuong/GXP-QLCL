@@ -38,9 +38,16 @@ OPERATIONAL_EVIDENCE_FIELDS = {
 }
 OPERATIONAL_OPTIONAL_FIELDS = {
     "rollback_contacts_confirmed": ("operator_mode",),
+    "legacy_write_freeze_window_approved": ("execution_scope",),
+    "legacy_write_freeze_announced": ("execution_scope",),
 }
 ROLLBACK_OPERATOR_MODES = {"standard", "single_operator_test"}
 ROLLBACK_SINGLE_OPERATOR_VALUE = "N/A"
+FREEZE_EXECUTION_ITEM_IDS = frozenset({
+    "legacy_write_freeze_window_approved",
+    "legacy_write_freeze_announced",
+})
+FREEZE_EXECUTION_SCOPES = frozenset({"rehearsal", "cutover"})
 
 
 def _parse_timestamp(value: str) -> datetime | None:
@@ -75,6 +82,13 @@ def _validate_rollback_contacts(row: dict[str, Any], errors: list[str]) -> None:
             errors.append(f"{item_id}: missing or invalid {field} in standard mode")
 
 
+def _validate_freeze_execution_scope(row: dict[str, Any], errors: list[str]) -> None:
+    item_id = str(row["item_id"])
+    scope = row.get("execution_scope")
+    if scope not in FREEZE_EXECUTION_SCOPES:
+        errors.append(f"{item_id}: invalid execution_scope {scope!r}")
+
+
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -100,6 +114,12 @@ def validate_rows(rows: list[dict[str, Any]]) -> list[str]:
         if status not in ALLOWED_STATUSES:
             errors.append(f"{item_id}: invalid status {status!r}")
             continue
+        if item_id not in FREEZE_EXECUTION_ITEM_IDS and "execution_scope" in row:
+            errors.append(f"{item_id}: execution_scope is only allowed for legacy write freeze items")
+        if item_id in FREEZE_EXECUTION_ITEM_IDS and (
+            status == "pass" or row.get("execution_scope") is not None
+        ):
+            _validate_freeze_execution_scope(row, errors)
         if status != "pass" or item_id not in OPERATIONAL_EVIDENCE_FIELDS:
             continue
         for field in OPERATIONAL_EVIDENCE_FIELDS[item_id]:
@@ -141,13 +161,18 @@ def build_summary(*, evidence_dir: Path) -> dict[str, Any]:
         item_id = row["item_id"]
         if item_id in FINAL_CLOSEOUT_REQUIRED_ITEM_IDS and status != "pass":
             required_outstanding.append(row["item_id"])
-        if item_id in PRE_SWITCH_REQUIRED_ITEM_IDS and status != "pass":
+        scope = row.get("execution_scope")
+        if item_id in PRE_SWITCH_REQUIRED_ITEM_IDS and (
+            status != "pass" or (item_id in FREEZE_EXECUTION_ITEM_IDS and scope != "cutover")
+        ):
             pre_switch_outstanding.append(item_id)
 
     if errors:
         overall_status = "invalid"
     elif readiness["phase7_status"] == "blocked":
         overall_status = "blocked"
+    elif readiness["phase7_status"] != "ready":
+        overall_status = "pending"
     elif required_outstanding:
         overall_status = "pending"
     else:

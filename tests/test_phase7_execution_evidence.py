@@ -25,12 +25,17 @@ def _initialize(tmp_path: Path, name: str = "evidence") -> Path:
     return evidence_dir
 
 
-def _mark_operational_rows_pass(evidence_dir: Path, *, include_excel: bool) -> None:
+def _mark_operational_rows_pass(
+    evidence_dir: Path,
+    *,
+    include_excel: bool,
+    freeze_execution_scope: str = "cutover",
+) -> None:
     checklist_path = evidence_dir / "cutover_execution_checklist.json"
     payload = json.loads(checklist_path.read_text(encoding="utf-8"))
     fields_by_item = {
-        "legacy_write_freeze_window_approved": {"approver": "approver", "freeze_start": "2026-09-05T10:00:00+00:00", "freeze_end": "2026-09-05T11:00:00+00:00", "approval_ref": "approval"},
-        "legacy_write_freeze_announced": {"audience": "audience", "announcement_channel": "channel", "announcement_ref": "announcement"},
+        "legacy_write_freeze_window_approved": {"execution_scope": freeze_execution_scope, "approver": "approver", "freeze_start": "2026-09-05T10:00:00+00:00", "freeze_end": "2026-09-05T11:00:00+00:00", "approval_ref": "approval"},
+        "legacy_write_freeze_announced": {"execution_scope": freeze_execution_scope, "audience": "audience", "announcement_channel": "channel", "announcement_ref": "announcement"},
         "final_phase2_import_rerun": {"command_refs": ["command"], "reconciliation_ref": "reconciliation", "operator": "operator"},
         "final_reconciliation_signed_off": {"signoff_by": "signer", "signoff_ref": "signoff"},
         "rollback_contacts_confirmed": {"primary_contact": "primary", "backup_contact": "backup", "escalation_path": "path"},
@@ -105,6 +110,23 @@ def test_final_closeout_is_pending_until_excel_archive_is_passed(tmp_path: Path)
 
     assert summary["phase7_status"] == "ready"
     assert summary["final_closeout_status"] == "pending"
+
+
+def test_checklist_summary_keeps_rehearsal_freeze_evidence_pending(tmp_path: Path) -> None:
+    evidence_dir = _initialize(tmp_path)
+    _mark_operational_rows_pass(evidence_dir, include_excel=False, freeze_execution_scope="rehearsal")
+    (evidence_dir / "cutover_readiness.json").write_text(
+        json.dumps({"phase7_status": "pending", "gates": {}}), encoding="utf-8"
+    )
+
+    assert checklist_validator.main(["--evidence-dir", str(evidence_dir)]) == 0
+
+    summary = json.loads((evidence_dir / "cutover_checklist_summary.json").read_text(encoding="utf-8"))
+    assert summary["overall_status"] == "pending"
+    assert set(summary["pre_switch_outstanding"]) >= {
+        "legacy_write_freeze_window_approved",
+        "legacy_write_freeze_announced",
+    }
 
 
 def test_final_closeout_is_complete_only_when_all_eight_rows_and_pack_are_ready(tmp_path: Path) -> None:

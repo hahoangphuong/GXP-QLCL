@@ -17,12 +17,14 @@
       "item_id": "legacy_write_freeze_window_approved",
       "required_for_cutover": true,
       "status": "pending",
+      "execution_scope": null,
       "notes": "Operational change window not yet approved."
     },
     {
       "item_id": "legacy_write_freeze_announced",
       "required_for_cutover": true,
       "status": "pending",
+      "execution_scope": null,
       "notes": "Stakeholder communication not yet sent."
     },
     {

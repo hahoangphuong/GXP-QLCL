@@ -173,6 +173,33 @@ def _write_valid_phase7_artifacts(tmp_path: Path, *, conflict_count: int = 0) ->
     _write_json(tmp_path / "phase3p.json", {"conflict_count": conflict_count, "manual_review_count": conflict_count})
 
 
+def _complete_pre_switch_operational_rows(payload: dict, *, execution_scope: str, notes: str) -> None:
+    fields_by_item = {
+        "legacy_write_freeze_window_approved": {
+            "execution_scope": execution_scope,
+            "approver": "approver",
+            "freeze_start": "2026-09-05T10:00:00+00:00",
+            "freeze_end": "2026-09-05T11:00:00+00:00",
+            "approval_ref": "approval",
+        },
+        "legacy_write_freeze_announced": {
+            "execution_scope": execution_scope,
+            "audience": "audience",
+            "announcement_channel": "channel",
+            "announcement_ref": "announcement",
+        },
+        "final_phase2_import_rerun": {"command_refs": ["command"], "reconciliation_ref": "reconciliation", "operator": "operator"},
+        "final_reconciliation_signed_off": {"signoff_by": "signer", "signoff_ref": "signoff"},
+        "rollback_contacts_confirmed": {"primary_contact": "primary", "backup_contact": "backup", "escalation_path": "path"},
+    }
+    for row in payload["items"]:
+        item_id = row["item_id"]
+        if item_id not in fields_by_item:
+            continue
+        row.update({"status": "pass", "owner": "owner", "executed_on": "2026-09-05T10:00:00+00:00", "notes": notes, "evidence_refs": ["evidence"]})
+        row.update(fields_by_item[item_id])
+
+
 def _write_valid_phase3s_summary(tmp_path: Path, *, phase3p_sha256: str, conflict_count: int) -> None:
     _write_json(
         tmp_path / "phase3s.json",
@@ -303,8 +330,8 @@ def test_operational_evidence_can_make_ready(tmp_path: Path, monkeypatch) -> Non
         row.update({"status": "pass", "owner": "owner", "executed_on": "2026-09-05T10:00:00+00:00", "notes": "done", "evidence_refs": ["evidence"]})
         item_id = row["item_id"]
         row.update({
-            "legacy_write_freeze_window_approved": {"approver": "approver", "freeze_start": "2026-09-05T10:00:00+00:00", "freeze_end": "2026-09-05T11:00:00+00:00", "approval_ref": "approval"},
-            "legacy_write_freeze_announced": {"audience": "audience", "announcement_channel": "channel", "announcement_ref": "announcement"},
+            "legacy_write_freeze_window_approved": {"execution_scope": "cutover", "approver": "approver", "freeze_start": "2026-09-05T10:00:00+00:00", "freeze_end": "2026-09-05T11:00:00+00:00", "approval_ref": "approval"},
+            "legacy_write_freeze_announced": {"execution_scope": "cutover", "audience": "audience", "announcement_channel": "channel", "announcement_ref": "announcement"},
             "final_phase2_import_rerun": {"command_refs": ["command"], "reconciliation_ref": "reconciliation", "operator": "operator"},
             "final_reconciliation_signed_off": {"signoff_by": "signer", "signoff_ref": "signoff"},
             "rollback_contacts_confirmed": {"primary_contact": "primary", "backup_contact": "backup", "escalation_path": "path"},
@@ -317,6 +344,64 @@ def test_operational_evidence_can_make_ready(tmp_path: Path, monkeypatch) -> Non
     assert report["gates"]["rollback_window_execution"]["status"] == "pass"
 
 
+def test_rehearsal_freeze_evidence_cannot_make_pre_switch_ready(tmp_path: Path, monkeypatch) -> None:
+    _patch_phase7_paths(monkeypatch, tmp_path)
+    _write_valid_phase7_artifacts(tmp_path)
+    phase3p_sha256 = readiness.safe_load_json(tmp_path / "phase3p.json", "phase3p").payload_sha256 or ""
+    _write_valid_phase3s_summary(tmp_path, phase3p_sha256=phase3p_sha256, conflict_count=0)
+    checklist_path = tmp_path / "evidence" / "cutover_execution_checklist.json"
+    payload = json.loads(checklist_path.read_text(encoding="utf-8"))
+    _complete_pre_switch_operational_rows(payload, execution_scope="rehearsal", notes="Cutover ready evidence")
+    _write_json(checklist_path, payload)
+
+    report = _build_readiness(tmp_path)
+
+    assert report["phase7_status"] == "pending"
+    gate = report["gates"]["legacy_write_freeze_execution"]
+    assert gate["status"] == "pending"
+    assert gate["detail"]["execution_scopes"] == {
+        "legacy_write_freeze_window_approved": "rehearsal",
+        "legacy_write_freeze_announced": "rehearsal",
+    }
+
+
+def test_freeze_scope_is_explicit_not_inferred_from_notes(tmp_path: Path, monkeypatch) -> None:
+    _patch_phase7_paths(monkeypatch, tmp_path)
+    _write_valid_phase7_artifacts(tmp_path)
+    phase3p_sha256 = readiness.safe_load_json(tmp_path / "phase3p.json", "phase3p").payload_sha256 or ""
+    _write_valid_phase3s_summary(tmp_path, phase3p_sha256=phase3p_sha256, conflict_count=0)
+    checklist_path = tmp_path / "evidence" / "cutover_execution_checklist.json"
+    payload = json.loads(checklist_path.read_text(encoding="utf-8"))
+    _complete_pre_switch_operational_rows(payload, execution_scope="cutover", notes="Rehearsal only")
+    _write_json(checklist_path, payload)
+
+    assert _build_readiness(tmp_path)["phase7_status"] == "ready"
+
+    _complete_pre_switch_operational_rows(payload, execution_scope="rehearsal", notes="Real cutover authorization")
+    _write_json(checklist_path, payload)
+    assert _build_readiness(tmp_path)["phase7_status"] == "pending"
+
+
+def test_missing_or_invalid_freeze_scope_blocks_readiness(tmp_path: Path, monkeypatch) -> None:
+    _patch_phase7_paths(monkeypatch, tmp_path)
+    _write_valid_phase7_artifacts(tmp_path)
+    checklist_path = tmp_path / "evidence" / "cutover_execution_checklist.json"
+    payload = json.loads(checklist_path.read_text(encoding="utf-8"))
+    _complete_pre_switch_operational_rows(payload, execution_scope="cutover", notes="done")
+    approved = next(row for row in payload["items"] if row["item_id"] == "legacy_write_freeze_window_approved")
+    announced = next(row for row in payload["items"] if row["item_id"] == "legacy_write_freeze_announced")
+    approved.pop("execution_scope")
+    announced["execution_scope"] = "unknown"
+    _write_json(checklist_path, payload)
+
+    report = _build_readiness(tmp_path)
+
+    assert report["gates"]["legacy_write_freeze_execution"]["status"] == "blocked"
+    errors = report["gates"]["legacy_write_freeze_execution"]["detail"]["validation_errors"]
+    assert any("invalid execution_scope None" in error for error in errors)
+    assert any("invalid execution_scope 'unknown'" in error for error in errors)
+
+
 def test_excel_archive_pending_does_not_block_pre_switch_readiness(tmp_path: Path, monkeypatch) -> None:
     _patch_phase7_paths(monkeypatch, tmp_path)
     _write_valid_phase7_artifacts(tmp_path)
@@ -327,8 +412,8 @@ def test_excel_archive_pending_does_not_block_pre_switch_readiness(tmp_path: Pat
         if row["item_id"] in readiness.PRE_SWITCH_FREEZE_ITEM_IDS + readiness.ROLLBACK_ITEM_IDS:
             row.update({"status": "pass", "owner": "owner", "executed_on": "2026-09-05T10:00:00+00:00", "notes": "done", "evidence_refs": ["evidence"]})
             row.update({
-                "legacy_write_freeze_window_approved": {"approver": "approver", "freeze_start": "2026-09-05T10:00:00+00:00", "freeze_end": "2026-09-05T11:00:00+00:00", "approval_ref": "approval"},
-                "legacy_write_freeze_announced": {"audience": "audience", "announcement_channel": "channel", "announcement_ref": "announcement"},
+                "legacy_write_freeze_window_approved": {"execution_scope": "cutover", "approver": "approver", "freeze_start": "2026-09-05T10:00:00+00:00", "freeze_end": "2026-09-05T11:00:00+00:00", "approval_ref": "approval"},
+                "legacy_write_freeze_announced": {"execution_scope": "cutover", "audience": "audience", "announcement_channel": "channel", "announcement_ref": "announcement"},
                 "final_phase2_import_rerun": {"command_refs": ["command"], "reconciliation_ref": "reconciliation", "operator": "operator"},
                 "final_reconciliation_signed_off": {"signoff_by": "signer", "signoff_ref": "signoff"},
                 "rollback_contacts_confirmed": {"primary_contact": "primary", "backup_contact": "backup", "escalation_path": "path"},

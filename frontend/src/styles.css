@@ -1326,7 +1326,7 @@ tr:focus-visible {
 
 .event-workspace-body.has-scope-context {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(210px, 1fr) clamp(160px, 18vh, 185px);
   overflow: hidden;
 }
 
@@ -1336,11 +1336,11 @@ tr:focus-visible {
 }
 
 .event-workspace-body.has-scope-context .event-scope-context {
-  block-size: clamp(170px, 20vh, 205px);
   overflow: hidden;
 }
 
 .event-workspace-body.has-scope-context .event-step-content {
+  min-block-size: 210px;
   overflow: auto;
   padding-right: 0.2rem;
 }

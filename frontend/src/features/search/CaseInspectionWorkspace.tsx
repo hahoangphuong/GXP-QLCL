@@ -121,7 +121,7 @@ function InspectionPlanSection({
   return (
     <section className="workspace-section inspection-plan-section">
       <h4>Kế hoạch kiểm tra</h4>
-      <div className="detail-grid compact-grid detail-form-grid">
+      <div className="detail-grid compact-grid detail-form-matrix">
         <EditableDetailValue
           editButtonLabel="Sửa Từ ngày kế hoạch"
           error={editingField === "plan_start_on" ? errorMessage : null}
@@ -180,7 +180,7 @@ function InspectionTeamSection({
   return (
     <section className="workspace-section inspection-team-section">
       <h4>Đoàn kiểm tra</h4>
-      <div className="detail-grid compact-grid detail-form-grid">
+      <div className="detail-grid compact-grid detail-form-matrix">
         <DetailValue label="Mô tả đoàn kiểm tra" multiline value={caseWorkspace.inspection.team_display_text} />
       </div>
       <p className="workspace-note">
@@ -246,7 +246,7 @@ function InspectionOutcomeSection({
   return (
     <section className="workspace-section inspection-outcome-section">
       <h4>Thực hiện & kết quả</h4>
-      <div className="detail-grid compact-grid detail-form-grid">
+      <div className="detail-grid compact-grid detail-form-matrix">
         <EditableDetailValue
           editButtonLabel="Sửa Từ ngày kiểm tra"
           error={editingField === "inspected_on" ? errorMessage : null}

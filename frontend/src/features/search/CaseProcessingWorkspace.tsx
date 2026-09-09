@@ -119,7 +119,7 @@ export function CaseProcessingWorkspace({
     <div className="event-step-stack">
       <section className="workspace-section">
         <h4>Thông tin xử lý</h4>
-        <div className="detail-grid compact-grid">
+        <div className="detail-grid compact-grid detail-form-matrix">
           <EditableDetailValue
             editButtonLabel="Sửa Ngày thẩm định"
             error={editingField === "assessed_on" ? errorMessage : null}

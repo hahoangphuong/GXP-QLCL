@@ -910,15 +910,15 @@ tr:focus-visible {
 }
 
 .history-table .col-event-type {
-  width: 37%;
+  width: 45%;
 }
 
 .history-table .col-standard {
-  width: 28%;
+  width: auto;
 }
 
 .history-table .col-date {
-  width: 35%;
+  width: 5.2rem;
 }
 
 .history-table th,
@@ -1159,6 +1159,31 @@ tr:focus-visible {
   gap: 0.36rem 0.8rem;
 }
 
+.detail-form-matrix {
+  grid-template-columns: max-content minmax(8rem, 1fr) max-content minmax(8rem, 1fr);
+  align-items: center;
+  column-gap: 0.8rem;
+  row-gap: 0.35rem;
+}
+
+.detail-form-matrix > .detail-field:not(.summary-span),
+.detail-form-matrix > .editable-detail-value:not(.summary-span),
+.detail-form-matrix > .case-application-field:not(.case-application-field-full) {
+  display: contents;
+}
+
+.detail-form-matrix > .summary-span {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: start;
+  column-gap: 0.8rem;
+}
+
+.detail-form-matrix > .editable-detail-value > .field-error {
+  grid-column: 1 / -1;
+}
+
 .detail-grid > .detail-field,
 .detail-grid > .editable-detail-value {
   display: grid;
@@ -1381,7 +1406,7 @@ tr:focus-visible {
 }
 
 .inspection-detail-grid .workspace-section {
-  padding: 0.58rem 0.7rem;
+  padding: 0.46rem 0.7rem;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -1397,8 +1422,11 @@ tr:focus-visible {
 }
 
 .inspection-detail-grid .workspace-section h4 {
-  color: #155f91;
-  font-size: 0.82rem;
+  margin-bottom: 0.18rem;
+  color: #567784;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.015em;
 }
 
 .inspection-detail-grid .detail-grid span,
@@ -1414,8 +1442,7 @@ tr:focus-visible {
 }
 
 .inspection-detail-grid .compact-grid {
-  gap: 0.42rem 0.7rem;
-  margin-top: 0.35rem;
+  margin-top: 0.2rem;
 }
 
 .scope-information-grid {
@@ -1601,6 +1628,9 @@ tr:focus-visible {
 
 .case-application-field-full {
   grid-column: 1 / -1;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: start;
+  column-gap: 0.8rem;
 }
 
 .case-application-field span,
@@ -1749,7 +1779,7 @@ tr:focus-visible {
 }
 
 .remediation-detail-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: start;
 }
 
 .event-milestone-table th:first-child,
@@ -1925,7 +1955,6 @@ tr:focus-visible {
 }
 
 .certificate-detail-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
   align-content: start;
 }
 

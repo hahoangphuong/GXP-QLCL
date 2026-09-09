@@ -4,7 +4,7 @@ import { DetailValue } from "./DetailValue";
 
 export function BusinessEligibilityDetailFields({ detail }: { detail: BusinessEligibilityDetail }) {
   return (
-    <div className="detail-grid compact-grid certificate-detail-grid">
+    <div className="detail-grid compact-grid detail-form-matrix certificate-detail-grid">
       <DetailValue label="Số GCN" value={detail.certificate_number} />
       <DetailValue label="Ngày cấp" value={formatCompactDate(detail.issued_on)} />
       <DetailValue label="QĐ cấp" value={detail.decision_reference} />

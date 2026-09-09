@@ -1637,7 +1637,7 @@ describe("App Slice A.4 search workspace", () => {
       }),
     );
 
-    renderApp(["/search"]);
+    const { container } = renderApp(["/search"]);
 
     expect(await screen.findByText("HS-001")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Kiểm tra/ }));
@@ -1645,6 +1645,10 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByText("Kế hoạch kiểm tra")).toBeInTheDocument();
     expect(screen.getByText("Thực hiện & kết quả")).toBeInTheDocument();
     expect(screen.getByText("Đoàn kiểm tra")).toBeInTheDocument();
+    expect(container.querySelectorAll(".inspection-workspace .detail-form-matrix")).toHaveLength(3);
+    for (const field of ["Từ ngày", "Đến ngày", "Quyết định kiểm tra", "Biên bản kiểm tra", "Tiêu chuẩn áp dụng", "Kết quả kiểm tra"]) {
+      expect(screen.getAllByText(field).length).toBeGreaterThan(0);
+    }
     expect(screen.getByText(/canonical write owner yêu cầu `members\[\]` đầy đủ/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Chỉnh sửa" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sửa Từ ngày kế hoạch" })).toBeInTheDocument();
@@ -1659,9 +1663,13 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
     apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
 
-    renderApp(["/search"]);
+    const { container } = renderApp(["/search"]);
 
     expect(await screen.findByText("HS-001")).toBeInTheDocument();
+    expect(container.querySelector(".case-application-grid.detail-form-matrix")).not.toBeNull();
+    for (const field of ["Ngày nộp", "Mã hồ sơ", "Loại kiểm tra", "GxP", "Dây chuyền", "Tiêu chuẩn áp dụng", "Năm mở hồ sơ", "Trạng thái hồ sơ"]) {
+      expect(screen.getAllByText(field).length).toBeGreaterThan(0);
+    }
     expect(screen.queryByRole("button", { name: "Chỉnh sửa" })).not.toBeInTheDocument();
     fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
 

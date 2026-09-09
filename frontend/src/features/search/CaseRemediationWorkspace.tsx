@@ -372,7 +372,7 @@ export function CaseRemediationWorkspace({
         <section className="workspace-section">
           <h4>Vòng khắc phục mới</h4>
           <form className="case-application-form" onSubmit={handleCreateSubmit}>
-            <div className="detail-grid compact-grid case-application-form-grid">
+            <div className="detail-grid compact-grid detail-form-matrix case-application-form-grid">
               <label className="case-application-field">
                 <span>Ngày yêu cầu</span>
                 <input
@@ -441,7 +441,7 @@ export function CaseRemediationWorkspace({
                 ) : null}
               </div>
             </div>
-            <div className="detail-grid compact-grid remediation-detail-grid">
+            <div className="detail-grid compact-grid detail-form-matrix remediation-detail-grid">
               <EditableDetailValue
                 editButtonLabel="Sửa Ngày yêu cầu"
                 error={editingField === "requested_on" ? errorMessage : null}
@@ -509,7 +509,7 @@ export function CaseRemediationWorkspace({
           {(submitAvailable || assessAvailable) ? (
             <section className="workspace-section">
               <h4>Thao tác vòng khắc phục</h4>
-              <div className="detail-grid compact-grid remediation-detail-grid">
+              <div className="detail-grid compact-grid detail-form-matrix remediation-detail-grid">
                 <label className="case-application-field">
                   <span>Ngày ghi nhận tiếp nhận</span>
                   <input

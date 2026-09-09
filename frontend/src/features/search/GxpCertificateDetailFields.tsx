@@ -5,7 +5,7 @@ import { DetailValue } from "./DetailValue";
 
 export function GxpCertificateDetailFields({ detail }: { detail: GxpCertificateDetail }) {
   return (
-    <div className="detail-grid compact-grid certificate-detail-grid">
+    <div className="detail-grid compact-grid detail-form-matrix certificate-detail-grid">
       <DetailValue label="Số GCN" value={detail.certificate_number} />
       <DetailValue label="Ngày cấp" value={formatCompactDate(detail.issue_date)} />
       <DetailValue label="Hết hạn" value={formatCompactDate(detail.expiry_date)} />
@@ -17,10 +17,7 @@ export function GxpCertificateDetailFields({ detail }: { detail: GxpCertificateD
       <DetailValue label="Phạm vi chứng nhận" multiline value={detail.scope_summary} />
       <DetailValue label="Giới hạn" multiline value={detail.limitation_text} />
       <DetailValue label="Cơ quan cấp" value={detail.issuing_authority} />
-      <div>
-        <span>Tình trạng</span>
-        <strong>{detail.status ? <StatusBadge value={detail.status} /> : "Chưa có"}</strong>
-      </div>
+      <DetailValue label="Tình trạng" value={detail.status ? <StatusBadge value={detail.status} /> : "Chưa có"} />
       <DetailValue label="Nguồn gốc" multiline value={detail.source_description} />
     </div>
   );

@@ -17,6 +17,8 @@ from tools.phase7_execution_evidence import (
 from tools.validate_phase7_cutover_checklist import (
     ALLOWED_STATUSES,
     AUTHORITATIVE_ITEM_IDS,
+    FREEZE_EXECUTION_ITEM_IDS,
+    FREEZE_EXECUTION_SCOPES,
     OPERATIONAL_EVIDENCE_FIELDS,
     OPERATIONAL_OPTIONAL_FIELDS,
     validate_rows,
@@ -29,6 +31,10 @@ class Phase7ExecutionItemUpdateError(RuntimeError):
 
 COMMON_MUTABLE_FIELDS = frozenset({"notes"})
 LIST_FIELDS = frozenset({"evidence_refs", "command_refs"})
+FREEZE_SCOPE_MIGRATION_ITEM_IDS = (
+    "legacy_write_freeze_window_approved",
+    "legacy_write_freeze_announced",
+)
 
 
 def _allowed_scalar_fields(item_id: str) -> frozenset[str]:
@@ -136,6 +142,26 @@ def build_updated_checklist(
     return candidate
 
 
+def build_freeze_execution_scope_migration(
+    payload: dict[str, Any],
+    *,
+    execution_scope: str,
+) -> dict[str, Any]:
+    """Apply the one-time two-row scope migration as one validated candidate."""
+
+    if execution_scope not in FREEZE_EXECUTION_SCOPES:
+        raise Phase7ExecutionItemUpdateError(f"Invalid freeze execution_scope: {execution_scope!r}")
+    if set(FREEZE_SCOPE_MIGRATION_ITEM_IDS) != FREEZE_EXECUTION_ITEM_IDS:
+        raise Phase7ExecutionItemUpdateError("Freeze execution-scope migration item contract is inconsistent.")
+    candidate = copy.deepcopy(payload)
+    for item_id in FREEZE_SCOPE_MIGRATION_ITEM_IDS:
+        _find_exact_row(candidate["items"], item_id)["execution_scope"] = execution_scope
+    errors = validate_rows(candidate["items"])
+    if errors:
+        raise Phase7ExecutionItemUpdateError("Checklist validation failed: " + "; ".join(errors))
+    return candidate
+
+
 def _backup_path(checklist_path: Path) -> Path:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     candidate = checklist_path.with_name(f"{checklist_path.stem}.before-{stamp}{checklist_path.suffix}")
@@ -200,34 +226,70 @@ def update_execution_item(
     return backup_path
 
 
+def migrate_freeze_execution_scope(
+    *,
+    evidence_dir: Path,
+    execution_scope: str,
+    dry_run: bool = False,
+) -> Path | None:
+    """Atomically add an explicit scope to both historical freeze evidence rows."""
+
+    paths = require_execution_evidence(evidence_dir)
+    original, payload = _load_checklist(paths.checklist_path)
+    candidate = build_freeze_execution_scope_migration(payload, execution_scope=execution_scope)
+    if dry_run:
+        return None
+    rendered = json.dumps(candidate, ensure_ascii=False, indent=2) + "\n"
+    backup_path = _backup_path(paths.checklist_path)
+    _write_bytes_exclusive(backup_path, original)
+    _atomic_write(paths.checklist_path, rendered.encode("utf-8"))
+    return backup_path
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Safely update one external Phase 7 execution checklist item.")
     parser.add_argument("--evidence-dir", required=True, type=Path)
-    parser.add_argument("--item-id", required=True)
-    parser.add_argument("--status", required=True, choices=sorted(ALLOWED_STATUSES))
+    parser.add_argument("--item-id")
+    parser.add_argument("--status", choices=sorted(ALLOWED_STATUSES))
+    parser.add_argument("--migrate-freeze-execution-scope", choices=sorted(FREEZE_EXECUTION_SCOPES))
     parser.add_argument("--set", dest="sets", action="append", default=[], metavar="FIELD=VALUE")
     parser.add_argument("--evidence-ref", action="append", default=None)
     parser.add_argument("--command-ref", action="append", default=None)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     try:
-        scalar_updates = _parse_set(args.sets)
-        backup_path = update_execution_item(
-            evidence_dir=args.evidence_dir,
-            item_id=args.item_id,
-            status=args.status,
-            scalar_updates=scalar_updates,
-            evidence_refs=args.evidence_ref,
-            command_refs=args.command_ref,
-            dry_run=args.dry_run,
-        )
+        if args.migrate_freeze_execution_scope is not None:
+            if any((args.item_id, args.status, args.sets, args.evidence_ref, args.command_ref)):
+                raise Phase7ExecutionItemUpdateError(
+                    "--migrate-freeze-execution-scope cannot be combined with single-item update options."
+                )
+            backup_path = migrate_freeze_execution_scope(
+                evidence_dir=args.evidence_dir,
+                execution_scope=args.migrate_freeze_execution_scope,
+                dry_run=args.dry_run,
+            )
+        else:
+            if args.item_id is None or args.status is None:
+                parser.error("--item-id and --status are required for a single-item update.")
+            scalar_updates = _parse_set(args.sets)
+            backup_path = update_execution_item(
+                evidence_dir=args.evidence_dir,
+                item_id=args.item_id,
+                status=args.status,
+                scalar_updates=scalar_updates,
+                evidence_refs=args.evidence_ref,
+                command_refs=args.command_ref,
+                dry_run=args.dry_run,
+            )
     except (Phase7ExecutionEvidenceError, Phase7ExecutionItemUpdateError, OSError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
     if args.dry_run:
-        print(f"DRY RUN: checklist item {args.item_id} would be updated; no files were changed.")
+        action = "freeze execution scopes" if args.migrate_freeze_execution_scope is not None else f"checklist item {args.item_id}"
+        print(f"DRY RUN: {action} would be updated; no files were changed.")
     else:
-        print(f"Checklist item {args.item_id} updated. Backup: {backup_path}")
+        action = "Freeze execution scopes" if args.migrate_freeze_execution_scope is not None else f"Checklist item {args.item_id}"
+        print(f"{action} updated. Backup: {backup_path}")
         print("Rerun build_phase7_cutover_readiness, then validate_phase7_cutover_checklist.")
     return 0
 

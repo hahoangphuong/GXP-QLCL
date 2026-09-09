@@ -144,6 +144,22 @@ from the real cutover window. `execution_scope=rehearsal` preserves rehearsal
 evidence but leaves the pre-switch gate pending. The tools never infer scope from
 notes, dates, contacts, or evidence references.
 
+For a historical external checklist created before `execution_scope` existed,
+migrate the two legacy freeze rows together instead of hand-editing JSON. This is
+an atomic, one-backup operation; choose the scope from the evidence itself and do
+not use it to promote rehearsal evidence:
+
+```bash
+"$PY" -m tools.update_phase7_execution_item \
+  --evidence-dir "$EVIDENCE_DIR" \
+  --migrate-freeze-execution-scope rehearsal \
+  --dry-run
+
+"$PY" -m tools.update_phase7_execution_item \
+  --evidence-dir "$EVIDENCE_DIR" \
+  --migrate-freeze-execution-scope rehearsal
+```
+
 For a single-person test or rehearsal only, `rollback_contacts_confirmed` may use
 `--set "operator_mode=single_operator_test"`, `--set "backup_contact=N/A"`, and
 `--set "escalation_path=N/A"` with its normal owner, primary-contact, timestamp,

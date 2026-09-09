@@ -4,10 +4,17 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
+from tools import build_phase7_cutover_readiness as readiness
 from tools import init_phase7_execution as initializer
 from tools import update_phase7_execution_item as updater
 from tools.phase7_execution_evidence import ROOT, TEMPLATE_PATH
-from tools.validate_phase7_cutover_checklist import AUTHORITATIVE_ITEM_IDS, validate_rows
+from tools.validate_phase7_cutover_checklist import (
+    AUTHORITATIVE_ITEM_IDS,
+    FREEZE_EXECUTION_ITEM_IDS,
+    validate_rows,
+)
 
 
 def _evidence_dir(tmp_path: Path) -> Path:
@@ -26,6 +33,38 @@ def _payload(evidence_dir: Path) -> dict:
 
 def _update(evidence_dir: Path, *args: str) -> int:
     return updater.main(["--evidence-dir", str(evidence_dir), *args])
+
+
+def _legacy_freeze_pass_without_scope(evidence_dir: Path) -> dict:
+    payload = _payload(evidence_dir)
+    fields_by_item = {
+        "legacy_write_freeze_window_approved": {
+            "approver": "approver",
+            "freeze_start": "2026-09-06T10:00:00+00:00",
+            "freeze_end": "2026-09-06T11:00:00+00:00",
+            "approval_ref": "approval",
+        },
+        "legacy_write_freeze_announced": {
+            "audience": "audience",
+            "announcement_channel": "channel",
+            "announcement_ref": "announcement",
+        },
+    }
+    for row in payload["items"]:
+        item_id = row["item_id"]
+        if item_id not in fields_by_item:
+            continue
+        row.update({
+            "status": "pass",
+            "owner": "owner",
+            "executed_on": "2026-09-06T10:00:00+00:00",
+            "notes": "historical rehearsal evidence",
+            "evidence_refs": ["ticket-1"],
+        })
+        row.update(fields_by_item[item_id])
+        row.pop("execution_scope", None)
+    _checklist_path(evidence_dir).write_text(json.dumps(payload), encoding="utf-8")
+    return payload
 
 
 def _rollback_pass_args() -> list[str]:
@@ -134,6 +173,96 @@ def test_execution_scope_is_mutable_only_for_freeze_items_and_uses_closed_values
     assert _update(evidence_dir, *_replace_set(_freeze_pass_args(), "execution_scope", "rehearsal")) == 0
     row = next(row for row in _payload(evidence_dir)["items"] if row["item_id"] == "legacy_write_freeze_window_approved")
     assert row["execution_scope"] == "rehearsal"
+
+
+def test_migrate_legacy_freeze_execution_scope_is_atomic_and_preserves_other_fields(tmp_path: Path) -> None:
+    evidence_dir = _evidence_dir(tmp_path)
+    legacy_payload = _legacy_freeze_pass_without_scope(evidence_dir)
+    original = _checklist_path(evidence_dir).read_bytes()
+
+    assert _update(evidence_dir, "--migrate-freeze-execution-scope", "rehearsal") == 0
+
+    migrated = _payload(evidence_dir)
+    for item_id in FREEZE_EXECUTION_ITEM_IDS:
+        before = next(row for row in legacy_payload["items"] if row["item_id"] == item_id)
+        after = next(row for row in migrated["items"] if row["item_id"] == item_id)
+        assert after["execution_scope"] == "rehearsal"
+        assert {key: value for key, value in after.items() if key != "execution_scope"} == before
+    assert [row for row in migrated["items"] if row["item_id"] not in FREEZE_EXECUTION_ITEM_IDS] == [
+        row for row in legacy_payload["items"] if row["item_id"] not in FREEZE_EXECUTION_ITEM_IDS
+    ]
+    backups = list(evidence_dir.glob("cutover_execution_checklist.before-*.json"))
+    assert len(backups) == 1
+    assert backups[0].read_bytes() == original
+
+
+def test_migrate_legacy_freeze_execution_scope_dry_run_writes_nothing(tmp_path: Path) -> None:
+    evidence_dir = _evidence_dir(tmp_path)
+    _legacy_freeze_pass_without_scope(evidence_dir)
+    original = _checklist_path(evidence_dir).read_bytes()
+
+    assert _update(
+        evidence_dir,
+        "--migrate-freeze-execution-scope",
+        "rehearsal",
+        "--dry-run",
+    ) == 0
+
+    assert _checklist_path(evidence_dir).read_bytes() == original
+    assert not list(evidence_dir.glob("cutover_execution_checklist.before-*.json"))
+
+
+def test_migrate_legacy_freeze_execution_scope_fails_closed_for_invalid_structure_or_scope(tmp_path: Path) -> None:
+    evidence_dir = _evidence_dir(tmp_path)
+    _legacy_freeze_pass_without_scope(evidence_dir)
+    checklist = _checklist_path(evidence_dir)
+    payload = _payload(evidence_dir)
+    payload["items"] = [row for row in payload["items"] if row["item_id"] != "legacy_write_freeze_announced"]
+    checklist.write_text(json.dumps(payload), encoding="utf-8")
+    missing_original = checklist.read_bytes()
+    assert _update(evidence_dir, "--migrate-freeze-execution-scope", "rehearsal") == 1
+    assert checklist.read_bytes() == missing_original
+
+    duplicate_evidence_dir = _evidence_dir(tmp_path / "duplicate")
+    duplicated = _legacy_freeze_pass_without_scope(duplicate_evidence_dir)
+    approved = next(row for row in duplicated["items"] if row["item_id"] == "legacy_write_freeze_window_approved")
+    duplicated["items"].append(dict(approved))
+    duplicate_checklist = _checklist_path(duplicate_evidence_dir)
+    duplicate_checklist.write_text(json.dumps(duplicated), encoding="utf-8")
+    duplicate_original = duplicate_checklist.read_bytes()
+    assert _update(duplicate_evidence_dir, "--migrate-freeze-execution-scope", "rehearsal") == 1
+    assert duplicate_checklist.read_bytes() == duplicate_original
+
+    unrelated_error_evidence_dir = _evidence_dir(tmp_path / "unrelated-error")
+    unrelated_error = _legacy_freeze_pass_without_scope(unrelated_error_evidence_dir)
+    next(row for row in unrelated_error["items"] if row["item_id"] == "desktop_phase6_complete")["status"] = "invalid"
+    unrelated_checklist = _checklist_path(unrelated_error_evidence_dir)
+    unrelated_checklist.write_text(json.dumps(unrelated_error), encoding="utf-8")
+    unrelated_original = unrelated_checklist.read_bytes()
+    assert _update(unrelated_error_evidence_dir, "--migrate-freeze-execution-scope", "rehearsal") == 1
+    assert unrelated_checklist.read_bytes() == unrelated_original
+
+    with pytest.raises(updater.Phase7ExecutionItemUpdateError, match="Invalid freeze execution_scope"):
+        updater.migrate_freeze_execution_scope(
+            evidence_dir=evidence_dir,
+            execution_scope="invalid",
+        )
+
+
+def test_migrated_rehearsal_scope_leaves_freeze_readiness_pending(tmp_path: Path) -> None:
+    evidence_dir = _evidence_dir(tmp_path)
+    _legacy_freeze_pass_without_scope(evidence_dir)
+    assert _update(evidence_dir, "--migrate-freeze-execution-scope", "rehearsal") == 0
+
+    gate = readiness.build_operational_gate(
+        updater.FREEZE_SCOPE_MIGRATION_ITEM_IDS,
+        "Legacy write freeze",
+        checklist_path=_checklist_path(evidence_dir),
+        required_execution_scope="cutover",
+        execution_scope_item_ids=FREEZE_EXECUTION_ITEM_IDS,
+    )
+
+    assert gate["status"] == "pending"
 
 
 def test_pass_validation_for_rollback_and_freeze_timestamps(tmp_path: Path) -> None:

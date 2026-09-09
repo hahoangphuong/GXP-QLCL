@@ -1207,8 +1207,13 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByText("05-08-2026")).toBeInTheDocument();
     expect(within(historyTable as HTMLElement).getByRole("columnheader", { name: "Loại" })).toBeInTheDocument();
     expect(within(historyTable as HTMLElement).getByText("Tái + Mới")).toBeInTheDocument();
-    expect(historyTable?.querySelector("thead .col-state .sr-only")?.textContent).toBe("Trạng thái");
-    expect(container.querySelectorAll(".history-status-check")).toHaveLength(1);
+    expect(within(historyTable as HTMLElement).getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
+      "Loại",
+      "Tiêu chuẩn",
+      "Ngày",
+    ]);
+    expect(within(historyTable as HTMLElement).queryByRole("columnheader", { name: "Trạng thái" })).not.toBeInTheDocument();
+    expect(historyTable?.querySelector("tbody tr")?.querySelectorAll("td")).toHaveLength(3);
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Thông tin chung" }));
     expect(await screen.findByText("01-06-2026")).toBeInTheDocument();
@@ -1664,8 +1669,12 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("HS-001");
     expect(screen.queryByLabelText("Tham chiếu hồ sơ")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Người nộp hồ sơ")).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "HS-EDIT-DRAFT" } });
-    fireEvent.click(screen.getByRole("button", { name: "Hủy sửa Mã hồ sơ" }));
+    const dossierCodeInput = screen.getByLabelText("Mã hồ sơ");
+    const inlineField = dossierCodeInput.closest(".editable-detail-value");
+    expect(inlineField?.querySelector(".detail-value-slot .editable-detail-actions")).not.toBeNull();
+    expect(inlineField?.querySelector(":scope > .editable-detail-actions")).toBeNull();
+    fireEvent.change(dossierCodeInput, { target: { value: "HS-EDIT-DRAFT" } });
+    fireEvent.keyDown(dossierCodeInput, { key: "Escape" });
 
     expect(await screen.findByText("HS-001")).toBeInTheDocument();
     expect(screen.queryByLabelText("Mã hồ sơ")).not.toBeInTheDocument();
@@ -2045,7 +2054,7 @@ describe("App Slice A.4 search workspace", () => {
     fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
     expect(screen.queryByLabelText("Ngày nộp")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "HS-2026-31" } });
-    fireEvent.click(screen.getByRole("button", { name: "Lưu Mã hồ sơ" }));
+    fireEvent.keyDown(screen.getByLabelText("Mã hồ sơ"), { key: "Enter" });
 
     await waitFor(() => {
       expect(apiMocks.upsertCaseApplication).toHaveBeenCalledTimes(1);

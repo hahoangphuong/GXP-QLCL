@@ -1,7 +1,5 @@
 import type { KeyboardEvent, ReactNode } from "react";
 
-import { DetailValue } from "./DetailValue";
-
 function IconButton({
   ariaLabel,
   children,
@@ -90,9 +88,26 @@ export function EditableDetailValue({
     onEdit();
   }
 
-  if (!isEditing) {
-    return (
-      <div className={multiline ? "summary-span editable-detail-value" : "editable-detail-value"}>
+  function handleEditKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onCancel();
+      return;
+    }
+    if (event.key === "Enter" && !multiline && !pending && !saveDisabled) {
+      event.preventDefault();
+      onSave();
+    }
+  }
+
+  return (
+    <div
+      className={multiline ? "summary-span detail-field editable-detail-value" : "detail-field editable-detail-value"}
+      onKeyDown={isEditing ? handleEditKeyDown : undefined}
+    >
+      <span className="detail-label editable-detail-label">{label}</span>
+      <div className="detail-value-slot">
+        {!isEditing ? (
         <div
           aria-label={editButtonLabel}
           className={onEdit ? "editable-detail-header editable-detail-header-activator" : "editable-detail-header"}
@@ -102,36 +117,32 @@ export function EditableDetailValue({
           tabIndex={onEdit ? 0 : undefined}
           title={onEdit ? `${label}: nhấp đúp, Enter hoặc F2 để sửa` : undefined}
         >
-          <DetailValue label={label} multiline={multiline} value={value} />
+          <strong className={multiline ? "multiline-value" : undefined}>{value || "Chưa có"}</strong>
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className={multiline ? "summary-span editable-detail-value" : "editable-detail-value"}>
-      <span className="editable-detail-label">{label}</span>
-      <div className="editable-detail-editor">
-        <div className="editable-detail-input">{children}</div>
-        <div className="editable-detail-actions">
-          <IconButton
-            ariaLabel={`Lưu ${label}`}
-            className="icon-button-primary"
-            disabled={pending || saveDisabled}
-            onClick={onSave}
-            title={`Lưu ${label}`}
-          >
-            <SaveIcon />
-          </IconButton>
-          <IconButton
-            ariaLabel={`Hủy sửa ${label}`}
-            disabled={pending}
-            onClick={onCancel}
-            title={`Hủy sửa ${label}`}
-          >
-            <CancelIcon />
-          </IconButton>
-        </div>
+        ) : (
+          <div className="editable-detail-editor">
+            <div className="editable-detail-input">{children}</div>
+            <div className="editable-detail-actions">
+              <IconButton
+                ariaLabel={`Lưu ${label}`}
+                className="icon-button-primary"
+                disabled={pending || saveDisabled}
+                onClick={onSave}
+                title={`Lưu ${label}`}
+              >
+                <SaveIcon />
+              </IconButton>
+              <IconButton
+                ariaLabel={`Hủy sửa ${label}`}
+                disabled={pending}
+                onClick={onCancel}
+                title={`Hủy sửa ${label}`}
+              >
+                <CancelIcon />
+              </IconButton>
+            </div>
+          </div>
+        )}
       </div>
       {error ? (
         <p className="field-error" role="alert">

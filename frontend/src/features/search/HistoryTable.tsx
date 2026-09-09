@@ -1,4 +1,4 @@
-import { formatCompactDate, formatHistoryEventType, formatStatusLabel, isCompletedHistoryState } from "../../lib/presentation";
+import { formatCompactDate, formatHistoryEventType, formatStatusLabel } from "../../lib/presentation";
 import type { FacilityHistoryItem } from "../../types";
 
 export function HistoryTable({
@@ -22,22 +22,19 @@ export function HistoryTable({
             <col className="col-event-type" />
             <col className="col-standard" />
             <col className="col-date" />
-            <col className="col-state" />
           </colgroup>
           <thead>
             <tr>
               <th className="col-event-type">Loại</th>
               <th className="col-standard">Tiêu chuẩn</th>
               <th className="col-date">Ngày</th>
-              <th aria-label="Trạng thái" className="col-state">
-                <span className="sr-only">Trạng thái</span>
-              </th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
               <tr
                 aria-selected={selectedHistoryId === row.id}
+                aria-label={`${formatHistoryEventType(row.event_type)}. ${formatStatusLabel(row.state)}`}
                 className={selectedHistoryId === row.id ? "selected" : ""}
                 key={row.id}
                 onClick={() => onSelect(row.id)}
@@ -52,15 +49,6 @@ export function HistoryTable({
                 <td title={row.event_type}>{formatHistoryEventType(row.event_type)}</td>
                 <td title={row.standard ?? ""}>{row.standard ?? "Chưa có"}</td>
                 <td>{formatCompactDate(row.occurred_on)}</td>
-                <td className="history-status-cell">
-                  {isCompletedHistoryState(row.state) ? (
-                    <span aria-label={formatStatusLabel(row.state)} className="history-status-check" title={formatStatusLabel(row.state)}>
-                      ✓
-                    </span>
-                  ) : (
-                    <span className="sr-only">{formatStatusLabel(row.state)}</span>
-                  )}
-                </td>
               </tr>
             ))}
           </tbody>

@@ -11,8 +11,10 @@ export function DetailValue({
 }) {
   return (
     <div className={multiline ? "summary-span detail-field" : "detail-field"}>
-      <span>{label}</span>
-      <strong className={multiline ? "multiline-value" : undefined}>{value || "Chưa có"}</strong>
+      <span className="detail-label">{label}</span>
+      <div className="detail-value-slot">
+        <strong className={multiline ? "multiline-value" : undefined}>{value || "Chưa có"}</strong>
+      </div>
     </div>
   );
 }

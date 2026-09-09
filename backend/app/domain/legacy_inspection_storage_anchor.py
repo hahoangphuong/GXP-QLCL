@@ -28,6 +28,21 @@ class LegacyInspectionStorageAnchorError(RuntimeError):
     pass
 
 
+PROJECTION_SCHEMA_VERSION = "legacy-inspection-storage-anchor/v1"
+_PROJECTION_FIELDS = (
+    "legacy_inspection_id",
+    "source_sheet",
+    "source_row",
+    "registration_submission_raw",
+    "registration_submission_year",
+    "registration_submission_status",
+    "inspection_date_raw",
+    "inspection_year",
+    "inspection_year_status",
+    "source_hash",
+    "source_version",
+)
+
 @dataclass(frozen=True)
 class SourceYear:
     raw: str
@@ -251,6 +266,173 @@ def projection_payloads(
     return [row.to_projection_payload(source_version=source_version) for row in source_rows]
 
 
+def projection_artifact_payload(
+    source_rows: Iterable[LegacyInspectionStorageAnchorSourceRow], *, source_version: str
+) -> dict[str, Any]:
+    """Build the JSON contract consumed by non-Windows import hosts."""
+
+    rows = projection_payloads(source_rows, source_version=source_version)
+    if len({row["legacy_inspection_id"] for row in rows}) != len(rows):
+        raise LegacyInspectionStorageAnchorError("Projection input contains duplicate legacy inspection IDs.")
+    return {
+        "schema_version": PROJECTION_SCHEMA_VERSION,
+        "source_version": source_version,
+        "rows": rows,
+    }
+
+
+def load_projection_artifact(
+    path: str | Path,
+) -> tuple[list[LegacyInspectionStorageAnchorSourceRow], str]:
+    """Load a Windows-exported anchor projection without any workbook dependency."""
+
+    artifact_path = Path(path)
+    if not artifact_path.is_file():
+        raise LegacyInspectionStorageAnchorError(f"Inspection storage anchor projection not found: {artifact_path}")
+    try:
+        artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise LegacyInspectionStorageAnchorError("Inspection storage anchor projection is not valid JSON.") from exc
+    if not isinstance(artifact, dict) or artifact.get("schema_version") != PROJECTION_SCHEMA_VERSION:
+        raise LegacyInspectionStorageAnchorError("Inspection storage anchor projection has an unsupported schema_version.")
+    source_version = artifact.get("source_version")
+    rows = artifact.get("rows")
+    if not isinstance(source_version, str) or not re.fullmatch(r"[0-9a-f]{64}", source_version):
+        raise LegacyInspectionStorageAnchorError("Inspection storage anchor projection has an invalid source_version.")
+    if not isinstance(rows, list):
+        raise LegacyInspectionStorageAnchorError("Inspection storage anchor projection rows must be a list.")
+
+    source_rows: list[LegacyInspectionStorageAnchorSourceRow] = []
+    seen_ids: set[int] = set()
+    for ordinal, payload in enumerate(rows, start=1):
+        if not isinstance(payload, dict) or set(payload) != set(_PROJECTION_FIELDS):
+            raise LegacyInspectionStorageAnchorError(
+                f"Inspection storage anchor projection row {ordinal} has an invalid field set."
+            )
+        legacy_id = payload["legacy_inspection_id"]
+        source_row = payload["source_row"]
+        if isinstance(legacy_id, bool) or not isinstance(legacy_id, int) or legacy_id <= 0:
+            raise LegacyInspectionStorageAnchorError(f"Inspection storage anchor projection row {ordinal} has an invalid legacy_inspection_id.")
+        if isinstance(source_row, bool) or not isinstance(source_row, int) or source_row <= 0:
+            raise LegacyInspectionStorageAnchorError(f"Inspection storage anchor projection row {ordinal} has an invalid source_row.")
+        if legacy_id in seen_ids:
+            raise LegacyInspectionStorageAnchorError(f"Projection input contains duplicate legacy inspection IDs: {legacy_id}.")
+        seen_ids.add(legacy_id)
+        if payload["source_sheet"] != DB_KTRA_SHEET or not isinstance(payload["source_sheet"], str):
+            raise LegacyInspectionStorageAnchorError(f"Inspection storage anchor projection row {ordinal} has an invalid source_sheet.")
+        if payload["source_version"] != source_version or not isinstance(payload["source_hash"], str) or not re.fullmatch(r"[0-9a-f]{64}", payload["source_hash"]):
+            raise LegacyInspectionStorageAnchorError(f"Inspection storage anchor projection row {ordinal} has invalid source evidence.")
+
+        def source_year(raw_key: str, year_key: str, status_key: str) -> SourceYear:
+            raw, year, status = payload[raw_key], payload[year_key], payload[status_key]
+            if not isinstance(raw, str) or status not in {"usable", "unavailable", "conflict"}:
+                raise LegacyInspectionStorageAnchorError(f"Inspection storage anchor projection row {ordinal} has invalid {status_key}.")
+            if isinstance(year, bool) or (year is not None and not isinstance(year, int)):
+                raise LegacyInspectionStorageAnchorError(f"Inspection storage anchor projection row {ordinal} has invalid {year_key}.")
+            if (status == "usable") != (year is not None):
+                raise LegacyInspectionStorageAnchorError(f"Inspection storage anchor projection row {ordinal} has inconsistent {status_key}.")
+            return SourceYear(raw=raw, year=year, status=status)
+
+        row = LegacyInspectionStorageAnchorSourceRow(
+            legacy_inspection_id=legacy_id,
+            source_sheet=payload["source_sheet"],
+            source_row=source_row,
+            registration_submission=source_year("registration_submission_raw", "registration_submission_year", "registration_submission_status"),
+            inspection_date=source_year("inspection_date_raw", "inspection_year", "inspection_year_status"),
+            source_hash=payload["source_hash"],
+        )
+        # A source hash proves the H/M evidence; do not accept a hand-edited artifact.
+        expected_hash = sha256(
+            _canonical_json(
+                {
+                    "legacy_inspection_id": row.legacy_inspection_id,
+                    "source_sheet": row.source_sheet,
+                    "source_row": row.source_row,
+                    "registration_submission": asdict(row.registration_submission),
+                    "inspection_date": asdict(row.inspection_date),
+                }
+            ).encode("utf-8")
+        ).hexdigest()
+        if row.source_hash != expected_hash:
+            raise LegacyInspectionStorageAnchorError(f"Inspection storage anchor projection row {ordinal} source_hash does not match its evidence.")
+        source_rows.append(row)
+    return source_rows, source_version
+
+
+def anchor_projection_rows_from_database(session: Session) -> list[dict[str, Any]]:
+    rows = session.execute(
+        select(Case.legacy_inspection_id, LegacyInspectionStorageAnchor).join(
+            LegacyInspectionStorageAnchor, LegacyInspectionStorageAnchor.case_id == Case.id
+        )
+    ).all()
+    return [
+        {
+            "legacy_inspection_id": legacy_id,
+            "source_sheet": anchor.source_sheet,
+            "source_row": anchor.source_row,
+            "registration_submission_raw": anchor.registration_submission_raw,
+            "registration_submission_year": anchor.registration_submission_year,
+            "registration_submission_status": anchor.registration_submission_status,
+            "inspection_date_raw": anchor.inspection_date_raw,
+            "inspection_year": anchor.inspection_year,
+            "inspection_year_status": anchor.inspection_year_status,
+            "source_hash": anchor.source_hash,
+            "source_version": anchor.source_version,
+        }
+        for legacy_id, anchor in rows
+    ]
+
+
+def audit_projection_rows(
+    source_rows: Iterable[LegacyInspectionStorageAnchorSourceRow], *, source_version: str, projection_rows: Iterable[dict[str, Any]]
+) -> dict[str, Any]:
+    """Compare source evidence to a projection or materialized database exactly."""
+
+    source_rows = list(source_rows)
+    expected = projection_payloads(source_rows, source_version=source_version)
+    source_ids = [row["legacy_inspection_id"] for row in expected]
+    duplicate_source_case_ids = sorted(legacy_id for legacy_id in set(source_ids) if source_ids.count(legacy_id) > 1)
+    expected_by_id = {row["legacy_inspection_id"]: row for row in expected}
+    actual_by_id: dict[int, dict[str, Any]] = {}
+    duplicate_projection_ids: list[int] = []
+    for row in projection_rows:
+        legacy_id = row.get("legacy_inspection_id")
+        if not isinstance(legacy_id, int):
+            raise LegacyInspectionStorageAnchorError("Projection audit rows require integer legacy_inspection_id values.")
+        if legacy_id in actual_by_id:
+            duplicate_projection_ids.append(legacy_id)
+        actual_by_id[legacy_id] = row
+    missing_case_ids = sorted(set(expected_by_id) - set(actual_by_id))
+    extra_case_ids = sorted(set(actual_by_id) - set(expected_by_id))
+    field_mismatches = [
+        {
+            "legacy_inspection_id": legacy_id,
+            "differences": {
+                field: {"expected": expected_by_id[legacy_id][field], "actual": actual_by_id[legacy_id].get(field)}
+                for field in _PROJECTION_FIELDS[1:]
+                if expected_by_id[legacy_id][field] != actual_by_id[legacy_id].get(field)
+            },
+        }
+        for legacy_id in sorted(set(expected_by_id) & set(actual_by_id))
+        if any(expected_by_id[legacy_id][field] != actual_by_id[legacy_id].get(field) for field in _PROJECTION_FIELDS[1:])
+    ]
+    return {
+        "source_version": source_version,
+        "effective_case_count": len(source_rows),
+        "registration_usable_year_count": sum(row.registration_submission.status == "usable" for row in source_rows),
+        "inspection_fallback_usable_year_count": sum(row.registration_submission.status != "usable" and row.inspection_date.status == "usable" for row in source_rows),
+        "no_anchor_count": sum(row.registration_submission.status != "usable" and row.inspection_date.status != "usable" for row in source_rows),
+        "registration_conflict_count": sum(row.registration_submission.status == "conflict" for row in source_rows),
+        "inspection_conflict_count": sum(row.inspection_date.status == "conflict" for row in source_rows),
+        "duplicate_source_case_ids": duplicate_source_case_ids,
+        "duplicate_projection_case_ids": sorted(set(duplicate_projection_ids)),
+        "missing_case_ids": missing_case_ids,
+        "extra_case_ids": extra_case_ids,
+        "field_mismatches": field_mismatches,
+        "parity_passed": not (missing_case_ids or extra_case_ids or duplicate_source_case_ids or duplicate_projection_ids or field_mismatches),
+    }
+
+
 def build_legacy_inspection_storage_anchor_projection(
     session: Session,
     *,
@@ -286,7 +468,10 @@ def build_legacy_inspection_storage_anchor_projection(
         existing = existing_by_case_id.get(case.id)
         if existing is not None:
             existing_count += 1
-            if existing.source_hash != payload["source_hash"] or existing.source_version != source_version:
+            if any(
+                getattr(existing, field) != payload[field]
+                for field in _PROJECTION_FIELDS[1:]
+            ):
                 raise LegacyInspectionStorageAnchorError(
                     f"Immutable storage anchor evidence differs for legacy inspection ID {payload['legacy_inspection_id']}."
                 )

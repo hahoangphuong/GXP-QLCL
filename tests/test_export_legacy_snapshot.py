@@ -6,6 +6,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from backend.app.domain import legacy_snapshot
+from backend.app.domain.legacy_inspection_storage_anchor import (
+    LegacyInspectionStorageAnchorSourceRow,
+    SourceYear,
+)
 from tools import export_legacy_snapshot
 
 
@@ -13,6 +17,7 @@ def test_exporter_writes_snapshot_and_authoritative_taxonomy_artifact(monkeypatc
     workbook = tmp_path / "GPs.xlsb"
     snapshot_path = tmp_path / "snapshot.json"
     taxonomy_path = tmp_path / "taxonomy.json"
+    anchor_path = tmp_path / "anchors.json"
     snapshot = {"db.ktra": [{"ID": "KT-1"}]}
     taxonomy = {
         "schema_version": "evaluation-scope-taxonomy/v1",
@@ -20,6 +25,23 @@ def test_exporter_writes_snapshot_and_authoritative_taxonomy_artifact(monkeypatc
     }
     monkeypatch.setattr(export_legacy_snapshot, "read_core_sheet_rows", lambda path: snapshot)
     monkeypatch.setattr(export_legacy_snapshot, "read_evaluation_scope_taxonomy", lambda path: taxonomy)
+    monkeypatch.setattr(
+        export_legacy_snapshot,
+        "read_legacy_inspection_storage_anchor_rows",
+        lambda path: (
+            [
+                LegacyInspectionStorageAnchorSourceRow(
+                    legacy_inspection_id=1,
+                    source_sheet="db.ktra",
+                    source_row=5,
+                    registration_submission=SourceYear(raw="2024", year=2024, status="usable"),
+                    inspection_date=SourceYear(raw="2024", year=2024, status="usable"),
+                    source_hash="a" * 64,
+                )
+            ],
+            "b" * 64,
+        ),
+    )
     monkeypatch.setattr(
         sys,
         "argv",
@@ -31,12 +53,23 @@ def test_exporter_writes_snapshot_and_authoritative_taxonomy_artifact(monkeypatc
             str(snapshot_path),
             "--taxonomy-output",
             str(taxonomy_path),
+            "--inspection-storage-anchor-output",
+            str(anchor_path),
         ],
     )
 
     assert export_legacy_snapshot.main() == 0
     assert json.loads(snapshot_path.read_text(encoding="utf-8")) == snapshot
     assert json.loads(taxonomy_path.read_text(encoding="utf-8")) == taxonomy
+    anchor = json.loads(anchor_path.read_text(encoding="utf-8"))
+    assert anchor["schema_version"] == "legacy-inspection-storage-anchor/v1"
+    assert anchor["source_version"] == "b" * 64
+    assert set(anchor["rows"][0]) == {
+        "legacy_inspection_id", "source_sheet", "source_row", "registration_submission_raw",
+        "registration_submission_year", "registration_submission_status", "inspection_date_raw",
+        "inspection_year", "inspection_year_status", "source_hash", "source_version",
+    }
+    assert b"\r\n" not in anchor_path.read_bytes()
 
 
 def test_named_range_reader_exports_real_required_ranges_without_fake_gdp(monkeypatch, tmp_path: Path):

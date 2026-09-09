@@ -23,6 +23,13 @@ if str(ROOT) not in sys.path:
 from backend.app.config import PRODUCTION_ENV_NAMES, load_app_config, resolve_database_url
 from backend.app.db.session import build_session_factory
 from backend.app.domain.legacy_snapshot import CORE_SHEETS
+from backend.app.domain.legacy_inspection_storage_anchor import (
+    LegacyInspectionStorageAnchorError,
+    anchor_projection_rows_from_database,
+    audit_projection_rows,
+    build_legacy_inspection_storage_anchor_projection,
+    load_projection_artifact,
+)
 from backend.app.domain.phase2_import import (
     ImportExecutionOptions,
     ImportCollisionError,
@@ -39,6 +46,9 @@ from tools.env_utils import parse_env_file
 
 DEFAULT_RUNTIME_ENV_PATH = Path("/etc/gxp/runtime.env")
 DEFAULT_SNAPSHOT_PATH = phase_artifact_path("phase3c", "legacy_snapshot.json")
+DEFAULT_INSPECTION_STORAGE_ANCHOR_PROJECTION_PATH = phase_artifact_path(
+    "phase3c", "legacy_inspection_storage_anchor.json"
+)
 DEFAULT_REPORT_ROOT = phase_artifact_path("legacy-production")
 DEFAULT_VALIDATION_TARGET_DB_PREFIX = "gxp_legacy_validation"
 DEFAULT_REHEARSAL_TARGET_DB = "gxp_legacy_rehearsal"
@@ -86,6 +96,7 @@ class ImportReport:
     runtime_env_path: str
     snapshot_path: str
     snapshot_sha256: str
+    inspection_storage_anchor_projection_path: str
     snapshot_exported_at: str | None
     source_workbook_identity: str | None
     report_dir: str
@@ -254,6 +265,7 @@ def _render_report_markdown(report: ImportReport) -> str:
         f"- Validation isolation: `{report.validation_isolation}`",
         f"- Snapshot: `{report.snapshot_path}`",
         f"- Snapshot SHA-256: `{report.snapshot_sha256}`",
+        f"- Inspection storage anchor projection: `{report.inspection_storage_anchor_projection_path}`",
         f"- Snapshot exported at: `{report.snapshot_exported_at}`",
         f"- Source workbook identity: `{report.source_workbook_identity}`",
         f"- Runtime env: `{report.runtime_env_path}`",
@@ -331,6 +343,19 @@ def _render_report_markdown(report: ImportReport) -> str:
             f"- Excluded rows: `{json.dumps(reconciliation.get('excluded_rows', {}), ensure_ascii=False)}`",
             f"- Schema length violations: `{json.dumps(reconciliation.get('schema_length_violations', []), ensure_ascii=False)}`",
             f"- Current projection gate: `{current_projection_status(report.current_projection_gate)}`",
+        ]
+    )
+    anchor = reconciliation.get("inspection_storage_anchor", {})
+    lines.extend(
+        [
+            "",
+            "## Inspection Storage Anchor",
+            "",
+            f"- Source version: `{anchor.get('source_version', 'n/a')}`",
+            f"- Source count: `{anchor.get('source_count', 0)}`",
+            f"- Created/existing/target: `{anchor.get('created_count', 0)}` / `{anchor.get('existing_count', 0)}` / `{anchor.get('target_count', 0)}`",
+            f"- Parity passed: `{anchor.get('parity_passed', False)}`",
+            f"- Error: `{anchor.get('error', '')}`",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -537,6 +562,8 @@ def _execute_reset_import(
     *,
     contract: RuntimeDatabaseContract,
     snapshot: dict[str, list[dict[str, str]]],
+    anchor_source_rows: list[Any],
+    anchor_source_version: str,
     target_database_name: str,
     execution_label: str,
 ) -> tuple[dict[str, Any], str | None, str | None, str]:
@@ -550,6 +577,8 @@ def _execute_reset_import(
     reconciliation, current_revision, head_revision = _run_import(
         database_url=target_database_url,
         snapshot=snapshot,
+        anchor_source_rows=anchor_source_rows,
+        anchor_source_version=anchor_source_version,
         dry_run=False,
         require_head_revision=True,
     )
@@ -560,6 +589,8 @@ def _run_import(
     *,
     database_url: str,
     snapshot: dict[str, list[dict[str, str]]],
+    anchor_source_rows: list[Any],
+    anchor_source_version: str,
     dry_run: bool,
     require_head_revision: bool,
 ) -> tuple[dict[str, Any], str | None, str | None]:
@@ -592,6 +623,28 @@ def _run_import(
                 head_revision=head_revision,
                 open_anomalies=open_anomalies,
             )
+        anchor_result = build_legacy_inspection_storage_anchor_projection(
+            session,
+            source_rows=anchor_source_rows,
+            source_version=anchor_source_version,
+        )
+        session.flush()
+        anchor_parity = audit_projection_rows(
+            anchor_source_rows,
+            source_version=anchor_source_version,
+            projection_rows=anchor_projection_rows_from_database(session),
+        )
+        if not anchor_parity["parity_passed"]:
+            raise LegacyInspectionStorageAnchorError("Inspection storage anchor materialization parity failed.")
+        reconciliation["inspection_storage_anchor"] = {
+            "source_version": anchor_source_version,
+            "source_count": anchor_result.source_count,
+            "created_count": anchor_result.created_count,
+            "existing_count": anchor_result.existing_count,
+            "target_count": len(anchor_projection_rows_from_database(session)),
+            "parity_passed": True,
+            "error": "",
+        }
         if dry_run:
             session.rollback()
         else:
@@ -611,12 +664,15 @@ def execute_import(
     snapshot_path: Path,
     runtime_env_path: Path,
     mode: str,
+    inspection_storage_anchor_projection_path: Path | None = None,
     import_mode: str = "validation",
     target_database_name: str | None = None,
     reset_from_snapshot: bool = False,
     report_root: Path = DEFAULT_REPORT_ROOT,
     phase7_evidence_dir: Path | None = None,
 ) -> ImportReport:
+    if inspection_storage_anchor_projection_path is None:
+        inspection_storage_anchor_projection_path = snapshot_path.with_suffix(".anchor.json")
     contract, _env = _load_runtime_database_contract(runtime_env_path)
     snapshot, snapshot_sha, snapshot_metadata = _load_snapshot(snapshot_path)
     phase7_status, current_projection_gate, cutover_ready = (
@@ -639,6 +695,8 @@ def execute_import(
     primary_error: Exception | None = None
     cleanup_error_message: str | None = None
     validation_target_database_url: str | None = None
+    anchor_source_rows: list[Any] = []
+    anchor_source_version = ""
 
     if mode == "dry-run":
         if import_mode != "validation":
@@ -667,10 +725,15 @@ def execute_import(
         backup_status = "ok"
 
     try:
+        anchor_source_rows, anchor_source_version = load_projection_artifact(
+            inspection_storage_anchor_projection_path
+        )
         if mode == "dry-run":
             reconciliation, current_revision, head_revision, database_url_redacted = _execute_reset_import(
                 contract=contract,
                 snapshot=snapshot,
+                anchor_source_rows=anchor_source_rows,
+                anchor_source_version=anchor_source_version,
                 target_database_name=effective_target_database,
                 execution_label=execution_label,
             )
@@ -678,6 +741,8 @@ def execute_import(
             reconciliation, current_revision, head_revision, database_url_redacted = _execute_reset_import(
                 contract=contract,
                 snapshot=snapshot,
+                anchor_source_rows=anchor_source_rows,
+                anchor_source_version=anchor_source_version,
                 target_database_name=effective_target_database,
                 execution_label=execution_label,
             )
@@ -695,6 +760,15 @@ def execute_import(
         )
     except Exception as exc:
         primary_error = exc
+        reconciliation["inspection_storage_anchor"] = {
+            "source_version": anchor_source_version,
+            "source_count": len(anchor_source_rows),
+            "created_count": 0,
+            "existing_count": 0,
+            "target_count": 0,
+            "parity_passed": False,
+            "error": str(exc),
+        }
         reconciliation = _augment_reconciliation_diagnostics(reconciliation)
     finally:
         if mode == "dry-run" and validation_target_database_url is not None:
@@ -726,6 +800,7 @@ def execute_import(
         runtime_env_path=str(runtime_env_path),
         snapshot_path=str(snapshot_path),
         snapshot_sha256=snapshot_sha,
+        inspection_storage_anchor_projection_path=str(inspection_storage_anchor_projection_path),
         snapshot_exported_at=exported_at,
         source_workbook_identity=source_workbook_identity,
         report_dir=str(report_dir),
@@ -753,6 +828,8 @@ def execute_import(
         raise _reported_exception(ProductionImportError(error_message), report_dir)
     if isinstance(primary_error, SchemaLengthValidationError):
         raise _reported_exception(ProductionImportError(error_message), report_dir) from primary_error
+    if isinstance(primary_error, LegacyInspectionStorageAnchorError):
+        raise _reported_exception(ProductionImportError(error_message), report_dir) from primary_error
     if cleanup_error_message is None:
         raise _reported_exception(primary_error, report_dir)
     if isinstance(primary_error, ImportCollisionError):
@@ -778,6 +855,12 @@ def _git_sha() -> str:
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Production-safe legacy snapshot import CLI.")
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT_PATH)
+    parser.add_argument(
+        "--inspection-storage-anchor-projection",
+        type=Path,
+        default=DEFAULT_INSPECTION_STORAGE_ANCHOR_PROJECTION_PATH,
+        help="Windows-exported source-faithful db.ktra H/M anchor projection; required for every import mode.",
+    )
     parser.add_argument("--runtime-env", type=Path, default=DEFAULT_RUNTIME_ENV_PATH)
     parser.add_argument("--report-root", type=Path, default=DEFAULT_REPORT_ROOT)
     parser.add_argument(
@@ -815,6 +898,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         report = execute_import(
             snapshot_path=args.snapshot,
+            inspection_storage_anchor_projection_path=args.inspection_storage_anchor_projection,
             runtime_env_path=args.runtime_env,
             mode=mode,
             import_mode=args.import_mode,

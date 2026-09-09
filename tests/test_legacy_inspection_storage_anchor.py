@@ -16,8 +16,10 @@ from backend.app.domain.legacy_inspection_storage_anchor import (
     LegacyInspectionStorageAnchorError,
     build_legacy_inspection_storage_anchor_projection,
     extract_legacy_inspection_storage_anchor_rows_from_grid,
+    load_projection_artifact,
     parse_storage_anchor_year,
     projection_payloads,
+    projection_artifact_payload,
 )
 from tools.audit_legacy_inspection_storage_anchor import audit
 
@@ -172,3 +174,34 @@ def test_projection_audit_reports_source_coverage_and_field_parity():
     )
     assert duplicate_source["duplicate_source_case_ids"] == [41]
     assert duplicate_source["parity_passed"] is False
+
+
+def test_projection_artifact_loader_is_exact_and_fails_closed_for_tampered_evidence(tmp_path: Path):
+    source_rows = fixture_source_rows()
+    artifact_path = tmp_path / "legacy_inspection_storage_anchor.json"
+    artifact_path.write_text(
+        json.dumps(projection_artifact_payload(source_rows, source_version=SOURCE_VERSION), ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    loaded_rows, loaded_version = load_projection_artifact(artifact_path)
+
+    assert loaded_rows == source_rows
+    assert loaded_version == SOURCE_VERSION
+    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    artifact["rows"][0]["registration_submission_year"] = 2099
+    artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+    with pytest.raises(LegacyInspectionStorageAnchorError, match="source_hash does not match"):
+        load_projection_artifact(artifact_path)
+
+    artifact = projection_artifact_payload(source_rows, source_version=SOURCE_VERSION)
+    artifact["rows"].append(dict(artifact["rows"][0]))
+    artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+    with pytest.raises(LegacyInspectionStorageAnchorError, match="duplicate legacy inspection IDs"):
+        load_projection_artifact(artifact_path)
+
+    artifact = projection_artifact_payload(source_rows, source_version=SOURCE_VERSION)
+    artifact["source_version"] = "not-a-sha"
+    artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+    with pytest.raises(LegacyInspectionStorageAnchorError, match="invalid source_version"):
+        load_projection_artifact(artifact_path)

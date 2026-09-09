@@ -6,10 +6,19 @@ import json
 import sqlite3
 from contextlib import redirect_stderr, redirect_stdout
 
+import pytest
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL, make_url
 
-from backend.app.db.models import Base, MigrationAnomaly
+from backend.app.db.enums import CaseState
+from backend.app.db.models import Base, Case, MigrationAnomaly
+from backend.app.domain.legacy_inspection_storage_anchor import (
+    LegacyInspectionStorageAnchorSourceRow,
+    SourceYear,
+    parse_storage_anchor_year,
+    projection_artifact_payload,
+)
 from backend.app.runtime_schema import expected_alembic_head_revision
 from tools import build_phase7_cutover_readiness as readiness
 from tools.phase7_execution_evidence import TEMPLATE_PATH
@@ -159,7 +168,53 @@ def snapshot_wrapper(
 
 
 def write_snapshot(path: Path, payload: dict[str, object] | dict[str, list[dict[str, str]]] | None = None) -> Path:
-    path.write_text(json.dumps(payload or sample_snapshot(), ensure_ascii=False, indent=2), encoding="utf-8")
+    document = payload or sample_snapshot()
+    path.write_text(json.dumps(document, ensure_ascii=False, indent=2), encoding="utf-8")
+    sheets = document.get("sheets", document)  # type: ignore[union-attr]
+    source_rows = []
+    for ordinal, row in enumerate(sheets["db.ktra"], start=5):
+        if not row.get("LOẠI KT") or not row.get("ID CƠ SỞ"):
+            continue
+        legacy_id = int(row["ID"])
+        registration = parse_storage_anchor_year(row.get("Ngày nộp"))
+        inspection = parse_storage_anchor_year(row.get("Ngày K.tra"))
+        source_rows.append(
+            LegacyInspectionStorageAnchorSourceRow(
+                legacy_inspection_id=legacy_id,
+                source_sheet="db.ktra",
+                source_row=ordinal,
+                registration_submission=registration,
+                inspection_date=inspection,
+                source_hash="",
+            )
+        )
+    # Reconstruct rows through the canonical extractor hash contract.
+    import hashlib
+    from dataclasses import asdict
+    from backend.app.domain.legacy_inspection_storage_anchor import _canonical_json
+    source_rows = [
+        LegacyInspectionStorageAnchorSourceRow(
+            legacy_inspection_id=row.legacy_inspection_id,
+            source_sheet=row.source_sheet,
+            source_row=row.source_row,
+            registration_submission=row.registration_submission,
+            inspection_date=row.inspection_date,
+            source_hash=hashlib.sha256(_canonical_json({
+                "legacy_inspection_id": row.legacy_inspection_id,
+                "source_sheet": row.source_sheet,
+                "source_row": row.source_row,
+                "registration_submission": asdict(row.registration_submission),
+                "inspection_date": asdict(row.inspection_date),
+            }).encode("utf-8")).hexdigest(),
+        )
+        for row in source_rows
+    ]
+    anchor_text = json.dumps(
+        projection_artifact_payload(source_rows, source_version="a" * 64), ensure_ascii=False, indent=2
+    )
+    path.with_suffix(".anchor.json").write_text(anchor_text, encoding="utf-8")
+    # CLI defaults to the phase-owned filename; direct API fixtures use a sidecar per snapshot.
+    (path.parent / "legacy_inspection_storage_anchor.json").write_text(anchor_text, encoding="utf-8")
     return path
 
 
@@ -254,6 +309,11 @@ def patch_runtime(monkeypatch, database_url: str, runtime_env: Path) -> None:
         database_url_redacted=ilp._redact_database_url(database_url),
     )
     monkeypatch.setattr(ilp, "_load_runtime_database_contract", lambda runtime_env_path: (contract, {}))
+    monkeypatch.setattr(
+        ilp,
+        "DEFAULT_INSPECTION_STORAGE_ANCHOR_PROJECTION_PATH",
+        runtime_env.parent / "legacy_inspection_storage_anchor.json",
+    )
     monkeypatch.setattr(
         ilp,
         "_load_phase7_gate",
@@ -417,6 +477,47 @@ def test_snapshot_only_apply_path_does_not_require_xlsb(tmp_path: Path, monkeypa
     assert not validation_db_path(database_url, report.target_database).exists()
 
 
+def test_validation_materializes_anchor_from_projection_and_reports_parity(tmp_path: Path, monkeypatch) -> None:
+    runtime_env = write_runtime_env(tmp_path / "runtime.env")
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
+    database_url = prepare_runtime_db(tmp_path / "prod.db")
+    patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
+
+    report = ilp.execute_import(
+        snapshot_path=snapshot_path,
+        runtime_env_path=runtime_env,
+        mode="dry-run",
+        report_root=tmp_path / "reports",
+    )
+
+    anchor = report.reconciliation["inspection_storage_anchor"]
+    assert report.validation_status == "pass"
+    assert anchor["source_count"] == 1
+    assert anchor["created_count"] == 1
+    assert anchor["target_count"] == 1
+    assert anchor["parity_passed"] is True
+    assert not validation_db_path(database_url, report.target_database).exists()
+
+
+def test_import_fails_closed_when_anchor_projection_is_missing(tmp_path: Path, monkeypatch) -> None:
+    runtime_env = write_runtime_env(tmp_path / "runtime.env")
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
+    database_url = prepare_runtime_db(tmp_path / "prod.db")
+    patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
+    missing_projection = tmp_path / "missing.json"
+
+    with pytest.raises(ilp.ProductionImportError, match="anchor projection not found"):
+        ilp.execute_import(
+            snapshot_path=snapshot_path,
+            inspection_storage_anchor_projection_path=missing_projection,
+            runtime_env_path=runtime_env,
+            mode="dry-run",
+            report_root=tmp_path / "reports",
+        )
+
+
 def test_target_database_url_preserves_real_postgres_password() -> None:
     database_url = postgres_database_url(password="s3cr3t", database="source")
 
@@ -557,6 +658,15 @@ def test_validation_uses_clean_temporary_database_and_ignores_existing_productio
                 detail_json=json.dumps(payload, ensure_ascii=False),
             )
         )
+        session.add(
+            Case(
+                id="aaaaaaaa-0000-0000-0000-000000000100",
+                legacy_inspection_id=100,
+                site_id="bbbbbbbb-0000-0000-0000-000000000100",
+                gxp_type="GMP",
+                state=CaseState.APPLICATION_RECEIVED,
+            )
+        )
         session.flush()
         return balanced_reconciliation()
 
@@ -593,7 +703,7 @@ def test_validation_uses_executable_url_and_redacts_reports(tmp_path: Path, monk
     monkeypatch.setattr(ilp, "_upgrade_target_database_schema", lambda url: captured_urls.append(url))
     monkeypatch.setattr(ilp, "_initialize_static_application_baseline", lambda url: captured_urls.append(url))
 
-    def fake_run_import(*, database_url: str, snapshot, dry_run: bool, require_head_revision: bool):
+    def fake_run_import(*, database_url: str, snapshot, anchor_source_rows, anchor_source_version, dry_run: bool, require_head_revision: bool):
         captured_urls.append(database_url)
         head = expected_alembic_head_revision()
         return balanced_reconciliation(), head, head
@@ -647,7 +757,7 @@ def test_apply_modes_use_executable_target_urls_without_secret_leaks(tmp_path: P
     def fake_upgrade(database_url: str) -> None:
         captured_by_mode.setdefault(current_mode[0], []).append(database_url)
 
-    def fake_run_import(*, database_url: str, snapshot, dry_run: bool, require_head_revision: bool):
+    def fake_run_import(*, database_url: str, snapshot, anchor_source_rows, anchor_source_version, dry_run: bool, require_head_revision: bool):
         captured_by_mode.setdefault(current_mode[0], []).append(database_url)
         head = expected_alembic_head_revision()
         return balanced_reconciliation(), head, head
@@ -916,6 +1026,7 @@ def test_rehearsal_reset_import_rebuilds_target_and_same_snapshot_rerun_is_stabl
     assert count_rows(rehearsal_db_path, "company") == 1
     assert count_rows(rehearsal_db_path, "site") == 1
     assert count_rows(rehearsal_db_path, "case") == 1
+    assert count_rows(rehearsal_db_path, "legacy_inspection_storage_anchor") == 1
     assert count_rows(rehearsal_db_path, "legacy_id_map") >= 6
     assert count_rows(rehearsal_db_path, "rbac_role") == 4
     assert count_rows(rehearsal_db_path, "rbac_permission") == 19
@@ -928,6 +1039,7 @@ def test_rehearsal_reset_import_rebuilds_target_and_same_snapshot_rerun_is_stabl
     assert first.target_database == ilp.DEFAULT_REHEARSAL_TARGET_DB
     assert first.reconciliation["inserted_counts"]["company"] == 1
     assert second.reconciliation["inserted_counts"]["company"] == 1
+    assert first.reconciliation["inspection_storage_anchor"]["parity_passed"] is True
     assert all(row["balanced"] for row in second.reconciliation["source_balance"].values())
     assert query_scalar(rehearsal_db_path, "SELECT legal_name FROM company WHERE legacy_company_id = 1") == "Company A"
 
@@ -1469,3 +1581,5 @@ def test_final_apply_uses_candidate_default_and_records_backup_status(tmp_path: 
     assert report.backup_status == "ok"
     assert backup_calls == [str(runtime_env)]
     assert count_rows(candidate_db_path, "company") == 1
+    assert count_rows(candidate_db_path, "legacy_inspection_storage_anchor") == 1
+    assert report.reconciliation["inspection_storage_anchor"]["parity_passed"] is True

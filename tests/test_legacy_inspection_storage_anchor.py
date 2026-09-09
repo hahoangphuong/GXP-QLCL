@@ -180,28 +180,38 @@ def test_projection_artifact_loader_is_exact_and_fails_closed_for_tampered_evide
     source_rows = fixture_source_rows()
     artifact_path = tmp_path / "legacy_inspection_storage_anchor.json"
     artifact_path.write_text(
-        json.dumps(projection_artifact_payload(source_rows, source_version=SOURCE_VERSION), ensure_ascii=False),
+        json.dumps(
+            projection_artifact_payload(source_rows, source_version=SOURCE_VERSION, snapshot_sha256="a" * 64),
+            ensure_ascii=False,
+        ),
         encoding="utf-8",
     )
 
-    loaded_rows, loaded_version = load_projection_artifact(artifact_path)
+    loaded_rows, loaded_version, loaded_snapshot_sha = load_projection_artifact(artifact_path)
 
     assert loaded_rows == source_rows
     assert loaded_version == SOURCE_VERSION
+    assert loaded_snapshot_sha == "a" * 64
     artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
     artifact["rows"][0]["registration_submission_year"] = 2099
     artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
     with pytest.raises(LegacyInspectionStorageAnchorError, match="source_hash does not match"):
         load_projection_artifact(artifact_path)
 
-    artifact = projection_artifact_payload(source_rows, source_version=SOURCE_VERSION)
+    artifact = projection_artifact_payload(source_rows, source_version=SOURCE_VERSION, snapshot_sha256="a" * 64)
     artifact["rows"].append(dict(artifact["rows"][0]))
     artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
     with pytest.raises(LegacyInspectionStorageAnchorError, match="duplicate legacy inspection IDs"):
         load_projection_artifact(artifact_path)
 
-    artifact = projection_artifact_payload(source_rows, source_version=SOURCE_VERSION)
+    artifact = projection_artifact_payload(source_rows, source_version=SOURCE_VERSION, snapshot_sha256="a" * 64)
     artifact["source_version"] = "not-a-sha"
     artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
     with pytest.raises(LegacyInspectionStorageAnchorError, match="invalid source_version"):
+        load_projection_artifact(artifact_path)
+
+    artifact = projection_artifact_payload(source_rows, source_version=SOURCE_VERSION, snapshot_sha256="a" * 64)
+    artifact["snapshot_sha256"] = "not-a-sha"
+    artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+    with pytest.raises(LegacyInspectionStorageAnchorError, match="invalid snapshot_sha256"):
         load_projection_artifact(artifact_path)

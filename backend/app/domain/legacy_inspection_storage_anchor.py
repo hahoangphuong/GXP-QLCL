@@ -267,23 +267,26 @@ def projection_payloads(
 
 
 def projection_artifact_payload(
-    source_rows: Iterable[LegacyInspectionStorageAnchorSourceRow], *, source_version: str
+    source_rows: Iterable[LegacyInspectionStorageAnchorSourceRow], *, source_version: str, snapshot_sha256: str
 ) -> dict[str, Any]:
     """Build the JSON contract consumed by non-Windows import hosts."""
 
     rows = projection_payloads(source_rows, source_version=source_version)
     if len({row["legacy_inspection_id"] for row in rows}) != len(rows):
         raise LegacyInspectionStorageAnchorError("Projection input contains duplicate legacy inspection IDs.")
+    if not re.fullmatch(r"[0-9a-f]{64}", snapshot_sha256):
+        raise LegacyInspectionStorageAnchorError("snapshot_sha256 must be a lowercase SHA-256 digest.")
     return {
         "schema_version": PROJECTION_SCHEMA_VERSION,
         "source_version": source_version,
+        "snapshot_sha256": snapshot_sha256,
         "rows": rows,
     }
 
 
 def load_projection_artifact(
     path: str | Path,
-) -> tuple[list[LegacyInspectionStorageAnchorSourceRow], str]:
+) -> tuple[list[LegacyInspectionStorageAnchorSourceRow], str, str]:
     """Load a Windows-exported anchor projection without any workbook dependency."""
 
     artifact_path = Path(path)
@@ -296,9 +299,12 @@ def load_projection_artifact(
     if not isinstance(artifact, dict) or artifact.get("schema_version") != PROJECTION_SCHEMA_VERSION:
         raise LegacyInspectionStorageAnchorError("Inspection storage anchor projection has an unsupported schema_version.")
     source_version = artifact.get("source_version")
+    snapshot_sha256 = artifact.get("snapshot_sha256")
     rows = artifact.get("rows")
     if not isinstance(source_version, str) or not re.fullmatch(r"[0-9a-f]{64}", source_version):
         raise LegacyInspectionStorageAnchorError("Inspection storage anchor projection has an invalid source_version.")
+    if not isinstance(snapshot_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", snapshot_sha256):
+        raise LegacyInspectionStorageAnchorError("Inspection storage anchor projection has an invalid snapshot_sha256.")
     if not isinstance(rows, list):
         raise LegacyInspectionStorageAnchorError("Inspection storage anchor projection rows must be a list.")
 
@@ -356,7 +362,39 @@ def load_projection_artifact(
         if row.source_hash != expected_hash:
             raise LegacyInspectionStorageAnchorError(f"Inspection storage anchor projection row {ordinal} source_hash does not match its evidence.")
         source_rows.append(row)
-    return source_rows, source_version
+    return source_rows, source_version, snapshot_sha256
+
+
+def validate_projection_case_identity_set(
+    session: Session,
+    source_rows: Iterable[LegacyInspectionStorageAnchorSourceRow],
+    *,
+    sample_limit: int = 10,
+) -> dict[str, Any]:
+    """Require the artifact to cover exactly the imported Case legacy-ID namespace."""
+
+    artifact_ids = {row.legacy_inspection_id for row in source_rows}
+    imported_ids = set(
+        session.scalars(select(Case.legacy_inspection_id).where(Case.legacy_inspection_id.is_not(None)))
+    )
+    missing_ids = sorted(imported_ids - artifact_ids)
+    extra_ids = sorted(artifact_ids - imported_ids)
+    diagnostics = {
+        "expected_case_count": len(imported_ids),
+        "artifact_source_count": len(artifact_ids),
+        "missing_case_count": len(missing_ids),
+        "missing_case_sample_ids": missing_ids[:sample_limit],
+        "extra_case_count": len(extra_ids),
+        "extra_case_sample_ids": extra_ids[:sample_limit],
+    }
+    if missing_ids or extra_ids:
+        error = LegacyInspectionStorageAnchorError(
+            "Inspection storage anchor artifact Case identity set does not match imported Cases. "
+            f"missing_case_count={len(missing_ids)}, extra_case_count={len(extra_ids)}."
+        )
+        setattr(error, "anchor_diagnostics", diagnostics)
+        raise error
+    return diagnostics
 
 
 def anchor_projection_rows_from_database(session: Session) -> list[dict[str, Any]]:
@@ -441,6 +479,7 @@ def build_legacy_inspection_storage_anchor_projection(
 ) -> LegacyInspectionStorageAnchorBuildResult:
     """Insert source-faithful anchors; changed evidence is rejected rather than overwritten."""
 
+    source_rows = list(source_rows)
     payloads = projection_payloads(source_rows, source_version=source_version)
     legacy_ids = [payload["legacy_inspection_id"] for payload in payloads]
     if len(legacy_ids) != len(set(legacy_ids)):
@@ -453,6 +492,7 @@ def build_legacy_inspection_storage_anchor_projection(
         raise LegacyInspectionStorageAnchorError(
             f"Projection input has no exact Case mapping for legacy inspection IDs: {missing_ids}."
         )
+    validate_projection_case_identity_set(session, source_rows)
 
     case_ids = [case.id for case in cases]
     existing_by_case_id = {

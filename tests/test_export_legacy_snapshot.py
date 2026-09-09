@@ -64,6 +64,7 @@ def test_exporter_writes_snapshot_and_authoritative_taxonomy_artifact(monkeypatc
     anchor = json.loads(anchor_path.read_text(encoding="utf-8"))
     assert anchor["schema_version"] == "legacy-inspection-storage-anchor/v1"
     assert anchor["source_version"] == "b" * 64
+    assert len(anchor["snapshot_sha256"]) == 64
     assert set(anchor["rows"][0]) == {
         "legacy_inspection_id", "source_sheet", "source_row", "registration_submission_raw",
         "registration_submission_year", "registration_submission_status", "inspection_date_raw",

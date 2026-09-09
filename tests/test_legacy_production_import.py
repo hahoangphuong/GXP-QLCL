@@ -4,6 +4,7 @@ from pathlib import Path
 import io
 import json
 import sqlite3
+from hashlib import sha256
 from contextlib import redirect_stderr, redirect_stdout
 
 import pytest
@@ -210,7 +211,11 @@ def write_snapshot(path: Path, payload: dict[str, object] | dict[str, list[dict[
         for row in source_rows
     ]
     anchor_text = json.dumps(
-        projection_artifact_payload(source_rows, source_version="a" * 64), ensure_ascii=False, indent=2
+        projection_artifact_payload(
+            source_rows,
+            source_version="a" * 64,
+            snapshot_sha256=sha256(path.read_bytes()).hexdigest(),
+        ),
     )
     path.with_suffix(".anchor.json").write_text(anchor_text, encoding="utf-8")
     # CLI defaults to the phase-owned filename; direct API fixtures use a sidecar per snapshot.
@@ -349,6 +354,7 @@ def rehearsal_apply(
 ) -> ilp.ImportReport:
     return ilp.execute_import(
         snapshot_path=snapshot_path,
+        inspection_storage_anchor_projection_path=snapshot_path.with_suffix(".anchor.json"),
         runtime_env_path=runtime_env_path,
         mode="apply",
         import_mode="rehearsal",
@@ -367,6 +373,7 @@ def final_apply(
 ) -> ilp.ImportReport:
     return ilp.execute_import(
         snapshot_path=snapshot_path,
+        inspection_storage_anchor_projection_path=snapshot_path.with_suffix(".anchor.json"),
         runtime_env_path=runtime_env_path,
         mode="apply",
         import_mode="final",
@@ -498,6 +505,123 @@ def test_validation_materializes_anchor_from_projection_and_reports_parity(tmp_p
     assert anchor["target_count"] == 1
     assert anchor["parity_passed"] is True
     assert not validation_db_path(database_url, report.target_database).exists()
+
+
+def test_validation_rejects_truncated_anchor_artifact_with_bounded_case_diagnostics(tmp_path: Path, monkeypatch) -> None:
+    runtime_env = write_runtime_env(tmp_path / "runtime.env")
+    snapshot = merge_snapshot_sets(
+        sample_snapshot(),
+        legacy_row_set(
+            company_id="2", company_name="Company B", site_id="20", site_name="Site B",
+            inspection_id="101", certificate_id="201", business_id="301",
+            change_request_id="401", change_detail_id="501",
+        ),
+    )
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(snapshot))
+    artifact_path = tmp_path / "legacy_inspection_storage_anchor.json"
+    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    artifact["rows"] = artifact["rows"][:1]
+    artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+    database_url = prepare_runtime_db(tmp_path / "prod.db")
+    patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
+
+    with pytest.raises(ilp.ProductionImportError, match="Case identity set does not match") as exc_info:
+        ilp.execute_import(
+            snapshot_path=snapshot_path,
+            runtime_env_path=runtime_env,
+            mode="dry-run",
+            report_root=tmp_path / "reports",
+        )
+
+    report = json.loads(Path(exc_info.value.report_json_path).read_text(encoding="utf-8"))
+    anchor = report["reconciliation"]["inspection_storage_anchor"]
+    assert anchor["expected_case_count"] == 2
+    assert anchor["artifact_source_count"] == 1
+    assert anchor["missing_case_count"] == 1
+    assert anchor["missing_case_sample_ids"] == [101]
+    assert not validation_db_path(database_url, report["target_database"]).exists()
+
+
+def test_validation_rejects_anchor_artifact_with_extra_case_id(tmp_path: Path, monkeypatch) -> None:
+    runtime_env = write_runtime_env(tmp_path / "runtime.env")
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
+    extra_snapshot = write_snapshot(
+        tmp_path / "extra_snapshot.json",
+        snapshot_wrapper(
+            legacy_row_set(
+                company_id="2", company_name="Company B", site_id="20", site_name="Site B",
+                inspection_id="101", certificate_id="201", business_id="301",
+                change_request_id="401", change_detail_id="501",
+            )
+        ),
+    )
+    artifact_path = tmp_path / "legacy_inspection_storage_anchor.json"
+    artifact = json.loads(snapshot_path.with_suffix(".anchor.json").read_text(encoding="utf-8"))
+    extra_artifact = json.loads(extra_snapshot.with_suffix(".anchor.json").read_text(encoding="utf-8"))
+    artifact["rows"].extend(extra_artifact["rows"])
+    artifact["snapshot_sha256"] = sha256(snapshot_path.read_bytes()).hexdigest()
+    artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+    database_url = prepare_runtime_db(tmp_path / "prod.db")
+    patch_runtime(monkeypatch, database_url, runtime_env)
+    patch_target_schema_upgrade(monkeypatch)
+
+    with pytest.raises(ilp.ProductionImportError, match="Case identity set does not match") as exc_info:
+        ilp.execute_import(
+            snapshot_path=snapshot_path,
+            runtime_env_path=runtime_env,
+            mode="dry-run",
+            report_root=tmp_path / "reports",
+        )
+
+    anchor = json.loads(Path(exc_info.value.report_json_path).read_text(encoding="utf-8"))["reconciliation"]["inspection_storage_anchor"]
+    assert anchor["expected_case_count"] == 1
+    assert anchor["artifact_source_count"] == 2
+    assert anchor["extra_case_count"] == 1
+    assert anchor["extra_case_sample_ids"] == [101]
+
+
+def test_import_rejects_anchor_artifact_bound_to_another_snapshot_before_rebuild(tmp_path: Path, monkeypatch) -> None:
+    runtime_env = write_runtime_env(tmp_path / "runtime.env")
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
+    artifact_path = tmp_path / "legacy_inspection_storage_anchor.json"
+    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    artifact["snapshot_sha256"] = "b" * 64
+    artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+    database_url = prepare_runtime_db(tmp_path / "prod.db")
+    patch_runtime(monkeypatch, database_url, runtime_env)
+    recreate_calls: list[str] = []
+    monkeypatch.setattr(ilp, "_recreate_target_database", lambda *args: recreate_calls.append("called"))
+
+    with pytest.raises(ilp.ProductionImportError, match="snapshot_sha256 does not match"):
+        ilp.execute_import(
+            snapshot_path=snapshot_path,
+            runtime_env_path=runtime_env,
+            mode="dry-run",
+            report_root=tmp_path / "reports",
+        )
+
+    assert recreate_calls == []
+
+
+def test_import_rejects_snapshot_tampered_after_anchor_export_before_rebuild(tmp_path: Path, monkeypatch) -> None:
+    runtime_env = write_runtime_env(tmp_path / "runtime.env")
+    snapshot_path = write_snapshot(tmp_path / "legacy_snapshot.json", snapshot_wrapper(sample_snapshot()))
+    snapshot_path.write_text(snapshot_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    database_url = prepare_runtime_db(tmp_path / "prod.db")
+    patch_runtime(monkeypatch, database_url, runtime_env)
+    recreate_calls: list[str] = []
+    monkeypatch.setattr(ilp, "_recreate_target_database", lambda *args: recreate_calls.append("called"))
+
+    with pytest.raises(ilp.ProductionImportError, match="snapshot_sha256 does not match"):
+        ilp.execute_import(
+            snapshot_path=snapshot_path,
+            runtime_env_path=runtime_env,
+            mode="dry-run",
+            report_root=tmp_path / "reports",
+        )
+
+    assert recreate_calls == []
 
 
 def test_import_fails_closed_when_anchor_projection_is_missing(tmp_path: Path, monkeypatch) -> None:

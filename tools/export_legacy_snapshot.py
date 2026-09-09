@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import argparse
+from hashlib import sha256
 import json
 import sys
 
@@ -38,7 +39,11 @@ def main() -> int:
     anchor_path.parent.mkdir(parents=True, exist_ok=True)
     anchor_path.write_text(
         json.dumps(
-            projection_artifact_payload(anchor_rows, source_version=anchor_source_version),
+            projection_artifact_payload(
+                anchor_rows,
+                source_version=anchor_source_version,
+                snapshot_sha256=sha256(out_path.read_bytes()).hexdigest(),
+            ),
             ensure_ascii=False,
             indent=2,
             sort_keys=True,

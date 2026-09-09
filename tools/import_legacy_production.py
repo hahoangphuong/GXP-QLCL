@@ -29,6 +29,7 @@ from backend.app.domain.legacy_inspection_storage_anchor import (
     audit_projection_rows,
     build_legacy_inspection_storage_anchor_projection,
     load_projection_artifact,
+    validate_projection_case_identity_set,
 )
 from backend.app.domain.phase2_import import (
     ImportExecutionOptions,
@@ -623,6 +624,7 @@ def _run_import(
                 head_revision=head_revision,
                 open_anomalies=open_anomalies,
             )
+        anchor_case_diagnostics = validate_projection_case_identity_set(session, anchor_source_rows)
         anchor_result = build_legacy_inspection_storage_anchor_projection(
             session,
             source_rows=anchor_source_rows,
@@ -639,6 +641,7 @@ def _run_import(
         reconciliation["inspection_storage_anchor"] = {
             "source_version": anchor_source_version,
             "source_count": anchor_result.source_count,
+            **anchor_case_diagnostics,
             "created_count": anchor_result.created_count,
             "existing_count": anchor_result.existing_count,
             "target_count": len(anchor_projection_rows_from_database(session)),
@@ -672,7 +675,7 @@ def execute_import(
     phase7_evidence_dir: Path | None = None,
 ) -> ImportReport:
     if inspection_storage_anchor_projection_path is None:
-        inspection_storage_anchor_projection_path = snapshot_path.with_suffix(".anchor.json")
+        inspection_storage_anchor_projection_path = DEFAULT_INSPECTION_STORAGE_ANCHOR_PROJECTION_PATH
     contract, _env = _load_runtime_database_contract(runtime_env_path)
     snapshot, snapshot_sha, snapshot_metadata = _load_snapshot(snapshot_path)
     phase7_status, current_projection_gate, cutover_ready = (
@@ -725,9 +728,13 @@ def execute_import(
         backup_status = "ok"
 
     try:
-        anchor_source_rows, anchor_source_version = load_projection_artifact(
+        anchor_source_rows, anchor_source_version, anchor_snapshot_sha256 = load_projection_artifact(
             inspection_storage_anchor_projection_path
         )
+        if anchor_snapshot_sha256 != snapshot_sha:
+            raise LegacyInspectionStorageAnchorError(
+                "Inspection storage anchor projection snapshot_sha256 does not match the supplied snapshot."
+            )
         if mode == "dry-run":
             reconciliation, current_revision, head_revision, database_url_redacted = _execute_reset_import(
                 contract=contract,
@@ -768,6 +775,7 @@ def execute_import(
             "target_count": 0,
             "parity_passed": False,
             "error": str(exc),
+            **getattr(exc, "anchor_diagnostics", {}),
         }
         reconciliation = _augment_reconciliation_diagnostics(reconciliation)
     finally:

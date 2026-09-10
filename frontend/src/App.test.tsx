@@ -646,6 +646,20 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.queryByRole("link", { name: "Quản trị" })).not.toBeInTheDocument();
   });
 
+  it("does not advertise global workflow, document, or report screens without an owner-backed contract", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    renderApp();
+
+    await waitFor(() => expect(apiMocks.getCurrentIdentity).toHaveBeenCalled());
+
+    const navigation = screen.getByRole("navigation", { name: "Điều hướng chính" });
+    expect(within(navigation).getByRole("link", { name: "Tổng quan" })).toHaveAttribute("href", "/");
+    expect(within(navigation).getByRole("link", { name: "Tra cứu" })).toHaveAttribute("href", "/search");
+    expect(within(navigation).queryByRole("link", { name: "Nghiệp vụ" })).not.toBeInTheDocument();
+    expect(within(navigation).queryByRole("link", { name: "Tài liệu" })).not.toBeInTheDocument();
+    expect(within(navigation).queryByRole("link", { name: "Báo cáo" })).not.toBeInTheDocument();
+  });
+
   it("shows protected system status only after backend confirms the admin permission", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.getCurrentIdentity.mockResolvedValue({

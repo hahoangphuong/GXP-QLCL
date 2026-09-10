@@ -98,7 +98,7 @@ function AppHeader({
   onOidcSession: (session: OidcSession) => void;
   onOidcLogout: () => void;
 }) {
-  const usesStubAuth = authMode === "header_stub" || authMode === null;
+  const usesStubAuth = authMode === "header_stub";
   const identityLabel = oidcSession?.email ?? oidcSession?.name ?? `${auth.username} (${auth.role})`;
 
   return (
@@ -187,8 +187,8 @@ export function App() {
     };
   }, []);
 
-  const useStubAuth = status?.auth_mode === "header_stub" || status === null;
-  const canLoadSecureApi = useStubAuth || Boolean(oidcSession?.token);
+  const useStubAuth = status?.auth_mode === "header_stub";
+  const canLoadSecureApi = status !== null && (useStubAuth || Boolean(oidcSession?.token));
 
   useEffect(() => {
     if (!canLoadSecureApi) {
@@ -218,7 +218,7 @@ export function App() {
     bearerToken: oidcSession?.token ?? null,
     canLoadSecureApi,
   };
-  const isAuthenticated = status?.auth_mode === "header_stub" || Boolean(oidcSession);
+  const isAuthenticated = useStubAuth || Boolean(oidcSession);
 
   return (
     <AppShell

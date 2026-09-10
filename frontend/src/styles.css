@@ -1951,6 +1951,8 @@ tr:focus-visible {
 .certificate-edit-fields input, .certificate-edit-fields textarea, .certificate-scope-row input, .certificate-scope-row textarea { min-width: 0; padding: .45rem .55rem; }
 .certificate-edit-reason { grid-column: 1 / -1; }
 .certificate-edit-reason textarea { min-height: 3.5rem; resize: vertical; }
+.certificate-readonly-value { min-height: 2.1rem; display: flex; align-items: center; padding: .45rem .55rem; border: 1px solid #c7dce3; border-radius: .35rem; background: #eef7fa; }
+.certificate-scope-note { margin: 0 0 .65rem; color: var(--text-muted); font-size: .82rem; line-height: 1.4; }
 .certificate-scope-editor { margin-top: .9rem; padding-top: .75rem; border-top: 1px solid #d8e7eb; }
 .certificate-scope-editor-header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .55rem; }
 .certificate-scope-editor-header h3 { margin: 0; font-size: .98rem; }

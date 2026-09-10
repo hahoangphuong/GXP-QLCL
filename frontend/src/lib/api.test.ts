@@ -27,6 +27,7 @@ import {
   upsertCaseAssessment,
   updateCapaCycle,
   upsertGxpCertificateLatestVersion,
+  issueGxpCertificate,
   upsertInspectionOutcome,
   upsertInspectionPlan,
 } from "./api";
@@ -162,6 +163,39 @@ describe("frontend API routing contract", () => {
           expiry_date: "2027-09-10",
           scopes: [{ scope_key: "scope-a", scope_text: "Phạm vi A", language_code: "vi", sort_order: 4 }],
           reason: "Sửa nội dung.",
+        }),
+      }),
+    );
+  });
+
+  it("issues a case-backed certificate through the explicit site target", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await issueGxpCertificate("site-1", {
+      case_id: "case-1",
+      certificate_type: "GMP",
+      issuance_basis: "inspection_case",
+      certificate_number: "GCN-8",
+      issue_date: "2026-09-10",
+      expiry_date: null,
+      scopes: [],
+      reason: null,
+    }, { username: "operator.local", role: "manager" }, true);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/sites/site-1/certificates",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          case_id: "case-1",
+          certificate_type: "GMP",
+          issuance_basis: "inspection_case",
+          certificate_number: "GCN-8",
+          issue_date: "2026-09-10",
+          expiry_date: null,
+          scopes: [],
+          reason: null,
         }),
       }),
     );

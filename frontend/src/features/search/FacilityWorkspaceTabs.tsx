@@ -16,6 +16,7 @@ import type {
   GxpCertificateDetail,
   GxpCertificateListItem,
   CertificateLatestVersionUpsertRequest,
+  CertificateIssueRequest,
   InspectionOutcomeUpsertRequest,
   EvaluationScopeUpsertRequest,
   InspectionPlanUpsertRequest,
@@ -61,6 +62,7 @@ export function FacilityWorkspaceTabs({
   gxpCertificateDetailError,
   onGxpCertificatePromote,
   onGxpCertificateEditLatestVersion,
+  onIssueCertificate,
   gxpCertificatePromotionError,
   gxpCertificatePromotionPending,
   eligibilityCertificates,
@@ -111,6 +113,7 @@ export function FacilityWorkspaceTabs({
   gxpCertificateDetailError: string | null;
   onGxpCertificatePromote: (expectedVersion: number) => Promise<void>;
   onGxpCertificateEditLatestVersion: (payload: CertificateLatestVersionUpsertRequest) => Promise<void>;
+  onIssueCertificate: (payload: CertificateIssueRequest) => Promise<void>;
   gxpCertificatePromotionError: string | null;
   gxpCertificatePromotionPending: boolean;
   eligibilityCertificates: BusinessEligibilityListItem[];
@@ -198,6 +201,7 @@ export function FacilityWorkspaceTabs({
                 onInspectionOutcomeSave={onInspectionOutcomeSave}
                 onEvaluationScopeSave={onEvaluationScopeSave}
                 onInspectionPlanSave={onInspectionPlanSave}
+                onIssueCertificate={onIssueCertificate}
                 onLoadDocumentDetail={onLoadDocumentDetail}
                 onOpenDocument={onOpenDocument}
                 onSelectedRemediationCycleChange={onSelectedRemediationCycleChange}

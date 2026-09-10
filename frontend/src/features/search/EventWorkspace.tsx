@@ -17,6 +17,7 @@ import type {
   DocumentDetail,
   FacilityHistoryItem,
   GxpCertificateDetail,
+  CertificateIssueRequest,
   InspectionOutcomeUpsertRequest,
   InspectionFolderLookup,
   InspectionPlanUpsertRequest,
@@ -26,6 +27,7 @@ import { BusinessEligibilityDetailFields } from "./BusinessEligibilityDetailFiel
 import { CaseApplicationWorkspace } from "./CaseApplicationWorkspace";
 import { CaseInspectionWorkspace } from "./CaseInspectionWorkspace";
 import { CaseProcessingWorkspace } from "./CaseProcessingWorkspace";
+import { CaseCertificateIssueWorkspace } from "./CaseCertificateIssueWorkspace";
 import { CaseRemediationWorkspace } from "./CaseRemediationWorkspace";
 import { DetailValue } from "./DetailValue";
 import { EvaluationScopeWorkspace } from "./EvaluationScopeWorkspace";
@@ -437,6 +439,7 @@ function renderCaseStepContent(
   onResolveInspectionFolder: () => Promise<InspectionFolderLookup>,
   onOpenDocument: (caseId: string, item: ContextualDocumentAction) => Promise<void>,
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>,
+  onIssueCertificate: (payload: CertificateIssueRequest) => Promise<void>,
 ) {
   const documentItems = caseWorkspace.contextual_document_actions.filter((item) => {
     if (item.workflow_step !== activeTab) {
@@ -520,6 +523,11 @@ function renderCaseStepContent(
     return (
       <div className="event-step-stack">
         <LinkedGxpCertificates items={caseWorkspace.linked_gxp_certificates} />
+        <CaseCertificateIssueWorkspace
+          caseId={caseWorkspace.case_summary.id}
+          onIssue={onIssueCertificate}
+          readiness={caseWorkspace.certificate_issue_readiness}
+        />
         <ContextualDocumentSection
           items={documentItems}
           onLoadDocumentDetail={onLoadDocumentDetail}
@@ -632,6 +640,7 @@ export function EventWorkspace({
   onEvaluationScopeSave,
   onOpenDocument,
   onLoadDocumentDetail,
+  onIssueCertificate,
   selectedRemediationCycleId,
   onSelectedRemediationCycleChange,
   onCreateCapaCycle,
@@ -656,6 +665,7 @@ export function EventWorkspace({
   onEvaluationScopeSave: (payload: EvaluationScopeUpsertRequest) => Promise<void>;
   onOpenDocument: (caseId: string, item: ContextualDocumentAction) => Promise<void>;
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
+  onIssueCertificate: (payload: CertificateIssueRequest) => Promise<void>;
   selectedRemediationCycleId: string | null;
   onSelectedRemediationCycleChange: (cycleId: string | null) => void;
   onCreateCapaCycle: (payload: CapaCycleCreateRequest) => Promise<void>;
@@ -735,6 +745,7 @@ export function EventWorkspace({
             onResolveInspectionFolder,
             onOpenDocument,
             onLoadDocumentDetail,
+            onIssueCertificate,
           )
         ) : (
           <EmptyState title="Chưa có workspace hồ sơ" description="Backend chưa trả dữ liệu workspace cho lựa chọn case hiện tại." />

@@ -16,6 +16,7 @@ import type {
   CaseListItem,
   CaseWorkspaceEvaluationScope,
   CertificateLatestVersionUpsertRequest,
+  CertificateIssueRequest,
   CertificateMutationResponse,
   CaseWorkspace,
   ChangeRequestWorkspace,
@@ -553,6 +554,22 @@ export function getGxpCertificateDetail(
   bearerToken?: string | null,
 ): Promise<GxpCertificateDetail> {
   return requestJson<GxpCertificateDetail>(`/certificates/${certificateId}`, { auth, useStubAuth, bearerToken });
+}
+
+export function issueGxpCertificate(
+  siteId: string,
+  payload: CertificateIssueRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<CertificateMutationResponse> {
+  return requestJson<CertificateMutationResponse>(`/sites/${siteId}/certificates`, {
+    method: "POST",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
 }
 
 export function promoteGxpCertificateCurrent(

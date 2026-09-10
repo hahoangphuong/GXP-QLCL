@@ -570,6 +570,22 @@ export type CertificateLatestVersionUpsertRequest = {
   reason: string | null;
 };
 
+export type CertificateIssueRequest = {
+  case_id: string;
+  certificate_type: string;
+  issuance_basis: "inspection_case";
+  certificate_number: string | null;
+  issue_date: string | null;
+  expiry_date: string | null;
+  scopes: Array<{
+    scope_key: string | null;
+    scope_text: string;
+    language_code: string;
+    sort_order: number;
+  }>;
+  reason: string | null;
+};
+
 export type CertificateIssueActionReadiness = {
   action_key: "issue_certificate";
   label: string;

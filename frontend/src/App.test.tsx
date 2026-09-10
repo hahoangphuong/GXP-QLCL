@@ -37,6 +37,7 @@ const apiMocks = vi.hoisted(() => ({
   getGxpCertificateDetail: vi.fn().mockResolvedValue(null),
   promoteGxpCertificateCurrent: vi.fn(),
   upsertGxpCertificateLatestVersion: vi.fn(),
+  issueGxpCertificate: vi.fn(),
   listSiteBusinessEligibilityCertificates: vi.fn().mockResolvedValue({ items: [] }),
   getBusinessEligibilityDetail: vi.fn().mockResolvedValue(null),
   getDocumentDetail: vi.fn().mockResolvedValue(null),
@@ -98,6 +99,7 @@ function resetApiMocks() {
   apiMocks.getGxpCertificateDetail.mockReset();
   apiMocks.promoteGxpCertificateCurrent.mockReset();
   apiMocks.upsertGxpCertificateLatestVersion.mockReset();
+  apiMocks.issueGxpCertificate.mockReset();
   apiMocks.listSiteBusinessEligibilityCertificates.mockReset();
   apiMocks.getBusinessEligibilityDetail.mockReset();
   apiMocks.getDocumentDetail.mockReset();
@@ -148,6 +150,7 @@ function resetApiMocks() {
   apiMocks.getGxpCertificateDetail.mockResolvedValue(null);
   apiMocks.promoteGxpCertificateCurrent.mockResolvedValue(null);
   apiMocks.upsertGxpCertificateLatestVersion.mockResolvedValue(null);
+  apiMocks.issueGxpCertificate.mockResolvedValue(null);
   apiMocks.listSiteBusinessEligibilityCertificates.mockResolvedValue({ items: [] });
   apiMocks.getBusinessEligibilityDetail.mockResolvedValue(null);
   apiMocks.getDocumentDetail.mockResolvedValue(null);
@@ -2622,6 +2625,52 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByText("Đã được thay thế")).toBeInTheDocument();
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(apiMocks.listSiteGxpCertificates).toHaveBeenCalledTimes(1);
+  });
+
+  it("issues from the selected case and refreshes only its workspace without promoting the new certificate", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const certificateIssueReadiness = {
+      action_key: "issue_certificate",
+      label: "Cấp chứng nhận GxP",
+      available: true,
+      reason_code: null,
+      required_permissions: ["certificate.issue"],
+      certificate_type: "GMP",
+      issuance_basis: "inspection_case",
+    };
+    apiMocks.getCaseWorkspace
+      .mockResolvedValueOnce(buildCaseWorkspace({ certificate_issue_readiness: certificateIssueReadiness }))
+      .mockResolvedValueOnce(buildCaseWorkspace({ certificate_issue_readiness: { ...certificateIssueReadiness, available: false, reason_code: "certificate_already_issued" } }));
+    apiMocks.issueGxpCertificate.mockResolvedValue({ certificate_id: "cert-new", row_version: 1, latest_flag: false });
+
+    renderApp(["/search"]);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Chứng nhận GxP" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cấp chứng nhận GxP" }));
+    const dialog = screen.getByRole("dialog", { name: "Cấp giấy chứng nhận GxP" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Số GCN" }), { target: { value: "GCN-NEW" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cấp giấy chứng nhận" }));
+
+    await waitFor(() => expect(apiMocks.issueGxpCertificate).toHaveBeenCalledWith(
+      "site-1",
+      expect.objectContaining({
+        case_id: "case-1",
+        certificate_type: "GMP",
+        issuance_basis: "inspection_case",
+        certificate_number: "GCN-NEW",
+        scopes: [],
+      }),
+      expect.objectContaining({ username: "operator.local", role: "inspector" }),
+      true,
+      null,
+    ));
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2));
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.promoteGxpCertificateCurrent).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Cấp chứng nhận GxP" })).toBeDisabled();
   });
 
   it("refreshes only the selected certificate after an edit conflict and keeps the edit form open", async () => {

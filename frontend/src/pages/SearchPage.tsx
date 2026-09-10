@@ -20,6 +20,7 @@ import {
   openCaseDocumentCurrentContent,
   getFacilityWorkspace,
   getGxpCertificateDetail,
+  issueGxpCertificate,
   listSiteBusinessEligibilityCertificates,
   listSiteGxpCertificates,
   promoteGxpCertificateCurrent,
@@ -51,6 +52,7 @@ import type {
   GxpCertificateDetail,
   GxpCertificateListItem,
   CertificateLatestVersionUpsertRequest,
+  CertificateIssueRequest,
   InspectionOutcomeUpsertRequest,
   InspectionPlanUpsertRequest,
   EvaluationScopeUpsertRequest,
@@ -940,6 +942,27 @@ export function SearchPage({
     }
   }
 
+  async function handleIssueGxpCertificate(payload: CertificateIssueRequest) {
+    if (!selectedResult || !selectedCaseWorkspace || selectedHistory?.source_type !== "case") {
+      throw new Error("Chưa chọn hồ sơ kiểm tra để cấp giấy chứng nhận.");
+    }
+    if (payload.case_id !== selectedCaseWorkspace.case_summary.id) {
+      throw new Error("Ngữ cảnh hồ sơ cấp chứng nhận không còn hợp lệ.");
+    }
+    const result = await issueGxpCertificate(selectedCaseWorkspace.case_summary.site_id, payload, auth, useStubAuth, bearerToken);
+    await refreshSelectedCaseWorkspace(payload.case_id);
+    if (selectedFacilityTab === "Giấy chứng nhận GxP") {
+      const [detailPayload, listPayload] = await Promise.all([
+        getGxpCertificateDetail(result.certificate_id, auth, useStubAuth, bearerToken),
+        listSiteGxpCertificates(selectedResult.site_id, auth, useStubAuth, selectedResult.gxp_type, selectedResult.line_code, bearerToken),
+      ]);
+      setSelectedGxpCertificateId(result.certificate_id);
+      setGxpCertificateDetail(detailPayload);
+      setGxpCertificates(listPayload.items);
+      setGxpCertificateDetailError(null);
+    }
+  }
+
   async function handleLoadDocumentDetail(documentId: string): Promise<DocumentDetail> {
     return getDocumentDetail(documentId, auth, useStubAuth, bearerToken);
   }
@@ -1144,6 +1167,7 @@ export function SearchPage({
             onGxpCertificateSelect={setSelectedGxpCertificateId}
             onGxpCertificatePromote={handleGxpCertificatePromote}
             onGxpCertificateEditLatestVersion={handleGxpCertificateLatestVersionUpdate}
+            onIssueCertificate={handleIssueGxpCertificate}
             onHistorySelect={setSelectedHistoryId}
             onCaseApplicationSave={handleCaseApplicationSave}
             onCaseAssessmentSave={handleCaseAssessmentSave}

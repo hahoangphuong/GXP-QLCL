@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from starlette.staticfiles import StaticFiles
 
@@ -28,6 +28,23 @@ from backend.app.storage import (
 REQUEST_LOGGER = logging.getLogger("gxp.request")
 
 
+# Keep the server fallback aligned with the explicit BrowserRouter contract in
+# frontend/src/App.tsx. Unknown paths must remain HTTP 404s instead of loading
+# the authenticated client shell.
+FRONTEND_SPA_PATHS = frozenset(
+    {
+        "privacy",
+        "search",
+        "terms",
+        "workflow",
+        "documents",
+        "reports",
+        "admin/system-status",
+        "cases",
+    }
+)
+
+
 def _frontend_file_response(static_root: Path, relative_path: str) -> FileResponse:
     candidate = (static_root / relative_path).resolve()
     try:
@@ -37,6 +54,13 @@ def _frontend_file_response(static_root: Path, relative_path: str) -> FileRespon
     if not candidate.is_file():
         raise FileNotFoundError(relative_path)
     return FileResponse(candidate)
+
+
+def is_frontend_spa_path(relative_path: str) -> bool:
+    """Return whether a path is an explicit client route, not an arbitrary URL."""
+    if relative_path in FRONTEND_SPA_PATHS:
+        return True
+    return relative_path.startswith("cases/") and "/" not in relative_path.removeprefix("cases/")
 
 
 def register_frontend_routes(app: FastAPI) -> None:
@@ -53,12 +77,12 @@ def register_frontend_routes(app: FastAPI) -> None:
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def frontend_spa(full_path: str):
-        if not full_path or full_path.startswith(("openapi", "docs", "redoc")):
-            return FileResponse(static_root / "index.html")
         try:
             return _frontend_file_response(static_root, full_path)
         except FileNotFoundError:
-            return FileResponse(static_root / "index.html")
+            if is_frontend_spa_path(full_path):
+                return FileResponse(static_root / "index.html")
+            raise HTTPException(status_code=404, detail="Not found")
 
 
 def create_app(

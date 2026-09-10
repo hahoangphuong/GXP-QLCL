@@ -1,6 +1,9 @@
 import asyncio
 from types import SimpleNamespace
 
+import pytest
+from fastapi import HTTPException
+
 from backend.app.config import load_app_config
 from backend.app.main import create_app
 from backend.app.api.routers.health import healthz
@@ -40,7 +43,7 @@ def test_ready_endpoint_reports_schema_mismatch_without_runtime_tables():
     assert response.status_code == 503
 
 
-def test_frontend_dist_is_served_as_spa(monkeypatch, tmp_path):
+def test_frontend_dist_serves_only_explicit_spa_paths(monkeypatch, tmp_path):
     frontend_dist = tmp_path / "frontend" / "dist"
     assets_dir = frontend_dist / "assets"
     assets_dir.mkdir(parents=True)
@@ -51,10 +54,57 @@ def test_frontend_dist_is_served_as_spa(monkeypatch, tmp_path):
     app = create_app("sqlite:///:memory:")
     route_paths = {route.path for route in app.routes if hasattr(route, "path")}
     spa_route = next(route for route in app.routes if getattr(route, "path", "") == "/{full_path:path}")
-    response = spa_route.endpoint("cases/abc")
+    search_response = spa_route.endpoint("search")
+    case_response = spa_route.endpoint("cases/abc")
+    asset_response = spa_route.endpoint("assets/index.js")
 
     assert "/assets" in route_paths
-    assert response.path.name == "index.html"
+    assert search_response.path.name == "index.html"
+    assert case_response.path.name == "index.html"
+    assert asset_response.path.name == "index.js"
+
+    with pytest.raises(HTTPException) as exc_info:
+        spa_route.endpoint("scanner/unrecognized-path")
+
+    assert exc_info.value.status_code == 404
+
+
+def test_frontend_fallback_does_not_replace_registered_api_routes(monkeypatch, tmp_path):
+    frontend_dist = tmp_path / "frontend" / "dist"
+    frontend_dist.mkdir(parents=True)
+    (frontend_dist / "index.html").write_text("<html><body>shell</body></html>", encoding="utf-8")
+    monkeypatch.setenv("GXP_FRONTEND_DIST_ROOT", str(frontend_dist))
+    app = create_app("sqlite:///:memory:")
+    messages: list[dict[str, object]] = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        messages.append(message)
+
+    asyncio.run(
+        app(
+            {
+                "type": "http",
+                "asgi": {"version": "3.0"},
+                "http_version": "1.1",
+                "method": "GET",
+                "scheme": "http",
+                "path": "/app/status",
+                "raw_path": b"/app/status",
+                "query_string": b"",
+                "headers": [],
+                "client": ("127.0.0.1", 12345),
+                "server": ("testserver", 80),
+                "root_path": "",
+            },
+            receive,
+            send,
+        )
+    )
+
+    assert any(message["type"] == "http.response.start" and message["status"] == 200 for message in messages)
 
 
 def test_existing_readonly_routes_remain_registered():

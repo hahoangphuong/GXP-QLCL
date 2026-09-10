@@ -393,7 +393,6 @@ class CaseWorkflowService:
         *,
         site_id: str,
         case: Case | None,
-        certificate_type: str,
         issuance_basis: str,
     ) -> None:
         if issuance_basis not in {"inspection_case", "administrative_no_inspection"}:
@@ -1695,7 +1694,6 @@ class CaseWorkflowService:
         self._validate_certificate_case_link(
             site_id=site.id,
             case=case,
-            certificate_type=certificate_type,
             issuance_basis=issuance_basis,
         )
         if case is not None:

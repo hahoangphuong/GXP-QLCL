@@ -725,6 +725,7 @@ class CatalogReadService:
         site: Site,
         company: Company,
         scope_summary: str | None,
+        scope_rows: list[CertificateScope],
         inspected_on: date | None,
     ) -> dict[str, object]:
         context = CertificateContextRow(
@@ -753,6 +754,16 @@ class CatalogReadService:
             "company_name": company.legal_name,
             "company_legal_address": company.legal_address,
             "scope_summary": scope_summary,
+            "scopes": [
+                {
+                    "id": scope.id,
+                    "scope_key": scope.scope_key,
+                    "scope_text": scope.scope_text,
+                    "language_code": scope.language_code,
+                    "sort_order": scope.sort_order,
+                }
+                for scope in sorted(scope_rows, key=lambda item: (item.sort_order, item.created_at, item.id))
+            ],
             "limitation_text": None,
             "source_description": self._describe_certificate_source(
                 certificate=certificate,
@@ -1952,6 +1963,7 @@ class CatalogReadService:
             site=site,
             company=company,
             scope_summary=context.scope_summary,
+            scope_rows=scope_rows,
             inspected_on=inspected_on,
         )
 
@@ -2163,6 +2175,7 @@ class CatalogReadService:
                 site=site,
                 company=company,
                 scope_summary=self._build_certificate_scope_summary(scope_rows_by_version_id.get(version.id, [])),
+                scope_rows=scope_rows_by_version_id.get(version.id, []),
                 inspected_on=inspected_on,
             )
             for certificate, version in gxp_certificate_rows

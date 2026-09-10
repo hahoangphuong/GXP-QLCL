@@ -393,8 +393,11 @@ class CaseWorkflowService:
         *,
         site_id: str,
         case: Case | None,
+        certificate_type: str,
         issuance_basis: str,
     ) -> None:
+        if issuance_basis not in {"inspection_case", "administrative_no_inspection"}:
+            raise HTTPException(status_code=422, detail="Unsupported certificate issuance basis.")
         if case is None and issuance_basis == "inspection_case":
             raise HTTPException(
                 status_code=422,
@@ -1689,7 +1692,12 @@ class CaseWorkflowService:
     ) -> dict[str, Any]:
         site = self._get_site(session, site_id)
         case = None if case_id is None else self._get_case(session, case_id)
-        self._validate_certificate_case_link(site_id=site.id, case=case, issuance_basis=issuance_basis)
+        self._validate_certificate_case_link(
+            site_id=site.id,
+            case=case,
+            certificate_type=certificate_type,
+            issuance_basis=issuance_basis,
+        )
         if case is not None:
             self._assert_case_certificate_eligibility(
                 session,
@@ -1806,6 +1814,7 @@ class CaseWorkflowService:
         version.certificate_number = certificate_number
         version.issue_date = issue_date
         version.expiry_date = expiry_date
+        certificate.updated_at = datetime.now(timezone.utc)
         created_scopes = self._replace_certificate_scopes(
             session,
             certificate_version_id=version.id,

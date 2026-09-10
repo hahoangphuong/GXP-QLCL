@@ -439,6 +439,14 @@ class CertificateActionReadinessRead(BaseModel):
     expected_version: int
 
 
+class CertificateScopeDetailRead(BaseModel):
+    id: str
+    scope_key: str | None
+    scope_text: str
+    language_code: str
+    sort_order: int
+
+
 class GxpCertificateDetailRead(BaseModel):
     certificate_id: str
     row_version: int
@@ -459,6 +467,7 @@ class GxpCertificateDetailRead(BaseModel):
     company_name: str
     company_legal_address: str | None
     scope_summary: str | None
+    scopes: list[CertificateScopeDetailRead]
     limitation_text: str | None
     source_description: str | None
     action_readiness: list[CertificateActionReadinessRead]
@@ -748,10 +757,13 @@ class CertificateScopeUpsertItem(BaseModel):
     sort_order: int = 0
 
 
+CertificateIssuanceBasis = Literal["inspection_case", "administrative_no_inspection"]
+
+
 class CertificateIssueRequest(BaseModel):
     case_id: str | None = None
     certificate_type: str
-    issuance_basis: str = "inspection_case"
+    issuance_basis: CertificateIssuanceBasis = "inspection_case"
     certificate_number: str | None = None
     issue_date: date | None = None
     expiry_date: date | None = None

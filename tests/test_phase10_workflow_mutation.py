@@ -1921,6 +1921,34 @@ def test_certificate_action_readiness_uses_the_same_promotion_blockers_as_mutati
             raise AssertionError("Expected stale certificate promotion to fail")
 
 
+def test_certificate_latest_version_round_trips_structured_scopes_and_bumps_certificate_version():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        case = session.get(Case, case_id)
+        assert case is not None
+        case.state = CaseState.AWAITING_CERTIFICATE_DECISION
+        issued = service.issue_certificate(
+            session, site_id=case.site_id, case_id=case_id, certificate_type="GMP", issuance_basis="inspection_case",
+            certificate_number="CERT-SCOPE", issue_date=date(2026, 8, 1), expiry_date=date(2027, 8, 1),
+            scopes=[{"scope_key": "a", "scope_text": "A", "language_code": "vi", "sort_order": 2}, {"scope_key": "b", "scope_text": "B", "language_code": "en", "sort_order": 1}],
+            reason="Seed.", user=build_authenticated_user("admin01", "admin"),
+        )
+        session.commit()
+    with Session(engine) as session:
+        updated = service.upsert_certificate_latest_version(
+            session, certificate_id=issued["certificate_id"], expected_version=issued["row_version"],
+            certificate_number="CERT-SCOPE", issue_date=date(2026, 8, 1), expiry_date=date(2027, 8, 1),
+            scopes=[{"scope_key": "b", "scope_text": "B", "language_code": "en", "sort_order": 1}, {"scope_key": "a", "scope_text": "A", "language_code": "vi", "sort_order": 2}],
+            reason="Round trip.", user=build_authenticated_user("admin01", "admin"),
+        )
+        session.commit()
+    assert updated["row_version"] > issued["row_version"]
+    assert [(item["scope_key"], item["language_code"], item["sort_order"]) for item in updated["scopes"]] == [("b", "en", 1), ("a", "vi", 2)]
+
+
 def test_promote_certificate_current_rejects_pending_capa_for_case_backed_certificate():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)

@@ -2659,7 +2659,15 @@ def test_case_workspace_contextual_document_create_stays_disabled_when_backend_a
     create_action = next(action for action in certificate_decision.actions if action.action_key == "create")
     assert create_action.available is False
     assert create_action.required_permissions == ["document.write"]
-    assert create_action.disabled_reason == "Chưa có typed backend create contract owner-safe cho loại tài liệu này."
+    assert create_action.create_readiness == "BUSINESS_INPUT_CONTRACT_MISSING"
+    assert create_action.reason_code == "business_input_contract_missing"
+    assert create_action.family_code == "CERTIFICATE_DECISION"
+    assert create_action.parent_scope == "case"
+    assert create_action.parent_id == seeded["case_ids"]["a"]
+    assert create_action.document_type_code == "CERTIFICATE_DECISION"
+    assert create_action.disabled_reason == (
+        "Thiếu contract input nghiệp vụ typed theo ngữ cảnh; không hiển thị thao tác tạo generic."
+    )
 
 
 def test_search_facilities_supports_field_specific_name_scope_and_gmpbb_filters(tmp_path):

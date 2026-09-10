@@ -556,6 +556,12 @@ export type ContextualDocumentActionAvailability = {
   available: boolean;
   disabled_reason: string | null;
   required_permissions: string[];
+  reason_code?: string | null;
+  create_readiness?: string | null;
+  family_code?: string | null;
+  parent_scope?: "case" | "capa_cycle" | null;
+  parent_id?: string | null;
+  document_type_code?: string | null;
 };
 
 export type ContextualDocumentAction = {

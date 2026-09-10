@@ -710,7 +710,7 @@ class CatalogReadService:
             definitions.append(definition)
             spec_by_key[(spec.parent_scope, resolved_parent_id, spec.family_code)] = {
                 "workflow_step": spec.workflow_step,
-                "readiness": spec.readiness,
+                "create_readiness": spec.create_readiness,
             }
 
         items = self._serialize_document_checklist_items(session, definitions=definitions)
@@ -730,8 +730,12 @@ class CatalogReadService:
                     "actions": build_document_action_states(
                         open_available=bool(item["open_available"]),
                         history_available=bool(item["detail_available"]),
-                        readiness=spec["readiness"],
+                        create_readiness=spec["create_readiness"],
                         permissions=permissions,
+                        family_code=family_code,
+                        parent_scope=str(item["parent_scope"]),
+                        parent_id=str(item["parent_id"]),
+                        document_type_code=item.get("document_type_code"),
                     ),
                 }
             )

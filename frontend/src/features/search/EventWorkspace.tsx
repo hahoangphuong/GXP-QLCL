@@ -195,26 +195,35 @@ function ContextualDocumentSection({
             </div>
             <div className="contextual-document-actions">
               <span className={`document-status-pill document-status-${item.status}`}>{DOCUMENT_STATUS_LABELS[item.status] ?? item.status}</span>
-              {item.actions.map((action) => (
-                <button
-                  aria-label={`${action.label} ${item.label}`}
-                  disabled={!action.available}
-                  key={action.action_key}
-                  onClick={() => {
-                    if (action.action_key === "open") {
-                      void handleOpen(item);
-                    }
-                    if (action.action_key === "history") {
-                      void handleLoadHistory(item);
-                    }
-                  }}
-                  title={action.disabled_reason ?? `${action.label} ${item.label}`}
-                  type="button"
-                >
-                  {action.label}
-                </button>
-              ))}
+              {item.actions
+                .filter((action) => action.action_key !== "create")
+                .map((action) => (
+                  <button
+                    aria-label={`${action.label} ${item.label}`}
+                    disabled={!action.available}
+                    key={action.action_key}
+                    onClick={() => {
+                      if (action.action_key === "open") {
+                        void handleOpen(item);
+                      }
+                      if (action.action_key === "history") {
+                        void handleLoadHistory(item);
+                      }
+                    }}
+                    title={action.disabled_reason ?? `${action.label} ${item.label}`}
+                    type="button"
+                  >
+                    {action.label}
+                  </button>
+                ))}
             </div>
+            {item.actions
+              .filter((action) => action.action_key === "create" && !action.available)
+              .map((action) => (
+                <p className="workspace-note contextual-document-blocked" key={action.action_key}>
+                  {action.disabled_reason}
+                </p>
+              ))}
           </div>
         ))}
       </div>

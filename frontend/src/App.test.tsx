@@ -447,7 +447,7 @@ function buildCaseWorkspace(overrides: Record<string, unknown> = {}) {
         detail_available: false,
         actions: [
           { action_key: "open", label: "Mở", available: false, disabled_reason: "Chưa có tài liệu để mở.", required_permissions: ["document.read"] },
-          { action_key: "create", label: "Tạo", available: false, disabled_reason: "Chưa có typed backend create contract owner-safe cho loại tài liệu này.", required_permissions: ["document.write"] },
+          { action_key: "create", label: "Tạo", available: false, disabled_reason: "Thiếu contract input nghiệp vụ typed theo ngữ cảnh; không hiển thị thao tác tạo generic.", required_permissions: ["document.write"] },
           { action_key: "history", label: "Lịch sử", available: false, disabled_reason: "Chưa có lịch sử tài liệu để xem.", required_permissions: ["document.read"] },
         ],
       },
@@ -468,7 +468,7 @@ function buildCaseWorkspace(overrides: Record<string, unknown> = {}) {
         detail_available: true,
         actions: [
           { action_key: "open", label: "Mở", available: true, disabled_reason: null, required_permissions: ["document.read"] },
-          { action_key: "create", label: "Tạo", available: false, disabled_reason: "Chưa có typed backend create contract owner-safe cho loại tài liệu này.", required_permissions: ["document.write"] },
+          { action_key: "create", label: "Tạo", available: false, disabled_reason: "Thiếu contract input nghiệp vụ typed theo ngữ cảnh; không hiển thị thao tác tạo generic.", required_permissions: ["document.write"] },
           { action_key: "history", label: "Lịch sử", available: true, disabled_reason: null, required_permissions: ["document.read"] },
         ],
       },
@@ -1570,7 +1570,8 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByText("8 qd cap cc GMP.docx")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Mở Quyết định cấp CC" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Lịch sử Quyết định cấp CC" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Tạo Quyết định cấp CC" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Tạo Quyết định cấp CC" })).not.toBeInTheDocument();
+    expect(screen.getByText("Thiếu contract input nghiệp vụ typed theo ngữ cảnh; không hiển thị thao tác tạo generic.")).toBeInTheDocument();
 
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);

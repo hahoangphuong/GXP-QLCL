@@ -364,6 +364,13 @@ class ContextualDocumentActionAvailabilityRead(BaseModel):
     available: bool
     disabled_reason: str | None = None
     required_permissions: list[str]
+    # Create metadata is backend-owned. It is absent from open/history actions.
+    reason_code: str | None = None
+    create_readiness: str | None = None
+    family_code: str | None = None
+    parent_scope: Literal["case", "capa_cycle"] | None = None
+    parent_id: str | None = None
+    document_type_code: str | None = None
 
 
 class ContextualDocumentActionRead(BaseModel):

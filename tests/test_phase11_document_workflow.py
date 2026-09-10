@@ -28,7 +28,11 @@ from backend.app.db.models.phase1 import (
     Site,
     TemplateDefinition,
 )
-from backend.app.document.contextual_actions import get_case_document_context_spec, list_case_document_context_specs
+from backend.app.document.contextual_actions import (
+    build_document_action_states,
+    get_case_document_context_spec,
+    list_case_document_context_specs,
+)
 from backend.app.document.seed_runtime import seed_default_template_metadata
 from backend.app.document.template_binary import assign_template_binary_locator
 from backend.app.main import create_app
@@ -526,6 +530,48 @@ def test_case_document_context_registry_keeps_only_proven_step_assignments_activ
     assert specs["ASSESSMENT_MINUTES"].classification == "AMBIGUOUS"
     assert specs["ASSESSMENT_MINUTES"].workflow_step is None
     assert get_case_document_context_spec("UNKNOWN_FAMILY") is None
+
+
+def test_contextual_create_contracts_remain_typed_and_fail_closed_until_promoted():
+    specs = list_case_document_context_specs()
+    visible_specs = [spec for spec in specs if spec.classification == "PROVEN" and spec.workflow_step is not None]
+
+    assert visible_specs
+    assert all(spec.create_readiness == "BUSINESS_INPUT_CONTRACT_MISSING" for spec in visible_specs)
+    assert get_case_document_context_spec("ASSESSMENT_MINUTES").create_readiness == "LEGACY_ONLY_UNRESOLVED"
+
+    actions = build_document_action_states(
+        open_available=False,
+        history_available=False,
+        create_readiness=visible_specs[0].create_readiness,
+        permissions=frozenset({"document.write"}),
+        family_code=visible_specs[0].family_code,
+        parent_scope=visible_specs[0].parent_scope,
+        parent_id="case-123",
+        document_type_code=None,
+    )
+    create = next(action for action in actions if action["action_key"] == "create")
+
+    assert create["available"] is False
+    assert create["reason_code"] == "business_input_contract_missing"
+    assert create["family_code"] == visible_specs[0].family_code
+    assert create["parent_scope"] == visible_specs[0].parent_scope
+    assert create["parent_id"] == "case-123"
+
+    denied_actions = build_document_action_states(
+        open_available=False,
+        history_available=False,
+        create_readiness=visible_specs[0].create_readiness,
+        permissions=frozenset(),
+        family_code=visible_specs[0].family_code,
+        parent_scope=visible_specs[0].parent_scope,
+        parent_id="case-123",
+        document_type_code=None,
+    )
+    denied_create = next(action for action in denied_actions if action["action_key"] == "create")
+    assert denied_create["available"] is False
+    assert denied_create["reason_code"] == "permission_denied"
+    assert denied_create["disabled_reason"] == "Tài khoản hiện tại không có quyền tạo tài liệu."
 
 
 def test_get_document_detail_hides_storage_locator_fields_from_ui_projection():

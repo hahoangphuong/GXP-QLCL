@@ -8,12 +8,15 @@ from backend.app.db.models.phase1 import CapaCycle
 
 WorkflowStep = Literal["Hồ sơ", "Kiểm tra", "Khắc phục", "Xử lý", "Chứng nhận GxP", "Chứng nhận ĐĐK"]
 ContextClassification = Literal["PROVEN", "AMBIGUOUS", "UNMAPPED", "NOT_APPLICABLE_TO_CASE"]
-ContextReadiness = Literal[
+TypedCreateReadiness = Literal[
     "READY_CREATE_OPEN_HISTORY",
     "READY_OPEN_HISTORY",
     "READY_READ_ONLY",
-    "NOT_READY_OWNER_GAP",
-    "NOT_READY_BACKEND_ACTION_GAP",
+    "TEMPLATE_READY_BUT_BACKEND_ACTION_MISSING",
+    "STORAGE_WRITE_CONTRACT_MISSING",
+    "BUSINESS_INPUT_CONTRACT_MISSING",
+    "LEGACY_ONLY_UNRESOLVED",
+    "OTHER_BLOCKED",
 ]
 ParentScope = Literal["case", "capa_cycle", "change_request"]
 
@@ -25,7 +28,7 @@ class CaseDocumentContextSpec:
     workflow_step: WorkflowStep | None
     parent_scope: ParentScope
     classification: ContextClassification
-    readiness: ContextReadiness
+    create_readiness: TypedCreateReadiness
     legacy_host_procedure: str
     legacy_case_numbers: tuple[int, ...]
     round_no: int | None = None
@@ -38,7 +41,7 @@ _CASE_DOCUMENT_CONTEXT_SPECS: tuple[CaseDocumentContextSpec, ...] = (
         workflow_step="Hồ sơ",
         parent_scope="case",
         classification="PROVEN",
-        readiness="NOT_READY_BACKEND_ACTION_GAP",
+        create_readiness="BUSINESS_INPUT_CONTRACT_MISSING",
         legacy_host_procedure="RecordForm.CreateFile",
         legacy_case_numbers=(1,),
     ),
@@ -48,7 +51,7 @@ _CASE_DOCUMENT_CONTEXT_SPECS: tuple[CaseDocumentContextSpec, ...] = (
         workflow_step="Kiểm tra",
         parent_scope="case",
         classification="PROVEN",
-        readiness="NOT_READY_BACKEND_ACTION_GAP",
+        create_readiness="BUSINESS_INPUT_CONTRACT_MISSING",
         legacy_host_procedure="RecordForm.CreateFile",
         legacy_case_numbers=(2,),
     ),
@@ -58,7 +61,7 @@ _CASE_DOCUMENT_CONTEXT_SPECS: tuple[CaseDocumentContextSpec, ...] = (
         workflow_step="Kiểm tra",
         parent_scope="case",
         classification="PROVEN",
-        readiness="NOT_READY_BACKEND_ACTION_GAP",
+        create_readiness="BUSINESS_INPUT_CONTRACT_MISSING",
         legacy_host_procedure="RecordForm.CreateFile",
         legacy_case_numbers=(3,),
     ),
@@ -68,7 +71,7 @@ _CASE_DOCUMENT_CONTEXT_SPECS: tuple[CaseDocumentContextSpec, ...] = (
         workflow_step="Kiểm tra",
         parent_scope="case",
         classification="PROVEN",
-        readiness="NOT_READY_BACKEND_ACTION_GAP",
+        create_readiness="BUSINESS_INPUT_CONTRACT_MISSING",
         legacy_host_procedure="RecordForm.CreateFile",
         legacy_case_numbers=(4,),
     ),
@@ -78,7 +81,7 @@ _CASE_DOCUMENT_CONTEXT_SPECS: tuple[CaseDocumentContextSpec, ...] = (
         workflow_step="Khắc phục",
         parent_scope="capa_cycle",
         classification="PROVEN",
-        readiness="NOT_READY_BACKEND_ACTION_GAP",
+        create_readiness="BUSINESS_INPUT_CONTRACT_MISSING",
         legacy_host_procedure="RecordForm.CreateFile",
         legacy_case_numbers=(5,),
         round_no=1,
@@ -89,7 +92,7 @@ _CASE_DOCUMENT_CONTEXT_SPECS: tuple[CaseDocumentContextSpec, ...] = (
         workflow_step="Khắc phục",
         parent_scope="capa_cycle",
         classification="PROVEN",
-        readiness="NOT_READY_BACKEND_ACTION_GAP",
+        create_readiness="BUSINESS_INPUT_CONTRACT_MISSING",
         legacy_host_procedure="RecordForm.CreateFile",
         legacy_case_numbers=(6,),
         round_no=2,
@@ -100,7 +103,7 @@ _CASE_DOCUMENT_CONTEXT_SPECS: tuple[CaseDocumentContextSpec, ...] = (
         workflow_step="Xử lý",
         parent_scope="case",
         classification="PROVEN",
-        readiness="NOT_READY_BACKEND_ACTION_GAP",
+        create_readiness="BUSINESS_INPUT_CONTRACT_MISSING",
         legacy_host_procedure="RecordForm.CreateFile",
         legacy_case_numbers=(7,),
     ),
@@ -110,7 +113,7 @@ _CASE_DOCUMENT_CONTEXT_SPECS: tuple[CaseDocumentContextSpec, ...] = (
         workflow_step="Xử lý",
         parent_scope="case",
         classification="PROVEN",
-        readiness="NOT_READY_BACKEND_ACTION_GAP",
+        create_readiness="BUSINESS_INPUT_CONTRACT_MISSING",
         legacy_host_procedure="RecordForm.CreateFile",
         legacy_case_numbers=(8,),
     ),
@@ -120,7 +123,7 @@ _CASE_DOCUMENT_CONTEXT_SPECS: tuple[CaseDocumentContextSpec, ...] = (
         workflow_step="Xử lý",
         parent_scope="case",
         classification="PROVEN",
-        readiness="NOT_READY_BACKEND_ACTION_GAP",
+        create_readiness="BUSINESS_INPUT_CONTRACT_MISSING",
         legacy_host_procedure="RecordForm.CreateFile",
         legacy_case_numbers=(9,),
     ),
@@ -130,7 +133,7 @@ _CASE_DOCUMENT_CONTEXT_SPECS: tuple[CaseDocumentContextSpec, ...] = (
         workflow_step="Chứng nhận GxP",
         parent_scope="case",
         classification="PROVEN",
-        readiness="NOT_READY_BACKEND_ACTION_GAP",
+        create_readiness="BUSINESS_INPUT_CONTRACT_MISSING",
         legacy_host_procedure="RecordForm.CreateFile",
         legacy_case_numbers=(10,),
     ),
@@ -140,7 +143,7 @@ _CASE_DOCUMENT_CONTEXT_SPECS: tuple[CaseDocumentContextSpec, ...] = (
         workflow_step="Xử lý",
         parent_scope="case",
         classification="PROVEN",
-        readiness="NOT_READY_BACKEND_ACTION_GAP",
+        create_readiness="BUSINESS_INPUT_CONTRACT_MISSING",
         legacy_host_procedure="RecordForm.CreateFile",
         legacy_case_numbers=(11,),
     ),
@@ -150,7 +153,7 @@ _CASE_DOCUMENT_CONTEXT_SPECS: tuple[CaseDocumentContextSpec, ...] = (
         workflow_step="Xử lý",
         parent_scope="case",
         classification="PROVEN",
-        readiness="NOT_READY_BACKEND_ACTION_GAP",
+        create_readiness="BUSINESS_INPUT_CONTRACT_MISSING",
         legacy_host_procedure="RecordForm.CreateFile",
         legacy_case_numbers=(12,),
     ),
@@ -160,7 +163,7 @@ _CASE_DOCUMENT_CONTEXT_SPECS: tuple[CaseDocumentContextSpec, ...] = (
         workflow_step=None,
         parent_scope="case",
         classification="AMBIGUOUS",
-        readiness="NOT_READY_OWNER_GAP",
+        create_readiness="LEGACY_ONLY_UNRESOLVED",
         legacy_host_procedure="RecordForm.CreateFile",
         legacy_case_numbers=(15,),
     ),
@@ -202,8 +205,12 @@ def build_document_action_states(
     *,
     open_available: bool,
     history_available: bool,
-    readiness: ContextReadiness,
+    create_readiness: TypedCreateReadiness,
     permissions: frozenset[str],
+    family_code: str,
+    parent_scope: ParentScope,
+    parent_id: str,
+    document_type_code: str | None,
 ) -> list[dict[str, object]]:
     def available_or_reason(
         *,
@@ -242,13 +249,40 @@ def build_document_action_states(
             "required_permissions": list(required_permissions),
         }
 
-    create_reason = "Chưa có typed backend create contract owner-safe cho loại tài liệu này."
-    if readiness == "NOT_READY_OWNER_GAP":
-        create_reason = "Chưa có owner mapping đủ chắc chắn để bật tạo tài liệu trong workflow."
-    elif readiness == "READY_READ_ONLY":
-        create_reason = "Loại tài liệu này chỉ hỗ trợ theo dõi hiện trạng trong slice hiện tại."
-    elif readiness == "READY_OPEN_HISTORY":
-        create_reason = "Loại tài liệu này hiện chỉ hỗ trợ mở và xem lịch sử tài liệu đã có."
+    create_reason_by_readiness = {
+        "TEMPLATE_READY_BUT_BACKEND_ACTION_MISSING": (
+            "Template đã được xác định nhưng chưa có typed backend action để tạo tài liệu này."
+        ),
+        "STORAGE_WRITE_CONTRACT_MISSING": (
+            "Chưa có contract ghi storage an toàn, xác định đích và chống ghi đè cho loại tài liệu này."
+        ),
+        "BUSINESS_INPUT_CONTRACT_MISSING": (
+            "Thiếu contract input nghiệp vụ typed theo ngữ cảnh; không hiển thị thao tác tạo generic."
+        ),
+        "LEGACY_ONLY_UNRESOLVED": (
+            "Family legacy chưa có owner mapping/workflow đủ chắc chắn để tạo tài liệu."
+        ),
+        "OTHER_BLOCKED": "Tạo tài liệu đang bị chặn bởi contract backend chưa hoàn tất.",
+        "READY_OPEN_HISTORY": "Loại tài liệu này hiện chỉ hỗ trợ mở và xem lịch sử tài liệu đã có.",
+        "READY_READ_ONLY": "Loại tài liệu này chỉ hỗ trợ theo dõi hiện trạng trong slice hiện tại.",
+    }
+    create_reason = create_reason_by_readiness.get(
+        create_readiness,
+        "Chưa có typed backend create contract owner-safe cho loại tài liệu này.",
+    )
+    create_permission_missing = "document.write" not in permissions
+    create_metadata = {
+        "reason_code": (
+            "permission_denied"
+            if create_permission_missing
+            else None if create_readiness == "READY_CREATE_OPEN_HISTORY" else create_readiness.lower()
+        ),
+        "create_readiness": create_readiness,
+        "family_code": family_code,
+        "parent_scope": parent_scope,
+        "parent_id": parent_id,
+        "document_type_code": document_type_code,
+    }
 
     return [
         available_or_reason(
@@ -262,9 +296,9 @@ def build_document_action_states(
             action_key="create",
             label="Tạo",
             required_permissions=("document.write",),
-            supported=readiness == "READY_CREATE_OPEN_HISTORY",
+            supported=create_readiness == "READY_CREATE_OPEN_HISTORY",
             unavailable_reason=create_reason,
-        ),
+        ) | create_metadata,
         available_or_reason(
             action_key="history",
             label="Lịch sử",

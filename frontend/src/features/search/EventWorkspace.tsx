@@ -19,6 +19,8 @@ import type {
   GxpCertificateDetail,
   CertificateIssueRequest,
   InspectionOutcomeUpsertRequest,
+  InspectionTeamIdentityOption,
+  InspectionTeamUpsertRequest,
   InspectionFolderLookup,
   InspectionPlanUpsertRequest,
   EvaluationScopeUpsertRequest,
@@ -430,6 +432,8 @@ function renderCaseStepContent(
   onCaseAssessmentSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>,
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>,
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>,
+  onInspectionTeamSave: (payload: InspectionTeamUpsertRequest) => Promise<void>,
+  onLoadInspectionTeamIdentityOptions: () => Promise<InspectionTeamIdentityOption[]>,
   selectedRemediationCycleId: string | null,
   onSelectedRemediationCycleChange: (cycleId: string | null) => void,
   onCreateCapaCycle: (payload: CapaCycleCreateRequest) => Promise<void>,
@@ -475,6 +479,8 @@ function renderCaseStepContent(
           caseWorkspace={caseWorkspace}
           onInspectionOutcomeSave={onInspectionOutcomeSave}
           onInspectionPlanSave={onInspectionPlanSave}
+          onInspectionTeamSave={onInspectionTeamSave}
+          onLoadInspectionTeamIdentityOptions={onLoadInspectionTeamIdentityOptions}
         />
         <ContextualDocumentSection
           items={documentItems}
@@ -637,6 +643,8 @@ export function EventWorkspace({
   onCaseAssessmentSave,
   onInspectionPlanSave,
   onInspectionOutcomeSave,
+  onInspectionTeamSave,
+  onLoadInspectionTeamIdentityOptions,
   onEvaluationScopeSave,
   onOpenDocument,
   onLoadDocumentDetail,
@@ -662,6 +670,8 @@ export function EventWorkspace({
   onCaseAssessmentSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>;
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
+  onInspectionTeamSave: (payload: InspectionTeamUpsertRequest) => Promise<void>;
+  onLoadInspectionTeamIdentityOptions: () => Promise<InspectionTeamIdentityOption[]>;
   onEvaluationScopeSave: (payload: EvaluationScopeUpsertRequest) => Promise<void>;
   onOpenDocument: (caseId: string, item: ContextualDocumentAction) => Promise<void>;
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
@@ -736,6 +746,8 @@ export function EventWorkspace({
             onCaseAssessmentSave,
             onInspectionPlanSave,
             onInspectionOutcomeSave,
+            onInspectionTeamSave,
+            onLoadInspectionTeamIdentityOptions,
             selectedRemediationCycleId,
             onSelectedRemediationCycleChange,
             onCreateCapaCycle,

@@ -32,6 +32,8 @@ import {
   updateCapaCycle,
   upsertInspectionOutcome,
   upsertInspectionPlan,
+  upsertInspectionTeam,
+  listInspectionTeamIdentityOptions,
   upsertEvaluationScope,
 } from "../lib/api";
 import type {
@@ -55,6 +57,8 @@ import type {
   CertificateIssueRequest,
   InspectionOutcomeUpsertRequest,
   InspectionPlanUpsertRequest,
+  InspectionTeamIdentityOption,
+  InspectionTeamUpsertRequest,
   EvaluationScopeUpsertRequest,
 } from "../types";
 
@@ -796,6 +800,25 @@ export function SearchPage({
     await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
   }
 
+  async function handleInspectionTeamSave(payload: InspectionTeamUpsertRequest) {
+    if (!selectedHistory || selectedHistory.source_type !== "case") {
+      throw new Error("Chưa chọn hồ sơ để cập nhật đoàn kiểm tra.");
+    }
+    const caseId = selectedHistory.id;
+    try {
+      await upsertInspectionTeam(caseId, payload, auth, useStubAuth, bearerToken);
+    } catch (error) {
+      const status = (error as Error & { status?: number }).status;
+      if (status === 409) await refreshSelectedCaseWorkspace(caseId).catch(() => undefined);
+      throw error;
+    }
+    await refreshSelectedCaseWorkspace(caseId);
+  }
+
+  function handleLoadInspectionTeamIdentityOptions(): Promise<InspectionTeamIdentityOption[]> {
+    return listInspectionTeamIdentityOptions(auth, useStubAuth, bearerToken);
+  }
+
   async function handleEvaluationScopeSave(payload: EvaluationScopeUpsertRequest) {
     if (!selectedHistory || selectedHistory.source_type !== "case") {
       throw new Error("Chưa chọn hồ sơ để cập nhật.");
@@ -1174,6 +1197,8 @@ export function SearchPage({
             onAssessCapaCycle={handleAssessCapaCycle}
             onCreateCapaCycle={handleCreateCapaCycle}
             onInspectionOutcomeSave={handleInspectionOutcomeSave}
+            onInspectionTeamSave={handleInspectionTeamSave}
+            onLoadInspectionTeamIdentityOptions={handleLoadInspectionTeamIdentityOptions}
             onEvaluationScopeSave={handleEvaluationScopeSave}
             onInspectionPlanSave={handleInspectionPlanSave}
             onLoadDocumentDetail={handleLoadDocumentDetail}

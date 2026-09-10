@@ -18,6 +18,8 @@ import type {
   CertificateLatestVersionUpsertRequest,
   CertificateIssueRequest,
   InspectionOutcomeUpsertRequest,
+  InspectionTeamIdentityOption,
+  InspectionTeamUpsertRequest,
   EvaluationScopeUpsertRequest,
   InspectionPlanUpsertRequest,
   InspectionFolderLookup,
@@ -77,6 +79,8 @@ export function FacilityWorkspaceTabs({
   onCaseAssessmentSave,
   onInspectionPlanSave,
   onInspectionOutcomeSave,
+  onInspectionTeamSave,
+  onLoadInspectionTeamIdentityOptions,
   onEvaluationScopeSave,
   onOpenDocument,
   onLoadDocumentDetail,
@@ -128,6 +132,8 @@ export function FacilityWorkspaceTabs({
   onCaseAssessmentSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>;
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
+  onInspectionTeamSave: (payload: InspectionTeamUpsertRequest) => Promise<void>;
+  onLoadInspectionTeamIdentityOptions: () => Promise<InspectionTeamIdentityOption[]>;
   onEvaluationScopeSave: (payload: EvaluationScopeUpsertRequest) => Promise<void>;
   onOpenDocument: (caseId: string, item: ContextualDocumentAction) => Promise<void>;
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
@@ -199,6 +205,8 @@ export function FacilityWorkspaceTabs({
                 onResolveInspectionFolder={onResolveInspectionFolder}
                 onCreateCapaCycle={onCreateCapaCycle}
                 onInspectionOutcomeSave={onInspectionOutcomeSave}
+                onInspectionTeamSave={onInspectionTeamSave}
+                onLoadInspectionTeamIdentityOptions={onLoadInspectionTeamIdentityOptions}
                 onEvaluationScopeSave={onEvaluationScopeSave}
                 onInspectionPlanSave={onInspectionPlanSave}
                 onIssueCertificate={onIssueCertificate}

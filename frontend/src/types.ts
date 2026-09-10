@@ -264,6 +264,69 @@ export type CaseWorkspaceInspection = {
   bbkt_reference: string | null;
   outcome_result: string | null;
   team_display_text: string | null;
+  team: InspectionTeamWorkspace | null;
+  team_edit_readiness: InspectionTeamEditReadiness;
+};
+
+export type InspectionTeamMemberWorkspace = {
+  id: string;
+  inspector_profile_id: string | null;
+  person_id: string | null;
+  display_name: string | null;
+  role_label: string | null;
+  sort_order: number;
+  identity_status: "resolved" | "unresolved";
+};
+
+export type InspectionTeamWorkspace = {
+  team_id: string;
+  row_version: number;
+  display_text: string | null;
+  members: InspectionTeamMemberWorkspace[];
+  round_trip_safe: boolean;
+  blocked_reason_code: string | null;
+};
+
+export type InspectionTeamEditReadiness = {
+  action_key: "edit_inspection_team";
+  label: string;
+  available: boolean;
+  reason_code: string | null;
+  required_permissions: string[];
+};
+
+export type InspectionTeamIdentityOption = {
+  identity_kind: "inspector_profile" | "person";
+  inspector_profile_id: string | null;
+  person_id: string | null;
+  display_name: string;
+  is_active: boolean | null;
+};
+
+export type InspectionTeamUpsertRequest = {
+  expected_version: number | null;
+  members: Array<{
+    inspector_profile_id: string | null;
+    person_id: string | null;
+    role_label: string | null;
+    sort_order: number;
+  }>;
+  reason?: string | null;
+};
+
+export type InspectionTeamUpsertResponse = {
+  case_id: string;
+  team_id: string;
+  row_version: number;
+  display_text: string | null;
+  members: Array<{
+    id: string;
+    inspector_profile_id: string | null;
+    person_id: string | null;
+    role_label: string | null;
+    sort_order: number;
+  }>;
+  audit_event_id: string;
 };
 
 export type InspectionPlanUpsertRequest = {

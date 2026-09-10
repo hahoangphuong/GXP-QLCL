@@ -216,6 +216,35 @@ class CaseWorkspaceInspectionRead(BaseModel):
     bbkt_reference: str | None
     outcome_result: str | None
     team_display_text: str | None
+    team: "InspectionTeamWorkspaceRead | None" = None
+    team_edit_readiness: "InspectionTeamEditReadinessRead"
+
+
+class InspectionTeamMemberWorkspaceRead(BaseModel):
+    id: str
+    inspector_profile_id: str | None
+    person_id: str | None
+    display_name: str | None
+    role_label: str | None
+    sort_order: int
+    identity_status: Literal["resolved", "unresolved"]
+
+
+class InspectionTeamWorkspaceRead(BaseModel):
+    team_id: str
+    row_version: int
+    display_text: str | None
+    members: list[InspectionTeamMemberWorkspaceRead]
+    round_trip_safe: bool
+    blocked_reason_code: str | None = None
+
+
+class InspectionTeamEditReadinessRead(BaseModel):
+    action_key: Literal["edit_inspection_team"]
+    label: str
+    available: bool
+    reason_code: str | None = None
+    required_permissions: list[str]
 
 
 class CaseWorkspaceRemediationCycleRead(BaseModel):
@@ -728,6 +757,7 @@ class InspectionTeamMemberUpsertItem(BaseModel):
 
 class InspectionTeamUpsertRequest(BaseModel):
     expected_version: int | None = None
+    # Kept only to reject obsolete clients explicitly; legacy display text is not editable here.
     display_text: str | None = None
     members: list[InspectionTeamMemberUpsertItem]
     reason: str | None = None
@@ -748,6 +778,14 @@ class InspectionTeamRead(BaseModel):
     display_text: str | None
     members: list[InspectionTeamMemberRead]
     audit_event_id: str
+
+
+class InspectionTeamIdentityOptionRead(BaseModel):
+    identity_kind: Literal["inspector_profile", "person"]
+    inspector_profile_id: str | None = None
+    person_id: str | None = None
+    display_name: str
+    is_active: bool | None = None
 
 
 class CertificateScopeUpsertItem(BaseModel):

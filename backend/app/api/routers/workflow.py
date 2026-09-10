@@ -35,6 +35,7 @@ from backend.app.read_models import (
     InspectionPlanRead,
     InspectionPlanUpsertRequest,
     InspectionTeamRead,
+    InspectionTeamIdentityOptionRead,
     InspectionTeamUpsertRequest,
 )
 from backend.app.services import CatalogReadService, CaseWorkflowService
@@ -42,6 +43,7 @@ from backend.app.services import CatalogReadService, CaseWorkflowService
 def register_workflow_routes(app, session_factory) -> None:
     dependency = Depends(get_session_from_request_factory(session_factory))
     service = CaseWorkflowService()
+    catalog_service = CatalogReadService()
 
     def create_inspection_case(
         site_id: str,
@@ -207,6 +209,13 @@ def register_workflow_routes(app, session_factory) -> None:
         )
         commit_or_409(session)
         return InspectionTeamRead(**result)
+
+    def list_inspection_team_identity_options(
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"inspection.edit"})
+        return [InspectionTeamIdentityOptionRead(**item) for item in catalog_service.list_inspection_team_identity_options(session)]
 
     def list_capa_cycles(
         case_id: str,
@@ -471,6 +480,13 @@ def register_workflow_routes(app, session_factory) -> None:
         upsert_inspection_team,
         methods=["PUT"],
         response_model=InspectionTeamRead,
+        tags=["workflow"],
+    )
+    app.add_api_route(
+        "/inspection-team-identity-options",
+        list_inspection_team_identity_options,
+        methods=["GET"],
+        response_model=list[InspectionTeamIdentityOptionRead],
         tags=["workflow"],
     )
     app.add_api_route(

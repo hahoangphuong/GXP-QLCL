@@ -1688,7 +1688,7 @@ describe("App Slice A.4 search workspace", () => {
     );
   });
 
-  it("renders inspection owners with editable plan/outcome sections and readonly team section", async () => {
+  it("renders inspection owners and keeps team editing blocked when structured read data is unavailable", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
@@ -1717,7 +1717,8 @@ describe("App Slice A.4 search workspace", () => {
     for (const field of ["Từ ngày", "Đến ngày", "Quyết định kiểm tra", "Biên bản kiểm tra", "Tiêu chuẩn áp dụng", "Kết quả kiểm tra"]) {
       expect(screen.getAllByText(field).length).toBeGreaterThan(0);
     }
-    expect(screen.getByText(/canonical write owner yêu cầu `members\[\]` đầy đủ/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sửa đoàn kiểm tra" })).toBeDisabled();
+    expect(screen.getByText(/structured_read_unavailable/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Chỉnh sửa" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sửa Từ ngày kế hoạch" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sửa Đến ngày kế hoạch" })).toBeInTheDocument();

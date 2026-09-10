@@ -46,6 +46,9 @@ from backend.app.db.models.phase1 import (
     InspectionPlan,
     InspectionOutcome,
     InspectionTeam,
+    InspectionTeamMember,
+    InspectorProfile,
+    Person,
     Site,
     EvaluationScopeTaxonomyNode,
 )
@@ -261,6 +264,42 @@ class CatalogReadService:
         for role_code in user.role_codes:
             derived.update(ROLE_PERMISSIONS.get(role_code, frozenset()))
         return frozenset(derived)
+
+    @staticmethod
+    def _person_display_name(person: Person) -> str:
+        return person.display_name or person.full_name
+
+    def list_inspection_team_identity_options(self, session: Session) -> list[dict[str, object]]:
+        people = list(session.scalars(select(Person).order_by(Person.full_name.asc(), Person.id.asc())))
+        profiles = list(
+            session.execute(
+                select(InspectorProfile, Person)
+                .join(Person, Person.id == InspectorProfile.person_id)
+                .order_by(InspectorProfile.is_active.desc(), Person.full_name.asc(), InspectorProfile.id.asc())
+            ).all()
+        )
+        return [
+            *[
+                {
+                    "identity_kind": "inspector_profile",
+                    "inspector_profile_id": profile.id,
+                    "person_id": profile.person_id,
+                    "display_name": self._person_display_name(person),
+                    "is_active": profile.is_active,
+                }
+                for profile, person in profiles
+            ],
+            *[
+                {
+                    "identity_kind": "person",
+                    "inspector_profile_id": None,
+                    "person_id": person.id,
+                    "display_name": self._person_display_name(person),
+                    "is_active": None,
+                }
+                for person in people
+            ],
+        ]
 
     @staticmethod
     @lru_cache(maxsize=1)
@@ -2116,6 +2155,60 @@ class CatalogReadService:
         assessment = session.scalar(select(CaseAssessment).where(CaseAssessment.case_id == case.id))
         plan = session.scalar(select(InspectionPlan).where(InspectionPlan.case_id == case.id))
         team = session.scalar(select(InspectionTeam).where(InspectionTeam.case_id == case.id))
+        team_members = [] if team is None else list(
+            session.scalars(
+                select(InspectionTeamMember)
+                .where(InspectionTeamMember.team_id == team.id)
+                .order_by(InspectionTeamMember.sort_order.asc(), InspectionTeamMember.id.asc())
+            )
+        )
+        profile_ids = {member.inspector_profile_id for member in team_members if member.inspector_profile_id}
+        profiles_by_id = {
+            profile.id: profile
+            for profile in session.scalars(
+                select(InspectorProfile).where(InspectorProfile.id.in_(profile_ids))
+            )
+        } if team_members else {}
+        person_ids = {member.person_id for member in team_members if member.person_id} | {
+            profile.person_id for profile in profiles_by_id.values()
+        }
+        people_by_id = {
+            person.id: person
+            for person in session.scalars(
+                select(Person).where(Person.id.in_(person_ids))
+            )
+        } if team_members else {}
+        serialized_team_members: list[dict[str, object]] = []
+        team_round_trip_safe = team is None or bool(team_members)
+        for member in team_members:
+            profile = profiles_by_id.get(member.inspector_profile_id) if member.inspector_profile_id else None
+            person = people_by_id.get(member.person_id) if member.person_id else (people_by_id.get(profile.person_id) if profile else None)
+            identity_resolved = (
+                (member.inspector_profile_id is not None) != (member.person_id is not None)
+                and person is not None
+                and (member.inspector_profile_id is None or profile is not None)
+            )
+            if not identity_resolved:
+                team_round_trip_safe = False
+            serialized_team_members.append({
+                "id": member.id,
+                "inspector_profile_id": member.inspector_profile_id,
+                "person_id": member.person_id,
+                "display_name": None if person is None else (person.display_name or person.full_name),
+                "role_label": member.role_label,
+                "sort_order": member.sort_order,
+                "identity_status": "resolved" if identity_resolved else "unresolved",
+            })
+        permissions = self._effective_permissions(user)
+        team_reason: str | None = None
+        if "inspection.edit" not in permissions:
+            team_reason = "missing_permission"
+        elif case.state in {CaseState.CLOSED, CaseState.CANCELLED}:
+            team_reason = "terminal_case"
+        elif team is None:
+            team_reason = "team_not_initialized"
+        elif team is not None and not team_round_trip_safe:
+            team_reason = "unresolved_member_identity"
         outcome = session.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == case.id))
         events = list(
             session.scalars(
@@ -2366,6 +2459,21 @@ class CatalogReadService:
                 "bbkt_reference": None if outcome is None else outcome.bbkt_reference,
                 "outcome_result": None if outcome is None else outcome.outcome_result,
                 "team_display_text": None if team is None else team.display_text,
+                "team": None if team is None else {
+                    "team_id": team.id,
+                    "row_version": team.row_version,
+                    "display_text": team.display_text,
+                    "members": serialized_team_members,
+                    "round_trip_safe": team_round_trip_safe,
+                    "blocked_reason_code": None if team_round_trip_safe else "unresolved_member_identity",
+                },
+                "team_edit_readiness": {
+                    "action_key": "edit_inspection_team",
+                    "label": "Sửa đoàn kiểm tra",
+                    "available": team_reason is None,
+                    "reason_code": team_reason,
+                    "required_permissions": ["inspection.edit"],
+                },
             },
             "remediation": {
                 "cycles": [

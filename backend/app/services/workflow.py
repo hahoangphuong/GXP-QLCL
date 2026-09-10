@@ -32,8 +32,10 @@ from backend.app.db.models.phase1 import (
     InspectionEvent,
     InspectionTeam,
     InspectionTeamMember,
+    InspectorProfile,
     InspectionOutcome,
     InspectionPlan,
+    Person,
     Site,
     EvaluationScopeTaxonomyNode,
     EvaluationScopeTaxonomyVersion,
@@ -505,6 +507,17 @@ class CaseWorkflowService:
                     status_code=422,
                     detail=f"Inspection team member at index {index} must set exactly one of inspector_profile_id or person_id.",
                 )
+
+    def _validate_team_member_identities(self, session: Session, members: list[dict[str, Any]]) -> None:
+        profile_ids = {str(item["inspector_profile_id"]) for item in members if item.get("inspector_profile_id")}
+        person_ids = {str(item["person_id"]) for item in members if item.get("person_id")}
+        existing_profiles = set(session.scalars(select(InspectorProfile.id).where(InspectorProfile.id.in_(profile_ids)))) if profile_ids else set()
+        existing_people = set(session.scalars(select(Person.id).where(Person.id.in_(person_ids)))) if person_ids else set()
+        missing_profiles = sorted(profile_ids - existing_profiles)
+        missing_people = sorted(person_ids - existing_people)
+        if missing_profiles or missing_people:
+            missing = ", ".join([*(f"inspector_profile:{item}" for item in missing_profiles), *(f"person:{item}" for item in missing_people)])
+            raise HTTPException(status_code=422, detail=f"Inspection team contains unknown identity: {missing}.")
 
     def _get_capa_cycle(self, session: Session, capa_cycle_id: str) -> CapaCycle:
         row = session.get(CapaCycle, capa_cycle_id)
@@ -1582,15 +1595,18 @@ class CaseWorkflowService:
         session: Session,
         *,
         case_id: str,
-        expected_version: int | None = None,
-        display_text: str | None,
         members: list[dict[str, Any]],
         reason: str | None,
         user: AuthenticatedUser,
+        expected_version: int | None = None,
+        display_text: str | None = None,
     ) -> dict[str, Any]:
         row = self._get_case(session, case_id)
         self._assert_case_not_terminal(row, operation="inspection team update")
+        if display_text is not None:
+            raise HTTPException(status_code=422, detail="Inspection team display_text is a legacy snapshot and cannot be edited with members.")
         self._validate_team_members(members)
+        self._validate_team_member_identities(session, members)
         actor = self._get_or_create_app_user(session, user)
 
         team = session.scalars(select(InspectionTeam).where(InspectionTeam.case_id == row.id)).first()
@@ -1608,8 +1624,6 @@ class CaseWorkflowService:
             ],
         }
 
-        team.display_text = display_text
-
         for member in existing_members:
             session.delete(member)
         session.flush()
@@ -1625,6 +1639,9 @@ class CaseWorkflowService:
             )
             session.add(member)
             created_members.append(member)
+        # Replacing child rows does not dirty the versioned aggregate itself.
+        # Advance its token so a later stale replace-all request fails closed.
+        team.row_version += 1
         session.flush()
         after = {
             "display_text": team.display_text,
@@ -1642,7 +1659,7 @@ class CaseWorkflowService:
             action="inspection_team.upsert",
             payload=self._build_stage_payload(
                 case_id=row.id,
-                display_text=display_text,
+                display_text=team.display_text,
                 member_count=len(created_members),
                 members=[
                     {

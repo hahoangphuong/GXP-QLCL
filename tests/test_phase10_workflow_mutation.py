@@ -27,6 +27,8 @@ from backend.app.db.models.phase1 import (
     InspectionPlan,
     InspectionTeam,
     InspectionTeamMember,
+    InspectorProfile,
+    Person,
     Site,
 )
 from backend.app.main import create_app
@@ -52,6 +54,17 @@ def seed_case(session: Session, *, gxp_type: str = "GMP") -> str:
     session.add(case)
     session.commit()
     return case.id
+
+
+def seed_inspection_team_identities(session: Session) -> dict[str, str]:
+    inspector_person = Person(full_name="Inspector One", display_name="Inspector 1")
+    direct_person = Person(full_name="Member Two", display_name="Member 2")
+    session.add_all([inspector_person, direct_person])
+    session.flush()
+    profile = InspectorProfile(person_id=inspector_person.id, legacy_display_text="Inspector 1", is_active=True)
+    session.add(profile)
+    session.flush()
+    return {"profile_id": profile.id, "inspector_person_id": inspector_person.id, "direct_person_id": direct_person.id}
 
 
 def seed_create_inspection_case_context(
@@ -1066,15 +1079,16 @@ def test_upsert_inspection_team_replaces_member_list_and_writes_audit():
 
     with Session(engine) as session:
         case_id = seed_case(session)
+        identities = seed_inspection_team_identities(session)
+        session.commit()
 
     with Session(engine) as session:
         result = service.upsert_inspection_team(
             session,
             case_id=case_id,
-            display_text="Lead: Inspector A; Member: Specialist B",
             members=[
-                {"person_id": "00000000-0000-0000-0000-0000000000a1", "inspector_profile_id": None, "role_label": "lead", "sort_order": 1},
-                {"person_id": "00000000-0000-0000-0000-0000000000b2", "inspector_profile_id": None, "role_label": "member", "sort_order": 2},
+                {"person_id": None, "inspector_profile_id": identities["profile_id"], "role_label": "lead", "sort_order": 1},
+                {"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_label": "member", "sort_order": 2},
             ],
             reason="Initial team assignment.",
             user=build_authenticated_user("manager01", "manager"),
@@ -1088,8 +1102,8 @@ def test_upsert_inspection_team_replaces_member_list_and_writes_audit():
     with Session(engine) as session:
         team = session.scalars(select(InspectionTeam)).first()
         assert team is not None
-        assert team.display_text == "Lead: Inspector A; Member: Specialist B"
-        members = list(session.scalars(select(InspectionTeamMember).where(InspectionTeamMember.team_id == team.id)))
+        assert team.display_text is None
+        members = list(session.scalars(select(InspectionTeamMember).where(InspectionTeamMember.team_id == team.id).order_by(InspectionTeamMember.sort_order)))
         assert len(members) == 2
         assert session.scalars(select(AuditEvent).where(AuditEvent.action == "inspection_team.upsert")).first() is not None
 
@@ -1097,9 +1111,9 @@ def test_upsert_inspection_team_replaces_member_list_and_writes_audit():
         service.upsert_inspection_team(
             session,
             case_id=case_id,
-            display_text="Lead: Inspector A",
             members=[
-                {"person_id": "00000000-0000-0000-0000-0000000000a1", "inspector_profile_id": None, "role_label": "lead", "sort_order": 1},
+                {"person_id": None, "inspector_profile_id": identities["profile_id"], "role_label": "chair", "sort_order": 2},
+                {"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_label": "member", "sort_order": 1},
             ],
             reason="Team narrowed.",
             user=build_authenticated_user("manager01", "manager"),
@@ -1109,8 +1123,11 @@ def test_upsert_inspection_team_replaces_member_list_and_writes_audit():
     with Session(engine) as session:
         team = session.scalars(select(InspectionTeam)).first()
         assert team is not None
-        members = list(session.scalars(select(InspectionTeamMember).where(InspectionTeamMember.team_id == team.id)))
-        assert len(members) == 1
+        members = list(session.scalars(select(InspectionTeamMember).where(InspectionTeamMember.team_id == team.id).order_by(InspectionTeamMember.sort_order)))
+        assert [(member.inspector_profile_id, member.person_id, member.role_label, member.sort_order) for member in members] == [
+            (None, identities["direct_person_id"], "member", 1),
+            (identities["profile_id"], None, "chair", 2),
+        ]
 
 
 def test_upsert_inspection_team_rejects_member_without_identity():
@@ -1126,7 +1143,6 @@ def test_upsert_inspection_team_rejects_member_without_identity():
             service.upsert_inspection_team(
                 session,
                 case_id=case_id,
-                display_text=None,
                 members=[
                     {"person_id": None, "inspector_profile_id": None, "role_label": "lead", "sort_order": 1},
                 ],
@@ -1137,6 +1153,87 @@ def test_upsert_inspection_team_rejects_member_without_identity():
             assert "exactly one" in str(exc)
         else:
             raise AssertionError("Expected invalid inspection team member to fail")
+
+
+def test_upsert_inspection_team_rejects_display_text_as_a_second_member_source():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        identities = seed_inspection_team_identities(session)
+        with pytest.raises(Exception, match="legacy snapshot"):
+            service.upsert_inspection_team(
+                session,
+                case_id=case_id,
+                display_text="Do not parse me",
+                members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_label": "lead", "sort_order": 0}],
+                reason="Invalid dual source.",
+                user=build_authenticated_user("manager01", "manager"),
+            )
+
+
+def test_upsert_inspection_team_rejects_unknown_identity_and_stale_version_without_data_loss():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        identities = seed_inspection_team_identities(session)
+        team = InspectionTeam(case_id=case_id, display_text="Legacy snapshot")
+        session.add(team)
+        session.flush()
+        session.add(InspectionTeamMember(team_id=team.id, inspector_profile_id=identities["profile_id"], person_id=None, role_label="lead", sort_order=0))
+        session.commit()
+
+    with Session(engine) as session:
+        try:
+            service.upsert_inspection_team(
+                session,
+                case_id=case_id,
+                expected_version=1,
+                members=[{"person_id": "00000000-0000-0000-0000-0000000000ff", "inspector_profile_id": None, "role_label": "lead", "sort_order": 0}],
+                reason="Invalid identity.",
+                user=build_authenticated_user("manager01", "manager"),
+            )
+        except Exception as exc:
+            assert "unknown identity" in str(exc)
+        else:
+            raise AssertionError("Expected unknown inspection team identity to fail")
+        session.rollback()
+
+        updated = service.upsert_inspection_team(
+            session,
+            case_id=case_id,
+            expected_version=1,
+            members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_label": "lead", "sort_order": 0}],
+            reason="Replace member from authoritative projection.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        try:
+            service.upsert_inspection_team(
+                session,
+                case_id=case_id,
+                expected_version=1,
+                members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_label": "member", "sort_order": 0}],
+                reason="Stale write.",
+                user=build_authenticated_user("manager01", "manager"),
+            )
+        except Exception as exc:
+            assert "Stale inspection_team update" in str(exc)
+        else:
+            raise AssertionError("Expected stale inspection team update to fail")
+
+    assert updated["row_version"] == 2
+    with Session(engine) as session:
+        team = session.scalars(select(InspectionTeam).where(InspectionTeam.case_id == case_id)).one()
+        members = list(session.scalars(select(InspectionTeamMember).where(InspectionTeamMember.team_id == team.id)))
+        assert team.display_text == "Legacy snapshot"
+        assert [(member.person_id, member.role_label) for member in members] == [(identities["direct_person_id"], "lead")]
 
 
 def test_upsert_inspection_team_blocks_terminal_case_before_replacing_members():
@@ -1169,7 +1266,6 @@ def test_upsert_inspection_team_blocks_terminal_case_before_replacing_members():
                 session,
                 case_id=case_id,
                 expected_version=1,
-                display_text="Should stay unchanged",
                 members=[
                     {
                         "person_id": "00000000-0000-0000-0000-0000000000b2",

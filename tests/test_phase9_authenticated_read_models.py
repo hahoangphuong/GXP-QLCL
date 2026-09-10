@@ -1,5 +1,6 @@
 import ast
 import anyio
+import pytest
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 import shutil
@@ -47,6 +48,9 @@ from backend.app.db.models.phase1 import (
     InspectionPlan,
     InspectionOutcome,
     InspectionTeam,
+    InspectionTeamMember,
+    InspectorProfile,
+    Person,
     RbacPermission,
     RbacRole,
     RbacRolePermission,
@@ -1801,6 +1805,10 @@ def test_case_workspace_reads_owner_correct_sections_and_direct_links_only(tmp_p
     assert payload.inspection.outcome_row_version == 1
     assert payload.inspection.bbkt_reference == "BBKT-4201"
     assert payload.inspection.team_display_text == "Đoàn kiểm tra GMP dây chuyền A"
+    assert payload.inspection.team is not None
+    assert payload.inspection.team.round_trip_safe is False
+    assert payload.inspection.team_edit_readiness.available is False
+    assert payload.inspection.team_edit_readiness.reason_code == "missing_permission"
     assert payload.inspection.outcome_result == "Đạt WHO-GMP dây chuyền A"
     assert [cycle.row_version for cycle in payload.remediation.cycles] == [1, 1]
     assert [cycle.round_no for cycle in payload.remediation.cycles] == [1, 2]
@@ -1842,6 +1850,92 @@ def test_case_workspace_reads_owner_correct_sections_and_direct_links_only(tmp_p
     assert contextual_items["Quyết định cấp CC"].actions[1].action_key == "create"
     assert contextual_items["Quyết định cấp CC"].actions[1].available is False
     assert all(item.family_code != "ASSESSMENT_MINUTES" for item in payload.contextual_document_actions)
+
+
+def test_case_workspace_projects_structured_inspection_team_and_selector_contract(tmp_path):
+    database_path = tmp_path / "catalog-inspection-team.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+        case_id = seeded["case_ids"]["a"]
+        team = session.scalars(select(InspectionTeam).where(InspectionTeam.case_id == case_id)).one()
+        case = session.get(Case, case_id)
+        assert case is not None
+        case.state = CaseState.DRAFT
+        inspector_person = Person(full_name="Nguyễn Thanh Tra", display_name="Thanh Tra")
+        direct_person = Person(full_name="Lê Thành Viên")
+        session.add_all([inspector_person, direct_person])
+        session.flush()
+        profile = InspectorProfile(person_id=inspector_person.id, is_active=False, legacy_display_text="Thanh Tra")
+        session.add(profile)
+        session.flush()
+        direct_person_id = direct_person.id
+        profile_id = profile.id
+        session.add_all([
+            InspectionTeamMember(team_id=team.id, inspector_profile_id=profile.id, person_id=None, role_label="Trưởng đoàn", sort_order=2),
+            InspectionTeamMember(team_id=team.id, inspector_profile_id=None, person_id=direct_person.id, role_label="Thành viên", sort_order=1),
+        ])
+        session.commit()
+
+    app = create_app(database_url)
+    workspace_route = next(route for route in app.routes if getattr(route, "path", "") == "/cases/{case_id}/workspace")
+    selector_route = next(route for route in app.routes if getattr(route, "path", "") == "/inspection-team-identity-options")
+    manager = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
+
+    with Session(engine) as session:
+        workspace = workspace_route.endpoint(case_id=case_id, session=session, user=manager)
+        options = selector_route.endpoint(session=session, user=manager)
+
+    assert workspace.inspection.team is not None
+    assert workspace.inspection.team.round_trip_safe is True
+    assert workspace.inspection.team_edit_readiness.available is True
+    assert [(member.person_id, member.inspector_profile_id, member.role_label, member.sort_order) for member in workspace.inspection.team.members] == [
+        (direct_person_id, None, "Thành viên", 1),
+        (None, profile_id, "Trưởng đoàn", 2),
+    ]
+    assert [member.display_name for member in workspace.inspection.team.members] == ["Lê Thành Viên", "Thanh Tra"]
+    assert {option.identity_kind for option in options} == {"inspector_profile", "person"}
+    assert any(option.inspector_profile_id == profile_id and option.is_active is False for option in options)
+
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as exc_info:
+            selector_route.endpoint(session=session, user=build_authenticated_user("reader01", "reader", permissions=ROLE_PERMISSIONS["reader"]))
+    assert exc_info.value.status_code == 403
+
+
+def test_case_workspace_preserves_unresolved_legacy_team_member_without_enabling_edit(tmp_path):
+    database_path = tmp_path / "catalog-unresolved-inspection-team.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+        case_id = seeded["case_ids"]["a"]
+        case = session.get(Case, case_id)
+        team = session.scalars(select(InspectionTeam).where(InspectionTeam.case_id == case_id)).one()
+        assert case is not None
+        case.state = CaseState.DRAFT
+        session.add(InspectionTeamMember(team_id=team.id, inspector_profile_id=None, person_id="00000000-0000-0000-0000-0000000000ff", role_label="Legacy", sort_order=0))
+        session.commit()
+
+    app = create_app(database_url)
+    workspace_route = next(route for route in app.routes if getattr(route, "path", "") == "/cases/{case_id}/workspace")
+    with Session(engine) as session:
+        workspace = workspace_route.endpoint(
+            case_id=case_id,
+            session=session,
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
+        )
+
+    assert workspace.inspection.team is not None
+    assert workspace.inspection.team.members[0].person_id == "00000000-0000-0000-0000-0000000000ff"
+    assert workspace.inspection.team.members[0].identity_status == "unresolved"
+    assert workspace.inspection.team.round_trip_safe is False
+    assert workspace.inspection.team_edit_readiness.reason_code == "unresolved_member_identity"
 
 
 def test_case_workspace_ignores_legacy_processing_free_text_without_structured_owner_mapping(tmp_path):

@@ -38,6 +38,9 @@ import type {
   InspectionCaseCreateResponse,
   InspectionPlanUpsertRequest,
   InspectionPlanUpsertResponse,
+  InspectionTeamIdentityOption,
+  InspectionTeamUpsertRequest,
+  InspectionTeamUpsertResponse,
   InspectionFolderLookup,
   Site,
   StubAuthState,
@@ -440,6 +443,30 @@ export function upsertInspectionOutcome(
   bearerToken?: string | null,
 ): Promise<InspectionOutcomeUpsertResponse> {
   return requestJson<InspectionOutcomeUpsertResponse>(`/cases/${caseId}/outcome`, {
+    method: "PUT",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function listInspectionTeamIdentityOptions(
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<InspectionTeamIdentityOption[]> {
+  return requestJson<InspectionTeamIdentityOption[]>("/inspection-team-identity-options", { auth, useStubAuth, bearerToken });
+}
+
+export function upsertInspectionTeam(
+  caseId: string,
+  payload: InspectionTeamUpsertRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<InspectionTeamUpsertResponse> {
+  return requestJson<InspectionTeamUpsertResponse>(`/cases/${caseId}/team`, {
     method: "PUT",
     body: payload,
     auth,

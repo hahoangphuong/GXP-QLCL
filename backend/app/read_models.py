@@ -321,6 +321,14 @@ class DocumentChecklistRead(BaseModel):
     items: list[DocumentChecklistItemRead]
 
 
+class AuthenticatedIdentityRead(BaseModel):
+    username: str
+    email: str | None
+    subject: str | None
+    role_codes: list[str]
+    permissions: list[str]
+
+
 class ContextualDocumentActionAvailabilityRead(BaseModel):
     action_key: Literal["open", "create", "history"]
     label: str

@@ -10,6 +10,8 @@ const apiMocks = vi.hoisted(() => ({
   createCapaCycle: vi.fn(),
   createInspectionCase: vi.fn(),
   getAppStatus: vi.fn(),
+  getCurrentIdentity: vi.fn(),
+  getAdminSystemStatus: vi.fn(),
   getDashboardSummary: vi.fn().mockResolvedValue({
     total_facilities: 18,
     total_cases: 42,
@@ -74,6 +76,8 @@ vi.mock("./lib/storage", () => ({
 
 function resetApiMocks() {
   apiMocks.getAppStatus.mockReset();
+  apiMocks.getCurrentIdentity.mockReset();
+  apiMocks.getAdminSystemStatus.mockReset();
   apiMocks.assessCapaCycle.mockReset();
   apiMocks.createCapaCycle.mockReset();
   apiMocks.createInspectionCase.mockReset();
@@ -116,6 +120,14 @@ function resetApiMocks() {
     queue: [],
   });
   apiMocks.searchFacilities.mockResolvedValue({ items: [], total_count: 0, offset: 0, limit: 100 });
+  apiMocks.getCurrentIdentity.mockResolvedValue({
+    username: "operator.local",
+    email: null,
+    subject: null,
+    role_codes: ["inspector"],
+    permissions: ["case.view", "case.edit"],
+  });
+  apiMocks.getAdminSystemStatus.mockResolvedValue(buildStatus("header_stub", null));
   apiMocks.assessCapaCycle.mockResolvedValue(null);
   apiMocks.createCapaCycle.mockResolvedValue(null);
   apiMocks.createInspectionCase.mockResolvedValue(null);
@@ -616,6 +628,39 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".topbar > .primary-nav")).not.toBeNull();
     expect(container.querySelector(".topbar > .header-identity-group")).not.toBeNull();
     await waitFor(() => expect(screen.queryByRole("navigation", { name: "Liên kết pháp lý công khai" })).not.toBeInTheDocument());
+  });
+
+  it("uses backend identity permissions, not local role state, for admin navigation", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.getCurrentIdentity.mockResolvedValue({
+      username: "manager.local",
+      email: null,
+      subject: null,
+      role_codes: ["manager"],
+      permissions: ["case.view", "certificate.approve"],
+    });
+
+    renderApp();
+
+    await waitFor(() => expect(apiMocks.getCurrentIdentity).toHaveBeenCalled());
+    expect(screen.queryByRole("link", { name: "Quản trị" })).not.toBeInTheDocument();
+  });
+
+  it("shows protected system status only after backend confirms the admin permission", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.getCurrentIdentity.mockResolvedValue({
+      username: "admin.local",
+      email: null,
+      subject: null,
+      role_codes: ["admin"],
+      permissions: ["admin.users", "admin.roles"],
+    });
+
+    renderApp(["/admin/system-status"]);
+
+    expect(await screen.findByRole("link", { name: "Quản trị" })).toHaveAttribute("href", "/admin/system-status");
+    expect(await screen.findByRole("heading", { name: "Trạng thái hệ thống" })).toBeInTheDocument();
+    expect(apiMocks.getAdminSystemStatus).toHaveBeenCalled();
   });
 
   it("renders the privacy page publicly without login and keeps legal navigation available", async () => {

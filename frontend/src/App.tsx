@@ -3,15 +3,16 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { AppShell } from "./components/AppShell";
 import { PrimaryNav } from "./components/PrimaryNav";
-import { getAppStatus } from "./lib/api";
+import { getAppStatus, getCurrentIdentity } from "./lib/api";
 import { decodeOidcCredential, isOidcSessionValid, loadGoogleIdentityScript } from "./lib/oidc";
 import { clearOidcSession, loadAuthState, loadOidcSession, saveOidcSession } from "./lib/storage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { AdminSystemStatusPage } from "./pages/AdminSystemStatusPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
 import { SearchPage } from "./pages/SearchPage";
 import { TermsPage } from "./pages/TermsPage";
-import type { AppStatus, OidcSession, StubAuthState } from "./types";
+import type { AppStatus, AuthenticatedIdentity, OidcSession, StubAuthState } from "./types";
 
 export type ApiAccess = {
   auth: StubAuthState;
@@ -140,6 +141,7 @@ export function App() {
   });
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [identity, setIdentity] = useState<AuthenticatedIdentity | null>(null);
 
   useEffect(() => {
     if (location.pathname === "/privacy") {
@@ -185,11 +187,36 @@ export function App() {
     };
   }, []);
 
+  const useStubAuth = status?.auth_mode === "header_stub" || status === null;
+  const canLoadSecureApi = useStubAuth || Boolean(oidcSession?.token);
+
+  useEffect(() => {
+    if (!canLoadSecureApi) {
+      setIdentity(null);
+      return;
+    }
+    let cancelled = false;
+    void getCurrentIdentity(auth, useStubAuth, oidcSession?.token)
+      .then((payload) => {
+        if (!cancelled) {
+          setIdentity(payload);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setIdentity(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [auth, canLoadSecureApi, oidcSession?.token, useStubAuth]);
+
   const apiAccess: ApiAccess = {
     auth,
-    useStubAuth: status?.auth_mode === "header_stub" || status === null,
+    useStubAuth,
     bearerToken: oidcSession?.token ?? null,
-    canLoadSecureApi: status?.auth_mode === "header_stub" || Boolean(oidcSession?.token),
+    canLoadSecureApi,
   };
   const isAuthenticated = status?.auth_mode === "header_stub" || Boolean(oidcSession);
 
@@ -200,7 +227,7 @@ export function App() {
         <AppHeader
           auth={auth}
           authMode={status?.auth_mode ?? null}
-          canAccessAdmin={auth.role === "admin" || auth.role === "manager"}
+          canAccessAdmin={identity?.permissions.includes("admin.users") ?? false}
           oidcClientId={status?.auth.oidc_client_id ?? null}
           oidcSession={oidcSession}
           onOidcSession={setOidcSession}
@@ -243,15 +270,7 @@ export function App() {
             />
           }
         />
-        <Route
-          path="/admin/system-status"
-          element={
-            <PlaceholderPage
-              title="Trạng thái hệ thống"
-              description="Thông tin kỹ thuật đã được đẩy khỏi dashboard operator và dành cho khu vực quản trị."
-            />
-          }
-        />
+        <Route path="/admin/system-status" element={<AdminSystemStatusPage access={apiAccess} />} />
         <Route path="/cases" element={<Navigate to="/search" replace />} />
         <Route path="/cases/:caseId" element={<Navigate to="/search" replace />} />
       </Routes>

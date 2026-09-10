@@ -28,6 +28,14 @@ export type AppStatus = {
   };
 };
 
+export type AuthenticatedIdentity = {
+  username: string;
+  email: string | null;
+  subject: string | null;
+  role_codes: string[];
+  permissions: string[];
+};
+
 export type Company = {
   id: string;
   legacy_company_id: number | null;

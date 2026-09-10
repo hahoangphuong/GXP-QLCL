@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from fastapi import Request
+from fastapi import Depends, Request
 
+from backend.app.auth import AuthenticatedUser, get_authenticated_user, require_permissions
 from backend.app.status import build_application_status
 
 
@@ -31,5 +32,14 @@ def app_status(request: Request):
     }
 
 
+def admin_system_status(
+    request: Request,
+    user: AuthenticatedUser = Depends(get_authenticated_user),
+):
+    require_permissions(user, {"admin.users"})
+    return app_status(request)
+
+
 def register_status_routes(app) -> None:
     app.add_api_route("/app/status", app_status, methods=["GET"], tags=["status"])
+    app.add_api_route("/admin/runtime-status", admin_system_status, methods=["GET"], tags=["admin"])

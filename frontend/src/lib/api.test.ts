@@ -4,7 +4,9 @@ import {
   assessCapaCycle,
   createCapaCycle,
   createInspectionCase,
+  getAdminSystemStatus,
   getAppStatus,
+  getCurrentIdentity,
   getCaseDetail,
   getChangeRequestWorkspace,
   getCaseWorkspace,
@@ -84,6 +86,29 @@ describe("frontend API routing contract", () => {
       "/api/app/status",
       expect.objectContaining({ method: "GET" }),
     );
+  });
+
+  it("uses the authenticated identity endpoint with the caller credentials", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getCurrentIdentity({ username: "operator.local", role: "manager" }, true);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/me",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "X-Auth-Role": "manager" }),
+      }),
+    );
+  });
+
+  it("uses the authenticated admin status endpoint with the caller credentials", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getAdminSystemStatus({ username: "operator.local", role: "admin" }, true);
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/runtime-status", expect.any(Object));
   });
 
   it("uses /api/companies for companies", async () => {

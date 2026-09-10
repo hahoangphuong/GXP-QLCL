@@ -1,5 +1,6 @@
 import type {
   AppStatus,
+  AuthenticatedIdentity,
   BusinessEligibilityDetail,
   BusinessEligibilityList,
   CapaCycleAssessRequest,
@@ -192,6 +193,22 @@ async function requestBlob(
 
 export function getAppStatus(): Promise<AppStatus> {
   return requestJson<AppStatus>("/app/status", {});
+}
+
+export function getCurrentIdentity(
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<AuthenticatedIdentity> {
+  return requestJson<AuthenticatedIdentity>("/auth/me", { auth, useStubAuth, bearerToken });
+}
+
+export function getAdminSystemStatus(
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<AppStatus> {
+  return requestJson<AppStatus>("/admin/runtime-status", { auth, useStubAuth, bearerToken });
 }
 
 export function getDashboardSummary(

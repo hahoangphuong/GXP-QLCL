@@ -304,7 +304,13 @@ def register_catalog_routes(app, session_factory) -> None:
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
         require_role(user, ALLOWED_READ_ROLES)
-        return GxpCertificateDetailRead(**service.get_gxp_certificate_detail(session, certificate_id=certificate_id))
+        payload = service.get_gxp_certificate_detail(session, certificate_id=certificate_id)
+        payload["action_readiness"] = workflow_service.get_certificate_action_readiness(
+            session,
+            certificate_id=certificate_id,
+            user=user,
+        )
+        return GxpCertificateDetailRead(**payload)
 
     def list_site_business_eligibility_certificates(
         site_id: str,

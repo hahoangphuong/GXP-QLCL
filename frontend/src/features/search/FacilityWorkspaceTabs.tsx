@@ -58,6 +58,9 @@ export function FacilityWorkspaceTabs({
   gxpCertificateDetail,
   gxpCertificateDetailLoading,
   gxpCertificateDetailError,
+  onGxpCertificatePromote,
+  gxpCertificatePromotionError,
+  gxpCertificatePromotionPending,
   eligibilityCertificates,
   eligibilityCertificatesLoading,
   eligibilityCertificatesError,
@@ -104,6 +107,9 @@ export function FacilityWorkspaceTabs({
   gxpCertificateDetail: GxpCertificateDetail | null;
   gxpCertificateDetailLoading: boolean;
   gxpCertificateDetailError: string | null;
+  onGxpCertificatePromote: (expectedVersion: number) => Promise<void>;
+  gxpCertificatePromotionError: string | null;
+  gxpCertificatePromotionPending: boolean;
   eligibilityCertificates: BusinessEligibilityListItem[];
   eligibilityCertificatesLoading: boolean;
   eligibilityCertificatesError: string | null;
@@ -211,6 +217,9 @@ export function FacilityWorkspaceTabs({
             listError={gxpCertificatesError}
             listLoading={gxpCertificatesLoading}
             onSelectCertificate={onGxpCertificateSelect}
+            onPromoteCurrent={onGxpCertificatePromote}
+            promotionError={gxpCertificatePromotionError}
+            promotionPending={gxpCertificatePromotionPending}
             selectedCertificateId={selectedGxpCertificateId}
           />
         ) : null}

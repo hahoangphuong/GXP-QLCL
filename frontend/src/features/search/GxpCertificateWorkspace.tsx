@@ -13,6 +13,9 @@ export function GxpCertificateWorkspace({
   detail,
   detailLoading,
   detailError,
+  onPromoteCurrent,
+  promotionError,
+  promotionPending,
 }: {
   items: GxpCertificateListItem[];
   listLoading: boolean;
@@ -22,6 +25,9 @@ export function GxpCertificateWorkspace({
   detail: GxpCertificateDetail | null;
   detailLoading: boolean;
   detailError: string | null;
+  onPromoteCurrent: (expectedVersion: number) => Promise<void>;
+  promotionError: string | null;
+  promotionPending: boolean;
 }) {
   if (listError) {
     return <ErrorState message={listError} />;
@@ -96,6 +102,24 @@ export function GxpCertificateWorkspace({
         ) : (
           <>
             <GxpCertificateDetailFields detail={detail} />
+            {(() => {
+              const promote = (detail.action_readiness ?? []).find((action) => action.action_key === "promote_current");
+              if (!promote) return null;
+              return (
+                <div className="certificate-action-bar">
+                  <button
+                    disabled={!promote.available || promotionPending}
+                    onClick={() => void onPromoteCurrent(promote.expected_version)}
+                    title={promote.reason_code ?? undefined}
+                    type="button"
+                  >
+                    {promotionPending ? "Đang cập nhật..." : promote.label}
+                  </button>
+                  {!promote.available && promote.reason_code ? <span>{promote.reason_code}</span> : null}
+                  {promotionError ? <span role="alert">{promotionError}</span> : null}
+                </div>
+              );
+            })()}
           </>
         )}
       </section>

@@ -355,6 +355,16 @@ class ContextualDocumentActionRead(BaseModel):
     actions: list[ContextualDocumentActionAvailabilityRead]
 
 
+class CertificateIssueActionReadinessRead(BaseModel):
+    action_key: Literal["issue_certificate"]
+    label: str
+    available: bool
+    reason_code: str | None = None
+    required_permissions: list[str]
+    certificate_type: str
+    issuance_basis: Literal["inspection_case"]
+
+
 class CaseWorkspaceRead(BaseModel):
     case_summary: CaseWorkspaceSummaryRead
     application: CaseWorkspaceApplicationRead
@@ -364,6 +374,7 @@ class CaseWorkspaceRead(BaseModel):
     evaluation_scope: CaseWorkspaceEvaluationScopeRead
     documents: DocumentChecklistRead
     contextual_document_actions: list[ContextualDocumentActionRead]
+    certificate_issue_readiness: CertificateIssueActionReadinessRead
     linked_gxp_certificates: list[GxpCertificateDetailRead]
     linked_business_eligibility_certificates: list[BusinessEligibilityDetailRead]
 
@@ -419,8 +430,18 @@ class GxpCertificateListRead(BaseModel):
     items: list[GxpCertificateListItemRead]
 
 
+class CertificateActionReadinessRead(BaseModel):
+    action_key: Literal["edit_latest_version", "promote_current"]
+    label: str
+    available: bool
+    reason_code: str | None = None
+    required_permissions: list[str]
+    expected_version: int
+
+
 class GxpCertificateDetailRead(BaseModel):
     certificate_id: str
+    row_version: int
     site_id: str
     case_id: str | None
     certificate_type: str
@@ -440,6 +461,7 @@ class GxpCertificateDetailRead(BaseModel):
     scope_summary: str | None
     limitation_text: str | None
     source_description: str | None
+    action_readiness: list[CertificateActionReadinessRead]
 
 
 class BusinessEligibilityBasisCertificateRead(BaseModel):

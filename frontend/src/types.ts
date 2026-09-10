@@ -533,8 +533,34 @@ export type GxpCertificateList = {
   items: GxpCertificateListItem[];
 };
 
+export type CertificateActionReadiness = {
+  action_key: "edit_latest_version" | "promote_current";
+  label: string;
+  available: boolean;
+  reason_code: string | null;
+  required_permissions: string[];
+  expected_version: number;
+};
+
+export type CertificateMutationResponse = {
+  certificate_id: string;
+  row_version: number;
+  latest_flag: boolean;
+};
+
+export type CertificateIssueActionReadiness = {
+  action_key: "issue_certificate";
+  label: string;
+  available: boolean;
+  reason_code: string | null;
+  required_permissions: string[];
+  certificate_type: string;
+  issuance_basis: "inspection_case";
+};
+
 export type GxpCertificateDetail = {
   certificate_id: string;
+  row_version: number;
   site_id: string;
   case_id: string | null;
   certificate_type: string;
@@ -554,6 +580,7 @@ export type GxpCertificateDetail = {
   scope_summary: string | null;
   limitation_text: string | null;
   source_description: string | null;
+  action_readiness: CertificateActionReadiness[];
 };
 
 export type BusinessEligibilityBasisCertificate = {
@@ -620,6 +647,7 @@ export type CaseWorkspace = {
   evaluation_scope: CaseWorkspaceEvaluationScope;
   documents: DocumentChecklist;
   contextual_document_actions: ContextualDocumentAction[];
+  certificate_issue_readiness: CertificateIssueActionReadiness;
   linked_gxp_certificates: GxpCertificateDetail[];
   linked_business_eligibility_certificates: BusinessEligibilityDetail[];
 };

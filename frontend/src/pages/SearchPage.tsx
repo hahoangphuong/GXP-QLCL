@@ -22,6 +22,7 @@ import {
   getGxpCertificateDetail,
   listSiteBusinessEligibilityCertificates,
   listSiteGxpCertificates,
+  promoteGxpCertificateCurrent,
   searchFacilities,
   submitCapaCycle,
   upsertCaseApplication,
@@ -136,6 +137,8 @@ export function SearchPage({
   const [gxpCertificateDetail, setGxpCertificateDetail] = useState<GxpCertificateDetail | null>(null);
   const [gxpCertificateDetailLoading, setGxpCertificateDetailLoading] = useState(false);
   const [gxpCertificateDetailError, setGxpCertificateDetailError] = useState<string | null>(null);
+  const [gxpCertificatePromotionPending, setGxpCertificatePromotionPending] = useState(false);
+  const [gxpCertificatePromotionError, setGxpCertificatePromotionError] = useState<string | null>(null);
   const [eligibilityCertificates, setEligibilityCertificates] = useState<BusinessEligibilityListItem[]>([]);
   const [eligibilityCertificatesLoading, setEligibilityCertificatesLoading] = useState(false);
   const [eligibilityCertificatesError, setEligibilityCertificatesError] = useState<string | null>(null);
@@ -869,6 +872,34 @@ export function SearchPage({
     await refreshSelectedCaseWorkspace(caseId, cycleId);
   }
 
+  async function handleGxpCertificatePromote(expectedVersion: number) {
+    if (!selectedGxpCertificateId || !selectedResult) {
+      throw new Error("Chưa chọn giấy chứng nhận để cập nhật.");
+    }
+    setGxpCertificatePromotionPending(true);
+    setGxpCertificatePromotionError(null);
+    try {
+      await promoteGxpCertificateCurrent(selectedGxpCertificateId, expectedVersion, auth, useStubAuth, bearerToken);
+      const [detailPayload, listPayload] = await Promise.all([
+        getGxpCertificateDetail(selectedGxpCertificateId, auth, useStubAuth, bearerToken),
+        listSiteGxpCertificates(
+          selectedResult.site_id,
+          auth,
+          useStubAuth,
+          selectedResult.gxp_type,
+          selectedResult.line_code,
+          bearerToken,
+        ),
+      ]);
+      setGxpCertificateDetail(detailPayload);
+      setGxpCertificates(listPayload.items);
+    } catch (error) {
+      setGxpCertificatePromotionError(error instanceof Error ? error.message : "Không thể cập nhật chứng nhận hiện hành.");
+    } finally {
+      setGxpCertificatePromotionPending(false);
+    }
+  }
+
   async function handleLoadDocumentDetail(documentId: string): Promise<DocumentDetail> {
     return getDocumentDetail(documentId, auth, useStubAuth, bearerToken);
   }
@@ -1061,6 +1092,8 @@ export function SearchPage({
             gxpCertificateDetail={gxpCertificateDetail}
             gxpCertificateDetailError={gxpCertificateDetailError}
             gxpCertificateDetailLoading={gxpCertificateDetailLoading}
+            gxpCertificatePromotionError={gxpCertificatePromotionError}
+            gxpCertificatePromotionPending={gxpCertificatePromotionPending}
             gxpCertificates={gxpCertificates}
             gxpCertificatesError={gxpCertificatesError}
             gxpCertificatesLoading={gxpCertificatesLoading}
@@ -1069,6 +1102,7 @@ export function SearchPage({
             onEventTabChange={setActiveTab}
             onFacilityTabChange={setSelectedFacilityTab}
             onGxpCertificateSelect={setSelectedGxpCertificateId}
+            onGxpCertificatePromote={handleGxpCertificatePromote}
             onHistorySelect={setSelectedHistoryId}
             onCaseApplicationSave={handleCaseApplicationSave}
             onCaseAssessmentSave={handleCaseAssessmentSave}

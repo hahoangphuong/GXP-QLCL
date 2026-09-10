@@ -35,6 +35,7 @@ const apiMocks = vi.hoisted(() => ({
   upsertInspectionOutcome: vi.fn(),
   listSiteGxpCertificates: vi.fn().mockResolvedValue({ items: [] }),
   getGxpCertificateDetail: vi.fn().mockResolvedValue(null),
+  promoteGxpCertificateCurrent: vi.fn(),
   listSiteBusinessEligibilityCertificates: vi.fn().mockResolvedValue({ items: [] }),
   getBusinessEligibilityDetail: vi.fn().mockResolvedValue(null),
   getDocumentDetail: vi.fn().mockResolvedValue(null),
@@ -94,6 +95,7 @@ function resetApiMocks() {
   apiMocks.upsertInspectionOutcome.mockReset();
   apiMocks.listSiteGxpCertificates.mockReset();
   apiMocks.getGxpCertificateDetail.mockReset();
+  apiMocks.promoteGxpCertificateCurrent.mockReset();
   apiMocks.listSiteBusinessEligibilityCertificates.mockReset();
   apiMocks.getBusinessEligibilityDetail.mockReset();
   apiMocks.getDocumentDetail.mockReset();
@@ -142,6 +144,7 @@ function resetApiMocks() {
   apiMocks.upsertInspectionOutcome.mockResolvedValue(null);
   apiMocks.listSiteGxpCertificates.mockResolvedValue({ items: [] });
   apiMocks.getGxpCertificateDetail.mockResolvedValue(null);
+  apiMocks.promoteGxpCertificateCurrent.mockResolvedValue(null);
   apiMocks.listSiteBusinessEligibilityCertificates.mockResolvedValue({ items: [] });
   apiMocks.getBusinessEligibilityDetail.mockResolvedValue(null);
   apiMocks.getDocumentDetail.mockResolvedValue(null);
@@ -2538,6 +2541,7 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getGxpCertificateDetail
       .mockResolvedValueOnce({
         certificate_id: "cert-a-new",
+        row_version: 3,
         site_id: "site-1",
         case_id: "case-1",
         certificate_type: "GMP",
@@ -2557,6 +2561,16 @@ describe("App Slice A.4 search workspace", () => {
         scope_summary: "Thuốc không vô trùng",
         limitation_text: null,
         source_description: "Đợt kiểm tra GMP ngày 10-01-2025",
+        action_readiness: [
+          {
+            action_key: "promote_current",
+            label: "Đặt làm chứng nhận hiện hành",
+            available: true,
+            reason_code: null,
+            required_permissions: ["certificate.approve"],
+            expected_version: 3,
+          },
+        ],
       })
       .mockResolvedValueOnce({
         certificate_id: "cert-a-old",
@@ -2593,6 +2607,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByText("195/GCN-QLD")).toBeInTheDocument();
     expect(screen.getByText("533/GCN-QLD")).toBeInTheDocument();
     expect(await screen.findByText("Thuốc không vô trùng")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" })).toBeEnabled();
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByText("533/GCN-QLD"));

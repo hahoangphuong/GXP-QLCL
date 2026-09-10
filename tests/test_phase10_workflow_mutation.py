@@ -1826,6 +1826,101 @@ def test_issue_certificate_allows_case_backed_certificate_when_latest_capa_is_ac
     assert result["case_id"] == case_id
 
 
+def test_certificate_action_readiness_uses_the_same_promotion_blockers_as_mutation():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        case_row = session.get(Case, case_id)
+        assert case_row is not None
+        case_row.state = CaseState.AWAITING_CERTIFICATE_DECISION
+        issued = service.issue_certificate(
+            session,
+            site_id=case_row.site_id,
+            case_id=case_id,
+            certificate_type="GMP",
+            issuance_basis="inspection_case",
+            certificate_number="CERT-READY-001",
+            issue_date=date(2026, 8, 18),
+            expiry_date=date(2027, 8, 18),
+            scopes=[],
+            reason="Seed readiness.",
+            user=build_authenticated_user("admin01", "admin"),
+        )
+        session.commit()
+
+    manager = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
+    admin = build_authenticated_user("admin01", "admin", permissions=ROLE_PERMISSIONS["admin"])
+    reader = build_authenticated_user("reader01", "reader", permissions=ROLE_PERMISSIONS["reader"])
+    with Session(engine) as session:
+        issue_action = service.get_case_certificate_issue_readiness(
+            session,
+            case_id=case_id,
+            user=admin,
+        )
+        assert issue_action["available"] is True
+        assert issue_action["certificate_type"] == "GMP"
+        actions = {item["action_key"]: item for item in service.get_certificate_action_readiness(
+            session,
+            certificate_id=issued["certificate_id"],
+            user=manager,
+        )}
+        assert actions["edit_latest_version"]["available"] is True
+        assert actions["promote_current"]["available"] is True
+        assert actions["promote_current"]["expected_version"] == issued["row_version"]
+        reader_actions = {item["action_key"]: item for item in service.get_certificate_action_readiness(
+            session,
+            certificate_id=issued["certificate_id"],
+            user=reader,
+        )}
+        assert reader_actions["edit_latest_version"]["reason_code"] == "missing_permission"
+        assert reader_actions["promote_current"]["reason_code"] == "missing_permission"
+
+        session.add(CapaCycle(case_id=case_id, round_no=1, status="submitted"))
+        session.commit()
+
+    with Session(engine) as session:
+        issue_action = service.get_case_certificate_issue_readiness(
+            session,
+            case_id=case_id,
+            user=admin,
+        )
+        assert issue_action["reason_code"] == "latest_capa_not_accepted"
+        actions = {item["action_key"]: item for item in service.get_certificate_action_readiness(
+            session,
+            certificate_id=issued["certificate_id"],
+            user=manager,
+        )}
+        assert actions["promote_current"]["reason_code"] == "latest_capa_not_accepted"
+        try:
+            service.promote_certificate_current(
+                session,
+                certificate_id=issued["certificate_id"],
+                expected_version=issued["row_version"],
+                reason="Must remain blocked.",
+                user=manager,
+            )
+        except Exception as exc:
+            assert "latest CAPA cycle is accepted" in str(exc)
+        else:
+            raise AssertionError("Expected promotion to use the readiness blocker")
+
+        try:
+            service.promote_certificate_current(
+                session,
+                certificate_id=issued["certificate_id"],
+                expected_version=999,
+                reason="Stale update.",
+                user=manager,
+            )
+        except Exception as exc:
+            assert "Stale certificate update" in str(exc)
+        else:
+            raise AssertionError("Expected stale certificate promotion to fail")
+
+
 def test_promote_certificate_current_rejects_pending_capa_for_case_backed_certificate():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)

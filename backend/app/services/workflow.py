@@ -103,6 +103,98 @@ class CaseWorkflowService:
                 detail=f"Stale {label} update. Expected version {expected_version}, current version is {current_version}.",
             )
 
+    def get_certificate_action_readiness(
+        self,
+        session: Session,
+        *,
+        certificate_id: str,
+        user: AuthenticatedUser,
+    ) -> list[dict[str, Any]]:
+        """Describe the contextual rules still enforced by certificate mutations."""
+        certificate = self._get_certificate(session, certificate_id)
+        version = self._load_latest_certificate_version(session, certificate.id)
+        edit_permission = "certificate.edit"
+        promote_permission = "certificate.approve"
+        edit_reason = None if edit_permission in user.permissions else "missing_permission"
+        promote_reason = None if promote_permission in user.permissions else "missing_permission"
+        if promote_reason is None:
+            promote_reason = self._get_certificate_promotion_blocker(session, certificate=certificate, version=version)
+
+        return [
+            {
+                "action_key": "edit_latest_version",
+                "label": "Cập nhật chứng nhận",
+                "available": edit_reason is None,
+                "reason_code": edit_reason,
+                "required_permissions": [edit_permission],
+                "expected_version": certificate.row_version,
+            },
+            {
+                "action_key": "promote_current",
+                "label": "Đặt làm chứng nhận hiện hành",
+                "available": promote_reason is None,
+                "reason_code": promote_reason,
+                "required_permissions": [promote_permission],
+                "expected_version": certificate.row_version,
+            },
+        ]
+
+    def get_case_certificate_issue_readiness(
+        self,
+        session: Session,
+        *,
+        case_id: str,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        case = self._get_case(session, case_id)
+        permission = "certificate.issue"
+        reason = None if permission in user.permissions else "missing_permission"
+        if reason is None:
+            if case.state not in {CaseState.AWAITING_CERTIFICATE_DECISION, CaseState.CERTIFIED}:
+                reason = "case_state_not_eligible"
+            else:
+                latest_capa = self._latest_case_capa_cycle(session, case.id)
+                if latest_capa is not None and latest_capa.status != CAPA_ACCEPTED_STATUS:
+                    reason = "latest_capa_not_accepted"
+        return {
+            "action_key": "issue_certificate",
+            "label": "Cấp chứng nhận GxP",
+            "available": reason is None,
+            "reason_code": reason,
+            "required_permissions": [permission],
+            "certificate_type": case.gxp_type,
+            "issuance_basis": "inspection_case",
+        }
+
+    def _get_certificate_promotion_blocker(
+        self,
+        session: Session,
+        *,
+        certificate: Certificate,
+        version: CertificateVersion,
+    ) -> str | None:
+        if certificate.case_id is not None:
+            case = self._get_case(session, certificate.case_id)
+            if case.state not in {CaseState.AWAITING_CERTIFICATE_DECISION, CaseState.CERTIFIED}:
+                return "case_state_not_eligible"
+            latest_capa = self._latest_case_capa_cycle(session, case.id)
+            if latest_capa is not None and latest_capa.status != CAPA_ACCEPTED_STATUS:
+                return "latest_capa_not_accepted"
+        if not version.certificate_number or version.issue_date is None or version.expiry_date is None:
+            return "certificate_data_incomplete"
+        current = session.scalars(
+            select(Certificate).where(
+                Certificate.site_id == certificate.site_id,
+                Certificate.certificate_type == certificate.certificate_type,
+                Certificate.latest_flag.is_(True),
+            )
+        ).first()
+        if current is not None and current.id != certificate.id:
+            current_version = self._load_latest_certificate_version(session, current.id)
+            if current_version.issue_date is not None and version.issue_date < current_version.issue_date:
+                return "candidate_issue_date_precedes_current"
+        return None
+
     def _diff_fields(self, before: dict[str, Any], after: dict[str, Any]) -> dict[str, dict[str, Any]]:
         changed: dict[str, dict[str, Any]] = {}
         for key in sorted(set(before) | set(after)):
@@ -1775,22 +1867,21 @@ class CaseWorkflowService:
     ) -> dict[str, Any]:
         certificate = self._get_certificate(session, certificate_id)
         self._assert_expected_version(certificate, expected_version, label="certificate")
-        if certificate.case_id is not None:
-            case = self._get_case(session, certificate.case_id)
-            self._assert_case_certificate_eligibility(
-                session,
-                case=case,
-                allow_states={CaseState.AWAITING_CERTIFICATE_DECISION, CaseState.CERTIFIED},
-                blocked_detail="Current-certificate promotion is blocked until the latest CAPA cycle is accepted.",
-            )
-        actor = self._get_or_create_app_user(session, user)
         candidate_version = self._load_latest_certificate_version(session, certificate.id)
-        if not candidate_version.certificate_number or candidate_version.issue_date is None or candidate_version.expiry_date is None:
-            raise HTTPException(
-                status_code=409,
-                detail="Certificate promotion requires certificate number, issue date, and expiry date.",
-            )
-
+        blocker = self._get_certificate_promotion_blocker(
+            session,
+            certificate=certificate,
+            version=candidate_version,
+        )
+        if blocker is not None:
+            details = {
+                "case_state_not_eligible": "Current-certificate promotion is blocked until the case reaches certificate decision.",
+                "latest_capa_not_accepted": "Current-certificate promotion is blocked until the latest CAPA cycle is accepted.",
+                "certificate_data_incomplete": "Certificate promotion requires certificate number, issue date, and expiry date.",
+                "candidate_issue_date_precedes_current": "Certificate promotion requires a candidate issue date that is not older than the current active certificate.",
+            }
+            raise HTTPException(status_code=409, detail=details[blocker])
+        actor = self._get_or_create_app_user(session, user)
         current = session.scalars(
             select(Certificate).where(
                 Certificate.site_id == certificate.site_id,
@@ -1799,13 +1890,6 @@ class CaseWorkflowService:
             )
         ).first()
         previous_current_id = None if current is None else current.id
-        previous_current_version = None if current is None else self._load_latest_certificate_version(session, current.id)
-        if previous_current_version is not None and previous_current_version.issue_date is not None:
-            if candidate_version.issue_date < previous_current_version.issue_date:
-                raise HTTPException(
-                    status_code=409,
-                    detail="Certificate promotion requires a candidate issue date that is not older than the current active certificate.",
-                )
         before = {
             "latest_flag": certificate.latest_flag,
             "previous_current_certificate_id": previous_current_id,

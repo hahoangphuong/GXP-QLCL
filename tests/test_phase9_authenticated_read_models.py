@@ -1689,6 +1689,15 @@ def test_gxp_certificate_workspace_reads_history_and_detail_with_line_safe_filte
         superseded_detail = service.get_gxp_certificate_detail(session, certificate_id=seeded["gxp_certificate_ids"]["a_old"])
         expired_detail = service.get_gxp_certificate_detail(session, certificate_id=seeded["gxp_certificate_ids"]["facility"])
 
+    app = create_app(database_url)
+    certificate_detail_route = next(route for route in app.routes if getattr(route, "path", "") == "/certificates/{certificate_id}")
+    with Session(engine) as session:
+        projected_detail = certificate_detail_route.endpoint(
+            certificate_id=seeded["gxp_certificate_ids"]["a_new"],
+            session=session,
+            user=build_authenticated_user("reader01", "reader", permissions=ROLE_PERMISSIONS["reader"]),
+        )
+
     assert [item["certificate_number"] for item in payload["items"]] == ["195/GCN-QLD", "533/GCN-QLD", "ADMIN-001"]
     assert [item["status"] for item in payload["items"]] == ["active", "superseded", "expired"]
     assert [item["context_match_kind"] for item in payload["items"]] == ["exact_line", "exact_line", "facility_wide"]
@@ -1702,6 +1711,10 @@ def test_gxp_certificate_workspace_reads_history_and_detail_with_line_safe_filte
     assert active_detail["status"] == "active"
     assert active_detail["source_description"] == "Đợt kiểm tra GMP ngày 10-01-2025"
     assert active_detail["limitation_text"] is None
+    assert projected_detail.row_version == 1
+    projected_actions = {action.action_key: action for action in projected_detail.action_readiness}
+    assert projected_actions["edit_latest_version"].reason_code == "missing_permission"
+    assert projected_actions["promote_current"].reason_code == "missing_permission"
 
     assert superseded_detail["certificate_number"] == "533/GCN-QLD"
     assert superseded_detail["status"] == "superseded"

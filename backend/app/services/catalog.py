@@ -50,6 +50,7 @@ from backend.app.db.models.phase1 import (
     EvaluationScopeTaxonomyNode,
 )
 from backend.app.db.enums import InspectionEventType
+from backend.app.services.workflow import CaseWorkflowService
 
 ACTIVE_CASE_STATES = [
     CaseState.DRAFT,
@@ -734,6 +735,7 @@ class CatalogReadService:
         )
         return {
             "certificate_id": certificate.id,
+            "row_version": certificate.row_version,
             "site_id": certificate.site_id,
             "case_id": certificate.case_id,
             "certificate_type": certificate.certificate_type,
@@ -757,6 +759,7 @@ class CatalogReadService:
                 linked_case=linked_case,
                 inspected_on=inspected_on,
             ),
+            "action_readiness": [],
         }
 
     def _serialize_business_eligibility_detail(
@@ -2399,6 +2402,11 @@ class CatalogReadService:
                 session,
                 case_id=case.id,
                 capa_cycles=capa_cycles,
+                user=user,
+            ),
+            "certificate_issue_readiness": CaseWorkflowService().get_case_certificate_issue_readiness(
+                session,
+                case_id=case.id,
                 user=user,
             ),
             "linked_gxp_certificates": linked_gxp_certificates,

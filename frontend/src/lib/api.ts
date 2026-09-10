@@ -15,6 +15,7 @@ import type {
   CaseDetail,
   CaseListItem,
   CaseWorkspaceEvaluationScope,
+  CertificateLatestVersionUpsertRequest,
   CertificateMutationResponse,
   CaseWorkspace,
   ChangeRequestWorkspace,
@@ -564,6 +565,22 @@ export function promoteGxpCertificateCurrent(
   return requestJson<CertificateMutationResponse>(`/certificates/${certificateId}/promote-current`, {
     method: "POST",
     body: { expected_version: expectedVersion },
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function upsertGxpCertificateLatestVersion(
+  certificateId: string,
+  payload: CertificateLatestVersionUpsertRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<CertificateMutationResponse> {
+  return requestJson<CertificateMutationResponse>(`/certificates/${certificateId}/latest-version`, {
+    method: "PUT",
+    body: payload,
     auth,
     useStubAuth,
     bearerToken,

@@ -548,6 +548,28 @@ export type CertificateMutationResponse = {
   latest_flag: boolean;
 };
 
+export type CertificateScope = {
+  id: string;
+  scope_key: string | null;
+  scope_text: string;
+  language_code: string;
+  sort_order: number;
+};
+
+export type CertificateLatestVersionUpsertRequest = {
+  expected_version: number;
+  certificate_number: string | null;
+  issue_date: string | null;
+  expiry_date: string | null;
+  scopes: Array<{
+    scope_key: string | null;
+    scope_text: string;
+    language_code: string;
+    sort_order: number;
+  }>;
+  reason: string | null;
+};
+
 export type CertificateIssueActionReadiness = {
   action_key: "issue_certificate";
   label: string;
@@ -578,6 +600,7 @@ export type GxpCertificateDetail = {
   company_name: string;
   company_legal_address: string | null;
   scope_summary: string | null;
+  scopes: CertificateScope[];
   limitation_text: string | null;
   source_description: string | null;
   action_readiness: CertificateActionReadiness[];

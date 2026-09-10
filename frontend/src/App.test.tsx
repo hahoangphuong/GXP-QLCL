@@ -36,6 +36,7 @@ const apiMocks = vi.hoisted(() => ({
   listSiteGxpCertificates: vi.fn().mockResolvedValue({ items: [] }),
   getGxpCertificateDetail: vi.fn().mockResolvedValue(null),
   promoteGxpCertificateCurrent: vi.fn(),
+  upsertGxpCertificateLatestVersion: vi.fn(),
   listSiteBusinessEligibilityCertificates: vi.fn().mockResolvedValue({ items: [] }),
   getBusinessEligibilityDetail: vi.fn().mockResolvedValue(null),
   getDocumentDetail: vi.fn().mockResolvedValue(null),
@@ -96,6 +97,7 @@ function resetApiMocks() {
   apiMocks.listSiteGxpCertificates.mockReset();
   apiMocks.getGxpCertificateDetail.mockReset();
   apiMocks.promoteGxpCertificateCurrent.mockReset();
+  apiMocks.upsertGxpCertificateLatestVersion.mockReset();
   apiMocks.listSiteBusinessEligibilityCertificates.mockReset();
   apiMocks.getBusinessEligibilityDetail.mockReset();
   apiMocks.getDocumentDetail.mockReset();
@@ -145,6 +147,7 @@ function resetApiMocks() {
   apiMocks.listSiteGxpCertificates.mockResolvedValue({ items: [] });
   apiMocks.getGxpCertificateDetail.mockResolvedValue(null);
   apiMocks.promoteGxpCertificateCurrent.mockResolvedValue(null);
+  apiMocks.upsertGxpCertificateLatestVersion.mockResolvedValue(null);
   apiMocks.listSiteBusinessEligibilityCertificates.mockResolvedValue({ items: [] });
   apiMocks.getBusinessEligibilityDetail.mockResolvedValue(null);
   apiMocks.getDocumentDetail.mockResolvedValue(null);
@@ -2619,6 +2622,43 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByText("Đã được thay thế")).toBeInTheDocument();
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(apiMocks.listSiteGxpCertificates).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes only the selected certificate after an edit conflict and keeps the edit form open", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(null);
+    apiMocks.listSiteGxpCertificates.mockResolvedValue({
+      items: [{
+        certificate_id: "cert-stale", site_id: "site-1", case_id: "case-1", certificate_type: "GMP", line_code: "A",
+        context_match_kind: "exact_line", latest_flag: true, certificate_number: "GCN-OLD", issue_date: "2026-09-01",
+        expiry_date: "2027-09-01", applicable_standard: "WHO-GMP", issuing_authority: null, status: "active",
+      }],
+    });
+    const detail = {
+      certificate_id: "cert-stale", row_version: 7, site_id: "site-1", case_id: "case-1", certificate_type: "GMP", line_code: "A",
+      issuance_basis: "inspection_case", latest_flag: true, certificate_number: "GCN-OLD", issue_date: "2026-09-01", expiry_date: "2027-09-01",
+      applicable_standard: "WHO-GMP", issuing_authority: null, status: "active", facility_name: "Nhà máy A", address: null,
+      company_name: "Công ty A", company_legal_address: null, scope_summary: "Summary must not be edited", limitation_text: null,
+      source_description: null, scopes: [{ id: "scope-1", scope_key: "alpha", scope_text: "Alpha", language_code: "vi", sort_order: 1 }],
+      action_readiness: [{ action_key: "edit_latest_version", label: "Cập nhật chứng nhận", available: true, reason_code: null, required_permissions: ["certificate.edit"], expected_version: 7 }],
+    };
+    apiMocks.getGxpCertificateDetail.mockResolvedValueOnce(detail).mockResolvedValueOnce({ ...detail, row_version: 8, certificate_number: "GCN-NEW" });
+    apiMocks.upsertGxpCertificateLatestVersion.mockRejectedValue(Object.assign(new Error("409 conflict"), { status: 409 }));
+
+    renderApp(["/search?facility_tab=Gi%E1%BA%A5y%20ch%E1%BB%A9ng%20nh%E1%BA%ADn%20GxP"]);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Cập nhật chứng nhận" }));
+    const dialog = screen.getByRole("dialog", { name: "Sửa giấy chứng nhận GxP" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Lưu thay đổi" }));
+
+    await waitFor(() => expect(apiMocks.getGxpCertificateDetail).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Dữ liệu chứng nhận đã thay đổi");
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.listSiteGxpCertificates).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog", { name: "Sửa giấy chứng nhận GxP" })).not.toBeInTheDocument();
+    expect(screen.getByText("GCN-NEW")).toBeInTheDocument();
   });
 
   it("renders the business eligibility workspace as list plus detail with linked GxP basis", async () => {

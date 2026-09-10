@@ -23,6 +23,7 @@ import {
   listSiteBusinessEligibilityCertificates,
   listSiteGxpCertificates,
   promoteGxpCertificateCurrent,
+  upsertGxpCertificateLatestVersion,
   searchFacilities,
   submitCapaCycle,
   upsertCaseApplication,
@@ -49,6 +50,7 @@ import type {
   FacilityWorkspace,
   GxpCertificateDetail,
   GxpCertificateListItem,
+  CertificateLatestVersionUpsertRequest,
   InspectionOutcomeUpsertRequest,
   InspectionPlanUpsertRequest,
   EvaluationScopeUpsertRequest,
@@ -900,6 +902,44 @@ export function SearchPage({
     }
   }
 
+  async function handleGxpCertificateLatestVersionUpdate(payload: CertificateLatestVersionUpsertRequest) {
+    if (!selectedGxpCertificateId || !selectedResult) {
+      throw new Error("Chưa chọn giấy chứng nhận để cập nhật.");
+    }
+    try {
+      await upsertGxpCertificateLatestVersion(selectedGxpCertificateId, payload, auth, useStubAuth, bearerToken);
+      const [detailPayload, listPayload] = await Promise.all([
+        getGxpCertificateDetail(selectedGxpCertificateId, auth, useStubAuth, bearerToken),
+        listSiteGxpCertificates(
+          selectedResult.site_id,
+          auth,
+          useStubAuth,
+          selectedResult.gxp_type,
+          selectedResult.line_code,
+          bearerToken,
+        ),
+      ]);
+      setGxpCertificateDetail(detailPayload);
+      setGxpCertificates(listPayload.items);
+      setGxpCertificateDetailError(null);
+    } catch (error) {
+      const apiError = error as Error & { status?: number };
+      if (apiError.status === 409) {
+        try {
+          const detailPayload = await getGxpCertificateDetail(selectedGxpCertificateId, auth, useStubAuth, bearerToken);
+          setGxpCertificateDetail(detailPayload);
+          setGxpCertificateDetailError(null);
+        } catch {
+          // Preserve the mutation conflict as the actionable error when refresh also fails.
+        }
+        const staleError = new Error("Dữ liệu chứng nhận đã thay đổi. Hãy kiểm tra lại rồi lưu lại.") as Error & { status?: number };
+        staleError.status = 409;
+        throw staleError;
+      }
+      throw error;
+    }
+  }
+
   async function handleLoadDocumentDetail(documentId: string): Promise<DocumentDetail> {
     return getDocumentDetail(documentId, auth, useStubAuth, bearerToken);
   }
@@ -1103,6 +1143,7 @@ export function SearchPage({
             onFacilityTabChange={setSelectedFacilityTab}
             onGxpCertificateSelect={setSelectedGxpCertificateId}
             onGxpCertificatePromote={handleGxpCertificatePromote}
+            onGxpCertificateEditLatestVersion={handleGxpCertificateLatestVersionUpdate}
             onHistorySelect={setSelectedHistoryId}
             onCaseApplicationSave={handleCaseApplicationSave}
             onCaseAssessmentSave={handleCaseAssessmentSave}

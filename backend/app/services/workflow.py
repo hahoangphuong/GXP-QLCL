@@ -393,6 +393,7 @@ class CaseWorkflowService:
         *,
         site_id: str,
         case: Case | None,
+        certificate_type: str,
         issuance_basis: str,
     ) -> None:
         if issuance_basis not in {"inspection_case", "administrative_no_inspection"}:
@@ -401,6 +402,11 @@ class CaseWorkflowService:
             raise HTTPException(
                 status_code=422,
                 detail="inspection_case issuance requires a backing case_id.",
+            )
+        if case is not None and issuance_basis == "inspection_case" and certificate_type != case.gxp_type:
+            raise HTTPException(
+                status_code=422,
+                detail="inspection_case certificate_type must match the backing case gxp_type.",
             )
         if case is not None and case.site_id != site_id:
             raise HTTPException(
@@ -1694,6 +1700,7 @@ class CaseWorkflowService:
         self._validate_certificate_case_link(
             site_id=site.id,
             case=case,
+            certificate_type=certificate_type,
             issuance_basis=issuance_basis,
         )
         if case is not None:

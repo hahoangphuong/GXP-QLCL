@@ -26,6 +26,7 @@ import {
   upsertCaseApplication,
   upsertCaseAssessment,
   updateCapaCycle,
+  upsertGxpCertificateLatestVersion,
   upsertInspectionOutcome,
   upsertInspectionPlan,
 } from "./api";
@@ -135,6 +136,35 @@ describe("frontend API routing contract", () => {
     await listSites({ username: "operator.local", role: "manager" }, true);
 
     expect(fetchMock).toHaveBeenCalledWith("/api/sites", expect.any(Object));
+  });
+
+  it("updates a certificate latest version with the explicit optimistic token", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await upsertGxpCertificateLatestVersion("cert-123", {
+      expected_version: 7,
+      certificate_number: "GCN-7",
+      issue_date: "2026-09-10",
+      expiry_date: "2027-09-10",
+      scopes: [{ scope_key: "scope-a", scope_text: "Phạm vi A", language_code: "vi", sort_order: 4 }],
+      reason: "Sửa nội dung.",
+    }, { username: "operator.local", role: "manager" }, true);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/certificates/cert-123/latest-version",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({
+          expected_version: 7,
+          certificate_number: "GCN-7",
+          issue_date: "2026-09-10",
+          expiry_date: "2027-09-10",
+          scopes: [{ scope_key: "scope-a", scope_text: "Phạm vi A", language_code: "vi", sort_order: 4 }],
+          reason: "Sửa nội dung.",
+        }),
+      }),
+    );
   });
 
   it("uses /api/cases for cases", async () => {

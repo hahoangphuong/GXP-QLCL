@@ -15,6 +15,7 @@ import type {
   FacilityWorkspaceSummary,
   GxpCertificateDetail,
   GxpCertificateListItem,
+  CertificateLatestVersionUpsertRequest,
   InspectionOutcomeUpsertRequest,
   EvaluationScopeUpsertRequest,
   InspectionPlanUpsertRequest,
@@ -59,6 +60,7 @@ export function FacilityWorkspaceTabs({
   gxpCertificateDetailLoading,
   gxpCertificateDetailError,
   onGxpCertificatePromote,
+  onGxpCertificateEditLatestVersion,
   gxpCertificatePromotionError,
   gxpCertificatePromotionPending,
   eligibilityCertificates,
@@ -108,6 +110,7 @@ export function FacilityWorkspaceTabs({
   gxpCertificateDetailLoading: boolean;
   gxpCertificateDetailError: string | null;
   onGxpCertificatePromote: (expectedVersion: number) => Promise<void>;
+  onGxpCertificateEditLatestVersion: (payload: CertificateLatestVersionUpsertRequest) => Promise<void>;
   gxpCertificatePromotionError: string | null;
   gxpCertificatePromotionPending: boolean;
   eligibilityCertificates: BusinessEligibilityListItem[];
@@ -217,7 +220,8 @@ export function FacilityWorkspaceTabs({
             listError={gxpCertificatesError}
             listLoading={gxpCertificatesLoading}
             onSelectCertificate={onGxpCertificateSelect}
-            onPromoteCurrent={onGxpCertificatePromote}
+          onPromoteCurrent={onGxpCertificatePromote}
+          onEditLatestVersion={onGxpCertificateEditLatestVersion}
             promotionError={gxpCertificatePromotionError}
             promotionPending={gxpCertificatePromotionPending}
             selectedCertificateId={selectedGxpCertificateId}

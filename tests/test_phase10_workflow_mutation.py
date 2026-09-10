@@ -2,6 +2,7 @@ import json
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
+import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
@@ -40,14 +41,14 @@ from backend.app.read_models import (
 from backend.app.services.workflow import CaseWorkflowService
 
 
-def seed_case(session: Session) -> str:
+def seed_case(session: Session, *, gxp_type: str = "GMP") -> str:
     company = Company(legal_name="Test Company", short_name="TC")
     session.add(company)
     session.flush()
     site = Site(company_id=company.id, site_name="Test Site")
     session.add(site)
     session.flush()
-    case = Case(site_id=site.id, gxp_type="GMP", state=CaseState.DRAFT)
+    case = Case(site_id=site.id, gxp_type=gxp_type, state=CaseState.DRAFT)
     session.add(case)
     session.commit()
     return case.id
@@ -1706,6 +1707,73 @@ def test_issue_certificate_rejects_inspection_basis_without_case():
             raise AssertionError("Expected inspection_case issuance without case to fail")
 
 
+def test_issue_certificate_rejects_certificate_type_mismatching_backing_case():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        case_row = session.get(Case, case_id)
+        assert case_row is not None
+        case_row.state = CaseState.AWAITING_CERTIFICATE_DECISION
+        site_id = case_row.site_id
+        session.commit()
+
+    with Session(engine) as session:
+        try:
+            service.issue_certificate(
+                session,
+                site_id=site_id,
+                case_id=case_id,
+                certificate_type="GSP",
+                issuance_basis="inspection_case",
+                certificate_number="CERT-TYPE-MISMATCH",
+                issue_date=date(2026, 8, 16),
+                expiry_date=date(2027, 8, 16),
+                scopes=[],
+                reason="Should fail.",
+                user=build_authenticated_user("manager01", "manager"),
+            )
+        except Exception as exc:
+            assert "certificate_type must match" in str(exc)
+        else:
+            raise AssertionError("Expected inspection_case issuance with a mismatched certificate type to fail")
+
+
+@pytest.mark.parametrize("gxp_type", ["GLP", "GMPbb"])
+def test_issue_certificate_accepts_matching_non_gmp_case_type(gxp_type: str):
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        case_id = seed_case(session, gxp_type=gxp_type)
+        case_row = session.get(Case, case_id)
+        assert case_row is not None
+        case_row.state = CaseState.AWAITING_CERTIFICATE_DECISION
+        site_id = case_row.site_id
+        session.commit()
+
+    with Session(engine) as session:
+        result = service.issue_certificate(
+            session,
+            site_id=site_id,
+            case_id=case_id,
+            certificate_type=gxp_type,
+            issuance_basis="inspection_case",
+            certificate_number=f"CERT-{gxp_type}",
+            issue_date=date(2026, 8, 16),
+            expiry_date=date(2027, 8, 16),
+            scopes=[],
+            reason="Matching case type.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+
+    assert result["certificate_type"] == gxp_type
+
+
 def test_issue_certificate_rejects_case_not_yet_awaiting_certificate_decision():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
@@ -2324,7 +2392,7 @@ def test_upsert_business_eligibility_latest_version_replaces_links():
             session,
             site_id=site_id,
             case_id=case_id,
-            certificate_type="GSP",
+            certificate_type="GMP",
             issuance_basis="inspection_case",
             certificate_number="CERT-LINK-2",
             issue_date=date(2026, 8, 20),

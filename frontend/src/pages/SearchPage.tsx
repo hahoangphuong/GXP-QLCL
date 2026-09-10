@@ -388,7 +388,7 @@ export function SearchPage({
     setCaseWorkspaceError(null);
     setCaseWorkspaceLoading(false);
     setSelectedRemediationCycleId(null);
-    if (!selectedHistoryId || selectedHistory?.source_type !== "case") {
+    if (!canLoadSecureApi || !selectedHistoryId || selectedHistory?.source_type !== "case") {
       return;
     }
     let cancelled = false;
@@ -413,13 +413,13 @@ export function SearchPage({
     return () => {
       cancelled = true;
     };
-  }, [auth, bearerToken, selectedHistoryId, selectedHistory?.source_type, useStubAuth]);
+  }, [auth, bearerToken, canLoadSecureApi, selectedHistoryId, selectedHistory?.source_type, useStubAuth]);
 
   useEffect(() => {
     setSelectedChangeRequestWorkspace(null);
     setChangeRequestWorkspaceError(null);
     setChangeRequestWorkspaceLoading(false);
-    if (!selectedHistoryId || selectedHistory?.source_type !== "change_request") {
+    if (!canLoadSecureApi || !selectedHistoryId || selectedHistory?.source_type !== "change_request") {
       return;
     }
     let cancelled = false;
@@ -442,7 +442,7 @@ export function SearchPage({
     return () => {
       cancelled = true;
     };
-  }, [auth, bearerToken, selectedHistoryId, selectedHistory?.source_type, useStubAuth]);
+  }, [auth, bearerToken, canLoadSecureApi, selectedHistoryId, selectedHistory?.source_type, useStubAuth]);
 
   useEffect(() => {
     if (!selectedResult || !canLoadSecureApi || selectedFacilityTab !== "Giấy chứng nhận GxP") {

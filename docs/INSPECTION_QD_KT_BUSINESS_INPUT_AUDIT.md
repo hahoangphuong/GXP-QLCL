@@ -43,14 +43,15 @@ The trace is authoritative for this source capture. The following requested
 fields have active writes in `Tao_QDKT_KHKT_BBKT(i=2)` (the artifact records
 the exact expression, condition, and line): `Diachicoso`, `Diadiem`,
 `Diadiemx`, `Fulldate`, `HsDK`, `NgaynopHsDK`, `NgayQDKT`, `QDKT`, `Tencoso`,
-`TT3x`, `VKN`, and `VKNx`.
+`TT3x`, `VKN`, and `VKNx`. `TT3x` is conditional on the member count.
 
-The following requested fields are proven not written by the active `i=2`
-branch: `Daychuyen`, `GhPviCN`, `GhPviDG`, `GioiHanPvi`, `MoiDel`, `NgayKT`,
-`NgayKTx`, `PVCepha`, `PVDuoclieu`, `PVNangmem`, `PVNhomat`, `PVPeni`,
-`PVSuibot`, `PVTiem`, `TaiDel`, `ThoigianKT`, `TieuchuanKT`, `TT`, `TT1`,
-`TT2`, `TT_SYTx`, `TT_VKNx`. This is a source disposition, not permission to
-invent values or to reuse writes from the `i=3`/`i=4` branches.
+`TT1` and `TT2` are `UNRESOLVED_MAPPING`: the source writes the dynamic
+physical family `TT" & (k + 1) & "x`, not those logical names. `TT3Del` is
+`PROVEN_CONDITIONAL_DELETE_I2`, with the exact source operation and negated
+member-count branch captured. Other logical fields without an active reachable
+operation are classified in the artifact as `PROVEN_NO_ACTIVE_OPERATION_I2`;
+this is a source disposition, not permission to invent values or to reuse
+writes from the `i=3`/`i=4` branches.
 
 The last-correct source for each row below is therefore either the explicitly
 recorded branch evidence or **not captured in available source evidence**.
@@ -102,13 +103,16 @@ bookmarks, 26 unresolved historical payload fields and 7 unmatched real
 bookmarks for this family. The source trace now classifies the 35 requested
 fields as:
 
-- `PROVEN_WRITE`: 12
-- `PROVEN_NOT_WRITTEN_I2`: 23
+- `PROVEN_WRITE_I2`: 9
+- `PROVEN_CONDITIONAL_WRITE_I2`: 3
+- `PROVEN_CONDITIONAL_DELETE_I2`: 1
+- `PROVEN_NO_ACTIVE_OPERATION_I2`: 19
+- `UNRESOLVED_MAPPING`: 3
 
-`PROVEN_WRITE` means an active source expression and source line are captured;
-it is not yet a typed application mapping. `PROVEN_NOT_WRITTEN_I2` means the
-field has no active write in the selected `i=2` branch, with the branch range
-captured in the trace. The old physical-bookmark `PARTIAL` observations remain
+The categories are derived from active operations and branch reachability. A
+delete is never classified as not-written; `UNRESOLVED_MAPPING` is reserved
+for a logical name whose physical source operation is present but not proven to
+map to that name. The old physical-bookmark `PARTIAL` observations remain
 diagnostic only and do not override source evidence.
 
 The exact blockers are:

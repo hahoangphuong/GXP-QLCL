@@ -1,59 +1,40 @@
 {
-  "schema_version": "inspection-qd-kt-vba-trace/v1",
+  "schema_version": "inspection-qd-kt-vba-trace/v2",
   "status": "SOURCE_QD_KT_I2_CAPTURED",
   "source_zip": "legacy/GXP-VBA code.zip",
   "source_zip_sha256": "6227fb0a6b3d74fa0f4cc655b94b021a40d65a508c2f2eefc62f1724c7b89ff7",
-  "source_hash_matches_authorized": true,
   "procedures": {
     "Module1.TaoQDKT_KHKT": {
       "start_line": 595,
       "end_line": 651,
-      "calls": [
-        {
-          "line": 648,
-          "code": ".CreateFile(fpath & \"\\\\\", 2, syear, False, fname, IIf(CTky <> vbNullString, \"PCTky\", \"CTky\"))"
-        }
-      ]
+      "i2_create_file_call": {
+        "line": 648,
+        "code": "rs = .CreateFile(fpath & \"\\\", 2, syear, False, fname, IIf(CTky <> vbNullString, \"PCTky\", \"CTky\"))"
+      }
     },
     "RecordForm.CreateFile": {
       "start_line": 1702,
       "end_line": 1789,
-      "calls": [
-        {
-          "line": 1721,
-          "code": "Get_Tpl(i, syear, tpl, fname, iFName)"
-        },
-        {
-          "line": 1735,
-          "code": "Tao_QDKT_KHKT_BBKT wdDoc, i"
-        }
-      ]
+      "get_tpl_call": {
+        "line": 1721,
+        "code": "If Not Get_Tpl(i, syear, tpl, fname, iFName) Then GoTo Quit0"
+      },
+      "builder_call": {
+        "line": 1735,
+        "code": "Tao_QDKT_KHKT_BBKT wdDoc, i"
+      }
     },
     "RecordForm.Get_Tpl": {
       "start_line": 657,
       "end_line": 729,
-      "i2_branch": {
-        "lines": [
-          666,
-          669
-        ],
-        "template_expression": "2. QD KT - \" & S_GPs & \".dotx"
+      "i2_case": {
+        "line": 667,
+        "code": "tpl = \"2. QD KT - \" & S_GPs & \".dotx\""
       }
     },
     "RecordForm.Tao_QDKT_KHKT_BBKT": {
       "start_line": 739,
-      "end_line": 818,
-      "i2_branch": {
-        "shared_lines": [
-          743,
-          790
-        ],
-        "branch_lines": [
-          791,
-          817
-        ],
-        "i2_specific_condition": "i = 2 enables VKN write; i > 2 enables TT_VKNx/TT_SYTx only"
-      }
+      "end_line": 818
     }
   },
   "call_chain": [
@@ -62,405 +43,665 @@
     "RecordForm.Get_Tpl(i=2)",
     "RecordForm.Tao_QDKT_KHKT_BBKT(i=2)"
   ],
-  "selection": {
-    "gxp": "S_GPs selected from Get_KHKT_Value/iGPs",
-    "inspection_type": "CTky/PCTky only affects filename suffix and DelBookmark; i remains 2",
-    "template": "GxP-specific 2. QD KT - {S_GPs}.dotx"
-  },
-  "field_evidence": {
-    "Daychuyen": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
-    },
-    "Diachicoso": {
-      "status": "PROVEN_WRITE",
-      "line": 747,
-      "expression": "Del_LastPeriod(Replace(DiachiDD, vbCrLf, \";\"))",
-      "condition": "none"
-    },
-    "Diadiem": {
-      "status": "PROVEN_WRITE",
-      "line": 745,
-      "expression": "Tinhthanh",
-      "condition": "none"
-    },
-    "Diadiemx": {
-      "status": "PROVEN_WRITE",
-      "line": 746,
-      "expression": "LCase_FirstChar(Tinhthanhx)",
-      "condition": "variants 1..3"
-    },
-    "Fulldate": {
-      "status": "PROVEN_WRITE",
+  "physical_bookmark_operations": [
+    {
+      "physical_bookmark": "Fulldate",
+      "physical_bookmark_expression": "\"Fulldate\"",
+      "operation_type": "WRITE",
       "line": 743,
       "expression": "FormatDateS(Date, 1)",
-      "condition": "none"
+      "branch_predicates": "COMMON",
+      "reachability_i2": "REACHABLE_I2"
     },
-    "GhPviCN": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
+    {
+      "physical_bookmark": "Tencoso",
+      "physical_bookmark_expression": "\"Tencoso\"",
+      "operation_type": "WRITE",
+      "line": 744,
+      "expression": "TenCtydd, 1, 8",
+      "branch_predicates": "COMMON",
+      "reachability_i2": "REACHABLE_I2"
     },
-    "GhPviDG": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
+    {
+      "physical_bookmark": "Diadiem",
+      "physical_bookmark_expression": "\"Diadiem\"",
+      "operation_type": "WRITE",
+      "line": 745,
+      "expression": "Tinhthanh",
+      "branch_predicates": "COMMON",
+      "reachability_i2": "REACHABLE_I2"
     },
-    "GioiHanPvi": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
+    {
+      "physical_bookmark": "Diadiemx",
+      "physical_bookmark_expression": "\"Diadiemx\"",
+      "operation_type": "WRITE",
+      "line": 746,
+      "expression": "LCase_FirstChar(Tinhthanhx), 1, 3",
+      "branch_predicates": "COMMON",
+      "reachability_i2": "REACHABLE_I2"
     },
-    "HsDK": {
-      "status": "PROVEN_WRITE",
+    {
+      "physical_bookmark": "Diachicoso",
+      "physical_bookmark_expression": "\"Diachicoso\"",
+      "operation_type": "WRITE",
+      "line": 747,
+      "expression": "Del_LastPeriod(Replace(DiachiDD, vbCrLf, \";\"))",
+      "branch_predicates": "COMMON",
+      "reachability_i2": "REACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "HsDK",
+      "physical_bookmark_expression": "\"HsDK\"",
+      "operation_type": "WRITE",
       "line": 748,
       "expression": "s_MaHsDk",
-      "condition": "none"
+      "branch_predicates": "COMMON",
+      "reachability_i2": "REACHABLE_I2"
     },
-    "MoiDel": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
-    },
-    "NgayKT": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
-    },
-    "NgayKTx": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
-    },
-    "NgaynopHsDK": {
-      "status": "PROVEN_WRITE",
+    {
+      "physical_bookmark": "NgaynopHsDK",
+      "physical_bookmark_expression": "\"NgaynopHsDK\"",
+      "operation_type": "WRITE",
       "line": 749,
       "expression": "Replace(s_NgaynopHsDk, \"-\", \"/\")",
-      "condition": "none"
+      "branch_predicates": "COMMON",
+      "reachability_i2": "REACHABLE_I2"
     },
-    "NgayQDKT": {
-      "status": "PROVEN_WRITE",
+    {
+      "physical_bookmark": "VKNx",
+      "physical_bookmark_expression": "\"VKNx\"",
+      "operation_type": "WRITE",
+      "line": 751,
+      "expression": "s1",
+      "branch_predicates": "(Sel_GPs = 1) Or (Sel_GPs = 2)",
+      "reachability_i2": "CONDITIONAL_I2"
+    },
+    {
+      "physical_bookmark": "VKN",
+      "physical_bookmark_expression": "\"VKN\"",
+      "operation_type": "WRITE",
+      "line": 752,
+      "expression": "s2, 1, 2",
+      "branch_predicates": "(Sel_GPs = 1) Or (Sel_GPs = 2) AND i = 2",
+      "reachability_i2": "CONDITIONAL_I2"
+    },
+    {
+      "physical_bookmark": "TTx",
+      "physical_bookmark_expression": "\"TT\" & (k + 1) & \"x\"",
+      "operation_type": "WRITE",
+      "line": 757,
+      "expression": "Trim(Ds_TTV(k)):        k = k + 1",
+      "branch_predicates": "COMMON",
+      "reachability_i2": "REACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "TT3x",
+      "physical_bookmark_expression": "\"TT3x\"",
+      "operation_type": "WRITE",
+      "line": 765,
+      "expression": "TVss",
+      "branch_predicates": "UBound(Ds_TTV) > 1",
+      "reachability_i2": "CONDITIONAL_I2"
+    },
+    {
+      "physical_bookmark": "TT3Del",
+      "physical_bookmark_expression": "\"TT3Del\"",
+      "operation_type": "DELETE",
+      "line": 766,
+      "expression": "",
+      "branch_predicates": "ELSE(UBound(Ds_TTV) > 1)",
+      "reachability_i2": "CONDITIONAL_I2"
+    },
+    {
+      "physical_bookmark": "TT_VKNx",
+      "physical_bookmark_expression": "\"TT_VKNx\"",
+      "operation_type": "WRITE",
+      "line": 780,
+      "expression": "TVss & \" \"",
+      "branch_predicates": "i > 2 AND TTV_VKNdd <> vbNullString",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "TT_SYTx",
+      "physical_bookmark_expression": "\"TT_SYTx\"",
+      "operation_type": "WRITE",
+      "line": 787,
+      "expression": "TVss & \" \"",
+      "branch_predicates": "i > 2 AND TTV_SYTdd <> vbNullString",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "QDKT",
+      "physical_bookmark_expression": "\"QDKT\"",
+      "operation_type": "WRITE",
+      "line": 790,
+      "expression": "QDKT:",
+      "branch_predicates": "COMMON",
+      "reachability_i2": "REACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "NgayQDKT",
+      "physical_bookmark_expression": "\"NgayQDKT\"",
+      "operation_type": "WRITE",
       "line": 790,
       "expression": "NgayQDKT",
-      "condition": "none"
+      "branch_predicates": "COMMON",
+      "reachability_i2": "REACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "Tencoso",
+      "physical_bookmark_expression": "\"Tencoso\"",
+      "operation_type": "WRITE",
+      "line": 792,
+      "expression": "TenCtydd, 4, 10",
+      "branch_predicates": "i = 4",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "NgayKT",
+      "physical_bookmark_expression": "\"NgayKT\"",
+      "operation_type": "WRITE",
+      "line": 793,
+      "expression": "NgayKT2:",
+      "branch_predicates": "i = 4",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "NgayKTx",
+      "physical_bookmark_expression": "\"NgayKTx\"",
+      "operation_type": "WRITE",
+      "line": 793,
+      "expression": "NgayKT2x",
+      "branch_predicates": "i = 4",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "ThoigianKT",
+      "physical_bookmark_expression": "\"ThoigianKT\"",
+      "operation_type": "WRITE",
+      "line": 794,
+      "expression": "ThoigianKT",
+      "branch_predicates": "i = 4",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "Diachicoso",
+      "physical_bookmark_expression": "\"Diachicoso\"",
+      "operation_type": "WRITE",
+      "line": 796,
+      "expression": "DiachiDD, 1, 2",
+      "branch_predicates": "i = 4",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "Daychuyen",
+      "physical_bookmark_expression": "\"Daychuyen\"",
+      "operation_type": "WRITE",
+      "line": 797,
+      "expression": "DaychuyenLF, 1, 3",
+      "branch_predicates": "i = 4",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "GhPviDG",
+      "physical_bookmark_expression": "\"GhPviDG\"",
+      "operation_type": "WRITE",
+      "line": 798,
+      "expression": "Replace(IIf(GHanDC = vbNullString, \"Không\", GHanDC), \"Ph\" & ChrW(&H1EA1) & \"m vi ch\" & ChrW(&H1EE9) & \"ng nh\" & ChrW(&H1EAD) & \"n\", \"Ph\" & ChrW(&H1EA1) & \"m vi \" & ChrW(&H111) & \"ánh giá\")",
+      "branch_predicates": "i = 4",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "GhPviCN",
+      "physical_bookmark_expression": "\"GhPviCN\"",
+      "operation_type": "WRITE",
+      "line": 799,
+      "expression": "IIf(GHanDC = vbNullString, \"Không\", GHanDC)",
+      "branch_predicates": "i = 4",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "TT1",
+      "physical_bookmark_expression": "\"TT1\"",
+      "operation_type": "WRITE",
+      "line": 801,
+      "expression": "Trim(Ds_TTV(0)):",
+      "branch_predicates": "i = 4",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "TT2",
+      "physical_bookmark_expression": "\"TT2\"",
+      "operation_type": "WRITE",
+      "line": 801,
+      "expression": "Trim(Ds_TTV(1))",
+      "branch_predicates": "i = 4",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "WHO_Ref",
+      "operation_type": "RANGE_DELETE",
+      "line": 802,
+      "expression": "wdDoc.Bookmarks(\"WHO_Ref\").Range.Rows.Delete",
+      "branch_predicates": "i = 4",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "PICS_Ref",
+      "operation_type": "RANGE_DELETE",
+      "line": 803,
+      "expression": "wdDoc.Bookmarks(\"PICS_Ref\").Range.Rows.Delete",
+      "branch_predicates": "i = 4",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "EU_Ref",
+      "operation_type": "RANGE_DELETE",
+      "line": 804,
+      "expression": "wdDoc.Bookmarks(\"EU_Ref\").Range.Rows.Delete",
+      "branch_predicates": "i = 4",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "Daychuyen",
+      "physical_bookmark_expression": "\"Daychuyen\"",
+      "operation_type": "WRITE",
+      "line": 806,
+      "expression": "DC_cu",
+      "branch_predicates": "i = 3",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "GioiHanPvi",
+      "physical_bookmark_expression": "\"GioiHanPvi\"",
+      "operation_type": "WRITE",
+      "line": 807,
+      "expression": "IIf(GHanDC = vbNullString, \"Không\", GHanDC)",
+      "branch_predicates": "i = 3",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "Diachicoso",
+      "physical_bookmark_expression": "\"Diachicoso\"",
+      "operation_type": "WRITE",
+      "line": 808,
+      "expression": "Replace(DiachiDD, vbCrLf, \";\")",
+      "branch_predicates": "i = 3",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "TieuchuanKT",
+      "physical_bookmark_expression": "\"TieuchuanKT\"",
+      "operation_type": "WRITE",
+      "line": 809,
+      "expression": "s_LoaiKT",
+      "branch_predicates": "i = 3",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "PVCepha",
+      "physical_bookmark_expression": "\"PVCepha\"",
+      "operation_type": "DELETE",
+      "line": 810,
+      "expression": "1, 2",
+      "branch_predicates": "i = 3 AND InStr(1, DC_cu, \"Cephalosporin\", vbTextCompare) = 0",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "PVPeni",
+      "physical_bookmark_expression": "\"PVPeni\"",
+      "operation_type": "DELETE",
+      "line": 811,
+      "expression": "1, 2",
+      "branch_predicates": "i = 3 AND InStr(1, DC_cu, \"Penicillin\", vbTextCompare) = 0",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "PVDuoclieu",
+      "physical_bookmark_expression": "\"PVDuoclieu\"",
+      "operation_type": "DELETE",
+      "line": 812,
+      "expression": "1, 2",
+      "branch_predicates": "i = 3 AND InStr(1, DC_cu, \"d\" & ChrW(&H1B0) & ChrW(&H1EE3) & \"c li\" & ChrW(&H1EC7) & \"u\", vbTextCompare) = 0",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "PVTiem",
+      "physical_bookmark_expression": "\"PVTiem\"",
+      "operation_type": "DELETE",
+      "line": 813,
+      "expression": "1, 3",
+      "branch_predicates": "i = 3 AND InStr(1, DC_cu, \" tiêm\", vbTextCompare) = 0",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "PVNhomat",
+      "physical_bookmark_expression": "\"PVNhomat\"",
+      "operation_type": "DELETE",
+      "line": 814,
+      "expression": "",
+      "branch_predicates": "i = 3 AND InStr(1, DC_cu, \" nh\" & ChrW(7887) & \" m\" & ChrW(7855) & \"t\", vbTextCompare) = 0",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "PVNangmem",
+      "physical_bookmark_expression": "\"PVNangmem\"",
+      "operation_type": "DELETE",
+      "line": 815,
+      "expression": "1, 2",
+      "branch_predicates": "i = 3 AND InStr(1, DC_cu, \" nang m\" & ChrW(&H1EC1) & \"m\", vbTextCompare) = 0",
+      "reachability_i2": "UNREACHABLE_I2"
+    },
+    {
+      "physical_bookmark": "PVSuibot",
+      "physical_bookmark_expression": "\"PVSuibot\"",
+      "operation_type": "DELETE",
+      "line": 816,
+      "expression": "",
+      "branch_predicates": "i = 3 AND InStr(1, DC_cu, \" s\" & ChrW(&H1EE7) & \"i b\" & ChrW(&H1ECD) & \"t\", vbTextCompare) = 0",
+      "reachability_i2": "UNREACHABLE_I2"
+    }
+  ],
+  "logical_field_disposition": {
+    "Daychuyen": {
+      "status": "PROVEN_NO_ACTIVE_OPERATION_I2",
+      "physical_operations": []
+    },
+    "Diachicoso": {
+      "status": "PROVEN_WRITE_I2",
+      "physical_operations": [
+        {
+          "physical_bookmark": "Diachicoso",
+          "physical_bookmark_expression": "\"Diachicoso\"",
+          "operation_type": "WRITE",
+          "line": 747,
+          "expression": "Del_LastPeriod(Replace(DiachiDD, vbCrLf, \";\"))",
+          "branch_predicates": "COMMON",
+          "reachability_i2": "REACHABLE_I2"
+        }
+      ]
+    },
+    "Diadiem": {
+      "status": "PROVEN_WRITE_I2",
+      "physical_operations": [
+        {
+          "physical_bookmark": "Diadiem",
+          "physical_bookmark_expression": "\"Diadiem\"",
+          "operation_type": "WRITE",
+          "line": 745,
+          "expression": "Tinhthanh",
+          "branch_predicates": "COMMON",
+          "reachability_i2": "REACHABLE_I2"
+        }
+      ]
+    },
+    "Diadiemx": {
+      "status": "PROVEN_WRITE_I2",
+      "physical_operations": [
+        {
+          "physical_bookmark": "Diadiemx",
+          "physical_bookmark_expression": "\"Diadiemx\"",
+          "operation_type": "WRITE",
+          "line": 746,
+          "expression": "LCase_FirstChar(Tinhthanhx), 1, 3",
+          "branch_predicates": "COMMON",
+          "reachability_i2": "REACHABLE_I2"
+        }
+      ]
+    },
+    "Fulldate": {
+      "status": "PROVEN_WRITE_I2",
+      "physical_operations": [
+        {
+          "physical_bookmark": "Fulldate",
+          "physical_bookmark_expression": "\"Fulldate\"",
+          "operation_type": "WRITE",
+          "line": 743,
+          "expression": "FormatDateS(Date, 1)",
+          "branch_predicates": "COMMON",
+          "reachability_i2": "REACHABLE_I2"
+        }
+      ]
+    },
+    "GhPviCN": {
+      "status": "PROVEN_NO_ACTIVE_OPERATION_I2",
+      "physical_operations": []
+    },
+    "GhPviDG": {
+      "status": "PROVEN_NO_ACTIVE_OPERATION_I2",
+      "physical_operations": []
+    },
+    "GioiHanPvi": {
+      "status": "PROVEN_NO_ACTIVE_OPERATION_I2",
+      "physical_operations": []
+    },
+    "HsDK": {
+      "status": "PROVEN_WRITE_I2",
+      "physical_operations": [
+        {
+          "physical_bookmark": "HsDK",
+          "physical_bookmark_expression": "\"HsDK\"",
+          "operation_type": "WRITE",
+          "line": 748,
+          "expression": "s_MaHsDk",
+          "branch_predicates": "COMMON",
+          "reachability_i2": "REACHABLE_I2"
+        }
+      ]
+    },
+    "MoiDel": {
+      "status": "PROVEN_NO_ACTIVE_OPERATION_I2",
+      "physical_operations": []
+    },
+    "NgayKT": {
+      "status": "PROVEN_NO_ACTIVE_OPERATION_I2",
+      "physical_operations": []
+    },
+    "NgayKTx": {
+      "status": "PROVEN_NO_ACTIVE_OPERATION_I2",
+      "physical_operations": []
+    },
+    "NgaynopHsDK": {
+      "status": "PROVEN_WRITE_I2",
+      "physical_operations": [
+        {
+          "physical_bookmark": "NgaynopHsDK",
+          "physical_bookmark_expression": "\"NgaynopHsDK\"",
+          "operation_type": "WRITE",
+          "line": 749,
+          "expression": "Replace(s_NgaynopHsDk, \"-\", \"/\")",
+          "branch_predicates": "COMMON",
+          "reachability_i2": "REACHABLE_I2"
+        }
+      ]
+    },
+    "NgayQDKT": {
+      "status": "PROVEN_WRITE_I2",
+      "physical_operations": [
+        {
+          "physical_bookmark": "NgayQDKT",
+          "physical_bookmark_expression": "\"NgayQDKT\"",
+          "operation_type": "WRITE",
+          "line": 790,
+          "expression": "NgayQDKT",
+          "branch_predicates": "COMMON",
+          "reachability_i2": "REACHABLE_I2"
+        }
+      ]
     },
     "PVCepha": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
+      "status": "PROVEN_NO_ACTIVE_OPERATION_I2",
+      "physical_operations": []
     },
     "PVDuoclieu": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
+      "status": "PROVEN_NO_ACTIVE_OPERATION_I2",
+      "physical_operations": []
     },
     "PVNangmem": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
+      "status": "PROVEN_NO_ACTIVE_OPERATION_I2",
+      "physical_operations": []
     },
     "PVNhomat": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
+      "status": "PROVEN_NO_ACTIVE_OPERATION_I2",
+      "physical_operations": []
     },
     "PVPeni": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
+      "status": "PROVEN_NO_ACTIVE_OPERATION_I2",
+      "physical_operations": []
     },
     "PVSuibot": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
+      "status": "PROVEN_NO_ACTIVE_OPERATION_I2",
+      "physical_operations": []
     },
     "PVTiem": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
+      "status": "PROVEN_NO_ACTIVE_OPERATION_I2",
+      "physical_operations": []
     },
     "QDKT": {
-      "status": "PROVEN_WRITE",
-      "line": 790,
-      "expression": "QDKT",
-      "condition": "none"
+      "status": "PROVEN_WRITE_I2",
+      "physical_operations": [
+        {
+          "physical_bookmark": "QDKT",
+          "physical_bookmark_expression": "\"QDKT\"",
+          "operation_type": "WRITE",
+          "line": 790,
+          "expression": "QDKT:",
+          "branch_predicates": "COMMON",
+          "reachability_i2": "REACHABLE_I2"
+        }
+      ]
     },
     "TaiDel": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
+      "status": "PROVEN_NO_ACTIVE_OPERATION_I2",
+      "physical_operations": []
     },
     "Tencoso": {
-      "status": "PROVEN_WRITE",
-      "line": 744,
-      "expression": "TenCtydd",
-      "condition": "common pre-branch write; variants 1..8"
+      "status": "PROVEN_WRITE_I2",
+      "physical_operations": [
+        {
+          "physical_bookmark": "Tencoso",
+          "physical_bookmark_expression": "\"Tencoso\"",
+          "operation_type": "WRITE",
+          "line": 744,
+          "expression": "TenCtydd, 1, 8",
+          "branch_predicates": "COMMON",
+          "reachability_i2": "REACHABLE_I2"
+        }
+      ]
     },
     "ThoigianKT": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
+      "status": "PROVEN_NO_ACTIVE_OPERATION_I2",
+      "physical_operations": []
     },
     "TieuchuanKT": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
+      "status": "PROVEN_NO_ACTIVE_OPERATION_I2",
+      "physical_operations": []
     },
     "TT": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
+      "status": "UNRESOLVED_MAPPING",
+      "physical_operations": [
+        {
+          "physical_bookmark": "TTx",
+          "physical_bookmark_expression": "\"TT\" & (k + 1) & \"x\"",
+          "operation_type": "WRITE",
+          "line": 757,
+          "expression": "Trim(Ds_TTV(k)):        k = k + 1",
+          "branch_predicates": "COMMON",
+          "reachability_i2": "REACHABLE_I2"
+        },
+        {
+          "physical_bookmark": "TT3x",
+          "physical_bookmark_expression": "\"TT3x\"",
+          "operation_type": "WRITE",
+          "line": 765,
+          "expression": "TVss",
+          "branch_predicates": "UBound(Ds_TTV) > 1",
+          "reachability_i2": "CONDITIONAL_I2"
+        },
+        {
+          "physical_bookmark": "TT3Del",
+          "physical_bookmark_expression": "\"TT3Del\"",
+          "operation_type": "DELETE",
+          "line": 766,
+          "expression": "",
+          "branch_predicates": "ELSE(UBound(Ds_TTV) > 1)",
+          "reachability_i2": "CONDITIONAL_I2"
+        }
+      ]
     },
     "TT1": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
+      "status": "UNRESOLVED_MAPPING",
+      "physical_operations": []
     },
     "TT2": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
+      "status": "UNRESOLVED_MAPPING",
+      "physical_operations": []
     },
     "TT3Del": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
+      "status": "PROVEN_CONDITIONAL_DELETE_I2",
+      "physical_operations": [
+        {
+          "physical_bookmark": "TT3Del",
+          "physical_bookmark_expression": "\"TT3Del\"",
+          "operation_type": "DELETE",
+          "line": 766,
+          "expression": "",
+          "branch_predicates": "ELSE(UBound(Ds_TTV) > 1)",
+          "reachability_i2": "CONDITIONAL_I2"
+        }
+      ]
     },
     "TT3x": {
-      "status": "PROVEN_WRITE",
-      "line": 765,
-      "expression": "TVss assembled with TT_ext and vbCrLf",
-      "condition": "UBound(Ds_TTV) > 1; otherwise TT3Del deleted"
+      "status": "PROVEN_CONDITIONAL_WRITE_I2",
+      "physical_operations": [
+        {
+          "physical_bookmark": "TT3x",
+          "physical_bookmark_expression": "\"TT3x\"",
+          "operation_type": "WRITE",
+          "line": 765,
+          "expression": "TVss",
+          "branch_predicates": "UBound(Ds_TTV) > 1",
+          "reachability_i2": "CONDITIONAL_I2"
+        }
+      ]
     },
     "TT_SYTx": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
+      "status": "PROVEN_NO_ACTIVE_OPERATION_I2",
+      "physical_operations": []
     },
     "TT_VKNx": {
-      "status": "PROVEN_NOT_WRITTEN_I2",
-      "expression": null,
-      "condition": "i=2 exits shared preamble before i=3/i=4 branches; no active bookmark write in branch",
-      "evidence_lines": "RecordForm.frm:791-817"
+      "status": "PROVEN_NO_ACTIVE_OPERATION_I2",
+      "physical_operations": []
     },
     "VKN": {
-      "status": "PROVEN_WRITE",
-      "line": 752,
-      "expression": "s2 from Get_VKN s1, s2",
-      "condition": "Sel_GPs = 1 or 2 and i = 2; variants 1..2"
+      "status": "PROVEN_CONDITIONAL_WRITE_I2",
+      "physical_operations": [
+        {
+          "physical_bookmark": "VKN",
+          "physical_bookmark_expression": "\"VKN\"",
+          "operation_type": "WRITE",
+          "line": 752,
+          "expression": "s2, 1, 2",
+          "branch_predicates": "(Sel_GPs = 1) Or (Sel_GPs = 2) AND i = 2",
+          "reachability_i2": "CONDITIONAL_I2"
+        }
+      ]
     },
     "VKNx": {
-      "status": "PROVEN_WRITE",
-      "line": 751,
-      "expression": "s1 from Get_VKN s1, s2",
-      "condition": "Sel_GPs = 1 or 2"
+      "status": "PROVEN_CONDITIONAL_WRITE_I2",
+      "physical_operations": [
+        {
+          "physical_bookmark": "VKNx",
+          "physical_bookmark_expression": "\"VKNx\"",
+          "operation_type": "WRITE",
+          "line": 751,
+          "expression": "s1",
+          "branch_predicates": "(Sel_GPs = 1) Or (Sel_GPs = 2)",
+          "reachability_i2": "CONDITIONAL_I2"
+        }
+      ]
     }
   },
-  "bookmark_operations": [
-    {
-      "line": 743,
-      "code": "Replace_Bookmark wdDoc, \"Fulldate\", FormatDateS(Date, 1)"
-    },
-    {
-      "line": 744,
-      "code": "Replace_Bookmark wdDoc, \"Tencoso\", TenCtydd, 1, 8"
-    },
-    {
-      "line": 745,
-      "code": "Replace_Bookmark wdDoc, \"Diadiem\", Tinhthanh"
-    },
-    {
-      "line": 746,
-      "code": "Replace_Bookmark wdDoc, \"Diadiemx\", LCase_FirstChar(Tinhthanhx), 1, 3"
-    },
-    {
-      "line": 747,
-      "code": "Replace_Bookmark wdDoc, \"Diachicoso\", Del_LastPeriod(Replace(DiachiDD, vbCrLf, \";\"))"
-    },
-    {
-      "line": 748,
-      "code": "Replace_Bookmark wdDoc, \"HsDK\", s_MaHsDk"
-    },
-    {
-      "line": 749,
-      "code": "Replace_Bookmark wdDoc, \"NgaynopHsDK\", Replace(s_NgaynopHsDk, \"-\", \"/\")"
-    },
-    {
-      "line": 751,
-      "code": "Get_VKN s1, s2: Replace_Bookmark wdDoc, \"VKNx\", s1"
-    },
-    {
-      "line": 752,
-      "code": "If i = 2 Then Replace_Bookmark wdDoc, \"VKN\", s2, 1, 2"
-    },
-    {
-      "line": 757,
-      "code": "Replace_Bookmark wdDoc, \"TT\" & (k + 1) & \"x\", Trim(Ds_TTV(k)):        k = k + 1"
-    },
-    {
-      "line": 765,
-      "code": "Replace_Bookmark wdDoc, \"TT3x\", TVss"
-    },
-    {
-      "line": 766,
-      "code": "Else:  Delete_Bookmark wdDoc, \"TT3Del\""
-    },
-    {
-      "line": 780,
-      "code": "Replace_Bookmark wdDoc, \"TT_VKNx\", TVss & \" \""
-    },
-    {
-      "line": 787,
-      "code": "Replace_Bookmark wdDoc, \"TT_SYTx\", TVss & \" \""
-    },
-    {
-      "line": 790,
-      "code": "Replace_Bookmark wdDoc, \"QDKT\", QDKT:             Replace_Bookmark wdDoc, \"NgayQDKT\", NgayQDKT"
-    },
-    {
-      "line": 792,
-      "code": "Replace_Bookmark wdDoc, \"Tencoso\", TenCtydd, 4, 10"
-    },
-    {
-      "line": 793,
-      "code": "Replace_Bookmark wdDoc, \"NgayKT\", NgayKT2:        Replace_Bookmark wdDoc, \"NgayKTx\", NgayKT2x"
-    },
-    {
-      "line": 794,
-      "code": "Replace_Bookmark wdDoc, \"ThoigianKT\", ThoigianKT"
-    },
-    {
-      "line": 796,
-      "code": "Replace_Bookmark wdDoc, \"Diachicoso\", DiachiDD, 1, 2"
-    },
-    {
-      "line": 797,
-      "code": "Replace_Bookmark wdDoc, \"Daychuyen\", DaychuyenLF, 1, 3"
-    },
-    {
-      "line": 798,
-      "code": "Replace_Bookmark wdDoc, \"GhPviDG\", Replace(IIf(GHanDC = vbNullString, \"Không\", GHanDC), \"Ph\" & ChrW(&H1EA1) & \"m vi ch\" & ChrW(&H1EE9) & \"ng nh\" & ChrW(&H1EAD) & \"n\", \"Ph\" & ChrW(&H1EA1) & \"m vi \" & ChrW(&H111) & \"ánh giá\")"
-    },
-    {
-      "line": 799,
-      "code": "Replace_Bookmark wdDoc, \"GhPviCN\", IIf(GHanDC = vbNullString, \"Không\", GHanDC)"
-    },
-    {
-      "line": 801,
-      "code": "Replace_Bookmark wdDoc, \"TT1\", Trim(Ds_TTV(0)):    Replace_Bookmark wdDoc, \"TT2\", Trim(Ds_TTV(1))"
-    },
-    {
-      "line": 802,
-      "code": "If InStr(s_LoaiKT, \"WHO\") = 0 Then wdDoc.Bookmarks(\"WHO_Ref\").Range.Rows.Delete"
-    },
-    {
-      "line": 803,
-      "code": "If InStr(s_LoaiKT, \"PIC/S\") = 0 Then wdDoc.Bookmarks(\"PICS_Ref\").Range.Rows.Delete"
-    },
-    {
-      "line": 804,
-      "code": "If InStr(s_LoaiKT, \"EU\") = 0 Then wdDoc.Bookmarks(\"EU_Ref\").Range.Rows.Delete"
-    },
-    {
-      "line": 806,
-      "code": "Replace_Bookmark wdDoc, \"Daychuyen\", DC_cu"
-    },
-    {
-      "line": 807,
-      "code": "Replace_Bookmark wdDoc, \"GioiHanPvi\", IIf(GHanDC = vbNullString, \"Không\", GHanDC)"
-    },
-    {
-      "line": 808,
-      "code": "Replace_Bookmark wdDoc, \"Diachicoso\", Replace(DiachiDD, vbCrLf, \";\")"
-    },
-    {
-      "line": 809,
-      "code": "Replace_Bookmark wdDoc, \"TieuchuanKT\", s_LoaiKT"
-    },
-    {
-      "line": 810,
-      "code": "If InStr(1, DC_cu, \"Cephalosporin\", vbTextCompare) = 0 Then Delete_Bookmark wdDoc, \"PVCepha\", 1, 2"
-    },
-    {
-      "line": 811,
-      "code": "If InStr(1, DC_cu, \"Penicillin\", vbTextCompare) = 0 Then Delete_Bookmark wdDoc, \"PVPeni\", 1, 2"
-    },
-    {
-      "line": 812,
-      "code": "If InStr(1, DC_cu, \"d\" & ChrW(&H1B0) & ChrW(&H1EE3) & \"c li\" & ChrW(&H1EC7) & \"u\", vbTextCompare) = 0 Then Delete_Bookmark wdDoc, \"PVDuoclieu\", 1, 2"
-    },
-    {
-      "line": 813,
-      "code": "If InStr(1, DC_cu, \" tiêm\", vbTextCompare) = 0 Then Delete_Bookmark wdDoc, \"PVTiem\", 1, 3"
-    },
-    {
-      "line": 814,
-      "code": "If InStr(1, DC_cu, \" nh\" & ChrW(7887) & \" m\" & ChrW(7855) & \"t\", vbTextCompare) = 0 Then Delete_Bookmark wdDoc, \"PVNhomat\""
-    },
-    {
-      "line": 815,
-      "code": "If InStr(1, DC_cu, \" nang m\" & ChrW(&H1EC1) & \"m\", vbTextCompare) = 0 Then Delete_Bookmark wdDoc, \"PVNangmem\", 1, 2"
-    },
-    {
-      "line": 816,
-      "code": "If InStr(1, DC_cu, \" s\" & ChrW(&H1EE7) & \"i b\" & ChrW(&H1ECD) & \"t\", vbTextCompare) = 0 Then Delete_Bookmark wdDoc, \"PVSuibot\""
-    }
-  ],
-  "deletion_operations": [
-    {
-      "line": 766,
-      "code": "Delete_Bookmark wdDoc, \"TT3Del\"",
-      "condition": "UBound(Ds_TTV) <= 1"
-    }
-  ],
-  "unresolved_fields": [
-    "Daychuyen",
-    "GhPviCN",
-    "GhPviDG",
-    "GioiHanPvi",
-    "MoiDel",
-    "NgayKT",
-    "NgayKTx",
-    "PVCepha",
-    "PVDuoclieu",
-    "PVNangmem",
-    "PVNhomat",
-    "PVPeni",
-    "PVSuibot",
-    "PVTiem",
-    "TaiDel",
-    "ThoigianKT",
-    "TieuchuanKT",
-    "TT",
-    "TT1",
-    "TT2",
-    "TT3Del",
-    "TT_SYTx",
-    "TT_VKNx"
-  ],
   "invariants": {
     "commented_code_used": false,
     "source_modified": false,

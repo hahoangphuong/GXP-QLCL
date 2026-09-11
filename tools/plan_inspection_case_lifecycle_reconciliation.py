@@ -210,11 +210,26 @@ def _date_candidate(value: str) -> date | None:
     return parse_date(value)
 
 
+def _date_source_resolution(value: str) -> tuple[str, str, date | None]:
+    """Classify legacy date text without persisting the raw source value."""
+    morphology = _date_morphology(value)
+    if not _present(value):
+        return "MISSING", morphology, None
+    candidate = _date_candidate(value)
+    if candidate is not None:
+        return "DETERMINISTIC", morphology, candidate
+    if morphology in {"DATE_RANGE", "MULTI_DATE", "PARTIAL_DATE", "ANNOTATED_DATE"}:
+        return "REQUIRES_BUSINESS_SELECTION", morphology, None
+    return "UNRESOLVED", morphology, None
+
+
 def _date_candidate_status(legacy_value: str, current: Any) -> tuple[str, date | None]:
-    if not _present(legacy_value):
+    source_resolution, _, candidate = _date_source_resolution(legacy_value)
+    if source_resolution == "MISSING":
         return "LEGACY_SOURCE_MISSING", None
-    candidate = _date_candidate(legacy_value)
-    if candidate is None:
+    if source_resolution == "REQUIRES_BUSINESS_SELECTION":
+        return "MANUAL_RECONCILIATION_REQUIRED", None
+    if source_resolution != "DETERMINISTIC":
         return "BLOCKED_AMBIGUOUS_LEGACY", None
     canonical, timezone_blocker = _normalize_canonical_date(current)
     if timezone_blocker is not None:
@@ -241,6 +256,13 @@ def _domain_candidate_status(legacy_value: str, current: Any, domain: dict[str, 
     if canonical is None:
         return "BLOCKED_AMBIGUOUS_LEGACY", candidate
     return ("ALREADY_MATCHES" if candidate == canonical else "CONFLICT_EXISTING_CANONICAL"), candidate
+
+
+def _domain_source_resolution(value: str, domain: dict[str, str]) -> tuple[str, str | None]:
+    if not _present(value):
+        return "MISSING", None
+    candidate = _normalize_domain(value, domain)
+    return ("RECOGNIZED_DOMAIN_VALUE" if candidate is not None else "UNRECOGNIZED_DOMAIN_VALUE"), candidate
 
 
 def _split_decision(value: str) -> tuple[str | None, str | None, str]:
@@ -285,7 +307,11 @@ def _date_reconciliation(legacy_value: str, current_start: date | None, current_
     morphology = _date_morphology(legacy_value)
     start, end = _period_start_end(legacy_value)
     if start is None:
-        return morphology, ("LEGACY_SOURCE_MISSING" if not _present(legacy_value) else "BLOCKED_AMBIGUOUS_LEGACY"), None
+        if not _present(legacy_value):
+            return morphology, "LEGACY_SOURCE_MISSING", None
+        if morphology in {"DATE_RANGE", "MULTI_DATE", "PARTIAL_DATE", "ANNOTATED_DATE"}:
+            return morphology, "MANUAL_RECONCILIATION_REQUIRED", None
+        return morphology, "BLOCKED_AMBIGUOUS_LEGACY", None
     current_start, start_timezone_blocker = _normalize_canonical_date(current_start)
     current_end, end_timezone_blocker = _normalize_canonical_date(current_end)
     if start_timezone_blocker is not None or end_timezone_blocker is not None:
@@ -330,13 +356,13 @@ def _resolve_case_identity(legacy_id: int, canonical_cases: list[dict[str, Any]]
     return "MATCHED", matches
 
 
-def _fact(case_id: str | None, legacy_id: int, key: str, source: str, status: str, *, candidate: Any = None, current: Any = None, current_value_comparable: bool | None = None, current_comparison_blocker: str | None = None, provenance_status: str = "NOT_ASSESSED", blocker: str | None = None) -> dict[str, Any]:
-    return {
+def _fact(case_id: str | None, legacy_id: int, key: str, source: str, status: str, *, candidate: Any = None, current: Any = None, current_value_comparable: bool | None = None, current_comparison_blocker: str | None = None, provenance_status: str = "NOT_ASSESSED", blocker: str | None = None, legacy_morphology: str | None = None, source_resolution_status: str | None = None) -> dict[str, Any]:
+    fact = {
         "legacy_inspection_id": legacy_id,
         "case_id": case_id,
         "canonical_fact": key,
         "legacy_source": source,
-        "legacy_morphology": _date_morphology(str(candidate)) if key.endswith("_on") and candidate is not None else _shape(str(candidate or "")),
+        "legacy_morphology": legacy_morphology if legacy_morphology is not None else (_date_morphology(str(candidate)) if key.endswith("_on") and candidate is not None else _shape(str(candidate or ""))),
         "current_value_present": _present(current),
         "current_value_comparable": current_value_comparable,
         "current_comparison_blocker": current_comparison_blocker,
@@ -348,6 +374,9 @@ def _fact(case_id: str | None, legacy_id: int, key: str, source: str, status: st
         "blocker": blocker,
         "recommended_future_action": "manual_review" if status in {"MANUAL_RECONCILIATION_REQUIRED", "BLOCKED_PROVENANCE_CONTAMINATION", "CONFLICT_EXISTING_CANONICAL"} else ("write_structured_owner" if status in {"SAFE_INSERT", "SAFE_UPDATE_IF_EMPTY"} else "no_write"),
     }
+    if source_resolution_status is not None:
+        fact["source_resolution_status"] = source_resolution_status
+    return fact
 
 
 def _date_fact(
@@ -363,6 +392,8 @@ def _date_fact(
     current_value_present: bool | None = None,
     current_value_comparable: bool | None = None,
     current_comparison_blocker: str | None = None,
+    legacy_value: str = "",
+    source_resolution_status: str | None = None,
 ) -> dict[str, Any]:
     _, comparison_blocker = _normalize_canonical_date(current)
     fact = _fact(
@@ -376,6 +407,8 @@ def _date_fact(
         current_value_comparable=(comparison_blocker is None if current_value_comparable is None else current_value_comparable),
         current_comparison_blocker=(comparison_blocker if current_comparison_blocker is None else current_comparison_blocker),
         blocker=blocker,
+        legacy_morphology=_date_morphology(legacy_value),
+        source_resolution_status=source_resolution_status or _date_source_resolution(legacy_value)[0],
     )
     if current_value_present is not None:
         fact["current_value_present"] = current_value_present
@@ -393,6 +426,7 @@ def _period_fact(
     current_end: Any,
     provenance_status: str,
     blocker: str | None,
+    legacy_value: str,
 ) -> dict[str, Any]:
     """Emit comparison state for both columns of the owned inspection period."""
     normalized_start, start_blocker = _normalize_canonical_date(current_start)
@@ -411,6 +445,16 @@ def _period_fact(
         current_comparison_blocker=comparison_blocker,
         provenance_status=provenance_status,
         blocker=blocker,
+        legacy_morphology=_date_morphology(legacy_value),
+        source_resolution_status=(
+            "MISSING"
+            if not _present(legacy_value)
+            else "DETERMINISTIC"
+            if candidate_start is not None
+            else "REQUIRES_BUSINESS_SELECTION"
+            if _date_morphology(legacy_value) in {"DATE_RANGE", "MULTI_DATE", "PARTIAL_DATE", "ANNOTATED_DATE"}
+            else "UNRESOLVED"
+        ),
     )
     fact.update(
         {
@@ -702,15 +746,22 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases
         actual_status = _date_reconciliation(actual_value, current_start, current_end)[1]
         actual_exact = actual_status == "ALREADY_MATCHES"
         bbkt_matches_start = b_date is not None and current_start == b_date
-        if bbkt_matches_start and not actual_exact:
-            inspection_status = "BLOCKED_PROVENANCE_CONTAMINATION"
-            provenance = "MATCHES_BBKT_SOURCE_ONLY"
-        elif actual_exact:
+        actual_source_is_deterministic = actual_start is not None
+        if actual_exact:
             inspection_status = "ALREADY_MATCHES"
             provenance = "MATCHES_BOTH_SOURCES" if bbkt_matches_start else "MATCHES_ACTUAL_SOURCE"
+        elif actual_source_is_deterministic and bbkt_matches_start and actual_status not in {"BLOCKED_TIMEZONE_POLICY_UNPROVEN"}:
+            inspection_status = "BLOCKED_PROVENANCE_CONTAMINATION"
+            provenance = "MATCHES_BBKT_SOURCE_ONLY"
         else:
             inspection_status = actual_status
-            provenance = "CURRENT_EMPTY" if current_start is None and current_end is None else "MATCHES_NEITHER"
+            provenance = (
+                "CURRENT_MATCHES_BBKT_WITHOUT_USABLE_ACTUAL_SOURCE"
+                if bbkt_matches_start
+                else "CURRENT_EMPTY"
+                if current_start is None and current_end is None
+                else "MATCHES_NEITHER"
+            )
         facts.append(
             _period_fact(
                 case_id,
@@ -724,6 +775,7 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases
                 blocker="current importer tries B. bản before Ngày K.tra"
                 if inspection_status == "BLOCKED_PROVENANCE_CONTAMINATION"
                 else None,
+                legacy_value=actual_value,
             )
         )
         facts.append(_fact(case_id, legacy_id, "bbkt_reference", "db.ktra B. bản", "BLOCKED_OWNER_MISMATCH", candidate=b_value, current=outcome.get("bbkt_reference"), provenance_status=_misrouting_status(b_value, outcome.get("bbkt_reference")), blocker="B. bản semantics are not proven and importer maps it to bbkt_reference"))
@@ -736,13 +788,26 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases
             ("application_submitted_on", "db.ktra Ngày nộp hồ sơ", row.get("submitted_at", ""), application.get("submitted_on")),
         ]:
             status, candidate = _date_candidate_status(legacy_value, current)
-            facts.append(_date_fact(case_id, legacy_id, key, source, status, candidate=candidate, current=current))
+            facts.append(_date_fact(case_id, legacy_id, key, source, status, candidate=candidate, current=current, legacy_value=legacy_value))
         for key, source, legacy_value, current, domain in [
             ("applicable_standard", "db.ktra TIÊU CHUẨN ÁP DỤNG", row.get("applicable_standard", ""), case.get("applicable_standard"), APPLICABLE_STANDARD_DOMAIN),
             ("inspection_type", "db.ktra LOẠI KIỂM TRA", row.get("inspection_type", ""), case.get("inspection_type"), INSPECTION_TYPE_DOMAIN),
         ]:
             status, candidate = _domain_candidate_status(legacy_value, current, domain)
-            facts.append(_fact(case_id, legacy_id, key, source, status, candidate=candidate, current=_normalize_domain(current, domain)))
+            source_resolution, _ = _domain_source_resolution(legacy_value, domain)
+            facts.append(
+                _fact(
+                    case_id,
+                    legacy_id,
+                    key,
+                    source,
+                    status,
+                    candidate=candidate,
+                    current=_normalize_domain(current, domain),
+                    legacy_morphology=source_resolution,
+                    source_resolution_status=source_resolution,
+                )
+            )
         for key in ("report_written_on", "final_evaluation", "compliance_due_on", "capa_incoming_reference", "approval_submission"):
             facts.append(_fact(case_id, legacy_id, key, "legacy source/profile", "BLOCKED_OWNER_MISSING", blocker="canonical semantic owner is not present"))
 
@@ -778,6 +843,14 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases
                 current_value_present=ambiguous_issue_present,
                 current_value_comparable=False if certificate_canonical_status else None,
                 current_comparison_blocker=certificate_canonical_status,
+                legacy_value=issue_value,
+                source_resolution_status=(
+                    "CERTIFICATE_SOURCE_MISSING"
+                    if certificate_source_status == "CERTIFICATE_SOURCE_MISSING"
+                    else "CERTIFICATE_SOURCE_AMBIGUOUS"
+                    if certificate_source_status == "BLOCKED_CERTIFICATE_SOURCE_AMBIGUOUS"
+                    else None
+                ),
             )
         )
         facts[-1]["legacy_certificate_candidate_count"] = len(certificate_rows)
@@ -804,6 +877,14 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases
                 current_value_present=ambiguous_expiry_present,
                 current_value_comparable=False if certificate_canonical_status else None,
                 current_comparison_blocker=certificate_canonical_status,
+                legacy_value=expiry,
+                source_resolution_status=(
+                    "CERTIFICATE_SOURCE_MISSING"
+                    if certificate_source_status == "CERTIFICATE_SOURCE_MISSING"
+                    else "CERTIFICATE_SOURCE_AMBIGUOUS"
+                    if certificate_source_status == "BLOCKED_CERTIFICATE_SOURCE_AMBIGUOUS"
+                    else None
+                ),
             )
         )
         facts[-1]["legacy_certificate_candidate_count"] = len(certificate_rows)
@@ -815,7 +896,7 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases
     for fact in facts:
         per_fact.setdefault(fact["canonical_fact"], Counter())[fact["reconciliation_status"]] += 1
     return {
-        "schema_version": "inspection-case-lifecycle-reconciliation-plan/v2",
+        "schema_version": "inspection-case-lifecycle-reconciliation-plan/v3",
         "status": "READ_ONLY_DRY_RUN_PLAN",
         "database_policy": {"required_database_name": REQUIRED_DATABASE_NAME, "writes_performed": False},
         "source_policy": {"legacy_values_raw_persisted": False, "candidate_values_hashed": True},

@@ -84,6 +84,26 @@ def test_plan_marks_b_ban_only_inspection_date_match_as_provenance_contamination
     assert actual["reconciliation_status"] == "BLOCKED_PROVENANCE_CONTAMINATION"
 
 
+def test_period_source_validity_precedes_bbkt_provenance_observation():
+    missing = build_reconciliation_plan(
+        [_legacy_row(inspected_at="-", bbkt_reference="2026-05-05")],
+        [_canonical_case(outcome={"inspected_on": date(2026, 5, 5), "inspected_to_on": None})],
+    )
+    missing_fact = next(fact for fact in missing["facts"] if fact["canonical_fact"] == "actual_inspection_period")
+    assert missing_fact["reconciliation_status"] == "LEGACY_SOURCE_MISSING"
+    assert missing_fact["provenance_status"] == "CURRENT_MATCHES_BBKT_WITHOUT_USABLE_ACTUAL_SOURCE"
+    assert missing_fact["source_resolution_status"] == "MISSING"
+
+    malformed = build_reconciliation_plan(
+        [_legacy_row(inspected_at="not a date", bbkt_reference="2026-05-05")],
+        [_canonical_case(outcome={"inspected_on": date(2026, 5, 5), "inspected_to_on": None})],
+    )
+    malformed_fact = next(fact for fact in malformed["facts"] if fact["canonical_fact"] == "actual_inspection_period")
+    assert malformed_fact["reconciliation_status"] == "BLOCKED_AMBIGUOUS_LEGACY"
+    assert malformed_fact["provenance_status"] == "CURRENT_MATCHES_BBKT_WITHOUT_USABLE_ACTUAL_SOURCE"
+    assert malformed_fact["source_resolution_status"] == "UNRESOLVED"
+
+
 def test_date_candidates_fail_closed_for_datetime_until_business_timezone_is_owned():
     assert _date_candidate_status("2026-08-21", date(2026, 8, 21))[0] == "ALREADY_MATCHES"
     assert _date_candidate_status("2026-08-21", date(2026, 8, 22))[0] == "CONFLICT_EXISTING_CANONICAL"
@@ -178,6 +198,38 @@ def test_plan_reports_missing_legacy_sources_without_reclassifying_malformed_val
     )
     submitted = next(fact for fact in malformed["facts"] if fact["canonical_fact"] == "application_submitted_on")
     assert submitted["reconciliation_status"] == "BLOCKED_AMBIGUOUS_LEGACY"
+
+
+def test_raw_source_morphology_and_domain_resolution_survive_candidate_normalization():
+    report = build_reconciliation_plan(
+        [
+            _legacy_row(
+                submitted_at="01/01/2020, 02/01/2020",
+                applicable_standard="unrecognized standard",
+                inspected_at="01/01/2020, 02/01/2020",
+                certificate_issue_date="01/01/2020, 02/01/2020",
+                certificate_expiry_date="01/01/2020, 02/01/2020",
+            )
+        ],
+        [_canonical_case()],
+    )
+    facts = {fact["canonical_fact"]: fact for fact in report["facts"]}
+    for key in {
+        "application_submitted_on",
+        "actual_inspection_period",
+        "certificate_issue_date",
+        "certificate_expiry_date",
+    }:
+        assert facts[key]["legacy_morphology"] == "MULTI_DATE"
+        assert facts[key]["source_resolution_status"] == "REQUIRES_BUSINESS_SELECTION"
+        assert facts[key]["reconciliation_status"] == "MANUAL_RECONCILIATION_REQUIRED"
+        assert facts[key]["recommended_future_action"] == "manual_review"
+    assert facts["applicable_standard"]["legacy_morphology"] == "UNRECOGNIZED_DOMAIN_VALUE"
+    assert facts["applicable_standard"]["source_resolution_status"] == "UNRECOGNIZED_DOMAIN_VALUE"
+    assert facts["applicable_standard"]["reconciliation_status"] == "BLOCKED_AMBIGUOUS_LEGACY"
+    rendered = json.dumps(report, default=str)
+    assert "01/01/2020, 02/01/2020" not in rendered
+    assert "unrecognized standard" not in rendered
 
 
 def test_certificate_source_missing_has_no_candidate_and_no_write_action():
@@ -284,6 +336,7 @@ def test_ambiguous_canonical_certificates_report_date_presence_per_field_without
 
 def test_report_declares_the_audited_date_comparison_policy():
     report = build_reconciliation_plan([_legacy_row()], [_canonical_case()])
+    assert report["schema_version"] == "inspection-case-lifecycle-reconciliation-plan/v3"
     assert report["date_comparison_policy"] == DATE_COMPARISON_POLICY
     assert report["date_comparison_policy"]["canonical_timezone"] == "UNPROVEN"
     assert report["date_comparison_policy"]["aware_datetime_conversion"] == "BLOCKED_UNPROVEN_BUSINESS_TIMEZONE"
@@ -411,6 +464,7 @@ def test_connected_database_guard_requires_actual_rehearsal_database_and_read_on
 
 
 def test_period_parser_preserves_deterministic_same_and_cross_month_ranges():
+    assert _period_start_end("1-12/12/2017") == (date(2017, 12, 1), date(2017, 12, 12))
     assert _period_start_end("20-21/10/2017") == (date(2017, 10, 20), date(2017, 10, 21))
     assert _period_start_end("31/07 - 01/08/2009") == (date(2009, 7, 31), date(2009, 8, 1))
     assert _period_start_end("01/12-12/12/2017") == (date(2017, 12, 1), date(2017, 12, 12))

@@ -1,0 +1,49 @@
+{
+  "schema_version": "inspection-case-lifecycle-owner-matrix/v1",
+  "status": "BUSINESS_LIFECYCLE_CONFIRMED_SCHEMA_RECONCILED",
+  "evidence_class": "USER_CONFIRMED_BUSINESS_SEMANTICS_PLUS_CURRENT_MODEL_RECONCILIATION",
+  "guardrails": {
+    "legacy_display_prose_is_truth": false,
+    "compatibility_projection_proves_owner": false,
+    "schema_change_authorized": false,
+    "document_readiness_authorized": false
+  },
+  "owners": [
+    {"key":"dossier_code","lifecycle":"application","model":"CaseApplication","field":"dossier_code","classification":"OWNER_PROVEN_EXISTING"},
+    {"key":"application_submitted_on","lifecycle":"application","model":"CaseApplication","field":"submitted_on","classification":"OWNER_PROVEN_EXISTING"},
+    {"key":"initial_assessed_on","lifecycle":"initial_assessment","model":"CaseAssessment","field":"assessed_on","classification":"OWNER_PROVEN_EXISTING"},
+    {"key":"initial_assessment_result","lifecycle":"initial_assessment","model":"CaseAssessment","field":"assessment_result","classification":"OWNER_PROVEN_EXISTING"},
+    {"key":"initial_assessor","lifecycle":"initial_assessment","model":"CaseAssessment","field":"assessor_name","classification":"OWNER_PROVEN_EXISTING"},
+    {"key":"inspection_decision_reference","lifecycle":"inspection_planning","model":"InspectionPlan","field":"decision_reference","classification":"OWNER_NEEDS_MODEL_EXTENSION","current_compatibility_fields":["InspectionPlan.decision_document_hint","InspectionOutcome.decision_reference"]},
+    {"key":"inspection_decision_date","lifecycle":"inspection_planning","model":"InspectionPlan","field":"decision_date","classification":"OWNER_NEEDS_MODEL_EXTENSION"},
+    {"key":"inspection_decision_raw_legacy","lifecycle":"inspection_planning","model":"InspectionPlan","field":"decision_raw_legacy_text","classification":"OWNER_NEEDS_MODEL_EXTENSION","semantic_truth":false},
+    {"key":"inspected_on","lifecycle":"inspection_execution","model":"InspectionOutcome","field":"inspected_on","classification":"OWNER_PROVEN_EXISTING"},
+    {"key":"report_written_on","lifecycle":"inspection_execution","model":"InspectionOutcome","field":"report_written_on","classification":"OWNER_NEEDS_MODEL_EXTENSION"},
+    {"key":"inspection_team","lifecycle":"inspection_execution","model":"InspectionTeamMember","field":"sort_order","classification":"OWNER_PROVEN_EXISTING","supporting_fields":["InspectionTeamMember.role_label","InspectionTeamMember.inspector_profile_id","InspectionTeamMember.person_id"]},
+    {"key":"applicable_standard","lifecycle":"inspection_execution","model":"Case","field":"applicable_standard","classification":"OWNER_PROVEN_EXISTING"},
+    {"key":"inspection_result","lifecycle":"inspection_execution","model":"InspectionOutcome","field":"outcome_result","classification":"OWNER_PROVEN_EXISTING_WITH_NAMING_REVIEW"},
+    {"key":"capa_round","lifecycle":"capa","model":"CapaCycle","field":"round_no","classification":"OWNER_PROVEN_EXISTING"},
+    {"key":"capa_incoming_reference","lifecycle":"capa","model":"CapaCycle","field":"incoming_reference","classification":"OWNER_NEEDS_MODEL_EXTENSION"},
+    {"key":"capa_submitted_on","lifecycle":"capa","model":"CapaCycle","field":"submitted_on","classification":"OWNER_PROVEN_EXISTING"},
+    {"key":"capa_assessed_on","lifecycle":"capa","model":"CapaCycle","field":"assessed_on","classification":"OWNER_PROVEN_EXISTING"},
+    {"key":"capa_assessor_name","lifecycle":"capa","model":"CapaCycle","field":"assessor_name","classification":"OWNER_PROVEN_EXISTING"},
+    {"key":"capa_assessor_user","lifecycle":"capa","model":"CapaCycle","field":"assessor_user_id","classification":"OWNER_PROVEN_EXISTING"},
+    {"key":"capa_result","lifecycle":"capa","model":"CapaCycle","field":"result","classification":"OWNER_PROVEN_EXISTING"},
+    {"key":"final_evaluation","lifecycle":"final_disposition","model":"InspectionOutcome","field":"final_evaluation","classification":"OWNER_NEEDS_MODEL_EXTENSION"},
+    {"key":"compliance_due_on","lifecycle":"final_disposition","model":"InspectionOutcome","field":"compliance_due_on","classification":"OWNER_NEEDS_MODEL_EXTENSION"},
+    {"key":"approval_submission","lifecycle":"approval_routing","model":"InspectionApprovalSubmission","field":null,"classification":"OWNER_NEEDS_NEW_ENTITY","required_fields":["case_id","stage","reference_number","submitted_on"]},
+    {"key":"certificate_number","lifecycle":"certification","model":"CertificateVersion","field":"certificate_number","classification":"OWNER_PROVEN_EXISTING"},
+    {"key":"certificate_issue_date","lifecycle":"certification","model":"CertificateVersion","field":"issue_date","classification":"OWNER_PROVEN_EXISTING"},
+    {"key":"certificate_expiry_date","lifecycle":"certification","model":"CertificateVersion","field":"expiry_date","classification":"OWNER_PROVEN_EXISTING"}
+  ],
+  "planned_new_entity": {
+    "name": "InspectionApprovalSubmission",
+    "purpose": "repeatable typed approval-routing record for PCT/CT and future stages",
+    "stage_examples": ["VICE_CHAIR", "CHAIR"],
+    "fixed_pct_ct_columns_recommended": false
+  },
+  "decision": {
+    "schema_migration": "NOT_YET_AUTHORIZED",
+    "preferred_next_step": "freeze owner matrix, inspect legacy morphologies/null rates, then design one coherent migration"
+  }
+}

@@ -28,7 +28,6 @@ from backend.app.db.models.phase1 import (
 )
 from backend.app.db.enums import LegacyEntityType
 from backend.app.db.session import build_engine
-from backend.app.domain.legacy_snapshot import read_core_sheet_rows
 from backend.app.domain.phase2_import import normalize_row, parse_date
 from tools.audit_inspection_case_lifecycle_legacy import (
     _classify_decision_composite,
@@ -41,6 +40,29 @@ from tools.audit_inspection_case_lifecycle_legacy import (
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "artifacts" / "legacy_audit" / "inspection_case_lifecycle_reconciliation_plan.json"
 REQUIRED_DATABASE_NAME = "gxp_legacy_rehearsal"
+SNAPSHOT_SCHEMA_VERSION = "inspection-case-lifecycle-legacy-snapshot/v1"
+SNAPSHOT_EXTRACTION_OWNER = "backend.app.domain.legacy_snapshot.read_core_sheet_rows"
+SNAPSHOT_EXTRACTION_STATUS = "EXTRACTED_READ_ONLY"
+SNAPSHOT_REQUIRED_SECTIONS = ("db.ktra", "db.cc")
+SNAPSHOT_KTRA_FIELDS = (
+    "ID",
+    "__excel_row_number",
+    "decision_reference",
+    "bbkt_reference",
+    "inspected_at",
+    "submitted_at",
+    "dossier_code",
+    "applicable_standard",
+    "inspection_type",
+)
+SNAPSHOT_CC_FIELDS = (
+    "ID",
+    "__excel_row_number",
+    "inspection_case_legacy_id_ref",
+    "certificate_issue_date",
+    "certificate_expiry_date",
+    "certificate_valid_until",
+)
 PLAN_STATUS = {
     "SAFE_NOOP",
     "SAFE_INSERT",
@@ -307,11 +329,144 @@ def _row_id(row: dict[str, str]) -> int | None:
         return None
 
 
-def build_reconciliation_plan(legacy_rows: list[dict[str, str]], canonical_cases: list[dict[str, Any]]) -> dict[str, Any]:
+def _snapshot_error(message: str) -> RuntimeError:
+    return RuntimeError(f"invalid inspection lifecycle legacy snapshot: {message}")
+
+
+def _snapshot_integer(value: Any, *, field: str, section: str, index: int) -> int:
+    try:
+        numeric = int(float(str(value).strip()))
+    except (TypeError, ValueError):
+        raise _snapshot_error(f"{section} row {index} has invalid {field}") from None
+    return numeric
+
+
+def _snapshot_section(payload: dict[str, Any], name: str) -> list[dict[str, str]]:
+    sections = payload.get("sections")
+    if not isinstance(sections, dict):
+        raise _snapshot_error("sections must be an object")
+    section = sections.get(name)
+    if not isinstance(section, dict):
+        raise _snapshot_error(f"missing required section {name}")
+    if section.get("source_sheet") != name:
+        raise _snapshot_error(f"section {name} has mismatched source_sheet")
+    rows = section.get("rows")
+    if not isinstance(rows, list):
+        raise _snapshot_error(f"section {name} rows must be an array")
+    if section.get("row_count") != len(rows):
+        raise _snapshot_error(f"section {name} row_count does not match rows")
+    validated: list[dict[str, str]] = []
+    for index, row in enumerate(rows, start=1):
+        if not isinstance(row, dict) or any(not isinstance(key, str) or not isinstance(value, str) for key, value in row.items()):
+            raise _snapshot_error(f"section {name} row {index} must contain string fields")
+        validated.append(dict(row))
+    return validated
+
+
+def load_legacy_snapshot_payload(payload: Any, *, expected_workbook_sha256: str | None = None) -> dict[str, Any]:
+    """Validate local Windows extraction evidence without importing workbook tooling."""
+    if not isinstance(payload, dict):
+        raise _snapshot_error("top-level payload must be an object")
+    required_metadata = {
+        "schema_version": SNAPSHOT_SCHEMA_VERSION,
+        "extraction_owner": SNAPSHOT_EXTRACTION_OWNER,
+        "extraction_status": SNAPSHOT_EXTRACTION_STATUS,
+    }
+    for field, expected in required_metadata.items():
+        if payload.get(field) != expected:
+            raise _snapshot_error(f"unsupported or missing {field}")
+    workbook_sha = payload.get("source_workbook_sha256")
+    if not isinstance(workbook_sha, str) or not re.fullmatch(r"[0-9a-f]{64}", workbook_sha):
+        raise _snapshot_error("source_workbook_sha256 must be a lowercase SHA256")
+    if expected_workbook_sha256 is not None and workbook_sha != expected_workbook_sha256.lower():
+        raise _snapshot_error("source workbook SHA256 does not match the expected value")
+    if not isinstance(payload.get("source_workbook_name"), str) or not payload["source_workbook_name"].strip():
+        raise _snapshot_error("source_workbook_name is required")
+    if payload.get("source_sheets") != list(SNAPSHOT_REQUIRED_SECTIONS):
+        raise _snapshot_error("source_sheets must declare the required sections in canonical order")
+
+    ktra_rows = _snapshot_section(payload, "db.ktra")
+    cc_rows = _snapshot_section(payload, "db.cc")
+    if payload.get("row_count") != len(ktra_rows) + len(cc_rows):
+        raise _snapshot_error("row_count does not match source sections")
+
+    ktra_ids: set[int] = set()
+    for index, row in enumerate(ktra_rows, start=1):
+        missing = [field for field in SNAPSHOT_KTRA_FIELDS if field not in row]
+        if missing:
+            raise _snapshot_error(f"db.ktra row {index} missing required fields: {', '.join(missing)}")
+        legacy_id = _snapshot_integer(row["ID"], field="ID", section="db.ktra", index=index)
+        _snapshot_integer(row["__excel_row_number"], field="__excel_row_number", section="db.ktra", index=index)
+        if legacy_id in ktra_ids:
+            raise _snapshot_error(f"duplicate db.ktra ID {legacy_id}")
+        ktra_ids.add(legacy_id)
+
+    certificates_by_case: dict[int, dict[str, str]] = {}
+    certificate_ids: set[int] = set()
+    for index, row in enumerate(cc_rows, start=1):
+        missing = [field for field in SNAPSHOT_CC_FIELDS if field not in row]
+        if missing:
+            raise _snapshot_error(f"db.cc row {index} missing required fields: {', '.join(missing)}")
+        certificate_id = _snapshot_integer(row["ID"], field="ID", section="db.cc", index=index)
+        _snapshot_integer(row["__excel_row_number"], field="__excel_row_number", section="db.cc", index=index)
+        case_id = _snapshot_integer(
+            row["inspection_case_legacy_id_ref"],
+            field="inspection_case_legacy_id_ref",
+            section="db.cc",
+            index=index,
+        )
+        if certificate_id in certificate_ids:
+            raise _snapshot_error(f"duplicate db.cc ID {certificate_id}")
+        if case_id not in ktra_ids:
+            raise _snapshot_error(f"db.cc row {index} references missing db.ktra ID {case_id}")
+        if case_id in certificates_by_case:
+            raise _snapshot_error(f"multiple db.cc certificate rows reference db.ktra ID {case_id}")
+        certificate_ids.add(certificate_id)
+        certificates_by_case[case_id] = row
+
+    # Keep certificate values in their source container. The planner receives a
+    # linked projection rather than a fabricated db.ktra field overlay.
+    linked_rows = [
+        {"__source_ktra": row, "__certificate_source": certificates_by_case.get(_snapshot_integer(row["ID"], field="ID", section="db.ktra", index=index))}
+        for index, row in enumerate(ktra_rows, start=1)
+    ]
+    return {
+        "legacy_rows": linked_rows,
+        "provenance": {
+            "schema_version": payload["schema_version"],
+            "source_workbook_sha256": workbook_sha,
+            "source_workbook_name": payload["source_workbook_name"],
+            "extraction_owner": payload["extraction_owner"],
+            "source_sheets": payload["source_sheets"],
+            "row_count": payload["row_count"],
+            "extraction_status": payload["extraction_status"],
+        },
+        "validation_counts": {
+            "db_ktra_rows": len(ktra_rows),
+            "db_cc_rows": len(cc_rows),
+            "linked_certificate_rows": len(certificates_by_case),
+        },
+    }
+
+
+def load_legacy_snapshot_json(path: Path, *, expected_workbook_sha256: str | None = None) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise _snapshot_error(f"cannot read JSON input: {exc}") from None
+    return load_legacy_snapshot_payload(payload, expected_workbook_sha256=expected_workbook_sha256)
+
+
+def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases: list[dict[str, Any]]) -> dict[str, Any]:
     facts: list[dict[str, Any]] = []
     identity_counts = Counter()
     for raw in legacy_rows:
-        row = normalize_row(raw)
+        source_ktra = raw.get("__source_ktra", raw)
+        if not isinstance(source_ktra, dict):
+            raise ValueError("legacy reconciliation row has invalid db.ktra source")
+        row = normalize_row(source_ktra)
+        source_certificate = raw.get("__certificate_source")
+        certificate_row = normalize_row(source_certificate) if isinstance(source_certificate, dict) else row
         legacy_id = _row_id(row)
         if legacy_id is None:
             continue
@@ -373,7 +528,7 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, str]], canonical_cases
             facts.append(_fact(case_id, legacy_id, key, source, _candidate_status(candidate, current), candidate=candidate, current=current))
         for key, source, legacy_value, current in [
             ("application_submitted_on", "db.ktra Ngày nộp hồ sơ", row.get("submitted_at", ""), application.get("submitted_on")),
-            ("certificate_issue_date", "db.cc Ngày cấp CC", row.get("certificate_issue_date", ""), cert.get("issue_date")),
+            ("certificate_issue_date", "db.cc Ngày cấp CC", certificate_row.get("certificate_issue_date", ""), cert.get("issue_date")),
         ]:
             status, candidate = _date_candidate_status(legacy_value, current)
             facts.append(_date_fact(case_id, legacy_id, key, source, status, candidate=candidate, current=current))
@@ -386,7 +541,7 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, str]], canonical_cases
         for key in ("report_written_on", "final_evaluation", "compliance_due_on", "capa_incoming_reference", "approval_submission"):
             facts.append(_fact(case_id, legacy_id, key, "legacy source/profile", "BLOCKED_OWNER_MISSING", blocker="canonical semantic owner is not present"))
 
-        expiry = row.get("certificate_expiry_date", "")
+        expiry = certificate_row.get("certificate_expiry_date", "") or certificate_row.get("certificate_valid_until", "")
         expiry_morphology = _date_morphology(expiry)
         if expiry_morphology in {"PARTIAL_DATE", "ANNOTATED_DATE", "MULTI_DATE"}:
             expiry_status, expiry_candidate = "MANUAL_RECONCILIATION_REQUIRED", None
@@ -453,10 +608,9 @@ def _verify_read_only_rehearsal_connection(connection: Any) -> None:
         raise RuntimeError("reconciliation planner requires a read-only database transaction")
 
 
-def run_read_only_plan(database_url: str, workbook: Path) -> dict[str, Any]:
+def run_read_only_plan_from_snapshot(database_url: str, snapshot: dict[str, Any]) -> dict[str, Any]:
     require_rehearsal_database(database_url)
-    snapshot = read_core_sheet_rows(workbook)
-    legacy_rows = snapshot.get("db.ktra", [])
+    legacy_rows = snapshot["legacy_rows"]
     engine = build_engine(database_url)
     connection = engine.connect()
     transaction = connection.begin()
@@ -464,9 +618,13 @@ def run_read_only_plan(database_url: str, workbook: Path) -> dict[str, Any]:
     try:
         connection.execute(text("SET TRANSACTION READ ONLY"))
         _verify_read_only_rehearsal_connection(connection)
-        ids = [legacy_id for legacy_id in (_row_id(normalize_row(row)) for row in legacy_rows) if legacy_id is not None]
+        ids = [legacy_id for legacy_id in (_row_id(normalize_row(row["__source_ktra"])) for row in legacy_rows) if legacy_id is not None]
         canonical = _canonical_snapshot(session, ids)
-        return build_reconciliation_plan(legacy_rows, canonical)
+        report = build_reconciliation_plan(legacy_rows, canonical)
+        # Provenance/counts are safe metadata only; raw snapshot rows never enter the plan.
+        report["source_snapshot"] = snapshot["provenance"]
+        report["source_snapshot_validation"] = snapshot["validation_counts"]
+        return report
     finally:
         session.close()
         transaction.rollback()
@@ -474,13 +632,40 @@ def run_read_only_plan(database_url: str, workbook: Path) -> dict[str, Any]:
         engine.dispose()
 
 
+def run_read_only_plan(database_url: str, workbook: Path, *, expected_workbook_sha256: str | None = None) -> dict[str, Any]:
+    """Windows-only convenience path; JSON snapshot mode remains platform independent."""
+    from backend.app.domain.legacy_snapshot import read_core_sheet_rows
+    from tools.export_inspection_case_lifecycle_legacy_snapshot import build_snapshot_payload
+
+    source_rows = read_core_sheet_rows(workbook)
+    snapshot = load_legacy_snapshot_payload(
+        build_snapshot_payload(workbook, source_rows),
+        expected_workbook_sha256=expected_workbook_sha256,
+    )
+    return run_read_only_plan_from_snapshot(database_url, snapshot)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build a read-only inspection lifecycle reconciliation plan.")
     parser.add_argument("--database-url", required=True)
-    parser.add_argument("--workbook", type=Path, default=ROOT / "legacy" / "Danh sách Kiểm tra GPs.xlsb")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--legacy-snapshot", type=Path)
+    source.add_argument("--workbook", type=Path)
+    parser.add_argument("--expected-workbook-sha256")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
-    report = run_read_only_plan(args.database_url, args.workbook.resolve())
+    if args.legacy_snapshot is not None:
+        snapshot = load_legacy_snapshot_json(
+            args.legacy_snapshot.resolve(),
+            expected_workbook_sha256=args.expected_workbook_sha256,
+        )
+        report = run_read_only_plan_from_snapshot(args.database_url, snapshot)
+    else:
+        report = run_read_only_plan(
+            args.database_url,
+            args.workbook.resolve(),
+            expected_workbook_sha256=args.expected_workbook_sha256,
+        )
     args.output.resolve().parent.mkdir(parents=True, exist_ok=True)
     args.output.resolve().write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
     print("STATUS=READ_ONLY_DRY_RUN_PLAN")

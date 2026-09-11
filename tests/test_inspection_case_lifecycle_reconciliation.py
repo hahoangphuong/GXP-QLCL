@@ -17,6 +17,7 @@ from tools.plan_inspection_case_lifecycle_reconciliation import (
     _period_start_end,
     _verify_read_only_rehearsal_connection,
     require_rehearsal_database,
+    run_read_only_plan_from_snapshot,
 )
 
 
@@ -258,12 +259,19 @@ def test_contract_and_importer_keep_all_four_misrouting_paths_in_sync():
 def test_read_only_runner_has_no_orm_write_operations_and_uses_read_only_transaction():
     from tools import plan_inspection_case_lifecycle_reconciliation as planner
 
-    source = inspect.getsource(planner.run_read_only_plan)
+    source = inspect.getsource(planner.run_read_only_plan_from_snapshot)
     assert "SET TRANSACTION READ ONLY" in source
     assert ".commit(" not in source
     assert ".flush(" not in source
     assert ".add(" not in source
     assert ".delete(" not in source
+
+
+def test_snapshot_runner_keeps_the_read_only_db_contract():
+    source = inspect.getsource(run_read_only_plan_from_snapshot)
+    assert "SET TRANSACTION READ ONLY" in source
+    assert "current_database" not in source  # verification remains in its dedicated owner.
+    assert ".rollback(" in source
 
 
 class _ScalarResult:

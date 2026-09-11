@@ -6,13 +6,18 @@ from hashlib import sha256
 import json
 from pathlib import Path
 import re
+import sys
 import unicodedata
+
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from backend.app.domain.legacy_snapshot import read_core_sheet_rows
 from backend.app.domain.phase2_import import FIELD_ALIASES
 
 
-ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "artifacts" / "legacy_audit" / "inspection_case_lifecycle_legacy_profile.json"
 
 

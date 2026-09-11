@@ -52,6 +52,24 @@ PLAN_STATUS = {
     "BLOCKED_OWNER_MISMATCH",
     "BLOCKED_PROVENANCE_CONTAMINATION",
     "MANUAL_RECONCILIATION_REQUIRED",
+    "BLOCKED_TIMEZONE_POLICY_UNPROVEN",
+}
+
+# The database/session, API, and legacy importer do not currently establish a
+# business-calendar timezone for CaseApplication.submitted_on. UTC timestamps
+# elsewhere are operational/audit timestamps, not evidence for a local-date
+# rule. Do not project any datetime to a date until an owner closes that gap.
+DATE_COMPARISON_POLICY = {
+    "canonical_timezone": "UNPROVEN",
+    "aware_datetime_conversion": "BLOCKED_UNPROVEN_BUSINESS_TIMEZONE",
+    "naive_datetime_conversion": "BLOCKED_UNPROVEN_TIMEZONE",
+    "date_value_comparison": "DIRECT_DATE_COMPARISON",
+    "evidence": [
+        "CaseApplication.submitted_on is DateTime(timezone=True)",
+        "database session factory does not set a PostgreSQL timezone",
+        "CaseApplicationUpsertRequest accepts datetime without timezone validation",
+        "phase2_import.parse_dt constructs naive datetime values from legacy text",
+    ],
 }
 
 # These closed domains are the scalar, source-audited values that can be
@@ -120,14 +138,14 @@ def _candidate_status(candidate: Any, current: Any) -> str:
     return "ALREADY_MATCHES" if candidate == current else "CONFLICT_EXISTING_CANONICAL"
 
 
-def _normalize_canonical_date(value: Any) -> date | None:
+def _normalize_canonical_date(value: Any) -> tuple[date | None, str | None]:
     if isinstance(value, datetime):
-        # An aware datetime retains its represented civil date; do not discard
-        # timezone information by converting it through a string.
-        return value.date()
+        if value.tzinfo is None or value.utcoffset() is None:
+            return None, "BLOCKED_UNPROVEN_TIMEZONE"
+        return None, "BLOCKED_UNPROVEN_BUSINESS_TIMEZONE"
     if isinstance(value, date):
-        return value
-    return None
+        return value, None
+    return None, None
 
 
 def _date_candidate(value: str) -> date | None:
@@ -138,7 +156,9 @@ def _date_candidate_status(legacy_value: str, current: Any) -> tuple[str, date |
     candidate = _date_candidate(legacy_value)
     if candidate is None:
         return "BLOCKED_AMBIGUOUS_LEGACY", None
-    canonical = _normalize_canonical_date(current)
+    canonical, timezone_blocker = _normalize_canonical_date(current)
+    if timezone_blocker is not None:
+        return "BLOCKED_TIMEZONE_POLICY_UNPROVEN", candidate
     if canonical is None:
         return "SAFE_INSERT", candidate
     return ("ALREADY_MATCHES" if candidate == canonical else "CONFLICT_EXISTING_CANONICAL"), candidate
@@ -200,8 +220,10 @@ def _date_reconciliation(legacy_value: str, current_start: date | None, current_
     start, end = _period_start_end(legacy_value)
     if start is None:
         return morphology, "BLOCKED_AMBIGUOUS_LEGACY", None
-    current_start = _normalize_canonical_date(current_start)
-    current_end = _normalize_canonical_date(current_end)
+    current_start, start_timezone_blocker = _normalize_canonical_date(current_start)
+    current_end, end_timezone_blocker = _normalize_canonical_date(current_end)
+    if start_timezone_blocker is not None or end_timezone_blocker is not None:
+        return morphology, "BLOCKED_TIMEZONE_POLICY_UNPROVEN", None
     if current_start == start and current_end == end:
         return morphology, "ALREADY_MATCHES", start.isoformat()
     if current_start is None and current_end is None:
@@ -323,7 +345,8 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, str]], canonical_cases
             provenance = "CURRENT_EMPTY" if current_start is None and current_end is None else "MATCHES_NEITHER"
         facts.append(_fact(case_id, legacy_id, "actual_inspection_period", "db.ktra Ngày K.tra", inspection_status, candidate=actual_start, current=current_start, provenance_status=provenance, blocker="current importer tries B. bản before Ngày K.tra" if inspection_status == "BLOCKED_PROVENANCE_CONTAMINATION" else None))
         facts[-1]["legacy_period_end"] = None if actual_end is None else actual_end.isoformat()
-        facts[-1]["current_period_end"] = None if _normalize_canonical_date(current_end) is None else _normalize_canonical_date(current_end).isoformat()
+        normalized_current_end, _ = _normalize_canonical_date(current_end)
+        facts[-1]["current_period_end"] = None if normalized_current_end is None else normalized_current_end.isoformat()
         facts.append(_fact(case_id, legacy_id, "bbkt_reference", "db.ktra B. bản", "BLOCKED_OWNER_MISMATCH", candidate=b_value, current=outcome.get("bbkt_reference"), provenance_status=_misrouting_status(b_value, outcome.get("bbkt_reference")), blocker="B. bản semantics are not proven and importer maps it to bbkt_reference"))
 
         for key, source, candidate, current in [
@@ -335,7 +358,8 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, str]], canonical_cases
             ("certificate_issue_date", "db.cc Ngày cấp CC", row.get("certificate_issue_date", ""), cert.get("issue_date")),
         ]:
             status, candidate = _date_candidate_status(legacy_value, current)
-            facts.append(_fact(case_id, legacy_id, key, source, status, candidate=candidate, current=_normalize_canonical_date(current)))
+            normalized_current, _ = _normalize_canonical_date(current)
+            facts.append(_fact(case_id, legacy_id, key, source, status, candidate=candidate, current=normalized_current))
         for key, source, legacy_value, current, domain in [
             ("applicable_standard", "db.ktra TIÊU CHUẨN ÁP DỤNG", row.get("applicable_standard", ""), case.get("applicable_standard"), APPLICABLE_STANDARD_DOMAIN),
             ("inspection_type", "db.ktra LOẠI KIỂM TRA", row.get("inspection_type", ""), case.get("inspection_type"), INSPECTION_TYPE_DOMAIN),
@@ -351,7 +375,8 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, str]], canonical_cases
             expiry_status, expiry_candidate = "MANUAL_RECONCILIATION_REQUIRED", None
         else:
             expiry_status, expiry_candidate = _date_candidate_status(expiry, cert.get("expiry_date"))
-        facts.append(_fact(case_id, legacy_id, "certificate_expiry_date", "db.cc Hết hạn CC", expiry_status, candidate=expiry_candidate, current=_normalize_canonical_date(cert.get("expiry_date")), blocker="partial/annotated legacy expiry requires manual reconciliation" if expiry_status == "MANUAL_RECONCILIATION_REQUIRED" else None))
+        normalized_expiry, _ = _normalize_canonical_date(cert.get("expiry_date"))
+        facts.append(_fact(case_id, legacy_id, "certificate_expiry_date", "db.cc Hết hạn CC", expiry_status, candidate=expiry_candidate, current=normalized_expiry, blocker="partial/annotated legacy expiry requires manual reconciliation" if expiry_status == "MANUAL_RECONCILIATION_REQUIRED" else None))
         facts[-1]["legacy_morphology"] = expiry_morphology
 
     status_counts = Counter(fact["reconciliation_status"] for fact in facts)
@@ -363,6 +388,7 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, str]], canonical_cases
         "status": "READ_ONLY_DRY_RUN_PLAN",
         "database_policy": {"required_database_name": REQUIRED_DATABASE_NAME, "writes_performed": False},
         "source_policy": {"legacy_values_raw_persisted": False, "candidate_values_hashed": True},
+        "date_comparison_policy": DATE_COMPARISON_POLICY,
         "identity": dict(identity_counts),
         "summary": {"legacy_cases": len(legacy_rows), "matched_cases": identity_counts["matched"], "unmatched": identity_counts["unmatched"], "identity_conflicts": identity_counts["conflict"], "reconciliation_status_counts": dict(status_counts), "per_fact_status_counts": {key: dict(value) for key, value in sorted(per_fact.items())}},
         "facts": facts,

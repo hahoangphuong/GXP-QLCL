@@ -4,6 +4,7 @@ from datetime import date, datetime, timezone
 import inspect
 import json
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -11,6 +12,7 @@ from backend.app.domain import phase2_import
 from tools.plan_inspection_case_lifecycle_reconciliation import (
     _date_candidate_status,
     _domain_candidate_status,
+    DATE_COMPARISON_POLICY,
     build_reconciliation_plan,
     _period_start_end,
     _verify_read_only_rehearsal_connection,
@@ -81,11 +83,14 @@ def test_plan_marks_b_ban_only_inspection_date_match_as_provenance_contamination
     assert actual["reconciliation_status"] == "BLOCKED_PROVENANCE_CONTAMINATION"
 
 
-def test_date_candidates_are_typed_before_comparison_including_timezone_aware_submissions():
+def test_date_candidates_fail_closed_for_datetime_until_business_timezone_is_owned():
     assert _date_candidate_status("2026-08-21", date(2026, 8, 21))[0] == "ALREADY_MATCHES"
-    assert _date_candidate_status("2026-01-14", datetime(2026, 1, 14, 23, 30, tzinfo=timezone.utc))[0] == "ALREADY_MATCHES"
     assert _date_candidate_status("2026-08-21", date(2026, 8, 22))[0] == "CONFLICT_EXISTING_CANONICAL"
     assert _date_candidate_status("not-a-date", date(2026, 8, 21))[0] == "BLOCKED_AMBIGUOUS_LEGACY"
+    assert _date_candidate_status("2026-01-14", datetime(2026, 1, 14, 16, 30, tzinfo=timezone.utc))[0] == "BLOCKED_TIMEZONE_POLICY_UNPROVEN"
+    assert _date_candidate_status("2026-01-14", datetime(2026, 1, 14, 17, 30, tzinfo=timezone.utc))[0] == "BLOCKED_TIMEZONE_POLICY_UNPROVEN"
+    assert _date_candidate_status("2026-01-15", datetime(2026, 1, 15, 0, 30, tzinfo=ZoneInfo("Asia/Bangkok")))[0] == "BLOCKED_TIMEZONE_POLICY_UNPROVEN"
+    assert _date_candidate_status("2026-01-14", datetime(2026, 1, 14, 9, 0))[0] == "BLOCKED_TIMEZONE_POLICY_UNPROVEN"
 
 
 def test_period_reconciliation_requires_a_matching_start_and_end_pair():
@@ -121,15 +126,23 @@ def test_period_reconciliation_requires_a_matching_start_and_end_pair():
     assert actual["provenance_status"] == "MATCHES_BBKT_SOURCE_ONLY"
 
 
-def test_plan_applies_typed_date_comparison_to_application_and_certificate_facts():
+def test_plan_blocks_datetime_submission_but_compares_pure_certificate_dates():
     report = build_reconciliation_plan(
         [_legacy_row()],
         [_canonical_case(application={"dossier_code": "HS-41", "submitted_on": datetime(2026, 1, 14, 12, tzinfo=timezone.utc)}, certificate={"issue_date": date(2026, 8, 21), "expiry_date": date(2029, 8, 19)})],
     )
     statuses = {fact["canonical_fact"]: fact["reconciliation_status"] for fact in report["facts"]}
-    assert statuses["application_submitted_on"] == "ALREADY_MATCHES"
+    assert statuses["application_submitted_on"] == "BLOCKED_TIMEZONE_POLICY_UNPROVEN"
     assert statuses["certificate_issue_date"] == "ALREADY_MATCHES"
     assert statuses["certificate_expiry_date"] == "ALREADY_MATCHES"
+
+
+def test_report_declares_the_audited_date_comparison_policy():
+    report = build_reconciliation_plan([_legacy_row()], [_canonical_case()])
+    assert report["date_comparison_policy"] == DATE_COMPARISON_POLICY
+    assert report["date_comparison_policy"]["canonical_timezone"] == "UNPROVEN"
+    assert report["date_comparison_policy"]["aware_datetime_conversion"] == "BLOCKED_UNPROVEN_BUSINESS_TIMEZONE"
+    assert report["date_comparison_policy"]["naive_datetime_conversion"] == "BLOCKED_UNPROVEN_TIMEZONE"
 
 
 def test_plan_keeps_owner_missing_and_manual_reconciliation_fail_closed():

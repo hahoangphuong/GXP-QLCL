@@ -32,6 +32,47 @@ def load_template_seed_artifact(path: Path) -> dict[str, list[dict[str, object]]
     template_bindings = payload.get("template_bindings")
     if not isinstance(template_definitions, list) or not isinstance(template_bindings, list):
         raise TemplateSeedError("Template seed artifact must include list keys template_definitions and template_bindings")
+    definition_fields = {
+        "family_code",
+        "document_type_code",
+        "source_application",
+        "storage_scope",
+        "legacy_host_procedure",
+        "legacy_case_number",
+        "variant_type",
+        "template_name",
+        "template_pattern",
+        "bookmark_contract_json",
+        "notes",
+    }
+    binding_fields = {"family_code", "template_name", "gxp_type", "legacy_mode", "storage_scope"}
+    definition_keys: set[tuple[str, str]] = set()
+    for seed in template_definitions:
+        if not isinstance(seed, dict) or not definition_fields.issubset(seed):
+            raise TemplateSeedError("Template seed artifact contains malformed template_definition data")
+        key = (str(seed["family_code"]), str(seed["template_name"]))
+        if key in definition_keys:
+            raise TemplateSeedError(f"Template seed artifact has duplicate template_definition identity: {key!r}")
+        definition_keys.add(key)
+    binding_keys: set[tuple[str, str, object, object, str]] = set()
+    for seed in template_bindings:
+        if not isinstance(seed, dict) or not binding_fields.issubset(seed):
+            raise TemplateSeedError("Template seed artifact contains malformed template_binding data")
+        definition_key = (str(seed["family_code"]), str(seed["template_name"]))
+        if definition_key not in definition_keys:
+            raise TemplateSeedError(
+                "Template seed artifact binding references a missing template_definition: " f"{definition_key!r}"
+            )
+        key = (
+            definition_key[0],
+            definition_key[1],
+            seed["gxp_type"],
+            seed["legacy_mode"],
+            str(seed["storage_scope"]),
+        )
+        if key in binding_keys:
+            raise TemplateSeedError(f"Template seed artifact has duplicate template_binding identity: {key!r}")
+        binding_keys.add(key)
     return {
         "template_definitions": template_definitions,
         "template_bindings": template_bindings,
@@ -53,7 +94,6 @@ def _single_template_definition_match(session: Session, seed: dict[str, object])
 
 
 def _apply_template_definition_fields(template_definition: TemplateDefinition, seed: dict[str, object]) -> bool:
-    changed = False
     desired_values = {
         "document_type_code": str(seed["document_type_code"]),
         "source_application": str(seed["source_application"]),
@@ -66,11 +106,22 @@ def _apply_template_definition_fields(template_definition: TemplateDefinition, s
         "notes": str(seed["notes"]) if seed["notes"] is not None else None,
         "is_active": True,
     }
-    for field_name, desired in desired_values.items():
-        if getattr(template_definition, field_name) != desired:
-            setattr(template_definition, field_name, desired)
-            changed = True
-    return changed
+    semantic_fields = tuple(field_name for field_name in desired_values if field_name != "is_active")
+    conflicts = [
+        field_name
+        for field_name in semantic_fields
+        if getattr(template_definition, field_name) != desired_values[field_name]
+    ]
+    if conflicts:
+        raise TemplateSeedError(
+            "Curated template_definition conflicts with existing row for "
+            f"family_code={seed['family_code']!r}, template_name={seed['template_name']!r}: "
+            + ", ".join(conflicts)
+        )
+    if not template_definition.is_active:
+        template_definition.is_active = True
+        return True
+    return False
 
 
 def upsert_template_definitions(session: Session, seeds: list[dict[str, object]]) -> tuple[int, int]:

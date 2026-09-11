@@ -201,7 +201,7 @@ sudo VM_RUNTIME_ENV_FILE=/etc/gxp/runtime.env ./infra/vm/verify_prod.sh
 - Snapshot hash is recorded in the import report.
 - Dry-run uses the same importer logic as apply, but against an ephemeral validation database rather than the canonical production database.
 - Rehearsal/final apply recreate the target DB, run `alembic upgrade head`, then import transactionally.
-- Rehearsal/final apply recreate the target DB, run `alembic upgrade head`, initialize the static RBAC baseline, then import transactionally.
+- Rehearsal/final apply recreate the target DB, run `alembic upgrade head`, bootstrap and verify canonical Phase 5 template metadata, initialize the static RBAC baseline, then import transactionally.
 - Apply is transactional and must fail closed on collisions, unresolved anomalies, Alembic mismatch, target DB contract violations, or backup failure.
 - Current Phase 7 gate is reported but not auto-bypassed or auto-resolved by the importer.
 - Missing or invalid Phase 3/4/5/6/3p historical artifacts must become blocked Phase 7 gates, not Python tracebacks.

@@ -110,6 +110,9 @@ def test_vm_deploy_script_preserves_pre_switch_atomicity_and_post_switch_rollbac
     assert text.index('CURRENT_STAGE="resolve_database_url"') < text.index('CURRENT_STAGE="build_frontend"')
     assert text.index('CURRENT_STAGE="alembic_upgrade"') < text.index('CURRENT_STAGE="switch_release_symlinks"')
     assert text.index('CURRENT_STAGE="alembic_upgrade"') < text.index('CURRENT_STAGE="rbac_baseline_verification"')
+    assert text.index('CURRENT_STAGE="alembic_upgrade"') < text.index('CURRENT_STAGE="template_metadata_bootstrap"')
+    assert text.index('CURRENT_STAGE="template_metadata_bootstrap"') < text.index('CURRENT_STAGE="template_metadata_readiness_verification"')
+    assert text.index('CURRENT_STAGE="template_metadata_readiness_verification"') < text.index('CURRENT_STAGE="rbac_baseline_verification"')
     assert text.index('CURRENT_STAGE="rbac_baseline_verification"') < text.index('CURRENT_STAGE="switch_release_symlinks"')
     assert text.index('CURRENT_STAGE="switch_release_symlinks"') < text.index('CURRENT_STAGE="restart_services"')
     assert text.index('CURRENT_STAGE="restart_services"') < text.index('CURRENT_STAGE="post_switch_health"')
@@ -224,6 +227,8 @@ def test_vm_deploy_script_uses_vm_runtime_requirements_and_db_backup():
     assert 'run_as_app_user "${NEW_BACKEND_RELEASE}/infra/vm/backup_postgres.sh"' in text
     assert 'run_as_app_user env DATABASE_URL="${DATABASE_URL}" "${NEW_BACKEND_VENV}/bin/alembic"' in text
     assert 'CURRENT_STAGE="rbac_baseline_verification"' in text
+    assert '-m tools.bootstrap_template_metadata --database-url' in text
+    assert '-m tools.verify_template_metadata_readiness --database-url' in text
     assert 'run_as_app_user "${NEW_BACKEND_VENV}/bin/python" "${NEW_BACKEND_RELEASE}/tools/verify_rbac_readiness.py" --database-url "${DATABASE_URL}"' in text
     assert 'verify_rbac_readiness.py" --database-url "${DATABASE_URL}" ||' not in text
     assert 'verify_rbac_readiness.py" --require-user' not in text

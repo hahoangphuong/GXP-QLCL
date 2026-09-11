@@ -656,6 +656,18 @@ run_as_app_user "${NEW_BACKEND_RELEASE}/infra/vm/backup_postgres.sh"
 CURRENT_STAGE="alembic_upgrade"
 run_as_app_user env DATABASE_URL="${DATABASE_URL}" "${NEW_BACKEND_VENV}/bin/alembic" -c "${NEW_BACKEND_RELEASE}/alembic.ini" upgrade head
 
+CURRENT_STAGE="template_metadata_bootstrap"
+run_as_app_bash "
+  cd '${NEW_BACKEND_RELEASE}'
+  env -u PYTHONHOME PYTHONPATH='${NEW_BACKEND_RELEASE}' '${NEW_BACKEND_VENV}/bin/python' -m tools.bootstrap_template_metadata --database-url \"${DATABASE_URL}\"
+"
+
+CURRENT_STAGE="template_metadata_readiness_verification"
+run_as_app_bash "
+  cd '${NEW_BACKEND_RELEASE}'
+  env -u PYTHONHOME PYTHONPATH='${NEW_BACKEND_RELEASE}' '${NEW_BACKEND_VENV}/bin/python' -m tools.verify_template_metadata_readiness --database-url \"${DATABASE_URL}\"
+"
+
 CURRENT_STAGE="rbac_baseline_verification"
 run_as_app_user "${NEW_BACKEND_VENV}/bin/python" "${NEW_BACKEND_RELEASE}/tools/verify_rbac_readiness.py" --database-url "${DATABASE_URL}"
 

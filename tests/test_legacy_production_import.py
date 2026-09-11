@@ -11,6 +11,7 @@ import pytest
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL, make_url
+from sqlalchemy.orm import Session
 
 from backend.app.db.enums import CaseState
 from backend.app.db.models import Base, Case, MigrationAnomaly
@@ -24,6 +25,28 @@ from backend.app.runtime_schema import expected_alembic_head_revision
 from tools import build_phase7_cutover_readiness as readiness
 from tools.phase7_execution_evidence import TEMPLATE_PATH
 from tools import import_legacy_production as ilp
+
+
+def test_static_baseline_bootstraps_template_metadata_before_rbac(tmp_path: Path, monkeypatch) -> None:
+    engine = create_engine(f"sqlite:///{(tmp_path / 'baseline.db').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+
+    class Factory:
+        kw = {"bind": engine}
+
+        def __call__(self) -> Session:
+            return Session(engine)
+
+    calls: list[str] = []
+    monkeypatch.setattr(ilp, "build_session_factory", lambda _url: Factory())
+    monkeypatch.setattr(ilp, "_current_alembic_revision", lambda _session: "head")
+    monkeypatch.setattr(ilp, "expected_alembic_head_revision", lambda: "head")
+    monkeypatch.setattr(ilp, "bootstrap_default_template_metadata", lambda _session: calls.append("template_metadata"))
+    monkeypatch.setattr(ilp, "ensure_builtin_rbac_baseline", lambda _session: calls.append("rbac"))
+
+    ilp._initialize_static_application_baseline("sqlite:///ignored.db")
+
+    assert calls == ["template_metadata", "rbac"]
 
 
 def legacy_row_set(

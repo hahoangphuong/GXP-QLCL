@@ -40,6 +40,7 @@ from backend.app.domain.phase2_import import (
 from backend.app.project_paths import phase_artifact_path
 from backend.app.rbac import ensure_builtin_rbac_baseline
 from backend.app.runtime_schema import expected_alembic_head_revision
+from backend.app.document.template_metadata_bootstrap import bootstrap_default_template_metadata
 from tools.build_phase7_cutover_readiness import build_readiness
 from tools.phase7_execution_evidence import Phase7ExecutionEvidenceError
 from tools.env_utils import parse_env_file
@@ -530,6 +531,7 @@ def _initialize_static_application_baseline(database_url: str) -> None:
             raise ProductionImportError(
                 f"Alembic revision mismatch before static baseline bootstrap: current={current_revision!r}, head={head_revision!r}."
             )
+        bootstrap_default_template_metadata(session)
         ensure_builtin_rbac_baseline(session)
         session.commit()
     except Exception:

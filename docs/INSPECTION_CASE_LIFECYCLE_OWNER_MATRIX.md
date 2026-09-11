@@ -222,6 +222,29 @@ counts and normalized-domain counts are supporting evidence only.
 No raw business values are persisted in the profile and no backfill is
 allowed by this overlay.
 
+## Canonical owner contract decision
+
+The machine-readable contract is recorded in
+`artifacts/legacy_audit/inspection_case_lifecycle_canonical_owner_contract.json`.
+It is a design-only reconciliation artifact for this phase; it does not add
+columns, alter importer behavior, or perform backfill.
+
+Current structured mutation owners are the `CaseWorkflowService` methods
+behind the application, assessment, planning, outcome, team, CAPA, and
+certificate routes. `CatalogReadService.get_case_workspace` is the current
+workspace read projection. The existing `InspectionPlan.decision_document_hint`
+and `InspectionOutcome.decision_reference` are compatibility values, not a
+canonical QĐKT owner. The importer currently copies the legacy `Q. định` value
+to both `CaseApplication.dossier_reference` and
+`InspectionOutcome.decision_reference`; this is the first incorrect semantic
+layer and must not be extended into future backfill.
+
+The legacy `B. bản` alias currently writes to `InspectionOutcome.bbkt_reference`
+in the importer, but its timestamp-dominant evidence does not prove BBKT
+reference semantics. Historical values are preserved; future mapping is
+blocked until a semantic owner is proven. QĐKT readiness therefore remains
+`BUSINESS_INPUT_CONTRACT_MISSING`.
+
 ## Readiness decision for `INSPECTION_QD_KT`
 
 This lifecycle matrix materially closes the business-owner question for QĐKT and the surrounding case workflow, but it does **not** by itself authorize document-generation readiness.

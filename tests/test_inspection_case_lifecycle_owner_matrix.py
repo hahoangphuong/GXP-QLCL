@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MATRIX_PATH = ROOT / "artifacts" / "legacy_audit" / "inspection_case_lifecycle_owner_matrix.json"
+CONTRACT_PATH = ROOT / "artifacts" / "legacy_audit" / "inspection_case_lifecycle_canonical_owner_contract.json"
 MODEL_PATH = ROOT / "backend" / "app" / "db" / "models" / "phase1.py"
 
 
@@ -26,6 +27,10 @@ def _class_fields() -> dict[str, set[str]]:
 
 def _load() -> dict[str, object]:
     return json.loads(MATRIX_PATH.read_text(encoding="utf-8"))
+
+
+def _load_contract() -> dict[str, object]:
+    return json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
 
 def test_lifecycle_matrix_status_and_guardrails_are_fail_closed():
@@ -124,3 +129,34 @@ def test_certificate_truth_is_version_owned():
     for key in ("certificate_number", "certificate_issue_date", "certificate_expiry_date"):
         assert by_key[key]["model"] == "CertificateVersion"
         assert by_key[key]["classification"] == "OWNER_PROVEN_EXISTING"
+
+
+def test_canonical_owner_contract_is_design_only_and_has_no_legacy_write_authority():
+    report = _load_contract()
+    assert report["schema_version"] == "inspection-case-lifecycle-canonical-owner-contract/v1"
+    assert report["status"] == "DESIGN_ONLY_NO_SCHEMA_OR_BACKFILL"
+    assert report["decision"] == {
+        "schema_changes": "NOT_IMPLEMENTED_BY_TASK_CONSTRAINT",
+        "importer_changes": "NOT_IMPLEMENTED_BY_TASK_CONSTRAINT",
+        "backfill": "NOT_PERFORMED",
+        "qd_kt_readiness": "BUSINESS_INPUT_CONTRACT_MISSING",
+        "reason": "structured planning decision reference/date and other active inputs remain unowned; do not enable create/readiness or parse composite legacy prose",
+    }
+    assert report["guardrails"] == {
+        "database_mutated": False,
+        "workbook_mutated": False,
+        "nas_mutated": False,
+        "legacy_prose_is_runtime_truth": False,
+        "current_date_fallback_allowed": False,
+        "display_prose_parsed_as_truth": False,
+    }
+
+
+def test_canonical_contract_keeps_decision_and_bbkt_gaps_explicit():
+    owners = {owner["canonical_fact"]: owner for owner in _load_contract()["owners"]}
+    assert owners["inspection_decision_reference"]["status"] == "OWNER_EXISTS_BUT_OVERLOADED"
+    assert owners["inspection_decision_date"]["status"] == "OWNER_MISSING"
+    assert owners["inspection_decision_reference"]["semantic_owner"] == "InspectionPlan.decision_reference (future field)"
+    assert owners["bbkt_reference"]["status"] == "OWNER_NAME_MISMATCH"
+    assert owners["bbkt_reference"]["legacy_source"] == "db.ktra B. bản"
+    assert owners["bbkt_reference"]["invariant"] == "B. bản must not be imported as a reference until semantics are proven"

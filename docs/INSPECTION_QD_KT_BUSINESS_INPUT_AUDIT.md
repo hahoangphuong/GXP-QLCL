@@ -115,6 +115,23 @@ for a logical name whose physical source operation is present but not proven to
 map to that name. The old physical-bookmark `PARTIAL` observations remain
 diagnostic only and do not override source evidence.
 
+## Provenance follow-up
+
+`artifacts/legacy_audit/inspection_qd_kt_input_provenance.json` records the
+next source-derived hop for every active i=2 input: declaration, assignments,
+helper/formatting chain, branch conditions, and terminal legacy source
+surface. The evidence confirms heterogeneous origins: the selected planning
+row supplies facility display values, `db.ktra` supplies dossier/decision/
+inspection values, `Get_VKN` generates authority prose from vaccine text and
+province classification, and `TTVdd` is split into dynamic team bookmarks.
+No active input is fully source and contract proven (`OWNER_PROVEN=0`); eight
+remain blocked and six are partial. `Fulldate` is the current workstation
+`Date`, not a persisted decision date, while `QDKT` and `NgayQDKT` are two
+fragments derived from one combined source cell. Modern `Site`,
+`CaseApplication`, `InspectionOutcome`, and `InspectionTeam` models remain
+candidates only where the artifact says `OWNER_PARTIAL`; display prose is not
+parsed into structured truth.
+
 The exact blockers are:
 
 1. the four real QĐKT templates still have a contract mismatch, so physical
@@ -135,7 +152,7 @@ business-contract blockers remain intentionally fail-closed.
 - Generic `{GP}` binary fallback: **not used**; exact GxP binding/locator rules remain unchanged.
 - Schema, importer, Phase 7, template binaries and database: **unchanged**.
 
-The next evidence-required slice is to capture the exact source modules and
-branch execution for `i=2`, then reconcile the four QĐKT template variants by
-logical field and conditional render instruction. No implementation should be
-started from this matrix alone.
+The remaining evidence-required slice is to reconcile the four QĐKT template
+variants by logical field and conditional render instruction, then close the
+blocked modern owners. No typed payload implementation should be started from
+this matrix alone.

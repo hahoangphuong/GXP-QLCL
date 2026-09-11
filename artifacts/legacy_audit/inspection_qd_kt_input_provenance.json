@@ -1,0 +1,1753 @@
+{
+  "schema_version": "inspection-qd-kt-input-provenance/v1",
+  "status": "SOURCE_QD_KT_I2_PROVENANCE_CAPTURED",
+  "source_zip": "legacy/GXP-VBA code.zip",
+  "source_zip_sha256": "6227fb0a6b3d74fa0f4cc655b94b021a40d65a508c2f2eefc62f1724c7b89ff7",
+  "trace_artifact": "artifacts/legacy_audit/inspection_qd_kt_vba_trace.json",
+  "call_chain": [
+    "Module1.TaoQDKT_KHKT",
+    "RecordForm.CreateFile(i=2)",
+    "RecordForm.Get_Tpl(i=2)",
+    "RecordForm.Tao_QDKT_KHKT_BBKT(i=2)"
+  ],
+  "fields": {
+    "Fulldate": {
+      "physical_bookmark": "Fulldate",
+      "vba_rendered_operations": [
+        {
+          "physical_bookmark": "Fulldate",
+          "physical_bookmark_expression": "\"Fulldate\"",
+          "operation_type": "WRITE",
+          "line": 743,
+          "expression": "FormatDateS(Date, 1)",
+          "branch_predicates": "COMMON",
+          "reachability_i2": "REACHABLE_I2"
+        }
+      ],
+      "source_variables": [
+        "Date"
+      ],
+      "provenance_chain": [
+        {
+          "variable": "Date",
+          "declarations": [
+            {
+              "kind": "intrinsic",
+              "symbol": "Date"
+            }
+          ],
+          "steps": [
+            {
+              "file": "RecordForm.frm",
+              "line": 736,
+              "code": "Replace_Bookmark wdDoc, \"Fulldate\", \"ngày \" & FormatDateS(Date, 1), 1, 3"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 743,
+              "code": "Replace_Bookmark wdDoc, \"Fulldate\", FormatDateS(Date, 1)"
+            }
+          ]
+        }
+      ],
+      "source_semantic_endpoint": "deterministic generated value: current VBA workstation date",
+      "normalization_or_formatting": "FormatDateS(Date, 1)",
+      "conditions": [
+        "COMMON"
+      ],
+      "modern_owner_candidate": "deterministic generated value",
+      "owner_classification": "OWNER_BLOCKED",
+      "blocker": "legacy uses workstation Date; no persisted QĐKT generation-date contract is proven"
+    },
+    "Tencoso": {
+      "physical_bookmark": "Tencoso",
+      "vba_rendered_operations": [
+        {
+          "physical_bookmark": "Tencoso",
+          "physical_bookmark_expression": "\"Tencoso\"",
+          "operation_type": "WRITE",
+          "line": 744,
+          "expression": "TenCtydd, 1, 8",
+          "branch_predicates": "COMMON",
+          "reachability_i2": "REACHABLE_I2"
+        },
+        {
+          "physical_bookmark": "Tencoso",
+          "physical_bookmark_expression": "\"Tencoso\"",
+          "operation_type": "WRITE",
+          "line": 792,
+          "expression": "TenCtydd, 4, 10",
+          "branch_predicates": "i = 4",
+          "reachability_i2": "UNREACHABLE_I2"
+        }
+      ],
+      "source_variables": [
+        "TenCtydd"
+      ],
+      "provenance_chain": [
+        {
+          "variable": "TenCtydd",
+          "declarations": [
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 18,
+              "code": "Public S_GPs$, TenCtydd$, DiachiDD$, DaychuyenDD$, TTV$, TTVdd$, Tinhthanh$, Tinhthanhx$, TinhthanhId%, QDKTdd$, QDKT$, NgayQDKT$, NgayQDKTx$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, TTVin$"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 18,
+              "code": "Public S_GPs$, s_year$, TenCtyMedd$, TenCtydd$, DiachiDD$, DaychuyenDD$, NgayKT$, NgayKT2$, NgayKT2x$, NgayBCKP$, NgayBCKP1$, NgayBCKP2$, CV_BCKP1$, CV_BCKP2$, Sel_GPs%, DaychuyenX$, DaychuyenLF$, DaychuyenRaw$, DaychuyenCNRaw$, NgayKTE$, NgayKT2E$, NgayHHCC$, s_MaHsDk$, s_NgaynopHsDk$"
+            }
+          ],
+          "steps": [
+            {
+              "file": "MainForm.frm",
+              "line": 4151,
+              "code": ".TenCtydd = Trim(Rg.Cells(1, ColDBTenCS).Value)"
+            },
+            {
+              "file": "Module1.bas",
+              "line": 607,
+              "code": ".TenCtydd = DelLastIf_Ins(ActiveSheet.Cells(i, 4).MergeArea.Cells(1), vbCrLf)"
+            }
+          ]
+        }
+      ],
+      "source_semantic_endpoint": "planning row cell 4; fallback/alternate db_cso site row",
+      "normalization_or_formatting": "none beyond the expression recorded in vba_rendered_operations",
+      "conditions": [
+        "COMMON",
+        "i = 4"
+      ],
+      "modern_owner_candidate": "Site.site_name",
+      "owner_classification": "OWNER_PARTIAL",
+      "blocker": "selected planning row and db_cso both feed the variable; exact modern selection provenance is not proven"
+    },
+    "Diadiem": {
+      "physical_bookmark": "Diadiem",
+      "vba_rendered_operations": [
+        {
+          "physical_bookmark": "Diadiem",
+          "physical_bookmark_expression": "\"Diadiem\"",
+          "operation_type": "WRITE",
+          "line": 745,
+          "expression": "Tinhthanh",
+          "branch_predicates": "COMMON",
+          "reachability_i2": "REACHABLE_I2"
+        }
+      ],
+      "source_variables": [
+        "Tinhthanh"
+      ],
+      "provenance_chain": [
+        {
+          "variable": "Tinhthanh",
+          "declarations": [
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 18,
+              "code": "Public S_GPs$, TenCtydd$, DiachiDD$, DaychuyenDD$, TTV$, TTVdd$, Tinhthanh$, Tinhthanhx$, TinhthanhId%, QDKTdd$, QDKT$, NgayQDKT$, NgayQDKTx$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, TTVin$"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 19,
+              "code": "Public Tinhthanh$, Tinhthanhx$, TinhthanhId%, TTV$, TTVdd$, TTVs$, QDKT$, NgayQDKT$, ThoigianKT$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, ThoigianDKKT$, HsDKKT$, DiachiTruso$, DiachiTrusoE$, LanhdaoCS$, NguoiPTCM$"
+            }
+          ],
+          "steps": [
+            {
+              "file": "MainForm.frm",
+              "line": 4156,
+              "code": ".Tinhthanh = Trim(Rg.Cells(1, ColDBTinhTpCS).Value)"
+            },
+            {
+              "file": "Module1.bas",
+              "line": 614,
+              "code": ".Tinhthanh = ActiveSheet.Cells(i, 10).MergeArea.Cells(1)"
+            },
+            {
+              "file": "Module1.bas",
+              "line": 617,
+              "code": ".Tinhthanh = Trim$(Right$(.Tinhthanh, Len(.Tinhthanh) - j))"
+            },
+            {
+              "file": "Module1.bas",
+              "line": 618,
+              "code": ".Tinhthanh = Replace(.Tinhthanh, \"t\" & ChrW(&H1EC9) & \"nh \", vbNullString, 1, -1, vbTextCompare)"
+            },
+            {
+              "file": "Module1.bas",
+              "line": 619,
+              "code": ".Tinhthanh = Replace(.Tinhthanh, \"thành ph\" & ChrW(&H1ED1) & \" \", vbNullString, 1, -1, vbTextCompare)"
+            },
+            {
+              "file": "Module1.bas",
+              "line": 620,
+              "code": ".Tinhthanh = Replace(.Tinhthanh, \"Tp \", vbNullString, 1, -1, vbTextCompare)"
+            },
+            {
+              "file": "Module1.bas",
+              "line": 621,
+              "code": ".Tinhthanh = Replace(.Tinhthanh, \"Tp. \", vbNullString, 1, -1, vbTextCompare)"
+            },
+            {
+              "file": "Module1.bas",
+              "line": 622,
+              "code": ".Tinhthanh = Replace(.Tinhthanh, \".\", vbNullString, 1, -1, vbTextCompare)"
+            },
+            {
+              "file": "Module1.bas",
+              "line": 623,
+              "code": ".Tinhthanh = Trim$(.Tinhthanh)"
+            },
+            {
+              "file": "Module1.bas",
+              "line": 625,
+              "code": "If .Tinhthanh = \"HCM\" Then .Tinhthanh = \"H\" & ChrW(&H1ED3) & \" Chí Minh\""
+            }
+          ]
+        }
+      ],
+      "source_semantic_endpoint": "selected planning row cell 10, with province-name normalization",
+      "normalization_or_formatting": "none beyond the expression recorded in vba_rendered_operations",
+      "conditions": [
+        "COMMON"
+      ],
+      "modern_owner_candidate": "Site.province_name",
+      "owner_classification": "OWNER_BLOCKED",
+      "blocker": "active i=2 path uses the selected planning row cell 10 and applies province cleanup; no exact modern source is proven"
+    },
+    "Diadiemx": {
+      "physical_bookmark": "Diadiemx",
+      "vba_rendered_operations": [
+        {
+          "physical_bookmark": "Diadiemx",
+          "physical_bookmark_expression": "\"Diadiemx\"",
+          "operation_type": "WRITE",
+          "line": 746,
+          "expression": "LCase_FirstChar(Tinhthanhx), 1, 3",
+          "branch_predicates": "COMMON",
+          "reachability_i2": "REACHABLE_I2"
+        }
+      ],
+      "source_variables": [
+        "Tinhthanhx"
+      ],
+      "provenance_chain": [
+        {
+          "variable": "Tinhthanhx",
+          "declarations": [
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 18,
+              "code": "Public S_GPs$, TenCtydd$, DiachiDD$, DaychuyenDD$, TTV$, TTVdd$, Tinhthanh$, Tinhthanhx$, TinhthanhId%, QDKTdd$, QDKT$, NgayQDKT$, NgayQDKTx$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, TTVin$"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 19,
+              "code": "Public Tinhthanh$, Tinhthanhx$, TinhthanhId%, TTV$, TTVdd$, TTVs$, QDKT$, NgayQDKT$, ThoigianKT$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, ThoigianDKKT$, HsDKKT$, DiachiTruso$, DiachiTrusoE$, LanhdaoCS$, NguoiPTCM$"
+            }
+          ],
+          "steps": [
+            {
+              "file": "MainForm.frm",
+              "line": 4158,
+              "code": ".Tinhthanhx = IIf(.TinhthanhId > 0, Trim(Evaluate(\"=IfError(Index(Dia_danh_x,\" & .TinhthanhId & \",2),\"\"\"\")\") & \" \" & .Tinhthanh), .Tinhthanh)"
+            },
+            {
+              "file": "Module1.bas",
+              "line": 628,
+              "code": ".Tinhthanhx = Trim(Evaluate(\"=IfError(IFNUL(Index(Dia_danh_x,\" & .TinhthanhId & \",2),\"\"\"\"),\"\"\"\")\") & \" \" & .Tinhthanh)"
+            },
+            {
+              "file": "Module1.bas",
+              "line": 630,
+              "code": ".Tinhthanhx = .Tinhthanh"
+            },
+            {
+              "file": "Module1.bas",
+              "line": 632,
+              "code": ".Tinhthanhx = Replace(.Tinhthanhx, \"TP \", \"thành ph\" & ChrW(&H1ED1) & \" \")"
+            }
+          ]
+        }
+      ],
+      "source_semantic_endpoint": "Tinhthanh plus Dia_danh/Dia_danh_x named-range lookup",
+      "normalization_or_formatting": "LCase_FirstChar(Tinhthanhx)",
+      "conditions": [
+        "COMMON"
+      ],
+      "modern_owner_candidate": "Site.province_name",
+      "owner_classification": "OWNER_BLOCKED",
+      "blocker": "Dia_danh/Dia_danh_x lookup and fallback semantics have no proven modern owner"
+    },
+    "Diachicoso": {
+      "physical_bookmark": "Diachicoso",
+      "vba_rendered_operations": [
+        {
+          "physical_bookmark": "Diachicoso",
+          "physical_bookmark_expression": "\"Diachicoso\"",
+          "operation_type": "WRITE",
+          "line": 747,
+          "expression": "Del_LastPeriod(Replace(DiachiDD, vbCrLf, \";\"))",
+          "branch_predicates": "COMMON",
+          "reachability_i2": "REACHABLE_I2"
+        },
+        {
+          "physical_bookmark": "Diachicoso",
+          "physical_bookmark_expression": "\"Diachicoso\"",
+          "operation_type": "WRITE",
+          "line": 796,
+          "expression": "DiachiDD, 1, 2",
+          "branch_predicates": "i = 4",
+          "reachability_i2": "UNREACHABLE_I2"
+        },
+        {
+          "physical_bookmark": "Diachicoso",
+          "physical_bookmark_expression": "\"Diachicoso\"",
+          "operation_type": "WRITE",
+          "line": 808,
+          "expression": "Replace(DiachiDD, vbCrLf, \";\")",
+          "branch_predicates": "NOT(i = 4) AND i = 3",
+          "reachability_i2": "UNREACHABLE_I2"
+        }
+      ],
+      "source_variables": [
+        "DiachiDD"
+      ],
+      "provenance_chain": [
+        {
+          "variable": "DiachiDD",
+          "declarations": [
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 18,
+              "code": "Public S_GPs$, TenCtydd$, DiachiDD$, DaychuyenDD$, TTV$, TTVdd$, Tinhthanh$, Tinhthanhx$, TinhthanhId%, QDKTdd$, QDKT$, NgayQDKT$, NgayQDKTx$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, TTVin$"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 18,
+              "code": "Public S_GPs$, s_year$, TenCtyMedd$, TenCtydd$, DiachiDD$, DaychuyenDD$, NgayKT$, NgayKT2$, NgayKT2x$, NgayBCKP$, NgayBCKP1$, NgayBCKP2$, CV_BCKP1$, CV_BCKP2$, Sel_GPs%, DaychuyenX$, DaychuyenLF$, DaychuyenRaw$, DaychuyenCNRaw$, NgayKTE$, NgayKT2E$, NgayHHCC$, s_MaHsDk$, s_NgaynopHsDk$"
+            }
+          ],
+          "steps": [
+            {
+              "file": "MainForm.frm",
+              "line": 4154,
+              "code": ".DiachiDD = Trim(Rg.Cells(1, ColDBDiachiCS).Value)"
+            },
+            {
+              "file": "Module1.bas",
+              "line": 612,
+              "code": ".DiaChi = ActiveSheet.Cells(i, 11).MergeArea.Cells(1):        .DiachiDD = .DiaChi:    .DiachiDDTA = vbNullString"
+            }
+          ]
+        }
+      ],
+      "source_semantic_endpoint": "selected planning row cell 11, then CRLF-to-semicolon and final-period normalization",
+      "normalization_or_formatting": "Replace(DiachiDD, vbCrLf, ';') then Del_LastPeriod",
+      "conditions": [
+        "COMMON",
+        "NOT(i = 4) AND i = 3",
+        "i = 4"
+      ],
+      "modern_owner_candidate": "Site.site_address",
+      "owner_classification": "OWNER_BLOCKED",
+      "blocker": "active i=2 source is planning row cell 11; site-address equivalence is not proven"
+    },
+    "HsDK": {
+      "physical_bookmark": "HsDK",
+      "vba_rendered_operations": [
+        {
+          "physical_bookmark": "HsDK",
+          "physical_bookmark_expression": "\"HsDK\"",
+          "operation_type": "WRITE",
+          "line": 748,
+          "expression": "s_MaHsDk",
+          "branch_predicates": "COMMON",
+          "reachability_i2": "REACHABLE_I2"
+        }
+      ],
+      "source_variables": [
+        "s_MaHsDk"
+      ],
+      "provenance_chain": [
+        {
+          "variable": "s_MaHsDk",
+          "declarations": [
+            {
+              "file": "RecordForm.frm",
+              "line": 18,
+              "code": "Public S_GPs$, s_year$, TenCtyMedd$, TenCtydd$, DiachiDD$, DaychuyenDD$, NgayKT$, NgayKT2$, NgayKT2x$, NgayBCKP$, NgayBCKP1$, NgayBCKP2$, CV_BCKP1$, CV_BCKP2$, Sel_GPs%, DaychuyenX$, DaychuyenLF$, DaychuyenRaw$, DaychuyenCNRaw$, NgayKTE$, NgayKT2E$, NgayHHCC$, s_MaHsDk$, s_NgaynopHsDk$"
+            }
+          ],
+          "steps": [
+            {
+              "file": "RecordForm.frm",
+              "line": 343,
+              "code": "s_MaHsDk = Rg3.Cells(1, ColDB_HSDK_Ktra + 1).Value:    s_NgaynopHsDk = Rg3.Cells(1, ColDB_HSDK_Ktra).Value"
+            }
+          ]
+        }
+      ],
+      "source_semantic_endpoint": "db.ktra row, ColDB_HSDK_Ktra + 1",
+      "normalization_or_formatting": "none beyond the expression recorded in vba_rendered_operations",
+      "conditions": [
+        "COMMON"
+      ],
+      "modern_owner_candidate": "CaseApplication.dossier_code",
+      "owner_classification": "OWNER_PARTIAL",
+      "blocker": "db.ktra column identity is source-proven, but the modern dossier-code equivalence is not fully reconciled"
+    },
+    "NgaynopHsDK": {
+      "physical_bookmark": "NgaynopHsDK",
+      "vba_rendered_operations": [
+        {
+          "physical_bookmark": "NgaynopHsDK",
+          "physical_bookmark_expression": "\"NgaynopHsDK\"",
+          "operation_type": "WRITE",
+          "line": 749,
+          "expression": "Replace(s_NgaynopHsDk, \"-\", \"/\")",
+          "branch_predicates": "COMMON",
+          "reachability_i2": "REACHABLE_I2"
+        }
+      ],
+      "source_variables": [
+        "s_NgaynopHsDk"
+      ],
+      "provenance_chain": [
+        {
+          "variable": "s_NgaynopHsDk",
+          "declarations": [
+            {
+              "file": "RecordForm.frm",
+              "line": 18,
+              "code": "Public S_GPs$, s_year$, TenCtyMedd$, TenCtydd$, DiachiDD$, DaychuyenDD$, NgayKT$, NgayKT2$, NgayKT2x$, NgayBCKP$, NgayBCKP1$, NgayBCKP2$, CV_BCKP1$, CV_BCKP2$, Sel_GPs%, DaychuyenX$, DaychuyenLF$, DaychuyenRaw$, DaychuyenCNRaw$, NgayKTE$, NgayKT2E$, NgayHHCC$, s_MaHsDk$, s_NgaynopHsDk$"
+            }
+          ],
+          "steps": [
+            {
+              "file": "RecordForm.frm",
+              "line": 343,
+              "code": "s_MaHsDk = Rg3.Cells(1, ColDB_HSDK_Ktra + 1).Value:    s_NgaynopHsDk = Rg3.Cells(1, ColDB_HSDK_Ktra).Value"
+            }
+          ]
+        }
+      ],
+      "source_semantic_endpoint": "db.ktra row, ColDB_HSDK_Ktra",
+      "normalization_or_formatting": "Replace(s_NgaynopHsDk, '-', '/')",
+      "conditions": [
+        "COMMON"
+      ],
+      "modern_owner_candidate": "CaseApplication.submitted_on",
+      "owner_classification": "OWNER_PARTIAL",
+      "blocker": "db.ktra source date is proven, but exact submitted/received semantic equivalence is not closed"
+    },
+    "QDKT": {
+      "physical_bookmark": "QDKT",
+      "vba_rendered_operations": [
+        {
+          "physical_bookmark": "QDKT",
+          "physical_bookmark_expression": "\"QDKT\"",
+          "operation_type": "WRITE",
+          "line": 790,
+          "expression": "QDKT:",
+          "branch_predicates": "COMMON",
+          "reachability_i2": "REACHABLE_I2"
+        }
+      ],
+      "source_variables": [
+        "QDKT"
+      ],
+      "provenance_chain": [
+        {
+          "variable": "QDKT",
+          "declarations": [
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 18,
+              "code": "Public S_GPs$, TenCtydd$, DiachiDD$, DaychuyenDD$, TTV$, TTVdd$, Tinhthanh$, Tinhthanhx$, TinhthanhId%, QDKTdd$, QDKT$, NgayQDKT$, NgayQDKTx$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, TTVin$"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 19,
+              "code": "Public Tinhthanh$, Tinhthanhx$, TinhthanhId%, TTV$, TTVdd$, TTVs$, QDKT$, NgayQDKT$, ThoigianKT$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, ThoigianDKKT$, HsDKKT$, DiachiTruso$, DiachiTrusoE$, LanhdaoCS$, NguoiPTCM$"
+            }
+          ],
+          "steps": [
+            {
+              "file": "MainForm.frm",
+              "line": 4176,
+              "code": ".QDKT = Left(ss, k - 1):        .NgayQDKT = Right(ss, Len(ss) - m)"
+            },
+            {
+              "file": "MainForm.frm",
+              "line": 4179,
+              "code": ".QDKT = vbNullString:            .NgayQDKT = vbNullString:            .NgayQDKTx = vbNullString"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 381,
+              "code": "QDKT = Left(ss, k - 1):            NgayQDKT = Right(ss, Len(ss) - m)"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 383,
+              "code": "QDKT = ss:                             NgayQDKT = \"\""
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1453,
+              "code": "If QDKT = vbNullString Then Delete_Bookmark wdDoc, \"CoQDKT\""
+            }
+          ]
+        }
+      ],
+      "source_semantic_endpoint": "db.ktra row, ColDB_NgayKtra + 1, first token before space/line break",
+      "normalization_or_formatting": "none beyond the expression recorded in vba_rendered_operations",
+      "conditions": [
+        "COMMON"
+      ],
+      "modern_owner_candidate": "explicit decision reference atom",
+      "owner_classification": "OWNER_BLOCKED",
+      "blocker": "source derives QDKT by splitting one db.ktra decision cell; no authoritative structured decision reference owner is proven"
+    },
+    "NgayQDKT": {
+      "physical_bookmark": "NgayQDKT",
+      "vba_rendered_operations": [
+        {
+          "physical_bookmark": "NgayQDKT",
+          "physical_bookmark_expression": "\"NgayQDKT\"",
+          "operation_type": "WRITE",
+          "line": 790,
+          "expression": "NgayQDKT",
+          "branch_predicates": "COMMON",
+          "reachability_i2": "REACHABLE_I2"
+        }
+      ],
+      "source_variables": [
+        "NgayQDKT"
+      ],
+      "provenance_chain": [
+        {
+          "variable": "NgayQDKT",
+          "declarations": [
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 18,
+              "code": "Public S_GPs$, TenCtydd$, DiachiDD$, DaychuyenDD$, TTV$, TTVdd$, Tinhthanh$, Tinhthanhx$, TinhthanhId%, QDKTdd$, QDKT$, NgayQDKT$, NgayQDKTx$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, TTVin$"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 19,
+              "code": "Public Tinhthanh$, Tinhthanhx$, TinhthanhId%, TTV$, TTVdd$, TTVs$, QDKT$, NgayQDKT$, ThoigianKT$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, ThoigianDKKT$, HsDKKT$, DiachiTruso$, DiachiTrusoE$, LanhdaoCS$, NguoiPTCM$"
+            }
+          ],
+          "steps": [
+            {
+              "file": "MainForm.frm",
+              "line": 4176,
+              "code": ".QDKT = Left(ss, k - 1):        .NgayQDKT = Right(ss, Len(ss) - m)"
+            },
+            {
+              "file": "MainForm.frm",
+              "line": 4179,
+              "code": ".QDKT = vbNullString:            .NgayQDKT = vbNullString:            .NgayQDKTx = vbNullString"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 381,
+              "code": "QDKT = Left(ss, k - 1):            NgayQDKT = Right(ss, Len(ss) - m)"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 383,
+              "code": "QDKT = ss:                             NgayQDKT = \"\""
+            }
+          ]
+        }
+      ],
+      "source_semantic_endpoint": "db.ktra row, ColDB_NgayKtra + 1, trailing token after space/line break",
+      "normalization_or_formatting": "none beyond the expression recorded in vba_rendered_operations",
+      "conditions": [
+        "COMMON"
+      ],
+      "modern_owner_candidate": "explicit decision date atom",
+      "owner_classification": "OWNER_BLOCKED",
+      "blocker": "source derives date from the same combined decision cell; no structured decision-date owner exists"
+    },
+    "VKNx": {
+      "physical_bookmark": "VKNx",
+      "vba_rendered_operations": [
+        {
+          "physical_bookmark": "VKNx",
+          "physical_bookmark_expression": "\"VKNx\"",
+          "operation_type": "WRITE",
+          "line": 751,
+          "expression": "s1",
+          "branch_predicates": "(Sel_GPs = 1) Or (Sel_GPs = 2)",
+          "reachability_i2": "CONDITIONAL_I2"
+        }
+      ],
+      "source_variables": [
+        "Vkn1",
+        "DaychuyenDD",
+        "TinhthanhId"
+      ],
+      "provenance_chain": [
+        {
+          "variable": "Vkn1",
+          "declarations": [
+            {
+              "file": "RecordForm.frm",
+              "line": 1854,
+              "code": "Private Sub Get_VKN(ByRef Vkn1$, ByRef Vkn2$)"
+            }
+          ],
+          "steps": [
+            {
+              "file": "RecordForm.frm",
+              "line": 1860,
+              "code": "Vkn1 = \"Vi\" & ChrW(&H1EC7) & \"n ki\" & ChrW(&H1EC3) & \"m \" & ChrW(&H111) & ChrW(&H1ECB) & \"nh Qu\" & ChrW(&H1ED1) & \"c gia V\" & ChrW(&H1EAF) & \"c xin & Sinh ph\" & ChrW(&H1EA9) & \"m y t\" & ChrW(&H1EBF)"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1864,
+              "code": "Vkn1 = \"Vi\" & ChrW(&H1EC7) & \"n Ki\" & ChrW(&H1EC3) & \"m nghi\" & ChrW(&H1EC7) & \"m thu\" & ChrW(&H1ED1) & \"c Trung \" & ChrW(&H1B0) & ChrW(&H1A1) & \"ng\""
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1867,
+              "code": "Vkn1 = \"Vi\" & ChrW(&H1EC7) & \"n Ki\" & ChrW(&H1EC3) & \"m nghi\" & ChrW(&H1EC7) & \"m thu\" & ChrW(&H1ED1) & \"c Tp. H\" & ChrW(&H1ED3) & \" Chí Minh\""
+            }
+          ]
+        },
+        {
+          "variable": "DaychuyenDD",
+          "declarations": [
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 18,
+              "code": "Public S_GPs$, TenCtydd$, DiachiDD$, DaychuyenDD$, TTV$, TTVdd$, Tinhthanh$, Tinhthanhx$, TinhthanhId%, QDKTdd$, QDKT$, NgayQDKT$, NgayQDKTx$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, TTVin$"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 18,
+              "code": "Public S_GPs$, s_year$, TenCtyMedd$, TenCtydd$, DiachiDD$, DaychuyenDD$, NgayKT$, NgayKT2$, NgayKT2x$, NgayBCKP$, NgayBCKP1$, NgayBCKP2$, CV_BCKP1$, CV_BCKP2$, Sel_GPs%, DaychuyenX$, DaychuyenLF$, DaychuyenRaw$, DaychuyenCNRaw$, NgayKTE$, NgayKT2E$, NgayHHCC$, s_MaHsDk$, s_NgaynopHsDk$"
+            }
+          ],
+          "steps": [
+            {
+              "file": "MainForm.frm",
+              "line": 4161,
+              "code": ".Daychuyen = Me.lbDsCoso.List(Me.lbDsCoso.ListIndex, 5):     .DaychuyenDD = Me.edDaychuyen.Text"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 365,
+              "code": "DaychuyenDD = DC_cu"
+            }
+          ]
+        },
+        {
+          "variable": "TinhthanhId",
+          "declarations": [
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 18,
+              "code": "Public S_GPs$, TenCtydd$, DiachiDD$, DaychuyenDD$, TTV$, TTVdd$, Tinhthanh$, Tinhthanhx$, TinhthanhId%, QDKTdd$, QDKT$, NgayQDKT$, NgayQDKTx$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, TTVin$"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 19,
+              "code": "Public Tinhthanh$, Tinhthanhx$, TinhthanhId%, TTV$, TTVdd$, TTVs$, QDKT$, NgayQDKT$, ThoigianKT$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, ThoigianDKKT$, HsDKKT$, DiachiTruso$, DiachiTrusoE$, LanhdaoCS$, NguoiPTCM$"
+            },
+            {
+              "file": "TTVForm.frm",
+              "line": 17,
+              "code": "Public TTVdd$, TTVn$, TTVinitial$, TinhthanhId%, TTV_VKNn$, TTV_VKNdd$, TTV_SYTn$, TTV_SYTdd$, ViewMode As Boolean, CompactForm As Boolean, SetTKMode As Boolean, iMrMs&, ActiveOnly As Boolean"
+            }
+          ],
+          "steps": [
+            {
+              "file": "MainForm.frm",
+              "line": 1632,
+              "code": "TTVForm.TinhthanhId = Evaluate(\"=IfError(Match(\"\"\" & Me.lbDsCoso.List(Me.lbDsCoso.ListIndex, 6) & \"\"\",Dia_danh,0),0)\")"
+            },
+            {
+              "file": "MainForm.frm",
+              "line": 4157,
+              "code": ".TinhthanhId = Evaluate(\"=IfError(Match(\"\"\" & .Tinhthanh & \"\"\",Dia_danh,0),0)\")"
+            },
+            {
+              "file": "Module1.bas",
+              "line": 626,
+              "code": ".TinhthanhId = Evaluate(\"=IfError(Match(\"\"\" & .Tinhthanh & \"\"\",Dia_danh,0),0)\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 280,
+              "code": "TinhthanhId = Evaluate(\"=IfError(Match(\"\"\" & Tinhthanh & \"\"\",Dia_danh,0),0)\")"
+            }
+          ]
+        }
+      ],
+      "source_semantic_endpoint": "Get_VKN: DaychuyenDD vaccine detection, else TinhthanhId <= 32",
+      "normalization_or_formatting": "none beyond the expression recorded in vba_rendered_operations",
+      "conditions": [
+        "(Sel_GPs = 1) Or (Sel_GPs = 2)"
+      ],
+      "modern_owner_candidate": "dedicated VKN authority atom",
+      "owner_classification": "OWNER_BLOCKED",
+      "blocker": "Get_VKN generates organization prose from vaccine text/province threshold; it is not an inspector/team value"
+    },
+    "VKN": {
+      "physical_bookmark": "VKN",
+      "vba_rendered_operations": [
+        {
+          "physical_bookmark": "VKN",
+          "physical_bookmark_expression": "\"VKN\"",
+          "operation_type": "WRITE",
+          "line": 752,
+          "expression": "s2, 1, 2",
+          "branch_predicates": "(Sel_GPs = 1) Or (Sel_GPs = 2) AND i = 2",
+          "reachability_i2": "CONDITIONAL_I2"
+        }
+      ],
+      "source_variables": [
+        "Vkn2",
+        "DaychuyenDD",
+        "TinhthanhId"
+      ],
+      "provenance_chain": [
+        {
+          "variable": "Vkn2",
+          "declarations": [
+            {
+              "file": "RecordForm.frm",
+              "line": 1854,
+              "code": "Private Sub Get_VKN(ByRef Vkn1$, ByRef Vkn2$)"
+            }
+          ],
+          "steps": [
+            {
+              "file": "RecordForm.frm",
+              "line": 1861,
+              "code": "Vkn2 = \"VK\" & ChrW(&H110) & \"QG V\" & ChrW(&H1EAF) & \"c xin & Sinh ph\" & ChrW(&H1EA9) & \"m y t\" & ChrW(&H1EBF)"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1865,
+              "code": "Vkn2 = \"VKN thu\" & ChrW(&H1ED1) & \"c Trung \" & ChrW(&H1B0) & ChrW(&H1A1) & \"ng\""
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1868,
+              "code": "Vkn2 = \"VKN thu\" & ChrW(&H1ED1) & \"c Tp. H\" & ChrW(&H1ED3) & \" Chí Minh\""
+            }
+          ]
+        },
+        {
+          "variable": "DaychuyenDD",
+          "declarations": [
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 18,
+              "code": "Public S_GPs$, TenCtydd$, DiachiDD$, DaychuyenDD$, TTV$, TTVdd$, Tinhthanh$, Tinhthanhx$, TinhthanhId%, QDKTdd$, QDKT$, NgayQDKT$, NgayQDKTx$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, TTVin$"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 18,
+              "code": "Public S_GPs$, s_year$, TenCtyMedd$, TenCtydd$, DiachiDD$, DaychuyenDD$, NgayKT$, NgayKT2$, NgayKT2x$, NgayBCKP$, NgayBCKP1$, NgayBCKP2$, CV_BCKP1$, CV_BCKP2$, Sel_GPs%, DaychuyenX$, DaychuyenLF$, DaychuyenRaw$, DaychuyenCNRaw$, NgayKTE$, NgayKT2E$, NgayHHCC$, s_MaHsDk$, s_NgaynopHsDk$"
+            }
+          ],
+          "steps": [
+            {
+              "file": "MainForm.frm",
+              "line": 4161,
+              "code": ".Daychuyen = Me.lbDsCoso.List(Me.lbDsCoso.ListIndex, 5):     .DaychuyenDD = Me.edDaychuyen.Text"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 365,
+              "code": "DaychuyenDD = DC_cu"
+            }
+          ]
+        },
+        {
+          "variable": "TinhthanhId",
+          "declarations": [
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 18,
+              "code": "Public S_GPs$, TenCtydd$, DiachiDD$, DaychuyenDD$, TTV$, TTVdd$, Tinhthanh$, Tinhthanhx$, TinhthanhId%, QDKTdd$, QDKT$, NgayQDKT$, NgayQDKTx$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, TTVin$"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 19,
+              "code": "Public Tinhthanh$, Tinhthanhx$, TinhthanhId%, TTV$, TTVdd$, TTVs$, QDKT$, NgayQDKT$, ThoigianKT$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, ThoigianDKKT$, HsDKKT$, DiachiTruso$, DiachiTrusoE$, LanhdaoCS$, NguoiPTCM$"
+            },
+            {
+              "file": "TTVForm.frm",
+              "line": 17,
+              "code": "Public TTVdd$, TTVn$, TTVinitial$, TinhthanhId%, TTV_VKNn$, TTV_VKNdd$, TTV_SYTn$, TTV_SYTdd$, ViewMode As Boolean, CompactForm As Boolean, SetTKMode As Boolean, iMrMs&, ActiveOnly As Boolean"
+            }
+          ],
+          "steps": [
+            {
+              "file": "MainForm.frm",
+              "line": 1632,
+              "code": "TTVForm.TinhthanhId = Evaluate(\"=IfError(Match(\"\"\" & Me.lbDsCoso.List(Me.lbDsCoso.ListIndex, 6) & \"\"\",Dia_danh,0),0)\")"
+            },
+            {
+              "file": "MainForm.frm",
+              "line": 4157,
+              "code": ".TinhthanhId = Evaluate(\"=IfError(Match(\"\"\" & .Tinhthanh & \"\"\",Dia_danh,0),0)\")"
+            },
+            {
+              "file": "Module1.bas",
+              "line": 626,
+              "code": ".TinhthanhId = Evaluate(\"=IfError(Match(\"\"\" & .Tinhthanh & \"\"\",Dia_danh,0),0)\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 280,
+              "code": "TinhthanhId = Evaluate(\"=IfError(Match(\"\"\" & Tinhthanh & \"\"\",Dia_danh,0),0)\")"
+            }
+          ]
+        }
+      ],
+      "source_semantic_endpoint": "Get_VKN: vaccine/province branch, used for Sel_GPs 1 or 2 and i=2",
+      "normalization_or_formatting": "none beyond the expression recorded in vba_rendered_operations",
+      "conditions": [
+        "(Sel_GPs = 1) Or (Sel_GPs = 2) AND i = 2"
+      ],
+      "modern_owner_candidate": "dedicated VKN authority atom",
+      "owner_classification": "OWNER_BLOCKED",
+      "blocker": "Get_VKN generates abbreviated organization prose; no structured authority owner is proven"
+    },
+    "TT3x": {
+      "physical_bookmark": "TT3x",
+      "vba_rendered_operations": [
+        {
+          "physical_bookmark": "TT3x",
+          "physical_bookmark_expression": "\"TT3x\"",
+          "operation_type": "WRITE",
+          "line": 765,
+          "expression": "TVss",
+          "branch_predicates": "UBound(Ds_TTV) > 1",
+          "reachability_i2": "CONDITIONAL_I2"
+        }
+      ],
+      "source_variables": [
+        "Ds_TTV",
+        "TVss",
+        "TTVdd",
+        "TT_ext"
+      ],
+      "provenance_chain": [
+        {
+          "variable": "Ds_TTV",
+          "declarations": [
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 62,
+              "code": "Dim WdObj As Object, tpl$, fname$, Ds_TTV$(), Ds_TTVn$(), WdObjkeep As Boolean, TTVx As Variant, ttvidx&"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 740,
+              "code": "Dim Ds_TTV$(), s1$, s2$, k&, TVext$, TVss$"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 821,
+              "code": "Dim Ds_TTV$(), wdDoc2 As Object, bmx$, j&"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 894,
+              "code": "Dim wdDoc2 As Object, Ds_TTV$(), DC_All$, ghan$, s$"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1389,
+              "code": "Dim Ds_TTV$()"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1476,
+              "code": "Dim Ds_TTV$(), k&, j&, TVext$"
+            }
+          ],
+          "steps": [
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 102,
+              "code": "Ds_TTV = Split(TTVdd, \"|\"):     Ds_TTVn = Split(TTV, \"|\")"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 138,
+              "code": "Ds_TTV = Split(TTVdd, \"|\")"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 171,
+              "code": "Ds_TTV = Split(TTV_VKNdd, \"|\")"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 185,
+              "code": "Ds_TTV = Split(TTV_SYTdd, \"|\")"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 229,
+              "code": "Ds_TTV = Split(TTVdd, \"|\")"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 236,
+              "code": "Ds_TTV = Split(TTV, \"|\")"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 242,
+              "code": "Ds_TTV = Split(TTVdd, \"|\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 754,
+              "code": "Ds_TTV = Split(TTVdd, \"|\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 776,
+              "code": "Ds_TTV = Split(TTV_VKNdd, \"|\"):                TVss = Trim(Ds_TTV(0))"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 783,
+              "code": "Ds_TTV = Split(TTV_SYTdd, \"|\"):                TVss = Trim(Ds_TTV(0))"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 800,
+              "code": "Ds_TTV = Split(TTVForm.TTVn, \"|\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 877,
+              "code": "Ds_TTV = Split(TTV, \",\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 898,
+              "code": "Ds_TTV = Split(TTV, \",\"):        Replace_Bookmark wdDoc, \"TT2\", Trim(Ds_TTV(1))"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1394,
+              "code": "Ds_TTV = Split(TTV, \",\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1488,
+              "code": "Ds_TTV = Split(TTVdd, \"|\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1526,
+              "code": "Ds_TTV = Split(TTV_VKNdd, \"|\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1541,
+              "code": "Ds_TTV = Split(TTV_SYTdd, \"|\")"
+            }
+          ]
+        },
+        {
+          "variable": "TVss",
+          "declarations": [
+            {
+              "file": "RecordForm.frm",
+              "line": 740,
+              "code": "Dim Ds_TTV$(), s1$, s2$, k&, TVext$, TVss$"
+            }
+          ],
+          "steps": [
+            {
+              "file": "RecordForm.frm",
+              "line": 761,
+              "code": "TVss = Trim(Ds_TTV(2))"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 763,
+              "code": "For k = 3 To UBound(Ds_TTV):     TVss = TVss & TVext & vbCrLf & Trim(Ds_TTV(k)):      Next k"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 776,
+              "code": "Ds_TTV = Split(TTV_VKNdd, \"|\"):                TVss = Trim(Ds_TTV(0))"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 778,
+              "code": "For k = 1 To UBound(Ds_TTV):  TVss = TVss & TVext & vbCrLf & Trim(Ds_TTV(k)):      Next k"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 783,
+              "code": "Ds_TTV = Split(TTV_SYTdd, \"|\"):                TVss = Trim(Ds_TTV(0))"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 785,
+              "code": "For k = 1 To UBound(Ds_TTV):   TVss = TVss & TVext & vbCrLf & Trim(Ds_TTV(k)):      Next k"
+            }
+          ]
+        },
+        {
+          "variable": "TTVdd",
+          "declarations": [
+            {
+              "file": "ChuyenKhoan.frm",
+              "line": 17,
+              "code": "Public TTVdd$, TTVs$, TTVn$"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 18,
+              "code": "Public S_GPs$, TenCtydd$, DiachiDD$, DaychuyenDD$, TTV$, TTVdd$, Tinhthanh$, Tinhthanhx$, TinhthanhId%, QDKTdd$, QDKT$, NgayQDKT$, NgayQDKTx$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, TTVin$"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 19,
+              "code": "Public Tinhthanh$, Tinhthanhx$, TinhthanhId%, TTV$, TTVdd$, TTVs$, QDKT$, NgayQDKT$, ThoigianKT$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, ThoigianDKKT$, HsDKKT$, DiachiTruso$, DiachiTrusoE$, LanhdaoCS$, NguoiPTCM$"
+            },
+            {
+              "file": "TTVForm.frm",
+              "line": 17,
+              "code": "Public TTVdd$, TTVn$, TTVinitial$, TinhthanhId%, TTV_VKNn$, TTV_VKNdd$, TTV_SYTn$, TTV_SYTdd$, ViewMode As Boolean, CompactForm As Boolean, SetTKMode As Boolean, iMrMs&, ActiveOnly As Boolean"
+            }
+          ],
+          "steps": [
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 41,
+              "code": "TTVdd = vbNullString"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 43,
+              "code": "If TTVForm.Get_TTV(rs, TTV, \"|\") Then TTVdd = TTVForm.TTVdd: TTV = TTVForm.TTVn"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 44,
+              "code": "If TTVdd = vbNullString Then Exit Sub"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 46,
+              "code": "TTVdd = vbNullString:   TTV_VKNdd = vbNullString:   TTV_SYTdd = vbNullString"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 47,
+              "code": "If Len(TTV) > 1 Then If TTVForm.Get_TTV2(TTV, \"|\", False, True) Then TTVdd = TTVForm.TTVdd:     TTV_VKNdd = TTVForm.TTV_VKNdd:      TTV_SYTdd = TTVForm.TTV_SYTdd"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 53,
+              "code": "TTVdd = vbNullString:   TTV_VKNdd = vbNullString:   TTV_SYTdd = vbNullString"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 54,
+              "code": "If Len(TTV) > 1 Then If TTVForm.Get_TTV2(TTV, \"|\", False) Then TTVdd = TTVForm.TTVn:   TTV_VKNdd = TTVForm.TTV_VKNn:      TTV_SYTdd = TTVForm.TTV_SYTn"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 56,
+              "code": "TTVdd = vbNullString:   TTV_VKNdd = vbNullString:   TTV_SYTdd = vbNullString"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 57,
+              "code": "If Len(TTV) > 1 Then If TTVForm.Get_TTV_UQ(TTV, \"|\", True) Then TTVdd = TTVForm.TTVdd:     TTV = TTVForm.TTVn:    TTV_VKNdd = TTVForm.TTV_VKNdd:    TTV_VKN = TTVForm.TTV_VKNn"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 227,
+              "code": "If TTV_VKNdd <> vbNullString Then TTVdd = TTVdd & \"|\" & TTV_VKNdd"
+            },
+            {
+              "file": "Module1.bas",
+              "line": 645,
+              "code": "If TTVForm.Get_TTV2(.TTV, \"|\", True, False, 1) Then .TTVdd = TTVForm.TTVdd"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1986,
+              "code": "TTVdd = vbNullString:   TTV_VKNdd = vbNullString:   TTV_SYTdd = vbNullString"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1997,
+              "code": "If TTVForm.Get_TTV2(TTV, \"|\", i = 2) Then TTVdd = TTVForm.TTVdd:    TTV_VKNdd = TTVForm.TTV_VKNdd:  TTV_SYTdd = TTVForm.TTV_SYTdd Else Exit Sub"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 2000,
+              "code": "If TTVForm.Get_TTV(TTV, \"|\", i = 2) Then TTVdd = TTVForm.TTVdd:    TTV_VKNdd = TTVForm.TTV_VKNdd:  TTV_SYTdd = TTVForm.TTV_SYTdd Else Exit Sub"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 2003,
+              "code": "TTVdd = vbNullString:   TTV_VKNdd = vbNullString:   TTV_SYTdd = vbNullString"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 2004,
+              "code": "If TTVForm.Get_TTV2(TTV, \"|\", False, True) Then TTVdd = TTVForm.TTVdd:     TTV_VKNdd = TTVForm.TTV_VKNdd:      TTV_SYTdd = TTVForm.TTV_SYTdd"
+            },
+            {
+              "file": "TTVForm.frm",
+              "line": 351,
+              "code": "TTVdd = vbNullString:        TTVn = vbNullString:       TTVinitial = vbNullString"
+            },
+            {
+              "file": "TTVForm.frm",
+              "line": 413,
+              "code": "TTVdd = vbNullString:        TTVn = vbNullString:       TTVinitial = vbNullString"
+            },
+            {
+              "file": "TTVForm.frm",
+              "line": 504,
+              "code": "TTVdd = vbNullString:    TTVn = vbNullString:       TTVinitial = vbNullString"
+            },
+            {
+              "file": "TTVForm.frm",
+              "line": 508,
+              "code": "TTVn = \"-\": TTVdd = \"-\":    TTVinitial = \"-\":   rs = \"-\""
+            }
+          ]
+        },
+        {
+          "variable": "TT_ext",
+          "declarations": [
+            {
+              "kind": "physical_bookmark",
+              "symbol": "TT_ext"
+            }
+          ],
+          "steps": [
+            {
+              "file": "RecordForm.frm",
+              "line": 759,
+              "code": "TVext = Get_Bookmark(wdDoc, \"TT_ext\")"
+            }
+          ]
+        }
+      ],
+      "source_semantic_endpoint": "Split(TTVdd, '|'), third entry plus TT_ext and CRLF for later entries",
+      "normalization_or_formatting": "Trim entries; TT_ext and vbCrLf between later members",
+      "conditions": [
+        "UBound(Ds_TTV) > 1"
+      ],
+      "modern_owner_candidate": "InspectionTeam ordered members",
+      "owner_classification": "OWNER_PARTIAL",
+      "blocker": "structured members exist, but legacy third-member/separator and title augmentation equivalence is not proven"
+    },
+    "TT3Del": {
+      "physical_bookmark": "TT3Del",
+      "vba_rendered_operations": [
+        {
+          "physical_bookmark": "TT3Del",
+          "physical_bookmark_expression": "\"TT3Del\"",
+          "operation_type": "DELETE",
+          "line": 766,
+          "expression": "",
+          "branch_predicates": "NOT(UBound(Ds_TTV) > 1)",
+          "reachability_i2": "CONDITIONAL_I2"
+        }
+      ],
+      "source_variables": [
+        "Ds_TTV",
+        "TTVdd"
+      ],
+      "provenance_chain": [
+        {
+          "variable": "Ds_TTV",
+          "declarations": [
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 62,
+              "code": "Dim WdObj As Object, tpl$, fname$, Ds_TTV$(), Ds_TTVn$(), WdObjkeep As Boolean, TTVx As Variant, ttvidx&"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 740,
+              "code": "Dim Ds_TTV$(), s1$, s2$, k&, TVext$, TVss$"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 821,
+              "code": "Dim Ds_TTV$(), wdDoc2 As Object, bmx$, j&"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 894,
+              "code": "Dim wdDoc2 As Object, Ds_TTV$(), DC_All$, ghan$, s$"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1389,
+              "code": "Dim Ds_TTV$()"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1476,
+              "code": "Dim Ds_TTV$(), k&, j&, TVext$"
+            }
+          ],
+          "steps": [
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 102,
+              "code": "Ds_TTV = Split(TTVdd, \"|\"):     Ds_TTVn = Split(TTV, \"|\")"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 138,
+              "code": "Ds_TTV = Split(TTVdd, \"|\")"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 171,
+              "code": "Ds_TTV = Split(TTV_VKNdd, \"|\")"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 185,
+              "code": "Ds_TTV = Split(TTV_SYTdd, \"|\")"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 229,
+              "code": "Ds_TTV = Split(TTVdd, \"|\")"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 236,
+              "code": "Ds_TTV = Split(TTV, \"|\")"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 242,
+              "code": "Ds_TTV = Split(TTVdd, \"|\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 754,
+              "code": "Ds_TTV = Split(TTVdd, \"|\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 776,
+              "code": "Ds_TTV = Split(TTV_VKNdd, \"|\"):                TVss = Trim(Ds_TTV(0))"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 783,
+              "code": "Ds_TTV = Split(TTV_SYTdd, \"|\"):                TVss = Trim(Ds_TTV(0))"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 800,
+              "code": "Ds_TTV = Split(TTVForm.TTVn, \"|\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 877,
+              "code": "Ds_TTV = Split(TTV, \",\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 898,
+              "code": "Ds_TTV = Split(TTV, \",\"):        Replace_Bookmark wdDoc, \"TT2\", Trim(Ds_TTV(1))"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1394,
+              "code": "Ds_TTV = Split(TTV, \",\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1488,
+              "code": "Ds_TTV = Split(TTVdd, \"|\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1526,
+              "code": "Ds_TTV = Split(TTV_VKNdd, \"|\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1541,
+              "code": "Ds_TTV = Split(TTV_SYTdd, \"|\")"
+            }
+          ]
+        },
+        {
+          "variable": "TTVdd",
+          "declarations": [
+            {
+              "file": "ChuyenKhoan.frm",
+              "line": 17,
+              "code": "Public TTVdd$, TTVs$, TTVn$"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 18,
+              "code": "Public S_GPs$, TenCtydd$, DiachiDD$, DaychuyenDD$, TTV$, TTVdd$, Tinhthanh$, Tinhthanhx$, TinhthanhId%, QDKTdd$, QDKT$, NgayQDKT$, NgayQDKTx$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, TTVin$"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 19,
+              "code": "Public Tinhthanh$, Tinhthanhx$, TinhthanhId%, TTV$, TTVdd$, TTVs$, QDKT$, NgayQDKT$, ThoigianKT$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, ThoigianDKKT$, HsDKKT$, DiachiTruso$, DiachiTrusoE$, LanhdaoCS$, NguoiPTCM$"
+            },
+            {
+              "file": "TTVForm.frm",
+              "line": 17,
+              "code": "Public TTVdd$, TTVn$, TTVinitial$, TinhthanhId%, TTV_VKNn$, TTV_VKNdd$, TTV_SYTn$, TTV_SYTdd$, ViewMode As Boolean, CompactForm As Boolean, SetTKMode As Boolean, iMrMs&, ActiveOnly As Boolean"
+            }
+          ],
+          "steps": [
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 41,
+              "code": "TTVdd = vbNullString"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 43,
+              "code": "If TTVForm.Get_TTV(rs, TTV, \"|\") Then TTVdd = TTVForm.TTVdd: TTV = TTVForm.TTVn"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 44,
+              "code": "If TTVdd = vbNullString Then Exit Sub"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 46,
+              "code": "TTVdd = vbNullString:   TTV_VKNdd = vbNullString:   TTV_SYTdd = vbNullString"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 47,
+              "code": "If Len(TTV) > 1 Then If TTVForm.Get_TTV2(TTV, \"|\", False, True) Then TTVdd = TTVForm.TTVdd:     TTV_VKNdd = TTVForm.TTV_VKNdd:      TTV_SYTdd = TTVForm.TTV_SYTdd"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 53,
+              "code": "TTVdd = vbNullString:   TTV_VKNdd = vbNullString:   TTV_SYTdd = vbNullString"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 54,
+              "code": "If Len(TTV) > 1 Then If TTVForm.Get_TTV2(TTV, \"|\", False) Then TTVdd = TTVForm.TTVn:   TTV_VKNdd = TTVForm.TTV_VKNn:      TTV_SYTdd = TTVForm.TTV_SYTn"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 56,
+              "code": "TTVdd = vbNullString:   TTV_VKNdd = vbNullString:   TTV_SYTdd = vbNullString"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 57,
+              "code": "If Len(TTV) > 1 Then If TTVForm.Get_TTV_UQ(TTV, \"|\", True) Then TTVdd = TTVForm.TTVdd:     TTV = TTVForm.TTVn:    TTV_VKNdd = TTVForm.TTV_VKNdd:    TTV_VKN = TTVForm.TTV_VKNn"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 227,
+              "code": "If TTV_VKNdd <> vbNullString Then TTVdd = TTVdd & \"|\" & TTV_VKNdd"
+            },
+            {
+              "file": "Module1.bas",
+              "line": 645,
+              "code": "If TTVForm.Get_TTV2(.TTV, \"|\", True, False, 1) Then .TTVdd = TTVForm.TTVdd"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1986,
+              "code": "TTVdd = vbNullString:   TTV_VKNdd = vbNullString:   TTV_SYTdd = vbNullString"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1997,
+              "code": "If TTVForm.Get_TTV2(TTV, \"|\", i = 2) Then TTVdd = TTVForm.TTVdd:    TTV_VKNdd = TTVForm.TTV_VKNdd:  TTV_SYTdd = TTVForm.TTV_SYTdd Else Exit Sub"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 2000,
+              "code": "If TTVForm.Get_TTV(TTV, \"|\", i = 2) Then TTVdd = TTVForm.TTVdd:    TTV_VKNdd = TTVForm.TTV_VKNdd:  TTV_SYTdd = TTVForm.TTV_SYTdd Else Exit Sub"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 2003,
+              "code": "TTVdd = vbNullString:   TTV_VKNdd = vbNullString:   TTV_SYTdd = vbNullString"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 2004,
+              "code": "If TTVForm.Get_TTV2(TTV, \"|\", False, True) Then TTVdd = TTVForm.TTVdd:     TTV_VKNdd = TTVForm.TTV_VKNdd:      TTV_SYTdd = TTVForm.TTV_SYTdd"
+            },
+            {
+              "file": "TTVForm.frm",
+              "line": 351,
+              "code": "TTVdd = vbNullString:        TTVn = vbNullString:       TTVinitial = vbNullString"
+            },
+            {
+              "file": "TTVForm.frm",
+              "line": 413,
+              "code": "TTVdd = vbNullString:        TTVn = vbNullString:       TTVinitial = vbNullString"
+            },
+            {
+              "file": "TTVForm.frm",
+              "line": 504,
+              "code": "TTVdd = vbNullString:    TTVn = vbNullString:       TTVinitial = vbNullString"
+            },
+            {
+              "file": "TTVForm.frm",
+              "line": 508,
+              "code": "TTVn = \"-\": TTVdd = \"-\":    TTVinitial = \"-\":   rs = \"-\""
+            }
+          ]
+        }
+      ],
+      "source_semantic_endpoint": "Delete_Bookmark when UBound(Split(TTVdd, '|')) <= 1",
+      "normalization_or_formatting": "none beyond the expression recorded in vba_rendered_operations",
+      "conditions": [
+        "NOT(UBound(Ds_TTV) > 1)"
+      ],
+      "modern_owner_candidate": "InspectionTeam ordered members",
+      "owner_classification": "OWNER_PARTIAL",
+      "blocker": "member-count predicate is proven, but complete modern deletion instruction contract is not"
+    },
+    "TTx": {
+      "physical_bookmark": "TTx",
+      "vba_rendered_operations": [
+        {
+          "physical_bookmark": "TTx",
+          "physical_bookmark_expression": "\"TT\" & (k + 1) & \"x\"",
+          "operation_type": "WRITE",
+          "line": 757,
+          "expression": "Trim(Ds_TTV(k)):        k = k + 1",
+          "branch_predicates": "COMMON",
+          "reachability_i2": "REACHABLE_I2"
+        }
+      ],
+      "source_variables": [
+        "Ds_TTV",
+        "TTVdd",
+        "TT_ext"
+      ],
+      "provenance_chain": [
+        {
+          "variable": "Ds_TTV",
+          "declarations": [
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 62,
+              "code": "Dim WdObj As Object, tpl$, fname$, Ds_TTV$(), Ds_TTVn$(), WdObjkeep As Boolean, TTVx As Variant, ttvidx&"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 740,
+              "code": "Dim Ds_TTV$(), s1$, s2$, k&, TVext$, TVss$"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 821,
+              "code": "Dim Ds_TTV$(), wdDoc2 As Object, bmx$, j&"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 894,
+              "code": "Dim wdDoc2 As Object, Ds_TTV$(), DC_All$, ghan$, s$"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1389,
+              "code": "Dim Ds_TTV$()"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1476,
+              "code": "Dim Ds_TTV$(), k&, j&, TVext$"
+            }
+          ],
+          "steps": [
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 102,
+              "code": "Ds_TTV = Split(TTVdd, \"|\"):     Ds_TTVn = Split(TTV, \"|\")"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 138,
+              "code": "Ds_TTV = Split(TTVdd, \"|\")"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 171,
+              "code": "Ds_TTV = Split(TTV_VKNdd, \"|\")"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 185,
+              "code": "Ds_TTV = Split(TTV_SYTdd, \"|\")"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 229,
+              "code": "Ds_TTV = Split(TTVdd, \"|\")"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 236,
+              "code": "Ds_TTV = Split(TTV, \"|\")"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 242,
+              "code": "Ds_TTV = Split(TTVdd, \"|\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 754,
+              "code": "Ds_TTV = Split(TTVdd, \"|\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 776,
+              "code": "Ds_TTV = Split(TTV_VKNdd, \"|\"):                TVss = Trim(Ds_TTV(0))"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 783,
+              "code": "Ds_TTV = Split(TTV_SYTdd, \"|\"):                TVss = Trim(Ds_TTV(0))"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 800,
+              "code": "Ds_TTV = Split(TTVForm.TTVn, \"|\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 877,
+              "code": "Ds_TTV = Split(TTV, \",\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 898,
+              "code": "Ds_TTV = Split(TTV, \",\"):        Replace_Bookmark wdDoc, \"TT2\", Trim(Ds_TTV(1))"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1394,
+              "code": "Ds_TTV = Split(TTV, \",\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1488,
+              "code": "Ds_TTV = Split(TTVdd, \"|\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1526,
+              "code": "Ds_TTV = Split(TTV_VKNdd, \"|\")"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1541,
+              "code": "Ds_TTV = Split(TTV_SYTdd, \"|\")"
+            }
+          ]
+        },
+        {
+          "variable": "TTVdd",
+          "declarations": [
+            {
+              "file": "ChuyenKhoan.frm",
+              "line": 17,
+              "code": "Public TTVdd$, TTVs$, TTVn$"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 18,
+              "code": "Public S_GPs$, TenCtydd$, DiachiDD$, DaychuyenDD$, TTV$, TTVdd$, Tinhthanh$, Tinhthanhx$, TinhthanhId%, QDKTdd$, QDKT$, NgayQDKT$, NgayQDKTx$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, TTVin$"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 19,
+              "code": "Public Tinhthanh$, Tinhthanhx$, TinhthanhId%, TTV$, TTVdd$, TTVs$, QDKT$, NgayQDKT$, ThoigianKT$, TTV_VKN$, TTV_VKNdd$, TTV_SYT$, TTV_SYTdd$, ThoigianDKKT$, HsDKKT$, DiachiTruso$, DiachiTrusoE$, LanhdaoCS$, NguoiPTCM$"
+            },
+            {
+              "file": "TTVForm.frm",
+              "line": 17,
+              "code": "Public TTVdd$, TTVn$, TTVinitial$, TinhthanhId%, TTV_VKNn$, TTV_VKNdd$, TTV_SYTn$, TTV_SYTdd$, ViewMode As Boolean, CompactForm As Boolean, SetTKMode As Boolean, iMrMs&, ActiveOnly As Boolean"
+            }
+          ],
+          "steps": [
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 41,
+              "code": "TTVdd = vbNullString"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 43,
+              "code": "If TTVForm.Get_TTV(rs, TTV, \"|\") Then TTVdd = TTVForm.TTVdd: TTV = TTVForm.TTVn"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 44,
+              "code": "If TTVdd = vbNullString Then Exit Sub"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 46,
+              "code": "TTVdd = vbNullString:   TTV_VKNdd = vbNullString:   TTV_SYTdd = vbNullString"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 47,
+              "code": "If Len(TTV) > 1 Then If TTVForm.Get_TTV2(TTV, \"|\", False, True) Then TTVdd = TTVForm.TTVdd:     TTV_VKNdd = TTVForm.TTV_VKNdd:      TTV_SYTdd = TTVForm.TTV_SYTdd"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 53,
+              "code": "TTVdd = vbNullString:   TTV_VKNdd = vbNullString:   TTV_SYTdd = vbNullString"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 54,
+              "code": "If Len(TTV) > 1 Then If TTVForm.Get_TTV2(TTV, \"|\", False) Then TTVdd = TTVForm.TTVn:   TTV_VKNdd = TTVForm.TTV_VKNn:      TTV_SYTdd = TTVForm.TTV_SYTn"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 56,
+              "code": "TTVdd = vbNullString:   TTV_VKNdd = vbNullString:   TTV_SYTdd = vbNullString"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 57,
+              "code": "If Len(TTV) > 1 Then If TTVForm.Get_TTV_UQ(TTV, \"|\", True) Then TTVdd = TTVForm.TTVdd:     TTV = TTVForm.TTVn:    TTV_VKNdd = TTVForm.TTV_VKNdd:    TTV_VKN = TTVForm.TTV_VKNn"
+            },
+            {
+              "file": "ExtRecordForm.frm",
+              "line": 227,
+              "code": "If TTV_VKNdd <> vbNullString Then TTVdd = TTVdd & \"|\" & TTV_VKNdd"
+            },
+            {
+              "file": "Module1.bas",
+              "line": 645,
+              "code": "If TTVForm.Get_TTV2(.TTV, \"|\", True, False, 1) Then .TTVdd = TTVForm.TTVdd"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1986,
+              "code": "TTVdd = vbNullString:   TTV_VKNdd = vbNullString:   TTV_SYTdd = vbNullString"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 1997,
+              "code": "If TTVForm.Get_TTV2(TTV, \"|\", i = 2) Then TTVdd = TTVForm.TTVdd:    TTV_VKNdd = TTVForm.TTV_VKNdd:  TTV_SYTdd = TTVForm.TTV_SYTdd Else Exit Sub"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 2000,
+              "code": "If TTVForm.Get_TTV(TTV, \"|\", i = 2) Then TTVdd = TTVForm.TTVdd:    TTV_VKNdd = TTVForm.TTV_VKNdd:  TTV_SYTdd = TTVForm.TTV_SYTdd Else Exit Sub"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 2003,
+              "code": "TTVdd = vbNullString:   TTV_VKNdd = vbNullString:   TTV_SYTdd = vbNullString"
+            },
+            {
+              "file": "RecordForm.frm",
+              "line": 2004,
+              "code": "If TTVForm.Get_TTV2(TTV, \"|\", False, True) Then TTVdd = TTVForm.TTVdd:     TTV_VKNdd = TTVForm.TTV_VKNdd:      TTV_SYTdd = TTVForm.TTV_SYTdd"
+            },
+            {
+              "file": "TTVForm.frm",
+              "line": 351,
+              "code": "TTVdd = vbNullString:        TTVn = vbNullString:       TTVinitial = vbNullString"
+            },
+            {
+              "file": "TTVForm.frm",
+              "line": 413,
+              "code": "TTVdd = vbNullString:        TTVn = vbNullString:       TTVinitial = vbNullString"
+            },
+            {
+              "file": "TTVForm.frm",
+              "line": 504,
+              "code": "TTVdd = vbNullString:    TTVn = vbNullString:       TTVinitial = vbNullString"
+            },
+            {
+              "file": "TTVForm.frm",
+              "line": 508,
+              "code": "TTVn = \"-\": TTVdd = \"-\":    TTVinitial = \"-\":   rs = \"-\""
+            }
+          ]
+        },
+        {
+          "variable": "TT_ext",
+          "declarations": [
+            {
+              "kind": "physical_bookmark",
+              "symbol": "TT_ext"
+            }
+          ],
+          "steps": [
+            {
+              "file": "RecordForm.frm",
+              "line": 759,
+              "code": "TVext = Get_Bookmark(wdDoc, \"TT_ext\")"
+            }
+          ]
+        }
+      ],
+      "source_semantic_endpoint": "first two Split(TTVdd, '|') entries written to TT1x/TT2x; later entries feed TT3x",
+      "normalization_or_formatting": "none beyond the expression recorded in vba_rendered_operations",
+      "conditions": [
+        "COMMON"
+      ],
+      "modern_owner_candidate": "InspectionTeam ordered members",
+      "owner_classification": "OWNER_PARTIAL",
+      "blocker": "dynamic TTx family is source-proven, but logical TT1/TT2 mapping and rendered role format remain unresolved"
+    }
+  },
+  "classification_counts": {
+    "OWNER_PROVEN": 0,
+    "OWNER_PARTIAL": 6,
+    "OWNER_BLOCKED": 8
+  },
+  "decision": {
+    "typed_qd_kt_input_contract": "BUSINESS_INPUT_CONTRACT_MISSING",
+    "reason": "required active inputs remain OWNER_BLOCKED"
+  },
+  "invariants": {
+    "source_modified": false,
+    "runtime_contract_changed": false,
+    "models_modified": false,
+    "display_prose_parsed_as_truth": false
+  }
+}

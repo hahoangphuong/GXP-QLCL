@@ -173,6 +173,46 @@ def test_date_fact_reports_pure_date_and_null_current_value_deterministically():
     assert submitted["current_value_comparable"] is True
     assert submitted["current_comparison_blocker"] is None
 
+
+def test_ambiguous_canonical_certificates_report_date_presence_per_field_without_values():
+    no_issue_dates = build_reconciliation_plan(
+        [_legacy_row()],
+        [
+            _canonical_case(
+                certificates=[
+                    {"issue_date": None, "expiry_date": date(2029, 8, 19)},
+                    {"issue_date": None, "expiry_date": None},
+                ]
+            )
+        ],
+    )
+    no_issue_facts = {fact["canonical_fact"]: fact for fact in no_issue_dates["facts"]}
+    issue = no_issue_facts["certificate_issue_date"]
+    expiry = no_issue_facts["certificate_expiry_date"]
+    assert issue["reconciliation_status"] == "BLOCKED_CERTIFICATE_CANONICAL_AMBIGUOUS"
+    assert issue["current_value_present"] is False
+    assert issue["current_value_comparable"] is False
+    assert issue["current_comparison_blocker"] == "BLOCKED_CERTIFICATE_CANONICAL_AMBIGUOUS"
+    assert expiry["current_value_present"] is True
+    assert expiry["current_value_comparable"] is False
+
+    one_issue_date = build_reconciliation_plan(
+        [_legacy_row()],
+        [
+            _canonical_case(
+                certificates=[
+                    {"issue_date": date(2026, 8, 21), "expiry_date": None},
+                    {"issue_date": None, "expiry_date": None},
+                ]
+            )
+        ],
+    )
+    one_issue_facts = {fact["canonical_fact"]: fact for fact in one_issue_date["facts"]}
+    assert one_issue_facts["certificate_issue_date"]["current_value_present"] is True
+    assert one_issue_facts["certificate_expiry_date"]["current_value_present"] is False
+    serialized = json.dumps(one_issue_date, default=str)
+    assert "2026-08-21" not in serialized
+
     missing = build_reconciliation_plan(
         [_legacy_row()],
         [_canonical_case(application={"dossier_code": "HS-41", "submitted_on": None})],

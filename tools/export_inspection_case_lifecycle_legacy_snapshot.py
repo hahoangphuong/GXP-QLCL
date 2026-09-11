@@ -10,7 +10,7 @@ from backend.app.domain.legacy_snapshot import read_core_sheet_rows
 from backend.app.domain.phase2_import import normalize_row, parse_int
 from tools.plan_inspection_case_lifecycle_reconciliation import (
     SNAPSHOT_CC_FIELDS,
-    SNAPSHOT_CC_LIFECYCLE_PAYLOAD_FIELDS,
+    SNAPSHOT_CC_IDENTITY_PROVENANCE_FIELDS,
     SNAPSHOT_EXTRACTION_OWNER,
     SNAPSHOT_EXTRACTION_STATUS,
     SNAPSHOT_KTRA_FIELDS,
@@ -36,7 +36,6 @@ def _select_rows(
     *,
     source_sheet: str,
     require_case_link: bool,
-    business_fields: tuple[str, ...] | None = None,
 ) -> tuple[list[dict[str, str]], dict[str, int]]:
     selected: list[dict[str, str]] = []
     counts = {
@@ -46,8 +45,8 @@ def _select_rows(
         "unlinked_rows_with_business_payload": 0,
         "invalid_link_rows": 0,
     }
-    identity_fields = {"ID", "__excel_row_number", "inspection_case_legacy_id_ref"}
-    business_fields = business_fields or tuple(field for field in fields if field not in identity_fields)
+    identity_fields = SNAPSHOT_CC_IDENTITY_PROVENANCE_FIELDS
+    business_fields = tuple(field for field in fields if field not in identity_fields)
     for raw in source_rows:
         normalized = normalize_row(raw)
         source_row = str(normalized.get("__excel_row_number", "")).strip()
@@ -98,7 +97,6 @@ def build_snapshot_payload(workbook: Path, source_rows: dict[str, list[dict[str,
         SNAPSHOT_CC_FIELDS,
         source_sheet="db.cc",
         require_case_link=True,
-        business_fields=SNAPSHOT_CC_LIFECYCLE_PAYLOAD_FIELDS,
     )
     sections = {
         "db.ktra": {"source_sheet": "db.ktra", "row_count": len(ktra_rows), "rows": ktra_rows},

@@ -73,18 +73,18 @@ SNAPSHOT_CC_FIELDS = (
     "latest_flag",
     "latest_legacy_id",
 )
-SNAPSHOT_CC_LIFECYCLE_PAYLOAD_FIELDS = (
-    "certificate_type",
-    "scope_code",
-    "certificate_scope_text",
-    "certificate_scope_short_text",
-    "certificate_standard",
-    "certificate_valid_until",
-    "certificate_number",
-    "certificate_issue_date",
-    "certificate_expiry_date",
-    "latest_flag",
-    "latest_legacy_id",
+SNAPSHOT_CC_IDENTITY_PROVENANCE_FIELDS = frozenset(
+    {
+        "ID",
+        "__excel_row_number",
+        "inspection_case_legacy_id_ref",
+    }
+)
+# Every selected certificate field that is not identity, provenance, or the
+# optional case link is business payload. Deriving this avoids silently
+# dropping an otherwise meaningful certificate-only row when fields evolve.
+SNAPSHOT_CC_LIFECYCLE_PAYLOAD_FIELDS = tuple(
+    field for field in SNAPSHOT_CC_FIELDS if field not in SNAPSHOT_CC_IDENTITY_PROVENANCE_FIELDS
 )
 PLAN_STATUS = {
     "SAFE_NOOP",
@@ -362,6 +362,13 @@ def _date_fact(
     if current_value_present is not None:
         fact["current_value_present"] = current_value_present
     return fact
+
+
+def _canonical_certificate_field_present(
+    certificates: list[dict[str, Any]], field: str
+) -> bool:
+    """Report presence per fact when an unselected certificate set blocks comparison."""
+    return any(_present(certificate.get(field)) for certificate in certificates)
 
 
 def _row_id(row: dict[str, str]) -> int | None:
@@ -643,6 +650,16 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases
         certificate_row = certificate_rows[0] if len(certificate_rows) == 1 else {}
         certificate_status = certificate_source_status or certificate_canonical_status
         certificate_blocker = certificate_source_blocker or certificate_canonical_blocker
+        ambiguous_issue_present = (
+            _canonical_certificate_field_present(canonical_certificates, "issue_date")
+            if certificate_canonical_status
+            else None
+        )
+        ambiguous_expiry_present = (
+            _canonical_certificate_field_present(canonical_certificates, "expiry_date")
+            if certificate_canonical_status
+            else None
+        )
         certificate_current = certificate_context.get("issue_date")
         issue_value = certificate_row.get("certificate_issue_date", "")
         if certificate_status is None:
@@ -659,7 +676,7 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases
                 candidate=issue_candidate,
                 current=certificate_current if certificate_canonical_status is None else None,
                 blocker=certificate_blocker,
-                current_value_present=(len(canonical_certificates) > 0) if certificate_canonical_status else None,
+                current_value_present=ambiguous_issue_present,
                 current_value_comparable=False if certificate_canonical_status else None,
                 current_comparison_blocker=certificate_canonical_status,
             )
@@ -684,7 +701,7 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases
                 candidate=expiry_candidate,
                 current=certificate_context.get("expiry_date") if certificate_canonical_status is None else None,
                 blocker=certificate_blocker or ("partial/annotated legacy expiry requires manual reconciliation" if expiry_status == "MANUAL_RECONCILIATION_REQUIRED" else None),
-                current_value_present=(len(canonical_certificates) > 0) if certificate_canonical_status else None,
+                current_value_present=ambiguous_expiry_present,
                 current_value_comparable=False if certificate_canonical_status else None,
                 current_comparison_blocker=certificate_canonical_status,
             )

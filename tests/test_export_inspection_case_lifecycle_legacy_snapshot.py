@@ -203,6 +203,30 @@ def test_cc_unlinked_and_structural_rows_are_explicit_and_malformed_link_fails_c
         exporter.build_snapshot_payload(workbook, source_rows)
 
 
+def test_cc_issuer_only_unlinked_row_is_business_payload_and_selected_fields_cannot_drift(tmp_path: Path):
+    source_rows = _source_rows()
+    source_rows["db.cc"].append(
+        {
+            "ID": "73",
+            "__excel_row_number": "10",
+            "ID ĐỢT KTRA": "",
+            "Cơ quan cấp chứng nhận": "Bộ Y tế",
+        }
+    )
+    workbook = tmp_path / "issuer-only.xlsb"
+    workbook.write_bytes(b"fixture")
+
+    payload = exporter.build_snapshot_payload(workbook, source_rows)
+    issuer_only = next(row for row in payload["sections"]["db.cc"]["rows"] if row["ID"] == "73")
+    assert issuer_only["certificate_issuer"] == "Bộ Y tế"
+    assert payload["row_eligibility_counts"]["db_cc_unlinked_rows_with_business_payload"] == 2
+
+    assert set(planner.SNAPSHOT_CC_LIFECYCLE_PAYLOAD_FIELDS) == (
+        set(planner.SNAPSHOT_CC_FIELDS) - set(planner.SNAPSHOT_CC_IDENTITY_PROVENANCE_FIELDS)
+    )
+    assert "certificate_issuer" in planner.SNAPSHOT_CC_LIFECYCLE_PAYLOAD_FIELDS
+
+
 def test_cc_link_to_missing_ktra_fails_closed_and_multiple_case_a_does_not_block_case_b(tmp_path: Path):
     payload = _payload(tmp_path)
     linked = dict(payload["sections"]["db.cc"]["rows"][0])

@@ -47,7 +47,7 @@ def _decode(raw: bytes) -> str:
 
 def _procedures(text: str) -> dict[str, dict[str, object]]:
     lines = text.replace("\r\n", "\n").replace("\r", "\n").splitlines()
-    result: dict[str, dict[str, object]] = {}
+    result: dict[str, list[dict[str, object]]] = {}
     index = 0
     while index < len(lines):
         match = PROC_RE.match(_active(lines[index]))
@@ -60,20 +60,29 @@ def _procedures(text: str) -> dict[str, dict[str, object]]:
             end += 1
         if end >= len(lines):
             raise RuntimeError(f"unterminated procedure: {name}")
-        result[name] = {"start_line": index + 1, "end_line": end + 1, "lines": lines[index:end + 1], "offset": index}
+        result.setdefault(name.lower(), []).append({"name": name, "start_line": index + 1, "end_line": end + 1, "lines": lines[index:end + 1], "offset": index})
         index = end + 1
-    return result
+    duplicates = {name: rows for name, rows in result.items() if len(rows) > 1}
+    if duplicates:
+        details = "; ".join(
+            f"{rows[0]['name']} ranges=" + ",".join(f"{row['start_line']}-{row['end_line']}" for row in rows) + f" count={len(rows)}"
+            for rows in duplicates.values()
+        )
+        raise RuntimeError(f"duplicate procedure in module: {details}")
+    return {name: rows[0] for name, rows in result.items()}
 
 
 def _condition_status(condition: str) -> str:
     normalized = re.sub(r"\s+", " ", condition.strip()).lower()
-    if re.search(r"\bi\s*=\s*2\b", normalized):
-        return "TRUE_I2"
-    if re.search(r"\bi\s*>\s*2\b", normalized):
-        return "FALSE_I2"
-    if re.search(r"\bi\s*(?:=|<|<=|>=)\s*(?:[13456789]|10)\b", normalized):
-        return "FALSE_I2"
-    return "CONDITIONAL_I2"
+    match = re.fullmatch(r"(?:not\s*\(\s*)?i\s*(=|<>|<|<=|>|>=)\s*(\d+)(?:\s*\))?", normalized)
+    if not match:
+        return "CONDITIONAL_I2"
+    operator, value = match.group(1), int(match.group(2))
+    actual = 2
+    result = {"=": actual == value, "<>": actual != value, "<": actual < value, "<=": actual <= value, ">": actual > value, ">=": actual >= value}[operator]
+    if normalized.startswith("not"):
+        result = not result
+    return "TRUE_I2" if result else "FALSE_I2"
 
 
 def _split_argument(text: str) -> tuple[str, str]:
@@ -92,27 +101,35 @@ def _split_argument(text: str) -> tuple[str, str]:
 
 
 def _branch_context(lines: list[str], index: int) -> tuple[str, str]:
-    stack: list[str] = []
+    stack: list[dict[str, object]] = []
     for row in lines[:index + 1]:
         code = _active(row)
         if not code:
             continue
         if re.match(r"(?i)^if\b.*\bthen\s*$", code):
-            stack.append(code[2:-4].strip())
+            predicate = code[2:-4].strip()
+            stack.append({"alternatives": [predicate], "effective": predicate})
         elif re.match(r"(?i)^elseif\b.*\bthen\s*$", code):
             if stack:
-                stack[-1] = code[6:-4].strip()
+                frame = stack[-1]
+                predicate = code[6:-4].strip()
+                frame["effective"] = " AND ".join([*(f"NOT({item})" for item in frame["alternatives"]), predicate])
+                frame["alternatives"].append(predicate)
         elif re.match(r"(?i)^else\s*(?::.*)?$", code):
             if stack:
-                stack[-1] = "ELSE(" + stack[-1] + ")"
+                frame = stack[-1]
+                frame["effective"] = " AND ".join(f"NOT({item})" for item in frame["alternatives"])
         elif re.match(r"(?i)^end\s+if\b", code):
             if stack:
                 stack.pop()
-    predicates = " AND ".join(stack) if stack else "COMMON"
-    statuses = [_condition_status(item) for item in stack if not item.startswith("ELSE(")]
+    predicates = " AND ".join(str(frame["effective"]) for frame in stack) if stack else "COMMON"
+    statuses = []
+    for frame in stack:
+        for atom in str(frame["effective"]).split(" AND "):
+            statuses.append(_condition_status(atom))
     if any(item == "FALSE_I2" for item in statuses):
         return predicates, "UNREACHABLE_I2"
-    if any(item == "CONDITIONAL_I2" for item in statuses) or any(item.startswith("ELSE(") for item in stack):
+    if any(item == "CONDITIONAL_I2" for item in statuses):
         return predicates, "CONDITIONAL_I2"
     return predicates, "REACHABLE_I2"
 
@@ -144,8 +161,6 @@ def _operations(proc: dict[str, object]) -> list[dict[str, object]]:
                 if len(quoted) > 1 and "&" in bookmark_expression:
                     physical = "".join(quoted)
                 condition, reachability = _branch_context(lines, index)
-                if re.match(r"(?i)^else\s*:", code):
-                    reachability = "CONDITIONAL_I2"
                 if inline_condition:
                     condition = inline_condition if condition == "COMMON" else condition + " AND " + inline_condition
                     inline_status = _condition_status(inline_condition)
@@ -174,9 +189,10 @@ def _operations(proc: dict[str, object]) -> list[dict[str, object]]:
 
 
 def _require(procs: dict[str, dict[str, object]], name: str, member: str) -> dict[str, object]:
-    if name not in procs:
+    key = name.lower()
+    if key not in procs:
         raise RuntimeError(f"required procedure missing: {member}.{name}")
-    return procs[name]
+    return procs[key]
 
 
 def _find_unique(proc: dict[str, object], pattern: str, label: str) -> dict[str, object]:
@@ -208,16 +224,21 @@ def build_trace(vba_zip: Path, expected_sha256: str | None = EXPECTED_SHA256) ->
     get_tpl_call = _find_unique(create, r"\bGet_Tpl\s*\(", "Get_Tpl call")
     builder_call = _find_unique(create, r"\bTao_QDKT_KHKT_BBKT\b", "builder call")
     tpl_lines = get_tpl["lines"]
-    case_index = next((i for i, row in enumerate(tpl_lines) if re.search(r"^\s*Case\s+2\b", _active(row), re.I)), None)
+    case_index = next((i for i, row in enumerate(tpl_lines) if re.search(r"^\s*Case\s+2(?:\s|$)", _active(row), re.I)), None)
     if case_index is None:
         raise RuntimeError("Get_Tpl Case 2 branch missing")
-    tpl_assignment = next((
+    case_end = next((
+        i for i, row in enumerate(tpl_lines[case_index + 1:], case_index + 1)
+        if re.match(r"^\s*(?:Case\b|End\s+Select\b)", _active(row), re.I)
+    ), len(tpl_lines))
+    tpl_assignments = [
         {"line": int(get_tpl["offset"]) + i + 1, "code": _active(row)}
-        for i, row in enumerate(tpl_lines[case_index + 1:], case_index + 1)
-        if re.search(r"\btpl\s*=", _active(row), re.I)
-    ), None)
-    if tpl_assignment is None:
-        raise RuntimeError("Get_Tpl Case 2 template assignment missing")
+        for i, row in enumerate(tpl_lines[case_index + 1:case_end], case_index + 1)
+        if re.search(r"^\s*tpl\s*=", _active(row), re.I)
+    ]
+    if len(tpl_assignments) != 1:
+        raise RuntimeError(f"Get_Tpl Case 2 requires exactly one tpl assignment, found {len(tpl_assignments)}")
+    tpl_assignment = tpl_assignments[0]
     physical = _operations(builder)
     reachable = [op for op in physical if op["reachability_i2"] != "UNREACHABLE_I2"]
     dispositions: dict[str, dict[str, object]] = {}

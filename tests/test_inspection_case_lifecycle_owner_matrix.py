@@ -154,9 +154,39 @@ def test_canonical_owner_contract_is_design_only_and_has_no_legacy_write_authori
 
 def test_canonical_contract_keeps_decision_and_bbkt_gaps_explicit():
     owners = {owner["canonical_fact"]: owner for owner in _load_contract()["owners"]}
-    assert owners["inspection_decision_reference"]["status"] == "OWNER_EXISTS_BUT_OVERLOADED"
+    assert owners["inspection_decision_reference"]["status"] == "OWNER_MISSING_COMPATIBILITY_FIELDS_EXIST"
     assert owners["inspection_decision_date"]["status"] == "OWNER_MISSING"
     assert owners["inspection_decision_reference"]["semantic_owner"] == "InspectionPlan.decision_reference (future field)"
+    assert owners["inspection_decision_reference"]["compatibility_fields"] == [
+        "InspectionPlan.decision_document_hint",
+        "CaseApplication.dossier_reference",
+        "InspectionOutcome.decision_reference",
+    ]
     assert owners["bbkt_reference"]["status"] == "OWNER_NAME_MISMATCH"
     assert owners["bbkt_reference"]["legacy_source"] == "db.ktra B. bản"
     assert owners["bbkt_reference"]["invariant"] == "B. bản must not be imported as a reference until semantics are proven"
+
+
+def test_canonical_contract_records_all_legacy_misrouting_paths():
+    paths = _load_contract()["legacy_misrouting_paths"]
+    assert [
+        (path["legacy_source"], path["current_target_model"], path["current_target_field"])
+        for path in paths
+    ] == [
+        ("db.ktra Q. định", "CaseApplication", "dossier_reference"),
+        ("db.ktra Q. định", "InspectionOutcome", "decision_reference"),
+        ("db.ktra B. bản", "InspectionOutcome", "bbkt_reference"),
+        ("db.ktra B. bản", "InspectionOutcome", "inspected_on"),
+    ]
+    date_path = paths[3]
+    assert date_path["transform"] == "parse_date(bbkt_reference) or parse_date(inspected_at)"
+    assert date_path["precedence"] == "B. bản is attempted first; Ngày K.tra fallback is second"
+    assert date_path["future_policy"] == "never use B. bản as actual inspection date; use proven Ngày K.tra mapping"
+
+
+def test_actual_inspection_owner_is_distinct_from_imported_value_provenance():
+    owner = {item["canonical_fact"]: item for item in _load_contract()["owners"]}["actual_inspection_period"]
+    assert owner["status"] == "OWNER_ALREADY_CORRECT"
+    assert "provenance" in owner["backfill_strategy_status"].lower()
+    assert "B. bản" in owner["invariant"]
+    assert _load_contract()["decision"]["backfill"] == "NOT_PERFORMED"

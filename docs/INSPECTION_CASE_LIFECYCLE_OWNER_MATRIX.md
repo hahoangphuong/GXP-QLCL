@@ -232,18 +232,24 @@ columns, alter importer behavior, or perform backfill.
 Current structured mutation owners are the `CaseWorkflowService` methods
 behind the application, assessment, planning, outcome, team, CAPA, and
 certificate routes. `CatalogReadService.get_case_workspace` is the current
-workspace read projection. The existing `InspectionPlan.decision_document_hint`
-and `InspectionOutcome.decision_reference` are compatibility values, not a
-canonical QĐKT owner. The importer currently copies the legacy `Q. định` value
-to both `CaseApplication.dossier_reference` and
-`InspectionOutcome.decision_reference`; this is the first incorrect semantic
-layer and must not be extended into future backfill.
+workspace read projection. The canonical QĐKT reference owner is still
+missing. Existing `InspectionPlan.decision_document_hint`,
+`CaseApplication.dossier_reference`, and `InspectionOutcome.decision_reference`
+are compatibility values, not a canonical owner. The importer currently copies
+the legacy `Q. định` value to both `CaseApplication.dossier_reference` and
+`InspectionOutcome.decision_reference`; these are explicit misrouting paths
+and must not be extended into future backfill. The decision date owner is
+missing as well.
 
 The legacy `B. bản` alias currently writes to `InspectionOutcome.bbkt_reference`
-in the importer, but its timestamp-dominant evidence does not prove BBKT
-reference semantics. Historical values are preserved; future mapping is
-blocked until a semantic owner is proven. QĐKT readiness therefore remains
-`BUSINESS_INPUT_CONTRACT_MISSING`.
+and is also parsed first for `InspectionOutcome.inspected_on`, with
+`db.ktra Ngày K.tra` only as fallback. Its timestamp-dominant evidence does
+not prove either BBKT-reference or actual-inspection-date semantics. The
+actual inspection owner remains correct, but imported value provenance may be
+wrong. Historical values are preserved; future mapping is blocked until a
+semantic owner is proven. The complete machine-readable list is in
+`legacy_misrouting_paths` in the canonical contract. QĐKT readiness therefore
+remains `BUSINESS_INPUT_CONTRACT_MISSING`.
 
 ## Readiness decision for `INSPECTION_QD_KT`
 

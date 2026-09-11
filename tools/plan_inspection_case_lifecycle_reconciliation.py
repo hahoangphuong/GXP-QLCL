@@ -40,7 +40,7 @@ from tools.audit_inspection_case_lifecycle_legacy import (
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "artifacts" / "legacy_audit" / "inspection_case_lifecycle_reconciliation_plan.json"
 REQUIRED_DATABASE_NAME = "gxp_legacy_rehearsal"
-SNAPSHOT_SCHEMA_VERSION = "inspection-case-lifecycle-legacy-snapshot/v1"
+SNAPSHOT_SCHEMA_VERSION = "inspection-case-lifecycle-legacy-snapshot/v2"
 SNAPSHOT_EXTRACTION_OWNER = "backend.app.domain.legacy_snapshot.read_core_sheet_rows"
 SNAPSHOT_EXTRACTION_STATUS = "EXTRACTED_READ_ONLY"
 SNAPSHOT_REQUIRED_SECTIONS = ("db.ktra", "db.cc")
@@ -54,6 +54,7 @@ SNAPSHOT_KTRA_FIELDS = (
     "dossier_code",
     "applicable_standard",
     "inspection_type",
+    "inspection_gxp_type",
 )
 SNAPSHOT_CC_FIELDS = (
     "ID",
@@ -62,6 +63,28 @@ SNAPSHOT_CC_FIELDS = (
     "certificate_issue_date",
     "certificate_expiry_date",
     "certificate_valid_until",
+    "certificate_type",
+    "scope_code",
+    "certificate_scope_text",
+    "certificate_scope_short_text",
+    "certificate_standard",
+    "certificate_number",
+    "certificate_issuer",
+    "latest_flag",
+    "latest_legacy_id",
+)
+SNAPSHOT_CC_LIFECYCLE_PAYLOAD_FIELDS = (
+    "certificate_type",
+    "scope_code",
+    "certificate_scope_text",
+    "certificate_scope_short_text",
+    "certificate_standard",
+    "certificate_valid_until",
+    "certificate_number",
+    "certificate_issue_date",
+    "certificate_expiry_date",
+    "latest_flag",
+    "latest_legacy_id",
 )
 PLAN_STATUS = {
     "SAFE_NOOP",
@@ -75,6 +98,9 @@ PLAN_STATUS = {
     "BLOCKED_PROVENANCE_CONTAMINATION",
     "MANUAL_RECONCILIATION_REQUIRED",
     "BLOCKED_TIMEZONE_POLICY_UNPROVEN",
+    "BLOCKED_CERTIFICATE_SOURCE_MISSING",
+    "BLOCKED_CERTIFICATE_SOURCE_AMBIGUOUS",
+    "BLOCKED_CERTIFICATE_CANONICAL_AMBIGUOUS",
 }
 
 # The database/session, API, and legacy importer do not currently establish a
@@ -306,9 +332,22 @@ def _fact(case_id: str | None, legacy_id: int, key: str, source: str, status: st
     }
 
 
-def _date_fact(case_id: str, legacy_id: int, key: str, source: str, status: str, *, candidate: date | None, current: Any, blocker: str | None = None) -> dict[str, Any]:
+def _date_fact(
+    case_id: str,
+    legacy_id: int,
+    key: str,
+    source: str,
+    status: str,
+    *,
+    candidate: date | None,
+    current: Any,
+    blocker: str | None = None,
+    current_value_present: bool | None = None,
+    current_value_comparable: bool | None = None,
+    current_comparison_blocker: str | None = None,
+) -> dict[str, Any]:
     _, comparison_blocker = _normalize_canonical_date(current)
-    return _fact(
+    fact = _fact(
         case_id,
         legacy_id,
         key,
@@ -316,10 +355,13 @@ def _date_fact(case_id: str, legacy_id: int, key: str, source: str, status: str,
         status,
         candidate=candidate,
         current=current,
-        current_value_comparable=comparison_blocker is None,
-        current_comparison_blocker=comparison_blocker,
+        current_value_comparable=(comparison_blocker is None if current_value_comparable is None else current_value_comparable),
+        current_comparison_blocker=(comparison_blocker if current_comparison_blocker is None else current_comparison_blocker),
         blocker=blocker,
     )
+    if current_value_present is not None:
+        fact["current_value_present"] = current_value_present
+    return fact
 
 
 def _row_id(row: dict[str, str]) -> int | None:
@@ -389,6 +431,27 @@ def load_legacy_snapshot_payload(payload: Any, *, expected_workbook_sha256: str 
     cc_rows = _snapshot_section(payload, "db.cc")
     if payload.get("row_count") != len(ktra_rows) + len(cc_rows):
         raise _snapshot_error("row_count does not match source sections")
+    eligibility_counts = payload.get("row_eligibility_counts")
+    required_count_fields = {
+        "db_ktra_rows_emitted",
+        "db_ktra_structural_blank_rows_skipped",
+        "db_cc_rows_emitted",
+        "db_cc_linked_rows",
+        "db_cc_unlinked_rows",
+        "db_cc_unlinked_rows_with_business_payload",
+        "db_cc_invalid_link_rows",
+        "db_cc_structural_blank_rows_skipped",
+    }
+    if not isinstance(eligibility_counts, dict) or set(eligibility_counts) != required_count_fields:
+        raise _snapshot_error("row_eligibility_counts is missing required counters")
+    if any(not isinstance(value, int) or value < 0 for value in eligibility_counts.values()):
+        raise _snapshot_error("row_eligibility_counts must contain non-negative integers")
+    if eligibility_counts["db_ktra_rows_emitted"] != len(ktra_rows) or eligibility_counts["db_cc_rows_emitted"] != len(cc_rows):
+        raise _snapshot_error("row_eligibility_counts emitted rows do not match sections")
+    if eligibility_counts["db_cc_linked_rows"] + eligibility_counts["db_cc_unlinked_rows"] != len(cc_rows):
+        raise _snapshot_error("row_eligibility_counts db.cc link states do not match rows")
+    if eligibility_counts["db_cc_unlinked_rows_with_business_payload"] > eligibility_counts["db_cc_unlinked_rows"]:
+        raise _snapshot_error("row_eligibility_counts unlinked payload count is invalid")
 
     ktra_ids: set[int] = set()
     for index, row in enumerate(ktra_rows, start=1):
@@ -401,33 +464,40 @@ def load_legacy_snapshot_payload(payload: Any, *, expected_workbook_sha256: str 
             raise _snapshot_error(f"duplicate db.ktra ID {legacy_id}")
         ktra_ids.add(legacy_id)
 
-    certificates_by_case: dict[int, dict[str, str]] = {}
+    certificates_by_case: dict[int, list[dict[str, str]]] = {}
     certificate_ids: set[int] = set()
+    unlinked_certificate_rows = 0
     for index, row in enumerate(cc_rows, start=1):
         missing = [field for field in SNAPSHOT_CC_FIELDS if field not in row]
         if missing:
             raise _snapshot_error(f"db.cc row {index} missing required fields: {', '.join(missing)}")
         certificate_id = _snapshot_integer(row["ID"], field="ID", section="db.cc", index=index)
         _snapshot_integer(row["__excel_row_number"], field="__excel_row_number", section="db.cc", index=index)
-        case_id = _snapshot_integer(
-            row["inspection_case_legacy_id_ref"],
-            field="inspection_case_legacy_id_ref",
-            section="db.cc",
-            index=index,
-        )
         if certificate_id in certificate_ids:
             raise _snapshot_error(f"duplicate db.cc ID {certificate_id}")
+        certificate_ids.add(certificate_id)
+        raw_case_id = row["inspection_case_legacy_id_ref"].strip()
+        if not raw_case_id:
+            unlinked_certificate_rows += 1
+            continue
+        case_id = _snapshot_integer(raw_case_id, field="inspection_case_legacy_id_ref", section="db.cc", index=index)
         if case_id not in ktra_ids:
             raise _snapshot_error(f"db.cc row {index} references missing db.ktra ID {case_id}")
-        if case_id in certificates_by_case:
-            raise _snapshot_error(f"multiple db.cc certificate rows reference db.ktra ID {case_id}")
-        certificate_ids.add(certificate_id)
-        certificates_by_case[case_id] = row
+        certificates_by_case.setdefault(case_id, []).append(row)
+    if unlinked_certificate_rows != eligibility_counts["db_cc_unlinked_rows"]:
+        raise _snapshot_error("row_eligibility_counts unlinked rows do not match db.cc link state")
+    if sum(len(rows) for rows in certificates_by_case.values()) != eligibility_counts["db_cc_linked_rows"]:
+        raise _snapshot_error("row_eligibility_counts linked rows do not match db.cc link state")
 
     # Keep certificate values in their source container. The planner receives a
     # linked projection rather than a fabricated db.ktra field overlay.
     linked_rows = [
-        {"__source_ktra": row, "__certificate_source": certificates_by_case.get(_snapshot_integer(row["ID"], field="ID", section="db.ktra", index=index))}
+        {
+            "__source_ktra": row,
+            "__certificate_sources": certificates_by_case.get(
+                _snapshot_integer(row["ID"], field="ID", section="db.ktra", index=index), []
+            ),
+        }
         for index, row in enumerate(ktra_rows, start=1)
     ]
     return {
@@ -440,11 +510,14 @@ def load_legacy_snapshot_payload(payload: Any, *, expected_workbook_sha256: str 
             "source_sheets": payload["source_sheets"],
             "row_count": payload["row_count"],
             "extraction_status": payload["extraction_status"],
+            "row_eligibility_counts": eligibility_counts,
         },
         "validation_counts": {
             "db_ktra_rows": len(ktra_rows),
             "db_cc_rows": len(cc_rows),
-            "linked_certificate_rows": len(certificates_by_case),
+            "linked_certificate_rows": sum(len(rows) for rows in certificates_by_case.values()),
+            "unlinked_certificate_rows": unlinked_certificate_rows,
+            "cases_with_multiple_linked_certificates": sum(1 for rows in certificates_by_case.values() if len(rows) > 1),
         },
     }
 
@@ -465,8 +538,13 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases
         if not isinstance(source_ktra, dict):
             raise ValueError("legacy reconciliation row has invalid db.ktra source")
         row = normalize_row(source_ktra)
-        source_certificate = raw.get("__certificate_source")
-        certificate_row = normalize_row(source_certificate) if isinstance(source_certificate, dict) else row
+        source_certificates = raw.get("__certificate_sources")
+        if source_certificates is None:
+            # Direct in-memory test input predates the snapshot boundary.
+            source_certificates = [row] if any(key in row for key in SNAPSHOT_CC_FIELDS) else []
+        if not isinstance(source_certificates, list) or any(not isinstance(value, dict) for value in source_certificates):
+            raise ValueError("legacy reconciliation row has invalid db.cc source list")
+        certificate_rows = [normalize_row(value) for value in source_certificates]
         legacy_id = _row_id(row)
         if legacy_id is None:
             continue
@@ -486,7 +564,29 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases
         assessment = case.get("assessment") or {}
         outcome = case.get("outcome") or {}
         plan = case.get("plan") or {}
-        cert = case.get("certificate") or {}
+        canonical_certificates = case.get("certificates")
+        if canonical_certificates is None:
+            certificate = case.get("certificate")
+            canonical_certificates = [] if certificate is None else [certificate]
+        if not isinstance(canonical_certificates, list) or any(not isinstance(value, dict) for value in canonical_certificates):
+            raise ValueError("canonical reconciliation case has invalid certificate list")
+        certificate_context = canonical_certificates[0] if len(canonical_certificates) == 1 else {}
+
+        if len(certificate_rows) == 0:
+            certificate_source_status = "BLOCKED_CERTIFICATE_SOURCE_MISSING"
+            certificate_source_blocker = "no linked db.cc certificate source row"
+        elif len(certificate_rows) == 1:
+            certificate_source_status = None
+            certificate_source_blocker = None
+        else:
+            certificate_source_status = "BLOCKED_CERTIFICATE_SOURCE_AMBIGUOUS"
+            certificate_source_blocker = "multiple linked db.cc certificate source rows have no proven lifecycle selector"
+        if len(canonical_certificates) > 1:
+            certificate_canonical_status = "BLOCKED_CERTIFICATE_CANONICAL_AMBIGUOUS"
+            certificate_canonical_blocker = "multiple canonical Certificate rows are linked to this Case"
+        else:
+            certificate_canonical_status = None
+            certificate_canonical_blocker = None
 
         decision_ref, decision_date, decision_status = _split_decision(row.get("decision_reference", ""))
         facts.append(_fact(case_id, legacy_id, "inspection_decision_reference", "db.ktra Q. định", "BLOCKED_OWNER_MISSING", candidate=decision_ref, current=plan.get("decision_reference"), blocker="canonical InspectionPlan.decision_reference does not exist"))
@@ -528,7 +628,6 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases
             facts.append(_fact(case_id, legacy_id, key, source, _candidate_status(candidate, current), candidate=candidate, current=current))
         for key, source, legacy_value, current in [
             ("application_submitted_on", "db.ktra Ngày nộp hồ sơ", row.get("submitted_at", ""), application.get("submitted_on")),
-            ("certificate_issue_date", "db.cc Ngày cấp CC", certificate_row.get("certificate_issue_date", ""), cert.get("issue_date")),
         ]:
             status, candidate = _date_candidate_status(legacy_value, current)
             facts.append(_date_fact(case_id, legacy_id, key, source, status, candidate=candidate, current=current))
@@ -541,13 +640,56 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases
         for key in ("report_written_on", "final_evaluation", "compliance_due_on", "capa_incoming_reference", "approval_submission"):
             facts.append(_fact(case_id, legacy_id, key, "legacy source/profile", "BLOCKED_OWNER_MISSING", blocker="canonical semantic owner is not present"))
 
+        certificate_row = certificate_rows[0] if len(certificate_rows) == 1 else {}
+        certificate_status = certificate_source_status or certificate_canonical_status
+        certificate_blocker = certificate_source_blocker or certificate_canonical_blocker
+        certificate_current = certificate_context.get("issue_date")
+        issue_value = certificate_row.get("certificate_issue_date", "")
+        if certificate_status is None:
+            issue_status, issue_candidate = _date_candidate_status(issue_value, certificate_current)
+        else:
+            issue_status, issue_candidate = certificate_status, None
+        facts.append(
+            _date_fact(
+                case_id,
+                legacy_id,
+                "certificate_issue_date",
+                "db.cc Ngày cấp CC",
+                issue_status,
+                candidate=issue_candidate,
+                current=certificate_current if certificate_canonical_status is None else None,
+                blocker=certificate_blocker,
+                current_value_present=(len(canonical_certificates) > 0) if certificate_canonical_status else None,
+                current_value_comparable=False if certificate_canonical_status else None,
+                current_comparison_blocker=certificate_canonical_status,
+            )
+        )
+        facts[-1]["legacy_certificate_candidate_count"] = len(certificate_rows)
+
         expiry = certificate_row.get("certificate_expiry_date", "") or certificate_row.get("certificate_valid_until", "")
         expiry_morphology = _date_morphology(expiry)
-        if expiry_morphology in {"PARTIAL_DATE", "ANNOTATED_DATE", "MULTI_DATE"}:
+        if certificate_status is not None:
+            expiry_status, expiry_candidate = certificate_status, None
+        elif expiry_morphology in {"PARTIAL_DATE", "ANNOTATED_DATE", "MULTI_DATE"}:
             expiry_status, expiry_candidate = "MANUAL_RECONCILIATION_REQUIRED", None
         else:
-            expiry_status, expiry_candidate = _date_candidate_status(expiry, cert.get("expiry_date"))
-        facts.append(_date_fact(case_id, legacy_id, "certificate_expiry_date", "db.cc Hết hạn CC", expiry_status, candidate=expiry_candidate, current=cert.get("expiry_date"), blocker="partial/annotated legacy expiry requires manual reconciliation" if expiry_status == "MANUAL_RECONCILIATION_REQUIRED" else None))
+            expiry_status, expiry_candidate = _date_candidate_status(expiry, certificate_context.get("expiry_date"))
+        facts.append(
+            _date_fact(
+                case_id,
+                legacy_id,
+                "certificate_expiry_date",
+                "db.cc Hết hạn CC",
+                expiry_status,
+                candidate=expiry_candidate,
+                current=certificate_context.get("expiry_date") if certificate_canonical_status is None else None,
+                blocker=certificate_blocker or ("partial/annotated legacy expiry requires manual reconciliation" if expiry_status == "MANUAL_RECONCILIATION_REQUIRED" else None),
+                current_value_present=(len(canonical_certificates) > 0) if certificate_canonical_status else None,
+                current_value_comparable=False if certificate_canonical_status else None,
+                current_comparison_blocker=certificate_canonical_status,
+            )
+        )
+        facts[-1]["legacy_certificate_candidate_count"] = len(certificate_rows)
         facts[-1]["legacy_morphology"] = expiry_morphology
 
     status_counts = Counter(fact["reconciliation_status"] for fact in facts)
@@ -593,9 +735,24 @@ def _canonical_snapshot(session: Session, legacy_ids: list[int]) -> list[dict[st
         members = list(session.scalars(select(InspectionTeamMember).where(InspectionTeamMember.team_id == team.id).order_by(InspectionTeamMember.sort_order, InspectionTeamMember.id))) if team else []
         capa_cycles = list(session.scalars(select(CapaCycle).where(CapaCycle.case_id == case.id).order_by(CapaCycle.round_no)))
         lineage = list(session.scalars(select(LegacyIdMap).where(LegacyIdMap.target_entity_id == case.id).order_by(LegacyIdMap.entity_type, LegacyIdMap.legacy_id)))
-        certificate = session.scalar(select(Certificate).where(Certificate.case_id == case.id))
-        version = session.scalar(select(CertificateVersion).where(CertificateVersion.certificate_id == certificate.id).order_by(CertificateVersion.version_no.desc())) if certificate else None
-        result.append({"id": case.id, "legacy_inspection_id": case.legacy_inspection_id, "gxp_type": case.gxp_type, "applicable_standard": case.applicable_standard, "inspection_type": case.inspection_type, "application": None if application is None else {"dossier_code": application.dossier_code, "dossier_reference": application.dossier_reference, "submitted_on": application.submitted_on}, "assessment": None if assessment is None else {"assessed_on": assessment.assessed_on, "assessor_name": assessment.assessor_name, "assessment_result": assessment.assessment_result}, "plan": None if plan is None else {"decision_document_hint": plan.decision_document_hint, "plan_start_on": plan.plan_start_on, "plan_end_on": plan.plan_end_on}, "team": None if team is None else {"display_text": team.display_text, "members": [{"inspector_profile_id": member.inspector_profile_id, "person_id": member.person_id, "role_label": member.role_label, "sort_order": member.sort_order} for member in members]}, "outcome": None if outcome is None else {"inspected_on": outcome.inspected_on, "inspected_to_on": outcome.inspected_to_on, "decision_reference": outcome.decision_reference, "bbkt_reference": outcome.bbkt_reference, "outcome_result": outcome.outcome_result}, "capa_cycles": [{"round_no": cycle.round_no, "requested_on": cycle.requested_on, "submitted_on": cycle.submitted_on, "assessed_on": cycle.assessed_on, "assessor_name": cycle.assessor_name, "result": cycle.result, "status": cycle.status} for cycle in capa_cycles], "certificate": None if version is None else {"certificate_number": version.certificate_number, "issue_date": version.issue_date, "expiry_date": version.expiry_date}, "legacy_lineage": [{"entity_type": mapping.entity_type.value, "legacy_id": mapping.legacy_id, "target_table": mapping.target_table, "target_entity_id": mapping.target_entity_id} for mapping in lineage]})
+        certificates = list(session.scalars(select(Certificate).where(Certificate.case_id == case.id)))
+        certificate_contexts: list[dict[str, Any]] = []
+        for certificate in certificates:
+            version = session.scalars(
+                select(CertificateVersion)
+                .where(CertificateVersion.certificate_id == certificate.id)
+                .order_by(CertificateVersion.version_no.desc())
+            ).first()
+            certificate_contexts.append(
+                {}
+                if version is None
+                else {
+                    "certificate_number": version.certificate_number,
+                    "issue_date": version.issue_date,
+                    "expiry_date": version.expiry_date,
+                }
+            )
+        result.append({"id": case.id, "legacy_inspection_id": case.legacy_inspection_id, "gxp_type": case.gxp_type, "applicable_standard": case.applicable_standard, "inspection_type": case.inspection_type, "application": None if application is None else {"dossier_code": application.dossier_code, "dossier_reference": application.dossier_reference, "submitted_on": application.submitted_on}, "assessment": None if assessment is None else {"assessed_on": assessment.assessed_on, "assessor_name": assessment.assessor_name, "assessment_result": assessment.assessment_result}, "plan": None if plan is None else {"decision_document_hint": plan.decision_document_hint, "plan_start_on": plan.plan_start_on, "plan_end_on": plan.plan_end_on}, "team": None if team is None else {"display_text": team.display_text, "members": [{"inspector_profile_id": member.inspector_profile_id, "person_id": member.person_id, "role_label": member.role_label, "sort_order": member.sort_order} for member in members]}, "outcome": None if outcome is None else {"inspected_on": outcome.inspected_on, "inspected_to_on": outcome.inspected_to_on, "decision_reference": outcome.decision_reference, "bbkt_reference": outcome.bbkt_reference, "outcome_result": outcome.outcome_result}, "capa_cycles": [{"round_no": cycle.round_no, "requested_on": cycle.requested_on, "submitted_on": cycle.submitted_on, "assessed_on": cycle.assessed_on, "assessor_name": cycle.assessor_name, "result": cycle.result, "status": cycle.status} for cycle in capa_cycles], "certificates": certificate_contexts, "legacy_lineage": [{"entity_type": mapping.entity_type.value, "legacy_id": mapping.legacy_id, "target_table": mapping.target_table, "target_entity_id": mapping.target_entity_id} for mapping in lineage]})
     return result
 
 

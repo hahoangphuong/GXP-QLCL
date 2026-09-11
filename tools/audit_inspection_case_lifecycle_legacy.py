@@ -80,6 +80,7 @@ DATE_TOKEN_RE = re.compile(r"(?<!\d)\d{1,4}[./-]\d{1,2}(?:[./-]\d{1,4})?(?!\d)")
 ISO_TIMESTAMP_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?$"
 )
+PARTIAL_DATE_RE = re.compile(r"^(?:\d{1,2}[./-]\d{1,4}|\d{4}[./-]\d{1,2})$")
 
 
 def _fold(value: str) -> str:
@@ -137,6 +138,10 @@ def _date_morphology(value: str) -> str:
         return "SENTINEL_UNKNOWN"
     if ISO_TIMESTAMP_RE.fullmatch(text):
         return "ISO_TIMESTAMP"
+    if PARTIAL_DATE_RE.fullmatch(text):
+        parts = re.split(r"[./-]", text)
+        if len(parts) == 2 and (len(parts[0]) <= 2 or len(parts[1]) <= 2):
+            return "PARTIAL_DATE"
     date_matches = list(DATE_TOKEN_RE.finditer(text))
     if not date_matches:
         return "INVALID_OR_OTHER"
@@ -153,6 +158,17 @@ def _date_morphology(value: str) -> str:
     if len(date_matches) == 1:
         return "SINGLE_DATE"
     return "MULTI_DATE"
+
+
+def _invalid_date_diagnostic(value: str) -> dict[str, object]:
+    return {
+        "shape": _shape(value),
+        "length": len(value.strip()),
+        "punctuation_codepoints": sorted({f"U+{ord(ch):04X}" for ch in value if not ch.isalnum() and not ch.isspace()}),
+        "separator_categories": sorted({unicodedata.category(ch) for ch in value if not ch.isalnum() and not ch.isspace()}),
+        "contains_digit_count": sum(ch.isdigit() for ch in value),
+        "contains_alpha": any(ch.isalpha() for ch in value),
+    }
 
 
 def _value_by_alias(row: dict[str, str], canonical: str) -> str:
@@ -200,6 +216,11 @@ def _profile_values(values: list[str], *, decision_composite: bool = False, fiel
         if field in {"inspected_at", "submitted_at", "certificate_issue_date", "certificate_expiry_date"}:
             morphology = Counter(_date_morphology(value) for value in values)
             report["morphology_counts"] = morphology
+            report["invalid_diagnostics"] = [
+                _invalid_date_diagnostic(value)
+                for value in values
+                if _date_morphology(value) == "INVALID_OR_OTHER"
+            ]
             report["date_like_count"] = sum(
                 count
                 for category, count in morphology.items()

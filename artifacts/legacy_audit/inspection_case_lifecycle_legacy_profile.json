@@ -151,6 +151,7 @@
           "ISO_TIMESTAMP": 174,
           "MULTI_DATE": 5
         },
+        "invalid_diagnostics": [],
         "date_like_count": 179,
         "invalid_or_non_date_count": 0
       },
@@ -444,6 +445,16 @@
           "MULTI_DATE": 11,
           "SENTINEL_UNKNOWN": 54
         },
+        "invalid_diagnostics": [
+          {
+            "shape": "A A A",
+            "length": 9,
+            "punctuation_codepoints": [],
+            "separator_categories": [],
+            "contains_digit_count": 0,
+            "contains_alpha": true
+          }
+        ],
         "date_like_count": 1425,
         "invalid_or_non_date_count": 1
       },
@@ -882,6 +893,7 @@
           "MULTI_DATE": 1,
           "SENTINEL_UNKNOWN": 42
         },
+        "invalid_diagnostics": [],
         "date_like_count": 1539,
         "invalid_or_non_date_count": 0
       },
@@ -929,10 +941,11 @@
           "EMPTY": 86,
           "MULTI_DATE": 1,
           "ANNOTATED_DATE": 12,
-          "INVALID_OR_OTHER": 4
+          "PARTIAL_DATE": 4
         },
-        "date_like_count": 1538,
-        "invalid_or_non_date_count": 4
+        "invalid_diagnostics": [],
+        "date_like_count": 1542,
+        "invalid_or_non_date_count": 0
       }
     }
   },

@@ -71,6 +71,8 @@ def test_date_morphology_distinguishes_supported_legacy_shapes():
         "01/12-12/12/2017": "DATE_RANGE",
         "01/01/2020, 02/01/2020": "MULTI_DATE",
         "9-9": "PARTIAL_DATE",
+        "10-2027": "PARTIAL_DATE",
+        "10/2027": "PARTIAL_DATE",
         "2026-07-21 (dự kiến 2027)": "ANNOTATED_DATE",
         "not a date": "INVALID_OR_OTHER",
     }
@@ -94,6 +96,16 @@ def test_date_profile_invalid_count_excludes_non_scalar_date_shapes():
     }
     assert profile["date_like_count"] == 5
     assert profile["invalid_or_non_date_count"] == 1
+    assert profile["invalid_diagnostics"] == [
+        {
+            "shape": "A",
+            "length": 3,
+            "punctuation_codepoints": [],
+            "separator_categories": [],
+            "contains_digit_count": 0,
+            "contains_alpha": True,
+        }
+    ]
 
 
 def test_domain_normalization_merges_d_variants():

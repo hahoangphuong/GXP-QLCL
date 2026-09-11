@@ -84,6 +84,15 @@ def _fold(value: str) -> str:
     return re.sub(r"\s+", " ", asciiish.lower()).strip()
 
 
+def _tokens(value: str) -> list[str]:
+    return re.findall(r"[a-z0-9]+", _fold(value))
+
+
+def _contains_token_sequence(tokens: list[str], phrase: str) -> bool:
+    wanted = _tokens(phrase)
+    return any(tokens[index:index + len(wanted)] == wanted for index in range(len(tokens) - len(wanted) + 1))
+
+
 def _shape(value: str) -> str:
     result: list[str] = []
     for ch in value.strip():
@@ -121,7 +130,7 @@ def _value_by_alias(row: dict[str, str], canonical: str) -> str:
     return ""
 
 
-def _profile_values(values: list[str], *, decision_composite: bool = False) -> dict[str, object]:
+def _profile_values(values: list[str], *, decision_composite: bool = False, field: str | None = None) -> dict[str, object]:
     nonempty = [value.strip() for value in values if value and value.strip()]
     shapes = Counter(_shape(value) for value in nonempty)
     report: dict[str, object] = {
@@ -135,6 +144,30 @@ def _profile_values(values: list[str], *, decision_composite: bool = False) -> d
     }
     if decision_composite:
         report["composite_classification"] = Counter(_classify_decision_composite(value) for value in values)
+        report["trailing_date_separator_counts"] = Counter(
+            re.search(r"\d{1,2}([./-])\d{1,2}([./-])\d{2,4}\s*$", value.strip()).group(1)
+            for value in nonempty
+            if re.search(r"\d{1,2}([./-])\d{1,2}([./-])\d{2,4}\s*$", value.strip())
+        )
+        references = Counter(
+            _fold(TRAILING_DATE_RE.sub("", value).strip(" \t\r\n,;:-"))
+            for value in nonempty
+            if _classify_decision_composite(value) == "reference_plus_trailing_date"
+        )
+        report["duplicate_normalized_reference_count"] = sum(1 for count in references.values() if count > 1)
+        report["multi_reference_count"] = sum(1 for value in nonempty if re.search(r"[,;|]\s*", TRAILING_DATE_RE.sub("", value)))
+        report["invalid_trailing_date_count"] = sum(
+            1 for value in nonempty if re.search(r"\d{1,2}[./-]\d{1,2}[./-]\d{2,4}", value) and _classify_decision_composite(value) == "no_trailing_date"
+        )
+    if field:
+        normalized = [_fold(value) for value in values]
+        report["sentinel_counts"] = Counter(value for value in normalized if value in {"-", "???"})
+        report["multi_value_count"] = sum(1 for value in nonempty if re.search(r"[,;|]", value))
+        if field in {"inspected_at", "submitted_at", "certificate_issue_date", "certificate_expiry_date"}:
+            report["date_like_count"] = sum(1 for value in nonempty if re.search(r"\d{1,4}[./-]\d{1,2}(?:[./-]\d{1,4})?", value))
+            report["invalid_or_non_date_count"] = sum(1 for value in nonempty if value not in {"-", "???"} and not re.fullmatch(r"\d{1,4}[./-]\d{1,2}(?:[./-]\d{1,4})?(?:[ T].*)?", value))
+        if field in {"applicable_standard", "inspection_type"}:
+            report["normalized_domain_counts"] = Counter(value for value in normalized if value not in {"", "-", "???"})
     return report
 
 
@@ -146,8 +179,9 @@ def _discover_headers(snapshot: dict[str, list[dict[str, str]]]) -> dict[str, li
             headers.update(key for key in row if key != "__excel_row_number")
         for header in sorted(headers):
             folded = _fold(header)
+            tokens = _tokens(header)
             for group, token_sets in HEADER_DISCOVERY_GROUPS.items():
-                if any(all(token in folded for token in token_set) for token_set in token_sets):
+                if any(all(_contains_token_sequence(tokens, token) for token in token_set) for token_set in token_sets):
                     discovered[group].append({"sheet": sheet_name, "header": header})
     return discovered
 
@@ -163,8 +197,21 @@ def build_profile(workbook: Path) -> dict[str, object]:
             sheet_profiles[field] = _profile_values(
                 values,
                 decision_composite=(sheet_name == "db.ktra" and field == "decision_reference"),
+                field=field,
             )
         profiles[sheet_name] = sheet_profiles
+    migration_safety = {
+        "decision_reference": "COMPOSITE_REQUIRES_SPLIT",
+        "bbkt_reference": "OWNER_MISMATCH",
+        "inspected_at": "AMBIGUOUS",
+        "submitted_at": "INSUFFICIENT_SOURCE",
+        "dossier_code": "AMBIGUOUS",
+        "applicable_standard": "SAFE_WITH_DETERMINISTIC_NORMALIZATION",
+        "inspection_type": "SAFE_WITH_DETERMINISTIC_NORMALIZATION",
+        "certificate_number": "AMBIGUOUS",
+        "certificate_issue_date": "SAFE_WITH_DETERMINISTIC_NORMALIZATION",
+        "certificate_expiry_date": "AMBIGUOUS",
+    }
     return {
         "schema_version": "inspection-case-lifecycle-legacy-profile/v1",
         "status": "READ_ONLY_LEGACY_PROFILE",
@@ -173,6 +220,15 @@ def build_profile(workbook: Path) -> dict[str, object]:
         "row_counts": {sheet: len(rows) for sheet, rows in snapshot.items()},
         "known_field_profiles": profiles,
         "candidate_headers": _discover_headers(snapshot),
+        "field_source_headers": {
+            sheet_name: {
+                field: sorted({alias for row in rows for alias in FIELD_ALIASES.get(field, set()) if alias in row})
+                for field in fields
+            }
+            for sheet_name, fields in KNOWN_FIELDS.items()
+            for rows in [snapshot.get(sheet_name, [])]
+        },
+        "migration_safety": migration_safety,
         "guardrails": {
             "database_written": False,
             "legacy_workbook_written": False,

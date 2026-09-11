@@ -1,0 +1,1047 @@
+{
+  "schema_version": "inspection-case-lifecycle-legacy-profile/v1",
+  "status": "READ_ONLY_LEGACY_PROFILE",
+  "workbook_sha256": "c12537ea5a5c9f470e42fb5bdbe214f36983e310fceac7c560ad38885209fe3d",
+  "workbook_name": "Danh sách Kiểm tra GPs.xlsb",
+  "row_counts": {
+    "db.cty": 332,
+    "db.cso": 379,
+    "db.ktra": 1543,
+    "db.cc": 1628,
+    "db.dkkd": 830,
+    "db.Tdoi": 224,
+    "db.Tdoi2": 185
+  },
+  "known_field_profiles": {
+    "db.ktra": {
+      "dossier_code": {
+        "total_rows": 1543,
+        "nonempty": 1412,
+        "empty": 131,
+        "null_rate": 0.0849,
+        "max_length": 42,
+        "top_shapes": [
+          [
+            "9/A",
+            523
+          ],
+          [
+            "9/A9",
+            423
+          ],
+          [
+            "-",
+            400
+          ],
+          [
+            "9-9/A",
+            16
+          ],
+          [
+            "9",
+            10
+          ],
+          [
+            "9, 9, 9/A",
+            7
+          ],
+          [
+            "9/A 9/A",
+            5
+          ],
+          [
+            "9/9",
+            2
+          ],
+          [
+            "9,9,9/A",
+            2
+          ],
+          [
+            "9/A A 9/A",
+            2
+          ],
+          [
+            "9/A-9",
+            2
+          ],
+          [
+            "A A 9",
+            1
+          ],
+          [
+            "9/A A 9/9/9",
+            1
+          ],
+          [
+            "9/A, 9/A",
+            1
+          ],
+          [
+            "9, 9/A",
+            1
+          ],
+          [
+            "9-A",
+            1
+          ],
+          [
+            "9 9/A",
+            1
+          ],
+          [
+            "9, 9, 9/A 9, 9, 9/A",
+            1
+          ],
+          [
+            "9/A, 9",
+            1
+          ],
+          [
+            "9 A 9/9/9",
+            1
+          ]
+        ],
+        "raw_values_persisted": false,
+        "sentinel_counts": {
+          "-": 400
+        },
+        "multi_value_count": 16
+      },
+      "submitted_at": {
+        "total_rows": 1543,
+        "nonempty": 668,
+        "empty": 875,
+        "null_rate": 0.567077,
+        "max_length": 47,
+        "top_shapes": [
+          [
+            "-",
+            489
+          ],
+          [
+            "9-9-9 9:9:9+9:9",
+            174
+          ],
+          [
+            "9/9/9 A 9/9/9",
+            2
+          ],
+          [
+            "9/9/9, 9/9/9 A 9/9/9",
+            1
+          ],
+          [
+            "9/9/9; 9/9/9 A 9/9/9; 9/9/9",
+            1
+          ],
+          [
+            "9/9/9, 9/9/9",
+            1
+          ]
+        ],
+        "raw_values_persisted": false,
+        "sentinel_counts": {
+          "-": 489
+        },
+        "multi_value_count": 3,
+        "date_like_count": 179,
+        "invalid_or_non_date_count": 3
+      },
+      "assessed_at": {
+        "total_rows": 1543,
+        "nonempty": 1161,
+        "empty": 382,
+        "null_rate": 0.24757,
+        "max_length": 25,
+        "top_shapes": [
+          [
+            "9-9-9 9:9:9+9:9",
+            705
+          ],
+          [
+            "-",
+            448
+          ],
+          [
+            "9-9-9 9-9-9",
+            3
+          ],
+          [
+            "9/9/9",
+            1
+          ],
+          [
+            "9/9/9, 9/9/9",
+            1
+          ],
+          [
+            "9-9/9",
+            1
+          ],
+          [
+            "A",
+            1
+          ],
+          [
+            "9-9/9/9",
+            1
+          ]
+        ],
+        "raw_values_persisted": false,
+        "sentinel_counts": {
+          "-": 448
+        },
+        "multi_value_count": 1
+      },
+      "assessor_name": {
+        "total_rows": 1543,
+        "nonempty": 1242,
+        "empty": 301,
+        "null_rate": 0.195075,
+        "max_length": 58,
+        "top_shapes": [
+          [
+            "A A A",
+            466
+          ],
+          [
+            "-",
+            409
+          ],
+          [
+            "A A A A",
+            357
+          ],
+          [
+            "A",
+            5
+          ],
+          [
+            "A A A A, A A A A",
+            2
+          ],
+          [
+            "A A A A A A",
+            1
+          ],
+          [
+            "A A A A, A A A A, A A A A",
+            1
+          ],
+          [
+            "A A A A, A A A, A A A, A A A",
+            1
+          ]
+        ],
+        "raw_values_persisted": false,
+        "sentinel_counts": {
+          "-": 409
+        },
+        "multi_value_count": 4
+      },
+      "assessment_result": {
+        "total_rows": 1543,
+        "nonempty": 1177,
+        "empty": 366,
+        "null_rate": 0.2372,
+        "max_length": 652,
+        "top_shapes": [
+          [
+            "A",
+            719
+          ],
+          [
+            "-",
+            413
+          ],
+          [
+            "A (A A A A)",
+            3
+          ],
+          [
+            "A (A A A)",
+            2
+          ],
+          [
+            "A A A A A A A",
+            2
+          ],
+          [
+            "A, A A A, A",
+            1
+          ],
+          [
+            "A A A A A A A A A, A A A A A A A A A A A.",
+            1
+          ],
+          [
+            "A A A A A A A A A A. A A A A A A A A A A A A A",
+            1
+          ],
+          [
+            "A (A A A A A A A A A A A A).",
+            1
+          ],
+          [
+            "A A A A A A A, A A A A A A A A A A A A A. A A A A A A A A, A A A A A A A A A A A A A A A A A.",
+            1
+          ],
+          [
+            "A A A A A A A A A A A A A A A",
+            1
+          ],
+          [
+            "A A A A A A A (A A A A A A A A)",
+            1
+          ],
+          [
+            "A A A A A, A A",
+            1
+          ],
+          [
+            "- A A A A A; - A A A A A A A A A A, A;",
+            1
+          ],
+          [
+            "A A A A A A A A.",
+            1
+          ],
+          [
+            "A A A A A A A A A A A A 9 A A A",
+            1
+          ],
+          [
+            "A (A A A A A A, A A)",
+            1
+          ],
+          [
+            "A. (A A A A A A A A A A, A A A A A A 9/9 A A A A A A).",
+            1
+          ],
+          [
+            "A A A A A A A A A A A A A A A A A",
+            1
+          ],
+          [
+            "A. (A A A A A A A A A A A A)",
+            1
+          ]
+        ],
+        "raw_values_persisted": false,
+        "sentinel_counts": {
+          "-": 413
+        },
+        "multi_value_count": 16
+      },
+      "inspected_at": {
+        "total_rows": 1543,
+        "nonempty": 1484,
+        "empty": 59,
+        "null_rate": 0.038237,
+        "max_length": 36,
+        "top_shapes": [
+          [
+            "9-9/9/9",
+            803
+          ],
+          [
+            "9-9-9 9:9:9+9:9",
+            477
+          ],
+          [
+            "9 - 9/9/9",
+            96
+          ],
+          [
+            "???",
+            54
+          ],
+          [
+            "9/9-9/9/9",
+            19
+          ],
+          [
+            "9/9 - 9/9/9",
+            9
+          ],
+          [
+            "9/9/9 A 9/9/9",
+            5
+          ],
+          [
+            "-",
+            4
+          ],
+          [
+            "9-9/9/9 & 9/9/9",
+            3
+          ],
+          [
+            "9-9/9",
+            1
+          ],
+          [
+            "A A A",
+            1
+          ],
+          [
+            "9-9-9 A 9-9/9/9",
+            1
+          ],
+          [
+            "9-9-9, 9-9-9",
+            1
+          ],
+          [
+            "9-9/9/9 9-9/9/9",
+            1
+          ],
+          [
+            "9-9/9/9 9/9/9",
+            1
+          ],
+          [
+            "9/9/9, 9/9/9",
+            1
+          ],
+          [
+            "9, 9, 9/9/9",
+            1
+          ],
+          [
+            "9-9/9/9 A 9/9/9",
+            1
+          ],
+          [
+            "9 - 9/9/9; 9 - 9/9/9",
+            1
+          ],
+          [
+            "9/9/9-9/9/9",
+            1
+          ]
+        ],
+        "raw_values_persisted": false,
+        "sentinel_counts": {
+          "-": 4,
+          "???": 54
+        },
+        "multi_value_count": 5,
+        "date_like_count": 1425,
+        "invalid_or_non_date_count": 932
+      },
+      "decision_reference": {
+        "total_rows": 1543,
+        "nonempty": 1315,
+        "empty": 228,
+        "null_rate": 0.147764,
+        "max_length": 70,
+        "top_shapes": [
+          [
+            "9/A-A A 9/9/9",
+            1207
+          ],
+          [
+            "9/A-A 9/9/9",
+            58
+          ],
+          [
+            "-",
+            16
+          ],
+          [
+            "9/9/A-A A 9/9/9",
+            8
+          ],
+          [
+            "9/A-A",
+            5
+          ],
+          [
+            "9//A-A A 9/9/9",
+            5
+          ],
+          [
+            "9/A-A A 9/9/9 9/A-A A 9/9/9",
+            3
+          ],
+          [
+            "A A A: 9/A-A A 9/9/9",
+            1
+          ],
+          [
+            "9, 9/A-A A 9/9/9",
+            1
+          ],
+          [
+            "9/A-A A A 9/9/9",
+            1
+          ],
+          [
+            "9/A-A A 9/9/9, A A A A 9/A-A A 9/9/9",
+            1
+          ],
+          [
+            "9/A-A /9/9",
+            1
+          ],
+          [
+            "9/9/A-A 9/9/9",
+            1
+          ],
+          [
+            "9/A-A A 9/9/9 (A A A A 9/A-A A 9/9/9)",
+            1
+          ],
+          [
+            "9/A-A A 9/9/9;",
+            1
+          ],
+          [
+            "9/A-A 9/9/9; 9/A-A 9/9/9",
+            1
+          ],
+          [
+            "9/A-A A 9/9/9, 9/A-A A 9/9/9",
+            1
+          ],
+          [
+            "9/A-A, 9/A-A A 9/9/9",
+            1
+          ],
+          [
+            "9/A-A A 9/9/9; 9/ A-A A 9/9/9",
+            1
+          ],
+          [
+            "9/A-A A 9/9/9/A-A A",
+            1
+          ]
+        ],
+        "raw_values_persisted": false,
+        "composite_classification": {
+          "reference_plus_trailing_date": 1289,
+          "empty": 228,
+          "no_trailing_date": 26
+        },
+        "trailing_date_separator_counts": {
+          "/": 1289
+        },
+        "duplicate_normalized_reference_count": 356,
+        "multi_reference_count": 7,
+        "invalid_trailing_date_count": 4,
+        "sentinel_counts": {
+          "-": 16
+        },
+        "multi_value_count": 7
+      },
+      "bbkt_reference": {
+        "total_rows": 1543,
+        "nonempty": 1391,
+        "empty": 152,
+        "null_rate": 0.098509,
+        "max_length": 25,
+        "top_shapes": [
+          [
+            "9-9-9 9:9:9+9:9",
+            1149
+          ],
+          [
+            "-",
+            232
+          ],
+          [
+            "9-9-9 & 9/9/9",
+            3
+          ],
+          [
+            "A A A A",
+            2
+          ],
+          [
+            "9-9-9; 9/9/9",
+            1
+          ],
+          [
+            "9-9/9",
+            1
+          ],
+          [
+            "9-9-9 A 9/9/9",
+            1
+          ],
+          [
+            "A A A",
+            1
+          ],
+          [
+            "9-9-9; 9-9-9",
+            1
+          ]
+        ],
+        "raw_values_persisted": false,
+        "sentinel_counts": {
+          "-": 232
+        },
+        "multi_value_count": 2
+      },
+      "applicable_standard": {
+        "total_rows": 1543,
+        "nonempty": 1496,
+        "empty": 47,
+        "null_rate": 0.03046,
+        "max_length": 18,
+        "top_shapes": [
+          [
+            "A-A",
+            1292
+          ],
+          [
+            "9A",
+            156
+          ],
+          [
+            "A A A",
+            36
+          ],
+          [
+            "A",
+            5
+          ],
+          [
+            "A-A & A-A",
+            2
+          ],
+          [
+            "A-A, A",
+            1
+          ],
+          [
+            "A-A, A/A-A",
+            1
+          ],
+          [
+            "A-A + A",
+            1
+          ],
+          [
+            "A-A, A-A",
+            1
+          ],
+          [
+            "A A",
+            1
+          ]
+        ],
+        "raw_values_persisted": false,
+        "sentinel_counts": {},
+        "multi_value_count": 3,
+        "normalized_domain_counts": {
+          "who-gmp": 1175,
+          "3p": 156,
+          "who-gmp & eu-gmp": 2,
+          "gmp": 5,
+          "who-glp": 104,
+          "who-glp, gcp": 1,
+          "gmp bao bi": 36,
+          "eu-gmp": 7,
+          "who-gmp, pic/s-gmp": 1,
+          "who-glp + gcp": 1,
+          "eu-gmp, who-gmp": 1,
+          "japan-gmp": 3,
+          "japan gmp": 1,
+          "oecd-glp": 3
+        }
+      },
+      "inspection_type": {
+        "total_rows": 1543,
+        "nonempty": 1496,
+        "empty": 47,
+        "null_rate": 0.03046,
+        "max_length": 26,
+        "top_shapes": [
+          [
+            "A",
+            1411
+          ],
+          [
+            "A + A",
+            42
+          ],
+          [
+            "A A A A",
+            14
+          ],
+          [
+            "A A",
+            10
+          ],
+          [
+            "A A A",
+            6
+          ],
+          [
+            "A A A A A",
+            4
+          ],
+          [
+            "A.A A",
+            3
+          ],
+          [
+            "A A A A A A",
+            2
+          ],
+          [
+            "A, A",
+            1
+          ],
+          [
+            "A A A & A A",
+            1
+          ],
+          [
+            "A A/A",
+            1
+          ],
+          [
+            "A A A A A A 9",
+            1
+          ]
+        ],
+        "raw_values_persisted": false,
+        "sentinel_counts": {},
+        "multi_value_count": 1,
+        "normalized_domain_counts": {
+          "tai": 1060,
+          "kiem soat thay đoi": 3,
+          "moi": 351,
+          "gia han cc": 5,
+          "tai + moi": 37,
+          "đoi pham vi chung nhan": 1,
+          "đoi ten va gia han cc": 2,
+          "tai, moi": 1,
+          "giam sat": 3,
+          "sua pham vi chung nhan": 2,
+          "đot xuat": 4,
+          "đoi pham vi & đia chi": 1,
+          "đoi ten": 2,
+          "theo y/c": 1,
+          "moi + tai": 5,
+          "đ.gia nra": 3,
+          "đanh gia xac nhan": 9,
+          "thay đoi pham vi": 1,
+          "cap lai": 1,
+          "đanh gia xac nhan japan": 1,
+          "bo sung day chuyen": 1,
+          "bo sung kho": 1,
+          "bo sung nha may nang mem 2": 1
+        }
+      }
+    },
+    "db.cc": {
+      "certificate_number": {
+        "total_rows": 1628,
+        "nonempty": 1601,
+        "empty": 27,
+        "null_rate": 0.016585,
+        "max_length": 73,
+        "top_shapes": [
+          [
+            "9/A-A",
+            1392
+          ],
+          [
+            "9/9/A-A",
+            64
+          ],
+          [
+            "???",
+            62
+          ],
+          [
+            "9",
+            10
+          ],
+          [
+            "A_A_9_A_9_9",
+            7
+          ],
+          [
+            "A/9-9/9",
+            7
+          ],
+          [
+            "A/A/9/9",
+            6
+          ],
+          [
+            "A/9A/9",
+            5
+          ],
+          [
+            "A9/A/9/9",
+            5
+          ],
+          [
+            "A-9-9-9",
+            5
+          ],
+          [
+            "A9/9/9",
+            4
+          ],
+          [
+            "9/9/A",
+            4
+          ],
+          [
+            "A/9/9",
+            4
+          ],
+          [
+            "- A -",
+            2
+          ],
+          [
+            "A.9.9.9.A.9; A/9_9_9/9",
+            2
+          ],
+          [
+            "A9",
+            2
+          ],
+          [
+            "A.9.9.9.A.9 A/9_9_9/9",
+            2
+          ],
+          [
+            "A/A/9-9/9",
+            2
+          ],
+          [
+            "A A 9 A A 9/9-9",
+            2
+          ],
+          [
+            "/9/A-A",
+            1
+          ]
+        ],
+        "raw_values_persisted": false,
+        "sentinel_counts": {
+          "???": 62
+        },
+        "multi_value_count": 5
+      },
+      "certificate_issue_date": {
+        "total_rows": 1628,
+        "nonempty": 1581,
+        "empty": 47,
+        "null_rate": 0.02887,
+        "max_length": 25,
+        "top_shapes": [
+          [
+            "9-9-9 9:9:9+9:9",
+            1538
+          ],
+          [
+            "???",
+            42
+          ],
+          [
+            "9-9-9 9-9-9",
+            1
+          ]
+        ],
+        "raw_values_persisted": false,
+        "sentinel_counts": {
+          "???": 42
+        },
+        "multi_value_count": 0,
+        "date_like_count": 1539,
+        "invalid_or_non_date_count": 1
+      },
+      "certificate_expiry_date": {
+        "total_rows": 1628,
+        "nonempty": 1542,
+        "empty": 86,
+        "null_rate": 0.052826,
+        "max_length": 36,
+        "top_shapes": [
+          [
+            "9-9-9 9:9:9+9:9",
+            1525
+          ],
+          [
+            "9-9-9 (A A A 9-9-9)",
+            7
+          ],
+          [
+            "9-9-9 (A A A 9/9/9)",
+            4
+          ],
+          [
+            "9-9",
+            3
+          ],
+          [
+            "9-9-9 9-9-9",
+            1
+          ],
+          [
+            "9-9-9 (A A 9-9-9)",
+            1
+          ],
+          [
+            "9/9",
+            1
+          ]
+        ],
+        "raw_values_persisted": false,
+        "sentinel_counts": {},
+        "multi_value_count": 0,
+        "date_like_count": 1542,
+        "invalid_or_non_date_count": 14
+      }
+    }
+  },
+  "candidate_headers": {
+    "report_written_on": [
+      {
+        "sheet": "db.ktra",
+        "header": "Báo cáo"
+      },
+      {
+        "sheet": "db.ktra",
+        "header": "Hoàn thành báo cáo"
+      }
+    ],
+    "capa_incoming_reference": [
+      {
+        "sheet": "db.ktra",
+        "header": "CV BCKP lần 1"
+      },
+      {
+        "sheet": "db.ktra",
+        "header": "CV BCKP lần 2"
+      },
+      {
+        "sheet": "db.ktra",
+        "header": "Khắc phục 1"
+      },
+      {
+        "sheet": "db.ktra",
+        "header": "Khắc phục 2"
+      },
+      {
+        "sheet": "db.ktra",
+        "header": "Khắc phục cuối"
+      },
+      {
+        "sheet": "db.ktra",
+        "header": "Nộp BCKP"
+      },
+      {
+        "sheet": "db.ktra",
+        "header": "Đánh giá BCKP 1"
+      },
+      {
+        "sheet": "db.ktra",
+        "header": "Đánh giá BCKP 2"
+      }
+    ],
+    "final_evaluation": [],
+    "compliance_due_on": [
+      {
+        "sheet": "db.ktra",
+        "header": "HẠN KT TUÂN THỦ"
+      }
+    ],
+    "approval_vice_chair": [
+      {
+        "sheet": "db.ktra",
+        "header": "PHIẾU TRÌNH PCT"
+      },
+      {
+        "sheet": "db.Tdoi",
+        "header": "PHIẾU TRÌNH PCT"
+      }
+    ],
+    "approval_chair": [
+      {
+        "sheet": "db.ktra",
+        "header": "PHIẾU TRÌNH CT"
+      },
+      {
+        "sheet": "db.Tdoi",
+        "header": "PHIẾU TRÌNH CT"
+      }
+    ]
+  },
+  "field_source_headers": {
+    "db.ktra": {
+      "dossier_code": [
+        "Mã hồ sơ"
+      ],
+      "submitted_at": [
+        "Ngày nộp"
+      ],
+      "assessed_at": [
+        "Ngày thẩm định"
+      ],
+      "assessor_name": [
+        "Người thẩm định"
+      ],
+      "assessment_result": [
+        "Kết quả"
+      ],
+      "inspected_at": [
+        "Ngày K.tra"
+      ],
+      "decision_reference": [
+        "Q. định"
+      ],
+      "bbkt_reference": [
+        "B. bản"
+      ],
+      "applicable_standard": [
+        "TIÊU CHUẨN ÁP DỤNG"
+      ],
+      "inspection_type": [
+        "LOẠI KIỂM TRA"
+      ]
+    },
+    "db.cc": {
+      "certificate_number": [
+        "Mã số CC"
+      ],
+      "certificate_issue_date": [
+        "Ngày cấp CC"
+      ],
+      "certificate_expiry_date": [
+        "Hết hạn CC"
+      ]
+    }
+  },
+  "migration_safety": {
+    "decision_reference": "COMPOSITE_REQUIRES_SPLIT",
+    "bbkt_reference": "OWNER_MISMATCH",
+    "inspected_at": "AMBIGUOUS",
+    "submitted_at": "INSUFFICIENT_SOURCE",
+    "dossier_code": "AMBIGUOUS",
+    "applicable_standard": "SAFE_WITH_DETERMINISTIC_NORMALIZATION",
+    "inspection_type": "SAFE_WITH_DETERMINISTIC_NORMALIZATION",
+    "certificate_number": "AMBIGUOUS",
+    "certificate_issue_date": "SAFE_WITH_DETERMINISTIC_NORMALIZATION",
+    "certificate_expiry_date": "AMBIGUOUS"
+  },
+  "guardrails": {
+    "database_written": false,
+    "legacy_workbook_written": false,
+    "raw_values_persisted": false,
+    "candidate_header_proves_owner": false,
+    "backfill_performed": false
+  }
+}

@@ -189,6 +189,34 @@ Use separate inputs for at least:
 
 The backend payload should be typed around lifecycle owners, not around Word bookmark names.
 
+## Read-only legacy morphology overlay
+
+The real workbook profile is recorded in
+`artifacts/legacy_audit/inspection_case_lifecycle_legacy_profile.json` and is
+diagnostic evidence only. Its exact source header for `bbkt_reference` is
+`db.ktra.B. bản`; 1,149 of 1,543 values have timestamp morphology and 232 are
+`-`, so the canonical runtime name must not be treated as proof that this is a
+BBKT reference. `decision_reference` has 1,289 deterministic
+reference-plus-trailing-date shapes, 26 without a trailing date, 16 `-`
+sentinels, 7 multi-reference forms, and 4 invalid date-like forms. This is a
+composite requiring split, not a backfill authorization.
+
+| Field | Safe aggregate finding | Migration safety |
+|---|---|---|
+| `decision_reference` | composite reference/date; exceptional and multi-reference forms | `COMPOSITE_REQUIRES_SPLIT` |
+| `bbkt_reference` | timestamp-dominant despite canonical name | `OWNER_MISMATCH` |
+| `inspected_at` | date ranges, timestamps, sentinels and malformed mixed values | `AMBIGUOUS` |
+| `submitted_at` | 875 empty, including 489 `-`; multi-date forms exist | `INSUFFICIENT_SOURCE` |
+| `dossier_code` | 400 `-`; multi-code morphology exists | `AMBIGUOUS` |
+| `applicable_standard` | normalized domain is finite but has multi-value exceptions | `SAFE_WITH_DETERMINISTIC_NORMALIZATION` |
+| `inspection_type` | normalized domain is finite but has composite exceptions | `SAFE_WITH_DETERMINISTIC_NORMALIZATION` |
+| `certificate_number` | 62 `???` and heterogeneous identifier forms | `AMBIGUOUS` |
+| `certificate_issue_date` | 42 `???`, one malformed non-date form | `SAFE_WITH_DETERMINISTIC_NORMALIZATION` |
+| `certificate_expiry_date` | partial dates such as `9-9` and mixed annotations | `AMBIGUOUS` |
+
+No raw business values are persisted in the profile and no backfill is
+allowed by this overlay.
+
 ## Readiness decision for `INSPECTION_QD_KT`
 
 This lifecycle matrix materially closes the business-owner question for QĐKT and the surrounding case workflow, but it does **not** by itself authorize document-generation readiness.

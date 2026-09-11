@@ -35,6 +35,17 @@ def test_profile_persists_shapes_not_raw_business_values():
     assert "123/QĐ-KT" not in rendered
     assert "456/QĐ-KT" not in rendered
     assert profile["composite_classification"]["reference_plus_trailing_date"] == 2
+    assert profile["trailing_date_separator_counts"] == {"/": 2}
+    assert profile["duplicate_normalized_reference_count"] == 0
+    assert profile["invalid_trailing_date_count"] == 0
+
+
+def test_morphology_profile_counts_sentinels_and_multiple_values():
+    profile = _profile_values(["-", "???", "A, B", ""], field="certificate_expiry_date")
+    assert profile["sentinel_counts"] == {"-": 1, "???": 1}
+    assert profile["multi_value_count"] == 1
+    assert profile["date_like_count"] == 0
+    assert profile["invalid_or_non_date_count"] == 1
 
 
 def test_shape_collapses_business_content_to_morphology():
@@ -69,6 +80,31 @@ def test_generic_ct_does_not_match_unrelated_words():
     snapshot = {"db.ktra": [{"Công tác kiểm tra": "x", "__excel_row_number": "2"}]}
     discovered = _discover_headers(snapshot)
     assert discovered["approval_chair"] == []
+
+
+def test_chair_and_vice_chair_abbreviations_are_token_safe():
+    snapshot = {
+        "db.cc": [
+            {"Phiếu trình CT": "x", "Phiếu trình PCT": "y", "Công tác": "z", "__excel_row_number": "1"}
+        ]
+    }
+    discovered = _discover_headers(snapshot)
+    assert {item["header"] for item in discovered["approval_chair"]} == {"Phiếu trình CT"}
+    assert {item["header"] for item in discovered["approval_vice_chair"]} == {"Phiếu trình PCT"}
+
+
+def test_multi_word_header_matching_remains_token_aware():
+    snapshot = {"db.ktra": [{"Hạn kiểm tra tuân thủ": "x", "Báo cáo": "y", "__excel_row_number": "1"}]}
+    discovered = _discover_headers(snapshot)
+    assert discovered["compliance_due_on"] == [{"sheet": "db.ktra", "header": "Hạn kiểm tra tuân thủ"}]
+    assert {item["header"] for item in discovered["report_written_on"]} == {"Báo cáo"}
+
+
+def test_profile_exposes_source_headers_domains_and_migration_safety():
+    standard = _profile_values(["WHO-GMP", "PIC/S", ""], field="applicable_standard")
+    inspection = _profile_values(["Tái", "Tái + Mới", ""], field="inspection_type")
+    assert standard["normalized_domain_counts"] == {"who-gmp": 1, "pic/s": 1}
+    assert inspection["normalized_domain_counts"] == {"tai": 1, "tai + moi": 1}
 
 
 def test_direct_script_entrypoint_can_import_backend_without_pythonpath():

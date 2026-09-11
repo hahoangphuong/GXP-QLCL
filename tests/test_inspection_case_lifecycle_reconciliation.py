@@ -137,6 +137,52 @@ def test_plan_blocks_datetime_submission_but_compares_pure_certificate_dates():
     assert statuses["certificate_expiry_date"] == "ALREADY_MATCHES"
 
 
+def test_date_fact_presence_is_distinct_from_comparability_and_does_not_leak_datetime():
+    aware = datetime(2026, 1, 14, 17, 30, tzinfo=timezone.utc)
+    report = build_reconciliation_plan(
+        [_legacy_row()],
+        [_canonical_case(application={"dossier_code": "HS-41", "submitted_on": aware})],
+    )
+    submitted = next(fact for fact in report["facts"] if fact["canonical_fact"] == "application_submitted_on")
+    assert submitted["reconciliation_status"] == "BLOCKED_TIMEZONE_POLICY_UNPROVEN"
+    assert submitted["current_value_present"] is True
+    assert submitted["current_value_comparable"] is False
+    assert submitted["current_comparison_blocker"] == "BLOCKED_UNPROVEN_BUSINESS_TIMEZONE"
+    serialized = json.dumps(report, default=str)
+    assert aware.isoformat() not in serialized
+    assert str(aware) not in serialized
+
+
+def test_date_fact_reports_naive_datetime_as_present_but_uncomparable():
+    report = build_reconciliation_plan(
+        [_legacy_row()],
+        [_canonical_case(application={"dossier_code": "HS-41", "submitted_on": datetime(2026, 1, 14, 9, 0)})],
+    )
+    submitted = next(fact for fact in report["facts"] if fact["canonical_fact"] == "application_submitted_on")
+    assert submitted["current_value_present"] is True
+    assert submitted["current_value_comparable"] is False
+    assert submitted["current_comparison_blocker"] == "BLOCKED_UNPROVEN_TIMEZONE"
+
+
+def test_date_fact_reports_pure_date_and_null_current_value_deterministically():
+    matching = build_reconciliation_plan([_legacy_row()], [_canonical_case()])
+    submitted = next(fact for fact in matching["facts"] if fact["canonical_fact"] == "application_submitted_on")
+    assert submitted["reconciliation_status"] == "ALREADY_MATCHES"
+    assert submitted["current_value_present"] is True
+    assert submitted["current_value_comparable"] is True
+    assert submitted["current_comparison_blocker"] is None
+
+    missing = build_reconciliation_plan(
+        [_legacy_row()],
+        [_canonical_case(application={"dossier_code": "HS-41", "submitted_on": None})],
+    )
+    submitted = next(fact for fact in missing["facts"] if fact["canonical_fact"] == "application_submitted_on")
+    assert submitted["reconciliation_status"] == "SAFE_INSERT"
+    assert submitted["current_value_present"] is False
+    assert submitted["current_value_comparable"] is True
+    assert submitted["current_comparison_blocker"] is None
+
+
 def test_report_declares_the_audited_date_comparison_policy():
     report = build_reconciliation_plan([_legacy_row()], [_canonical_case()])
     assert report["date_comparison_policy"] == DATE_COMPARISON_POLICY

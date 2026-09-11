@@ -264,7 +264,7 @@ def _resolve_case_identity(legacy_id: int, canonical_cases: list[dict[str, Any]]
     return "MATCHED", matches
 
 
-def _fact(case_id: str | None, legacy_id: int, key: str, source: str, status: str, *, candidate: Any = None, current: Any = None, provenance_status: str = "NOT_ASSESSED", blocker: str | None = None) -> dict[str, Any]:
+def _fact(case_id: str | None, legacy_id: int, key: str, source: str, status: str, *, candidate: Any = None, current: Any = None, current_value_comparable: bool | None = None, current_comparison_blocker: str | None = None, provenance_status: str = "NOT_ASSESSED", blocker: str | None = None) -> dict[str, Any]:
     return {
         "legacy_inspection_id": legacy_id,
         "case_id": case_id,
@@ -272,6 +272,8 @@ def _fact(case_id: str | None, legacy_id: int, key: str, source: str, status: st
         "legacy_source": source,
         "legacy_morphology": _date_morphology(str(candidate)) if key.endswith("_on") and candidate is not None else _shape(str(candidate or "")),
         "current_value_present": _present(current),
+        "current_value_comparable": current_value_comparable,
+        "current_comparison_blocker": current_comparison_blocker,
         "candidate_available": _present(candidate),
         "candidate_sha256": _hash(str(candidate)) if candidate is not None and not isinstance(candidate, (date, int, float, bool)) else None,
         "candidate_value": candidate if isinstance(candidate, (date, type(None))) else None,
@@ -280,6 +282,22 @@ def _fact(case_id: str | None, legacy_id: int, key: str, source: str, status: st
         "blocker": blocker,
         "recommended_future_action": "manual_review" if status in {"MANUAL_RECONCILIATION_REQUIRED", "BLOCKED_PROVENANCE_CONTAMINATION", "CONFLICT_EXISTING_CANONICAL"} else ("write_structured_owner" if status in {"SAFE_INSERT", "SAFE_UPDATE_IF_EMPTY"} else "no_write"),
     }
+
+
+def _date_fact(case_id: str, legacy_id: int, key: str, source: str, status: str, *, candidate: date | None, current: Any, blocker: str | None = None) -> dict[str, Any]:
+    _, comparison_blocker = _normalize_canonical_date(current)
+    return _fact(
+        case_id,
+        legacy_id,
+        key,
+        source,
+        status,
+        candidate=candidate,
+        current=current,
+        current_value_comparable=comparison_blocker is None,
+        current_comparison_blocker=comparison_blocker,
+        blocker=blocker,
+    )
 
 
 def _row_id(row: dict[str, str]) -> int | None:
@@ -358,8 +376,7 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, str]], canonical_cases
             ("certificate_issue_date", "db.cc Ngày cấp CC", row.get("certificate_issue_date", ""), cert.get("issue_date")),
         ]:
             status, candidate = _date_candidate_status(legacy_value, current)
-            normalized_current, _ = _normalize_canonical_date(current)
-            facts.append(_fact(case_id, legacy_id, key, source, status, candidate=candidate, current=normalized_current))
+            facts.append(_date_fact(case_id, legacy_id, key, source, status, candidate=candidate, current=current))
         for key, source, legacy_value, current, domain in [
             ("applicable_standard", "db.ktra TIÊU CHUẨN ÁP DỤNG", row.get("applicable_standard", ""), case.get("applicable_standard"), APPLICABLE_STANDARD_DOMAIN),
             ("inspection_type", "db.ktra LOẠI KIỂM TRA", row.get("inspection_type", ""), case.get("inspection_type"), INSPECTION_TYPE_DOMAIN),
@@ -375,8 +392,7 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, str]], canonical_cases
             expiry_status, expiry_candidate = "MANUAL_RECONCILIATION_REQUIRED", None
         else:
             expiry_status, expiry_candidate = _date_candidate_status(expiry, cert.get("expiry_date"))
-        normalized_expiry, _ = _normalize_canonical_date(cert.get("expiry_date"))
-        facts.append(_fact(case_id, legacy_id, "certificate_expiry_date", "db.cc Hết hạn CC", expiry_status, candidate=expiry_candidate, current=normalized_expiry, blocker="partial/annotated legacy expiry requires manual reconciliation" if expiry_status == "MANUAL_RECONCILIATION_REQUIRED" else None))
+        facts.append(_date_fact(case_id, legacy_id, "certificate_expiry_date", "db.cc Hết hạn CC", expiry_status, candidate=expiry_candidate, current=cert.get("expiry_date"), blocker="partial/annotated legacy expiry requires manual reconciliation" if expiry_status == "MANUAL_RECONCILIATION_REQUIRED" else None))
         facts[-1]["legacy_morphology"] = expiry_morphology
 
     status_counts = Counter(fact["reconciliation_status"] for fact in facts)

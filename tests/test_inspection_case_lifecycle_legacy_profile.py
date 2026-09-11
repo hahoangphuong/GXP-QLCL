@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+from pathlib import Path
+import subprocess
+import sys
+
 from tools.audit_inspection_case_lifecycle_legacy import (
     _classify_decision_composite,
     _discover_headers,
     _profile_values,
     _shape,
 )
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_decision_composite_classifier_is_fail_closed():
@@ -62,3 +69,16 @@ def test_generic_ct_does_not_match_unrelated_words():
     snapshot = {"db.ktra": [{"Công tác kiểm tra": "x", "__excel_row_number": "2"}]}
     discovered = _discover_headers(snapshot)
     assert discovered["approval_chair"] == []
+
+
+def test_direct_script_entrypoint_can_import_backend_without_pythonpath():
+    script = ROOT / "tools" / "audit_inspection_case_lifecycle_legacy.py"
+    completed = subprocess.run(
+        [sys.executable, str(script), "--help"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "Read-only legacy morphology/null-rate audit" in completed.stdout

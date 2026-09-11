@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 import inspect
 import json
 from pathlib import Path
@@ -9,8 +9,11 @@ import pytest
 
 from backend.app.domain import phase2_import
 from tools.plan_inspection_case_lifecycle_reconciliation import (
+    _date_candidate_status,
+    _domain_candidate_status,
     build_reconciliation_plan,
     _period_start_end,
+    _verify_read_only_rehearsal_connection,
     require_rehearsal_database,
 )
 
@@ -78,6 +81,57 @@ def test_plan_marks_b_ban_only_inspection_date_match_as_provenance_contamination
     assert actual["reconciliation_status"] == "BLOCKED_PROVENANCE_CONTAMINATION"
 
 
+def test_date_candidates_are_typed_before_comparison_including_timezone_aware_submissions():
+    assert _date_candidate_status("2026-08-21", date(2026, 8, 21))[0] == "ALREADY_MATCHES"
+    assert _date_candidate_status("2026-01-14", datetime(2026, 1, 14, 23, 30, tzinfo=timezone.utc))[0] == "ALREADY_MATCHES"
+    assert _date_candidate_status("2026-08-21", date(2026, 8, 22))[0] == "CONFLICT_EXISTING_CANONICAL"
+    assert _date_candidate_status("not-a-date", date(2026, 8, 21))[0] == "BLOCKED_AMBIGUOUS_LEGACY"
+
+
+def test_period_reconciliation_requires_a_matching_start_and_end_pair():
+    wrong_end = build_reconciliation_plan(
+        [_legacy_row(inspected_at="17-19/07/2026", bbkt_reference="")],
+        [_canonical_case(outcome={"inspected_on": date(2026, 7, 17), "inspected_to_on": date(2026, 7, 18)})],
+    )
+    actual = next(fact for fact in wrong_end["facts"] if fact["canonical_fact"] == "actual_inspection_period")
+    assert actual["reconciliation_status"] == "CONFLICT_EXISTING_CANONICAL"
+    assert actual["provenance_status"] == "MATCHES_NEITHER"
+
+    missing_end = build_reconciliation_plan(
+        [_legacy_row(inspected_at="17-19/07/2026", bbkt_reference="")],
+        [_canonical_case(outcome={"inspected_on": date(2026, 7, 17), "inspected_to_on": None})],
+    )
+    actual = next(fact for fact in missing_end["facts"] if fact["canonical_fact"] == "actual_inspection_period")
+    assert actual["reconciliation_status"] == "SAFE_UPDATE_IF_EMPTY"
+
+    exact = build_reconciliation_plan(
+        [_legacy_row(inspected_at="17-19/07/2026", bbkt_reference="")],
+        [_canonical_case(outcome={"inspected_on": date(2026, 7, 17), "inspected_to_on": date(2026, 7, 19)})],
+    )
+    actual = next(fact for fact in exact["facts"] if fact["canonical_fact"] == "actual_inspection_period")
+    assert actual["reconciliation_status"] == "ALREADY_MATCHES"
+    assert actual["provenance_status"] == "MATCHES_ACTUAL_SOURCE"
+
+    bbkt_start_only = build_reconciliation_plan(
+        [_legacy_row(inspected_at="17-19/07/2026", bbkt_reference="2026-07-17")],
+        [_canonical_case(outcome={"inspected_on": date(2026, 7, 17), "inspected_to_on": date(2026, 7, 18)})],
+    )
+    actual = next(fact for fact in bbkt_start_only["facts"] if fact["canonical_fact"] == "actual_inspection_period")
+    assert actual["reconciliation_status"] == "BLOCKED_PROVENANCE_CONTAMINATION"
+    assert actual["provenance_status"] == "MATCHES_BBKT_SOURCE_ONLY"
+
+
+def test_plan_applies_typed_date_comparison_to_application_and_certificate_facts():
+    report = build_reconciliation_plan(
+        [_legacy_row()],
+        [_canonical_case(application={"dossier_code": "HS-41", "submitted_on": datetime(2026, 1, 14, 12, tzinfo=timezone.utc)}, certificate={"issue_date": date(2026, 8, 21), "expiry_date": date(2029, 8, 19)})],
+    )
+    statuses = {fact["canonical_fact"]: fact["reconciliation_status"] for fact in report["facts"]}
+    assert statuses["application_submitted_on"] == "ALREADY_MATCHES"
+    assert statuses["certificate_issue_date"] == "ALREADY_MATCHES"
+    assert statuses["certificate_expiry_date"] == "ALREADY_MATCHES"
+
+
 def test_plan_keeps_owner_missing_and_manual_reconciliation_fail_closed():
     report = build_reconciliation_plan(
         [_legacy_row(certificate_expiry_date="9-9", decision_reference="540/QD-KT")],
@@ -98,6 +152,36 @@ def test_plan_reports_identity_not_found_and_conflict_without_guessing():
     assert conflict["facts"][0]["reconciliation_status"] == "CASE_IDENTITY_CONFLICT"
 
 
+def test_identity_resolver_uses_case_id_then_case_lineage_and_fails_closed_on_disagreement():
+    lineage_only = _canonical_case(legacy_inspection_id=None, legacy_lineage=[{"entity_type": "case", "legacy_id": "41", "target_table": "case", "target_entity_id": "case-41"}])
+    assert build_reconciliation_plan([_legacy_row()], [lineage_only])["summary"]["matched_cases"] == 1
+
+    direct = _canonical_case(id="direct")
+    lineage = _canonical_case(id="lineage", legacy_inspection_id=None, legacy_lineage=[{"entity_type": "case", "legacy_id": "41", "target_table": "case", "target_entity_id": "lineage"}])
+    disagreement = build_reconciliation_plan([_legacy_row()], [direct, lineage])
+    assert disagreement["facts"][0]["reconciliation_status"] == "CASE_IDENTITY_CONFLICT"
+
+    multiple = build_reconciliation_plan([_legacy_row()], [lineage_only, _canonical_case(id="other", legacy_inspection_id=None, legacy_lineage=[{"entity_type": "case", "legacy_id": "41", "target_table": "case", "target_entity_id": "other"}])])
+    assert multiple["facts"][0]["reconciliation_status"] == "CASE_IDENTITY_CONFLICT"
+
+
+def test_safe_domains_normalize_only_known_values_without_fuzzy_matching():
+    assert _domain_candidate_status("tái", "TAI", {"tai": "Tái"})[0] == "ALREADY_MATCHES"
+    assert _domain_candidate_status("tai, moi", "Tái + Mới", {"tai, moi": "Tái + Mới", "tai + moi": "Tái + Mới"})[0] == "ALREADY_MATCHES"
+    assert _domain_candidate_status("WHO-GMP", "WHO-GLP", {"who-gmp": "WHO-GMP", "who-glp": "WHO-GLP"})[0] == "CONFLICT_EXISTING_CANONICAL"
+    assert _domain_candidate_status("unreviewed value", "WHO-GMP", {"who-gmp": "WHO-GMP"})[0] == "BLOCKED_AMBIGUOUS_LEGACY"
+
+
+def test_misrouting_provenance_requires_direct_copy_equality():
+    matched = build_reconciliation_plan([_legacy_row()], [_canonical_case(application={"dossier_code": "HS-41", "submitted_on": date(2026, 1, 14), "dossier_reference": "540/QD-KT 05/05/2026"})])
+    compatibility = next(fact for fact in matched["facts"] if fact["canonical_fact"] == "application_dossier_reference_compatibility")
+    assert compatibility["provenance_status"] == "MATCHES_MISROUTED_SOURCE"
+
+    nonmatch = build_reconciliation_plan([_legacy_row()], [_canonical_case(application={"dossier_code": "HS-41", "submitted_on": date(2026, 1, 14), "dossier_reference": "another value"})])
+    compatibility = next(fact for fact in nonmatch["facts"] if fact["canonical_fact"] == "application_dossier_reference_compatibility")
+    assert compatibility["provenance_status"] == "NOT_MATCHING_MISROUTED_SOURCE"
+
+
 def test_contract_and_importer_keep_all_four_misrouting_paths_in_sync():
     contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
     paths = contract["legacy_misrouting_paths"]
@@ -105,9 +189,9 @@ def test_contract_and_importer_keep_all_four_misrouting_paths_in_sync():
     source = inspect.getsource(phase2_import)
     assert paths[0]["current_target_field"] == "dossier_reference"
     assert paths[1]["current_target_field"] == "decision_reference"
-    assert "dossier_reference" in source
-    assert "decision_reference" in source
-    assert "bbkt_reference" in source
+    assert 'dossier_reference=row.get("decision_reference") or None' in source
+    assert 'decision_reference=row.get("decision_reference") or None' in source
+    assert 'bbkt_reference=row.get("bbkt_reference") or None' in source
     assert "parse_date(row.get(\"bbkt_reference\", \"\")) or parse_date(row.get(\"inspected_at\", \"\"))" in source
     assert source.index("parse_date(row.get(\"bbkt_reference\", \"\"))") < source.index("parse_date(row.get(\"inspected_at\", \"\"))")
 
@@ -121,6 +205,40 @@ def test_read_only_runner_has_no_orm_write_operations_and_uses_read_only_transac
     assert ".flush(" not in source
     assert ".add(" not in source
     assert ".delete(" not in source
+
+
+class _ScalarResult:
+    def __init__(self, value: str):
+        self.value = value
+
+    def scalar_one(self) -> str:
+        return self.value
+
+
+class _ReadOnlyConnection:
+    def __init__(self, database_name: str = "gxp_legacy_rehearsal", read_only: str = "on"):
+        self.database_name = database_name
+        self.read_only = read_only
+        self.statements: list[str] = []
+
+    def execute(self, statement):
+        sql = str(statement)
+        self.statements.append(sql)
+        if sql.startswith("SELECT current_database"):
+            return _ScalarResult(self.database_name)
+        if sql.startswith("SHOW transaction_read_only"):
+            return _ScalarResult(self.read_only)
+        raise AssertionError(f"unexpected or mutating SQL: {sql}")
+
+
+def test_connected_database_guard_requires_actual_rehearsal_database_and_read_only_transaction():
+    connection = _ReadOnlyConnection()
+    _verify_read_only_rehearsal_connection(connection)
+    assert connection.statements == ["SELECT current_database()", "SHOW transaction_read_only"]
+    with pytest.raises(RuntimeError, match="other than the required rehearsal"):
+        _verify_read_only_rehearsal_connection(_ReadOnlyConnection(database_name="another_database"))
+    with pytest.raises(RuntimeError, match="read-only database transaction"):
+        _verify_read_only_rehearsal_connection(_ReadOnlyConnection(read_only="off"))
 
 
 def test_period_parser_preserves_deterministic_same_and_cross_month_ranges():

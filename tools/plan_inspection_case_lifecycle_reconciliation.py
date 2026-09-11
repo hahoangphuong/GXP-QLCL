@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
-from datetime import date
+from datetime import date, datetime
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -26,6 +26,7 @@ from backend.app.db.models.phase1 import (
     InspectionTeamMember,
     LegacyIdMap,
 )
+from backend.app.db.enums import LegacyEntityType
 from backend.app.db.session import build_engine
 from backend.app.domain.legacy_snapshot import read_core_sheet_rows
 from backend.app.domain.phase2_import import normalize_row, parse_date
@@ -53,6 +54,45 @@ PLAN_STATUS = {
     "MANUAL_RECONCILIATION_REQUIRED",
 }
 
+# These closed domains are the scalar, source-audited values that can be
+# compared without guessing. Composite or unlisted values remain blocked.
+APPLICABLE_STANDARD_DOMAIN = {
+    "3p": "3P",
+    "eu-gmp": "EU-GMP",
+    "gmp": "GMP",
+    "gmp bao bi": "GMP Bao bì",
+    "japan gmp": "Japan-GMP",
+    "japan-gmp": "Japan-GMP",
+    "oecd-glp": "OECD-GLP",
+    "who-glp": "WHO-GLP",
+    "who-gmp": "WHO-GMP",
+}
+INSPECTION_TYPE_DOMAIN = {
+    "bo sung day chuyen": "Bổ sung dây chuyền",
+    "bo sung kho": "Bổ sung kho",
+    "bo sung nha may nang mem 2": "Bổ sung nhà máy nang mềm 2",
+    "cap lai": "Cấp lại",
+    "d.gia nra": "Đánh giá NRA",
+    "danh gia xac nhan": "Đánh giá xác nhận",
+    "danh gia xac nhan japan": "Đánh giá xác nhận Japan",
+    "doi pham vi & dia chi": "Đổi phạm vi & địa chỉ",
+    "doi pham vi chung nhan": "Đổi phạm vi chứng nhận",
+    "doi ten": "Đổi tên",
+    "doi ten va gia han cc": "Đổi tên và gia hạn CC",
+    "dot xuat": "Đột xuất",
+    "gia han cc": "Gia hạn CC",
+    "giam sat": "Giám sát",
+    "kiem soat thay doi": "Kiểm soát thay đổi",
+    "moi": "Mới",
+    "moi + tai": "Tái + Mới",
+    "sua pham vi chung nhan": "Sửa phạm vi chứng nhận",
+    "tai": "Tái",
+    "tai + moi": "Tái + Mới",
+    "tai, moi": "Tái + Mới",
+    "thay doi pham vi": "Thay đổi phạm vi",
+    "theo y/c": "Theo yêu cầu",
+}
+
 
 def require_rehearsal_database(database_url: str) -> None:
     parsed = urlsplit(database_url)
@@ -78,6 +118,43 @@ def _candidate_status(candidate: Any, current: Any) -> str:
     if not _present(current):
         return "SAFE_INSERT"
     return "ALREADY_MATCHES" if candidate == current else "CONFLICT_EXISTING_CANONICAL"
+
+
+def _normalize_canonical_date(value: Any) -> date | None:
+    if isinstance(value, datetime):
+        # An aware datetime retains its represented civil date; do not discard
+        # timezone information by converting it through a string.
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return None
+
+
+def _date_candidate(value: str) -> date | None:
+    return parse_date(value)
+
+
+def _date_candidate_status(legacy_value: str, current: Any) -> tuple[str, date | None]:
+    candidate = _date_candidate(legacy_value)
+    if candidate is None:
+        return "BLOCKED_AMBIGUOUS_LEGACY", None
+    canonical = _normalize_canonical_date(current)
+    if canonical is None:
+        return "SAFE_INSERT", candidate
+    return ("ALREADY_MATCHES" if candidate == canonical else "CONFLICT_EXISTING_CANONICAL"), candidate
+
+
+def _normalize_domain(value: Any, domain: dict[str, str]) -> str | None:
+    folded = _fold(str(value or ""))
+    return domain.get(folded)
+
+
+def _domain_candidate_status(legacy_value: str, current: Any, domain: dict[str, str]) -> tuple[str, str | None]:
+    candidate = _normalize_domain(legacy_value, domain)
+    canonical = _normalize_domain(current, domain)
+    if candidate is None or canonical is None:
+        return "BLOCKED_AMBIGUOUS_LEGACY", candidate
+    return ("ALREADY_MATCHES" if candidate == canonical else "CONFLICT_EXISTING_CANONICAL"), candidate
 
 
 def _split_decision(value: str) -> tuple[str | None, str | None, str]:
@@ -123,19 +200,46 @@ def _date_reconciliation(legacy_value: str, current_start: date | None, current_
     start, end = _period_start_end(legacy_value)
     if start is None:
         return morphology, "BLOCKED_AMBIGUOUS_LEGACY", None
-    if current_start == start and (current_end in {None, end}):
+    current_start = _normalize_canonical_date(current_start)
+    current_end = _normalize_canonical_date(current_end)
+    if current_start == start and current_end == end:
         return morphology, "ALREADY_MATCHES", start.isoformat()
-    if current_start is None:
+    if current_start is None and current_end is None:
         return morphology, "SAFE_INSERT", start.isoformat()
+    if current_start == start and current_end is None:
+        return morphology, "SAFE_UPDATE_IF_EMPTY", start.isoformat()
     return morphology, "CONFLICT_EXISTING_CANONICAL", start.isoformat()
 
 
-def _misrouting_status(legacy_value: str, current_value: Any, source_key: str) -> str:
+def _misrouting_status(legacy_value: str, current_value: Any) -> str:
     if not _present(current_value):
-        return "NOT_MATCHING_MISROUTED_SOURCE"
-    if source_key in {"decision_reference", "bbkt_reference"}:
-        return "POSSIBLE_LEGACY_MISROUTED"
+        return "CURRENT_EMPTY"
+    if _fold(str(legacy_value)) == _fold(str(current_value)):
+        return "MATCHES_MISROUTED_SOURCE"
     return "NOT_MATCHING_MISROUTED_SOURCE"
+
+
+def _case_lineage_matches(case: dict[str, Any], legacy_id: int) -> bool:
+    for mapping in case.get("legacy_lineage") or []:
+        entity_type = str(mapping.get("entity_type") or "").lower()
+        if mapping.get("target_table") != "case" or entity_type not in {"case", "legacyentitytype.case"}:
+            continue
+        if str(mapping.get("legacy_id") or "").strip() == str(legacy_id):
+            return True
+    return False
+
+
+def _resolve_case_identity(legacy_id: int, canonical_cases: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
+    direct = [case for case in canonical_cases if case.get("legacy_inspection_id") == legacy_id]
+    lineage = [case for case in canonical_cases if _case_lineage_matches(case, legacy_id)]
+    direct_ids = {str(case["id"]) for case in direct}
+    lineage_ids = {str(case["id"]) for case in lineage}
+    if direct_ids and lineage_ids and direct_ids != lineage_ids:
+        return "CASE_IDENTITY_CONFLICT", []
+    matches = direct if direct else lineage
+    if len({str(case["id"]) for case in matches}) != 1:
+        return ("CASE_NOT_FOUND" if not matches else "CASE_IDENTITY_CONFLICT"), []
+    return "MATCHED", matches
 
 
 def _fact(case_id: str | None, legacy_id: int, key: str, source: str, status: str, *, candidate: Any = None, current: Any = None, provenance_status: str = "NOT_ASSESSED", blocker: str | None = None) -> dict[str, Any]:
@@ -164,12 +268,6 @@ def _row_id(row: dict[str, str]) -> int | None:
 
 
 def build_reconciliation_plan(legacy_rows: list[dict[str, str]], canonical_cases: list[dict[str, Any]]) -> dict[str, Any]:
-    case_by_legacy: dict[int, list[dict[str, Any]]] = {}
-    for case in canonical_cases:
-        legacy_id = case.get("legacy_inspection_id")
-        if legacy_id is not None:
-            case_by_legacy.setdefault(int(legacy_id), []).append(case)
-
     facts: list[dict[str, Any]] = []
     identity_counts = Counter()
     for raw in legacy_rows:
@@ -177,14 +275,14 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, str]], canonical_cases
         legacy_id = _row_id(row)
         if legacy_id is None:
             continue
-        matches = case_by_legacy.get(legacy_id, [])
-        if not matches:
+        identity_status, matches = _resolve_case_identity(legacy_id, canonical_cases)
+        if identity_status == "CASE_NOT_FOUND":
             identity_counts["unmatched"] += 1
             facts.append(_fact(None, legacy_id, "case_identity", "db.ktra.ID", "CASE_NOT_FOUND", blocker="no unique Case.legacy_inspection_id match"))
             continue
-        if len(matches) != 1:
+        if identity_status == "CASE_IDENTITY_CONFLICT":
             identity_counts["conflict"] += 1
-            facts.append(_fact(None, legacy_id, "case_identity", "db.ktra.ID", "CASE_IDENTITY_CONFLICT", blocker="more than one canonical Case matched stable legacy identity"))
+            facts.append(_fact(None, legacy_id, "case_identity", "db.ktra.ID", "CASE_IDENTITY_CONFLICT", blocker="direct Case identity and/or applicable LegacyIdMap lineage conflict"))
             continue
         identity_counts["matched"] += 1
         case = matches[0]
@@ -201,45 +299,60 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, str]], canonical_cases
         facts[-2]["legacy_morphology"] = decision_status
         facts[-1]["legacy_morphology"] = decision_status
 
+        decision_raw = row.get("decision_reference", "")
+        facts.append(_fact(case_id, legacy_id, "application_dossier_reference_compatibility", "db.ktra Q. định", "BLOCKED_OWNER_MISMATCH", candidate=decision_raw, current=application.get("dossier_reference"), provenance_status=_misrouting_status(decision_raw, application.get("dossier_reference")), blocker="Q. định is copied to application compatibility field, not the canonical decision owner"))
+        facts.append(_fact(case_id, legacy_id, "outcome_decision_reference_compatibility", "db.ktra Q. định", "BLOCKED_OWNER_MISMATCH", candidate=decision_raw, current=outcome.get("decision_reference"), provenance_status=_misrouting_status(decision_raw, outcome.get("decision_reference")), blocker="Q. định is copied to outcome compatibility field, not the canonical decision owner"))
+
         b_value = row.get("bbkt_reference", "")
         actual_value = row.get("inspected_at", "")
         b_date, _ = _period_start_end(b_value)
         actual_start, actual_end = _period_start_end(actual_value)
         current_start = outcome.get("inspected_on")
         current_end = outcome.get("inspected_to_on")
-        if b_date is not None and current_start == b_date and (actual_start is None or actual_start != current_start):
+        actual_status = _date_reconciliation(actual_value, current_start, current_end)[1]
+        actual_exact = actual_status == "ALREADY_MATCHES"
+        bbkt_matches_start = b_date is not None and current_start == b_date
+        if bbkt_matches_start and not actual_exact:
             inspection_status = "BLOCKED_PROVENANCE_CONTAMINATION"
             provenance = "MATCHES_BBKT_SOURCE_ONLY"
-        elif current_start == actual_start and current_start is not None:
+        elif actual_exact:
             inspection_status = "ALREADY_MATCHES"
-            provenance = "MATCHES_ACTUAL_SOURCE" if b_date != current_start else "MATCHES_BOTH_SOURCES"
-        elif current_start is None:
-            inspection_status = "BLOCKED_AMBIGUOUS_LEGACY"
-            provenance = "CURRENT_EMPTY"
+            provenance = "MATCHES_BOTH_SOURCES" if bbkt_matches_start else "MATCHES_ACTUAL_SOURCE"
         else:
-            inspection_status = "BLOCKED_PROVENANCE_CONTAMINATION" if b_date == current_start else "CONFLICT_EXISTING_CANONICAL"
-            provenance = "MATCHES_NEITHER" if b_date != current_start and actual_start != current_start else "LEGACY_ACTUAL_AMBIGUOUS"
+            inspection_status = actual_status
+            provenance = "CURRENT_EMPTY" if current_start is None and current_end is None else "MATCHES_NEITHER"
         facts.append(_fact(case_id, legacy_id, "actual_inspection_period", "db.ktra Ngày K.tra", inspection_status, candidate=actual_start, current=current_start, provenance_status=provenance, blocker="current importer tries B. bản before Ngày K.tra" if inspection_status == "BLOCKED_PROVENANCE_CONTAMINATION" else None))
-        facts.append(_fact(case_id, legacy_id, "bbkt_reference", "db.ktra B. bản", "BLOCKED_OWNER_MISMATCH", candidate=b_value, current=outcome.get("bbkt_reference"), provenance_status=_misrouting_status(b_value, outcome.get("bbkt_reference"), "bbkt_reference"), blocker="B. bản semantics are not proven and importer maps it to bbkt_reference"))
+        facts[-1]["legacy_period_end"] = None if actual_end is None else actual_end.isoformat()
+        facts[-1]["current_period_end"] = None if _normalize_canonical_date(current_end) is None else _normalize_canonical_date(current_end).isoformat()
+        facts.append(_fact(case_id, legacy_id, "bbkt_reference", "db.ktra B. bản", "BLOCKED_OWNER_MISMATCH", candidate=b_value, current=outcome.get("bbkt_reference"), provenance_status=_misrouting_status(b_value, outcome.get("bbkt_reference")), blocker="B. bản semantics are not proven and importer maps it to bbkt_reference"))
 
         for key, source, candidate, current in [
             ("dossier_code", "db.ktra Mã hồ sơ", row.get("dossier_code"), application.get("dossier_code")),
-            ("application_submitted_on", "db.ktra Ngày nộp hồ sơ", row.get("submitted_at"), application.get("submitted_on")),
-            ("applicable_standard", "db.ktra TIÊU CHUẨN ÁP DỤNG", row.get("applicable_standard"), case.get("applicable_standard")),
-            ("inspection_type", "db.ktra LOẠI KIỂM TRA", row.get("inspection_type"), case.get("inspection_type")),
-            ("certificate_issue_date", "db.cc Ngày cấp CC", row.get("certificate_issue_date"), cert.get("issue_date")),
         ]:
-            status = _candidate_status(candidate, current)
-            if key == "application_submitted_on":
-                status = _date_reconciliation(str(candidate or ""), current, None)[1]
-            facts.append(_fact(case_id, legacy_id, key, source, status, candidate=candidate, current=current))
+            facts.append(_fact(case_id, legacy_id, key, source, _candidate_status(candidate, current), candidate=candidate, current=current))
+        for key, source, legacy_value, current in [
+            ("application_submitted_on", "db.ktra Ngày nộp hồ sơ", row.get("submitted_at", ""), application.get("submitted_on")),
+            ("certificate_issue_date", "db.cc Ngày cấp CC", row.get("certificate_issue_date", ""), cert.get("issue_date")),
+        ]:
+            status, candidate = _date_candidate_status(legacy_value, current)
+            facts.append(_fact(case_id, legacy_id, key, source, status, candidate=candidate, current=_normalize_canonical_date(current)))
+        for key, source, legacy_value, current, domain in [
+            ("applicable_standard", "db.ktra TIÊU CHUẨN ÁP DỤNG", row.get("applicable_standard", ""), case.get("applicable_standard"), APPLICABLE_STANDARD_DOMAIN),
+            ("inspection_type", "db.ktra LOẠI KIỂM TRA", row.get("inspection_type", ""), case.get("inspection_type"), INSPECTION_TYPE_DOMAIN),
+        ]:
+            status, candidate = _domain_candidate_status(legacy_value, current, domain)
+            facts.append(_fact(case_id, legacy_id, key, source, status, candidate=candidate, current=_normalize_domain(current, domain)))
         for key in ("report_written_on", "final_evaluation", "compliance_due_on", "capa_incoming_reference", "approval_submission"):
             facts.append(_fact(case_id, legacy_id, key, "legacy source/profile", "BLOCKED_OWNER_MISSING", blocker="canonical semantic owner is not present"))
 
         expiry = row.get("certificate_expiry_date", "")
         expiry_morphology = _date_morphology(expiry)
-        expiry_status = "MANUAL_RECONCILIATION_REQUIRED" if expiry_morphology in {"PARTIAL_DATE", "ANNOTATED_DATE", "MULTI_DATE"} else _candidate_status(expiry, cert.get("expiry_date"))
-        facts.append(_fact(case_id, legacy_id, "certificate_expiry_date", "db.cc Hết hạn CC", expiry_status, candidate=expiry, current=cert.get("expiry_date"), blocker="partial/annotated legacy expiry requires manual reconciliation" if expiry_status == "MANUAL_RECONCILIATION_REQUIRED" else None))
+        if expiry_morphology in {"PARTIAL_DATE", "ANNOTATED_DATE", "MULTI_DATE"}:
+            expiry_status, expiry_candidate = "MANUAL_RECONCILIATION_REQUIRED", None
+        else:
+            expiry_status, expiry_candidate = _date_candidate_status(expiry, cert.get("expiry_date"))
+        facts.append(_fact(case_id, legacy_id, "certificate_expiry_date", "db.cc Hết hạn CC", expiry_status, candidate=expiry_candidate, current=_normalize_canonical_date(cert.get("expiry_date")), blocker="partial/annotated legacy expiry requires manual reconciliation" if expiry_status == "MANUAL_RECONCILIATION_REQUIRED" else None))
+        facts[-1]["legacy_morphology"] = expiry_morphology
 
     status_counts = Counter(fact["reconciliation_status"] for fact in facts)
     per_fact: dict[str, Counter[str]] = {}
@@ -259,7 +372,20 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, str]], canonical_cases
 
 
 def _canonical_snapshot(session: Session, legacy_ids: list[int]) -> list[dict[str, Any]]:
-    cases = list(session.scalars(select(Case).where(Case.legacy_inspection_id.in_(legacy_ids)))) if legacy_ids else []
+    if not legacy_ids:
+        return []
+    legacy_keys = [str(legacy_id) for legacy_id in legacy_ids]
+    lineage_targets = list(
+        session.scalars(
+            select(LegacyIdMap).where(
+                LegacyIdMap.entity_type == LegacyEntityType.CASE,
+                LegacyIdMap.target_table == "case",
+                LegacyIdMap.legacy_id.in_(legacy_keys),
+            )
+        )
+    )
+    target_ids = {mapping.target_entity_id for mapping in lineage_targets}
+    cases = list(session.scalars(select(Case).where(Case.legacy_inspection_id.in_(legacy_ids) | Case.id.in_(target_ids))))
     result: list[dict[str, Any]] = []
     for case in cases:
         application = session.scalar(select(CaseApplication).where(CaseApplication.case_id == case.id))
@@ -272,8 +398,17 @@ def _canonical_snapshot(session: Session, legacy_ids: list[int]) -> list[dict[st
         lineage = list(session.scalars(select(LegacyIdMap).where(LegacyIdMap.target_entity_id == case.id).order_by(LegacyIdMap.entity_type, LegacyIdMap.legacy_id)))
         certificate = session.scalar(select(Certificate).where(Certificate.case_id == case.id))
         version = session.scalar(select(CertificateVersion).where(CertificateVersion.certificate_id == certificate.id).order_by(CertificateVersion.version_no.desc())) if certificate else None
-        result.append({"id": case.id, "legacy_inspection_id": case.legacy_inspection_id, "gxp_type": case.gxp_type, "applicable_standard": case.applicable_standard, "inspection_type": case.inspection_type, "application": None if application is None else {"dossier_code": application.dossier_code, "dossier_reference": application.dossier_reference, "submitted_on": application.submitted_on}, "assessment": None if assessment is None else {"assessed_on": assessment.assessed_on, "assessor_name": assessment.assessor_name, "assessment_result": assessment.assessment_result}, "plan": None if plan is None else {"decision_document_hint": plan.decision_document_hint, "plan_start_on": plan.plan_start_on, "plan_end_on": plan.plan_end_on}, "team": None if team is None else {"display_text": team.display_text, "members": [{"inspector_profile_id": member.inspector_profile_id, "person_id": member.person_id, "role_label": member.role_label, "sort_order": member.sort_order} for member in members]}, "outcome": None if outcome is None else {"inspected_on": outcome.inspected_on, "inspected_to_on": outcome.inspected_to_on, "decision_reference": outcome.decision_reference, "bbkt_reference": outcome.bbkt_reference, "outcome_result": outcome.outcome_result}, "capa_cycles": [{"round_no": cycle.round_no, "requested_on": cycle.requested_on, "submitted_on": cycle.submitted_on, "assessed_on": cycle.assessed_on, "assessor_name": cycle.assessor_name, "result": cycle.result, "status": cycle.status} for cycle in capa_cycles], "certificate": None if version is None else {"certificate_number": version.certificate_number, "issue_date": version.issue_date, "expiry_date": version.expiry_date}, "legacy_lineage": [{"entity_type": str(mapping.entity_type), "legacy_id": mapping.legacy_id, "target_table": mapping.target_table} for mapping in lineage]})
+        result.append({"id": case.id, "legacy_inspection_id": case.legacy_inspection_id, "gxp_type": case.gxp_type, "applicable_standard": case.applicable_standard, "inspection_type": case.inspection_type, "application": None if application is None else {"dossier_code": application.dossier_code, "dossier_reference": application.dossier_reference, "submitted_on": application.submitted_on}, "assessment": None if assessment is None else {"assessed_on": assessment.assessed_on, "assessor_name": assessment.assessor_name, "assessment_result": assessment.assessment_result}, "plan": None if plan is None else {"decision_document_hint": plan.decision_document_hint, "plan_start_on": plan.plan_start_on, "plan_end_on": plan.plan_end_on}, "team": None if team is None else {"display_text": team.display_text, "members": [{"inspector_profile_id": member.inspector_profile_id, "person_id": member.person_id, "role_label": member.role_label, "sort_order": member.sort_order} for member in members]}, "outcome": None if outcome is None else {"inspected_on": outcome.inspected_on, "inspected_to_on": outcome.inspected_to_on, "decision_reference": outcome.decision_reference, "bbkt_reference": outcome.bbkt_reference, "outcome_result": outcome.outcome_result}, "capa_cycles": [{"round_no": cycle.round_no, "requested_on": cycle.requested_on, "submitted_on": cycle.submitted_on, "assessed_on": cycle.assessed_on, "assessor_name": cycle.assessor_name, "result": cycle.result, "status": cycle.status} for cycle in capa_cycles], "certificate": None if version is None else {"certificate_number": version.certificate_number, "issue_date": version.issue_date, "expiry_date": version.expiry_date}, "legacy_lineage": [{"entity_type": mapping.entity_type.value, "legacy_id": mapping.legacy_id, "target_table": mapping.target_table, "target_entity_id": mapping.target_entity_id} for mapping in lineage]})
     return result
+
+
+def _verify_read_only_rehearsal_connection(connection: Any) -> None:
+    database_name = connection.execute(text("SELECT current_database()")).scalar_one()
+    if database_name != REQUIRED_DATABASE_NAME:
+        raise RuntimeError("reconciliation planner connected to a database other than the required rehearsal database")
+    transaction_read_only = connection.execute(text("SHOW transaction_read_only")).scalar_one()
+    if str(transaction_read_only).strip().lower() not in {"on", "true", "1"}:
+        raise RuntimeError("reconciliation planner requires a read-only database transaction")
 
 
 def run_read_only_plan(database_url: str, workbook: Path) -> dict[str, Any]:
@@ -286,6 +421,7 @@ def run_read_only_plan(database_url: str, workbook: Path) -> dict[str, Any]:
     session = Session(bind=connection, autoflush=False, expire_on_commit=False)
     try:
         connection.execute(text("SET TRANSACTION READ ONLY"))
+        _verify_read_only_rehearsal_connection(connection)
         ids = [legacy_id for legacy_id in (_row_id(normalize_row(row)) for row in legacy_rows) if legacy_id is not None]
         canonical = _canonical_snapshot(session, ids)
         return build_reconciliation_plan(legacy_rows, canonical)

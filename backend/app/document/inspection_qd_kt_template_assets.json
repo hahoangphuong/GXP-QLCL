@@ -1,0 +1,35 @@
+{
+  "schema_version": "inspection-qd-kt-template-assets-v1",
+  "family_code": "INSPECTION_QD_KT",
+  "source_variant": "recordform_get_tpl_case_2",
+  "assets": [
+    {
+      "gxp_type": "GLP",
+      "filename": "2. QD KT - GLP.dotx",
+      "storage_root": "template",
+      "storage_relative_path": "2. QD KT - GLP.dotx",
+      "checksum_sha256": "c55695dbdaafa48f0b2a4211a8adda7b97443a44439d9a81de306ce98729ec19"
+    },
+    {
+      "gxp_type": "GMP",
+      "filename": "2. QD KT - GMP.dotx",
+      "storage_root": "template",
+      "storage_relative_path": "2. QD KT - GMP.dotx",
+      "checksum_sha256": "490d534580ce00844b6175e64ca4e2fdc345d7957be8813f0f62d03a9b82c1a5"
+    },
+    {
+      "gxp_type": "GMPbb",
+      "filename": "2. QD KT - GMPbb.dotx",
+      "storage_root": "template",
+      "storage_relative_path": "2. QD KT - GMPbb.dotx",
+      "checksum_sha256": "fec4dc35ac5fbb2f2ef6b56750fe6dcf5316dafc0898395279d9ff281b2ca771"
+    },
+    {
+      "gxp_type": "GSP",
+      "filename": "2. QD KT - GSP.dotx",
+      "storage_root": "template",
+      "storage_relative_path": "2. QD KT - GSP.dotx",
+      "checksum_sha256": "890df5e2345e2927b286f4a3adb107a984825eff21e998ae253020ecac46eea1"
+    }
+  ]
+}

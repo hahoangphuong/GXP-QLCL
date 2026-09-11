@@ -102,7 +102,11 @@ def _entry_matches(entry: TemplateRegistryEntry, selector: TemplateSelectionInpu
         return False
     if not _matches_optional_filter(entry.source_application, selector.source_application):
         return False
-    if selector.gxp_type is not None and selector.gxp_type not in entry.template_pattern:
+    if (
+        selector.gxp_type is not None
+        and selector.gxp_type not in entry.template_pattern
+        and "{GP}" not in entry.template_pattern
+    ):
         return False
     if selector.legacy_mode is not None and entry.selection_legacy_mode != selector.legacy_mode:
         return False

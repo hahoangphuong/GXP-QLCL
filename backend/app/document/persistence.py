@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
-from sqlalchemy import Select, or_, select
+from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from backend.app.db.enums import DocumentGenerationStatus, DocumentVariantType, LegacyEntityType
@@ -172,16 +172,22 @@ def _lookup_template_binding(
         TemplateBinding.storage_scope == plan.template.storage_scope,
         TemplateBinding.is_active.is_(True),
     )
-    if plan.request.gxp_type is None:
-        stmt = stmt.where(TemplateBinding.gxp_type.is_(None))
-    else:
-        stmt = stmt.where(
-            or_(TemplateBinding.gxp_type == plan.request.gxp_type, TemplateBinding.gxp_type == "{GP}")
-        )
     if plan.request.legacy_mode is None:
         stmt = stmt.where(TemplateBinding.legacy_mode.is_(None))
     else:
         stmt = stmt.where(TemplateBinding.legacy_mode == plan.request.legacy_mode)
+    if plan.request.gxp_type is None:
+        stmt = stmt.where(TemplateBinding.gxp_type.is_(None))
+    else:
+        exact_stmt = stmt.where(TemplateBinding.gxp_type == plan.request.gxp_type)
+        exact_matches = list(session.execute(exact_stmt).scalars())
+        if len(exact_matches) > 1:
+            raise DocumentPersistenceError(
+                f"Ambiguous exact template_binding rows for family_code={plan.template.family_code!r}"
+            )
+        if exact_matches:
+            return exact_matches[0]
+        stmt = stmt.where(TemplateBinding.gxp_type == "{GP}")
     matches = list(session.execute(stmt).scalars())
     if len(matches) > 1:
         raise DocumentPersistenceError(

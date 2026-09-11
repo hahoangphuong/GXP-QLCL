@@ -49,7 +49,13 @@ class TemplateBinaryBindingLocator:
 
 
 def normalize_template_binary_relative_path(relative_path: str) -> str:
-    normalized = str(relative_path or "").replace("\\", "/").strip().strip("/")
+    raw = str(relative_path or "").strip()
+    normalized = raw.replace("\\", "/")
+    if normalized.startswith("/") or re.match(r"^[A-Za-z]:/", normalized):
+        raise TemplateBinaryBindingError(
+            "Template binary binding path must be relative to the configured template root."
+        )
+    normalized = normalized.strip("/")
     if not normalized:
         raise TemplateBinaryBindingError(
             "Template binary binding relative path must not be blank."
@@ -129,13 +135,20 @@ def get_template_binary_binding_locator(
     session: Session,
     template_binding_id: str,
 ) -> TemplateBinaryBindingLocator | None:
-    existing = session.scalar(
-        select(TemplateBinaryBinding).where(
-            TemplateBinaryBinding.template_binding_id == template_binding_id
+    matches = list(
+        session.scalars(
+            select(TemplateBinaryBinding).where(
+                TemplateBinaryBinding.template_binding_id == template_binding_id
+            )
         )
     )
-    if existing is None:
+    if len(matches) > 1:
+        raise TemplateBinaryBindingError(
+            f"Ambiguous template binary binding rows for TemplateBinding {template_binding_id!r}."
+        )
+    if not matches:
         return None
+    existing = matches[0]
     return TemplateBinaryBindingLocator(
         template_binding_id=existing.template_binding_id,
         storage_root=existing.storage_root,

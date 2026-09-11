@@ -9,9 +9,16 @@ from typing import TYPE_CHECKING, BinaryIO, Iterator
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
-from backend.app.db.models.phase1 import TemplateDefinition
+from backend.app.db.models.phase1 import TemplateBinding, TemplateDefinition
+from backend.app.document.inspection_qd_kt_template_asset_contract import (
+    INSPECTION_QD_KT_FAMILY,
+    InspectionQdKtTemplateAssetContractError,
+    get_inspection_qd_kt_template_asset,
+)
 from backend.app.document.template_binary_binding import (
+    TemplateBinaryBindingError,
     get_template_binary_binding_locator,
+    normalize_template_binary_relative_path,
 )
 from backend.app.storage.types import StorageServiceProtocol
 
@@ -56,13 +63,10 @@ def _load_template_definition(session: Session, template_definition_id: str) -> 
 
 
 def _normalize_relative_path(relative_path: str) -> str:
-    normalized = str(relative_path or "").replace("\\", "/").strip().strip("/")
-    if not normalized:
-        raise TemplateBinaryError("Template binary relative path must not be blank.")
-    parts = [part for part in normalized.split("/") if part not in {"", "."}]
-    if any(part == ".." for part in parts):
-        raise TemplateBinaryError("Template binary path traversal is not allowed.")
-    return "/".join(parts)
+    try:
+        return normalize_template_binary_relative_path(relative_path)
+    except TemplateBinaryBindingError as exc:
+        raise TemplateBinaryError(str(exc)) from exc
 
 
 def assign_template_binary_locator(
@@ -131,6 +135,93 @@ def build_template_binary_requirement(
         )
 
     template_definition = _load_template_definition(session, template_definition_id)
+
+    requested_gxp_type = getattr(
+        getattr(allocated.prepared.generation_plan, "request", None),
+        "gxp_type",
+        None,
+    )
+    if template_definition.family_code == INSPECTION_QD_KT_FAMILY and requested_gxp_type is not None:
+        try:
+            expected_asset = get_inspection_qd_kt_template_asset(requested_gxp_type)
+        except InspectionQdKtTemplateAssetContractError as exc:
+            return TemplateBinaryRequirement(
+                template_definition_id=template_definition.id,
+                family_code=template_definition.family_code,
+                template_name=template_definition.template_name,
+                storage_root=None,
+                storage_relative_path=None,
+                original_filename=None,
+                checksum_sha256=None,
+                readiness_status="invalid_template_binding",
+                detail=str(exc),
+            )
+
+        template_binding_id = allocated.prepared.persisted_state.template_binding_id
+        binding = session.get(TemplateBinding, template_binding_id) if template_binding_id else None
+        if binding is None or binding.gxp_type != requested_gxp_type:
+            return TemplateBinaryRequirement(
+                template_definition_id=template_definition.id,
+                family_code=template_definition.family_code,
+                template_name=template_definition.template_name,
+                storage_root=None,
+                storage_relative_path=None,
+                original_filename=None,
+                checksum_sha256=None,
+                readiness_status="missing_exact_template_binding",
+                detail=(
+                    "INSPECTION_QD_KT requires an exact GxP TemplateBinding with a binary locator; "
+                    "generic TemplateDefinition fallback is not allowed."
+                ),
+            )
+        binding_locator = get_template_binary_binding_locator(session, binding.id)
+        if binding_locator is None:
+            return TemplateBinaryRequirement(
+                template_definition_id=template_definition.id,
+                family_code=template_definition.family_code,
+                template_name=template_definition.template_name,
+                storage_root=None,
+                storage_relative_path=None,
+                original_filename=None,
+                checksum_sha256=None,
+                readiness_status="missing_template_locator",
+                detail="The exact INSPECTION_QD_KT TemplateBinding has no binary locator.",
+            )
+        actual_locator = (
+            binding_locator.storage_root,
+            binding_locator.storage_relative_path,
+            binding_locator.original_filename,
+            binding_locator.checksum_sha256,
+        )
+        expected_locator = (
+            expected_asset.storage_root,
+            expected_asset.storage_relative_path,
+            expected_asset.filename,
+            expected_asset.checksum_sha256,
+        )
+        if actual_locator != expected_locator:
+            return TemplateBinaryRequirement(
+                template_definition_id=template_definition.id,
+                family_code=template_definition.family_code,
+                template_name=template_definition.template_name,
+                storage_root=None,
+                storage_relative_path=None,
+                original_filename=None,
+                checksum_sha256=None,
+                readiness_status="invalid_template_binding",
+                detail="The exact INSPECTION_QD_KT TemplateBinding does not match the immutable asset contract.",
+            )
+        return TemplateBinaryRequirement(
+            template_definition_id=template_definition.id,
+            family_code=template_definition.family_code,
+            template_name=template_definition.template_name,
+            storage_root=binding_locator.storage_root,
+            storage_relative_path=binding_locator.storage_relative_path,
+            original_filename=binding_locator.original_filename,
+            checksum_sha256=binding_locator.checksum_sha256,
+            readiness_status="direct_stream_ready",
+            detail="INSPECTION_QD_KT exact GxP TemplateBinding matches the immutable binary asset contract.",
+        )
 
     template_binding_id = allocated.prepared.persisted_state.template_binding_id
     if template_binding_id is not None:

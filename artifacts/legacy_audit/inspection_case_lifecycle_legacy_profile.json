@@ -145,8 +145,14 @@
           "-": 489
         },
         "multi_value_count": 3,
+        "morphology_counts": {
+          "SENTINEL_DASH": 489,
+          "EMPTY": 875,
+          "ISO_TIMESTAMP": 174,
+          "MULTI_DATE": 5
+        },
         "date_like_count": 179,
-        "invalid_or_non_date_count": 3
+        "invalid_or_non_date_count": 0
       },
       "assessed_at": {
         "total_rows": 1543,
@@ -428,8 +434,18 @@
           "???": 54
         },
         "multi_value_count": 5,
+        "morphology_counts": {
+          "DATE_RANGE": 936,
+          "ISO_TIMESTAMP": 477,
+          "SENTINEL_DASH": 4,
+          "EMPTY": 59,
+          "SINGLE_DATE": 1,
+          "INVALID_OR_OTHER": 1,
+          "MULTI_DATE": 11,
+          "SENTINEL_UNKNOWN": 54
+        },
         "date_like_count": 1425,
-        "invalid_or_non_date_count": 932
+        "invalid_or_non_date_count": 1
       },
       "decision_reference": {
         "total_rows": 1543,
@@ -528,7 +544,7 @@
         "trailing_date_separator_counts": {
           "/": 1289
         },
-        "duplicate_normalized_reference_count": 356,
+        "duplicate_normalized_reference_count": 359,
         "multi_reference_count": 7,
         "invalid_trailing_date_count": 4,
         "sentinel_counts": {
@@ -715,25 +731,25 @@
         "multi_value_count": 1,
         "normalized_domain_counts": {
           "tai": 1060,
-          "kiem soat thay đoi": 3,
+          "kiem soat thay doi": 3,
           "moi": 351,
           "gia han cc": 5,
           "tai + moi": 37,
-          "đoi pham vi chung nhan": 1,
-          "đoi ten va gia han cc": 2,
+          "doi pham vi chung nhan": 1,
+          "doi ten va gia han cc": 2,
           "tai, moi": 1,
           "giam sat": 3,
           "sua pham vi chung nhan": 2,
-          "đot xuat": 4,
-          "đoi pham vi & đia chi": 1,
-          "đoi ten": 2,
+          "dot xuat": 4,
+          "doi pham vi & dia chi": 1,
+          "doi ten": 2,
           "theo y/c": 1,
           "moi + tai": 5,
-          "đ.gia nra": 3,
-          "đanh gia xac nhan": 9,
-          "thay đoi pham vi": 1,
+          "d.gia nra": 3,
+          "danh gia xac nhan": 9,
+          "thay doi pham vi": 1,
           "cap lai": 1,
-          "đanh gia xac nhan japan": 1,
+          "danh gia xac nhan japan": 1,
           "bo sung day chuyen": 1,
           "bo sung kho": 1,
           "bo sung nha may nang mem 2": 1
@@ -860,8 +876,14 @@
           "???": 42
         },
         "multi_value_count": 0,
+        "morphology_counts": {
+          "ISO_TIMESTAMP": 1538,
+          "EMPTY": 47,
+          "MULTI_DATE": 1,
+          "SENTINEL_UNKNOWN": 42
+        },
         "date_like_count": 1539,
-        "invalid_or_non_date_count": 1
+        "invalid_or_non_date_count": 0
       },
       "certificate_expiry_date": {
         "total_rows": 1628,
@@ -902,8 +924,15 @@
         "raw_values_persisted": false,
         "sentinel_counts": {},
         "multi_value_count": 0,
-        "date_like_count": 1542,
-        "invalid_or_non_date_count": 14
+        "morphology_counts": {
+          "ISO_TIMESTAMP": 1525,
+          "EMPTY": 86,
+          "MULTI_DATE": 1,
+          "ANNOTATED_DATE": 12,
+          "INVALID_OR_OTHER": 4
+        },
+        "date_like_count": 1538,
+        "invalid_or_non_date_count": 4
       }
     }
   },
@@ -952,7 +981,12 @@
         "header": "Đánh giá BCKP 2"
       }
     ],
-    "final_evaluation": [],
+    "final_evaluation": [
+      {
+        "sheet": "db.ktra",
+        "header": "ĐÁNH GIÁ CUỐI"
+      }
+    ],
     "compliance_due_on": [
       {
         "sheet": "db.ktra",
@@ -1037,6 +1071,7 @@
     "certificate_issue_date": "SAFE_WITH_DETERMINISTIC_NORMALIZATION",
     "certificate_expiry_date": "AMBIGUOUS"
   },
+  "migration_safety_basis": "human_reviewed_static_audit_conclusion",
   "guardrails": {
     "database_written": false,
     "legacy_workbook_written": false,

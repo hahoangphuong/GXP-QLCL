@@ -6,7 +6,9 @@ import sys
 
 from tools.audit_inspection_case_lifecycle_legacy import (
     _classify_decision_composite,
+    _date_morphology,
     _discover_headers,
+    _fold,
     _profile_values,
     _shape,
 )
@@ -46,6 +48,57 @@ def test_morphology_profile_counts_sentinels_and_multiple_values():
     assert profile["multi_value_count"] == 1
     assert profile["date_like_count"] == 0
     assert profile["invalid_or_non_date_count"] == 1
+
+
+def test_vietnamese_folding_normalizes_d_and_preserves_ct_pct_tokens():
+    assert _fold("Đánh giá") == "danh gia"
+    assert _fold("đổi tên") == "doi ten"
+    assert _fold("PHIẾU TRÌNH PCT") == "phieu trinh pct"
+
+    discovered = _discover_headers({"db.ktra": [{"Đánh giá cuối": "x", "Phiếu trình PCT": "y"}]})
+    assert discovered["final_evaluation"] == [{"sheet": "db.ktra", "header": "Đánh giá cuối"}]
+    assert discovered["approval_vice_chair"] == [{"sheet": "db.ktra", "header": "Phiếu trình PCT"}]
+
+
+def test_date_morphology_distinguishes_supported_legacy_shapes():
+    cases = {
+        "": "EMPTY",
+        "-": "SENTINEL_DASH",
+        "???": "SENTINEL_UNKNOWN",
+        "2026-07-21 00:00:00+00:00": "ISO_TIMESTAMP",
+        "21-07-2026": "SINGLE_DATE",
+        "1-12/12/2017": "DATE_RANGE",
+        "01/12-12/12/2017": "DATE_RANGE",
+        "01/01/2020, 02/01/2020": "MULTI_DATE",
+        "9-9": "PARTIAL_DATE",
+        "2026-07-21 (dự kiến 2027)": "ANNOTATED_DATE",
+        "not a date": "INVALID_OR_OTHER",
+    }
+    for value, expected in cases.items():
+        assert _date_morphology(value) == expected
+
+
+def test_date_profile_invalid_count_excludes_non_scalar_date_shapes():
+    profile = _profile_values(
+        ["21-07-2026", "17-19/07/2026", "01/01/2020, 02/01/2020", "9-9", "2026-07-21 (dự kiến 2027)", "???", "bad"],
+        field="certificate_expiry_date",
+    )
+    assert profile["morphology_counts"] == {
+        "SINGLE_DATE": 1,
+        "DATE_RANGE": 1,
+        "MULTI_DATE": 1,
+        "PARTIAL_DATE": 1,
+        "ANNOTATED_DATE": 1,
+        "SENTINEL_UNKNOWN": 1,
+        "INVALID_OR_OTHER": 1,
+    }
+    assert profile["date_like_count"] == 5
+    assert profile["invalid_or_non_date_count"] == 1
+
+
+def test_domain_normalization_merges_d_variants():
+    profile = _profile_values(["Đổi tên", "doi ten"], field="inspection_type")
+    assert profile["normalized_domain_counts"] == {"doi ten": 2}
 
 
 def test_shape_collapses_business_content_to_morphology():

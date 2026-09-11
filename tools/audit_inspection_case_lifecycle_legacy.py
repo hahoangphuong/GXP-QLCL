@@ -76,11 +76,16 @@ HEADER_DISCOVERY_GROUPS = {
 }
 
 TRAILING_DATE_RE = re.compile(r"(?P<date>\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\s*$")
+DATE_TOKEN_RE = re.compile(r"(?<!\d)\d{1,4}[./-]\d{1,2}(?:[./-]\d{1,4})?(?!\d)")
+ISO_TIMESTAMP_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?$"
+)
 
 
 def _fold(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value)
     asciiish = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    asciiish = asciiish.translate(str.maketrans({"Đ": "D", "đ": "d"}))
     return re.sub(r"\s+", " ", asciiish.lower()).strip()
 
 
@@ -119,6 +124,35 @@ def _classify_decision_composite(value: str) -> str:
         return "no_trailing_date"
     prefix = text[: match.start()].strip(" \t\r\n,;:-")
     return "reference_plus_trailing_date" if prefix else "date_only"
+
+
+def _date_morphology(value: str) -> str:
+    text = value.strip()
+    folded = _fold(text)
+    if not folded:
+        return "EMPTY"
+    if folded == "-":
+        return "SENTINEL_DASH"
+    if folded == "???":
+        return "SENTINEL_UNKNOWN"
+    if ISO_TIMESTAMP_RE.fullmatch(text):
+        return "ISO_TIMESTAMP"
+    date_matches = list(DATE_TOKEN_RE.finditer(text))
+    if not date_matches:
+        return "INVALID_OR_OTHER"
+    if "(" in text and ")" in text:
+        return "ANNOTATED_DATE"
+    if re.search(r"[,;]", text):
+        return "MULTI_DATE"
+    if re.search(r"\d{1,2}\s*-\s*\d{1,2}[./-]\d{1,2}[./-]\d{2,4}", text):
+        return "DATE_RANGE"
+    if re.search(r"\d{1,2}[./-]\d{1,2}\s*-\s*\d{1,2}[./-]\d{1,2}[./-]\d{2,4}", text):
+        return "DATE_RANGE"
+    if len(re.split(r"[./-]", date_matches[0].group())) == 2:
+        return "PARTIAL_DATE"
+    if len(date_matches) == 1:
+        return "SINGLE_DATE"
+    return "MULTI_DATE"
 
 
 def _value_by_alias(row: dict[str, str], canonical: str) -> str:
@@ -164,8 +198,21 @@ def _profile_values(values: list[str], *, decision_composite: bool = False, fiel
         report["sentinel_counts"] = Counter(value for value in normalized if value in {"-", "???"})
         report["multi_value_count"] = sum(1 for value in nonempty if re.search(r"[,;|]", value))
         if field in {"inspected_at", "submitted_at", "certificate_issue_date", "certificate_expiry_date"}:
-            report["date_like_count"] = sum(1 for value in nonempty if re.search(r"\d{1,4}[./-]\d{1,2}(?:[./-]\d{1,4})?", value))
-            report["invalid_or_non_date_count"] = sum(1 for value in nonempty if value not in {"-", "???"} and not re.fullmatch(r"\d{1,4}[./-]\d{1,2}(?:[./-]\d{1,4})?(?:[ T].*)?", value))
+            morphology = Counter(_date_morphology(value) for value in values)
+            report["morphology_counts"] = morphology
+            report["date_like_count"] = sum(
+                count
+                for category, count in morphology.items()
+                if category in {
+                    "ISO_TIMESTAMP",
+                    "SINGLE_DATE",
+                    "DATE_RANGE",
+                    "MULTI_DATE",
+                    "PARTIAL_DATE",
+                    "ANNOTATED_DATE",
+                }
+            )
+            report["invalid_or_non_date_count"] = morphology["INVALID_OR_OTHER"]
         if field in {"applicable_standard", "inspection_type"}:
             report["normalized_domain_counts"] = Counter(value for value in normalized if value not in {"", "-", "???"})
     return report
@@ -229,6 +276,7 @@ def build_profile(workbook: Path) -> dict[str, object]:
             for rows in [snapshot.get(sheet_name, [])]
         },
         "migration_safety": migration_safety,
+        "migration_safety_basis": "human_reviewed_static_audit_conclusion",
         "guardrails": {
             "database_written": False,
             "legacy_workbook_written": False,

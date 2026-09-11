@@ -91,12 +91,15 @@ def test_exporter_uses_canonical_workbook_extraction_owner_and_writes_determinis
     assert payload["row_eligibility_counts"] == {
         "db_ktra_rows_emitted": 1,
         "db_ktra_structural_blank_rows_skipped": 0,
+        "db_cc_source_rows_seen": 2,
         "db_cc_rows_emitted": 2,
         "db_cc_linked_rows": 1,
         "db_cc_unlinked_rows": 1,
         "db_cc_unlinked_rows_with_business_payload": 1,
         "db_cc_invalid_link_rows": 0,
         "db_cc_structural_blank_rows_skipped": 0,
+        "db_cc_identityless_residual_rows_skipped": 0,
+        "db_cc_identityless_business_evidence_rows": 0,
     }
     assert json.dumps(payload, ensure_ascii=False, sort_keys=True) == json.dumps(
         exporter.build_snapshot_payload(workbook, _source_rows()), ensure_ascii=False, sort_keys=True
@@ -144,6 +147,7 @@ def test_snapshot_loader_preserves_multiple_case_certificates_without_selecting_
     payload["sections"]["db.cc"]["rows"].append(duplicate)
     payload["sections"]["db.cc"]["row_count"] += 1
     payload["row_count"] += 1
+    payload["row_eligibility_counts"]["db_cc_source_rows_seen"] += 1
     payload["row_eligibility_counts"]["db_cc_rows_emitted"] += 1
     payload["row_eligibility_counts"]["db_cc_linked_rows"] += 1
     loaded = planner.load_legacy_snapshot_payload(payload)
@@ -225,6 +229,72 @@ def test_cc_issuer_only_unlinked_row_is_business_payload_and_selected_fields_can
         set(planner.SNAPSHOT_CC_FIELDS) - set(planner.SNAPSHOT_CC_IDENTITY_PROVENANCE_FIELDS)
     )
     assert "certificate_issuer" in planner.SNAPSHOT_CC_LIFECYCLE_PAYLOAD_FIELDS
+
+
+def test_identityless_certificate_rows_distinguish_structural_residual_and_business_evidence(tmp_path: Path):
+    source_rows = _source_rows()
+    source_rows["db.cc"].extend(
+        [
+            {"ID": "", "__excel_row_number": "10"},
+            {
+                "ID": "",
+                "__excel_row_number": "11",
+                "Cơ quan cấp chứng nhận": "Cục Quản lý Dược Việt Nam",
+            },
+        ]
+    )
+    workbook = tmp_path / "identityless.xlsb"
+    workbook.write_bytes(b"fixture")
+    payload = exporter.build_snapshot_payload(workbook, source_rows)
+    counts = payload["row_eligibility_counts"]
+    assert counts["db_cc_source_rows_seen"] == 4
+    assert counts["db_cc_structural_blank_rows_skipped"] == 1
+    assert counts["db_cc_identityless_residual_rows_skipped"] == 1
+    assert counts["db_cc_identityless_business_evidence_rows"] == 0
+    assert all(row["ID"] for row in payload["sections"]["db.cc"]["rows"])
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("Mã số CC", "GCN-01"),
+        ("Ngày cấp CC", "2026-08-21"),
+        ("LOẠI CC", "GMP"),
+        ("ID ĐỢT KTRA", "41"),
+    ],
+)
+def test_identityless_certificate_business_evidence_fails_closed(field: str, value: str, tmp_path: Path):
+    source_rows = _source_rows()
+    source_rows["db.cc"].append({"ID": "", "__excel_row_number": "10", field: value})
+    workbook = tmp_path / "identityless-business.xlsb"
+    workbook.write_bytes(b"fixture")
+    with pytest.raises(RuntimeError, match="IDENTITYLESS_BUSINESS_EVIDENCE"):
+        exporter.build_snapshot_payload(workbook, source_rows)
+
+
+def test_identityless_residual_is_never_attached_to_an_adjacent_certificate(tmp_path: Path):
+    source_rows = _source_rows()
+    source_rows["db.cc"].insert(
+        1,
+        {
+            "ID": "",
+            "__excel_row_number": "10",
+            "Cơ quan cấp chứng nhận": "Cục Quản lý Dược Việt Nam",
+        },
+    )
+    workbook = tmp_path / "no-adjacency.xlsb"
+    workbook.write_bytes(b"fixture")
+    payload = exporter.build_snapshot_payload(workbook, source_rows)
+    linked = next(row for row in payload["sections"]["db.cc"]["rows"] if row["ID"] == "71")
+    assert linked["certificate_issuer"] == ""
+    assert payload["row_eligibility_counts"]["db_cc_identityless_residual_rows_skipped"] == 1
+
+
+def test_snapshot_loader_validates_identityless_classification_counters(tmp_path: Path):
+    payload = _payload(tmp_path)
+    payload["row_eligibility_counts"]["db_cc_identityless_residual_rows_skipped"] = 1
+    with pytest.raises(RuntimeError, match="source classifications"):
+        planner.load_legacy_snapshot_payload(payload)
 
 
 def test_cc_link_to_missing_ktra_fails_closed_and_multiple_case_a_does_not_block_case_b(tmp_path: Path):

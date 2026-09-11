@@ -9,6 +9,8 @@ from typing import Any
 from backend.app.domain.legacy_snapshot import read_core_sheet_rows
 from backend.app.domain.phase2_import import normalize_row, parse_int
 from tools.plan_inspection_case_lifecycle_reconciliation import (
+    CERTIFICATE_IDENTITY_BEARING_FIELDS,
+    CERTIFICATE_NONIDENTIFYING_RESIDUAL_FIELDS,
     SNAPSHOT_CC_FIELDS,
     SNAPSHOT_CC_IDENTITY_PROVENANCE_FIELDS,
     SNAPSHOT_EXTRACTION_OWNER,
@@ -21,6 +23,30 @@ from tools.plan_inspection_case_lifecycle_reconciliation import (
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / ".local-audit" / "inspection_case_lifecycle_legacy_snapshot.json"
+
+
+def _has_meaningful_value(value: str) -> bool:
+    return str(value or "").strip() not in {"", "-", "???"}
+
+
+def _classify_identityless_certificate_row(row: dict[str, str]) -> str:
+    """Classify a db.cc row without a valid business ID without using adjacency."""
+    populated_fields = {
+        field
+        for field in SNAPSHOT_CC_FIELDS
+        if field not in SNAPSHOT_CC_IDENTITY_PROVENANCE_FIELDS and _has_meaningful_value(row.get(field, ""))
+    }
+    # A case link is substantive source evidence even though it is not part of
+    # the selected certificate payload, so it cannot be discarded as metadata.
+    if _has_meaningful_value(row.get("inspection_case_legacy_id_ref", "")):
+        return "IDENTITYLESS_BUSINESS_EVIDENCE"
+    if not populated_fields:
+        return "STRUCTURAL_BLANK"
+    if populated_fields <= CERTIFICATE_NONIDENTIFYING_RESIDUAL_FIELDS:
+        return "IDENTITYLESS_RESIDUAL"
+    if populated_fields & CERTIFICATE_IDENTITY_BEARING_FIELDS:
+        return "IDENTITYLESS_BUSINESS_EVIDENCE"
+    raise RuntimeError("unclassified identityless db.cc row")
 
 
 def _required_integer(value: str, *, source_sheet: str, source_row: str, field: str) -> int:
@@ -44,6 +70,8 @@ def _select_rows(
         "unlinked_rows": 0,
         "unlinked_rows_with_business_payload": 0,
         "invalid_link_rows": 0,
+        "identityless_residual_rows_skipped": 0,
+        "identityless_business_evidence_rows": 0,
     }
     identity_fields = SNAPSHOT_CC_IDENTITY_PROVENANCE_FIELDS
     business_fields = tuple(field for field in fields if field not in identity_fields)
@@ -51,11 +79,23 @@ def _select_rows(
         normalized = normalize_row(raw)
         source_row = str(normalized.get("__excel_row_number", "")).strip()
         _required_integer(source_row, source_sheet=source_sheet, source_row=source_row or "?", field="__excel_row_number")
-        has_business_payload = any(str(normalized.get(field, "")).strip() not in {"", "-", "???"} for field in business_fields)
+        has_business_payload = any(_has_meaningful_value(normalized.get(field, "")) for field in business_fields)
         raw_id = normalized.get("ID", "")
         try:
             _required_integer(raw_id, source_sheet=source_sheet, source_row=source_row, field="ID")
         except RuntimeError:
+            if source_sheet == "db.cc":
+                classification = _classify_identityless_certificate_row(normalized)
+                if classification == "STRUCTURAL_BLANK":
+                    counts["structural_blank_rows_skipped"] += 1
+                    continue
+                if classification == "IDENTITYLESS_RESIDUAL":
+                    counts["identityless_residual_rows_skipped"] += 1
+                    continue
+                counts["identityless_business_evidence_rows"] += 1
+                raise RuntimeError(
+                    f"db.cc row {source_row} is IDENTITYLESS_BUSINESS_EVIDENCE and cannot establish a Certificate"
+                ) from None
             if has_business_payload:
                 raise
             counts["structural_blank_rows_skipped"] += 1
@@ -114,12 +154,15 @@ def build_snapshot_payload(workbook: Path, source_rows: dict[str, list[dict[str,
         "row_eligibility_counts": {
             "db_ktra_rows_emitted": len(ktra_rows),
             "db_ktra_structural_blank_rows_skipped": ktra_counts["structural_blank_rows_skipped"],
+            "db_cc_source_rows_seen": len(source_rows["db.cc"]),
             "db_cc_rows_emitted": len(cc_rows),
             "db_cc_linked_rows": cc_counts["linked_rows"],
             "db_cc_unlinked_rows": cc_counts["unlinked_rows"],
             "db_cc_unlinked_rows_with_business_payload": cc_counts["unlinked_rows_with_business_payload"],
             "db_cc_invalid_link_rows": cc_counts["invalid_link_rows"],
             "db_cc_structural_blank_rows_skipped": cc_counts["structural_blank_rows_skipped"],
+            "db_cc_identityless_residual_rows_skipped": cc_counts["identityless_residual_rows_skipped"],
+            "db_cc_identityless_business_evidence_rows": cc_counts["identityless_business_evidence_rows"],
         },
     }
 

@@ -40,7 +40,7 @@ from tools.audit_inspection_case_lifecycle_legacy import (
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "artifacts" / "legacy_audit" / "inspection_case_lifecycle_reconciliation_plan.json"
 REQUIRED_DATABASE_NAME = "gxp_legacy_rehearsal"
-SNAPSHOT_SCHEMA_VERSION = "inspection-case-lifecycle-legacy-snapshot/v2"
+SNAPSHOT_SCHEMA_VERSION = "inspection-case-lifecycle-legacy-snapshot/v3"
 SNAPSHOT_EXTRACTION_OWNER = "backend.app.domain.legacy_snapshot.read_core_sheet_rows"
 SNAPSHOT_EXTRACTION_STATUS = "EXTRACTED_READ_ONLY"
 SNAPSHOT_REQUIRED_SECTIONS = ("db.ktra", "db.cc")
@@ -85,6 +85,15 @@ SNAPSHOT_CC_IDENTITY_PROVENANCE_FIELDS = frozenset(
 # dropping an otherwise meaningful certificate-only row when fields evolve.
 SNAPSHOT_CC_LIFECYCLE_PAYLOAD_FIELDS = tuple(
     field for field in SNAPSHOT_CC_FIELDS if field not in SNAPSHOT_CC_IDENTITY_PROVENANCE_FIELDS
+)
+# Phase 2 maps this field to CertificateVersion.issuing_authority, while a
+# Certificate itself requires a resolved site. Issuer-only, identityless rows
+# therefore cannot establish a certificate entity or be linked to a neighbor.
+CERTIFICATE_NONIDENTIFYING_RESIDUAL_FIELDS = frozenset({"certificate_issuer"})
+CERTIFICATE_IDENTITY_BEARING_FIELDS = frozenset(
+    field
+    for field in SNAPSHOT_CC_LIFECYCLE_PAYLOAD_FIELDS
+    if field not in CERTIFICATE_NONIDENTIFYING_RESIDUAL_FIELDS
 )
 PLAN_STATUS = {
     "SAFE_NOOP",
@@ -442,12 +451,15 @@ def load_legacy_snapshot_payload(payload: Any, *, expected_workbook_sha256: str 
     required_count_fields = {
         "db_ktra_rows_emitted",
         "db_ktra_structural_blank_rows_skipped",
+        "db_cc_source_rows_seen",
         "db_cc_rows_emitted",
         "db_cc_linked_rows",
         "db_cc_unlinked_rows",
         "db_cc_unlinked_rows_with_business_payload",
         "db_cc_invalid_link_rows",
         "db_cc_structural_blank_rows_skipped",
+        "db_cc_identityless_residual_rows_skipped",
+        "db_cc_identityless_business_evidence_rows",
     }
     if not isinstance(eligibility_counts, dict) or set(eligibility_counts) != required_count_fields:
         raise _snapshot_error("row_eligibility_counts is missing required counters")
@@ -455,6 +467,15 @@ def load_legacy_snapshot_payload(payload: Any, *, expected_workbook_sha256: str 
         raise _snapshot_error("row_eligibility_counts must contain non-negative integers")
     if eligibility_counts["db_ktra_rows_emitted"] != len(ktra_rows) or eligibility_counts["db_cc_rows_emitted"] != len(cc_rows):
         raise _snapshot_error("row_eligibility_counts emitted rows do not match sections")
+    if eligibility_counts["db_cc_source_rows_seen"] != (
+        eligibility_counts["db_cc_rows_emitted"]
+        + eligibility_counts["db_cc_structural_blank_rows_skipped"]
+        + eligibility_counts["db_cc_identityless_residual_rows_skipped"]
+        + eligibility_counts["db_cc_identityless_business_evidence_rows"]
+    ):
+        raise _snapshot_error("row_eligibility_counts db.cc source classifications do not match rows seen")
+    if eligibility_counts["db_cc_identityless_business_evidence_rows"] != 0:
+        raise _snapshot_error("snapshot cannot contain unresolved identityless db.cc business evidence")
     if eligibility_counts["db_cc_linked_rows"] + eligibility_counts["db_cc_unlinked_rows"] != len(cc_rows):
         raise _snapshot_error("row_eligibility_counts db.cc link states do not match rows")
     if eligibility_counts["db_cc_unlinked_rows_with_business_payload"] > eligibility_counts["db_cc_unlinked_rows"]:

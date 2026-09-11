@@ -92,6 +92,9 @@ def test_date_candidates_fail_closed_for_datetime_until_business_timezone_is_own
     assert _date_candidate_status("2026-01-14", datetime(2026, 1, 14, 17, 30, tzinfo=timezone.utc))[0] == "BLOCKED_TIMEZONE_POLICY_UNPROVEN"
     assert _date_candidate_status("2026-01-15", datetime(2026, 1, 15, 0, 30, tzinfo=ZoneInfo("Asia/Bangkok")))[0] == "BLOCKED_TIMEZONE_POLICY_UNPROVEN"
     assert _date_candidate_status("2026-01-14", datetime(2026, 1, 14, 9, 0))[0] == "BLOCKED_TIMEZONE_POLICY_UNPROVEN"
+    assert _date_candidate_status("", date(2026, 1, 14))[0] == "LEGACY_SOURCE_MISSING"
+    assert _date_candidate_status("-", date(2026, 1, 14))[0] == "LEGACY_SOURCE_MISSING"
+    assert _date_candidate_status("not-a-date", date(2026, 1, 14))[0] == "BLOCKED_AMBIGUOUS_LEGACY"
 
 
 def test_period_reconciliation_requires_a_matching_start_and_end_pair():
@@ -102,6 +105,9 @@ def test_period_reconciliation_requires_a_matching_start_and_end_pair():
     actual = next(fact for fact in wrong_end["facts"] if fact["canonical_fact"] == "actual_inspection_period")
     assert actual["reconciliation_status"] == "CONFLICT_EXISTING_CANONICAL"
     assert actual["provenance_status"] == "MATCHES_NEITHER"
+    assert actual["current_value_comparable"] is True
+    assert actual["current_period_start_present"] is True
+    assert actual["current_period_end_present"] is True
 
     missing_end = build_reconciliation_plan(
         [_legacy_row(inspected_at="17-19/07/2026", bbkt_reference="")],
@@ -109,6 +115,11 @@ def test_period_reconciliation_requires_a_matching_start_and_end_pair():
     )
     actual = next(fact for fact in missing_end["facts"] if fact["canonical_fact"] == "actual_inspection_period")
     assert actual["reconciliation_status"] == "SAFE_UPDATE_IF_EMPTY"
+    assert actual["current_value_present"] is True
+    assert actual["current_value_comparable"] is True
+    assert actual["current_period_start_present"] is True
+    assert actual["current_period_end_present"] is False
+    assert actual["current_period_start_matches_candidate"] is True
 
     exact = build_reconciliation_plan(
         [_legacy_row(inspected_at="17-19/07/2026", bbkt_reference="")],
@@ -117,6 +128,17 @@ def test_period_reconciliation_requires_a_matching_start_and_end_pair():
     actual = next(fact for fact in exact["facts"] if fact["canonical_fact"] == "actual_inspection_period")
     assert actual["reconciliation_status"] == "ALREADY_MATCHES"
     assert actual["provenance_status"] == "MATCHES_ACTUAL_SOURCE"
+
+    empty = build_reconciliation_plan(
+        [_legacy_row(inspected_at="17-19/07/2026", bbkt_reference="")],
+        [_canonical_case(outcome={"inspected_on": None, "inspected_to_on": None})],
+    )
+    actual = next(fact for fact in empty["facts"] if fact["canonical_fact"] == "actual_inspection_period")
+    assert actual["reconciliation_status"] == "SAFE_INSERT"
+    assert actual["current_value_present"] is False
+    assert actual["current_value_comparable"] is True
+    assert actual["current_period_start_present"] is False
+    assert actual["current_period_end_present"] is False
 
     bbkt_start_only = build_reconciliation_plan(
         [_legacy_row(inspected_at="17-19/07/2026", bbkt_reference="2026-07-17")],
@@ -136,6 +158,42 @@ def test_plan_blocks_datetime_submission_but_compares_pure_certificate_dates():
     assert statuses["application_submitted_on"] == "BLOCKED_TIMEZONE_POLICY_UNPROVEN"
     assert statuses["certificate_issue_date"] == "ALREADY_MATCHES"
     assert statuses["certificate_expiry_date"] == "ALREADY_MATCHES"
+
+
+def test_plan_reports_missing_legacy_sources_without_reclassifying_malformed_values():
+    report = build_reconciliation_plan(
+        [_legacy_row(dossier_code="-", submitted_at="", applicable_standard="", inspected_at="", bbkt_reference="")],
+        [_canonical_case(application={"dossier_code": None, "submitted_on": None}, applicable_standard=None, outcome={"inspected_on": None, "inspected_to_on": None})],
+    )
+    facts = {fact["canonical_fact"]: fact for fact in report["facts"]}
+    assert facts["dossier_code"]["reconciliation_status"] == "LEGACY_SOURCE_MISSING"
+    assert facts["application_submitted_on"]["reconciliation_status"] == "LEGACY_SOURCE_MISSING"
+    assert facts["applicable_standard"]["reconciliation_status"] == "LEGACY_SOURCE_MISSING"
+    assert facts["actual_inspection_period"]["reconciliation_status"] == "LEGACY_SOURCE_MISSING"
+    assert all(fact["recommended_future_action"] == "no_write" for fact in facts.values() if fact["reconciliation_status"] == "LEGACY_SOURCE_MISSING")
+
+    malformed = build_reconciliation_plan(
+        [_legacy_row(submitted_at="not-a-date")],
+        [_canonical_case()],
+    )
+    submitted = next(fact for fact in malformed["facts"] if fact["canonical_fact"] == "application_submitted_on")
+    assert submitted["reconciliation_status"] == "BLOCKED_AMBIGUOUS_LEGACY"
+
+
+def test_certificate_source_missing_has_no_candidate_and_no_write_action():
+    report = build_reconciliation_plan(
+        [{"__source_ktra": _legacy_row(), "__certificate_sources": []}],
+        [_canonical_case(certificates=[])],
+    )
+    certificate_facts = [
+        fact
+        for fact in report["facts"]
+        if fact["canonical_fact"] in {"certificate_issue_date", "certificate_expiry_date"}
+    ]
+    assert {fact["reconciliation_status"] for fact in certificate_facts} == {"CERTIFICATE_SOURCE_MISSING"}
+    assert {fact["legacy_certificate_candidate_count"] for fact in certificate_facts} == {0}
+    assert {fact["canonical_certificate_candidate_count"] for fact in certificate_facts} == {0}
+    assert {fact["recommended_future_action"] for fact in certificate_facts} == {"no_write"}
 
 
 def test_date_fact_presence_is_distinct_from_comparability_and_does_not_leak_datetime():
@@ -247,6 +305,8 @@ def test_plan_reports_identity_not_found_and_conflict_without_guessing():
     not_found = build_reconciliation_plan([_legacy_row()], [])
     assert not_found["summary"]["unmatched"] == 1
     assert not_found["facts"][0]["reconciliation_status"] == "CASE_NOT_FOUND"
+    assert not_found["facts"][0]["identity_gap_reason"] == "NO_DIRECT_OR_LINEAGE"
+    assert not_found["identity_gap_reason_counts"] == {"NO_DIRECT_OR_LINEAGE": 1}
     conflict = build_reconciliation_plan([_legacy_row()], [_canonical_case(id="a"), _canonical_case(id="b")])
     assert conflict["summary"]["identity_conflicts"] == 1
     assert conflict["facts"][0]["reconciliation_status"] == "CASE_IDENTITY_CONFLICT"
@@ -270,6 +330,8 @@ def test_safe_domains_normalize_only_known_values_without_fuzzy_matching():
     assert _domain_candidate_status("tai, moi", "Tái + Mới", {"tai, moi": "Tái + Mới", "tai + moi": "Tái + Mới"})[0] == "ALREADY_MATCHES"
     assert _domain_candidate_status("WHO-GMP", "WHO-GLP", {"who-gmp": "WHO-GMP", "who-glp": "WHO-GLP"})[0] == "CONFLICT_EXISTING_CANONICAL"
     assert _domain_candidate_status("unreviewed value", "WHO-GMP", {"who-gmp": "WHO-GMP"})[0] == "BLOCKED_AMBIGUOUS_LEGACY"
+    assert _domain_candidate_status("", None, {"who-gmp": "WHO-GMP"})[0] == "LEGACY_SOURCE_MISSING"
+    assert _domain_candidate_status("-", None, {"who-gmp": "WHO-GMP"})[0] == "LEGACY_SOURCE_MISSING"
 
 
 def test_misrouting_provenance_requires_direct_copy_equality():

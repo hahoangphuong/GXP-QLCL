@@ -336,6 +336,6 @@ def test_case_with_no_linked_certificate_blocks_only_certificate_facts(tmp_path:
     loaded = planner.load_legacy_snapshot_payload(exporter.build_snapshot_payload(workbook, source_rows))
     report = planner.build_reconciliation_plan(loaded["legacy_rows"], [_canonical_case()])
     facts = {fact["canonical_fact"]: fact for fact in report["facts"]}
-    assert facts["certificate_issue_date"]["reconciliation_status"] == "BLOCKED_CERTIFICATE_SOURCE_MISSING"
+    assert facts["certificate_issue_date"]["reconciliation_status"] == "CERTIFICATE_SOURCE_MISSING"
     assert facts["certificate_expiry_date"]["legacy_certificate_candidate_count"] == 0
     assert facts["actual_inspection_period"]["reconciliation_status"] == "ALREADY_MATCHES"

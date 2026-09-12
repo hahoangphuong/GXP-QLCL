@@ -1,0 +1,6881 @@
+{
+  "coverage": {
+    "physical_field_count": 88,
+    "physical_row_count": 1543,
+    "valid_id_row_count": 1533
+  },
+  "domain_slices": [
+    {
+      "headers": [
+        "ID",
+        "ID CƠ SỞ",
+        "MỚI NHẤT",
+        "ID MỚI NHẤT"
+      ],
+      "key": "A",
+      "name": "Identity / case linkage",
+      "priority": 1
+    },
+    {
+      "headers": [
+        "Ngày nộp",
+        "Mã hồ sơ",
+        "Ngày thẩm định",
+        "Người thẩm định"
+      ],
+      "key": "B",
+      "name": "Application / dossier",
+      "priority": 2
+    },
+    {
+      "headers": [
+        "Kết quả",
+        "ĐÁNH GIÁ CUỐI"
+      ],
+      "key": "C",
+      "name": "Assessment / inspection outcome separation",
+      "priority": 3
+    },
+    {
+      "headers": [
+        "Q. định"
+      ],
+      "key": "D",
+      "name": "Inspection planning / decision",
+      "priority": 4
+    },
+    {
+      "headers": [
+        "Ngày K.tra",
+        "B. bản",
+        "T.tra viên"
+      ],
+      "key": "E",
+      "name": "Inspection execution",
+      "priority": 5
+    },
+    {
+      "headers": [
+        "CV BCKP lần 1",
+        "CV BCKP lần 2",
+        "PHIẾU TRÌNH PCT",
+        "PHIẾU TRÌNH CT",
+        "HẠN KT TUÂN THỦ"
+      ],
+      "key": "F",
+      "name": "CAPA / approval follow-up",
+      "priority": 6
+    },
+    {
+      "headers": [
+        "ID CC GPs",
+        "Mã số CC",
+        "ID DDK",
+        "Mã số ĐĐK"
+      ],
+      "key": "G",
+      "name": "Certificate linkage",
+      "priority": 7
+    },
+    {
+      "headers": [
+        "PHẠM VI KIỂM TRA",
+        "TIÊU CHUẨN ÁP DỤNG",
+        "LOẠI KIỂM TRA"
+      ],
+      "key": "H",
+      "name": "Evaluation scope / standards",
+      "priority": 8
+    }
+  ],
+  "fields": [
+    {
+      "api": [],
+      "canonical_fact": "case_identity",
+      "canonical_owner": "Case.legacy_inspection_id",
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": "Stable legacy inspection row identity.",
+        "status": "OWNER_PROVEN"
+      },
+      "data_type_candidates": [
+        "NUMERIC"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": true,
+      "legacy_header": "ID",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": "legacy_inspection_id",
+      "observed_shapes": [
+        "IDENTITY",
+        "NUMERIC"
+      ],
+      "owner_status": "OWNER_PROVEN",
+      "readers": [
+        "CatalogReadService"
+      ],
+      "relationships": [],
+      "risk": "LOW",
+      "sentinels": {
+        "missing": 10,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 10,
+        "dash_count": 0,
+        "distinct_nonempty_count": 1533,
+        "morphology": {
+          "EMPTY": 10,
+          "NUMERIC": 1533
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1533,
+        "physical_column_index": 1,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "6b86b273ff34fce1",
+            "shape": "9"
+          },
+          {
+            "length": "2",
+            "sha256_prefix": "4a44dc15364204a8",
+            "shape": "99"
+          },
+          {
+            "length": "3",
+            "sha256_prefix": "ad57366865126e55",
+            "shape": "999"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": [
+        "phase2_import"
+      ]
+    },
+    {
+      "api": [],
+      "canonical_fact": "case_gxp_type",
+      "canonical_owner": "Case.gxp_type",
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "OWNER_PROVEN"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [
+        "case workspace"
+      ],
+      "id_or_reference_evidence": false,
+      "legacy_header": "LOẠI KT",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": "inspection_gxp_type",
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "OWNER_PROVEN",
+      "readers": [
+        "CatalogReadService"
+      ],
+      "relationships": [],
+      "risk": "LOW",
+      "sentinels": {
+        "missing": 47,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 47,
+        "dash_count": 0,
+        "distinct_nonempty_count": 3,
+        "morphology": {
+          "EMPTY": 47,
+          "TEXT": 1496
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1496,
+        "physical_column_index": 2,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "3",
+            "sha256_prefix": "fb7b7da883dda285",
+            "shape": "aaa"
+          },
+          {
+            "length": "3",
+            "sha256_prefix": "1b2f856aa5c8ec20",
+            "shape": "aaa"
+          },
+          {
+            "length": "5",
+            "sha256_prefix": "7e6e6ab289cd7651",
+            "shape": "aaaaa"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": [
+        "phase2_import",
+        "CaseWorkflowService.create_case"
+      ]
+    },
+    {
+      "api": [],
+      "canonical_fact": "case_site",
+      "canonical_owner": "Case.site_id",
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": "Foreign ID; exact site mapping is required.",
+        "status": "OWNER_PROVEN"
+      },
+      "data_type_candidates": [
+        "NUMERIC"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": true,
+      "legacy_header": "ID CƠ SỞ",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": "site_legacy_id_ref",
+      "observed_shapes": [
+        "FOREIGN_ID",
+        "NUMERIC"
+      ],
+      "owner_status": "OWNER_PROVEN",
+      "readers": [
+        "CatalogReadService"
+      ],
+      "relationships": [],
+      "risk": "LOW",
+      "sentinels": {
+        "missing": 47,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 47,
+        "dash_count": 0,
+        "distinct_nonempty_count": 376,
+        "morphology": {
+          "EMPTY": 47,
+          "NUMERIC": 1496
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1496,
+        "physical_column_index": 3,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "6b86b273ff34fce1",
+            "shape": "9"
+          },
+          {
+            "length": "2",
+            "sha256_prefix": "4a44dc15364204a8",
+            "shape": "99"
+          },
+          {
+            "length": "3",
+            "sha256_prefix": "ad57366865126e55",
+            "shape": "999"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": [
+        "phase2_import"
+      ]
+    },
+    {
+      "api": [],
+      "canonical_fact": "case_scope_code",
+      "canonical_owner": "Case.scope_code",
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "OWNER_COMPATIBILITY_ONLY"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": true,
+      "legacy_header": "MÃ DC",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": "scope_code",
+      "observed_shapes": [
+        "FOREIGN_ID",
+        "REFERENCE"
+      ],
+      "owner_status": "OWNER_COMPATIBILITY_ONLY",
+      "readers": [
+        "CatalogReadService"
+      ],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 183,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 183,
+        "dash_count": 0,
+        "distinct_nonempty_count": 6,
+        "morphology": {
+          "EMPTY": 183,
+          "TEXT": 1360
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1360,
+        "physical_column_index": 4,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "559aead08264d579",
+            "shape": "a"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "df7e70e5021544f4",
+            "shape": "a"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "6b23c0d5f35d1b11",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": [
+        "phase2_import"
+      ]
+    },
+    {
+      "api": [],
+      "canonical_fact": "evaluation_scope",
+      "canonical_owner": "CaseEvaluationScope",
+      "cardinality": "0..n",
+      "compatibility_fields": [
+        "rendered legacy prose"
+      ],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": "Structured taxonomy migration remains separately audited.",
+        "status": "OWNER_COMPATIBILITY_ONLY"
+      },
+      "data_type_candidates": [
+        "ANNOTATED_DATE",
+        "MULTI_VALUE_TEXT",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "PHẠM VI KIỂM TRA",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": "evaluation_scope_raw",
+      "observed_shapes": [
+        "DATE_OR_DATE_RANGE",
+        "MULTI_VALUE_TEXT",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "OWNER_COMPATIBILITY_ONLY",
+      "readers": [
+        "CatalogReadService"
+      ],
+      "relationships": [],
+      "risk": "HIGH",
+      "sentinels": {
+        "missing": 47,
+        "not_applicable": 0,
+        "pending_input": 4
+      },
+      "source_profile": {
+        "blank_count": 47,
+        "dash_count": 0,
+        "distinct_nonempty_count": 1217,
+        "morphology": {
+          "ANNOTATED_DATE": 16,
+          "EMPTY": 47,
+          "MULTI_VALUE_TEXT": 1359,
+          "SENTINEL_PENDING_INPUT": 4,
+          "TEXT": 117
+        },
+        "multi_value_count": 1375,
+        "newline_or_multiline_count": 913,
+        "non_empty_count": 1496,
+        "physical_column_index": 5,
+        "question_mark_count": 4,
+        "representative_values": [
+          {
+            "length": "1670",
+            "sha256_prefix": "ba46b58ee1d4c33c",
+            "shape": "(- aaaa aaa aaaa aaaaa aaaa aaa a aaa aaa aaa aaa: aaa aaaaaa aaaa aaa: aaaa 99 aaa aaa aaa aa 9"
+          },
+          {
+            "length": "1018",
+            "sha256_prefix": "38f71277bc610319",
+            "shape": "(aaaa aaaa aaaa aaa aaaa aaaaa aaaa aaaa aaaa aaa aaa aa aaaaa aaaa aa aa aaaa aaaa - aaaaa aaaa"
+          },
+          {
+            "length": "1207",
+            "sha256_prefix": "1268231f167f2644",
+            "shape": "(¹ ² ) 9. aaaa aaa aaa aa / aaa aaa: * aaaaaa aaaa aaaa aaaa aaaa aa: aaaaa aaa aaa aaa aa aaaaa"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": [
+        "phase2_import"
+      ]
+    },
+    {
+      "api": [],
+      "canonical_fact": "case_applicable_standard",
+      "canonical_owner": "Case.applicable_standard",
+      "cardinality": "0..n",
+      "compatibility_fields": [],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": null,
+        "status": "OWNER_PROVEN"
+      },
+      "data_type_candidates": [
+        "MULTI_VALUE_TEXT",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "TIÊU CHUẨN ÁP DỤNG",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": "applicable_standard",
+      "observed_shapes": [
+        "MULTI_VALUE_TEXT"
+      ],
+      "owner_status": "OWNER_PROVEN",
+      "readers": [
+        "CatalogReadService"
+      ],
+      "relationships": [],
+      "risk": "HIGH",
+      "sentinels": {
+        "missing": 47,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 47,
+        "dash_count": 0,
+        "distinct_nonempty_count": 14,
+        "morphology": {
+          "EMPTY": 47,
+          "MULTI_VALUE_TEXT": 5,
+          "TEXT": 1491
+        },
+        "multi_value_count": 5,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1496,
+        "physical_column_index": 6,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "2",
+            "sha256_prefix": "5c7c45d7ca6df974",
+            "shape": "9a"
+          },
+          {
+            "length": "6",
+            "sha256_prefix": "4ec8e2dee918d537",
+            "shape": "aa-aaa"
+          },
+          {
+            "length": "15",
+            "sha256_prefix": "cdb9752cb3ace9a6",
+            "shape": "aa-aaa, aaa-aaa"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": [
+        "phase2_import"
+      ]
+    },
+    {
+      "api": [],
+      "canonical_fact": "case_inspection_type",
+      "canonical_owner": "Case.inspection_type",
+      "cardinality": "0..n",
+      "compatibility_fields": [],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": null,
+        "status": "OWNER_PROVEN"
+      },
+      "data_type_candidates": [
+        "MULTI_VALUE_TEXT",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "LOẠI KIỂM TRA",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": "inspection_type",
+      "observed_shapes": [
+        "MULTI_VALUE_TEXT"
+      ],
+      "owner_status": "OWNER_PROVEN",
+      "readers": [
+        "CatalogReadService"
+      ],
+      "relationships": [],
+      "risk": "HIGH",
+      "sentinels": {
+        "missing": 47,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 47,
+        "dash_count": 0,
+        "distinct_nonempty_count": 24,
+        "morphology": {
+          "EMPTY": 47,
+          "MULTI_VALUE_TEXT": 4,
+          "TEXT": 1492
+        },
+        "multi_value_count": 4,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1496,
+        "physical_column_index": 7,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "18",
+            "sha256_prefix": "9c781296624a1738",
+            "shape": "aa aaaa aaa aaaaaa"
+          },
+          {
+            "length": "11",
+            "sha256_prefix": "e6d2b5aeb5a0db90",
+            "shape": "aa aaaa aaa"
+          },
+          {
+            "length": "26",
+            "sha256_prefix": "95fcda6bb4e49e82",
+            "shape": "aa aaaa aaa aaa aaaa aaa 9"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": [
+        "phase2_import"
+      ]
+    },
+    {
+      "api": [
+        "PUT /cases/{case_id}/application"
+      ],
+      "canonical_fact": "application_submitted_on",
+      "canonical_owner": "CaseApplication.submitted_on",
+      "cardinality": "0..n",
+      "compatibility_fields": [],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": "Datetime canonical owner; source morphology is independently audited.",
+        "status": "OWNER_PROVEN"
+      },
+      "data_type_candidates": [
+        "MULTI_DATE_OR_PERIOD",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [
+        "case workspace"
+      ],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Ngày nộp",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": "submitted_at",
+      "observed_shapes": [
+        "DATE_OR_DATE_RANGE",
+        "MULTI_DATE_OR_PERIOD",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "OWNER_PROVEN",
+      "readers": [
+        "CatalogReadService"
+      ],
+      "relationships": [],
+      "risk": "HIGH",
+      "sentinels": {
+        "missing": 875,
+        "not_applicable": 489,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 875,
+        "dash_count": 489,
+        "distinct_nonempty_count": 170,
+        "morphology": {
+          "EMPTY": 875,
+          "MULTI_DATE_OR_PERIOD": 5,
+          "SENTINEL_NOT_APPLICABLE": 489,
+          "TEXT": 174
+        },
+        "multi_value_count": 5,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 668,
+        "physical_column_index": 8,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "22",
+            "sha256_prefix": "867f0fa8e2c97e90",
+            "shape": "99/99/9999, 99/99/9999"
+          },
+          {
+            "length": "24",
+            "sha256_prefix": "fdd9b0d7b88aac50",
+            "shape": "99/99/9999 aa 99/99/9999"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": [
+        "phase2_import",
+        "CaseWorkflowService.upsert_case_application"
+      ]
+    },
+    {
+      "api": [
+        "PUT /cases/{case_id}/application"
+      ],
+      "canonical_fact": "dossier_code",
+      "canonical_owner": "CaseApplication.dossier_code",
+      "cardinality": "0..n",
+      "compatibility_fields": [],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": null,
+        "status": "OWNER_PROVEN"
+      },
+      "data_type_candidates": [
+        "ANNOTATED_DATE",
+        "MULTI_DATE_OR_PERIOD",
+        "MULTI_VALUE_TEXT",
+        "NUMERIC",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [
+        "case workspace"
+      ],
+      "id_or_reference_evidence": true,
+      "legacy_header": "Mã hồ sơ",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": "dossier_code",
+      "observed_shapes": [
+        "DATE_OR_DATE_RANGE",
+        "FOREIGN_ID",
+        "MULTI_DATE_OR_PERIOD",
+        "MULTI_VALUE_TEXT",
+        "REFERENCE",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "OWNER_PROVEN",
+      "readers": [
+        "CatalogReadService"
+      ],
+      "relationships": [],
+      "risk": "HIGH",
+      "sentinels": {
+        "missing": 131,
+        "not_applicable": 400,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 131,
+        "dash_count": 400,
+        "distinct_nonempty_count": 665,
+        "morphology": {
+          "ANNOTATED_DATE": 2,
+          "EMPTY": 131,
+          "MULTI_DATE_OR_PERIOD": 1,
+          "MULTI_VALUE_TEXT": 26,
+          "NUMERIC": 10,
+          "SENTINEL_NOT_APPLICABLE": 400,
+          "TEXT": 973
+        },
+        "multi_value_count": 27,
+        "newline_or_multiline_count": 8,
+        "non_empty_count": 1412,
+        "physical_column_index": 9,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "9",
+            "sha256_prefix": "9ea46d6eb4e3b184",
+            "shape": "99-99/aaa"
+          },
+          {
+            "length": "6",
+            "sha256_prefix": "2d8eef81b921d82f",
+            "shape": "99/aaa"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": [
+        "phase2_import",
+        "CaseWorkflowService.upsert_case_application"
+      ]
+    },
+    {
+      "api": [],
+      "canonical_fact": "initial_assessed_on",
+      "canonical_owner": "CaseAssessment.assessed_on",
+      "cardinality": "0..n",
+      "compatibility_fields": [],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": null,
+        "status": "OWNER_PROVEN"
+      },
+      "data_type_candidates": [
+        "ANNOTATED_DATE",
+        "MULTI_DATE_OR_PERIOD",
+        "PARTIAL_DATE",
+        "SINGLE_DATE",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Ngày thẩm định",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": "assessed_at",
+      "observed_shapes": [
+        "DATE_OR_DATE_RANGE",
+        "MULTI_DATE_OR_PERIOD",
+        "SCALAR_TEXT",
+        "SINGLE_DATE"
+      ],
+      "owner_status": "OWNER_PROVEN",
+      "readers": [
+        "CatalogReadService"
+      ],
+      "relationships": [],
+      "risk": "HIGH",
+      "sentinels": {
+        "missing": 382,
+        "not_applicable": 448,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 382,
+        "dash_count": 448,
+        "distinct_nonempty_count": 501,
+        "morphology": {
+          "ANNOTATED_DATE": 1,
+          "EMPTY": 382,
+          "MULTI_DATE_OR_PERIOD": 4,
+          "PARTIAL_DATE": 1,
+          "SENTINEL_NOT_APPLICABLE": 448,
+          "SINGLE_DATE": 1,
+          "TEXT": 706
+        },
+        "multi_value_count": 4,
+        "newline_or_multiline_count": 4,
+        "non_empty_count": 1161,
+        "physical_column_index": 10,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "13",
+            "sha256_prefix": "c1c6042f1aff0779",
+            "shape": "99-99/99/9999"
+          },
+          {
+            "length": "9",
+            "sha256_prefix": "dd42dcab5c5b26ea",
+            "shape": "99/99/999"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": [
+        "phase2_import",
+        "CaseWorkflowService.upsert_case_assessment"
+      ]
+    },
+    {
+      "api": [],
+      "canonical_fact": "initial_assessor",
+      "canonical_owner": "CaseAssessment.assessor_name",
+      "cardinality": "0..n",
+      "compatibility_fields": [],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": null,
+        "status": "OWNER_COMPATIBILITY_ONLY"
+      },
+      "data_type_candidates": [
+        "MULTI_VALUE_TEXT",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Người thẩm định",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": "assessor_name",
+      "observed_shapes": [
+        "MULTI_VALUE_TEXT",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "OWNER_COMPATIBILITY_ONLY",
+      "readers": [
+        "CatalogReadService"
+      ],
+      "relationships": [],
+      "risk": "HIGH",
+      "sentinels": {
+        "missing": 301,
+        "not_applicable": 409,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 301,
+        "dash_count": 409,
+        "distinct_nonempty_count": 28,
+        "morphology": {
+          "EMPTY": 301,
+          "MULTI_VALUE_TEXT": 5,
+          "SENTINEL_NOT_APPLICABLE": 409,
+          "TEXT": 828
+        },
+        "multi_value_count": 5,
+        "newline_or_multiline_count": 1,
+        "non_empty_count": 1242,
+        "physical_column_index": 11,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "4",
+            "sha256_prefix": "346e936cbedee2e0",
+            "shape": "aaaa"
+          },
+          {
+            "length": "13",
+            "sha256_prefix": "4a1f8f0369d17699",
+            "shape": "aaaaa aaa aaa"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": [
+        "phase2_import",
+        "CaseWorkflowService.upsert_case_assessment"
+      ]
+    },
+    {
+      "api": [],
+      "canonical_fact": "assessment_and_outcome_result",
+      "canonical_owner": "CaseAssessment.assessment_result + InspectionOutcome.outcome_result",
+      "cardinality": "0..n",
+      "compatibility_fields": [
+        "InspectionOutcome.outcome_result"
+      ],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": "One legacy scalar currently populates two distinct canonical facts.",
+        "status": "MULTIPLE_COMPETING_OWNERS"
+      },
+      "data_type_candidates": [
+        "ANNOTATED_DATE",
+        "MULTI_VALUE_TEXT",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Kết quả",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": "assessment_result",
+      "observed_shapes": [
+        "DATE_OR_DATE_RANGE",
+        "MULTI_VALUE_TEXT",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "MULTIPLE_COMPETING_OWNERS",
+      "readers": [
+        "CatalogReadService"
+      ],
+      "relationships": [],
+      "risk": "CRITICAL",
+      "sentinels": {
+        "missing": 366,
+        "not_applicable": 413,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 366,
+        "dash_count": 413,
+        "distinct_nonempty_count": 47,
+        "morphology": {
+          "ANNOTATED_DATE": 2,
+          "EMPTY": 366,
+          "MULTI_VALUE_TEXT": 21,
+          "SENTINEL_NOT_APPLICABLE": 413,
+          "TEXT": 741
+        },
+        "multi_value_count": 23,
+        "newline_or_multiline_count": 11,
+        "non_empty_count": 1177,
+        "physical_column_index": 12,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "276",
+            "sha256_prefix": "094a6e222c41edee",
+            "shape": "- aaa aaaa aa aaaaa aaaa aaa aaaa aaa aaaa aaaa 99/9999/aa-aa; - aaaaa aaa aaa aaaa aa aaaaa aa "
+          },
+          {
+            "length": "652",
+            "sha256_prefix": "5206109ae9cae0a1",
+            "shape": "- aaaa aa aaa aaaaaa aaa aaaa aaa aaa aaaa aa aaaaa aa aa aaaa aa aaaa aaa. - aa aaaa aa aa aa: "
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [
+        "Kết quả là kết quả thẩm định hồ sơ, kết quả kiểm tra thực tế, hay hai giá trị khác nhau đang bị gộp chung?"
+      ],
+      "writers": [
+        "phase2_import"
+      ]
+    },
+    {
+      "api": [
+        "PUT /cases/{case_id}/outcome"
+      ],
+      "canonical_fact": "actual_inspection_period",
+      "canonical_owner": "InspectionPeriodSegment ordered by ordinal",
+      "cardinality": "0..n",
+      "compatibility_fields": [
+        "InspectionOutcome.inspected_on/inspected_to_on"
+      ],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": "B. bản is never a timing source.",
+        "status": "OWNER_PROVEN"
+      },
+      "data_type_candidates": [
+        "ANNOTATED_DATE",
+        "DATE_RANGE",
+        "MULTI_DATE_OR_PERIOD",
+        "SINGLE_DATE",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [
+        "case workspace"
+      ],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Ngày K.tra",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": "inspected_at",
+      "observed_shapes": [
+        "DATE_OR_DATE_RANGE",
+        "MULTI_DATE_OR_PERIOD",
+        "SCALAR_TEXT",
+        "SINGLE_DATE"
+      ],
+      "owner_status": "OWNER_PROVEN",
+      "readers": [
+        "reconciliation planner",
+        "CatalogReadService compatibility projection"
+      ],
+      "relationships": [],
+      "risk": "MEDIUM",
+      "sentinels": {
+        "missing": 59,
+        "not_applicable": 4,
+        "pending_input": 54
+      },
+      "source_profile": {
+        "blank_count": 59,
+        "dash_count": 4,
+        "distinct_nonempty_count": 1321,
+        "inspection_period_source_state": {
+          "KNOWN": 1424,
+          "MISSING": 49,
+          "NON_DATE_EXPRESSION": 1,
+          "NOT_APPLICABLE": 4,
+          "PENDING_INPUT": 54,
+          "UNRESOLVED": 1
+        },
+        "morphology": {
+          "ANNOTATED_DATE": 901,
+          "DATE_RANGE": 36,
+          "EMPTY": 59,
+          "MULTI_DATE_OR_PERIOD": 10,
+          "SENTINEL_NOT_APPLICABLE": 4,
+          "SENTINEL_PENDING_INPUT": 54,
+          "SINGLE_DATE": 1,
+          "TEXT": 478
+        },
+        "multi_value_count": 12,
+        "newline_or_multiline_count": 3,
+        "non_empty_count": 1484,
+        "physical_column_index": 13,
+        "question_mark_count": 54,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "15",
+            "sha256_prefix": "ad2572a96da018f0",
+            "shape": "99 - 99/99/9999"
+          },
+          {
+            "length": "14",
+            "sha256_prefix": "56cf56ca27fb38f2",
+            "shape": "99 - 99/9/9999"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": [
+        "phase2_import",
+        "CaseWorkflowService.upsert_inspection_outcome"
+      ]
+    },
+    {
+      "api": [],
+      "canonical_fact": "inspection_decision_reference_and_date",
+      "canonical_owner": "InspectionPlan decision fields (future)",
+      "cardinality": "0..n",
+      "compatibility_fields": [
+        "CaseApplication.dossier_reference",
+        "InspectionOutcome.decision_reference"
+      ],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": "Composite currently copied to incompatible compatibility fields.",
+        "status": "COMPOSITE_REQUIRES_SPLIT"
+      },
+      "data_type_candidates": [
+        "ANNOTATED_DATE",
+        "DATE_RANGE",
+        "MULTI_DATE_OR_PERIOD",
+        "MULTI_VALUE_TEXT",
+        "PARTIAL_DATE",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": true,
+      "legacy_header": "Q. định",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": "decision_reference",
+      "observed_shapes": [
+        "DATE_OR_DATE_RANGE",
+        "MULTI_DATE_OR_PERIOD",
+        "MULTI_VALUE_TEXT",
+        "REFERENCE",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "COMPOSITE_REQUIRES_SPLIT",
+      "readers": [
+        "CatalogReadService compatibility"
+      ],
+      "relationships": [],
+      "risk": "HIGH",
+      "sentinels": {
+        "missing": 228,
+        "not_applicable": 16,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 228,
+        "dash_count": 16,
+        "distinct_nonempty_count": 1265,
+        "morphology": {
+          "ANNOTATED_DATE": 1279,
+          "DATE_RANGE": 1,
+          "EMPTY": 228,
+          "MULTI_DATE_OR_PERIOD": 7,
+          "MULTI_VALUE_TEXT": 1,
+          "PARTIAL_DATE": 5,
+          "SENTINEL_NOT_APPLICABLE": 16,
+          "TEXT": 6
+        },
+        "multi_value_count": 71,
+        "newline_or_multiline_count": 66,
+        "non_empty_count": 1315,
+        "physical_column_index": 14,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "25",
+            "sha256_prefix": "1d60519f06eb6e27",
+            "shape": "99/aa-aaa aaaa 99/99/9999"
+          },
+          {
+            "length": "25",
+            "sha256_prefix": "90cbc5077c26b7b8",
+            "shape": "99/aa-aaa aaaa 99/99/9999"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [
+        "Có thể xác nhận quy tắc tách số quyết định và ngày quyết định từ Q. định, kể cả trường hợp không tách được tự động không?"
+      ],
+      "writers": [
+        "phase2_import compatibility"
+      ]
+    },
+    {
+      "api": [],
+      "canonical_fact": "bbkt_reference",
+      "canonical_owner": "unresolved",
+      "cardinality": "0..n",
+      "compatibility_fields": [
+        "InspectionOutcome.bbkt_reference"
+      ],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": "Timestamp-dominant; not an actual inspection-date source.",
+        "status": "OWNER_MISMATCH"
+      },
+      "data_type_candidates": [
+        "MULTI_DATE_OR_PERIOD",
+        "SINGLE_DATE",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "B. bản",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": "bbkt_reference",
+      "observed_shapes": [
+        "DATE_OR_DATE_RANGE",
+        "MULTI_DATE_OR_PERIOD",
+        "SCALAR_TEXT",
+        "SINGLE_DATE"
+      ],
+      "owner_status": "OWNER_MISMATCH",
+      "readers": [
+        "CatalogReadService"
+      ],
+      "relationships": [],
+      "risk": "CRITICAL",
+      "sentinels": {
+        "missing": 152,
+        "not_applicable": 232,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 152,
+        "dash_count": 232,
+        "distinct_nonempty_count": 1003,
+        "morphology": {
+          "EMPTY": 152,
+          "MULTI_DATE_OR_PERIOD": 6,
+          "SENTINEL_NOT_APPLICABLE": 232,
+          "SINGLE_DATE": 1,
+          "TEXT": 1152
+        },
+        "multi_value_count": 6,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1391,
+        "physical_column_index": 15,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "22",
+            "sha256_prefix": "6f45ed262da44fc8",
+            "shape": "99-99-9999 & 99/9/9999"
+          },
+          {
+            "length": "22",
+            "sha256_prefix": "aa6f25ff23c783c5",
+            "shape": "99-99-9999 & 99/9/9999"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [
+        "Trường B. bản biểu thị chính xác loại bằng chứng nào: biên bản, thời điểm, hay tham chiếu tài liệu? Nó không được dùng làm ngày kiểm tra."
+      ],
+      "writers": [
+        "phase2_import compatibility",
+        "CaseWorkflowService.upsert_inspection_outcome"
+      ]
+    },
+    {
+      "api": [],
+      "canonical_fact": "inspection_team",
+      "canonical_owner": "InspectionTeam + InspectionTeamMember",
+      "cardinality": "0..n",
+      "compatibility_fields": [],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": "Display source is observed; structured identity mapping is not proven.",
+        "status": "OWNER_MISSING"
+      },
+      "data_type_candidates": [
+        "MULTI_VALUE_TEXT",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "T.tra viên",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "MULTI_VALUE_TEXT",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "OWNER_MISSING",
+      "readers": [
+        "CatalogReadService"
+      ],
+      "relationships": [],
+      "risk": "HIGH",
+      "sentinels": {
+        "missing": 188,
+        "not_applicable": 62,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 188,
+        "dash_count": 62,
+        "distinct_nonempty_count": 1161,
+        "morphology": {
+          "EMPTY": 188,
+          "MULTI_VALUE_TEXT": 1290,
+          "SENTINEL_NOT_APPLICABLE": 62,
+          "TEXT": 3
+        },
+        "multi_value_count": 1290,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1355,
+        "physical_column_index": 16,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "100",
+            "sha256_prefix": "21c25367e075162a",
+            "shape": "aaaaa aaa aaaa, aaaaaa aaaa aaaa, aaa aaa aaa, aa. aaaa aaaa, aaaaaa aaa aaaa, aaaaaa aaa aaa aa"
+          },
+          {
+            "length": "82",
+            "sha256_prefix": "1600127665e030a1",
+            "shape": "aaaaa aaa aaaa, aaaaaa aaaa aaaa, aaaaaa aaaa aaaaa, aaaaaa aaa aaaaaa, aa aa aaaa"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [
+        "T.tra viên có phải danh sách đoàn kiểm tra có thứ tự/vai trò không, và nguồn định danh cá nhân nào là authoritative?"
+      ],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "NUMERIC",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Đ. giá",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "MEDIUM",
+      "sentinels": {
+        "missing": 236,
+        "not_applicable": 23,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 236,
+        "dash_count": 23,
+        "distinct_nonempty_count": 16,
+        "morphology": {
+          "EMPTY": 236,
+          "NUMERIC": 1,
+          "SENTINEL_NOT_APPLICABLE": 23,
+          "TEXT": 1283
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1307,
+        "physical_column_index": 17,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "d4735e3a265e16ee",
+            "shape": "9"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "559aead08264d579",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..n",
+      "compatibility_fields": [],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "ANNOTATED_DATE",
+        "MULTI_DATE_OR_PERIOD",
+        "MULTI_VALUE_TEXT",
+        "NUMERIC",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": true,
+      "legacy_header": "CV BCKP lần 1",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "DATE_OR_DATE_RANGE",
+        "MULTI_DATE_OR_PERIOD",
+        "MULTI_VALUE_TEXT",
+        "REFERENCE",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "MEDIUM",
+      "sentinels": {
+        "missing": 758,
+        "not_applicable": 242,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 758,
+        "dash_count": 242,
+        "distinct_nonempty_count": 463,
+        "morphology": {
+          "ANNOTATED_DATE": 9,
+          "EMPTY": 758,
+          "MULTI_DATE_OR_PERIOD": 1,
+          "MULTI_VALUE_TEXT": 3,
+          "NUMERIC": 293,
+          "SENTINEL_NOT_APPLICABLE": 242,
+          "TEXT": 237
+        },
+        "multi_value_count": 5,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 785,
+        "physical_column_index": 18,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "12",
+            "sha256_prefix": "b43049d477dd31d9",
+            "shape": "999/aa.aaaaa"
+          },
+          {
+            "length": "36",
+            "sha256_prefix": "34161ffa65e526a8",
+            "shape": "99.9999/aa.aaa-aaa99 aaaa 99/99/9999"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..n",
+      "compatibility_fields": [],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "MULTI_DATE_OR_PERIOD",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Ngày T. định",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "DATE_OR_DATE_RANGE",
+        "MULTI_DATE_OR_PERIOD",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "MEDIUM",
+      "sentinels": {
+        "missing": 881,
+        "not_applicable": 490,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 881,
+        "dash_count": 490,
+        "distinct_nonempty_count": 159,
+        "morphology": {
+          "EMPTY": 881,
+          "MULTI_DATE_OR_PERIOD": 2,
+          "SENTINEL_NOT_APPLICABLE": 490,
+          "TEXT": 170
+        },
+        "multi_value_count": 2,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 662,
+        "physical_column_index": 19,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "22",
+            "sha256_prefix": "9f92af10276296c7",
+            "shape": "99/9/9999 aa 99/9/9999"
+          },
+          {
+            "length": "35",
+            "sha256_prefix": "626c57940560c922",
+            "shape": "99/9/9999; 99/99/9999 aa 99/99/9999"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..n",
+      "compatibility_fields": [],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "ANNOTATED_DATE",
+        "MULTI_VALUE_TEXT",
+        "NUMERIC",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": true,
+      "legacy_header": "CV BCKP lần 2",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "DATE_OR_DATE_RANGE",
+        "MULTI_VALUE_TEXT",
+        "REFERENCE",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "MEDIUM",
+      "sentinels": {
+        "missing": 878,
+        "not_applicable": 497,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 878,
+        "dash_count": 497,
+        "distinct_nonempty_count": 159,
+        "morphology": {
+          "ANNOTATED_DATE": 3,
+          "EMPTY": 878,
+          "MULTI_VALUE_TEXT": 6,
+          "NUMERIC": 105,
+          "SENTINEL_NOT_APPLICABLE": 497,
+          "TEXT": 54
+        },
+        "multi_value_count": 6,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 665,
+        "physical_column_index": 20,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "13",
+            "sha256_prefix": "c9428fb8daf6587f",
+            "shape": "99/9999/aa-aa"
+          },
+          {
+            "length": "12",
+            "sha256_prefix": "96f2192b8d0dada4",
+            "shape": "99/aaaa-aaaa"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..n",
+      "compatibility_fields": [],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "MULTI_VALUE_TEXT",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Người TĐ",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "MULTI_VALUE_TEXT",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "MEDIUM",
+      "sentinels": {
+        "missing": 210,
+        "not_applicable": 533,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 210,
+        "dash_count": 533,
+        "distinct_nonempty_count": 61,
+        "morphology": {
+          "EMPTY": 210,
+          "MULTI_VALUE_TEXT": 131,
+          "SENTINEL_NOT_APPLICABLE": 533,
+          "TEXT": 669
+        },
+        "multi_value_count": 131,
+        "newline_or_multiline_count": 1,
+        "non_empty_count": 1333,
+        "physical_column_index": 21,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "13",
+            "sha256_prefix": "4a1f8f0369d17699",
+            "shape": "aaaaa aaa aaa"
+          },
+          {
+            "length": "30",
+            "sha256_prefix": "92ed10ff9a2e663c",
+            "shape": "aaaaa aaa aaa, aaaaaa aaa aaaa"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "ANNOTATED_DATE",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Ngày g.sát",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "DATE_OR_DATE_RANGE",
+        "SENTINEL_DOMINATED"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [
+        {
+          "equal_rows": 1176,
+          "kind": "IDENTICAL_NONEMPTY_VALUES",
+          "left": "Ngày g.sát",
+          "paired_rows": 1185,
+          "right": "Biên bản"
+        }
+      ],
+      "risk": "MEDIUM",
+      "sentinels": {
+        "missing": 357,
+        "not_applicable": 1134,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 357,
+        "dash_count": 1134,
+        "distinct_nonempty_count": 53,
+        "morphology": {
+          "ANNOTATED_DATE": 2,
+          "EMPTY": 357,
+          "SENTINEL_NOT_APPLICABLE": 1134,
+          "TEXT": 50
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1186,
+        "physical_column_index": 22,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "13",
+            "sha256_prefix": "e3bd2329d89e65ed",
+            "shape": "99-99/99/9999"
+          },
+          {
+            "length": "13",
+            "sha256_prefix": "675d0a15173e9990",
+            "shape": "99-99/99/9999"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": true,
+      "legacy_header": "Biên bản",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "REFERENCE",
+        "SENTINEL_DOMINATED"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [
+        {
+          "equal_rows": 1176,
+          "kind": "IDENTICAL_NONEMPTY_VALUES",
+          "left": "Ngày g.sát",
+          "paired_rows": 1185,
+          "right": "Biên bản"
+        }
+      ],
+      "risk": "MEDIUM",
+      "sentinels": {
+        "missing": 358,
+        "not_applicable": 1141,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 358,
+        "dash_count": 1141,
+        "distinct_nonempty_count": 45,
+        "morphology": {
+          "EMPTY": 358,
+          "SENTINEL_NOT_APPLICABLE": 1141,
+          "TEXT": 44
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1185,
+        "physical_column_index": 23,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "25",
+            "sha256_prefix": "d3fe75f9ac3238ab",
+            "shape": "9999-99-99 99:99:99+99:99"
+          },
+          {
+            "length": "25",
+            "sha256_prefix": "806b9eccf4ffe6e1",
+            "shape": "9999-99-99 99:99:99+99:99"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..n",
+      "compatibility_fields": [],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "MULTI_VALUE_TEXT",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Người g.sát",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "MULTI_VALUE_TEXT",
+        "SENTINEL_DOMINATED"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "MEDIUM",
+      "sentinels": {
+        "missing": 358,
+        "not_applicable": 1136,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 358,
+        "dash_count": 1136,
+        "distinct_nonempty_count": 37,
+        "morphology": {
+          "EMPTY": 358,
+          "MULTI_VALUE_TEXT": 41,
+          "SENTINEL_NOT_APPLICABLE": 1136,
+          "TEXT": 8
+        },
+        "multi_value_count": 41,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1185,
+        "physical_column_index": 24,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "30",
+            "sha256_prefix": "b5afaf64e751293d",
+            "shape": "aaaaa aaa aaa, aa aaaaa aaaaaa"
+          },
+          {
+            "length": "30",
+            "sha256_prefix": "92ed10ff9a2e663c",
+            "shape": "aaaaa aaa aaa, aaaaaa aaa aaaa"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": "final_evaluation",
+      "canonical_owner": "future InspectionOutcome.final_evaluation",
+      "cardinality": "0..n",
+      "compatibility_fields": [],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": "Distinct from assessment/outcome result.",
+        "status": "OWNER_MISSING"
+      },
+      "data_type_candidates": [
+        "MULTI_VALUE_TEXT",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "ĐÁNH GIÁ CUỐI",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "MULTI_VALUE_TEXT",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "OWNER_MISSING",
+      "readers": [],
+      "relationships": [],
+      "risk": "HIGH",
+      "sentinels": {
+        "missing": 230,
+        "not_applicable": 19,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 230,
+        "dash_count": 19,
+        "distinct_nonempty_count": 11,
+        "morphology": {
+          "EMPTY": 230,
+          "MULTI_VALUE_TEXT": 1,
+          "SENTINEL_NOT_APPLICABLE": 19,
+          "TEXT": 1293
+        },
+        "multi_value_count": 1,
+        "newline_or_multiline_count": 1,
+        "non_empty_count": 1313,
+        "physical_column_index": 25,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "25",
+            "sha256_prefix": "aa460bef70172da4",
+            "shape": "9999-99-99 99:99:99+99:99"
+          },
+          {
+            "length": "25",
+            "sha256_prefix": "666551228bf9243a",
+            "shape": "9999-99-99 99:99:99+99:99"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [
+        "ĐÁNH GIÁ CUỐI khác gì Kết quả và có phải một trạng thái cuối độc lập không?"
+      ],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": "approval_submission",
+      "canonical_owner": "future InspectionApprovalSubmission",
+      "cardinality": "0..n",
+      "compatibility_fields": [],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": null,
+        "status": "OWNER_MISSING"
+      },
+      "data_type_candidates": [
+        "ANNOTATED_DATE",
+        "MULTI_DATE_OR_PERIOD",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": true,
+      "legacy_header": "PHIẾU TRÌNH PCT",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "DATE_OR_DATE_RANGE",
+        "MULTI_DATE_OR_PERIOD",
+        "REFERENCE",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "OWNER_MISSING",
+      "readers": [],
+      "relationships": [],
+      "risk": "HIGH",
+      "sentinels": {
+        "missing": 948,
+        "not_applicable": 212,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 948,
+        "dash_count": 212,
+        "distinct_nonempty_count": 379,
+        "morphology": {
+          "ANNOTATED_DATE": 368,
+          "EMPTY": 948,
+          "MULTI_DATE_OR_PERIOD": 12,
+          "SENTINEL_NOT_APPLICABLE": 212,
+          "TEXT": 3
+        },
+        "multi_value_count": 13,
+        "newline_or_multiline_count": 1,
+        "non_empty_count": 595,
+        "physical_column_index": 26,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "21",
+            "sha256_prefix": "22d1f4f5e8e358b2",
+            "shape": "99/aa aaaa 99/99/9999"
+          },
+          {
+            "length": "21",
+            "sha256_prefix": "4ba6d5d9fb2c7833",
+            "shape": "99/aa aaaa 99/99/9999"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [
+        "PHIẾU TRÌNH PCT thuộc một bước phê duyệt có thể lặp lại hay chỉ một hồ sơ duy nhất cho mỗi đợt kiểm tra?"
+      ],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": "approval_submission",
+      "canonical_owner": "future InspectionApprovalSubmission",
+      "cardinality": "0..n",
+      "compatibility_fields": [],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": null,
+        "status": "OWNER_MISSING"
+      },
+      "data_type_candidates": [
+        "ANNOTATED_DATE",
+        "MULTI_DATE_OR_PERIOD",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": true,
+      "legacy_header": "PHIẾU TRÌNH CT",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "DATE_OR_DATE_RANGE",
+        "MULTI_DATE_OR_PERIOD",
+        "REFERENCE",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "OWNER_MISSING",
+      "readers": [],
+      "relationships": [],
+      "risk": "HIGH",
+      "sentinels": {
+        "missing": 996,
+        "not_applicable": 217,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 996,
+        "dash_count": 217,
+        "distinct_nonempty_count": 321,
+        "morphology": {
+          "ANNOTATED_DATE": 308,
+          "EMPTY": 996,
+          "MULTI_DATE_OR_PERIOD": 15,
+          "SENTINEL_NOT_APPLICABLE": 217,
+          "TEXT": 7
+        },
+        "multi_value_count": 17,
+        "newline_or_multiline_count": 1,
+        "non_empty_count": 547,
+        "physical_column_index": 27,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "21",
+            "sha256_prefix": "3995a81e7175610a",
+            "shape": "99/aa aaaa 99/99/9999"
+          },
+          {
+            "length": "22",
+            "sha256_prefix": "0478d2b389fefc32",
+            "shape": "999/aa aaaa 99/99/9999"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [
+        "PHIẾU TRÌNH CT thuộc một bước phê duyệt có thể lặp lại hay chỉ một hồ sơ duy nhất cho mỗi đợt kiểm tra?"
+      ],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": "compliance_due_on",
+      "canonical_owner": "future InspectionOutcome.compliance_due_on",
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "OWNER_MISSING"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "HẠN KT TUÂN THỦ",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "OWNER_MISSING",
+      "readers": [],
+      "relationships": [],
+      "risk": "HIGH",
+      "sentinels": {
+        "missing": 792,
+        "not_applicable": 343,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 792,
+        "dash_count": 343,
+        "distinct_nonempty_count": 365,
+        "morphology": {
+          "EMPTY": 792,
+          "SENTINEL_NOT_APPLICABLE": 343,
+          "TEXT": 408
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 751,
+        "physical_column_index": 28,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "6",
+            "sha256_prefix": "3a1f34c1c7595b59",
+            "shape": "99 aaa"
+          },
+          {
+            "length": "25",
+            "sha256_prefix": "c16c329084adcac2",
+            "shape": "9999-99-99 99:99:99+99:99"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [
+        "HẠN KT TUÂN THỦ là hạn khắc phục, hạn tái kiểm tra hay hạn tuân thủ sau cấp chứng nhận?"
+      ],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "TIẾN ĐỘ XỬ LÝ",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [
+        {
+          "embedded_rows": 1361,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "TIẾN ĐỘ XỬ LÝ",
+          "paired_rows": 1506,
+          "right": "Thẩm định HSĐK"
+        },
+        {
+          "equal_rows": 1506,
+          "kind": "IDENTICAL_NONEMPTY_VALUES",
+          "left": "TIẾN ĐỘ XỬ LÝ",
+          "paired_rows": 1506,
+          "right": "Cấp CC"
+        },
+        {
+          "embedded_rows": 1407,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "TIẾN ĐỘ XỬ LÝ",
+          "paired_rows": 1506,
+          "right": "Kiểm tra"
+        },
+        {
+          "embedded_rows": 1384,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "TIẾN ĐỘ XỬ LÝ",
+          "paired_rows": 1506,
+          "right": "Khắc phục 1"
+        },
+        {
+          "embedded_rows": 1390,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "TIẾN ĐỘ XỬ LÝ",
+          "paired_rows": 1506,
+          "right": "Khắc phục cuối"
+        },
+        {
+          "equal_rows": 1498,
+          "kind": "IDENTICAL_NONEMPTY_VALUES",
+          "left": "TIẾN ĐỘ XỬ LÝ",
+          "paired_rows": 1506,
+          "right": "Trình lãnh đạo Cục"
+        }
+      ],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 37,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 37,
+        "dash_count": 0,
+        "distinct_nonempty_count": 12,
+        "morphology": {
+          "EMPTY": 37,
+          "TEXT": 1506
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1506,
+        "physical_column_index": 29,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "27",
+            "sha256_prefix": "8255f68f789fd235",
+            "shape": "aaa aaaaa aaaa aaaa aaa ..."
+          },
+          {
+            "length": "21",
+            "sha256_prefix": "388285ce47bbb895",
+            "shape": "aaa aa aaaa aa aa ..."
+          },
+          {
+            "length": "41",
+            "sha256_prefix": "873bc491a313439f",
+            "shape": "aaa aa aa aaa aaa aaa aaaa aaaa aaa 9 ..."
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": "certificate_linkage",
+      "canonical_owner": "Certificate case linkage",
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": "Potential foreign/multi-reference source; no declared importer owner.",
+        "status": "SOURCE_SEMANTICS_UNPROVEN"
+      },
+      "data_type_candidates": [
+        "NUMERIC"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": true,
+      "legacy_header": "ID CC GPs",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FOREIGN_ID",
+        "NUMERIC",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "SOURCE_SEMANTICS_UNPROVEN",
+      "readers": [],
+      "relationships": [],
+      "risk": "HIGH",
+      "sentinels": {
+        "missing": 200,
+        "not_applicable": 17,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 200,
+        "dash_count": 17,
+        "distinct_nonempty_count": 1326,
+        "morphology": {
+          "EMPTY": 200,
+          "NUMERIC": 1326,
+          "SENTINEL_NOT_APPLICABLE": 17
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1343,
+        "physical_column_index": 30,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "6b86b273ff34fce1",
+            "shape": "9"
+          },
+          {
+            "length": "2",
+            "sha256_prefix": "4a44dc15364204a8",
+            "shape": "99"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [
+        "ID CC GPs có thể chứa nhiều chứng nhận hay chỉ một ID; quan hệ với certificate hiện hành là gì?"
+      ],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..n",
+      "compatibility_fields": [],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "ANNOTATED_DATE",
+        "DATE_RANGE",
+        "MULTI_DATE_OR_PERIOD",
+        "MULTI_VALUE_TEXT",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "GHI CHÚ",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": "note",
+      "observed_shapes": [
+        "DATE_OR_DATE_RANGE",
+        "MULTI_DATE_OR_PERIOD",
+        "MULTI_VALUE_TEXT",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "MEDIUM",
+      "sentinels": {
+        "missing": 694,
+        "not_applicable": 762,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 694,
+        "dash_count": 762,
+        "distinct_nonempty_count": 64,
+        "morphology": {
+          "ANNOTATED_DATE": 16,
+          "DATE_RANGE": 5,
+          "EMPTY": 694,
+          "MULTI_DATE_OR_PERIOD": 13,
+          "MULTI_VALUE_TEXT": 3,
+          "SENTINEL_NOT_APPLICABLE": 762,
+          "TEXT": 50
+        },
+        "multi_value_count": 20,
+        "newline_or_multiline_count": 13,
+        "non_empty_count": 849,
+        "physical_column_index": 31,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "98",
+            "sha256_prefix": "9925ce355f1312fa",
+            "shape": "- aa aa 99999/aaa-aa aaaa 99/9/9999 aaaa aaaaa aaaa aa, aa aaaa aaaa aa aaa aaaa (aaaaa aaaa aaa"
+          },
+          {
+            "length": "4",
+            "sha256_prefix": "d7ff5b4e55cfb581",
+            "shape": "-aaa"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": "legacy_current_marker",
+      "canonical_owner": "legacy-only diagnostic",
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "LEGACY_ONLY"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": true,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "MỚI NHẤT",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": "latest_flag",
+      "observed_shapes": [
+        "FREE_TEXT"
+      ],
+      "owner_status": "LEGACY_ONLY",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1098,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1098,
+        "dash_count": 0,
+        "distinct_nonempty_count": 1,
+        "morphology": {
+          "EMPTY": 1098,
+          "TEXT": 445
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 445,
+        "physical_column_index": 32,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "65c74c15a686187b",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": "legacy_current_lineage",
+      "canonical_owner": "legacy-only diagnostic",
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "LEGACY_ONLY"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": true,
+      "frontend": [],
+      "id_or_reference_evidence": true,
+      "legacy_header": "ID MỚI NHẤT",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": "latest_legacy_id",
+      "observed_shapes": [
+        "FOREIGN_ID"
+      ],
+      "owner_status": "LEGACY_ONLY",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1098,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1098,
+        "dash_count": 0,
+        "distinct_nonempty_count": 441,
+        "morphology": {
+          "EMPTY": 1098,
+          "TEXT": 445
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 445,
+        "physical_column_index": 33,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "6",
+            "sha256_prefix": "f52494fba9f6a316",
+            "shape": "aaa-99"
+          },
+          {
+            "length": "7",
+            "sha256_prefix": "d3efa3562a2b7ebf",
+            "shape": "aaa-999"
+          },
+          {
+            "length": "7",
+            "sha256_prefix": "e7a1fef74b19f117",
+            "shape": "aaa-999"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..n",
+      "compatibility_fields": [],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "MULTI_VALUE_TEXT",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "VIẾT RÚT GỌN PHẠM VI",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": "certificate_scope_short_text",
+      "observed_shapes": [
+        "MULTI_VALUE_TEXT",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "MEDIUM",
+      "sentinels": {
+        "missing": 47,
+        "not_applicable": 0,
+        "pending_input": 36
+      },
+      "source_profile": {
+        "blank_count": 47,
+        "dash_count": 0,
+        "distinct_nonempty_count": 776,
+        "morphology": {
+          "EMPTY": 47,
+          "MULTI_VALUE_TEXT": 1266,
+          "SENTINEL_PENDING_INPUT": 36,
+          "TEXT": 194
+        },
+        "multi_value_count": 1266,
+        "newline_or_multiline_count": 847,
+        "non_empty_count": 1496,
+        "physical_column_index": 34,
+        "question_mark_count": 36,
+        "representative_values": [
+          {
+            "length": "429",
+            "sha256_prefix": "0139ab899f30b97c",
+            "shape": "* * aa aaaaa (aaa aaa) * aaaa aaaaa aaaaa aa aaaaa (aaa aa aaa aaaa aaaaa a aaa * aaaaa aa aaaaa"
+          },
+          {
+            "length": "271",
+            "sha256_prefix": "5867d662cc0e408f",
+            "shape": "* (- aaaa aa aaaaa aaaa aaa a aaa aaa aaa aaa (aaaa aaa) * aaaaa aa aaaaa (aaaa, aaaa aaa, aaa, "
+          },
+          {
+            "length": "267",
+            "sha256_prefix": "2badea729b0eb855",
+            "shape": "* (aaaa aaaa aaaa aaa aaaa aaaaa aaaa aaaa aaaa aaa aaa aa aaaaa aaaa aa aa aaaa aaaa - aaaaa aa"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Thẩm định HSĐK",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [
+        {
+          "embedded_rows": 1361,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "TIẾN ĐỘ XỬ LÝ",
+          "paired_rows": 1506,
+          "right": "Thẩm định HSĐK"
+        },
+        {
+          "embedded_rows": 1361,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Thẩm định HSĐK",
+          "paired_rows": 1506,
+          "right": "Cấp CC"
+        },
+        {
+          "embedded_rows": 1456,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Thẩm định HSĐK",
+          "paired_rows": 1506,
+          "right": "Kiểm tra"
+        },
+        {
+          "embedded_rows": 1369,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Thẩm định HSĐK",
+          "paired_rows": 1506,
+          "right": "Trình lãnh đạo Cục"
+        }
+      ],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 37,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 37,
+        "dash_count": 0,
+        "distinct_nonempty_count": 3,
+        "morphology": {
+          "EMPTY": 37,
+          "TEXT": 1506
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1506,
+        "physical_column_index": 35,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "21",
+            "sha256_prefix": "388285ce47bbb895",
+            "shape": "aaa aa aaaa aa aa ..."
+          },
+          {
+            "length": "23",
+            "sha256_prefix": "a61320bef3f763c3",
+            "shape": "aaa aaaa aaaa aa aa ..."
+          },
+          {
+            "length": "10",
+            "sha256_prefix": "5eb36f8c9acb229c",
+            "shape": "aaaa aaaaa"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "NUMERIC",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Chờ kiểm tra",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FREE_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 37,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 37,
+        "dash_count": 0,
+        "distinct_nonempty_count": 345,
+        "morphology": {
+          "EMPTY": 37,
+          "NUMERIC": 941,
+          "TEXT": 565
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1506,
+        "physical_column_index": 36,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "4",
+            "sha256_prefix": "4da9bbe6709c9c5f",
+            "shape": "-999"
+          },
+          {
+            "length": "5",
+            "sha256_prefix": "4ae38b8f6cfe430c",
+            "shape": "-9999"
+          },
+          {
+            "length": "3",
+            "sha256_prefix": "aadc67a4abea26ad",
+            "shape": "-99"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "NUMERIC",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Hoàn thành báo cáo",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FREE_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 37,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 37,
+        "dash_count": 0,
+        "distinct_nonempty_count": 54,
+        "morphology": {
+          "EMPTY": 37,
+          "NUMERIC": 1143,
+          "TEXT": 363
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1506,
+        "physical_column_index": 37,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "2",
+            "sha256_prefix": "1bad6b8cf97131fc",
+            "shape": "-9"
+          },
+          {
+            "length": "3",
+            "sha256_prefix": "c171d4ec282b23db",
+            "shape": "-99"
+          },
+          {
+            "length": "2",
+            "sha256_prefix": "cf3bae39dd692048",
+            "shape": "-9"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "NUMERIC",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Nộp BCKP",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FREE_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 37,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 37,
+        "dash_count": 0,
+        "distinct_nonempty_count": 164,
+        "morphology": {
+          "EMPTY": 37,
+          "NUMERIC": 857,
+          "TEXT": 649
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1506,
+        "physical_column_index": 38,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "4",
+            "sha256_prefix": "1d23159367ecb641",
+            "shape": "-999"
+          },
+          {
+            "length": "3",
+            "sha256_prefix": "d3471dcc109cd382",
+            "shape": "-99"
+          },
+          {
+            "length": "3",
+            "sha256_prefix": "33f88a451fd4154f",
+            "shape": "-99"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "NUMERIC",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Đánh giá BCKP 1",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FREE_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 37,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 37,
+        "dash_count": 0,
+        "distinct_nonempty_count": 94,
+        "morphology": {
+          "EMPTY": 37,
+          "NUMERIC": 718,
+          "TEXT": 788
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1506,
+        "physical_column_index": 39,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "3",
+            "sha256_prefix": "7ed00270e394c3e1",
+            "shape": "-99"
+          },
+          {
+            "length": "4",
+            "sha256_prefix": "9134e9e471f25dea",
+            "shape": "-999"
+          },
+          {
+            "length": "4",
+            "sha256_prefix": "50e0bac17038ea63",
+            "shape": "-999"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "NUMERIC",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Đánh giá BCKP 2",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FREE_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 37,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 37,
+        "dash_count": 0,
+        "distinct_nonempty_count": 41,
+        "morphology": {
+          "EMPTY": 37,
+          "NUMERIC": 167,
+          "TEXT": 1339
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1506,
+        "physical_column_index": 40,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "2",
+            "sha256_prefix": "a770d3270c9dcded",
+            "shape": "-9"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "5feceb66ffc86f38",
+            "shape": "9"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "6b86b273ff34fce1",
+            "shape": "9"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Cấp CC",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [
+        {
+          "equal_rows": 1506,
+          "kind": "IDENTICAL_NONEMPTY_VALUES",
+          "left": "TIẾN ĐỘ XỬ LÝ",
+          "paired_rows": 1506,
+          "right": "Cấp CC"
+        },
+        {
+          "embedded_rows": 1361,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Thẩm định HSĐK",
+          "paired_rows": 1506,
+          "right": "Cấp CC"
+        },
+        {
+          "embedded_rows": 1407,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Cấp CC",
+          "paired_rows": 1506,
+          "right": "Kiểm tra"
+        },
+        {
+          "embedded_rows": 1384,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Cấp CC",
+          "paired_rows": 1506,
+          "right": "Khắc phục 1"
+        },
+        {
+          "embedded_rows": 1390,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Cấp CC",
+          "paired_rows": 1506,
+          "right": "Khắc phục cuối"
+        },
+        {
+          "equal_rows": 1498,
+          "kind": "IDENTICAL_NONEMPTY_VALUES",
+          "left": "Cấp CC",
+          "paired_rows": 1506,
+          "right": "Trình lãnh đạo Cục"
+        }
+      ],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 37,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 37,
+        "dash_count": 0,
+        "distinct_nonempty_count": 12,
+        "morphology": {
+          "EMPTY": 37,
+          "TEXT": 1506
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1506,
+        "physical_column_index": 41,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "27",
+            "sha256_prefix": "8255f68f789fd235",
+            "shape": "aaa aaaaa aaaa aaaa aaa ..."
+          },
+          {
+            "length": "21",
+            "sha256_prefix": "388285ce47bbb895",
+            "shape": "aaa aa aaaa aa aa ..."
+          },
+          {
+            "length": "41",
+            "sha256_prefix": "873bc491a313439f",
+            "shape": "aaa aa aa aaa aaa aaa aaaa aaaa aaa 9 ..."
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Cấp ĐĐK",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 37,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 37,
+        "dash_count": 0,
+        "distinct_nonempty_count": 13,
+        "morphology": {
+          "EMPTY": 37,
+          "TEXT": 1506
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1506,
+        "physical_column_index": 42,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "27",
+            "sha256_prefix": "8255f68f789fd235",
+            "shape": "aaa aaaaa aaaa aaaa aaa ..."
+          },
+          {
+            "length": "21",
+            "sha256_prefix": "388285ce47bbb895",
+            "shape": "aaa aa aaaa aa aa ..."
+          },
+          {
+            "length": "41",
+            "sha256_prefix": "873bc491a313439f",
+            "shape": "aaa aa aa aaa aaa aaa aaaa aaaa aaa 9 ..."
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Kiểm tra",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [
+        {
+          "embedded_rows": 1407,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "TIẾN ĐỘ XỬ LÝ",
+          "paired_rows": 1506,
+          "right": "Kiểm tra"
+        },
+        {
+          "embedded_rows": 1456,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Thẩm định HSĐK",
+          "paired_rows": 1506,
+          "right": "Kiểm tra"
+        },
+        {
+          "embedded_rows": 1407,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Cấp CC",
+          "paired_rows": 1506,
+          "right": "Kiểm tra"
+        },
+        {
+          "embedded_rows": 1378,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Kiểm tra",
+          "paired_rows": 1506,
+          "right": "Báo cáo"
+        },
+        {
+          "embedded_rows": 1385,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Kiểm tra",
+          "paired_rows": 1506,
+          "right": "Khắc phục 1"
+        },
+        {
+          "embedded_rows": 1383,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Kiểm tra",
+          "paired_rows": 1506,
+          "right": "Khắc phục cuối"
+        },
+        {
+          "embedded_rows": 1415,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Kiểm tra",
+          "paired_rows": 1506,
+          "right": "Trình lãnh đạo Cục"
+        }
+      ],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 37,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 37,
+        "dash_count": 0,
+        "distinct_nonempty_count": 5,
+        "morphology": {
+          "EMPTY": 37,
+          "TEXT": 1506
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1506,
+        "physical_column_index": 43,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "27",
+            "sha256_prefix": "8255f68f789fd235",
+            "shape": "aaa aaaaa aaaa aaaa aaa ..."
+          },
+          {
+            "length": "21",
+            "sha256_prefix": "388285ce47bbb895",
+            "shape": "aaa aa aaaa aa aa ..."
+          },
+          {
+            "length": "23",
+            "sha256_prefix": "a61320bef3f763c3",
+            "shape": "aaa aaaa aaaa aa aa ..."
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Báo cáo",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [
+        {
+          "embedded_rows": 1378,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Kiểm tra",
+          "paired_rows": 1506,
+          "right": "Báo cáo"
+        },
+        {
+          "embedded_rows": 1358,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Báo cáo",
+          "paired_rows": 1506,
+          "right": "Khắc phục 1"
+        },
+        {
+          "embedded_rows": 1357,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Báo cáo",
+          "paired_rows": 1506,
+          "right": "Khắc phục cuối"
+        }
+      ],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 37,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 37,
+        "dash_count": 0,
+        "distinct_nonempty_count": 7,
+        "morphology": {
+          "EMPTY": 37,
+          "TEXT": 1506
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1506,
+        "physical_column_index": 44,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "27",
+            "sha256_prefix": "8255f68f789fd235",
+            "shape": "aaa aaaaa aaaa aaaa aaa ..."
+          },
+          {
+            "length": "21",
+            "sha256_prefix": "388285ce47bbb895",
+            "shape": "aaa aa aaaa aa aa ..."
+          },
+          {
+            "length": "26",
+            "sha256_prefix": "834589f1a80a0f08",
+            "shape": "aaa aaaa aaaaa aaa aaa ..."
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Khắc phục 1",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [
+        {
+          "embedded_rows": 1384,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "TIẾN ĐỘ XỬ LÝ",
+          "paired_rows": 1506,
+          "right": "Khắc phục 1"
+        },
+        {
+          "embedded_rows": 1384,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Cấp CC",
+          "paired_rows": 1506,
+          "right": "Khắc phục 1"
+        },
+        {
+          "embedded_rows": 1385,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Kiểm tra",
+          "paired_rows": 1506,
+          "right": "Khắc phục 1"
+        },
+        {
+          "embedded_rows": 1358,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Báo cáo",
+          "paired_rows": 1506,
+          "right": "Khắc phục 1"
+        },
+        {
+          "embedded_rows": 1390,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Khắc phục 1",
+          "paired_rows": 1506,
+          "right": "Khắc phục cuối"
+        },
+        {
+          "embedded_rows": 1388,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Khắc phục 1",
+          "paired_rows": 1506,
+          "right": "Trình lãnh đạo Cục"
+        }
+      ],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 37,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 37,
+        "dash_count": 0,
+        "distinct_nonempty_count": 9,
+        "morphology": {
+          "EMPTY": 37,
+          "TEXT": 1506
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1506,
+        "physical_column_index": 45,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "27",
+            "sha256_prefix": "8255f68f789fd235",
+            "shape": "aaa aaaaa aaaa aaaa aaa ..."
+          },
+          {
+            "length": "21",
+            "sha256_prefix": "388285ce47bbb895",
+            "shape": "aaa aa aaaa aa aa ..."
+          },
+          {
+            "length": "41",
+            "sha256_prefix": "873bc491a313439f",
+            "shape": "aaa aa aa aaa aaa aaa aaaa aaaa aaa 9 ..."
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Khắc phục 2",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 37,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 37,
+        "dash_count": 0,
+        "distinct_nonempty_count": 11,
+        "morphology": {
+          "EMPTY": 37,
+          "TEXT": 1506
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1506,
+        "physical_column_index": 46,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "27",
+            "sha256_prefix": "8255f68f789fd235",
+            "shape": "aaa aaaaa aaaa aaaa aaa ..."
+          },
+          {
+            "length": "21",
+            "sha256_prefix": "388285ce47bbb895",
+            "shape": "aaa aa aaaa aa aa ..."
+          },
+          {
+            "length": "41",
+            "sha256_prefix": "873bc491a313439f",
+            "shape": "aaa aa aa aaa aaa aaa aaaa aaaa aaa 9 ..."
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Khắc phục cuối",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [
+        {
+          "embedded_rows": 1390,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "TIẾN ĐỘ XỬ LÝ",
+          "paired_rows": 1506,
+          "right": "Khắc phục cuối"
+        },
+        {
+          "embedded_rows": 1390,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Cấp CC",
+          "paired_rows": 1506,
+          "right": "Khắc phục cuối"
+        },
+        {
+          "embedded_rows": 1383,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Kiểm tra",
+          "paired_rows": 1506,
+          "right": "Khắc phục cuối"
+        },
+        {
+          "embedded_rows": 1357,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Báo cáo",
+          "paired_rows": 1506,
+          "right": "Khắc phục cuối"
+        },
+        {
+          "embedded_rows": 1390,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Khắc phục 1",
+          "paired_rows": 1506,
+          "right": "Khắc phục cuối"
+        },
+        {
+          "embedded_rows": 1398,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Khắc phục cuối",
+          "paired_rows": 1506,
+          "right": "Trình lãnh đạo Cục"
+        }
+      ],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 37,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 37,
+        "dash_count": 0,
+        "distinct_nonempty_count": 11,
+        "morphology": {
+          "EMPTY": 37,
+          "TEXT": 1506
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1506,
+        "physical_column_index": 47,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "27",
+            "sha256_prefix": "8255f68f789fd235",
+            "shape": "aaa aaaaa aaaa aaaa aaa ..."
+          },
+          {
+            "length": "21",
+            "sha256_prefix": "388285ce47bbb895",
+            "shape": "aaa aa aaaa aa aa ..."
+          },
+          {
+            "length": "41",
+            "sha256_prefix": "873bc491a313439f",
+            "shape": "aaa aa aa aaa aaa aaa aaaa aaaa aaa 9 ..."
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Trình lãnh đạo Cục",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [
+        {
+          "equal_rows": 1498,
+          "kind": "IDENTICAL_NONEMPTY_VALUES",
+          "left": "TIẾN ĐỘ XỬ LÝ",
+          "paired_rows": 1506,
+          "right": "Trình lãnh đạo Cục"
+        },
+        {
+          "embedded_rows": 1369,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Thẩm định HSĐK",
+          "paired_rows": 1506,
+          "right": "Trình lãnh đạo Cục"
+        },
+        {
+          "equal_rows": 1498,
+          "kind": "IDENTICAL_NONEMPTY_VALUES",
+          "left": "Cấp CC",
+          "paired_rows": 1506,
+          "right": "Trình lãnh đạo Cục"
+        },
+        {
+          "embedded_rows": 1415,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Kiểm tra",
+          "paired_rows": 1506,
+          "right": "Trình lãnh đạo Cục"
+        },
+        {
+          "embedded_rows": 1388,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Khắc phục 1",
+          "paired_rows": 1506,
+          "right": "Trình lãnh đạo Cục"
+        },
+        {
+          "embedded_rows": 1398,
+          "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+          "left": "Khắc phục cuối",
+          "paired_rows": 1506,
+          "right": "Trình lãnh đạo Cục"
+        }
+      ],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 37,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 37,
+        "dash_count": 0,
+        "distinct_nonempty_count": 11,
+        "morphology": {
+          "EMPTY": 37,
+          "TEXT": 1506
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1506,
+        "physical_column_index": 48,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "27",
+            "sha256_prefix": "8255f68f789fd235",
+            "shape": "aaa aaaaa aaaa aaaa aaa ..."
+          },
+          {
+            "length": "21",
+            "sha256_prefix": "388285ce47bbb895",
+            "shape": "aaa aa aaaa aa aa ..."
+          },
+          {
+            "length": "41",
+            "sha256_prefix": "873bc491a313439f",
+            "shape": "aaa aa aa aaa aaa aaa aaaa aaaa aaa 9 ..."
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Tân dược",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FREE_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [
+        {
+          "equal_rows": 53,
+          "kind": "IDENTICAL_NONEMPTY_VALUES",
+          "left": "Tân dược",
+          "paired_rows": 53,
+          "right": "Đông dược"
+        },
+        {
+          "equal_rows": 13,
+          "kind": "IDENTICAL_NONEMPTY_VALUES",
+          "left": "Tân dược",
+          "paired_rows": 13,
+          "right": "Sinh phẩm"
+        },
+        {
+          "equal_rows": 17,
+          "kind": "IDENTICAL_NONEMPTY_VALUES",
+          "left": "Tân dược",
+          "paired_rows": 17,
+          "right": "Ng. liệu DL"
+        }
+      ],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1236,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1236,
+        "dash_count": 0,
+        "distinct_nonempty_count": 1,
+        "morphology": {
+          "EMPTY": 1236,
+          "TEXT": 307
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 307,
+        "physical_column_index": 49,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "2d711642b726b044",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Đông dược",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FREE_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [
+        {
+          "equal_rows": 53,
+          "kind": "IDENTICAL_NONEMPTY_VALUES",
+          "left": "Tân dược",
+          "paired_rows": 53,
+          "right": "Đông dược"
+        },
+        {
+          "equal_rows": 49,
+          "kind": "IDENTICAL_NONEMPTY_VALUES",
+          "left": "Đông dược",
+          "paired_rows": 49,
+          "right": "Ng. liệu DL"
+        }
+      ],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1417,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1417,
+        "dash_count": 0,
+        "distinct_nonempty_count": 1,
+        "morphology": {
+          "EMPTY": 1417,
+          "TEXT": 126
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 126,
+        "physical_column_index": 50,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "2d711642b726b044",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Vắc xin",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FREE_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1527,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1527,
+        "dash_count": 0,
+        "distinct_nonempty_count": 1,
+        "morphology": {
+          "EMPTY": 1527,
+          "TEXT": 16
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 16,
+        "physical_column_index": 51,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "2d711642b726b044",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Sinh phẩm",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FREE_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [
+        {
+          "equal_rows": 13,
+          "kind": "IDENTICAL_NONEMPTY_VALUES",
+          "left": "Tân dược",
+          "paired_rows": 13,
+          "right": "Sinh phẩm"
+        }
+      ],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1518,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1518,
+        "dash_count": 0,
+        "distinct_nonempty_count": 1,
+        "morphology": {
+          "EMPTY": 1518,
+          "TEXT": 25
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 25,
+        "physical_column_index": 52,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "2d711642b726b044",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Ng. liệu",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FREE_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1530,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1530,
+        "dash_count": 0,
+        "distinct_nonempty_count": 1,
+        "morphology": {
+          "EMPTY": 1530,
+          "TEXT": 13
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 13,
+        "physical_column_index": 53,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "2d711642b726b044",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Ng. liệu DL",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FREE_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [
+        {
+          "equal_rows": 17,
+          "kind": "IDENTICAL_NONEMPTY_VALUES",
+          "left": "Tân dược",
+          "paired_rows": 17,
+          "right": "Ng. liệu DL"
+        },
+        {
+          "equal_rows": 49,
+          "kind": "IDENTICAL_NONEMPTY_VALUES",
+          "left": "Đông dược",
+          "paired_rows": 49,
+          "right": "Ng. liệu DL"
+        }
+      ],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1485,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1485,
+        "dash_count": 0,
+        "distinct_nonempty_count": 1,
+        "morphology": {
+          "EMPTY": 1485,
+          "TEXT": 58
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 58,
+        "physical_column_index": 54,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "2d711642b726b044",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Ng. liệu SH",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FREE_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1540,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1540,
+        "dash_count": 0,
+        "distinct_nonempty_count": 1,
+        "morphology": {
+          "EMPTY": 1540,
+          "TEXT": 3
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 3,
+        "physical_column_index": 55,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "2d711642b726b044",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Chỉ ĐG2",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FREE_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1541,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1541,
+        "dash_count": 0,
+        "distinct_nonempty_count": 1,
+        "morphology": {
+          "EMPTY": 1541,
+          "TEXT": 2
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 2,
+        "physical_column_index": 56,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "2d711642b726b044",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Tiêm bột",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1491,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1491,
+        "dash_count": 0,
+        "distinct_nonempty_count": 13,
+        "morphology": {
+          "EMPTY": 1491,
+          "TEXT": 52
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 52,
+        "physical_column_index": 57,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "6b23c0d5f35d1b11",
+            "shape": "a"
+          },
+          {
+            "length": "3",
+            "sha256_prefix": "59d903be6bcae360",
+            "shape": "a a"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "86be9a55762d316a",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Tiêm nước",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1467,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1467,
+        "dash_count": 0,
+        "distinct_nonempty_count": 12,
+        "morphology": {
+          "EMPTY": 1467,
+          "TEXT": 76
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 76,
+        "physical_column_index": 58,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "86be9a55762d316a",
+            "shape": "a"
+          },
+          {
+            "length": "3",
+            "sha256_prefix": "5d3b6a5478ca40a4",
+            "shape": "a a"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "8ce86a6ae65d3692",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Viên, cốm, bột",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FREE_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1254,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1254,
+        "dash_count": 0,
+        "distinct_nonempty_count": 25,
+        "morphology": {
+          "EMPTY": 1254,
+          "TEXT": 289
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 289,
+        "physical_column_index": 59,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "6b23c0d5f35d1b11",
+            "shape": "a"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "3f39d5c348e5b79d",
+            "shape": "a"
+          },
+          {
+            "length": "3",
+            "sha256_prefix": "ca278ede7e758934",
+            "shape": "a a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Cao DL",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1476,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1476,
+        "dash_count": 0,
+        "distinct_nonempty_count": 2,
+        "morphology": {
+          "EMPTY": 1476,
+          "TEXT": 67
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 67,
+        "physical_column_index": 60,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3f39d5c348e5b79d",
+            "shape": "a"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "8ce86a6ae65d3692",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Viên nội tiết",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FREE_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1537,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1537,
+        "dash_count": 0,
+        "distinct_nonempty_count": 1,
+        "morphology": {
+          "EMPTY": 1537,
+          "TEXT": 6
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 6,
+        "physical_column_index": 61,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "2d711642b726b044",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Nước uống",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1366,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1366,
+        "dash_count": 0,
+        "distinct_nonempty_count": 3,
+        "morphology": {
+          "EMPTY": 1366,
+          "TEXT": 177
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 177,
+        "physical_column_index": 62,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3f39d5c348e5b79d",
+            "shape": "a"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "8ce86a6ae65d3692",
+            "shape": "a"
+          },
+          {
+            "length": "3",
+            "sha256_prefix": "b40c2699bd1e211b",
+            "shape": "a a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Nước dùng ngoài",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1419,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1419,
+        "dash_count": 0,
+        "distinct_nonempty_count": 3,
+        "morphology": {
+          "EMPTY": 1419,
+          "TEXT": 124
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 124,
+        "physical_column_index": 63,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3f39d5c348e5b79d",
+            "shape": "a"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "8ce86a6ae65d3692",
+            "shape": "a"
+          },
+          {
+            "length": "3",
+            "sha256_prefix": "b40c2699bd1e211b",
+            "shape": "a a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Nhỏ mắt",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FREE_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1493,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1493,
+        "dash_count": 0,
+        "distinct_nonempty_count": 1,
+        "morphology": {
+          "EMPTY": 1493,
+          "TEXT": 50
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 50,
+        "physical_column_index": 64,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "8ce86a6ae65d3692",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Kem, gel, mỡ",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1407,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1407,
+        "dash_count": 0,
+        "distinct_nonempty_count": 3,
+        "morphology": {
+          "EMPTY": 1407,
+          "TEXT": 136
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 136,
+        "physical_column_index": 65,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3f39d5c348e5b79d",
+            "shape": "a"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "8ce86a6ae65d3692",
+            "shape": "a"
+          },
+          {
+            "length": "3",
+            "sha256_prefix": "b40c2699bd1e211b",
+            "shape": "a a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Đạn, trứng",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1531,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1531,
+        "dash_count": 0,
+        "distinct_nonempty_count": 2,
+        "morphology": {
+          "EMPTY": 1531,
+          "TEXT": 12
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 12,
+        "physical_column_index": 66,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "8ce86a6ae65d3692",
+            "shape": "a"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "2d711642b726b044",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Nang mềm",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1470,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1470,
+        "dash_count": 0,
+        "distinct_nonempty_count": 4,
+        "morphology": {
+          "EMPTY": 1470,
+          "TEXT": 73
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 73,
+        "physical_column_index": 67,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3f39d5c348e5b79d",
+            "shape": "a"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "8ce86a6ae65d3692",
+            "shape": "a"
+          },
+          {
+            "length": "3",
+            "sha256_prefix": "b40c2699bd1e211b",
+            "shape": "a a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Vỏ nang",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1538,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1538,
+        "dash_count": 0,
+        "distinct_nonempty_count": 2,
+        "morphology": {
+          "EMPTY": 1538,
+          "TEXT": 5
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 5,
+        "physical_column_index": 68,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "cd0aa9856147b6c5",
+            "shape": "a"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "2d711642b726b044",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Vi sinh",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1528,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1528,
+        "dash_count": 0,
+        "distinct_nonempty_count": 3,
+        "morphology": {
+          "EMPTY": 1528,
+          "TEXT": 15
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 15,
+        "physical_column_index": 69,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "de5a6f78116eca62",
+            "shape": "a"
+          },
+          {
+            "length": "3",
+            "sha256_prefix": "daca468c3799e0db",
+            "shape": "a a"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "2d711642b726b044",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "DD thẩm phân",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1536,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1536,
+        "dash_count": 0,
+        "distinct_nonempty_count": 2,
+        "morphology": {
+          "EMPTY": 1536,
+          "TEXT": 7
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 7,
+        "physical_column_index": 70,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "1b16b1df538ba12d",
+            "shape": "a"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "2d711642b726b044",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Ống hít",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1533,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1533,
+        "dash_count": 0,
+        "distinct_nonempty_count": 3,
+        "morphology": {
+          "EMPTY": 1533,
+          "TEXT": 10
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 10,
+        "physical_column_index": 71,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "8ce86a6ae65d3692",
+            "shape": "a"
+          },
+          {
+            "length": "3",
+            "sha256_prefix": "b40c2699bd1e211b",
+            "shape": "a a"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "2d711642b726b044",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "DL đã chế biến",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1497,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1497,
+        "dash_count": 0,
+        "distinct_nonempty_count": 2,
+        "morphology": {
+          "EMPTY": 1497,
+          "TEXT": 46
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 46,
+        "physical_column_index": 72,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3f39d5c348e5b79d",
+            "shape": "a"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "2d711642b726b044",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Sủi bọt",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1516,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1516,
+        "dash_count": 0,
+        "distinct_nonempty_count": 2,
+        "morphology": {
+          "EMPTY": 1516,
+          "TEXT": 27
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 27,
+        "physical_column_index": 73,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "8ce86a6ae65d3692",
+            "shape": "a"
+          },
+          {
+            "length": "3",
+            "sha256_prefix": "b40c2699bd1e211b",
+            "shape": "a a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Hormon sinh dục",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FREE_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1539,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1539,
+        "dash_count": 0,
+        "distinct_nonempty_count": 1,
+        "morphology": {
+          "EMPTY": 1539,
+          "TEXT": 4
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 4,
+        "physical_column_index": 74,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "de5a6f78116eca62",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Độc tế bào",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1534,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1534,
+        "dash_count": 0,
+        "distinct_nonempty_count": 2,
+        "morphology": {
+          "EMPTY": 1534,
+          "TEXT": 9
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 9,
+        "physical_column_index": 75,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "3",
+            "sha256_prefix": "1339c920e8bbd34f",
+            "shape": "a a"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "de5a6f78116eca62",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Cao xoa",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1537,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1537,
+        "dash_count": 0,
+        "distinct_nonempty_count": 2,
+        "morphology": {
+          "EMPTY": 1537,
+          "TEXT": 6
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 6,
+        "physical_column_index": 76,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3f39d5c348e5b79d",
+            "shape": "a"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "8ce86a6ae65d3692",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "API",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SCALAR_ENUM_LIKE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1539,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1539,
+        "dash_count": 0,
+        "distinct_nonempty_count": 3,
+        "morphology": {
+          "EMPTY": 1539,
+          "TEXT": 4
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 4,
+        "physical_column_index": 77,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "8ce86a6ae65d3692",
+            "shape": "a"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "8de0b3c47f112c59",
+            "shape": "a"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "de5a6f78116eca62",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Vị thuốc CT",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FREE_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1542,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1542,
+        "dash_count": 0,
+        "distinct_nonempty_count": 1,
+        "morphology": {
+          "EMPTY": 1542,
+          "TEXT": 1
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1,
+        "physical_column_index": 78,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3f39d5c348e5b79d",
+            "shape": "a"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..n",
+      "compatibility_fields": [],
+      "composite_value_evidence": true,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "MULTI_VALUE_TEXT",
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": true,
+      "legacy_header": "Mã số CC",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": "certificate_number",
+      "observed_shapes": [
+        "FOREIGN_ID",
+        "MULTI_VALUE_TEXT",
+        "REFERENCE",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "MEDIUM",
+      "sentinels": {
+        "missing": 217,
+        "not_applicable": 0,
+        "pending_input": 4
+      },
+      "source_profile": {
+        "blank_count": 217,
+        "dash_count": 0,
+        "distinct_nonempty_count": 849,
+        "morphology": {
+          "EMPTY": 217,
+          "MULTI_VALUE_TEXT": 1,
+          "SENTINEL_PENDING_INPUT": 4,
+          "TEXT": 1321
+        },
+        "multi_value_count": 1,
+        "newline_or_multiline_count": 1,
+        "non_empty_count": 1326,
+        "physical_column_index": 79,
+        "question_mark_count": 4,
+        "representative_values": [
+          {
+            "length": "5",
+            "sha256_prefix": "3c01a9c7061566a3",
+            "shape": "- a -"
+          },
+          {
+            "length": "12",
+            "sha256_prefix": "867f8ef40c88e63d",
+            "shape": "/9999/aa-aaa"
+          },
+          {
+            "length": "14",
+            "sha256_prefix": "b5a3204fd25f5863",
+            "shape": "99/9999/aa-aaa"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "NUMERIC"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": true,
+      "legacy_header": "ID DDK",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FOREIGN_ID",
+        "NUMERIC",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "MEDIUM",
+      "sentinels": {
+        "missing": 856,
+        "not_applicable": 160,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 856,
+        "dash_count": 160,
+        "distinct_nonempty_count": 481,
+        "morphology": {
+          "EMPTY": 856,
+          "NUMERIC": 527,
+          "SENTINEL_NOT_APPLICABLE": 160
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 687,
+        "physical_column_index": 80,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "6b86b273ff34fce1",
+            "shape": "9"
+          },
+          {
+            "length": "2",
+            "sha256_prefix": "4a44dc15364204a8",
+            "shape": "99"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": true,
+      "legacy_header": "Mã số ĐĐK",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FOREIGN_ID",
+        "REFERENCE",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "MEDIUM",
+      "sentinels": {
+        "missing": 1016,
+        "not_applicable": 0,
+        "pending_input": 27
+      },
+      "source_profile": {
+        "blank_count": 1016,
+        "dash_count": 0,
+        "distinct_nonempty_count": 435,
+        "morphology": {
+          "EMPTY": 1016,
+          "SENTINEL_PENDING_INPUT": 27,
+          "TEXT": 500
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 527,
+        "physical_column_index": 81,
+        "question_mark_count": 27,
+        "representative_values": [
+          {
+            "length": "12",
+            "sha256_prefix": "b1e24253ac326e19",
+            "shape": "99/aaa-aaaaa"
+          },
+          {
+            "length": "12",
+            "sha256_prefix": "5c254ce637df20cd",
+            "shape": "99/aaa-aaaaa"
+          },
+          {
+            "length": "12",
+            "sha256_prefix": "af70b9fcc62abed4",
+            "shape": "99/aaaaa-aaa"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "NUMERIC"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Idx CC",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "NUMERIC",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "MEDIUM",
+      "sentinels": {
+        "missing": 34,
+        "not_applicable": 183,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 34,
+        "dash_count": 183,
+        "distinct_nonempty_count": 1326,
+        "morphology": {
+          "EMPTY": 34,
+          "NUMERIC": 1326,
+          "SENTINEL_NOT_APPLICABLE": 183
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1509,
+        "physical_column_index": 82,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "6b86b273ff34fce1",
+            "shape": "9"
+          },
+          {
+            "length": "2",
+            "sha256_prefix": "4a44dc15364204a8",
+            "shape": "99"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "NUMERIC"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Idx CC cũ",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "NUMERIC",
+        "SCALAR_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "MEDIUM",
+      "sentinels": {
+        "missing": 1056,
+        "not_applicable": 117,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1056,
+        "dash_count": 117,
+        "distinct_nonempty_count": 368,
+        "morphology": {
+          "EMPTY": 1056,
+          "NUMERIC": 370,
+          "SENTINEL_NOT_APPLICABLE": 117
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 487,
+        "physical_column_index": 83,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "1",
+            "sha256_prefix": "6b86b273ff34fce1",
+            "shape": "9"
+          },
+          {
+            "length": "2",
+            "sha256_prefix": "4a44dc15364204a8",
+            "shape": "99"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Hạn CC cũ",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "SENTINEL_DOMINATED"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "MEDIUM",
+      "sentinels": {
+        "missing": 27,
+        "not_applicable": 1146,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 27,
+        "dash_count": 1146,
+        "distinct_nonempty_count": 241,
+        "morphology": {
+          "EMPTY": 27,
+          "SENTINEL_NOT_APPLICABLE": 1146,
+          "TEXT": 370
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1516,
+        "physical_column_index": 84,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "25",
+            "sha256_prefix": "81971f65e0c682da",
+            "shape": "9999-99-99 99:99:99+99:99"
+          },
+          {
+            "length": "25",
+            "sha256_prefix": "e841001958262fdd",
+            "shape": "9999-99-99 99:99:99+99:99"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "NUMERIC"
+      ],
+      "derived_or_calculated_evidence": true,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Kiểm tra chậm",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "NUMERIC",
+        "SENTINEL_DOMINATED"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "MEDIUM",
+      "sentinels": {
+        "missing": 27,
+        "not_applicable": 1150,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 27,
+        "dash_count": 1150,
+        "distinct_nonempty_count": 229,
+        "morphology": {
+          "EMPTY": 27,
+          "NUMERIC": 366,
+          "SENTINEL_NOT_APPLICABLE": 1150
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 1516,
+        "physical_column_index": 85,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "1",
+            "sha256_prefix": "3973e022e93220f9",
+            "shape": "-"
+          },
+          {
+            "length": "2",
+            "sha256_prefix": "1bad6b8cf97131fc",
+            "shape": "-9"
+          },
+          {
+            "length": "3",
+            "sha256_prefix": "c171d4ec282b23db",
+            "shape": "-99"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [
+        "TEXT"
+      ],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": false,
+      "legacy_header": "Ngày cấp ĐĐK",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FREE_TEXT"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1016,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1016,
+        "dash_count": 0,
+        "distinct_nonempty_count": 273,
+        "morphology": {
+          "EMPTY": 1016,
+          "TEXT": 527
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 527,
+        "physical_column_index": 86,
+        "question_mark_count": 0,
+        "representative_values": [
+          {
+            "length": "25",
+            "sha256_prefix": "9dfbd4d1e718b126",
+            "shape": "9999-99-99 99:99:99+99:99"
+          },
+          {
+            "length": "25",
+            "sha256_prefix": "e28f0a4d3d1a4d41",
+            "shape": "9999-99-99 99:99:99+99:99"
+          },
+          {
+            "length": "25",
+            "sha256_prefix": "27b2627557eed7e1",
+            "shape": "9999-99-99 99:99:99+99:99"
+          }
+        ],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": true,
+      "legacy_header": "ID CƠ SỞ 2",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FOREIGN_ID"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1543,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1543,
+        "dash_count": 0,
+        "distinct_nonempty_count": 0,
+        "morphology": {
+          "EMPTY": 1543
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 0,
+        "physical_column_index": 87,
+        "question_mark_count": 0,
+        "representative_values": [],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    },
+    {
+      "api": [],
+      "canonical_fact": null,
+      "canonical_owner": null,
+      "cardinality": "0..1",
+      "compatibility_fields": [],
+      "composite_value_evidence": false,
+      "current_mapping": {
+        "notes": null,
+        "status": "NOT_MAPPED"
+      },
+      "data_type_candidates": [],
+      "derived_or_calculated_evidence": false,
+      "frontend": [],
+      "id_or_reference_evidence": true,
+      "legacy_header": "MÃ DC 2",
+      "migration_status": "DISCOVERY_ONLY_NO_MIGRATION",
+      "normalized_alias": null,
+      "observed_shapes": [
+        "FOREIGN_ID",
+        "REFERENCE"
+      ],
+      "owner_status": "NOT_MAPPED",
+      "readers": [],
+      "relationships": [],
+      "risk": "INFORMATIONAL",
+      "sentinels": {
+        "missing": 1543,
+        "not_applicable": 0,
+        "pending_input": 0
+      },
+      "source_profile": {
+        "blank_count": 1543,
+        "dash_count": 0,
+        "distinct_nonempty_count": 0,
+        "morphology": {
+          "EMPTY": 1543
+        },
+        "multi_value_count": 0,
+        "newline_or_multiline_count": 0,
+        "non_empty_count": 0,
+        "physical_column_index": 88,
+        "question_mark_count": 0,
+        "representative_values": [],
+        "total_rows": 1543,
+        "valid_id_rows": 1533
+      },
+      "unresolved_business_questions": [],
+      "writers": []
+    }
+  ],
+  "global_findings": [
+    "Discovery evidence only: no source field is migrated or reinterpreted by this inventory.",
+    "db.ktra Ngày K.tra is owned by ordered InspectionPeriodSegment; B. bản is not a timing source.",
+    "Rehearsal comparison is intentionally absent without an explicit read-only PostgreSQL target."
+  ],
+  "owner_status_distribution": {
+    "COMPOSITE_REQUIRES_SPLIT": 1,
+    "LEGACY_ONLY": 2,
+    "MULTIPLE_COMPETING_OWNERS": 1,
+    "NOT_MAPPED": 65,
+    "OWNER_COMPATIBILITY_ONLY": 3,
+    "OWNER_MISMATCH": 1,
+    "OWNER_MISSING": 5,
+    "OWNER_PROVEN": 9,
+    "SOURCE_SEMANTICS_UNPROVEN": 1
+  },
+  "provenance": {
+    "canonical_workbook_sha256": "c12537ea5a5c9f470e42fb5bdbe214f36983e310fceac7c560ad38885209fe3d",
+    "database_comparison": "NOT_RUN_NO_EXPLICIT_DATABASE_URL",
+    "declared_canonical_snapshot_sha256": "234498b1f74d811ef0fb6f39a71af42919cdd440cad9e53d82c287d526588666",
+    "extraction_owner": "backend.app.domain.legacy_snapshot.read_core_sheet_rows",
+    "snapshot_artifact_sha256": "391966f4c093b6eb4defb3db7f90d0477cc2e8567b18d5305302a60cb36c5e36",
+    "source_sheet": "db.ktra"
+  },
+  "relationships": [
+    {
+      "equal_rows": 1176,
+      "kind": "IDENTICAL_NONEMPTY_VALUES",
+      "left": "Ngày g.sát",
+      "paired_rows": 1185,
+      "right": "Biên bản"
+    },
+    {
+      "embedded_rows": 1361,
+      "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+      "left": "TIẾN ĐỘ XỬ LÝ",
+      "paired_rows": 1506,
+      "right": "Thẩm định HSĐK"
+    },
+    {
+      "equal_rows": 1506,
+      "kind": "IDENTICAL_NONEMPTY_VALUES",
+      "left": "TIẾN ĐỘ XỬ LÝ",
+      "paired_rows": 1506,
+      "right": "Cấp CC"
+    },
+    {
+      "embedded_rows": 1407,
+      "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+      "left": "TIẾN ĐỘ XỬ LÝ",
+      "paired_rows": 1506,
+      "right": "Kiểm tra"
+    },
+    {
+      "embedded_rows": 1384,
+      "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+      "left": "TIẾN ĐỘ XỬ LÝ",
+      "paired_rows": 1506,
+      "right": "Khắc phục 1"
+    },
+    {
+      "embedded_rows": 1390,
+      "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+      "left": "TIẾN ĐỘ XỬ LÝ",
+      "paired_rows": 1506,
+      "right": "Khắc phục cuối"
+    },
+    {
+      "equal_rows": 1498,
+      "kind": "IDENTICAL_NONEMPTY_VALUES",
+      "left": "TIẾN ĐỘ XỬ LÝ",
+      "paired_rows": 1506,
+      "right": "Trình lãnh đạo Cục"
+    },
+    {
+      "embedded_rows": 1361,
+      "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+      "left": "Thẩm định HSĐK",
+      "paired_rows": 1506,
+      "right": "Cấp CC"
+    },
+    {
+      "embedded_rows": 1456,
+      "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+      "left": "Thẩm định HSĐK",
+      "paired_rows": 1506,
+      "right": "Kiểm tra"
+    },
+    {
+      "embedded_rows": 1369,
+      "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+      "left": "Thẩm định HSĐK",
+      "paired_rows": 1506,
+      "right": "Trình lãnh đạo Cục"
+    },
+    {
+      "embedded_rows": 1407,
+      "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+      "left": "Cấp CC",
+      "paired_rows": 1506,
+      "right": "Kiểm tra"
+    },
+    {
+      "embedded_rows": 1384,
+      "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+      "left": "Cấp CC",
+      "paired_rows": 1506,
+      "right": "Khắc phục 1"
+    },
+    {
+      "embedded_rows": 1390,
+      "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+      "left": "Cấp CC",
+      "paired_rows": 1506,
+      "right": "Khắc phục cuối"
+    },
+    {
+      "equal_rows": 1498,
+      "kind": "IDENTICAL_NONEMPTY_VALUES",
+      "left": "Cấp CC",
+      "paired_rows": 1506,
+      "right": "Trình lãnh đạo Cục"
+    },
+    {
+      "embedded_rows": 1378,
+      "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+      "left": "Kiểm tra",
+      "paired_rows": 1506,
+      "right": "Báo cáo"
+    },
+    {
+      "embedded_rows": 1385,
+      "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+      "left": "Kiểm tra",
+      "paired_rows": 1506,
+      "right": "Khắc phục 1"
+    },
+    {
+      "embedded_rows": 1383,
+      "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+      "left": "Kiểm tra",
+      "paired_rows": 1506,
+      "right": "Khắc phục cuối"
+    },
+    {
+      "embedded_rows": 1415,
+      "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+      "left": "Kiểm tra",
+      "paired_rows": 1506,
+      "right": "Trình lãnh đạo Cục"
+    },
+    {
+      "embedded_rows": 1358,
+      "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+      "left": "Báo cáo",
+      "paired_rows": 1506,
+      "right": "Khắc phục 1"
+    },
+    {
+      "embedded_rows": 1357,
+      "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+      "left": "Báo cáo",
+      "paired_rows": 1506,
+      "right": "Khắc phục cuối"
+    },
+    {
+      "embedded_rows": 1390,
+      "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+      "left": "Khắc phục 1",
+      "paired_rows": 1506,
+      "right": "Khắc phục cuối"
+    },
+    {
+      "embedded_rows": 1388,
+      "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+      "left": "Khắc phục 1",
+      "paired_rows": 1506,
+      "right": "Trình lãnh đạo Cục"
+    },
+    {
+      "embedded_rows": 1398,
+      "kind": "EMBEDDED_VALUE_RELATIONSHIP",
+      "left": "Khắc phục cuối",
+      "paired_rows": 1506,
+      "right": "Trình lãnh đạo Cục"
+    },
+    {
+      "equal_rows": 53,
+      "kind": "IDENTICAL_NONEMPTY_VALUES",
+      "left": "Tân dược",
+      "paired_rows": 53,
+      "right": "Đông dược"
+    },
+    {
+      "equal_rows": 13,
+      "kind": "IDENTICAL_NONEMPTY_VALUES",
+      "left": "Tân dược",
+      "paired_rows": 13,
+      "right": "Sinh phẩm"
+    },
+    {
+      "equal_rows": 17,
+      "kind": "IDENTICAL_NONEMPTY_VALUES",
+      "left": "Tân dược",
+      "paired_rows": 17,
+      "right": "Ng. liệu DL"
+    },
+    {
+      "equal_rows": 49,
+      "kind": "IDENTICAL_NONEMPTY_VALUES",
+      "left": "Đông dược",
+      "paired_rows": 49,
+      "right": "Ng. liệu DL"
+    }
+  ],
+  "risk_distribution": {
+    "CRITICAL": 2,
+    "HIGH": 14,
+    "INFORMATIONAL": 51,
+    "LOW": 3,
+    "MEDIUM": 18
+  },
+  "schema_version": "legacy-semantic-inventory/v1",
+  "unresolved_business_questions": [
+    {
+      "affected_rows": 1391,
+      "decision_blocked": "bbkt_reference",
+      "legacy_field": "B. bản",
+      "priority": "BLOCKING",
+      "question_vi": "Trường B. bản biểu thị chính xác loại bằng chứng nào: biên bản, thời điểm, hay tham chiếu tài liệu? Nó không được dùng làm ngày kiểm tra."
+    },
+    {
+      "affected_rows": 1177,
+      "decision_blocked": "assessment_and_outcome_result",
+      "legacy_field": "Kết quả",
+      "priority": "BLOCKING",
+      "question_vi": "Kết quả là kết quả thẩm định hồ sơ, kết quả kiểm tra thực tế, hay hai giá trị khác nhau đang bị gộp chung?"
+    },
+    {
+      "affected_rows": 1315,
+      "decision_blocked": "inspection_decision_reference_and_date",
+      "legacy_field": "Q. định",
+      "priority": "BLOCKING",
+      "question_vi": "Có thể xác nhận quy tắc tách số quyết định và ngày quyết định từ Q. định, kể cả trường hợp không tách được tự động không?"
+    },
+    {
+      "affected_rows": 751,
+      "decision_blocked": "compliance_due_on",
+      "legacy_field": "HẠN KT TUÂN THỦ",
+      "priority": "HIGH",
+      "question_vi": "HẠN KT TUÂN THỦ là hạn khắc phục, hạn tái kiểm tra hay hạn tuân thủ sau cấp chứng nhận?"
+    },
+    {
+      "affected_rows": 1343,
+      "decision_blocked": "certificate_linkage",
+      "legacy_field": "ID CC GPs",
+      "priority": "HIGH",
+      "question_vi": "ID CC GPs có thể chứa nhiều chứng nhận hay chỉ một ID; quan hệ với certificate hiện hành là gì?"
+    },
+    {
+      "affected_rows": 547,
+      "decision_blocked": "approval_submission",
+      "legacy_field": "PHIẾU TRÌNH CT",
+      "priority": "HIGH",
+      "question_vi": "PHIẾU TRÌNH CT thuộc một bước phê duyệt có thể lặp lại hay chỉ một hồ sơ duy nhất cho mỗi đợt kiểm tra?"
+    },
+    {
+      "affected_rows": 595,
+      "decision_blocked": "approval_submission",
+      "legacy_field": "PHIẾU TRÌNH PCT",
+      "priority": "HIGH",
+      "question_vi": "PHIẾU TRÌNH PCT thuộc một bước phê duyệt có thể lặp lại hay chỉ một hồ sơ duy nhất cho mỗi đợt kiểm tra?"
+    },
+    {
+      "affected_rows": 1355,
+      "decision_blocked": "inspection_team",
+      "legacy_field": "T.tra viên",
+      "priority": "HIGH",
+      "question_vi": "T.tra viên có phải danh sách đoàn kiểm tra có thứ tự/vai trò không, và nguồn định danh cá nhân nào là authoritative?"
+    },
+    {
+      "affected_rows": 1313,
+      "decision_blocked": "final_evaluation",
+      "legacy_field": "ĐÁNH GIÁ CUỐI",
+      "priority": "HIGH",
+      "question_vi": "ĐÁNH GIÁ CUỐI khác gì Kết quả và có phải một trạng thái cuối độc lập không?"
+    }
+  ]
+}

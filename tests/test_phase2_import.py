@@ -31,6 +31,7 @@ from backend.app.domain.phase2_import import (
     build_schema_length_audit,
     import_snapshot,
     load_confirmed_blanked_contract_rows,
+    parse_legacy_inspection_period,
     source_row_key,
 )
 from backend.app.domain import phase2_import as phase2_import_module
@@ -129,7 +130,31 @@ def test_import_snapshot_loads_primary_entities():
         assert session.query(Certificate).count() == 1
         assert session.query(BusinessEligibilityCertificate).count() == 1
         assert session.query(ChangeRequest).count() == 1
+        outcome = session.scalars(select(InspectionOutcome)).one()
+        assert outcome.inspected_on.isoformat() == "2016-08-26"
+        assert outcome.inspected_to_on.isoformat() == "2016-08-27"
         assert reconciliation["mismatches"] == {}
+
+
+def test_legacy_inspection_period_parser_is_deterministic_and_fail_closed():
+    assert parse_legacy_inspection_period("20/10/2011") is not None
+    assert tuple(value.isoformat() for value in parse_legacy_inspection_period("20/10/2011")) == ("2011-10-20", "2011-10-20")
+    assert tuple(value.isoformat() for value in parse_legacy_inspection_period("20-21/10/2011")) == ("2011-10-20", "2011-10-21")
+    assert tuple(value.isoformat() for value in parse_legacy_inspection_period("31/07-01/08/2009")) == ("2009-07-31", "2009-08-01")
+    assert tuple(value.isoformat() for value in parse_legacy_inspection_period("1-12/12/2017")) == ("2017-12-01", "2017-12-12")
+    assert parse_legacy_inspection_period("01/01/2020, 02/01/2020") is None
+
+
+def test_import_snapshot_never_uses_bbkt_as_inspection_period_fallback():
+    snapshot = sample_snapshot()
+    snapshot["db.ktra"][0]["Ngày K.tra"] = ""
+    snapshot["db.ktra"][0]["B. bản"] = "2016-08-27 00:00:00"
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        import_snapshot(session, snapshot)
+        outcome = session.scalars(select(InspectionOutcome)).one()
+        assert outcome.inspected_on is None
+        assert outcome.inspected_to_on is None
 
 
 def test_import_snapshot_projects_canonical_inspection_folder_code_from_legacy_identity():

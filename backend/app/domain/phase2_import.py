@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any, Callable
 import json
+import re
 
 from sqlalchemy import String, delete, func, select
 from sqlalchemy.orm import Session
@@ -349,6 +350,32 @@ def parse_dt(value: str) -> datetime | None:
 def parse_date(value: str):
     dt = parse_dt(value)
     return dt.date() if dt else None
+
+
+def parse_legacy_inspection_period(value: str | None) -> tuple[date, date] | None:
+    """Parse only source-proven `Ngày K.tra` date and range formats."""
+    direct = parse_date(str(value or ""))
+    if direct is not None:
+        return direct, direct
+    text = str(value or "").strip()
+    match = re.fullmatch(
+        r"(\d{1,2})\s*/\s*(\d{1,2})\s*-\s*(\d{1,2})\s*/\s*(\d{1,2})[./-](\d{2,4})",
+        text,
+    )
+    if match:
+        first_day, first_month, last_day, last_month, year = (int(part) for part in match.groups())
+    else:
+        match = re.fullmatch(r"(\d{1,2})\s*-\s*(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})", text)
+        if not match:
+            return None
+        first_day, last_day, first_month, year = (int(part) for part in match.groups())
+        last_month = first_month
+    if year < 100:
+        year += 2000
+    try:
+        return date(year, first_month, first_day), date(year, last_month, last_day)
+    except ValueError:
+        return None
 
 
 def _normalized_string_value(value: str | None) -> str | None:
@@ -1440,7 +1467,12 @@ def import_snapshot(
             continue
         submitted_at = parse_dt(row.get("submitted_at", ""))
         assessed_at = parse_dt(row.get("assessed_at", ""))
-        inspected_at = parse_dt(row.get("bbkt_reference", "")) or parse_dt(row.get("inspected_at", ""))
+        inspection_period = parse_legacy_inspection_period(row.get("inspected_at", ""))
+        inspected_at = (
+            datetime.combine(inspection_period[0], time.min)
+            if inspection_period is not None
+            else None
+        )
         identity_key = _source_identity_key(legacy_id, row_number)
         normalized_gxp_type = normalize_inspection_gxp_type(row.get("inspection_gxp_type"))
         expected_fields = {
@@ -1529,15 +1561,16 @@ def import_snapshot(
             filters={"case_id": entity.id},
             expected_fields={
                 "case_id": entity.id,
-                "inspected_on": parse_date(row.get("bbkt_reference", "")) or parse_date(row.get("inspected_at", "")),
-                "inspected_to_on": None,
+                "inspected_on": inspection_period[0] if inspection_period is not None else None,
+                "inspected_to_on": inspection_period[1] if inspection_period is not None else None,
                 "decision_reference": row.get("decision_reference") or None,
                 "bbkt_reference": row.get("bbkt_reference") or None,
                 "outcome_result": row.get("assessment_result") or None,
             },
             build_entity=lambda: InspectionOutcome(
                 case_id=entity.id,
-                inspected_on=parse_date(row.get("bbkt_reference", "")) or parse_date(row.get("inspected_at", "")),
+                inspected_on=inspection_period[0] if inspection_period is not None else None,
+                inspected_to_on=inspection_period[1] if inspection_period is not None else None,
                 decision_reference=row.get("decision_reference") or None,
                 bbkt_reference=row.get("bbkt_reference") or None,
                 outcome_result=row.get("assessment_result") or None,

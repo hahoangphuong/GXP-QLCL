@@ -437,8 +437,8 @@ def test_contract_and_importer_keep_all_four_misrouting_paths_in_sync():
     assert 'dossier_reference=row.get("decision_reference") or None' in source
     assert 'decision_reference=row.get("decision_reference") or None' in source
     assert 'bbkt_reference=row.get("bbkt_reference") or None' in source
-    assert "parse_date(row.get(\"bbkt_reference\", \"\")) or parse_date(row.get(\"inspected_at\", \"\"))" in source
-    assert source.index("parse_date(row.get(\"bbkt_reference\", \"\"))") < source.index("parse_date(row.get(\"inspected_at\", \"\"))")
+    assert 'parse_legacy_inspection_period(row.get("inspected_at", ""))' in source
+    assert 'parse_date(row.get("bbkt_reference", "")) or parse_date(row.get("inspected_at", ""))' not in source
 
 
 def test_read_only_runner_has_no_orm_write_operations_and_uses_read_only_transaction():

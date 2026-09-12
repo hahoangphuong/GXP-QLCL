@@ -137,7 +137,7 @@ def test_canonical_owner_contract_is_design_only_and_has_no_legacy_write_authori
     assert report["status"] == "DESIGN_ONLY_NO_SCHEMA_OR_BACKFILL"
     assert report["decision"] == {
         "schema_changes": "NOT_IMPLEMENTED_BY_TASK_CONSTRAINT",
-        "importer_changes": "NOT_IMPLEMENTED_BY_TASK_CONSTRAINT",
+        "importer_changes": "IMPLEMENTED_NGAY_KTRA_EXCLUSIVE_PERIOD_MAPPING",
         "backfill": "NOT_PERFORMED",
         "qd_kt_readiness": "BUSINESS_INPUT_CONTRACT_MISSING",
         "reason": "structured planning decision reference/date and other active inputs remain unowned; do not enable create/readiness or parse composite legacy prose",
@@ -179,8 +179,14 @@ def test_canonical_contract_records_all_legacy_misrouting_paths():
         ("db.ktra B. bản", "InspectionOutcome", "inspected_on"),
     ]
     date_path = paths[3]
-    assert date_path["transform"] == "parse_date(bbkt_reference) or parse_date(inspected_at)"
-    assert date_path["precedence"] == "B. bản is attempted first; Ngày K.tra fallback is second"
+    assert date_path["transform"] == (
+        "historical import: parse_date(bbkt_reference) or parse_date(inspected_at); "
+        "current import: parse_legacy_inspection_period(inspected_at)"
+    )
+    assert date_path["precedence"] == (
+        "historical B. bản-first path is preserved only as provenance evidence; "
+        "current importer exclusively uses Ngày K.tra"
+    )
     assert date_path["future_policy"] == "never use B. bản as actual inspection date; use proven Ngày K.tra mapping"
 
 
@@ -188,5 +194,5 @@ def test_actual_inspection_owner_is_distinct_from_imported_value_provenance():
     owner = {item["canonical_fact"]: item for item in _load_contract()["owners"]}["actual_inspection_period"]
     assert owner["status"] == "OWNER_ALREADY_CORRECT"
     assert "provenance" in owner["backfill_strategy_status"].lower()
-    assert "B. bản" in owner["invariant"]
+    assert owner["invariant"] == "actual period is exclusively derived from Ngày K.tra; B. bản is never an inspection-date source"
     assert _load_contract()["decision"]["backfill"] == "NOT_PERFORMED"

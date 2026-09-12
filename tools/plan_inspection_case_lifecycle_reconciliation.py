@@ -28,7 +28,11 @@ from backend.app.db.models.phase1 import (
 )
 from backend.app.db.enums import LegacyEntityType
 from backend.app.db.session import build_engine
-from backend.app.domain.phase2_import import normalize_row, parse_date
+from backend.app.domain.phase2_import import (
+    normalize_row,
+    parse_date,
+    parse_legacy_inspection_period,
+)
 from tools.audit_inspection_case_lifecycle_legacy import (
     _classify_decision_composite,
     _date_morphology,
@@ -279,29 +283,7 @@ def _split_decision(value: str) -> tuple[str | None, str | None, str]:
 
 
 def _period_start_end(value: str) -> tuple[date | None, date | None]:
-    direct = parse_date(value)
-    if direct is not None:
-        return direct, direct
-    text_value = str(value or "").strip()
-    match = re.fullmatch(r"(\d{1,2})\s*/\s*(\d{1,2})\s*-\s*(\d{1,2})\s*/\s*(\d{1,2})[./-](\d{2,4})", text_value)
-    if match:
-        first_day, first_month, last_day, last_month, year = (int(part) for part in match.groups())
-        if year < 100:
-            year += 2000
-        try:
-            return date(year, first_month, first_day), date(year, last_month, last_day)
-        except ValueError:
-            return None, None
-    match = re.fullmatch(r"(\d{1,2})\s*-\s*(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})", text_value)
-    if match:
-        first, last, month, year = (int(part) for part in match.groups())
-        if year < 100:
-            year += 2000
-        try:
-            return date(year, month, first), date(year, month, last)
-        except ValueError:
-            return None, None
-    return None, None
+    return parse_legacy_inspection_period(value) or (None, None)
 
 
 def _date_reconciliation(legacy_value: str, current_start: date | None, current_end: date | None) -> tuple[str, str, str | None]:
@@ -799,7 +781,7 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases
                 current_start=current_start,
                 current_end=current_end,
                 provenance_status=provenance,
-                blocker="current importer tries B. bản before Ngày K.tra"
+                blocker="canonical period matches historical B. bản provenance instead of deterministic Ngày K.tra source"
                 if inspection_status == "BLOCKED_PROVENANCE_CONTAMINATION"
                 else None,
                 legacy_value=actual_value,
@@ -932,7 +914,7 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases
         "identity_gap_reason_counts": dict(identity_gap_reason_counts),
         "summary": {"legacy_cases": len(legacy_rows), "matched_cases": identity_counts["matched"], "unmatched": identity_counts["unmatched"], "identity_conflicts": identity_counts["conflict"], "reconciliation_status_counts": dict(status_counts), "per_fact_status_counts": {key: dict(value) for key, value in sorted(per_fact.items())}},
         "facts": facts,
-        "legacy_misrouting_evidence": {"decision_reference_to_application_dossier_reference": "PRESENT", "decision_reference_to_inspection_outcome": "PRESENT", "bbkt_to_outcome_reference": "PRESENT", "bbkt_parse_before_inspected_at_fallback": "PRESENT"},
+        "legacy_misrouting_evidence": {"decision_reference_to_application_dossier_reference": "PRESENT", "decision_reference_to_inspection_outcome": "PRESENT", "bbkt_to_outcome_reference": "PRESENT", "bbkt_parse_before_inspected_at_fallback": "HISTORICAL_REMEDIATED"},
         "guardrails": {"database_mutated": False, "workbook_mutated": False, "backfill_performed": False, "candidate_database_allowed": False},
     }
 

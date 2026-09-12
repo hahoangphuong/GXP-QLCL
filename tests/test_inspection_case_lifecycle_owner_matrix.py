@@ -192,7 +192,7 @@ def test_canonical_contract_records_all_legacy_misrouting_paths():
 
 def test_actual_inspection_owner_is_distinct_from_imported_value_provenance():
     owner = {item["canonical_fact"]: item for item in _load_contract()["owners"]}["actual_inspection_period"]
-    assert owner["status"] == "OWNER_ALREADY_CORRECT"
-    assert "provenance" in owner["backfill_strategy_status"].lower()
-    assert owner["invariant"] == "actual period is exclusively derived from Ngày K.tra; B. bản is never an inspection-date source"
+    assert owner["status"] == "OWNER_MODEL_EXTENDED"
+    assert "MULTI_SEGMENT_MODEL_MIGRATION_REQUIRED" in owner["backfill_strategy_status"]
+    assert "no min/max envelope" in owner["invariant"]
     assert _load_contract()["decision"]["backfill"] == "NOT_PERFORMED"

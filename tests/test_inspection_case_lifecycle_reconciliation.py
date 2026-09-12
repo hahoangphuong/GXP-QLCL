@@ -74,14 +74,14 @@ def test_plan_joins_by_stable_legacy_id_and_never_persists_raw_business_values()
     assert all(fact["candidate_value"] is None for fact in report["facts"] if isinstance(fact["candidate_sha256"], str))
 
 
-def test_plan_marks_b_ban_only_inspection_date_match_as_provenance_contamination():
+def test_plan_does_not_treat_b_ban_as_an_actual_inspection_date_source():
     report = build_reconciliation_plan(
         [_legacy_row(bbkt_reference="2026-05-05", inspected_at="17-19/07/2026")],
         [_canonical_case(outcome={"inspected_on": date(2026, 5, 5), "inspected_to_on": None, "decision_reference": None, "bbkt_reference": "legacy"})],
     )
     actual = next(fact for fact in report["facts"] if fact["canonical_fact"] == "actual_inspection_period")
-    assert actual["provenance_status"] == "MATCHES_BBKT_SOURCE_ONLY"
-    assert actual["reconciliation_status"] == "BLOCKED_PROVENANCE_CONTAMINATION"
+    assert actual["provenance_status"] == "MATCHES_NEITHER"
+    assert actual["reconciliation_status"] == "CONFLICT_EXISTING_CANONICAL"
 
 
 def test_period_source_validity_precedes_bbkt_provenance_observation():
@@ -90,8 +90,8 @@ def test_period_source_validity_precedes_bbkt_provenance_observation():
         [_canonical_case(outcome={"inspected_on": date(2026, 5, 5), "inspected_to_on": None})],
     )
     missing_fact = next(fact for fact in missing["facts"] if fact["canonical_fact"] == "actual_inspection_period")
-    assert missing_fact["reconciliation_status"] == "LEGACY_SOURCE_MISSING"
-    assert missing_fact["provenance_status"] == "CURRENT_MATCHES_BBKT_WITHOUT_USABLE_ACTUAL_SOURCE"
+    assert missing_fact["reconciliation_status"] == "LEGACY_SOURCE_NOT_APPLICABLE"
+    assert missing_fact["provenance_status"] == "MATCHES_NEITHER"
     assert missing_fact["source_resolution_status"] == "MISSING"
 
     malformed = build_reconciliation_plan(
@@ -99,8 +99,8 @@ def test_period_source_validity_precedes_bbkt_provenance_observation():
         [_canonical_case(outcome={"inspected_on": date(2026, 5, 5), "inspected_to_on": None})],
     )
     malformed_fact = next(fact for fact in malformed["facts"] if fact["canonical_fact"] == "actual_inspection_period")
-    assert malformed_fact["reconciliation_status"] == "BLOCKED_AMBIGUOUS_LEGACY"
-    assert malformed_fact["provenance_status"] == "CURRENT_MATCHES_BBKT_WITHOUT_USABLE_ACTUAL_SOURCE"
+    assert malformed_fact["reconciliation_status"] == "MANUAL_RECONCILIATION_REQUIRED"
+    assert malformed_fact["provenance_status"] == "MATCHES_NEITHER"
     assert malformed_fact["source_resolution_status"] == "UNRESOLVED"
 
 
@@ -128,8 +128,28 @@ def test_period_reconciliation_requires_a_matching_start_and_end_pair():
     assert actual["current_value_comparable"] is True
     assert actual["current_period_start_present"] is True
     assert actual["current_period_end_present"] is True
-    assert actual["provenance_status"] == "MATCHES_NEITHER"
 
+
+def test_planner_compares_ordered_segments_and_never_treats_multi_segment_source_as_legacy_safe_write():
+    report = build_reconciliation_plan(
+        [_legacy_row(inspected_at="20/01/2021; 22-23/01/2021")],
+        [_canonical_case(outcome={"inspected_on": None, "inspected_to_on": None, "inspection_period_segments": []})],
+    )
+    actual = next(fact for fact in report["facts"] if fact["canonical_fact"] == "actual_inspection_period")
+    assert actual["reconciliation_status"] == "SEGMENT_MODEL_MIGRATION_REQUIRED"
+    assert actual["ordered_segment_comparison"] == "NOT_REPRESENTED"
+    assert actual["source_segment_count"] == 2
+
+    matching = build_reconciliation_plan(
+        [_legacy_row(inspected_at="20/01/2021; 22-23/01/2021")],
+        [_canonical_case(outcome={"inspected_on": None, "inspected_to_on": None, "inspection_period_segments": [
+            {"ordinal": 1, "started_on": date(2021, 1, 20), "ended_on": date(2021, 1, 20)},
+            {"ordinal": 2, "started_on": date(2021, 1, 22), "ended_on": date(2021, 1, 23)},
+        ]})],
+    )
+    fact = next(item for item in matching["facts"] if item["canonical_fact"] == "actual_inspection_period")
+    assert fact["reconciliation_status"] == "ALREADY_MATCHES"
+    assert fact["ordered_segment_comparison"] == "MATCHES"
     missing_end = build_reconciliation_plan(
         [_legacy_row(inspected_at="17-19/07/2026", bbkt_reference="")],
         [_canonical_case(outcome={"inspected_on": date(2026, 7, 17), "inspected_to_on": None})],
@@ -148,9 +168,9 @@ def test_period_reconciliation_requires_a_matching_start_and_end_pair():
         [_canonical_case(outcome={"inspected_on": date(2026, 7, 17), "inspected_to_on": None})],
     )
     actual = next(fact for fact in competing_bbkt["facts"] if fact["canonical_fact"] == "actual_inspection_period")
-    assert actual["reconciliation_status"] == "BLOCKED_PROVENANCE_AMBIGUOUS"
-    assert actual["provenance_status"] == "MATCHES_ACTUAL_START_AND_BBKT_START"
-    assert actual["recommended_future_action"] == "manual_review"
+    assert actual["reconciliation_status"] == "SAFE_UPDATE_IF_EMPTY"
+    assert actual["provenance_status"] == "MATCHES_ACTUAL_START_ONLY"
+    assert actual["recommended_future_action"] == "write_structured_owner"
 
     exact = build_reconciliation_plan(
         [_legacy_row(inspected_at="17-19/07/2026", bbkt_reference="")],
@@ -177,8 +197,8 @@ def test_period_reconciliation_requires_a_matching_start_and_end_pair():
         [_canonical_case(outcome={"inspected_on": date(2026, 7, 17), "inspected_to_on": date(2026, 7, 18)})],
     )
     actual = next(fact for fact in bbkt_start_only["facts"] if fact["canonical_fact"] == "actual_inspection_period")
-    assert actual["reconciliation_status"] == "BLOCKED_PROVENANCE_CONTAMINATION"
-    assert actual["provenance_status"] == "MATCHES_BBKT_SOURCE_ONLY"
+    assert actual["reconciliation_status"] == "CONFLICT_EXISTING_CANONICAL"
+    assert actual["provenance_status"] == "MATCHES_NEITHER"
 
 
 def test_period_provenance_distinguishes_exact_both_sources_and_timezone_blockers():
@@ -188,7 +208,7 @@ def test_period_provenance_distinguishes_exact_both_sources_and_timezone_blocker
     )
     both_fact = next(fact for fact in both["facts"] if fact["canonical_fact"] == "actual_inspection_period")
     assert both_fact["reconciliation_status"] == "ALREADY_MATCHES"
-    assert both_fact["provenance_status"] == "MATCHES_BOTH_SOURCES"
+    assert both_fact["provenance_status"] == "MATCHES_ACTUAL_SOURCE"
 
     timezone_blocked = build_reconciliation_plan(
         [_legacy_row(inspected_at="17-19/07/2026", bbkt_reference="2026-07-17")],
@@ -252,7 +272,8 @@ def test_raw_source_morphology_and_domain_resolution_survive_candidate_normaliza
     }:
         assert facts[key]["legacy_morphology"] == "MULTI_DATE"
         assert facts[key]["source_resolution_status"] == "REQUIRES_BUSINESS_SELECTION"
-        assert facts[key]["reconciliation_status"] == "MANUAL_RECONCILIATION_REQUIRED"
+        expected = "CONFLICT_EXISTING_CANONICAL" if key == "actual_inspection_period" else "MANUAL_RECONCILIATION_REQUIRED"
+        assert facts[key]["reconciliation_status"] == expected
         assert facts[key]["recommended_future_action"] == "manual_review"
     assert facts["applicable_standard"]["legacy_morphology"] == "UNRECOGNIZED_DOMAIN_VALUE"
     assert facts["applicable_standard"]["source_resolution_status"] == "UNRECOGNIZED_DOMAIN_VALUE"
@@ -437,7 +458,7 @@ def test_contract_and_importer_keep_all_four_misrouting_paths_in_sync():
     assert 'dossier_reference=row.get("decision_reference") or None' in source
     assert 'decision_reference=row.get("decision_reference") or None' in source
     assert 'bbkt_reference=row.get("bbkt_reference") or None' in source
-    assert 'parse_legacy_inspection_period(row.get("inspected_at", ""))' in source
+    assert 'parse_legacy_inspection_periods(row.get("inspected_at", ""))' in source
     assert 'parse_date(row.get("bbkt_reference", "")) or parse_date(row.get("inspected_at", ""))' not in source
 
 

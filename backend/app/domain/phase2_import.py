@@ -41,12 +41,14 @@ from backend.app.db.models.phase1 import (
     EvaluationScopeTaxonomyVersion,
     InspectionEvent,
     InspectionOutcome,
+    InspectionPeriodSegment,
     LegacyIdMap,
     MigrationAnomaly,
     Site,
 )
 from backend.app.domain.legacy_snapshot import read_core_sheet_rows
 from backend.app.domain.evaluation_scope import parse_legacy_evaluation_scope, validate_taxonomy_integrity
+from backend.app.domain.inspection_periods import InspectionPeriodSourceState, parse_legacy_inspection_periods
 
 CONFIRMED_BLANKED_ROWS_PATH = Path(__file__).resolve().parents[3] / "artifacts" / "phase3q" / "confirmed_blanked_rows.json"
 CONFIRMED_BLANKED_RESURRECTIONS_PATH = (
@@ -353,29 +355,12 @@ def parse_date(value: str):
 
 
 def parse_legacy_inspection_period(value: str | None) -> tuple[date, date] | None:
-    """Parse only source-proven `Ngày K.tra` date and range formats."""
-    direct = parse_date(str(value or ""))
-    if direct is not None:
-        return direct, direct
-    text = str(value or "").strip()
-    match = re.fullmatch(
-        r"(\d{1,2})\s*/\s*(\d{1,2})\s*-\s*(\d{1,2})\s*/\s*(\d{1,2})[./-](\d{2,4})",
-        text,
-    )
-    if match:
-        first_day, first_month, last_day, last_month, year = (int(part) for part in match.groups())
-    else:
-        match = re.fullmatch(r"(\d{1,2})\s*-\s*(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})", text)
-        if not match:
-            return None
-        first_day, last_day, first_month, year = (int(part) for part in match.groups())
-        last_month = first_month
-    if year < 100:
-        year += 2000
-    try:
-        return date(year, first_month, first_day), date(year, last_month, last_day)
-    except ValueError:
+    """Compatibility projection for callers that require exactly one segment."""
+    result = parse_legacy_inspection_periods(value)
+    if result.state != InspectionPeriodSourceState.KNOWN or len(result.segments) != 1:
         return None
+    segment = result.segments[0]
+    return segment.started_on, segment.ended_on
 
 
 def _normalized_string_value(value: str | None) -> str | None:
@@ -677,6 +662,44 @@ def _ensure_single_child(
     session.flush()
     stats.record_inserted(table_name)
     return entity
+
+
+def _ensure_inspection_period_segments(
+    session: Session,
+    stats: ImportStats,
+    *,
+    inspection_outcome_id: str,
+    segments: tuple[Any, ...],
+    options: ImportExecutionOptions,
+) -> None:
+    """Persist the source sequence exactly; a rerun may not silently reshape it."""
+    existing = list(
+        session.scalars(
+            select(InspectionPeriodSegment)
+            .where(InspectionPeriodSegment.inspection_outcome_id == inspection_outcome_id)
+            .order_by(InspectionPeriodSegment.ordinal)
+        )
+    )
+    expected = [(segment.ordinal, segment.started_on, segment.ended_on) for segment in segments]
+    actual = [(segment.ordinal, segment.started_on, segment.ended_on) for segment in existing]
+    if existing:
+        if not options.allow_existing_records or actual != expected:
+            raise ImportCollisionError(
+                "inspection_period_segment sequence differs from the source-proven Ngay K.tra segments"
+            )
+        stats.record_existing("inspection_period_segment")
+        return
+    for ordinal, started_on, ended_on in expected:
+        session.add(
+            InspectionPeriodSegment(
+                inspection_outcome_id=inspection_outcome_id,
+                ordinal=ordinal,
+                started_on=started_on,
+                ended_on=ended_on,
+            )
+        )
+        stats.record_inserted("inspection_period_segment")
+    session.flush()
 
 
 def _ensure_inspection_event(
@@ -1467,7 +1490,19 @@ def import_snapshot(
             continue
         submitted_at = parse_dt(row.get("submitted_at", ""))
         assessed_at = parse_dt(row.get("assessed_at", ""))
-        inspection_period = parse_legacy_inspection_period(row.get("inspected_at", ""))
+        inspection_period_result = parse_legacy_inspection_periods(row.get("inspected_at", ""))
+        inspection_segments = (
+            inspection_period_result.segments
+            if inspection_period_result.state == InspectionPeriodSourceState.KNOWN
+            else ()
+        )
+        # The old two-column view can represent one visit only.  Never invent
+        # an enclosing range for disconnected source visits.
+        inspection_period = (
+            (inspection_segments[0].started_on, inspection_segments[0].ended_on)
+            if len(inspection_segments) == 1
+            else None
+        )
         inspected_at = (
             datetime.combine(inspection_period[0], time.min)
             if inspection_period is not None
@@ -1553,7 +1588,7 @@ def import_snapshot(
             ),
             options=resolved_options,
         )
-        _ensure_single_child(
+        outcome = _ensure_single_child(
             session,
             stats,
             table_name="inspection_outcome",
@@ -1575,6 +1610,13 @@ def import_snapshot(
                 bbkt_reference=row.get("bbkt_reference") or None,
                 outcome_result=row.get("assessment_result") or None,
             ),
+            options=resolved_options,
+        )
+        _ensure_inspection_period_segments(
+            session,
+            stats,
+            inspection_outcome_id=outcome.id,
+            segments=inspection_segments,
             options=resolved_options,
         )
         if submitted_at:

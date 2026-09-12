@@ -36,6 +36,28 @@ artifacts/legacy_audit/inspection_case_lifecycle_legacy_profile.json
 
 Use one coherent schema migration after evidence review rather than serial one-field migrations.
 
+### Ordered inspection-period segments
+
+`db.ktra Ngày K.tra` is source-owned actual inspection timing. It may contain
+multiple disconnected visits, so the canonical owner is:
+
+```text
+inspection_period_segment
+  inspection_outcome_id UUID NOT NULL FK inspection_outcome(id)
+  ordinal               INTEGER NOT NULL
+  started_on            DATE NOT NULL
+  ended_on              DATE NOT NULL
+  UNIQUE(inspection_outcome_id, ordinal)
+  CHECK(started_on <= ended_on)
+```
+
+The existing `InspectionOutcome.inspected_on/inspected_to_on` pair remains a
+compatibility projection only for an exactly-one-segment period. It is left
+empty for multiple segments rather than creating a false min/max interval.
+`B. bản` is independent evidence and is never a date source or fallback for
+this owner. Existing historical compatibility values are preserved; this DDL
+does not backfill or rewrite them.
+
 ### A. `inspection_plan`
 
 Add nullable columns:

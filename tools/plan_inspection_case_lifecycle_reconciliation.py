@@ -21,6 +21,7 @@ from backend.app.db.models.phase1 import (
     Certificate,
     CertificateVersion,
     InspectionOutcome,
+    InspectionPeriodSegment,
     InspectionPlan,
     InspectionTeam,
     InspectionTeamMember,
@@ -28,11 +29,8 @@ from backend.app.db.models.phase1 import (
 )
 from backend.app.db.enums import LegacyEntityType
 from backend.app.db.session import build_engine
-from backend.app.domain.phase2_import import (
-    normalize_row,
-    parse_date,
-    parse_legacy_inspection_period,
-)
+from backend.app.domain.phase2_import import normalize_row, parse_date
+from backend.app.domain.inspection_periods import InspectionPeriodSourceState, parse_legacy_inspection_periods
 from tools.audit_inspection_case_lifecycle_legacy import (
     _classify_decision_composite,
     _date_morphology,
@@ -283,18 +281,44 @@ def _split_decision(value: str) -> tuple[str | None, str | None, str]:
 
 
 def _period_start_end(value: str) -> tuple[date | None, date | None]:
-    return parse_legacy_inspection_period(value) or (None, None)
+    result = parse_legacy_inspection_periods(value)
+    if result.state != InspectionPeriodSourceState.KNOWN or len(result.segments) != 1:
+        return None, None
+    segment = result.segments[0]
+    return segment.started_on, segment.ended_on
+
+
+def _period_pairs(value: str) -> tuple[tuple[date, date], ...]:
+    parsed = parse_legacy_inspection_periods(value)
+    if parsed.state != InspectionPeriodSourceState.KNOWN:
+        return ()
+    return tuple((segment.started_on, segment.ended_on) for segment in parsed.segments)
+
+
+def _canonical_period_pairs(outcome: dict[str, Any]) -> tuple[tuple[date, date], ...]:
+    stored = outcome.get("inspection_period_segments") or []
+    if stored:
+        return tuple((segment["started_on"], segment["ended_on"]) for segment in stored)
+    start, end = outcome.get("inspected_on"), outcome.get("inspected_to_on")
+    return () if start is None or end is None else ((start, end),)
 
 
 def _date_reconciliation(legacy_value: str, current_start: date | None, current_end: date | None) -> tuple[str, str, str | None]:
+    parsed = parse_legacy_inspection_periods(legacy_value)
     morphology = _date_morphology(legacy_value)
-    start, end = _period_start_end(legacy_value)
-    if start is None:
-        if not _present(legacy_value):
-            return morphology, "LEGACY_SOURCE_MISSING", None
-        if morphology in {"DATE_RANGE", "MULTI_DATE", "PARTIAL_DATE", "ANNOTATED_DATE"}:
-            return morphology, "MANUAL_RECONCILIATION_REQUIRED", None
+    if parsed.state == InspectionPeriodSourceState.MISSING:
+        return morphology, "LEGACY_SOURCE_MISSING", None
+    if parsed.state == InspectionPeriodSourceState.PENDING_INPUT:
+        return morphology, "PENDING_LEGACY_INPUT", None
+    if parsed.state == InspectionPeriodSourceState.NOT_APPLICABLE:
+        return morphology, "LEGACY_SOURCE_NOT_APPLICABLE", None
+    if parsed.state == InspectionPeriodSourceState.NON_DATE_EXPRESSION:
+        return morphology, "MANUAL_RECONCILIATION_REQUIRED", None
+    if parsed.state != InspectionPeriodSourceState.KNOWN:
         return morphology, "BLOCKED_AMBIGUOUS_LEGACY", None
+    if len(parsed.segments) != 1:
+        return morphology, "SEGMENT_MODEL_MIGRATION_REQUIRED", None
+    start, end = parsed.segments[0].started_on, parsed.segments[0].ended_on
     current_start, start_timezone_blocker = _normalize_canonical_date(current_start)
     current_end, end_timezone_blocker = _normalize_canonical_date(current_end)
     if start_timezone_blocker is not None or end_timezone_blocker is not None:
@@ -315,30 +339,22 @@ def _classify_period_reconciliation(
     actual_end: date | None,
     current_start: Any,
     current_end: Any,
-    bbkt_start: date | None,
 ) -> tuple[str, str]:
-    """Keep period source validity and provenance as coordinated, separate facts."""
+    """Compare the canonical compatibility view only with `Ngay K.tra`."""
     normalized_start, start_blocker = _normalize_canonical_date(current_start)
     normalized_end, end_blocker = _normalize_canonical_date(current_end)
     if start_blocker is not None or end_blocker is not None:
         return actual_status, "NOT_PROVEN_TIMEZONE_UNCOMPARABLE"
 
-    bbkt_matches_start = bbkt_start is not None and normalized_start == bbkt_start
     if actual_start is None:
-        if bbkt_matches_start:
-            return actual_status, "CURRENT_MATCHES_BBKT_WITHOUT_USABLE_ACTUAL_SOURCE"
         if normalized_start is None and normalized_end is None:
             return actual_status, "CURRENT_EMPTY"
         return actual_status, "MATCHES_NEITHER"
 
     if normalized_start == actual_start and normalized_end == actual_end:
-        return actual_status, "MATCHES_BOTH_SOURCES" if bbkt_matches_start else "MATCHES_ACTUAL_SOURCE"
-    if normalized_start == actual_start and normalized_end is None and bbkt_matches_start:
-        return "BLOCKED_PROVENANCE_AMBIGUOUS", "MATCHES_ACTUAL_START_AND_BBKT_START"
+        return actual_status, "MATCHES_ACTUAL_SOURCE"
     if normalized_start == actual_start and normalized_end is None:
         return actual_status, "MATCHES_ACTUAL_START_ONLY"
-    if bbkt_matches_start:
-        return "BLOCKED_PROVENANCE_CONTAMINATION", "MATCHES_BBKT_SOURCE_ONLY"
     if normalized_start is None and normalized_end is None:
         return actual_status, "CURRENT_EMPTY"
     return actual_status, "MATCHES_NEITHER"
@@ -756,23 +772,25 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases
         facts.append(_fact(case_id, legacy_id, "application_dossier_reference_compatibility", "db.ktra Q. định", "BLOCKED_OWNER_MISMATCH", candidate=decision_raw, current=application.get("dossier_reference"), provenance_status=_misrouting_status(decision_raw, application.get("dossier_reference")), blocker="Q. định is copied to application compatibility field, not the canonical decision owner"))
         facts.append(_fact(case_id, legacy_id, "outcome_decision_reference_compatibility", "db.ktra Q. định", "BLOCKED_OWNER_MISMATCH", candidate=decision_raw, current=outcome.get("decision_reference"), provenance_status=_misrouting_status(decision_raw, outcome.get("decision_reference")), blocker="Q. định is copied to outcome compatibility field, not the canonical decision owner"))
 
-        b_value = row.get("bbkt_reference", "")
         actual_value = row.get("inspected_at", "")
-        b_date, _ = _period_start_end(b_value)
+        source_segments = _period_pairs(actual_value)
         actual_start, actual_end = _period_start_end(actual_value)
         current_start = outcome.get("inspected_on")
         current_end = outcome.get("inspected_to_on")
+        canonical_segments = _canonical_period_pairs(outcome)
         actual_status = _date_reconciliation(actual_value, current_start, current_end)[1]
+        if len(source_segments) > 1 and source_segments == canonical_segments:
+            actual_status = "ALREADY_MATCHES"
+        elif len(source_segments) > 1 and canonical_segments:
+            actual_status = "CONFLICT_EXISTING_CANONICAL"
         inspection_status, provenance = _classify_period_reconciliation(
             actual_status=actual_status,
             actual_start=actual_start,
             actual_end=actual_end,
             current_start=current_start,
             current_end=current_end,
-            bbkt_start=b_date,
         )
-        facts.append(
-            _period_fact(
+        period_fact = _period_fact(
                 case_id,
                 legacy_id,
                 status=inspection_status,
@@ -781,12 +799,22 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases
                 current_start=current_start,
                 current_end=current_end,
                 provenance_status=provenance,
-                blocker="canonical period matches historical B. bản provenance instead of deterministic Ngày K.tra source"
-                if inspection_status == "BLOCKED_PROVENANCE_CONTAMINATION"
-                else None,
+                blocker="multiple ordered Ngày K.tra segments require the inspection_period_segment model"
+                if inspection_status == "SEGMENT_MODEL_MIGRATION_REQUIRED" else None,
                 legacy_value=actual_value,
             )
+        period_fact.update(
+            {
+                "source_segment_count": len(source_segments),
+                "canonical_segment_count": len(canonical_segments),
+                "ordered_segment_comparison": (
+                    "MATCHES" if source_segments and source_segments == canonical_segments else
+                    "DIFFERS" if source_segments and canonical_segments else "NOT_REPRESENTED"
+                ),
+            }
         )
+        facts.append(period_fact)
+        b_value = row.get("bbkt_reference", "")
         facts.append(_fact(case_id, legacy_id, "bbkt_reference", "db.ktra B. bản", "BLOCKED_OWNER_MISMATCH", candidate=b_value, current=outcome.get("bbkt_reference"), provenance_status=_misrouting_status(b_value, outcome.get("bbkt_reference")), blocker="B. bản semantics are not proven and importer maps it to bbkt_reference"))
 
         for key, source, candidate, current in [
@@ -940,6 +968,13 @@ def _canonical_snapshot(session: Session, legacy_ids: list[int]) -> list[dict[st
         assessment = session.scalar(select(CaseAssessment).where(CaseAssessment.case_id == case.id))
         plan = session.scalar(select(InspectionPlan).where(InspectionPlan.case_id == case.id))
         outcome = session.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == case.id))
+        segments = [] if outcome is None else list(
+            session.scalars(
+                select(InspectionPeriodSegment)
+                .where(InspectionPeriodSegment.inspection_outcome_id == outcome.id)
+                .order_by(InspectionPeriodSegment.ordinal)
+            )
+        )
         team = session.scalar(select(InspectionTeam).where(InspectionTeam.case_id == case.id))
         members = list(session.scalars(select(InspectionTeamMember).where(InspectionTeamMember.team_id == team.id).order_by(InspectionTeamMember.sort_order, InspectionTeamMember.id))) if team else []
         capa_cycles = list(session.scalars(select(CapaCycle).where(CapaCycle.case_id == case.id).order_by(CapaCycle.round_no)))
@@ -961,7 +996,7 @@ def _canonical_snapshot(session: Session, legacy_ids: list[int]) -> list[dict[st
                     "expiry_date": version.expiry_date,
                 }
             )
-        result.append({"id": case.id, "legacy_inspection_id": case.legacy_inspection_id, "gxp_type": case.gxp_type, "applicable_standard": case.applicable_standard, "inspection_type": case.inspection_type, "application": None if application is None else {"dossier_code": application.dossier_code, "dossier_reference": application.dossier_reference, "submitted_on": application.submitted_on}, "assessment": None if assessment is None else {"assessed_on": assessment.assessed_on, "assessor_name": assessment.assessor_name, "assessment_result": assessment.assessment_result}, "plan": None if plan is None else {"decision_document_hint": plan.decision_document_hint, "plan_start_on": plan.plan_start_on, "plan_end_on": plan.plan_end_on}, "team": None if team is None else {"display_text": team.display_text, "members": [{"inspector_profile_id": member.inspector_profile_id, "person_id": member.person_id, "role_label": member.role_label, "sort_order": member.sort_order} for member in members]}, "outcome": None if outcome is None else {"inspected_on": outcome.inspected_on, "inspected_to_on": outcome.inspected_to_on, "decision_reference": outcome.decision_reference, "bbkt_reference": outcome.bbkt_reference, "outcome_result": outcome.outcome_result}, "capa_cycles": [{"round_no": cycle.round_no, "requested_on": cycle.requested_on, "submitted_on": cycle.submitted_on, "assessed_on": cycle.assessed_on, "assessor_name": cycle.assessor_name, "result": cycle.result, "status": cycle.status} for cycle in capa_cycles], "certificates": certificate_contexts, "legacy_lineage": [{"entity_type": mapping.entity_type.value, "legacy_id": mapping.legacy_id, "target_table": mapping.target_table, "target_entity_id": mapping.target_entity_id} for mapping in lineage]})
+        result.append({"id": case.id, "legacy_inspection_id": case.legacy_inspection_id, "gxp_type": case.gxp_type, "applicable_standard": case.applicable_standard, "inspection_type": case.inspection_type, "application": None if application is None else {"dossier_code": application.dossier_code, "dossier_reference": application.dossier_reference, "submitted_on": application.submitted_on}, "assessment": None if assessment is None else {"assessed_on": assessment.assessed_on, "assessor_name": assessment.assessor_name, "assessment_result": assessment.assessment_result}, "plan": None if plan is None else {"decision_document_hint": plan.decision_document_hint, "plan_start_on": plan.plan_start_on, "plan_end_on": plan.plan_end_on}, "team": None if team is None else {"display_text": team.display_text, "members": [{"inspector_profile_id": member.inspector_profile_id, "person_id": member.person_id, "role_label": member.role_label, "sort_order": member.sort_order} for member in members]}, "outcome": None if outcome is None else {"inspected_on": outcome.inspected_on, "inspected_to_on": outcome.inspected_to_on, "inspection_period_segments": [{"ordinal": segment.ordinal, "started_on": segment.started_on, "ended_on": segment.ended_on} for segment in segments], "decision_reference": outcome.decision_reference, "bbkt_reference": outcome.bbkt_reference, "outcome_result": outcome.outcome_result}, "capa_cycles": [{"round_no": cycle.round_no, "requested_on": cycle.requested_on, "submitted_on": cycle.submitted_on, "assessed_on": cycle.assessed_on, "assessor_name": cycle.assessor_name, "result": cycle.result, "status": cycle.status} for cycle in capa_cycles], "certificates": certificate_contexts, "legacy_lineage": [{"entity_type": mapping.entity_type.value, "legacy_id": mapping.legacy_id, "target_table": mapping.target_table, "target_entity_id": mapping.target_entity_id} for mapping in lineage]})
     return result
 
 

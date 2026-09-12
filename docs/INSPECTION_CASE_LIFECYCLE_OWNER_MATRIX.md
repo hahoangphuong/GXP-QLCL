@@ -56,7 +56,7 @@ The user creates one case and progressively enters:
 | QĐKT reference | `InspectionPlan.decision_document_hint` only; legacy compatibility also writes to `InspectionOutcome.decision_reference` | `OWNER_NEEDS_MODEL_EXTENSION` | Planning/authorization owner must hold structured `decision_reference`; do not use outcome compatibility projection as source of truth. |
 | QĐKT date | none on planning owner | `OWNER_NEEDS_MODEL_EXTENSION` | Add structured `decision_date` on planning/authorization owner. |
 | Raw legacy QĐKT composite text | no canonical owner | `OWNER_NEEDS_MODEL_EXTENSION` | Optional audit/compatibility field only; never semantic truth once structured ref/date exist. |
-| Inspection date | `InspectionOutcome.inspected_on` | `OWNER_PROVEN_EXISTING` | Current field is semantically usable for actual inspection start/date. |
+| Inspection period(s) | `InspectionPeriodSegment` | `OWNER_PROVEN_EXISTING` | `db.ktra Ngày K.tra` is an ordered 0..n segment source. `InspectionOutcome.inspected_on/inspected_to_on` are compatibility projections for exactly one segment only; multiple visits must never be flattened into an envelope. |
 | Inspection report-written date | none identified | `OWNER_NEEDS_MODEL_EXTENSION` | Add explicit `report_written_on` to inspection-result/outcome owner. |
 | Inspectors/team | `InspectionTeam`, `InspectionTeamMember` | `OWNER_PROVEN_EXISTING` | Ordered members via `sort_order`; `role_label` owns role text. Legacy `display_text` is presentation compatibility only. |
 | Applicable standard | `Case.applicable_standard` | `OWNER_PROVEN_EXISTING` | Use directly. |

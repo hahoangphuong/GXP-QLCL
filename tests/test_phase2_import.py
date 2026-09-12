@@ -17,6 +17,7 @@ from backend.app.db.models.phase1 import (
     ChangeRequest,
     Company,
     InspectionOutcome,
+    InspectionPeriodSegment,
     LegacyIdMap,
     MigrationAnomaly,
     Site,
@@ -988,6 +989,22 @@ def test_import_snapshot_preserves_long_unicode_assessment_narratives_without_tr
         outcome = session.scalars(select(InspectionOutcome)).one()
         assert assessment.assessment_result == long_result
         assert outcome.outcome_result == long_result
+
+
+def test_import_preserves_disconnected_inspection_segments_without_a_fake_envelope():
+    snapshot = sample_snapshot()
+    snapshot["db.ktra"][0]["Ngày K.tra"] = "20/01/2021; 22-23/01/2021"
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        import_snapshot(session, snapshot)
+        outcome = session.scalars(select(InspectionOutcome)).one()
+        segments = list(session.scalars(select(InspectionPeriodSegment).order_by(InspectionPeriodSegment.ordinal)))
+        assert outcome.inspected_on is None
+        assert outcome.inspected_to_on is None
+        assert [(segment.ordinal, segment.started_on.isoformat(), segment.ended_on.isoformat()) for segment in segments] == [
+            (1, "2021-01-20", "2021-01-20"),
+            (2, "2021-01-22", "2021-01-23"),
+        ]
 
 
 def test_import_snapshot_preserves_long_change_result_narratives_without_truncation():

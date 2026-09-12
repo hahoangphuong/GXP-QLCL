@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 
 from backend.app.db.enums import LegacyEntityType
 from backend.app.db.models.phase1 import Case, InspectionOutcome, LegacyIdMap
-from backend.app.domain.phase2_import import normalize_row, parse_int, parse_legacy_inspection_period
+from backend.app.domain.phase2_import import normalize_row, parse_int
+from backend.app.domain.inspection_periods import InspectionPeriodSourceState, parse_legacy_inspection_periods
 from tools.audit_inspection_case_lifecycle_legacy import _date_morphology
 from tools.plan_inspection_case_lifecycle_reconciliation import (
     REQUIRED_DATABASE_NAME,
@@ -164,9 +165,13 @@ def build_backfill_plan(legacy_rows: list[dict[str, Any]], canonical_cases: list
             structural_counts["outcome_cardinality"] += 1
             records.append(_safe_record(legacy_id=legacy_id, planner_status=planner_status, case_id=case_id, status="BLOCKED_OUTCOME_CARDINALITY", source_value=source_value))
             continue
-        period = parse_legacy_inspection_period(source_value)
-        if period is None:
-            raise BackfillInvariantError("planner marked a non-deterministic inspection period safe")
+        parsed = parse_legacy_inspection_periods(source_value)
+        if parsed.state != InspectionPeriodSourceState.KNOWN or len(parsed.segments) != 1:
+            raise BackfillInvariantError(
+                "legacy two-column backfill only accepts one deterministic inspection period segment"
+            )
+        segment = parsed.segments[0]
+        period = (segment.started_on, segment.ended_on)
         outcome = outcomes[0]
         records.append(_safe_record(
             legacy_id=legacy_id,

@@ -320,6 +320,23 @@ class InspectionOutcome(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Bas
     outcome_result: Mapped[str | None] = mapped_column(Text)
 
 
+class InspectionPeriodSegment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """An ordered actual inspection visit; never an inferred date envelope."""
+
+    __tablename__ = "inspection_period_segment"
+
+    inspection_outcome_id: Mapped[str] = mapped_column(
+        ForeignKey("inspection_outcome.id"), nullable=False, index=True
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    started_on: Mapped[date] = mapped_column(Date, nullable=False)
+    ended_on: Mapped[date] = mapped_column(Date, nullable=False)
+    __table_args__ = (
+        UniqueConstraint("inspection_outcome_id", "ordinal"),
+        CheckConstraint("started_on <= ended_on", name="inspection_period_segment_date_order"),
+    )
+
+
 class CapaCycle(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
     __tablename__ = "capa_cycle"
 

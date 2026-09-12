@@ -61,12 +61,12 @@ def test_backfill_never_creates_missing_or_multiple_outcomes():
     assert _record(multiple)["status"] == "BLOCKED_OUTCOME_CARDINALITY"
 
 
-def test_backfill_blocks_competing_provenance_and_canonical_drift():
+def test_backfill_ignores_b_ban_and_blocks_canonical_drift():
     competing = backfill.build_backfill_plan(
         [_row(bbkt_reference="20/10/2011")],
         [_case(outcomes=[{"id": "outcome-41", "inspected_on": date(2011, 10, 20), "inspected_to_on": None}])],
     )
-    assert _record(competing)["status"] == "BLOCKED_PROVENANCE_AMBIGUOUS"
+    assert _record(competing)["status"] == "SAFE_UPDATE_IF_EMPTY"
 
     drift = backfill.build_backfill_plan(
         [_row()],
@@ -145,19 +145,19 @@ def test_apply_updates_only_the_existing_outcome_and_is_idempotent(monkeypatch: 
     assert session.flushes == 1
 
 
-def test_only_planner_safe_period_facts_can_become_migration_writes():
-    ambiguous = backfill.build_backfill_plan(
+def test_only_planner_safe_single_segment_facts_can_become_migration_writes():
+    safe = backfill.build_backfill_plan(
         [_row(bbkt_reference="20/10/2011")],
         [_case(outcomes=[{"id": "outcome-41", "inspected_on": date(2011, 10, 20), "inspected_to_on": None}])],
     )
-    contamination = backfill.build_backfill_plan(
+    conflict = backfill.build_backfill_plan(
         [_row(bbkt_reference="20/10/2011")],
         [_case(outcomes=[{"id": "outcome-41", "inspected_on": date(2011, 10, 20), "inspected_to_on": date(2011, 10, 22)}])],
     )
-    assert _record(ambiguous)["planner_status"] == "BLOCKED_PROVENANCE_AMBIGUOUS"
-    assert _record(contamination)["planner_status"] == "BLOCKED_PROVENANCE_CONTAMINATION"
-    assert ambiguous["summary"]["writes_planned"] == 0  # type: ignore[index]
-    assert contamination["summary"]["writes_planned"] == 0  # type: ignore[index]
+    assert _record(safe)["planner_status"] == "SAFE_UPDATE_IF_EMPTY"
+    assert _record(conflict)["planner_status"] == "CONFLICT_EXISTING_CANONICAL"
+    assert safe["summary"]["writes_planned"] == 1  # type: ignore[index]
+    assert conflict["summary"]["writes_planned"] == 0  # type: ignore[index]
     source = inspect.getsource(backfill.build_backfill_plan)
     assert "build_reconciliation_plan" in source
     assert "_date_reconciliation" not in source
@@ -272,5 +272,5 @@ def test_write_time_identity_and_period_drift_fail_closed(monkeypatch: pytest.Mo
 def test_backfill_has_no_outcome_constructor_or_bbkt_date_fallback():
     source = inspect.getsource(backfill)
     assert "InspectionOutcome(" not in source
-    assert "parse_legacy_inspection_period(source_value)" in source
+    assert "parse_legacy_inspection_periods(source_value)" in source
     assert "bbkt_reference" not in source

@@ -1538,24 +1538,50 @@ class CaseWorkflowService:
             session.flush()
         self._assert_expected_version(stage, expected_version, label="inspection_outcome")
         has_compatibility_period = inspected_on is not None
-        if has_compatibility_period and session.scalar(
-            select(InspectionPeriodSegment.id)
-            .where(InspectionPeriodSegment.inspection_outcome_id == stage.id)
-            .limit(1)
-        ) is not None:
+        canonical_end = inspected_to_on or inspected_on
+        if has_compatibility_period and stage.inspection_period_state not in {None, "KNOWN"}:
             raise HTTPException(
                 status_code=409,
-                detail="Inspection outcome has canonical period segments and cannot be changed by the compatibility endpoint.",
+                detail="Inspection outcome has a source-owned non-KNOWN period state and requires a state-aware mutation contract.",
+            )
+        period_segments = list(
+            session.scalars(
+                select(InspectionPeriodSegment)
+                .where(InspectionPeriodSegment.inspection_outcome_id == stage.id)
+                .order_by(InspectionPeriodSegment.ordinal)
+            )
+        )
+        if has_compatibility_period and len(period_segments) > 1:
+            raise HTTPException(
+                status_code=409,
+                detail="Inspection outcome has multiple canonical period segments and cannot be changed by the compatibility endpoint.",
+            )
+        if has_compatibility_period and len(period_segments) == 1 and period_segments[0].ordinal != 1:
+            raise HTTPException(
+                status_code=409,
+                detail="Inspection outcome has an invalid canonical single-segment ordinal.",
             )
         before = self._snapshot_fields(
             stage,
             ["inspected_on", "inspected_to_on", "inspection_period_state", "decision_reference", "bbkt_reference", "outcome_result"],
         )
         if has_compatibility_period:
-            # A start date plus an optional end date is exactly one visit.  A
-            # missing end date represents a same-day visit, never a range guess.
+            # The compatibility endpoint owns exactly one canonical segment.
+            # A missing end date is the proven one-day representation.
+            if not period_segments:
+                session.add(
+                    InspectionPeriodSegment(
+                        inspection_outcome_id=stage.id,
+                        ordinal=1,
+                        started_on=inspected_on,
+                        ended_on=canonical_end,
+                    )
+                )
+            else:
+                period_segments[0].started_on = inspected_on
+                period_segments[0].ended_on = canonical_end
             stage.inspected_on = inspected_on
-            stage.inspected_to_on = inspected_to_on
+            stage.inspected_to_on = canonical_end
             stage.inspection_period_state = "KNOWN"
         stage.decision_reference = decision_reference
         stage.bbkt_reference = bbkt_reference
@@ -1572,7 +1598,7 @@ class CaseWorkflowService:
             payload=self._build_stage_payload(
                 stage="inspection_outcome",
                 inspected_on=None if inspected_on is None else inspected_on.isoformat(),
-                inspected_to_on=None if inspected_to_on is None else inspected_to_on.isoformat(),
+                inspected_to_on=None if canonical_end is None else canonical_end.isoformat(),
                 decision_reference=decision_reference,
                 bbkt_reference=bbkt_reference,
                 outcome_result=outcome_result,
@@ -1587,7 +1613,7 @@ class CaseWorkflowService:
             action="inspection_outcome.upsert",
             payload=self._build_stage_payload(
                 inspected_on=None if inspected_on is None else inspected_on.isoformat(),
-                inspected_to_on=None if inspected_to_on is None else inspected_to_on.isoformat(),
+                inspected_to_on=None if canonical_end is None else canonical_end.isoformat(),
                 decision_reference=decision_reference,
                 bbkt_reference=bbkt_reference,
                 outcome_result=outcome_result,

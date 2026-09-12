@@ -953,9 +953,12 @@ def test_upsert_inspection_outcome_persists_stage_and_event():
 
     with Session(engine) as session:
         row = session.scalars(select(InspectionOutcome)).first()
+        segment = session.scalars(select(InspectionPeriodSegment)).one()
         assert row is not None
         assert row.bbkt_reference == "BBKT-02"
         assert row.inspection_period_state == "KNOWN"
+        assert (segment.ordinal, segment.started_on, segment.ended_on) == (1, date(2026, 8, 25), date(2026, 8, 26))
+        assert (row.inspected_on, row.inspected_to_on) == (segment.started_on, segment.ended_on)
 
 
 def test_outcome_compatibility_writer_does_not_infer_a_zero_segment_source_state():
@@ -983,7 +986,53 @@ def test_outcome_compatibility_writer_does_not_infer_a_zero_segment_source_state
     assert row.inspected_on is None
 
 
-def test_outcome_compatibility_writer_rejects_invalid_dates_and_preserves_segment_truth():
+def test_outcome_compatibility_writer_normalizes_one_day_and_updates_one_canonical_segment():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        first = service.upsert_inspection_outcome(
+            session,
+            case_id=case_id,
+            inspected_on=date(2011, 10, 20),
+            inspected_to_on=None,
+            decision_reference=None,
+            bbkt_reference=None,
+            outcome_result=None,
+            reason="One-day visit.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+    assert (first["inspected_on"], first["inspected_to_on"], first["inspection_period_state"]) == (
+        date(2011, 10, 20), date(2011, 10, 20), "KNOWN"
+    )
+
+    with Session(engine) as session:
+        updated = service.upsert_inspection_outcome(
+            session,
+            case_id=case_id,
+            expected_version=first["row_version"],
+            inspected_on=date(2011, 10, 20),
+            inspected_to_on=date(2011, 10, 21),
+            decision_reference=None,
+            bbkt_reference=None,
+            outcome_result=None,
+            reason="Corrected visit.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+        outcome = session.scalar(select(InspectionOutcome))
+        segments = list(session.scalars(select(InspectionPeriodSegment)))
+    assert outcome is not None
+    assert updated["inspection_period_state"] == "KNOWN"
+    assert [(segment.ordinal, segment.started_on, segment.ended_on) for segment in segments] == [
+        (1, date(2011, 10, 20), date(2011, 10, 21))
+    ]
+    assert (outcome.inspected_on, outcome.inspected_to_on) == (date(2011, 10, 20), date(2011, 10, 21))
+
+
+def test_outcome_compatibility_writer_metadata_only_preserves_period_truth():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
@@ -992,8 +1041,8 @@ def test_outcome_compatibility_writer_rejects_invalid_dates_and_preserves_segmen
         outcome = InspectionOutcome(
             case_id=case_id,
             inspection_period_state="KNOWN",
-            inspected_on=None,
-            inspected_to_on=None,
+            inspected_on=date(2026, 8, 25),
+            inspected_to_on=date(2026, 8, 26),
         )
         session.add(outcome)
         session.flush()
@@ -1005,6 +1054,49 @@ def test_outcome_compatibility_writer_rejects_invalid_dates_and_preserves_segmen
                 ended_on=date(2026, 8, 26),
             )
         )
+        session.commit()
+
+    with Session(engine) as session:
+        service.upsert_inspection_outcome(
+            session,
+            case_id=case_id,
+            inspected_on=None,
+            inspected_to_on=None,
+            decision_reference="Metadata-only",
+            bbkt_reference=None,
+            outcome_result=None,
+            reason="Metadata only.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+        outcome = session.scalar(select(InspectionOutcome))
+        segments = list(session.scalars(select(InspectionPeriodSegment)))
+    assert outcome is not None
+    assert outcome.inspection_period_state == "KNOWN"
+    assert (outcome.inspected_on, outcome.inspected_to_on) == (date(2026, 8, 25), date(2026, 8, 26))
+    assert [(segment.ordinal, segment.started_on, segment.ended_on) for segment in segments] == [
+        (1, date(2026, 8, 25), date(2026, 8, 26))
+    ]
+
+
+def test_outcome_compatibility_writer_rejects_invalid_dates_and_multi_segment_truth():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        outcome = InspectionOutcome(case_id=case_id, inspection_period_state="KNOWN")
+        session.add(outcome)
+        session.flush()
+        for ordinal, day in ((1, 25), (2, 27)):
+            session.add(
+                InspectionPeriodSegment(
+                    inspection_outcome_id=outcome.id,
+                    ordinal=ordinal,
+                    started_on=date(2026, 8, day),
+                    ended_on=date(2026, 8, day),
+                )
+            )
         session.commit()
 
     with Session(engine) as session:
@@ -1020,7 +1112,7 @@ def test_outcome_compatibility_writer_rejects_invalid_dates_and_preserves_segmen
                 reason=None,
                 user=build_authenticated_user("manager01", "manager"),
             )
-        with pytest.raises(Exception, match="canonical period segments"):
+        with pytest.raises(Exception, match="multiple canonical period segments"):
             service.upsert_inspection_outcome(
                 session,
                 case_id=case_id,
@@ -1032,6 +1124,64 @@ def test_outcome_compatibility_writer_rejects_invalid_dates_and_preserves_segmen
                 reason=None,
                 user=build_authenticated_user("manager01", "manager"),
             )
+
+
+def test_outcome_compatibility_writer_does_not_replace_a_source_owned_non_known_state():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        session.add(InspectionOutcome(case_id=case_id, inspection_period_state="PENDING_INPUT"))
+        session.commit()
+
+    with Session(engine) as session:
+        with pytest.raises(Exception, match="source-owned non-KNOWN"):
+            service.upsert_inspection_outcome(
+                session,
+                case_id=case_id,
+                inspected_on=date(2026, 8, 25),
+                inspected_to_on=None,
+                decision_reference=None,
+                bbkt_reference=None,
+                outcome_result=None,
+                reason=None,
+                user=build_authenticated_user("manager01", "manager"),
+            )
+        session.rollback()
+        outcome = session.scalar(select(InspectionOutcome))
+        assert outcome is not None
+        assert outcome.inspection_period_state == "PENDING_INPUT"
+        assert session.scalars(select(InspectionPeriodSegment)).all() == []
+
+
+def test_outcome_timing_mutation_rolls_back_segment_and_compatibility_together(monkeypatch: pytest.MonkeyPatch):
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    with Session(engine) as session:
+        case_id = seed_case(session)
+
+    def fail_audit(*_args, **_kwargs):
+        raise RuntimeError("audit failure")
+
+    monkeypatch.setattr(service, "_write_audit_event", fail_audit)
+    with Session(engine) as session:
+        with pytest.raises(RuntimeError, match="audit failure"):
+            service.upsert_inspection_outcome(
+                session,
+                case_id=case_id,
+                inspected_on=date(2011, 10, 20),
+                inspected_to_on=None,
+                decision_reference=None,
+                bbkt_reference=None,
+                outcome_result=None,
+                reason=None,
+                user=build_authenticated_user("manager01", "manager"),
+            )
+        session.rollback()
+        assert session.scalars(select(InspectionOutcome)).all() == []
+        assert session.scalars(select(InspectionPeriodSegment)).all() == []
 
 
 def test_upsert_inspection_outcome_route_enforces_auth_and_returns_read_model(tmp_path):

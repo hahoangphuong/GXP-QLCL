@@ -66,10 +66,14 @@ K.tra` evidence before setting one of `KNOWN`, `PENDING_INPUT`,
 `NOT_APPLICABLE`, `MISSING`, `NON_DATE_EXPRESSION`, or `UNRESOLVED`.
 
 The current `PUT /cases/{case_id}/outcome` endpoint is compatibility-only. A
-supplied start date plus optional end date is one `KNOWN` visit; absent dates
-do not alter period state. It cannot update timing where canonical segments
-already exist. Segment-aware mutation remains required for multiple visits and
-for source states with zero segments.
+supplied start date plus optional end date atomically materializes or updates
+exactly one canonical segment at ordinal `1`, then projects its exact start/end
+to the compatibility pair. A missing end is normalized to the start for a
+one-day visit. Absent dates do not alter period state or timing. It rejects
+multi-segment timing mutations; segment-aware mutation remains required for
+multiple visits and for source states with zero segments. It also refuses to
+replace a persisted non-`KNOWN` source state; that requires a future
+state-aware mutation contract.
 
 ### A. `inspection_plan`
 

@@ -40,6 +40,7 @@ from backend.app.read_models import (
     InspectionCaseCreateRequest,
     InspectionOutcomeUpsertRequest,
     InspectionPlanUpsertRequest,
+    InspectionTeamUpsertRequest,
 )
 from backend.app.services.workflow import CaseWorkflowService
 
@@ -798,7 +799,8 @@ def test_upsert_inspection_plan_persists_stage():
             plan_start_on=date(2026, 8, 20),
             plan_end_on=date(2026, 8, 22),
             planning_sheet_name="KHKT-2026-08",
-            decision_document_hint="QD-01",
+            decision_document_hint=None,
+            decision_reference="QD-01",
             reason="Planning baseline.",
             user=build_authenticated_user("manager01", "manager"),
         )
@@ -809,7 +811,8 @@ def test_upsert_inspection_plan_persists_stage():
     with Session(engine) as session:
         row = session.scalars(select(InspectionPlan)).first()
         assert row is not None
-        assert row.decision_document_hint == "QD-01"
+        assert row.decision_document_hint is None
+        assert row.decision_reference == "QD-01"
 
 
 def test_upsert_inspection_plan_route_enforces_auth_and_returns_read_model(tmp_path):
@@ -828,7 +831,7 @@ def test_upsert_inspection_plan_route_enforces_auth_and_returns_read_model(tmp_p
         plan_start_on=date(2026, 8, 20),
         plan_end_on=date(2026, 8, 21),
         planning_sheet_name="KHKT-HTTP",
-        decision_document_hint="QD-HTTP",
+        decision_reference="QD-HTTP",
     )
 
     with Session(engine) as session:
@@ -874,7 +877,8 @@ def test_upsert_inspection_plan_blocks_terminal_cases_and_skips_duplicate_event(
             plan_start_on=date(2026, 8, 20),
             plan_end_on=date(2026, 8, 22),
             planning_sheet_name="KHKT-2026-08",
-            decision_document_hint="QD-01",
+            decision_document_hint=None,
+            decision_reference="QD-01",
             reason="Initial plan.",
             user=build_authenticated_user("manager01", "manager"),
         )
@@ -890,7 +894,8 @@ def test_upsert_inspection_plan_blocks_terminal_cases_and_skips_duplicate_event(
             plan_start_on=date(2026, 8, 20),
             plan_end_on=date(2026, 8, 22),
             planning_sheet_name="KHKT-2026-08",
-            decision_document_hint="QD-01",
+            decision_document_hint=None,
+            decision_reference="QD-01",
             reason="No-op save.",
             user=build_authenticated_user("manager01", "manager"),
         )
@@ -915,7 +920,8 @@ def test_upsert_inspection_plan_blocks_terminal_cases_and_skips_duplicate_event(
                 plan_start_on=date(2026, 8, 23),
                 plan_end_on=date(2026, 8, 24),
                 planning_sheet_name="KHKT-2026-09",
-                decision_document_hint="QD-02",
+                decision_document_hint=None,
+                decision_reference="QD-02",
                 reason="Should fail.",
                 user=build_authenticated_user("manager01", "manager"),
             )
@@ -939,8 +945,8 @@ def test_upsert_inspection_outcome_persists_stage_and_event():
             case_id=case_id,
             inspected_on=date(2026, 8, 25),
             inspected_to_on=date(2026, 8, 26),
-            decision_reference="QD-02",
-            bbkt_reference="BBKT-02",
+            decision_reference=None,
+            bbkt_reference=None,
             outcome_result="compliant",
             reason="Outcome recorded.",
             user=build_authenticated_user("manager01", "manager"),
@@ -955,7 +961,7 @@ def test_upsert_inspection_outcome_persists_stage_and_event():
         row = session.scalars(select(InspectionOutcome)).first()
         segment = session.scalars(select(InspectionPeriodSegment)).one()
         assert row is not None
-        assert row.bbkt_reference == "BBKT-02"
+        assert row.bbkt_reference is None
         assert row.inspection_period_state == "KNOWN"
         assert (segment.ordinal, segment.started_on, segment.ended_on) == (1, date(2026, 8, 25), date(2026, 8, 26))
         assert (row.inspected_on, row.inspected_to_on) == (segment.started_on, segment.ended_on)
@@ -972,7 +978,7 @@ def test_outcome_compatibility_writer_does_not_infer_a_zero_segment_source_state
             case_id=case_id,
             inspected_on=None,
             inspected_to_on=None,
-            decision_reference="QD-metadata",
+            decision_reference=None,
             bbkt_reference=None,
             outcome_result=None,
             reason="Metadata only.",
@@ -1062,7 +1068,7 @@ def test_outcome_compatibility_writer_metadata_only_preserves_period_truth():
             case_id=case_id,
             inspected_on=None,
             inspected_to_on=None,
-            decision_reference="Metadata-only",
+            decision_reference=None,
             bbkt_reference=None,
             outcome_result=None,
             reason="Metadata only.",
@@ -1199,8 +1205,8 @@ def test_upsert_inspection_outcome_route_enforces_auth_and_returns_read_model(tm
         expected_version=None,
         inspected_on=date(2026, 8, 25),
         inspected_to_on=date(2026, 8, 26),
-        decision_reference="QD-OUTCOME",
-        bbkt_reference="BBKT-OUTCOME",
+        decision_reference=None,
+        bbkt_reference=None,
         outcome_result="Đạt",
     )
 
@@ -1246,8 +1252,8 @@ def test_upsert_inspection_outcome_blocks_terminal_cases_and_skips_duplicate_eve
             case_id=case_id,
             inspected_on=date(2026, 8, 25),
             inspected_to_on=date(2026, 8, 26),
-            decision_reference="QD-02",
-            bbkt_reference="BBKT-02",
+            decision_reference=None,
+            bbkt_reference=None,
             outcome_result="compliant",
             reason="Initial outcome.",
             user=build_authenticated_user("manager01", "manager"),
@@ -1263,8 +1269,8 @@ def test_upsert_inspection_outcome_blocks_terminal_cases_and_skips_duplicate_eve
             expected_version=first["row_version"],
             inspected_on=date(2026, 8, 25),
             inspected_to_on=date(2026, 8, 26),
-            decision_reference="QD-02",
-            bbkt_reference="BBKT-02",
+            decision_reference=None,
+            bbkt_reference=None,
             outcome_result="compliant",
             reason="No-op save.",
             user=build_authenticated_user("manager01", "manager"),
@@ -1289,8 +1295,8 @@ def test_upsert_inspection_outcome_blocks_terminal_cases_and_skips_duplicate_eve
                 expected_version=second["row_version"],
                 inspected_on=date(2026, 8, 27),
                 inspected_to_on=date(2026, 8, 28),
-                decision_reference="QD-03",
-                bbkt_reference="BBKT-03",
+                decision_reference=None,
+                bbkt_reference=None,
                 outcome_result="needs-follow-up",
                 reason="Should fail.",
                 user=build_authenticated_user("manager01", "manager"),
@@ -1326,6 +1332,7 @@ def test_upsert_inspection_team_replaces_member_list_and_writes_audit():
 
     assert result["team_id"] is not None
     assert len(result["members"]) == 2
+    assert [member["role_code"] for member in result["members"]] == ["LEADER", "SECRETARY"]
     assert result["audit_event_id"] is not None
 
     with Session(engine) as session:
@@ -1357,6 +1364,35 @@ def test_upsert_inspection_team_replaces_member_list_and_writes_audit():
             (None, identities["direct_person_id"], "member", 1),
             (identities["profile_id"], None, "chair", 2),
         ]
+
+
+def test_upsert_inspection_team_route_serializes_role_code(tmp_path):
+    database_path = tmp_path / "workflow-team-route.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        identities = seed_inspection_team_identities(session)
+        session.commit()
+
+    app = create_app(database_url)
+    route = next(route for route in app.routes if getattr(route, "path", "") == "/cases/{case_id}/team")
+    payload = InspectionTeamUpsertRequest(
+        members=[
+            {"person_id": None, "inspector_profile_id": identities["profile_id"], "role_code": "LEADER", "role_label": "lead", "sort_order": 1},
+            {"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_code": "SECRETARY", "role_label": "secretary", "sort_order": 2},
+        ]
+    )
+    with Session(engine) as session:
+        body = route.endpoint(
+            case_id=case_id,
+            payload=payload,
+            session=session,
+            user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
+        ).model_dump(mode="json")
+
+    assert [member["role_code"] for member in body["members"]] == ["LEADER", "SECRETARY"]
 
 
 def test_upsert_inspection_team_rejects_member_without_identity():

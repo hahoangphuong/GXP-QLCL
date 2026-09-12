@@ -441,10 +441,11 @@ class CaseWorkflowService:
                 status_code=409,
                 detail=f"Case must be in one of [{allowed_values}] before certificate workflow can continue.",
             )
-        latest = self._latest_case_capa_cycle(session, case.id)
-        if latest is None:
-            return
-        if latest.status != CAPA_ACCEPTED_STATUS:
+        self._assert_latest_capa_accepted_if_present(session, case.id, blocked_detail=blocked_detail)
+
+    def _assert_latest_capa_accepted_if_present(self, session: Session, case_id: str, *, blocked_detail: str) -> None:
+        latest = self._latest_case_capa_cycle(session, case_id)
+        if latest is not None and latest.status != CAPA_ACCEPTED_STATUS:
             raise HTTPException(status_code=409, detail=blocked_detail)
 
     def _load_latest_business_eligibility_version(
@@ -1462,6 +1463,8 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        if decision_document_hint is not None:
+            raise HTTPException(status_code=422, detail="decision_document_hint is a read-only compatibility field.")
         row = self._get_case(session, case_id)
         self._assert_case_not_terminal(row, operation="inspection plan update")
         actor = self._get_or_create_app_user(session, user)
@@ -1473,17 +1476,16 @@ class CaseWorkflowService:
         self._assert_expected_version(stage, expected_version, label="inspection_plan")
         before = self._snapshot_fields(
             stage,
-            ["plan_start_on", "plan_end_on", "planning_sheet_name", "decision_document_hint", "decision_reference", "decision_date"],
+            ["plan_start_on", "plan_end_on", "planning_sheet_name", "decision_reference", "decision_date"],
         )
         stage.plan_start_on = plan_start_on
         stage.plan_end_on = plan_end_on
         stage.planning_sheet_name = planning_sheet_name
-        stage.decision_document_hint = decision_document_hint
         stage.decision_reference = decision_reference
         stage.decision_date = decision_date
         after = self._snapshot_fields(
             stage,
-            ["plan_start_on", "plan_end_on", "planning_sheet_name", "decision_document_hint", "decision_reference", "decision_date"],
+            ["plan_start_on", "plan_end_on", "planning_sheet_name", "decision_reference", "decision_date"],
         )
         has_stage_changes = before != after
         inspection_event = self._write_inspection_event(
@@ -1497,7 +1499,6 @@ class CaseWorkflowService:
                 plan_start_on=None if plan_start_on is None else plan_start_on.isoformat(),
                 plan_end_on=None if plan_end_on is None else plan_end_on.isoformat(),
                 planning_sheet_name=planning_sheet_name,
-                decision_document_hint=decision_document_hint,
                 decision_reference=decision_reference,
                 decision_date=None if decision_date is None else decision_date.isoformat(),
                 reason=reason,
@@ -1513,7 +1514,6 @@ class CaseWorkflowService:
                 plan_start_on=None if plan_start_on is None else plan_start_on.isoformat(),
                 plan_end_on=None if plan_end_on is None else plan_end_on.isoformat(),
                 planning_sheet_name=planning_sheet_name,
-                decision_document_hint=decision_document_hint,
                 decision_reference=decision_reference,
                 decision_date=None if decision_date is None else decision_date.isoformat(),
                 reason=reason,
@@ -1554,6 +1554,8 @@ class CaseWorkflowService:
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        if decision_reference is not None or bbkt_reference is not None:
+            raise HTTPException(status_code=422, detail="decision_reference and bbkt_reference are read-only compatibility fields.")
         row = self._get_case(session, case_id)
         self._assert_case_not_terminal(row, operation="inspection outcome update")
         if inspected_on is None and inspected_to_on is not None:
@@ -1599,7 +1601,7 @@ class CaseWorkflowService:
             )
         before = self._snapshot_fields(
             stage,
-            ["inspected_on", "inspected_to_on", "inspection_period_state", "decision_reference", "bbkt_reference", "outcome_result", "minutes_recorded_on", "minutes_recorded_time", "compliance_due_on"],
+            ["inspected_on", "inspected_to_on", "inspection_period_state", "outcome_result", "minutes_recorded_on", "minutes_recorded_time", "compliance_due_on"],
         )
         if has_compatibility_period:
             # The compatibility endpoint owns exactly one canonical segment.
@@ -1619,15 +1621,13 @@ class CaseWorkflowService:
             stage.inspected_on = inspected_on
             stage.inspected_to_on = canonical_end
             stage.inspection_period_state = "KNOWN"
-        stage.decision_reference = decision_reference
-        stage.bbkt_reference = bbkt_reference
         stage.outcome_result = outcome_result
         stage.minutes_recorded_on = minutes_recorded_on
         stage.minutes_recorded_time = minutes_recorded_time
         stage.compliance_due_on = compliance_due_on
         after = self._snapshot_fields(
             stage,
-            ["inspected_on", "inspected_to_on", "inspection_period_state", "decision_reference", "bbkt_reference", "outcome_result", "minutes_recorded_on", "minutes_recorded_time", "compliance_due_on"],
+            ["inspected_on", "inspected_to_on", "inspection_period_state", "outcome_result", "minutes_recorded_on", "minutes_recorded_time", "compliance_due_on"],
         )
         has_stage_changes = before != after
         inspection_event = self._write_inspection_event(
@@ -1638,8 +1638,6 @@ class CaseWorkflowService:
                 stage="inspection_outcome",
                 inspected_on=None if inspected_on is None else inspected_on.isoformat(),
                 inspected_to_on=None if canonical_end is None else canonical_end.isoformat(),
-                decision_reference=decision_reference,
-                bbkt_reference=bbkt_reference,
                 outcome_result=outcome_result,
                 minutes_recorded_on=None if minutes_recorded_on is None else minutes_recorded_on.isoformat(),
                 minutes_recorded_time=None if minutes_recorded_time is None else minutes_recorded_time.isoformat(),
@@ -1656,8 +1654,6 @@ class CaseWorkflowService:
             payload=self._build_stage_payload(
                 inspected_on=None if inspected_on is None else inspected_on.isoformat(),
                 inspected_to_on=None if canonical_end is None else canonical_end.isoformat(),
-                decision_reference=decision_reference,
-                bbkt_reference=bbkt_reference,
                 outcome_result=outcome_result,
                 minutes_recorded_on=None if minutes_recorded_on is None else minutes_recorded_on.isoformat(),
                 minutes_recorded_time=None if minutes_recorded_time is None else minutes_recorded_time.isoformat(),
@@ -1720,6 +1716,7 @@ class CaseWorkflowService:
             raise HTTPException(status_code=409, detail="Inspection final evaluation is immutable once set.")
         if not str(final_evaluation).strip():
             raise HTTPException(status_code=422, detail="Inspection final evaluation is required.")
+        self._assert_latest_capa_accepted_if_present(session, row.id, blocked_detail="Latest CAPA cycle must be accepted before final evaluation.")
         before = self._snapshot_fields(stage, ["outcome_result", "final_evaluation"])
         stage.final_evaluation = final_evaluation
         actor = self._get_or_create_app_user(session, user)
@@ -1765,6 +1762,7 @@ class CaseWorkflowService:
         row = session.get(InspectionApprovalSubmission, approval_submission_id)
         if row is None:
             raise HTTPException(status_code=404, detail="Approval submission not found.")
+        self._assert_case_not_terminal(self._get_case(session, row.case_id), operation="approval submission completion")
         self._assert_expected_version(row, expected_version, label="approval_submission")
         try:
             validate_approval_completion(existing_completed_on=row.completed_on, existing_completed_time=row.completed_time, completed_on=completed_on, completed_time=completed_time)
@@ -1878,6 +1876,7 @@ class CaseWorkflowService:
                     "id": member.id,
                     "inspector_profile_id": member.inspector_profile_id,
                     "person_id": member.person_id,
+                    "role_code": member.role_code,
                     "role_label": member.role_label,
                     "sort_order": member.sort_order,
                 }

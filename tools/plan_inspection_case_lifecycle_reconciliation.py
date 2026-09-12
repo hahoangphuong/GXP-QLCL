@@ -325,6 +325,40 @@ def _date_reconciliation(legacy_value: str, current_start: date | None, current_
     return morphology, "CONFLICT_EXISTING_CANONICAL", start.isoformat()
 
 
+def _classify_period_reconciliation(
+    *,
+    actual_status: str,
+    actual_start: date | None,
+    actual_end: date | None,
+    current_start: Any,
+    current_end: Any,
+    bbkt_start: date | None,
+) -> tuple[str, str]:
+    """Keep period source validity and provenance as coordinated, separate facts."""
+    normalized_start, start_blocker = _normalize_canonical_date(current_start)
+    normalized_end, end_blocker = _normalize_canonical_date(current_end)
+    if start_blocker is not None or end_blocker is not None:
+        return actual_status, "NOT_PROVEN_TIMEZONE_UNCOMPARABLE"
+
+    bbkt_matches_start = bbkt_start is not None and normalized_start == bbkt_start
+    if actual_start is None:
+        if bbkt_matches_start:
+            return actual_status, "CURRENT_MATCHES_BBKT_WITHOUT_USABLE_ACTUAL_SOURCE"
+        if normalized_start is None and normalized_end is None:
+            return actual_status, "CURRENT_EMPTY"
+        return actual_status, "MATCHES_NEITHER"
+
+    if normalized_start == actual_start and normalized_end == actual_end:
+        return actual_status, "MATCHES_BOTH_SOURCES" if bbkt_matches_start else "MATCHES_ACTUAL_SOURCE"
+    if normalized_start == actual_start and normalized_end is None:
+        return actual_status, "MATCHES_ACTUAL_START_ONLY"
+    if bbkt_matches_start:
+        return "BLOCKED_PROVENANCE_CONTAMINATION", "MATCHES_BBKT_SOURCE_ONLY"
+    if normalized_start is None and normalized_end is None:
+        return actual_status, "CURRENT_EMPTY"
+    return actual_status, "MATCHES_NEITHER"
+
+
 def _misrouting_status(legacy_value: str, current_value: Any) -> str:
     if not _present(current_value):
         return "CURRENT_EMPTY"
@@ -744,24 +778,14 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases
         current_start = outcome.get("inspected_on")
         current_end = outcome.get("inspected_to_on")
         actual_status = _date_reconciliation(actual_value, current_start, current_end)[1]
-        actual_exact = actual_status == "ALREADY_MATCHES"
-        bbkt_matches_start = b_date is not None and current_start == b_date
-        actual_source_is_deterministic = actual_start is not None
-        if actual_exact:
-            inspection_status = "ALREADY_MATCHES"
-            provenance = "MATCHES_BOTH_SOURCES" if bbkt_matches_start else "MATCHES_ACTUAL_SOURCE"
-        elif actual_source_is_deterministic and bbkt_matches_start and actual_status not in {"BLOCKED_TIMEZONE_POLICY_UNPROVEN"}:
-            inspection_status = "BLOCKED_PROVENANCE_CONTAMINATION"
-            provenance = "MATCHES_BBKT_SOURCE_ONLY"
-        else:
-            inspection_status = actual_status
-            provenance = (
-                "CURRENT_MATCHES_BBKT_WITHOUT_USABLE_ACTUAL_SOURCE"
-                if bbkt_matches_start
-                else "CURRENT_EMPTY"
-                if current_start is None and current_end is None
-                else "MATCHES_NEITHER"
-            )
+        inspection_status, provenance = _classify_period_reconciliation(
+            actual_status=actual_status,
+            actual_start=actual_start,
+            actual_end=actual_end,
+            current_start=current_start,
+            current_end=current_end,
+            bbkt_start=b_date,
+        )
         facts.append(
             _period_fact(
                 case_id,

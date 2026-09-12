@@ -128,6 +128,7 @@ def test_period_reconciliation_requires_a_matching_start_and_end_pair():
     assert actual["current_value_comparable"] is True
     assert actual["current_period_start_present"] is True
     assert actual["current_period_end_present"] is True
+    assert actual["provenance_status"] == "MATCHES_NEITHER"
 
     missing_end = build_reconciliation_plan(
         [_legacy_row(inspected_at="17-19/07/2026", bbkt_reference="")],
@@ -140,6 +141,7 @@ def test_period_reconciliation_requires_a_matching_start_and_end_pair():
     assert actual["current_period_start_present"] is True
     assert actual["current_period_end_present"] is False
     assert actual["current_period_start_matches_candidate"] is True
+    assert actual["provenance_status"] == "MATCHES_ACTUAL_START_ONLY"
 
     exact = build_reconciliation_plan(
         [_legacy_row(inspected_at="17-19/07/2026", bbkt_reference="")],
@@ -159,6 +161,7 @@ def test_period_reconciliation_requires_a_matching_start_and_end_pair():
     assert actual["current_value_comparable"] is True
     assert actual["current_period_start_present"] is False
     assert actual["current_period_end_present"] is False
+    assert actual["provenance_status"] == "CURRENT_EMPTY"
 
     bbkt_start_only = build_reconciliation_plan(
         [_legacy_row(inspected_at="17-19/07/2026", bbkt_reference="2026-07-17")],
@@ -167,6 +170,24 @@ def test_period_reconciliation_requires_a_matching_start_and_end_pair():
     actual = next(fact for fact in bbkt_start_only["facts"] if fact["canonical_fact"] == "actual_inspection_period")
     assert actual["reconciliation_status"] == "BLOCKED_PROVENANCE_CONTAMINATION"
     assert actual["provenance_status"] == "MATCHES_BBKT_SOURCE_ONLY"
+
+
+def test_period_provenance_distinguishes_exact_both_sources_and_timezone_blockers():
+    both = build_reconciliation_plan(
+        [_legacy_row(inspected_at="17-19/07/2026", bbkt_reference="2026-07-17")],
+        [_canonical_case(outcome={"inspected_on": date(2026, 7, 17), "inspected_to_on": date(2026, 7, 19)})],
+    )
+    both_fact = next(fact for fact in both["facts"] if fact["canonical_fact"] == "actual_inspection_period")
+    assert both_fact["reconciliation_status"] == "ALREADY_MATCHES"
+    assert both_fact["provenance_status"] == "MATCHES_BOTH_SOURCES"
+
+    timezone_blocked = build_reconciliation_plan(
+        [_legacy_row(inspected_at="17-19/07/2026", bbkt_reference="2026-07-17")],
+        [_canonical_case(outcome={"inspected_on": datetime(2026, 7, 17, 0, tzinfo=timezone.utc), "inspected_to_on": None})],
+    )
+    blocked_fact = next(fact for fact in timezone_blocked["facts"] if fact["canonical_fact"] == "actual_inspection_period")
+    assert blocked_fact["reconciliation_status"] == "BLOCKED_TIMEZONE_POLICY_UNPROVEN"
+    assert blocked_fact["provenance_status"] == "NOT_PROVEN_TIMEZONE_UNCOMPARABLE"
 
 
 def test_plan_blocks_datetime_submission_but_compares_pure_certificate_dates():

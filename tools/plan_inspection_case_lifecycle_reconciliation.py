@@ -105,6 +105,7 @@ PLAN_STATUS = {
     "BLOCKED_OWNER_MISSING",
     "BLOCKED_OWNER_MISMATCH",
     "BLOCKED_PROVENANCE_CONTAMINATION",
+    "BLOCKED_PROVENANCE_AMBIGUOUS",
     "MANUAL_RECONCILIATION_REQUIRED",
     "BLOCKED_TIMEZONE_POLICY_UNPROVEN",
     "LEGACY_SOURCE_MISSING",
@@ -350,6 +351,8 @@ def _classify_period_reconciliation(
 
     if normalized_start == actual_start and normalized_end == actual_end:
         return actual_status, "MATCHES_BOTH_SOURCES" if bbkt_matches_start else "MATCHES_ACTUAL_SOURCE"
+    if normalized_start == actual_start and normalized_end is None and bbkt_matches_start:
+        return "BLOCKED_PROVENANCE_AMBIGUOUS", "MATCHES_ACTUAL_START_AND_BBKT_START"
     if normalized_start == actual_start and normalized_end is None:
         return actual_status, "MATCHES_ACTUAL_START_ONLY"
     if bbkt_matches_start:
@@ -406,7 +409,7 @@ def _fact(case_id: str | None, legacy_id: int, key: str, source: str, status: st
         "reconciliation_status": status,
         "provenance_status": provenance_status,
         "blocker": blocker,
-        "recommended_future_action": "manual_review" if status in {"MANUAL_RECONCILIATION_REQUIRED", "BLOCKED_PROVENANCE_CONTAMINATION", "CONFLICT_EXISTING_CANONICAL"} else ("write_structured_owner" if status in {"SAFE_INSERT", "SAFE_UPDATE_IF_EMPTY"} else "no_write"),
+        "recommended_future_action": "manual_review" if status in {"MANUAL_RECONCILIATION_REQUIRED", "BLOCKED_PROVENANCE_CONTAMINATION", "BLOCKED_PROVENANCE_AMBIGUOUS", "CONFLICT_EXISTING_CANONICAL"} else ("write_structured_owner" if status in {"SAFE_INSERT", "SAFE_UPDATE_IF_EMPTY"} else "no_write"),
     }
     if source_resolution_status is not None:
         fact["source_resolution_status"] = source_resolution_status
@@ -920,7 +923,7 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases
     for fact in facts:
         per_fact.setdefault(fact["canonical_fact"], Counter())[fact["reconciliation_status"]] += 1
     return {
-        "schema_version": "inspection-case-lifecycle-reconciliation-plan/v3",
+        "schema_version": "inspection-case-lifecycle-reconciliation-plan/v4",
         "status": "READ_ONLY_DRY_RUN_PLAN",
         "database_policy": {"required_database_name": REQUIRED_DATABASE_NAME, "writes_performed": False},
         "source_policy": {"legacy_values_raw_persisted": False, "candidate_values_hashed": True},

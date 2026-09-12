@@ -143,6 +143,15 @@ def test_period_reconciliation_requires_a_matching_start_and_end_pair():
     assert actual["current_period_start_matches_candidate"] is True
     assert actual["provenance_status"] == "MATCHES_ACTUAL_START_ONLY"
 
+    competing_bbkt = build_reconciliation_plan(
+        [_legacy_row(inspected_at="17-19/07/2026", bbkt_reference="2026-07-17")],
+        [_canonical_case(outcome={"inspected_on": date(2026, 7, 17), "inspected_to_on": None})],
+    )
+    actual = next(fact for fact in competing_bbkt["facts"] if fact["canonical_fact"] == "actual_inspection_period")
+    assert actual["reconciliation_status"] == "BLOCKED_PROVENANCE_AMBIGUOUS"
+    assert actual["provenance_status"] == "MATCHES_ACTUAL_START_AND_BBKT_START"
+    assert actual["recommended_future_action"] == "manual_review"
+
     exact = build_reconciliation_plan(
         [_legacy_row(inspected_at="17-19/07/2026", bbkt_reference="")],
         [_canonical_case(outcome={"inspected_on": date(2026, 7, 17), "inspected_to_on": date(2026, 7, 19)})],
@@ -357,7 +366,7 @@ def test_ambiguous_canonical_certificates_report_date_presence_per_field_without
 
 def test_report_declares_the_audited_date_comparison_policy():
     report = build_reconciliation_plan([_legacy_row()], [_canonical_case()])
-    assert report["schema_version"] == "inspection-case-lifecycle-reconciliation-plan/v3"
+    assert report["schema_version"] == "inspection-case-lifecycle-reconciliation-plan/v4"
     assert report["date_comparison_policy"] == DATE_COMPARISON_POLICY
     assert report["date_comparison_policy"]["canonical_timezone"] == "UNPROVEN"
     assert report["date_comparison_policy"]["aware_datetime_conversion"] == "BLOCKED_UNPROVEN_BUSINESS_TIMEZONE"

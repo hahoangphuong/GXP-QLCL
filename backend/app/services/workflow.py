@@ -34,6 +34,7 @@ from backend.app.db.models.phase1 import (
     InspectionTeamMember,
     InspectorProfile,
     InspectionOutcome,
+    InspectionPeriodSegment,
     InspectionPlan,
     Person,
     Site,
@@ -1523,25 +1524,45 @@ class CaseWorkflowService:
     ) -> dict[str, Any]:
         row = self._get_case(session, case_id)
         self._assert_case_not_terminal(row, operation="inspection outcome update")
+        if inspected_on is None and inspected_to_on is not None:
+            raise HTTPException(status_code=422, detail="Inspection outcome end date requires a start date.")
+        if inspected_on is not None and inspected_to_on is not None and inspected_on > inspected_to_on:
+            raise HTTPException(status_code=422, detail="Inspection outcome start date must not be after its end date.")
         actor = self._get_or_create_app_user(session, user)
         stage = session.scalars(select(InspectionOutcome).where(InspectionOutcome.case_id == row.id)).first()
         if stage is None:
-            stage = InspectionOutcome(case_id=row.id)
+            # This compatibility endpoint does not own a zero-segment source
+            # meaning, so a metadata-only create remains unclassified.
+            stage = InspectionOutcome(case_id=row.id, inspection_period_state=None)
             session.add(stage)
             session.flush()
         self._assert_expected_version(stage, expected_version, label="inspection_outcome")
+        has_compatibility_period = inspected_on is not None
+        if has_compatibility_period and session.scalar(
+            select(InspectionPeriodSegment.id)
+            .where(InspectionPeriodSegment.inspection_outcome_id == stage.id)
+            .limit(1)
+        ) is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Inspection outcome has canonical period segments and cannot be changed by the compatibility endpoint.",
+            )
         before = self._snapshot_fields(
             stage,
-            ["inspected_on", "inspected_to_on", "decision_reference", "bbkt_reference", "outcome_result"],
+            ["inspected_on", "inspected_to_on", "inspection_period_state", "decision_reference", "bbkt_reference", "outcome_result"],
         )
-        stage.inspected_on = inspected_on
-        stage.inspected_to_on = inspected_to_on
+        if has_compatibility_period:
+            # A start date plus an optional end date is exactly one visit.  A
+            # missing end date represents a same-day visit, never a range guess.
+            stage.inspected_on = inspected_on
+            stage.inspected_to_on = inspected_to_on
+            stage.inspection_period_state = "KNOWN"
         stage.decision_reference = decision_reference
         stage.bbkt_reference = bbkt_reference
         stage.outcome_result = outcome_result
         after = self._snapshot_fields(
             stage,
-            ["inspected_on", "inspected_to_on", "decision_reference", "bbkt_reference", "outcome_result"],
+            ["inspected_on", "inspected_to_on", "inspection_period_state", "decision_reference", "bbkt_reference", "outcome_result"],
         )
         has_stage_changes = before != after
         inspection_event = self._write_inspection_event(
@@ -1583,6 +1604,7 @@ class CaseWorkflowService:
             "row_version": stage.row_version,
             "inspected_on": stage.inspected_on,
             "inspected_to_on": stage.inspected_to_on,
+            "inspection_period_state": stage.inspection_period_state,
             "decision_reference": stage.decision_reference,
             "bbkt_reference": stage.bbkt_reference,
             "outcome_result": stage.outcome_result,

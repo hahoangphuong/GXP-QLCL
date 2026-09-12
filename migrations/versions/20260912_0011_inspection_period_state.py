@@ -14,7 +14,9 @@ depends_on = None
 _STATES = "'KNOWN', 'PENDING_INPUT', 'NOT_APPLICABLE', 'MISSING', 'NON_DATE_EXPRESSION', 'UNRESOLVED'"
 
 def upgrade() -> None:
-    op.add_column("inspection_outcome", sa.Column("inspection_period_state", sa.String(32), server_default="MISSING", nullable=False))
+    # Existing outcomes predate source-bound period classification.  Do not
+    # relabel them as a business sentinel until that classification is run.
+    op.add_column("inspection_outcome", sa.Column("inspection_period_state", sa.String(32), nullable=True))
     op.create_check_constraint("inspection_outcome_period_state", "inspection_outcome", f"inspection_period_state IN ({_STATES})")
     op.create_check_constraint("inspection_period_segment_ordinal_positive", "inspection_period_segment", "ordinal >= 1")
 

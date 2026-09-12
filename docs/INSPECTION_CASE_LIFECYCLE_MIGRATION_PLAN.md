@@ -58,6 +58,19 @@ empty for multiple segments rather than creating a false min/max interval.
 this owner. Existing historical compatibility values are preserved; this DDL
 does not backfill or rewrite them.
 
+`inspection_period_state` is intentionally nullable in the unapplied schema
+migration. `NULL` means only that a historical row has not yet been
+source-classified; it is not a seventh business state. There is no server or
+ORM default. A later source-bound migration must parse immutable `db.ktra Ngày
+K.tra` evidence before setting one of `KNOWN`, `PENDING_INPUT`,
+`NOT_APPLICABLE`, `MISSING`, `NON_DATE_EXPRESSION`, or `UNRESOLVED`.
+
+The current `PUT /cases/{case_id}/outcome` endpoint is compatibility-only. A
+supplied start date plus optional end date is one `KNOWN` visit; absent dates
+do not alter period state. It cannot update timing where canonical segments
+already exist. Segment-aware mutation remains required for multiple visits and
+for source states with zero segments.
+
 ### A. `inspection_plan`
 
 Add nullable columns:

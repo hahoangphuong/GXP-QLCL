@@ -24,6 +24,7 @@ from backend.app.db.models.phase1 import (
     Company,
     InspectionEvent,
     InspectionOutcome,
+    InspectionPeriodSegment,
     InspectionPlan,
     InspectionTeam,
     InspectionTeamMember,
@@ -948,11 +949,89 @@ def test_upsert_inspection_outcome_persists_stage_and_event():
 
     assert result["outcome_result"] == "compliant"
     assert result["inspection_event_id"] is not None
+    assert result["inspection_period_state"] == "KNOWN"
 
     with Session(engine) as session:
         row = session.scalars(select(InspectionOutcome)).first()
         assert row is not None
         assert row.bbkt_reference == "BBKT-02"
+        assert row.inspection_period_state == "KNOWN"
+
+
+def test_outcome_compatibility_writer_does_not_infer_a_zero_segment_source_state():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        result = service.upsert_inspection_outcome(
+            session,
+            case_id=case_id,
+            inspected_on=None,
+            inspected_to_on=None,
+            decision_reference="QD-metadata",
+            bbkt_reference=None,
+            outcome_result=None,
+            reason="Metadata only.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+        row = session.scalar(select(InspectionOutcome))
+    assert row is not None
+    assert row.inspection_period_state is None
+    assert result["inspection_period_state"] is None
+    assert row.inspected_on is None
+
+
+def test_outcome_compatibility_writer_rejects_invalid_dates_and_preserves_segment_truth():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        outcome = InspectionOutcome(
+            case_id=case_id,
+            inspection_period_state="KNOWN",
+            inspected_on=None,
+            inspected_to_on=None,
+        )
+        session.add(outcome)
+        session.flush()
+        session.add(
+            InspectionPeriodSegment(
+                inspection_outcome_id=outcome.id,
+                ordinal=1,
+                started_on=date(2026, 8, 25),
+                ended_on=date(2026, 8, 26),
+            )
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        with pytest.raises(Exception, match="end date requires a start date"):
+            service.upsert_inspection_outcome(
+                session,
+                case_id=case_id,
+                inspected_on=None,
+                inspected_to_on=date(2026, 8, 26),
+                decision_reference=None,
+                bbkt_reference=None,
+                outcome_result=None,
+                reason=None,
+                user=build_authenticated_user("manager01", "manager"),
+            )
+        with pytest.raises(Exception, match="canonical period segments"):
+            service.upsert_inspection_outcome(
+                session,
+                case_id=case_id,
+                inspected_on=date(2026, 8, 25),
+                inspected_to_on=None,
+                decision_reference=None,
+                bbkt_reference=None,
+                outcome_result=None,
+                reason=None,
+                user=build_authenticated_user("manager01", "manager"),
+            )
 
 
 def test_upsert_inspection_outcome_route_enforces_auth_and_returns_read_model(tmp_path):

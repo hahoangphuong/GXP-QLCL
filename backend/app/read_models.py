@@ -702,6 +702,7 @@ class InspectionOutcomeRead(BaseModel):
     row_version: int
     inspected_on: date | None
     inspected_to_on: date | None
+    inspection_period_state: str | None
     decision_reference: str | None
     bbkt_reference: str | None
     outcome_result: str | None

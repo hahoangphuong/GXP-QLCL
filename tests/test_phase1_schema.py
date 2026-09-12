@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from sqlalchemy.schema import CreateTable
 
 from backend.app.db.models import Base
@@ -9,6 +11,7 @@ from backend.app.db.models.phase1 import (
     DocumentVariant,
     DocumentVersion,
     InspectionOutcome,
+    InspectionPeriodSegment,
     ChangeApproval,
     StorageBinding,
 )
@@ -102,5 +105,22 @@ def test_legacy_result_narratives_use_text_columns():
     assert ChangeApproval.__table__.c.result_label.type.__class__.__name__ == "Text"
 
 
+def test_inspection_period_state_has_no_semantic_default_before_source_bound_classification():
+    state = InspectionOutcome.__table__.c.inspection_period_state
+    assert state.nullable is True
+    assert state.default is None
+    assert state.server_default is None
+    assert any(
+        constraint.name and constraint.name.endswith("inspection_period_segment_ordinal_positive")
+        for constraint in InspectionPeriodSegment.__table__.constraints
+    )
+
+
+def test_unapplied_period_state_migration_does_not_label_existing_rows_missing():
+    migration = (Path("migrations/versions/20260912_0011_inspection_period_state.py")).read_text(encoding="utf-8")
+    assert 'sa.Column("inspection_period_state", sa.String(32), nullable=True)' in migration
+    assert "server_default" not in migration
+
+
 def test_expected_alembic_head_revision_tracks_latest_runtime_migration():
-    assert expected_alembic_head_revision() == "20260829_0006"
+    assert expected_alembic_head_revision() == "20260912_0011"

@@ -22,6 +22,7 @@ from backend.app.domain.legacy_inspection_storage_anchor import (
     projection_artifact_payload,
 )
 from tools.audit_legacy_inspection_storage_anchor import audit
+from tools.audit_inspection_period_raw_evidence_coverage import audit_coverage
 
 
 FIXTURE_PATH = Path("tests/fixtures/legacy_inspection_storage_anchor_grid.json")
@@ -215,3 +216,24 @@ def test_projection_artifact_loader_is_exact_and_fails_closed_for_tampered_evide
     artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
     with pytest.raises(LegacyInspectionStorageAnchorError, match="invalid snapshot_sha256"):
         load_projection_artifact(artifact_path)
+
+
+def test_real_anchor_coverage_reports_unmatched_source_rows_without_losing_matched_raw_evidence():
+    snapshot = json.loads(Path("artifacts/phase3c/legacy_snapshot.json").read_text(encoding="utf-8"))
+    report = audit_coverage(snapshot, "artifacts/phase3c/legacy_inspection_storage_anchor.json")
+
+    assert report["valid_legacy_row_count"] == 1533
+    assert report["anchored_row_count"] == 1496
+    assert report["missing_anchor_count"] == 37
+    assert report["source_hash_validated_anchor_count"] == 1496
+    assert report["state_coverage"] == {
+        "KNOWN": {"total": 1424, "anchored": 1424, "missing_anchor": 0},
+        "MISSING": {"total": 49, "anchored": 12, "missing_anchor": 37},
+        "NON_DATE_EXPRESSION": {"total": 1, "anchored": 1, "missing_anchor": 0},
+        "NOT_APPLICABLE": {"total": 4, "anchored": 4, "missing_anchor": 0},
+        "PENDING_INPUT": {"total": 54, "anchored": 54, "missing_anchor": 0},
+        "UNRESOLVED": {"total": 1, "anchored": 1, "missing_anchor": 0},
+    }
+    anchors, _, _ = load_projection_artifact("artifacts/phase3c/legacy_inspection_storage_anchor.json")
+    raw_values = {anchor.inspection_date.raw for anchor in anchors}
+    assert {"???", "-", "", "Xét hồ sơ", "24-01/2018"}.issubset(raw_values)

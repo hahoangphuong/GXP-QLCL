@@ -315,7 +315,9 @@ class InspectionOutcome(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Bas
     case_id: Mapped[str] = mapped_column(ForeignKey("case.id"), nullable=False, unique=True)
     inspected_on: Mapped[date | None] = mapped_column(Date)
     inspected_to_on: Mapped[date | None] = mapped_column(Date)
-    inspection_period_state: Mapped[str] = mapped_column(String(32), nullable=False, default="MISSING", server_default="MISSING")
+    # NULL is a transitional, unclassified legacy row.  Business source states
+    # are written explicitly by the source-bound importer or a timing owner.
+    inspection_period_state: Mapped[str | None] = mapped_column(String(32))
     decision_reference: Mapped[str | None] = mapped_column(String(255))
     bbkt_reference: Mapped[str | None] = mapped_column(String(255))
     outcome_result: Mapped[str | None] = mapped_column(Text)

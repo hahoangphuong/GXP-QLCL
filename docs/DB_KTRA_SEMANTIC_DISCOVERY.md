@@ -3,16 +3,16 @@
 ## Coverage
 - Physical fields: `88`
 - Physical rows: `1543`; valid-ID rows: `1533`
-- Rehearsal comparison: `NOT_RUN_NO_EXPLICIT_DATABASE_URL`
+- Rehearsal comparison: `BLOCKED_NO_EXPLICIT_DATABASE_URL_ENV`
 - Mapped/declared fields: `23`; not mapped: `65`
-- Source fields with observed `0..n` evidence: `23`; composite-evidence fields: `24`
+- Semantic `0..N` proven fields: `1`; composite-evidence fields: `24`
 
 ## Risk Summary
 - `CRITICAL`: `2`
-- `HIGH`: `14`
+- `HIGH`: `7`
 - `INFORMATIONAL`: `51`
-- `LOW`: `3`
-- `MEDIUM`: `18`
+- `LOW`: `5`
+- `MEDIUM`: `23`
 
 ## Owner Summary
 - `COMPOSITE_REQUIRES_SPLIT`: `1`
@@ -25,14 +25,13 @@
 - `OWNER_PROVEN`: `9`
 - `SOURCE_SEMANTICS_UNPROVEN`: `1`
 
+## Mapping Evidence
+- `CODE_EVIDENCE_VERIFIED`: `18`
+- `NOT_APPLICABLE_NO_DECLARED_MAPPING`: `70`
+- Contract drift findings: `0`; fallback/coalescing findings: `1`.
+- Semantic cardinality: `{"0..1_OBSERVED": 1, "0..N_PROVEN": 1, "0..N_SUSPECTED": 2, "UNKNOWN": 84}`.
+
 ## Highest-Risk Facts
-- `PHẠM VI KIỂM TRA`: `OWNER_COMPATIBILITY_ONLY`; Structured taxonomy migration remains separately audited.
-- `TIÊU CHUẨN ÁP DỤNG`: `OWNER_PROVEN`; owner/semantic contract requires review.
-- `LOẠI KIỂM TRA`: `OWNER_PROVEN`; owner/semantic contract requires review.
-- `Ngày nộp`: `OWNER_PROVEN`; Datetime canonical owner; source morphology is independently audited.
-- `Mã hồ sơ`: `OWNER_PROVEN`; owner/semantic contract requires review.
-- `Ngày thẩm định`: `OWNER_PROVEN`; owner/semantic contract requires review.
-- `Người thẩm định`: `OWNER_COMPATIBILITY_ONLY`; owner/semantic contract requires review.
 - `Kết quả`: `MULTIPLE_COMPETING_OWNERS`; One legacy scalar currently populates two distinct canonical facts.
 - `Q. định`: `COMPOSITE_REQUIRES_SPLIT`; Composite currently copied to incompatible compatibility fields.
 - `B. bản`: `OWNER_MISMATCH`; Timestamp-dominant; not an actual inspection-date source.
@@ -56,7 +55,20 @@
 
 ## Inspection-Period Reference Contract
 - `Ngày K.tra` is the source for ordered `InspectionPeriodSegment`; `B. bản` remains a non-timing reference with `OWNER_MISMATCH`.
-- Observed date morphology: `{"ANNOTATED_DATE": 901, "DATE_RANGE": 36, "EMPTY": 59, "MULTI_DATE_OR_PERIOD": 10, "SENTINEL_NOT_APPLICABLE": 4, "SENTINEL_PENDING_INPUT": 54, "SINGLE_DATE": 1, "TEXT": 478}`
+- Lexical morphology: `{"ANNOTATED_DATE": 901, "DATE_RANGE": 36, "EMPTY": 59, "MULTI_DATE_OR_PERIOD": 10, "SENTINEL_NOT_APPLICABLE": 4, "SENTINEL_PENDING_INPUT": 54, "SINGLE_DATE": 1, "TEXT": 478}`
+- Authoritative parser facts: `{"authority": "backend.app.domain.inspection_periods.parse_legacy_inspection_periods", "segment_count_distribution": {"0": 109, "1": 1412, "2_or_more": 12}, "semantic_shape_distribution": {"MULTI_SEGMENT": 12, "NO_SEGMENT": 109, "SINGLE_SEGMENT": 1412}, "source_state_counts": {"KNOWN": 1424, "MISSING": 49, "NON_DATE_EXPRESSION": 1, "NOT_APPLICABLE": 4, "PENDING_INPUT": 54, "UNRESOLVED": 1}}`
+
+## Domain Coverage
+- `A`: `6` physical headers
+- `B`: `4` physical headers
+- `C`: `3` physical headers
+- `D`: `2` physical headers
+- `DERIVED_DIAGNOSTIC`: `8` physical headers
+- `E`: `4` physical headers
+- `F`: `12` physical headers
+- `G`: `10` physical headers
+- `H`: `6` physical headers
+- `UNASSIGNED`: `33` physical headers
 
 ## Recommended Domain Order
 1. `A` - Identity / case linkage

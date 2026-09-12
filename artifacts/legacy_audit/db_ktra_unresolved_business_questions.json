@@ -2,6 +2,8 @@
   {
     "affected_rows": 1391,
     "decision_blocked": "bbkt_reference",
+    "domain_slice": "E",
+    "evidence_summary": "declared owner status=OWNER_MISMATCH; lexical non-empty rows=1391",
     "legacy_field": "B. bản",
     "priority": "BLOCKING",
     "question_vi": "Trường B. bản biểu thị chính xác loại bằng chứng nào: biên bản, thời điểm, hay tham chiếu tài liệu? Nó không được dùng làm ngày kiểm tra."
@@ -9,6 +11,8 @@
   {
     "affected_rows": 1177,
     "decision_blocked": "assessment_and_outcome_result",
+    "domain_slice": "C",
+    "evidence_summary": "declared owner status=MULTIPLE_COMPETING_OWNERS; lexical non-empty rows=1177",
     "legacy_field": "Kết quả",
     "priority": "BLOCKING",
     "question_vi": "Kết quả là kết quả thẩm định hồ sơ, kết quả kiểm tra thực tế, hay hai giá trị khác nhau đang bị gộp chung?"
@@ -16,6 +20,8 @@
   {
     "affected_rows": 1315,
     "decision_blocked": "inspection_decision_reference_and_date",
+    "domain_slice": "D",
+    "evidence_summary": "declared owner status=COMPOSITE_REQUIRES_SPLIT; lexical non-empty rows=1315",
     "legacy_field": "Q. định",
     "priority": "BLOCKING",
     "question_vi": "Có thể xác nhận quy tắc tách số quyết định và ngày quyết định từ Q. định, kể cả trường hợp không tách được tự động không?"
@@ -23,6 +29,8 @@
   {
     "affected_rows": 751,
     "decision_blocked": "compliance_due_on",
+    "domain_slice": "F",
+    "evidence_summary": "declared owner status=OWNER_MISSING; lexical non-empty rows=751",
     "legacy_field": "HẠN KT TUÂN THỦ",
     "priority": "HIGH",
     "question_vi": "HẠN KT TUÂN THỦ là hạn khắc phục, hạn tái kiểm tra hay hạn tuân thủ sau cấp chứng nhận?"
@@ -30,6 +38,8 @@
   {
     "affected_rows": 1343,
     "decision_blocked": "certificate_linkage",
+    "domain_slice": "G",
+    "evidence_summary": "declared owner status=SOURCE_SEMANTICS_UNPROVEN; lexical non-empty rows=1343",
     "legacy_field": "ID CC GPs",
     "priority": "HIGH",
     "question_vi": "ID CC GPs có thể chứa nhiều chứng nhận hay chỉ một ID; quan hệ với certificate hiện hành là gì?"
@@ -37,6 +47,8 @@
   {
     "affected_rows": 547,
     "decision_blocked": "approval_submission",
+    "domain_slice": "F",
+    "evidence_summary": "declared owner status=OWNER_MISSING; lexical non-empty rows=547",
     "legacy_field": "PHIẾU TRÌNH CT",
     "priority": "HIGH",
     "question_vi": "PHIẾU TRÌNH CT thuộc một bước phê duyệt có thể lặp lại hay chỉ một hồ sơ duy nhất cho mỗi đợt kiểm tra?"
@@ -44,6 +56,8 @@
   {
     "affected_rows": 595,
     "decision_blocked": "approval_submission",
+    "domain_slice": "F",
+    "evidence_summary": "declared owner status=OWNER_MISSING; lexical non-empty rows=595",
     "legacy_field": "PHIẾU TRÌNH PCT",
     "priority": "HIGH",
     "question_vi": "PHIẾU TRÌNH PCT thuộc một bước phê duyệt có thể lặp lại hay chỉ một hồ sơ duy nhất cho mỗi đợt kiểm tra?"
@@ -51,6 +65,8 @@
   {
     "affected_rows": 1355,
     "decision_blocked": "inspection_team",
+    "domain_slice": "D",
+    "evidence_summary": "declared owner status=OWNER_MISSING; lexical non-empty rows=1355",
     "legacy_field": "T.tra viên",
     "priority": "HIGH",
     "question_vi": "T.tra viên có phải danh sách đoàn kiểm tra có thứ tự/vai trò không, và nguồn định danh cá nhân nào là authoritative?"
@@ -58,6 +74,8 @@
   {
     "affected_rows": 1313,
     "decision_blocked": "final_evaluation",
+    "domain_slice": "C",
+    "evidence_summary": "declared owner status=OWNER_MISSING; lexical non-empty rows=1313",
     "legacy_field": "ĐÁNH GIÁ CUỐI",
     "priority": "HIGH",
     "question_vi": "ĐÁNH GIÁ CUỐI khác gì Kết quả và có phải một trạng thái cuối độc lập không?"

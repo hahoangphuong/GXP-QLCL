@@ -38,7 +38,30 @@ def test_db_ktra_contract_preserves_the_authoritative_separations() -> None:
 
     assert facts["db.ktra.Kết quả"]["canonical_owner"] == "InspectionOutcome.outcome_result"
     assert "CaseAssessment.assessment_result" in facts["db.ktra.Kết quả"]["invariants"][0]
-    assert facts["db.ktra.B. bản"]["canonical_owner"].startswith("InspectionOutcome.minutes_recorded_on")
+    minutes = facts["db.ktra.B. bản"]
+    assert "minutes_recorded_time" in minutes["canonical_owner"]
+    assert "time zone" in minutes["invariants"][-1]
+    assert "inspected_on" in minutes["invariants"][1]
+    assert "inspected_to_on" in minutes["invariants"][1]
     assert facts["db.ktra.PHIẾU TRÌNH PCT"]["cardinality"] == "0..n PCT submissions per case"
     assert facts["db.ktra.PHIẾU TRÌNH CT"]["cardinality"] == "0..n CT submissions per case"
+    assert "completed_on" in facts["db.ktra.PHIẾU TRÌNH PCT"]["invariants"][2]
+    assert "same-case PCT" in facts["db.ktra.PHIẾU TRÌNH CT"]["invariants"][2]
+    assert "role_code" in facts["db.ktra.T.tra viên"]["semantic_type"]
+    assert facts["db.ktra.HẠN KT TUÂN THỦ"]["invariants"][0] == "INFORMATIONAL_ONLY."
     assert facts["db.ktra.ID CC GPs"]["cardinality"] == "0..1 certificate per legacy inspection row"
+
+
+def test_db_ktra_schema_design_has_no_placeholder_types_or_ambiguous_owners() -> None:
+    contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+    design = Path("docs/DB_KTRA_DOMAIN_CONTRACT_DESIGN.md").read_text(encoding="utf-8")
+
+    assert "VARCHAR(...)" not in design
+    assert "minutes_recorded_time TIME NULL" in design
+    assert "completed_on DATE NULL" in design
+    assert "role_code VARCHAR(16) NOT NULL" in design
+    assert "UNIQUE(team_id, sort_order)" in design
+    assert "CHECK(sort_order >= 1)" in design
+    approval = next(entry for entry in contract["schema_contract"] if entry["table"] == "inspection_approval_submission")
+    assert "status" not in {field["name"] for field in approval["fields"]}
+    assert "CT parent completed_on is non-NULL" in approval["service_only_invariants"]

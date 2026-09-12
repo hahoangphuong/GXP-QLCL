@@ -77,16 +77,16 @@
       "legacy_source": "db.ktra.B. bản",
       "business_meaning": "Creation date/time of the inspection minutes/report record; never actual inspection timing.",
       "cardinality": "0..1 timing fact per inspection outcome",
-      "canonical_owner": "InspectionOutcome.minutes_recorded_on and InspectionOutcome.minutes_legacy_raw (proposed)",
-      "semantic_type": "nullable source-faithful date plus nullable raw legacy text",
+      "canonical_owner": "InspectionOutcome.minutes_recorded_on, InspectionOutcome.minutes_recorded_time, and InspectionOutcome.minutes_legacy_raw (proposed)",
+      "semantic_type": "nullable source-faithful date, optional local time without timezone, and nullable raw legacy text",
       "runtime_writer": "CaseWorkflowService.upsert_inspection_outcome metadata extension",
       "runtime_reader": "case workspace outcome projection",
-      "api_contract": "Extend PUT /cases/{case_id}/outcome with minutes_recorded_on only; legacy raw evidence is importer-only and cannot be written by runtime clients.",
+      "api_contract": "Extend PUT /cases/{case_id}/outcome with minutes_recorded_on and optional minutes_recorded_time; legacy raw evidence is importer-only and cannot be written by runtime clients.",
       "compatibility_fields": ["InspectionOutcome.bbkt_reference"],
-      "migration_source": "SAFE_DIRECT for a proven date; SAFE_SPLIT for a deterministic timestamp/date extraction; BLOCKED_PARSE otherwise.",
+      "migration_source": "SAFE_DIRECT for a proven date-only value; SAFE_SPLIT for a deterministic date-and-time extraction; BLOCKED_PARSE otherwise.",
       "parser_owner": "Future parse_legacy_minutes_recorded adapter.",
-      "invariants": ["Never populate inspected_on or inspected_to_on.", "Never use as fallback for Ngày K.tra.", "Do not invent a time zone or time-of-day from a date-only value."],
-      "unresolved_cases": ["Timestamp precision or timezone not proven; preserve raw source rather than fabricate precision."],
+      "invariants": ["minutes_recorded_time is NULL or minutes_recorded_on is non-NULL.", "Never populate inspected_on or inspected_to_on.", "Never use as fallback for Ngày K.tra.", "Do not invent a time zone, UTC conversion, or time-of-day from a date-only value."],
+      "unresolved_cases": ["The discovery inventory has date, multi-date/period, and text morphology but no authoritative timezone; incomplete precision remains raw evidence."],
       "deprecation_plan": "bbkt_reference is historical compatibility display only and not a typed timing source.",
       "implementation_slice": "E"
     },
@@ -95,14 +95,14 @@
       "business_meaning": "Ordered inspection-team list: ordinal 1 leader, ordinal 2 secretary, ordinal 3+ member.",
       "cardinality": "0..n team members per case",
       "canonical_owner": "InspectionTeam plus InspectionTeamMember",
-      "semantic_type": "ordered structured identities plus immutable legacy display text",
+      "semantic_type": "ordered structured identities, normalized role_code, optional display role_label, and immutable legacy display text",
       "runtime_writer": "CaseWorkflowService.upsert_inspection_team",
       "runtime_reader": "case workspace team projection",
-      "api_contract": "PUT /cases/{case_id}/team accepts resolved identities and explicit ordered roles; runtime rejects legacy display_text mutation.",
+      "api_contract": "PUT /cases/{case_id}/team accepts resolved identities, role_code, and sort_order; role_label is optional display text and runtime rejects legacy display_text mutation.",
       "compatibility_fields": ["InspectionTeam.display_text"],
       "migration_source": "SAFE_ORDERED_EXPANSION when every source identity resolves exactly; SAFE_DISPLAY_ONLY when any identity is unresolved; BLOCKED_IDENTITY for ambiguous identity matches.",
       "parser_owner": "Future parse_legacy_inspection_team adapter plus identity resolver.",
-      "invariants": ["sort_order begins at 1 and is unique per team.", "Roles are LEADER at 1, SECRETARY at 2, MEMBER at 3+ when imported from source ordering.", "Runtime persists role_label and sort_order.", "No Person or InspectorProfile is invented for unresolved text."],
+      "invariants": ["role_code is the canonical constrained value: LEADER, SECRETARY, or MEMBER; role_label is display-only.", "sort_order begins at 1 and is unique per team.", "Roles are LEADER at 1, SECRETARY at 2, MEMBER at 3+ when imported from source ordering and runtime validates the same mapping.", "Exactly one resolved person or inspector profile is required for a structured member.", "No Person or InspectorProfile is invented for unresolved text."],
       "unresolved_cases": ["Unresolvable or ambiguous names remain display-only source evidence."],
       "deprecation_plan": "display_text remains read-only legacy evidence, never a runtime editing surrogate.",
       "implementation_slice": "E"
@@ -112,14 +112,14 @@
       "business_meaning": "Repeated PCT approval submissions; a completed PCT does not require CT.",
       "cardinality": "0..n PCT submissions per case",
       "canonical_owner": "InspectionApprovalSubmission (proposed entity)",
-      "semantic_type": "ordered staged submission event with reference, submitted date, status, and optional PCT parent",
+      "semantic_type": "ordered PCT submission event with optional submitted and explicit completion date/time facts",
       "runtime_writer": "Proposed CaseWorkflowService approval-submission methods",
       "runtime_reader": "case workspace approval-submission projection",
-      "api_contract": "Proposed POST /cases/{case_id}/approval-submissions and stage/status mutation routes, all with row-version concurrency.",
+      "api_contract": "Proposed POST /cases/{case_id}/approval-submissions for PCT and POST /approval-submissions/{id}/complete with expected_version; completion is an explicit immutable fact, not a status string.",
       "compatibility_fields": [],
       "migration_source": "SAFE_ORDERED_EXPANSION only when source sequence and stage are proven; BLOCKED_PARSE or MANUAL_REVIEW otherwise.",
       "parser_owner": "Future approval-submission sequence parser.",
-      "invariants": ["UNIQUE(case_id, stage, round_no).", "PCT has no parent.", "A completed PCT does not require CT."],
+      "invariants": ["UNIQUE(case_id, stage, round_no).", "PCT has no parent.", "PCT completed means completed_on is non-NULL; completed_time is NULL or completed_on is non-NULL.", "Completion is set once through the completion mutation and cannot be cleared.", "A completed PCT does not require CT."],
       "unresolved_cases": ["Sequence/round correspondence that source cannot prove must not be synthesized."],
       "deprecation_plan": "Do not overload CapaCycle; it retains CAPA ownership.",
       "implementation_slice": "F"
@@ -129,14 +129,14 @@
       "business_meaning": "Repeated CT approval submissions after their relevant completed PCT; CT may be absent.",
       "cardinality": "0..n CT submissions per case",
       "canonical_owner": "InspectionApprovalSubmission (proposed entity)",
-      "semantic_type": "ordered staged submission event with reference, submitted date, status, and required PCT parent",
+      "semantic_type": "ordered CT submission event with optional submitted and explicit completion date/time facts plus a required PCT parent",
       "runtime_writer": "Proposed CaseWorkflowService approval-submission methods",
       "runtime_reader": "case workspace approval-submission projection",
-      "api_contract": "Proposed POST /cases/{case_id}/approval-submissions and stage/status mutation routes, all with row-version concurrency.",
+      "api_contract": "Proposed POST /cases/{case_id}/approval-submissions for CT and POST /approval-submissions/{id}/complete with expected_version; creation supplies pct_submission_id.",
       "compatibility_fields": [],
       "migration_source": "SAFE_ORDERED_EXPANSION only when CT sequence and a completed related PCT are proven; BLOCKED_PARSE or MANUAL_REVIEW otherwise.",
       "parser_owner": "Future approval-submission sequence parser.",
-      "invariants": ["UNIQUE(case_id, stage, round_no).", "CT must reference a completed PCT belonging to the same case.", "CT cannot precede its related PCT."],
+      "invariants": ["UNIQUE(case_id, stage, round_no).", "CT has non-NULL pct_submission_id.", "CT must reference a same-case PCT whose completed_on is non-NULL.", "CT cannot precede its related PCT.", "completed_time is NULL or completed_on is non-NULL."],
       "unresolved_cases": ["Sequence/round correspondence that source cannot prove must not be synthesized."],
       "deprecation_plan": "Do not overload CapaCycle; it retains CAPA ownership.",
       "implementation_slice": "F"
@@ -180,6 +180,67 @@
     "Current importer maps db.ktra.Kết quả to CaseAssessment.assessment_result and InspectionOutcome.outcome_result.",
     "Current importer copies db.ktra.Q. định into CaseApplication.dossier_reference and InspectionOutcome.decision_reference.",
     "Current importer stores db.ktra.B. bản in InspectionOutcome.bbkt_reference; it is not a typed minutes/report timing fact."
+  ],
+  "schema_contract": [
+    {
+      "classification": "ADD_FIELD",
+      "table": "inspection_outcome",
+      "fields": [
+        {"name": "final_evaluation", "type": "TEXT", "nullable": true, "canonical_writer": "CaseWorkflowService.finalize_inspection_outcome", "api_writer": "POST /cases/{case_id}/outcome/finalize", "raw_evidence_policy": "not applicable"},
+        {"name": "minutes_recorded_on", "type": "DATE", "nullable": true, "canonical_writer": "CaseWorkflowService.upsert_inspection_outcome", "api_writer": "PUT /cases/{case_id}/outcome", "raw_evidence_policy": "typed source date only"},
+        {"name": "minutes_recorded_time", "type": "TIME", "nullable": true, "canonical_writer": "CaseWorkflowService.upsert_inspection_outcome", "api_writer": "PUT /cases/{case_id}/outcome", "raw_evidence_policy": "optional local source time only; no timezone"},
+        {"name": "minutes_legacy_raw", "type": "TEXT", "nullable": true, "canonical_writer": "legacy importer only", "api_writer": "none", "raw_evidence_policy": "preserve incomplete or blocked source precision"},
+        {"name": "compliance_due_on", "type": "DATE", "nullable": true, "canonical_writer": "CaseWorkflowService.upsert_inspection_outcome", "api_writer": "PUT /cases/{case_id}/outcome", "raw_evidence_policy": "not applicable"}
+      ],
+      "checks": ["minutes_recorded_time IS NULL OR minutes_recorded_on IS NOT NULL"],
+      "indexes": ["existing UNIQUE(case_id)"],
+      "foreign_keys": ["case_id -> case.id"]
+    },
+    {
+      "classification": "ADD_FIELD",
+      "table": "inspection_plan",
+      "fields": [
+        {"name": "decision_reference", "type": "VARCHAR(255)", "nullable": true, "canonical_writer": "CaseWorkflowService.upsert_inspection_plan", "api_writer": "PUT /cases/{case_id}/plan", "raw_evidence_policy": "typed component"},
+        {"name": "decision_date", "type": "DATE", "nullable": true, "canonical_writer": "CaseWorkflowService.upsert_inspection_plan", "api_writer": "PUT /cases/{case_id}/plan", "raw_evidence_policy": "typed component"},
+        {"name": "decision_legacy_raw", "type": "TEXT", "nullable": true, "canonical_writer": "legacy importer only", "api_writer": "none", "raw_evidence_policy": "preserve blocked composite"}
+      ],
+      "checks": [],
+      "indexes": ["existing UNIQUE(case_id)"],
+      "foreign_keys": ["case_id -> case.id"]
+    },
+    {
+      "classification": "ADD_FIELD",
+      "table": "inspection_team_member",
+      "fields": [
+        {"name": "role_code", "type": "VARCHAR(16)", "nullable": false, "canonical_writer": "CaseWorkflowService.upsert_inspection_team", "api_writer": "PUT /cases/{case_id}/team", "raw_evidence_policy": "derived only from proven source ordinal during import"},
+        {"name": "role_label", "type": "VARCHAR(128)", "nullable": true, "canonical_writer": "display compatibility only", "api_writer": "PUT /cases/{case_id}/team", "raw_evidence_policy": "optional display text; never canonical role"}
+      ],
+      "checks": ["role_code IN ('LEADER','SECRETARY','MEMBER')", "sort_order >= 1", "(inspector_profile_id IS NOT NULL) <> (person_id IS NOT NULL)"],
+      "indexes": ["UNIQUE(team_id, sort_order)", "existing indexes on team_id, inspector_profile_id, person_id"],
+      "foreign_keys": ["team_id -> inspection_team.id", "inspector_profile_id -> inspector_profile.id", "person_id -> person.id"]
+    },
+    {
+      "classification": "ADD_ENTITY",
+      "table": "inspection_approval_submission",
+      "fields": [
+        {"name": "id", "type": "UUID", "nullable": false, "canonical_writer": "CaseWorkflowService approval-submission methods", "api_writer": "server generated", "raw_evidence_policy": "not applicable"},
+        {"name": "case_id", "type": "UUID", "nullable": false, "canonical_writer": "CaseWorkflowService approval-submission methods", "api_writer": "case path", "raw_evidence_policy": "exact case identity"},
+        {"name": "stage", "type": "VARCHAR(3)", "nullable": false, "canonical_writer": "CaseWorkflowService approval-submission methods", "api_writer": "POST /cases/{case_id}/approval-submissions", "raw_evidence_policy": "PCT or CT only"},
+        {"name": "round_no", "type": "INTEGER", "nullable": false, "canonical_writer": "CaseWorkflowService approval-submission methods", "api_writer": "server assigned next round", "raw_evidence_policy": "source order only when proven"},
+        {"name": "reference", "type": "VARCHAR(255)", "nullable": true, "canonical_writer": "CaseWorkflowService approval-submission methods", "api_writer": "typed request", "raw_evidence_policy": "typed or preserved raw separately"},
+        {"name": "submitted_on", "type": "DATE", "nullable": true, "canonical_writer": "CaseWorkflowService approval-submission methods", "api_writer": "typed request", "raw_evidence_policy": "date only"},
+        {"name": "submitted_time", "type": "TIME", "nullable": true, "canonical_writer": "CaseWorkflowService approval-submission methods", "api_writer": "typed request", "raw_evidence_policy": "optional local source time only"},
+        {"name": "completed_on", "type": "DATE", "nullable": true, "canonical_writer": "CaseWorkflowService.complete_approval_submission", "api_writer": "POST /approval-submissions/{id}/complete", "raw_evidence_policy": "explicit completion fact"},
+        {"name": "completed_time", "type": "TIME", "nullable": true, "canonical_writer": "CaseWorkflowService.complete_approval_submission", "api_writer": "POST /approval-submissions/{id}/complete", "raw_evidence_policy": "optional local completion time only"},
+        {"name": "pct_submission_id", "type": "UUID", "nullable": true, "canonical_writer": "CaseWorkflowService.create_approval_submission", "api_writer": "CT create request", "raw_evidence_policy": "exact parent only"},
+        {"name": "legacy_raw_source", "type": "TEXT", "nullable": true, "canonical_writer": "legacy importer only", "api_writer": "none", "raw_evidence_policy": "preserve unresolved sequence/precision"},
+        {"name": "row_version", "type": "INTEGER", "nullable": false, "canonical_writer": "workflow persistence", "api_writer": "expected_version concurrency", "raw_evidence_policy": "not applicable"}
+      ],
+      "checks": ["round_no >= 1", "stage IN ('PCT','CT')", "submitted_time IS NULL OR submitted_on IS NOT NULL", "completed_time IS NULL OR completed_on IS NOT NULL", "(stage = 'PCT' AND pct_submission_id IS NULL) OR (stage = 'CT' AND pct_submission_id IS NOT NULL)"],
+      "indexes": ["UNIQUE(case_id, stage, round_no)", "INDEX(case_id, stage, round_no)", "INDEX(pct_submission_id)"],
+      "foreign_keys": ["case_id -> case.id", "pct_submission_id -> inspection_approval_submission.id"],
+      "service_only_invariants": ["CT parent has the same case_id", "CT parent stage is PCT", "CT parent completed_on is non-NULL", "completion cannot be cleared", "PCT completion cannot be altered after CT children exist"]
+    }
   ],
   "non_behavior": [
     "No production model, service, route, importer, schema, migration, database, workbook, NAS, or deployment change is made by this design artifact.",

@@ -25,7 +25,10 @@ CANONICAL_WORKBOOK_SHA256 = "c12537ea5a5c9f470e42fb5bdbe214f36983e310fceac7c560a
 # The historical plan identifier is retained as provenance.  The committed
 # JSON artifact has its own byte identity, which is what the CLI verifies.
 CANONICAL_SNAPSHOT_IDENTIFIER_SHA256 = "234498b1f74d811ef0fb6f39a71af42919cdd440cad9e53d82c287d526588666"
-CANONICAL_SNAPSHOT_ARTIFACT_SHA256 = "391966f4c093b6eb4defb3db7f90d0477cc2e8567b18d5305302a60cb36c5e36"
+# SHA256 of the committed Git blob's LF bytes.  It is deliberately distinct
+# from the historical snapshot identifier above and stable across Windows
+# checkout CRLF conversion.
+CANONICAL_SNAPSHOT_ARTIFACT_SHA256 = "b3bde05963e4e4d14d5b244e7c62b0f810f1cbbe206750574def6a366bdf7296"
 
 # Numeric lookarounds deliberately avoid ``\b``: a date following punctuation
 # such as `, 03/02/2026` is still a separate legacy date token.
@@ -86,6 +89,11 @@ KTRA_CONTRACTS: dict[str, FieldContract] = {
 
 def _text(value: Any) -> str:
     return "" if value is None else str(value).strip()
+
+
+def snapshot_artifact_sha256(path: Path) -> str:
+    """Hash canonical serialized snapshot bytes, independent of checkout EOLs."""
+    return sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 def _preview(value: str) -> dict[str, str]:
@@ -596,7 +604,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--compare-rehearsal", action="store_true")
     parser.add_argument("--database-url-env", default="DATABASE_URL")
     args = parser.parse_args(argv)
-    actual_sha = sha256(args.snapshot.read_bytes()).hexdigest()
+    actual_sha = snapshot_artifact_sha256(args.snapshot)
     if actual_sha != args.expected_snapshot_sha256:
         raise RuntimeError("snapshot SHA256 does not match the required provenance value")
     snapshot = json.loads(args.snapshot.read_text(encoding="utf-8"))

@@ -7925,7 +7925,7 @@
     },
     "declared_canonical_snapshot_sha256": "234498b1f74d811ef0fb6f39a71af42919cdd440cad9e53d82c287d526588666",
     "extraction_owner": "backend.app.domain.legacy_snapshot.read_core_sheet_rows",
-    "snapshot_artifact_sha256": "391966f4c093b6eb4defb3db7f90d0477cc2e8567b18d5305302a60cb36c5e36",
+    "snapshot_artifact_sha256": "b3bde05963e4e4d14d5b244e7c62b0f810f1cbbe206750574def6a366bdf7296",
     "source_sheet": "db.ktra"
   },
   "relationships": [

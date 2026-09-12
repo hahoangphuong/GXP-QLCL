@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import inspect
 from hashlib import sha256
+from pathlib import Path
 
 import pytest
 
@@ -156,6 +157,20 @@ def test_snapshot_sha_guard_rejects_wrong_snapshot_before_output(tmp_path) -> No
             ]
         )
     assert not (tmp_path / "out.json").exists()
+
+
+def test_committed_snapshot_matches_canonical_artifact_sha256() -> None:
+    snapshot = Path("artifacts/phase3c/legacy_snapshot.json")
+    assert profiler.snapshot_artifact_sha256(snapshot) == profiler.CANONICAL_SNAPSHOT_ARTIFACT_SHA256
+
+
+def test_committed_snapshot_passes_default_cli_provenance_guard(tmp_path) -> None:
+    assert profiler.main([
+        "--snapshot", "artifacts/phase3c/legacy_snapshot.json",
+        "--output", str(tmp_path / "out.json"),
+        "--questions-output", str(tmp_path / "questions.json"),
+        "--report-output", str(tmp_path / "report.md"),
+    ]) == 0
 
 
 def test_cli_accepts_matching_snapshot_hash_and_writes_deterministically(tmp_path) -> None:

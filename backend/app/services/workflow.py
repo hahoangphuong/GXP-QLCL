@@ -41,6 +41,11 @@ from backend.app.db.models.phase1 import (
     EvaluationScopeTaxonomyNode,
     EvaluationScopeTaxonomyVersion,
 )
+from backend.app.domain.inspection_contracts import (
+    InspectionContractViolation,
+    validate_structured_team_member,
+    validate_unique_team_sort_orders,
+)
 
 
 ALLOWED_CASE_TRANSITIONS: dict[CaseState, set[CaseState]] = {
@@ -218,6 +223,7 @@ class CaseWorkflowService:
         return {
             "inspector_profile_id": member.inspector_profile_id,
             "person_id": member.person_id,
+            "role_code": member.role_code,
             "role_label": member.role_label,
             "sort_order": member.sort_order,
         }
@@ -501,13 +507,22 @@ class CaseWorkflowService:
         if not members:
             raise HTTPException(status_code=422, detail="Inspection team must include at least one member.")
         for index, item in enumerate(members):
-            has_profile = bool(item.get("inspector_profile_id"))
-            has_person = bool(item.get("person_id"))
-            if has_profile == has_person:
+            try:
+                validate_structured_team_member(
+                    inspector_profile_id=item.get("inspector_profile_id"),
+                    person_id=item.get("person_id"),
+                    role_code=item.get("role_code"),
+                    sort_order=int(item.get("sort_order", 0)),
+                )
+            except (InspectionContractViolation, TypeError, ValueError) as exc:
                 raise HTTPException(
                     status_code=422,
-                    detail=f"Inspection team member at index {index} must set exactly one of inspector_profile_id or person_id.",
-                )
+                    detail=f"Inspection team member at index {index}: {exc}",
+                ) from exc
+        try:
+            validate_unique_team_sort_orders(int(item.get("sort_order", 0)) for item in members)
+        except (InspectionContractViolation, TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     def _validate_team_member_identities(self, session: Session, members: list[dict[str, Any]]) -> None:
         profile_ids = {str(item["inspector_profile_id"]) for item in members if item.get("inspector_profile_id")}
@@ -1504,6 +1519,8 @@ class CaseWorkflowService:
             "plan_end_on": stage.plan_end_on,
             "planning_sheet_name": stage.planning_sheet_name,
             "decision_document_hint": stage.decision_document_hint,
+            "decision_reference": stage.decision_reference,
+            "decision_date": stage.decision_date,
             "audit_event_id": audit_event.id,
             "inspection_event_id": None if inspection_event is None else inspection_event.id,
         }
@@ -1634,6 +1651,10 @@ class CaseWorkflowService:
             "decision_reference": stage.decision_reference,
             "bbkt_reference": stage.bbkt_reference,
             "outcome_result": stage.outcome_result,
+            "final_evaluation": stage.final_evaluation,
+            "minutes_recorded_on": stage.minutes_recorded_on,
+            "minutes_recorded_time": stage.minutes_recorded_time,
+            "compliance_due_on": stage.compliance_due_on,
             "audit_event_id": audit_event.id,
             "inspection_event_id": None if inspection_event is None else inspection_event.id,
         }
@@ -1682,6 +1703,7 @@ class CaseWorkflowService:
                 team_id=team.id,
                 inspector_profile_id=item.get("inspector_profile_id"),
                 person_id=item.get("person_id"),
+                role_code=str(item.get("role_code")),
                 role_label=item.get("role_label"),
                 sort_order=int(item.get("sort_order", 0)),
             )
@@ -1714,6 +1736,7 @@ class CaseWorkflowService:
                         "id": member.id,
                         "inspector_profile_id": member.inspector_profile_id,
                         "person_id": member.person_id,
+                        "role_code": member.role_code,
                         "role_label": member.role_label,
                         "sort_order": member.sort_order,
                     }

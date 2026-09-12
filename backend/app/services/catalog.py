@@ -2199,6 +2199,7 @@ class CatalogReadService:
                 "inspector_profile_id": member.inspector_profile_id,
                 "person_id": member.person_id,
                 "display_name": None if person is None else (person.display_name or person.full_name),
+                "role_code": member.role_code,
                 "role_label": member.role_label,
                 "sort_order": member.sort_order,
                 "identity_status": "resolved" if identity_resolved else "unresolved",

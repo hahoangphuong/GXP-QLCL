@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 from sqlalchemy import (
     Boolean,
@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    Time,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -276,6 +277,9 @@ class InspectionPlan(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
     plan_end_on: Mapped[date | None] = mapped_column(Date)
     planning_sheet_name: Mapped[str | None] = mapped_column(String(64))
     decision_document_hint: Mapped[str | None] = mapped_column(String(255))
+    decision_reference: Mapped[str | None] = mapped_column(String(255))
+    decision_date: Mapped[date | None] = mapped_column(Date)
+    decision_legacy_raw: Mapped[str | None] = mapped_column(Text)
 
 
 class InspectionEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -304,9 +308,17 @@ class InspectionTeamMember(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     team_id: Mapped[str] = mapped_column(ForeignKey("inspection_team.id"), nullable=False, index=True)
     inspector_profile_id: Mapped[str | None] = mapped_column(ForeignKey("inspector_profile.id"), index=True)
     person_id: Mapped[str | None] = mapped_column(ForeignKey("person.id"), index=True)
+    # Nullable during the expand migration; runtime-created members require it.
+    role_code: Mapped[str | None] = mapped_column(String(16))
     role_label: Mapped[str | None] = mapped_column(String(128))
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    __table_args__ = (CheckConstraint("inspector_profile_id IS NOT NULL OR person_id IS NOT NULL", name="team_member_has_identity"),)
+    __table_args__ = (
+        CheckConstraint("inspector_profile_id IS NOT NULL OR person_id IS NOT NULL", name="team_member_has_identity"),
+        CheckConstraint(
+            "role_code IS NULL OR role_code IN ('LEADER', 'SECRETARY', 'MEMBER')",
+            name="team_member_role_code_known",
+        ),
+    )
 
 
 class InspectionOutcome(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
@@ -321,6 +333,17 @@ class InspectionOutcome(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Bas
     decision_reference: Mapped[str | None] = mapped_column(String(255))
     bbkt_reference: Mapped[str | None] = mapped_column(String(255))
     outcome_result: Mapped[str | None] = mapped_column(Text)
+    final_evaluation: Mapped[str | None] = mapped_column(Text)
+    minutes_recorded_on: Mapped[date | None] = mapped_column(Date)
+    minutes_recorded_time: Mapped[time | None] = mapped_column(Time(timezone=False))
+    minutes_legacy_raw: Mapped[str | None] = mapped_column(Text)
+    compliance_due_on: Mapped[date | None] = mapped_column(Date)
+    __table_args__ = (
+        CheckConstraint(
+            "minutes_recorded_time IS NULL OR minutes_recorded_on IS NOT NULL",
+            name="inspection_outcome_minutes_time_requires_date",
+        ),
+    )
 
 
 class InspectionPeriodSegment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -355,6 +378,35 @@ class CapaCycle(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
     status: Mapped[str] = mapped_column(String(64), nullable=False, default="draft", server_default="draft")
     notes: Mapped[str | None] = mapped_column(Text)
     __table_args__ = (UniqueConstraint("case_id", "round_no"),)
+
+
+class InspectionApprovalSubmission(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
+    __tablename__ = "inspection_approval_submission"
+
+    case_id: Mapped[str] = mapped_column(ForeignKey("case.id"), nullable=False)
+    stage: Mapped[str] = mapped_column(String(3), nullable=False)
+    round_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    reference: Mapped[str | None] = mapped_column(String(255))
+    submitted_on: Mapped[date | None] = mapped_column(Date)
+    submitted_time: Mapped[time | None] = mapped_column(Time(timezone=False))
+    completed_on: Mapped[date | None] = mapped_column(Date)
+    completed_time: Mapped[time | None] = mapped_column(Time(timezone=False))
+    pct_submission_id: Mapped[str | None] = mapped_column(
+        ForeignKey("inspection_approval_submission.id"), index=True
+    )
+    legacy_raw_source: Mapped[str | None] = mapped_column(Text)
+    __table_args__ = (
+        UniqueConstraint("case_id", "stage", "round_no"),
+        CheckConstraint("round_no >= 1", name="approval_submission_round_positive"),
+        CheckConstraint("stage IN ('PCT', 'CT')", name="approval_submission_stage_known"),
+        CheckConstraint("submitted_time IS NULL OR submitted_on IS NOT NULL", name="approval_submission_submitted_time_requires_date"),
+        CheckConstraint("completed_time IS NULL OR completed_on IS NOT NULL", name="approval_submission_completed_time_requires_date"),
+        CheckConstraint(
+            "(stage = 'PCT' AND pct_submission_id IS NULL) OR (stage = 'CT' AND pct_submission_id IS NOT NULL)",
+            name="approval_submission_pct_parent_shape",
+        ),
+        Index("ix_approval_submission_case_stage_round", "case_id", "stage", "round_no"),
+    )
 
 
 class Certificate(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):

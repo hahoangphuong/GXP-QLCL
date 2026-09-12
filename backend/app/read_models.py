@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 from pydantic import BaseModel
 from typing import Literal
@@ -225,6 +225,7 @@ class InspectionTeamMemberWorkspaceRead(BaseModel):
     inspector_profile_id: str | None
     person_id: str | None
     display_name: str | None
+    role_code: str | None
     role_label: str | None
     sort_order: int
     identity_status: Literal["resolved", "unresolved"]
@@ -683,6 +684,8 @@ class InspectionPlanRead(BaseModel):
     plan_end_on: date | None
     planning_sheet_name: str | None
     decision_document_hint: str | None
+    decision_reference: str | None
+    decision_date: date | None
     audit_event_id: str
     inspection_event_id: str | None
 
@@ -706,6 +709,10 @@ class InspectionOutcomeRead(BaseModel):
     decision_reference: str | None
     bbkt_reference: str | None
     outcome_result: str | None
+    final_evaluation: str | None
+    minutes_recorded_on: date | None
+    minutes_recorded_time: time | None
+    compliance_due_on: date | None
     audit_event_id: str
     inspection_event_id: str | None
 
@@ -759,6 +766,7 @@ class CapaCycleRead(BaseModel):
 class InspectionTeamMemberUpsertItem(BaseModel):
     inspector_profile_id: str | None = None
     person_id: str | None = None
+    role_code: str | None = None
     role_label: str | None = None
     sort_order: int = 0
 
@@ -775,6 +783,7 @@ class InspectionTeamMemberRead(BaseModel):
     id: str
     inspector_profile_id: str | None
     person_id: str | None
+    role_code: str | None
     role_label: str | None
     sort_order: int
 
@@ -794,6 +803,20 @@ class InspectionTeamIdentityOptionRead(BaseModel):
     person_id: str | None = None
     display_name: str
     is_active: bool | None = None
+
+
+class InspectionApprovalSubmissionRead(BaseModel):
+    approval_submission_id: str
+    case_id: str
+    row_version: int
+    stage: Literal["PCT", "CT"]
+    round_no: int
+    reference: str | None
+    submitted_on: date | None
+    submitted_time: time | None
+    completed_on: date | None
+    completed_time: time | None
+    pct_submission_id: str | None
 
 
 class CertificateScopeUpsertItem(BaseModel):

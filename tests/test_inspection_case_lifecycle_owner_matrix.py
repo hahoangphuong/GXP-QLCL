@@ -40,10 +40,10 @@ def test_lifecycle_matrix_status_and_guardrails_are_fail_closed():
     assert report["guardrails"] == {
         "legacy_display_prose_is_truth": False,
         "compatibility_projection_proves_owner": False,
-        "schema_change_authorized": False,
+        "schema_change_authorized": True,
         "document_readiness_authorized": False,
     }
-    assert report["decision"]["schema_migration"] == "NOT_YET_AUTHORIZED"
+    assert report["decision"]["schema_migration"] == "EXPAND_CONTRACT_COMMITTED_PENDING_APPLY"
 
 
 def test_every_existing_owner_is_present_in_current_model_source():
@@ -66,7 +66,24 @@ def test_every_existing_owner_is_present_in_current_model_source():
             assert supporting_field in classes[supporting_model], supporting
 
 
-def test_model_extension_rows_are_real_gaps_not_existing_fields():
+def test_foundation_owner_rows_match_model_source_but_remain_pending_migration():
+    report = _load()
+    classes = _class_fields()
+    foundation = [owner for owner in report["owners"] if owner["classification"] == "OWNER_FOUNDATION_PENDING_MIGRATION"]
+    assert {owner["key"] for owner in foundation} == {
+        "inspection_decision_reference",
+        "inspection_decision_date",
+        "inspection_decision_raw_legacy",
+        "final_evaluation",
+        "compliance_due_on",
+        "approval_submission",
+    }
+    for owner in foundation:
+        assert owner["model"] in classes, owner
+        assert owner["field"] in classes[owner["model"]], owner
+
+
+def test_remaining_model_extension_rows_are_real_gaps_not_existing_fields():
     report = _load()
     classes = _class_fields()
     for owner in report["owners"]:
@@ -82,12 +99,15 @@ def test_model_extension_rows_are_real_gaps_not_existing_fields():
             assert compatibility_field in classes[compatibility_model], compatibility
 
 
-def test_new_entity_is_not_silently_claimed_to_exist():
+def test_approval_entity_foundation_is_explicit_and_uses_typed_stages():
     report = _load()
     classes = _class_fields()
-    new_entity_rows = [owner for owner in report["owners"] if owner["classification"] == "OWNER_NEEDS_NEW_ENTITY"]
-    assert [owner["key"] for owner in new_entity_rows] == ["approval_submission"]
-    assert new_entity_rows[0]["model"] not in classes
+    approval = next(owner for owner in report["owners"] if owner["key"] == "approval_submission")
+    assert approval["classification"] == "OWNER_FOUNDATION_PENDING_MIGRATION"
+    assert approval["model"] in classes
+    assert approval["field"] in classes[approval["model"]]
+    assert approval["required_fields"] == ["case_id", "stage", "round_no", "reference", "submitted_on"]
+    assert report["planned_new_entity"]["stage_examples"] == ["PCT", "CT"]
     assert report["planned_new_entity"]["fixed_pct_ct_columns_recommended"] is False
 
 
@@ -104,8 +124,8 @@ def test_qdkt_owner_stays_planning_phase_and_not_outcome_truth():
     decision_date = by_key["inspection_decision_date"]
     assert reference["model"] == "InspectionPlan"
     assert decision_date["model"] == "InspectionPlan"
-    assert reference["classification"] == "OWNER_NEEDS_MODEL_EXTENSION"
-    assert decision_date["classification"] == "OWNER_NEEDS_MODEL_EXTENSION"
+    assert reference["classification"] == "OWNER_FOUNDATION_PENDING_MIGRATION"
+    assert decision_date["classification"] == "OWNER_FOUNDATION_PENDING_MIGRATION"
     assert "InspectionOutcome.decision_reference" in reference["current_compatibility_fields"]
 
 
@@ -131,16 +151,16 @@ def test_certificate_truth_is_version_owned():
         assert by_key[key]["classification"] == "OWNER_PROVEN_EXISTING"
 
 
-def test_canonical_owner_contract_is_design_only_and_has_no_legacy_write_authority():
+def test_canonical_owner_contract_is_foundation_only_and_has_no_legacy_write_authority():
     report = _load_contract()
     assert report["schema_version"] == "inspection-case-lifecycle-canonical-owner-contract/v1"
-    assert report["status"] == "DESIGN_ONLY_NO_SCHEMA_OR_BACKFILL"
+    assert report["status"] == "FOUNDATION_IMPLEMENTED_PENDING_MIGRATION_NO_BACKFILL"
     assert report["decision"] == {
-        "schema_changes": "NOT_IMPLEMENTED_BY_TASK_CONSTRAINT",
+        "schema_changes": "FOUNDATION_IMPLEMENTED_PENDING_SEPARATE_MIGRATION_APPLY",
         "importer_changes": "IMPLEMENTED_NGAY_KTRA_EXCLUSIVE_PERIOD_MAPPING",
         "backfill": "NOT_PERFORMED",
         "qd_kt_readiness": "BUSINESS_INPUT_CONTRACT_MISSING",
-        "reason": "structured planning decision reference/date and other active inputs remain unowned; do not enable create/readiness or parse composite legacy prose",
+        "reason": "foundation schema, read projections, and fail-closed validators are committed, but no database migration, importer change, backfill, create/readiness enablement, or composite legacy parsing is authorized",
     }
     assert report["guardrails"] == {
         "database_mutated": False,
@@ -152,11 +172,11 @@ def test_canonical_owner_contract_is_design_only_and_has_no_legacy_write_authori
     }
 
 
-def test_canonical_contract_keeps_decision_and_bbkt_gaps_explicit():
+def test_canonical_contract_keeps_decision_foundation_and_bbkt_gap_explicit():
     owners = {owner["canonical_fact"]: owner for owner in _load_contract()["owners"]}
-    assert owners["inspection_decision_reference"]["status"] == "OWNER_MISSING_COMPATIBILITY_FIELDS_EXIST"
-    assert owners["inspection_decision_date"]["status"] == "OWNER_MISSING"
-    assert owners["inspection_decision_reference"]["semantic_owner"] == "InspectionPlan.decision_reference (future field)"
+    assert owners["inspection_decision_reference"]["status"] == "OWNER_FOUNDATION_PENDING_MIGRATION"
+    assert owners["inspection_decision_date"]["status"] == "OWNER_FOUNDATION_PENDING_MIGRATION"
+    assert owners["inspection_decision_reference"]["semantic_owner"] == "InspectionPlan.decision_reference"
     assert owners["inspection_decision_reference"]["compatibility_fields"] == [
         "InspectionPlan.decision_document_hint",
         "CaseApplication.dossier_reference",

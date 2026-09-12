@@ -10,10 +10,17 @@ from backend.app.db.models.phase1 import (
     Document,
     DocumentVariant,
     DocumentVersion,
+    InspectionApprovalSubmission,
     InspectionOutcome,
     InspectionPeriodSegment,
     ChangeApproval,
     StorageBinding,
+)
+from backend.app.read_models import (
+    InspectionApprovalSubmissionRead,
+    InspectionOutcomeRead,
+    InspectionPlanRead,
+    InspectionTeamMemberRead,
 )
 from backend.app.runtime_schema import expected_alembic_head_revision
 
@@ -123,4 +130,46 @@ def test_unapplied_period_state_migration_does_not_label_existing_rows_missing()
 
 
 def test_expected_alembic_head_revision_tracks_latest_runtime_migration():
-    assert expected_alembic_head_revision() == "20260912_0011"
+    assert expected_alembic_head_revision() == "20260912_0012"
+
+
+def test_db_ktra_semantic_foundation_models_are_typed_and_transitional_for_existing_teams():
+    outcome = InspectionOutcome.__table__
+    plan = Base.metadata.tables["inspection_plan"]
+    team_member = Base.metadata.tables["inspection_team_member"]
+    approval = InspectionApprovalSubmission.__table__
+
+    assert {"final_evaluation", "minutes_recorded_on", "minutes_recorded_time", "minutes_legacy_raw", "compliance_due_on"}.issubset(outcome.c.keys())
+    assert outcome.c.minutes_recorded_time.type.timezone is False
+    assert {"decision_reference", "decision_date", "decision_legacy_raw"}.issubset(plan.c.keys())
+    assert team_member.c.role_code.nullable is True
+    assert team_member.c.sort_order.server_default is not None
+    assert {"case_id", "stage", "round_no", "completed_on", "pct_submission_id", "row_version"}.issubset(approval.c.keys())
+    assert "status" not in approval.c.keys()
+    assert any("approval_submission_pct_parent_shape" in str(constraint.name) for constraint in approval.constraints)
+    assert {index.name for index in approval.indexes} == {
+        "ix_approval_submission_case_stage_round",
+        "ix_inspection_approval_submission_pct_submission_id",
+    }
+
+
+def test_approval_read_model_never_exposes_raw_legacy_provenance():
+    assert "legacy_raw_source" not in InspectionApprovalSubmissionRead.model_fields
+
+
+def test_inspection_read_models_expose_typed_foundation_fields():
+    assert {"decision_reference", "decision_date"}.issubset(InspectionPlanRead.model_fields)
+    assert {"final_evaluation", "minutes_recorded_on", "minutes_recorded_time", "compliance_due_on"}.issubset(
+        InspectionOutcomeRead.model_fields
+    )
+    assert "role_code" in InspectionTeamMemberRead.model_fields
+
+
+def test_db_ktra_semantic_foundation_migration_is_expand_only_for_existing_team_rows():
+    migration = Path("migrations/versions/20260912_0012_db_ktra_semantic_foundation.py").read_text(encoding="utf-8")
+
+    assert 'revision = "20260912_0012"' in migration
+    assert 'down_revision = "20260912_0011"' in migration
+    assert 'sa.Column("role_code", sa.String(length=16), nullable=True)' in migration
+    assert "UPDATE inspection_team_member" not in migration
+    assert "sort_order >= 1" not in migration

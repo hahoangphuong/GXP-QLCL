@@ -1316,8 +1316,8 @@ def test_upsert_inspection_team_replaces_member_list_and_writes_audit():
             session,
             case_id=case_id,
             members=[
-                {"person_id": None, "inspector_profile_id": identities["profile_id"], "role_label": "lead", "sort_order": 1},
-                {"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_label": "member", "sort_order": 2},
+                {"person_id": None, "inspector_profile_id": identities["profile_id"], "role_code": "LEADER", "role_label": "lead", "sort_order": 1},
+                {"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_code": "SECRETARY", "role_label": "member", "sort_order": 2},
             ],
             reason="Initial team assignment.",
             user=build_authenticated_user("manager01", "manager"),
@@ -1341,8 +1341,8 @@ def test_upsert_inspection_team_replaces_member_list_and_writes_audit():
             session,
             case_id=case_id,
             members=[
-                {"person_id": None, "inspector_profile_id": identities["profile_id"], "role_label": "chair", "sort_order": 2},
-                {"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_label": "member", "sort_order": 1},
+                {"person_id": None, "inspector_profile_id": identities["profile_id"], "role_code": "SECRETARY", "role_label": "chair", "sort_order": 2},
+                {"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_code": "LEADER", "role_label": "member", "sort_order": 1},
             ],
             reason="Team narrowed.",
             user=build_authenticated_user("manager01", "manager"),
@@ -1373,7 +1373,7 @@ def test_upsert_inspection_team_rejects_member_without_identity():
                 session,
                 case_id=case_id,
                 members=[
-                    {"person_id": None, "inspector_profile_id": None, "role_label": "lead", "sort_order": 1},
+                    {"person_id": None, "inspector_profile_id": None, "role_code": "LEADER", "role_label": "lead", "sort_order": 1},
                 ],
                 reason="Invalid payload.",
                 user=build_authenticated_user("manager01", "manager"),
@@ -1396,7 +1396,7 @@ def test_upsert_inspection_team_rejects_display_text_as_a_second_member_source()
                 session,
                 case_id=case_id,
                 display_text="Do not parse me",
-                members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_label": "lead", "sort_order": 0}],
+                members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_code": "LEADER", "role_label": "lead", "sort_order": 1}],
                 reason="Invalid dual source.",
                 user=build_authenticated_user("manager01", "manager"),
             )
@@ -1422,7 +1422,7 @@ def test_upsert_inspection_team_rejects_unknown_identity_and_stale_version_witho
                 session,
                 case_id=case_id,
                 expected_version=1,
-                members=[{"person_id": "00000000-0000-0000-0000-0000000000ff", "inspector_profile_id": None, "role_label": "lead", "sort_order": 0}],
+                members=[{"person_id": "00000000-0000-0000-0000-0000000000ff", "inspector_profile_id": None, "role_code": "LEADER", "role_label": "lead", "sort_order": 1}],
                 reason="Invalid identity.",
                 user=build_authenticated_user("manager01", "manager"),
             )
@@ -1436,7 +1436,7 @@ def test_upsert_inspection_team_rejects_unknown_identity_and_stale_version_witho
             session,
             case_id=case_id,
             expected_version=1,
-            members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_label": "lead", "sort_order": 0}],
+            members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_code": "LEADER", "role_label": "lead", "sort_order": 1}],
             reason="Replace member from authoritative projection.",
             user=build_authenticated_user("manager01", "manager"),
         )
@@ -1448,7 +1448,7 @@ def test_upsert_inspection_team_rejects_unknown_identity_and_stale_version_witho
                 session,
                 case_id=case_id,
                 expected_version=1,
-                members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_label": "member", "sort_order": 0}],
+                members=[{"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_code": "LEADER", "role_label": "member", "sort_order": 1}],
                 reason="Stale write.",
                 user=build_authenticated_user("manager01", "manager"),
             )

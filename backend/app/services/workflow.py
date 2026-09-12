@@ -36,6 +36,7 @@ from backend.app.db.models.phase1 import (
     InspectionOutcome,
     InspectionPeriodSegment,
     InspectionPlan,
+    InspectionApprovalSubmission,
     Person,
     Site,
     EvaluationScopeTaxonomyNode,
@@ -45,6 +46,9 @@ from backend.app.domain.inspection_contracts import (
     InspectionContractViolation,
     validate_structured_team_member,
     validate_unique_team_sort_orders,
+    validate_time_requires_date,
+    validate_ct_parent,
+    validate_approval_completion,
 )
 
 
@@ -1453,6 +1457,8 @@ class CaseWorkflowService:
         plan_end_on,
         planning_sheet_name: str | None,
         decision_document_hint: str | None,
+        decision_reference: str | None = None,
+        decision_date: date | None = None,
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
@@ -1467,15 +1473,17 @@ class CaseWorkflowService:
         self._assert_expected_version(stage, expected_version, label="inspection_plan")
         before = self._snapshot_fields(
             stage,
-            ["plan_start_on", "plan_end_on", "planning_sheet_name", "decision_document_hint"],
+            ["plan_start_on", "plan_end_on", "planning_sheet_name", "decision_document_hint", "decision_reference", "decision_date"],
         )
         stage.plan_start_on = plan_start_on
         stage.plan_end_on = plan_end_on
         stage.planning_sheet_name = planning_sheet_name
         stage.decision_document_hint = decision_document_hint
+        stage.decision_reference = decision_reference
+        stage.decision_date = decision_date
         after = self._snapshot_fields(
             stage,
-            ["plan_start_on", "plan_end_on", "planning_sheet_name", "decision_document_hint"],
+            ["plan_start_on", "plan_end_on", "planning_sheet_name", "decision_document_hint", "decision_reference", "decision_date"],
         )
         has_stage_changes = before != after
         inspection_event = self._write_inspection_event(
@@ -1490,6 +1498,8 @@ class CaseWorkflowService:
                 plan_end_on=None if plan_end_on is None else plan_end_on.isoformat(),
                 planning_sheet_name=planning_sheet_name,
                 decision_document_hint=decision_document_hint,
+                decision_reference=decision_reference,
+                decision_date=None if decision_date is None else decision_date.isoformat(),
                 reason=reason,
             ),
         )
@@ -1504,6 +1514,8 @@ class CaseWorkflowService:
                 plan_end_on=None if plan_end_on is None else plan_end_on.isoformat(),
                 planning_sheet_name=planning_sheet_name,
                 decision_document_hint=decision_document_hint,
+                decision_reference=decision_reference,
+                decision_date=None if decision_date is None else decision_date.isoformat(),
                 reason=reason,
                 inspection_event_id=None if inspection_event is None else inspection_event.id,
             ),
@@ -1536,6 +1548,9 @@ class CaseWorkflowService:
         decision_reference: str | None,
         bbkt_reference: str | None,
         outcome_result: str | None,
+        minutes_recorded_on: date | None = None,
+        minutes_recorded_time=None,
+        compliance_due_on: date | None = None,
         reason: str | None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
@@ -1545,6 +1560,10 @@ class CaseWorkflowService:
             raise HTTPException(status_code=422, detail="Inspection outcome end date requires a start date.")
         if inspected_on is not None and inspected_to_on is not None and inspected_on > inspected_to_on:
             raise HTTPException(status_code=422, detail="Inspection outcome start date must not be after its end date.")
+        try:
+            validate_time_requires_date(value_date=minutes_recorded_on, value_time=minutes_recorded_time, label="Minutes")
+        except InspectionContractViolation as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         actor = self._get_or_create_app_user(session, user)
         stage = session.scalars(select(InspectionOutcome).where(InspectionOutcome.case_id == row.id)).first()
         if stage is None:
@@ -1580,7 +1599,7 @@ class CaseWorkflowService:
             )
         before = self._snapshot_fields(
             stage,
-            ["inspected_on", "inspected_to_on", "inspection_period_state", "decision_reference", "bbkt_reference", "outcome_result"],
+            ["inspected_on", "inspected_to_on", "inspection_period_state", "decision_reference", "bbkt_reference", "outcome_result", "minutes_recorded_on", "minutes_recorded_time", "compliance_due_on"],
         )
         if has_compatibility_period:
             # The compatibility endpoint owns exactly one canonical segment.
@@ -1603,9 +1622,12 @@ class CaseWorkflowService:
         stage.decision_reference = decision_reference
         stage.bbkt_reference = bbkt_reference
         stage.outcome_result = outcome_result
+        stage.minutes_recorded_on = minutes_recorded_on
+        stage.minutes_recorded_time = minutes_recorded_time
+        stage.compliance_due_on = compliance_due_on
         after = self._snapshot_fields(
             stage,
-            ["inspected_on", "inspected_to_on", "inspection_period_state", "decision_reference", "bbkt_reference", "outcome_result"],
+            ["inspected_on", "inspected_to_on", "inspection_period_state", "decision_reference", "bbkt_reference", "outcome_result", "minutes_recorded_on", "minutes_recorded_time", "compliance_due_on"],
         )
         has_stage_changes = before != after
         inspection_event = self._write_inspection_event(
@@ -1619,6 +1641,9 @@ class CaseWorkflowService:
                 decision_reference=decision_reference,
                 bbkt_reference=bbkt_reference,
                 outcome_result=outcome_result,
+                minutes_recorded_on=None if minutes_recorded_on is None else minutes_recorded_on.isoformat(),
+                minutes_recorded_time=None if minutes_recorded_time is None else minutes_recorded_time.isoformat(),
+                compliance_due_on=None if compliance_due_on is None else compliance_due_on.isoformat(),
                 reason=reason,
             ),
         )
@@ -1634,6 +1659,9 @@ class CaseWorkflowService:
                 decision_reference=decision_reference,
                 bbkt_reference=bbkt_reference,
                 outcome_result=outcome_result,
+                minutes_recorded_on=None if minutes_recorded_on is None else minutes_recorded_on.isoformat(),
+                minutes_recorded_time=None if minutes_recorded_time is None else minutes_recorded_time.isoformat(),
+                compliance_due_on=None if compliance_due_on is None else compliance_due_on.isoformat(),
                 reason=reason,
                 inspection_event_id=None if inspection_event is None else inspection_event.id,
             ),
@@ -1658,6 +1686,96 @@ class CaseWorkflowService:
             "audit_event_id": audit_event.id,
             "inspection_event_id": None if inspection_event is None else inspection_event.id,
         }
+
+    def _serialize_approval_submission(self, row: InspectionApprovalSubmission) -> dict[str, Any]:
+        return {
+            "approval_submission_id": row.id, "case_id": row.case_id, "row_version": row.row_version,
+            "stage": row.stage, "round_no": row.round_no, "reference": row.reference,
+            "submitted_on": row.submitted_on, "submitted_time": row.submitted_time,
+            "completed_on": row.completed_on, "completed_time": row.completed_time,
+            "pct_submission_id": row.pct_submission_id,
+        }
+
+    def _serialize_inspection_outcome(self, row: InspectionOutcome, *, audit_event_id: str | None, inspection_event_id: str | None) -> dict[str, Any]:
+        return {
+            "case_id": row.case_id, "row_version": row.row_version, "inspected_on": row.inspected_on,
+            "inspected_to_on": row.inspected_to_on, "inspection_period_state": row.inspection_period_state,
+            "decision_reference": row.decision_reference, "bbkt_reference": row.bbkt_reference,
+            "outcome_result": row.outcome_result, "final_evaluation": row.final_evaluation,
+            "minutes_recorded_on": row.minutes_recorded_on, "minutes_recorded_time": row.minutes_recorded_time,
+            "compliance_due_on": row.compliance_due_on, "audit_event_id": audit_event_id,
+            "inspection_event_id": inspection_event_id,
+        }
+
+    def finalize_inspection_outcome(self, session: Session, *, case_id: str, expected_version: int, final_evaluation: str, reason: str | None, user: AuthenticatedUser) -> dict[str, Any]:
+        row = self._get_case(session, case_id)
+        self._assert_case_not_terminal(row, operation="inspection final evaluation")
+        stage = session.scalars(select(InspectionOutcome).where(InspectionOutcome.case_id == row.id)).first()
+        if stage is None:
+            raise HTTPException(status_code=422, detail="Inspection outcome must exist before final evaluation.")
+        self._assert_expected_version(stage, expected_version, label="inspection_outcome")
+        if stage.final_evaluation is not None:
+            if stage.final_evaluation == final_evaluation:
+                return self._serialize_inspection_outcome(stage, audit_event_id=None, inspection_event_id=None)
+            raise HTTPException(status_code=409, detail="Inspection final evaluation is immutable once set.")
+        if not str(final_evaluation).strip():
+            raise HTTPException(status_code=422, detail="Inspection final evaluation is required.")
+        before = self._snapshot_fields(stage, ["outcome_result", "final_evaluation"])
+        stage.final_evaluation = final_evaluation
+        actor = self._get_or_create_app_user(session, user)
+        audit = self._write_audit_event(session, actor=actor, entity_type="inspection_outcome", entity_id=stage.id, action="inspection_outcome.finalize", payload=self._build_stage_payload(final_evaluation=final_evaluation, reason=reason), before=before, after=self._snapshot_fields(stage, ["outcome_result", "final_evaluation"]), reason=reason)
+        session.flush()
+        return self._serialize_inspection_outcome(stage, audit_event_id=audit.id, inspection_event_id=None)
+
+    def create_approval_submission(self, session: Session, *, case_id: str, stage: str, reference: str | None, submitted_on: date | None, submitted_time, pct_submission_id: str | None, reason: str | None, user: AuthenticatedUser) -> dict[str, Any]:
+        normalized_stage = str(stage or "").upper()
+        if normalized_stage not in {"PCT", "CT"}:
+            raise HTTPException(status_code=422, detail="Approval submission stage must be PCT or CT.")
+        try:
+            validate_time_requires_date(value_date=submitted_on, value_time=submitted_time, label="Approval submission")
+        except InspectionContractViolation as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        row = session.scalars(select(Case).where(Case.id == case_id).with_for_update()).first()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Case not found.")
+        self._assert_case_not_terminal(row, operation="approval submission creation")
+        if normalized_stage == "PCT" and pct_submission_id is not None:
+            raise HTTPException(status_code=422, detail="PCT submission must not set pct_submission_id.")
+        if normalized_stage == "CT":
+            if pct_submission_id is None:
+                raise HTTPException(status_code=422, detail="CT submission requires pct_submission_id.")
+            parent = session.get(InspectionApprovalSubmission, pct_submission_id)
+            if parent is None:
+                raise HTTPException(status_code=404, detail="PCT approval submission not found.")
+            try:
+                validate_ct_parent(child_case_id=row.id, parent_case_id=parent.case_id, parent_stage=parent.stage, parent_completed_on=parent.completed_on)
+            except InspectionContractViolation as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+        rounds = list(session.scalars(select(InspectionApprovalSubmission.round_no).where(InspectionApprovalSubmission.case_id == row.id, InspectionApprovalSubmission.stage == normalized_stage)))
+        round_no = 1 if not rounds else max(rounds) + 1
+        submission = InspectionApprovalSubmission(case_id=row.id, stage=normalized_stage, round_no=round_no, reference=reference, submitted_on=submitted_on, submitted_time=submitted_time, pct_submission_id=pct_submission_id)
+        session.add(submission)
+        session.flush()
+        actor = self._get_or_create_app_user(session, user)
+        self._write_audit_event(session, actor=actor, entity_type="inspection_approval_submission", entity_id=submission.id, action="inspection_approval_submission.create", payload=self._serialize_approval_submission(submission), before={}, after=self._serialize_approval_submission(submission), reason=reason)
+        session.flush()
+        return self._serialize_approval_submission(submission)
+
+    def complete_approval_submission(self, session: Session, *, approval_submission_id: str, expected_version: int, completed_on: date, completed_time, reason: str | None, user: AuthenticatedUser) -> dict[str, Any]:
+        row = session.get(InspectionApprovalSubmission, approval_submission_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Approval submission not found.")
+        self._assert_expected_version(row, expected_version, label="approval_submission")
+        try:
+            validate_approval_completion(existing_completed_on=row.completed_on, existing_completed_time=row.completed_time, completed_on=completed_on, completed_time=completed_time)
+        except InspectionContractViolation as exc:
+            raise HTTPException(status_code=409 if row.completed_on is not None else 422, detail=str(exc)) from exc
+        before = self._serialize_approval_submission(row)
+        row.completed_on, row.completed_time = completed_on, completed_time
+        actor = self._get_or_create_app_user(session, user)
+        self._write_audit_event(session, actor=actor, entity_type="inspection_approval_submission", entity_id=row.id, action="inspection_approval_submission.complete", payload=self._build_stage_payload(completed_on=completed_on.isoformat(), completed_time=None if completed_time is None else completed_time.isoformat(), reason=reason), before=before, after=self._serialize_approval_submission(row), reason=reason)
+        session.flush()
+        return self._serialize_approval_submission(row)
 
     def upsert_inspection_team(
         self,

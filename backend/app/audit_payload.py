@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Any
 
 
@@ -27,6 +27,8 @@ _BINARY_KEY_TOKENS = (
 
 def normalize_and_redact_audit_payload(value: Any) -> Any:
     if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, time):
         return value.isoformat()
     if isinstance(value, date):
         return value.isoformat()

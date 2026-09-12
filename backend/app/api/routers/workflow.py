@@ -31,12 +31,16 @@ from backend.app.read_models import (
     CaseTransitionRead,
     CaseTransitionRequest,
     InspectionOutcomeRead,
+    InspectionFinalEvaluationRequest,
     InspectionOutcomeUpsertRequest,
     InspectionPlanRead,
     InspectionPlanUpsertRequest,
     InspectionTeamRead,
     InspectionTeamIdentityOptionRead,
     InspectionTeamUpsertRequest,
+    InspectionApprovalSubmissionRead,
+    InspectionApprovalSubmissionCreateRequest,
+    InspectionApprovalSubmissionCompleteRequest,
 )
 from backend.app.services import CatalogReadService, CaseWorkflowService
 
@@ -163,6 +167,8 @@ def register_workflow_routes(app, session_factory) -> None:
             plan_end_on=payload.plan_end_on,
             planning_sheet_name=payload.planning_sheet_name,
             decision_document_hint=payload.decision_document_hint,
+            decision_reference=payload.decision_reference,
+            decision_date=payload.decision_date,
             reason=payload.reason,
             user=user,
         )
@@ -185,11 +191,32 @@ def register_workflow_routes(app, session_factory) -> None:
             decision_reference=payload.decision_reference,
             bbkt_reference=payload.bbkt_reference,
             outcome_result=payload.outcome_result,
+            minutes_recorded_on=payload.minutes_recorded_on,
+            minutes_recorded_time=payload.minutes_recorded_time,
+            compliance_due_on=payload.compliance_due_on,
             reason=payload.reason,
             user=user,
         )
         commit_or_409(session)
         return InspectionOutcomeRead(**result)
+
+    def finalize_inspection_outcome(case_id: str, payload: InspectionFinalEvaluationRequest, session: Session = dependency, user: AuthenticatedUser = Depends(get_authenticated_user)):
+        require_permissions(user, {"inspection.edit"})
+        result = service.finalize_inspection_outcome(session, case_id=case_id, expected_version=payload.expected_version, final_evaluation=payload.final_evaluation, reason=payload.reason, user=user)
+        commit_or_409(session)
+        return InspectionOutcomeRead(**result)
+
+    def create_approval_submission(case_id: str, stage: str, payload: InspectionApprovalSubmissionCreateRequest, session: Session = dependency, user: AuthenticatedUser = Depends(get_authenticated_user)):
+        require_permissions(user, {"inspection.edit"})
+        result = service.create_approval_submission(session, case_id=case_id, stage=stage, reference=payload.reference, submitted_on=payload.submitted_on, submitted_time=payload.submitted_time, pct_submission_id=payload.pct_submission_id, reason=payload.reason, user=user)
+        commit_or_409(session)
+        return InspectionApprovalSubmissionRead(**result)
+
+    def complete_approval_submission(approval_submission_id: str, payload: InspectionApprovalSubmissionCompleteRequest, session: Session = dependency, user: AuthenticatedUser = Depends(get_authenticated_user)):
+        require_permissions(user, {"inspection.edit"})
+        result = service.complete_approval_submission(session, approval_submission_id=approval_submission_id, expected_version=payload.expected_version, completed_on=payload.completed_on, completed_time=payload.completed_time, reason=payload.reason, user=user)
+        commit_or_409(session)
+        return InspectionApprovalSubmissionRead(**result)
 
     def upsert_inspection_team(
         case_id: str,
@@ -475,6 +502,9 @@ def register_workflow_routes(app, session_factory) -> None:
         response_model=InspectionOutcomeRead,
         tags=["workflow"],
     )
+    app.add_api_route("/cases/{case_id}/outcome/final-evaluation", finalize_inspection_outcome, methods=["POST"], response_model=InspectionOutcomeRead, tags=["workflow"])
+    app.add_api_route("/cases/{case_id}/approval-submissions/{stage}", create_approval_submission, methods=["POST"], response_model=InspectionApprovalSubmissionRead, tags=["workflow"])
+    app.add_api_route("/approval-submissions/{approval_submission_id}/complete", complete_approval_submission, methods=["POST"], response_model=InspectionApprovalSubmissionRead, tags=["workflow"])
     app.add_api_route(
         "/cases/{case_id}/team",
         upsert_inspection_team,

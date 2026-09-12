@@ -44,6 +44,7 @@ from backend.app.db.models.phase1 import (
     DocumentVersion,
     InspectionEvent,
     InspectionPlan,
+    InspectionApprovalSubmission,
     InspectionOutcome,
     InspectionTeam,
     InspectionTeamMember,
@@ -2215,6 +2216,11 @@ class CatalogReadService:
         elif team is not None and not team_round_trip_safe:
             team_reason = "unresolved_member_identity"
         outcome = session.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == case.id))
+        approval_submissions = list(session.scalars(
+            select(InspectionApprovalSubmission)
+            .where(InspectionApprovalSubmission.case_id == case.id)
+            .order_by(InspectionApprovalSubmission.stage.asc(), InspectionApprovalSubmission.round_no.asc())
+        ))
         events = list(
             session.scalars(
                 select(InspectionEvent)
@@ -2446,6 +2452,8 @@ class CatalogReadService:
             "inspection": {
                 "plan_row_version": None if plan is None else plan.row_version,
                 "decision_reference": None if outcome is None else outcome.decision_reference,
+                "plan_decision_reference": None if plan is None else plan.decision_reference,
+                "plan_decision_date": None if plan is None else plan.decision_date,
                 "decision_document_hint": None if plan is None else plan.decision_document_hint,
                 "plan_start_on": None if plan is None else plan.plan_start_on,
                 "plan_end_on": None if plan is None else plan.plan_end_on,
@@ -2463,6 +2471,17 @@ class CatalogReadService:
                 ),
                 "bbkt_reference": None if outcome is None else outcome.bbkt_reference,
                 "outcome_result": None if outcome is None else outcome.outcome_result,
+                "final_evaluation": None if outcome is None else outcome.final_evaluation,
+                "minutes_recorded_on": None if outcome is None else outcome.minutes_recorded_on,
+                "minutes_recorded_time": None if outcome is None else outcome.minutes_recorded_time,
+                "compliance_due_on": None if outcome is None else outcome.compliance_due_on,
+                "approval_submissions": [
+                    {"approval_submission_id": item.id, "stage": item.stage, "round_no": item.round_no,
+                     "reference": item.reference, "submitted_on": item.submitted_on, "submitted_time": item.submitted_time,
+                     "completed_on": item.completed_on, "completed_time": item.completed_time,
+                     "pct_submission_id": item.pct_submission_id, "row_version": item.row_version}
+                    for item in approval_submissions
+                ],
                 "team_display_text": None if team is None else team.display_text,
                 "team": None if team is None else {
                     "team_id": team.id,

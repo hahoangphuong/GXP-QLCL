@@ -674,6 +674,8 @@ class InspectionPlanUpsertRequest(BaseModel):
     plan_end_on: date | None = None
     planning_sheet_name: str | None = None
     decision_document_hint: str | None = None
+    decision_reference: str | None = None
+    decision_date: date | None = None
     reason: str | None = None
 
 
@@ -697,6 +699,15 @@ class InspectionOutcomeUpsertRequest(BaseModel):
     decision_reference: str | None = None
     bbkt_reference: str | None = None
     outcome_result: str | None = None
+    minutes_recorded_on: date | None = None
+    minutes_recorded_time: time | None = None
+    compliance_due_on: date | None = None
+    reason: str | None = None
+
+
+class InspectionFinalEvaluationRequest(BaseModel):
+    expected_version: int
+    final_evaluation: str
     reason: str | None = None
 
 
@@ -817,6 +828,21 @@ class InspectionApprovalSubmissionRead(BaseModel):
     completed_on: date | None
     completed_time: time | None
     pct_submission_id: str | None
+
+
+class InspectionApprovalSubmissionCreateRequest(BaseModel):
+    reference: str | None = None
+    submitted_on: date | None = None
+    submitted_time: time | None = None
+    pct_submission_id: str | None = None
+    reason: str | None = None
+
+
+class InspectionApprovalSubmissionCompleteRequest(BaseModel):
+    expected_version: int
+    completed_on: date
+    completed_time: time | None = None
+    reason: str | None = None
 
 
 class CertificateScopeUpsertItem(BaseModel):

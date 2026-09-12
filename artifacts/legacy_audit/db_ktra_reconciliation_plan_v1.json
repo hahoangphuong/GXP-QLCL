@@ -1,0 +1,6 @@
+{
+  "comparison_status": "NOT_RUN_DATABASE_URL_ABSENT",
+  "guardrails": {
+    "database_mutated": false
+  }
+}

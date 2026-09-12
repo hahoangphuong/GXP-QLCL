@@ -1,0 +1,685 @@
+{
+  "schema_version": "db-ktra-parser-profile/v1",
+  "source": {
+    "snapshot_path": "artifacts/phase3c/legacy_snapshot.json",
+    "snapshot_artifact_sha256": "b3bde05963e4e4d14d5b244e7c62b0f810f1cbbe206750574def6a366bdf7296"
+  },
+  "valid_legacy_rows": 1533,
+  "fields": {
+    "Q. định": {
+      "state_counts": {
+        "KNOWN": 1220,
+        "MISSING": 234,
+        "PARTIAL": 12,
+        "UNRESOLVED": 67
+      },
+      "representative_safe_examples": {
+        "KNOWN": [
+          {
+            "source_raw_hash": "e8541d9074a5f135250c4735fd79e66a50763e8a0feeb40639ef46aae116e144",
+            "source_length": 26,
+            "source_shape": "999/aa-aaa aaaa 99/99/9999",
+            "parsed": {
+              "state": "KNOWN",
+              "decision_reference": "368/QĐ-QLD",
+              "decision_date": "2016-08-24"
+            }
+          },
+          {
+            "source_raw_hash": "a87aa6536e64c090687638acc1ff3dfc69a84cc153beae079bb749cd4d429446",
+            "source_length": 26,
+            "source_shape": "999/aa-aaa aaaa 99/99/9999",
+            "parsed": {
+              "state": "KNOWN",
+              "decision_reference": "212/QĐ-QLD",
+              "decision_date": "2013-07-30"
+            }
+          },
+          {
+            "source_raw_hash": "b9f02bc035b47c3423f4b5125039ac6f11b6e9f4f76f2a38dd2cd085c335fb95",
+            "source_length": 26,
+            "source_shape": "999/aa-aaa aaaa 99/99/9999",
+            "parsed": {
+              "state": "KNOWN",
+              "decision_reference": "237/QĐ-QLD",
+              "decision_date": "2010-08-13"
+            }
+          }
+        ],
+        "MISSING": [
+          {
+            "source_raw_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "source_length": 0,
+            "source_shape": "",
+            "parsed": {
+              "state": "MISSING"
+            }
+          },
+          {
+            "source_raw_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "source_length": 0,
+            "source_shape": "",
+            "parsed": {
+              "state": "MISSING"
+            }
+          },
+          {
+            "source_raw_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "source_length": 0,
+            "source_shape": "",
+            "parsed": {
+              "state": "MISSING"
+            }
+          }
+        ],
+        "PARTIAL": [
+          {
+            "source_raw_hash": "15c536de255cbc1004708662fded86958a603dd28b862803bead75d5e4cd945b",
+            "source_length": 10,
+            "source_shape": "999/aa-aaa",
+            "parsed": {
+              "state": "PARTIAL"
+            }
+          },
+          {
+            "source_raw_hash": "fcd9f870b9afda954c0bee65e37c22b65749bd1963bece56f1d4ecf34b85de81",
+            "source_length": 23,
+            "source_shape": "999/aa-aaa aaaa 99/9/99",
+            "parsed": {
+              "state": "PARTIAL"
+            }
+          },
+          {
+            "source_raw_hash": "066f258db94d9d4a6e41e9756e3cf79ffaef6e1b42ea9c9d317612d576eff3b8",
+            "source_length": 10,
+            "source_shape": "999/aa-aaa",
+            "parsed": {
+              "state": "PARTIAL"
+            }
+          }
+        ],
+        "UNRESOLVED": [
+          {
+            "source_raw_hash": "1ff3c819bf80a6d852bc6abb395a5ffffbbca7ca649a89127a1233a533f824cd",
+            "source_length": 21,
+            "source_shape": "999/aa-aaa 99/9/9999",
+            "parsed": {
+              "state": "UNRESOLVED",
+              "decision_date": "2011-08-08"
+            }
+          },
+          {
+            "source_raw_hash": "6066f06603152ba2c969e46091395bd1c1586f08ca7d13f763e14365f7bd3ee8",
+            "source_length": 23,
+            "source_shape": "999/aa-aaa 99/99/9999",
+            "parsed": {
+              "state": "UNRESOLVED",
+              "decision_date": "2013-10-03"
+            }
+          },
+          {
+            "source_raw_hash": "1ce7e178848116bd8839fcb8c0ccd0ead92c45d894cc827c7731d1b0838f331f",
+            "source_length": 21,
+            "source_shape": "999/aa-aaa 99/9/9999",
+            "parsed": {
+              "state": "UNRESOLVED",
+              "decision_date": "2010-09-29"
+            }
+          }
+        ]
+      }
+    },
+    "B. bản": {
+      "state_counts": {
+        "KNOWN": 1,
+        "MISSING": 374,
+        "RAW_ONLY": 1152,
+        "UNRESOLVED": 6
+      },
+      "representative_safe_examples": {
+        "KNOWN": [
+          {
+            "source_raw_hash": "ba501ba49426987467388fc80bd73d0c3db0fff14a549278f79fdee140ce7296",
+            "source_length": 9,
+            "source_shape": "99-9/9999",
+            "parsed": {
+              "state": "KNOWN",
+              "recorded_on": "2015-06-24",
+              "precision": "DATE_ONLY"
+            }
+          }
+        ],
+        "MISSING": [
+          {
+            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
+            "source_length": 1,
+            "source_shape": "-",
+            "parsed": {
+              "state": "MISSING",
+              "precision": "RAW_ONLY"
+            }
+          },
+          {
+            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
+            "source_length": 1,
+            "source_shape": "-",
+            "parsed": {
+              "state": "MISSING",
+              "precision": "RAW_ONLY"
+            }
+          },
+          {
+            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
+            "source_length": 1,
+            "source_shape": "-",
+            "parsed": {
+              "state": "MISSING",
+              "precision": "RAW_ONLY"
+            }
+          }
+        ],
+        "RAW_ONLY": [
+          {
+            "source_raw_hash": "04504b6d8f5064cc1b32eb448e55b7263d6c4c55b53bc4db8a565823f9f99319",
+            "source_length": 25,
+            "source_shape": "9999-99-99 99:99:99+99:99",
+            "parsed": {
+              "state": "RAW_ONLY",
+              "precision": "RAW_ONLY"
+            }
+          },
+          {
+            "source_raw_hash": "13e52014945f219beac9f247d3078b4ada4c75bc0b5782059a9184ee9106395e",
+            "source_length": 25,
+            "source_shape": "9999-99-99 99:99:99+99:99",
+            "parsed": {
+              "state": "RAW_ONLY",
+              "precision": "RAW_ONLY"
+            }
+          },
+          {
+            "source_raw_hash": "68fae1cd9b8c84cda1f425ac3f30215bc6704ff010dd10844b45229331d29d79",
+            "source_length": 25,
+            "source_shape": "9999-99-99 99:99:99+99:99",
+            "parsed": {
+              "state": "RAW_ONLY",
+              "precision": "RAW_ONLY"
+            }
+          }
+        ],
+        "UNRESOLVED": [
+          {
+            "source_raw_hash": "d7cf6e0af01ed35744eed3359c809568ca9120eb876f839a53cc4c0cdcab8649",
+            "source_length": 22,
+            "source_shape": "99-99-9999; 99/99/9999",
+            "parsed": {
+              "state": "UNRESOLVED",
+              "precision": "RAW_ONLY"
+            }
+          },
+          {
+            "source_raw_hash": "aa6f25ff23c783c5a15ace0393df0b029cfaf73e53e34143e49d61a56e64e8a0",
+            "source_length": 22,
+            "source_shape": "99-99-9999 & 99/9/9999",
+            "parsed": {
+              "state": "UNRESOLVED",
+              "precision": "RAW_ONLY"
+            }
+          },
+          {
+            "source_raw_hash": "728c50a8b9d846766ea718faba5d80d7f7c433bb56b133e639b9564363a00f6e",
+            "source_length": 23,
+            "source_shape": "99-99-9999 aa 99/9/9999",
+            "parsed": {
+              "state": "UNRESOLVED",
+              "precision": "RAW_ONLY"
+            }
+          }
+        ]
+      }
+    },
+    "ĐÁNH GIÁ CUỐI": {
+      "state_counts": {
+        "KNOWN": 1294,
+        "MISSING": 239
+      },
+      "representative_safe_examples": {
+        "KNOWN": [
+          {
+            "source_raw_hash": "03955114231e47d5ee9111fa1d1715f7842b49be6a8ddb51b7e3af11fc4c6613",
+            "source_length": 3,
+            "source_shape": "aaa",
+            "parsed": {
+              "state": "KNOWN",
+              "value": "Đạt"
+            }
+          },
+          {
+            "source_raw_hash": "03955114231e47d5ee9111fa1d1715f7842b49be6a8ddb51b7e3af11fc4c6613",
+            "source_length": 3,
+            "source_shape": "aaa",
+            "parsed": {
+              "state": "KNOWN",
+              "value": "Đạt"
+            }
+          },
+          {
+            "source_raw_hash": "03955114231e47d5ee9111fa1d1715f7842b49be6a8ddb51b7e3af11fc4c6613",
+            "source_length": 3,
+            "source_shape": "aaa",
+            "parsed": {
+              "state": "KNOWN",
+              "value": "Đạt"
+            }
+          }
+        ],
+        "MISSING": [
+          {
+            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
+            "source_length": 1,
+            "source_shape": "-",
+            "parsed": {
+              "state": "MISSING"
+            }
+          },
+          {
+            "source_raw_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "source_length": 0,
+            "source_shape": "",
+            "parsed": {
+              "state": "MISSING"
+            }
+          },
+          {
+            "source_raw_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "source_length": 0,
+            "source_shape": "",
+            "parsed": {
+              "state": "MISSING"
+            }
+          }
+        ]
+      }
+    },
+    "HẠN KT TUÂN THỦ": {
+      "state_counts": {
+        "MISSING": 1125,
+        "PARTIAL": 408
+      },
+      "representative_safe_examples": {
+        "MISSING": [
+          {
+            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
+            "source_length": 1,
+            "source_shape": "-",
+            "parsed": {
+              "state": "MISSING"
+            }
+          },
+          {
+            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
+            "source_length": 1,
+            "source_shape": "-",
+            "parsed": {
+              "state": "MISSING"
+            }
+          },
+          {
+            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
+            "source_length": 1,
+            "source_shape": "-",
+            "parsed": {
+              "state": "MISSING"
+            }
+          }
+        ],
+        "PARTIAL": [
+          {
+            "source_raw_hash": "3f21590c04f8dd76aaba6a0b1285d1213d2c956887d54931562f7d686b2fe065",
+            "source_length": 25,
+            "source_shape": "9999-99-99 99:99:99+99:99",
+            "parsed": {
+              "state": "PARTIAL"
+            }
+          },
+          {
+            "source_raw_hash": "daaf43e26e1fd977db3288305032856af232fb104454235b61b25858cdb6f46f",
+            "source_length": 25,
+            "source_shape": "9999-99-99 99:99:99+99:99",
+            "parsed": {
+              "state": "PARTIAL"
+            }
+          },
+          {
+            "source_raw_hash": "7fb116b51bf5c9cc42990eed8c27ff53e60707ffd63b5dea38dd6805bd4112ad",
+            "source_length": 25,
+            "source_shape": "9999-99-99 99:99:99+99:99",
+            "parsed": {
+              "state": "PARTIAL"
+            }
+          }
+        ]
+      }
+    },
+    "T.tra viên": {
+      "state_counts": {
+        "KNOWN": 1293,
+        "MISSING": 240
+      },
+      "representative_safe_examples": {
+        "KNOWN": [
+          {
+            "source_raw_hash": "a5886d049999850ae3aed9d44cf039c0099d4cd2a8f33cdfc62c7665312dd611",
+            "source_length": 81,
+            "source_shape": "aaaaaa aaa aaaa, aa aaa aaaa aaa, aa aaaaa aaaaaa, aa aaa aaa aaa, aaaa aaaa aaaa",
+            "parsed": {
+              "state": "KNOWN",
+              "member_count": 1,
+              "role_codes": [
+                "LEADER"
+              ]
+            }
+          },
+          {
+            "source_raw_hash": "c4a8696d8aedfe2b21adeb779d2ddb78ba42883898d6cf8c66efd26157a02731",
+            "source_length": 68,
+            "source_shape": "aaaa aaa aaaa aaaa, aa aaa aaaa aaa, aaaa aaa aaaa aaaaa, aa aaaa aa",
+            "parsed": {
+              "state": "KNOWN",
+              "member_count": 1,
+              "role_codes": [
+                "LEADER"
+              ]
+            }
+          },
+          {
+            "source_raw_hash": "97c1f5b362d41b13588df8a0b1eedfb78c325e982977e7f32e446405d83d8de3",
+            "source_length": 64,
+            "source_shape": "aaaa aaa aaaa aaaa, aaaaaa aaa aaaa, aaaaaa aaaa aaa, aa aaaa aa",
+            "parsed": {
+              "state": "KNOWN",
+              "member_count": 1,
+              "role_codes": [
+                "LEADER"
+              ]
+            }
+          }
+        ],
+        "MISSING": [
+          {
+            "source_raw_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "source_length": 0,
+            "source_shape": "",
+            "parsed": {
+              "state": "MISSING",
+              "member_count": 0,
+              "role_codes": []
+            }
+          },
+          {
+            "source_raw_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "source_length": 0,
+            "source_shape": "",
+            "parsed": {
+              "state": "MISSING",
+              "member_count": 0,
+              "role_codes": []
+            }
+          },
+          {
+            "source_raw_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "source_length": 0,
+            "source_shape": "",
+            "parsed": {
+              "state": "MISSING",
+              "member_count": 0,
+              "role_codes": []
+            }
+          }
+        ]
+      }
+    },
+    "PHIẾU TRÌNH PCT": {
+      "state_counts": {
+        "KNOWN": 370,
+        "MISSING": 1150,
+        "UNRESOLVED": 13
+      },
+      "representative_safe_examples": {
+        "KNOWN": [
+          {
+            "source_raw_hash": "a1b8e35f575270c68c875bc650280628ff6cf891c47eb3a89c243ea363dfd1b9",
+            "source_length": 21,
+            "source_shape": "999/aa aaaa 99/9/9999",
+            "parsed": {
+              "state": "KNOWN"
+            }
+          },
+          {
+            "source_raw_hash": "e2b017f592a3204bea6166ef4f3f07dece4439daed7554d21fd32d62538eaca1",
+            "source_length": 21,
+            "source_shape": "999/aa aaaa 99/9/9999",
+            "parsed": {
+              "state": "KNOWN"
+            }
+          },
+          {
+            "source_raw_hash": "de674b11db6d6c7a25131fd642878974d5de37856ce06102ed4961cd2ec24bd2",
+            "source_length": 22,
+            "source_shape": "999/aa aaaa 99/99/9999",
+            "parsed": {
+              "state": "KNOWN"
+            }
+          }
+        ],
+        "MISSING": [
+          {
+            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
+            "source_length": 1,
+            "source_shape": "-",
+            "parsed": {
+              "state": "MISSING"
+            }
+          },
+          {
+            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
+            "source_length": 1,
+            "source_shape": "-",
+            "parsed": {
+              "state": "MISSING"
+            }
+          },
+          {
+            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
+            "source_length": 1,
+            "source_shape": "-",
+            "parsed": {
+              "state": "MISSING"
+            }
+          }
+        ],
+        "UNRESOLVED": [
+          {
+            "source_raw_hash": "9e0a90eb8451888513d4c61e065a0b9aee70e3324ed2688f80849d0003774b3c",
+            "source_length": 46,
+            "source_shape": "999/aa aaaa 99/9/9999; 999/aa aaaa 99/9/9999",
+            "parsed": {
+              "state": "UNRESOLVED"
+            }
+          },
+          {
+            "source_raw_hash": "a16e7b33c4a876f88c1210b1c742d292ab915af6407537ff93394574728c618b",
+            "source_length": 46,
+            "source_shape": "999/aa aaaa 99/9/9999 aa 999/aa aaaa 99/9/9999",
+            "parsed": {
+              "state": "UNRESOLVED"
+            }
+          },
+          {
+            "source_raw_hash": "e99964181cfe9e8aa0ae1ddae85cba4c9f391576b4987cd6bc0298e1002a5238",
+            "source_length": 44,
+            "source_shape": "999/aa aaaa 99/9/9999, 999/aa aaaa 99/9/9999",
+            "parsed": {
+              "state": "UNRESOLVED"
+            }
+          }
+        ]
+      }
+    },
+    "PHIẾU TRÌNH CT": {
+      "state_counts": {
+        "KNOWN": 315,
+        "MISSING": 1203,
+        "UNRESOLVED": 15
+      },
+      "representative_safe_examples": {
+        "KNOWN": [
+          {
+            "source_raw_hash": "8a95418f9ba5030bed23724826a989115188ddab2c163b442bf43754779ac7de",
+            "source_length": 21,
+            "source_shape": "99/aa aaaa 99/99/9999",
+            "parsed": {
+              "state": "KNOWN"
+            }
+          },
+          {
+            "source_raw_hash": "d8b2e03bcb53b1a858c53fe11cc1580e135b95ae8af5f634da468d3ac73fcf41",
+            "source_length": 21,
+            "source_shape": "999/aa aaaa 99/9/9999",
+            "parsed": {
+              "state": "KNOWN"
+            }
+          },
+          {
+            "source_raw_hash": "73848ca2e990b21152f2c981ce3c6a832479046623c2d61465972acf76ca7552",
+            "source_length": 22,
+            "source_shape": "999/aa aaaa 99/99/9999",
+            "parsed": {
+              "state": "KNOWN"
+            }
+          }
+        ],
+        "MISSING": [
+          {
+            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
+            "source_length": 1,
+            "source_shape": "-",
+            "parsed": {
+              "state": "MISSING"
+            }
+          },
+          {
+            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
+            "source_length": 1,
+            "source_shape": "-",
+            "parsed": {
+              "state": "MISSING"
+            }
+          },
+          {
+            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
+            "source_length": 1,
+            "source_shape": "-",
+            "parsed": {
+              "state": "MISSING"
+            }
+          }
+        ],
+        "UNRESOLVED": [
+          {
+            "source_raw_hash": "fa1aed09105339ad4490eb981747fda306812bf9029b40d34d76e73ba1aba2fc",
+            "source_length": 44,
+            "source_shape": "999/aa aaaa 99/9/9999 999/aa aaaa 99/9/9999",
+            "parsed": {
+              "state": "UNRESOLVED"
+            }
+          },
+          {
+            "source_raw_hash": "6294dcf9e4c668c5e59e5bc8ac77fd3102c2c0e36196508f3ee9fcc0109a1d38",
+            "source_length": 46,
+            "source_shape": "999/aa aaaa 99/99/9999; 999/aa aaaa 99/99/9999",
+            "parsed": {
+              "state": "UNRESOLVED"
+            }
+          },
+          {
+            "source_raw_hash": "7280ac09456e28ea249d353e6c38f04ce33db0b153af8f664801b5f4c1554953",
+            "source_length": 44,
+            "source_shape": "999/aa aaaa 99/9/9999; 999/aa aaaa 99/9/9999",
+            "parsed": {
+              "state": "UNRESOLVED"
+            }
+          }
+        ]
+      }
+    },
+    "ID CC GPs": {
+      "state_counts": {
+        "KNOWN": 1326,
+        "MISSING": 207
+      },
+      "representative_safe_examples": {
+        "KNOWN": [
+          {
+            "source_raw_hash": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+            "source_length": 1,
+            "source_shape": "9",
+            "parsed": {
+              "state": "KNOWN",
+              "legacy_certificate_id": 1
+            }
+          },
+          {
+            "source_raw_hash": "d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35",
+            "source_length": 1,
+            "source_shape": "9",
+            "parsed": {
+              "state": "KNOWN",
+              "legacy_certificate_id": 2
+            }
+          },
+          {
+            "source_raw_hash": "4e07408562bedb8b60ce05c1decfe3ad16b72230967de01f640b7e4729b49fce",
+            "source_length": 1,
+            "source_shape": "9",
+            "parsed": {
+              "state": "KNOWN",
+              "legacy_certificate_id": 3
+            }
+          }
+        ],
+        "MISSING": [
+          {
+            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
+            "source_length": 1,
+            "source_shape": "-",
+            "parsed": {
+              "state": "MISSING"
+            }
+          },
+          {
+            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
+            "source_length": 1,
+            "source_shape": "-",
+            "parsed": {
+              "state": "MISSING"
+            }
+          },
+          {
+            "source_raw_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "source_length": 0,
+            "source_shape": "",
+            "parsed": {
+              "state": "MISSING"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "guardrails": {
+    "database_mutated": false,
+    "workbook_mutated": false,
+    "importer_invoked": false
+  }
+}

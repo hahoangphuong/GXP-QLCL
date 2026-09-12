@@ -27,3 +27,8 @@ def test_parser_preserves_each_ordered_source_segment(value, expected):
 )
 def test_parser_keeps_sentinels_and_unresolved_values_distinct(value, state):
     assert parse_legacy_inspection_periods(value).state.value == state
+
+
+def test_segment_ordinals_are_one_based():
+    result = parse_legacy_inspection_periods("20, 21/01/2021")
+    assert [segment.ordinal for segment in result.segments] == [1, 2]

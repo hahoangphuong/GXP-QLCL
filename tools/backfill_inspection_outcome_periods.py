@@ -13,7 +13,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session
 
 from backend.app.db.enums import LegacyEntityType
-from backend.app.db.models.phase1 import Case, InspectionOutcome, LegacyIdMap
+from backend.app.db.models.phase1 import Case, InspectionOutcome, InspectionPeriodSegment, LegacyIdMap
 from backend.app.domain.phase2_import import normalize_row, parse_int
 from backend.app.domain.inspection_periods import InspectionPeriodSourceState, parse_legacy_inspection_periods
 from tools.audit_inspection_case_lifecycle_legacy import _date_morphology
@@ -53,9 +53,10 @@ def _source_rows_by_id(legacy_rows: list[dict[str, Any]]) -> dict[int, dict[str,
     return result
 
 
-def _case_record(case: Case, mappings: list[LegacyIdMap], outcomes: list[InspectionOutcome]) -> dict[str, Any]:
+def _case_record(case: Case, mappings: list[LegacyIdMap], outcomes: list[InspectionOutcome], segments: list[InspectionPeriodSegment]) -> dict[str, Any]:
     outcome_values = [
-        {"id": outcome.id, "inspected_on": outcome.inspected_on, "inspected_to_on": outcome.inspected_to_on}
+        {"id": outcome.id, "inspected_on": outcome.inspected_on, "inspected_to_on": outcome.inspected_to_on, "inspection_period_state": getattr(outcome, "inspection_period_state", None),
+         "inspection_period_segments": [{"ordinal": segment.ordinal, "started_on": segment.started_on, "ended_on": segment.ended_on} for segment in segments if segment.inspection_outcome_id == outcome.id]}
         for outcome in outcomes
     ]
     return {
@@ -83,7 +84,8 @@ def _case_projection(session: Session) -> list[dict[str, Any]]:
             select(LegacyIdMap).where(LegacyIdMap.target_table == "case", LegacyIdMap.target_entity_id == case.id)
         ).all()
         outcomes = session.scalars(select(InspectionOutcome).where(InspectionOutcome.case_id == case.id)).all()
-        result.append(_case_record(case, mappings, outcomes))
+        segments = session.scalars(select(InspectionPeriodSegment).where(InspectionPeriodSegment.inspection_outcome_id.in_([outcome.id for outcome in outcomes])).order_by(InspectionPeriodSegment.ordinal)).all() if outcomes else []
+        result.append(_case_record(case, mappings, outcomes, segments))
     return result
 
 
@@ -226,7 +228,8 @@ def _locked_case_projection(session: Session, legacy_id: int) -> list[dict[str, 
         outcomes = session.scalars(
             select(InspectionOutcome).where(InspectionOutcome.case_id == case.id).with_for_update()
         ).all()
-        result.append(_case_record(case, case_mappings, outcomes))
+        segments = session.scalars(select(InspectionPeriodSegment).where(InspectionPeriodSegment.inspection_outcome_id.in_([outcome.id for outcome in outcomes])).order_by(InspectionPeriodSegment.ordinal).with_for_update()).all() if outcomes else []
+        result.append(_case_record(case, case_mappings, outcomes, segments))
     return result
 
 
@@ -246,6 +249,8 @@ def _revalidate_locked_write(session: Session, record: dict[str, Any], raw: dict
     outcomes = matches[0].get("outcomes") or []
     if len(outcomes) != 1 or str(outcomes[0]["id"]) != record["outcome_id"]:
         raise BackfillInvariantError("inspection outcome identity changed before write")
+    if outcomes[0].get("inspection_period_segments"):
+        raise BackfillInvariantError("canonical inspection period segments exist; legacy two-column backfill is blocked")
     start = None if outcomes[0].get("inspected_on") is None else outcomes[0]["inspected_on"].isoformat()
     end = None if outcomes[0].get("inspected_to_on") is None else outcomes[0]["inspected_to_on"].isoformat()
     if start != record["current_start"] or end != record["current_end"]:

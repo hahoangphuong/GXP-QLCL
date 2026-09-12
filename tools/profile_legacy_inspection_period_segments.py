@@ -25,6 +25,7 @@ def profile(rows: list[dict[str, str]]) -> dict[str, Any]:
     shapes: Counter[str] = Counter()
     unresolved: Counter[str] = Counter()
     non_date_values: Counter[str] = Counter()
+    semantic_shapes: Counter[str] = Counter()
     examples: dict[str, list[int]] = defaultdict(list)
     valid_rows = 0
     max_segments = 0
@@ -42,6 +43,15 @@ def profile(rows: list[dict[str, str]]) -> dict[str, Any]:
             count = len(result.segments)
             max_segments = max(max_segments, count)
             segment_counts["4+" if count >= 4 else str(count)] += 1
+            ranges = sum(segment.started_on != segment.ended_on for segment in result.segments)
+            if count == 1:
+                semantic_shapes["ONE_CONTINUOUS_RANGE" if ranges else "ONE_SINGLE_DAY"] += 1
+            elif ranges == 0:
+                semantic_shapes["MULTIPLE_ISOLATED_SINGLE_DAYS"] += 1
+            elif ranges == count:
+                semantic_shapes["MULTIPLE_RANGES"] += 1
+            else:
+                semantic_shapes["MIXED_SINGLE_AND_RANGE"] += 1
         elif result.state == InspectionPeriodSourceState.UNRESOLVED:
             unresolved[f"{_shape(value)}|{result.diagnostic or 'unknown'}"] += 1
         elif result.state == InspectionPeriodSourceState.NON_DATE_EXPRESSION:
@@ -54,6 +64,7 @@ def profile(rows: list[dict[str, str]]) -> dict[str, Any]:
         "source_field": "db.ktra Ngày K.tra",
         "state_counts": dict(sorted(state_counts.items())),
         "known_segment_count_distribution": dict(sorted(segment_counts.items())),
+        "known_semantic_shape_counts": dict(sorted(semantic_shapes.items())),
         "max_segments": max_segments,
         "source_shapes": dict(sorted(shapes.items())),
         "example_legacy_ids_by_state": dict(sorted(examples.items())),

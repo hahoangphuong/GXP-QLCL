@@ -49,6 +49,16 @@ def test_single_day_safe_update_preserves_start_and_fills_equal_end():
     assert record["expected_post_end"] == "2011-10-20"
 
 
+def test_backfill_sees_canonical_segments_and_plans_no_compatibility_write():
+    plan = backfill.build_backfill_plan(
+        [_row()],
+        [_case(outcomes=[{"id": "outcome-41", "inspected_on": None, "inspected_to_on": None,
+                          "inspection_period_segments": [{"ordinal": 1, "started_on": date(2011, 10, 20), "ended_on": date(2011, 10, 21)}]}])],
+    )
+    assert _record(plan)["planner_status"] == "ALREADY_MATCHES"
+    assert plan["summary"]["writes_planned"] == 0  # type: ignore[index]
+
+
 def test_backfill_never_creates_missing_or_multiple_outcomes():
     missing = backfill.build_backfill_plan([_row()], [_case(outcomes=[])])
     assert _record(missing)["status"] == "BLOCKED_OUTCOME_CARDINALITY"

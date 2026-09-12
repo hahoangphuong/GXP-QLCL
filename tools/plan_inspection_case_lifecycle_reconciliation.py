@@ -779,7 +779,7 @@ def build_reconciliation_plan(legacy_rows: list[dict[str, Any]], canonical_cases
         current_end = outcome.get("inspected_to_on")
         canonical_segments = _canonical_period_pairs(outcome)
         actual_status = _date_reconciliation(actual_value, current_start, current_end)[1]
-        if len(source_segments) > 1 and source_segments == canonical_segments:
+        if source_segments and source_segments == canonical_segments:
             actual_status = "ALREADY_MATCHES"
         elif len(source_segments) > 1 and canonical_segments:
             actual_status = "CONFLICT_EXISTING_CANONICAL"

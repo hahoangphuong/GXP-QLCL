@@ -315,6 +315,7 @@ class InspectionOutcome(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Bas
     case_id: Mapped[str] = mapped_column(ForeignKey("case.id"), nullable=False, unique=True)
     inspected_on: Mapped[date | None] = mapped_column(Date)
     inspected_to_on: Mapped[date | None] = mapped_column(Date)
+    inspection_period_state: Mapped[str] = mapped_column(String(32), nullable=False, default="MISSING", server_default="MISSING")
     decision_reference: Mapped[str | None] = mapped_column(String(255))
     bbkt_reference: Mapped[str | None] = mapped_column(String(255))
     outcome_result: Mapped[str | None] = mapped_column(Text)
@@ -333,6 +334,7 @@ class InspectionPeriodSegment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     ended_on: Mapped[date] = mapped_column(Date, nullable=False)
     __table_args__ = (
         UniqueConstraint("inspection_outcome_id", "ordinal"),
+        CheckConstraint("ordinal >= 1", name="inspection_period_segment_ordinal_positive"),
         CheckConstraint("started_on <= ended_on", name="inspection_period_segment_date_order"),
     )
 

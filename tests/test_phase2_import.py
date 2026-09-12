@@ -1007,6 +1007,25 @@ def test_import_preserves_disconnected_inspection_segments_without_a_fake_envelo
         ]
 
 
+def test_import_preserves_each_zero_segment_source_state():
+    cases = {
+        "???": "PENDING_INPUT",
+        "-": "NOT_APPLICABLE",
+        "": "MISSING",
+        "Xét hồ sơ": "NON_DATE_EXPRESSION",
+        "24-01/2018": "UNRESOLVED",
+    }
+    for raw_value, expected_state in cases.items():
+        snapshot = sample_snapshot()
+        snapshot["db.ktra"][0]["Ngày K.tra"] = raw_value
+        engine = create_engine("sqlite:///:memory:", future=True)
+        with Session(engine) as session:
+            import_snapshot(session, snapshot)
+            outcome = session.scalars(select(InspectionOutcome)).one()
+            assert outcome.inspection_period_state == expected_state
+            assert session.scalars(select(InspectionPeriodSegment)).all() == []
+
+
 def test_import_snapshot_preserves_long_change_result_narratives_without_truncation():
     snapshot = sample_snapshot()
     long_result = "Biên bản thay đổi " + ("chi tiết; " * 40)

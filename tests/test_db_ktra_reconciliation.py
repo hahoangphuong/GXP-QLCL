@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import importlib.util
 import inspect
 import json
 from pathlib import Path
@@ -114,6 +115,57 @@ def test_repeatable_model_indexes_match_migration_intent():
     assert migration.count("op.drop_index(") == 1
     assert 'op.create_index("ix_inspection_decision_related_decision_id", "inspection_decision", ["related_decision_id"])' in migration
     assert 'op.drop_index("ix_inspection_decision_related_decision_id", table_name="inspection_decision")' in migration
+
+
+def _load_migration_0014():
+    path = Path("migrations/versions/20260913_0014_repeatable_semantics_timestamp_defaults.py")
+    spec = importlib.util.spec_from_file_location("migration_20260913_0014", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_repeatable_timestamp_defaults_match_models_and_follow_up_migration():
+    migration = _load_migration_0014()
+    migration_0013 = Path("migrations/versions/20260913_0013_repeatable_inspection_semantics.py").read_text(encoding="utf-8")
+    assert migration.revision == "20260913_0014"
+    assert migration.down_revision == "20260913_0013"
+    assert 'down_revision = "20260912_0012"' in migration_0013
+    for model in (InspectionDecision, InspectionMinutesRecord):
+        for column_name in ("created_at", "updated_at"):
+            column = model.__table__.c[column_name]
+            assert column.nullable is False
+            assert column.server_default is not None
+            assert getattr(column.type, "timezone", None) is True
+
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    class Recorder:
+        def alter_column(self, *args, **kwargs):
+            calls.append((args, kwargs))
+
+    migration.op = Recorder()
+    migration.upgrade()
+    assert [(args[0], args[1]) for args, _ in calls] == [
+        ("inspection_decision", "created_at"),
+        ("inspection_decision", "updated_at"),
+        ("inspection_minutes_record", "created_at"),
+        ("inspection_minutes_record", "updated_at"),
+    ]
+    assert all(kwargs["existing_nullable"] is False for _, kwargs in calls)
+    assert all(getattr(kwargs["existing_type"], "timezone", None) is True for _, kwargs in calls)
+    assert all(str(kwargs["server_default"]) == "(CURRENT_TIMESTAMP)" for _, kwargs in calls)
+
+    calls.clear()
+    migration.downgrade()
+    assert [(args[0], args[1]) for args, _ in calls] == [
+        ("inspection_decision", "created_at"),
+        ("inspection_decision", "updated_at"),
+        ("inspection_minutes_record", "created_at"),
+        ("inspection_minutes_record", "updated_at"),
+    ]
+    assert all(kwargs["server_default"] is None for _, kwargs in calls)
 
 
 def test_repeatable_rehearsal_comparison_requires_exact_existing_owners_without_writes():

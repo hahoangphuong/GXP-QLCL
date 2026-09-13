@@ -24,12 +24,42 @@ def test_unmatched_identity_stays_fail_closed_without_exact_alternate_id():
     assert item and item["classification"] == "MULTIPLE_CANDIDATES"
 
 
+def test_unmatched_identity_uses_canonical_inspection_period_timing_evidence():
+    row = {"ID": "7", "site_legacy_id_ref": "11", "inspection_gxp_type": "GMP", "inspected_at": "01/02-03/02/2026; 05/02/2026"}
+    item = audit._identity_row(row, {}, {})
+    assert item is not None
+    assert item["source_inspection_timing"] == {
+        "state": "KNOWN", "segment_count": 2, "source_shape": "99/99-99/99/9999; 99/99/9999",
+    }
+
+
 def test_team_and_approval_audit_never_synthesizes_identity_round_or_parent():
     rows = [{"ID": "1", "T.tra viên": "A, B", "PHIẾU TRÌNH PCT": "PCT-1 ngay 01/02/2026", "PHIẾU TRÌNH CT": "CT-1 ngay 02/02/2026"}]
     report = audit.build_audit(rows, {1: {"id": "case-1", "team_member_states": {"A": "UNRESOLVED", "B": "UNRESOLVED"}, "certificate_anomaly": None}}, cases_by_site_and_type={}, person_count=0, profile_count=0)
     assert report["team_identity_source_matrix"]["conclusion"] == "PERSONNEL_MIGRATION_REQUIRED"
     assert report["approval_source_semantics"]["PCT"]["SINGLE_UNORDERED_SUBMISSION"] == 1
     assert report["approval_source_semantics"]["CT"]["EXPLICIT_PARENT_REFERENCE_ABSENT"] == 1
+
+
+def test_multiple_pct_submissions_block_ct_single_candidate_conclusion():
+    rows = [{"ID": "1", "PHIẾU TRÌNH PCT": "PCT-1 ngay 01/02/2026; PCT-2 ngay 02/02/2026", "PHIẾU TRÌNH CT": "CT-1 ngay 03/02/2026"}]
+    report = audit.build_audit(rows, {}, cases_by_site_and_type={}, person_count=0, profile_count=0)
+    approvals = report["approval_source_semantics"]
+    assert approvals["PCT"]["MULTIPLE_SUBMISSIONS_PROVEN"] == 1
+    assert approvals["CT"]["MULTIPLE_PCT_SOURCE_CANDIDATES"] == 1
+    assert approvals["CT"]["EXACTLY_ONE_PCT_SOURCE_CANDIDATE"] == 0
+
+
+def test_ambiguous_team_identity_is_not_exact_identity_available():
+    rows = [{"ID": "1", "T.tra viên": "A"}]
+    report = audit.build_audit(
+        rows,
+        {1: {"team_member_states": {"A": "AMBIGUOUS"}}},
+        cases_by_site_and_type={}, person_count=2, profile_count=2,
+    )
+    matrix = report["team_identity_source_matrix"]
+    assert matrix["resolution_counts"] == {"AMBIGUOUS": 1, "EXACT_RESOLVED": 0, "UNRESOLVED": 0}
+    assert matrix["conclusion"] == "PERSONNEL_MIGRATION_REQUIRED"
 
 
 def test_post_batch4_integrity_reports_only_deterministic_source_mismatches():
@@ -58,10 +88,26 @@ def test_real_snapshot_uses_shared_vietnamese_source_keys():
     report = audit.build_audit(rows, {}, cases_by_site_and_type={}, person_count=0, profile_count=0)
     approvals = report["approval_source_semantics"]
     assert approvals["PCT"]["SOURCE_KNOWN"] == 371
+    assert approvals["PCT"]["MULTIPLE_SUBMISSIONS_PROVEN"] == 12
+    assert approvals["PCT"]["BLOCKED_PARSE_OTHER"] == 0
     assert approvals["CT"]["SOURCE_KNOWN"] == 315
     profile = report["blocked_parser"]
     assert profile["HẠN KT TUÂN THỦ"]["morphology_counts"]["KNOWN"] == 405
     assert sum(1 for row in rows if audit._parse_snapshot_field("ĐÁNH GIÁ CUỐI", row)["state"] == "KNOWN") == 1294
+
+
+def test_real_snapshot_inspection_period_evidence_preserves_ranges_and_segments():
+    rows = load_snapshot(SNAPSHOT)
+    identities = [item for row in rows if (item := audit._identity_row(row, {}, {})) is not None]
+    timing = [item["source_inspection_timing"] for item in identities]
+    assert any(item["state"] == "KNOWN" and item["segment_count"] == 1 for item in timing)
+    assert any(item["state"] == "KNOWN" and item["segment_count"] == 2 for item in timing)
+    assert any(item["state"] == "KNOWN" and item["segment_count"] >= 3 for item in timing)
+    assert any(
+        "-" in str(row.get("inspected_at"))
+        and audit._identity_row(row, {}, {})["source_inspection_timing"]["state"] == "KNOWN"
+        for row in rows
+    )
 
 
 def test_real_normalized_snapshot_rows_reach_final_and_deadline_integrity_paths():

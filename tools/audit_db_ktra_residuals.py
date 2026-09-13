@@ -25,6 +25,7 @@ from backend.app.domain.legacy_db_ktra_reconciliation import (
     parse_legacy_date, parse_legacy_inspection_decision, parse_legacy_minutes_recorded,
     parse_legacy_team, safe_evidence,
 )
+from backend.app.domain.inspection_periods import parse_legacy_inspection_periods
 from backend.app.domain.phase2_import import normalize_inspection_gxp_type, parse_int
 from tools.plan_db_ktra_reconciliation import (
     PARSERS, REHEARSAL_DATABASE, REQUIRED_REVISION, SNAPSHOT, load_snapshot,
@@ -125,14 +126,18 @@ def _identity_row(row: dict[str, Any], cases_by_legacy_id: dict[int, dict[str, A
     else:
         classification = "MULTIPLE_CANDIDATES"
     certificate_id = parse_legacy_certificate_id(row.get("ID CC GPs")).get("legacy_certificate_id")
-    inspection = parse_legacy_date(row.get("inspected_at"))
+    inspection = parse_legacy_inspection_periods(row.get("inspected_at"))
     return {
         "legacy_inspection_id": legacy_id,
         "source_site_legacy_id": site_legacy_id,
         "source_gxp_type": gxp_type,
         "source_certificate_id": certificate_id,
         "certificate_identity_count": (certificate_identity_counts or {}).get(certificate_id, 0) if certificate_id is not None else 0,
-        "source_inspection_timing": {"state": inspection["state"], "shape": _shape(row.get("inspected_at"))},
+        "source_inspection_timing": {
+            "state": inspection.state.value,
+            "segment_count": len(inspection.segments),
+            "source_shape": safe_evidence(row.get("inspected_at"))["source_shape"],
+        },
         "classification": classification,
         "exact_candidate_count": len(candidates),
         "canonical_candidate_ids": sorted(str(candidate["id"]) for candidate in candidates),
@@ -190,7 +195,7 @@ def _parser_profile(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _team_matrix(rows: list[dict[str, Any]], live: dict[int, dict[str, Any]], person_count: int, profile_count: int) -> dict[str, Any]:
     members = 0
-    states: Counter[str] = Counter()
+    states: Counter[str] = Counter({"EXACT_RESOLVED": 0, "UNRESOLVED": 0, "AMBIGUOUS": 0})
     for row in rows:
         legacy_id = parse_int(row.get("ID", ""))
         parsed = parse_legacy_team(row.get("T.tra viên"))
@@ -203,7 +208,11 @@ def _team_matrix(rows: list[dict[str, Any]], live: dict[int, dict[str, Any]], pe
         "identity_sources": {"person_rows": person_count, "inspector_profile_rows": profile_count, "matching_policy": "EXACT_SOURCE_DISPLAY_TEXT_ONLY"},
         "legacy_candidate_members": members,
         "resolution_counts": dict(sorted(states.items())),
-        "conclusion": "PERSONNEL_MIGRATION_REQUIRED" if states.get("UNRESOLVED", 0) else "EXACT_IDENTITY_AVAILABLE",
+        "conclusion": (
+            "EXACT_IDENTITY_AVAILABLE"
+            if states["UNRESOLVED"] == 0 and states["AMBIGUOUS"] == 0
+            else "PERSONNEL_MIGRATION_REQUIRED"
+        ),
     }
 
 
@@ -282,7 +291,7 @@ def build_audit(rows: list[dict[str, Any]], live: dict[int, dict[str, Any]], *, 
     identities = [item for row in rows if (item := _identity_row(row, live, cases_by_site_and_type, certificate_identity_counts)) is not None]
     parser = _parser_profile(rows)
     approvals: dict[str, Counter[str]] = {
-        "PCT": Counter({"SOURCE_KNOWN": 0, "SOURCE_MISSING": 0, "SOURCE_BLOCKED": 0, "SINGLE_UNORDERED_SUBMISSION": 0, "COMPLETION_EVIDENCE_ABSENT": 0, "COMPLETION_EVIDENCE_PRESENT": 0}),
+        "PCT": Counter({"SOURCE_KNOWN": 0, "SOURCE_MISSING": 0, "SOURCE_BLOCKED": 0, "SINGLE_UNORDERED_SUBMISSION": 0, "MULTIPLE_SUBMISSIONS_PROVEN": 0, "BLOCKED_PARSE_OTHER": 0, "COMPLETION_EVIDENCE_ABSENT": 0, "COMPLETION_EVIDENCE_PRESENT": 0}),
         "CT": Counter({"SOURCE_KNOWN": 0, "SOURCE_MISSING": 0, "SOURCE_BLOCKED": 0, "EXACTLY_ONE_PCT_SOURCE_CANDIDATE": 0, "MULTIPLE_PCT_SOURCE_CANDIDATES": 0, "LACKS_PCT_SOURCE": 0, "EXPLICIT_PARENT_REFERENCE_PRESENT": 0, "EXPLICIT_PARENT_REFERENCE_ABSENT": 0}),
     }
     certificate_anomalies: list[dict[str, Any]] = []
@@ -296,8 +305,17 @@ def build_audit(rows: list[dict[str, Any]], live: dict[int, dict[str, Any]], *, 
         if pct["state"] == "KNOWN":
             approvals["PCT"]["SINGLE_UNORDERED_SUBMISSION"] += 1
             approvals["PCT"]["COMPLETION_EVIDENCE_ABSENT"] += 1
+        elif pct.get("submission_count", 0) > 1:
+            approvals["PCT"]["MULTIPLE_SUBMISSIONS_PROVEN"] += 1
+        elif pct["state"] != "MISSING":
+            approvals["PCT"]["BLOCKED_PARSE_OTHER"] += 1
         if ct["state"] == "KNOWN":
-            approvals["CT"]["EXACTLY_ONE_PCT_SOURCE_CANDIDATE" if pct["state"] == "KNOWN" else "LACKS_PCT_SOURCE"] += 1
+            if pct["state"] == "KNOWN":
+                approvals["CT"]["EXACTLY_ONE_PCT_SOURCE_CANDIDATE"] += 1
+            elif pct.get("submission_count", 0) > 1:
+                approvals["CT"]["MULTIPLE_PCT_SOURCE_CANDIDATES"] += 1
+            else:
+                approvals["CT"]["LACKS_PCT_SOURCE"] += 1
             approvals["CT"]["EXPLICIT_PARENT_REFERENCE_ABSENT"] += 1
         certificate = live.get(legacy_id, {}).get("certificate_anomaly")
         if certificate:

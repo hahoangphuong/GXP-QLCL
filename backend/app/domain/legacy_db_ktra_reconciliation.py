@@ -158,19 +158,36 @@ def parse_legacy_team(value: object) -> dict[str, Any]:
 
 def parse_legacy_approval_submission(value: object) -> dict[str, Any]:
     raw = "" if value is None else str(value).strip()
+    result: dict[str, Any] = {
+        "state": "MISSING",
+        "reference": None,
+        "submitted_on": None,
+        "submitted_time": None,
+        "submission_count": 0,
+        "raw": raw,
+    }
     if raw in _SENTINELS:
-        return {"state": "MISSING", "reference": None, "submitted_on": None, "submitted_time": None, "raw": raw}
+        return result
     parsed_date, parsed_time, precision, source_format, count, span = _single_temporal(raw)
+    result["submission_count"] = count
     if count > 1:
-        return {"state": "UNRESOLVED", "reference": None, "submitted_on": None, "submitted_time": None, "raw": raw}
+        return {**result, "state": "UNRESOLVED"}
     reference = _without_temporal(raw, span).strip(" ,;:-()\t")
     # The snapshot proves the same date connector grammar as Q. định.
     reference = re.sub(r"\b(?:ngày|ngay)\b", "", reference, flags=re.IGNORECASE).strip(" ,;:-()\t")
     if parsed_date is None and not reference:
-        return {"state": "PARTIAL", "reference": None, "submitted_on": None, "submitted_time": None, "raw": raw}
+        return {**result, "state": "PARTIAL"}
     if count == 1 and parsed_date is None:
-        return {"state": "PARTIAL", "reference": reference or None, "submitted_on": None, "submitted_time": None, "raw": raw}
-    return {"state": "KNOWN", "reference": reference or None, "submitted_on": parsed_date, "submitted_time": parsed_time, "precision": precision, "source_format": source_format, "raw": raw}
+        return {**result, "state": "PARTIAL", "reference": reference or None}
+    return {
+        **result,
+        "state": "KNOWN",
+        "reference": reference or None,
+        "submitted_on": parsed_date,
+        "submitted_time": parsed_time,
+        "precision": precision,
+        "source_format": source_format,
+    }
 
 
 def parse_legacy_certificate_id(value: object) -> dict[str, Any]:

@@ -21,7 +21,7 @@ profile is evidence for a separately approved rehearsal apply batch.
 | `ĐÁNH GIÁ CUỐI` | 1,294 non-sentinel values and 239 missing values; it remains distinct from the initial outcome. |
 | `HẠN KT TUÂN THỦ` | 405 `KNOWN`, 3 `PARTIAL`, and 1,125 missing. Proven ISO timestamps contribute their source calendar date only; no workflow behavior is inferred from clock time or offset. |
 | `T.tra viên` | 1,293 parseable ordered display lists and 240 missing values. The full profile proves 1,290 comma-only lists and 3 single-name values; no newline, semicolon, slash, or mixed delimiter appears. Ordinals map to `LEADER`, `SECRETARY`, then `MEMBER`; identity resolution remains exact-only. |
-| PCT / CT | PCT: 370 `KNOWN`, 13 `UNRESOLVED`, 1,150 missing. CT: 315 `KNOWN`, 15 `UNRESOLVED`, 1,203 missing. Neither parser fabricates completion, rounds, or CT parentage. |
+| PCT / CT | PCT: 371 `KNOWN`, 12 `UNRESOLVED`, 1,150 missing. CT: 315 `KNOWN`, 15 `UNRESOLVED`, 1,203 missing. The proven `ngày`/`ngay` date connector is removed from the split reference only; raw source remains provenance. Neither parser fabricates completion, rounds, or CT parentage. |
 | `ID CC GPs` | 1,326 exact integer candidates and 207 missing values. Future linking additionally requires unique certificate and case/site/type compatibility. |
 
 ## Future Comparison
@@ -39,11 +39,16 @@ run did not receive `DATABASE_URL`, so its plan/contamination artifacts record
   with `CaseAssessment.assessment_result` is evidence of old-owner
   contamination, not authorization to clear it.
 - `Q. định` targets only split `InspectionPlan` fields; legacy application and
-  outcome compatibility fields remain report-only.
+  outcome compatibility fields remain report-only. Their contamination checks
+  compare the full raw composite, matching the historical importer source.
 - `B. bản` targets only minutes date/time/raw provenance and never
   `inspected_on`, `inspected_to_on`, or period segments.
 - No Person, InspectorProfile, certificate, approval parent, or CAPA completion
   is synthesized from source text.
+- Team evidence records each member's ordinal, role, safe source evidence, and
+  exactly one resolved `person_id` or `inspector_profile_id`; cross-kind matches
+  are ambiguous. Approval evidence retains every canonical stage/round and does
+  not guess which round a legacy source record represents.
 - The read-only comparison emits fact-level evidence for results, decisions,
   minutes, final evaluation, compliance due date, ordered team members, PCT/CT,
   and certificate linkage. It separately quantifies all four historical

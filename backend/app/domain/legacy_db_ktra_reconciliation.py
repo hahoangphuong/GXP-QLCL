@@ -164,6 +164,8 @@ def parse_legacy_approval_submission(value: object) -> dict[str, Any]:
     if count > 1:
         return {"state": "UNRESOLVED", "reference": None, "submitted_on": None, "submitted_time": None, "raw": raw}
     reference = _without_temporal(raw, span).strip(" ,;:-()\t")
+    # The snapshot proves the same date connector grammar as Q. định.
+    reference = re.sub(r"\b(?:ngày|ngay)\b", "", reference, flags=re.IGNORECASE).strip(" ,;:-()\t")
     if parsed_date is None and not reference:
         return {"state": "PARTIAL", "reference": None, "submitted_on": None, "submitted_time": None, "raw": raw}
     if count == 1 and parsed_date is None:

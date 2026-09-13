@@ -3,8 +3,10 @@ from __future__ import annotations
 from datetime import date
 import inspect
 import json
+from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
 from backend.app.domain.legacy_db_ktra_reconciliation import (
     parse_legacy_approval_submission,
@@ -14,6 +16,7 @@ from backend.app.domain.legacy_db_ktra_reconciliation import (
     parse_legacy_team,
 )
 from tools import plan_db_ktra_reconciliation as planner
+from backend.app.services.workflow import CaseWorkflowService
 
 
 def test_snapshot_guard_fails_before_outputs(tmp_path):
@@ -97,6 +100,9 @@ def test_full_snapshot_profile_proves_iso_and_comma_team_morphologies_are_not_mi
     assert profile["fields"]["HẠN KT TUÂN THỦ"]["state_counts"]["KNOWN"] >= 405
     assert profile["team_segmentation"]["delimiter_counts"] == {"comma": 1290, "none": 3}
     assert profile["team_segmentation"]["candidate_member_count_distribution"].get(1, 0) == 3
+    for field in ("PHIẾU TRÌNH PCT", "PHIẾU TRÌNH CT"):
+        for example in profile["fields"][field]["representative_safe_examples"].get("KNOWN", []):
+            assert not example["parsed"]["reference"].lower().endswith(("ngày", "ngay"))
 
 
 def test_team_identity_and_certificate_compatibility_fail_closed():
@@ -110,6 +116,51 @@ def test_team_identity_and_certificate_compatibility_fail_closed():
     ct = planner._approval_fact(9, case, "CT", parse_legacy_approval_submission("2/CT ngay 24/08/2016"))
     assert pct["classification"] == "SAFE_SUBMISSION_FACT"
     assert ct["classification"] == "BLOCKED_PARENT_RELATION"
+
+
+def test_decision_contamination_uses_full_composite_not_split_reference():
+    raw = "368/QĐ-QLD ngày 24/08/2016"
+    report = planner.build_comparison_plan([{"ID": "1", "decision_reference": raw}], {1: {"id": "case-1", "outcome": {"decision_reference": raw}, "application": {"dossier_reference": raw}, "assessment": {}, "plan": {}}})
+    facts = {fact["fact"]: fact for fact in report["facts"]}
+    assert facts["application_dossier_reference_contamination"]["classification"] == "CONTAMINATED_EXACT_COPY"
+    assert facts["outcome_decision_reference_contamination"]["classification"] == "CONTAMINATED_EXACT_COPY"
+    report = planner.build_comparison_plan([{"ID": "1", "decision_reference": raw}], {1: {"id": "case-1", "outcome": {"decision_reference": "368/QĐ-QLD"}, "application": {}, "assessment": {}, "plan": {}}})
+    assert {fact["fact"]: fact for fact in report["facts"]}["outcome_decision_reference_contamination"]["classification"] == "TARGET_DIFFERENT"
+
+
+def test_approval_reference_connector_and_rounds_are_preserved_without_inference():
+    parsed = parse_legacy_approval_submission("418/CL ngày 17/8/2019")
+    assert parsed["reference"] == "418/CL" and parsed["raw"] == "418/CL ngày 17/8/2019"
+    case = {"id": "case-1", "submissions": {"PCT": [{"stage": "PCT", "round_no": 1, "reference": "418/CL", "submitted_on": date(2019, 8, 17), "submitted_time": None}, {"stage": "PCT", "round_no": 2, "reference": "418/CL", "submitted_on": date(2019, 8, 17), "submitted_time": None}]}}
+    fact = planner._approval_fact(1, case, "PCT", parsed)
+    assert fact["classification"] == "MANUAL_REVIEW"
+    assert [item["round_no"] for item in fact["canonical_submission_rounds"]] == [1, 2]
+
+
+def test_write_grade_team_mapping_and_contamination_denominators():
+    parsed = parse_legacy_team("Person, Profile")
+    index = {"Person": {("person", "person-id")}, "Profile": {("inspector_profile", "profile-id")}}
+    resolution = planner._team_resolution(parsed, index, 0)
+    assert [item["resolution_state"] for item in resolution["members"]] == ["RESOLVED_PERSON", "RESOLVED_INSPECTOR_PROFILE"]
+    assert resolution["members"][0]["person_id"] == "person-id"
+    assert resolution["members"][1]["inspector_profile_id"] == "profile-id"
+    ambiguous = planner._team_resolution(parse_legacy_team("Name"), {"Name": {("person", "a"), ("inspector_profile", "b")}}, 0)
+    assert ambiguous["ambiguous"] == 1
+    report = planner.build_comparison_plan([{"ID": "1", "assessment_result": "-"}], {1: {"id": "case-1", "outcome": {}, "assessment": {}, "application": {}, "plan": {}}})
+    summary = report["contamination"]["assessment_result_contamination"]
+    assert summary["source_known_rows"] == 0 and summary["safe_to_clean_later_count"] == 0
+
+
+def test_certificate_planner_uses_runtime_case_site_and_type_invariants():
+    runtime = object.__new__(CaseWorkflowService)
+    case_model = SimpleNamespace(site_id="site-1", gxp_type="GMP")
+    runtime._validate_certificate_case_link(site_id="site-1", case=case_model, certificate_type="GMP", issuance_basis="inspection_case")
+    case = {"id": "case-1", "site_id": "site-1", "gxp_type": "GMP", "certificate_by_legacy_id": {"legacy_certificate_id": 1, "case_id": None, "site_id": "site-1", "certificate_type": "GMP"}}
+    assert planner._certificate_fact(1, case, planner.parse_legacy_certificate_id("1"))["classification"] == "SAFE_LINK"
+    with pytest.raises(HTTPException, match="certificate_type"):
+        runtime._validate_certificate_case_link(site_id="site-1", case=case_model, certificate_type="GLP", issuance_basis="inspection_case")
+    case["certificate_by_legacy_id"]["certificate_type"] = "GLP"
+    assert planner._certificate_fact(1, case, planner.parse_legacy_certificate_id("1"))["classification"] == "BLOCKED_TYPE_MISMATCH"
 
 
 def test_readonly_guard_refuses_unsafe_target_and_contains_no_write_sql():

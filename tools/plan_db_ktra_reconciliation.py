@@ -182,22 +182,26 @@ def _contamination_fact(legacy_id: int, case: dict[str, Any], name: str, parsed:
 
 
 def _approval_fact(legacy_id: int, case: dict[str, Any], stage: str, parsed: dict[str, Any]) -> dict[str, Any]:
-    current = (case.get("submissions") or {}).get(stage)
+    current_rows = list((case.get("submissions") or {}).get(stage, []))
+    deterministic_matches = [item for item in current_rows if all(item.get(key) == parsed.get(key) for key in ("reference", "submitted_on", "submitted_time"))]
     if parsed["state"] != "KNOWN":
         classification = "MISSING_SOURCE" if parsed["state"] == "MISSING" else "BLOCKED_PARSE"
-    elif current is None:
+    elif not current_rows:
         classification = "SAFE_SUBMISSION_FACT"
-    elif all(current.get(key) == parsed.get(key) for key in ("reference", "submitted_on", "submitted_time")):
+    elif len(deterministic_matches) == 1 and len(current_rows) == 1:
         classification = "ALREADY_MATCHES"
+    elif len(deterministic_matches) > 1 or len(current_rows) > 1:
+        classification = "MANUAL_REVIEW"
     else:
         classification = "BLOCKED_EXISTING_CANONICAL_CONFLICT"
     blocker = "completion and parent linkage are not inferred from legacy source"
     if stage == "CT" and parsed["state"] == "KNOWN":
-        classification = "BLOCKED_PARENT_RELATION" if current is None else classification
+        classification = "BLOCKED_PARENT_RELATION" if not current_rows else classification
         blocker = "CT parent relation is not inferred from legacy source"
     return {
-        **_fact(legacy_id, case, f"{stage.lower()}_submission", parsed, parsed.get("reference"), None if current is None else current.get("reference"), "InspectionApprovalSubmission", blocker),
-        "classification": classification, "future_action": "review_only" if classification.startswith("BLOCKED") else "write_structured_owner",
+        **_fact(legacy_id, case, f"{stage.lower()}_submission", parsed, parsed.get("reference"), None if not current_rows else current_rows[0].get("reference"), "InspectionApprovalSubmission", blocker),
+        "classification": classification, "future_action": "review_only" if classification.startswith("BLOCKED") or classification == "MANUAL_REVIEW" else "write_structured_owner",
+        "canonical_submission_rounds": [{"stage": item.get("stage"), "round_no": item.get("round_no")} for item in current_rows],
     }
 
 
@@ -214,7 +218,8 @@ def _team_fact(legacy_id: int, case: dict[str, Any], parsed: dict[str, Any]) -> 
     return {
         **_fact(legacy_id, case, "inspection_team", parsed, len(parsed.get("members", [])), resolution.get("current_member_count"), "InspectionTeam/InspectionTeamMember", "ordered source names require exact Person or InspectorProfile identity"),
         "classification": classification, "future_action": "review_only" if classification != "SAFE_ORDERED_EXPANSION" else "write_structured_owner",
-        "identity_resolution": {key: resolution.get(key, 0) for key in ("resolved", "unresolved", "ambiguous", "current_member_count")},
+        "identity_resolution": {key: resolution.get(key, 0) for key in ("resolved_person", "resolved_inspector_profile", "unresolved", "ambiguous", "current_member_count")},
+        "member_resolution": resolution.get("members", []),
     }
 
 
@@ -240,28 +245,39 @@ def _certificate_fact(legacy_id: int, case: dict[str, Any], parsed: dict[str, An
     }
 
 
-def _team_resolution(parsed: dict[str, Any], identity_index: dict[str, set[str]], current_member_count: int) -> dict[str, int]:
-    resolved = unresolved = ambiguous = 0
+def _team_resolution(parsed: dict[str, Any], identity_index: dict[str, set[tuple[str, str]]], current_member_count: int) -> dict[str, Any]:
+    resolved_person = resolved_profile = unresolved = ambiguous = 0
+    members: list[dict[str, Any]] = []
     for member in parsed.get("members", []):
         matches = identity_index.get(member["display_name"], set())
         if len(matches) == 1:
-            resolved += 1
+            kind, identifier = next(iter(matches))
+            state = "RESOLVED_PERSON" if kind == "person" else "RESOLVED_INSPECTOR_PROFILE"
+            resolved_person += kind == "person"
+            resolved_profile += kind == "inspector_profile"
+            members.append({"ordinal": member["ordinal"], "role_code": member["role_code"], **safe_evidence(member["display_name"]), "resolution_state": state, f"{kind}_id": identifier})
         elif not matches:
             unresolved += 1
+            members.append({"ordinal": member["ordinal"], "role_code": member["role_code"], **safe_evidence(member["display_name"]), "resolution_state": "UNRESOLVED"})
         else:
             ambiguous += 1
-    return {"resolved": resolved, "unresolved": unresolved, "ambiguous": ambiguous, "current_member_count": current_member_count}
+            members.append({"ordinal": member["ordinal"], "role_code": member["role_code"], **safe_evidence(member["display_name"]), "resolution_state": "AMBIGUOUS"})
+    return {"resolved_person": resolved_person, "resolved_inspector_profile": resolved_profile, "unresolved": unresolved, "ambiguous": ambiguous, "current_member_count": current_member_count, "members": members}
 
 
 def _contamination_summary(facts: list[dict[str, Any]], fact_name: str) -> dict[str, int]:
     selected = [fact for fact in facts if fact["fact"] == fact_name]
+    known = [fact for fact in selected if fact["source_state"] == "KNOWN"]
     return {
-        "matched_source_rows": len(selected), "target_rows_present": sum(fact["current_canonical_value"] is not None for fact in selected),
-        "exact_equality_count": sum(fact["classification"] == "CONTAMINATED_EXACT_COPY" for fact in selected),
-        "target_null_count": sum(fact["classification"] == "TARGET_NULL" for fact in selected),
-        "differing_count": sum(fact["classification"] == "TARGET_DIFFERENT" for fact in selected),
-        "safe_to_clean_later_count": sum(fact["classification"] == "CONTAMINATED_EXACT_COPY" for fact in selected),
-        "review_required_count": sum(fact["classification"] != "CONTAMINATED_EXACT_COPY" for fact in selected),
+        "total_exact_case_matches": len(selected), "source_known_rows": len(known),
+        "source_missing_rows": sum(fact["source_state"] == "MISSING" for fact in selected),
+        "source_blocked_parse_rows": sum(fact["source_state"] not in {"KNOWN", "MISSING"} for fact in selected),
+        "target_rows_present_for_known_source": sum(fact["current_canonical_value"] is not None for fact in known),
+        "exact_equality_count_for_known_source": sum(fact["classification"] == "CONTAMINATED_EXACT_COPY" for fact in known),
+        "target_null_count_for_known_source": sum(fact["classification"] == "TARGET_NULL" for fact in known),
+        "differing_count_for_known_source": sum(fact["classification"] == "TARGET_DIFFERENT" for fact in known),
+        "safe_to_clean_later_count": sum(fact["classification"] == "CONTAMINATED_EXACT_COPY" for fact in known),
+        "review_required_known_source_count": sum(fact["classification"] != "CONTAMINATED_EXACT_COPY" for fact in known),
     }
 
 
@@ -288,8 +304,8 @@ def build_comparison_plan(rows: list[dict[str, Any]], canonical_by_legacy_id: di
             _fact(legacy_id, case, "decision_reference", decision, decision.get("decision_reference"), plan.get("decision_reference"), "InspectionPlan.decision_reference", "Q. định split reference"),
             _fact(legacy_id, case, "decision_date", decision, decision.get("decision_date"), plan.get("decision_date"), "InspectionPlan.decision_date", "Q. định split date"),
             _fact(legacy_id, case, "decision_legacy_raw", decision, decision.get("raw"), plan.get("decision_legacy_raw"), "InspectionPlan.decision_legacy_raw", "raw provenance only"),
-            _contamination_fact(legacy_id, case, "application_dossier_reference_contamination", decision, decision.get("decision_reference"), application.get("dossier_reference"), "CaseApplication.dossier_reference", "Q. định is not an application source"),
-            _contamination_fact(legacy_id, case, "outcome_decision_reference_contamination", decision, decision.get("decision_reference"), outcome.get("decision_reference"), "InspectionOutcome.decision_reference", "Q. định belongs to InspectionPlan"),
+            _contamination_fact(legacy_id, case, "application_dossier_reference_contamination", decision, decision.get("raw"), application.get("dossier_reference"), "CaseApplication.dossier_reference", "historical importer copied full Q. định composite, not its split reference"),
+            _contamination_fact(legacy_id, case, "outcome_decision_reference_contamination", decision, decision.get("raw"), outcome.get("decision_reference"), "InspectionOutcome.decision_reference", "historical importer copied full Q. định composite, not its split reference"),
             _fact(legacy_id, case, "minutes_recorded_on", minutes, minutes.get("recorded_on"), outcome.get("minutes_recorded_on"), "InspectionOutcome.minutes_recorded_on", "B. bản minutes date only"),
             _fact(legacy_id, case, "minutes_recorded_time", minutes, minutes.get("recorded_time"), outcome.get("minutes_recorded_time"), "InspectionOutcome.minutes_recorded_time", "B. bản local clock time only"),
             _contamination_fact(legacy_id, case, "outcome_bbkt_reference_contamination", minutes, minutes.get("raw"), outcome.get("bbkt_reference"), "InspectionOutcome.bbkt_reference", "B. bản raw compatibility field is report-only"),
@@ -300,7 +316,8 @@ def build_comparison_plan(rows: list[dict[str, Any]], canonical_by_legacy_id: di
             _approval_fact(legacy_id, case, "CT", parse_legacy_approval_submission(row.get("PHIẾU TRÌNH CT"))),
             _certificate_fact(legacy_id, case, parse_legacy_certificate_id(row.get("ID CC GPs"))),
         ])
-    return {"schema_version": "db-ktra-reconciliation-plan/v1", "comparison_status": "COMPARED", "facts": facts, "summary": {"legacy_rows": sum(1 for row in rows if parse_int(row.get("ID", "")) is not None), "classification_counts": dict(Counter(fact["classification"] for fact in facts))}, "contamination": {name: _contamination_summary(facts, name) for name in ("assessment_result_contamination", "application_dossier_reference_contamination", "outcome_decision_reference_contamination", "outcome_bbkt_reference_contamination")}, "guardrails": {"database_mutated": False, "write_plan_only": True}}
+    team_facts = [fact for fact in facts if fact["fact"] == "inspection_team"]
+    return {"schema_version": "db-ktra-reconciliation-plan/v1", "comparison_status": "COMPARED", "facts": facts, "summary": {"legacy_rows": sum(1 for row in rows if parse_int(row.get("ID", "")) is not None), "classification_counts": dict(Counter(fact["classification"] for fact in facts)), "team_identity_resolution": {"source_teams": len(team_facts), "resolved_person_count": sum(fact.get("identity_resolution", {}).get("resolved_person", 0) for fact in team_facts), "resolved_inspector_profile_count": sum(fact.get("identity_resolution", {}).get("resolved_inspector_profile", 0) for fact in team_facts), "unresolved_count": sum(fact.get("identity_resolution", {}).get("unresolved", 0) for fact in team_facts), "ambiguous_count": sum(fact.get("identity_resolution", {}).get("ambiguous", 0) for fact in team_facts), "fully_writeable_teams": sum(fact["classification"] == "SAFE_ORDERED_EXPANSION" for fact in team_facts)}}, "contamination": {name: _contamination_summary(facts, name) for name in ("assessment_result_contamination", "application_dossier_reference_contamination", "outcome_decision_reference_contamination", "outcome_bbkt_reference_contamination")}, "guardrails": {"database_mutated": False, "write_plan_only": True}}
 
 
 def run_read_only_comparison(database_url: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -326,23 +343,22 @@ def run_read_only_comparison(database_url: str, rows: list[dict[str, Any]]) -> d
         team_members: dict[str, list[InspectionTeamMember]] = defaultdict(list)
         for item in session.scalars(select(InspectionTeamMember).where(InspectionTeamMember.team_id.in_(team_ids))):
             team_members[item.team_id].append(item)
-        submissions: dict[str, dict[str, InspectionApprovalSubmission]] = defaultdict(dict)
+        submissions: dict[str, dict[str, list[InspectionApprovalSubmission]]] = defaultdict(lambda: defaultdict(list))
         for item in session.scalars(select(InspectionApprovalSubmission).where(InspectionApprovalSubmission.case_id.in_(case_ids))):
-            if item.round_no == 1:
-                submissions[item.case_id][item.stage] = item
+            submissions[item.case_id][item.stage].append(item)
         certificate_ids = {parse_legacy_certificate_id(row.get("ID CC GPs")).get("legacy_certificate_id") for row in rows}
         certificates: dict[int, list[Certificate]] = defaultdict(list)
         for item in session.scalars(select(Certificate).where(Certificate.legacy_certificate_id.in_({value for value in certificate_ids if value is not None}))):
             if item.legacy_certificate_id is not None:
                 certificates[item.legacy_certificate_id].append(item)
-        identity_index: dict[str, set[str]] = defaultdict(set)
+        identity_index: dict[str, set[tuple[str, str]]] = defaultdict(set)
         for person in session.scalars(select(Person)):
-            identity_index[person.full_name].add(person.id)
+            identity_index[person.full_name].add(("person", person.id))
             if person.display_name:
-                identity_index[person.display_name].add(person.id)
+                identity_index[person.display_name].add(("person", person.id))
         for profile in session.scalars(select(InspectorProfile)):
             if profile.legacy_display_text:
-                identity_index[profile.legacy_display_text].add(profile.person_id)
+                identity_index[profile.legacy_display_text].add(("inspector_profile", profile.id))
         canonical: dict[int, dict[str, Any]] = {}
         for case in cases:
             application, assessment, plan, outcome = applications.get(case.id), assessments.get(case.id), plans.get(case.id), outcomes.get(case.id)
@@ -352,8 +368,8 @@ def run_read_only_comparison(database_url: str, rows: list[dict[str, Any]]) -> d
                 "application": None if application is None else {"dossier_reference": application.dossier_reference},
                 "assessment": None if assessment is None else {"assessment_result": assessment.assessment_result},
                 "plan": None if plan is None else {"decision_reference": plan.decision_reference, "decision_date": plan.decision_date, "decision_legacy_raw": plan.decision_legacy_raw},
-                "submissions": {stage: {"reference": item.reference, "submitted_on": item.submitted_on, "submitted_time": item.submitted_time} for stage, item in submissions.get(case.id, {}).items()},
-                "team_resolution": {"resolved": 0, "unresolved": 0, "ambiguous": 0, "current_member_count": len(team_members.get(team.id, [])) if team else 0},
+                "submissions": {stage: [{"stage": item.stage, "round_no": item.round_no, "reference": item.reference, "submitted_on": item.submitted_on, "submitted_time": item.submitted_time} for item in sorted(items, key=lambda value: value.round_no)] for stage, items in submissions.get(case.id, {}).items()},
+                "team_resolution": {"resolved_person": 0, "resolved_inspector_profile": 0, "unresolved": 0, "ambiguous": 0, "current_member_count": len(team_members.get(team.id, [])) if team else 0, "members": []},
                 "outcome": None if outcome is None else {
                     "outcome_result": outcome.outcome_result,
                     "final_evaluation": outcome.final_evaluation,

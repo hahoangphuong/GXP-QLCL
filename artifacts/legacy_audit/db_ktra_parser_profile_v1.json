@@ -551,7 +551,7 @@
               "state": "KNOWN",
               "precision": "DATE_ONLY",
               "source_format": "DMY_DATE",
-              "reference": "418/CL ngày",
+              "reference": "418/CL",
               "submitted_on": "2019-08-17"
             }
           },
@@ -563,7 +563,7 @@
               "state": "KNOWN",
               "precision": "DATE_ONLY",
               "source_format": "DMY_DATE",
-              "reference": "152/Cl ngày",
+              "reference": "152/Cl",
               "submitted_on": "2019-03-26"
             }
           },
@@ -575,7 +575,7 @@
               "state": "KNOWN",
               "precision": "DATE_ONLY",
               "source_format": "DMY_DATE",
-              "reference": "507/CL ngày",
+              "reference": "507/CL",
               "submitted_on": "2019-10-11"
             }
           }
@@ -650,7 +650,7 @@
               "state": "KNOWN",
               "precision": "DATE_ONLY",
               "source_format": "DMY_DATE",
-              "reference": "68/CL ngày",
+              "reference": "68/CL",
               "submitted_on": "2017-02-22"
             }
           },
@@ -662,7 +662,7 @@
               "state": "KNOWN",
               "precision": "DATE_ONLY",
               "source_format": "DMY_DATE",
-              "reference": "168/CL ngày",
+              "reference": "168/CL",
               "submitted_on": "2019-04-05"
             }
           },
@@ -674,7 +674,7 @@
               "state": "KNOWN",
               "precision": "DATE_ONLY",
               "source_format": "DMY_DATE",
-              "reference": "526/CL ngày",
+              "reference": "526/CL",
               "submitted_on": "2019-10-25"
             }
           }

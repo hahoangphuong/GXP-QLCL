@@ -1,0 +1,206 @@
+{
+  "member": "RecordForm.frm",
+  "procedure": "Tao_PL_QD_GiayDDK",
+  "start_line": 1124,
+  "end_line": 1166,
+  "call_windows": [
+    {
+      "call_line": 1152,
+      "call_code": "If Not Input_DC_to_CC(wdDoc, wdDoc2, DC_All, False, GPs_T) Then GoTo Quit0",
+      "context": [
+        {
+          "line": 1124,
+          "code": "Private Function Tao_PL_QD_GiayDDK(ByRef wdDoc As Object, ByRef WdObj As Object) As Boolean"
+        },
+        {
+          "line": 1125,
+          "code": "Dim ghan$, s$, i&, j&, Rg4 As Range, IDk&, DaychuyenCNRawz$, DC_All$, GPs_Text As Variant, wdDoc2 As Object, GPs_T$, iDaychuyen$(), TotalStep&, GPs_LineC As Variant"
+        },
+        {
+          "line": 1127,
+          "code": "On Error Resume Next"
+        },
+        {
+          "line": 1128,
+          "code": "Tao_PL_QD_GiayDDK = False"
+        },
+        {
+          "line": 1129,
+          "code": "GPs_Text = Array(\"GMP\", \"GLP\", \"GSP\", \"GDP\")"
+        },
+        {
+          "line": 1130,
+          "code": "GPs_LineC = Array(94, 231, 38, 1)"
+        },
+        {
+          "line": 1131,
+          "code": "TotalStep = 30"
+        },
+        {
+          "line": 1132,
+          "code": "For i = 1 To 4"
+        },
+        {
+          "line": 1133,
+          "code": "DaychuyenCNRawz = Names(\"db_ddk\").RefersToRange.Cells(Idx_DDK, clDB_DaychuyenDDK + (i - 1) * 4).Value2"
+        },
+        {
+          "line": 1134,
+          "code": "If DaychuyenCNRawz <> vbNullString Then"
+        },
+        {
+          "line": 1135,
+          "code": "Call Get_DCx(DaychuyenCNRawz, s, DC_All, ghan)"
+        },
+        {
+          "line": 1136,
+          "code": "iDaychuyen = Split(DC_All, \"§\")"
+        },
+        {
+          "line": 1137,
+          "code": "TotalStep = TotalStep + (UBound(iDaychuyen) - LBound(iDaychuyen) + 1) * (15 + GPs_LineC(LBound(GPs_LineC) + i - 1))"
+        },
+        {
+          "line": 1138,
+          "code": "End If"
+        },
+        {
+          "line": 1139,
+          "code": "Next i"
+        },
+        {
+          "line": 1140,
+          "code": "MaxVal = TotalStep: Set_Val (0)"
+        },
+        {
+          "line": 1141,
+          "code": "Inc_Val (1)"
+        },
+        {
+          "line": 1142,
+          "code": "Call Tao_PL_QD_GiayDDK_Thongtinchung(wdDoc)"
+        },
+        {
+          "line": 1143,
+          "code": "For i = 1 To 4"
+        },
+        {
+          "line": 1144,
+          "code": "RecordForm.Sel_GPs = i"
+        },
+        {
+          "line": 1145,
+          "code": "GPs_T = GPs_Text(LBound(GPs_Text) + i - 1)"
+        },
+        {
+          "line": 1146,
+          "code": "DaychuyenCNRawz = Names(\"db_ddk\").RefersToRange.Cells(Idx_DDK, clDB_DaychuyenDDK + (i - 1) * 4).Value2"
+        },
+        {
+          "line": 1147,
+          "code": "If DaychuyenCNRawz <> vbNullString Then"
+        },
+        {
+          "line": 1148,
+          "code": "If Not Get_DCx(DaychuyenCNRawz, s, DC_All, ghan) Then MsgBox \"Pham vi dang theo format cu. Khong ket xuat duoc pham vi chung nhan.\": GoTo Quit1"
+        },
+        {
+          "line": 1149,
+          "code": "Set wdDoc2 = WdObj.Documents.Open(Template_Path & \"z3. Phamvi\" & GPs_T & \".docx\")"
+        },
+        {
+          "line": 1150,
+          "code": "DCForm.Init_PVCN IIf(i = 4, 6, i)"
+        },
+        {
+          "line": 1152,
+          "code": "If Not Input_DC_to_CC(wdDoc, wdDoc2, DC_All, False, GPs_T) Then GoTo Quit0"
+        },
+        {
+          "line": 1153,
+          "code": "If Not (wdDoc2 Is Nothing) Then wdDoc2.Saved = True:    wdDoc2.Close"
+        },
+        {
+          "line": 1154,
+          "code": "If ghan <> vbNullString Then Call Replace_Bookmark(wdDoc, \"Chuthich\" & GPs_T, ghan) Else Delete_Bookmark wdDoc, \"Co_Chuthich\" & GPs_T"
+        },
+        {
+          "line": 1156,
+          "code": "Inc_Val (1)"
+        },
+        {
+          "line": 1157,
+          "code": "Else"
+        },
+        {
+          "line": 1158,
+          "code": "Delete_Bookmark wdDoc, \"All\" & GPs_T"
+        },
+        {
+          "line": 1159,
+          "code": "End If"
+        },
+        {
+          "line": 1160,
+          "code": "Next i"
+        },
+        {
+          "line": 1161,
+          "code": "Quit1:"
+        },
+        {
+          "line": 1162,
+          "code": "Tao_PL_QD_GiayDDK = True"
+        },
+        {
+          "line": 1163,
+          "code": "Quit0:"
+        },
+        {
+          "line": 1164,
+          "code": "If Not (wdDoc2 Is Nothing) Then wdDoc2.Saved = True:    wdDoc2.Close"
+        },
+        {
+          "line": 1165,
+          "code": "Set wdDoc2 = Nothing"
+        },
+        {
+          "line": 1166,
+          "code": "End Function"
+        }
+      ],
+      "object_assignments": [
+        {
+          "line": 1149,
+          "variable": "wdDoc2",
+          "expression": "WdObj.Documents.Open(Template_Path & \"z3. Phamvi\" & GPs_T & \".docx\")"
+        },
+        {
+          "line": 1165,
+          "variable": "wdDoc2",
+          "expression": "Nothing"
+        }
+      ],
+      "document_open_actions": [
+        {
+          "line": 1149,
+          "code": "Set wdDoc2 = WdObj.Documents.Open(Template_Path & \"z3. Phamvi\" & GPs_T & \".docx\")"
+        }
+      ],
+      "string_literals": [
+        ".docx",
+        "All",
+        "Chuthich",
+        "Co_Chuthich",
+        "GDP",
+        "GLP",
+        "GMP",
+        "GSP",
+        "Pham vi dang theo format cu. Khong ket xuat duoc pham vi chung nhan.",
+        "db_ddk",
+        "z3. Phamvi",
+        "§"
+      ]
+    }
+  ]
+}

@@ -4,8 +4,7 @@
   "structured_records": 677,
   "counts": {
     "custom_descriptions": 4906,
-    "empty_generated_line": 22,
-    "missing_custom_descriptions": 4282,
+    "intentionally_suppressed_custom_descriptions": 4,
     "records": 677,
     "renderer_punctuation": 8,
     "selected_nodes": 9762,
@@ -20,7 +19,6 @@
     },
     "GMP": {
       "custom_descriptions": 4845,
-      "empty_generated_line": 22,
       "records": 637,
       "renderer_punctuation": 8,
       "selected_nodes": 8254,
@@ -29,124 +27,52 @@
   },
   "representative_findings": [
     {
-      "legacy_inspection_id": "17",
+      "legacy_inspection_id": "886",
       "gxp_type": "GMP",
-      "category": "missing_custom_description",
-      "node_key": "2.1.8"
+      "category": "renderer_punctuation",
+      "summary_fragment": "* Thuốc sản xuất vô trùng: Thuốc dạng lỏng thể tích nhỏ (Dung dịch nhỏ mắt); Thuốc dạng rắn và cấy ghép (Thuốc tiêm bột (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin và Penicillin)).\n* Thuốc tiệt trùng cuối: Thuốc dạng lỏng thể tích lớn (Dung dịch tiêm truyền; Dung môi pha tiêm; Dung dịch vô "
     },
     {
-      "legacy_inspection_id": "17",
+      "legacy_inspection_id": "1092",
       "gxp_type": "GMP",
-      "category": "missing_custom_description",
-      "node_key": "2.1.13"
+      "category": "renderer_punctuation",
+      "summary_fragment": "* Thuốc không vô trùng: Viên nang cứng (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin); Thuốc uống dạng lỏng (Dung dịch, hỗn dịch, nhũ dịch, sirô); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin)); Thuốc dạng bán rắn (Thuốc kem, thuốc gel, thuố"
     },
     {
-      "legacy_inspection_id": "17",
+      "legacy_inspection_id": "1200",
       "gxp_type": "GMP",
-      "category": "missing_custom_description",
-      "node_key": "6.1.1"
+      "category": "renderer_punctuation",
+      "summary_fragment": "* Thuốc sản xuất vô trùng: Thuốc dạng lỏng thể tích nhỏ (Dung dịch nhỏ mắt); Thuốc dạng rắn và cấy ghép (Thuốc tiêm bột chứa kháng sinh nhóm Cephalosporin và Penicillin).\n* Thuốc tiệt trùng cuối: Thuốc dạng lỏng thể tích lớn (Dung dịch tiêm truyền; Dung môi pha tiêm; Dung dịch vô khuẩn dùng cho phẫu"
     },
     {
-      "legacy_inspection_id": "17",
+      "legacy_inspection_id": "1302",
       "gxp_type": "GMP",
-      "category": "missing_custom_description",
-      "node_key": "6.2.1"
+      "category": "renderer_punctuation",
+      "summary_fragment": "* Thuốc sản xuất vô trùng: Thuốc dạng lỏng thể tích nhỏ (Dung dịch/hỗn dịch/nhũ dịch nhỏ mắt đóng BFS; Dung dịch/hỗn dịch/nhũ dịch nhỏ mũi đóng BFS; Dung dịch/hỗn dịch/nhũ dịch nhỏ tai đóng BFS; Dung dịch/hỗn dịch/nhũ dịch khí dung đóng BFS).\n* Xuất xưởng thuốc vô trùng (Tất cả các dạng thuốc ở mục:"
     },
     {
-      "legacy_inspection_id": "115",
+      "legacy_inspection_id": "1418",
       "gxp_type": "GMP",
-      "category": "missing_custom_description",
-      "node_key": "2.1.6"
+      "category": "renderer_punctuation",
+      "summary_fragment": "« Nhà máy A »\n* Thuốc không vô trùng: Viên nang cứng; Viên nang mềm; Viên nhai; Thuốc uống dạng lỏng (Dung dịch, Hỗn dịch, Siro); Dạng bào chế rắn khác (Thuốc bột, Thuốc cốm); Thuốc dạng bán rắn (Kem dùng ngoài, Gel dùng ngoài, Mỡ dùng ngoài); Viên nén (Viên nén, Viên bao phim); Thuốc không vô trùng"
     },
     {
-      "legacy_inspection_id": "115",
+      "legacy_inspection_id": "1451",
       "gxp_type": "GMP",
-      "category": "missing_custom_description",
-      "node_key": "2.1.8"
+      "category": "renderer_punctuation",
+      "summary_fragment": "* Thuốc không vô trùng: Viên nang cứng (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin); Thuốc uống dạng lỏng (Dung dịch, hỗn dịch, nhũ dịch, sirô); Dạng bào chế rắn khác (Thuốc bột, thuốc cốm (bao gồm cả thuốc chứa kháng sinh nhóm Cephalosporin)); Thuốc dạng bán rắn (Thuốc kem, thuốc gel, thuố"
     },
     {
-      "legacy_inspection_id": "115",
+      "legacy_inspection_id": "1507",
       "gxp_type": "GMP",
-      "category": "missing_custom_description",
-      "node_key": "2.1.13"
+      "category": "renderer_punctuation",
+      "summary_fragment": "« Nhà máy nang mềm 2 »\n* Thuốc dược liệu, thuốc cổ truyền: Viên nang mềm.\n* Xuất xưởng thuốc dược liệu, thuốc cổ truyền (Tất cả các dạng thuốc ở mục: 4.1).\n* Đóng gói sơ cấp: Tất cả các dạng thuốc ở mục 4.1.\n* Đóng gói thứ cấp: Tất cả các dạng thuốc ở mục 4.1.\n* Kiểm tra chất lượng: Vi sinh (Giới hạ"
     },
     {
-      "legacy_inspection_id": "115",
+      "legacy_inspection_id": "1519",
       "gxp_type": "GMP",
-      "category": "missing_custom_description",
-      "node_key": "6.1.1"
-    },
-    {
-      "legacy_inspection_id": "115",
-      "gxp_type": "GMP",
-      "category": "missing_custom_description",
-      "node_key": "6.2.1"
-    },
-    {
-      "legacy_inspection_id": "180",
-      "gxp_type": "GMP",
-      "category": "missing_custom_description",
-      "node_key": "2.1.8"
-    },
-    {
-      "legacy_inspection_id": "180",
-      "gxp_type": "GMP",
-      "category": "missing_custom_description",
-      "node_key": "2.1.13"
-    },
-    {
-      "legacy_inspection_id": "220",
-      "gxp_type": "GMP",
-      "category": "missing_custom_description",
-      "node_key": "2.1.1"
-    },
-    {
-      "legacy_inspection_id": "220",
-      "gxp_type": "GMP",
-      "category": "missing_custom_description",
-      "node_key": "2.1.5"
-    },
-    {
-      "legacy_inspection_id": "220",
-      "gxp_type": "GMP",
-      "category": "missing_custom_description",
-      "node_key": "2.1.8"
-    },
-    {
-      "legacy_inspection_id": "220",
-      "gxp_type": "GMP",
-      "category": "missing_custom_description",
-      "node_key": "2.1.13"
-    },
-    {
-      "legacy_inspection_id": "220",
-      "gxp_type": "GMP",
-      "category": "missing_custom_description",
-      "node_key": "6.1.1"
-    },
-    {
-      "legacy_inspection_id": "220",
-      "gxp_type": "GMP",
-      "category": "missing_custom_description",
-      "node_key": "6.2.1"
-    },
-    {
-      "legacy_inspection_id": "245",
-      "gxp_type": "GMP",
-      "category": "missing_custom_description",
-      "node_key": "1.1.6"
-    },
-    {
-      "legacy_inspection_id": "245",
-      "gxp_type": "GMP",
-      "category": "missing_custom_description",
-      "node_key": "1.2.3"
-    },
-    {
-      "legacy_inspection_id": "245",
-      "gxp_type": "GMP",
-      "category": "missing_custom_description",
-      "node_key": "2.1.6"
+      "category": "renderer_punctuation",
+      "summary_fragment": "* Thuốc sản xuất vô trùng: Thuốc dạng lỏng thể tích nhỏ (Dung dịch nhỏ mắt); Thuốc dạng rắn và cấy ghép (Thuốc tiêm bột chứa kháng sinh nhóm Cephalosporin và Penicillin).\n* Thuốc tiệt trùng cuối: Thuốc dạng lỏng thể tích lớn (Dung dịch tiêm truyền; Dung môi pha tiêm; Dung dịch vô khuẩn dùng cho phẫu"
     }
   ],
   "snapshot_sha256": "b3bde05963e4e4d14d5b244e7c62b0f810f1cbbe206750574def6a366bdf7296",

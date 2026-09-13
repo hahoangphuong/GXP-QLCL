@@ -1,0 +1,157 @@
+{
+  "template_filename": "9. Chung chi GMP (moi).dotx",
+  "template_sha256": "1cb661d70bb7badb2dd0260a4fdde82c07db9cbf670bc09da737576d053fbfcb",
+  "parts": [
+    {
+      "part": "word/document.xml",
+      "bookmarks": [
+        {
+          "name": "TenCty",
+          "id": "0"
+        },
+        {
+          "name": "TenCtyE",
+          "id": "1"
+        },
+        {
+          "name": "DiachiVPCty",
+          "id": "2"
+        },
+        {
+          "name": "DiachiVPCtyE",
+          "id": "3"
+        },
+        {
+          "name": "TenCoso",
+          "id": "4"
+        },
+        {
+          "name": "TenCosoE",
+          "id": "5"
+        },
+        {
+          "name": "DiachiCoso",
+          "id": "6"
+        },
+        {
+          "name": "DiachiCosoE",
+          "id": "7"
+        },
+        {
+          "name": "NgayKT1",
+          "id": "8"
+        },
+        {
+          "name": "NoWHO_Del1",
+          "id": "9"
+        },
+        {
+          "name": "PICS_Del1",
+          "id": "10"
+        },
+        {
+          "name": "NoWHO_Del2",
+          "id": "11"
+        },
+        {
+          "name": "EU_Del1",
+          "id": "12"
+        },
+        {
+          "name": "NgayKT2",
+          "id": "13"
+        },
+        {
+          "name": "NoWHO_Del3",
+          "id": "14"
+        },
+        {
+          "name": "WHO_Del",
+          "id": "15"
+        },
+        {
+          "name": "PICS_Del3",
+          "id": "16"
+        },
+        {
+          "name": "NoWHO_Del4",
+          "id": "17"
+        },
+        {
+          "name": "EU_Del2",
+          "id": "18"
+        },
+        {
+          "name": "_bookmark39",
+          "id": "19"
+        },
+        {
+          "name": "Pvi",
+          "id": "20"
+        },
+        {
+          "name": "Chuthich",
+          "id": "21"
+        },
+        {
+          "name": "ChuthichE",
+          "id": "22"
+        }
+      ],
+      "tables": [
+        {
+          "table_index": 1,
+          "rows": [
+            {
+              "row_index": 1,
+              "bookmarks": [],
+              "cell_text_preview": [
+                "BỘ Y TẾ | MINISTRY OF HEALTH | CỤC QUẢN LÝ DƯỢC | Drug Administration of Vietnam",
+                "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM | SOCIALIST REPUBLIC OF VIETNAM | Độc lập – Tự do – Hạnh phúc | Independence - Freedom - Happiness"
+              ]
+            }
+          ]
+        },
+        {
+          "table_index": 2,
+          "rows": [
+            {
+              "row_index": 1,
+              "bookmarks": [
+                "TenCty",
+                "TenCtyE",
+                "DiachiVPCty",
+                "DiachiVPCtyE",
+                "TenCoso",
+                "TenCosoE",
+                "DiachiCoso",
+                "DiachiCosoE"
+              ],
+              "cell_text_preview": [
+                "Căn cứ quy định tại Thông tư số 28/2025/TT-BYT ngày 01/7/2025 của Bộ trưởng Bộ Y tế quy định về Thực hành tốt sản xuất thuốc, nguyên liệu làm thuốc (GMP), | Pur"
+              ]
+            }
+          ]
+        },
+        {
+          "table_index": 3,
+          "rows": [
+            {
+              "row_index": 1,
+              "bookmarks": [],
+              "cell_text_preview": [
+                "",
+                "Ngày (day)   …  tháng (month)   …   năm (year) 2026 | KT. Cục trưởng | PHÓ CỤC TRƯỞNG | F. Director-General | Deputy Director | Tạ Mạnh Hùng"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "part": "word/footer1.xml",
+      "bookmarks": [],
+      "tables": []
+    }
+  ]
+}

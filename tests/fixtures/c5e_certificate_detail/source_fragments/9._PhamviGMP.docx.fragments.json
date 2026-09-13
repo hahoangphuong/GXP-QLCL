@@ -1,0 +1,27 @@
+{
+  "source_path": "C:\\Users\\hahoa\\AppData\\Local\\Temp\\pytest-of-hahoa\\pytest-1007\\test_capture_source_fragment_p0\\9. PhamviGMP.docx",
+  "filename": "9. PhamviGMP.docx",
+  "sha256": "61adf5715e199a1dfcc74b84cb23d7caeeb7ec76e06f802869ffb4a61a598c11",
+  "detail_bookmark_count": 1,
+  "detail_bookmarks": [
+    "L1_2"
+  ],
+  "unsupported_bookmark_spans": [],
+  "fragments": [
+    {
+      "bookmark": "L1_2",
+      "supported_same_parent_span": true,
+      "bookmark_id": "1",
+      "visible_text": "Node text",
+      "fragment_xml": "<ns0:r xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:rPr><ns0:b /></ns0:rPr><ns0:t>Node text</ns0:t></ns0:r>\n",
+      "fragment_sha256": "ef807f5256071d2403bd1c6aab9cc0b8b7cac092f2d5b31566c29d548c0b50ee",
+      "run_properties": [
+        "<ns0:rPr xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><ns0:b /></ns0:rPr>"
+      ],
+      "paragraph_properties": [],
+      "contains_runs": true,
+      "contains_paragraphs": false,
+      "contains_tables": false
+    }
+  ]
+}

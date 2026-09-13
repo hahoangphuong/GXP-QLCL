@@ -6,6 +6,7 @@ from collections import Counter
 from hashlib import sha256
 import json
 from pathlib import Path
+import re
 import sys
 from typing import Any
 
@@ -53,6 +54,16 @@ def _custom_disposition(short_render: str, custom_description: str, rendered_tex
 def _record_finding(findings: list[dict[str, Any]], payload: dict[str, Any]) -> None:
     if len(findings) < MAX_FINDINGS:
         findings.append(payload)
+
+
+def _template_slot_offsets(short_render: str) -> tuple[int, int]:
+    """Locate the first template slot structurally, without matching custom text."""
+    marker = "__GXP_TEMPLATE_SLOT__"
+    while marker in short_render:
+        marker += "_"
+    rendered, _, _ = _canonical_node_text(short_render, marker)
+    start = rendered.index(marker)
+    return start, start + len(marker)
 
 
 def _node_occurrences(parsed: dict[str, Any], taxonomy_rows: list[dict[str, Any]]) -> list[tuple[int, str, dict[str, Any], str, str]]:
@@ -119,6 +130,25 @@ def main() -> None:
                 counts["unexpected_empty_spans"] += 1
             if any(not span.contribution_id or span.owner_type not in {"source", "renderer"} for span in shadow.spans):
                 counts["ownership_failures"] += 1
+            if custom_description.strip() and "$$" in short_render:
+                rendered_custom = re.sub(r"[ \t]+", " ", custom_description.strip())
+                expected_start, _ = _template_slot_offsets(short_render)
+                expected_end = expected_start + len(rendered_custom)
+                owner_by_offset = ["" for _ in actual_text]
+                for span in shadow.spans:
+                    owner_by_offset[span.start_offset:span.end_offset] = [span.kind] * len(span.text)
+                if actual_text.count(rendered_custom) > 1:
+                    counts["ambiguous_equal_text_cases"] += 1
+                if (
+                    actual_text[expected_start:expected_end] != rendered_custom
+                    or any(owner != "SOURCE_CUSTOM_DESCRIPTION" for owner in owner_by_offset[expected_start:expected_end])
+                ):
+                    counts["templated_custom_position_failures"] += 1
+                    _record_finding(findings, {
+                        "kind": "templated_custom_position_failure",
+                        "contribution_id": contribution_id,
+                        "expected_offsets": [expected_start, expected_end],
+                    })
             try:
                 validate_evaluation_scope_spans(actual_text, shadow.spans)
             except ValueError as exc:
@@ -141,6 +171,8 @@ def main() -> None:
         "continuation_mismatches": counts["continuation_mismatches"],
         "opens_group_mismatches": counts["opens_group_mismatches"],
         "ownership_failures": counts["ownership_failures"],
+        "ambiguous_equal_text_cases": counts["ambiguous_equal_text_cases"],
+        "templated_custom_position_failures": counts["templated_custom_position_failures"],
         "span_integrity_failures": counts["span_integrity_failures"],
         "unexpected_empty_spans": counts["unexpected_empty_spans"],
         "bounded_findings": findings,
@@ -151,6 +183,7 @@ def main() -> None:
         "continuation_mismatches",
         "opens_group_mismatches",
         "ownership_failures",
+        "templated_custom_position_failures",
         "span_integrity_failures",
         "unexpected_empty_spans",
     )

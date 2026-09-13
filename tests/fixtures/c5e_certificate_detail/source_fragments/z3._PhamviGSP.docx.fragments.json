@@ -1,0 +1,376 @@
+{
+  "source_path": "D:\\GXP-QLCL\\legacy\\Templates\\z3. PhamviGSP.docx",
+  "filename": "z3. PhamviGSP.docx",
+  "sha256": "a2a452a4f7ce5700fdf21eef2400c66c35f2ab3bc815fae8d9d56d4cad743d48",
+  "detail_bookmark_count": 52,
+  "detail_bookmarks": [
+    "L1",
+    "L1_1",
+    "L1_1_1",
+    "L1_1_2",
+    "L1_1_3",
+    "L1_2",
+    "L1_2_1",
+    "L1_2_2",
+    "L1_2_3",
+    "L1_3",
+    "L1_3_1",
+    "L1_3_2",
+    "L1_3_3",
+    "L1_4",
+    "L1_4_1",
+    "L1_4_2",
+    "L1_4_3",
+    "L1_5",
+    "L1_5_1",
+    "L1_5_2",
+    "L1_5_3",
+    "L2",
+    "L2_1",
+    "L2_1_1",
+    "L2_1_2",
+    "L2_1_3",
+    "L2_1_4",
+    "L2_2",
+    "L2_2_1",
+    "L2_2_2",
+    "L2_2_3",
+    "L2_2_4",
+    "L2_3",
+    "L2_3_1",
+    "L2_3_2",
+    "L2_3_3",
+    "L2_3_4",
+    "L2_4",
+    "L2_4_1",
+    "L2_4_2",
+    "L2_4_3",
+    "L2_4_4",
+    "L2_5",
+    "L2_5_1",
+    "L2_5_2",
+    "L2_5_3",
+    "L2_5_4",
+    "L2_6",
+    "L2_6_1",
+    "L2_6_2",
+    "L2_6_3",
+    "L2_6_4"
+  ],
+  "unsupported_bookmark_spans": [
+    "L1",
+    "L1_1",
+    "L1_1_1",
+    "L1_1_2",
+    "L1_1_3",
+    "L1_2",
+    "L1_2_1",
+    "L1_2_2",
+    "L1_2_3",
+    "L1_3",
+    "L1_3_1",
+    "L1_3_2",
+    "L1_3_3",
+    "L1_4",
+    "L1_4_1",
+    "L1_4_2",
+    "L1_4_3",
+    "L1_5",
+    "L1_5_1",
+    "L1_5_2",
+    "L1_5_3",
+    "L2",
+    "L2_1",
+    "L2_1_1",
+    "L2_1_2",
+    "L2_1_3",
+    "L2_1_4",
+    "L2_2",
+    "L2_2_1",
+    "L2_2_2",
+    "L2_2_3",
+    "L2_2_4",
+    "L2_3",
+    "L2_3_1",
+    "L2_3_2",
+    "L2_3_3",
+    "L2_3_4",
+    "L2_4",
+    "L2_4_1",
+    "L2_4_2",
+    "L2_4_3",
+    "L2_4_4",
+    "L2_5",
+    "L2_5_1",
+    "L2_5_2",
+    "L2_5_3",
+    "L2_5_4",
+    "L2_6",
+    "L2_6_1",
+    "L2_6_2",
+    "L2_6_3",
+    "L2_6_4"
+  ],
+  "fragments": [
+    {
+      "bookmark": "L1",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L1_1",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L1_1_1",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L1_1_2",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L1_1_3",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L1_2",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L1_2_1",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L1_2_2",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L1_2_3",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L1_3",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L1_3_1",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L1_3_2",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L1_3_3",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L1_4",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L1_4_1",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L1_4_2",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L1_4_3",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L1_5",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L1_5_1",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L1_5_2",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L1_5_3",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_1",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_1_1",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_1_2",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_1_3",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_1_4",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_2",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_2_1",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_2_2",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_2_3",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_2_4",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_3",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_3_1",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_3_2",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_3_3",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_3_4",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_4",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_4_1",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_4_2",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_4_3",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_4_4",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_5",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_5_1",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_5_2",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_5_3",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_5_4",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_6",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_6_1",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_6_2",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_6_3",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    },
+    {
+      "bookmark": "L2_6_4",
+      "supported_same_parent_span": false,
+      "reason": "bookmarkEnd not found in same XML parent"
+    }
+  ]
+}

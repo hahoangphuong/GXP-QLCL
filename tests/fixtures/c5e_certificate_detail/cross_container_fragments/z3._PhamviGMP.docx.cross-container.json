@@ -1,0 +1,25 @@
+{
+  "filename": "z3. PhamviGMP.docx",
+  "sha256": "6e7cf70590567862f9cf213aa5bc9c70fccf1c8ebe0238e1603e2b0be7b312ac",
+  "bookmark_count": 1,
+  "extracted_count": 1,
+  "error_count": 0,
+  "shape_counts": {
+    "parent=False|p=False|tc=False|tr=False|tbl=True|lca=tbl|sp=p|ep=tbl": 1
+  },
+  "fragments": [
+    {
+      "bookmark": "L1",
+      "shape": "parent=False|p=False|tc=False|tr=False|tbl=True|lca=tbl|sp=p|ep=tbl",
+      "visible_text": "AB",
+      "fragment_xml": "<ns0:tbl xmlns:ns0=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">\n  <ns0:tr><ns0:tc><ns0:p><ns0:r><ns0:t>A</ns0:t></ns0:r></ns0:p></ns0:tc></ns0:tr>\n  <ns0:tr><ns0:tc><ns0:p><ns0:r><ns0:t>B</ns0:t></ns0:r></ns0:p></ns0:tc></ns0:tr>\n  </ns0:tbl>\n",
+      "fragment_sha256": "f847e965c5847355384a1ae1fd18a8476e86fe1e35ec5f868d7e4d98e7d895a7",
+      "root_tag": "tbl",
+      "row_count": 2,
+      "cell_count": 2,
+      "paragraph_count": 2,
+      "contains_bookmark_markup": false
+    }
+  ],
+  "errors": []
+}

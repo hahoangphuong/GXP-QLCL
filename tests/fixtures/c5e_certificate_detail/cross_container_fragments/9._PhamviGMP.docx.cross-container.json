@@ -1,0 +1,15 @@
+{
+  "filename": "9. PhamviGMP.docx",
+  "sha256": "72aaf709c0b03eaedba8e56646c159644d51c9524fda8f55454fa459b4662b5d",
+  "bookmark_count": 1,
+  "extracted_count": 0,
+  "error_count": 1,
+  "shape_counts": {},
+  "fragments": [],
+  "errors": [
+    {
+      "bookmark": "L1",
+      "error": "Unsupported bookmark geometry for 'L1': parent=True|p=True|tc=False|tr=False|tbl=False|lca=p|sp=p|ep=p"
+    }
+  ]
+}

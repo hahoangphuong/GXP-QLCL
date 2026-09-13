@@ -1,0 +1,175 @@
+{
+  "member": "RecordForm.frm",
+  "procedure": "Tao_CC_GPs_moi",
+  "start_line": 1315,
+  "end_line": 1348,
+  "call_windows": [
+    {
+      "call_line": 1342,
+      "call_code": "If Not Input_DC_to_CC(wdDoc, wdDoc2, DC_All, True) Then GoTo Quit0",
+      "context": [
+        {
+          "line": 1315,
+          "code": "Private Function Tao_CC_GPs_moi(ByRef wdDoc As Object, ByRef WdObj As Object) As Boolean"
+        },
+        {
+          "line": 1316,
+          "code": "Dim ghan$, s$, j&, Rg4 As Range, IDk&, DaychuyenCNRawz$, DC_All$, wdDoc2 As Object, iDaychuyen$(), GPs_LineC As Variant"
+        },
+        {
+          "line": 1318,
+          "code": "On Error Resume Next"
+        },
+        {
+          "line": 1319,
+          "code": "Tao_CC_GPs_moi = False"
+        },
+        {
+          "line": 1320,
+          "code": "GPs_LineC = Array(94, 231, 38, 1)"
+        },
+        {
+          "line": 1321,
+          "code": "If Idx_ccGPs > 0 Then"
+        },
+        {
+          "line": 1322,
+          "code": "Set Rg4 = Names(\"db_cc_GPs\").RefersToRange.Rows(Idx_ccGPs)"
+        },
+        {
+          "line": 1323,
+          "code": "DaychuyenCNRawz = Trim(Rg4.Cells(1, clDB_DaychuyenCN).Value)"
+        },
+        {
+          "line": 1324,
+          "code": "IDk = Rg4.Cells(1, clDB_IDKT_CCGPs).Value"
+        },
+        {
+          "line": 1325,
+          "code": "Else"
+        },
+        {
+          "line": 1326,
+          "code": "DaychuyenCNRawz = DaychuyenCNRaw"
+        },
+        {
+          "line": 1327,
+          "code": "End If"
+        },
+        {
+          "line": 1328,
+          "code": "If IDk <= 0 Then IDk = Idx_Ktr Else IDk = GetDbIdx_ID(IDk, \"db_ID_ktra\")"
+        },
+        {
+          "line": 1329,
+          "code": "If Not Get_DCx(DaychuyenCNRawz, s, DC_All, ghan) Then MsgBox \"Pham vi dang theo format cu. Khong tao duoc chung chi.\": GoTo Quit0"
+        },
+        {
+          "line": 1330,
+          "code": "iDaychuyen = Split(DC_All, \"§\")"
+        },
+        {
+          "line": 1331,
+          "code": "MaxVal = 40 + (UBound(iDaychuyen) - LBound(iDaychuyen) + 1) * (15 + GPs_LineC(LBound(GPs_LineC) + IIf(Sel_GPs = 6, 4, Sel_GPs) - 1))"
+        },
+        {
+          "line": 1332,
+          "code": "Set_Val (0)"
+        },
+        {
+          "line": 1333,
+          "code": "DCForm.Init_PVCN Sel_GPs:   Inc_Val (2)"
+        },
+        {
+          "line": 1334,
+          "code": "Call Tao_CC_Thongtinchung(wdDoc):   Inc_Val (7)"
+        },
+        {
+          "line": 1335,
+          "code": "Call Tao_CC_ThongtinKT(wdDoc, IDk): Inc_Val (7)"
+        },
+        {
+          "line": 1336,
+          "code": "Replace_Bookmark wdDoc, \"Chuthich\", ghan"
+        },
+        {
+          "line": 1337,
+          "code": "Replace_Bookmark wdDoc, \"ChuthichE\", Translate_VE_Daychuyen(Translate_VE_Daychuyen(ghan, Sel_GPs), Sel_GPs)"
+        },
+        {
+          "line": 1338,
+          "code": "Inc_Val (2)"
+        },
+        {
+          "line": 1340,
+          "code": "Set wdDoc2 = WdObj.Documents.Open(Template_Path & \"9. Phamvi\" & S_GPs & \".docx\")"
+        },
+        {
+          "line": 1341,
+          "code": "Inc_Val (8)"
+        },
+        {
+          "line": 1342,
+          "code": "If Not Input_DC_to_CC(wdDoc, wdDoc2, DC_All, True) Then GoTo Quit0"
+        },
+        {
+          "line": 1343,
+          "code": "If Not (wdDoc2 Is Nothing) Then wdDoc2.Saved = True:    wdDoc2.Close"
+        },
+        {
+          "line": 1344,
+          "code": "Tao_CC_GPs_moi = True"
+        },
+        {
+          "line": 1345,
+          "code": "Quit0:"
+        },
+        {
+          "line": 1346,
+          "code": "If Not (wdDoc2 Is Nothing) Then wdDoc2.Saved = True:    wdDoc2.Close"
+        },
+        {
+          "line": 1347,
+          "code": "Set Rg4 = Nothing:      Set wdDoc2 = Nothing"
+        },
+        {
+          "line": 1348,
+          "code": "End Function"
+        }
+      ],
+      "object_assignments": [
+        {
+          "line": 1322,
+          "variable": "Rg4",
+          "expression": "Names(\"db_cc_GPs\").RefersToRange.Rows(Idx_ccGPs)"
+        },
+        {
+          "line": 1340,
+          "variable": "wdDoc2",
+          "expression": "WdObj.Documents.Open(Template_Path & \"9. Phamvi\" & S_GPs & \".docx\")"
+        },
+        {
+          "line": 1347,
+          "variable": "Rg4",
+          "expression": "Nothing:      Set wdDoc2 = Nothing"
+        }
+      ],
+      "document_open_actions": [
+        {
+          "line": 1340,
+          "code": "Set wdDoc2 = WdObj.Documents.Open(Template_Path & \"9. Phamvi\" & S_GPs & \".docx\")"
+        }
+      ],
+      "string_literals": [
+        ".docx",
+        "9. Phamvi",
+        "Chuthich",
+        "ChuthichE",
+        "Pham vi dang theo format cu. Khong tao duoc chung chi.",
+        "db_ID_ktra",
+        "db_cc_GPs",
+        "§"
+      ]
+    }
+  ]
+}

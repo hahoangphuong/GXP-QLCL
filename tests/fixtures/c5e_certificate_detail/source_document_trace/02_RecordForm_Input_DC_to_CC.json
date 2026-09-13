@@ -1,0 +1,267 @@
+{
+  "member": "RecordForm.frm",
+  "procedure": "Input_DC_to_CC",
+  "start_line": 1167,
+  "end_line": 1242,
+  "call_windows": [
+    {
+      "call_line": 1171,
+      "call_code": "Input_DC_to_CC = False",
+      "context": [
+        {
+          "line": 1167,
+          "code": "Private Function Input_DC_to_CC(ByRef wdDoc As Object, ByRef wdDoc2 As Object, ByVal DC_All$, ByVal EngPart As Boolean, Optional ByVal GPs_T$ = vbNullString) As Boolean"
+        },
+        {
+          "line": 1168,
+          "code": "Dim i&, j&, k&, PV_Desc$(), PV_map&(), ncount&, iDaychuyen$(), DC_Count&, s_N$, s_D$, s_Note$, s_Comp$"
+        },
+        {
+          "line": 1170,
+          "code": "On Error Resume Next"
+        },
+        {
+          "line": 1171,
+          "code": "Input_DC_to_CC = False"
+        },
+        {
+          "line": 1172,
+          "code": "iDaychuyen = Split(DC_All, \"§\")"
+        },
+        {
+          "line": 1173,
+          "code": "DC_Count = UBound(iDaychuyen) - LBound(iDaychuyen) + 1"
+        },
+        {
+          "line": 1174,
+          "code": "With wdDoc"
+        },
+        {
+          "line": 1175,
+          "code": ".Bookmarks(\"Pvi\" & GPs_T).Range.Select"
+        },
+        {
+          "line": 1176,
+          "code": "For i = 1 To DC_Count"
+        },
+        {
+          "line": 1177,
+          "code": "Call DCForm.Get_DC_Name_Desc(iDaychuyen(i - 1), s_N, s_D, s_Note, s_Comp)"
+        },
+        {
+          "line": 1178,
+          "code": "If Not DCForm.Load_DC_Nodes(s_D, PV_map, PV_Desc, ncount) Then MsgBox \"Loi khi khoi tao cay pham vi chung nhan \" & i: GoTo Quit0"
+        },
+        {
+          "line": 1179,
+          "code": "Inc_Val (15)"
+        },
+        {
+          "line": 1180,
+          "code": "If s_N <> vbNullString Then"
+        },
+        {
+          "line": 1181,
+          "code": ".ActiveWindow.Selection.Font.Bold = True:            .ActiveWindow.Selection.Font.Italic = False"
+        },
+        {
+          "line": 1182,
+          "code": ".ActiveWindow.Selection.ParagraphFormat.SpaceBefore = 12"
+        },
+        {
+          "line": 1183,
+          "code": ".ActiveWindow.Selection.ParagraphFormat.SpaceAfter = 3"
+        },
+        {
+          "line": 1184,
+          "code": ".ActiveWindow.Selection.TypeText Text:=\"* \" & DelLastIf(s_N, \"¶\") & \" - \""
+        },
+        {
+          "line": 1185,
+          "code": ".ActiveWindow.Selection.Font.Bold = True:            .ActiveWindow.Selection.Font.Italic = True"
+        },
+        {
+          "line": 1186,
+          "code": ".ActiveWindow.Selection.TypeText Text:=Translate_VE_Diachi(DelLastIf(s_N, \"¶\")) & vbCrLf"
+        }
+      ],
+      "object_assignments": [],
+      "document_open_actions": [],
+      "string_literals": [
+        " - ",
+        "* ",
+        "Loi khi khoi tao cay pham vi chung nhan ",
+        "Pvi",
+        "§",
+        "¶"
+      ]
+    },
+    {
+      "call_line": 1240,
+      "call_code": "Input_DC_to_CC = True",
+      "context": [
+        {
+          "line": 1205,
+          "code": ".ActiveWindow.Selection.MoveRight Unit:=12, count:=2"
+        },
+        {
+          "line": 1206,
+          "code": ".ActiveWindow.Selection.MoveRight Unit:=1, count:=1"
+        },
+        {
+          "line": 1207,
+          "code": ".ActiveWindow.Selection.Font.Color = 12611584"
+        },
+        {
+          "line": 1208,
+          "code": ".ActiveWindow.Selection.Font.Bold = False"
+        },
+        {
+          "line": 1209,
+          "code": ".ActiveWindow.Selection.Font.Italic = False"
+        },
+        {
+          "line": 1210,
+          "code": "If (DCForm.PVCN_GxP(j, PVCN_colMainTopic) <> vbNullString) Then"
+        },
+        {
+          "line": 1211,
+          "code": ".ActiveWindow.Selection.TypeText Text:=\" (\" & Translate_VE_Daychuyen(DelLastIf(PV_Desc(PV_map(j)), \";\"), Sel_GPs) & \")\""
+        },
+        {
+          "line": 1212,
+          "code": "ElseIf (j = PVCN_rowPriPack) Or (j = PVCN_rowSecPack) Then"
+        },
+        {
+          "line": 1213,
+          "code": ".ActiveWindow.Selection.TypeText Text:=\":\" & vbCrLf & vbTab & SplitLines(Translate_VE_Daychuyen(PV_Desc(PV_map(j)), Sel_GPs), \"; \")"
+        },
+        {
+          "line": 1214,
+          "code": "Else"
+        },
+        {
+          "line": 1215,
+          "code": ".ActiveWindow.Selection.TypeText Text:=\":\" & vbCrLf & vbTab & SplitLines(Translate_VE_Daychuyen(PV_Desc(PV_map(j)), Sel_GPs))"
+        },
+        {
+          "line": 1216,
+          "code": "End If"
+        },
+        {
+          "line": 1217,
+          "code": "End If"
+        },
+        {
+          "line": 1218,
+          "code": ".ActiveWindow.Selection.MoveRight Unit:=1, count:=2"
+        },
+        {
+          "line": 1219,
+          "code": "Else"
+        },
+        {
+          "line": 1220,
+          "code": ".ActiveWindow.Selection.EndKey Unit:=5"
+        },
+        {
+          "line": 1221,
+          "code": "If EngPart Then"
+        },
+        {
+          "line": 1222,
+          "code": ".ActiveWindow.Selection.MoveRight Unit:=12, count:=2"
+        },
+        {
+          "line": 1223,
+          "code": ".ActiveWindow.Selection.MoveRight Unit:=1, count:=1"
+        },
+        {
+          "line": 1224,
+          "code": "End If"
+        },
+        {
+          "line": 1225,
+          "code": ".ActiveWindow.Selection.MoveRight Unit:=1, count:=2"
+        },
+        {
+          "line": 1226,
+          "code": "End If"
+        },
+        {
+          "line": 1227,
+          "code": "End If"
+        },
+        {
+          "line": 1228,
+          "code": "Next j"
+        },
+        {
+          "line": 1229,
+          "code": "If s_Note <> vbNullString Then"
+        },
+        {
+          "line": 1230,
+          "code": ".ActiveWindow.Selection.Font.Bold = False:            .ActiveWindow.Selection.Font.Italic = False"
+        },
+        {
+          "line": 1231,
+          "code": ".ActiveWindow.Selection.ParagraphFormat.SpaceBefore = 3"
+        },
+        {
+          "line": 1232,
+          "code": ".ActiveWindow.Selection.TypeText Text:=vbTab & s_Note & vbCrLf"
+        },
+        {
+          "line": 1233,
+          "code": ".ActiveWindow.Selection.Font.Bold = False:            .ActiveWindow.Selection.Font.Italic = True"
+        },
+        {
+          "line": 1234,
+          "code": ".ActiveWindow.Selection.TypeText Text:=vbTab & Translate_VE_Daychuyen(Translate_VE_Daychuyen(s_Note, Sel_GPs), Sel_GPs) & vbCrLf"
+        },
+        {
+          "line": 1235,
+          "code": ".ActiveWindow.Selection.ParagraphFormat.SpaceBefore = 9"
+        },
+        {
+          "line": 1236,
+          "code": ".ActiveWindow.Selection.ParagraphFormat.SpaceAfter = 0"
+        },
+        {
+          "line": 1237,
+          "code": "End If"
+        },
+        {
+          "line": 1238,
+          "code": "Next i"
+        },
+        {
+          "line": 1239,
+          "code": "End With"
+        },
+        {
+          "line": 1240,
+          "code": "Input_DC_to_CC = True"
+        },
+        {
+          "line": 1241,
+          "code": "Quit0:"
+        },
+        {
+          "line": 1242,
+          "code": "End Function"
+        }
+      ],
+      "object_assignments": [],
+      "document_open_actions": [],
+      "string_literals": [
+        " (",
+        ")",
+        ":",
+        ";",
+        "; "
+      ]
+    }
+  ]
+}

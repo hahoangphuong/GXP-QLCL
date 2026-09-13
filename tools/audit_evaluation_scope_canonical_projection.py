@@ -25,8 +25,7 @@ def _syntax_findings(text: str) -> list[str]:
         findings.append("unbalanced_parentheses")
     if "\n\n\n" in text:
         findings.append("triple_blank_line")
-    if any(not line.strip() for line in text.splitlines()[1:-1]):
-        findings.append("empty_generated_line")
+    # A single blank line is the canonical separator between scope blocks.
     return findings
 
 
@@ -50,7 +49,8 @@ def audit(snapshot: dict, taxonomy: dict) -> dict:
                 for item in scope["selected_nodes"]
             ]
             blocks.append({"id": str(ordinal), "ordinal": ordinal, "name": scope["name"], "note": scope["note"], "selections": selections, "unkeyed_entries": scope["unkeyed_entries"]})
-        summary = render_evaluation_scope_summary(blocks=blocks, taxonomy_nodes=nodes, limitation_text=parsed["limitation_text"])
+        rendered = render_evaluation_scope_summary(blocks=blocks, taxonomy_nodes=nodes, limitation_text=parsed["limitation_text"], include_provenance=True)
+        summary = rendered.text
         counts["records"] += 1; by_gxp[gxp]["records"] += 1
         selected = [item for block in blocks for item in block["selections"]]
         counts["selected_nodes"] += len(selected); by_gxp[gxp]["selected_nodes"] += len(selected)
@@ -60,9 +60,11 @@ def audit(snapshot: dict, taxonomy: dict) -> dict:
                 counts["structural_only_nodes"] += 1; by_gxp[gxp]["structural_only_nodes"] += 1
             if item["custom_description"].strip():
                 counts["custom_descriptions"] += 1; by_gxp[gxp]["custom_descriptions"] += 1
-                # The renderer receives this selection directly; exact contribution
-                # ownership is guaranteed by one selection-to-node mapping.
-                if item["custom_description"].strip() not in summary:
+                if not str(node.get("short_render") or "").strip():
+                    counts["intentionally_suppressed_custom_descriptions"] += 1
+                    continue
+                contribution = next((entry for entry in rendered.contributions if entry.get("taxonomy_node_id") == item["taxonomy_node_id"] and entry["source_kind"] == "selected_node"), None)
+                if contribution is None or not contribution["rendered_fragment"]:
                     counts["missing_custom_descriptions"] += 1
                     examples.append({"legacy_inspection_id": row.get("ID"), "gxp_type": gxp, "category": "missing_custom_description", "node_key": node["key"]})
         for finding in _syntax_findings(summary):

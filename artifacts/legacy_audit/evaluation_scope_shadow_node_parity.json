@@ -22,6 +22,8 @@
   "continuation_mismatches": 0,
   "opens_group_mismatches": 0,
   "ownership_failures": 0,
+  "ambiguous_equal_text_cases": 1,
+  "templated_custom_position_failures": 0,
   "span_integrity_failures": 0,
   "unexpected_empty_spans": 0,
   "bounded_findings": []

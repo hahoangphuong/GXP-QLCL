@@ -1,0 +1,46 @@
+{
+  "member": "RecordForm.frm",
+  "procedure": "BuildCertificate",
+  "start_line": 2,
+  "end_line": 5,
+  "call_windows": [
+    {
+      "call_line": 4,
+      "call_code": "If Not Input_DC_to_CC(wdDoc, wdDoc2, DC_All, True, \"GMP\") Then Exit Sub",
+      "context": [
+        {
+          "line": 2,
+          "code": "Private Sub BuildCertificate()"
+        },
+        {
+          "line": 3,
+          "code": "Set wdDoc2 = Documents.Open(scopeTemplate)"
+        },
+        {
+          "line": 4,
+          "code": "If Not Input_DC_to_CC(wdDoc, wdDoc2, DC_All, True, \"GMP\") Then Exit Sub"
+        },
+        {
+          "line": 5,
+          "code": "End Sub"
+        }
+      ],
+      "object_assignments": [
+        {
+          "line": 3,
+          "variable": "wdDoc2",
+          "expression": "Documents.Open(scopeTemplate)"
+        }
+      ],
+      "document_open_actions": [
+        {
+          "line": 3,
+          "code": "Set wdDoc2 = Documents.Open(scopeTemplate)"
+        }
+      ],
+      "string_literals": [
+        "GMP"
+      ]
+    }
+  ]
+}

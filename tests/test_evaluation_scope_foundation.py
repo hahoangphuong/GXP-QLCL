@@ -37,6 +37,27 @@ def test_shadow_node_spans_match_current_marker_helper():
     assert templated.marker_family == "<$$"
 
 
+def test_shadow_template_ownership_comes_from_source_template_position():
+    from backend.app.domain.evaluation_scope import _canonical_node_text
+
+    cases = [
+        ("Viên nén $$", "Viên nén", "Viên nén ", "Viên nén", ""),
+        ("$$ Viên nén", "Viên nén", "", "Viên nén", " Viên nén"),
+        ("Viên nén $$ Viên nén", "Viên nén", "Viên nén ", "Viên nén", " Viên nén"),
+        ("Dược liệu $$ Dược liệu", "Dược liệu Dược liệu", "Dược liệu ", "Dược liệu Dược liệu", " Dược liệu"),
+        ("Viên  nén $$", "Viên  nén", "Viên nén ", "Viên nén", ""),
+        ("Thuốc đông dược $$", "Thuốc đông dược", "Thuốc đông dược ", "Thuốc đông dược", ""),
+    ]
+    for short_render, custom, prefix, rendered_custom, suffix in cases:
+        expected, _, _ = _canonical_node_text(short_render, custom)
+        result = build_shadow_node_render_spans({"short_render": short_render}, custom, "selected:1:node")
+        assert "".join(span.text for span in result.spans) == expected
+        custom_spans = [span for span in result.spans if span.kind == "SOURCE_CUSTOM_DESCRIPTION"]
+        assert "".join(span.text for span in custom_spans) == rendered_custom
+        ownership = "".join("C" if span.kind == "SOURCE_CUSTOM_DESCRIPTION" else "T" for span in result.spans for _ in span.text)
+        assert ownership == "T" * len(prefix) + "C" * len(rendered_custom) + "T" * len(suffix)
+
+
 def test_owned_span_finalizer_uses_contiguous_half_open_unicode_offsets():
     text, spans = finalize_evaluation_scope_spans((
         EvaluationScopeRenderSpan("SOURCE_TAXONOMY", "Thuốc", "source", "node:1"),

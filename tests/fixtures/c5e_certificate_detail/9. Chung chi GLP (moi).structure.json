@@ -1,0 +1,184 @@
+{
+  "template_filename": "9. Chung chi GLP (moi).dotx",
+  "template_sha256": "e5565b9b2cca73cb19438aa61b456d7d99ac4223cf2c6764a0e2f5d7dc36b07d",
+  "parts": [
+    {
+      "part": "word/document.xml",
+      "bookmarks": [
+        {
+          "name": "TenCty",
+          "id": "0"
+        },
+        {
+          "name": "TenCtyE",
+          "id": "1"
+        },
+        {
+          "name": "DiachiVPCty",
+          "id": "2"
+        },
+        {
+          "name": "DiachiVPCtyE",
+          "id": "3"
+        },
+        {
+          "name": "DiachiCoso",
+          "id": "4"
+        },
+        {
+          "name": "DiachiCosoE",
+          "id": "5"
+        },
+        {
+          "name": "NgayKT1",
+          "id": "6"
+        },
+        {
+          "name": "NoWHO_Del1",
+          "id": "7"
+        },
+        {
+          "name": "PICS_Del1",
+          "id": "8"
+        },
+        {
+          "name": "NoWHO_Del2",
+          "id": "9"
+        },
+        {
+          "name": "EU_Del1",
+          "id": "10"
+        },
+        {
+          "name": "NoPICS_Del1",
+          "id": "11"
+        },
+        {
+          "name": "WHO_Del1",
+          "id": "12"
+        },
+        {
+          "name": "PICS_Del2",
+          "id": "13"
+        },
+        {
+          "name": "NoEU_Del1",
+          "id": "14"
+        },
+        {
+          "name": "NgayKT2",
+          "id": "15"
+        },
+        {
+          "name": "NoWHO_Del3",
+          "id": "16"
+        },
+        {
+          "name": "WHO_Del",
+          "id": "17"
+        },
+        {
+          "name": "PICS_Del3",
+          "id": "18"
+        },
+        {
+          "name": "NoWHO_Del4",
+          "id": "19"
+        },
+        {
+          "name": "EU_Del2",
+          "id": "20"
+        },
+        {
+          "name": "NoPICS_Del2",
+          "id": "21"
+        },
+        {
+          "name": "WHO_Del2",
+          "id": "22"
+        },
+        {
+          "name": "PICS_Del4",
+          "id": "23"
+        },
+        {
+          "name": "NoEU_Del2",
+          "id": "24"
+        },
+        {
+          "name": "_bookmark39",
+          "id": "25"
+        },
+        {
+          "name": "Pvi",
+          "id": "26"
+        },
+        {
+          "name": "Chuthich",
+          "id": "27"
+        },
+        {
+          "name": "ChuthichE",
+          "id": "28"
+        }
+      ],
+      "tables": [
+        {
+          "table_index": 1,
+          "rows": [
+            {
+              "row_index": 1,
+              "bookmarks": [],
+              "cell_text_preview": [
+                "BỘ Y TẾ | MINISTRY OF HEALTH | CỤC QUẢN LÝ DƯỢC | DRUG ADMINISTRATION OF VIETNAM",
+                "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM | SOCIALIST REPUBLIC OF VIETNAM | Độc lập – Tự do – Hạnh phúc | Independence - Freedom - Happiness"
+              ]
+            }
+          ]
+        },
+        {
+          "table_index": 2,
+          "rows": [
+            {
+              "row_index": 1,
+              "bookmarks": [
+                "TenCty",
+                "TenCtyE",
+                "DiachiVPCty",
+                "DiachiVPCtyE",
+                "DiachiCoso",
+                "DiachiCosoE"
+              ],
+              "cell_text_preview": [
+                "Căn cứ quy định tại Thông tư số 04/2018/TT-BYT ngày 09/02/2018 của Bộ trưởng Bộ Y tế quy định về Thực hành tốt phòng thí nghiệm (GLP), | Pursuant to the Circula"
+              ]
+            }
+          ]
+        },
+        {
+          "table_index": 3,
+          "rows": [
+            {
+              "row_index": 1,
+              "bookmarks": [],
+              "cell_text_preview": [
+                "",
+                "Ngày (day)        tháng (month)       năm (year) 2026 | KT. Cục trưởng | PHÓ CỤC TRƯỞNG | F. Director-General | Deputy Director | Tạ Mạnh Hùng"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "part": "word/footer1.xml",
+      "bookmarks": [],
+      "tables": []
+    },
+    {
+      "part": "word/footer2.xml",
+      "bookmarks": [],
+      "tables": []
+    }
+  ]
+}

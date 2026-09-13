@@ -282,6 +282,26 @@ class InspectionPlan(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
     decision_legacy_raw: Mapped[str | None] = mapped_column(Text)
 
 
+class InspectionDecision(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """One source-ordered inspection decision; scalar plan fields are projections only."""
+
+    __tablename__ = "inspection_decision"
+
+    inspection_plan_id: Mapped[str] = mapped_column(ForeignKey("inspection_plan.id"), nullable=False, index=True)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    decision_on: Mapped[date] = mapped_column(Date, nullable=False)
+    legacy_raw: Mapped[str] = mapped_column(Text, nullable=False)
+    relation_type: Mapped[str | None] = mapped_column(String(16))
+    related_decision_id: Mapped[str | None] = mapped_column(ForeignKey("inspection_decision.id"), index=True)
+    __table_args__ = (
+        UniqueConstraint("inspection_plan_id", "ordinal"),
+        CheckConstraint("ordinal >= 1", name="inspection_decision_ordinal_positive"),
+        CheckConstraint("relation_type IS NULL OR relation_type IN ('REPLACES')", name="inspection_decision_relation_known"),
+        CheckConstraint("(relation_type IS NULL) = (related_decision_id IS NULL)", name="inspection_decision_relation_shape"),
+    )
+
+
 class InspectionEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "inspection_event"
 
@@ -361,6 +381,25 @@ class InspectionPeriodSegment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         UniqueConstraint("inspection_outcome_id", "ordinal"),
         CheckConstraint("ordinal >= 1", name="inspection_period_segment_ordinal_positive"),
         CheckConstraint("started_on <= ended_on", name="inspection_period_segment_date_order"),
+    )
+
+
+class InspectionMinutesRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """One source-ordered B. bản time occurrence; never an inferred envelope."""
+
+    __tablename__ = "inspection_minutes_record"
+
+    inspection_outcome_id: Mapped[str] = mapped_column(ForeignKey("inspection_outcome.id"), nullable=False, index=True)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    recorded_on: Mapped[date] = mapped_column(Date, nullable=False)
+    recorded_time: Mapped[time | None] = mapped_column(Time(timezone=False))
+    precision: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_format: Mapped[str] = mapped_column(String(32), nullable=False)
+    legacy_raw: Mapped[str] = mapped_column(Text, nullable=False)
+    __table_args__ = (
+        UniqueConstraint("inspection_outcome_id", "ordinal"),
+        CheckConstraint("ordinal >= 1", name="inspection_minutes_record_ordinal_positive"),
+        CheckConstraint("recorded_time IS NULL OR recorded_on IS NOT NULL", name="inspection_minutes_record_time_requires_date"),
     )
 
 

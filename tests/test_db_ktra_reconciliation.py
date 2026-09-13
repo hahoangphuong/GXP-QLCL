@@ -11,11 +11,15 @@ from fastapi import HTTPException
 from backend.app.domain.legacy_db_ktra_reconciliation import (
     parse_legacy_approval_submission,
     parse_legacy_date,
+    parse_legacy_inspection_decisions,
     parse_legacy_inspection_decision,
+    parse_legacy_minutes_records,
     parse_legacy_minutes_recorded,
     parse_legacy_team,
+    scalar_compatibility_projection,
 )
 from tools import plan_db_ktra_reconciliation as planner
+from tools import plan_db_ktra_repeatable_semantics as repeatable_planner
 from backend.app.services.workflow import CaseWorkflowService
 
 
@@ -51,6 +55,86 @@ def test_minutes_parser_never_fabricates_period_midnight_or_timezone():
     assert iso["recorded_time"].isoformat() == "23:30:00"
     assert parse_legacy_minutes_recorded("24/08/2016; 25/08/2016")["state"] == "UNRESOLVED"
     assert "inspected_on" not in timestamp and "inspected_to_on" not in timestamp
+
+
+def test_repeatable_decision_and_minutes_parsers_preserve_order_without_scalar_selection():
+    decisions = parse_legacy_inspection_decisions("1/QD\nngày 01/02/2026; 2/QD ngày 02/02/2026")
+    assert decisions["state"] == "KNOWN"
+    assert [(item["ordinal"], item["reference"], item["decision_on"]) for item in decisions["occurrences"]] == [
+        (1, "1/QD", date(2026, 2, 1)), (2, "2/QD", date(2026, 2, 2))
+    ]
+    assert scalar_compatibility_projection(decisions["occurrences"]) is None
+    minutes = parse_legacy_minutes_records("01/02/2026 09:30 và 02/02/2026")
+    assert [(item["ordinal"], item["recorded_on"], item["recorded_time"]) for item in minutes["occurrences"]] == [
+        (1, date(2026, 2, 1), __import__("datetime").time(9, 30)), (2, date(2026, 2, 2), None)
+    ]
+
+
+def test_repeatable_parsers_fail_closed_and_preserve_explicit_replacement_only():
+    replacement = parse_legacy_inspection_decisions("2/QD ngày 02/02/2026 (thay the QD số 1/QD ngày 01/02/2026)")
+    assert [(item["ordinal"], item["reference"]) for item in replacement["occurrences"]] == [(1, "2/QD"), (2, "1/QD")]
+    assert replacement["occurrences"][0]["relation_type"] == "REPLACES"
+    assert replacement["occurrences"][0]["replaces_source_reference"] == "1/QD"
+    assert parse_legacy_inspection_decisions("1/QD; 02/02/2026")["state"] == "UNRESOLVED"
+    assert parse_legacy_minutes_records("Nguyễn Văn A")["state"] == "RAW_ONLY"
+    assert scalar_compatibility_projection([]) is None
+
+
+def test_real_snapshot_replacement_layouts_preserve_both_proven_decisions():
+    replacement_rows = [
+        row for row in planner.load_snapshot(planner.SNAPSHOT)
+        if "thay" in str(row.get("decision_reference") or "").lower()
+    ]
+    parsed = [parse_legacy_inspection_decisions(row["decision_reference"]) for row in replacement_rows]
+    assert len(replacement_rows) >= 2
+    assert all(item["state"] == "KNOWN" and len(item["occurrences"]) == 2 for item in parsed)
+    assert all(item["occurrences"][0]["relation_type"] == "REPLACES" for item in parsed)
+
+
+def test_repeatable_source_planner_is_deterministic_and_never_proposes_apply():
+    rows = [
+        {"ID": "1", "decision_reference": "1/QD ngày 1/2/2026; 2/QD ngày 02/02/2026", "bbkt_reference": "01/02/2026 & 02/02/2026", "HẠN KT TUÂN THỦ": "3 năm"},
+        {"ID": "2", "decision_reference": "-", "bbkt_reference": "Nguyễn Văn A"},
+    ]
+    report = repeatable_planner.build_plan(rows)
+    assert report["decisions"]["rows_by_cardinality"] == {"MISSING": 1, "MULTIPLE": 1}
+    assert report["minutes"]["rows_by_cardinality"] == {"MULTIPLE": 1, "RAW_ONLY": 1}
+    assert report["compliance"]["NO_MIGRATION_USER_ENTERED"] == [1]
+    assert report["write_candidates"] == "BLOCKED_PENDING_READ_ONLY_REHEARSAL_COMPARISON"
+    assert report["guardrails"] == {"database_mutated": False, "fuzzy_matching_used": False, "importer_invoked": False, "apply_tool_present": False}
+
+
+def test_repeatable_rehearsal_comparison_requires_exact_existing_owners_without_writes():
+    rows = [
+        {"ID": "1", "decision_reference": "1/QD ngày 01/02/2026", "bbkt_reference": "01/02/2026"},
+        {"ID": "2", "decision_reference": "2/QD ngày 01/02/2026", "bbkt_reference": "01/02/2026"},
+        {"ID": "3", "decision_reference": "3/QD ngày 01/02/2026", "bbkt_reference": "Nguyễn Văn A", "HẠN KT TUÂN THỦ": "03 năm"},
+    ]
+    report = repeatable_planner.build_rehearsal_comparison(rows, {1: {"case_id": "case-1", "inspection_plan_id": "plan-1", "inspection_outcome_id": "outcome-1"}, 2: {"case_id": "case-2", "inspection_plan_id": None, "inspection_outcome_id": None}})
+    assert report["decisions"]["rehearsal_classification_counts"] == {"BLOCKED_NO_CANONICAL_CASE": 1, "BLOCKED_NO_INSPECTION_PLAN": 1, "WRITE_CANDIDATE": 1}
+    assert report["minutes"]["rehearsal_classification_counts"] == {"BLOCKED_NO_INSPECTION_OUTCOME": 1, "RAW_ONLY": 1, "WRITE_CANDIDATE": 1}
+    assert report["canonical_gaps"] == {"classification": "NO_AUTO_CREATE", "legacy_inspection_ids": [3], "count": 1, "write_candidates": 0}
+    assert report["compliance"]["write_candidates"] == 0
+    assert report["guardrails"]["database_mutated"] is False
+    assert isinstance(report["write_candidates"], dict)
+    assert report["write_candidates"]["decisions"] == [
+        item for item in report["decisions"]["classification_records"] if item["classification"] == "WRITE_CANDIDATE"
+    ]
+    assert report["write_candidates"]["decisions"][0]["inspection_plan_id"] == "plan-1"
+    assert report["write_candidates"]["minutes"][0]["inspection_outcome_id"] == "outcome-1"
+    assert all(item["classification"] != "WRITE_CANDIDATE" for item in report["decisions"]["classification_records"] if item["legacy_inspection_id"] == 3)
+
+
+def test_repeatable_rehearsal_comparison_excludes_invalid_source_ids_from_all_ownership_paths():
+    rows = [
+        {"ID": "1", "decision_reference": "1/QD ngày 01/02/2026", "bbkt_reference": "01/02/2026"},
+        {"ID": "", "decision_reference": "2/QD ngày 01/02/2026", "bbkt_reference": "01/02/2026"},
+        {"ID": "not-an-id", "decision_reference": "3/QD ngày 01/02/2026", "bbkt_reference": "01/02/2026"},
+    ]
+    report = repeatable_planner.build_rehearsal_comparison(rows, {1: {"case_id": "case-1", "inspection_plan_id": "plan-1", "inspection_outcome_id": "outcome-1"}})
+    assert report["canonical_gaps"]["legacy_inspection_ids"] == []
+    assert [item["legacy_inspection_id"] for item in report["decisions"]["candidates"]] == [1]
+    assert [item["legacy_inspection_id"] for item in report["minutes"]["candidates"]] == [1]
 
 
 def test_deadline_team_and_approval_parsers_fail_closed_without_identity_or_completion_inference():

@@ -20,6 +20,10 @@ _SENTINELS = {"", "-", "???"}
 # The full committed snapshot has comma-separated team lists and no mixed
 # delimiters.  Other separators remain unresolved rather than guessed.
 _TEAM_SPLIT = re.compile(r"\s*,\s*")
+_REPEATABLE_SOURCE_SPLIT = re.compile(r"\s*(?:;|&|\bvà\b)\s*", re.IGNORECASE)
+_EXPLICIT_REPLACES = re.compile(r"\bthay\s+thế\s+(?:qđ|quyết\s+định)\s*(?:số)?\s*(?P<reference>[^,;\n]+)", re.IGNORECASE)
+_DECISION_PAIR = re.compile(r"(?P<reference>[^,;\n()]+?)\s*(?:ngày|ngay)\s*(?P<date>\d{1,2}[/-]\d{1,2}[/-]\d{4})", re.IGNORECASE)
+_REPLACEMENT_PREFIX = re.compile(r"^\s*(?:thay\s+th(?:ế|e))\s+(?:qđ|qd|quyết\s+định)\s*(?:số)?\s*", re.IGNORECASE)
 
 
 def safe_evidence(value: object) -> dict[str, object]:
@@ -93,7 +97,7 @@ def parse_legacy_inspection_decision(value: object) -> dict[str, Any]:
     if count != 1:
         result["state"] = "UNRESOLVED" if count > 1 else "PARTIAL"
         return result
-    reference = _without_temporal(raw, span).strip(" ,;:-()\t")
+    reference = re.sub(r"\s+", " ", _without_temporal(raw, span)).strip(" ,;:-()\t")
     reference = re.sub(r"\b(?:ngày|ngay)\b", "", reference, flags=re.IGNORECASE).strip(" ,;:-()\t")
     if parsed_date is None:
         result["state"] = "PARTIAL"
@@ -126,6 +130,69 @@ def parse_legacy_minutes_recorded(value: object) -> dict[str, Any]:
         "precision": precision,
         "source_format": source_format,
     }
+
+
+def _repeatable_clauses(value: object) -> tuple[str, list[str]]:
+    raw = "" if value is None else str(value).strip()
+    if raw in _SENTINELS:
+        return raw, []
+    clauses = [item.strip() for item in _REPEATABLE_SOURCE_SPLIT.split(raw)]
+    return raw, clauses
+
+
+def parse_legacy_inspection_decisions(value: object) -> dict[str, Any]:
+    """Parse every explicit Q. định occurrence without selecting one projection."""
+    raw, clauses = _repeatable_clauses(value)
+    if not clauses:
+        return {"state": "MISSING", "occurrences": [], "raw": raw}
+    parsed = [parse_legacy_inspection_decision(clause) for clause in clauses]
+    # A replacement note may put two reference/date pairs in one layout cell,
+    # separated only by comma/newline or parentheses.  Extract only the proven
+    # pair grammar; arbitrary prose remains unresolved.
+    if len(clauses) == 1 and parsed[0]["state"] == "UNRESOLVED":
+        pairs = list(_DECISION_PAIR.finditer(raw))
+        if len(pairs) >= 2:
+            parsed = [parse_legacy_inspection_decision(f"{pair['reference']} ngày {pair['date']}") for pair in pairs]
+    if any(item["state"] != "KNOWN" for item in parsed):
+        return {"state": "UNRESOLVED", "occurrences": [], "raw": raw}
+    occurrences = []
+    for ordinal, item in enumerate(parsed, start=1):
+        reference = item["decision_reference"] or ""
+        replacement = _REPLACEMENT_PREFIX.search(reference)
+        occurrences.append({
+            "ordinal": ordinal, "reference": _REPLACEMENT_PREFIX.sub("", reference).strip(), "decision_on": item["decision_date"],
+            "legacy_raw": item["raw"], "relation_type": "REPLACES" if replacement else None,
+            "replaces_source_reference": None,
+        })
+    # The marker prefixes the replaced decision. Its immediate preceding source
+    # pair is the only explicitly evidenced replacing decision.
+    for index in range(1, len(occurrences)):
+        if _REPLACEMENT_PREFIX.match(parsed[index]["decision_reference"] or ""):
+            occurrences[index - 1]["relation_type"] = "REPLACES"
+            occurrences[index - 1]["replaces_source_reference"] = occurrences[index]["reference"]
+            occurrences[index]["relation_type"] = None
+    return {"state": "KNOWN", "occurrences": occurrences, "raw": raw}
+
+
+def parse_legacy_minutes_records(value: object) -> dict[str, Any]:
+    """Parse every explicit B. bản temporal occurrence in source order."""
+    raw, clauses = _repeatable_clauses(value)
+    if not clauses:
+        return {"state": "MISSING", "occurrences": [], "raw": raw}
+    parsed = [parse_legacy_minutes_recorded(clause) for clause in clauses]
+    if all(item["state"] == "RAW_ONLY" for item in parsed):
+        return {"state": "RAW_ONLY", "occurrences": [], "raw": raw}
+    if any(item["state"] != "KNOWN" for item in parsed):
+        return {"state": "UNRESOLVED", "occurrences": [], "raw": raw}
+    return {"state": "KNOWN", "raw": raw, "occurrences": [
+        {"ordinal": ordinal, "recorded_on": item["recorded_on"], "recorded_time": item["recorded_time"], "precision": item["precision"], "source_format": item["source_format"], "legacy_raw": item["raw"]}
+        for ordinal, item in enumerate(parsed, start=1)
+    ]}
+
+
+def scalar_compatibility_projection(occurrences: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Only a singleton repeatable source may populate a scalar compatibility field."""
+    return occurrences[0] if len(occurrences) == 1 else None
 
 
 def parse_legacy_date(value: object) -> dict[str, Any]:

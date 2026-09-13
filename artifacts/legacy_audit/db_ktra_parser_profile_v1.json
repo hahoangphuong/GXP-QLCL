@@ -22,7 +22,9 @@
             "parsed": {
               "state": "KNOWN",
               "decision_reference": "368/QĐ-QLD",
-              "decision_date": "2016-08-24"
+              "decision_date": "2016-08-24",
+              "precision": "DATE_ONLY",
+              "source_format": "DMY_DATE"
             }
           },
           {
@@ -32,7 +34,9 @@
             "parsed": {
               "state": "KNOWN",
               "decision_reference": "212/QĐ-QLD",
-              "decision_date": "2013-07-30"
+              "decision_date": "2013-07-30",
+              "precision": "DATE_ONLY",
+              "source_format": "DMY_DATE"
             }
           },
           {
@@ -42,7 +46,9 @@
             "parsed": {
               "state": "KNOWN",
               "decision_reference": "237/QĐ-QLD",
-              "decision_date": "2010-08-13"
+              "decision_date": "2010-08-13",
+              "precision": "DATE_ONLY",
+              "source_format": "DMY_DATE"
             }
           }
         ],
@@ -52,7 +58,8 @@
             "source_length": 0,
             "source_shape": "",
             "parsed": {
-              "state": "MISSING"
+              "state": "MISSING",
+              "precision": "RAW_ONLY"
             }
           },
           {
@@ -60,7 +67,8 @@
             "source_length": 0,
             "source_shape": "",
             "parsed": {
-              "state": "MISSING"
+              "state": "MISSING",
+              "precision": "RAW_ONLY"
             }
           },
           {
@@ -68,7 +76,8 @@
             "source_length": 0,
             "source_shape": "",
             "parsed": {
-              "state": "MISSING"
+              "state": "MISSING",
+              "precision": "RAW_ONLY"
             }
           }
         ],
@@ -78,7 +87,8 @@
             "source_length": 10,
             "source_shape": "999/aa-aaa",
             "parsed": {
-              "state": "PARTIAL"
+              "state": "PARTIAL",
+              "precision": "RAW_ONLY"
             }
           },
           {
@@ -86,7 +96,8 @@
             "source_length": 23,
             "source_shape": "999/aa-aaa aaaa 99/9/99",
             "parsed": {
-              "state": "PARTIAL"
+              "state": "PARTIAL",
+              "precision": "RAW_ONLY"
             }
           },
           {
@@ -94,7 +105,8 @@
             "source_length": 10,
             "source_shape": "999/aa-aaa",
             "parsed": {
-              "state": "PARTIAL"
+              "state": "PARTIAL",
+              "precision": "RAW_ONLY"
             }
           }
         ],
@@ -105,7 +117,9 @@
             "source_shape": "999/aa-aaa 99/9/9999",
             "parsed": {
               "state": "UNRESOLVED",
-              "decision_date": "2011-08-08"
+              "decision_date": "2011-08-08",
+              "precision": "DATE_ONLY",
+              "source_format": "DMY_DATE"
             }
           },
           {
@@ -114,7 +128,9 @@
             "source_shape": "999/aa-aaa 99/99/9999",
             "parsed": {
               "state": "UNRESOLVED",
-              "decision_date": "2013-10-03"
+              "decision_date": "2013-10-03",
+              "precision": "DATE_ONLY",
+              "source_format": "DMY_DATE"
             }
           },
           {
@@ -123,7 +139,9 @@
             "source_shape": "999/aa-aaa 99/9/9999",
             "parsed": {
               "state": "UNRESOLVED",
-              "decision_date": "2010-09-29"
+              "decision_date": "2010-09-29",
+              "precision": "DATE_ONLY",
+              "source_format": "DMY_DATE"
             }
           }
         ]
@@ -131,21 +149,47 @@
     },
     "B. bản": {
       "state_counts": {
-        "KNOWN": 1,
+        "KNOWN": 1150,
         "MISSING": 374,
-        "RAW_ONLY": 1152,
+        "RAW_ONLY": 3,
         "UNRESOLVED": 6
       },
       "representative_safe_examples": {
         "KNOWN": [
           {
-            "source_raw_hash": "ba501ba49426987467388fc80bd73d0c3db0fff14a549278f79fdee140ce7296",
-            "source_length": 9,
-            "source_shape": "99-9/9999",
+            "source_raw_hash": "04504b6d8f5064cc1b32eb448e55b7263d6c4c55b53bc4db8a565823f9f99319",
+            "source_length": 25,
+            "source_shape": "9999-99-99 99:99:99+99:99",
             "parsed": {
               "state": "KNOWN",
-              "recorded_on": "2015-06-24",
-              "precision": "DATE_ONLY"
+              "recorded_on": "2016-08-27",
+              "recorded_time": "00:00:00",
+              "precision": "DATE_TIME_LOCAL",
+              "source_format": "ISO_OFFSET_DATETIME"
+            }
+          },
+          {
+            "source_raw_hash": "13e52014945f219beac9f247d3078b4ada4c75bc0b5782059a9184ee9106395e",
+            "source_length": 25,
+            "source_shape": "9999-99-99 99:99:99+99:99",
+            "parsed": {
+              "state": "KNOWN",
+              "recorded_on": "2013-08-15",
+              "recorded_time": "00:00:00",
+              "precision": "DATE_TIME_LOCAL",
+              "source_format": "ISO_OFFSET_DATETIME"
+            }
+          },
+          {
+            "source_raw_hash": "68fae1cd9b8c84cda1f425ac3f30215bc6704ff010dd10844b45229331d29d79",
+            "source_length": 25,
+            "source_shape": "9999-99-99 99:99:99+99:99",
+            "parsed": {
+              "state": "KNOWN",
+              "recorded_on": "2010-08-17",
+              "recorded_time": "00:00:00",
+              "precision": "DATE_TIME_LOCAL",
+              "source_format": "ISO_OFFSET_DATETIME"
             }
           }
         ],
@@ -180,27 +224,27 @@
         ],
         "RAW_ONLY": [
           {
-            "source_raw_hash": "04504b6d8f5064cc1b32eb448e55b7263d6c4c55b53bc4db8a565823f9f99319",
-            "source_length": 25,
-            "source_shape": "9999-99-99 99:99:99+99:99",
+            "source_raw_hash": "5e64601f94da05d6fb012d5b2b59a30ab143d6b7900012f8251c23cfd3db316e",
+            "source_length": 15,
+            "source_shape": "aaaaaa aaa aaaa",
             "parsed": {
               "state": "RAW_ONLY",
               "precision": "RAW_ONLY"
             }
           },
           {
-            "source_raw_hash": "13e52014945f219beac9f247d3078b4ada4c75bc0b5782059a9184ee9106395e",
-            "source_length": 25,
-            "source_shape": "9999-99-99 99:99:99+99:99",
+            "source_raw_hash": "57380913ae6a3c43d39e449d28536c77e720c993c7fab1b31527bd4edacd6894",
+            "source_length": 20,
+            "source_shape": "aaaaaa aaa aaa aaaaa",
             "parsed": {
               "state": "RAW_ONLY",
               "precision": "RAW_ONLY"
             }
           },
           {
-            "source_raw_hash": "68fae1cd9b8c84cda1f425ac3f30215bc6704ff010dd10844b45229331d29d79",
-            "source_length": 25,
-            "source_shape": "9999-99-99 99:99:99+99:99",
+            "source_raw_hash": "eb405c2195572fcd25d33ec94093aa146318f586f00d9dc22c2e3bb385847655",
+            "source_length": 16,
+            "source_shape": "aa aaa aaaaa aaa",
             "parsed": {
               "state": "RAW_ONLY",
               "precision": "RAW_ONLY"
@@ -303,43 +347,21 @@
     },
     "HẠN KT TUÂN THỦ": {
       "state_counts": {
+        "KNOWN": 405,
         "MISSING": 1125,
-        "PARTIAL": 408
+        "PARTIAL": 3
       },
       "representative_safe_examples": {
-        "MISSING": [
-          {
-            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
-            "source_length": 1,
-            "source_shape": "-",
-            "parsed": {
-              "state": "MISSING"
-            }
-          },
-          {
-            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
-            "source_length": 1,
-            "source_shape": "-",
-            "parsed": {
-              "state": "MISSING"
-            }
-          },
-          {
-            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
-            "source_length": 1,
-            "source_shape": "-",
-            "parsed": {
-              "state": "MISSING"
-            }
-          }
-        ],
-        "PARTIAL": [
+        "KNOWN": [
           {
             "source_raw_hash": "3f21590c04f8dd76aaba6a0b1285d1213d2c956887d54931562f7d686b2fe065",
             "source_length": 25,
             "source_shape": "9999-99-99 99:99:99+99:99",
             "parsed": {
-              "state": "PARTIAL"
+              "state": "KNOWN",
+              "precision": "DATE_TIME_LOCAL",
+              "source_format": "ISO_OFFSET_DATETIME",
+              "value": "2019-10-05"
             }
           },
           {
@@ -347,7 +369,10 @@
             "source_length": 25,
             "source_shape": "9999-99-99 99:99:99+99:99",
             "parsed": {
-              "state": "PARTIAL"
+              "state": "KNOWN",
+              "precision": "DATE_TIME_LOCAL",
+              "source_format": "ISO_OFFSET_DATETIME",
+              "value": "2020-02-27"
             }
           },
           {
@@ -355,7 +380,68 @@
             "source_length": 25,
             "source_shape": "9999-99-99 99:99:99+99:99",
             "parsed": {
-              "state": "PARTIAL"
+              "state": "KNOWN",
+              "precision": "DATE_TIME_LOCAL",
+              "source_format": "ISO_OFFSET_DATETIME",
+              "value": "2018-09-12"
+            }
+          }
+        ],
+        "MISSING": [
+          {
+            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
+            "source_length": 1,
+            "source_shape": "-",
+            "parsed": {
+              "state": "MISSING",
+              "precision": "RAW_ONLY"
+            }
+          },
+          {
+            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
+            "source_length": 1,
+            "source_shape": "-",
+            "parsed": {
+              "state": "MISSING",
+              "precision": "RAW_ONLY"
+            }
+          },
+          {
+            "source_raw_hash": "3973e022e93220f9212c18d0d0c543ae7c309e46640da93a4a0314de999f5112",
+            "source_length": 1,
+            "source_shape": "-",
+            "parsed": {
+              "state": "MISSING",
+              "precision": "RAW_ONLY"
+            }
+          }
+        ],
+        "PARTIAL": [
+          {
+            "source_raw_hash": "3a1f34c1c7595b5913a749ad0d0f6e9fdd1fc489d316409091f2970dd8bf1e96",
+            "source_length": 6,
+            "source_shape": "99 aaa",
+            "parsed": {
+              "state": "PARTIAL",
+              "precision": "RAW_ONLY"
+            }
+          },
+          {
+            "source_raw_hash": "9591e50d4020f51cc9243aa961ef0f3c65ea77a4b357cf0466455e5449a220d5",
+            "source_length": 5,
+            "source_shape": "9 aaa",
+            "parsed": {
+              "state": "PARTIAL",
+              "precision": "RAW_ONLY"
+            }
+          },
+          {
+            "source_raw_hash": "9591e50d4020f51cc9243aa961ef0f3c65ea77a4b357cf0466455e5449a220d5",
+            "source_length": 5,
+            "source_shape": "9 aaa",
+            "parsed": {
+              "state": "PARTIAL",
+              "precision": "RAW_ONLY"
             }
           }
         ]
@@ -374,9 +460,13 @@
             "source_shape": "aaaaaa aaa aaaa, aa aaa aaaa aaa, aa aaaaa aaaaaa, aa aaa aaa aaa, aaaa aaaa aaaa",
             "parsed": {
               "state": "KNOWN",
-              "member_count": 1,
+              "member_count": 5,
               "role_codes": [
-                "LEADER"
+                "LEADER",
+                "SECRETARY",
+                "MEMBER",
+                "MEMBER",
+                "MEMBER"
               ]
             }
           },
@@ -386,9 +476,12 @@
             "source_shape": "aaaa aaa aaaa aaaa, aa aaa aaaa aaa, aaaa aaa aaaa aaaaa, aa aaaa aa",
             "parsed": {
               "state": "KNOWN",
-              "member_count": 1,
+              "member_count": 4,
               "role_codes": [
-                "LEADER"
+                "LEADER",
+                "SECRETARY",
+                "MEMBER",
+                "MEMBER"
               ]
             }
           },
@@ -398,9 +491,12 @@
             "source_shape": "aaaa aaa aaaa aaaa, aaaaaa aaa aaaa, aaaaaa aaaa aaa, aa aaaa aa",
             "parsed": {
               "state": "KNOWN",
-              "member_count": 1,
+              "member_count": 4,
               "role_codes": [
-                "LEADER"
+                "LEADER",
+                "SECRETARY",
+                "MEMBER",
+                "MEMBER"
               ]
             }
           }
@@ -441,9 +537,9 @@
     },
     "PHIẾU TRÌNH PCT": {
       "state_counts": {
-        "KNOWN": 370,
+        "KNOWN": 371,
         "MISSING": 1150,
-        "UNRESOLVED": 13
+        "UNRESOLVED": 12
       },
       "representative_safe_examples": {
         "KNOWN": [
@@ -452,7 +548,11 @@
             "source_length": 21,
             "source_shape": "999/aa aaaa 99/9/9999",
             "parsed": {
-              "state": "KNOWN"
+              "state": "KNOWN",
+              "precision": "DATE_ONLY",
+              "source_format": "DMY_DATE",
+              "reference": "418/CL ngày",
+              "submitted_on": "2019-08-17"
             }
           },
           {
@@ -460,7 +560,11 @@
             "source_length": 21,
             "source_shape": "999/aa aaaa 99/9/9999",
             "parsed": {
-              "state": "KNOWN"
+              "state": "KNOWN",
+              "precision": "DATE_ONLY",
+              "source_format": "DMY_DATE",
+              "reference": "152/Cl ngày",
+              "submitted_on": "2019-03-26"
             }
           },
           {
@@ -468,7 +572,11 @@
             "source_length": 22,
             "source_shape": "999/aa aaaa 99/99/9999",
             "parsed": {
-              "state": "KNOWN"
+              "state": "KNOWN",
+              "precision": "DATE_ONLY",
+              "source_format": "DMY_DATE",
+              "reference": "507/CL ngày",
+              "submitted_on": "2019-10-11"
             }
           }
         ],
@@ -539,7 +647,11 @@
             "source_length": 21,
             "source_shape": "99/aa aaaa 99/99/9999",
             "parsed": {
-              "state": "KNOWN"
+              "state": "KNOWN",
+              "precision": "DATE_ONLY",
+              "source_format": "DMY_DATE",
+              "reference": "68/CL ngày",
+              "submitted_on": "2017-02-22"
             }
           },
           {
@@ -547,7 +659,11 @@
             "source_length": 21,
             "source_shape": "999/aa aaaa 99/9/9999",
             "parsed": {
-              "state": "KNOWN"
+              "state": "KNOWN",
+              "precision": "DATE_ONLY",
+              "source_format": "DMY_DATE",
+              "reference": "168/CL ngày",
+              "submitted_on": "2019-04-05"
             }
           },
           {
@@ -555,7 +671,11 @@
             "source_length": 22,
             "source_shape": "999/aa aaaa 99/99/9999",
             "parsed": {
-              "state": "KNOWN"
+              "state": "KNOWN",
+              "precision": "DATE_ONLY",
+              "source_format": "DMY_DATE",
+              "reference": "526/CL ngày",
+              "submitted_on": "2019-10-25"
             }
           }
         ],
@@ -675,6 +795,21 @@
           }
         ]
       }
+    }
+  },
+  "team_segmentation": {
+    "delimiter_counts": {
+      "comma": 1290,
+      "none": 3
+    },
+    "candidate_member_count_distribution": {
+      "1": 3,
+      "2": 85,
+      "3": 173,
+      "4": 721,
+      "5": 282,
+      "6": 28,
+      "8": 1
     }
   },
   "guardrails": {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from backend.app.domain.legacy_db_ktra_reconciliation import parse_legacy_inspection_decision
+from tools.plan_db_ktra_reconciliation import SNAPSHOT, load_snapshot
 from tools import audit_db_ktra_residuals as audit
 
 
@@ -24,7 +25,7 @@ def test_unmatched_identity_stays_fail_closed_without_exact_alternate_id():
 
 
 def test_team_and_approval_audit_never_synthesizes_identity_round_or_parent():
-    rows = [{"ID": "1", "T.tra viên": "A, B", "pct_submission": "PCT-1 ngay 01/02/2026", "ct_submission": "CT-1 ngay 02/02/2026"}]
+    rows = [{"ID": "1", "T.tra viên": "A, B", "PHIẾU TRÌNH PCT": "PCT-1 ngay 01/02/2026", "PHIẾU TRÌNH CT": "CT-1 ngay 02/02/2026"}]
     report = audit.build_audit(rows, {1: {"id": "case-1", "team_member_states": {"A": "UNRESOLVED", "B": "UNRESOLVED"}, "certificate_anomaly": None}}, cases_by_site_and_type={}, person_count=0, profile_count=0)
     assert report["team_identity_source_matrix"]["conclusion"] == "PERSONNEL_MIGRATION_REQUIRED"
     assert report["approval_source_semantics"]["PCT"]["SINGLE_UNORDERED_SUBMISSION"] == 1
@@ -32,7 +33,7 @@ def test_team_and_approval_audit_never_synthesizes_identity_round_or_parent():
 
 
 def test_post_batch4_integrity_reports_only_deterministic_source_mismatches():
-    row = {"ID": "1", "assessment_result": "Dat", "decision_reference": "12/QD ngay 01/02/2026", "bbkt_reference": "03/02/2026", "final_evaluation": "A", "compliance_due_on": "04/02/2026"}
+    row = {"ID": "1", "assessment_result": "Dat", "decision_reference": "12/QD ngay 01/02/2026", "bbkt_reference": "03/02/2026", "ĐÁNH GIÁ CUỐI": "A", "HẠN KT TUÂN THỦ": "04/02/2026"}
     decision = parse_legacy_inspection_decision(row["decision_reference"])
     live = {1: {
         "plan_decision_reference": decision["decision_reference"], "plan_decision_date": decision["decision_date"], "plan_decision_legacy_raw": decision["raw"],
@@ -50,3 +51,34 @@ def test_compare_mode_fails_before_writing_db_derived_artifacts_without_url(tmp_
     with __import__("pytest").raises(RuntimeError, match="DATABASE_URL"):
         audit.main(["--compare-rehearsal", "--residual-output", str(tmp_path / "residual.json")])
     assert not (tmp_path / "residual.json").exists()
+
+
+def test_real_snapshot_uses_shared_vietnamese_source_keys():
+    rows = load_snapshot(SNAPSHOT)
+    report = audit.build_audit(rows, {}, cases_by_site_and_type={}, person_count=0, profile_count=0)
+    approvals = report["approval_source_semantics"]
+    assert approvals["PCT"]["SOURCE_KNOWN"] == 371
+    assert approvals["CT"]["SOURCE_KNOWN"] == 315
+    profile = report["blocked_parser"]
+    assert profile["HẠN KT TUÂN THỦ"]["morphology_counts"]["KNOWN"] == 405
+    assert sum(1 for row in rows if audit._parse_snapshot_field("ĐÁNH GIÁ CUỐI", row)["state"] == "KNOWN") == 1294
+
+
+def test_real_normalized_snapshot_rows_reach_final_and_deadline_integrity_paths():
+    rows = load_snapshot(SNAPSHOT)
+    final_row = next(row for row in rows if audit._parse_snapshot_field("ĐÁNH GIÁ CUỐI", row)["state"] == "KNOWN")
+    deadline_row = next(row for row in rows if audit._parse_snapshot_field("HẠN KT TUÂN THỦ", row)["state"] == "KNOWN")
+    base = {"plan_decision_reference": None, "plan_decision_date": None, "plan_decision_legacy_raw": None, "application_dossier_reference": None, "outcome_decision_reference": None, "minutes_recorded_on": None, "minutes_recorded_time": None, "minutes_legacy_raw": None, "outcome_bbkt_reference": None, "outcome_result": None, "assessment_result": None, "final_evaluation": None, "compliance_due_on": None}
+    final_checks = {item["check"] for item in audit._integrity([final_row], {int(final_row["ID"]): base})["mismatches"]}
+    deadline_checks = {item["check"] for item in audit._integrity([deadline_row], {int(deadline_row["ID"]): base})["mismatches"]}
+    assert "final_evaluation_source_value" in final_checks
+    assert "compliance_due_on_source_value" in deadline_checks
+
+
+def test_certificate_anomaly_classifications_are_exact_and_complete():
+    case = {"id": "case-1", "site_id": "site-1", "gxp_type": "GMP"}
+    assert audit._certificate_anomaly(case, [{}, {}], 7)["classification"] == "BLOCKED_IDENTITY"
+    assert audit._certificate_anomaly(case, [{"case_id": "case-2", "site_id": "site-1", "certificate_type": "GMP"}], 7)["classification"] == "BLOCKED_CASE_MISMATCH"
+    assert audit._certificate_anomaly(case, [{"case_id": None, "site_id": "site-2", "certificate_type": "GMP"}], 7)["classification"] == "BLOCKED_SITE_MISMATCH"
+    assert audit._certificate_anomaly(case, [{"case_id": None, "site_id": "site-1", "certificate_type": "GLP"}], 7)["classification"] == "BLOCKED_TYPE_MISMATCH"
+    assert audit._certificate_anomaly(case, [{"case_id": "case-1", "site_id": "site-1", "certificate_type": "GMP"}], 7) is None

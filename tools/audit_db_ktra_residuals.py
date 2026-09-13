@@ -27,7 +27,7 @@ from backend.app.domain.legacy_db_ktra_reconciliation import (
 )
 from backend.app.domain.phase2_import import normalize_inspection_gxp_type, parse_int
 from tools.plan_db_ktra_reconciliation import (
-    REHEARSAL_DATABASE, REQUIRED_REVISION, SNAPSHOT, load_snapshot,
+    PARSERS, REHEARSAL_DATABASE, REQUIRED_REVISION, SNAPSHOT, load_snapshot,
     validate_rehearsal_target, verify_read_only_connection,
 )
 from tools.profile_legacy_semantics import CANONICAL_SNAPSHOT_ARTIFACT_SHA256
@@ -67,6 +67,12 @@ def _source_parser(domain: str, row: dict[str, Any]) -> dict[str, Any]:
     return parse_legacy_minutes_recorded(row.get("bbkt_reference"))
 
 
+def _parse_snapshot_field(field: str, row: dict[str, Any]) -> dict[str, Any]:
+    """Use the Batch 3 canonical source-key mapping; never duplicate aliases."""
+    source_key, parser = PARSERS[field]
+    return parser(row.get(source_key))
+
+
 def _source_raw(parsed: dict[str, Any]) -> object:
     return parsed.get("raw")
 
@@ -104,7 +110,7 @@ def parser_morphology(parser_name: str, parsed: dict[str, Any]) -> str:
     return "TEXTUAL_ANNOTATION_OR_REFERENCE_ONLY"
 
 
-def _identity_row(row: dict[str, Any], cases_by_legacy_id: dict[int, dict[str, Any]], cases_by_site_and_type: dict[tuple[int | None, str], list[dict[str, Any]]]) -> dict[str, Any] | None:
+def _identity_row(row: dict[str, Any], cases_by_legacy_id: dict[int, dict[str, Any]], cases_by_site_and_type: dict[tuple[int | None, str], list[dict[str, Any]]], certificate_identity_counts: dict[int, int] | None = None) -> dict[str, Any] | None:
     legacy_id = parse_int(row.get("ID", ""))
     if legacy_id is None or legacy_id in cases_by_legacy_id:
         return None
@@ -118,13 +124,18 @@ def _identity_row(row: dict[str, Any], cases_by_legacy_id: dict[int, dict[str, A
         classification = "MANUAL_REVIEW"
     else:
         classification = "MULTIPLE_CANDIDATES"
+    certificate_id = parse_legacy_certificate_id(row.get("ID CC GPs")).get("legacy_certificate_id")
+    inspection = parse_legacy_date(row.get("inspected_at"))
     return {
         "legacy_inspection_id": legacy_id,
         "source_site_legacy_id": site_legacy_id,
         "source_gxp_type": gxp_type,
-        "source_date_shapes": {"inspection": _shape(row.get("inspected_at")), "submission": _shape(row.get("submitted_at"))},
+        "source_certificate_id": certificate_id,
+        "certificate_identity_count": (certificate_identity_counts or {}).get(certificate_id, 0) if certificate_id is not None else 0,
+        "source_inspection_timing": {"state": inspection["state"], "shape": _shape(row.get("inspected_at"))},
         "classification": classification,
         "exact_candidate_count": len(candidates),
+        "canonical_candidate_ids": sorted(str(candidate["id"]) for candidate in candidates),
     }
 
 
@@ -196,6 +207,32 @@ def _team_matrix(rows: list[dict[str, Any]], live: dict[int, dict[str, Any]], pe
     }
 
 
+def _certificate_anomaly(case: dict[str, Any], certificates: list[dict[str, Any]], legacy_certificate_id: int) -> dict[str, Any] | None:
+    if len(certificates) != 1:
+        classification = "BLOCKED_IDENTITY"
+        certificate = None
+    else:
+        certificate = certificates[0]
+        if certificate.get("case_id") not in {None, case["id"]}:
+            classification = "BLOCKED_CASE_MISMATCH"
+        elif certificate.get("site_id") != case["site_id"]:
+            classification = "BLOCKED_SITE_MISMATCH"
+        elif certificate.get("certificate_type") != case["gxp_type"]:
+            classification = "BLOCKED_TYPE_MISMATCH"
+        else:
+            return None
+    return {
+        "classification": classification,
+        "legacy_certificate_id": legacy_certificate_id,
+        "canonical_certificate_identity_count": len(certificates),
+        "source_case_id": case["id"],
+        "canonical_case_id": None if certificate is None else certificate.get("case_id"),
+        "site_relation": "MATCH" if certificate is not None and certificate.get("site_id") == case["site_id"] else "MISMATCH_OR_UNRESOLVED",
+        "source_gxp_type": case["gxp_type"],
+        "certificate_type": None if certificate is None else certificate.get("certificate_type"),
+    }
+
+
 def _integrity(rows: list[dict[str, Any]], live: dict[int, dict[str, Any]]) -> dict[str, Any]:
     """Verify post-apply fields against the same source parsers used by Batch 4."""
     mismatches: list[dict[str, Any]] = []
@@ -226,10 +263,10 @@ def _integrity(rows: list[dict[str, Any]], live: dict[int, dict[str, Any]]) -> d
                 mismatch(legacy_id, "outcome_result_source_value")
             if case.get("assessment_result") == result:
                 mismatch(legacy_id, "assessment_exact_copy_not_cleared")
-        final = str(row.get("final_evaluation") or "").strip()
-        if final not in {"", "-", "???"} and case.get("final_evaluation") != final:
+        final = _parse_snapshot_field("ĐÁNH GIÁ CUỐI", row)
+        if final["state"] == "KNOWN" and case.get("final_evaluation") != final.get("value"):
             mismatch(legacy_id, "final_evaluation_source_value")
-        deadline = parse_legacy_date(row.get("compliance_due_on"))
+        deadline = _parse_snapshot_field("HẠN KT TUÂN THỦ", row)
         if deadline["state"] == "KNOWN" and case.get("compliance_due_on") != deadline.get("value"):
             mismatch(legacy_id, "compliance_due_on_source_value")
     return {
@@ -240,17 +277,22 @@ def _integrity(rows: list[dict[str, Any]], live: dict[int, dict[str, Any]]) -> d
     }
 
 
-def build_audit(rows: list[dict[str, Any]], live: dict[int, dict[str, Any]], *, cases_by_site_and_type: dict[tuple[int | None, str], list[dict[str, Any]]], person_count: int, profile_count: int) -> dict[str, Any]:
+def build_audit(rows: list[dict[str, Any]], live: dict[int, dict[str, Any]], *, cases_by_site_and_type: dict[tuple[int | None, str], list[dict[str, Any]]], person_count: int, profile_count: int, certificate_identity_counts: dict[int, int] | None = None) -> dict[str, Any]:
     residual, _ = _residual_rows(rows, live)
-    identities = [item for row in rows if (item := _identity_row(row, live, cases_by_site_and_type)) is not None]
+    identities = [item for row in rows if (item := _identity_row(row, live, cases_by_site_and_type, certificate_identity_counts)) is not None]
     parser = _parser_profile(rows)
-    approvals: dict[str, Counter[str]] = {"PCT": Counter(), "CT": Counter()}
+    approvals: dict[str, Counter[str]] = {
+        "PCT": Counter({"SOURCE_KNOWN": 0, "SOURCE_MISSING": 0, "SOURCE_BLOCKED": 0, "SINGLE_UNORDERED_SUBMISSION": 0, "COMPLETION_EVIDENCE_ABSENT": 0, "COMPLETION_EVIDENCE_PRESENT": 0}),
+        "CT": Counter({"SOURCE_KNOWN": 0, "SOURCE_MISSING": 0, "SOURCE_BLOCKED": 0, "EXACTLY_ONE_PCT_SOURCE_CANDIDATE": 0, "MULTIPLE_PCT_SOURCE_CANDIDATES": 0, "LACKS_PCT_SOURCE": 0, "EXPLICIT_PARENT_REFERENCE_PRESENT": 0, "EXPLICIT_PARENT_REFERENCE_ABSENT": 0}),
+    }
     certificate_anomalies: list[dict[str, Any]] = []
     for row in rows:
         legacy_id = parse_int(row.get("ID", ""))
         if legacy_id is None:
             continue
-        pct, ct = parse_legacy_approval_submission(row.get("pct_submission")), parse_legacy_approval_submission(row.get("ct_submission"))
+        pct, ct = _parse_snapshot_field("PHIẾU TRÌNH PCT", row), _parse_snapshot_field("PHIẾU TRÌNH CT", row)
+        approvals["PCT"]["SOURCE_KNOWN" if pct["state"] == "KNOWN" else "SOURCE_MISSING" if pct["state"] == "MISSING" else "SOURCE_BLOCKED"] += 1
+        approvals["CT"]["SOURCE_KNOWN" if ct["state"] == "KNOWN" else "SOURCE_MISSING" if ct["state"] == "MISSING" else "SOURCE_BLOCKED"] += 1
         if pct["state"] == "KNOWN":
             approvals["PCT"]["SINGLE_UNORDERED_SUBMISSION"] += 1
             approvals["PCT"]["COMPLETION_EVIDENCE_ABSENT"] += 1
@@ -275,7 +317,7 @@ def build_audit(rows: list[dict[str, Any]], live: dict[int, dict[str, Any]], *, 
     }
 
 
-def _read_live(database_url: str, rows: list[dict[str, Any]]) -> tuple[dict[int, dict[str, Any]], dict[tuple[int | None, str], list[dict[str, Any]]], int, int]:
+def _read_live(database_url: str, rows: list[dict[str, Any]]) -> tuple[dict[int, dict[str, Any]], dict[tuple[int | None, str], list[dict[str, Any]]], int, int, dict[int, int]]:
     validate_rehearsal_target(database_url)
     engine = create_engine(database_url)
     connection = engine.connect()
@@ -311,7 +353,7 @@ def _read_live(database_url: str, rows: list[dict[str, Any]]) -> tuple[dict[int,
         by_site_type: dict[tuple[int | None, str], list[dict[str, Any]]] = defaultdict(list)
         for case in cases:
             site = sites.get(case.site_id)
-            candidate = {"id": case.id, "legacy_inspection_id": case.legacy_inspection_id, "site_legacy_id": None if site is None else site.legacy_site_id, "gxp_type": case.gxp_type}
+            candidate = {"id": case.id, "legacy_inspection_id": case.legacy_inspection_id, "site_id": case.site_id, "site_legacy_id": None if site is None else site.legacy_site_id, "gxp_type": case.gxp_type}
             by_site_type[(candidate["site_legacy_id"], case.gxp_type)].append(candidate)
             if case.legacy_inspection_id not in legacy_ids:
                 continue
@@ -345,9 +387,13 @@ def _read_live(database_url: str, rows: list[dict[str, Any]]) -> tuple[dict[int,
                 case["team_member_states"][member["display_name"]] = "UNRESOLVED" if not matches else "AMBIGUOUS" if len(matches) > 1 else "EXACT_RESOLVED"
             certificate_id = parse_legacy_certificate_id(row.get("ID CC GPs")).get("legacy_certificate_id")
             candidates = certificates.get(certificate_id, [])
-            if certificate_id is not None and (len(candidates) != 1 or (candidates and candidates[0].case_id not in {None, case["id"]}) or (candidates and candidates[0].site_id != case["site_id"])):
-                case["certificate_anomaly"] = {"legacy_certificate_id": certificate_id, "canonical_certificate_identity_count": len(candidates), "source_case_id": case["id"], "canonical_case_id": None if len(candidates) != 1 else candidates[0].case_id, "site_relation": "MATCH" if len(candidates) == 1 and candidates[0].site_id == case["site_id"] else "MISMATCH_OR_UNRESOLVED", "source_gxp_type": case["gxp_type"], "canonical_gxp_type": None if len(candidates) != 1 else candidates[0].certificate_type}
-        return live, by_site_type, len(people), len(profiles)
+            if certificate_id is not None:
+                case["certificate_anomaly"] = _certificate_anomaly(
+                    case,
+                    [{"case_id": item.case_id, "site_id": item.site_id, "certificate_type": item.certificate_type} for item in candidates],
+                    certificate_id,
+                )
+        return live, by_site_type, len(people), len(profiles), {key: len(value) for key, value in certificates.items()}
     finally:
         session.close()
         transaction.rollback()
@@ -368,8 +414,8 @@ def main(argv: list[str] | None = None) -> int:
     if not database_url:
         raise RuntimeError(f"--compare-rehearsal requires non-empty environment variable {args.database_url_env}")
     rows = load_snapshot(args.snapshot.resolve())
-    live, by_site_type, person_count, profile_count = _read_live(database_url, rows)
-    report = build_audit(rows, live, cases_by_site_and_type=by_site_type, person_count=person_count, profile_count=profile_count)
+    live, by_site_type, person_count, profile_count, certificate_counts = _read_live(database_url, rows)
+    report = build_audit(rows, live, cases_by_site_and_type=by_site_type, person_count=person_count, profile_count=profile_count, certificate_identity_counts=certificate_counts)
     report["read_only_connection"] = {"database": REHEARSAL_DATABASE, "revision": REQUIRED_REVISION, "transaction_read_only": True}
     outputs = ((args.residual_output, report), (args.identity_output, report["blocked_identity"]), (args.parser_output, report["blocked_parser"]))
     for output, payload in outputs:

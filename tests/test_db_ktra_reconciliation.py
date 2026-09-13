@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 import inspect
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -21,6 +22,7 @@ from backend.app.domain.legacy_db_ktra_reconciliation import (
 from tools import plan_db_ktra_reconciliation as planner
 from tools import plan_db_ktra_repeatable_semantics as repeatable_planner
 from backend.app.services.workflow import CaseWorkflowService
+from backend.app.db.models.phase1 import InspectionDecision, InspectionMinutesRecord
 
 
 def test_snapshot_guard_fails_before_outputs(tmp_path):
@@ -102,6 +104,16 @@ def test_repeatable_source_planner_is_deterministic_and_never_proposes_apply():
     assert report["compliance"]["NO_MIGRATION_USER_ENTERED"] == [1]
     assert report["write_candidates"] == "BLOCKED_PENDING_READ_ONLY_REHEARSAL_COMPARISON"
     assert report["guardrails"] == {"database_mutated": False, "fuzzy_matching_used": False, "importer_invoked": False, "apply_tool_present": False}
+
+
+def test_repeatable_model_indexes_match_migration_intent():
+    assert {index.name for index in InspectionDecision.__table__.indexes} == {"ix_inspection_decision_related_decision_id"}
+    assert not InspectionMinutesRecord.__table__.indexes
+    migration = Path("migrations/versions/20260913_0013_repeatable_inspection_semantics.py").read_text(encoding="utf-8")
+    assert migration.count("op.create_index(") == 1
+    assert migration.count("op.drop_index(") == 1
+    assert 'op.create_index("ix_inspection_decision_related_decision_id", "inspection_decision", ["related_decision_id"])' in migration
+    assert 'op.drop_index("ix_inspection_decision_related_decision_id", table_name="inspection_decision")' in migration
 
 
 def test_repeatable_rehearsal_comparison_requires_exact_existing_owners_without_writes():

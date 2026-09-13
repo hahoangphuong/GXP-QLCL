@@ -287,7 +287,7 @@ class InspectionDecision(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "inspection_decision"
 
-    inspection_plan_id: Mapped[str] = mapped_column(ForeignKey("inspection_plan.id"), nullable=False, index=True)
+    inspection_plan_id: Mapped[str] = mapped_column(ForeignKey("inspection_plan.id"), nullable=False)
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
     reference: Mapped[str] = mapped_column(String(255), nullable=False)
     decision_on: Mapped[date] = mapped_column(Date, nullable=False)
@@ -389,7 +389,7 @@ class InspectionMinutesRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "inspection_minutes_record"
 
-    inspection_outcome_id: Mapped[str] = mapped_column(ForeignKey("inspection_outcome.id"), nullable=False, index=True)
+    inspection_outcome_id: Mapped[str] = mapped_column(ForeignKey("inspection_outcome.id"), nullable=False)
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
     recorded_on: Mapped[date] = mapped_column(Date, nullable=False)
     recorded_time: Mapped[time | None] = mapped_column(Time(timezone=False))

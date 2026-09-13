@@ -1,0 +1,56 @@
+{
+  "families": [
+    {
+      "family_code": "CERTIFICATE_DECISION",
+      "compatibility_status": "template_verified_word_ooxml",
+      "copy_forward_dependencies": [],
+      "field_resolutions": [],
+      "unresolved_fields": ["TenCty"],
+      "unmatched_real_bookmarks": []
+    },
+    {
+      "family_code": "INSPECTION_CAPA_LAN_1",
+      "compatibility_status": "template_verified_word_ooxml",
+      "copy_forward_dependencies": [],
+      "field_resolutions": [
+        {
+          "field_name": "CAPAx",
+          "resolution_type": "exact",
+          "target_bookmarks": ["CAPAx"],
+          "evidence": "sanitized-fixture"
+        }
+      ],
+      "unresolved_fields": [],
+      "unmatched_real_bookmarks": []
+    },
+    {
+      "family_code": "INSPECTION_CAPA_LAN_2",
+      "compatibility_status": "template_verified_word_ooxml",
+      "copy_forward_dependencies": [
+        {
+          "source_family_code": "INSPECTION_CAPA_LAN_1",
+          "condition": "If prior CAPA round 1 exists, copy CAPAx table.",
+          "source_bookmarks": ["CAPAx"]
+        }
+      ],
+      "field_resolutions": [
+        {
+          "field_name": "CAPAx",
+          "resolution_type": "exact",
+          "target_bookmarks": ["CAPAx"],
+          "evidence": "sanitized-fixture"
+        }
+      ],
+      "unresolved_fields": [],
+      "unmatched_real_bookmarks": []
+    },
+    {
+      "family_code": "DDKD_CERTIFICATE",
+      "compatibility_status": "template_verified_word_ooxml",
+      "copy_forward_dependencies": [],
+      "field_resolutions": [],
+      "unresolved_fields": [],
+      "unmatched_real_bookmarks": []
+    }
+  ]
+}

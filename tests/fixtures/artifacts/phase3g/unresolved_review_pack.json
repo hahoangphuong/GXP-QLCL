@@ -1,0 +1,27 @@
+[
+  {
+    "source_sheet": "db.cc",
+    "legacy_row_id": "1153",
+    "classification": "needs_external_evidence",
+    "reason": "missing_case_fk",
+    "required_field": "ID DOT KTRA",
+    "review_context": {
+      "summary": "Fixture unresolved row",
+      "priority": "B1",
+      "decision_hint": "choose_matching_case",
+      "legacy_context": {
+        "site_legacy_id": 85,
+        "site_name": "Co so 85",
+        "certificate_number": "CERT-1153"
+      },
+      "candidate_cases": [
+        {
+          "legacy_case_id": 836
+        },
+        {
+          "legacy_case_id": 1171
+        }
+      ]
+    }
+  }
+]

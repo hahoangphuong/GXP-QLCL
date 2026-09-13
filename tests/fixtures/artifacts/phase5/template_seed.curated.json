@@ -1,0 +1,86 @@
+{
+  "template_definitions": [
+    {
+      "family_code": "CERTIFICATE_DECISION",
+      "template_name": "8 qd cap cc {GP}",
+      "document_type_code": "CERTIFICATE_DECISION",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.btnFilez",
+      "legacy_case_number": 8,
+      "variant_type": "editable_docx",
+      "template_pattern": "8 qd cap cc {GP}",
+      "bookmark_contract_json": "{\"bookmarks\":[\"TenCty\"]}",
+      "notes": "Sanitized fixture template."
+    },
+    {
+      "family_code": "INSPECTION_CAPA_LAN_1",
+      "template_name": "5. Danh gia CAPA - {GP}.dotx",
+      "document_type_code": "INSPECTION_CAPA_LAN_1",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.Tao_BB_CAPA",
+      "legacy_case_number": 5,
+      "variant_type": "editable_docx",
+      "template_pattern": "5. Danh gia CAPA - {GP}.dotx",
+      "bookmark_contract_json": "{\"bookmarks\":[\"CAPAx\"]}",
+      "notes": "Sanitized fixture CAPA round 1."
+    },
+    {
+      "family_code": "INSPECTION_CAPA_LAN_2",
+      "template_name": "5. Danh gia CAPA - {GP}.dotx",
+      "document_type_code": "INSPECTION_CAPA_LAN_2",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.Tao_BB_CAPA",
+      "legacy_case_number": 5,
+      "variant_type": "editable_docx",
+      "template_pattern": "5. Danh gia CAPA - {GP}.dotx",
+      "bookmark_contract_json": "{\"bookmarks\":[\"CAPAx\"]}",
+      "notes": "Sanitized fixture CAPA round 2."
+    },
+    {
+      "family_code": "DDKD_CERTIFICATE",
+      "template_name": "z2 giay chung nhan ddkkdd",
+      "document_type_code": "DDKD_CERTIFICATE",
+      "source_application": "Word",
+      "storage_scope": "dkkd_folder",
+      "legacy_host_procedure": "RecordForm.btnFilez",
+      "legacy_case_number": 902,
+      "variant_type": "editable_docx",
+      "template_pattern": "z2 giay chung nhan ddkkdd",
+      "bookmark_contract_json": "{\"bookmarks\":[\"TenCty\",\"DiachiCoso\",\"HoatdongKD\"]}",
+      "notes": "Sanitized fixture template."
+    }
+  ],
+  "template_bindings": [
+    {
+      "family_code": "CERTIFICATE_DECISION",
+      "template_name": "8 qd cap cc {GP}",
+      "gxp_type": "{GP}",
+      "legacy_mode": null,
+      "storage_scope": "inspection_folder"
+    },
+    {
+      "family_code": "INSPECTION_CAPA_LAN_1",
+      "template_name": "5. Danh gia CAPA - {GP}.dotx",
+      "gxp_type": "{GP}",
+      "legacy_mode": null,
+      "storage_scope": "inspection_folder"
+    },
+    {
+      "family_code": "INSPECTION_CAPA_LAN_2",
+      "template_name": "5. Danh gia CAPA - {GP}.dotx",
+      "gxp_type": "{GP}",
+      "legacy_mode": "lan_2",
+      "storage_scope": "inspection_folder"
+    },
+    {
+      "family_code": "DDKD_CERTIFICATE",
+      "template_name": "z2 giay chung nhan ddkkdd",
+      "gxp_type": null,
+      "legacy_mode": null,
+      "storage_scope": "dkkd_folder"
+    }
+  ]
+}

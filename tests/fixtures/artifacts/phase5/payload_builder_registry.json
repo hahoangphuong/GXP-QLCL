@@ -1,0 +1,66 @@
+{
+  "payload_builders": [
+    {
+      "family_code": "CERTIFICATE_DECISION",
+      "source_procedures": ["BuildCertificateDecisionPayload"],
+      "fields": [
+        {
+          "field_name": "TenCty",
+          "source_procedure": "BuildCertificateDecisionPayload",
+          "sensitivity": "business"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Sanitized fixture payload builder."
+    },
+    {
+      "family_code": "INSPECTION_CAPA_LAN_1",
+      "source_procedures": ["RecordForm.Tao_BB_CAPA"],
+      "fields": [
+        {
+          "field_name": "CAPAx",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "business"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Sanitized fixture payload builder."
+    },
+    {
+      "family_code": "INSPECTION_CAPA_LAN_2",
+      "source_procedures": ["RecordForm.Tao_BB_CAPA"],
+      "fields": [
+        {
+          "field_name": "CAPAx",
+          "source_procedure": "RecordForm.Tao_BB_CAPA",
+          "sensitivity": "business"
+        }
+      ],
+      "copy_forward_required": true,
+      "notes": "Sanitized fixture payload builder."
+    },
+    {
+      "family_code": "DDKD_CERTIFICATE",
+      "source_procedures": ["BuildDdkdCertificatePayload"],
+      "fields": [
+        {
+          "field_name": "TenCty",
+          "source_procedure": "BuildDdkdCertificatePayload",
+          "sensitivity": "business"
+        },
+        {
+          "field_name": "DiachiCoso",
+          "source_procedure": "BuildDdkdCertificatePayload",
+          "sensitivity": "business"
+        },
+        {
+          "field_name": "HoatdongKD",
+          "source_procedure": "BuildDdkdCertificatePayload",
+          "sensitivity": "business"
+        }
+      ],
+      "copy_forward_required": false,
+      "notes": "Sanitized fixture payload builder."
+    }
+  ]
+}

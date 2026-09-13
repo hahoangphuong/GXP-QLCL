@@ -1,0 +1,66 @@
+{
+  "entries": [
+    {
+      "family_code": "CERTIFICATE_DECISION",
+      "logical_name": "Certificate Decision",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.btnFilez",
+      "legacy_case_numbers": [8],
+      "template_pattern": "8 qd cap cc {GP}",
+      "selection_legacy_mode": null,
+      "population_procedures": ["BuildCertificateDecisionPayload"],
+      "bookmarks": ["TenCty"],
+      "copy_forward_dependencies": [],
+      "notes": "Sanitized fixture registry entry."
+    },
+    {
+      "family_code": "INSPECTION_CAPA_LAN_1",
+      "logical_name": "Inspection CAPA Round 1",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.Tao_BB_CAPA",
+      "legacy_case_numbers": [5],
+      "template_pattern": "5. Danh gia CAPA - {GP}.dotx",
+      "selection_legacy_mode": null,
+      "population_procedures": ["RecordForm.Tao_BB_CAPA"],
+      "bookmarks": ["CAPAx"],
+      "copy_forward_dependencies": [],
+      "notes": "Sanitized fixture CAPA round 1."
+    },
+    {
+      "family_code": "INSPECTION_CAPA_LAN_2",
+      "logical_name": "Inspection CAPA Round 2",
+      "source_application": "Word",
+      "storage_scope": "inspection_folder",
+      "legacy_host_procedure": "RecordForm.Tao_BB_CAPA",
+      "legacy_case_numbers": [5],
+      "template_pattern": "5. Danh gia CAPA - {GP}.dotx",
+      "selection_legacy_mode": "lan_2",
+      "population_procedures": ["RecordForm.Tao_BB_CAPA"],
+      "bookmarks": ["CAPAx"],
+      "copy_forward_dependencies": [
+        {
+          "source_family_code": "INSPECTION_CAPA_LAN_1",
+          "condition": "If prior CAPA round 1 exists, copy CAPAx table.",
+          "source_bookmarks": ["CAPAx"]
+        }
+      ],
+      "notes": "Sanitized fixture CAPA round 2."
+    },
+    {
+      "family_code": "DDKD_CERTIFICATE",
+      "logical_name": "Business Eligibility Certificate",
+      "source_application": "Word",
+      "storage_scope": "dkkd_folder",
+      "legacy_host_procedure": "RecordForm.btnFilez",
+      "legacy_case_numbers": [902],
+      "template_pattern": "z2 giay chung nhan ddkkdd",
+      "selection_legacy_mode": null,
+      "population_procedures": ["BuildDdkdCertificatePayload"],
+      "bookmarks": ["TenCty", "DiachiCoso", "HoatdongKD"],
+      "copy_forward_dependencies": [],
+      "notes": "Sanitized fixture registry entry."
+    }
+  ]
+}

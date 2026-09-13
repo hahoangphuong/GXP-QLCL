@@ -1,0 +1,15 @@
+{
+  "family_code": "INSPECTION_BBTD_HOSO_DK",
+  "variants": [
+    {
+      "variant_key": "sanitized-bbtd",
+      "template_name": "1 bbtd sanitized.dotx",
+      "bookmarks": ["TenCty"],
+      "allowed_payload_fields": ["TenCty"],
+      "exclusive_bookmarks": [],
+      "field_mappings": {
+        "TenCty": ["TenCty"]
+      }
+    }
+  ]
+}

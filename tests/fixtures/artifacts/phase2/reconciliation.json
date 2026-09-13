@@ -1,0 +1,23 @@
+{
+  "skipped_rows": {
+    "db.cc": 2
+  },
+  "anomaly_rows": [
+    {
+      "source_sheet": "db.cc",
+      "legacy_row_id": "1",
+      "reason": "missing_site_fk",
+      "required_field": "ID CO SO",
+      "raw_fk_value": "",
+      "status": "open"
+    },
+    {
+      "source_sheet": "db.cc",
+      "legacy_row_id": "2",
+      "reason": "missing_case_fk",
+      "required_field": "ID DOT KTRA",
+      "raw_fk_value": "999",
+      "status": "overridden"
+    }
+  ]
+}

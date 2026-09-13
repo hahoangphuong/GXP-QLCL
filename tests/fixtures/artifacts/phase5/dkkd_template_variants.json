@@ -1,0 +1,17 @@
+{
+  "family_code": "DDKD_CERTIFICATE",
+  "variants": [
+    {
+      "variant_key": "sanitized-ddkd-certificate",
+      "template_name": "z2 giay chung nhan ddkkdd sanitized.dotx",
+      "bookmarks": ["TenCty", "DiachiCoso", "HoatdongKD"],
+      "allowed_payload_fields": ["TenCty", "DiachiCoso", "HoatdongKD"],
+      "exclusive_bookmarks": [],
+      "field_mappings": {
+        "TenCty": ["TenCty"],
+        "DiachiCoso": ["DiachiCoso"],
+        "HoatdongKD": ["HoatdongKD"]
+      }
+    }
+  ]
+}

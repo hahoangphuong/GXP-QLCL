@@ -13,13 +13,19 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 from typing import Any
 
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.orm import Session
 
-from backend.app.db.models.phase1 import Case, CaseApplication, CaseAssessment, InspectionOutcome, InspectionPlan, InspectionPeriodSegment
+from backend.app.db.models.phase1 import (
+    CapaCycle, Case, CaseApplication, CaseAssessment, Certificate,
+    CertificateScope, CertificateVersion, InspectionApprovalSubmission,
+    InspectionOutcome, InspectionPeriodSegment, InspectionPlan, InspectionTeam,
+    InspectionTeamMember,
+)
 from backend.app.domain.legacy_db_ktra_reconciliation import (
     parse_legacy_date,
     parse_legacy_inspection_decision,
@@ -54,6 +60,12 @@ CLEANUP_FACTS = {"assessment_result_contamination", "application_dossier_referen
 
 class ApplyFenceError(RuntimeError):
     """A plan, provenance, or live-state fence failed before commit."""
+
+
+class ApplyExecutionError(ApplyFenceError):
+    def __init__(self, message: str, report: dict[str, Any]):
+        super().__init__(message)
+        self.report = report
 
 
 def _sha(path: Path) -> str:
@@ -136,11 +148,25 @@ def validate_source_replay(eligible: list[dict[str, Any]], snapshot_rows: list[d
 
 
 def _require_same_or_empty(current: object, desired: object, label: str) -> bool:
-    if current is None:
-        return True
     if current == desired:
         return False
+    if current is None:
+        return True
     raise ApplyFenceError(f"live canonical conflict at {label}")
+
+
+def _bump_changed_entities(changed_entities: dict[int, Any], new_entities: set[int]) -> None:
+    """Advance optimistic versions only for persisted objects changed by this run."""
+    for entity_identity, entity in changed_entities.items():
+        if entity_identity not in new_entities and getattr(entity, "row_version", None) is not None:
+            entity.row_version += 1
+
+
+def _safe_error_summary(error: Exception) -> str:
+    """Keep operational failure evidence useful without serializing credentials."""
+    summary = str(error)
+    summary = re.sub(r"(?i)(password|pwd)=([^\s&;]+)", r"\1=[REDACTED]", summary)
+    return re.sub(r"(://)[^/@\s]+@", r"\1[REDACTED]@", summary)
 
 
 def _lock_one(session: Session, model: Any, case_id: str) -> Any | None:
@@ -154,6 +180,44 @@ def _operation_groups(eligible: list[dict[str, Any]]) -> dict[int, dict[str, dic
     return grouped
 
 
+def _protected_counts(session: Session) -> dict[str, int]:
+    """Capture excluded-table cardinalities without retaining business prose."""
+    if hasattr(session, "protected_counts"):
+        return dict(session.protected_counts())
+    return {
+        "inspection_period_segments": session.scalar(select(func.count()).select_from(InspectionPeriodSegment)),
+        "inspection_teams": session.scalar(select(func.count()).select_from(InspectionTeam)),
+        "inspection_team_members": session.scalar(select(func.count()).select_from(InspectionTeamMember)),
+        "approval_submissions": session.scalar(select(func.count()).select_from(InspectionApprovalSubmission)),
+        "certificates": session.scalar(select(func.count()).select_from(Certificate)),
+        "certificate_versions": session.scalar(select(func.count()).select_from(CertificateVersion)),
+        "certificate_scopes": session.scalar(select(func.count()).select_from(CertificateScope)),
+        "capa_cycles": session.scalar(select(func.count()).select_from(CapaCycle)),
+    }
+
+
+def _protected_evidence(cases: list[Any], outcomes: list[Any], counts: dict[str, int]) -> dict[str, Any]:
+    return {
+        "case_states": {case.id: str(case.state) for case in cases},
+        "outcome_period_fields": {outcome.id: (outcome.inspected_on, outcome.inspected_to_on, outcome.inspection_period_state) for outcome in outcomes if outcome is not None},
+        "counts": counts,
+    }
+
+
+def _verify_protected_state(before: dict[str, Any], cases: list[Any], outcomes: list[Any], after_counts: dict[str, int]) -> dict[str, Any]:
+    after = _protected_evidence(cases, outcomes, after_counts)
+    if before != after:
+        raise ApplyFenceError("protected Batch 4 state changed unexpectedly")
+    return {
+        "inspection_period_segments_before": before["counts"]["inspection_period_segments"],
+        "inspection_period_segments_after": after_counts["inspection_period_segments"],
+        "protected_outcome_fields_verified": len(before["outcome_period_fields"]),
+        "case_state_verified": len(before["case_states"]),
+        **{f"{key}_before": value for key, value in before["counts"].items() if key != "inspection_period_segments"},
+        **{f"{key}_after": value for key, value in after_counts.items() if key != "inspection_period_segments"},
+    }
+
+
 def preflight_and_apply(session: Session, plan: dict[str, Any], snapshot_rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Preflight every candidate, then mutate only after all fences pass.
 
@@ -163,16 +227,22 @@ def preflight_and_apply(session: Session, plan: dict[str, Any], snapshot_rows: l
     rows = validate_source_replay(eligible, snapshot_rows)
     groups = _operation_groups(eligible)
     operations: list[tuple[Any, str, object]] = []
-    changed_entities: set[tuple[str, str]] = set()
+    changed_entities: dict[int, Any] = {}
+    new_entities: set[int] = set()
+    locked_cases: list[Any] = []
+    locked_outcomes: list[Any] = []
     already = Counter()
     for legacy_id, facts in groups.items():
         case = session.scalars(select(Case).where(Case.legacy_inspection_id == legacy_id).with_for_update()).first()
         if case is None:
             raise ApplyFenceError(f"missing canonical case for legacy ID {legacy_id}")
+        locked_cases.append(case)
         row = rows[legacy_id]
         decision = parse_legacy_inspection_decision(row.get("decision_reference"))
         minutes = parse_legacy_minutes_recorded(row.get("bbkt_reference"))
         outcome = _lock_one(session, InspectionOutcome, case.id)
+        if outcome is not None:
+            locked_outcomes.append(outcome)
         application = _lock_one(session, CaseApplication, case.id)
         assessment = _lock_one(session, CaseAssessment, case.id)
         plan_row = _lock_one(session, InspectionPlan, case.id)
@@ -180,6 +250,7 @@ def preflight_and_apply(session: Session, plan: dict[str, Any], snapshot_rows: l
             if plan_row is None:
                 plan_row = InspectionPlan(case_id=case.id)
                 session.add(plan_row)
+                new_entities.add(id(plan_row))
             for field, desired in (("decision_reference", decision["decision_reference"]), ("decision_date", decision["decision_date"]), ("decision_legacy_raw", decision["raw"])):
                 if field not in facts:
                     raise ApplyFenceError("incomplete decision owner-move plan")
@@ -238,16 +309,15 @@ def preflight_and_apply(session: Session, plan: dict[str, Any], snapshot_rows: l
                 already["assessment_result_contamination"] += 1
             else:
                 raise ApplyFenceError("assessment result drift blocks cleanup")
+    protected_before = _protected_evidence(locked_cases, locked_outcomes, _protected_counts(session))
     for entity, field, value in operations:
         setattr(entity, field, value)
-        changed_entities.add((entity.__class__.__name__, entity.id))
-    for entity_type, entity_id in changed_entities:
-        entity = next(entity for entity, _field, _value in operations if entity.__class__.__name__ == entity_type and entity.id == entity_id)
-        if getattr(entity, "row_version", None) is not None:
-            entity.row_version += 1
+        changed_entities[id(entity)] = entity
+    _bump_changed_entities(changed_entities, new_entities)
     session.flush()
+    protected_state = _verify_protected_state(protected_before, locked_cases, locked_outcomes, _protected_counts(session))
     operation_counts = dict(Counter(field for _entity, field, _value in operations))
-    return {"operation_counts": operation_counts, "rows_already_applied": dict(already), "entities_changed": len(changed_entities), "precondition_conflicts": [], "before_after_aggregate_counts": {"planned_field_changes": len(operations), "applied_field_changes": len(operations), "already_applied_fields": sum(already.values())}, "zero_inspection_period_mutation": True}
+    return {"operation_counts": operation_counts, "rows_already_applied": dict(already), "entities_changed": len(changed_entities), "precondition_conflicts": [], "before_after_aggregate_counts": {"planned_field_changes": len(operations), "applied_field_changes": len(operations), "already_applied_fields": sum(already.values())}, "protected_state": protected_state}
 
 
 def _verify_live_target(connection: Any) -> None:
@@ -257,45 +327,95 @@ def _verify_live_target(connection: Any) -> None:
         raise ApplyFenceError("unexpected Alembic revision")
 
 
-def run_apply(database_url: str, plan: dict[str, Any], snapshot_rows: list[dict[str, Any]]) -> dict[str, Any]:
+def run_apply(database_url: str, plan: dict[str, Any], snapshot_rows: list[dict[str, Any]], *, dry_run: bool) -> dict[str, Any]:
     validate_rehearsal_target(database_url)
     engine = create_engine(database_url)
     started = datetime.now(timezone.utc)
+    connection = None
+    transaction = None
     try:
-        with engine.begin() as connection:
-            _verify_live_target(connection)
-            session = Session(bind=connection, autoflush=False, expire_on_commit=False)
-            try:
-                report = preflight_and_apply(session, plan, snapshot_rows)
-            finally:
-                session.close()
-        return {**report, "database": REHEARSAL_DATABASE, "revision": REQUIRED_REVISION, "transaction_committed": True, "started_at": started.isoformat(), "completed_at": datetime.now(timezone.utc).isoformat()}
+        connection = engine.connect()
+        transaction = connection.begin()
+        _verify_live_target(connection)
+        session = Session(bind=connection, autoflush=False, expire_on_commit=False)
+        try:
+            report = preflight_and_apply(session, plan, snapshot_rows)
+        finally:
+            session.close()
+        if dry_run:
+            transaction.rollback()
+            committed = False
+        else:
+            transaction.commit()
+            committed = True
+        return {**report, "database": REHEARSAL_DATABASE, "revision": REQUIRED_REVISION, "dry_run": dry_run, "transaction_committed": committed, "transaction_rolled_back": dry_run, "started_at": started.isoformat(), "completed_at": datetime.now(timezone.utc).isoformat()}
+    except Exception as error:
+        if transaction is not None and transaction.is_active:
+            transaction.rollback()
+        raise ApplyExecutionError(
+            _safe_error_summary(error),
+            {
+                "database": REHEARSAL_DATABASE,
+                "revision": REQUIRED_REVISION,
+                "transaction_committed": False,
+                "transaction_rolled_back": transaction is not None,
+                "failure_stage": "live_transaction",
+            },
+        ) from error
     finally:
+        if connection is not None:
+            connection.close()
         engine.dispose()
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Apply the audited db.ktra rehearsal subset only after explicit approval.")
-    parser.add_argument("--apply-rehearsal", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--apply-rehearsal", action="store_true")
+    mode.add_argument("--dry-run-rehearsal", action="store_true")
     parser.add_argument("--plan", type=Path, required=True)
     parser.add_argument("--expected-plan-sha256", required=True)
     parser.add_argument("--snapshot", type=Path, default=SNAPSHOT)
     parser.add_argument("--database-url-env", default="DATABASE_URL")
     parser.add_argument("--report-output", type=Path, required=True)
     args = parser.parse_args(argv)
-    if not args.apply_rehearsal:
-        raise ApplyFenceError("refusing to apply without --apply-rehearsal")
-    plan = load_and_validate_plan(args.plan.resolve(), args.expected_plan_sha256)
-    snapshot_rows = validate_snapshot_provenance(args.snapshot.resolve())
-    database_url = os.environ.get(args.database_url_env)
-    if not database_url:
-        raise ApplyFenceError(f"missing database URL environment variable {args.database_url_env}")
-    eligible = _eligible_facts(plan)
-    excluded = Counter(str(fact.get("classification")) for fact in plan.get("facts", []) if fact not in eligible)
-    report = {"tool_version": TOOL_VERSION, "source_git_sha": _git_sha(), "plan_sha256": _sha(args.plan.resolve()), "snapshot_provenance_sha256": CANONICAL_SNAPSHOT_ARTIFACT_SHA256, "excluded_domains": ["InspectionTeam", "InspectionTeamMember", "InspectionApprovalSubmission", "Certificate", "CapaCycle", "InspectionPeriodSegment"], "excluded_classification_counts": dict(excluded), **run_apply(database_url, plan, snapshot_rows)}
-    args.report_output.resolve().parent.mkdir(parents=True, exist_ok=True)
-    args.report_output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return 0
+    started = datetime.now(timezone.utc)
+    base_report: dict[str, Any] = {
+        "tool_version": TOOL_VERSION,
+        "source_git_sha": _git_sha(),
+        "snapshot_provenance_sha256": CANONICAL_SNAPSHOT_ARTIFACT_SHA256,
+        "plan_validated": False,
+        "dry_run": args.dry_run_rehearsal,
+        "transaction_committed": False,
+        "transaction_rolled_back": False,
+        "started_at": started.isoformat(),
+    }
+    try:
+        if not args.apply_rehearsal and not args.dry_run_rehearsal:
+            raise ApplyFenceError("refusing to run without --apply-rehearsal or --dry-run-rehearsal")
+        plan_path = args.plan.resolve()
+        base_report["plan_sha256"] = _sha(plan_path)
+        plan = load_and_validate_plan(plan_path, args.expected_plan_sha256)
+        base_report["plan_validated"] = True
+        snapshot_rows = validate_snapshot_provenance(args.snapshot.resolve())
+        database_url = os.environ.get(args.database_url_env)
+        if not database_url:
+            raise ApplyFenceError(f"missing database URL environment variable {args.database_url_env}")
+        eligible = _eligible_facts(plan)
+        excluded = Counter(str(fact.get("classification")) for fact in plan.get("facts", []) if fact not in eligible)
+        report = {**base_report, "excluded_domains": ["InspectionTeam", "InspectionTeamMember", "InspectionApprovalSubmission", "Certificate", "CapaCycle", "InspectionPeriodSegment"], "excluded_classification_counts": dict(excluded), **run_apply(database_url, plan, snapshot_rows, dry_run=args.dry_run_rehearsal)}
+        _write_report(args.report_output, report)
+        return 0
+    except Exception as error:
+        execution_report = getattr(error, "report", {})
+        report = {**base_report, **execution_report, "completed_at": datetime.now(timezone.utc).isoformat(), "failure_stage": execution_report.get("failure_stage", "validation"), "failure_type": type(error).__name__, "error_summary": _safe_error_summary(error), "precondition_conflicts": execution_report.get("precondition_conflicts", []), "operation_counts": execution_report.get("operation_counts", {}), "transaction_committed": False}
+        _write_report(args.report_output, report)
+        raise
+
+
+def _write_report(path: Path, report: dict[str, Any]) -> None:
+    path.resolve().parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

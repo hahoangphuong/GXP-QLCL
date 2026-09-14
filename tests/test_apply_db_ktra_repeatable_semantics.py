@@ -177,6 +177,37 @@ def test_cli_requires_explicit_mode_and_postgres_rehearsal_target(tmp_path):
         apply._require_postgres_rehearsal("postgresql://user:password@host/other")
 
 
+class _TargetScalar:
+    def __init__(self, value):
+        self.value = value
+
+    def scalar_one(self):
+        return self.value
+
+
+class _TargetConnection:
+    def __init__(self, revision):
+        self.revision = revision
+
+    def execute(self, statement, _params=None):
+        sql = str(statement)
+        if "current_database" in sql:
+            return _TargetScalar(apply.REHEARSAL_DATABASE)
+        if "version_num FROM alembic_version" in sql:
+            return _TargetScalar(self.revision)
+        if "to_regclass" in sql:
+            return _TargetScalar("inspection_decision")
+        raise AssertionError(f"unexpected target verification query: {sql}")
+
+
+def test_target_requires_exact_0014_revision_and_retains_rehearsal_fences():
+    assert apply.REQUIRED_REVISION == "20260913_0014"
+    apply._verify_target(_TargetConnection("20260913_0014"))
+    for revision in ("20260913_0013", "20260913_0015"):
+        with pytest.raises(apply.ApplyFenceError, match="unexpected Alembic revision"):
+            apply._verify_target(_TargetConnection(revision))
+
+
 def test_report_is_deterministic_and_never_contains_connection_url():
     empty_audit = {"total": 0, "by_state": {state: 0 for state in apply.COMPATIBILITY_STATES}}
     prepared = {

@@ -25,7 +25,7 @@ from tools.plan_db_ktra_reconciliation import SNAPSHOT, load_snapshot
 
 
 REHEARSAL_DATABASE = "gxp_legacy_rehearsal"
-REQUIRED_REVISION = "20260913_0013"
+REQUIRED_REVISION = "20260913_0014"
 PLAN_SCHEMA_VERSION = "db-ktra-repeatable-semantics-plan/v1"
 REPORT_SCHEMA_VERSION = "batch6-repeatable-apply-report/v1"
 CANONICAL_SNAPSHOT_SHA256 = "b3bde05963e4e4d14d5b244e7c62b0f810f1cbbe206750574def6a366bdf7296"

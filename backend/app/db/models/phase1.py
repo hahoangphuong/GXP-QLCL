@@ -112,6 +112,42 @@ class InspectorProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     legacy_initials: Mapped[str | None] = mapped_column(String(32))
     legacy_display_text: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    roster_group: Mapped[str | None] = mapped_column(String(64), index=True)
+    honorific: Mapped[str | None] = mapped_column(String(64))
+    qualification: Mapped[str | None] = mapped_column(String(255))
+    position: Mapped[str | None] = mapped_column(String(255))
+    organizational_unit: Mapped[str | None] = mapped_column(String(255))
+    professional_specialty: Mapped[str | None] = mapped_column(String(255), index=True)
+    legacy_pct_marker: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    legacy_star_marker: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    __table_args__ = (
+        CheckConstraint(
+            "roster_group IS NULL OR roster_group IN "
+            "('DRUG_ADMINISTRATION_AND_TRADITIONAL_MEDICINE', "
+            "'NATIONAL_INSTITUTE_OF_DRUG_QUALITY_CONTROL', "
+            "'HO_CHI_MINH_CITY_DRUG_QUALITY_CONTROL_INSTITUTE', "
+            "'NATIONAL_INSTITUTE_FOR_VACCINE_AND_BIOLOGICALS_CONTROL', "
+            "'PROVINCIAL_HEALTH_DEPARTMENTS')",
+            name="inspector_profile_roster_group_known",
+        ),
+    )
+
+
+class LegacyInspectorSourceRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Immutable source-record identity for a TTviên personnel import."""
+
+    __tablename__ = "legacy_inspector_source_record"
+
+    snapshot_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_sheet: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_row_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    inspector_profile_id: Mapped[str] = mapped_column(ForeignKey("inspector_profile.id"), nullable=False, index=True)
+    canonical_payload_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    __table_args__ = (
+        UniqueConstraint("snapshot_sha256", "source_sheet", "source_row_number"),
+        CheckConstraint("source_row_number >= 1", name="legacy_inspector_source_record_row_positive"),
+        CheckConstraint("source_sheet = 'TTviên'", name="legacy_inspector_source_record_sheet_known"),
+    )
 
 
 class DictionaryValue(UUIDPrimaryKeyMixin, TimestampMixin, Base):

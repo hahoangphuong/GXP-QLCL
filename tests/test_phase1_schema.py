@@ -130,7 +130,7 @@ def test_unapplied_period_state_migration_does_not_label_existing_rows_missing()
 
 
 def test_expected_alembic_head_revision_tracks_latest_runtime_migration():
-    assert expected_alembic_head_revision() == "20260912_0012"
+    assert expected_alembic_head_revision() == "20260914_0015"
 
 
 def test_db_ktra_semantic_foundation_models_are_typed_and_transitional_for_existing_teams():

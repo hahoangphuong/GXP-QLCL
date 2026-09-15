@@ -29,3 +29,21 @@ only in Snapshot V2 and are never copied into the personnel schema or normal API
 
 Team migration is a later, separate step. B2 crosswalk output is evidence only and
 must not create unresolved team members.
+# Guarded B4B Import
+
+The B4B public importer accepts only source-plan bytes and computes their
+SHA256 itself against the pinned audited B2 artifact. It then verifies an
+explicit target database identity and Alembic revision `20260914_0015`, then
+uses this module's classifier against live canonical state. Only
+`INSERT_CANDIDATE` and `NOOP_IDEMPOTENT` records may proceed. Dry-run uses this
+preflight path only and does not add or flush personnel ORM rows.
+
+New `Person` IDs use the existing generated system UUID default. Immutable
+snapshot/sheet/row provenance, rather than a human name or derived UUID,
+owns replay idempotency. The importer never matches names and runs the whole
+batch in a savepoint inside the caller-managed transaction; its CLI commits
+only after every record succeeds and rolls back on every fence or write
+failure. A successful replay with only no-ops reports no database mutation.
+Public guarded operations require a clean SQLAlchemy Session: pending new,
+dirty, or deleted caller state is rejected without flushing, expiring,
+rolling back, or discarding it.

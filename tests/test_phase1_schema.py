@@ -1,3 +1,4 @@
+import importlib.util
 from pathlib import Path
 
 from sqlalchemy.schema import CreateTable
@@ -12,6 +13,7 @@ from backend.app.db.models.phase1 import (
     DocumentVersion,
     InspectionApprovalSubmission,
     InspectionOutcome,
+    InspectionTeamMember,
     InspectionPeriodSegment,
     ChangeApproval,
     StorageBinding,
@@ -130,7 +132,61 @@ def test_unapplied_period_state_migration_does_not_label_existing_rows_missing()
 
 
 def test_expected_alembic_head_revision_tracks_latest_runtime_migration():
-    assert expected_alembic_head_revision() == "20260914_0015"
+    assert expected_alembic_head_revision() == "20260915_0016"
+
+
+def test_b5b_migration_replaces_and_restores_legacy_team_identity_constraint():
+    migration = Path("migrations/versions/20260915_0016_inspection_team_participants.py").read_text(encoding="utf-8")
+    assert 'op.drop_constraint(op.f("ck_inspection_team_member_team_member_has_identity")' in migration
+    assert 'op.create_check_constraint(' in migration
+    assert '"inspector_profile_id IS NOT NULL OR person_id IS NOT NULL"' in migration
+    assert "COALESCE(((identity_kind IS NULL" in migration
+    assert not any(constraint.name == "team_member_has_identity" for constraint in InspectionTeamMember.__table__.constraints)
+
+
+def test_b5b_downgrade_uses_convention_resolved_check_constraint_names():
+    path = Path("migrations/versions/20260915_0016_inspection_team_participants.py")
+    spec = importlib.util.spec_from_file_location("migration_20260915_0016", path)
+    assert spec is not None and spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    class RecordingOperations:
+        def __init__(self):
+            self.dropped_constraints: list[tuple[object, str, str | None]] = []
+
+        def f(self, name: str) -> str:
+            return f"resolved:{name}"
+
+        def drop_constraint(self, name: object, table_name: str, *, type_: str | None = None) -> None:
+            self.dropped_constraints.append((name, table_name, type_))
+
+        def drop_index(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def drop_column(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def drop_table(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def create_check_constraint(self, *args: object, **kwargs: object) -> None:
+            pass
+
+    operations = RecordingOperations()
+    migration.op = operations
+    migration.downgrade()
+
+    expected = {
+        "ck_inspection_team_member_team_member_identity_shape",
+        "ck_inspection_team_member_team_member_identity_display_name_required",
+        "ck_inspection_team_member_team_member_identity_kind_known",
+    }
+    metadata_names = {constraint.name for constraint in InspectionTeamMember.__table__.constraints}
+    assert expected.issubset(metadata_names)
+    assert set(operations.dropped_constraints[:3]) == {
+        (f"resolved:{name}", "inspection_team_member", "check") for name in expected
+    }
 
 
 def test_db_ktra_semantic_foundation_models_are_typed_and_transitional_for_existing_teams():

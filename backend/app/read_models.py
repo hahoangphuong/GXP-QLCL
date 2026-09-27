@@ -229,6 +229,9 @@ class InspectionTeamMemberWorkspaceRead(BaseModel):
     role_label: str | None
     sort_order: int
     identity_status: Literal["resolved", "unresolved"]
+    identity_kind: Literal["INSPECTOR_PROFILE", "LEGACY_PERSON", "ORGANIZATION_REPRESENTATIVE"] | None = None
+    participant_catalog_id: str | None = None
+    legacy_source_token: str | None = None
 
 
 class InspectionTeamWorkspaceRead(BaseModel):
@@ -780,6 +783,8 @@ class InspectionTeamMemberUpsertItem(BaseModel):
     role_code: str | None = None
     role_label: str | None = None
     sort_order: int = 0
+    identity_kind: Literal["INSPECTOR_PROFILE", "ORGANIZATION_REPRESENTATIVE"] | None = None
+    participant_catalog_id: str | None = None
 
 
 class InspectionTeamUpsertRequest(BaseModel):
@@ -797,6 +802,9 @@ class InspectionTeamMemberRead(BaseModel):
     role_code: str | None
     role_label: str | None
     sort_order: int
+    identity_kind: str | None = None
+    participant_catalog_id: str | None = None
+    display_name: str | None = None
 
 
 class InspectionTeamRead(BaseModel):
@@ -809,11 +817,13 @@ class InspectionTeamRead(BaseModel):
 
 
 class InspectionTeamIdentityOptionRead(BaseModel):
-    identity_kind: Literal["inspector_profile", "person"]
+    identity_kind: Literal["inspector_profile", "person", "organization_representative"]
     inspector_profile_id: str | None = None
     person_id: str | None = None
     display_name: str
     is_active: bool | None = None
+    participant_catalog_id: str | None = None
+    code: str | None = None
 
 
 class InspectionApprovalSubmissionRead(BaseModel):

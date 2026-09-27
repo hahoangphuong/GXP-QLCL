@@ -32,6 +32,7 @@ from backend.app.db.models.phase1 import (
     InspectionEvent,
     InspectionTeam,
     InspectionTeamMember,
+    InspectionTeamParticipantCatalog,
     InspectorProfile,
     InspectionOutcome,
     InspectionPeriodSegment,
@@ -45,6 +46,7 @@ from backend.app.db.models.phase1 import (
 from backend.app.domain.inspection_contracts import (
     InspectionContractViolation,
     validate_structured_team_member,
+    validate_runtime_team_member,
     validate_unique_team_sort_orders,
     validate_time_requires_date,
     validate_ct_parent,
@@ -230,6 +232,10 @@ class CaseWorkflowService:
             "role_code": member.role_code,
             "role_label": member.role_label,
             "sort_order": member.sort_order,
+            "identity_kind": member.identity_kind,
+            "participant_catalog_id": member.participant_catalog_id,
+            "display_name": member.display_name,
+            "legacy_source_token": member.legacy_source_token,
         }
 
     def _get_site(self, session: Session, site_id: str) -> Site:
@@ -513,9 +519,11 @@ class CaseWorkflowService:
             raise HTTPException(status_code=422, detail="Inspection team must include at least one member.")
         for index, item in enumerate(members):
             try:
-                validate_structured_team_member(
+                validate_runtime_team_member(
                     inspector_profile_id=item.get("inspector_profile_id"),
                     person_id=item.get("person_id"),
+                    participant_catalog_id=item.get("participant_catalog_id"),
+                    identity_kind=item.get("identity_kind"),
                     role_code=item.get("role_code"),
                     sort_order=int(item.get("sort_order", 0)),
                 )
@@ -532,13 +540,62 @@ class CaseWorkflowService:
     def _validate_team_member_identities(self, session: Session, members: list[dict[str, Any]]) -> None:
         profile_ids = {str(item["inspector_profile_id"]) for item in members if item.get("inspector_profile_id")}
         person_ids = {str(item["person_id"]) for item in members if item.get("person_id")}
-        existing_profiles = set(session.scalars(select(InspectorProfile.id).where(InspectorProfile.id.in_(profile_ids)))) if profile_ids else set()
+        profiles = {
+            str(profile.id): profile
+            for profile in session.scalars(select(InspectorProfile).where(InspectorProfile.id.in_(profile_ids)))
+        } if profile_ids else {}
         existing_people = set(session.scalars(select(Person.id).where(Person.id.in_(person_ids)))) if person_ids else set()
-        missing_profiles = sorted(profile_ids - existing_profiles)
+        inspector_owned_person_ids = set(
+            session.scalars(
+                select(InspectorProfile.person_id).where(InspectorProfile.person_id.in_(person_ids))
+            )
+        ) if person_ids else set()
+        missing_profiles = sorted(profile_ids - set(profiles))
+        inactive_profiles = sorted(profile_id for profile_id, profile in profiles.items() if not profile.is_active)
         missing_people = sorted(person_ids - existing_people)
         if missing_profiles or missing_people:
-            missing = ", ".join([*(f"inspector_profile:{item}" for item in missing_profiles), *(f"person:{item}" for item in missing_people)])
-            raise HTTPException(status_code=422, detail=f"Inspection team contains unknown identity: {missing}.")
+            invalid = ", ".join([
+                *(f"inspector_profile:{item}" for item in missing_profiles),
+                *(f"person:{item}" for item in missing_people),
+            ])
+            raise HTTPException(status_code=422, detail=f"Inspection team contains unknown identity: {invalid}.")
+        if inactive_profiles:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Inspection team contains inactive_inspector_profile: {', '.join(inactive_profiles)}.",
+            )
+        if inspector_owned_person_ids:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Inspection team person identity is inspector_profile-owned: "
+                    f"{', '.join(sorted(inspector_owned_person_ids))}."
+                ),
+            )
+        catalog_ids = {str(item["participant_catalog_id"]) for item in members if item.get("participant_catalog_id")}
+        catalogs = {str(item.id): item for item in session.scalars(select(InspectionTeamParticipantCatalog).where(InspectionTeamParticipantCatalog.id.in_(catalog_ids)))} if catalog_ids else {}
+        missing_catalogs = sorted(catalog_ids - set(catalogs))
+        inactive_catalogs = sorted(key for key, item in catalogs.items() if not item.is_active or item.participant_kind != "ORGANIZATION_REPRESENTATIVE")
+        if missing_catalogs or inactive_catalogs:
+            raise HTTPException(status_code=422, detail=f"Inspection team contains invalid participant catalog: {', '.join(missing_catalogs + inactive_catalogs)}.")
+
+    def _team_member_display_name(self, session: Session, item: dict[str, Any]) -> str:
+        kind = item.get("identity_kind")
+        if kind == "ORGANIZATION_REPRESENTATIVE":
+            catalog = session.get(InspectionTeamParticipantCatalog, item.get("participant_catalog_id"))
+            if catalog is None or not catalog.is_active:
+                raise HTTPException(status_code=422, detail="Inspection team participant catalog is unavailable.")
+            return catalog.display_name
+        profile_id = item.get("inspector_profile_id")
+        person_id = item.get("person_id")
+        if profile_id:
+            profile = session.get(InspectorProfile, profile_id)
+            person = None if profile is None else session.get(Person, profile.person_id)
+        else:
+            person = session.get(Person, person_id) if person_id else None
+        if person is None:
+            raise HTTPException(status_code=422, detail="Inspection team identity has no canonical display name.")
+        return person.display_name or person.full_name
 
     def _get_capa_cycle(self, session: Session, capa_cycle_id: str) -> CapaCycle:
         row = session.get(CapaCycle, capa_cycle_id)
@@ -1788,6 +1845,9 @@ class CaseWorkflowService:
     ) -> dict[str, Any]:
         row = self._get_case(session, case_id)
         self._assert_case_not_terminal(row, operation="inspection team update")
+        existing_team = session.scalar(select(InspectionTeam).where(InspectionTeam.case_id == row.id))
+        if existing_team is not None and session.scalar(select(InspectionTeamMember.id).where(InspectionTeamMember.team_id == existing_team.id, InspectionTeamMember.identity_kind == "LEGACY_PERSON")) is not None:
+            raise HTTPException(status_code=409, detail="Inspection team contains_legacy_person and is importer-only/read-only.")
         if display_text is not None:
             raise HTTPException(status_code=422, detail="Inspection team display_text is a legacy snapshot and cannot be edited with members.")
         self._validate_team_members(members)
@@ -1822,6 +1882,11 @@ class CaseWorkflowService:
                 role_code=str(item.get("role_code")),
                 role_label=item.get("role_label"),
                 sort_order=int(item.get("sort_order", 0)),
+                identity_kind=item.get("identity_kind"),
+                participant_catalog_id=item.get("participant_catalog_id"),
+                # Display snapshots are owned by canonical identity/catalog,
+                # never by a client-provided string.
+                display_name=self._team_member_display_name(session, item),
             )
             session.add(member)
             created_members.append(member)

@@ -358,18 +358,52 @@ class InspectionTeam(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
     display_text: Mapped[str | None] = mapped_column(Text)
 
 
+class InspectionTeamParticipantCatalog(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "inspection_team_participant_catalog"
+
+    code: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    participant_kind: Mapped[str] = mapped_column(String(32), nullable=False, server_default="ORGANIZATION_REPRESENTATIVE")
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    organization_name: Mapped[str | None] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    __table_args__ = (CheckConstraint("participant_kind = 'ORGANIZATION_REPRESENTATIVE'", name="team_participant_catalog_kind_known"),)
+
+
+class InspectionTeamParticipantAlias(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "inspection_team_participant_alias"
+
+    participant_id: Mapped[str] = mapped_column(ForeignKey("inspection_team_participant_catalog.id"), nullable=False, index=True)
+    source_system: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_sheet: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_value: Mapped[str] = mapped_column(Text, nullable=False)
+    source_value_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    __table_args__ = (UniqueConstraint("source_system", "source_sheet", "source_value_hash"),)
+
+
 class InspectionTeamMember(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "inspection_team_member"
 
     team_id: Mapped[str] = mapped_column(ForeignKey("inspection_team.id"), nullable=False, index=True)
     inspector_profile_id: Mapped[str | None] = mapped_column(ForeignKey("inspector_profile.id"), index=True)
     person_id: Mapped[str | None] = mapped_column(ForeignKey("person.id"), index=True)
+    participant_catalog_id: Mapped[str | None] = mapped_column(ForeignKey("inspection_team_participant_catalog.id"), index=True)
+    identity_kind: Mapped[str | None] = mapped_column(String(32))
+    display_name: Mapped[str | None] = mapped_column(String(255))
+    legacy_source_token: Mapped[str | None] = mapped_column(Text)
     # Nullable during the expand migration; runtime-created members require it.
     role_code: Mapped[str | None] = mapped_column(String(16))
     role_label: Mapped[str | None] = mapped_column(String(128))
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     __table_args__ = (
-        CheckConstraint("inspector_profile_id IS NOT NULL OR person_id IS NOT NULL", name="team_member_has_identity"),
+        CheckConstraint("identity_kind IS NULL OR identity_kind IN ('INSPECTOR_PROFILE', 'LEGACY_PERSON', 'ORGANIZATION_REPRESENTATIVE')", name="team_member_identity_kind_known"),
+        CheckConstraint("identity_kind IS NULL OR display_name IS NOT NULL", name="team_member_identity_display_name_required"),
+        CheckConstraint(
+            "COALESCE(((identity_kind IS NULL AND participant_catalog_id IS NULL AND (inspector_profile_id IS NOT NULL OR person_id IS NOT NULL)) OR "
+            "(identity_kind = 'INSPECTOR_PROFILE' AND inspector_profile_id IS NOT NULL AND person_id IS NULL AND participant_catalog_id IS NULL) OR "
+            "(identity_kind = 'LEGACY_PERSON' AND inspector_profile_id IS NULL AND person_id IS NULL AND participant_catalog_id IS NULL) OR "
+            "(identity_kind = 'ORGANIZATION_REPRESENTATIVE' AND inspector_profile_id IS NULL AND person_id IS NULL AND participant_catalog_id IS NOT NULL)), FALSE)",
+            name="team_member_identity_shape",
+        ),
         CheckConstraint(
             "role_code IS NULL OR role_code IN ('LEADER', 'SECRETARY', 'MEMBER')",
             name="team_member_role_code_known",

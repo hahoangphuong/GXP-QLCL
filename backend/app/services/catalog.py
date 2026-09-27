@@ -48,6 +48,7 @@ from backend.app.db.models.phase1 import (
     InspectionOutcome,
     InspectionTeam,
     InspectionTeamMember,
+    InspectionTeamParticipantCatalog,
     InspectorProfile,
     Person,
     Site,
@@ -271,14 +272,26 @@ class CatalogReadService:
         return person.display_name or person.full_name
 
     def list_inspection_team_identity_options(self, session: Session) -> list[dict[str, object]]:
-        people = list(session.scalars(select(Person).order_by(Person.full_name.asc(), Person.id.asc())))
+        # A Person with an InspectorProfile has one runtime identity: the profile.
+        # Keeping it out of the generic compatibility list prevents duplicate and
+        # inactive-inspector paths around the profile activity rule.
+        people = list(
+            session.scalars(
+                select(Person)
+                .outerjoin(InspectorProfile, InspectorProfile.person_id == Person.id)
+                .where(InspectorProfile.id.is_(None))
+                .order_by(Person.full_name.asc(), Person.id.asc())
+            )
+        )
         profiles = list(
             session.execute(
                 select(InspectorProfile, Person)
                 .join(Person, Person.id == InspectorProfile.person_id)
+                .where(InspectorProfile.is_active.is_(True))
                 .order_by(InspectorProfile.is_active.desc(), Person.full_name.asc(), InspectorProfile.id.asc())
             ).all()
         )
+        catalogs = list(session.scalars(select(InspectionTeamParticipantCatalog).where(InspectionTeamParticipantCatalog.is_active.is_(True)).order_by(InspectionTeamParticipantCatalog.code.asc(), InspectionTeamParticipantCatalog.id.asc())))
         return [
             *[
                 {
@@ -299,6 +312,18 @@ class CatalogReadService:
                     "is_active": None,
                 }
                 for person in people
+            ],
+            *[
+                {
+                    "identity_kind": "organization_representative",
+                    "inspector_profile_id": None,
+                    "person_id": None,
+                    "participant_catalog_id": item.id,
+                    "code": item.code,
+                    "display_name": item.display_name,
+                    "is_active": item.is_active,
+                }
+                for item in catalogs
             ],
         ]
 
@@ -2183,15 +2208,23 @@ class CatalogReadService:
                 select(Person).where(Person.id.in_(person_ids))
             )
         } if team_members else {}
+        participant_ids = {member.participant_catalog_id for member in team_members if member.participant_catalog_id}
+        participants_by_id = {
+            participant.id: participant
+            for participant in session.scalars(select(InspectionTeamParticipantCatalog).where(InspectionTeamParticipantCatalog.id.in_(participant_ids)))
+        } if participant_ids else {}
         serialized_team_members: list[dict[str, object]] = []
         team_round_trip_safe = team is None or bool(team_members)
         for member in team_members:
             profile = profiles_by_id.get(member.inspector_profile_id) if member.inspector_profile_id else None
             person = people_by_id.get(member.person_id) if member.person_id else (people_by_id.get(profile.person_id) if profile else None)
+            participant = participants_by_id.get(member.participant_catalog_id) if member.participant_catalog_id else None
             identity_resolved = (
-                (member.inspector_profile_id is not None) != (member.person_id is not None)
-                and person is not None
-                and (member.inspector_profile_id is None or profile is not None)
+                (member.identity_kind == "ORGANIZATION_REPRESENTATIVE" and participant is not None and participant.is_active)
+                or (member.identity_kind in {None, "INSPECTOR_PROFILE"}
+                    and (member.inspector_profile_id is not None) != (member.person_id is not None)
+                    and person is not None
+                    and (member.inspector_profile_id is None or profile is not None))
             )
             if not identity_resolved:
                 team_round_trip_safe = False
@@ -2199,7 +2232,10 @@ class CatalogReadService:
                 "id": member.id,
                 "inspector_profile_id": member.inspector_profile_id,
                 "person_id": member.person_id,
-                "display_name": None if person is None else (person.display_name or person.full_name),
+                "display_name": (member.display_name or (None if person is None else (person.display_name or person.full_name)) or (None if participant is None else participant.display_name)),
+                "identity_kind": member.identity_kind,
+                "participant_catalog_id": member.participant_catalog_id,
+                "legacy_source_token": member.legacy_source_token,
                 "role_code": member.role_code,
                 "role_label": member.role_label,
                 "sort_order": member.sort_order,
@@ -2214,7 +2250,7 @@ class CatalogReadService:
         elif team is None:
             team_reason = "team_not_initialized"
         elif team is not None and not team_round_trip_safe:
-            team_reason = "unresolved_member_identity"
+            team_reason = "contains_legacy_person" if any(member.identity_kind == "LEGACY_PERSON" for member in team_members) else "unresolved_member_identity"
         outcome = session.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == case.id))
         approval_submissions = list(session.scalars(
             select(InspectionApprovalSubmission)
@@ -2489,7 +2525,7 @@ class CatalogReadService:
                     "display_text": team.display_text,
                     "members": serialized_team_members,
                     "round_trip_safe": team_round_trip_safe,
-                    "blocked_reason_code": None if team_round_trip_safe else "unresolved_member_identity",
+                    "blocked_reason_code": None if team_round_trip_safe else ("contains_legacy_person" if any(member.identity_kind == "LEGACY_PERSON" for member in team_members) else "unresolved_member_identity"),
                 },
                 "team_edit_readiness": {
                     "action_key": "edit_inspection_team",

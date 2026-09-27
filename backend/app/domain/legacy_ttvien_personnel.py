@@ -155,3 +155,20 @@ def preview_team_crosswalk(snapshot: dict[str, Any], plan: dict[str, Any]) -> di
             records.append({"source_row_number": row["source_row_number"], "member_ordinal": ordinal, "raw_team_token": token, "classification": classification, "match_basis": match_basis, "person_source_provenance_hash": None if target is None else target["source_provenance_hash"]})
     records.sort(key=lambda item: (item["source_row_number"], item["member_ordinal"]))
     return {"records": records, "classification_counts": {key: sum(item["classification"] == key for item in records) for key in ("EXACT_RAW_MATCH", "EXACT_AFTER_PCT_MARKER_HANDLING", "EXACT_AFTER_STAR_MARKER_HANDLING", "ZERO_MATCH", "AMBIGUOUS", "DUPLICATE_SOURCE_OCCURRENCE")}, "distinct_planned_person_records_referenced": len({item["person_source_provenance_hash"] for item in records if item["person_source_provenance_hash"]})}
+
+
+def resolve_team_member_token(token: str, roster_records: list[dict[str, Any]]) -> tuple[str, dict[str, Any] | None]:
+    """Resolve only exact raw or approved-marker-equivalent roster identity."""
+    exact = [record for record in roster_records if record["legacy_raw_full_name"] == token]
+    if len(exact) == 1:
+        return "EXACT_RAW_MATCH", exact[0]
+    if len(exact) > 1:
+        return "AMBIGUOUS", None
+    base_name, pct_marker, star_marker = split_approved_name_markers(token)
+    candidates = [record for record in roster_records if record["cleaned_full_name"] == base_name]
+    if len(candidates) != 1:
+        return ("AMBIGUOUS" if candidates else "ZERO_MATCH"), None
+    candidate = candidates[0]
+    if token != candidate["legacy_raw_full_name"] and (pct_marker or star_marker or candidate["pct_marker"] or candidate["star_marker"]):
+        return "EXACT_AFTER_APPROVED_MARKER_EQUIVALENCE", candidate
+    return "ZERO_MATCH", None

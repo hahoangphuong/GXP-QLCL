@@ -6,6 +6,7 @@ from typing import Iterable
 
 TEAM_ROLE_CODES = frozenset({"LEADER", "SECRETARY", "MEMBER"})
 APPROVAL_STAGES = frozenset({"PCT", "CT"})
+TEAM_IDENTITY_KINDS = frozenset({"INSPECTOR_PROFILE", "LEGACY_PERSON", "ORGANIZATION_REPRESENTATIVE"})
 
 
 class InspectionContractViolation(ValueError):
@@ -46,6 +47,28 @@ def validate_structured_team_member(
         raise InspectionContractViolation(
             f"Inspection team role_code {normalized_role!r} does not match sort_order {sort_order}."
         )
+
+
+def validate_runtime_team_member(
+    *, identity_kind: str | None, inspector_profile_id: str | None,
+    person_id: str | None, participant_catalog_id: str | None,
+    role_code: str | None, sort_order: int,
+) -> None:
+    """Validate the discriminated runtime shape; legacy identities are importer-only."""
+    if identity_kind is None:
+        validate_structured_team_member(inspector_profile_id=inspector_profile_id, person_id=person_id, role_code=role_code, sort_order=sort_order)
+        return
+    if identity_kind not in TEAM_IDENTITY_KINDS:
+        raise InspectionContractViolation("Inspection team member identity_kind is invalid.")
+    if identity_kind == "INSPECTOR_PROFILE" and (not inspector_profile_id or person_id or participant_catalog_id):
+        raise InspectionContractViolation("INSPECTOR_PROFILE requires only inspector_profile_id.")
+    if identity_kind == "ORGANIZATION_REPRESENTATIVE" and (not participant_catalog_id or inspector_profile_id or person_id):
+        raise InspectionContractViolation("ORGANIZATION_REPRESENTATIVE requires only participant_catalog_id.")
+    if identity_kind == "LEGACY_PERSON":
+        raise InspectionContractViolation("LEGACY_PERSON members are importer-only.")
+    normalized_role = str(role_code or "")
+    if normalized_role not in TEAM_ROLE_CODES or normalized_role != role_code_for_sort_order(sort_order):
+        raise InspectionContractViolation("Inspection team role_code does not match sort_order.")
 
 
 def validate_unique_team_sort_orders(sort_orders: Iterable[int]) -> None:

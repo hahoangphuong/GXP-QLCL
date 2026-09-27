@@ -1420,6 +1420,100 @@ def test_upsert_inspection_team_rejects_member_without_identity():
             raise AssertionError("Expected invalid inspection team member to fail")
 
 
+def test_upsert_inspection_team_rejects_inactive_inspector_profile_for_runtime_composition():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        identities = seed_inspection_team_identities(session)
+        profile = session.get(InspectorProfile, identities["profile_id"])
+        assert profile is not None
+        profile.is_active = False
+        session.commit()
+
+    with Session(engine) as session:
+        with pytest.raises(Exception, match="inactive_inspector_profile"):
+            service.upsert_inspection_team(
+                session,
+                case_id=case_id,
+                members=[
+                    {
+                        "person_id": None,
+                        "inspector_profile_id": identities["profile_id"],
+                        "role_code": "LEADER",
+                        "role_label": "lead",
+                        "sort_order": 1,
+                    },
+                ],
+                reason="Inactive profile cannot compose a current team.",
+                user=build_authenticated_user("manager01", "manager"),
+            )
+        with pytest.raises(Exception, match="inspector_profile-owned"):
+            service.upsert_inspection_team(
+                session,
+                case_id=case_id,
+                members=[
+                    {
+                        "person_id": identities["inspector_person_id"],
+                        "inspector_profile_id": None,
+                        "role_code": "LEADER",
+                        "role_label": "lead",
+                        "sort_order": 1,
+                    },
+                ],
+                reason="Inactive inspector cannot bypass profile identity through Person.",
+                user=build_authenticated_user("manager01", "manager"),
+            )
+        assert session.scalars(select(InspectionTeam).where(InspectionTeam.case_id == case_id)).first() is None
+
+
+def test_upsert_inspection_team_rejects_active_inspector_person_compatibility_bypass():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        identities = seed_inspection_team_identities(session)
+        session.commit()
+
+    with Session(engine) as session:
+        with pytest.raises(Exception, match="inspector_profile-owned"):
+            service.upsert_inspection_team(
+                session,
+                case_id=case_id,
+                members=[
+                    {
+                        "person_id": identities["inspector_person_id"],
+                        "inspector_profile_id": None,
+                        "role_code": "LEADER",
+                        "role_label": "lead",
+                        "sort_order": 1,
+                    },
+                ],
+                reason="Inspector must use the inspector profile identity.",
+                user=build_authenticated_user("manager01", "manager"),
+            )
+        result = service.upsert_inspection_team(
+            session,
+            case_id=case_id,
+            members=[
+                {
+                    "person_id": identities["direct_person_id"],
+                    "inspector_profile_id": None,
+                    "role_code": "LEADER",
+                    "role_label": "lead",
+                    "sort_order": 1,
+                },
+            ],
+            reason="A non-inspector Person remains a compatibility identity.",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        assert result["members"][0]["person_id"] == identities["direct_person_id"]
+
+
 def test_upsert_inspection_team_rejects_display_text_as_a_second_member_source():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)

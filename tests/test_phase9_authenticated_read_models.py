@@ -1866,14 +1866,23 @@ def test_case_workspace_projects_structured_inspection_team_and_selector_contrac
         assert case is not None
         case.state = CaseState.DRAFT
         inspector_person = Person(full_name="Nguyễn Thanh Tra", display_name="Thanh Tra")
+        active_inspector_person = Person(full_name="Nguyễn Thanh Tra Hoạt động", display_name="Thanh Tra Hoạt động")
         direct_person = Person(full_name="Lê Thành Viên")
-        session.add_all([inspector_person, direct_person])
+        session.add_all([inspector_person, active_inspector_person, direct_person])
         session.flush()
         profile = InspectorProfile(person_id=inspector_person.id, is_active=False, legacy_display_text="Thanh Tra")
-        session.add(profile)
+        active_profile = InspectorProfile(
+            person_id=active_inspector_person.id,
+            is_active=True,
+            legacy_display_text="Thanh Tra Hoạt động",
+        )
+        session.add_all([profile, active_profile])
         session.flush()
         direct_person_id = direct_person.id
+        inspector_person_id = inspector_person.id
         profile_id = profile.id
+        active_inspector_person_id = active_inspector_person.id
+        active_profile_id = active_profile.id
         session.add_all([
             InspectionTeamMember(team_id=team.id, inspector_profile_id=profile.id, person_id=None, role_label="Trưởng đoàn", sort_order=2),
             InspectionTeamMember(team_id=team.id, inspector_profile_id=None, person_id=direct_person.id, role_label="Thành viên", sort_order=1),
@@ -1898,7 +1907,12 @@ def test_case_workspace_projects_structured_inspection_team_and_selector_contrac
     ]
     assert [member.display_name for member in workspace.inspection.team.members] == ["Lê Thành Viên", "Thanh Tra"]
     assert {option.identity_kind for option in options} == {"inspector_profile", "person"}
-    assert any(option.inspector_profile_id == profile_id and option.is_active is False for option in options)
+    assert [option.inspector_profile_id for option in options if option.identity_kind == "inspector_profile"] == [active_profile_id]
+    generic_person_ids = [option.person_id for option in options if option.identity_kind == "person"]
+    assert generic_person_ids == [direct_person_id]
+    assert inspector_person_id not in generic_person_ids
+    assert active_inspector_person_id not in generic_person_ids
+    assert profile_id not in [option.inspector_profile_id for option in options]
 
     with Session(engine) as session:
         with pytest.raises(HTTPException) as exc_info:

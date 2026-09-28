@@ -6,6 +6,11 @@ import json
 from typing import Any, Mapping
 
 from backend.app.domain.legacy_db_ktra_reconciliation import parse_legacy_team
+from backend.app.domain.legacy_db_ktra_source_v2 import (
+    snapshot_cell_value as _value,
+    snapshot_columns as _columns,
+    substantive_source_value as _substantive,
+)
 from backend.app.domain.legacy_ttvien_personnel import SOURCE_SHEET as PERSONNEL_SOURCE_SHEET, resolve_team_member_token
 from backend.app.domain.legacy_snapshot_v2 import snapshot_bytes
 from backend.app.domain.phase2_import import parse_int
@@ -28,26 +33,6 @@ AUDITED_LEGACY_PERSON_NAMES = frozenset({
     "Nguyễn Thị Thanh Hà", "Nguyễn Trường Thắng", "Nguyễn Văn Tựu", "Nguyễn Đức Chí Anh",
     "Trương Thị Nguyệt", "Trần Công Kỷ", "Trần Quang Hải", "Trần Văn Quyến", "Viên Quang Mai", "Đỗ Lê Huấn",
 })
-
-
-def _columns(snapshot: Mapping[str, Any], sheet_name: str) -> tuple[list[dict[str, Any]], dict[str, int]]:
-    sheet = next((item for item in snapshot.get("sheets", []) if item.get("sheet_name") == sheet_name), None)
-    if not isinstance(sheet, Mapping):
-        raise ValueError(f"Snapshot V2 is missing {sheet_name}")
-    rows = list(sheet.get("raw_rows", []))
-    header = next((row for row in rows if row.get("source_row_number") == 4), None)
-    if not isinstance(header, Mapping):
-        raise ValueError(f"{sheet_name} header row is missing")
-    headers = {str(cell.get("raw_value")): int(cell["column_ordinal"]) for cell in header.get("cells", []) if cell.get("raw_value")}
-    return rows, headers
-
-
-def _value(row: Mapping[str, Any], column: int) -> Any:
-    return next((cell.get("raw_value") for cell in row.get("cells", []) if cell.get("column_ordinal") == column), None)
-
-
-def _substantive(value: Any) -> bool:
-    return value is not None and (not isinstance(value, str) or value.strip() not in {"", "-", "???"})
 
 
 def _source_key(snapshot_sha256: str, row_number: int) -> dict[str, Any]:
@@ -116,8 +101,8 @@ def build_inspection_team_plan(snapshot: Mapping[str, Any], roster_plan: Mapping
         )
     ):
         raise ValueError("inspection-team planner roster record provenance is invalid")
-    rows, columns = _columns(snapshot, TEAM_SOURCE_SHEET)
     required = ("ID", "LOẠI KT", "ID CƠ SỞ", "T.tra viên")
+    rows, columns = _columns(snapshot, TEAM_SOURCE_SHEET, required_headers=required)
     missing = [name for name in required if name not in columns]
     if missing:
         raise ValueError(f"db.ktra team columns missing: {', '.join(missing)}")

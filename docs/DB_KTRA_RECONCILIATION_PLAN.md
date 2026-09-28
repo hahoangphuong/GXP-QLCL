@@ -1,5 +1,28 @@
 # db.ktra Read-Only Reconciliation Plan
 
+## B6B Repeatable V2 Closeout
+
+`B6B_REPEATABLE_V2_RECONCILIATION = COMPLETE_FOR_KNOWN_STRUCTURED_DATA`
+
+The separately authorized guarded rehearsal apply completed with one fenced
+`InspectionDecision` write. Its post-commit reconciliation verified the
+production contract: 1,220 expected/existing structured decisions, 1,162
+expected/existing structured minutes, 1,149 Excel-serial representation
+equivalents, zero data-apply-required items, and zero hard semantic conflicts.
+The terminal reconciliation status is `INCOMPLETE_EVIDENCE` rather than a
+false claim of complete legacy coverage.
+
+`B6B_REHEARSAL_DATA_APPLY_REQUIRED = NO`
+
+Fifteen known items deliberately remain non-writable: twelve unresolved
+decision-source items without an `InspectionPlan`, and three `RAW_ONLY`
+minutes values contaminated by person-name text. They remain evidence for
+future resolution only; no additional B6B writer action is authorized for
+them. The guarded writer's explicit authorization, exact rehearsal
+database/revision fences, snapshot/topology/action-plan hashes, owner locks,
+fresh reconciliation, and post-commit validation remain required for any
+future separately approved operation.
+
 ## Scope
 
 This batch reads the committed `artifacts/phase3c/legacy_snapshot.json` only.

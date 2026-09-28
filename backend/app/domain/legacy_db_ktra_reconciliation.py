@@ -132,17 +132,29 @@ def parse_legacy_minutes_recorded(value: object) -> dict[str, Any]:
     }
 
 
-def _repeatable_clauses(value: object) -> tuple[str, list[str]]:
+def _repeatable_clauses(value: object) -> tuple[str, list[str] | None]:
     raw = "" if value is None else str(value).strip()
     if raw in _SENTINELS:
         return raw, []
-    clauses = [item.strip() for item in _REPEATABLE_SOURCE_SPLIT.split(raw)]
+    # The source proves one harmless terminal semicolon after a complete fact.
+    # No other empty segment is normalized: leading, repeated, and dangling
+    # separators are ambiguous evidence and must stay fail-closed.
+    normalized = raw
+    if normalized.endswith(";"):
+        without_terminal = normalized[:-1].rstrip()
+        if without_terminal and not re.search(r"(?:;|&|\bvà\b)\s*$", without_terminal, re.IGNORECASE):
+            normalized = without_terminal
+    clauses = [item.strip() for item in _REPEATABLE_SOURCE_SPLIT.split(normalized)]
+    if any(not clause for clause in clauses):
+        return raw, None
     return raw, clauses
 
 
 def parse_legacy_inspection_decisions(value: object) -> dict[str, Any]:
     """Parse every explicit Q. định occurrence without selecting one projection."""
     raw, clauses = _repeatable_clauses(value)
+    if clauses is None:
+        return {"state": "UNRESOLVED", "occurrences": [], "raw": raw}
     if not clauses:
         return {"state": "MISSING", "occurrences": [], "raw": raw}
     parsed = [parse_legacy_inspection_decision(clause) for clause in clauses]
@@ -177,6 +189,8 @@ def parse_legacy_inspection_decisions(value: object) -> dict[str, Any]:
 def parse_legacy_minutes_records(value: object) -> dict[str, Any]:
     """Parse every explicit B. bản temporal occurrence in source order."""
     raw, clauses = _repeatable_clauses(value)
+    if clauses is None:
+        return {"state": "UNRESOLVED", "occurrences": [], "raw": raw}
     if not clauses:
         return {"state": "MISSING", "occurrences": [], "raw": raw}
     parsed = [parse_legacy_minutes_recorded(clause) for clause in clauses]
@@ -193,6 +207,38 @@ def parse_legacy_minutes_records(value: object) -> dict[str, Any]:
 def scalar_compatibility_projection(occurrences: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Only a singleton repeatable source may populate a scalar compatibility field."""
     return occurrences[0] if len(occurrences) == 1 else None
+
+
+def terminal_semicolon_decision_lineage_equivalent(
+    *,
+    expected: dict[str, Any],
+    historical_reference: object,
+    historical_date: object,
+    historical_raw: object,
+) -> bool:
+    """Recognize the one approved terminal-semicolon source-lineage difference.
+
+    ``InspectionPlan.decision_legacy_raw`` preserves the original importer
+    source lineage.  Repeatable parsing intentionally removes one proven
+    harmless terminal semicolon before producing an occurrence.  This bridge
+    is deliberately exact: all business fields and the re-parsed occurrence
+    must agree, and no other punctuation normalization is accepted.
+    """
+    source_raw = expected.get("legacy_raw")
+    if not isinstance(source_raw, str) or not isinstance(historical_raw, str):
+        return False
+    if historical_reference != expected.get("reference") or historical_date != expected.get("decision_on"):
+        return False
+    if historical_raw != f"{source_raw};":
+        return False
+    parsed = parse_legacy_inspection_decisions(historical_raw)
+    return (
+        parsed["state"] == "KNOWN"
+        and len(parsed["occurrences"]) == 1
+        and parsed["occurrences"][0]["reference"] == expected.get("reference")
+        and parsed["occurrences"][0]["decision_on"] == expected.get("decision_on")
+        and parsed["occurrences"][0]["legacy_raw"] == source_raw
+    )
 
 
 def parse_legacy_date(value: object) -> dict[str, Any]:

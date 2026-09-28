@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.db.models.phase1 import Case, LegacyInspectionStorageAnchor
+from backend.app.domain.legacy_db_ktra_source_v2 import excel_serial_date
 
 
 AnchorStatus = Literal["usable", "unavailable", "conflict"]
@@ -98,15 +99,6 @@ def _source_scalar_text(value: Any) -> str:
     return str(value).strip()
 
 
-def _excel_serial_date(value: Any) -> date | None:
-    if not isinstance(value, (int, float)) or isinstance(value, bool):
-        return None
-    try:
-        return (datetime(1899, 12, 30) + timedelta(days=float(value))).date()
-    except (OverflowError, ValueError):
-        return None
-
-
 def parse_storage_anchor_year(value: Any) -> SourceYear:
     """Derive a source-faithful year without turning a date range into a date."""
 
@@ -119,7 +111,7 @@ def parse_storage_anchor_year(value: Any) -> SourceYear:
     if isinstance(value, date):
         return SourceYear(raw=raw, year=value.year, status="usable")
 
-    serial_date = _excel_serial_date(value)
+    serial_date = excel_serial_date(value)
     if serial_date is not None:
         return SourceYear(raw=raw, year=serial_date.year, status="usable")
 

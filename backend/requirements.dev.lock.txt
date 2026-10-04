@@ -83,6 +83,8 @@ pytest==9.1.1
     # via -r backend/requirements.dev.txt
 python-dotenv==1.2.3
     # via uvicorn
+pyxlsb==1.0.10
+    # via -r backend/requirements.dev.txt
 pyyaml==6.0.3
     # via uvicorn
 requests==2.32.5

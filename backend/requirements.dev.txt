@@ -1,3 +1,4 @@
 -r requirements.runtime.txt
 alembic
 pytest
+pyxlsb

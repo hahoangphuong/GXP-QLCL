@@ -36,7 +36,8 @@ def test_ci_verifies_vm_runtime_lock_freshness_and_auth_transport_installability
     text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert "Verify backend VM runtime lock freshness" in text
-    assert "backend/requirements.runtime.vm.lock.ci.txt" in text
+    assert "--output-file backend/requirements.runtime.vm.lock.txt backend/requirements.runtime.vm.txt" in text
+    assert "git diff --exit-code -- backend/requirements.runtime.vm.lock.txt" in text
     assert "backend/requirements.runtime.vm.txt" in text
     assert "Verify backend VM runtime lock installs with auth transport imports" in text
     assert "python -m pip install --no-cache-dir -r backend/requirements.runtime.vm.lock.txt" in text

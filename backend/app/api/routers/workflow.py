@@ -33,6 +33,7 @@ from backend.app.read_models import (
     InspectionOutcomeRead,
     InspectionFinalEvaluationRequest,
     InspectionOutcomeUpsertRequest,
+    InspectionPeriodSegmentsUpsertRequest,
     InspectionPlanRead,
     InspectionPlanUpsertRequest,
     InspectionTeamRead,
@@ -61,6 +62,7 @@ def register_workflow_routes(app, session_factory) -> None:
             site_id=site_id,
             gxp_type=payload.gxp_type,
             line_code=payload.line_code,
+            production_line_id=payload.production_line_id,
             applicable_standard=payload.applicable_standard,
             source_case_id=payload.source_case_id,
             reason=payload.reason,
@@ -104,6 +106,7 @@ def register_workflow_routes(app, session_factory) -> None:
             applicant_name=payload.applicant_name,
             reason=payload.reason,
             user=user,
+            fields_set=set(payload.model_fields_set),
         )
         commit_or_409(session)
         return CaseApplicationRead(**result)
@@ -148,6 +151,7 @@ def register_workflow_routes(app, session_factory) -> None:
             notes=payload.notes,
             reason=payload.reason,
             user=user,
+            fields_set=set(payload.model_fields_set),
         )
         commit_or_409(session)
         return CaseAssessmentRead(**result)
@@ -171,6 +175,7 @@ def register_workflow_routes(app, session_factory) -> None:
             decision_date=payload.decision_date,
             reason=payload.reason,
             user=user,
+            fields_set=set(payload.model_fields_set),
         )
         commit_or_409(session)
         return InspectionPlanRead(**result)
@@ -194,6 +199,25 @@ def register_workflow_routes(app, session_factory) -> None:
             minutes_recorded_on=payload.minutes_recorded_on,
             minutes_recorded_time=payload.minutes_recorded_time,
             compliance_due_on=payload.compliance_due_on,
+            reason=payload.reason,
+            user=user,
+            fields_set=set(payload.model_fields_set),
+        )
+        commit_or_409(session)
+        return InspectionOutcomeRead(**result)
+
+    def upsert_inspection_period_segments(
+        case_id: str,
+        payload: InspectionPeriodSegmentsUpsertRequest,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"inspection.edit"})
+        result = service.upsert_inspection_period_segments(
+            session,
+            case_id=case_id,
+            expected_version=payload.expected_version,
+            segments=[item.model_dump() for item in payload.segments],
             reason=payload.reason,
             user=user,
         )
@@ -264,6 +288,7 @@ def register_workflow_routes(app, session_factory) -> None:
             case_id=case_id,
             expected_case_version=payload.expected_case_version,
             requested_on=payload.requested_on,
+            incoming_reference=payload.incoming_reference,
             notes=payload.notes,
             reason=payload.reason,
             user=user,
@@ -283,9 +308,11 @@ def register_workflow_routes(app, session_factory) -> None:
             capa_cycle_id=capa_cycle_id,
             expected_version=payload.expected_version,
             requested_on=payload.requested_on,
+            incoming_reference=payload.incoming_reference,
             notes=payload.notes,
             reason=payload.reason,
             user=user,
+            fields_set=set(payload.model_fields_set),
         )
         commit_or_409(session)
         return CapaCycleRead(**result)
@@ -498,6 +525,13 @@ def register_workflow_routes(app, session_factory) -> None:
     app.add_api_route(
         "/cases/{case_id}/outcome",
         upsert_inspection_outcome,
+        methods=["PUT"],
+        response_model=InspectionOutcomeRead,
+        tags=["workflow"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/outcome/period-segments",
+        upsert_inspection_period_segments,
         methods=["PUT"],
         response_model=InspectionOutcomeRead,
         tags=["workflow"],

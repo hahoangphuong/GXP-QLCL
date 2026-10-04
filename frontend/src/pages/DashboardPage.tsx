@@ -109,6 +109,17 @@ export function DashboardPage({
     return <EmptyState title="Đang tải dashboard" description="Đang lấy số liệu nghiệp vụ thật từ backend." />;
   }
 
+  function queueSearchTarget(item: DashboardSummary["queue"][number]) {
+    const params = new URLSearchParams({
+      q: item.reference_code ?? item.facility_name,
+      gxp_type: item.gxp_type,
+      result_key: item.result_key,
+      site_id: item.site_id,
+      history_id: item.case_id,
+    });
+    return `/search?${params.toString()}`;
+  }
+
   return (
     <section className="page-section">
       <header className="section-title">
@@ -162,7 +173,7 @@ export function DashboardPage({
                     <td>
                       <Link
                         className="text-link"
-                        to={`/search?q=${encodeURIComponent(item.reference_code ?? item.facility_name)}`}
+                        to={queueSearchTarget(item)}
                       >
                         {item.reference_code ?? item.case_id}
                       </Link>

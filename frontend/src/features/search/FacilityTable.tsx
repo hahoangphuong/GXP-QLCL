@@ -5,6 +5,7 @@ import { formatCompactDate, formatFacilityNameForGrid, formatStatusLabel } from 
 import type { FacilitySearchResult } from "../../types";
 
 type HiddenFilters = {
+  generalQuery: string;
   province: string;
   changeRequestStates: string[];
   certificateState: string;
@@ -13,6 +14,9 @@ type HiddenFilters = {
 
 function buildHiddenFilterChips(filters: HiddenFilters): string[] {
   const chips: string[] = [];
+  if (filters.generalQuery.trim()) {
+    chips.push(`Từ khóa: ${filters.generalQuery.trim()}`);
+  }
   if (filters.province.trim()) {
     chips.push(`Tỉnh/thành: ${filters.province.trim()}`);
   }

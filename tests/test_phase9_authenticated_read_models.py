@@ -9,7 +9,6 @@ from types import SimpleNamespace
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine, select
-from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
 from backend.app.auth import (
@@ -51,6 +50,7 @@ from backend.app.db.models.phase1 import (
     InspectionTeamMember,
     InspectorProfile,
     Person,
+    ProductionLine,
     RbacPermission,
     RbacRole,
     RbacRolePermission,
@@ -1205,7 +1205,7 @@ def test_search_facilities_and_workspace_preserve_production_line_context_and_ce
     assert any(item.source_type == "change_request" for item in workspace_payload.history)
 
 
-def test_search_facilities_suppresses_facility_context_when_same_site_gxp_has_authoritative_lines(tmp_path):
+def test_search_facilities_keeps_facility_wide_and_canonical_line_contexts_distinct(tmp_path):
     database_path = tmp_path / "catalog-search-null-suppression.sqlite"
     database_url = f"sqlite:///{database_path.as_posix()}"
     engine = create_engine(database_url, future=True)
@@ -1218,10 +1218,14 @@ def test_search_facilities_suppresses_facility_context_when_same_site_gxp_has_au
         site = Site(company_id=company.id, site_name="Cơ sở suppress", province_name="Hà Nội", legacy_site_id=12, legacy_gmp_site_code="1.2")
         session.add(site)
         session.flush()
+        canonical_line = ProductionLine(site_id=site.id, code="A", effective_from=date(2000, 1, 1))
+        session.add(canonical_line)
+        session.flush()
+        canonical_line_id = canonical_line.id
         session.add_all(
             [
                 Case(site_id=site.id, gxp_type="GMP", scope_code=None, state=CaseState.PLANNED, opened_year=2026),
-                Case(site_id=site.id, gxp_type="GMP", scope_code="A", state=CaseState.UNDER_ASSESSMENT, opened_year=2026),
+                Case(site_id=site.id, gxp_type="GMP", scope_code="OLD-A", production_line_id=canonical_line.id, state=CaseState.UNDER_ASSESSMENT, opened_year=2026),
                 Case(site_id=site.id, gxp_type="GMP", scope_code="B", state=CaseState.INSPECTION_IN_PROGRESS, opened_year=2026),
             ]
         )
@@ -1244,12 +1248,181 @@ def test_search_facilities_suppresses_facility_context_when_same_site_gxp_has_au
         )
         workspace = service.get_facility_workspace(session, site_id=site_id, gxp_type="GMP", line_code="A")
 
-    assert payload["total_count"] == 2
-    assert [row["context_code"] for row in payload["items"]] == ["1.2A", "1.2B"]
-    assert [row["line_code"] for row in payload["items"]] == ["A", "B"]
-    assert all(row["result_grain"] == "production_line" for row in payload["items"])
-    assert {row["result_key"] for row in payload["items"]} == {f"{site_id}:GMP:A", f"{site_id}:GMP:B"}
+    assert payload["total_count"] == 3
+    facility = next(row for row in payload["items"] if row["production_line_identity_state"] == "facility_wide")
+    canonical = next(row for row in payload["items"] if row["production_line_id"] == canonical_line_id)
+    assert facility["production_line_id"] is None
+    assert canonical["production_line_identity_state"] == "canonical"
+    assert canonical["line_code"] == "A"
+    assert canonical["result_key"] != facility["result_key"]
     assert workspace["summary"]["selected_line_code"] == "A"
+
+
+def test_search_and_workspace_keep_same_code_canonical_production_lines_separate(tmp_path):
+    database_path = tmp_path / "catalog-same-code-different-line-uuid.sqlite"
+    engine = create_engine(f"sqlite:///{database_path.as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        company = Company(legal_name="Same code", short_name="SC")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="Same code site", legacy_site_id=91, legacy_gmp_site_code="9.1")
+        session.add(site)
+        session.flush()
+        first = ProductionLine(site_id=site.id, code="A", effective_from=date(2020, 1, 1))
+        second = ProductionLine(site_id=site.id, code="A", effective_from=date(2021, 1, 1))
+        session.add_all([first, second])
+        session.flush()
+        first_case = Case(site_id=site.id, gxp_type="GMP", production_line_id=first.id, scope_code="A", state=CaseState.PLANNED, legacy_inspection_code="P1", opened_year=2026)
+        second_case = Case(site_id=site.id, gxp_type="GMP", production_line_id=second.id, scope_code="A", state=CaseState.INSPECTION_IN_PROGRESS, legacy_inspection_code="P2", opened_year=2026)
+        session.add_all([first_case, second_case])
+        session.commit()
+        site_id, first_id, second_id = site.id, first.id, second.id
+        first_case_id, second_case_id = first_case.id, second_case.id
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        search = service.search_facilities(session, q=None, gxp_type="GMP", province=None, case_states=None, change_request_states=None, certificate_state=None, certificate_expiring_within_days=None, offset=0, limit=50)
+        first_workspace = service.get_facility_workspace(session, site_id=site_id, gxp_type="GMP", line_code="A", production_line_id=first_id)
+        second_workspace = service.get_facility_workspace(session, site_id=site_id, gxp_type="GMP", line_code="A", production_line_id=second_id)
+        dashboard = service.get_dashboard_summary(session, queue_limit=20)
+
+    canonical = [row for row in search["items"] if row["production_line_identity_state"] == "canonical"]
+    assert {row["production_line_id"] for row in canonical} == {first_id, second_id}
+    assert len({row["result_key"] for row in canonical}) == 2
+    result_key_by_line = {row["production_line_id"]: row["result_key"] for row in canonical}
+    queue_key_by_case = {row["case_id"]: row["result_key"] for row in dashboard["queue"]}
+    assert queue_key_by_case[first_case_id] == result_key_by_line[first_id]
+    assert queue_key_by_case[second_case_id] == result_key_by_line[second_id]
+    assert queue_key_by_case[first_case_id] != queue_key_by_case[second_case_id]
+    assert [row["reference_code"] for row in first_workspace["history"] if row["source_type"] == "case"] == ["P1"]
+    assert [row["reference_code"] for row in second_workspace["history"] if row["source_type"] == "case"] == ["P2"]
+
+
+def test_canonical_certificate_uses_uuid_for_match_and_display_over_stale_line_text(tmp_path):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'canonical-certificate-stale-text.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        company = Company(legal_name="Certificate identity", short_name="CI")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="Certificate site")
+        session.add(site)
+        session.flush()
+        line = ProductionLine(site_id=site.id, code="A", effective_from=date(2020, 1, 1))
+        session.add(line)
+        session.flush()
+        certificate = Certificate(site_id=site.id, certificate_type="GMP", production_line_id=line.id, line_code="OLD-A", latest_flag=True)
+        facility_certificate = Certificate(site_id=site.id, certificate_type="GMP", latest_flag=True)
+        session.add_all([certificate, facility_certificate])
+        session.flush()
+        session.add(CertificateVersion(certificate_id=certificate.id, version_no=1, certificate_number="CANONICAL-A", is_latest_version=True))
+        session.add(CertificateVersion(certificate_id=facility_certificate.id, version_no=1, certificate_number="FACILITY", is_latest_version=True))
+        session.commit()
+        site_id, line_id, certificate_id = site.id, line.id, certificate.id
+
+    with Session(engine) as session:
+        service = CatalogReadService()
+        payload = service.list_site_gxp_certificates(session, site_id=site_id, gxp_type="GMP", line_code=None, production_line_id=line_id)
+        matching = service.list_site_gxp_certificates(session, site_id=site_id, gxp_type="GMP", line_code="A", production_line_id=line_id)
+        with pytest.raises(HTTPException, match="line_code does not match the selected canonical ProductionLine") as mismatch:
+            service.list_site_gxp_certificates(session, site_id=site_id, gxp_type="GMP", line_code="B", production_line_id=line_id)
+        stored = session.get(Certificate, certificate_id)
+
+    assert stored is not None and stored.line_code == "OLD-A"
+    canonical = next(item for item in payload["items"] if item["production_line_id"] == line_id)
+    facility = next(item for item in payload["items"] if item["production_line_identity_state"] == "facility_wide")
+    assert canonical["production_line_code"] == "A"
+    assert canonical["line_code"] == "A"
+    assert canonical["context_match_kind"] == "exact_line"
+    assert facility["context_match_kind"] == "facility_wide"
+    assert mismatch.value.status_code == 422
+    assert next(item for item in matching["items"] if item["production_line_id"] == line_id)["production_line_code"] == "A"
+
+
+def test_search_rejects_cross_site_canonical_production_line_reference(tmp_path):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'cross-site-line.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        company = Company(legal_name="Cross site", short_name="CS")
+        session.add(company)
+        session.flush()
+        first = Site(company_id=company.id, site_name="First")
+        second = Site(company_id=company.id, site_name="Second")
+        session.add_all([first, second])
+        session.flush()
+        line = ProductionLine(site_id=second.id, code="A", effective_from=date(2020, 1, 1))
+        session.add(line)
+        session.flush()
+        session.add(Case(site_id=first.id, gxp_type="GMP", production_line_id=line.id, scope_code="A", state=CaseState.PLANNED))
+        session.commit()
+
+    with Session(engine) as session:
+        with pytest.raises(HTTPException, match="different site"):
+            CatalogReadService().search_facilities(session, q=None, gxp_type="GMP", province=None, case_states=None, change_request_states=None, certificate_state=None, certificate_expiring_within_days=None, offset=0, limit=50)
+
+
+def test_certificate_list_and_detail_reject_cross_site_canonical_production_line(tmp_path):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'cross-site-certificate.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        company = Company(legal_name="Cross certificate", short_name="XC")
+        session.add(company); session.flush()
+        first = Site(company_id=company.id, site_name="First")
+        second = Site(company_id=company.id, site_name="Second")
+        session.add_all([first, second]); session.flush()
+        line = ProductionLine(site_id=second.id, code="A", effective_from=date(2020, 1, 1))
+        session.add(line); session.flush()
+        certificate = Certificate(site_id=first.id, certificate_type="GMP", production_line_id=line.id, latest_flag=True)
+        session.add(certificate); session.flush()
+        session.add(CertificateVersion(certificate_id=certificate.id, version_no=1, certificate_number="CROSS", is_latest_version=True))
+        session.commit(); site_id, certificate_id = first.id, certificate.id
+    with Session(engine) as session:
+        service = CatalogReadService()
+        with pytest.raises(HTTPException, match="Canonical ProductionLine"):
+            service.list_site_gxp_certificates(session, site_id=site_id, gxp_type="GMP", line_code=None)
+        with pytest.raises(HTTPException, match="Canonical ProductionLine"):
+            service.get_gxp_certificate_detail(session, certificate_id=certificate_id)
+
+
+def test_case_workspace_rejects_cross_site_canonical_production_line(tmp_path):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'cross-site-case-workspace.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        company = Company(legal_name="Cross case", short_name="XK")
+        session.add(company); session.flush()
+        first = Site(company_id=company.id, site_name="First")
+        second = Site(company_id=company.id, site_name="Second")
+        session.add_all([first, second]); session.flush()
+        line = ProductionLine(site_id=second.id, code="A", effective_from=date(2020, 1, 1))
+        session.add(line); session.flush()
+        case = Case(site_id=first.id, gxp_type="GMP", production_line_id=line.id, scope_code="A", state=CaseState.DRAFT)
+        session.add(case); session.commit(); case_id = case.id
+    with Session(engine) as session:
+        with pytest.raises(HTTPException, match="Canonical ProductionLine"):
+            CatalogReadService().get_case_workspace(session, case_id=case_id, user=build_authenticated_user("manager01", "manager"))
+
+
+def test_case_detail_route_rejects_cross_site_canonical_production_line(tmp_path):
+    database_url = f"sqlite:///{(tmp_path / 'cross-site-case-detail.sqlite').as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        company = Company(legal_name="Cross detail", short_name="XD")
+        session.add(company); session.flush()
+        first = Site(company_id=company.id, site_name="First")
+        second = Site(company_id=company.id, site_name="Second")
+        session.add_all([first, second]); session.flush()
+        line = ProductionLine(site_id=second.id, code="A", effective_from=date(2020, 1, 1))
+        session.add(line); session.flush()
+        case = Case(site_id=first.id, gxp_type="GMP", production_line_id=line.id, scope_code="A", state=CaseState.DRAFT)
+        session.add(case); session.commit(); case_id = case.id
+    app = create_app(database_url)
+    route = next(route for route in app.routes if getattr(route, "path", "") == "/cases/{case_id}")
+    with Session(engine) as session:
+        with pytest.raises(HTTPException, match="invalid canonical ProductionLine") as exc:
+            route.endpoint(case_id=case_id, session=session, user=build_authenticated_user("reader01", "reader"))
+    assert exc.value.status_code == 409
 
 
 def test_search_facilities_keeps_facility_context_when_site_gxp_has_no_authoritative_lines(tmp_path):
@@ -1292,7 +1465,7 @@ def test_search_facilities_keeps_facility_context_when_site_gxp_has_no_authorita
     assert workspace["summary"]["selected_line_code"] is None
 
 
-def test_search_facilities_suppresses_facility_row_when_line_case_uses_facility_wide_current_certificate(tmp_path):
+def test_search_facilities_keeps_facility_certificate_context_independent_of_line_case(tmp_path):
     database_path = tmp_path / "catalog-search-facility-cert-fallback.sqlite"
     database_url = f"sqlite:///{database_path.as_posix()}"
     engine = create_engine(database_url, future=True)
@@ -1346,12 +1519,13 @@ def test_search_facilities_suppresses_facility_row_when_line_case_uses_facility_
         )
 
     assert payload["total_count"] == 1
-    assert [row["context_code"] for row in payload["items"]] == ["8.8A"]
-    assert payload["items"][0]["line_code"] == "A"
+    assert [row["context_code"] for row in payload["items"]] == ["8.8"]
+    assert payload["items"][0]["production_line_identity_state"] == "facility_wide"
+    assert payload["items"][0]["line_code"] is None
     assert payload["items"][0]["current_certificate_number"] == "GCN-FACILITY"
 
 
-def test_search_facilities_suppresses_facility_row_when_certificate_has_line_and_facility_versions(tmp_path):
+def test_search_facilities_keeps_legacy_line_and_facility_certificate_contexts_distinct(tmp_path):
     database_path = tmp_path / "catalog-search-certificate-line-and-facility.sqlite"
     database_url = f"sqlite:///{database_path.as_posix()}"
     engine = create_engine(database_url, future=True)
@@ -1405,10 +1579,13 @@ def test_search_facilities_suppresses_facility_row_when_certificate_has_line_and
             limit=50,
         )
 
-    assert payload["total_count"] == 1
-    assert [row["context_code"] for row in payload["items"]] == ["9.9A"]
-    assert payload["items"][0]["line_code"] == "A"
-    assert payload["items"][0]["result_grain"] == "production_line"
+    assert payload["total_count"] == 2
+    assert [row["context_code"] for row in payload["items"]] == ["9.9", "9.9A"]
+    assert [row["production_line_identity_state"] for row in payload["items"]] == [
+        "facility_wide",
+        "legacy_unlinked",
+    ]
+    assert [row["line_code"] for row in payload["items"]] == [None, "A"]
 
 
 def test_search_facilities_keeps_line_contexts_per_gxp_and_facility_context_for_other_gxp(tmp_path):
@@ -1455,10 +1632,15 @@ def test_search_facilities_keeps_line_contexts_per_gxp_and_facility_context_for_
             limit=50,
         )
 
-    assert payload["total_count"] == 2
-    assert [row["context_code"] for row in payload["items"]] == ["7.1", "7.1A"]
-    assert [row["gxp_type"] for row in payload["items"]] == ["GLP", "GMP"]
-    assert [row["line_code"] for row in payload["items"]] == [None, "A"]
+    assert payload["total_count"] == 3
+    assert [row["context_code"] for row in payload["items"]] == ["7.1", "7.1", "7.1A"]
+    assert [row["gxp_type"] for row in payload["items"]] == ["GLP", "GMP", "GMP"]
+    assert [row["line_code"] for row in payload["items"]] == [None, None, "A"]
+    assert [row["production_line_identity_state"] for row in payload["items"]] == [
+        "facility_wide",
+        "facility_wide",
+        "legacy_unlinked",
+    ]
 
 
 def test_search_facilities_applies_null_context_suppression_before_filters_and_paging(tmp_path):
@@ -1590,6 +1772,16 @@ def test_search_facilities_applies_null_context_suppression_before_filters_and_p
             certificate_expiring_within_days=None,
             **search_kwargs,
         )
+        by_certificate_as_facility_name = service.search_facilities(
+            session,
+            q=None,
+            facility_name="GCN-FILTER",
+            certificate_scope=None,
+            case_states=None,
+            certificate_state=None,
+            certificate_expiring_within_days=None,
+            **search_kwargs,
+        )
         by_scope = service.search_facilities(
             session,
             q=None,
@@ -1659,16 +1851,23 @@ def test_search_facilities_applies_null_context_suppression_before_filters_and_p
             limit=1,
         )
 
-    expected_contexts = ["1.2A", "1.2B"]
-    for payload in [unfiltered, by_name, by_q, by_scope, by_case_state, by_active_certificate, by_expiring_certificate]:
-        assert payload["total_count"] == 2
+    expected_contexts = ["1.2", "1.2A", "1.2B"]
+    for payload in [unfiltered, by_name, by_q, by_case_state]:
+        assert payload["total_count"] == 3
         assert [row["context_code"] for row in payload["items"]] == expected_contexts
-        assert all(row["line_code"] in {"A", "B"} for row in payload["items"])
+        assert [row["line_code"] for row in payload["items"]] == [None, "A", "B"]
 
-    assert first_page["total_count"] == 2
-    assert second_page["total_count"] == 2
-    assert [row["context_code"] for row in first_page["items"]] == ["1.2A"]
-    assert [row["context_code"] for row in second_page["items"]] == ["1.2B"]
+    assert by_scope["total_count"] == 1
+    assert by_certificate_as_facility_name["total_count"] == 0
+    assert [row["context_code"] for row in by_scope["items"]] == ["1.2"]
+    for payload in [by_active_certificate, by_expiring_certificate]:
+        assert payload["total_count"] == 2
+        assert [row["context_code"] for row in payload["items"]] == ["1.2", "1.2A"]
+
+    assert first_page["total_count"] == 3
+    assert second_page["total_count"] == 3
+    assert [row["context_code"] for row in first_page["items"]] == ["1.2"]
+    assert [row["context_code"] for row in second_page["items"]] == ["1.2A"]
     assert {row["result_key"] for row in first_page["items"]}.isdisjoint({row["result_key"] for row in second_page["items"]})
 
 
@@ -1771,6 +1970,64 @@ def test_business_eligibility_workspace_reads_history_detail_and_linked_gxp_basi
     ]
 
 
+def test_business_eligibility_nested_gxp_certificate_uses_canonical_identity_owner(tmp_path):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'dkkd-canonical-identity.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+        site = session.get(Site, seeded["site_id"])
+        assert site is not None
+        line = ProductionLine(site_id=site.id, code="A", effective_from=date(2020, 1, 1))
+        session.add(line); session.flush()
+        certificate = session.get(Certificate, seeded["gxp_certificate_ids"]["a_new"])
+        assert certificate is not None
+        certificate.production_line_id = line.id
+        certificate.line_code = "OLD-A"
+        session.commit()
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        detail = service.get_business_eligibility_detail(session, business_eligibility_certificate_id=seeded["eligibility_certificate_ids"]["current"])
+        workspace = service.get_case_workspace(session, case_id=seeded["case_ids"]["a"], user=build_authenticated_user("manager01", "manager"))
+
+    assert detail["linked_gxp_certificates"][0]["line_code"] == "A"
+    assert workspace["linked_business_eligibility_certificates"][0]["linked_gxp_certificates"][0]["line_code"] == "A"
+
+
+@pytest.mark.parametrize("invalid_kind", ["linked_case", "cross_site_line"])
+def test_business_eligibility_nested_gxp_certificate_fails_closed_for_invalid_identity(tmp_path, invalid_kind):
+    engine = create_engine(f"sqlite:///{(tmp_path / f'dkkd-invalid-{invalid_kind}.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+        certificate = session.get(Certificate, seeded["gxp_certificate_ids"]["a_new"])
+        assert certificate is not None
+        company = session.get(Company, session.get(Site, seeded["site_id"]).company_id)
+        assert company is not None
+        if invalid_kind == "linked_case":
+            other_site = Site(company_id=company.id, site_name="Wrong certificate site")
+            session.add(other_site); session.flush()
+            invalid_case = Case(site_id=other_site.id, gxp_type="GMP", scope_code="A", state=CaseState.CERTIFIED)
+            session.add(invalid_case); session.flush()
+            certificate.case_id = invalid_case.id
+            certificate.line_code = "A"
+        else:
+            other_site = Site(company_id=company.id, site_name="Wrong line site")
+            session.add(other_site); session.flush()
+            line = ProductionLine(site_id=other_site.id, code="A", effective_from=date(2020, 1, 1))
+            session.add(line); session.flush()
+            certificate.production_line_id = line.id
+        session.commit()
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        with pytest.raises(HTTPException, match="invalid linked Case|different site|invalid canonical ProductionLine") as error:
+            service.get_business_eligibility_detail(session, business_eligibility_certificate_id=seeded["eligibility_certificate_ids"]["current"])
+        assert error.value.status_code == 409
+        with pytest.raises(HTTPException, match="invalid linked Case|different site|invalid canonical ProductionLine"):
+            service.get_case_workspace(session, case_id=seeded["case_ids"]["a"], user=build_authenticated_user("manager01", "manager"))
+
+
 def test_case_workspace_reads_owner_correct_sections_and_direct_links_only(tmp_path):
     database_path = tmp_path / "catalog-case-workspace.sqlite"
     database_url = f"sqlite:///{database_path.as_posix()}"
@@ -1800,7 +2057,7 @@ def test_case_workspace_reads_owner_correct_sections_and_direct_links_only(tmp_p
     assert payload.application.assigned_specialist == "Hà Hoàng Phương"
     assert payload.application.assigned_specialist_source == "company_master"
     assert payload.inspection.plan_row_version == 1
-    assert payload.inspection.decision_reference == "QĐ-KT-4201"
+    assert payload.inspection.outcome_decision_reference_compatibility == "QĐ-KT-4201"
     assert payload.inspection.planning_sheet_name == "KH-KT-4201"
     assert payload.inspection.outcome_row_version == 1
     assert payload.inspection.bbkt_reference == "BBKT-4201"
@@ -2025,6 +2282,12 @@ def test_facility_workspace_exposes_owner_managed_action_readiness_for_reassessm
 
     with Session(engine) as session:
         seeded = seed_certificate_workspace_catalog(session)
+        canonical_line = ProductionLine(site_id=seeded["site_id"], code="A", effective_from=date(2020, 1, 1))
+        session.add(canonical_line)
+        session.flush()
+        session.get(Case, seeded["case_ids"]["a"]).production_line_id = canonical_line.id
+        session.commit()
+        seeded["canonical_line_id"] = canonical_line.id
 
     app = create_app(database_url)
     facility_workspace_route = next(route for route in app.routes if getattr(route, "path", "") == "/sites/{site_id}/workspace")
@@ -2034,6 +2297,7 @@ def test_facility_workspace_exposes_owner_managed_action_readiness_for_reassessm
             site_id=seeded["site_id"],
             gxp_type="GMP",
             line_code="A",
+            production_line_id=seeded["canonical_line_id"],
             session=session,
             user=build_authenticated_user("reader01", "reader"),
         )
@@ -2065,6 +2329,14 @@ def test_facility_workspace_marks_reassessment_available_or_conflict_by_context_
 
     with Session(engine) as session:
         seeded = seed_certificate_workspace_catalog(session)
+        line_a = ProductionLine(site_id=seeded["site_id"], code="A", effective_from=date(2020, 1, 1))
+        line_b = ProductionLine(site_id=seeded["site_id"], code="B", effective_from=date(2020, 1, 1))
+        session.add_all([line_a, line_b])
+        session.flush()
+        session.get(Case, seeded["case_ids"]["a"]).production_line_id = line_a.id
+        session.get(Case, seeded["case_ids"]["b"]).production_line_id = line_b.id
+        session.commit()
+        seeded["canonical_line_ids"] = {"A": line_a.id, "B": line_b.id}
 
     app = create_app(database_url)
     facility_workspace_route = next(route for route in app.routes if getattr(route, "path", "") == "/sites/{site_id}/workspace")
@@ -2074,6 +2346,7 @@ def test_facility_workspace_marks_reassessment_available_or_conflict_by_context_
             site_id=seeded["site_id"],
             gxp_type="GMP",
             line_code="A",
+            production_line_id=seeded["canonical_line_ids"]["A"],
             session=session,
             user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
@@ -2081,6 +2354,7 @@ def test_facility_workspace_marks_reassessment_available_or_conflict_by_context_
             site_id=seeded["site_id"],
             gxp_type="GMP",
             line_code="B",
+            production_line_id=seeded["canonical_line_ids"]["B"],
             session=session,
             user=build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"]),
         )
@@ -3035,6 +3309,47 @@ def test_catalog_prefers_certificate_line_code_over_linked_case_scope_when_legac
     assert search_payload["items"][1]["current_certificate_number"] is None
 
 
+def test_catalog_certificate_detail_uses_only_valid_linked_case_scope_fallback(tmp_path):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'catalog-linked-certificate.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        company = Company(legal_name="Catalog fallback", short_name="CF")
+        session.add(company); session.flush()
+        site = Site(company_id=company.id, site_name="Catalog fallback site")
+        other_site = Site(company_id=company.id, site_name="Other catalog site")
+        session.add_all([site, other_site]); session.flush()
+        linked_case = Case(site_id=site.id, gxp_type="GMP", scope_code="A", state=CaseState.CERTIFIED)
+        precedence_case = Case(site_id=site.id, gxp_type="GMP", scope_code="B", state=CaseState.CERTIFIED)
+        invalid_case = Case(site_id=other_site.id, gxp_type="GMP", scope_code="Z", state=CaseState.CERTIFIED)
+        session.add_all([linked_case, precedence_case, invalid_case]); session.flush()
+
+        def add(*, case_id, line_code, number):
+            certificate = Certificate(site_id=site.id, case_id=case_id, certificate_type="GMP", line_code=line_code, latest_flag=True)
+            session.add(certificate); session.flush()
+            session.add(CertificateVersion(certificate_id=certificate.id, version_no=1, certificate_number=number, issue_date=date(2026, 1, 1), expiry_date=date(2027, 1, 1), is_latest_version=True))
+            return certificate
+
+        fallback = add(case_id=linked_case.id, line_code="   ", number="FALLBACK")
+        direct = add(case_id=precedence_case.id, line_code="A", number="DIRECT")
+        invalid = add(case_id=invalid_case.id, line_code=None, number="INVALID")
+        session.commit()
+        certificate_ids = fallback.id, direct.id, invalid.id
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        fallback_detail = service.get_gxp_certificate_detail(session, certificate_id=certificate_ids[0])
+        direct_detail = service.get_gxp_certificate_detail(session, certificate_id=certificate_ids[1])
+        with pytest.raises(HTTPException, match="invalid linked Case") as invalid_error:
+            service.get_gxp_certificate_detail(session, certificate_id=certificate_ids[2])
+
+    assert fallback_detail["production_line_id"] is None
+    assert fallback_detail["production_line_code"] == "A"
+    assert fallback_detail["production_line_identity_state"] == "legacy_unlinked"
+    assert direct_detail["production_line_code"] == "A"
+    assert direct_detail["production_line_identity_state"] == "legacy_unlinked"
+    assert invalid_error.value.status_code == 409
+
+
 def test_imported_general_info_fields_flow_into_facility_workspace_summary(tmp_path):
     database_path = tmp_path / "workspace-general-info.sqlite"
     database_url = f"sqlite:///{database_path.as_posix()}"
@@ -3124,43 +3439,6 @@ def test_imported_general_info_fields_flow_into_facility_workspace_summary(tmp_p
     assert workspace_payload["summary"]["quality_assurance_person"] == "QA Lead B"
     assert workspace_payload["summary"]["facility_current_status"] == "Cơ sở dừng hoạt động từ 31/12/2020"
     assert workspace_payload["summary"]["current_certificate_number"] == "GCN-GEN-001"
-
-
-def test_search_context_query_preserves_postgresql_paging_semantics():
-    service = CatalogReadService()
-    filtered_sites_stmt = service._build_filtered_search_sites_stmt(
-        q=None,
-        gxp_type="GMP",
-        province=None,
-        case_states=None,
-        change_request_states=None,
-        certificate_state=None,
-        certificate_expiring_within_days=None,
-    )
-    stmt = service._ordered_search_contexts_stmt(
-        service._build_search_contexts_stmt(
-            filtered_sites_stmt,
-            gxp_type="GMP",
-            case_states=None,
-            certificate_state=None,
-            certificate_expiring_within_days=None,
-        )
-    ).offset(10).limit(20)
-    compiled = str(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
-    normalized = " ".join(compiled.split())
-
-    assert "UNION ALL" in normalized
-    assert "SELECT DISTINCT" in normalized
-    assert "site_id" in normalized
-    assert "legacy_site_id" in normalized
-    assert "site_name" in normalized
-    assert "gxp_type" in normalized
-    assert "line_code" in normalized
-    assert "search_contexts_non_null_peer.line_code IS NOT NULL" in normalized
-    assert "search_contexts_filtered.line_code IS NULL" not in normalized
-    assert "ORDER BY search_contexts.legacy_site_id IS NULL, search_contexts.legacy_site_id ASC, search_contexts.site_name ASC, search_contexts.gxp_type IS NULL, search_contexts.gxp_type ASC, search_contexts.line_code IS NULL, search_contexts.line_code ASC, search_contexts.site_id ASC" in normalized
-    assert "LIMIT 20" in normalized
-    assert "OFFSET 10" in normalized
 
 
 def test_dashboard_metric_drilldowns_match_search_predicates(tmp_path):
@@ -3664,7 +3942,7 @@ def test_dashboard_metrics_count_matching_facilities_not_raw_records(tmp_path):
                     certificate_id=expiring_cert.id,
                     version_no=1,
                     issue_date=date(2026, 3, 1),
-                    expiry_date=date(2026, 9, 20),
+                    expiry_date=date.today() + timedelta(days=30),
                     certificate_number="SEM-EXP-1",
                     is_latest_version=True,
                 ),

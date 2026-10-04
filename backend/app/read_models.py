@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Literal
 
 
@@ -60,6 +60,9 @@ class CaseDetailRead(BaseModel):
     site_id: str
     gxp_type: str
     scope_code: str | None
+    production_line_id: str | None
+    production_line_code: str | None
+    production_line_identity_state: Literal["canonical", "legacy_unlinked", "facility_wide"]
     applicable_standard: str | None
     inspection_type: str | None
     state: str
@@ -70,6 +73,7 @@ class CaseDetailRead(BaseModel):
 class DashboardQueueItemRead(BaseModel):
     case_id: str
     site_id: str
+    result_key: str
     facility_name: str
     company_name: str
     gxp_type: str
@@ -99,6 +103,9 @@ class FacilitySearchResultRead(BaseModel):
     result_grain: Literal["facility", "production_line"]
     gxp_type: str | None
     line_code: str | None
+    production_line_id: str | None
+    production_line_code: str | None
+    production_line_identity_state: Literal["canonical", "legacy_unlinked", "facility_wide"]
     facility_name: str
     company_name: str
     gxp_types: list[str]
@@ -125,6 +132,9 @@ class FacilityWorkspaceSummaryRead(BaseModel):
     context_code: str | None
     context_grain: Literal["facility", "production_line"]
     selected_line_code: str | None
+    selected_production_line_id: str | None
+    selected_production_line_code: str | None
+    production_line_identity_state: Literal["canonical", "legacy_unlinked", "facility_wide"]
     facility_name: str
     company_name: str
     company_legal_address: str | None
@@ -186,6 +196,9 @@ class CaseWorkspaceSummaryRead(BaseModel):
     company_name: str
     gxp_type: str
     scope_code: str | None
+    production_line_id: str | None
+    production_line_code: str | None
+    production_line_identity_state: Literal["canonical", "legacy_unlinked", "facility_wide"]
     applicable_standard: str | None
     inspection_type: str | None
     state: str
@@ -204,7 +217,10 @@ class CaseWorkspaceApplicationRead(BaseModel):
 
 class CaseWorkspaceInspectionRead(BaseModel):
     plan_row_version: int | None = None
-    decision_reference: str | None
+    plan_decision_reference: str | None = None
+    plan_decision_date: date | None = None
+    # Historical compatibility value owned by the legacy outcome projection.
+    outcome_decision_reference_compatibility: str | None = None
     decision_document_hint: str | None
     plan_start_on: date | None
     plan_end_on: date | None
@@ -212,9 +228,18 @@ class CaseWorkspaceInspectionRead(BaseModel):
     outcome_row_version: int | None = None
     inspected_on: date | None
     inspected_to_on: date | None
+    inspection_period_state: str | None = None
+    inspection_period_segments: list["InspectionPeriodSegmentRead"] = Field(default_factory=list)
     executed_on: datetime | None
     bbkt_reference: str | None
     outcome_result: str | None
+    final_evaluation: str | None = None
+    minutes_recorded_on: date | None = None
+    minutes_recorded_time: time | None = None
+    compliance_due_on: date | None = None
+    final_evaluation_readiness: "LifecycleActionReadinessRead"
+    approval_actions: list["LifecycleActionReadinessRead"] = Field(default_factory=list)
+    approval_submissions: list["InspectionApprovalSubmissionRead"] = Field(default_factory=list)
     team_display_text: str | None
     team: "InspectionTeamWorkspaceRead | None" = None
     team_edit_readiness: "InspectionTeamEditReadinessRead"
@@ -251,11 +276,29 @@ class InspectionTeamEditReadinessRead(BaseModel):
     required_permissions: list[str]
 
 
+class LifecycleActionReadinessRead(BaseModel):
+    action_key: str
+    label: str
+    available: bool
+    reason_code: str | None = None
+    required_permissions: list[str] = Field(default_factory=list)
+    expected_version: int | None = None
+    target_state: str | None = None
+
+
+class InspectionPeriodSegmentRead(BaseModel):
+    id: str
+    ordinal: int
+    started_on: date
+    ended_on: date
+
+
 class CaseWorkspaceRemediationCycleRead(BaseModel):
     capa_cycle_id: str
     row_version: int
     round_no: int
     requested_on: date | None
+    incoming_reference: str | None = None
     submitted_on: date | None
     assessed_on: date | None
     assessor_name: str | None
@@ -266,6 +309,7 @@ class CaseWorkspaceRemediationCycleRead(BaseModel):
 
 class CaseWorkspaceRemediationRead(BaseModel):
     cycles: list[CaseWorkspaceRemediationCycleRead]
+    actions: list["LifecycleActionReadinessRead"] = Field(default_factory=list)
 
 
 class CaseWorkspaceProcessingEventRead(BaseModel):
@@ -417,6 +461,7 @@ class CaseWorkspaceRead(BaseModel):
     certificate_issue_readiness: CertificateIssueActionReadinessRead
     linked_gxp_certificates: list[GxpCertificateDetailRead]
     linked_business_eligibility_certificates: list[BusinessEligibilityDetailRead]
+    transition_actions: list[LifecycleActionReadinessRead] = Field(default_factory=list)
 
 
 class ChangeRequestWorkspaceDetailRead(BaseModel):
@@ -456,6 +501,9 @@ class GxpCertificateListItemRead(BaseModel):
     case_id: str | None
     certificate_type: str
     line_code: str | None
+    production_line_id: str | None
+    production_line_code: str | None
+    production_line_identity_state: Literal["canonical", "legacy_unlinked", "facility_wide"]
     context_match_kind: Literal["exact_line", "facility_wide", "site_wide"]
     latest_flag: bool
     certificate_number: str | None
@@ -494,6 +542,9 @@ class GxpCertificateDetailRead(BaseModel):
     case_id: str | None
     certificate_type: str
     line_code: str | None
+    production_line_id: str | None
+    production_line_code: str | None
+    production_line_identity_state: Literal["canonical", "legacy_unlinked", "facility_wide"]
     issuance_basis: str
     latest_flag: bool
     certificate_number: str | None
@@ -586,6 +637,7 @@ class CaseTransitionRead(BaseModel):
 class InspectionCaseCreateRequest(BaseModel):
     gxp_type: str
     line_code: str | None = None
+    production_line_id: str | None = None
     applicable_standard: str | None = None
     source_case_id: str | None = None
     reason: str | None = None
@@ -596,6 +648,7 @@ class InspectionCaseCreateRead(BaseModel):
     site_id: str
     gxp_type: str
     line_code: str | None
+    production_line_id: str | None
     inspection_type: str
     applicable_standard: str | None
     state: str
@@ -708,6 +761,18 @@ class InspectionOutcomeUpsertRequest(BaseModel):
     reason: str | None = None
 
 
+class InspectionPeriodSegmentsUpsertRequest(BaseModel):
+    expected_version: int
+    segments: list["InspectionPeriodSegmentWrite"]
+    reason: str | None = None
+
+
+class InspectionPeriodSegmentWrite(BaseModel):
+    ordinal: int
+    started_on: date
+    ended_on: date
+
+
 class InspectionFinalEvaluationRequest(BaseModel):
     expected_version: int
     final_evaluation: str
@@ -734,6 +799,7 @@ class InspectionOutcomeRead(BaseModel):
 class CapaCycleCreateRequest(BaseModel):
     expected_case_version: int | None = None
     requested_on: date | None = None
+    incoming_reference: str | None = None
     notes: str | None = None
     reason: str | None = None
 
@@ -741,6 +807,7 @@ class CapaCycleCreateRequest(BaseModel):
 class CapaCycleUpdateRequest(BaseModel):
     expected_version: int
     requested_on: date | None = None
+    incoming_reference: str | None = None
     notes: str | None = None
     reason: str | None = None
 
@@ -767,6 +834,7 @@ class CapaCycleRead(BaseModel):
     row_version: int
     round_no: int
     requested_on: date | None
+    incoming_reference: str | None = None
     submitted_on: date | None
     assessed_on: date | None
     assessor_user_id: str | None
@@ -904,6 +972,9 @@ class CertificateMutationRead(BaseModel):
     site_id: str
     case_id: str | None
     certificate_type: str
+    production_line_id: str | None
+    production_line_code: str | None
+    production_line_identity_state: Literal["canonical", "legacy_unlinked", "facility_wide"]
     issuance_basis: str
     latest_flag: bool
     latest_version_id: str

@@ -33,13 +33,19 @@ jobs:
       - name: Assert fresh checkout excludes production legacy artifacts
         run: |
           test ! -d legacy
-          test ! -d artifacts
+          test ! -d artifacts || test "$(find artifacts -type f | sort)" = "artifacts/a3/case_lifecycle_sweep.json"
 
       - name: Install backend dependencies
         run: python -m pip install -r backend/requirements.dev.lock.txt
 
       - name: Validate Alembic upgrade
         run: python -m alembic upgrade head
+
+      - name: Validate A3 CAPA migration downgrade and re-upgrade
+        env:
+          A3_POSTGRES_MIGRATION_INTEGRATION: "1"
+          A3_DISPOSABLE_POSTGRES_DATABASE: gxp_qlcl_test
+        run: python -m pytest tests/test_a3_capa_incoming_reference_postgres.py -q
 
       - name: Run backend tests
         run: python -m pytest -q
@@ -91,7 +97,7 @@ jobs:
       - name: Assert fresh checkout excludes production legacy artifacts
         run: |
           test ! -d legacy
-          test ! -d artifacts
+          test ! -d artifacts || test "$(find artifacts -type f | sort)" = "artifacts/a3/case_lifecycle_sweep.json"
 
       - name: Install pip-tools
         run: python -m pip install pip-tools

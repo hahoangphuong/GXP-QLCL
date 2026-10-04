@@ -3,27 +3,35 @@ import { useEffect, useMemo, useState } from "react";
 import { formatCompactDate } from "../../lib/presentation";
 import type {
   CaseWorkspace,
+  InspectionFinalEvaluationRequest,
   InspectionOutcomeUpsertRequest,
+  InspectionPeriodSegmentsUpsertRequest,
+  InspectionApprovalSubmissionCreateRequest,
+  InspectionApprovalSubmissionCompleteRequest,
+  InspectionApprovalSubmissionMutationResponse,
+  CaseTransitionRequest,
   InspectionPlanUpsertRequest,
   InspectionTeamIdentityOption,
   InspectionTeamUpsertRequest,
 } from "../../types";
 import { EditableDetailValue } from "./EditableDetailValue";
 import { DetailValue } from "./DetailValue";
+import { CaseApprovalWorkspace } from "./CaseApprovalWorkspace";
+import { CaseLifecycleActions } from "./CaseLifecycleActions";
 
 type InspectionPlanDraft = {
   plan_start_on: string;
   plan_end_on: string;
   planning_sheet_name: string;
-  decision_document_hint: string;
+  decision_reference: string;
+  decision_date: string;
 };
 
 type InspectionOutcomeDraft = {
-  inspected_on: string;
-  inspected_to_on: string;
-  decision_reference: string;
-  bbkt_reference: string;
   outcome_result: string;
+  minutes_recorded_on: string;
+  minutes_recorded_time: string;
+  compliance_due_on: string;
 };
 
 function normalizeDateInputValue(value: string | null): string {
@@ -61,18 +69,54 @@ function buildPlanDraft(caseWorkspace: CaseWorkspace): InspectionPlanDraft {
     plan_start_on: normalizeDateInputValue(caseWorkspace.inspection.plan_start_on),
     plan_end_on: normalizeDateInputValue(caseWorkspace.inspection.plan_end_on),
     planning_sheet_name: caseWorkspace.inspection.planning_sheet_name ?? "",
-    decision_document_hint: caseWorkspace.inspection.decision_document_hint ?? "",
+    decision_reference: caseWorkspace.inspection.plan_decision_reference ?? "",
+    decision_date: normalizeDateInputValue(caseWorkspace.inspection.plan_decision_date),
   };
 }
 
 function buildOutcomeDraft(caseWorkspace: CaseWorkspace): InspectionOutcomeDraft {
   return {
-    inspected_on: normalizeDateInputValue(caseWorkspace.inspection.inspected_on),
-    inspected_to_on: normalizeDateInputValue(caseWorkspace.inspection.inspected_to_on),
-    decision_reference: caseWorkspace.inspection.decision_reference ?? "",
-    bbkt_reference: caseWorkspace.inspection.bbkt_reference ?? "",
     outcome_result: caseWorkspace.inspection.outcome_result ?? "",
+    minutes_recorded_on: normalizeDateInputValue(caseWorkspace.inspection.minutes_recorded_on),
+    minutes_recorded_time: caseWorkspace.inspection.minutes_recorded_time ?? "",
+    compliance_due_on: normalizeDateInputValue(caseWorkspace.inspection.compliance_due_on),
   };
+}
+
+function InspectionPeriodSection({ caseWorkspace, onSave }: { caseWorkspace: CaseWorkspace; onSave: (payload: InspectionPeriodSegmentsUpsertRequest) => Promise<void> }) {
+  const [segments, setSegments] = useState<InspectionPeriodSegmentsUpsertRequest["segments"]>([]);
+  const [editing, setEditing] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Only the explicit canonical KNOWN state authorizes manual period edits.
+  // A missing state is source-owned/unknown rather than a safe editable default.
+  const sourceOwned = caseWorkspace.inspection.inspection_period_state !== "KNOWN";
+  useEffect(() => {
+    if (!editing) setSegments((caseWorkspace.inspection.inspection_period_segments ?? []).map(({ ordinal, started_on, ended_on }) => ({ ordinal, started_on: normalizeDateInputValue(started_on), ended_on: normalizeDateInputValue(ended_on) })));
+  }, [caseWorkspace.inspection.inspection_period_segments, editing]);
+  const renumber = (next: InspectionPeriodSegmentsUpsertRequest["segments"]) => next.map((segment, index) => ({ ...segment, ordinal: index + 1 }));
+  async function save() {
+    if (pending || caseWorkspace.inspection.outcome_row_version === null) return;
+    setPending(true); setErrorMessage(null);
+    try { await onSave({ expected_version: caseWorkspace.inspection.outcome_row_version, segments: renumber(segments) }); setEditing(false); }
+    catch (error) { setErrorMessage(getSectionErrorMessage(error instanceof Error ? error : new Error("Không lưu được các đợt kiểm tra."), "các đợt kiểm tra")); }
+    finally { setPending(false); }
+  }
+  return <section className="workspace-section inspection-period-section">
+    <div className="workspace-section-heading"><h4>Các đợt kiểm tra canonical</h4><button disabled={sourceOwned || pending || caseWorkspace.inspection.outcome_row_version === null} onClick={() => setEditing(true)} type="button">Sửa các đợt kiểm tra</button></div>
+    {sourceOwned ? <p className="workspace-note">Dữ liệu nguồn có trạng thái {caseWorkspace.inspection.inspection_period_state}; không thể thay bằng period runtime thông thường.</p> : null}
+    {!editing ? <DetailValue multiline label="Các lần kiểm tra" value={segments.length ? segments.map((segment) => `Lần ${segment.ordinal}: ${formatCompactDate(segment.started_on)} - ${formatCompactDate(segment.ended_on)}`).join("\n") : null} /> : <div className="inspection-period-editor">
+      {segments.map((segment, index) => <div className="inspection-team-edit-row" key={segment.ordinal}>
+        <span>Lần {index + 1}</span><input aria-label={`Từ ngày lần ${index + 1}`} disabled={pending} onChange={(event) => setSegments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, started_on: event.target.value } : item))} type="date" value={segment.started_on} />
+        <input aria-label={`Đến ngày lần ${index + 1}`} disabled={pending} onChange={(event) => setSegments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ended_on: event.target.value } : item))} type="date" value={segment.ended_on} />
+        <button disabled={pending || index === 0} onClick={() => setSegments((current) => { const next=[...current]; [next[index - 1], next[index]]=[next[index], next[index - 1]]; return renumber(next); })} type="button">Lên</button>
+        <button disabled={pending || index === segments.length - 1} onClick={() => setSegments((current) => { const next=[...current]; [next[index + 1], next[index]]=[next[index], next[index + 1]]; return renumber(next); })} type="button">Xuống</button>
+        <button disabled={pending} onClick={() => setSegments((current) => renumber(current.filter((_, itemIndex) => itemIndex !== index)))} type="button">Xóa</button>
+      </div>)}
+      <div className="panel-actions"><button disabled={pending} onClick={() => setSegments((current) => [...current, { ordinal: current.length + 1, started_on: "", ended_on: "" }])} type="button">Thêm lần kiểm tra</button><button disabled={pending} onClick={() => void save()} type="button">Lưu các đợt kiểm tra</button><button disabled={pending} onClick={() => setEditing(false)} type="button">Hủy</button></div>
+    </div>}
+    {errorMessage ? <p className="form-error" role="alert">{errorMessage}</p> : null}
+  </section>;
 }
 
 function InspectionPlanSection({
@@ -84,7 +128,7 @@ function InspectionPlanSection({
 }) {
   const currentDraft = useMemo(() => buildPlanDraft(caseWorkspace), [caseWorkspace]);
   const [draft, setDraft] = useState<InspectionPlanDraft>(currentDraft);
-  const [editingField, setEditingField] = useState<"plan_start_on" | "plan_end_on" | null>(null);
+  const [editingField, setEditingField] = useState<"plan_start_on" | "plan_end_on" | "decision_reference" | "decision_date" | null>(null);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -102,13 +146,12 @@ function InspectionPlanSection({
     setPending(true);
     setErrorMessage(null);
     try {
-      await onSave({
-        expected_version: caseWorkspace.inspection.plan_row_version,
-        plan_start_on: normalizeText(draft.plan_start_on),
-        plan_end_on: normalizeText(draft.plan_end_on),
-        planning_sheet_name: normalizeText(draft.planning_sheet_name),
-        decision_document_hint: normalizeText(draft.decision_document_hint),
-      });
+      const value = editingField === "decision_reference"
+        ? normalizeText(draft.decision_reference)
+        : editingField === "decision_date"
+          ? normalizeText(draft.decision_date)
+          : normalizeText(draft[editingField]);
+      await onSave({ expected_version: caseWorkspace.inspection.plan_row_version, [editingField]: value });
       setEditingField(null);
     } catch (error) {
       const nextError = error instanceof Error ? error : new Error("Không lưu được kế hoạch kiểm tra.");
@@ -150,6 +193,33 @@ function InspectionPlanSection({
             value={draft.plan_start_on}
           />
         </EditableDetailValue>
+        <EditableDetailValue
+          editButtonLabel="Sửa Số/Tham chiếu QĐKT"
+          error={editingField === "decision_reference" ? errorMessage : null}
+          isEditing={editingField === "decision_reference"}
+          label="Số/Tham chiếu QĐKT"
+          onCancel={cancelEdit}
+          onEdit={() => { setEditingField("decision_reference"); setErrorMessage(null); }}
+          onSave={() => void saveField()}
+          pending={pending}
+          value={caseWorkspace.inspection.plan_decision_reference}
+        >
+          <input aria-label="Số/Tham chiếu QĐKT" disabled={pending} onChange={(event) => setDraft((current) => ({ ...current, decision_reference: event.target.value }))} value={draft.decision_reference} />
+        </EditableDetailValue>
+        <EditableDetailValue
+          editButtonLabel="Sửa Ngày QĐKT"
+          error={editingField === "decision_date" ? errorMessage : null}
+          isEditing={editingField === "decision_date"}
+          label="Ngày QĐKT"
+          onCancel={cancelEdit}
+          onEdit={() => { setEditingField("decision_date"); setErrorMessage(null); }}
+          onSave={() => void saveField()}
+          pending={pending}
+          value={formatCompactDate(caseWorkspace.inspection.plan_decision_date)}
+        >
+          <input aria-label="Ngày QĐKT" disabled={pending} onChange={(event) => setDraft((current) => ({ ...current, decision_date: event.target.value }))} type="date" value={draft.decision_date} />
+        </EditableDetailValue>
+        <DetailValue label="Gợi ý tài liệu legacy (chỉ đọc)" value={caseWorkspace.inspection.decision_document_hint} />
 
         <EditableDetailValue
           editButtonLabel="Sửa Đến ngày kế hoạch"
@@ -206,7 +276,9 @@ function InspectionTeamSection({
       setMembers((team?.members ?? []).map((member) => ({
         inspector_profile_id: member.inspector_profile_id,
         person_id: member.person_id,
-        role_label: member.role_label,
+        participant_catalog_id: member.participant_catalog_id,
+        identity_kind: member.identity_kind === "ORGANIZATION_REPRESENTATIVE" ? "ORGANIZATION_REPRESENTATIVE" : member.inspector_profile_id ? "INSPECTOR_PROFILE" : null,
+        role_code: member.sort_order === 1 ? "LEADER" : member.sort_order === 2 ? "SECRETARY" : "MEMBER",
         sort_order: member.sort_order,
       })));
     }
@@ -229,6 +301,7 @@ function InspectionTeamSection({
   function identityValue(member: InspectionTeamUpsertRequest["members"][number]) {
     if (member.inspector_profile_id) return `profile:${member.inspector_profile_id}`;
     if (member.person_id) return `person:${member.person_id}`;
+    if (member.participant_catalog_id) return `organization:${member.participant_catalog_id}`;
     return "";
   }
 
@@ -238,6 +311,8 @@ function InspectionTeamSection({
       ...member,
       inspector_profile_id: kind === "profile" && id ? id : null,
       person_id: kind === "person" && id ? id : null,
+      participant_catalog_id: kind === "organization" && id ? id : null,
+      identity_kind: kind === "organization" ? "ORGANIZATION_REPRESENTATIVE" : kind === "profile" ? "INSPECTOR_PROFILE" : null,
     }));
   }
 
@@ -247,7 +322,11 @@ function InspectionTeamSection({
       if (target < 0 || target >= current.length) return current;
       const next = [...current];
       [next[index], next[target]] = [next[target], next[index]];
-      return next.map((member, sort_order) => ({ ...member, sort_order }));
+      return next.map((member, index) => ({
+        ...member,
+        sort_order: index + 1,
+        role_code: index === 0 ? "LEADER" : index === 1 ? "SECRETARY" : "MEMBER",
+      }));
     });
   }
 
@@ -258,7 +337,11 @@ function InspectionTeamSection({
     try {
       await onSave({
         expected_version: team.row_version,
-        members: members.map((member, sort_order) => ({ ...member, role_label: normalizeText(member.role_label ?? ""), sort_order })),
+        members: members.map((member, index) => ({
+          ...member,
+          sort_order: index + 1,
+          role_code: index === 0 ? "LEADER" : index === 1 ? "SECRETARY" : "MEMBER",
+        })),
       });
       setEditing(false);
     } catch (error) {
@@ -268,7 +351,9 @@ function InspectionTeamSection({
         setMembers((team.members ?? []).map((member) => ({
           inspector_profile_id: member.inspector_profile_id,
           person_id: member.person_id,
-          role_label: member.role_label,
+          identity_kind: member.identity_kind === "ORGANIZATION_REPRESENTATIVE" ? "ORGANIZATION_REPRESENTATIVE" : member.inspector_profile_id ? "INSPECTOR_PROFILE" : null,
+          participant_catalog_id: member.participant_catalog_id,
+          role_code: member.role_code === "LEADER" || member.role_code === "SECRETARY" ? member.role_code : "MEMBER",
           sort_order: member.sort_order,
         })));
       }
@@ -285,7 +370,7 @@ function InspectionTeamSection({
         <DetailValue label="Mô tả legacy" multiline value={caseWorkspace.inspection.team_display_text} />
       </div>
       {team?.members.map((member) => <div className="inspection-team-member" key={member.id}>
-        <strong>{member.display_name ?? "Định danh chưa resolve"}</strong><span>{member.role_label ?? "Chưa có vai trò"}</span>
+        <strong>{member.display_name ?? "Định danh chưa resolve"}</strong><span>{member.role_code ?? member.role_label ?? "Chưa có vai trò"}</span>
         {member.identity_status === "unresolved" ? <span className="form-error">Không thể round-trip định danh này.</span> : null}
       </div>)}
       {!readiness.available && readiness.reason_code ? <p className="workspace-note">Không thể chỉnh sửa: {readiness.reason_code}.</p> : null}
@@ -295,17 +380,17 @@ function InspectionTeamSection({
         {members.map((member, index) => <div className="inspection-team-edit-row" key={`${identityValue(member)}-${index}`}>
           <select aria-label={`Định danh thành viên ${index + 1}`} disabled={pending} onChange={(event) => setIdentity(index, event.target.value)} value={identityValue(member)}>
             <option value="">Chọn định danh</option>
-            {options.map((option) => <option key={`${option.identity_kind}:${option.inspector_profile_id ?? option.person_id}`} value={`${option.identity_kind === "inspector_profile" ? "profile" : "person"}:${option.inspector_profile_id ?? option.person_id}`}>
+            {options.map((option) => <option key={`${option.identity_kind}:${option.inspector_profile_id ?? option.person_id ?? option.participant_catalog_id}`} value={`${option.identity_kind === "inspector_profile" ? "profile" : option.identity_kind === "organization_representative" ? "organization" : "person"}:${option.inspector_profile_id ?? option.person_id ?? option.participant_catalog_id}`}>
               {option.display_name}{option.is_active === false ? " (không hoạt động)" : ""}
             </option>)}
           </select>
-          <input aria-label={`Vai trò thành viên ${index + 1}`} disabled={pending} onChange={(event) => setMembers((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, role_label: event.target.value } : item))} placeholder="Vai trò" value={member.role_label ?? ""} />
+          <span className="workspace-note">{index === 0 ? "LEADER" : index === 1 ? "SECRETARY" : "MEMBER"}</span>
           <button aria-label={`Đưa thành viên ${index + 1} lên`} disabled={pending || index === 0} onClick={() => moveMember(index, -1)} type="button">Lên</button>
           <button aria-label={`Đưa thành viên ${index + 1} xuống`} disabled={pending || index === members.length - 1} onClick={() => moveMember(index, 1)} type="button">Xuống</button>
-          <button aria-label={`Xóa thành viên ${index + 1}`} disabled={pending} onClick={() => setMembers((current) => current.filter((_, itemIndex) => itemIndex !== index).map((item, sort_order) => ({ ...item, sort_order })))} type="button">Xóa</button>
+          <button aria-label={`Xóa thành viên ${index + 1}`} disabled={pending} onClick={() => setMembers((current) => current.filter((_, itemIndex) => itemIndex !== index).map((item, itemIndex) => ({ ...item, sort_order: itemIndex + 1, role_code: itemIndex === 0 ? "LEADER" : itemIndex === 1 ? "SECRETARY" : "MEMBER" })))} type="button">Xóa</button>
         </div>)}
         <div className="panel-actions">
-          <button disabled={pending} onClick={() => setMembers((current) => [...current, { inspector_profile_id: null, person_id: null, role_label: null, sort_order: current.length }])} type="button">Thêm thành viên</button>
+          <button disabled={pending} onClick={() => setMembers((current) => [...current, { inspector_profile_id: null, person_id: null, role_code: current.length === 0 ? "LEADER" : current.length === 1 ? "SECRETARY" : "MEMBER", sort_order: current.length + 1 }])} type="button">Thêm thành viên</button>
           <button disabled={pending || members.length === 0 || members.some((member) => !identityValue(member))} onClick={() => void save()} type="button">{pending ? "Đang lưu..." : "Lưu đoàn kiểm tra"}</button>
           <button disabled={pending} onClick={() => setEditing(false)} type="button">Hủy</button>
         </div>
@@ -324,7 +409,7 @@ function InspectionOutcomeSection({
   const currentDraft = useMemo(() => buildOutcomeDraft(caseWorkspace), [caseWorkspace]);
   const [draft, setDraft] = useState<InspectionOutcomeDraft>(currentDraft);
   const [editingField, setEditingField] = useState<
-    "inspected_on" | "inspected_to_on" | "decision_reference" | "bbkt_reference" | "outcome_result" | null
+    "outcome_result" | "minutes_recorded_on" | "minutes_recorded_time" | "compliance_due_on" | null
   >(null);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -343,14 +428,7 @@ function InspectionOutcomeSection({
     setPending(true);
     setErrorMessage(null);
     try {
-      await onSave({
-        expected_version: caseWorkspace.inspection.outcome_row_version,
-        inspected_on: normalizeText(draft.inspected_on),
-        inspected_to_on: normalizeText(draft.inspected_to_on),
-        decision_reference: normalizeText(draft.decision_reference),
-        bbkt_reference: normalizeText(draft.bbkt_reference),
-        outcome_result: normalizeText(draft.outcome_result),
-      });
+      await onSave({ expected_version: caseWorkspace.inspection.outcome_row_version, [editingField]: normalizeText(draft[editingField]) });
       setEditingField(null);
     } catch (error) {
       const nextError = error instanceof Error ? error : new Error("Không lưu được kết quả kiểm tra.");
@@ -370,95 +448,8 @@ function InspectionOutcomeSection({
     <section className="workspace-section inspection-outcome-section">
       <h4>Thực hiện & kết quả</h4>
       <div className="detail-grid compact-grid detail-form-matrix">
-        <EditableDetailValue
-          editButtonLabel="Sửa Từ ngày kiểm tra"
-          error={editingField === "inspected_on" ? errorMessage : null}
-          isEditing={editingField === "inspected_on"}
-          label="Từ ngày kiểm tra"
-          onCancel={cancelEdit}
-          onEdit={() => {
-            setEditingField("inspected_on");
-            setErrorMessage(null);
-          }}
-          onSave={() => void saveField()}
-          pending={pending}
-          value={formatCompactDate(caseWorkspace.inspection.inspected_on)}
-        >
-          <input
-            aria-label="Từ ngày kiểm tra"
-            disabled={pending}
-            onChange={(event) => setDraft((current) => ({ ...current, inspected_on: event.target.value }))}
-            type="date"
-            value={draft.inspected_on}
-          />
-        </EditableDetailValue>
-
-        <EditableDetailValue
-          editButtonLabel="Sửa Đến ngày kiểm tra"
-          error={editingField === "inspected_to_on" ? errorMessage : null}
-          isEditing={editingField === "inspected_to_on"}
-          label="Đến ngày kiểm tra"
-          onCancel={cancelEdit}
-          onEdit={() => {
-            setEditingField("inspected_to_on");
-            setErrorMessage(null);
-          }}
-          onSave={() => void saveField()}
-          pending={pending}
-          value={formatCompactDate(caseWorkspace.inspection.inspected_to_on)}
-        >
-          <input
-            aria-label="Đến ngày kiểm tra"
-            disabled={pending}
-            onChange={(event) => setDraft((current) => ({ ...current, inspected_to_on: event.target.value }))}
-            type="date"
-            value={draft.inspected_to_on}
-          />
-        </EditableDetailValue>
-
-        <EditableDetailValue
-          editButtonLabel="Sửa Quyết định kiểm tra"
-          error={editingField === "decision_reference" ? errorMessage : null}
-          isEditing={editingField === "decision_reference"}
-          label="Quyết định kiểm tra"
-          onCancel={cancelEdit}
-          onEdit={() => {
-            setEditingField("decision_reference");
-            setErrorMessage(null);
-          }}
-          onSave={() => void saveField()}
-          pending={pending}
-          value={caseWorkspace.inspection.decision_reference}
-        >
-          <input
-            aria-label="Quyết định kiểm tra"
-            disabled={pending}
-            onChange={(event) => setDraft((current) => ({ ...current, decision_reference: event.target.value }))}
-            value={draft.decision_reference}
-          />
-        </EditableDetailValue>
-
-        <EditableDetailValue
-          editButtonLabel="Sửa Biên bản kiểm tra"
-          error={editingField === "bbkt_reference" ? errorMessage : null}
-          isEditing={editingField === "bbkt_reference"}
-          label="Biên bản kiểm tra"
-          onCancel={cancelEdit}
-          onEdit={() => {
-            setEditingField("bbkt_reference");
-            setErrorMessage(null);
-          }}
-          onSave={() => void saveField()}
-          pending={pending}
-          value={caseWorkspace.inspection.bbkt_reference}
-        >
-          <input
-            aria-label="Biên bản kiểm tra"
-            disabled={pending}
-            onChange={(event) => setDraft((current) => ({ ...current, bbkt_reference: event.target.value }))}
-            value={draft.bbkt_reference}
-          />
-        </EditableDetailValue>
+        <DetailValue label="QĐKT legacy (chỉ đọc)" value={caseWorkspace.inspection.outcome_decision_reference_compatibility} />
+        <DetailValue label="Biên bản legacy (chỉ đọc)" value={caseWorkspace.inspection.bbkt_reference} />
 
         <DetailValue label="Thời điểm thực hiện" value={formatCompactDate(caseWorkspace.inspection.executed_on)} />
         <DetailValue label="Tiêu chuẩn áp dụng" value={caseWorkspace.case_summary.applicable_standard} />
@@ -487,6 +478,15 @@ function InspectionOutcomeSection({
             value={draft.outcome_result}
           />
         </EditableDetailValue>
+        <EditableDetailValue editButtonLabel="Sửa Ngày biên bản" error={editingField === "minutes_recorded_on" ? errorMessage : null} isEditing={editingField === "minutes_recorded_on"} label="Ngày biên bản/report" onCancel={cancelEdit} onEdit={() => { setEditingField("minutes_recorded_on"); setErrorMessage(null); }} onSave={() => void saveField()} pending={pending} value={formatCompactDate(caseWorkspace.inspection.minutes_recorded_on)}>
+          <input aria-label="Ngày biên bản/report" disabled={pending} onChange={(event) => setDraft((current) => ({ ...current, minutes_recorded_on: event.target.value }))} type="date" value={draft.minutes_recorded_on} />
+        </EditableDetailValue>
+        <EditableDetailValue editButtonLabel="Sửa Giờ biên bản" error={editingField === "minutes_recorded_time" ? errorMessage : null} isEditing={editingField === "minutes_recorded_time"} label="Giờ biên bản/report" onCancel={cancelEdit} onEdit={() => { setEditingField("minutes_recorded_time"); setErrorMessage(null); }} onSave={() => void saveField()} pending={pending} value={caseWorkspace.inspection.minutes_recorded_time}>
+          <input aria-label="Giờ biên bản/report" disabled={pending} onChange={(event) => setDraft((current) => ({ ...current, minutes_recorded_time: event.target.value }))} type="time" value={draft.minutes_recorded_time} />
+        </EditableDetailValue>
+        <EditableDetailValue editButtonLabel="Sửa Hạn tuân thủ" error={editingField === "compliance_due_on" ? errorMessage : null} isEditing={editingField === "compliance_due_on"} label="Hạn tuân thủ/tái kiểm tra" onCancel={cancelEdit} onEdit={() => { setEditingField("compliance_due_on"); setErrorMessage(null); }} onSave={() => void saveField()} pending={pending} value={formatCompactDate(caseWorkspace.inspection.compliance_due_on)}>
+          <input aria-label="Hạn tuân thủ/tái kiểm tra" disabled={pending} onChange={(event) => setDraft((current) => ({ ...current, compliance_due_on: event.target.value }))} type="date" value={draft.compliance_due_on} />
+        </EditableDetailValue>
       </div>
     </section>
   );
@@ -496,21 +496,73 @@ export function CaseInspectionWorkspace({
   caseWorkspace,
   onInspectionPlanSave,
   onInspectionOutcomeSave,
+  onInspectionPeriodSegmentsSave,
   onInspectionTeamSave,
   onLoadInspectionTeamIdentityOptions,
+  onFinalizeInspectionOutcome,
+  onCreateApprovalSubmission,
+  onCompleteApprovalSubmission,
+  onTransitionCase,
 }: {
   caseWorkspace: CaseWorkspace;
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
+  onInspectionPeriodSegmentsSave: (payload: InspectionPeriodSegmentsUpsertRequest) => Promise<void>;
   onInspectionTeamSave: (payload: InspectionTeamUpsertRequest) => Promise<void>;
   onLoadInspectionTeamIdentityOptions: () => Promise<InspectionTeamIdentityOption[]>;
+  onFinalizeInspectionOutcome?: (payload: InspectionFinalEvaluationRequest) => Promise<void>;
+  onCreateApprovalSubmission: (stage: "PCT" | "CT", payload: InspectionApprovalSubmissionCreateRequest) => Promise<InspectionApprovalSubmissionMutationResponse>;
+  onCompleteApprovalSubmission: (submissionId: string, payload: InspectionApprovalSubmissionCompleteRequest) => Promise<InspectionApprovalSubmissionMutationResponse>;
+  onTransitionCase: (payload: CaseTransitionRequest) => Promise<void>;
 }) {
+  const [finalEvaluation, setFinalEvaluation] = useState("");
+  const [finalizationError, setFinalizationError] = useState<string | null>(null);
+  const [finalizationPending, setFinalizationPending] = useState(false);
+  const finalization = caseWorkspace.inspection.final_evaluation_readiness ?? {
+    action_key: "finalize_inspection_outcome",
+    label: "Chốt đánh giá cuối cùng",
+    available: false,
+    reason_code: "readiness_unavailable",
+    required_permissions: [],
+    expected_version: null,
+  };
+
+  async function finalize() {
+    if (!onFinalizeInspectionOutcome || !finalization.available || !finalEvaluation.trim() || finalization.expected_version === null) return;
+    setFinalizationPending(true);
+    setFinalizationError(null);
+    try {
+      await onFinalizeInspectionOutcome({ expected_version: finalization.expected_version, final_evaluation: finalEvaluation.trim() });
+      setFinalEvaluation("");
+    } catch (error) {
+      setFinalizationError(getSectionErrorMessage(error instanceof Error ? error : new Error("Không thể chốt đánh giá."), "đánh giá cuối cùng"));
+    } finally {
+      setFinalizationPending(false);
+    }
+  }
   return (
     <div className="inspection-workspace">
       <div className="inspection-detail-grid">
         <InspectionPlanSection caseWorkspace={caseWorkspace} onSave={onInspectionPlanSave} />
         <InspectionTeamSection caseWorkspace={caseWorkspace} onLoadIdentityOptions={onLoadInspectionTeamIdentityOptions} onSave={onInspectionTeamSave} />
         <InspectionOutcomeSection caseWorkspace={caseWorkspace} onSave={onInspectionOutcomeSave} />
+        <InspectionPeriodSection caseWorkspace={caseWorkspace} onSave={onInspectionPeriodSegmentsSave} />
+        <CaseApprovalWorkspace caseWorkspace={caseWorkspace} onComplete={onCompleteApprovalSubmission} onCreate={onCreateApprovalSubmission} />
+        <CaseLifecycleActions caseWorkspace={caseWorkspace} onTransition={onTransitionCase} />
+        <section className="workspace-section">
+          <h4>Đánh giá cuối cùng</h4>
+          <DetailValue label="Giá trị đã chốt" value={caseWorkspace.inspection.final_evaluation} />
+          {caseWorkspace.inspection.final_evaluation === null ? (
+            <div className="panel-actions panel-actions-tight">
+              <input aria-label="Đánh giá cuối cùng" disabled={!finalization.available || finalizationPending} onChange={(event) => setFinalEvaluation(event.target.value)} value={finalEvaluation} />
+              <button disabled={!onFinalizeInspectionOutcome || !finalization.available || finalizationPending || !finalEvaluation.trim()} onClick={() => void finalize()} type="button">
+                {finalizationPending ? "Đang chốt..." : finalization.label}
+              </button>
+            </div>
+          ) : null}
+          {!finalization.available && finalization.reason_code ? <p className="workspace-note">Không thể chốt: {finalization.reason_code}.</p> : null}
+          {finalizationError ? <p className="form-error" role="alert">{finalizationError}</p> : null}
+        </section>
       </div>
     </div>
   );

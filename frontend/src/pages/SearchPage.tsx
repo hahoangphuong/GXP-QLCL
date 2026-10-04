@@ -1,4 +1,4 @@
-import { startTransition, useDeferredValue, useEffect, useRef, useState, type FormEvent } from "react";
+import { startTransition, useDeferredValue, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import type { ApiAccess } from "../App";
@@ -31,6 +31,11 @@ import {
   upsertCaseAssessment,
   updateCapaCycle,
   upsertInspectionOutcome,
+  upsertInspectionPeriodSegments,
+  createInspectionApprovalSubmission,
+  completeInspectionApprovalSubmission,
+  transitionCase,
+  finalizeInspectionOutcome,
   upsertInspectionPlan,
   upsertInspectionTeam,
   listInspectionTeamIdentityOptions,
@@ -56,6 +61,7 @@ import type {
   CertificateLatestVersionUpsertRequest,
   CertificateIssueRequest,
   InspectionOutcomeUpsertRequest,
+  InspectionFinalEvaluationRequest,
   InspectionPlanUpsertRequest,
   InspectionTeamIdentityOption,
   InspectionTeamUpsertRequest,
@@ -67,8 +73,86 @@ const DEFAULT_FACILITY_TAB = "Các đợt kiểm tra & thay đổi";
 const RESULT_PAGE_SIZE = 100;
 const GXP_FILTER_OPTIONS = new Set(["GMP", "GLP", "GMPbb"]);
 
+type PendingDeepLink = {
+  resultKey: string | null;
+  requestedGxpType: string | null;
+  historyId: string | null;
+  siteId: string | null;
+  contextGxp: string | null;
+  productionLineId: string | null;
+  lineCode: string | null;
+};
+
+type ResolutionState = "none" | "pending" | "resolved" | "not_found";
+
+function normalizeLineHint(value: string | null): string | null {
+  const normalized = value?.trim() ?? "";
+  return normalized || null;
+}
+
+function readPendingDeepLink(params: URLSearchParams): PendingDeepLink {
+  return {
+    resultKey: params.get("result_key"),
+    requestedGxpType: params.get("gxp_type"),
+    historyId: params.get("history_id"),
+    siteId: params.get("site_id"),
+    contextGxp: params.get("context_gxp"),
+    productionLineId: params.get("production_line_id"),
+    lineCode: normalizeLineHint(params.get("line_code")),
+  };
+}
+
+function hasExplicitResultIdentity(pending: PendingDeepLink): boolean {
+  return pending.resultKey !== null
+    || pending.siteId !== null
+    || pending.contextGxp !== null
+    || pending.productionLineId !== null
+    || pending.lineCode !== null;
+}
+
+function normalizeExplicitGxpHint(value: string | null): string | null {
+  return value && GXP_FILTER_OPTIONS.has(value) ? value : null;
+}
+
+function hasInvalidOrContradictoryTargetGxpHints(pending: PendingDeepLink): boolean {
+  const requestedGxpType = normalizeExplicitGxpHint(pending.requestedGxpType);
+  const contextGxp = normalizeExplicitGxpHint(pending.contextGxp);
+  return (pending.requestedGxpType !== null && requestedGxpType === null)
+    || (pending.contextGxp !== null && contextGxp === null)
+    || (requestedGxpType !== null && contextGxp !== null && requestedGxpType !== contextGxp);
+}
+
+function targetGxpConstraint(pending: PendingDeepLink): string | null {
+  return normalizeExplicitGxpHint(pending.requestedGxpType)
+    ?? normalizeExplicitGxpHint(pending.contextGxp);
+}
+
+function initialResolutionState(pending: PendingDeepLink): ResolutionState {
+  return hasExplicitResultIdentity(pending) ? "pending" : "none";
+}
+
+function matchesCompatibilityHints(row: FacilitySearchResult, pending: PendingDeepLink): boolean {
+  if (pending.siteId && row.site_id !== pending.siteId) return false;
+  const contextGxp = normalizeExplicitGxpHint(pending.contextGxp);
+  if (contextGxp && row.gxp_type !== contextGxp) return false;
+  if (pending.productionLineId) return row.production_line_id === pending.productionLineId;
+  if (pending.lineCode) {
+    return row.production_line_identity_state === "legacy_unlinked"
+      && normalizeLineHint(row.line_code) === pending.lineCode;
+  }
+  return Boolean(pending.siteId && pending.contextGxp && row.production_line_identity_state === "facility_wide");
+}
+
 function normalizeGxpSelection(value: string | null): string {
   return value && GXP_FILTER_OPTIONS.has(value) ? value : "GMP";
+}
+
+function initialGxpSelection(params: URLSearchParams): string {
+  const pending = readPendingDeepLink(params);
+  return normalizeGxpSelection(
+    normalizeExplicitGxpHint(pending.requestedGxpType)
+      ?? normalizeExplicitGxpHint(pending.contextGxp),
+  );
 }
 
 function appendUniqueResults(current: FacilitySearchResult[], incoming: FacilitySearchResult[]) {
@@ -104,24 +188,35 @@ export function SearchPage({
   statusError: string | null;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [facilityName, setFacilityName] = useState(searchParams.get("facility_name") ?? searchParams.get("q") ?? "");
+  const searchSignature = searchParams.toString();
+  const [generalQuery, setGeneralQuery] = useState(searchParams.get("q") ?? "");
+  const [facilityName, setFacilityName] = useState(searchParams.get("facility_name") ?? "");
   const [certificateScope, setCertificateScope] = useState(searchParams.get("certificate_scope") ?? "");
-  const [gxpType, setGxpType] = useState(normalizeGxpSelection(searchParams.get("gxp_type")));
-  const [province] = useState(searchParams.get("province") ?? "");
+  const [gxpType, setGxpType] = useState(initialGxpSelection(searchParams));
+  const [province, setProvince] = useState(searchParams.get("province") ?? "");
   const [caseStates, setCaseStates] = useState<string[]>(searchParams.getAll("case_state"));
-  const [certificateState] = useState(searchParams.get("certificate_state") ?? "");
-  const [certificateExpiringWithinDays] = useState(searchParams.get("certificate_expiring_within_days") ?? "");
-  const [changeRequestStates] = useState<string[]>(searchParams.getAll("change_request_state"));
+  const [certificateState, setCertificateState] = useState(searchParams.get("certificate_state") ?? "");
+  const [certificateExpiringWithinDays, setCertificateExpiringWithinDays] = useState(searchParams.get("certificate_expiring_within_days") ?? "");
+  const [changeRequestStates, setChangeRequestStates] = useState<string[]>(searchParams.getAll("change_request_state"));
   const [resultsOffset, setResultsOffset] = useState(0);
+  const [searchEpoch, setSearchEpoch] = useState(0);
   const [selectedResultKey, setSelectedResultKey] = useState<string | null>(searchParams.get("result_key"));
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(searchParams.get("history_id"));
+  const [pendingDeepLink, setPendingDeepLink] = useState<PendingDeepLink>(() => readPendingDeepLink(searchParams));
+  const [resultResolution, setResultResolution] = useState<ResolutionState>(() => initialResolutionState(readPendingDeepLink(searchParams)));
+  const [historyResolution, setHistoryResolution] = useState<ResolutionState>(() => searchParams.get("history_id") ? "pending" : "none");
+  const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
   const [selectedFacilityTab, setSelectedFacilityTab] = useState(searchParams.get("facility_tab") ?? DEFAULT_FACILITY_TAB);
   const [activeTab, setActiveTab] = useState(searchParams.get("event_tab") ?? DEFAULT_EVENT_TAB);
   const [selectedRemediationCycleId, setSelectedRemediationCycleId] = useState<string | null>(null);
+  const deferredGeneralQuery = useDeferredValue(generalQuery);
   const deferredFacilityName = useDeferredValue(facilityName);
   const deferredCertificateScope = useDeferredValue(certificateScope);
 
   const [results, setResults] = useState<FacilitySearchResult[]>([]);
+  // A resolved deep link owns the workspace target while the ordinary result
+  // universe is reconciled to its settled GxP filter.
+  const [resolvedDeepLinkResult, setResolvedDeepLinkResult] = useState<FacilitySearchResult | null>(null);
   const [resultsLoading, setResultsLoading] = useState(true);
   const [resultsError, setResultsError] = useState<string | null>(null);
   const [resultsTotalCount, setResultsTotalCount] = useState(0);
@@ -157,13 +252,72 @@ export function SearchPage({
   const { auth, useStubAuth, bearerToken, canLoadSecureApi } = access;
   const reassessmentInputRef = useRef<HTMLInputElement | null>(null);
   const reassessmentTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const internalUrlWriteRef = useRef<string | null>(null);
+  const suppressUrlSyncRef = useRef(false);
+  const didHydrateInitialUrlRef = useRef(false);
+  const latestSearchSignatureRef = useRef(searchSignature);
+  const resultsRef = useRef<FacilitySearchResult[]>([]);
+  latestSearchSignatureRef.current = searchSignature;
 
-  const selectedResult = results.find((item) => item.result_key === selectedResultKey) ?? null;
+  useEffect(() => {
+    resultsRef.current = results;
+  }, [results]);
+
+  const selectedResultFromResults = results.find((item) => item.result_key === selectedResultKey) ?? null;
+  const selectedResult = resultResolution === "resolved"
+    && resolvedDeepLinkResult?.result_key === selectedResultKey
+    ? resolvedDeepLinkResult
+    : selectedResultFromResults;
+  const explicitTargetPending = resultResolution === "pending" && hasExplicitResultIdentity(pendingDeepLink);
+  const pendingTargetGxpConstraint = targetGxpConstraint(pendingDeepLink);
+  const pendingTargetGxpHintsInvalid = hasInvalidOrContradictoryTargetGxpHints(pendingDeepLink);
+  const searchGxpType = explicitTargetPending ? pendingTargetGxpConstraint : gxpType;
   const selectedHistory = workspace?.history.find((item) => item.id === selectedHistoryId) ?? null;
   const hasMoreResults = results.length < resultsTotalCount;
   const createReassessmentAction =
     workspace?.action_readiness.find((item) => item.action_key === "create_reassessment_case") ?? null;
   const reassessmentDialogOpen = selectedActionKey === "create_reassessment_case" && selectedResult && createReassessmentAction;
+
+  // External same-route navigation owns URL -> state. Local interaction below owns state -> URL.
+  useLayoutEffect(() => {
+    const signature = searchSignature;
+    const params = new URLSearchParams(signature);
+    // Initial state is derived from the initial URL. Mark it before consuming a
+    // possible normalization write so the next external navigation is hydrated.
+    if (!didHydrateInitialUrlRef.current) {
+      didHydrateInitialUrlRef.current = true;
+      if (internalUrlWriteRef.current === signature) {
+        internalUrlWriteRef.current = null;
+      }
+      return;
+    }
+    if (internalUrlWriteRef.current === signature) {
+      internalUrlWriteRef.current = null;
+      return;
+    }
+    suppressUrlSyncRef.current = true;
+    setGeneralQuery(params.get("q") ?? "");
+    setFacilityName(params.get("facility_name") ?? "");
+    setCertificateScope(params.get("certificate_scope") ?? "");
+    setGxpType(initialGxpSelection(params));
+    setProvince(params.get("province") ?? "");
+    setCaseStates(params.getAll("case_state"));
+    setChangeRequestStates(params.getAll("change_request_state"));
+    setCertificateState(params.get("certificate_state") ?? "");
+    setCertificateExpiringWithinDays(params.get("certificate_expiring_within_days") ?? "");
+    const pending = readPendingDeepLink(params);
+    setPendingDeepLink(pending);
+    setResultResolution(initialResolutionState(pending));
+    setResolvedDeepLinkResult(null);
+    setHistoryResolution(pending.historyId ? "pending" : "none");
+    setSelectedResultKey(pending.resultKey);
+    setSelectedHistoryId(pending.historyId);
+    setSelectedFacilityTab(params.get("facility_tab") ?? DEFAULT_FACILITY_TAB);
+    setActiveTab(params.get("event_tab") ?? DEFAULT_EVENT_TAB);
+    setResultsOffset(0);
+    setSearchEpoch((current) => current + 1);
+    setDeepLinkError(null);
+  }, [searchSignature]);
 
   function resetCertificateWorkspaceState() {
     setGxpCertificates([]);
@@ -197,15 +351,33 @@ export function SearchPage({
     reassessmentTriggerRef.current?.focus();
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (suppressUrlSyncRef.current) {
+      suppressUrlSyncRef.current = false;
+      return;
+    }
+    // Do not let an effect from a previous render overwrite a newer external navigation.
+    if (latestSearchSignatureRef.current !== searchSignature) {
+      return;
+    }
     const nextParams = new URLSearchParams();
+    if (deferredGeneralQuery.trim()) {
+      nextParams.set("q", deferredGeneralQuery.trim());
+    }
     if (deferredFacilityName.trim()) {
       nextParams.set("facility_name", deferredFacilityName.trim());
     }
     if (deferredCertificateScope.trim()) {
       nextParams.set("certificate_scope", deferredCertificateScope.trim());
     }
-    nextParams.set("gxp_type", gxpType);
+    const explicitTargetUnresolved = resultResolution !== "resolved" && hasExplicitResultIdentity(pendingDeepLink);
+    if (explicitTargetUnresolved) {
+      if (pendingDeepLink.requestedGxpType !== null) {
+        nextParams.set("gxp_type", pendingDeepLink.requestedGxpType);
+      }
+    } else {
+      nextParams.set("gxp_type", gxpType);
+    }
     if (province.trim()) {
       nextParams.set("province", province.trim());
     }
@@ -221,18 +393,37 @@ export function SearchPage({
     if (certificateExpiringWithinDays) {
       nextParams.set("certificate_expiring_within_days", certificateExpiringWithinDays);
     }
-    if (selectedResult) {
-      nextParams.set("result_key", selectedResult.result_key);
-      nextParams.set("site_id", selectedResult.site_id);
-      if (selectedResult.line_code) {
-        nextParams.set("line_code", selectedResult.line_code);
-      }
-      if (selectedResult.gxp_type) {
-        nextParams.set("context_gxp", selectedResult.gxp_type);
-      }
+    const unresolvedIdentity = selectedResult && resultResolution !== "not_found"
+      ? {
+          resultKey: selectedResult.result_key,
+          siteId: selectedResult.site_id,
+          contextGxp: selectedResult.gxp_type,
+          productionLineId: selectedResult.production_line_id ?? null,
+          lineCode: selectedResult.line_code,
+        }
+      : pendingDeepLink;
+    if (unresolvedIdentity.resultKey) {
+      nextParams.set("result_key", unresolvedIdentity.resultKey);
     }
-    if (selectedHistoryId) {
-      nextParams.set("history_id", selectedHistoryId);
+    if (unresolvedIdentity.siteId) {
+      nextParams.set("site_id", unresolvedIdentity.siteId);
+    }
+    if (unresolvedIdentity.lineCode) {
+      nextParams.set("line_code", unresolvedIdentity.lineCode);
+    }
+    if (unresolvedIdentity.productionLineId) {
+      nextParams.set("production_line_id", unresolvedIdentity.productionLineId);
+    }
+    if (unresolvedIdentity.contextGxp) {
+      nextParams.set("context_gxp", unresolvedIdentity.contextGxp);
+    }
+    const historyForUrl = selectedHistoryId ?? (
+      historyResolution === "pending" || historyResolution === "not_found"
+        ? pendingDeepLink.historyId
+        : null
+    );
+    if (historyForUrl) {
+      nextParams.set("history_id", historyForUrl);
     }
     if (selectedFacilityTab !== DEFAULT_FACILITY_TAB) {
       nextParams.set("facility_tab", selectedFacilityTab);
@@ -240,7 +431,11 @@ export function SearchPage({
     if (activeTab !== DEFAULT_EVENT_TAB) {
       nextParams.set("event_tab", activeTab);
     }
-    setSearchParams(nextParams, { replace: true });
+    const nextSignature = nextParams.toString();
+    if (nextSignature !== searchSignature) {
+      internalUrlWriteRef.current = nextSignature;
+      setSearchParams(nextParams, { replace: true });
+    }
   }, [
     activeTab,
     caseStates,
@@ -249,11 +444,16 @@ export function SearchPage({
     changeRequestStates,
     deferredCertificateScope,
     deferredFacilityName,
+    deferredGeneralQuery,
     gxpType,
     province,
     selectedFacilityTab,
     selectedHistoryId,
     selectedResult,
+    pendingDeepLink,
+    historyResolution,
+    resultResolution,
+    searchSignature,
     setSearchParams,
   ]);
 
@@ -262,6 +462,19 @@ export function SearchPage({
       setResultsLoading(false);
       setResults([]);
       setResultsTotalCount(0);
+      return;
+    }
+    if (explicitTargetPending && pendingTargetGxpHintsInvalid) {
+      setResultsLoading(false);
+      setResults([]);
+      setResultsTotalCount(0);
+      setSelectedResultKey(null);
+      setSelectedHistoryId(null);
+      setResolvedDeepLinkResult(null);
+      setWorkspace(null);
+      resetCertificateWorkspaceState();
+      setResultResolution("not_found");
+      setDeepLinkError("Các ràng buộc GxP trong liên kết không hợp lệ hoặc mâu thuẫn.");
       return;
     }
     const isFirstPage = resultsOffset === 0;
@@ -273,9 +486,10 @@ export function SearchPage({
     }
     void searchFacilities(
       {
+        q: deferredGeneralQuery.trim() || undefined,
         facility_name: deferredFacilityName.trim() || undefined,
         certificate_scope: deferredCertificateScope.trim() || undefined,
-        gxp_type: gxpType,
+        gxp_type: searchGxpType,
         province: province.trim() || undefined,
         case_state: caseStates,
         change_request_state: changeRequestStates,
@@ -292,22 +506,59 @@ export function SearchPage({
         if (cancelled) {
           return;
         }
-        setResults((current) => (isFirstPage ? payload.items : appendUniqueResults(current, payload.items)));
+        const nextResults = isFirstPage ? payload.items : appendUniqueResults(resultsRef.current, payload.items);
+        setResults(nextResults);
         setResultsTotalCount(payload.total_count);
         setResultsError(null);
         setResultsLoading(false);
-        if (isFirstPage) {
-          if (payload.items.length === 0) {
+        const explicitTarget = explicitTargetPending;
+        const compatibleRows = explicitTarget && !pendingDeepLink.resultKey
+          ? nextResults.filter((item) => matchesCompatibilityHints(item, pendingDeepLink))
+          : [];
+        const pendingMatch = explicitTarget && pendingDeepLink.resultKey
+          ? nextResults.find((item) => item.result_key === pendingDeepLink.resultKey) ?? null
+          : null;
+        const resolveExplicitTarget = (target: FacilitySearchResult) => {
+          const resolvedGxpType = normalizeGxpSelection(target.gxp_type);
+          setResolvedDeepLinkResult(target);
+          setSelectedResultKey(target.result_key);
+          setGxpType(resolvedGxpType);
+          setResultResolution("resolved");
+          setDeepLinkError(null);
+
+          // A target found through an unfiltered or differently filtered
+          // lookup must not leave that lookup universe in the settled table.
+          if (pendingTargetGxpConstraint !== resolvedGxpType) {
+            setResultsOffset(0);
+            setSearchEpoch((current) => current + 1);
+          }
+        };
+        if (pendingMatch) {
+          resolveExplicitTarget(pendingMatch);
+        } else if (explicitTarget) {
+          if (!pendingDeepLink.resultKey && compatibleRows.length > 1) {
             setSelectedResultKey(null);
             setSelectedHistoryId(null);
+            setResolvedDeepLinkResult(null);
             setWorkspace(null);
             resetCertificateWorkspaceState();
-            return;
+            setResultResolution("not_found");
+            setDeepLinkError("Không tìm thấy ngữ cảnh được liên kết trong kết quả tra cứu hiện tại.");
+          } else if (nextResults.length < payload.total_count) {
+            setResultsOffset(nextResults.length);
+          } else if (!pendingDeepLink.resultKey && compatibleRows.length === 1) {
+            resolveExplicitTarget(compatibleRows[0]);
+          } else {
+            setSelectedResultKey(null);
+            setSelectedHistoryId(null);
+            setResolvedDeepLinkResult(null);
+            setWorkspace(null);
+            resetCertificateWorkspaceState();
+            setResultResolution("not_found");
+            setDeepLinkError("Không tìm thấy ngữ cảnh được liên kết trong kết quả tra cứu hiện tại.");
           }
-          const hasSelection = selectedResultKey && payload.items.some((item) => item.result_key === selectedResultKey);
-          if (!hasSelection) {
+        } else if (resultResolution === "none" && isFirstPage && payload.items.length > 0 && !selectedResultKey) {
             setSelectedResultKey(payload.items[0].result_key);
-          }
         }
       })
       .catch((error: Error) => {
@@ -333,9 +584,11 @@ export function SearchPage({
     changeRequestStates,
     deferredCertificateScope,
     deferredFacilityName,
+    deferredGeneralQuery,
     gxpType,
     province,
     resultsOffset,
+    searchEpoch,
     useStubAuth,
   ]);
 
@@ -364,6 +617,7 @@ export function SearchPage({
       selectedResult.gxp_type,
       selectedResult.line_code,
       bearerToken,
+      selectedResult.production_line_id,
     )
       .then((payload) => {
         if (!cancelled) {
@@ -378,9 +632,6 @@ export function SearchPage({
               ? current
               : null,
           );
-          setSelectedHistoryId((current) =>
-            current && payload.history.some((row) => row.id === current) ? current : payload.history[0]?.id ?? null,
-          );
         }
       })
       .catch((error: Error) => {
@@ -393,6 +644,24 @@ export function SearchPage({
       cancelled = true;
     };
   }, [auth, bearerToken, canLoadSecureApi, selectedResult, useStubAuth]);
+
+  useEffect(() => {
+    if (!workspace) return;
+    if (historyResolution === "pending" && pendingDeepLink.historyId) {
+      if (workspace.history.some((row) => row.id === pendingDeepLink.historyId)) {
+        setSelectedHistoryId(pendingDeepLink.historyId);
+        setHistoryResolution("resolved");
+      } else {
+        setSelectedHistoryId(null);
+        setHistoryResolution("not_found");
+        setDeepLinkError("Không tìm thấy hồ sơ được liên kết trong lịch sử ngữ cảnh hiện tại.");
+      }
+      return;
+    }
+    if (historyResolution === "none") {
+      setSelectedHistoryId((current) => current && workspace.history.some((row) => row.id === current) ? current : workspace.history[0]?.id ?? null);
+    }
+  }, [historyResolution, pendingDeepLink.historyId, workspace]);
 
   useEffect(() => {
     setSelectedCaseWorkspace(null);
@@ -468,6 +737,7 @@ export function SearchPage({
       selectedResult.gxp_type,
       selectedResult.line_code,
       bearerToken,
+      selectedResult.production_line_id,
     )
       .then((payload) => {
         if (cancelled) {
@@ -612,6 +882,11 @@ export function SearchPage({
     setResultsOffset(0);
     setSelectedResultKey(null);
     setSelectedHistoryId(null);
+    setResolvedDeepLinkResult(null);
+    setPendingDeepLink({ resultKey: null, requestedGxpType: null, historyId: null, siteId: null, contextGxp: null, productionLineId: null, lineCode: null });
+    setResultResolution("none");
+    setHistoryResolution("none");
+    setDeepLinkError(null);
     setSelectedFacilityTab(DEFAULT_FACILITY_TAB);
     setActiveTab(DEFAULT_EVENT_TAB);
     setWorkspace(null);
@@ -649,6 +924,16 @@ export function SearchPage({
     setResultsOffset(results.length);
   }
 
+  function selectResultFromTable(resultKey: string) {
+    setPendingDeepLink({ resultKey: null, requestedGxpType: null, historyId: null, siteId: null, contextGxp: null, productionLineId: null, lineCode: null });
+    setResultResolution("none");
+    setResolvedDeepLinkResult(null);
+    setHistoryResolution("none");
+    setDeepLinkError(null);
+    setSelectedResultKey(resultKey);
+    setSelectedHistoryId(null);
+  }
+
   async function refreshWorkspaceAfterCreate(createdCaseId: string) {
     if (!selectedResult) {
       return;
@@ -663,6 +948,7 @@ export function SearchPage({
         selectedResult.gxp_type,
         selectedResult.line_code,
         bearerToken,
+        selectedResult.production_line_id,
       );
       setWorkspace(payload);
       setWorkspaceError(null);
@@ -687,6 +973,7 @@ export function SearchPage({
       selectedResult.gxp_type,
       selectedResult.line_code,
       bearerToken,
+      selectedResult.production_line_id,
     );
     setWorkspace(payload);
     setWorkspaceError(null);
@@ -763,7 +1050,8 @@ export function SearchPage({
           plan_start_on: response.plan_start_on,
           plan_end_on: response.plan_end_on,
           planning_sheet_name: response.planning_sheet_name,
-          decision_document_hint: response.decision_document_hint,
+          plan_decision_reference: response.decision_reference,
+          plan_decision_date: response.decision_date,
         },
       };
     });
@@ -789,14 +1077,57 @@ export function SearchPage({
           outcome_row_version: response.row_version,
           inspected_on: response.inspected_on,
           inspected_to_on: response.inspected_to_on,
-          decision_reference: response.decision_reference,
-          bbkt_reference: response.bbkt_reference,
           outcome_result: response.outcome_result,
+          final_evaluation: response.final_evaluation,
+          minutes_recorded_on: response.minutes_recorded_on,
+          minutes_recorded_time: response.minutes_recorded_time,
+          compliance_due_on: response.compliance_due_on,
         },
       };
     });
     setSelectedCaseWorkspace(refreshedCaseWorkspace);
     setCaseWorkspaceError(null);
+    await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
+  }
+
+  async function handleInspectionPeriodSegmentsSave(payload: import("../types").InspectionPeriodSegmentsUpsertRequest) {
+    if (!selectedHistory || selectedHistory.source_type !== "case") throw new Error("Chưa chọn hồ sơ để cập nhật các đợt kiểm tra.");
+    const caseId = selectedHistory.id;
+    await upsertInspectionPeriodSegments(caseId, payload, auth, useStubAuth, bearerToken);
+    await refreshSelectedCaseWorkspace(caseId);
+    await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
+  }
+
+  async function handleCreateApprovalSubmission(stage: "PCT" | "CT", payload: import("../types").InspectionApprovalSubmissionCreateRequest) {
+    if (!selectedHistory || selectedHistory.source_type !== "case") throw new Error("Chưa chọn hồ sơ để tạo trình phê duyệt.");
+    const caseId = selectedHistory.id;
+    const response = await createInspectionApprovalSubmission(caseId, stage, payload, auth, useStubAuth, bearerToken);
+    await refreshSelectedCaseWorkspace(caseId);
+    return response;
+  }
+
+  async function handleCompleteApprovalSubmission(submissionId: string, payload: import("../types").InspectionApprovalSubmissionCompleteRequest) {
+    if (!selectedHistory || selectedHistory.source_type !== "case") throw new Error("Chưa chọn hồ sơ để hoàn tất trình phê duyệt.");
+    const response = await completeInspectionApprovalSubmission(submissionId, payload, auth, useStubAuth, bearerToken);
+    await refreshSelectedCaseWorkspace(selectedHistory.id);
+    return response;
+  }
+
+  async function handleCaseTransition(payload: import("../types").CaseTransitionRequest) {
+    if (!selectedHistory || selectedHistory.source_type !== "case") throw new Error("Chưa chọn hồ sơ để chuyển trạng thái.");
+    const caseId = selectedHistory.id;
+    await transitionCase(caseId, payload, auth, useStubAuth, bearerToken);
+    await refreshSelectedCaseWorkspace(caseId);
+    await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
+  }
+
+  async function handleFinalizeInspectionOutcome(payload: InspectionFinalEvaluationRequest) {
+    if (!selectedHistory || selectedHistory.source_type !== "case") {
+      throw new Error("Chưa chọn hồ sơ để hoàn tất đánh giá.");
+    }
+    const caseId = selectedHistory.id;
+    await finalizeInspectionOutcome(caseId, payload, auth, useStubAuth, bearerToken);
+    await refreshSelectedCaseWorkspace(caseId);
     await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
   }
 
@@ -916,6 +1247,7 @@ export function SearchPage({
           selectedResult.gxp_type,
           selectedResult.line_code,
           bearerToken,
+          selectedResult.production_line_id,
         ),
       ]);
       setGxpCertificateDetail(detailPayload);
@@ -942,6 +1274,7 @@ export function SearchPage({
           selectedResult.gxp_type,
           selectedResult.line_code,
           bearerToken,
+          selectedResult.production_line_id,
         ),
       ]);
       setGxpCertificateDetail(detailPayload);
@@ -977,7 +1310,7 @@ export function SearchPage({
     if (selectedFacilityTab === "Giấy chứng nhận GxP") {
       const [detailPayload, listPayload] = await Promise.all([
         getGxpCertificateDetail(result.certificate_id, auth, useStubAuth, bearerToken),
-        listSiteGxpCertificates(selectedResult.site_id, auth, useStubAuth, selectedResult.gxp_type, selectedResult.line_code, bearerToken),
+        listSiteGxpCertificates(selectedResult.site_id, auth, useStubAuth, selectedResult.gxp_type, selectedResult.line_code, bearerToken, selectedResult.production_line_id),
       ]);
       setSelectedGxpCertificateId(result.certificate_id);
       setGxpCertificateDetail(detailPayload);
@@ -1021,6 +1354,7 @@ export function SearchPage({
         {
           gxp_type: selectedResult.gxp_type ?? "",
           line_code: selectedResult.line_code ?? null,
+          production_line_id: selectedResult.production_line_id,
           applicable_standard: applicableStandardInput.trim() || null,
           source_case_id: selectedHistory?.source_type === "case" ? selectedHistory.id : null,
         },
@@ -1057,6 +1391,7 @@ export function SearchPage({
           }}
           hasMore={hasMoreResults}
           hiddenFilters={{
+            generalQuery,
             province,
             changeRequestStates,
             certificateState,
@@ -1066,7 +1401,7 @@ export function SearchPage({
           onFilterChange={updateFilter}
           onGxpTypeChange={(value) => updateFilter("gxpType", value)}
           onReachEnd={loadMoreResults}
-          onSelect={setSelectedResultKey}
+          onSelect={selectResultFromTable}
           rows={results}
           selectedResultKey={selectedResultKey}
           selectedGxpType={gxpType}
@@ -1153,8 +1488,10 @@ export function SearchPage({
         <EmptyState title="Không có kết quả" description="Không tìm thấy cơ sở phù hợp với bộ lọc hiện tại." />
       ) : null}
 
+      {deepLinkError ? <p className="form-error" role="alert">{deepLinkError}</p> : null}
+
       {resultsTotalCount > 0 ? (
-        workspaceError ? (
+        deepLinkError ? null : workspaceError ? (
           <ErrorState message={workspaceError} />
         ) : workspaceLoading || !workspace ? (
           <section className="panel panel-tight facility-workspace-panel">
@@ -1191,12 +1528,21 @@ export function SearchPage({
             onGxpCertificatePromote={handleGxpCertificatePromote}
             onGxpCertificateEditLatestVersion={handleGxpCertificateLatestVersionUpdate}
             onIssueCertificate={handleIssueGxpCertificate}
-            onHistorySelect={setSelectedHistoryId}
+            onHistorySelect={(historyId) => {
+              setHistoryResolution("none");
+              setDeepLinkError(null);
+              setSelectedHistoryId(historyId);
+            }}
             onCaseApplicationSave={handleCaseApplicationSave}
             onCaseAssessmentSave={handleCaseAssessmentSave}
             onAssessCapaCycle={handleAssessCapaCycle}
             onCreateCapaCycle={handleCreateCapaCycle}
             onInspectionOutcomeSave={handleInspectionOutcomeSave}
+            onInspectionPeriodSegmentsSave={handleInspectionPeriodSegmentsSave}
+            onCreateApprovalSubmission={handleCreateApprovalSubmission}
+            onCompleteApprovalSubmission={handleCompleteApprovalSubmission}
+            onTransitionCase={handleCaseTransition}
+            onFinalizeInspectionOutcome={handleFinalizeInspectionOutcome}
             onInspectionTeamSave={handleInspectionTeamSave}
             onLoadInspectionTeamIdentityOptions={handleLoadInspectionTeamIdentityOptions}
             onEvaluationScopeSave={handleEvaluationScopeSave}

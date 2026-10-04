@@ -19,6 +19,7 @@ import type {
   GxpCertificateDetail,
   CertificateIssueRequest,
   InspectionOutcomeUpsertRequest,
+  InspectionFinalEvaluationRequest,
   InspectionTeamIdentityOption,
   InspectionTeamUpsertRequest,
   InspectionFolderLookup,
@@ -441,6 +442,10 @@ function renderCaseStepContent(
   onCaseAssessmentSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>,
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>,
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>,
+  onInspectionPeriodSegmentsSave: (payload: import("../../types").InspectionPeriodSegmentsUpsertRequest) => Promise<void>,
+  onCreateApprovalSubmission: (stage: "PCT" | "CT", payload: import("../../types").InspectionApprovalSubmissionCreateRequest) => Promise<import("../../types").InspectionApprovalSubmissionMutationResponse>,
+  onCompleteApprovalSubmission: (submissionId: string, payload: import("../../types").InspectionApprovalSubmissionCompleteRequest) => Promise<import("../../types").InspectionApprovalSubmissionMutationResponse>,
+  onTransitionCase: (payload: import("../../types").CaseTransitionRequest) => Promise<void>,
   onInspectionTeamSave: (payload: InspectionTeamUpsertRequest) => Promise<void>,
   onLoadInspectionTeamIdentityOptions: () => Promise<InspectionTeamIdentityOption[]>,
   selectedRemediationCycleId: string | null,
@@ -453,6 +458,7 @@ function renderCaseStepContent(
   onOpenDocument: (caseId: string, item: ContextualDocumentAction) => Promise<void>,
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>,
   onIssueCertificate: (payload: CertificateIssueRequest) => Promise<void>,
+  onFinalizeInspectionOutcome?: (payload: InspectionFinalEvaluationRequest) => Promise<void>,
 ) {
   const documentItems = caseWorkspace.contextual_document_actions.filter((item) => {
     if (item.workflow_step !== activeTab) {
@@ -487,9 +493,14 @@ function renderCaseStepContent(
         <CaseInspectionWorkspace
           caseWorkspace={caseWorkspace}
           onInspectionOutcomeSave={onInspectionOutcomeSave}
+          onInspectionPeriodSegmentsSave={onInspectionPeriodSegmentsSave}
+          onCreateApprovalSubmission={onCreateApprovalSubmission}
+          onCompleteApprovalSubmission={onCompleteApprovalSubmission}
+          onTransitionCase={onTransitionCase}
           onInspectionPlanSave={onInspectionPlanSave}
           onInspectionTeamSave={onInspectionTeamSave}
           onLoadInspectionTeamIdentityOptions={onLoadInspectionTeamIdentityOptions}
+          onFinalizeInspectionOutcome={onFinalizeInspectionOutcome}
         />
         <ContextualDocumentSection
           items={documentItems}
@@ -652,6 +663,10 @@ export function EventWorkspace({
   onCaseAssessmentSave,
   onInspectionPlanSave,
   onInspectionOutcomeSave,
+  onInspectionPeriodSegmentsSave,
+  onCreateApprovalSubmission,
+  onCompleteApprovalSubmission,
+  onTransitionCase,
   onInspectionTeamSave,
   onLoadInspectionTeamIdentityOptions,
   onEvaluationScopeSave,
@@ -665,6 +680,7 @@ export function EventWorkspace({
   onSubmitCapaCycle,
   onAssessCapaCycle,
   onResolveInspectionFolder,
+  onFinalizeInspectionOutcome,
 }: {
   selectedHistory: FacilityHistoryItem | null;
   caseWorkspace: CaseWorkspace | null;
@@ -679,6 +695,10 @@ export function EventWorkspace({
   onCaseAssessmentSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>;
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
+  onInspectionPeriodSegmentsSave: (payload: import("../../types").InspectionPeriodSegmentsUpsertRequest) => Promise<void>;
+  onCreateApprovalSubmission: (stage: "PCT" | "CT", payload: import("../../types").InspectionApprovalSubmissionCreateRequest) => Promise<import("../../types").InspectionApprovalSubmissionMutationResponse>;
+  onCompleteApprovalSubmission: (submissionId: string, payload: import("../../types").InspectionApprovalSubmissionCompleteRequest) => Promise<import("../../types").InspectionApprovalSubmissionMutationResponse>;
+  onTransitionCase: (payload: import("../../types").CaseTransitionRequest) => Promise<void>;
   onInspectionTeamSave: (payload: InspectionTeamUpsertRequest) => Promise<void>;
   onLoadInspectionTeamIdentityOptions: () => Promise<InspectionTeamIdentityOption[]>;
   onEvaluationScopeSave: (payload: EvaluationScopeUpsertRequest) => Promise<void>;
@@ -692,6 +712,7 @@ export function EventWorkspace({
   onSubmitCapaCycle: (cycleId: string, payload: CapaCycleSubmitRequest) => Promise<void>;
   onAssessCapaCycle: (cycleId: string, payload: CapaCycleAssessRequest) => Promise<void>;
   onResolveInspectionFolder: () => Promise<InspectionFolderLookup>;
+  onFinalizeInspectionOutcome?: (payload: InspectionFinalEvaluationRequest) => Promise<void>;
 }) {
   if (!selectedHistory) {
     return (
@@ -755,6 +776,10 @@ export function EventWorkspace({
             onCaseAssessmentSave,
             onInspectionPlanSave,
             onInspectionOutcomeSave,
+            onInspectionPeriodSegmentsSave,
+            onCreateApprovalSubmission,
+            onCompleteApprovalSubmission,
+            onTransitionCase,
             onInspectionTeamSave,
             onLoadInspectionTeamIdentityOptions,
             selectedRemediationCycleId,
@@ -767,6 +792,7 @@ export function EventWorkspace({
             onOpenDocument,
             onLoadDocumentDetail,
             onIssueCertificate,
+            onFinalizeInspectionOutcome,
           )
         ) : (
           <EmptyState title="Chưa có workspace hồ sơ" description="Backend chưa trả dữ liệu workspace cho lựa chọn case hiện tại." />

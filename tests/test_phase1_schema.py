@@ -7,6 +7,7 @@ from backend.app.db.models import Base
 from backend.app.db.models.phase1 import (
     BusinessEligibilityCertificateLink,
     CaseAssessment,
+    CapaCycle,
     Certificate,
     Document,
     DocumentVariant,
@@ -132,7 +133,20 @@ def test_unapplied_period_state_migration_does_not_label_existing_rows_missing()
 
 
 def test_expected_alembic_head_revision_tracks_latest_runtime_migration():
-    assert expected_alembic_head_revision() == "20260915_0016"
+    assert expected_alembic_head_revision() == "20261003_0018"
+
+
+def test_a3_capa_incoming_reference_model_and_migration_are_expand_only_and_reversible():
+    column = CapaCycle.__table__.c.incoming_reference
+    assert column.nullable is True
+    assert column.type.length == 255
+
+    migration = Path("migrations/versions/20261003_0018_capa_incoming_reference.py").read_text(encoding="utf-8")
+    assert 'revision = "20261003_0018"' in migration
+    assert 'down_revision = "20260929_0017"' in migration
+    assert 'op.add_column("capa_cycle", sa.Column("incoming_reference", sa.String(length=255), nullable=True))' in migration
+    assert 'op.drop_column("capa_cycle", "incoming_reference")' in migration
+    assert "op.execute(" not in migration
 
 
 def test_b5b_migration_replaces_and_restores_legacy_team_identity_constraint():

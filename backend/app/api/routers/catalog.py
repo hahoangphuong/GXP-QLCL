@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from fastapi import Depends, Query
+from fastapi import Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from backend.app.db.models.phase1 import ProductionLine
 
 from backend.app.auth import ALLOWED_READ_ROLES, AuthenticatedUser, get_authenticated_user, require_role
 from backend.app.api.session import get_session_from_request_factory
@@ -37,6 +38,7 @@ def _build_facility_action_readiness(
     site_id: str,
     selected_gxp_type: str | None,
     selected_line_code: str | None,
+    selected_production_line_id: str | None,
     user: AuthenticatedUser,
 ) -> list[dict[str, object]]:
     return [
@@ -66,6 +68,7 @@ def _build_facility_action_readiness(
             site_id=site_id,
             gxp_type=selected_gxp_type,
             line_code=selected_line_code,
+            production_line_id=selected_production_line_id,
             user=user,
         ),
         {
@@ -185,6 +188,10 @@ def register_catalog_routes(app, session_factory) -> None:
     ):
         require_role(user, ALLOWED_READ_ROLES)
         row = service.get_case(session, case_id)
+        line = None if row.production_line_id is None else session.get(ProductionLine, row.production_line_id)
+        if row.production_line_id is not None and (line is None or line.site_id != row.site_id):
+            raise HTTPException(status_code=409, detail="Case references an invalid canonical ProductionLine.")
+        raw_scope_code = str(row.scope_code or "").strip() or None
         return CaseDetailRead(
             id=row.id,
             legacy_inspection_id=row.legacy_inspection_id,
@@ -192,6 +199,9 @@ def register_catalog_routes(app, session_factory) -> None:
             site_id=row.site_id,
             gxp_type=row.gxp_type,
             scope_code=row.scope_code,
+            production_line_id=row.production_line_id,
+            production_line_code=line.code if line is not None else raw_scope_code,
+            production_line_identity_state="canonical" if line is not None else "legacy_unlinked" if raw_scope_code else "facility_wide",
             applicable_standard=row.applicable_standard,
             inspection_type=row.inspection_type,
             state=row.state.value,
@@ -266,17 +276,19 @@ def register_catalog_routes(app, session_factory) -> None:
         site_id: str,
         gxp_type: str | None = Query(default=None),
         line_code: str | None = None,
+        production_line_id: str | None = None,
         session: Session = dependency,
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
         require_role(user, ALLOWED_READ_ROLES)
-        payload = service.get_facility_workspace(session, site_id=site_id, gxp_type=gxp_type, line_code=line_code)
+        payload = service.get_facility_workspace(session, site_id=site_id, gxp_type=gxp_type, line_code=line_code, production_line_id=production_line_id)
         payload["action_readiness"] = _build_facility_action_readiness(
             workflow_service=workflow_service,
             session=session,
             site_id=site_id,
             selected_gxp_type=payload["summary"].get("selected_gxp_type"),
             selected_line_code=payload["summary"].get("selected_line_code"),
+            selected_production_line_id=payload["summary"].get("selected_production_line_id"),
             user=user,
         )
         return FacilityWorkspaceRead(**payload)
@@ -285,6 +297,7 @@ def register_catalog_routes(app, session_factory) -> None:
         site_id: str,
         gxp_type: str | None = Query(default=None),
         line_code: str | None = Query(default=None),
+        production_line_id: str | None = None,
         session: Session = dependency,
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
@@ -295,6 +308,7 @@ def register_catalog_routes(app, session_factory) -> None:
                 site_id=site_id,
                 gxp_type=_optional_string_query(gxp_type),
                 line_code=_optional_string_query(line_code),
+                production_line_id=production_line_id,
             )
         )
 

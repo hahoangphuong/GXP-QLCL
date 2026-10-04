@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
@@ -15,6 +15,7 @@ import { EditableDetailValue } from "./EditableDetailValue";
 import { DetailValue } from "./DetailValue";
 
 type CycleDraft = {
+  incoming_reference: string;
   requested_on: string;
   submitted_on: string;
   assessed_on: string;
@@ -35,6 +36,7 @@ function normalizeText(value: string): string | null {
 
 function buildCycleDraft(cycle: CaseWorkspaceRemediationCycle | null): CycleDraft {
   return {
+    incoming_reference: cycle?.incoming_reference ?? "",
     requested_on: normalizeDateInputValue(cycle?.requested_on ?? null),
     submitted_on: normalizeDateInputValue(cycle?.submitted_on ?? null),
     assessed_on: normalizeDateInputValue(cycle?.assessed_on ?? null),
@@ -121,28 +123,9 @@ function getSelectedCycle(
   return cycles.find((cycle) => cycle.capa_cycle_id === selectedCycleId) ?? cycles.at(-1) ?? null;
 }
 
-function isCreateAvailable(caseWorkspace: CaseWorkspace): boolean {
-  const state = caseWorkspace.case_summary.state;
-  if (state !== "inspection_completed") {
-    return false;
-  }
-  const latestCycle = caseWorkspace.remediation.cycles.at(-1);
-  if (!latestCycle) {
-    return true;
-  }
-  return latestCycle.status === "rejected";
-}
-
-function isUpdateAvailable(cycle: CaseWorkspaceRemediationCycle | null): boolean {
-  return cycle?.status === "requested" || cycle?.status === "rejected";
-}
-
-function isSubmitAvailable(cycle: CaseWorkspaceRemediationCycle | null): boolean {
-  return cycle?.status === "requested" || cycle?.status === "rejected";
-}
-
-function isAssessAvailable(cycle: CaseWorkspaceRemediationCycle | null): boolean {
-  return cycle?.status === "submitted";
+function isActionAvailable(caseWorkspace: CaseWorkspace, actionKey: string, cycleId?: string | null): boolean {
+  const expectedKey = cycleId ? `${actionKey}:${cycleId}` : actionKey;
+  return (caseWorkspace.remediation.actions ?? []).some((action) => action.action_key === expectedKey && action.available);
 }
 
 export function CaseRemediationWorkspace({
@@ -171,12 +154,19 @@ export function CaseRemediationWorkspace({
     () => getSelectedCycle(cycles, effectiveSelectedCycleId),
     [cycles, effectiveSelectedCycleId],
   );
-  const currentDraft = useMemo(() => buildCycleDraft(selectedCycle), [selectedCycle]);
+  // A workspace refetch may create new objects without changing the server version.
+  // Preserve in-progress input until the selected canonical cycle actually changes.
+  const selectedCycleVersionKey = `${selectedCycle?.capa_cycle_id ?? "none"}:${selectedCycle?.row_version ?? "none"}`;
+  const currentDraft = useMemo(
+    () => buildCycleDraft(selectedCycle),
+    [selectedCycle?.capa_cycle_id, selectedCycle?.row_version],
+  );
   const [draft, setDraft] = useState<CycleDraft>(currentDraft);
   const [isCreating, setIsCreating] = useState(false);
-  const [editingField, setEditingField] = useState<"requested_on" | "notes" | null>(null);
+  const [editingField, setEditingField] = useState<"incoming_reference" | "requested_on" | "notes" | null>(null);
   const [pendingAction, setPendingAction] = useState<"create" | "update" | "submit" | "assess" | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const hydratedCycleVersionKey = useRef(selectedCycleVersionKey);
 
   useEffect(() => {
     if (effectiveSelectedCycleId !== selectedCycleId) {
@@ -185,16 +175,23 @@ export function CaseRemediationWorkspace({
   }, [effectiveSelectedCycleId, onSelectedCycleChange, selectedCycleId]);
 
   useEffect(() => {
-    if (!isCreating && !editingField) {
+    const cycleVersionChanged = hydratedCycleVersionKey.current !== selectedCycleVersionKey;
+    if (!isCreating && (cycleVersionChanged || !editingField)) {
       setDraft(currentDraft);
       setErrorMessage(null);
+      if (cycleVersionChanged) {
+        setEditingField(null);
+      }
     }
-  }, [currentDraft, editingField, isCreating]);
+    if (!isCreating) {
+      hydratedCycleVersionKey.current = selectedCycleVersionKey;
+    }
+  }, [currentDraft, editingField, isCreating, selectedCycleVersionKey]);
 
-  const createAvailable = isCreateAvailable(caseWorkspace);
-  const updateAvailable = isUpdateAvailable(selectedCycle);
-  const submitAvailable = isSubmitAvailable(selectedCycle);
-  const assessAvailable = isAssessAvailable(selectedCycle);
+  const createAvailable = isActionAvailable(caseWorkspace, "create_capa_cycle");
+  const updateAvailable = isActionAvailable(caseWorkspace, "update_capa_cycle", selectedCycle?.capa_cycle_id);
+  const submitAvailable = isActionAvailable(caseWorkspace, "submit_capa_cycle", selectedCycle?.capa_cycle_id);
+  const assessAvailable = isActionAvailable(caseWorkspace, "assess_capa_cycle", selectedCycle?.capa_cycle_id);
   const hasOpenEditor = isCreating || editingField !== null;
   const isPending = pendingAction !== null;
 
@@ -208,6 +205,7 @@ export function CaseRemediationWorkspace({
     try {
       await onCreateCycle({
         expected_case_version: caseWorkspace.case_summary.row_version,
+        incoming_reference: normalizeText(draft.incoming_reference),
         requested_on: normalizeText(draft.requested_on),
         notes: normalizeText(draft.notes),
       });
@@ -229,6 +227,7 @@ export function CaseRemediationWorkspace({
     try {
       await onUpdateCycle(selectedCycle.capa_cycle_id, {
         expected_version: selectedCycle.row_version,
+        incoming_reference: normalizeText(draft.incoming_reference),
         requested_on: normalizeText(draft.requested_on),
         notes: normalizeText(draft.notes),
       });
@@ -374,6 +373,15 @@ export function CaseRemediationWorkspace({
           <form className="case-application-form" onSubmit={handleCreateSubmit}>
             <div className="detail-grid compact-grid detail-form-matrix case-application-form-grid">
               <label className="case-application-field">
+                <span>Số tham chiếu đến</span>
+                <input
+                  aria-label="Số tham chiếu đến"
+                  disabled={isPending}
+                  onChange={(event) => setDraft((current) => ({ ...current, incoming_reference: event.target.value }))}
+                  value={draft.incoming_reference}
+                />
+              </label>
+              <label className="case-application-field">
                 <span>Ngày yêu cầu</span>
                 <input
                   aria-label="Ngày yêu cầu"
@@ -442,6 +450,24 @@ export function CaseRemediationWorkspace({
               </div>
             </div>
             <div className="detail-grid compact-grid detail-form-matrix remediation-detail-grid">
+              <EditableDetailValue
+                editButtonLabel="Sửa Số tham chiếu đến"
+                error={editingField === "incoming_reference" ? errorMessage : null}
+                isEditing={editingField === "incoming_reference"}
+                label="Số tham chiếu đến"
+                onCancel={cancelEditor}
+                onEdit={updateAvailable ? () => { setEditingField("incoming_reference"); setErrorMessage(null); } : null}
+                onSave={() => void handleUpdateField()}
+                pending={isPending}
+                value={selectedCycle.incoming_reference}
+              >
+                <input
+                  aria-label="Số tham chiếu đến"
+                  disabled={isPending}
+                  onChange={(event) => setDraft((current) => ({ ...current, incoming_reference: event.target.value }))}
+                  value={draft.incoming_reference}
+                />
+              </EditableDetailValue>
               <EditableDetailValue
                 editButtonLabel="Sửa Ngày yêu cầu"
                 error={editingField === "requested_on" ? errorMessage : null}

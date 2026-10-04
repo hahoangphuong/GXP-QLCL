@@ -33,17 +33,17 @@ def test_typed_plan_and_outcome_metadata_reject_compatibility_writes_and_preserv
         assert plan["decision_document_hint"] == "historical hint"
         with pytest.raises(HTTPException, match="read-only compatibility"):
             service.upsert_inspection_outcome(session, case_id=case_id, inspected_on=None, inspected_to_on=None, decision_reference="legacy decision", bbkt_reference=None, outcome_result="Dat", reason="compatibility", user=user)
-        outcome = service.upsert_inspection_outcome(session, case_id=case_id, inspected_on=None, inspected_to_on=None, decision_reference=None, bbkt_reference=None, outcome_result="Dat", minutes_recorded_on=date(2026, 9, 2), minutes_recorded_time=time(9, 30), compliance_due_on=date(2026, 10, 1), reason="metadata", user=user)
+        outcome = service.upsert_inspection_outcome(session, case_id=case_id, inspected_on=None, inspected_to_on=None, decision_reference=None, bbkt_reference=None, outcome_result="Dat", minutes_recorded_on=date(2026, 9, 2), minutes_recorded_time=time(9, 30), compliance_due_on=date(2026, 10, 1), reason="metadata", user=user, fields_set={"outcome_result", "minutes_recorded_on", "minutes_recorded_time", "compliance_due_on"})
         assert outcome["inspection_period_state"] is None
         persisted_outcome = session.scalars(select(InspectionOutcome).where(InspectionOutcome.case_id == case_id)).one()
         assert persisted_outcome is not None
         persisted_outcome.decision_reference = "historical decision"
         persisted_outcome.bbkt_reference = "historical bbkt"
         session.flush()
-        outcome = service.upsert_inspection_outcome(session, case_id=case_id, expected_version=persisted_outcome.row_version, inspected_on=None, inspected_to_on=None, decision_reference=None, bbkt_reference=None, outcome_result="Dat", minutes_recorded_on=date(2026, 9, 2), minutes_recorded_time=time(9, 30), compliance_due_on=date(2026, 10, 1), reason="metadata no overwrite", user=user)
+        outcome = service.upsert_inspection_outcome(session, case_id=case_id, expected_version=persisted_outcome.row_version, inspected_on=None, inspected_to_on=None, decision_reference=None, bbkt_reference=None, outcome_result="Dat", minutes_recorded_on=date(2026, 9, 2), minutes_recorded_time=time(9, 30), compliance_due_on=date(2026, 10, 1), reason="metadata no overwrite", user=user, fields_set={"outcome_result", "minutes_recorded_on", "minutes_recorded_time", "compliance_due_on"})
         assert (outcome["decision_reference"], outcome["bbkt_reference"]) == ("historical decision", "historical bbkt")
-        with pytest.raises(HTTPException, match="requires a date"):
-            service.upsert_inspection_outcome(session, case_id=case_id, expected_version=outcome["row_version"], inspected_on=None, inspected_to_on=None, decision_reference=None, bbkt_reference=None, outcome_result="Dat", minutes_recorded_on=None, minutes_recorded_time=time(9, 30), compliance_due_on=None, reason="bad", user=user)
+        with pytest.raises(HTTPException, match="requires a minutes date"):
+            service.upsert_inspection_outcome(session, case_id=case_id, expected_version=outcome["row_version"], inspected_on=None, inspected_to_on=None, decision_reference=None, bbkt_reference=None, outcome_result="Dat", minutes_recorded_on=None, minutes_recorded_time=time(9, 30), compliance_due_on=None, reason="bad", user=user, fields_set={"outcome_result", "minutes_recorded_on", "minutes_recorded_time", "compliance_due_on"})
 
 
 def test_finalization_and_approval_parent_contracts():

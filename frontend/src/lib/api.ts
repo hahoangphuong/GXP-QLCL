@@ -34,6 +34,8 @@ import type {
   GxpCertificateList,
   InspectionOutcomeUpsertRequest,
   InspectionOutcomeUpsertResponse,
+  InspectionPeriodSegmentsUpsertRequest,
+  InspectionFinalEvaluationRequest,
   InspectionCaseCreateRequest,
   InspectionCaseCreateResponse,
   InspectionPlanUpsertRequest,
@@ -42,6 +44,11 @@ import type {
   InspectionTeamUpsertRequest,
   InspectionTeamUpsertResponse,
   InspectionFolderLookup,
+  CaseTransitionRequest,
+  CaseTransitionResponse,
+  InspectionApprovalSubmissionCreateRequest,
+  InspectionApprovalSubmissionCompleteRequest,
+  InspectionApprovalSubmissionMutationResponse,
   Site,
   StubAuthState,
 } from "../types";
@@ -304,6 +311,7 @@ export function getFacilityWorkspace(
   gxpType?: string | null,
   lineCode?: string | null,
   bearerToken?: string | null,
+  productionLineId?: string | null,
 ): Promise<FacilityWorkspace> {
   const searchParams = new URLSearchParams();
   if (gxpType) {
@@ -311,6 +319,9 @@ export function getFacilityWorkspace(
   }
   if (lineCode) {
     searchParams.set("line_code", lineCode);
+  }
+  if (productionLineId) {
+    searchParams.set("production_line_id", productionLineId);
   }
   return requestJson<FacilityWorkspace>(buildApiPath(`/sites/${siteId}/workspace`, searchParams), {
     auth,
@@ -451,6 +462,38 @@ export function upsertInspectionOutcome(
   });
 }
 
+export function upsertInspectionPeriodSegments(caseId: string, payload: InspectionPeriodSegmentsUpsertRequest, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<InspectionOutcomeUpsertResponse> {
+  return requestJson<InspectionOutcomeUpsertResponse>(`/cases/${caseId}/outcome/period-segments`, { method: "PUT", body: payload, auth, useStubAuth, bearerToken });
+}
+
+export function transitionCase(caseId: string, payload: CaseTransitionRequest, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<CaseTransitionResponse> {
+  return requestJson<CaseTransitionResponse>(`/cases/${caseId}/transition`, { method: "POST", body: payload, auth, useStubAuth, bearerToken });
+}
+
+export function createInspectionApprovalSubmission(caseId: string, stage: "PCT" | "CT", payload: InspectionApprovalSubmissionCreateRequest, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<InspectionApprovalSubmissionMutationResponse> {
+  return requestJson<InspectionApprovalSubmissionMutationResponse>(`/cases/${caseId}/approval-submissions/${stage}`, { method: "POST", body: payload, auth, useStubAuth, bearerToken });
+}
+
+export function completeInspectionApprovalSubmission(approvalSubmissionId: string, payload: InspectionApprovalSubmissionCompleteRequest, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null): Promise<InspectionApprovalSubmissionMutationResponse> {
+  return requestJson<InspectionApprovalSubmissionMutationResponse>(`/approval-submissions/${approvalSubmissionId}/complete`, { method: "POST", body: payload, auth, useStubAuth, bearerToken });
+}
+
+export function finalizeInspectionOutcome(
+  caseId: string,
+  payload: InspectionFinalEvaluationRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<InspectionOutcomeUpsertResponse> {
+  return requestJson<InspectionOutcomeUpsertResponse>(`/cases/${caseId}/outcome/final-evaluation`, {
+    method: "POST",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
 export function listInspectionTeamIdentityOptions(
   auth: StubAuthState,
   useStubAuth: boolean,
@@ -559,6 +602,7 @@ export function listSiteGxpCertificates(
   gxpType?: string | null,
   lineCode?: string | null,
   bearerToken?: string | null,
+  productionLineId?: string | null,
 ): Promise<GxpCertificateList> {
   const searchParams = new URLSearchParams();
   if (gxpType) {
@@ -566,6 +610,9 @@ export function listSiteGxpCertificates(
   }
   if (lineCode) {
     searchParams.set("line_code", lineCode);
+  }
+  if (productionLineId) {
+    searchParams.set("production_line_id", productionLineId);
   }
   return requestJson<GxpCertificateList>(buildApiPath(`/sites/${siteId}/gxp-certificates`, searchParams), {
     auth,

@@ -16,6 +16,7 @@ from sqlalchemy import (
     Text,
     Time,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -166,12 +167,83 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
     legacy_inspection_id: Mapped[int | None] = mapped_column(Integer, unique=True)
     legacy_inspection_code: Mapped[str | None] = mapped_column(String(64), index=True)
     site_id: Mapped[str] = mapped_column(ForeignKey("site.id"), nullable=False, index=True)
+    production_line_id: Mapped[str | None] = mapped_column(ForeignKey("production_line.id"), index=True)
     gxp_type: Mapped[str] = mapped_column(String(32), nullable=False)
     scope_code: Mapped[str | None] = mapped_column(String(32))
     applicable_standard: Mapped[str | None] = mapped_column(String(255))
     inspection_type: Mapped[str | None] = mapped_column(String(255))
     state: Mapped[CaseState] = mapped_column(Enum(CaseState, name="case_state"), nullable=False, index=True)
     opened_year: Mapped[int | None] = mapped_column(Integer)
+
+
+class ProductionLine(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
+    """First-class line identity; lifecycle operations remain service-owned."""
+
+    __tablename__ = "production_line"
+
+    site_id: Mapped[str] = mapped_column(ForeignKey("site.id"), nullable=False)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[date | None] = mapped_column(Date)
+    __table_args__ = (
+        CheckConstraint(
+            "effective_to IS NULL OR effective_from < effective_to",
+            name="production_line_effective_interval",
+        ),
+        Index("ix_production_line_site_code", "site_id", "code"),
+    )
+
+
+class ProductionLineTransformation(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
+    """A merge or split event; graph and business validation are service-owned."""
+
+    __tablename__ = "production_line_transformation"
+
+    site_id: Mapped[str] = mapped_column(ForeignKey("site.id"), nullable=False, index=True)
+    transformation_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    effective_on: Mapped[date] = mapped_column(Date, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by_user_id: Mapped[str] = mapped_column(ForeignKey("app_user.id"), nullable=False, index=True)
+    __table_args__ = (
+        CheckConstraint(
+            "transformation_type IN ('MERGE', 'SPLIT')",
+            name="production_line_transformation_type_known",
+        ),
+        CheckConstraint(
+            "TRIM(reason) <> ''",
+            name="production_line_transformation_reason_nonblank",
+        ),
+        Index("ix_production_line_transformation_effective_on", "effective_on"),
+    )
+
+
+class ProductionLineTransformationMember(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """A source or target participant in one line transformation."""
+
+    __tablename__ = "production_line_transformation_member"
+
+    transformation_id: Mapped[str] = mapped_column(
+        ForeignKey("production_line_transformation.id"), nullable=False
+    )
+    production_line_id: Mapped[str] = mapped_column(ForeignKey("production_line.id"), nullable=False)
+    member_role: Mapped[str] = mapped_column(String(8), nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    __table_args__ = (
+        UniqueConstraint(
+            "transformation_id",
+            "production_line_id",
+            name="uq_production_line_transformation_member_line",
+        ),
+        UniqueConstraint(
+            "transformation_id",
+            "member_role",
+            "ordinal",
+            name="uq_production_line_transformation_member_role_ordinal",
+        ),
+        CheckConstraint("member_role IN ('INPUT', 'OUTPUT')", name="production_line_transformation_member_role_known"),
+        CheckConstraint("ordinal >= 1", name="production_line_transformation_member_ordinal_positive"),
+        Index("ix_production_line_transformation_member_line", "production_line_id"),
+    )
 
 
 class EvaluationScopeTaxonomyVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -253,6 +325,122 @@ class CaseEvaluationScopeUnkeyedEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base)
     source_order: Mapped[int] = mapped_column(Integer, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     __table_args__ = (UniqueConstraint("block_id", "source_order"),)
+
+
+class CaseScopePhase(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
+    """One logical regulatory scope aggregate for each Case lifecycle phase."""
+
+    __tablename__ = "case_scope_phase"
+
+    case_id: Mapped[str] = mapped_column(ForeignKey("case.id"), nullable=False)
+    phase: Mapped[str] = mapped_column(String(16), nullable=False)
+    __table_args__ = (
+        UniqueConstraint("case_id", "phase"),
+        CheckConstraint(
+            "phase IN ('REQUESTED', 'ASSESSED', 'INSPECTED', 'CONCLUDED')",
+            name="case_scope_phase_phase_known",
+        ),
+    )
+
+
+class CaseScopeRevision(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
+    """A versioned scope snapshot; future services enforce immutable establishment."""
+
+    __tablename__ = "case_scope_revision"
+
+    case_scope_phase_id: Mapped[str] = mapped_column(ForeignKey("case_scope_phase.id"), nullable=False)
+    revision_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    state: Mapped[str] = mapped_column(String(16), nullable=False, default="DRAFT", server_default="DRAFT")
+    is_current_established: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    supersedes_revision_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
+    created_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"), index=True)
+    established_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    established_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"), index=True)
+    correction_reason: Mapped[str | None] = mapped_column(Text)
+    taxonomy_version_id: Mapped[str | None] = mapped_column(ForeignKey("evaluation_scope_taxonomy_version.id"), index=True)
+    source_classification: Mapped[str | None] = mapped_column(String(64))
+    raw_legacy_value: Mapped[str | None] = mapped_column(Text)
+    rendered_prose: Mapped[str | None] = mapped_column(Text)
+    limitation_text: Mapped[str | None] = mapped_column(Text)
+    __table_args__ = (
+        UniqueConstraint("case_scope_phase_id", "revision_no"),
+        # Allows the composite self-FK to prove a correction stays in one phase.
+        UniqueConstraint("id", "case_scope_phase_id"),
+        ForeignKeyConstraint(
+            ["supersedes_revision_id", "case_scope_phase_id"],
+            ["case_scope_revision.id", "case_scope_revision.case_scope_phase_id"],
+        ),
+        CheckConstraint("revision_no >= 1", name="case_scope_revision_number_positive"),
+        CheckConstraint("state IN ('DRAFT', 'ESTABLISHED')", name="case_scope_revision_state_known"),
+        CheckConstraint("state <> 'DRAFT' OR NOT is_current_established", name="case_scope_revision_draft_not_current"),
+        CheckConstraint(
+            "state <> 'ESTABLISHED' OR established_at IS NOT NULL",
+            name="case_scope_revision_established_requires_timestamp",
+        ),
+        CheckConstraint(
+            "supersedes_revision_id IS NULL OR supersedes_revision_id <> id",
+            name="case_scope_revision_not_self_superseding",
+        ),
+        CheckConstraint(
+            "supersedes_revision_id IS NULL OR NULLIF(TRIM(correction_reason), '') IS NOT NULL",
+            name="case_scope_revision_correction_reason_required",
+        ),
+        Index(
+            "uq_case_scope_revision_one_draft",
+            "case_scope_phase_id",
+            unique=True,
+            postgresql_where=text("state = 'DRAFT'"),
+        ),
+        Index(
+            "uq_case_scope_revision_one_current_established",
+            "case_scope_phase_id",
+            unique=True,
+            postgresql_where=text("is_current_established"),
+        ),
+    )
+
+
+class CaseScopeRevisionBlock(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "case_scope_revision_block"
+
+    case_scope_revision_id: Mapped[str] = mapped_column(ForeignKey("case_scope_revision.id"), nullable=False, index=True)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str | None] = mapped_column(Text)
+    note: Mapped[str | None] = mapped_column(Text)
+    raw_block_value: Mapped[str | None] = mapped_column(Text)
+    __table_args__ = (
+        UniqueConstraint("case_scope_revision_id", "ordinal"),
+        CheckConstraint("ordinal >= 1", name="case_scope_revision_block_ordinal_positive"),
+    )
+
+
+class CaseScopeRevisionSelection(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "case_scope_revision_selection"
+
+    block_id: Mapped[str] = mapped_column(ForeignKey("case_scope_revision_block.id"), nullable=False, index=True)
+    taxonomy_node_id: Mapped[str] = mapped_column(ForeignKey("evaluation_scope_taxonomy_node.id"), nullable=False, index=True)
+    source_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    custom_description: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    node_key_snapshot: Mapped[str] = mapped_column(String(64), nullable=False)
+    taxonomy_description_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
+    __table_args__ = (
+        UniqueConstraint("block_id", "source_order"),
+        CheckConstraint("source_order >= 1", name="case_scope_revision_selection_order_positive"),
+    )
+
+
+class CaseScopeRevisionUnkeyedEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "case_scope_revision_unkeyed_entry"
+
+    block_id: Mapped[str] = mapped_column(ForeignKey("case_scope_revision_block.id"), nullable=False, index=True)
+    source_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    __table_args__ = (
+        UniqueConstraint("block_id", "source_order"),
+        CheckConstraint("source_order >= 1", name="case_scope_revision_unkeyed_order_positive"),
+    )
 
 
 class CaseApplication(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
@@ -479,6 +667,7 @@ class CapaCycle(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
     case_id: Mapped[str] = mapped_column(ForeignKey("case.id"), nullable=False, index=True)
     round_no: Mapped[int] = mapped_column(Integer, nullable=False)
     requested_on: Mapped[date | None] = mapped_column(Date)
+    incoming_reference: Mapped[str | None] = mapped_column(String(255))
     submitted_on: Mapped[date | None] = mapped_column(Date)
     assessed_on: Mapped[date | None] = mapped_column(Date)
     assessor_user_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"), index=True)
@@ -523,6 +712,7 @@ class Certificate(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
 
     legacy_certificate_id: Mapped[int | None] = mapped_column(Integer, unique=True)
     case_id: Mapped[str | None] = mapped_column(ForeignKey("case.id"), index=True)
+    production_line_id: Mapped[str | None] = mapped_column(ForeignKey("production_line.id"), index=True)
     site_id: Mapped[str] = mapped_column(ForeignKey("site.id"), nullable=False, index=True)
     certificate_type: Mapped[str] = mapped_column(String(32), nullable=False)
     line_code: Mapped[str | None] = mapped_column(String(32))
@@ -546,8 +736,16 @@ class CertificateVersion(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Ba
     certificate_number: Mapped[str | None] = mapped_column(String(128))
     applicable_standard: Mapped[str | None] = mapped_column(String(255))
     issuing_authority: Mapped[str | None] = mapped_column(String(255))
+    # NULL is transitional: imported legacy rows do not prove grant state.
+    lifecycle_state: Mapped[str | None] = mapped_column(String(16))
     is_latest_version: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
-    __table_args__ = (UniqueConstraint("certificate_id", "version_no"),)
+    __table_args__ = (
+        UniqueConstraint("certificate_id", "version_no"),
+        CheckConstraint(
+            "lifecycle_state IS NULL OR lifecycle_state IN ('DRAFT', 'GRANTED')",
+            name="certificate_version_lifecycle_state_known",
+        ),
+    )
 
 
 class CertificateScope(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -558,6 +756,27 @@ class CertificateScope(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     scope_text: Mapped[str] = mapped_column(Text, nullable=False)
     language_code: Mapped[str] = mapped_column(String(8), nullable=False, default="vi", server_default="vi")
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
+
+class CertificateRelationship(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Explicit lineage between certificate identities; cycle checks are service-owned."""
+
+    __tablename__ = "certificate_relationship"
+
+    source_certificate_id: Mapped[str] = mapped_column(ForeignKey("certificate.id"), nullable=False, index=True)
+    target_certificate_id: Mapped[str] = mapped_column(ForeignKey("certificate.id"), nullable=False, index=True)
+    relation_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    effective_on: Mapped[date] = mapped_column(Date, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
+    created_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"), index=True)
+    __table_args__ = (
+        UniqueConstraint("source_certificate_id", "target_certificate_id", "relation_type"),
+        CheckConstraint("source_certificate_id <> target_certificate_id", name="certificate_relationship_not_self"),
+        CheckConstraint(
+            "relation_type IN ('SUPERSEDED_BY', 'REPLACED_BY')",
+            name="certificate_relationship_type_known",
+        ),
+    )
 
 
 class BusinessEligibilityCertificate(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):

@@ -76,6 +76,7 @@ export type CaseDetail = {
 export type InspectionCaseCreateRequest = {
   gxp_type: string;
   line_code: string | null;
+  production_line_id?: string | null;
   applicable_standard: string | null;
   source_case_id?: string | null;
   reason?: string | null;
@@ -86,6 +87,7 @@ export type InspectionCaseCreateResponse = {
   site_id: string;
   gxp_type: string;
   line_code: string | null;
+  production_line_id: string | null;
   inspection_type: string;
   applicable_standard: string | null;
   state: string;
@@ -97,10 +99,9 @@ export type InspectionCaseCreateResponse = {
 
 export type CaseApplicationUpsertRequest = {
   expected_version: number | null;
-  submitted_on: string | null;
-  dossier_code: string | null;
-  dossier_reference: string | null;
-  applicant_name: string | null;
+  submitted_on?: string | null;
+  dossier_code?: string | null;
+  applicant_name?: string | null;
   reason?: string | null;
 };
 
@@ -118,6 +119,7 @@ export type CaseApplicationUpsertResponse = {
 export type DashboardQueueItem = {
   case_id: string;
   site_id: string;
+  result_key: string;
   facility_name: string;
   company_name: string;
   gxp_type: string;
@@ -147,6 +149,9 @@ export type FacilitySearchResult = {
   result_grain: "facility" | "production_line";
   gxp_type: string | null;
   line_code: string | null;
+  production_line_id?: string | null;
+  production_line_code?: string | null;
+  production_line_identity_state?: "canonical" | "legacy_unlinked" | "facility_wide";
   facility_name: string;
   company_name: string;
   gxp_types: string[];
@@ -173,6 +178,9 @@ export type FacilityWorkspaceSummary = {
   context_code: string | null;
   context_grain: "facility" | "production_line";
   selected_line_code: string | null;
+  selected_production_line_id: string | null;
+  selected_production_line_code: string | null;
+  production_line_identity_state: "canonical" | "legacy_unlinked" | "facility_wide";
   facility_name: string;
   company_name: string;
   company_legal_address: string | null;
@@ -225,6 +233,9 @@ export type CaseWorkspaceSummary = {
   company_name: string;
   gxp_type: string;
   scope_code: string | null;
+  production_line_id: string | null;
+  production_line_code: string | null;
+  production_line_identity_state: "canonical" | "legacy_unlinked" | "facility_wide";
   applicable_standard: string | null;
   inspection_type: string | null;
   state: string;
@@ -252,7 +263,9 @@ export type CaseWorkspaceApplication = {
 
 export type CaseWorkspaceInspection = {
   plan_row_version: number | null;
-  decision_reference: string | null;
+  plan_decision_reference: string | null;
+  plan_decision_date: string | null;
+  outcome_decision_reference_compatibility: string | null;
   decision_document_hint: string | null;
   plan_start_on: string | null;
   plan_end_on: string | null;
@@ -260,9 +273,18 @@ export type CaseWorkspaceInspection = {
   outcome_row_version: number | null;
   inspected_on: string | null;
   inspected_to_on: string | null;
+  inspection_period_state: string | null;
+  inspection_period_segments: InspectionPeriodSegment[];
   executed_on: string | null;
   bbkt_reference: string | null;
   outcome_result: string | null;
+  final_evaluation: string | null;
+  minutes_recorded_on: string | null;
+  minutes_recorded_time: string | null;
+  compliance_due_on: string | null;
+  final_evaluation_readiness: LifecycleActionReadiness;
+  approval_actions: LifecycleActionReadiness[];
+  approval_submissions: InspectionApprovalSubmission[];
   team_display_text: string | null;
   team: InspectionTeamWorkspace | null;
   team_edit_readiness: InspectionTeamEditReadiness;
@@ -273,10 +295,84 @@ export type InspectionTeamMemberWorkspace = {
   inspector_profile_id: string | null;
   person_id: string | null;
   display_name: string | null;
+  role_code: string | null;
   role_label: string | null;
   sort_order: number;
   identity_status: "resolved" | "unresolved";
+  identity_kind: "INSPECTOR_PROFILE" | "LEGACY_PERSON" | "ORGANIZATION_REPRESENTATIVE" | null;
+  participant_catalog_id: string | null;
+  legacy_source_token: string | null;
 };
+
+export type InspectionPeriodSegment = {
+  id: string;
+  ordinal: number;
+  started_on: string;
+  ended_on: string;
+};
+
+export type InspectionPeriodSegmentWrite = Omit<InspectionPeriodSegment, "id">;
+
+export type InspectionPeriodSegmentsUpsertRequest = {
+  expected_version: number;
+  segments: InspectionPeriodSegmentWrite[];
+  reason?: string | null;
+};
+
+export type CaseTransitionRequest = {
+  expected_version: number;
+  target_state: string;
+  reason?: string | null;
+};
+
+export type CaseTransitionResponse = {
+  case_id: string;
+  row_version: number;
+  state: string;
+  audit_event_id: string;
+};
+
+export type LifecycleActionReadiness = {
+  action_key: string;
+  label: string;
+  available: boolean;
+  reason_code: string | null;
+  required_permissions: string[];
+  expected_version: number | null;
+  target_state?: string | null;
+};
+
+export type InspectionApprovalSubmission = {
+  approval_submission_id: string;
+  case_id: string;
+  row_version: number;
+  stage: "PCT" | "CT";
+  round_no: number;
+  reference: string | null;
+  submitted_on: string | null;
+  submitted_time: string | null;
+  completed_on: string | null;
+  completed_time: string | null;
+  pct_submission_id: string | null;
+};
+
+export type InspectionApprovalSubmissionCreateRequest = {
+  expected_version?: number | null;
+  reference?: string | null;
+  submitted_on?: string | null;
+  submitted_time?: string | null;
+  pct_submission_id?: string | null;
+  reason?: string | null;
+};
+
+export type InspectionApprovalSubmissionCompleteRequest = {
+  expected_version: number;
+  completed_on?: string | null;
+  completed_time?: string | null;
+  reason?: string | null;
+};
+
+export type InspectionApprovalSubmissionMutationResponse = InspectionApprovalSubmission;
 
 export type InspectionTeamWorkspace = {
   team_id: string;
@@ -296,11 +392,13 @@ export type InspectionTeamEditReadiness = {
 };
 
 export type InspectionTeamIdentityOption = {
-  identity_kind: "inspector_profile" | "person";
+  identity_kind: "inspector_profile" | "person" | "organization_representative";
   inspector_profile_id: string | null;
   person_id: string | null;
   display_name: string;
   is_active: boolean | null;
+  participant_catalog_id?: string | null;
+  code?: string | null;
 };
 
 export type InspectionTeamUpsertRequest = {
@@ -308,7 +406,9 @@ export type InspectionTeamUpsertRequest = {
   members: Array<{
     inspector_profile_id: string | null;
     person_id: string | null;
-    role_label: string | null;
+    participant_catalog_id?: string | null;
+    identity_kind?: "INSPECTOR_PROFILE" | "ORGANIZATION_REPRESENTATIVE" | null;
+    role_code: "LEADER" | "SECRETARY" | "MEMBER";
     sort_order: number;
   }>;
   reason?: string | null;
@@ -331,10 +431,11 @@ export type InspectionTeamUpsertResponse = {
 
 export type InspectionPlanUpsertRequest = {
   expected_version: number | null;
-  plan_start_on: string | null;
-  plan_end_on: string | null;
-  planning_sheet_name: string | null;
-  decision_document_hint: string | null;
+  plan_start_on?: string | null;
+  plan_end_on?: string | null;
+  planning_sheet_name?: string | null;
+  decision_reference?: string | null;
+  decision_date?: string | null;
   reason?: string | null;
 };
 
@@ -345,17 +446,20 @@ export type InspectionPlanUpsertResponse = {
   plan_end_on: string | null;
   planning_sheet_name: string | null;
   decision_document_hint: string | null;
+  decision_reference: string | null;
+  decision_date: string | null;
   audit_event_id: string;
   inspection_event_id: string | null;
 };
 
 export type InspectionOutcomeUpsertRequest = {
   expected_version: number | null;
-  inspected_on: string | null;
-  inspected_to_on: string | null;
-  decision_reference: string | null;
-  bbkt_reference: string | null;
-  outcome_result: string | null;
+  inspected_on?: string | null;
+  inspected_to_on?: string | null;
+  outcome_result?: string | null;
+  minutes_recorded_on?: string | null;
+  minutes_recorded_time?: string | null;
+  compliance_due_on?: string | null;
   reason?: string | null;
 };
 
@@ -367,8 +471,18 @@ export type InspectionOutcomeUpsertResponse = {
   decision_reference: string | null;
   bbkt_reference: string | null;
   outcome_result: string | null;
+  final_evaluation: string | null;
+  minutes_recorded_on: string | null;
+  minutes_recorded_time: string | null;
+  compliance_due_on: string | null;
   audit_event_id: string;
   inspection_event_id: string | null;
+};
+
+export type InspectionFinalEvaluationRequest = {
+  expected_version: number;
+  final_evaluation: string;
+  reason?: string | null;
 };
 
 export type CaseWorkspaceRemediationCycle = {
@@ -376,6 +490,7 @@ export type CaseWorkspaceRemediationCycle = {
   row_version: number;
   round_no: number;
   requested_on: string | null;
+  incoming_reference: string | null;
   submitted_on: string | null;
   assessed_on: string | null;
   assessor_name: string | null;
@@ -386,11 +501,13 @@ export type CaseWorkspaceRemediationCycle = {
 
 export type CaseWorkspaceRemediation = {
   cycles: CaseWorkspaceRemediationCycle[];
+  actions: LifecycleActionReadiness[];
 };
 
 export type CapaCycleCreateRequest = {
   expected_case_version: number | null;
   requested_on: string | null;
+  incoming_reference?: string | null;
   notes: string | null;
   reason?: string | null;
 };
@@ -398,6 +515,7 @@ export type CapaCycleCreateRequest = {
 export type CapaCycleUpdateRequest = {
   expected_version: number;
   requested_on: string | null;
+  incoming_reference?: string | null;
   notes: string | null;
   reason?: string | null;
 };
@@ -424,6 +542,7 @@ export type CapaCycleMutationResponse = {
   row_version: number;
   round_no: number;
   requested_on: string | null;
+  incoming_reference: string | null;
   submitted_on: string | null;
   assessed_on: string | null;
   assessor_user_id: string | null;
@@ -588,6 +707,9 @@ export type GxpCertificateListItem = {
   case_id: string | null;
   certificate_type: string;
   line_code: string | null;
+  production_line_id: string | null;
+  production_line_code: string | null;
+  production_line_identity_state: "canonical" | "legacy_unlinked" | "facility_wide";
   context_match_kind: "exact_line" | "facility_wide" | "site_wide";
   latest_flag: boolean;
   certificate_number: string | null;
@@ -615,6 +737,9 @@ export type CertificateMutationResponse = {
   certificate_id: string;
   row_version: number;
   latest_flag: boolean;
+  production_line_id: string | null;
+  production_line_code: string | null;
+  production_line_identity_state: "canonical" | "legacy_unlinked" | "facility_wide";
 };
 
 export type CertificateScope = {
@@ -672,6 +797,9 @@ export type GxpCertificateDetail = {
   case_id: string | null;
   certificate_type: string;
   line_code: string | null;
+  production_line_id: string | null;
+  production_line_code: string | null;
+  production_line_identity_state: "canonical" | "legacy_unlinked" | "facility_wide";
   issuance_basis: string;
   latest_flag: boolean;
   certificate_number: string | null;
@@ -753,6 +881,7 @@ export type CaseWorkspace = {
   remediation: CaseWorkspaceRemediation;
   processing: CaseWorkspaceProcessing;
   evaluation_scope: CaseWorkspaceEvaluationScope;
+  transition_actions: LifecycleActionReadiness[];
   documents: DocumentChecklist;
   contextual_document_actions: ContextualDocumentAction[];
   certificate_issue_readiness: CertificateIssueActionReadiness;

@@ -3,7 +3,7 @@ from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
 from backend.app.auth import ROLE_PERMISSIONS, build_authenticated_user, get_authenticated_user
@@ -18,6 +18,7 @@ from backend.app.db.models.phase1 import (
     Case,
     CaseApplication,
     CaseAssessment,
+    CaseEvaluationScope,
     Certificate,
     CertificateScope,
     CertificateVersion,
@@ -30,6 +31,7 @@ from backend.app.db.models.phase1 import (
     InspectionTeamMember,
     InspectorProfile,
     Person,
+    ProductionLine,
     Site,
 )
 from backend.app.main import create_app
@@ -56,6 +58,50 @@ def seed_case(session: Session, *, gxp_type: str = "GMP") -> str:
     session.add(case)
     session.commit()
     return case.id
+
+
+def test_reassessment_scope_copy_uses_canonical_production_line_id_over_stale_scope_text():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        company = Company(legal_name="Canonical identity", short_name="CID")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="Canonical site")
+        session.add(site)
+        session.flush()
+        line = ProductionLine(site_id=site.id, code="A", effective_from=date(2020, 1, 1))
+        session.add(line)
+        session.flush()
+        source = Case(site_id=site.id, gxp_type="GMP", production_line_id=line.id, scope_code="OLD-A", state=CaseState.CLOSED)
+        target = Case(site_id=site.id, gxp_type="GMP", production_line_id=line.id, scope_code="A", state=CaseState.DRAFT)
+        session.add_all([source, target])
+        session.flush()
+        session.add(
+            CaseEvaluationScope(
+                case_id=source.id,
+                source_classification="LEGACY_IMPORTED",
+                raw_legacy_value="Canonical source scope",
+                rendered_prose="Canonical source scope",
+            )
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        source = session.scalar(select(Case).where(Case.scope_code == "OLD-A"))
+        target = session.scalar(select(Case).where(Case.scope_code == "A"))
+        assert source is not None and target is not None
+        CaseWorkflowService()._copy_evaluation_scope_for_reassessment(
+            session,
+            source_case_id=source.id,
+            target_case=target,
+        )
+        session.commit()
+        copied = session.scalar(select(CaseEvaluationScope).where(CaseEvaluationScope.case_id == target.id))
+
+    assert copied is not None
+    assert copied.rendered_prose == "Canonical source scope"
 
 
 def seed_inspection_team_identities(session: Session) -> dict[str, str]:
@@ -85,6 +131,10 @@ def seed_create_inspection_case_context(
     site = Site(company_id=company.id, site_name=site_name)
     session.add(site)
     session.flush()
+    line = None if line_code is None else ProductionLine(site_id=site.id, code=line_code, effective_from=date(2000, 1, 1))
+    if line is not None:
+        session.add(line)
+        session.flush()
 
     seeded_case_id: str | None = None
     if include_case:
@@ -92,6 +142,7 @@ def seed_create_inspection_case_context(
             site_id=site.id,
             gxp_type=gxp_type,
             scope_code=line_code,
+            production_line_id=None if line is None else line.id,
             applicable_standard="WHO-GMP",
             inspection_type="Định kỳ",
             state=case_state,
@@ -106,6 +157,7 @@ def seed_create_inspection_case_context(
             case_id=seeded_case_id,
             certificate_type=gxp_type,
             line_code=line_code,
+            production_line_id=None if line is None else line.id,
             latest_flag=True,
         )
         session.add(certificate)
@@ -123,7 +175,7 @@ def seed_create_inspection_case_context(
         )
 
     session.commit()
-    return {"site_id": site.id, "seeded_case_id": seeded_case_id}
+    return {"site_id": site.id, "seeded_case_id": seeded_case_id, "production_line_id": None if line is None else line.id}
 
 
 def test_phase10_transition_route_is_registered():
@@ -164,6 +216,7 @@ def test_create_inspection_case_persists_draft_case_without_downstream_rows():
             site_id=seeded["site_id"],
             gxp_type="GMP",
             line_code="A",
+            production_line_id=seeded["production_line_id"],
             applicable_standard="WHO-GMP",
             reason="Open new inspection case.",
             user=build_authenticated_user("manager01", "manager"),
@@ -173,6 +226,7 @@ def test_create_inspection_case_persists_draft_case_without_downstream_rows():
     assert result["site_id"] == seeded["site_id"]
     assert result["gxp_type"] == "GMP"
     assert result["line_code"] == "A"
+    assert result["production_line_id"] == seeded["production_line_id"]
     assert result["inspection_type"] == "Tái"
     assert result["applicable_standard"] == "WHO-GMP"
     assert result["state"] == "draft"
@@ -185,6 +239,7 @@ def test_create_inspection_case_persists_draft_case_without_downstream_rows():
         assert created is not None
         assert created.state == CaseState.DRAFT
         assert created.scope_code == "A"
+        assert created.production_line_id == seeded["production_line_id"]
         assert session.scalar(select(CaseApplication).where(CaseApplication.case_id == created.id)) is None
         assert session.scalar(select(CaseAssessment).where(CaseAssessment.case_id == created.id)) is None
         assert session.scalar(select(InspectionPlan).where(InspectionPlan.case_id == created.id)) is None
@@ -216,6 +271,7 @@ def test_create_inspection_case_allows_authoritative_certificate_only_line_conte
             site_id=seeded["site_id"],
             gxp_type="GMP",
             line_code="B",
+            production_line_id=seeded["production_line_id"],
             applicable_standard=None,
             reason="Create from certificate-owned line context.",
             user=build_authenticated_user("manager01", "manager"),
@@ -276,7 +332,7 @@ def test_create_inspection_case_rejects_invalid_site_gxp_or_line_context():
     with Session(engine) as session:
         for gxp_type, line_code, expected_detail in [
             ("GDP", "A", "Unsupported GxP context"),
-            ("GMP", "Z", "authoritative existing context"),
+            ("GMP", "Z", "Canonical ProductionLine identity has not been resolved"),
         ]:
             try:
                 service.create_inspection_case(
@@ -309,6 +365,7 @@ def test_create_inspection_case_rejects_duplicate_open_case_and_is_retry_safe():
                 site_id=seeded["site_id"],
                 gxp_type="GMP",
                 line_code="A",
+                production_line_id=seeded["production_line_id"],
                 applicable_standard=None,
                 reason="Duplicate.",
                 user=build_authenticated_user("manager01", "manager"),
@@ -327,6 +384,7 @@ def test_create_inspection_case_rejects_duplicate_open_case_and_is_retry_safe():
             site_id=seeded["site_id"],
             gxp_type="GMP",
             line_code="B",
+            production_line_id=seeded["production_line_id"],
             applicable_standard=None,
             reason="First create.",
             user=build_authenticated_user("manager01", "manager"),
@@ -340,6 +398,7 @@ def test_create_inspection_case_rejects_duplicate_open_case_and_is_retry_safe():
                 site_id=seeded["site_id"],
                 gxp_type="GMP",
                 line_code="B",
+                production_line_id=seeded["production_line_id"],
                 applicable_standard=None,
                 reason="Retry create.",
                 user=build_authenticated_user("manager01", "manager"),
@@ -366,6 +425,7 @@ def test_create_inspection_case_duplicate_rule_is_site_scoped():
             site_id=seeded["site_id"],
             gxp_type="GMP",
             line_code="A",
+            production_line_id=seeded["production_line_id"],
             applicable_standard=None,
             reason="Different site context.",
             user=build_authenticated_user("manager01", "manager"),
@@ -389,6 +449,7 @@ def test_create_inspection_case_server_owns_reassessment_type():
             site_id=seeded["site_id"],
             gxp_type="GMP",
             line_code="A",
+            production_line_id=seeded["production_line_id"],
             applicable_standard=None,
             reason="Server-owned reassessment type.",
             user=build_authenticated_user("manager01", "manager"),
@@ -412,6 +473,7 @@ def test_create_inspection_case_route_enforces_auth_and_returns_created_read_mod
     payload = InspectionCaseCreateRequest(
         gxp_type="GMP",
         line_code="A",
+        production_line_id=seeded["production_line_id"],
         applicable_standard="WHO-GMP",
         reason="HTTP create",
     )
@@ -451,7 +513,7 @@ def test_create_inspection_case_route_enforces_auth_and_returns_created_read_mod
     assert body["state"] == "draft"
 
 
-def test_transition_case_persists_audit_and_event():
+def test_transition_case_persists_audit_without_fabricating_business_event():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
@@ -472,7 +534,7 @@ def test_transition_case_persists_audit_and_event():
     assert result["previous_state"] == "draft"
     assert result["current_state"] == "application_received"
     assert result["audit_event_id"] is not None
-    assert result["inspection_event_id"] is not None
+    assert result["inspection_event_id"] is None
 
     with Session(engine) as session:
         case_row = session.get(Case, case_id)
@@ -491,7 +553,7 @@ def test_transition_case_persists_audit_and_event():
             "previous_state": "draft",
             "reason": "Initial intake completed.",
         }
-        assert session.scalars(select(InspectionEvent)).first() is not None
+        assert session.scalars(select(InspectionEvent)).first() is None
 
 
 def test_transition_case_rejects_invalid_transition_order():
@@ -531,7 +593,7 @@ def test_upsert_case_application_persists_stage_and_audit():
             case_id=case_id,
             submitted_on=None,
             dossier_code="HS-001",
-            dossier_reference="REF-001",
+            dossier_reference=None,
             applicant_name="Applicant A",
             reason="Initial intake metadata.",
             user=build_authenticated_user("manager01", "manager"),
@@ -556,7 +618,7 @@ def test_upsert_case_application_persists_stage_and_audit():
         assert json.loads(audit_event.new_values_json) == {
             "applicant_name": "Applicant A",
             "dossier_code": "HS-001",
-            "dossier_reference": "REF-001",
+            "dossier_reference": None,
             "submitted_on": None,
         }
         case_row = session.get(Case, case_id)
@@ -579,7 +641,7 @@ def test_upsert_case_application_writes_submission_event_without_transitioning_c
             case_id=case_id,
             submitted_on=datetime(2026, 8, 31, 0, 0, tzinfo=timezone.utc),
             dossier_code="HS-003",
-            dossier_reference="REF-003",
+            dossier_reference=None,
             applicant_name="Applicant C",
             reason="Submission captured.",
             user=build_authenticated_user("manager01", "manager"),
@@ -611,7 +673,7 @@ def test_upsert_case_application_rejects_stale_version_and_terminal_states():
             case_id=draft_case_id,
             submitted_on=None,
             dossier_code="HS-004",
-            dossier_reference="REF-004",
+            dossier_reference=None,
             applicant_name="Applicant D",
             reason="Initial create.",
             user=build_authenticated_user("manager01", "manager"),
@@ -626,7 +688,7 @@ def test_upsert_case_application_rejects_stale_version_and_terminal_states():
                 expected_version=created["row_version"] - 1,
                 submitted_on=None,
                 dossier_code="HS-004-STALE",
-                dossier_reference="REF-004",
+                dossier_reference=None,
                 applicant_name="Applicant D",
                 reason="Should conflict.",
                 user=build_authenticated_user("manager01", "manager"),
@@ -651,7 +713,7 @@ def test_upsert_case_application_rejects_stale_version_and_terminal_states():
                     case_id=case_id,
                     submitted_on=None,
                     dossier_code="HS-TERMINAL",
-                    dossier_reference="REF-TERMINAL",
+                    dossier_reference=None,
                     applicant_name="Applicant Terminal",
                     reason="Should be blocked.",
                     user=build_authenticated_user("manager01", "manager"),
@@ -677,7 +739,6 @@ def test_upsert_case_application_route_enforces_auth_and_returns_read_model(tmp_
         expected_version=None,
         submitted_on=datetime(2026, 8, 31, 0, 0, tzinfo=timezone.utc),
         dossier_code="HS-HTTP",
-        dossier_reference="REF-HTTP",
         applicant_name="Applicant HTTP",
     )
 
@@ -723,7 +784,7 @@ def test_workflow_audit_payload_redacts_sensitive_keys():
             case_id=case_id,
             submitted_on=None,
             dossier_code="HS-002",
-            dossier_reference="REF-002",
+            dossier_reference=None,
             applicant_name="Applicant B",
             reason="Sensitive payload check.",
             user=build_authenticated_user("manager01", "manager"),
@@ -905,7 +966,7 @@ def test_upsert_inspection_plan_blocks_terminal_cases_and_skips_duplicate_event(
 
     with Session(engine) as session:
         events = list(session.scalars(select(InspectionEvent).where(InspectionEvent.case_id == case_id)))
-        assert [event.event_type for event in events] == ["plan_created"]
+        assert [event.event_type.value for event in events] == ["plan_created", "decision_issued"]
         case_row = session.get(Case, case_id)
         assert case_row is not None
         case_row.state = CaseState.CLOSED
@@ -980,9 +1041,10 @@ def test_outcome_compatibility_writer_does_not_infer_a_zero_segment_source_state
             inspected_to_on=None,
             decision_reference=None,
             bbkt_reference=None,
-            outcome_result=None,
-            reason="Metadata only.",
-            user=build_authenticated_user("manager01", "manager"),
+                outcome_result=None,
+                reason="Metadata only.",
+                user=build_authenticated_user("manager01", "manager"),
+                fields_set=set(),
         )
         session.commit()
         row = session.scalar(select(InspectionOutcome))
@@ -1070,9 +1132,10 @@ def test_outcome_compatibility_writer_metadata_only_preserves_period_truth():
             inspected_to_on=None,
             decision_reference=None,
             bbkt_reference=None,
-            outcome_result=None,
-            reason="Metadata only.",
-            user=build_authenticated_user("manager01", "manager"),
+                outcome_result=None,
+                reason="Metadata only.",
+                user=build_authenticated_user("manager01", "manager"),
+                fields_set=set(),
         )
         session.commit()
         outcome = session.scalar(select(InspectionOutcome))
@@ -1205,8 +1268,6 @@ def test_upsert_inspection_outcome_route_enforces_auth_and_returns_read_model(tm
         expected_version=None,
         inspected_on=date(2026, 8, 25),
         inspected_to_on=date(2026, 8, 26),
-        decision_reference=None,
-        bbkt_reference=None,
         outcome_result="Đạt",
     )
 
@@ -2794,6 +2855,342 @@ def test_promote_certificate_current_rejects_older_candidate_than_current():
             raise AssertionError("Expected older certificate promotion to fail")
 
 
+def test_certificate_promotion_isolated_by_canonical_production_line_uuid_and_returns_identity():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    user = build_authenticated_user("admin01", "admin")
+
+    with Session(engine) as session:
+        company = Company(legal_name="Promotion identity", short_name="PI")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="Promotion site")
+        session.add(site)
+        session.flush()
+        p1 = ProductionLine(site_id=site.id, code="A", effective_from=date(2020, 1, 1))
+        p2 = ProductionLine(site_id=site.id, code="A", effective_from=date(2021, 1, 1))
+        session.add_all([p1, p2])
+        session.flush()
+
+        def add_certificate(line_id, current, number, issued):
+            certificate = Certificate(site_id=site.id, certificate_type="GMP", production_line_id=line_id, line_code="A", latest_flag=current)
+            session.add(certificate)
+            session.flush()
+            session.add(CertificateVersion(certificate_id=certificate.id, version_no=1, certificate_number=number, issue_date=issued, expiry_date=date(2027, 9, 1), is_latest_version=True))
+            return certificate
+
+        first_current = add_certificate(p1.id, True, "P1-CURRENT", date(2026, 9, 20))
+        second_current = add_certificate(p2.id, True, "P2-CURRENT", date(2026, 8, 1))
+        second_candidate = add_certificate(p2.id, False, "P2-CANDIDATE", date(2026, 9, 1))
+        session.commit()
+        candidate_id, first_id, second_id, p2_id = second_candidate.id, first_current.id, second_current.id, p2.id
+
+    with Session(engine) as session:
+        result = service.promote_certificate_current(session, certificate_id=candidate_id, reason="Same-code UUID isolation.", user=user)
+        session.commit()
+        assert session.get(Certificate, first_id).latest_flag is True
+        assert session.get(Certificate, second_id).latest_flag is False
+        assert session.get(Certificate, candidate_id).latest_flag is True
+
+    from backend.app.read_models import CertificateMutationRead
+    response = CertificateMutationRead(**result)
+    assert response.production_line_id == p2_id
+    assert response.production_line_code == "A"
+    assert response.production_line_identity_state == "canonical"
+
+
+def test_certificate_promotion_keeps_canonical_legacy_and_facility_contexts_isolated():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    user = build_authenticated_user("manager01", "manager")
+    with Session(engine) as session:
+        company = Company(legal_name="Context isolation", short_name="CTX")
+        session.add(company); session.flush()
+        site = Site(company_id=company.id, site_name="Context site")
+        session.add(site); session.flush()
+        line = ProductionLine(site_id=site.id, code="A", effective_from=date(2020, 1, 1))
+        session.add(line); session.flush()
+        def certificate(line_id, raw, current, number, issued):
+            row = Certificate(site_id=site.id, certificate_type="GMP", production_line_id=line_id, line_code=raw, latest_flag=current)
+            session.add(row); session.flush()
+            session.add(CertificateVersion(certificate_id=row.id, version_no=1, certificate_number=number, issue_date=issued, expiry_date=date(2027, 1, 1), is_latest_version=True))
+            return row
+        canonical_current = certificate(line.id, "A", True, "C0", date(2026, 10, 1))
+        canonical_candidate = certificate(line.id, "A", False, "C1", date(2026, 10, 2))
+        legacy_current = certificate(None, "A", True, "L0", date(2026, 12, 1))
+        legacy_candidate = certificate(None, "A", False, "L1", date(2026, 12, 2))
+        facility_current = certificate(None, None, True, "F0", date(2027, 1, 1))
+        facility_candidate = certificate(None, None, False, "F1", date(2027, 1, 2))
+        session.commit()
+        ids = [row.id for row in (canonical_current, canonical_candidate, legacy_current, legacy_candidate, facility_current, facility_candidate)]
+    for candidate_index, prior_index, untouched in ((1, 0, (2, 4)), (3, 2, (1, 4)), (5, 4, (1, 3))):
+        with Session(engine) as session:
+            service.promote_certificate_current(session, certificate_id=ids[candidate_index], reason="Context isolation.", user=user)
+            session.commit()
+            assert session.get(Certificate, ids[prior_index]).latest_flag is False
+            assert session.get(Certificate, ids[candidate_index]).latest_flag is True
+            for index in untouched:
+                assert session.get(Certificate, ids[index]).latest_flag is True
+
+
+def test_certificate_promotion_normalizes_legacy_trim_and_facility_blank_peers():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    user = build_authenticated_user("manager01", "manager")
+    with Session(engine) as session:
+        company = Company(legal_name="Normalization", short_name="NORM")
+        session.add(company); session.flush()
+        site = Site(company_id=company.id, site_name="Normalization site")
+        session.add(site); session.flush()
+        def add(raw, current, number):
+            row = Certificate(site_id=site.id, certificate_type="GMP", line_code=raw, latest_flag=current)
+            session.add(row); session.flush()
+            session.add(CertificateVersion(certificate_id=row.id, version_no=1, certificate_number=number, issue_date=date(2026, 1, 1), expiry_date=date(2027, 1, 1), is_latest_version=True))
+            return row
+        legacy_current = add("a", True, "L0")
+        legacy_candidate = add(" a ", False, "L1")
+        facility_current = add("   ", True, "F0")
+        facility_candidate = add(None, False, "F1")
+        session.commit(); ids = [row.id for row in (legacy_current, legacy_candidate, facility_current, facility_candidate)]
+    for current_index, candidate_index in ((0, 1), (2, 3)):
+        with Session(engine) as session:
+            service.promote_certificate_current(session, certificate_id=ids[candidate_index], reason="Normalize peers.", user=user)
+            session.commit()
+            assert session.get(Certificate, ids[current_index]).latest_flag is False
+            assert session.get(Certificate, ids[candidate_index]).latest_flag is True
+
+
+def test_legacy_certificate_effective_line_uses_valid_linked_case_for_identity_and_peers():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    user = build_authenticated_user("manager01", "manager")
+    with Session(engine) as session:
+        company = Company(legal_name="Linked legacy context", short_name="LINK")
+        session.add(company); session.flush()
+        site = Site(company_id=company.id, site_name="Linked legacy site")
+        other_site = Site(company_id=company.id, site_name="Other site")
+        fallback_only_site = Site(company_id=company.id, site_name="Fallback-only site")
+        session.add_all([site, other_site, fallback_only_site]); session.flush()
+        linked_a = Case(site_id=site.id, gxp_type="GMP", scope_code="A", state=CaseState.CERTIFIED)
+        linked_b = Case(site_id=site.id, gxp_type="GMP", scope_code="B", state=CaseState.CERTIFIED)
+        invalid_link = Case(site_id=other_site.id, gxp_type="GMP", scope_code="Z", state=CaseState.CERTIFIED)
+        fallback_only_case = Case(site_id=fallback_only_site.id, gxp_type="GMP", scope_code="A", state=CaseState.CERTIFIED)
+        session.add_all([linked_a, linked_b, invalid_link, fallback_only_case]); session.flush()
+
+        def add(*, line_code, case_id, latest, number):
+            row = Certificate(site_id=site.id, certificate_type="GMP", line_code=line_code, case_id=case_id, latest_flag=latest)
+            session.add(row); session.flush()
+            session.add(CertificateVersion(certificate_id=row.id, version_no=1, certificate_number=number, issue_date=date(2026, 1, 1), expiry_date=date(2027, 1, 1), is_latest_version=True))
+            return row
+
+        legacy_current = add(line_code="A", case_id=None, latest=True, number="L0")
+        fallback_candidate = add(line_code="   ", case_id=linked_a.id, latest=False, number="L1")
+        facility_current = add(line_code=None, case_id=None, latest=True, number="F0")
+        direct_precedence = add(line_code="A", case_id=linked_b.id, latest=False, number="P0")
+        invalid_fallback = add(line_code=None, case_id=invalid_link.id, latest=False, number="X0")
+        fallback_only = Certificate(site_id=fallback_only_site.id, certificate_type="GMP", case_id=fallback_only_case.id, line_code=None, latest_flag=True)
+        session.add(fallback_only); session.flush()
+        session.add(CertificateVersion(certificate_id=fallback_only.id, version_no=1, certificate_number="ONLY-A", issue_date=date(2026, 1, 1), expiry_date=date(2027, 1, 1), is_latest_version=True))
+        session.commit()
+        ids = legacy_current.id, fallback_candidate.id, facility_current.id, direct_precedence.id, invalid_fallback.id
+        site_id = site.id
+        fallback_only_site_id = fallback_only_site.id
+
+    with Session(engine) as session:
+        candidate = session.get(Certificate, ids[1])
+        precedence = session.get(Certificate, ids[3])
+        invalid = session.get(Certificate, ids[4])
+        assert candidate is not None and precedence is not None and invalid is not None
+        assert service._certificate_line_identity(session, candidate) == {
+            "production_line_id": None, "production_line_code": "A", "production_line_identity_state": "legacy_unlinked",
+        }
+        assert service._certificate_line_identity(session, precedence)["production_line_code"] == "A"
+        with pytest.raises(Exception, match="invalid linked Case"):
+            service._certificate_line_identity(session, invalid)
+        assert service._site_has_gxp_context(session, site_id=site_id, gxp_type="GMP", line_code="A") is True
+        assert service._site_has_gxp_context(session, site_id=fallback_only_site_id, gxp_type="GMP", line_code="A") is True
+        assert service._site_has_gxp_context(session, site_id=fallback_only_site_id, gxp_type="GMP", line_code=None) is False
+        peer_ids = set(session.scalars(select(Certificate.id).where(service._certificate_context_clause(session, candidate))).all())
+        assert peer_ids == {ids[0], ids[1], ids[3]}
+        service.promote_certificate_current(session, certificate_id=ids[1], reason="Linked legacy context.", user=user)
+        session.commit()
+        assert session.get(Certificate, ids[0]).latest_flag is False
+        assert session.get(Certificate, ids[1]).latest_flag is True
+        assert session.get(Certificate, ids[2]).latest_flag is True
+
+
+def test_certificate_invalid_linked_cases_fail_closed_before_identity_or_mutation():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    user = build_authenticated_user("manager01", "manager")
+    with Session(engine) as session:
+        company = Company(legal_name="Invalid links", short_name="IL")
+        session.add(company); session.flush()
+        site_a = Site(company_id=company.id, site_name="A")
+        site_b = Site(company_id=company.id, site_name="B")
+        session.add_all([site_a, site_b]); session.flush()
+        line = ProductionLine(site_id=site_a.id, code="A", effective_from=date(2020, 1, 1))
+        wrong_site = Case(site_id=site_b.id, gxp_type="GMP", scope_code="A", state=CaseState.CERTIFIED)
+        wrong_gxp = Case(site_id=site_a.id, gxp_type="GLP", scope_code="A", state=CaseState.CERTIFIED)
+        session.add_all([line, wrong_site, wrong_gxp]); session.flush()
+
+        def add(*, case_id, line_code=None, line_id=None, number, latest=False):
+            certificate = Certificate(site_id=site_a.id, case_id=case_id, certificate_type="GMP", line_code=line_code, production_line_id=line_id, latest_flag=latest)
+            session.add(certificate); session.flush()
+            session.add(CertificateVersion(certificate_id=certificate.id, version_no=1, certificate_number=number, issue_date=date(2026, 1, 1), expiry_date=date(2027, 1, 1), is_latest_version=True))
+            return certificate
+
+        certificates = [
+            add(case_id=wrong_site.id, number="SITE"),
+            add(case_id=wrong_gxp.id, number="GXP"),
+            add(case_id=wrong_site.id, line_code="A", number="DIRECT"),
+            add(case_id=wrong_site.id, line_id=line.id, number="CANONICAL", latest=True),
+            add(case_id="deadbeef-dead-4bad-8ace-deadbeefcafe", number="MISSING"),
+        ]
+        session.commit(); certificate_ids = [row.id for row in certificates]; site_a_id = site_a.id; line_id = line.id
+
+    with Session(engine) as session:
+        for certificate_id in certificate_ids:
+            certificate = session.get(Certificate, certificate_id)
+            assert certificate is not None
+            with pytest.raises(Exception, match="invalid linked Case"):
+                service._certificate_line_identity(session, certificate)
+            with pytest.raises(Exception, match="invalid linked Case"):
+                service.get_certificate_action_readiness(session, certificate_id=certificate_id, user=user)
+            with pytest.raises(Exception, match="invalid linked Case"):
+                service.promote_certificate_current(session, certificate_id=certificate_id, reason="Reject invalid relation.", user=user)
+        assert service._site_has_gxp_context(session, site_id=certificate.site_id, gxp_type="GMP", line_code=None) is False
+        invalid_readiness = service.get_create_reassessment_case_action_readiness(
+            session,
+            site_id=site_a_id,
+            gxp_type="GMP",
+            line_code="A",
+            production_line_id=line_id,
+            user=SimpleNamespace(permissions={"case.edit"}),
+        )
+        assert invalid_readiness["readiness_status"] != "available"
+
+        administrative = Certificate(
+            site_id=site_a_id,
+            certificate_type="GMP",
+            production_line_id=line_id,
+            latest_flag=True,
+            issuance_basis="administrative_no_inspection",
+        )
+        session.add(administrative); session.flush()
+        session.add(CertificateVersion(
+            certificate_id=administrative.id,
+            version_no=1,
+            certificate_number="ADMIN-CANONICAL",
+            issue_date=date(2026, 2, 1),
+            expiry_date=date(2027, 2, 1),
+            is_latest_version=True,
+        ))
+        session.commit()
+        valid_readiness = service.get_create_reassessment_case_action_readiness(
+            session,
+            site_id=site_a_id,
+            gxp_type="GMP",
+            line_code="A",
+            production_line_id=line_id,
+            user=SimpleNamespace(permissions={"case.edit"}),
+        )
+        assert valid_readiness["readiness_status"] == "available"
+
+
+def test_certificate_promotion_checks_and_demotes_all_current_context_peers():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    user = build_authenticated_user("manager01", "manager")
+    with Session(engine) as session:
+        company = Company(legal_name="Multiple currents", short_name="MC")
+        session.add(company); session.flush()
+        site = Site(company_id=company.id, site_name="Multiple current site")
+        session.add(site); session.flush()
+
+        def add(*, latest, issued, number):
+            certificate = Certificate(site_id=site.id, certificate_type="GMP", line_code="A", latest_flag=latest)
+            session.add(certificate); session.flush()
+            session.add(CertificateVersion(certificate_id=certificate.id, version_no=1, certificate_number=number, issue_date=issued, expiry_date=date(2027, 1, 1), is_latest_version=True))
+            return certificate
+
+        current_early = add(latest=True, issued=date(2026, 1, 1), number="EARLY")
+        current_late = add(latest=True, issued=date(2026, 9, 20), number="LATE")
+        blocked_candidate = add(latest=False, issued=date(2026, 9, 1), number="BLOCKED")
+        accepted_candidate = add(latest=False, issued=date(2026, 10, 1), number="ACCEPTED")
+        session.commit(); ids = current_early.id, current_late.id, blocked_candidate.id, accepted_candidate.id
+
+    with Session(engine) as session:
+        with pytest.raises(Exception, match="not older than the current active certificate"):
+            service.promote_certificate_current(session, certificate_id=ids[2], reason="All peers must block.", user=user)
+        service.promote_certificate_current(session, certificate_id=ids[3], reason="Demote all peers.", user=user)
+        session.commit()
+        assert session.get(Certificate, ids[0]).latest_flag is False
+        assert session.get(Certificate, ids[1]).latest_flag is False
+        assert session.get(Certificate, ids[2]).latest_flag is False
+        assert session.get(Certificate, ids[3]).latest_flag is True
+
+
+def test_cross_site_certificate_and_reassessment_contexts_fail_closed():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    user = build_authenticated_user("admin01", "admin")
+    with Session(engine) as session:
+        company = Company(legal_name="Cross-site", short_name="XS")
+        session.add(company); session.flush()
+        site_a = Site(company_id=company.id, site_name="A")
+        site_b = Site(company_id=company.id, site_name="B")
+        session.add_all([site_a, site_b]); session.flush()
+        line = ProductionLine(site_id=site_b.id, code="A", effective_from=date(2020, 1, 1))
+        session.add(line); session.flush()
+        certificate = Certificate(site_id=site_a.id, certificate_type="GMP", production_line_id=line.id, latest_flag=False)
+        corrupt_case = Case(site_id=site_a.id, gxp_type="GMP", production_line_id=line.id, scope_code="A", state=CaseState.CLOSED)
+        session.add_all([certificate, corrupt_case]); session.flush()
+        session.add(CertificateVersion(certificate_id=certificate.id, version_no=1, certificate_number="XS", issue_date=date(2026, 1, 1), expiry_date=date(2027, 1, 1), is_latest_version=True))
+        session.commit(); certificate_id, site_id, line_id = certificate.id, site_a.id, line.id
+    with Session(engine) as session:
+        with pytest.raises(Exception, match="invalid canonical ProductionLine"):
+            service.get_certificate_action_readiness(session, certificate_id=certificate_id, user=user)
+        with pytest.raises(Exception, match="invalid canonical ProductionLine"):
+            service.promote_certificate_current(session, certificate_id=certificate_id, reason="Reject corrupt.", user=user)
+        readiness = service.get_create_reassessment_case_action_readiness(session, site_id=site_id, gxp_type="GMP", line_code="A", production_line_id=line_id, user=SimpleNamespace(permissions={"case.edit"}))
+        assert readiness["readiness_status"] == "unavailable"
+        with pytest.raises(Exception, match="does not belong"):
+            service.create_inspection_case(session, site_id=site_id, gxp_type="GMP", line_code="A", production_line_id=line_id, applicable_standard="WHO-GMP", source_case_id=None, reason="Reject corrupt.", user=user)
+
+
+def test_reassessment_open_case_conflict_uses_production_line_uuid_not_same_code():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    user = SimpleNamespace(permissions={"case.edit"})
+    with Session(engine) as session:
+        company = Company(legal_name="Open context", short_name="OC")
+        session.add(company); session.flush()
+        site = Site(company_id=company.id, site_name="Open site")
+        session.add(site); session.flush()
+        first = ProductionLine(site_id=site.id, code="A", effective_from=date(2020, 1, 1))
+        second = ProductionLine(site_id=site.id, code="A", effective_from=date(2021, 1, 1))
+        session.add_all([first, second]); session.flush()
+        session.add_all([
+            Case(site_id=site.id, gxp_type="GMP", production_line_id=first.id, scope_code="A", state=CaseState.PLANNED),
+            Case(site_id=site.id, gxp_type="GMP", production_line_id=second.id, scope_code="A", state=CaseState.CLOSED),
+        ])
+        session.commit(); site_id, first_id, second_id = site.id, first.id, second.id
+    with Session(engine) as session:
+        first_ready = service.get_create_reassessment_case_action_readiness(session, site_id=site_id, gxp_type="GMP", line_code="A", production_line_id=first_id, user=user)
+        second_ready = service.get_create_reassessment_case_action_readiness(session, site_id=site_id, gxp_type="GMP", line_code="A", production_line_id=second_id, user=user)
+    assert first_ready["readiness_status"] == "conflict"
+    assert second_ready["readiness_status"] == "available"
+
+
 def test_upsert_business_eligibility_latest_version_replaces_links():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
@@ -2884,6 +3281,81 @@ def test_upsert_business_eligibility_latest_version_replaces_links():
         links = list(session.scalars(select(BusinessEligibilityCertificateLink)))
         assert len(links) == 1
         assert links[0].certificate_id == replacement_certificate["certificate_id"]
+
+
+def _seed_invalid_dkkd_certificate(session: Session, *, cross_site_line: bool = False) -> tuple[str, str]:
+    case_id = seed_case(session)
+    case = session.get(Case, case_id)
+    assert case is not None
+    company = session.get(Company, session.get(Site, case.site_id).company_id)
+    assert company is not None
+    other_site = Site(company_id=company.id, site_name="Invalid DDKD target")
+    session.add(other_site); session.flush()
+    certificate = Certificate(site_id=case.site_id, certificate_type="GMP", line_code="A", latest_flag=False)
+    if cross_site_line:
+        line = ProductionLine(site_id=other_site.id, code="A", effective_from=date(2020, 1, 1))
+        session.add(line); session.flush()
+        certificate.production_line_id = line.id
+    else:
+        invalid_case = Case(site_id=other_site.id, gxp_type="GMP", scope_code="A", state=CaseState.CERTIFIED)
+        session.add(invalid_case); session.flush()
+        certificate.case_id = invalid_case.id
+    session.add(certificate); session.flush()
+    session.add(CertificateVersion(certificate_id=certificate.id, version_no=1, certificate_number="INVALID", is_latest_version=True))
+    session.commit()
+    return case.site_id, certificate.id
+
+
+@pytest.mark.parametrize("cross_site_line", [False, True])
+def test_business_eligibility_issue_rejects_invalid_certificate_identity(cross_site_line):
+    engine = create_engine("sqlite:///:memory:", future=True); Base.metadata.create_all(engine)
+    service = CaseWorkflowService(); user = build_authenticated_user("manager01", "manager")
+    with Session(engine) as session:
+        site_id, certificate_id = _seed_invalid_dkkd_certificate(session, cross_site_line=cross_site_line)
+    with Session(engine) as session:
+        with pytest.raises(Exception, match="invalid linked Case|invalid canonical ProductionLine"):
+            service.issue_business_eligibility(session, site_id=site_id, certificate_number="D", issued_on=date(2026, 1, 1), expires_on=None, professional_responsible_person_name=None, notes=None, linked_certificates=[{"certificate_id": certificate_id}], reason="reject", user=user)
+        session.rollback()
+        assert session.scalar(select(func.count()).select_from(BusinessEligibilityCertificateLink).where(BusinessEligibilityCertificateLink.certificate_id == certificate_id)) == 0
+
+
+def test_business_eligibility_update_rolls_back_when_replacement_certificate_is_invalid():
+    engine = create_engine("sqlite:///:memory:", future=True); Base.metadata.create_all(engine)
+    service = CaseWorkflowService(); user = build_authenticated_user("manager01", "manager")
+    with Session(engine) as session:
+        site_id, invalid_id = _seed_invalid_dkkd_certificate(session)
+        good = Certificate(site_id=site_id, certificate_type="GMP", line_code="A", latest_flag=False)
+        session.add(good); session.flush(); session.add(CertificateVersion(certificate_id=good.id, version_no=1, certificate_number="GOOD", is_latest_version=True)); session.flush()
+        issued = service.issue_business_eligibility(session, site_id=site_id, certificate_number="D", issued_on=date(2026, 1, 1), expires_on=None, professional_responsible_person_name=None, notes="old", linked_certificates=[{"certificate_id": good.id}], reason="good", user=user)
+        session.commit(); dkkd_id, good_id = issued["business_eligibility_certificate_id"], good.id
+    with Session(engine) as session:
+        with pytest.raises(Exception, match="invalid linked Case"):
+            service.upsert_business_eligibility_latest_version(session, business_eligibility_certificate_id=dkkd_id, certificate_number="BAD", issued_on=date(2026, 2, 1), expires_on=None, professional_responsible_person_name=None, notes="bad", linked_certificates=[{"certificate_id": invalid_id}], reason="bad", user=user)
+        session.rollback()
+    with Session(engine) as session:
+        links = list(session.scalars(select(BusinessEligibilityCertificateLink)))
+        assert [link.certificate_id for link in links] == [good_id]
+        assert session.get(BusinessEligibilityVersion, links[0].business_eligibility_version_id).certificate_number == "D"
+
+
+def test_business_eligibility_promotion_validates_historical_invalid_link_before_mutation():
+    engine = create_engine("sqlite:///:memory:", future=True); Base.metadata.create_all(engine)
+    service = CaseWorkflowService(); user = build_authenticated_user("manager01", "manager")
+    with Session(engine) as session:
+        site_id, invalid_id = _seed_invalid_dkkd_certificate(session)
+        site = session.get(Site, site_id); assert site is not None
+        current = BusinessEligibilityCertificate(site_id=site.id, company_id=site.company_id, latest_flag=True)
+        candidate = BusinessEligibilityCertificate(site_id=site.id, company_id=site.company_id, latest_flag=False)
+        session.add_all([current, candidate]); session.flush()
+        session.add_all([BusinessEligibilityVersion(business_eligibility_certificate_id=current.id, version_no=1, certificate_number="CURRENT", issued_on=date(2026, 1, 1)), BusinessEligibilityVersion(business_eligibility_certificate_id=candidate.id, version_no=1, certificate_number="CANDIDATE", issued_on=date(2026, 2, 1))]); session.flush()
+        candidate_version = session.scalars(select(BusinessEligibilityVersion).where(BusinessEligibilityVersion.business_eligibility_certificate_id == candidate.id)).one()
+        session.add(BusinessEligibilityCertificateLink(business_eligibility_version_id=candidate_version.id, certificate_id=invalid_id, link_role="historical")); session.commit(); current_id, candidate_id = current.id, candidate.id
+    with Session(engine) as session:
+        with pytest.raises(Exception, match="invalid linked Case"):
+            service.promote_business_eligibility_current(session, business_eligibility_certificate_id=candidate_id, reason="reject", user=user)
+        session.rollback()
+        assert session.get(BusinessEligibilityCertificate, current_id).latest_flag is True
+        assert session.get(BusinessEligibilityCertificate, candidate_id).latest_flag is False
 
 
 def test_promote_business_eligibility_current_demotes_previous_current():

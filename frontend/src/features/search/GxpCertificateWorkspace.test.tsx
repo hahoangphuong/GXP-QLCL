@@ -6,14 +6,14 @@ import { GxpCertificateWorkspace } from "./GxpCertificateWorkspace";
 import type { GxpCertificateDetail, GxpCertificateListItem } from "../../types";
 
 const items: GxpCertificateListItem[] = [{
-  certificate_id: "cert-1", site_id: "site-1", case_id: "case-1", certificate_type: "GMP", line_code: "A",
+  certificate_id: "cert-1", site_id: "site-1", case_id: "case-1", certificate_type: "GMP", line_code: "A", production_line_id: "line-1", production_line_code: "A", production_line_identity_state: "canonical",
   context_match_kind: "exact_line", latest_flag: true, certificate_number: "GCN-001", issue_date: "2026-09-01",
   expiry_date: "2027-09-01", applicable_standard: "WHO-GMP", issuing_authority: null, status: "active",
 }];
 
 function detail(editAvailable = true): GxpCertificateDetail {
   return {
-    certificate_id: "cert-1", row_version: 7, site_id: "site-1", case_id: "case-1", certificate_type: "GMP", line_code: "A",
+    certificate_id: "cert-1", row_version: 7, site_id: "site-1", case_id: "case-1", certificate_type: "GMP", line_code: "A", production_line_id: "line-1", production_line_code: "A", production_line_identity_state: "canonical",
     issuance_basis: "inspection_case", latest_flag: true, certificate_number: "GCN-001", issue_date: "2026-09-01", expiry_date: "2027-09-01",
     applicable_standard: "WHO-GMP", issuing_authority: null, status: "active", facility_name: "Nhà máy A", address: null,
     company_name: "Công ty A", company_legal_address: null, scope_summary: "Display-only summary", limitation_text: null,

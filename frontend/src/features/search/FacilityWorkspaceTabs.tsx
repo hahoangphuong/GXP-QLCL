@@ -18,6 +18,7 @@ import type {
   CertificateLatestVersionUpsertRequest,
   CertificateIssueRequest,
   InspectionOutcomeUpsertRequest,
+  InspectionFinalEvaluationRequest,
   InspectionTeamIdentityOption,
   InspectionTeamUpsertRequest,
   EvaluationScopeUpsertRequest,
@@ -79,6 +80,10 @@ export function FacilityWorkspaceTabs({
   onCaseAssessmentSave,
   onInspectionPlanSave,
   onInspectionOutcomeSave,
+  onInspectionPeriodSegmentsSave,
+  onCreateApprovalSubmission,
+  onCompleteApprovalSubmission,
+  onTransitionCase,
   onInspectionTeamSave,
   onLoadInspectionTeamIdentityOptions,
   onEvaluationScopeSave,
@@ -91,6 +96,7 @@ export function FacilityWorkspaceTabs({
   onSubmitCapaCycle,
   onAssessCapaCycle,
   onResolveInspectionFolder,
+  onFinalizeInspectionOutcome,
 }: {
   summary: FacilityWorkspaceSummary;
   history: FacilityHistoryItem[];
@@ -132,6 +138,10 @@ export function FacilityWorkspaceTabs({
   onCaseAssessmentSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>;
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
+  onInspectionPeriodSegmentsSave: (payload: import("../../types").InspectionPeriodSegmentsUpsertRequest) => Promise<void>;
+  onCreateApprovalSubmission: (stage: "PCT" | "CT", payload: import("../../types").InspectionApprovalSubmissionCreateRequest) => Promise<import("../../types").InspectionApprovalSubmissionMutationResponse>;
+  onCompleteApprovalSubmission: (submissionId: string, payload: import("../../types").InspectionApprovalSubmissionCompleteRequest) => Promise<import("../../types").InspectionApprovalSubmissionMutationResponse>;
+  onTransitionCase: (payload: import("../../types").CaseTransitionRequest) => Promise<void>;
   onInspectionTeamSave: (payload: InspectionTeamUpsertRequest) => Promise<void>;
   onLoadInspectionTeamIdentityOptions: () => Promise<InspectionTeamIdentityOption[]>;
   onEvaluationScopeSave: (payload: EvaluationScopeUpsertRequest) => Promise<void>;
@@ -144,6 +154,7 @@ export function FacilityWorkspaceTabs({
   onSubmitCapaCycle: (cycleId: string, payload: CapaCycleSubmitRequest) => Promise<void>;
   onAssessCapaCycle: (cycleId: string, payload: CapaCycleAssessRequest) => Promise<void>;
   onResolveInspectionFolder: () => Promise<InspectionFolderLookup>;
+  onFinalizeInspectionOutcome?: (payload: InspectionFinalEvaluationRequest) => Promise<void>;
 }) {
   return (
     <section className="panel panel-tight facility-workspace-panel">
@@ -205,6 +216,11 @@ export function FacilityWorkspaceTabs({
                 onResolveInspectionFolder={onResolveInspectionFolder}
                 onCreateCapaCycle={onCreateCapaCycle}
                 onInspectionOutcomeSave={onInspectionOutcomeSave}
+                onInspectionPeriodSegmentsSave={onInspectionPeriodSegmentsSave}
+                onCreateApprovalSubmission={onCreateApprovalSubmission}
+                onCompleteApprovalSubmission={onCompleteApprovalSubmission}
+                onTransitionCase={onTransitionCase}
+                onFinalizeInspectionOutcome={onFinalizeInspectionOutcome}
                 onInspectionTeamSave={onInspectionTeamSave}
                 onLoadInspectionTeamIdentityOptions={onLoadInspectionTeamIdentityOptions}
                 onEvaluationScopeSave={onEvaluationScopeSave}

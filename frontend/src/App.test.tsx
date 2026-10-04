@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
@@ -33,6 +33,10 @@ const apiMocks = vi.hoisted(() => ({
   upsertEvaluationScope: vi.fn(),
   upsertInspectionPlan: vi.fn(),
   upsertInspectionOutcome: vi.fn(),
+  upsertInspectionPeriodSegments: vi.fn(),
+  createInspectionApprovalSubmission: vi.fn(),
+  completeInspectionApprovalSubmission: vi.fn(),
+  transitionCase: vi.fn(),
   listSiteGxpCertificates: vi.fn().mockResolvedValue({ items: [] }),
   getGxpCertificateDetail: vi.fn().mockResolvedValue(null),
   promoteGxpCertificateCurrent: vi.fn(),
@@ -95,6 +99,10 @@ function resetApiMocks() {
   apiMocks.upsertEvaluationScope.mockReset();
   apiMocks.upsertInspectionPlan.mockReset();
   apiMocks.upsertInspectionOutcome.mockReset();
+  apiMocks.upsertInspectionPeriodSegments.mockReset();
+  apiMocks.createInspectionApprovalSubmission.mockReset();
+  apiMocks.completeInspectionApprovalSubmission.mockReset();
+  apiMocks.transitionCase.mockReset();
   apiMocks.listSiteGxpCertificates.mockReset();
   apiMocks.getGxpCertificateDetail.mockReset();
   apiMocks.promoteGxpCertificateCurrent.mockReset();
@@ -146,6 +154,10 @@ function resetApiMocks() {
   apiMocks.upsertEvaluationScope.mockResolvedValue(null);
   apiMocks.upsertInspectionPlan.mockResolvedValue(null);
   apiMocks.upsertInspectionOutcome.mockResolvedValue(null);
+  apiMocks.upsertInspectionPeriodSegments.mockResolvedValue(null);
+  apiMocks.createInspectionApprovalSubmission.mockResolvedValue(null);
+  apiMocks.completeInspectionApprovalSubmission.mockResolvedValue(null);
+  apiMocks.transitionCase.mockResolvedValue(null);
   apiMocks.listSiteGxpCertificates.mockResolvedValue({ items: [] });
   apiMocks.getGxpCertificateDetail.mockResolvedValue(null);
   apiMocks.promoteGxpCertificateCurrent.mockResolvedValue(null);
@@ -223,6 +235,9 @@ function buildSearchResult(overrides: Record<string, unknown> = {}) {
     result_grain: "production_line",
     gxp_type: "GMP",
     line_code: "A",
+    production_line_id: "line-uuid-1",
+    production_line_code: "A",
+    production_line_identity_state: "canonical",
     facility_name: "Công ty cổ phần dược phẩm Trung ương I",
     company_name: "Công ty A",
     gxp_types: ["GMP"],
@@ -246,6 +261,9 @@ function buildWorkspace(overrides: Record<string, unknown> = {}) {
       context_code: "1.1A",
       context_grain: "production_line",
       selected_line_code: "A",
+      selected_production_line_id: "line-uuid-1",
+      selected_production_line_code: "A",
+      production_line_identity_state: "canonical",
       facility_name: "Nhà máy A",
       company_name: "Công ty A",
       company_legal_address: "123 Trụ sở chính",
@@ -360,7 +378,8 @@ function buildCaseWorkspace(overrides: Record<string, unknown> = {}) {
     },
     inspection: {
       plan_row_version: 3,
-      decision_reference: "QĐ-KT-01",
+      plan_decision_reference: "QĐ-KT-01",
+      plan_decision_date: "2026-08-01",
       decision_document_hint: null,
       plan_start_on: null,
       plan_end_on: null,
@@ -368,7 +387,10 @@ function buildCaseWorkspace(overrides: Record<string, unknown> = {}) {
       outcome_row_version: 6,
       inspected_on: "2026-08-05",
       inspected_to_on: "2026-08-06",
+      inspection_period_state: "KNOWN",
+      inspection_period_segments: [],
       executed_on: "2026-08-06T09:30:00Z",
+      outcome_decision_reference_compatibility: "QĐ-KT-01",
       bbkt_reference: "BBKT-01",
       outcome_result: "Đạt WHO-GMP dây chuyền A",
       team_display_text: null,
@@ -518,6 +540,25 @@ function buildRemediationCycle(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function buildCapaAction(
+  action_key: string,
+  available: boolean,
+  options: { expected_version?: number | null; reason_code?: string | null; required_permissions?: string[] } = {},
+) {
+  return {
+    action_key,
+    label: action_key,
+    available,
+    reason_code: available ? null : options.reason_code ?? "missing_permission",
+    required_permissions: options.required_permissions ?? [action_key === "assess_capa_cycle" ? "capa.assess" : "capa.edit"],
+    expected_version: options.expected_version ?? null,
+  };
+}
+
+function buildCapaActions(...actions: ReturnType<typeof buildCapaAction>[]) {
+  return actions;
+}
+
 function buildChangeRequestWorkspace(overrides: Record<string, unknown> = {}) {
   return {
     id: "change-1",
@@ -597,6 +638,16 @@ function renderApp(initialEntries: string[] = ["/"]) {
       <App />
     </MemoryRouter>,
   );
+}
+
+function SearchRouteNavigator({ to }: { to: string }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  return <>
+    <button onClick={() => navigate(to)} type="button">Đi tới ngữ cảnh khác</button>
+    <button onClick={() => navigate(-1)} type="button">Quay lại ngữ cảnh trước</button>
+    <output data-testid="route-location">{location.search}</output>
+  </>;
 }
 
 describe("App Slice A.4 search workspace", () => {
@@ -770,8 +821,9 @@ describe("App Slice A.4 search workspace", () => {
 
   it("renders the compact result workspace with only three direct filters and a dedicated action card", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
-    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
-    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult({ result_key: "site-1:GMP:canonical:line-p2", production_line_id: "line-uuid-2", production_line_code: "A", line_code: "A" })], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [{ id: "case-2", source_type: "case", title: "Case two", occurred_on: "2026-01-02", state: "planned" }] }));
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
     apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
 
     const { container } = renderApp(["/search"]);
@@ -975,7 +1027,7 @@ describe("App Slice A.4 search workspace", () => {
 
   it("creates a reassessment case without refetching search and refreshes workspace/history to the new case", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
-    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult({ result_key: "site-1:GMP:canonical:line-p2", production_line_id: "line-uuid-2", production_line_code: "A", line_code: "A" })], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace
       .mockResolvedValueOnce(
         buildWorkspace({
@@ -1070,6 +1122,7 @@ describe("App Slice A.4 search workspace", () => {
       {
         gxp_type: "GMP",
         line_code: "A",
+        production_line_id: "line-uuid-2",
         applicable_standard: "WHO-GMP",
         source_case_id: "case-1",
       },
@@ -1084,6 +1137,7 @@ describe("App Slice A.4 search workspace", () => {
     await waitFor(() => {
       expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2);
     });
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("line-uuid-2");
     await waitFor(() => {
       expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
     });
@@ -1096,7 +1150,7 @@ describe("App Slice A.4 search workspace", () => {
 
   it("keeps the reassessment dialog open while submit is pending and allows escape close when idle", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
-    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult({ result_key: "site-1:GMP:canonical:line-p2", production_line_id: "line-uuid-2", production_line_code: "A", line_code: "A" })], total_count: 1, offset: 0, limit: 100 });
     const reassessmentReadyWorkspace = buildWorkspace({
       action_readiness: buildWorkspace().action_readiness.map((item) =>
         item.action_key === "create_reassessment_case"
@@ -1357,8 +1411,8 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.searchFacilities
       .mockResolvedValueOnce({
         items: [
-          buildSearchResult({ result_key: "site-1:GMP:A", context_code: "1.1A" }),
-          buildSearchResult({ result_key: "site-1:GMP:B", context_code: "1.1B", line_code: "B" }),
+          buildSearchResult({ result_key: "site-1:GMP:canonical:line-p1", context_code: "1.1A", production_line_id: "line-p1", production_line_code: "A", line_code: "A" }),
+          buildSearchResult({ result_key: "site-1:GMP:canonical:line-p2", context_code: "1.1B", production_line_id: "line-p2", production_line_code: "A", line_code: "A" }),
         ],
         total_count: 3,
         offset: 0,
@@ -1397,10 +1451,38 @@ describe("App Slice A.4 search workspace", () => {
     await waitFor(() => {
       const lastCall = apiMocks.getFacilityWorkspace.mock.calls.at(-1);
       expect(lastCall?.[0]).toBe("site-1");
-      expect(lastCall?.[3]).toBe("GMP");
-      expect(lastCall?.[4]).toBe("B");
+       expect(lastCall?.[3]).toBe("GMP");
+       expect(lastCall?.[4]).toBe("A");
+       expect(lastCall?.[6]).toBe("line-p2");
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Giấy chứng nhận GxP" }));
+    await waitFor(() => {
+      const lastCall = apiMocks.listSiteGxpCertificates.mock.calls.at(-1);
+      expect(lastCall?.[6]).toBe("line-p2");
     });
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not synthesize ProductionLine UUIDs for legacy-unlinked or facility-wide UI selections", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({
+      items: [
+        buildSearchResult({ result_key: "site-1:GMP:legacy:A", context_code: "legacy-A", production_line_id: null, production_line_code: "A", production_line_identity_state: "legacy_unlinked", line_code: "A" }),
+        buildSearchResult({ result_key: "site-1:GMP:facility", context_code: "facility", production_line_id: null, production_line_code: null, production_line_identity_state: "facility_wide", line_code: null }),
+      ], total_count: 2, offset: 0, limit: 100,
+    });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(null);
+    renderApp(["/search"]);
+    expect(await screen.findByText("legacy-A")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("legacy-A"));
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBeNull());
+    fireEvent.click(screen.getByRole("tab", { name: "Giấy chứng nhận GxP" }));
+    await waitFor(() => expect(apiMocks.listSiteGxpCertificates.mock.calls.at(-1)?.[6]).toBeNull());
+    fireEvent.click(screen.getByText("facility"));
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBeNull());
+    fireEvent.click(screen.getByRole("tab", { name: "Giấy chứng nhận GxP" }));
+    await waitFor(() => expect(apiMocks.listSiteGxpCertificates.mock.calls.at(-1)?.[6]).toBeNull());
   });
 
   it("renders history inside the facility tab and uses workflow-step navigation instead of nested peer tabs", async () => {
@@ -1413,7 +1495,7 @@ describe("App Slice A.4 search workspace", () => {
 
     const workspacePanel = await screen.findByRole("tab", { name: "Các đợt kiểm tra & thay đổi" });
     expect(workspacePanel).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("navigation", { name: "Quy trình xử lý sự kiện" })).toBeInTheDocument();
+    expect(await screen.findByRole("navigation", { name: "Quy trình xử lý sự kiện" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Thông tin hồ sơ" })).toBeInTheDocument();
     expect(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi")).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Hồ sơ" })).not.toBeInTheDocument();
@@ -1555,7 +1637,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: /Kiểm tra/ }));
-    expect(await screen.findByText("QĐ-KT-01")).toBeInTheDocument();
+    expect((await screen.findAllByText("QĐ-KT-01")).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: /Khắc phục/ }));
     expect(await screen.findByText("Lịch sử khắc phục")).toBeInTheDocument();
@@ -1715,7 +1797,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByText("Thực hiện & kết quả")).toBeInTheDocument();
     expect(screen.getByText("Đoàn kiểm tra")).toBeInTheDocument();
     expect(container.querySelectorAll(".inspection-workspace .detail-form-matrix")).toHaveLength(3);
-    for (const field of ["Từ ngày", "Đến ngày", "Quyết định kiểm tra", "Biên bản kiểm tra", "Tiêu chuẩn áp dụng", "Kết quả kiểm tra"]) {
+    for (const field of ["Từ ngày", "Đến ngày", "Số/Tham chiếu QĐKT", "Biên bản legacy (chỉ đọc)", "Tiêu chuẩn áp dụng", "Kết quả kiểm tra"]) {
       expect(screen.getAllByText(field).length).toBeGreaterThan(0);
     }
     expect(screen.getByRole("button", { name: "Sửa đoàn kiểm tra" })).toBeDisabled();
@@ -1723,7 +1805,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.queryByRole("button", { name: "Chỉnh sửa" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sửa Từ ngày kế hoạch" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sửa Đến ngày kế hoạch" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sửa Từ ngày kiểm tra" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sửa các đợt kiểm tra" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sửa Kết quả kiểm tra" })).toBeInTheDocument();
   });
 
@@ -1790,6 +1872,7 @@ describe("App Slice A.4 search workspace", () => {
           },
           remediation: {
             cycles: [],
+            actions: buildCapaActions(buildCapaAction("create_capa_cycle", true, { expected_version: 8 })),
           },
         }),
       )
@@ -1802,6 +1885,11 @@ describe("App Slice A.4 search workspace", () => {
           },
           remediation: {
             cycles: [buildRemediationCycle({ capa_cycle_id: "capa-2", row_version: 1, round_no: 1, requested_on: "2026-09-02", notes: "Yêu cầu vòng 1" })],
+            actions: buildCapaActions(
+              buildCapaAction("create_capa_cycle", false, { reason_code: "latest_cycle_not_rejected" }),
+              buildCapaAction("submit_capa_cycle:capa-2", true, { expected_version: 1 }),
+              buildCapaAction("update_capa_cycle:capa-2", true, { expected_version: 1 }),
+            ),
           },
         }),
       );
@@ -1836,6 +1924,7 @@ describe("App Slice A.4 search workspace", () => {
       "case-1",
       {
         expected_case_version: 8,
+        incoming_reference: null,
         requested_on: "2026-09-02",
         notes: "Yêu cầu vòng 1",
       },
@@ -1866,6 +1955,7 @@ describe("App Slice A.4 search workspace", () => {
         },
         remediation: {
           cycles: [buildRemediationCycle({ capa_cycle_id: "capa-1", row_version: 4, notes: "Bản nháp cũ" })],
+          actions: buildCapaActions(buildCapaAction("update_capa_cycle:capa-1", true, { expected_version: 4 })),
         },
       }),
     );
@@ -1887,6 +1977,7 @@ describe("App Slice A.4 search workspace", () => {
       "capa-1",
       {
         expected_version: 4,
+        incoming_reference: null,
         requested_on: "2026-08-07",
         notes: "Bản nháp mới",
       },
@@ -1915,6 +2006,7 @@ describe("App Slice A.4 search workspace", () => {
           },
           remediation: {
             cycles: [buildRemediationCycle({ capa_cycle_id: "capa-1", row_version: 2 })],
+            actions: buildCapaActions(buildCapaAction("submit_capa_cycle:capa-1", true, { expected_version: 2 })),
           },
         }),
       )
@@ -1926,6 +2018,7 @@ describe("App Slice A.4 search workspace", () => {
           },
           remediation: {
             cycles: [buildRemediationCycle({ capa_cycle_id: "capa-1", row_version: 3, submitted_on: "2026-09-05", status: "submitted", notes: "Đã nhận hồ sơ" })],
+            actions: buildCapaActions(buildCapaAction("assess_capa_cycle:capa-1", true, { expected_version: 3 })),
           },
         }),
       );
@@ -1950,7 +2043,10 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByText("Chi tiết vòng khắc phục 1")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-05" } });
     fireEvent.change(screen.getByLabelText("Ghi chú thao tác khắc phục"), { target: { value: "Đã nhận hồ sơ" } });
-    fireEvent.click(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" }));
+    const submitButton = screen.getByRole("button", { name: "Ghi nhận tiếp nhận" });
+    expect(screen.getByLabelText("Ngày ghi nhận tiếp nhận")).toHaveValue("2026-09-05");
+    expect(submitButton).toBeEnabled();
+    fireEvent.click(submitButton);
 
     await waitFor(() => {
       expect(apiMocks.submitCapaCycle).toHaveBeenCalledTimes(1);
@@ -1987,6 +2083,9 @@ describe("App Slice A.4 search workspace", () => {
         },
         remediation: {
           cycles: [buildRemediationCycle({ capa_cycle_id: "capa-1", row_version: 3, submitted_on: "2026-09-05", status: "submitted", notes: "Đã nhận hồ sơ" })],
+          // The projection was fresh when the command was rendered; the mocked
+          // 403 proves mutation enforcement remains authoritative after that.
+          actions: buildCapaActions(buildCapaAction("assess_capa_cycle:capa-1", true, { expected_version: 3 })),
         },
       }),
     );
@@ -1998,7 +2097,11 @@ describe("App Slice A.4 search workspace", () => {
     fireEvent.change(screen.getByLabelText("Ngày đánh giá khắc phục"), { target: { value: "2026-09-06" } });
     fireEvent.change(screen.getByLabelText("Kết quả đánh giá khắc phục"), { target: { value: "accepted" } });
     fireEvent.change(screen.getByLabelText("Ghi chú thao tác khắc phục"), { target: { value: "Đạt yêu cầu" } });
-    fireEvent.click(screen.getByRole("button", { name: "Đánh giá" }));
+    const assessButton = screen.getByRole("button", { name: "Đánh giá" });
+    expect(screen.getByLabelText("Ngày đánh giá khắc phục")).toHaveValue("2026-09-06");
+    expect(screen.getByLabelText("Kết quả đánh giá khắc phục")).toHaveValue("accepted");
+    expect(assessButton).toBeEnabled();
+    fireEvent.click(assessButton);
 
     await waitFor(() => {
       expect(apiMocks.assessCapaCycle).toHaveBeenCalledTimes(1);
@@ -2074,9 +2177,6 @@ describe("App Slice A.4 search workspace", () => {
       {
         expected_version: 3,
         plan_start_on: "2026-09-01",
-        plan_end_on: "2026-08-05",
-        planning_sheet_name: "KHKT-OLD",
-        decision_document_hint: null,
       },
       expect.objectContaining({
         username: "operator.local",
@@ -2095,9 +2195,13 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
   });
 
-  it("saves case application with expected_version, refreshes only selected workspace, and keeps selection intact", async () => {
+  it.each([
+    ["canonical P2", buildSearchResult({ result_key: "site-1:GMP:canonical:line-p2", production_line_id: "line-uuid-2", production_line_code: "A", line_code: "A" }), "line-uuid-2", "A"],
+    ["legacy-unlinked", buildSearchResult({ result_key: "site-1:GMP:legacy:A", production_line_id: null, production_line_code: "A", production_line_identity_state: "legacy_unlinked", line_code: "A" }), null, "A"],
+    ["facility-wide", buildSearchResult({ result_key: "site-1:GMP:facility", production_line_id: null, production_line_code: null, production_line_identity_state: "facility_wide", line_code: null }), null, null],
+  ])("saves case application for %s and preserves the selected workspace identity", async (_label, result, expectedProductionLineId, expectedLineCode) => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
-    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.searchFacilities.mockResolvedValue({ items: [result], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace
       .mockResolvedValueOnce(buildWorkspace())
       .mockResolvedValueOnce(buildWorkspace());
@@ -2141,10 +2245,7 @@ describe("App Slice A.4 search workspace", () => {
       "case-1",
       {
         expected_version: 4,
-        submitted_on: "2026-01-15T00:00:00Z",
         dossier_code: "HS-2026-31",
-        dossier_reference: "QĐ-TN-01",
-        applicant_name: "Nguyễn Văn A",
       },
       expect.objectContaining({
         username: "operator.local",
@@ -2156,6 +2257,8 @@ describe("App Slice A.4 search workspace", () => {
     await waitFor(() => {
       expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2);
     });
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[4]).toBe(expectedLineCode);
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe(expectedProductionLineId);
     await waitFor(() => {
       expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
     });
@@ -2191,7 +2294,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
   });
 
-  it("saves inspection outcome with outcome row_version and refreshes facility history plus selected case only", async () => {
+  it("saves canonical inspection periods with outcome row_version and refreshes facility history plus selected case only", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace
@@ -2214,20 +2317,18 @@ describe("App Slice A.4 search workspace", () => {
           inspection: {
             ...buildCaseWorkspace().inspection,
             outcome_row_version: 7,
-            inspected_on: "2026-09-03",
-            inspected_to_on: "2026-09-04",
-            decision_reference: "QĐ-KT-UPDATED",
+            inspection_period_state: "KNOWN",
+            inspection_period_segments: [{ id: "period-1", ordinal: 1, started_on: "2026-09-03", ended_on: "2026-09-04" }],
+            outcome_decision_reference_compatibility: "QĐ-KT-UPDATED",
             bbkt_reference: "BBKT-UPDATED",
             outcome_result: "Đạt sau cập nhật",
           },
         }),
       );
-    apiMocks.upsertInspectionOutcome.mockResolvedValue({
+    apiMocks.upsertInspectionPeriodSegments.mockResolvedValue({
       case_id: "case-1",
       row_version: 7,
-      inspected_on: "2026-09-03",
-      inspected_to_on: "2026-09-04",
-      decision_reference: "QĐ-KT-UPDATED",
+      outcome_decision_reference_compatibility: "QĐ-KT-UPDATED",
       bbkt_reference: "BBKT-UPDATED",
       outcome_result: "Đạt sau cập nhật",
       audit_event_id: "audit-outcome-1",
@@ -2237,22 +2338,20 @@ describe("App Slice A.4 search workspace", () => {
     const { container } = renderApp(["/search?event_tab=Ki%E1%BB%83m+tra"]);
 
     expect(await screen.findByText("Thực hiện & kết quả")).toBeInTheDocument();
-    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Từ ngày kiểm tra" }));
-    fireEvent.change(screen.getByLabelText("Từ ngày kiểm tra"), { target: { value: "2026-09-03" } });
-    fireEvent.click(screen.getByRole("button", { name: "Lưu Từ ngày kiểm tra" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sửa các đợt kiểm tra" }));
+    fireEvent.click(screen.getByRole("button", { name: "Thêm lần kiểm tra" }));
+    fireEvent.change(screen.getByLabelText("Từ ngày lần 1"), { target: { value: "2026-09-03" } });
+    fireEvent.change(screen.getByLabelText("Đến ngày lần 1"), { target: { value: "2026-09-04" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu các đợt kiểm tra" }));
 
     await waitFor(() => {
-      expect(apiMocks.upsertInspectionOutcome).toHaveBeenCalledTimes(1);
+      expect(apiMocks.upsertInspectionPeriodSegments).toHaveBeenCalledTimes(1);
     });
-    expect(apiMocks.upsertInspectionOutcome).toHaveBeenCalledWith(
+    expect(apiMocks.upsertInspectionPeriodSegments).toHaveBeenCalledWith(
       "case-1",
       {
         expected_version: 6,
-        inspected_on: "2026-09-03",
-        inspected_to_on: "2026-08-06",
-        decision_reference: "QĐ-KT-01",
-        bbkt_reference: "BBKT-01",
-        outcome_result: "Đạt WHO-GMP dây chuyền A",
+        segments: [{ ordinal: 1, started_on: "2026-09-03", ended_on: "2026-09-04" }],
       },
       expect.objectContaining({
         username: "operator.local",
@@ -2800,5 +2899,541 @@ describe("App Slice A.4 search workspace", () => {
 
     expect(await screen.findByText("Chưa có giấy chứng nhận GxP")).toBeInTheDocument();
     expect(screen.queryByText("Nguồn gốc")).not.toBeInTheDocument();
+  });
+
+  it("keeps q distinct from facility_name and exposes it as an active filter", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp(["/search?q=KT-2026-001&facility_name=Factory%20Alpha"]);
+
+    await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalled());
+    expect(apiMocks.searchFacilities.mock.calls[0][0]).toMatchObject({ q: "KT-2026-001", facility_name: "Factory Alpha" });
+    expect(await screen.findByText("Từ khóa: KT-2026-001")).toBeInTheDocument();
+  });
+
+  it("builds an exact Dashboard GLP deep link and opens its selected history", async () => {
+    const resultKey = "site-1:GLP:canonical:line-glp";
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.getDashboardSummary.mockResolvedValue({
+      total_facilities: 1, total_cases: 1, active_cases: 1, waiting_inspection: 0,
+      waiting_certificate_decision: 0, active_certificates: 0, expiring_certificates_90_days: 0,
+      incomplete_changes: 0,
+      queue: [{ case_id: "case-glp", site_id: "site-1", result_key: resultKey, facility_name: "Factory GLP", company_name: "Company", gxp_type: "GLP", state: "planned", reference_code: "KT-2026-GLP-001", opened_year: 2026 }],
+    });
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult({ result_key: resultKey, gxp_type: "GLP", production_line_id: "line-glp", line_code: "A" })], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [{ id: "case-glp", source_type: "case", title: "GLP case", occurred_on: "2026-01-01", state: "planned" }] }));
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+
+    renderApp(["/"]);
+    const link = await screen.findByRole("link", { name: "KT-2026-GLP-001" });
+    expect(link).toHaveAttribute("href", expect.stringContaining("gxp_type=GLP"));
+    expect(link).toHaveAttribute("href", expect.stringContaining("result_key=site-1%3AGLP%3Acanonical%3Aline-glp"));
+    fireEvent.click(link);
+
+    await waitFor(() => expect(apiMocks.searchFacilities.mock.calls.at(-1)?.[0]).toMatchObject({ q: "KT-2026-GLP-001", gxp_type: "GLP" }));
+    await waitFor(() => expect(apiMocks.getCaseWorkspace.mock.calls.at(-1)?.[0]).toBe("case-glp"));
+  });
+
+  it("resolves an explicit result_key on a later page without selecting page one", async () => {
+    const target = buildSearchResult({ result_key: "site-1:GLP:canonical:line-target", gxp_type: "GLP", production_line_id: "line-target", line_code: "A" });
+    const firstPage = Array.from({ length: 100 }, (_, index) => buildSearchResult({
+      result_key: `site-1:GLP:canonical:line-${index}`,
+      gxp_type: "GLP",
+      production_line_id: `line-${index}`,
+      line_code: "A",
+    }));
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities
+      .mockResolvedValueOnce({ items: firstPage, total_count: 101, offset: 0, limit: 100 })
+      .mockResolvedValueOnce({ items: [target], total_count: 101, offset: 100, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp(["/search?gxp_type=GLP&result_key=site-1%3AGLP%3Acanonical%3Aline-target"]);
+
+    await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("line-target"));
+    expect(apiMocks.searchFacilities.mock.calls.map((call) => call[0].offset)).toEqual([0, 100]);
+  });
+
+  it("fails safe when an explicit result_key is stale instead of opening the first row", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult({ result_key: "site-1:GMP:canonical:other" })], total_count: 1, offset: 0, limit: 100 });
+
+    renderApp(["/search?result_key=site-1%3AGMP%3Acanonical%3Amissing"]);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Không tìm thấy ngữ cảnh được liên kết");
+    expect(apiMocks.getFacilityWorkspace).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(apiMocks.getFacilityWorkspace).not.toHaveBeenCalled();
+    expect(screen.getByRole("row", { name: /1\.1A/ })).toHaveAttribute("aria-selected", "false");
+
+    fireEvent.click(screen.getByText("1.1A"));
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("keeps a stale explicit result key terminal after multi-page exhaustion", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities
+      .mockResolvedValueOnce({ items: Array.from({ length: 100 }, (_, index) => buildSearchResult({ result_key: `site-1:GMP:canonical:other-${index}` })), total_count: 101, offset: 0, limit: 100 })
+      .mockResolvedValueOnce({ items: [buildSearchResult({ result_key: "site-1:GMP:canonical:other-final" })], total_count: 101, offset: 100, limit: 100 });
+
+    renderApp(["/search?result_key=site-1%3AGMP%3Acanonical%3Amissing"]);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Không tìm thấy ngữ cảnh được liên kết");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(apiMocks.searchFacilities.mock.calls.map((call) => call[0].offset)).toEqual([0, 100]);
+    expect(apiMocks.getFacilityWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("loads the exact deep-linked history case and refuses a stale history id", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult({ result_key: "site-1:GMP:canonical:line-uuid-1" })], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [
+      { id: "case-other", source_type: "case", title: "Other", occurred_on: "2026-01-01", state: "planned" },
+      { id: "case-target", source_type: "case", title: "Target", occurred_on: "2026-01-02", state: "planned" },
+    ] }));
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+
+    renderApp(["/search?result_key=site-1%3AGMP%3Acanonical%3Aline-uuid-1&history_id=case-target"]);
+    await waitFor(() => expect(apiMocks.getCaseWorkspace.mock.calls.at(-1)?.[0]).toBe("case-target"));
+  });
+
+  it("does not substitute the first history item for a stale deep-link history id", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [{ id: "case-other", source_type: "case", title: "Other", occurred_on: "2026-01-01", state: "planned" }] }));
+
+    renderApp(["/search?history_id=case-missing"]);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Không tìm thấy hồ sơ được liên kết");
+    expect(apiMocks.getCaseWorkspace).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(apiMocks.getCaseWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("rehydrates a later same-route deep link without clobbering its tabs or target", async () => {
+    const first = buildSearchResult({ result_key: "site-1:GMP:canonical:line-first", production_line_id: "line-first" });
+    const second = buildSearchResult({ result_key: "site-1:GLP:canonical:line-second", gxp_type: "GLP", production_line_id: "line-second" });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockImplementation((params: { gxp_type: string; q?: string }) => Promise.resolve({
+      items: [params.q === "B" ? second : first], total_count: 1, offset: 0, limit: 100,
+    }));
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [{ id: "case-2", source_type: "case", title: "Case two", occurred_on: "2026-01-02", state: "planned" }] }));
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+
+    render(
+      <MemoryRouter initialEntries={["/search?q=A&gxp_type=GMP&result_key=site-1%3AGMP%3Acanonical%3Aline-first&facility_tab=Th%C3%B4ng%20tin%20chung"]}>
+        <SearchRouteNavigator to="/search?q=B&gxp_type=GLP&result_key=site-1%3AGLP%3Acanonical%3Aline-second&history_id=case-2&facility_tab=C%C3%A1c%20%C4%91%E1%BB%A3t%20ki%E1%BB%83m%20tra%20%26%20thay%20%C4%91%E1%BB%95i&event_tab=Ki%E1%BB%83m%20tra" />
+        <App />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("line-first"));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Đi tới ngữ cảnh khác" })); });
+    await waitFor(() => expect(screen.getByTestId("route-location")).toHaveTextContent("gxp_type=GLP"));
+    await waitFor(() => expect(apiMocks.searchFacilities.mock.calls.some((call) => call[0].gxp_type === "GLP")).toBe(true));
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("line-second"));
+    await waitFor(() => expect(apiMocks.getCaseWorkspace.mock.calls.at(-1)?.[0]).toBe("case-2"));
+    expect(apiMocks.searchFacilities.mock.calls.at(-1)?.[0]).toMatchObject({ q: "B", gxp_type: "GLP" });
+    expect(screen.getByRole("tab", { name: "Các đợt kiểm tra & thay đổi" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("button", { name: "Kiểm tra" })).toHaveAttribute("aria-current", "step");
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Quay lại ngữ cảnh trước" })); });
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("line-first"));
+    expect(apiMocks.searchFacilities.mock.calls.at(-1)?.[0]).toMatchObject({ q: "A", gxp_type: "GMP" });
+  });
+
+  it("resolves canonical compatibility hints by UUID rather than shared line code", async () => {
+    const firstCanonical = buildSearchResult({ result_key: "site-1:GMP:canonical:p1", production_line_id: "p1", line_code: "A" });
+    const secondCanonical = buildSearchResult({ result_key: "site-1:GMP:canonical:p2", production_line_id: "p2", line_code: "A" });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [firstCanonical, secondCanonical], total_count: 2, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp(["/search?site_id=site-1&context_gxp=GMP&production_line_id=p2"]);
+
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("p2"));
+  });
+
+  it("R13 resolves a production_line_id-only URL as an explicit canonical target", async () => {
+    const p1 = buildSearchResult({ result_key: "site-1:GMP:canonical:p1", production_line_id: "p1", line_code: "A" });
+    const p2 = buildSearchResult({ result_key: "site-1:GMP:canonical:p2", production_line_id: "p2", line_code: "A" });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [p1, p2], total_count: 2, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp(["/search?production_line_id=p2"]);
+
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("p2"));
+    expect(apiMocks.getFacilityWorkspace.mock.calls.some((call) => call[6] === "p1")).toBe(false);
+  });
+
+  it("R14 keeps a stale production_line_id-only URL terminal and does not open the first row", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult({ production_line_id: "p1", line_code: "A" })], total_count: 1, offset: 0, limit: 100 });
+
+    renderApp(["/search?production_line_id=missing"]);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Không tìm thấy ngữ cảnh được liên kết");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(apiMocks.getFacilityWorkspace).not.toHaveBeenCalled();
+    expect(screen.getByRole("row", { name: /1\.1A/ })).toHaveAttribute("aria-selected", "false");
+  });
+
+  it("R15 resolves a line_code-only URL only to its unique legacy-unlinked context", async () => {
+    const canonical = buildSearchResult({ result_key: "site-1:GMP:canonical:p1", production_line_id: "p1", line_code: "A" });
+    const legacy = buildSearchResult({ result_key: "site-1:GMP:legacy:A", production_line_id: null, production_line_identity_state: "legacy_unlinked", line_code: "A" });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [canonical, legacy], total_count: 2, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp(["/search?line_code=A"]);
+
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBeNull());
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[4]).toBe("A");
+    expect(apiMocks.getFacilityWorkspace.mock.calls.some((call) => call[6] === "p1")).toBe(false);
+  });
+
+  it("R16 fails safe for an ambiguous line_code-only URL", async () => {
+    const firstLegacy = buildSearchResult({ result_key: "site-1:GMP:legacy:A:one", production_line_id: null, production_line_identity_state: "legacy_unlinked", line_code: "A" });
+    const secondLegacy = buildSearchResult({ result_key: "site-1:GLP:legacy:A:two", gxp_type: "GMP", production_line_id: null, production_line_identity_state: "legacy_unlinked", line_code: "A" });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [firstLegacy, secondLegacy], total_count: 2, offset: 0, limit: 100 });
+
+    renderApp(["/search?line_code=A"]);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Không tìm thấy ngữ cảnh được liên kết");
+    expect(apiMocks.getFacilityWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("R17 normalizes a legacy line hint before resolving its unique context", async () => {
+    const legacy = buildSearchResult({ result_key: "site-1:GMP:legacy:A", production_line_id: null, production_line_identity_state: "legacy_unlinked", line_code: "A" });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [legacy], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp(["/search?site_id=site-1&context_gxp=GMP&line_code=%20A%20"]);
+
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBeNull());
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[4]).toBe("A");
+  });
+
+  it("R18 treats a blank line_code as no legacy identity and never synthesizes a UUID", async () => {
+    const canonical = buildSearchResult({ result_key: "site-1:GMP:canonical:p1", production_line_id: "p1", line_code: "A" });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [canonical], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp(["/search?line_code=%20%20%20"]);
+
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("p1"));
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[4]).toBe("A");
+  });
+
+  it("R19 resolves a GLP production_line_id-only target without synthesizing a GMP filter", async () => {
+    const gmp = buildSearchResult({ result_key: "site-1:GMP:canonical:p1", production_line_id: "p1", line_code: "A" });
+    const glp = buildSearchResult({ result_key: "site-1:GLP:canonical:p2", gxp_type: "GLP", production_line_id: "p2", line_code: "A" });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [gmp, glp], total_count: 2, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp(["/search?production_line_id=p2"]);
+
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[3]).toBe("GLP"));
+    expect(apiMocks.searchFacilities.mock.calls[0][0].gxp_type).toBeNull();
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("p2");
+  });
+
+  it("R20 resolves a GLP line_code-only target without selecting a same-code canonical row", async () => {
+    const canonical = buildSearchResult({ result_key: "site-1:GMP:canonical:p1", production_line_id: "p1", line_code: "A" });
+    const legacyGlp = buildSearchResult({ result_key: "site-1:GLP:legacy:A", gxp_type: "GLP", production_line_id: null, production_line_identity_state: "legacy_unlinked", line_code: "A" });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [canonical, legacyGlp], total_count: 2, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp(["/search?line_code=A"]);
+
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[3]).toBe("GLP"));
+    expect(apiMocks.searchFacilities.mock.calls[0][0].gxp_type).toBeNull();
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBeNull();
+  });
+
+  it("R21 lets context_gxp constrain a production_line_id target without injecting gxp_type", async () => {
+    const gmp = buildSearchResult({ result_key: "site-1:GMP:canonical:p2", production_line_id: "p2", line_code: "A" });
+    const glp = buildSearchResult({ result_key: "site-1:GLP:canonical:p2", gxp_type: "GLP", production_line_id: "p2", line_code: "A" });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [glp], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp(["/search?site_id=site-1&context_gxp=GLP&production_line_id=p2"]);
+
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[3]).toBe("GLP"));
+    expect(apiMocks.searchFacilities.mock.calls[0][0]).toMatchObject({ gxp_type: "GLP" });
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe(glp.production_line_id);
+    expect(gmp.gxp_type).toBe("GMP");
+  });
+
+  it("R22 fails safe after discovering a second compatible legacy line on a later page", async () => {
+    const firstPage = [
+      buildSearchResult({ result_key: "site-1:GMP:legacy:A:one", production_line_id: null, production_line_identity_state: "legacy_unlinked", line_code: "A" }),
+      ...Array.from({ length: 99 }, (_, index) => buildSearchResult({ result_key: `site-1:GMP:canonical:other-${index}`, production_line_id: `other-${index}`, line_code: "B" })),
+    ];
+    const secondLegacy = buildSearchResult({ result_key: "site-2:GMP:legacy:A:two", site_id: "site-2", production_line_id: null, production_line_identity_state: "legacy_unlinked", line_code: "A" });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities
+      .mockResolvedValueOnce({ items: firstPage, total_count: 101, offset: 0, limit: 100 })
+      .mockResolvedValueOnce({ items: [secondLegacy], total_count: 101, offset: 100, limit: 100 });
+
+    renderApp(["/search?line_code=A"]);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Không tìm thấy ngữ cảnh được liên kết");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(apiMocks.searchFacilities.mock.calls.map((call) => call[0].offset)).toEqual([0, 100]);
+    expect(apiMocks.getFacilityWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("R23 resolves a unique compatibility hint only after exhausting later pages", async () => {
+    const firstPage = [
+      buildSearchResult({ result_key: "site-1:GMP:legacy:A", production_line_id: null, production_line_identity_state: "legacy_unlinked", line_code: "A" }),
+      ...Array.from({ length: 99 }, (_, index) => buildSearchResult({ result_key: `site-1:GMP:canonical:other-${index}`, production_line_id: `other-${index}`, line_code: "B" })),
+    ];
+    let resolveSecondPage!: (value: { items: ReturnType<typeof buildSearchResult>[]; total_count: number; offset: number; limit: number }) => void;
+    const secondPage = new Promise<{ items: ReturnType<typeof buildSearchResult>[]; total_count: number; offset: number; limit: number }>((resolve) => { resolveSecondPage = resolve; });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities
+      .mockResolvedValueOnce({ items: firstPage, total_count: 101, offset: 0, limit: 100 })
+      .mockReturnValueOnce(secondPage);
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp(["/search?line_code=A"]);
+
+    await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2));
+    expect(apiMocks.getFacilityWorkspace).not.toHaveBeenCalled();
+    resolveSecondPage({ items: [buildSearchResult({ result_key: "site-1:GMP:canonical:final", production_line_id: "final", line_code: "B" })], total_count: 101, offset: 100, limit: 100 });
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBeNull());
+    expect(apiMocks.searchFacilities.mock.calls.map((call) => call[0].offset)).toEqual([0, 100, 0]);
+  });
+
+  it("R24 fails safe when a UUID-only target spans more than one regulatory context", async () => {
+    const gmp = buildSearchResult({ result_key: "site-1:GMP:canonical:p2", production_line_id: "p2", line_code: "A" });
+    const glp = buildSearchResult({ result_key: "site-1:GLP:canonical:p2", gxp_type: "GLP", production_line_id: "p2", line_code: "A" });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [gmp, glp], total_count: 2, offset: 0, limit: 100 });
+
+    renderApp(["/search?production_line_id=p2"]);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Không tìm thấy ngữ cảnh được liên kết");
+    expect(apiMocks.getFacilityWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("R25 fails closed for contradictory explicit gxp_type and context_gxp hints", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+
+    renderApp(["/search?gxp_type=GMP&context_gxp=GLP&production_line_id=p2"]);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("không hợp lệ hoặc mâu thuẫn");
+    expect(apiMocks.searchFacilities).not.toHaveBeenCalled();
+    expect(apiMocks.getFacilityWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("R26 resolves an exact GLP result_key without a synthesized GMP filter", async () => {
+    const glp = buildSearchResult({ result_key: "site-1:GLP:canonical:p2", gxp_type: "GLP", production_line_id: "p2", line_code: "A" });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [glp], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp(["/search?result_key=site-1%3AGLP%3Acanonical%3Ap2"]);
+
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[3]).toBe("GLP"));
+    expect(apiMocks.searchFacilities.mock.calls[0][0].gxp_type).toBeNull();
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("p2");
+  });
+
+  it("R27 keeps ordinary pagination available after an exact target resolves on page one", async () => {
+    const target = buildSearchResult({ result_key: "site-1:GMP:canonical:target", production_line_id: "target", facility_name: "Target GMP" });
+    const firstPage = [target, ...Array.from({ length: 99 }, (_, index) => buildSearchResult({
+      result_key: `site-1:GMP:canonical:first-${index}`,
+      production_line_id: `first-${index}`,
+      facility_name: `First GMP ${index}`,
+    }))];
+    const secondPage = Array.from({ length: 100 }, (_, index) => buildSearchResult({
+      result_key: `site-1:GMP:canonical:second-${index}`,
+      production_line_id: `second-${index}`,
+      facility_name: `Second GMP ${index}`,
+    }));
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities
+      .mockResolvedValueOnce({ items: firstPage, total_count: 201, offset: 0, limit: 100 })
+      .mockResolvedValueOnce({ items: secondPage, total_count: 201, offset: 100, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp(["/search?gxp_type=GMP&result_key=site-1%3AGMP%3Acanonical%3Atarget"]);
+
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("target"));
+    const scrollRegion = screen.getByTestId("facility-table-scroll");
+    Object.defineProperties(scrollRegion, {
+      scrollTop: { configurable: true, value: 260 },
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 400 },
+    });
+    fireEvent.scroll(scrollRegion);
+
+    await waitFor(() => expect(apiMocks.searchFacilities.mock.calls.map((call) => call[0].offset)).toEqual([0, 100]));
+    expect(apiMocks.searchFacilities.mock.calls.every((call) => call[0].gxp_type === "GMP")).toBe(true);
+  });
+
+  it("R28 reconciles an unfiltered cross-GxP lookup into a coherent settled result universe", async () => {
+    const gmpLookupOnly = buildSearchResult({
+      result_key: "site-1:GMP:canonical:p1", production_line_id: "p1", facility_name: "Lookup-only GMP",
+    });
+    const glpTarget = buildSearchResult({
+      result_key: "site-1:GLP:canonical:p2", gxp_type: "GLP", production_line_id: "p2", facility_name: "Settled GLP target",
+    });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockImplementation((params: { gxp_type: string | null }) => Promise.resolve(
+      params.gxp_type === "GLP"
+        ? { items: [glpTarget], total_count: 1, offset: 0, limit: 100 }
+        : { items: [gmpLookupOnly, glpTarget], total_count: 2, offset: 0, limit: 100 },
+    ));
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp(["/search?production_line_id=p2"]);
+
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("p2"));
+    await waitFor(() => expect(apiMocks.searchFacilities.mock.calls.map((call) => call[0].gxp_type)).toEqual([null, "GLP"]));
+    expect(await screen.findByText("Settled GLP target")).toBeInTheDocument();
+    expect(screen.queryByText("Lookup-only GMP")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "GLP" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("R29 restarts settled pagination at the settled GxP offset rather than an unfiltered lookup offset", async () => {
+    const target = buildSearchResult({
+      result_key: "site-1:GLP:canonical:p2", gxp_type: "GLP", production_line_id: "p2", facility_name: "GLP target",
+    });
+    const settledFirstPage = [
+      target,
+      buildSearchResult({ result_key: "site-1:GLP:canonical:p3", gxp_type: "GLP", production_line_id: "p3", facility_name: "GLP second" }),
+    ];
+    const settledSecondPage = [buildSearchResult({ result_key: "site-1:GLP:canonical:p4", gxp_type: "GLP", production_line_id: "p4", facility_name: "GLP third" })];
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockImplementation((params: { gxp_type: string | null; offset: number }) => Promise.resolve(
+      params.gxp_type === null
+        ? { items: [buildSearchResult({ facility_name: "Lookup GMP" }), target], total_count: 101, offset: 0, limit: 100 }
+        : params.offset === 0
+          ? { items: settledFirstPage, total_count: 3, offset: 0, limit: 100 }
+          : { items: settledSecondPage, total_count: 3, offset: 2, limit: 100 },
+    ));
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp(["/search?result_key=site-1%3AGLP%3Acanonical%3Ap2"]);
+
+    await waitFor(() => expect(apiMocks.searchFacilities.mock.calls.map((call) => [call[0].gxp_type, call[0].offset])).toEqual([[null, 0], ["GLP", 0]]));
+    const scrollRegion = screen.getByTestId("facility-table-scroll");
+    Object.defineProperties(scrollRegion, {
+      scrollTop: { configurable: true, value: 260 },
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 400 },
+    });
+    fireEvent.scroll(scrollRegion);
+
+    await waitFor(() => expect(apiMocks.searchFacilities.mock.calls.map((call) => [call[0].gxp_type, call[0].offset])).toEqual([[null, 0], ["GLP", 0], ["GLP", 2]]));
+    expect(await screen.findByText("GLP third")).toBeInTheDocument();
+  });
+
+  it("R30 resolves an exact page-two target and continues from the settled query's later page", async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => buildSearchResult({
+      result_key: `site-1:GLP:canonical:first-${index}`,
+      gxp_type: "GLP",
+      production_line_id: `first-${index}`,
+    }));
+    const target = buildSearchResult({ result_key: "site-1:GLP:canonical:target", gxp_type: "GLP", production_line_id: "target", facility_name: "Page two GLP target" });
+    const secondPage = [target, ...Array.from({ length: 99 }, (_, index) => buildSearchResult({
+      result_key: `site-1:GLP:canonical:second-${index}`,
+      gxp_type: "GLP",
+      production_line_id: `second-${index}`,
+    }))];
+    const thirdPage = [buildSearchResult({ result_key: "site-1:GLP:canonical:third", gxp_type: "GLP", production_line_id: "third", facility_name: "Page three GLP" })];
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities
+      .mockResolvedValueOnce({ items: firstPage, total_count: 201, offset: 0, limit: 100 })
+      .mockResolvedValueOnce({ items: secondPage, total_count: 201, offset: 100, limit: 100 })
+      .mockResolvedValueOnce({ items: thirdPage, total_count: 201, offset: 200, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp(["/search?gxp_type=GLP&result_key=site-1%3AGLP%3Acanonical%3Atarget"]);
+
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("target"));
+    const scrollRegion = screen.getByTestId("facility-table-scroll");
+    Object.defineProperties(scrollRegion, {
+      scrollTop: { configurable: true, value: 260 },
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 400 },
+    });
+    fireEvent.scroll(scrollRegion);
+
+    await waitFor(() => expect(apiMocks.searchFacilities.mock.calls.map((call) => call[0].offset)).toEqual([0, 100, 200]));
+    expect(await screen.findByText("Page three GLP")).toBeInTheDocument();
+  });
+
+  it("R31 settles a reconciled target without repeated search or workspace requests", async () => {
+    const target = buildSearchResult({ result_key: "site-1:GLP:canonical:p2", gxp_type: "GLP", production_line_id: "p2" });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockImplementation((params: { gxp_type: string | null }) => Promise.resolve(
+      params.gxp_type === "GLP"
+        ? { items: [target], total_count: 1, offset: 0, limit: 100 }
+        : { items: [buildSearchResult({ production_line_id: "p1" }), target], total_count: 2, offset: 0, limit: 100 },
+    ));
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp(["/search?production_line_id=p2"]);
+
+    await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("p2"));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it("R32 keeps a stale explicit target terminal when ordinary transport is no longer globally blocked", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({
+      items: [buildSearchResult({ result_key: "site-1:GMP:canonical:other", production_line_id: "other" })],
+      total_count: 1,
+      offset: 0,
+      limit: 100,
+    });
+
+    renderApp(["/search?result_key=site-1%3AGMP%3Acanonical%3Amissing"]);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Không tìm thấy ngữ cảnh được liên kết");
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(apiMocks.getFacilityWorkspace).not.toHaveBeenCalled();
+    expect(screen.getByRole("row", { name: /1\.1A/ })).toHaveAttribute("aria-selected", "false");
+  });
+
+  it("resolves legacy compatibility hints without selecting a same-code canonical row", async () => {
+    const canonical = buildSearchResult({ result_key: "site-1:GMP:canonical:p1", production_line_id: "p1", line_code: "A" });
+    const legacy = buildSearchResult({ result_key: "site-1:GMP:legacy:A", production_line_id: null, production_line_identity_state: "legacy_unlinked", line_code: "A" });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [canonical, legacy], total_count: 2, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp(["/search?site_id=site-1&context_gxp=GMP&line_code=A"]);
+
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBeNull());
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[4]).toBe("A");
+  });
+
+  it("fails safe when compatibility hints are ambiguous", async () => {
+    const legacy = buildSearchResult({ result_key: "site-1:GMP:legacy:A:one", production_line_id: null, production_line_identity_state: "legacy_unlinked", line_code: "A" });
+    const duplicate = buildSearchResult({ result_key: "site-1:GMP:legacy:A:two", production_line_id: null, production_line_identity_state: "legacy_unlinked", line_code: "A" });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [legacy, duplicate], total_count: 2, offset: 0, limit: 100 });
+
+    renderApp(["/search?site_id=site-1&context_gxp=GMP&line_code=A"]);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Không tìm thấy ngữ cảnh được liên kết");
+    expect(apiMocks.getFacilityWorkspace).not.toHaveBeenCalled();
   });
 });

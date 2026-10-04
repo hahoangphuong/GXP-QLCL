@@ -17,6 +17,7 @@ import {
   openCaseDocumentCurrentContent,
   getGenerationRun,
   listCases,
+  listSiteGxpCertificates,
   listCompanies,
   listSites,
   prepareDocument,
@@ -30,6 +31,10 @@ import {
   issueGxpCertificate,
   upsertInspectionOutcome,
   upsertInspectionPlan,
+  upsertInspectionPeriodSegments,
+  createInspectionApprovalSubmission,
+  completeInspectionApprovalSubmission,
+  transitionCase,
 } from "./api";
 
 type MockJsonResponse = {
@@ -409,6 +414,22 @@ describe("frontend API routing contract", () => {
     );
   });
 
+  it("keeps the general q search and facility-name filter as distinct parameters", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await searchFacilities(
+      { q: "KT-2026-001", facility_name: "Factory Alpha", limit: 100 },
+      { username: "operator.local", role: "manager" },
+      true,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/search/facilities?q=KT-2026-001&facility_name=Factory+Alpha&limit=100",
+      expect.any(Object),
+    );
+  });
+
   it("passes gxp_type through facility workspace requests", async () => {
     const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: { summary: {}, history: [] } }));
     vi.stubGlobal("fetch", fetchMock);
@@ -416,6 +437,33 @@ describe("frontend API routing contract", () => {
     await getFacilityWorkspace("site-123", { username: "operator.local", role: "manager" }, true, "GLP");
 
     expect(fetchMock).toHaveBeenCalledWith("/api/sites/site-123/workspace?gxp_type=GLP", expect.any(Object));
+  });
+
+  it("preserves a canonical ProductionLine UUID in workspace and certificate-list URLs", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: { summary: {}, history: [], items: [] } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getFacilityWorkspace("site-123", { username: "operator.local", role: "manager" }, true, "GMP", "A", undefined, "line-uuid-2");
+    await listSiteGxpCertificates("site-123", { username: "operator.local", role: "manager" }, true, "GMP", "A", undefined, "line-uuid-2");
+
+    expect(fetchMock.mock.calls[0][0]).toContain("production_line_id=line-uuid-2");
+    expect(fetchMock.mock.calls[1][0]).toContain("production_line_id=line-uuid-2");
+  });
+
+  it("keeps same-code UUID contexts distinct and never synthesizes a legacy or facility owner", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: { summary: {}, history: [] } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getFacilityWorkspace("site-123", { username: "operator.local", role: "manager" }, true, "GMP", "A", undefined, "line-uuid-p1");
+    await getFacilityWorkspace("site-123", { username: "operator.local", role: "manager" }, true, "GMP", "A", undefined, "line-uuid-p2");
+    await getFacilityWorkspace("site-123", { username: "operator.local", role: "manager" }, true, "GMP", "A");
+    await getFacilityWorkspace("site-123", { username: "operator.local", role: "manager" }, true, "GMP");
+
+    expect(fetchMock.mock.calls[0][0]).toContain("production_line_id=line-uuid-p1");
+    expect(fetchMock.mock.calls[1][0]).toContain("production_line_id=line-uuid-p2");
+    expect(fetchMock.mock.calls[0][0]).not.toBe(fetchMock.mock.calls[1][0]);
+    expect(fetchMock.mock.calls[2][0]).not.toContain("production_line_id=");
+    expect(fetchMock.mock.calls[3][0]).not.toContain("production_line_id=");
   });
 
   it("posts inspection-case creation to the canonical site workflow endpoint with exactly one /api prefix", async () => {
@@ -427,6 +475,7 @@ describe("frontend API routing contract", () => {
       {
         gxp_type: "GMP",
         line_code: "A",
+        production_line_id: "line-uuid-1",
         applicable_standard: "WHO-GMP",
       },
       { username: "operator.local", role: "manager" },
@@ -444,6 +493,7 @@ describe("frontend API routing contract", () => {
         body: JSON.stringify({
           gxp_type: "GMP",
           line_code: "A",
+          production_line_id: "line-uuid-1",
           applicable_standard: "WHO-GMP",
         }),
       }),
@@ -461,7 +511,6 @@ describe("frontend API routing contract", () => {
         expected_version: 1,
         submitted_on: "2026-08-31T00:00:00Z",
         dossier_code: "HS-2026-01",
-        dossier_reference: "CV-123",
         applicant_name: "Nguyễn Văn A",
       },
       { username: "operator.local", role: "manager" },
@@ -480,7 +529,6 @@ describe("frontend API routing contract", () => {
           expected_version: 1,
           submitted_on: "2026-08-31T00:00:00Z",
           dossier_code: "HS-2026-01",
-          dossier_reference: "CV-123",
           applicant_name: "Nguyễn Văn A",
         }),
       }),
@@ -536,7 +584,8 @@ describe("frontend API routing contract", () => {
         plan_start_on: "2026-09-01",
         plan_end_on: "2026-09-02",
         planning_sheet_name: "KHKT-01",
-        decision_document_hint: "QD-01",
+        decision_reference: "QD-01",
+        decision_date: "2026-09-01",
       },
       { username: "operator.local", role: "manager" },
       true,
@@ -551,7 +600,8 @@ describe("frontend API routing contract", () => {
           plan_start_on: "2026-09-01",
           plan_end_on: "2026-09-02",
           planning_sheet_name: "KHKT-01",
-          decision_document_hint: "QD-01",
+          decision_reference: "QD-01",
+          decision_date: "2026-09-01",
         }),
       }),
     );
@@ -567,9 +617,9 @@ describe("frontend API routing contract", () => {
         expected_version: 1,
         inspected_on: "2026-09-03",
         inspected_to_on: "2026-09-04",
-        decision_reference: "QD-02",
-        bbkt_reference: "BBKT-02",
         outcome_result: "Đạt",
+        minutes_recorded_on: "2026-09-04",
+        compliance_due_on: "2026-10-04",
       },
       { username: "operator.local", role: "manager" },
       true,
@@ -583,12 +633,45 @@ describe("frontend API routing contract", () => {
           expected_version: 1,
           inspected_on: "2026-09-03",
           inspected_to_on: "2026-09-04",
-          decision_reference: "QD-02",
-          bbkt_reference: "BBKT-02",
           outcome_result: "Đạt",
+          minutes_recorded_on: "2026-09-04",
+          compliance_due_on: "2026-10-04",
         }),
       }),
     );
+  });
+
+  it("uses dedicated canonical period, approval, and transition endpoints", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: { case_id: "case-123", row_version: 2 } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const auth = { username: "operator.local", role: "manager" } as const;
+
+    await upsertInspectionPeriodSegments("case-123", {
+      expected_version: 1,
+      segments: [{ ordinal: 1, started_on: "2026-09-03", ended_on: "2026-09-04" }],
+    }, auth, true);
+    await createInspectionApprovalSubmission("case-123", "PCT", {
+      reference: "PCT-01", submitted_on: "2026-09-04", submitted_time: "09:30", reason: "Trình",
+    }, auth, true);
+    await completeInspectionApprovalSubmission("approval-1", {
+      expected_version: 3, completed_on: "2026-09-05", completed_time: "10:15", reason: "Đủ điều kiện",
+    }, auth, true);
+    await transitionCase("case-123", { expected_version: 8, target_state: "planned", reason: "Đủ điều kiện" }, auth, true);
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/cases/case-123/outcome/period-segments",
+      "/api/cases/case-123/approval-submissions/PCT",
+      "/api/approval-submissions/approval-1/complete",
+      "/api/cases/case-123/transition",
+    ]);
+    expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({
+      method: "PUT",
+      body: JSON.stringify({ expected_version: 1, segments: [{ ordinal: 1, started_on: "2026-09-03", ended_on: "2026-09-04" }] }),
+    }));
+    expect(fetchMock.mock.calls[3][1]).toEqual(expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ expected_version: 8, target_state: "planned", reason: "Đủ điều kiện" }),
+    }));
   });
 
   it("posts CAPA cycle creation to the canonical case endpoint with case row_version concurrency", async () => {

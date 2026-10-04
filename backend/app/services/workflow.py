@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from backend.app.audit_payload import normalize_and_redact_audit_payload
@@ -39,6 +39,7 @@ from backend.app.db.models.phase1 import (
     InspectionPlan,
     InspectionApprovalSubmission,
     Person,
+    ProductionLine,
     Site,
     EvaluationScopeTaxonomyNode,
     EvaluationScopeTaxonomyVersion,
@@ -69,15 +70,6 @@ ALLOWED_CASE_TRANSITIONS: dict[CaseState, set[CaseState]] = {
 }
 
 
-CASE_STATE_TO_EVENT: dict[CaseState, InspectionEventType] = {
-    CaseState.APPLICATION_RECEIVED: InspectionEventType.APPLICATION_SUBMITTED,
-    CaseState.UNDER_ASSESSMENT: InspectionEventType.ASSESSMENT_COMPLETED,
-    CaseState.PLANNED: InspectionEventType.PLAN_CREATED,
-    CaseState.DECISION_ISSUED: InspectionEventType.DECISION_ISSUED,
-    CaseState.INSPECTION_COMPLETED: InspectionEventType.INSPECTION_EXECUTED,
-    CaseState.CERTIFIED: InspectionEventType.CERTIFICATE_ISSUED,
-}
-
 CAPA_BLOCKING_STATUSES = {"requested", "submitted"}
 CAPA_ACCEPTED_STATUS = "accepted"
 CAPA_REJECTED_STATUS = "rejected"
@@ -100,6 +92,17 @@ TERMINAL_CASE_STATES = frozenset({CaseState.CLOSED, CaseState.CANCELLED})
 
 
 class CaseWorkflowService:
+    @staticmethod
+    def _provided_fields(fields_set: set[str] | None, defaults: set[str]) -> set[str]:
+        """Keep direct service callers compatible while HTTP preserves omission."""
+        return defaults if fields_set is None else fields_set
+
+    @staticmethod
+    def _assign_provided(row: Any, values: dict[str, Any], provided: set[str]) -> None:
+        for field_name, value in values.items():
+            if field_name in provided:
+                setattr(row, field_name, value)
+
     @staticmethod
     def _normalize_line_code(value: str | None) -> str | None:
         normalized = str(value or "").strip()
@@ -126,6 +129,7 @@ class CaseWorkflowService:
     ) -> list[dict[str, Any]]:
         """Describe the contextual rules still enforced by certificate mutations."""
         certificate = self._get_certificate(session, certificate_id)
+        self._certificate_line_identity(session, certificate)
         version = self._load_latest_certificate_version(session, certificate.id)
         edit_permission = "certificate.edit"
         promote_permission = "certificate.approve"
@@ -187,6 +191,7 @@ class CaseWorkflowService:
         certificate: Certificate,
         version: CertificateVersion,
     ) -> str | None:
+        self._certificate_line_identity(session, certificate)
         if certificate.case_id is not None:
             case = self._get_case(session, certificate.case_id)
             if case.state not in {CaseState.AWAITING_CERTIFICATE_DECISION, CaseState.CERTIFIED}:
@@ -196,14 +201,16 @@ class CaseWorkflowService:
                 return "latest_capa_not_accepted"
         if not version.certificate_number or version.issue_date is None or version.expiry_date is None:
             return "certificate_data_incomplete"
-        current = session.scalars(
+        current_peers = list(session.scalars(
             select(Certificate).where(
-                Certificate.site_id == certificate.site_id,
-                Certificate.certificate_type == certificate.certificate_type,
+                self._certificate_context_clause(session, certificate),
                 Certificate.latest_flag.is_(True),
-            )
-        ).first()
-        if current is not None and current.id != certificate.id:
+            ).order_by(Certificate.id)
+        ))
+        for current in current_peers:
+            self._certificate_line_identity(session, current)
+            if current.id == certificate.id:
+                continue
             current_version = self._load_latest_certificate_version(session, current.id)
             if current_version.issue_date is not None and version.issue_date < current_version.issue_date:
                 return "candidate_issue_date_precedes_current"
@@ -255,6 +262,82 @@ class CaseWorkflowService:
         if row is None:
             raise HTTPException(status_code=404, detail="Case not found.")
         return row
+
+    @staticmethod
+    def _validate_certificate_linked_case(session: Session, certificate: Certificate) -> Case | None:
+        if certificate.case_id is None:
+            return None
+        linked_case = session.get(Case, certificate.case_id)
+        if linked_case is None or linked_case.site_id != certificate.site_id or linked_case.gxp_type != certificate.certificate_type:
+            raise HTTPException(status_code=409, detail="Certificate references an invalid linked Case.")
+        return linked_case
+
+    @staticmethod
+    def _certificate_valid_linked_case_sql():
+        return or_(
+            Certificate.case_id.is_(None),
+            select(Case.id)
+            .where(
+                Case.id == Certificate.case_id,
+                Case.site_id == Certificate.site_id,
+                Case.gxp_type == Certificate.certificate_type,
+            )
+            .correlate(Certificate)
+            .exists(),
+        )
+
+    @classmethod
+    def _certificate_effective_line_code(cls, session: Session, certificate: Certificate) -> str | None:
+        """Return the direct-first compatibility line for a legacy certificate."""
+        linked_case = cls._validate_certificate_linked_case(session, certificate)
+        direct_line_code = cls._normalize_line_code(certificate.line_code)
+        if direct_line_code is not None:
+            return direct_line_code
+        if linked_case is None:
+            return None
+        return cls._normalize_line_code(linked_case.scope_code)
+
+    @staticmethod
+    def _certificate_effective_line_sql():
+        """SQL equivalent of the valid linked-Case compatibility fallback."""
+        direct_line_code = func.nullif(func.trim(Certificate.line_code), "")
+        linked_case_line_code = (
+            select(func.nullif(func.trim(Case.scope_code), ""))
+            .where(
+                Case.id == Certificate.case_id,
+                Case.site_id == Certificate.site_id,
+                Case.gxp_type == Certificate.certificate_type,
+            )
+            .correlate(Certificate)
+            .scalar_subquery()
+        )
+        return func.coalesce(direct_line_code, linked_case_line_code)
+
+    @classmethod
+    def _certificate_line_identity(cls, session: Session, certificate: Certificate) -> dict[str, str | None]:
+        cls._validate_certificate_linked_case(session, certificate)
+        if certificate.production_line_id is not None:
+            line = session.get(ProductionLine, certificate.production_line_id)
+            if line is None or line.site_id != certificate.site_id:
+                raise HTTPException(status_code=409, detail="Certificate references an invalid canonical ProductionLine.")
+            return {"production_line_id": line.id, "production_line_code": line.code, "production_line_identity_state": "canonical"}
+        line_code = cls._certificate_effective_line_code(session, certificate)
+        return {"production_line_id": None, "production_line_code": line_code, "production_line_identity_state": "legacy_unlinked" if line_code else "facility_wide"}
+
+    def _certificate_context_clause(self, session: Session, certificate: Certificate):
+        """Select current peers only within one canonical or legacy context."""
+        base = [
+            Certificate.site_id == certificate.site_id,
+            Certificate.certificate_type == certificate.certificate_type,
+            self._certificate_valid_linked_case_sql(),
+        ]
+        if certificate.production_line_id is not None:
+            return and_(*base, Certificate.production_line_id == certificate.production_line_id)
+        line_code = self._certificate_effective_line_code(session, certificate)
+        normalized_db_line_code = self._certificate_effective_line_sql()
+        if line_code is None:
+            return and_(*base, Certificate.production_line_id.is_(None), normalized_db_line_code.is_(None))
+        return and_(*base, Certificate.production_line_id.is_(None), normalized_db_line_code == line_code)
 
     def _assert_case_not_terminal(self, row: Case, *, operation: str) -> None:
         if row.state in TERMINAL_CASE_STATES:
@@ -342,7 +425,7 @@ class CaseWorkflowService:
             case_id=case_id,
             event_type=event_type,
             occurred_at=datetime.now(timezone.utc),
-            payload=json.dumps(payload, ensure_ascii=False),
+            payload=json.dumps(self._normalize_audit_value(payload), ensure_ascii=False),
         )
         session.add(inspection_event)
         session.flush()
@@ -475,6 +558,15 @@ class CaseWorkflowService:
         business_eligibility_version_id: str,
         linked_certificates: list[dict[str, Any]],
     ) -> list[BusinessEligibilityCertificateLink]:
+        validated_links: list[tuple[str, str]] = []
+        for payload in linked_certificates:
+            certificate_id = payload["certificate_id"]
+            certificate = session.get(Certificate, certificate_id)
+            if certificate is None:
+                raise HTTPException(status_code=404, detail=f"Linked certificate {certificate_id} was not found.")
+            self._certificate_line_identity(session, certificate)
+            validated_links.append((certificate_id, payload.get("link_role") or "source_certificate"))
+
         existing = list(
             session.scalars(
                 select(BusinessEligibilityCertificateLink).where(
@@ -487,14 +579,11 @@ class CaseWorkflowService:
         session.flush()
 
         created: list[BusinessEligibilityCertificateLink] = []
-        for payload in linked_certificates:
-            certificate_id = payload["certificate_id"]
-            if session.get(Certificate, certificate_id) is None:
-                raise HTTPException(status_code=404, detail=f"Linked certificate {certificate_id} was not found.")
+        for certificate_id, link_role in validated_links:
             link = BusinessEligibilityCertificateLink(
                 business_eligibility_version_id=business_eligibility_version_id,
                 certificate_id=certificate_id,
-                link_role=payload.get("link_role") or "source_certificate",
+                link_role=link_role,
             )
             session.add(link)
             created.append(link)
@@ -610,12 +699,30 @@ class CaseWorkflowService:
         site_id: str,
         gxp_type: str,
         line_code: str | None,
+        production_line_id: str | None = None,
     ) -> bool:
+        if production_line_id is not None:
+            return session.scalars(
+                select(Case.id).where(
+                    Case.site_id == site_id,
+                    Case.gxp_type == gxp_type,
+                    Case.production_line_id == production_line_id,
+                )
+            ).first() is not None or session.scalars(
+                select(Certificate.id).where(
+                    Certificate.site_id == site_id,
+                    Certificate.certificate_type == gxp_type,
+                    Certificate.latest_flag.is_(True),
+                    Certificate.production_line_id == production_line_id,
+                    self._certificate_valid_linked_case_sql(),
+                )
+            ).first() is not None
         normalized_line_code = self._normalize_line_code(line_code)
         case_match = session.scalars(
             select(Case.id).where(
                 Case.site_id == site_id,
                 Case.gxp_type == gxp_type,
+                Case.production_line_id.is_(None),
                 func.nullif(func.trim(Case.scope_code), "") == normalized_line_code,
             )
         ).first()
@@ -626,7 +733,9 @@ class CaseWorkflowService:
                 Certificate.site_id == site_id,
                 Certificate.certificate_type == gxp_type,
                 Certificate.latest_flag.is_(True),
-                func.nullif(func.trim(Certificate.line_code), "") == normalized_line_code,
+                Certificate.production_line_id.is_(None),
+                self._certificate_valid_linked_case_sql(),
+                self._certificate_effective_line_sql() == normalized_line_code,
             )
         ).first()
         return certificate_match is not None
@@ -638,14 +747,20 @@ class CaseWorkflowService:
         site_id: str,
         gxp_type: str,
         line_code: str | None,
+        production_line_id: str | None = None,
     ) -> Case | None:
         normalized_line_code = self._normalize_line_code(line_code)
+        identity_clause = (
+            Case.production_line_id == production_line_id
+            if production_line_id is not None
+            else and_(Case.production_line_id.is_(None), func.nullif(func.trim(Case.scope_code), "") == normalized_line_code)
+        )
         return session.scalars(
             select(Case)
             .where(
                 Case.site_id == site_id,
                 Case.gxp_type == gxp_type,
-                func.nullif(func.trim(Case.scope_code), "") == normalized_line_code,
+                identity_clause,
                 Case.state.in_(tuple(OPEN_CASE_STATES)),
             )
             .order_by(Case.created_at.desc(), Case.id.desc())
@@ -658,22 +773,32 @@ class CaseWorkflowService:
         site_id: str,
         gxp_type: str,
         line_code: str | None,
-    ) -> tuple[str, str | None]:
+        production_line_id: str | None = None,
+    ) -> tuple[str, str | None, ProductionLine | None]:
         normalized_gxp_type = str(gxp_type or "").strip()
         if normalized_gxp_type not in SUPPORTED_CASE_GXP_TYPES:
             raise HTTPException(status_code=422, detail="Unsupported GxP context for reassessment creation.")
         normalized_line_code = self._normalize_line_code(line_code)
+        line = None if production_line_id is None else session.get(ProductionLine, production_line_id)
+        if production_line_id is not None:
+            if line is None or line.site_id != site_id:
+                raise HTTPException(status_code=422, detail="Selected ProductionLine does not belong to this site.")
+            if normalized_line_code is not None and normalized_line_code != line.code:
+                raise HTTPException(status_code=422, detail="line_code does not match the selected canonical ProductionLine.")
+        elif normalized_line_code is not None:
+            raise HTTPException(status_code=422, detail="Canonical ProductionLine identity has not been resolved for this legacy line context.")
         if not self._site_has_gxp_context(
             session,
             site_id=site_id,
             gxp_type=normalized_gxp_type,
             line_code=normalized_line_code,
+            production_line_id=production_line_id,
         ):
             raise HTTPException(
                 status_code=422,
                 detail="Selected facility/GxP/line context is not an authoritative existing context for reassessment creation.",
             )
-        return normalized_gxp_type, normalized_line_code
+        return normalized_gxp_type, (None if line is None else line.code), line
 
     def get_create_reassessment_case_action_readiness(
         self,
@@ -682,11 +807,14 @@ class CaseWorkflowService:
         site_id: str,
         gxp_type: str | None,
         line_code: str | None,
+        production_line_id: str | None = None,
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         required_permissions = [CREATE_INSPECTION_CASE_PERMISSION]
         normalized_gxp_type = str(gxp_type or "").strip() or None
         normalized_line_code = self._normalize_line_code(line_code)
+        if production_line_id is None and normalized_line_code is not None:
+            return {"action_key": "create_reassessment_case", "label": "Tái đánh giá", "readiness_status": "unavailable", "detail": "Canonical ProductionLine identity has not been resolved for this legacy line context.", "required_permissions": required_permissions}
         if normalized_gxp_type is None:
             return {
                 "action_key": "create_reassessment_case",
@@ -711,11 +839,30 @@ class CaseWorkflowService:
                 "detail": "Ngữ cảnh GxP đã chọn không hỗ trợ tạo hồ sơ tái đánh giá mới.",
                 "required_permissions": required_permissions,
             }
+        if production_line_id is not None:
+            line = session.get(ProductionLine, production_line_id)
+            if line is None or line.site_id != site_id:
+                return {
+                    "action_key": "create_reassessment_case",
+                    "label": "Tái đánh giá",
+                    "readiness_status": "unavailable",
+                    "detail": "Selected ProductionLine does not belong to this site.",
+                    "required_permissions": required_permissions,
+                }
+            if normalized_line_code is not None and normalized_line_code != line.code:
+                return {
+                    "action_key": "create_reassessment_case",
+                    "label": "Tái đánh giá",
+                    "readiness_status": "unavailable",
+                    "detail": "line_code does not match the selected canonical ProductionLine.",
+                    "required_permissions": required_permissions,
+                }
         if not self._site_has_gxp_context(
             session,
             site_id=site_id,
             gxp_type=normalized_gxp_type,
             line_code=normalized_line_code,
+            production_line_id=production_line_id,
         ):
             return {
                 "action_key": "create_reassessment_case",
@@ -729,6 +876,7 @@ class CaseWorkflowService:
             site_id=site_id,
             gxp_type=normalized_gxp_type,
             line_code=normalized_line_code,
+            production_line_id=production_line_id,
         )
         if existing_case is not None:
             return {
@@ -753,6 +901,7 @@ class CaseWorkflowService:
             "row_version": row.row_version,
             "round_no": row.round_no,
             "requested_on": row.requested_on,
+            "incoming_reference": row.incoming_reference,
             "submitted_on": row.submitted_on,
             "assessed_on": row.assessed_on,
             "assessor_user_id": row.assessor_user_id,
@@ -854,17 +1003,10 @@ class CaseWorkflowService:
         row.state = parsed_target_state
         after = {"state": parsed_target_state.value}
 
-        inspection_event = self._write_inspection_event(
-            session,
-            case_id=row.id,
-            event_type=CASE_STATE_TO_EVENT.get(parsed_target_state),
-            payload={
-                "previous_state": previous_state.value,
-                "current_state": parsed_target_state.value,
-                "reason": reason,
-                "actor_username": user.username,
-            },
-        )
+        # A workflow transition is an audit fact, not evidence that any
+        # underlying business milestone occurred. The owning mutation writes
+        # its own InspectionEvent when and only when that fact is recorded.
+        inspection_event = None
         audit_event = self._write_audit_event(
             session,
             actor=actor,
@@ -899,17 +1041,19 @@ class CaseWorkflowService:
         site_id: str,
         gxp_type: str,
         line_code: str | None,
+        production_line_id: str | None = None,
         applicable_standard: str | None,
         reason: str | None,
         user: AuthenticatedUser,
         source_case_id: str | None = None,
     ) -> dict[str, Any]:
         locked_site = self._lock_site(session, site_id)
-        normalized_gxp_type, normalized_line_code = self._validate_create_inspection_case_context(
+        normalized_gxp_type, normalized_line_code, line = self._validate_create_inspection_case_context(
             session,
             site_id=locked_site.id,
             gxp_type=gxp_type,
             line_code=line_code,
+            production_line_id=production_line_id,
         )
         normalized_inspection_type = REASSESSMENT_INSPECTION_TYPE
         normalized_applicable_standard = str(applicable_standard or "").strip() or None
@@ -918,6 +1062,7 @@ class CaseWorkflowService:
             site_id=locked_site.id,
             gxp_type=normalized_gxp_type,
             line_code=normalized_line_code,
+            production_line_id=production_line_id,
         )
         if existing_case is not None:
             raise HTTPException(
@@ -928,6 +1073,7 @@ class CaseWorkflowService:
         case = Case(
             site_id=locked_site.id,
             gxp_type=normalized_gxp_type,
+            production_line_id=None if line is None else line.id,
             scope_code=normalized_line_code,
             applicable_standard=normalized_applicable_standard,
             inspection_type=normalized_inspection_type,
@@ -939,12 +1085,24 @@ class CaseWorkflowService:
         session.add(case)
         session.flush()
         if source_case_id:
+            source_case = self._get_case(session, source_case_id)
+            if source_case.production_line_id != case.production_line_id:
+                raise HTTPException(
+                    status_code=422,
+                    detail="source_case_id does not match the selected canonical ProductionLine identity.",
+                )
+            if case.production_line_id is None and self._normalize_line_code(source_case.scope_code) is not None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="A facility-wide reassessment cannot use a legacy-unlinked source case.",
+                )
             self._copy_evaluation_scope_for_reassessment(session, source_case_id=source_case_id, target_case=case)
         after = {
             "case_id": case.id,
             "site_id": case.site_id,
             "gxp_type": case.gxp_type,
             "line_code": case.scope_code,
+            "production_line_id": case.production_line_id,
             "inspection_type": case.inspection_type,
             "applicable_standard": case.applicable_standard,
             "state": case.state.value,
@@ -977,6 +1135,7 @@ class CaseWorkflowService:
             "site_id": case.site_id,
             "gxp_type": case.gxp_type,
             "line_code": case.scope_code,
+            "production_line_id": case.production_line_id,
             "inspection_type": case.inspection_type,
             "applicable_standard": case.applicable_standard,
             "state": case.state.value,
@@ -988,10 +1147,15 @@ class CaseWorkflowService:
 
     def _copy_evaluation_scope_for_reassessment(self, session: Session, *, source_case_id: str, target_case: Case) -> None:
         source_case = self._get_case(session, source_case_id)
+        same_line_identity = (
+            source_case.production_line_id == target_case.production_line_id
+            if source_case.production_line_id is not None or target_case.production_line_id is not None
+            else self._normalize_line_code(source_case.scope_code) == self._normalize_line_code(target_case.scope_code)
+        )
         if (
             source_case.site_id != target_case.site_id
             or source_case.gxp_type != target_case.gxp_type
-            or self._normalize_line_code(source_case.scope_code) != self._normalize_line_code(target_case.scope_code)
+            or not same_line_identity
         ):
             raise HTTPException(status_code=422, detail="Selected source case does not match the reassessment facility/GxP/line context.")
         source_scope = session.scalar(select(CaseEvaluationScope).where(CaseEvaluationScope.case_id == source_case.id))
@@ -1178,6 +1342,7 @@ class CaseWorkflowService:
         case_id: str,
         expected_case_version: int | None = None,
         requested_on,
+        incoming_reference: str | None = None,
         notes: str | None,
         reason: str | None,
         user: AuthenticatedUser,
@@ -1192,6 +1357,7 @@ class CaseWorkflowService:
             case_id=row.id,
             round_no=self._next_capa_round_no(session, row.id),
             requested_on=requested_on,
+            incoming_reference=incoming_reference,
             submitted_on=None,
             assessed_on=None,
             assessor_user_id=None,
@@ -1229,9 +1395,11 @@ class CaseWorkflowService:
         capa_cycle_id: str,
         expected_version: int,
         requested_on,
+        incoming_reference: str | None = None,
         notes: str | None,
         reason: str | None,
         user: AuthenticatedUser,
+        fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
         row = self._get_capa_cycle(session, capa_cycle_id)
         case = self._get_case(session, row.case_id)
@@ -1243,10 +1411,14 @@ class CaseWorkflowService:
                 detail="CAPA cycle can only be updated while requested or rejected.",
             )
         actor = self._get_or_create_app_user(session, user)
-        before = self._snapshot_fields(row, ["requested_on", "notes", "status"])
-        row.requested_on = requested_on
-        row.notes = notes
-        after = self._snapshot_fields(row, ["requested_on", "notes", "status"])
+        provided = self._provided_fields(fields_set, {"requested_on", "incoming_reference", "notes"})
+        before = self._snapshot_fields(row, ["requested_on", "incoming_reference", "notes", "status"])
+        self._assign_provided(
+            row,
+            {"requested_on": requested_on, "incoming_reference": incoming_reference, "notes": notes},
+            provided,
+        )
+        after = self._snapshot_fields(row, ["requested_on", "incoming_reference", "notes", "status"])
         audit_event = self._write_audit_event(
             session,
             actor=actor,
@@ -1361,7 +1533,16 @@ class CaseWorkflowService:
         applicant_name: str | None,
         reason: str | None,
         user: AuthenticatedUser,
+        fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
+        provided = self._provided_fields(
+            fields_set,
+            {"submitted_on", "dossier_code", "applicant_name"},
+        )
+        if (fields_set is not None and "dossier_reference" in provided) or (
+            fields_set is None and dossier_reference is not None
+        ):
+            raise HTTPException(status_code=422, detail="dossier_reference is a read-only compatibility field.")
         row = self._get_case(session, case_id)
         self._assert_case_not_terminal(row, operation="application update")
         actor = self._get_or_create_app_user(session, user)
@@ -1375,10 +1556,15 @@ class CaseWorkflowService:
             stage,
             ["submitted_on", "dossier_code", "dossier_reference", "applicant_name"],
         )
-        stage.submitted_on = submitted_on
-        stage.dossier_code = dossier_code
-        stage.dossier_reference = dossier_reference
-        stage.applicant_name = applicant_name
+        self._assign_provided(
+            stage,
+            {
+                "submitted_on": submitted_on,
+                "dossier_code": dossier_code,
+                "applicant_name": applicant_name,
+            },
+            provided,
+        )
         after = self._snapshot_fields(
             stage,
             ["submitted_on", "dossier_code", "dossier_reference", "applicant_name"],
@@ -1386,7 +1572,11 @@ class CaseWorkflowService:
         inspection_event = self._write_inspection_event(
             session,
             case_id=row.id,
-            event_type=InspectionEventType.APPLICATION_SUBMITTED if submitted_on is not None else None,
+            event_type=(
+                InspectionEventType.APPLICATION_SUBMITTED
+                if "submitted_on" in provided and before["submitted_on"] is None and stage.submitted_on is not None
+                else None
+            ),
             payload=self._build_stage_payload(
                 stage="case_application",
                 submitted_on=None if submitted_on is None else submitted_on.isoformat(),
@@ -1437,7 +1627,9 @@ class CaseWorkflowService:
         notes: str | None,
         reason: str | None,
         user: AuthenticatedUser,
+        fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
+        provided = self._provided_fields(fields_set, {"assessed_on", "assessor_name", "assessment_result", "notes"})
         row = self._get_case(session, case_id)
         self._assert_case_not_terminal(row, operation="assessment update")
         actor = self._get_or_create_app_user(session, user)
@@ -1451,10 +1643,16 @@ class CaseWorkflowService:
             stage,
             ["assessed_on", "assessor_name", "assessment_result", "notes"],
         )
-        stage.assessed_on = assessed_on
-        stage.assessor_name = assessor_name
-        stage.assessment_result = assessment_result
-        stage.notes = notes
+        self._assign_provided(
+            stage,
+            {
+                "assessed_on": assessed_on,
+                "assessor_name": assessor_name,
+                "assessment_result": assessment_result,
+                "notes": notes,
+            },
+            provided,
+        )
         after = self._snapshot_fields(
             stage,
             ["assessed_on", "assessor_name", "assessment_result", "notes"],
@@ -1519,8 +1717,15 @@ class CaseWorkflowService:
         decision_date: date | None = None,
         reason: str | None,
         user: AuthenticatedUser,
+        fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
-        if decision_document_hint is not None:
+        provided = self._provided_fields(
+            fields_set,
+            {"plan_start_on", "plan_end_on", "planning_sheet_name", "decision_document_hint", "decision_reference", "decision_date"},
+        )
+        if (fields_set is not None and "decision_document_hint" in provided) or (
+            fields_set is None and decision_document_hint is not None
+        ):
             raise HTTPException(status_code=422, detail="decision_document_hint is a read-only compatibility field.")
         row = self._get_case(session, case_id)
         self._assert_case_not_terminal(row, operation="inspection plan update")
@@ -1535,21 +1740,30 @@ class CaseWorkflowService:
             stage,
             ["plan_start_on", "plan_end_on", "planning_sheet_name", "decision_reference", "decision_date"],
         )
-        stage.plan_start_on = plan_start_on
-        stage.plan_end_on = plan_end_on
-        stage.planning_sheet_name = planning_sheet_name
-        stage.decision_reference = decision_reference
-        stage.decision_date = decision_date
+        self._assign_provided(
+            stage,
+            {
+                "plan_start_on": plan_start_on,
+                "plan_end_on": plan_end_on,
+                "planning_sheet_name": planning_sheet_name,
+                "decision_reference": decision_reference,
+                "decision_date": decision_date,
+            },
+            provided,
+        )
         after = self._snapshot_fields(
             stage,
             ["plan_start_on", "plan_end_on", "planning_sheet_name", "decision_reference", "decision_date"],
         )
         has_stage_changes = before != after
-        inspection_event = self._write_inspection_event(
+        plan_event = self._write_inspection_event(
             session,
             case_id=row.id,
             event_type=InspectionEventType.PLAN_CREATED
-            if has_stage_changes and (plan_start_on is not None or plan_end_on is not None)
+            if (
+                (before["plan_start_on"] is None and before["plan_end_on"] is None)
+                and (stage.plan_start_on is not None or stage.plan_end_on is not None)
+            )
             else None,
             payload=self._build_stage_payload(
                 stage="inspection_plan",
@@ -1561,6 +1775,24 @@ class CaseWorkflowService:
                 reason=reason,
             ),
         )
+        decision_event = self._write_inspection_event(
+            session,
+            case_id=row.id,
+            event_type=InspectionEventType.DECISION_ISSUED
+            if (
+                before["decision_reference"] is None
+                and before["decision_date"] is None
+                and (stage.decision_reference is not None or stage.decision_date is not None)
+            )
+            else None,
+            payload=self._build_stage_payload(
+                stage="inspection_decision",
+                decision_reference=stage.decision_reference,
+                decision_date=None if stage.decision_date is None else stage.decision_date.isoformat(),
+                reason=reason,
+            ),
+        )
+        inspection_event = decision_event or plan_event
         audit_event = self._write_audit_event(
             session,
             actor=actor,
@@ -1610,19 +1842,25 @@ class CaseWorkflowService:
         compliance_due_on: date | None = None,
         reason: str | None,
         user: AuthenticatedUser,
+        fields_set: set[str] | None = None,
     ) -> dict[str, Any]:
-        if decision_reference is not None or bbkt_reference is not None:
+        provided = self._provided_fields(
+            fields_set,
+            {
+                "inspected_on", "inspected_to_on", "decision_reference", "bbkt_reference",
+                "outcome_result", "minutes_recorded_on", "minutes_recorded_time", "compliance_due_on",
+            },
+        )
+        if (fields_set is not None and {"decision_reference", "bbkt_reference"} & provided) or (
+            fields_set is None and (decision_reference is not None or bbkt_reference is not None)
+        ):
             raise HTTPException(status_code=422, detail="decision_reference and bbkt_reference are read-only compatibility fields.")
         row = self._get_case(session, case_id)
         self._assert_case_not_terminal(row, operation="inspection outcome update")
-        if inspected_on is None and inspected_to_on is not None:
+        if "inspected_to_on" in provided and "inspected_on" in provided and inspected_on is None and inspected_to_on is not None:
             raise HTTPException(status_code=422, detail="Inspection outcome end date requires a start date.")
-        if inspected_on is not None and inspected_to_on is not None and inspected_on > inspected_to_on:
+        if "inspected_on" in provided and "inspected_to_on" in provided and inspected_on is not None and inspected_to_on is not None and inspected_on > inspected_to_on:
             raise HTTPException(status_code=422, detail="Inspection outcome start date must not be after its end date.")
-        try:
-            validate_time_requires_date(value_date=minutes_recorded_on, value_time=minutes_recorded_time, label="Minutes")
-        except InspectionContractViolation as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
         actor = self._get_or_create_app_user(session, user)
         stage = session.scalars(select(InspectionOutcome).where(InspectionOutcome.case_id == row.id)).first()
         if stage is None:
@@ -1632,8 +1870,14 @@ class CaseWorkflowService:
             session.add(stage)
             session.flush()
         self._assert_expected_version(stage, expected_version, label="inspection_outcome")
-        has_compatibility_period = inspected_on is not None
-        canonical_end = inspected_to_on or inspected_on
+        has_compatibility_period = "inspected_on" in provided or "inspected_to_on" in provided
+        effective_start = inspected_on if "inspected_on" in provided else stage.inspected_on
+        effective_end = inspected_to_on if "inspected_to_on" in provided else stage.inspected_to_on
+        if effective_start is None and effective_end is not None:
+            raise HTTPException(status_code=422, detail="Inspection outcome end date requires a start date.")
+        if effective_start is not None and effective_end is not None and effective_start > effective_end:
+            raise HTTPException(status_code=422, detail="Inspection outcome start date must not be after its end date.")
+        canonical_end = effective_end or effective_start
         if has_compatibility_period and stage.inspection_period_state not in {None, "KNOWN"}:
             raise HTTPException(
                 status_code=409,
@@ -1663,25 +1907,39 @@ class CaseWorkflowService:
         if has_compatibility_period:
             # The compatibility endpoint owns exactly one canonical segment.
             # A missing end date is the proven one-day representation.
-            if not period_segments:
+            if effective_start is None:
+                for segment in period_segments:
+                    session.delete(segment)
+                stage.inspected_on = None
+                stage.inspected_to_on = None
+                stage.inspection_period_state = "KNOWN"
+            elif not period_segments:
                 session.add(
                     InspectionPeriodSegment(
                         inspection_outcome_id=stage.id,
                         ordinal=1,
-                        started_on=inspected_on,
+                        started_on=effective_start,
                         ended_on=canonical_end,
                     )
                 )
             else:
-                period_segments[0].started_on = inspected_on
+                period_segments[0].started_on = effective_start
                 period_segments[0].ended_on = canonical_end
-            stage.inspected_on = inspected_on
+            stage.inspected_on = effective_start
             stage.inspected_to_on = canonical_end
             stage.inspection_period_state = "KNOWN"
-        stage.outcome_result = outcome_result
-        stage.minutes_recorded_on = minutes_recorded_on
-        stage.minutes_recorded_time = minutes_recorded_time
-        stage.compliance_due_on = compliance_due_on
+        self._assign_provided(
+            stage,
+            {
+                "outcome_result": outcome_result,
+                "minutes_recorded_on": minutes_recorded_on,
+                "minutes_recorded_time": minutes_recorded_time,
+                "compliance_due_on": compliance_due_on,
+            },
+            provided,
+        )
+        if stage.minutes_recorded_time is not None and stage.minutes_recorded_on is None:
+            raise HTTPException(status_code=422, detail="Minutes time requires a minutes date.")
         after = self._snapshot_fields(
             stage,
             ["inspected_on", "inspected_to_on", "inspection_period_state", "outcome_result", "minutes_recorded_on", "minutes_recorded_time", "compliance_due_on"],
@@ -1690,15 +1948,19 @@ class CaseWorkflowService:
         inspection_event = self._write_inspection_event(
             session,
             case_id=row.id,
-            event_type=InspectionEventType.OUTCOME_RECORDED if has_stage_changes and outcome_result is not None else None,
+            event_type=(
+                InspectionEventType.OUTCOME_RECORDED
+                if "outcome_result" in provided and before["outcome_result"] is None and stage.outcome_result is not None
+                else None
+            ),
             payload=self._build_stage_payload(
                 stage="inspection_outcome",
-                inspected_on=None if inspected_on is None else inspected_on.isoformat(),
+                inspected_on=None if stage.inspected_on is None else stage.inspected_on.isoformat(),
                 inspected_to_on=None if canonical_end is None else canonical_end.isoformat(),
-                outcome_result=outcome_result,
-                minutes_recorded_on=None if minutes_recorded_on is None else minutes_recorded_on.isoformat(),
-                minutes_recorded_time=None if minutes_recorded_time is None else minutes_recorded_time.isoformat(),
-                compliance_due_on=None if compliance_due_on is None else compliance_due_on.isoformat(),
+                outcome_result=stage.outcome_result,
+                minutes_recorded_on=None if stage.minutes_recorded_on is None else stage.minutes_recorded_on.isoformat(),
+                minutes_recorded_time=None if stage.minutes_recorded_time is None else stage.minutes_recorded_time.isoformat(),
+                compliance_due_on=None if stage.compliance_due_on is None else stage.compliance_due_on.isoformat(),
                 reason=reason,
             ),
         )
@@ -1739,6 +2001,107 @@ class CaseWorkflowService:
             "audit_event_id": audit_event.id,
             "inspection_event_id": None if inspection_event is None else inspection_event.id,
         }
+
+    def upsert_inspection_period_segments(
+        self,
+        session: Session,
+        *,
+        case_id: str,
+        expected_version: int,
+        segments: list[dict[str, Any]],
+        reason: str | None,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        """Replace an explicitly user-entered, ordered actual visit sequence."""
+        case = self._get_case(session, case_id)
+        self._assert_case_not_terminal(case, operation="inspection period update")
+        outcome = session.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == case.id))
+        if outcome is None:
+            outcome = InspectionOutcome(case_id=case.id, inspection_period_state=None)
+            session.add(outcome)
+            session.flush()
+        self._assert_expected_version(outcome, expected_version, label="inspection_outcome")
+        if outcome.inspection_period_state not in {None, "KNOWN"}:
+            raise HTTPException(
+                status_code=409,
+                detail="Inspection outcome has a source-owned non-KNOWN period state and cannot be replaced by runtime segments.",
+            )
+        normalized = sorted(segments, key=lambda item: item["ordinal"])
+        if not normalized:
+            raise HTTPException(status_code=422, detail="Inspection period requires at least one ordered segment.")
+        expected_ordinals = list(range(1, len(normalized) + 1))
+        actual_ordinals = [item["ordinal"] for item in normalized]
+        if actual_ordinals != expected_ordinals:
+            raise HTTPException(status_code=422, detail="Inspection period segments must use contiguous ordinals starting at 1.")
+        for item in normalized:
+            if item["started_on"] > item["ended_on"]:
+                raise HTTPException(status_code=422, detail="Inspection period segment start date must not be after end date.")
+        existing = list(session.scalars(
+            select(InspectionPeriodSegment)
+            .where(InspectionPeriodSegment.inspection_outcome_id == outcome.id)
+            .order_by(InspectionPeriodSegment.ordinal)
+        ))
+        before = {
+            "inspection_period_state": outcome.inspection_period_state,
+            "segments": [
+                {"ordinal": item.ordinal, "started_on": item.started_on, "ended_on": item.ended_on}
+                for item in existing
+            ],
+        }
+        for item in existing:
+            session.delete(item)
+        for item in normalized:
+            session.add(InspectionPeriodSegment(
+                inspection_outcome_id=outcome.id,
+                ordinal=item["ordinal"],
+                started_on=item["started_on"],
+                ended_on=item["ended_on"],
+            ))
+        if len(normalized) == 1:
+            outcome.inspected_on = normalized[0]["started_on"]
+            outcome.inspected_to_on = normalized[0]["ended_on"]
+        else:
+            # A multi-segment visit must never be represented as a fabricated envelope.
+            outcome.inspected_on = None
+            outcome.inspected_to_on = None
+        outcome.inspection_period_state = "KNOWN"
+        outcome.row_version += 1
+        actor = self._get_or_create_app_user(session, user)
+        session.flush()
+        after = {
+            "inspection_period_state": outcome.inspection_period_state,
+            "segments": [
+                {"ordinal": item.ordinal, "started_on": item.started_on, "ended_on": item.ended_on}
+                for item in session.scalars(
+                    select(InspectionPeriodSegment)
+                    .where(InspectionPeriodSegment.inspection_outcome_id == outcome.id)
+                    .order_by(InspectionPeriodSegment.ordinal)
+                )
+            ],
+        }
+        inspection_event = self._write_inspection_event(
+            session,
+            case_id=case.id,
+            event_type=InspectionEventType.INSPECTION_EXECUTED if not before["segments"] else None,
+            payload={"stage": "inspection_period", "segments": after["segments"], "reason": reason},
+        )
+        audit = self._write_audit_event(
+            session,
+            actor=actor,
+            entity_type="inspection_outcome",
+            entity_id=outcome.id,
+            action="inspection_period_segments.replace",
+            payload={"reason": reason, "inspection_event_id": None if inspection_event is None else inspection_event.id},
+            before=before,
+            after=after,
+            reason=reason,
+        )
+        session.flush()
+        return self._serialize_inspection_outcome(
+            outcome,
+            audit_event_id=audit.id,
+            inspection_event_id=None if inspection_event is None else inspection_event.id,
+        )
 
     def _serialize_approval_submission(self, row: InspectionApprovalSubmission) -> dict[str, Any]:
         return {
@@ -1987,6 +2350,8 @@ class CaseWorkflowService:
             case_id=None if case is None else case.id,
             certificate_type=certificate_type,
             issuance_basis=issuance_basis,
+            production_line_id=None if case is None else case.production_line_id,
+            line_code=(None if case is None else (case.scope_code or None)),
             latest_flag=False,
             latest_legacy_certificate_id=None,
         )
@@ -2012,6 +2377,7 @@ class CaseWorkflowService:
             "site_id": certificate.site_id,
             "case_id": certificate.case_id,
             "certificate_type": certificate.certificate_type,
+            **self._certificate_line_identity(session, certificate),
             "issuance_basis": certificate.issuance_basis,
             "latest_flag": certificate.latest_flag,
             "certificate_number": version.certificate_number,
@@ -2049,6 +2415,7 @@ class CaseWorkflowService:
             "site_id": certificate.site_id,
             "case_id": certificate.case_id,
             "certificate_type": certificate.certificate_type,
+            **self._certificate_line_identity(session, certificate),
             "issuance_basis": certificate.issuance_basis,
             "latest_flag": certificate.latest_flag,
             "latest_version_id": version.id,
@@ -2075,6 +2442,7 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         certificate = self._get_certificate(session, certificate_id)
+        self._certificate_line_identity(session, certificate)
         self._assert_expected_version(certificate, expected_version, label="certificate")
         actor = self._get_or_create_app_user(session, user)
         version = self._load_latest_certificate_version(session, certificate.id)
@@ -2128,6 +2496,7 @@ class CaseWorkflowService:
             "site_id": certificate.site_id,
             "case_id": certificate.case_id,
             "certificate_type": certificate.certificate_type,
+            **self._certificate_line_identity(session, certificate),
             "issuance_basis": certificate.issuance_basis,
             "latest_flag": certificate.latest_flag,
             "latest_version_id": version.id,
@@ -2166,20 +2535,22 @@ class CaseWorkflowService:
             }
             raise HTTPException(status_code=409, detail=details[blocker])
         actor = self._get_or_create_app_user(session, user)
-        current = session.scalars(
+        current_peers = list(session.scalars(
             select(Certificate).where(
-                Certificate.site_id == certificate.site_id,
-                Certificate.certificate_type == certificate.certificate_type,
+                self._certificate_context_clause(session, certificate),
                 Certificate.latest_flag.is_(True),
-            )
-        ).first()
-        previous_current_id = None if current is None else current.id
+            ).order_by(Certificate.id)
+        ))
+        for current in current_peers:
+            self._certificate_line_identity(session, current)
+        previous_current_id = None if not current_peers else current_peers[0].id
         before = {
             "latest_flag": certificate.latest_flag,
             "previous_current_certificate_id": previous_current_id,
         }
-        if current is not None and current.id != certificate.id:
-            current.latest_flag = False
+        for current in current_peers:
+            if current.id != certificate.id:
+                current.latest_flag = False
         certificate.latest_flag = True
         after = {
             "latest_flag": certificate.latest_flag,
@@ -2224,6 +2595,7 @@ class CaseWorkflowService:
             "site_id": certificate.site_id,
             "case_id": certificate.case_id,
             "certificate_type": certificate.certificate_type,
+            **self._certificate_line_identity(session, certificate),
             "issuance_basis": certificate.issuance_basis,
             "latest_flag": certificate.latest_flag,
             "latest_version_id": candidate_version.id,
@@ -2442,6 +2814,15 @@ class CaseWorkflowService:
                 status_code=409,
                 detail="Business eligibility promotion requires certificate number and issue date.",
             )
+        for link in session.scalars(
+            select(BusinessEligibilityCertificateLink).where(
+                BusinessEligibilityCertificateLink.business_eligibility_version_id == candidate_version.id
+            )
+        ):
+            certificate = session.get(Certificate, link.certificate_id)
+            if certificate is None:
+                raise HTTPException(status_code=409, detail="Business eligibility promotion references a missing certificate.")
+            self._certificate_line_identity(session, certificate)
 
         current = session.scalars(
             select(BusinessEligibilityCertificate).where(

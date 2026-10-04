@@ -22,7 +22,6 @@ function toSubmittedOnPayload(value: string): string | null {
 type FormDraft = {
   submitted_on: string;
   dossier_code: string;
-  dossier_reference: string;
   applicant_name: string;
 };
 
@@ -30,7 +29,6 @@ function buildDraft(caseWorkspace: CaseWorkspace): FormDraft {
   return {
     submitted_on: toDateInputValue(caseWorkspace.application.submitted_on),
     dossier_code: caseWorkspace.application.dossier_code ?? "",
-    dossier_reference: caseWorkspace.application.dossier_reference ?? "",
     applicant_name: caseWorkspace.application.applicant_name ?? "",
   };
 }
@@ -91,13 +89,10 @@ export function CaseApplicationWorkspace({
     setPending(true);
     setErrorMessage(null);
     try {
-      await onSave({
-        expected_version: caseWorkspace.application.row_version,
-        submitted_on: toSubmittedOnPayload(draft.submitted_on),
-        dossier_code: normalizeText(draft.dossier_code),
-        dossier_reference: normalizeText(draft.dossier_reference),
-        applicant_name: normalizeText(draft.applicant_name),
-      });
+      const value = editingField === "submitted_on"
+        ? toSubmittedOnPayload(draft.submitted_on)
+        : normalizeText(draft.dossier_code);
+      await onSave({ expected_version: caseWorkspace.application.row_version, [editingField]: value });
       setEditingField(null);
     } catch (error) {
       const nextError = error instanceof Error ? error : new Error("Không lưu được thông tin hồ sơ.");

@@ -6,8 +6,8 @@ from datetime import date, timedelta
 from functools import lru_cache
 
 from fastapi import HTTPException
-from sqlalchemy import and_, cast, func, or_, select, String, union_all
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.orm import Session
 
 from backend.app.auth import AuthenticatedUser
 from backend.app.domain.evaluation_scope_vba_renderer import compile_vba_readable_scope
@@ -46,11 +46,13 @@ from backend.app.db.models.phase1 import (
     InspectionPlan,
     InspectionApprovalSubmission,
     InspectionOutcome,
+    InspectionPeriodSegment,
     InspectionTeam,
     InspectionTeamMember,
     InspectionTeamParticipantCatalog,
     InspectorProfile,
     Person,
+    ProductionLine,
     Site,
     EvaluationScopeTaxonomyNode,
 )
@@ -85,7 +87,10 @@ class CertificateContextRow:
     certificate: Certificate
     version: CertificateVersion
     line_code: str | None
-    scope_summary: str | None
+    production_line_id: str | None = None
+    production_line_code: str | None = None
+    production_line_identity_state: str = "facility_wide"
+    scope_summary: str | None = None
 
 
 @dataclass(frozen=True)
@@ -338,13 +343,21 @@ class CatalogReadService:
         return labels
 
     @staticmethod
-    def _normalized_line_code_sql(column):
-        return func.nullif(func.trim(column), "")
-
-    @staticmethod
     def _normalize_line_code(value: str | None) -> str | None:
         normalized = str(value or "").strip()
         return normalized or None
+
+    @staticmethod
+    def _line_identity(*, site_id: str, production_line_id: str | None, raw_line_code: str | None, lines: dict[str, ProductionLine]) -> tuple[str | None, str | None, str]:
+        if production_line_id is not None:
+            line = lines.get(production_line_id)
+            if line is None:
+                raise HTTPException(status_code=409, detail="Canonical ProductionLine reference is missing.")
+            if line.site_id != site_id:
+                raise HTTPException(status_code=409, detail="Canonical ProductionLine reference belongs to a different site.")
+            return line.id, line.code, "canonical"
+        line_code = CatalogReadService._normalize_line_code(raw_line_code)
+        return None, line_code, "legacy_unlinked" if line_code is not None else "facility_wide"
 
     @staticmethod
     def _preferred_site_code(site: Site, selected_gxp: str | None) -> str | None:
@@ -377,6 +390,19 @@ class CatalogReadService:
     @staticmethod
     def _build_result_key(site_id: str, *, gxp_type: str | None, line_code: str | None) -> str:
         return f"{site_id}:{gxp_type or ''}:{line_code or ''}"
+
+    @staticmethod
+    def _build_search_result_key(
+        site_id: str,
+        *,
+        gxp_type: str | None,
+        identity_state: str,
+        production_line_id: str | None,
+        line_code: str | None,
+    ) -> str:
+        """Keep canonical search contexts distinct even when legacy codes coincide."""
+        discriminator = production_line_id if identity_state == "canonical" else line_code or ""
+        return f"{site_id}:{gxp_type or ''}:{identity_state}:{discriminator}"
 
     @staticmethod
     def _select_latest_case(rows: list[Case]) -> Case | None:
@@ -912,54 +938,12 @@ class CatalogReadService:
         return CatalogReadService._normalize_line_code(linked_case.scope_code)
 
     @staticmethod
-    def _build_site_contexts(
-        *,
-        site_cases: list[Case],
-        certificate_rows: list[CertificateContextRow],
-        requested_gxp: str | None,
-    ) -> list[tuple[str | None, str | None, list[Case]]]:
-        grouped_cases: dict[tuple[str | None, str | None], list[Case]] = defaultdict(list)
-        for row in site_cases:
-            grouped_cases[(row.gxp_type, CatalogReadService._normalize_line_code(row.scope_code))].append(row)
-
-        discovered_gxp_types = sorted(
-            {
-                row.gxp_type
-                for row in site_cases
-                if row.gxp_type
-            }
-            | {
-                row.certificate.certificate_type
-                for row in certificate_rows
-                if row.certificate.certificate_type
-            }
-        )
-        if requested_gxp:
-            discovered_gxp_types = [requested_gxp]
-        if not discovered_gxp_types:
-            discovered_gxp_types = [None]
-
-        contexts: list[tuple[str | None, str | None, list[Case]]] = []
-        for current_gxp in discovered_gxp_types:
-            case_line_codes = {
-                line_code
-                for (group_gxp, line_code), cases in grouped_cases.items()
-                if group_gxp == current_gxp and cases
-            }
-            certificate_line_codes = {
-                row.line_code
-                for row in certificate_rows
-                if row.certificate.certificate_type == current_gxp and row.line_code is not None
-            }
-            all_line_codes = sorted(case_line_codes | certificate_line_codes, key=lambda item: item or "")
-            if all_line_codes:
-                for line_code in all_line_codes:
-                    contexts.append((current_gxp, line_code, grouped_cases.get((current_gxp, line_code), [])))
-            elif (current_gxp, None) in grouped_cases:
-                contexts.append((current_gxp, None, grouped_cases[(current_gxp, None)]))
-            else:
-                contexts.append((current_gxp, None, []))
-        return contexts
+    def _assert_certificate_links_valid(session: Session, *, site_id: str | None = None) -> None:
+        statement = select(Certificate).where(Certificate.case_id.is_not(None))
+        if site_id is not None:
+            statement = statement.where(Certificate.site_id == site_id)
+        for certificate in session.scalars(statement):
+            CaseWorkflowService._validate_certificate_linked_case(session, certificate)
 
     @staticmethod
     def _build_case_exists_clause(
@@ -1026,384 +1010,6 @@ class CatalogReadService:
             .exists()
         )
 
-    def _build_filtered_search_sites_stmt(
-        self,
-        *,
-        q: str | None = None,
-        facility_name: str | None = None,
-        certificate_scope: str | None = None,
-        gxp_type: str | None = None,
-        province: str | None = None,
-        case_states: list[str] | None = None,
-        change_request_states: list[str] | None = None,
-        certificate_state: str | None = None,
-        certificate_expiring_within_days: int | None = None,
-    ):
-        stmt = select(
-            Site.id.label("site_id"),
-            Site.legacy_site_id.label("legacy_site_id"),
-            Site.site_name.label("site_name"),
-        ).join(Company, Company.id == Site.company_id)
-
-        if q:
-            pattern = f"%{q}%"
-            search_case = aliased(Case)
-            search_certificate = aliased(Certificate)
-            search_certificate_version = aliased(CertificateVersion)
-            search_business_eligibility = aliased(BusinessEligibilityCertificate)
-            search_business_eligibility_version = aliased(BusinessEligibilityVersion)
-            stmt = (
-                stmt.outerjoin(search_case, search_case.site_id == Site.id)
-                .outerjoin(
-                    search_certificate,
-                    and_(search_certificate.site_id == Site.id, search_certificate.latest_flag.is_(True)),
-                )
-                .outerjoin(
-                    search_certificate_version,
-                    and_(
-                        search_certificate_version.certificate_id == search_certificate.id,
-                        search_certificate_version.is_latest_version.is_(True),
-                    ),
-                )
-                .outerjoin(search_business_eligibility, search_business_eligibility.site_id == Site.id)
-                .outerjoin(
-                    search_business_eligibility_version,
-                    search_business_eligibility_version.business_eligibility_certificate_id == search_business_eligibility.id,
-                )
-            )
-            stmt = stmt.where(
-                or_(
-                    Site.site_name.ilike(pattern),
-                    Site.short_name.ilike(pattern),
-                    Site.site_address.ilike(pattern),
-                    Site.province_name.ilike(pattern),
-                    Site.legacy_gmp_site_code.ilike(pattern),
-                    Site.legacy_glp_site_code.ilike(pattern),
-                    Site.legacy_gmpbb_site_code.ilike(pattern),
-                    cast(Site.legacy_site_id, String).ilike(pattern),
-                    Company.legal_name.ilike(pattern),
-                    Company.short_name.ilike(pattern),
-                    Company.legal_address.ilike(pattern),
-                    search_case.legacy_inspection_code.ilike(pattern),
-                    search_case.applicable_standard.ilike(pattern),
-                    search_case.scope_code.ilike(pattern),
-                    search_certificate_version.certificate_number.ilike(pattern),
-                    search_business_eligibility_version.certificate_number.ilike(pattern),
-                )
-            )
-
-        if facility_name:
-            stmt = stmt.where(Site.site_name.ilike(f"%{facility_name}%"))
-
-        if gxp_type:
-            stmt = stmt.where(
-                or_(
-                    self._build_case_exists_clause(gxp_type=gxp_type),
-                    self._build_current_certificate_exists_clause(gxp_type=gxp_type),
-                )
-            )
-
-        if province:
-            stmt = stmt.where(Site.province_name.ilike(f"%{province}%"))
-
-        if case_states:
-            stmt = stmt.where(self._build_case_exists_clause(gxp_type=gxp_type, case_states=case_states))
-
-        if change_request_states:
-            stmt = stmt.where(self._build_change_request_exists_clause(change_request_states=change_request_states))
-
-        if certificate_state == "active":
-            stmt = stmt.where(
-                self._build_current_certificate_exists_clause(
-                    gxp_type=gxp_type,
-                    certificate_state=certificate_state,
-                )
-            )
-
-        if certificate_expiring_within_days is not None:
-            stmt = stmt.where(
-                self._build_current_certificate_exists_clause(
-                    gxp_type=gxp_type,
-                    certificate_expiring_within_days=certificate_expiring_within_days,
-                )
-            )
-
-        if certificate_scope:
-            stmt = stmt.where(
-                self._build_current_certificate_exists_clause(
-                    gxp_type=gxp_type,
-                    certificate_scope=certificate_scope,
-                )
-            )
-
-        return stmt.distinct()
-
-    def _build_context_case_exists_clause(self, contexts, *, case_states: list[str] | None):
-        normalized_scope_code = self._normalized_line_code_sql(Case.scope_code)
-        conditions = [
-            Case.site_id == contexts.c.site_id,
-            Case.gxp_type == contexts.c.gxp_type,
-            or_(
-                and_(contexts.c.line_code.is_(None), normalized_scope_code.is_(None)),
-                normalized_scope_code == contexts.c.line_code,
-            ),
-        ]
-        if case_states:
-            conditions.append(Case.state.in_(case_states))
-        return select(Case.id).where(*conditions).correlate(contexts).exists()
-
-    def _build_context_certificate_exists_clause(
-        self,
-        contexts,
-        *,
-        certificate_state: str | None,
-        certificate_expiring_within_days: int | None,
-        certificate_scope: str | None,
-    ):
-        linked_case = aliased(Case)
-        normalized_line_code = self._normalized_line_code_sql(func.coalesce(Certificate.line_code, linked_case.scope_code))
-        conditions = [
-            Certificate.site_id == contexts.c.site_id,
-            Certificate.certificate_type == contexts.c.gxp_type,
-            Certificate.latest_flag.is_(True),
-            or_(
-                and_(contexts.c.line_code.is_(None), normalized_line_code.is_(None)),
-                and_(
-                    contexts.c.line_code.is_not(None),
-                    or_(normalized_line_code == contexts.c.line_code, normalized_line_code.is_(None)),
-                ),
-            ),
-        ]
-        if certificate_state == "active":
-            conditions.append(or_(CertificateVersion.expiry_date.is_(None), CertificateVersion.expiry_date >= date.today()))
-        if certificate_expiring_within_days is not None:
-            expiry_cutoff = date.today() + timedelta(days=certificate_expiring_within_days)
-            conditions.extend(
-                [
-                    CertificateVersion.expiry_date.is_not(None),
-                    CertificateVersion.expiry_date >= date.today(),
-                    CertificateVersion.expiry_date <= expiry_cutoff,
-                ]
-            )
-        return (
-            select(Certificate.id)
-            .select_from(Certificate)
-            .join(
-                CertificateVersion,
-                and_(
-                    CertificateVersion.certificate_id == Certificate.id,
-                    CertificateVersion.is_latest_version.is_(True),
-                ),
-            )
-            .outerjoin(CertificateScope, CertificateScope.certificate_version_id == CertificateVersion.id)
-            .outerjoin(linked_case, linked_case.id == Certificate.case_id)
-            .where(*conditions)
-            .where(
-                CertificateScope.scope_text.ilike(f"%{certificate_scope}%")
-                if certificate_scope
-                else True
-            )
-            .correlate(contexts)
-            .exists()
-        )
-
-    def _build_search_contexts_stmt(
-        self,
-        filtered_sites_stmt,
-        *,
-        gxp_type: str | None = None,
-        case_states: list[str] | None = None,
-        certificate_state: str | None = None,
-        certificate_expiring_within_days: int | None = None,
-        certificate_scope: str | None = None,
-    ):
-        filtered_sites = filtered_sites_stmt.subquery("filtered_sites")
-        linked_case = aliased(Case)
-        certificate_line_code = self._normalized_line_code_sql(func.coalesce(Certificate.line_code, linked_case.scope_code))
-
-        case_contexts = (
-            select(
-                filtered_sites.c.site_id,
-                filtered_sites.c.legacy_site_id,
-                filtered_sites.c.site_name,
-                Case.gxp_type.label("gxp_type"),
-                self._normalized_line_code_sql(Case.scope_code).label("line_code"),
-            )
-            .join(Case, Case.site_id == filtered_sites.c.site_id)
-        )
-        if gxp_type:
-            case_contexts = case_contexts.where(Case.gxp_type == gxp_type)
-
-        certificate_contexts = (
-            select(
-                filtered_sites.c.site_id,
-                filtered_sites.c.legacy_site_id,
-                filtered_sites.c.site_name,
-                Certificate.certificate_type.label("gxp_type"),
-                certificate_line_code.label("line_code"),
-            )
-            .join(Certificate, Certificate.site_id == filtered_sites.c.site_id)
-            .join(
-                CertificateVersion,
-                and_(
-                    CertificateVersion.certificate_id == Certificate.id,
-                    CertificateVersion.is_latest_version.is_(True),
-                ),
-            )
-            .outerjoin(linked_case, linked_case.id == Certificate.case_id)
-            .where(Certificate.latest_flag.is_(True))
-        )
-        if gxp_type:
-            certificate_contexts = certificate_contexts.where(Certificate.certificate_type == gxp_type)
-
-        context_selects = [case_contexts, certificate_contexts]
-        if gxp_type is None:
-            fallback_certificate_exists = (
-                select(Certificate.id)
-                .join(
-                    CertificateVersion,
-                    and_(
-                        CertificateVersion.certificate_id == Certificate.id,
-                        CertificateVersion.is_latest_version.is_(True),
-                    ),
-                )
-                .where(Certificate.site_id == filtered_sites.c.site_id, Certificate.latest_flag.is_(True))
-                .correlate(filtered_sites)
-                .exists()
-            )
-            facility_fallback_contexts = select(
-                filtered_sites.c.site_id,
-                filtered_sites.c.legacy_site_id,
-                filtered_sites.c.site_name,
-                cast(None, String).label("gxp_type"),
-                cast(None, String).label("line_code"),
-            ).where(
-                ~select(Case.id).where(Case.site_id == filtered_sites.c.site_id).correlate(filtered_sites).exists(),
-                ~fallback_certificate_exists,
-            )
-            context_selects.append(facility_fallback_contexts)
-
-        unioned_contexts = union_all(*context_selects).subquery("search_context_candidates")
-        distinct_contexts = select(
-            unioned_contexts.c.site_id,
-            unioned_contexts.c.legacy_site_id,
-            unioned_contexts.c.site_name,
-            unioned_contexts.c.gxp_type,
-            unioned_contexts.c.line_code,
-        ).distinct()
-        contexts = distinct_contexts.subquery("search_contexts_distinct")
-        non_null_peer = contexts.alias("search_contexts_non_null_peer")
-        suppressed_contexts_stmt = select(
-            contexts.c.site_id,
-            contexts.c.legacy_site_id,
-            contexts.c.site_name,
-            contexts.c.gxp_type,
-            contexts.c.line_code,
-        ).where(
-            ~and_(
-                contexts.c.line_code.is_(None),
-                select(non_null_peer.c.site_id)
-                .where(non_null_peer.c.site_id == contexts.c.site_id)
-                .where(
-                    or_(
-                        non_null_peer.c.gxp_type == contexts.c.gxp_type,
-                        and_(non_null_peer.c.gxp_type.is_(None), contexts.c.gxp_type.is_(None)),
-                    )
-                )
-                .where(non_null_peer.c.line_code.is_not(None))
-                .correlate(contexts)
-                .exists(),
-            )
-        )
-        contexts = suppressed_contexts_stmt.subquery("search_contexts_filtered")
-        filtered_contexts_stmt = select(
-            contexts.c.site_id,
-            contexts.c.legacy_site_id,
-            contexts.c.site_name,
-            contexts.c.gxp_type,
-            contexts.c.line_code,
-        )
-        if gxp_type:
-            filtered_contexts_stmt = filtered_contexts_stmt.where(contexts.c.gxp_type == gxp_type)
-        if case_states:
-            filtered_contexts_stmt = filtered_contexts_stmt.where(
-                self._build_context_case_exists_clause(contexts, case_states=case_states)
-            )
-        if certificate_state == "active" or certificate_expiring_within_days is not None:
-            filtered_contexts_stmt = filtered_contexts_stmt.where(
-                self._build_context_certificate_exists_clause(
-                    contexts,
-                    certificate_state=certificate_state,
-                    certificate_expiring_within_days=certificate_expiring_within_days,
-                    certificate_scope=None,
-                )
-            )
-        if certificate_scope:
-            filtered_contexts_stmt = filtered_contexts_stmt.where(
-                self._build_context_certificate_exists_clause(
-                    contexts,
-                    certificate_state=None,
-                    certificate_expiring_within_days=None,
-                    certificate_scope=certificate_scope,
-                )
-            )
-        return filtered_contexts_stmt
-
-    @staticmethod
-    def _ordered_search_contexts_stmt(contexts_stmt):
-        contexts = contexts_stmt.subquery("search_contexts")
-        return select(
-            contexts.c.site_id,
-            contexts.c.legacy_site_id,
-            contexts.c.site_name,
-            contexts.c.gxp_type,
-            contexts.c.line_code,
-        ).order_by(
-            contexts.c.legacy_site_id.is_(None),
-            contexts.c.legacy_site_id.asc(),
-            contexts.c.site_name.asc(),
-            contexts.c.gxp_type.is_(None),
-            contexts.c.gxp_type.asc(),
-            contexts.c.line_code.is_(None),
-            contexts.c.line_code.asc(),
-            contexts.c.site_id.asc(),
-        )
-
-    def _build_case_context_match_clause(self, page_contexts: list[tuple[str, str | None, str | None]]):
-        normalized_scope_code = self._normalized_line_code_sql(Case.scope_code)
-        conditions = []
-        for site_id, current_gxp, line_code in page_contexts:
-            row_conditions = [Case.site_id == site_id]
-            if current_gxp is None:
-                row_conditions.append(Case.gxp_type.is_(None))
-            else:
-                row_conditions.append(Case.gxp_type == current_gxp)
-            if line_code is None:
-                row_conditions.append(normalized_scope_code.is_(None))
-            else:
-                row_conditions.append(normalized_scope_code == line_code)
-            conditions.append(and_(*row_conditions))
-        if not conditions:
-            return None
-        return or_(*conditions)
-
-    def _build_certificate_context_match_clause(self, page_contexts: list[tuple[str, str | None, str | None]], linked_case):
-        normalized_line_code = self._normalized_line_code_sql(func.coalesce(Certificate.line_code, linked_case.scope_code))
-        conditions = []
-        for site_id, current_gxp, line_code in page_contexts:
-            row_conditions = [Certificate.site_id == site_id]
-            if current_gxp is None:
-                row_conditions.append(Certificate.certificate_type.is_(None))
-            else:
-                row_conditions.append(Certificate.certificate_type == current_gxp)
-            if line_code is None:
-                row_conditions.append(normalized_line_code.is_(None))
-            else:
-                row_conditions.append(or_(normalized_line_code == line_code, normalized_line_code.is_(None)))
-            conditions.append(and_(*row_conditions))
-        if not conditions:
-            return None
-        return or_(*conditions)
 
     @staticmethod
     def _inspection_signal_for_case(
@@ -1529,19 +1135,33 @@ class CatalogReadService:
             .limit(queue_limit)
         ).all()
 
-        queue = [
-            {
+        lines = {row.id: row for row in session.scalars(select(ProductionLine))}
+
+        queue = []
+        for case, site, company in queue_rows:
+            line_id, line_code, identity_state = self._line_identity(
+                site_id=case.site_id,
+                production_line_id=case.production_line_id,
+                raw_line_code=case.scope_code,
+                lines=lines,
+            )
+            queue.append({
                 "case_id": case.id,
                 "site_id": site.id,
+                "result_key": self._build_search_result_key(
+                    site.id,
+                    gxp_type=case.gxp_type,
+                    identity_state=identity_state,
+                    production_line_id=line_id,
+                    line_code=line_code,
+                ),
                 "facility_name": site.site_name,
                 "company_name": company.legal_name,
                 "gxp_type": case.gxp_type,
                 "state": case.state.value,
                 "reference_code": case.legacy_inspection_code,
                 "opened_year": case.opened_year,
-            }
-            for case, site, company in queue_rows
-        ]
+            })
 
         return {
             "total_facilities": total_facilities,
@@ -1568,10 +1188,11 @@ class CatalogReadService:
         change_request_states: list[str] | None = None,
         certificate_state: str | None = None,
         certificate_expiring_within_days: int | None = None,
-        offset: int,
-        limit: int,
-    ):
-        filtered_sites_stmt = self._build_filtered_search_sites_stmt(
+        offset: int = 0,
+        limit: int = 100,
+    ) -> dict[str, object]:
+        return self._search_facilities_by_production_line(
+            session,
             q=q,
             facility_name=facility_name,
             certificate_scope=certificate_scope,
@@ -1581,185 +1202,163 @@ class CatalogReadService:
             change_request_states=change_request_states,
             certificate_state=certificate_state,
             certificate_expiring_within_days=certificate_expiring_within_days,
+            offset=offset,
+            limit=limit,
         )
-        contexts_stmt = self._build_search_contexts_stmt(
-            filtered_sites_stmt,
-            gxp_type=gxp_type,
-            case_states=case_states,
-            certificate_state=certificate_state,
-            certificate_expiring_within_days=certificate_expiring_within_days,
-            certificate_scope=certificate_scope,
-        )
-        ordered_contexts_stmt = self._ordered_search_contexts_stmt(contexts_stmt)
 
-        total_count = session.scalar(
-            select(func.count()).select_from(contexts_stmt.subquery("search_context_count"))
-        ) or 0
-        if total_count == 0:
-            return {
-                "items": [],
-                "total_count": 0,
-                "offset": offset,
-                "limit": limit,
-            }
-
-        page_context_rows = session.execute(ordered_contexts_stmt.offset(offset).limit(limit)).all()
-        if not page_context_rows:
-            return {
-                "items": [],
-                "total_count": total_count,
-                "offset": offset,
-                "limit": limit,
-            }
-
-        page_site_ids = sorted({row.site_id for row in page_context_rows})
-        page_contexts = [(row.site_id, row.gxp_type, self._normalize_line_code(row.line_code)) for row in page_context_rows]
-
-        sites = {
-            row.id: row
-            for row in session.scalars(select(Site).where(Site.id.in_(page_site_ids)))
-        }
-        companies = {
-            row.id: row
-            for row in session.scalars(
-                select(Company).where(Company.id.in_({sites[site_id].company_id for site_id in page_site_ids}))
-            )
-        }
-        site_gxp_rows = session.execute(
-            union_all(
-                select(Case.site_id.label("site_id"), Case.gxp_type.label("gxp_type")).where(Case.site_id.in_(page_site_ids)),
-                select(Certificate.site_id.label("site_id"), Certificate.certificate_type.label("gxp_type")).where(
-                    Certificate.site_id.in_(page_site_ids),
-                    Certificate.latest_flag.is_(True),
-                ),
-            )
-        ).all()
-        gxp_types_by_site: dict[str, list[str]] = defaultdict(list)
-        for site_id, current_gxp in site_gxp_rows:
-            if current_gxp and current_gxp not in gxp_types_by_site[site_id]:
-                gxp_types_by_site[site_id].append(current_gxp)
-
-        cases_by_site: dict[str, list[Case]] = defaultdict(list)
-        cases_by_id: dict[str, Case] = {}
-        case_match_clause = self._build_case_context_match_clause(page_contexts)
-        for row in session.scalars(select(Case).where(case_match_clause)):
-            cases_by_site[row.site_id].append(row)
-            cases_by_id[row.id] = row
-        case_ids = list(cases_by_id)
-        outcomes_by_case_id: dict[str, InspectionOutcome] = {}
-        if case_ids:
-            for outcome in session.scalars(select(InspectionOutcome).where(InspectionOutcome.case_id.in_(case_ids))):
-                outcomes_by_case_id[outcome.case_id] = outcome
-        inspection_event_dates_by_case_id: dict[str, date] = {}
-        if case_ids:
-            event_rows = session.execute(
+    def _search_facilities_by_production_line(
+        self,
+        session: Session,
+        *,
+        q: str | None,
+        facility_name: str | None,
+        certificate_scope: str | None,
+        gxp_type: str | None,
+        province: str | None,
+        case_states: list[str] | None,
+        change_request_states: list[str] | None,
+        certificate_state: str | None,
+        certificate_expiring_within_days: int | None,
+        offset: int,
+        limit: int,
+    ) -> dict[str, object]:
+        self._assert_certificate_links_valid(session)
+        sites = list(session.scalars(select(Site).order_by(Site.legacy_site_id, Site.id)))
+        companies = {row.id: row for row in session.scalars(select(Company))}
+        lines = {row.id: row for row in session.scalars(select(ProductionLine))}
+        cases = list(session.scalars(select(Case)))
+        outcomes_by_case_id = {row.case_id: row for row in session.scalars(select(InspectionOutcome))}
+        inspection_event_dates_by_case_id = {
+            case_id: occurred_at.date()
+            for case_id, occurred_at in session.execute(
                 select(InspectionEvent.case_id, func.max(InspectionEvent.occurred_at))
-                .where(
-                    InspectionEvent.case_id.in_(case_ids),
-                    InspectionEvent.event_type == InspectionEventType.INSPECTION_EXECUTED,
-                )
+                .where(InspectionEvent.event_type == InspectionEventType.INSPECTION_EXECUTED)
                 .group_by(InspectionEvent.case_id)
-            ).all()
-            inspection_event_dates_by_case_id = {
-                case_id: occurred_at.date()
-                for case_id, occurred_at in event_rows
-                if occurred_at is not None
-            }
-
-        current_certificates = list(
-            session.execute(
-                select(Certificate, CertificateVersion)
-                .outerjoin(Case, Case.id == Certificate.case_id)
-                .join(
-                    CertificateVersion,
-                    and_(
-                        CertificateVersion.certificate_id == Certificate.id,
-                        CertificateVersion.is_latest_version.is_(True),
-                    ),
-                )
-                .where(
-                    Certificate.latest_flag.is_(True),
-                    self._build_certificate_context_match_clause(page_contexts, Case),
-                )
-            ).all()
-        )
-        certificate_scope_rows_by_version: dict[str, list[CertificateScope]] = defaultdict(list)
-        version_ids = [version.id for _, version in current_certificates]
-        if version_ids:
-            for scope in session.scalars(select(CertificateScope).where(CertificateScope.certificate_version_id.in_(version_ids))):
-                certificate_scope_rows_by_version[scope.certificate_version_id].append(scope)
-
-        certificate_by_site: dict[str, list[CertificateContextRow]] = defaultdict(list)
-        for certificate, version in current_certificates:
-            linked_case = None if certificate.case_id is None else cases_by_id.get(certificate.case_id)
-            certificate_by_site[certificate.site_id].append(
-                CertificateContextRow(
-                    certificate=certificate,
-                    version=version,
-                    line_code=self._certificate_line_code(certificate, linked_case),
-                    scope_summary=self._build_certificate_scope_summary(
-                        certificate_scope_rows_by_version.get(version.id, [])
-                    ),
-                )
             )
-
-        results = []
-        for page_context in page_context_rows:
-            site = sites[page_context.site_id]
-            company = companies[site.company_id]
-            row_gxp_type = page_context.gxp_type
-            line_code = self._normalize_line_code(page_context.line_code)
-            context_cases = [
-                row
-                for row in cases_by_site.get(page_context.site_id, [])
-                if row.gxp_type == row_gxp_type and self._normalize_line_code(row.scope_code) == line_code
-            ]
-            latest = self._select_latest_case(context_cases)
-            certificate_context = self._select_current_certificate_context(
-                certificate_by_site.get(page_context.site_id, []),
-                row_gxp_type,
-                line_code=line_code,
-            )
-            results.append(
-                {
-                    "result_key": self._build_result_key(site.id, gxp_type=row_gxp_type, line_code=line_code),
-                    "site_id": site.id,
-                    "legacy_site_id": site.legacy_site_id,
-                    "facility_code": self._preferred_site_code(site, row_gxp_type),
-                    "context_code": self._build_context_code(site, gxp_type=row_gxp_type, line_code=line_code),
-                    "result_grain": "production_line" if line_code else "facility",
-                    "gxp_type": row_gxp_type,
-                    "line_code": line_code,
-                    "facility_name": site.site_name,
-                    "company_name": company.legal_name,
-                    "gxp_types": sorted(gxp_types_by_site.get(page_context.site_id, [])),
-                    "certificate_scope_summary": None if certificate_context is None else certificate_context.scope_summary,
-                    "province_name": site.province_name,
-                    "last_inspection_on": self._select_latest_inspection_on(
-                        context_cases,
-                        outcomes_by_case_id=outcomes_by_case_id,
-                        inspection_event_dates_by_case_id=inspection_event_dates_by_case_id,
-                    ),
-                    "current_state": None if latest is None else latest.state.value,
-                    "current_certificate_number": None if certificate_context is None else certificate_context.version.certificate_number,
-                    "current_certificate_expiry": None if certificate_context is None else certificate_context.version.expiry_date,
-                }
-            )
-        return {
-            "items": results,
-            "total_count": total_count,
-            "offset": offset,
-            "limit": limit,
+            if occurred_at is not None
         }
+        certificates = list(session.scalars(select(Certificate).where(Certificate.latest_flag.is_(True))))
+        change_requests = list(session.scalars(select(ChangeRequest)))
+        case_by_id = {row.id: row for row in cases}
+        versions = {row.certificate_id: row for row in session.scalars(select(CertificateVersion).where(CertificateVersion.is_latest_version.is_(True)))}
+        scopes: dict[str, list[CertificateScope]] = defaultdict(list)
+        for scope in session.scalars(select(CertificateScope)):
+            scopes[scope.certificate_version_id].append(scope)
+        cases_by_context: dict[tuple[str, str | None, str, str | None], list[Case]] = defaultdict(list)
+        certificates_by_context: dict[tuple[str, str | None, str, str | None], list[CertificateContextRow]] = defaultdict(list)
 
-    def get_facility_workspace(self, session: Session, *, site_id: str, gxp_type: str | None, line_code: str | None):
+        def key_for(*, site_id: str, regulatory: str, production_line_id: str | None, raw_code: str | None):
+            line_id, line_code, state = self._line_identity(site_id=site_id, production_line_id=production_line_id, raw_line_code=raw_code, lines=lines)
+            return (site_id, regulatory, state, line_id if state == "canonical" else line_code), line_id, line_code, state
+
+        for row in cases:
+            key, _, _, _ = key_for(site_id=row.site_id, regulatory=row.gxp_type, production_line_id=row.production_line_id, raw_code=row.scope_code)
+            cases_by_context[key].append(row)
+        for certificate in certificates:
+            version = versions.get(certificate.id)
+            if version is None:
+                continue
+            linked_case = case_by_id.get(certificate.case_id) if certificate.case_id else None
+            raw_code = self._certificate_line_code(certificate, linked_case)
+            key, line_id, line_code, state = key_for(site_id=certificate.site_id, regulatory=certificate.certificate_type, production_line_id=certificate.production_line_id, raw_code=raw_code)
+            certificates_by_context[key].append(CertificateContextRow(certificate=certificate, version=version, line_code=line_code, production_line_id=line_id, production_line_code=line_code, production_line_identity_state=state, scope_summary=self._build_certificate_scope_summary(scopes.get(version.id, []))))
+        # A site with only change-request work is still searchable through its
+        # facility-wide context; it must not invent a production-line identity.
+        for change_request in change_requests:
+            if not any(key[0] == change_request.site_id for key in set(cases_by_context) | set(certificates_by_context)):
+                cases_by_context[(change_request.site_id, None, "facility_wide", None)]
+
+        results: list[dict[str, object]] = []
+        for site in sites:
+            company = companies.get(site.company_id)
+            if company is None:
+                continue
+            site_cases = [row for row in cases if row.site_id == site.id]
+            site_certificates = [row for row in certificates if row.site_id == site.id]
+            # Search eligibility is site-wide; canonical context partitioning
+            # below remains strictly keyed by ProductionLine UUID when present.
+            haystack = " ".join(
+                filter(
+                    None,
+                    (
+                        site.site_name,
+                        site.short_name,
+                        site.site_address,
+                        site.province_name,
+                        company.legal_name,
+                        company.short_name,
+                        *(value for row in site_cases for value in (row.scope_code, row.legacy_inspection_code, row.applicable_standard)),
+                        *(
+                            value
+                            for row in site_certificates
+                            for value in (
+                                row.line_code,
+                                versions.get(row.id).certificate_number if versions.get(row.id) else None,
+                                self._build_certificate_scope_summary(scopes.get(versions[row.id].id, [])) if row.id in versions else None,
+                            )
+                        ),
+                    ),
+                )
+            )
+            if q and q.lower() not in haystack.lower():
+                continue
+            if facility_name and facility_name.lower() not in site.site_name.lower():
+                continue
+            if province and (site.province_name or "").lower().find(province.lower()) < 0:
+                continue
+            if change_request_states and not any(row.site_id == site.id and row.state.value in change_request_states for row in change_requests):
+                continue
+            site_keys = sorted(
+                (key for key in set(cases_by_context) | set(certificates_by_context) if key[0] == site.id and (not gxp_type or key[1] == gxp_type)),
+                key=lambda key: (key[1] or "", key[2], key[3] or ""),
+            )
+            for key in site_keys:
+                _, regulatory, state, discriminator = key
+                context_cases = cases_by_context[key]
+                context_certificates = certificates_by_context[key]
+                if case_states and not any(row.state.value in case_states for row in context_cases):
+                    continue
+                if certificate_scope and not any(certificate.scope_summary and certificate_scope.lower() in certificate.scope_summary.lower() for certificate in context_certificates):
+                    continue
+                if certificate_state or certificate_expiring_within_days is not None:
+                    today = date.today()
+                    eligible = [row for row in context_certificates if (certificate_state != "active" or row.version.expiry_date is None or row.version.expiry_date >= today) and (certificate_expiring_within_days is None or (row.version.expiry_date is not None and today <= row.version.expiry_date <= today + timedelta(days=certificate_expiring_within_days)))]
+                    if not eligible:
+                        continue
+                line_id = discriminator if state == "canonical" else None
+                line_code = lines[line_id].code if line_id is not None else discriminator
+                latest_case = self._select_latest_case(context_cases)
+                certificate_context = self._select_current_certificate_context(context_certificates, regulatory)
+                result_key = self._build_search_result_key(
+                    site.id,
+                    gxp_type=regulatory,
+                    identity_state=state,
+                    production_line_id=line_id,
+                    line_code=line_code,
+                )
+                results.append({"result_key": result_key, "site_id": site.id, "legacy_site_id": site.legacy_site_id, "facility_code": self._preferred_site_code(site, regulatory), "context_code": self._build_context_code(site, gxp_type=regulatory, line_code=line_code), "result_grain": "facility" if state == "facility_wide" else "production_line", "gxp_type": regulatory, "line_code": line_code, "production_line_id": line_id, "production_line_code": line_code, "production_line_identity_state": state, "facility_name": site.site_name, "company_name": company.legal_name, "gxp_types": sorted({key[1] for key in site_keys if key[1] is not None}), "certificate_scope_summary": None if certificate_context is None else certificate_context.scope_summary, "province_name": site.province_name, "last_inspection_on": self._select_latest_inspection_on(context_cases, outcomes_by_case_id=outcomes_by_case_id, inspection_event_dates_by_case_id=inspection_event_dates_by_case_id), "current_state": None if latest_case is None else latest_case.state.value, "current_certificate_number": None if certificate_context is None else certificate_context.version.certificate_number, "current_certificate_expiry": None if certificate_context is None else certificate_context.version.expiry_date})
+        results.sort(key=lambda row: (row["legacy_site_id"] is None, row["legacy_site_id"] or 0, row["facility_name"], row["gxp_type"] or "", row["production_line_identity_state"], row["production_line_id"] or "", row["line_code"] or ""))
+        return {"items": results[offset : offset + limit], "total_count": len(results), "offset": offset, "limit": limit}
+
+    def get_facility_workspace(self, session: Session, *, site_id: str, gxp_type: str | None, line_code: str | None, production_line_id: str | None = None):
+        self._assert_certificate_links_valid(session, site_id=site_id)
         site = self.get_site(session, site_id)
         company = self.get_company(session, site.company_id)
         site_cases = list(session.scalars(select(Case).where(Case.site_id == site_id)))
         normalized_line_code = self._normalize_line_code(line_code)
+        lines = {row.id: row for row in session.scalars(select(ProductionLine).where(ProductionLine.site_id == site_id))}
+        selected_line_id, selected_line_code, identity_state = self._line_identity(
+            site_id=site_id, production_line_id=production_line_id, raw_line_code=normalized_line_code, lines=lines
+        )
+        if production_line_id is not None and normalized_line_code is not None and selected_line_code != normalized_line_code:
+            raise HTTPException(status_code=422, detail="line_code does not match the selected canonical ProductionLine.")
         scoped_cases = [row for row in site_cases if row.gxp_type == gxp_type] if gxp_type else site_cases
-        if normalized_line_code is not None:
-            scoped_cases = [row for row in scoped_cases if self._normalize_line_code(row.scope_code) == normalized_line_code]
+        if identity_state == "canonical":
+            scoped_cases = [row for row in scoped_cases if row.production_line_id == selected_line_id]
+        elif identity_state == "legacy_unlinked":
+            scoped_cases = [row for row in scoped_cases if row.production_line_id is None and self._normalize_line_code(row.scope_code) == selected_line_code]
+        else:
+            scoped_cases = [row for row in scoped_cases if row.production_line_id is None and self._normalize_line_code(row.scope_code) is None]
         case_ids = [item.id for item in site_cases]
         event_dates = {}
         if case_ids:
@@ -1805,11 +1404,15 @@ class CatalogReadService:
         latest_case = None
         if scoped_cases:
             latest_case = self._select_latest_case(scoped_cases)
-        current_certificate = self._select_current_certificate_context(
-            certificate_context_rows,
-            gxp_type,
-            line_code=normalized_line_code,
-        )
+        matching_certificates = [
+            row for row in certificate_context_rows
+            if (
+                (identity_state == "canonical" and row.certificate.production_line_id == selected_line_id)
+                or (identity_state == "legacy_unlinked" and row.certificate.production_line_id is None and row.line_code == selected_line_code)
+                or (identity_state == "facility_wide" and row.certificate.production_line_id is None and row.line_code is None)
+            )
+        ]
+        current_certificate = self._select_current_certificate_context(matching_certificates, gxp_type)
 
         history_entries: list[tuple[tuple[date, datetime, datetime, int, str, str], dict[str, object]]] = []
         for row in scoped_cases:
@@ -1864,13 +1467,16 @@ class CatalogReadService:
 
         return {
             "summary": {
-                "context_key": self._build_result_key(site.id, gxp_type=gxp_type, line_code=normalized_line_code),
+                "context_key": self._build_result_key(site.id, gxp_type=gxp_type, line_code=selected_line_code) + (f":{selected_line_id}" if selected_line_id else f":{identity_state}"),
                 "site_id": site.id,
                 "legacy_site_id": site.legacy_site_id,
                 "facility_code": self._preferred_site_code(site, gxp_type),
-                "context_code": self._build_context_code(site, gxp_type=gxp_type, line_code=normalized_line_code),
-                "context_grain": "production_line" if normalized_line_code else "facility",
-                "selected_line_code": normalized_line_code,
+                "context_code": self._build_context_code(site, gxp_type=gxp_type, line_code=selected_line_code),
+                "context_grain": "production_line" if identity_state != "facility_wide" else "facility",
+                "selected_line_code": selected_line_code,
+                "selected_production_line_id": selected_line_id,
+                "selected_production_line_code": selected_line_code,
+                "production_line_identity_state": identity_state,
                 "facility_name": site.site_name,
                 "company_name": company.legal_name,
                 "company_legal_address": company.legal_address,
@@ -1900,9 +1506,14 @@ class CatalogReadService:
             "history": history,
         }
 
-    def list_site_gxp_certificates(self, session: Session, *, site_id: str, gxp_type: str | None, line_code: str | None):
+    def list_site_gxp_certificates(self, session: Session, *, site_id: str, gxp_type: str | None, line_code: str | None, production_line_id: str | None = None):
+        self._assert_certificate_links_valid(session, site_id=site_id)
         self.get_site(session, site_id)
         normalized_line_code = self._normalize_line_code(line_code)
+        lines = {row.id: row for row in session.scalars(select(ProductionLine).where(ProductionLine.site_id == site_id))}
+        selected_line_id, selected_line_code, identity_state = self._line_identity(site_id=site_id, production_line_id=production_line_id, raw_line_code=normalized_line_code, lines=lines)
+        if production_line_id is not None and normalized_line_code is not None and normalized_line_code != selected_line_code:
+            raise HTTPException(status_code=422, detail="line_code does not match the selected canonical ProductionLine.")
         cases = list(session.scalars(select(Case).where(Case.site_id == site_id)))
         case_by_id = {row.id: row for row in cases}
         case_ids = list(case_by_id)
@@ -1946,8 +1557,31 @@ class CatalogReadService:
         for certificate, version in rows:
             linked_case = None if certificate.case_id is None else case_by_id.get(certificate.case_id)
             resolved_line_code = self._certificate_line_code(certificate, linked_case)
-            if normalized_line_code is not None and resolved_line_code not in {normalized_line_code, None}:
+            certificate_line_id, certificate_line_code, certificate_identity_state = self._line_identity(site_id=certificate.site_id, production_line_id=certificate.production_line_id, raw_line_code=resolved_line_code, lines=lines)
+            if identity_state == "canonical" and not (
+                certificate_line_id == selected_line_id
+                or certificate_identity_state == "facility_wide"
+            ):
                 continue
+            if identity_state == "legacy_unlinked" and not (
+                certificate_identity_state == "facility_wide"
+                or (
+                    certificate_line_id is None
+                    and certificate_identity_state == "legacy_unlinked"
+                    and certificate_line_code == selected_line_code
+                )
+            ):
+                continue
+            if identity_state == "facility_wide" and certificate_identity_state != "facility_wide":
+                continue
+            display_line_code = certificate_line_code if certificate_identity_state == "canonical" else resolved_line_code
+            context_match_kind = (
+                "exact_line"
+                if identity_state == "canonical" and certificate_line_id == selected_line_id
+                else "facility_wide"
+                if identity_state == "canonical" and certificate_identity_state == "facility_wide"
+                else self._normalize_match_kind(normalized_line_code, display_line_code)
+            )
             certificate_context = CertificateContextRow(
                 certificate=certificate,
                 version=version,
@@ -1960,8 +1594,11 @@ class CatalogReadService:
                     "site_id": certificate.site_id,
                     "case_id": certificate.case_id,
                     "certificate_type": certificate.certificate_type,
-                    "line_code": resolved_line_code,
-                    "context_match_kind": self._normalize_match_kind(normalized_line_code, resolved_line_code),
+                    "line_code": display_line_code,
+                    "production_line_id": certificate_line_id,
+                    "production_line_code": certificate_line_code,
+                    "production_line_identity_state": certificate_identity_state,
+                    "context_match_kind": context_match_kind,
                     "latest_flag": certificate.latest_flag,
                     "certificate_number": version.certificate_number,
                     "issue_date": version.issue_date,
@@ -1986,6 +1623,7 @@ class CatalogReadService:
         certificate = session.get(Certificate, certificate_id)
         if certificate is None:
             raise HTTPException(status_code=404, detail="Certificate not found")
+        CaseWorkflowService._validate_certificate_linked_case(session, certificate)
         site = self.get_site(session, certificate.site_id)
         company = self.get_company(session, site.company_id)
         version = session.scalar(
@@ -2025,7 +1663,7 @@ class CatalogReadService:
             line_code=self._certificate_line_code(certificate, linked_case),
             scope_summary=self._build_certificate_scope_summary(scope_rows),
         )
-        return self._serialize_gxp_certificate_detail(
+        payload = self._serialize_gxp_certificate_detail(
             certificate=certificate,
             version=version,
             linked_case=linked_case,
@@ -2035,6 +1673,19 @@ class CatalogReadService:
             scope_rows=scope_rows,
             inspected_on=inspected_on,
         )
+        lines = {row.id: row for row in session.scalars(select(ProductionLine).where(ProductionLine.site_id == site.id))}
+        production_line_id, production_line_code, identity_state = self._line_identity(
+            site_id=certificate.site_id, production_line_id=certificate.production_line_id,
+            raw_line_code=context.line_code,
+            lines=lines,
+        )
+        payload.update({
+            "production_line_id": production_line_id,
+            "production_line_code": production_line_code,
+            "production_line_identity_state": identity_state,
+            "line_code": production_line_code if identity_state == "canonical" else context.line_code,
+        })
+        return payload
 
     def list_site_business_eligibility_certificates(self, session: Session, *, site_id: str):
         self.get_site(session, site_id)
@@ -2114,20 +1765,11 @@ class CatalogReadService:
                 .where(BusinessEligibilityCertificateLink.business_eligibility_version_id == version.id)
             ).all()
         )
-        linked_cases = {
-            row.id: row
-            for row in session.scalars(
-                select(Case).where(Case.id.in_([certificate_row.case_id for _, certificate_row, _ in linked_rows if certificate_row.case_id]))
-            )
-        } if linked_rows else {}
         linked_gxp_certificates = [
             {
                 "certificate_id": linked_certificate.id,
                 "certificate_type": linked_certificate.certificate_type,
-                "line_code": self._certificate_line_code(
-                    linked_certificate,
-                    None if linked_certificate.case_id is None else linked_cases.get(linked_certificate.case_id),
-                ),
+                "line_code": CaseWorkflowService._certificate_line_identity(session, linked_certificate)["production_line_code"],
                 "certificate_number": linked_version.certificate_number,
                 "issue_date": linked_version.issue_date,
                 "link_role": link.link_role,
@@ -2178,6 +1820,7 @@ class CatalogReadService:
 
     def get_case_workspace(self, session: Session, *, case_id: str, user: AuthenticatedUser):
         case = self.get_case(session, case_id)
+        self._assert_certificate_links_valid(session, site_id=case.site_id)
         site = self.get_site(session, case.site_id)
         company = self.get_company(session, site.company_id)
 
@@ -2252,6 +1895,11 @@ class CatalogReadService:
         elif team is not None and not team_round_trip_safe:
             team_reason = "contains_legacy_person" if any(member.identity_kind == "LEGACY_PERSON" for member in team_members) else "unresolved_member_identity"
         outcome = session.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == case.id))
+        period_segments = [] if outcome is None else list(session.scalars(
+            select(InspectionPeriodSegment)
+            .where(InspectionPeriodSegment.inspection_outcome_id == outcome.id)
+            .order_by(InspectionPeriodSegment.ordinal.asc(), InspectionPeriodSegment.id.asc())
+        ))
         approval_submissions = list(session.scalars(
             select(InspectionApprovalSubmission)
             .where(InspectionApprovalSubmission.case_id == case.id)
@@ -2271,6 +1919,113 @@ class CatalogReadService:
                 .order_by(CapaCycle.round_no.asc(), CapaCycle.created_at.asc(), CapaCycle.id.asc())
             )
         )
+
+        terminal_case = case.state in {CaseState.CLOSED, CaseState.CANCELLED}
+        inspection_permission = "inspection.edit"
+        final_evaluation_reason = None
+        if inspection_permission not in permissions:
+            final_evaluation_reason = "missing_permission"
+        elif terminal_case:
+            final_evaluation_reason = "terminal_case"
+        elif outcome is None:
+            final_evaluation_reason = "outcome_missing"
+        elif outcome.final_evaluation is not None:
+            final_evaluation_reason = "already_finalized"
+        elif capa_cycles and capa_cycles[-1].status != "accepted":
+            final_evaluation_reason = "latest_capa_not_accepted"
+        final_evaluation_readiness = {
+            "action_key": "finalize_inspection_outcome",
+            "label": "Chốt đánh giá cuối cùng",
+            "available": final_evaluation_reason is None,
+            "reason_code": final_evaluation_reason,
+            "required_permissions": [inspection_permission],
+            "expected_version": None if outcome is None else outcome.row_version,
+        }
+        approval_actions: list[dict[str, object]] = []
+        if inspection_permission not in permissions:
+            approval_reason = "missing_permission"
+        elif terminal_case:
+            approval_reason = "terminal_case"
+        else:
+            approval_reason = None
+        for stage in ("PCT", "CT"):
+            stage_reason = approval_reason
+            if stage_reason is None and stage == "CT":
+                if not any(item.stage == "PCT" and item.completed_on is not None for item in approval_submissions):
+                    stage_reason = "completed_pct_required"
+            approval_actions.append({
+                "action_key": f"create_approval_{stage.lower()}",
+                "label": f"Tạo trình {stage}",
+                "available": stage_reason is None,
+                "reason_code": stage_reason,
+                "required_permissions": [inspection_permission],
+                "expected_version": None,
+            })
+        for submission in approval_submissions:
+            complete_reason = approval_reason or ("already_completed" if submission.completed_on is not None else None)
+            approval_actions.append({
+                "action_key": f"complete_approval:{submission.id}",
+                "label": f"Hoàn tất {submission.stage} lần {submission.round_no}",
+                "available": complete_reason is None,
+                "reason_code": complete_reason,
+                "required_permissions": [inspection_permission],
+                "expected_version": submission.row_version,
+            })
+        transition_actions: list[dict[str, object]] = []
+        transition_permission = "case.edit"
+        # Use the service's transition graph rather than a UI-owned copy.
+        from backend.app.services.workflow import ALLOWED_CASE_TRANSITIONS
+        for target in sorted(ALLOWED_CASE_TRANSITIONS.get(case.state, set()), key=lambda value: value.value):
+            reason = None if transition_permission in permissions else "missing_permission"
+            if reason is None and target == CaseState.AWAITING_CERTIFICATE_DECISION:
+                latest = capa_cycles[-1] if capa_cycles else None
+                if latest is not None and latest.status != "accepted":
+                    reason = "latest_capa_not_accepted"
+            transition_actions.append({
+                "action_key": f"transition:{target.value}",
+                "label": target.value,
+                "available": reason is None,
+                "reason_code": reason,
+                "required_permissions": [transition_permission],
+                "expected_version": case.row_version,
+                "target_state": target.value,
+            })
+
+        latest_capa = capa_cycles[-1] if capa_cycles else None
+        create_capa_reason = None
+        if "capa.edit" not in permissions:
+            create_capa_reason = "missing_permission"
+        elif terminal_case:
+            create_capa_reason = "terminal_case"
+        elif case.state != CaseState.INSPECTION_COMPLETED:
+            create_capa_reason = "invalid_case_state"
+        elif latest_capa is not None and latest_capa.status != "rejected":
+            create_capa_reason = "latest_cycle_not_rejected"
+        capa_actions = [
+            {
+                "action_key": "create_capa_cycle",
+                "label": "Thêm vòng khắc phục",
+                "available": create_capa_reason is None,
+                "reason_code": create_capa_reason,
+                "required_permissions": ["capa.edit"],
+                "expected_version": case.row_version,
+            }
+        ]
+        for cycle in capa_cycles:
+            for action_key, permission, allowed in (
+                ("update_capa_cycle", "capa.edit", {"requested", "rejected"}),
+                ("submit_capa_cycle", "capa.edit", {"requested", "rejected"}),
+                ("assess_capa_cycle", "capa.assess", {"submitted"}),
+            ):
+                available = permission in permissions and not terminal_case and cycle.status in allowed
+                capa_actions.append({
+                    "action_key": f"{action_key}:{cycle.id}",
+                    "label": action_key,
+                    "available": available,
+                    "reason_code": None if available else ("missing_permission" if permission not in permissions else "invalid_cycle_state"),
+                    "required_permissions": [permission],
+                    "expected_version": cycle.row_version,
+                })
 
         gxp_certificate_rows = list(
             session.execute(
@@ -2307,8 +2062,10 @@ class CatalogReadService:
             if executed_event is not None and executed_event.occurred_at is not None:
                 inspected_on = executed_event.occurred_at.date()
 
-        linked_gxp_certificates = [
-            self._serialize_gxp_certificate_detail(
+        linked_gxp_certificates = []
+        for certificate, version in gxp_certificate_rows:
+            identity = CaseWorkflowService._certificate_line_identity(session, certificate)
+            payload = self._serialize_gxp_certificate_detail(
                 certificate=certificate,
                 version=version,
                 linked_case=case,
@@ -2318,8 +2075,13 @@ class CatalogReadService:
                 scope_rows=scope_rows_by_version_id.get(version.id, []),
                 inspected_on=inspected_on,
             )
-            for certificate, version in gxp_certificate_rows
-        ]
+            payload.update(
+                {
+                    **identity,
+                    "line_code": identity["production_line_code"],
+                }
+            )
+            linked_gxp_certificates.append(payload)
         linked_gxp_certificates.sort(
             key=lambda item: (
                 -(item["issue_date"].toordinal()) if item["issue_date"] is not None else float("inf"),
@@ -2373,27 +2135,13 @@ class CatalogReadService:
                 ).all()
             ) if be_version_ids else []
 
-            linked_cases = (
-                {
-                    linked_case.id: linked_case
-                    for linked_case in session.scalars(
-                        select(Case).where(Case.id.in_([certificate_row.case_id for _, certificate_row, _ in linked_basis_rows if certificate_row.case_id]))
-                    )
-                }
-                if linked_basis_rows
-                else {}
-            )
-
             linked_basis_by_version_id: dict[str, list[dict[str, object]]] = defaultdict(list)
             for link, linked_certificate, linked_version in linked_basis_rows:
                 linked_basis_by_version_id[link.business_eligibility_version_id].append(
                     {
                         "certificate_id": linked_certificate.id,
                         "certificate_type": linked_certificate.certificate_type,
-                        "line_code": self._certificate_line_code(
-                            linked_certificate,
-                            None if linked_certificate.case_id is None else linked_cases.get(linked_certificate.case_id),
-                        ),
+                        "line_code": CaseWorkflowService._certificate_line_identity(session, linked_certificate)["production_line_code"],
                         "certificate_number": linked_version.certificate_number,
                         "issue_date": linked_version.issue_date,
                         "link_role": link.link_role,
@@ -2471,6 +2219,11 @@ class CatalogReadService:
                 "company_name": company.legal_name,
                 "gxp_type": case.gxp_type,
                 "scope_code": case.scope_code,
+                **dict(zip(("production_line_id", "production_line_code", "production_line_identity_state"), self._line_identity(
+                    site_id=case.site_id, production_line_id=case.production_line_id,
+                    raw_line_code=case.scope_code,
+                    lines={line.id: line for line in session.scalars(select(ProductionLine).where(ProductionLine.site_id == case.site_id))},
+                ))),
                 "applicable_standard": case.applicable_standard,
                 "inspection_type": case.inspection_type,
                 "state": case.state.value,
@@ -2487,9 +2240,9 @@ class CatalogReadService:
             },
             "inspection": {
                 "plan_row_version": None if plan is None else plan.row_version,
-                "decision_reference": None if outcome is None else outcome.decision_reference,
                 "plan_decision_reference": None if plan is None else plan.decision_reference,
                 "plan_decision_date": None if plan is None else plan.decision_date,
+                "outcome_decision_reference_compatibility": None if outcome is None else outcome.decision_reference,
                 "decision_document_hint": None if plan is None else plan.decision_document_hint,
                 "plan_start_on": None if plan is None else plan.plan_start_on,
                 "plan_end_on": None if plan is None else plan.plan_end_on,
@@ -2497,6 +2250,11 @@ class CatalogReadService:
                 "outcome_row_version": None if outcome is None else outcome.row_version,
                 "inspected_on": None if outcome is None else outcome.inspected_on,
                 "inspected_to_on": None if outcome is None else outcome.inspected_to_on,
+                "inspection_period_state": None if outcome is None else outcome.inspection_period_state,
+                "inspection_period_segments": [
+                    {"id": item.id, "ordinal": item.ordinal, "started_on": item.started_on, "ended_on": item.ended_on}
+                    for item in period_segments
+                ],
                 "executed_on": next(
                     (
                         row.occurred_at
@@ -2511,6 +2269,8 @@ class CatalogReadService:
                 "minutes_recorded_on": None if outcome is None else outcome.minutes_recorded_on,
                 "minutes_recorded_time": None if outcome is None else outcome.minutes_recorded_time,
                 "compliance_due_on": None if outcome is None else outcome.compliance_due_on,
+                "final_evaluation_readiness": final_evaluation_readiness,
+                "approval_actions": approval_actions,
                 "approval_submissions": [
                     {"approval_submission_id": item.id, "stage": item.stage, "round_no": item.round_no,
                      "reference": item.reference, "submitted_on": item.submitted_on, "submitted_time": item.submitted_time,
@@ -2542,6 +2302,7 @@ class CatalogReadService:
                         "row_version": row.row_version,
                         "round_no": row.round_no,
                         "requested_on": row.requested_on,
+                        "incoming_reference": row.incoming_reference,
                         "submitted_on": row.submitted_on,
                         "assessed_on": row.assessed_on,
                         "assessor_name": row.assessor_name,
@@ -2550,7 +2311,8 @@ class CatalogReadService:
                         "notes": row.notes,
                     }
                     for row in capa_cycles
-                ]
+                ],
+                "actions": capa_actions,
             },
             "processing": {
                 "row_version": None if assessment is None else assessment.row_version,
@@ -2592,6 +2354,7 @@ class CatalogReadService:
             ),
             "linked_gxp_certificates": linked_gxp_certificates,
             "linked_business_eligibility_certificates": linked_business_eligibility_certificates,
+            "transition_actions": transition_actions,
         }
 
     def get_change_request_workspace(self, session: Session, *, change_request_id: str) -> dict[str, object]:

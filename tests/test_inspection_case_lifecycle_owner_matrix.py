@@ -139,8 +139,13 @@ def test_capa_is_one_repeatable_owner_not_round_specific_schema():
         "field": "round_no",
         "classification": "OWNER_PROVEN_EXISTING",
     }
-    assert by_key["capa_incoming_reference"]["model"] == "CapaCycle"
-    assert by_key["capa_incoming_reference"]["classification"] == "OWNER_NEEDS_MODEL_EXTENSION"
+    assert by_key["capa_incoming_reference"] == {
+        "key": "capa_incoming_reference",
+        "lifecycle": "capa",
+        "model": "CapaCycle",
+        "field": "incoming_reference",
+        "classification": "OWNER_PROVEN_EXISTING",
+    }
 
 
 def test_certificate_truth_is_version_owned():

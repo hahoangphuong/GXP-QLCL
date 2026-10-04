@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import HTTPException
 from types import SimpleNamespace
 import pytest
@@ -19,6 +21,7 @@ from backend.app.db.models.phase1 import (
     Company,
     EvaluationScopeTaxonomyNode,
     EvaluationScopeTaxonomyVersion,
+    ProductionLine,
     Site,
 )
 from backend.app.services.catalog import CatalogReadService
@@ -42,7 +45,10 @@ def _seed_scope(session: Session, *, classification: str = "STRUCTURED_VALID", s
     site = Site(company_id=company.id, site_name="Scope site")
     session.add(site)
     session.flush()
-    case = Case(site_id=site.id, gxp_type="GLP", scope_code="A", state=state, inspection_type="Định kỳ")
+    line = ProductionLine(site_id=site.id, code="A", effective_from=date(2020, 1, 1))
+    session.add(line)
+    session.flush()
+    case = Case(site_id=site.id, production_line_id=line.id, gxp_type="GLP", scope_code="A", state=state, inspection_type="Định kỳ")
     session.add(case)
     version = EvaluationScopeTaxonomyVersion(taxonomy_content_sha256="a" * 64, source_workbook_sha256="b" * 64, schema_version="evaluation-scope-taxonomy/v1")
     session.add(version)
@@ -69,7 +75,7 @@ def _seed_scope(session: Session, *, classification: str = "STRUCTURED_VALID", s
     if unkeyed:
         session.add(CaseEvaluationScopeUnkeyedEntry(block_id=first.id, source_order=2, text="Mục lịch sử chưa gắn khóa"))
     session.commit()
-    return {"case_id": case.id, "site_id": site.id, "scope_id": scope.id, "version_id": version.id, "root_id": root.id, "child_id": child.id, "foreign_id": foreign.id}
+    return {"case_id": case.id, "site_id": site.id, "production_line_id": line.id, "scope_id": scope.id, "version_id": version.id, "root_id": root.id, "child_id": child.id, "foreign_id": foreign.id}
 
 
 def test_case_workspace_projects_structured_scope_exactly_and_locks_unkeyed_entries():
@@ -234,7 +240,7 @@ def test_reassessment_copies_exact_scope_snapshot_without_certificate_dependency
     with Session(engine) as session:
         seeded = _seed_scope(session, state=CaseState.CERTIFIED, unkeyed=True)
     with Session(engine) as session:
-        created = service.create_inspection_case(session, site_id=seeded["site_id"], gxp_type="GLP", line_code="A", applicable_standard="OECD-GLP", reason="Tái đánh giá", user=_user(), source_case_id=seeded["case_id"])
+        created = service.create_inspection_case(session, site_id=seeded["site_id"], gxp_type="GLP", line_code="A", production_line_id=seeded["production_line_id"], applicable_standard="OECD-GLP", reason="Tái đánh giá", user=_user(), source_case_id=seeded["case_id"])
         session.commit()
         copied = session.scalar(select(CaseEvaluationScope).where(CaseEvaluationScope.case_id == created["case_id"]))
         assert copied is not None and copied.id != seeded["scope_id"] and copied.taxonomy_version_id == seeded["version_id"]
@@ -256,7 +262,7 @@ def test_reassessment_carries_prose_only_scope_as_prose_without_synthesizing_nod
     with Session(engine) as session:
         seeded = _seed_scope(session, classification="PROSE_ONLY", state=CaseState.CERTIFIED)
     with Session(engine) as session:
-        created = service.create_inspection_case(session, site_id=seeded["site_id"], gxp_type="GLP", line_code="A", applicable_standard="OECD-GLP", reason=None, user=_user(), source_case_id=seeded["case_id"])
+        created = service.create_inspection_case(session, site_id=seeded["site_id"], gxp_type="GLP", line_code="A", production_line_id=seeded["production_line_id"], applicable_standard="OECD-GLP", reason=None, user=_user(), source_case_id=seeded["case_id"])
         session.commit()
         copied = session.scalar(select(CaseEvaluationScope).where(CaseEvaluationScope.case_id == created["case_id"]))
         assert copied is not None

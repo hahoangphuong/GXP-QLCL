@@ -6,6 +6,8 @@ import sys
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from tools.trace_inspection_qd_kt_vba import EXPECTED_SHA256, _branch_context, _decode, build_trace
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +51,7 @@ def _semantic_operations(report):
     ]
 
 
+@pytest.mark.requires_external_evidence("legacy/GXP-VBA code.zip")
 def test_real_trace_is_source_derived_and_classifies_tt3del():
     report = build_trace(SOURCE)
     assert report["source_zip_sha256"] == EXPECTED_SHA256
@@ -60,6 +63,7 @@ def test_real_trace_is_source_derived_and_classifies_tt3del():
     assert all("commented" not in op["branch_predicates"].lower() for op in report["physical_bookmark_operations"])
 
 
+@pytest.mark.requires_external_evidence("legacy/GXP-VBA code.zip")
 def test_source_mutations_change_or_fail_trace(tmp_path):
     missing = _variant(tmp_path, lambda text: text.replace('Replace_Bookmark wdDoc, "QDKT", QDKT', "' removed", 1))
     changed = build_trace(missing, expected_sha256=None)
@@ -70,6 +74,7 @@ def test_source_mutations_change_or_fail_trace(tmp_path):
     assert branch_report["logical_field_disposition"]["VKN"]["status"] == "UNRESOLVED_MAPPING"
 
 
+@pytest.mark.requires_external_evidence("legacy/GXP-VBA code.zip")
 def test_comments_are_ignored_and_line_shifts_only_change_coordinates(tmp_path):
     commented = _variant(tmp_path, lambda text: text.replace('Replace_Bookmark wdDoc, "QDKT", QDKT', "' Replace_Bookmark wdDoc, \"QDKT\", QDKT", 1))
     report = build_trace(commented, expected_sha256=None)
@@ -80,6 +85,7 @@ def test_comments_are_ignored_and_line_shifts_only_change_coordinates(tmp_path):
     assert _semantic_operations(build_trace(SOURCE)) == _semantic_operations(shifted_report)
 
 
+@pytest.mark.requires_external_evidence("legacy/GXP-VBA code.zip")
 def test_duplicate_required_call_fails_closed(tmp_path):
     duplicate = _variant(tmp_path, lambda text: text.replace("If Not Get_Tpl(i, syear, tpl, fname, iFName) Then GoTo Quit0", "If Not Get_Tpl(i, syear, tpl, fname, iFName) Then GoTo Quit0\n    If Not Get_Tpl(i, syear, tpl, fname, iFName) Then GoTo Quit0", 1))
     try:
@@ -90,6 +96,7 @@ def test_duplicate_required_call_fails_closed(tmp_path):
         raise AssertionError("duplicate required call was accepted")
 
 
+@pytest.mark.requires_external_evidence("legacy/GXP-VBA code.zip")
 def test_duplicate_procedure_names_fail_closed_in_each_source_module(tmp_path):
     duplicate_module = _variant(
         tmp_path,
@@ -119,6 +126,7 @@ def test_duplicate_procedure_names_fail_closed_in_each_source_module(tmp_path):
         raise AssertionError("duplicate RecordForm procedure was accepted")
 
 
+@pytest.mark.requires_external_evidence("legacy/GXP-VBA code.zip")
 def test_get_tpl_case_2_is_bounded_and_requires_one_assignment(tmp_path):
     original = 'tpl = "2. QD KT - " & S_GPs & ".dotx"'
     missing = _variant(tmp_path, lambda text: text.replace(original, "' removed", 1))
@@ -158,6 +166,7 @@ def test_branch_context_preserves_elseif_else_negation_and_unknowns():
     assert _branch_context(unknown, 1)[1] == "CONDITIONAL_I2"
 
 
+@pytest.mark.requires_external_evidence("legacy/GXP-VBA code.zip")
 def test_missing_source_and_hash_mismatch_fail_closed(tmp_path):
     missing = subprocess.run([sys.executable, "tools/trace_inspection_qd_kt_vba.py", "--vba-zip", str(tmp_path / "missing.zip")], cwd=ROOT, capture_output=True, text=True)
     assert missing.returncode == 2 and "not found" in missing.stdout

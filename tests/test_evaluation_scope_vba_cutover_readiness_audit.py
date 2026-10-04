@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from tools.audit_evaluation_scope_vba_cutover_readiness import (
     EXPECTED_CORPUS,
     EXPECTED_TAXONOMY_ROWS,
@@ -46,6 +48,7 @@ def test_c5d2_vba_cutover_readiness_gate_accepts_current_source_evidence():
     assert report["checks"]["FIRST_KEY_PRODUCT_CORRECTION"]["evidence"]["matched_after_open_parenthesis"] == [True, False]
 
 
+@pytest.mark.requires_external_evidence("artifacts/legacy_audit/evaluation_scope_vba_cutover_readiness.json")
 def test_c5d2_readiness_artifact_makes_unkeyed_and_cutover_boundaries_explicit():
     report = _load(ARTIFACT_PATH)
 

@@ -50,6 +50,7 @@ def workbook_reader_coordinates():
         }
 
 
+@pytest.mark.requires_external_evidence("legacy/Danh sách Kiểm tra GPs.xlsb")
 def test_authoritative_workbook_is_fenced_and_complete(snapshot_v2):
     snapshot = snapshot_v2
     assert AUTHORITATIVE_WORKBOOK_SHA256 == WORKBOOK_SHA
@@ -80,6 +81,7 @@ def test_non_authoritative_workbook_fails_closed(tmp_path):
         build_snapshot(different_workbook)
 
 
+@pytest.mark.requires_external_evidence("legacy/Danh sách Kiểm tra GPs.xlsb")
 def test_authoritative_workbook_copy_is_path_independent(tmp_path):
     copied_workbook = tmp_path / "authoritative-copy.xlsb"
     copyfile(WORKBOOK, copied_workbook)
@@ -122,6 +124,7 @@ def test_raw_row_preserves_observed_null_without_synthesizing_absent_coordinates
     ]
 
 
+@pytest.mark.requires_external_evidence("legacy/Danh sách Kiểm tra GPs.xlsb")
 def test_raw_coordinates_hashes_and_complex_sheet_are_deterministic(snapshot_v2, workbook_populated_cells, workbook_reader_coordinates):
     first = snapshot_v2
     second = build_snapshot(WORKBOOK)

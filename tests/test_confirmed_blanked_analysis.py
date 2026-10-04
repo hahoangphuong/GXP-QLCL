@@ -2,6 +2,8 @@ import json
 from hashlib import sha256
 from pathlib import Path
 
+import pytest
+
 from backend.app.domain.phase2_import import CONFIRMED_BLANKED_ROWS_PATH
 from tools.build_unresolved_fk_analysis import build_unresolved_fk_analysis
 
@@ -10,6 +12,7 @@ def test_confirmed_blanked_contract_is_tracked_in_repository_checkout():
     assert CONFIRMED_BLANKED_ROWS_PATH.exists()
 
 
+@pytest.mark.requires_external_evidence("artifacts/phase3_review/anomaly_review_report.json")
 def test_real_artifacts_fully_reconcile_with_confirmed_blanked_contract():
     source_snapshot_path = Path("artifacts/phase3c/legacy_snapshot.json")
     anomaly_report_path = Path("artifacts/phase3_review/anomaly_review_report.json")
@@ -43,6 +46,7 @@ def test_real_artifacts_fully_reconcile_with_confirmed_blanked_contract():
     assert report["blank_fk_breakdown"]["not_in_confirmed_blanked"] == 0
 
 
+@pytest.mark.requires_external_evidence("artifacts/phase3_review/anomaly_review_report.json")
 def test_real_artifacts_mark_known_cascades_from_confirmed_blanked_parent():
     anomaly_rows = json.loads(Path("artifacts/phase3_review/anomaly_review_report.json").read_text(encoding="utf-8"))
     confirmed_payload = json.loads(CONFIRMED_BLANKED_ROWS_PATH.read_text(encoding="utf-8"))

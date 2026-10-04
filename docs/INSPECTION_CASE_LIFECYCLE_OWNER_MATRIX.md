@@ -62,7 +62,7 @@ The user creates one case and progressively enters:
 | Applicable standard | `Case.applicable_standard` | `OWNER_PROVEN_EXISTING` | Use directly. |
 | Inspection-result assessment | `InspectionOutcome.outcome_result` | `OWNER_PROVEN_EXISTING_WITH_NAMING_REVIEW` | Semantics match post-inspection assessment; keep distinct from initial `CaseAssessment`. Consider clearer API naming, not duplicate storage. |
 | CAPA round number | `CapaCycle.round_no` | `OWNER_PROVEN_EXISTING` | Use `1`, `2`, ...; do not create separate tables for round 1/2. |
-| CAPA incoming correspondence/reference number | none identified on `CapaCycle` | `OWNER_NEEDS_MODEL_EXTENSION` | Add structured `incoming_reference` (name may be finalized during migration review). |
+| CAPA incoming correspondence/reference number | `CapaCycle.incoming_reference` | `OWNER_PROVEN_EXISTING` | Structured incoming correspondence/reference is owned by the repeatable CAPA cycle. |
 | CAPA submission date | `CapaCycle.submitted_on` | `OWNER_PROVEN_EXISTING` | Use directly. |
 | CAPA assessment date | `CapaCycle.assessed_on` | `OWNER_PROVEN_EXISTING` | Use directly. |
 | CAPA assessor | `CapaCycle.assessor_name` / `assessor_user_id` | `OWNER_PROVEN_EXISTING` | Prefer user FK when available, retain name snapshot for historical rendering. |

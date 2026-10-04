@@ -331,6 +331,8 @@ CANONICAL_PLAN_SHA256 = "0827c3f68715d24f2603b3642ce1149a52000e81970c4a665d8d9e9
 
 @pytest.fixture(scope="module")
 def canonical_b5b_plan() -> tuple[dict, dict, dict]:
+    if not Path("artifacts/phase3c/legacy_snapshot_v2.json").is_file() or not Path("artifacts/phase3c/ttvien_personnel_plan_b2.json").is_file():
+        pytest.skip("requires external legacy Snapshot V2 and personnel-plan evidence")
     snapshot = json.loads(Path("artifacts/phase3c/legacy_snapshot_v2.json").read_text(encoding="utf-8"))
     roster_plan = json.loads(Path("artifacts/phase3c/ttvien_personnel_plan_b2.json").read_text(encoding="utf-8"))
     plan = build_inspection_team_plan(

@@ -218,6 +218,7 @@ def test_projection_artifact_loader_is_exact_and_fails_closed_for_tampered_evide
         load_projection_artifact(artifact_path)
 
 
+@pytest.mark.requires_external_evidence("artifacts/phase3c/legacy_inspection_storage_anchor.json")
 def test_real_anchor_coverage_reports_unmatched_source_rows_without_losing_matched_raw_evidence():
     snapshot = json.loads(Path("artifacts/phase3c/legacy_snapshot.json").read_text(encoding="utf-8"))
     report = audit_coverage(snapshot, "artifacts/phase3c/legacy_inspection_storage_anchor.json")

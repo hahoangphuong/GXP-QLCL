@@ -23,7 +23,7 @@
     {"key":"applicable_standard","lifecycle":"inspection_execution","model":"Case","field":"applicable_standard","classification":"OWNER_PROVEN_EXISTING"},
     {"key":"inspection_result","lifecycle":"inspection_execution","model":"InspectionOutcome","field":"outcome_result","classification":"OWNER_PROVEN_EXISTING_WITH_NAMING_REVIEW"},
     {"key":"capa_round","lifecycle":"capa","model":"CapaCycle","field":"round_no","classification":"OWNER_PROVEN_EXISTING"},
-    {"key":"capa_incoming_reference","lifecycle":"capa","model":"CapaCycle","field":"incoming_reference","classification":"OWNER_NEEDS_MODEL_EXTENSION"},
+    {"key":"capa_incoming_reference","lifecycle":"capa","model":"CapaCycle","field":"incoming_reference","classification":"OWNER_PROVEN_EXISTING"},
     {"key":"capa_submitted_on","lifecycle":"capa","model":"CapaCycle","field":"submitted_on","classification":"OWNER_PROVEN_EXISTING"},
     {"key":"capa_assessed_on","lifecycle":"capa","model":"CapaCycle","field":"assessed_on","classification":"OWNER_PROVEN_EXISTING"},
     {"key":"capa_assessor_name","lifecycle":"capa","model":"CapaCycle","field":"assessor_name","classification":"OWNER_PROVEN_EXISTING"},

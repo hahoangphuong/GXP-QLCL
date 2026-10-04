@@ -22,6 +22,8 @@ TEST_DATABASE_NAME = "ttvien_import_test"
 
 @pytest.fixture(scope="module")
 def canonical_source_plan() -> tuple[bytes, dict[str, object]]:
+    if not Path("artifacts/phase3c/legacy_snapshot_v2.json").is_file():
+        pytest.skip("requires external legacy Snapshot V2 evidence")
     snapshot = json.loads(Path("artifacts/phase3c/legacy_snapshot_v2.json").read_text(encoding="utf-8"))
     plan = build_personnel_plan(snapshot, expected_snapshot_sha256="484cf37603aacc5ff01a7bde5ffab01ed444748d5c7b1a0b30e7fc3a04936caa")
     plan["team_crosswalk_preview"] = preview_team_crosswalk(snapshot, plan)

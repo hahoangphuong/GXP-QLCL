@@ -10,6 +10,7 @@ import pytest
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures"
 FIXTURE_ARTIFACTS_ROOT = FIXTURE_ROOT / "artifacts"
 FIXTURE_LEGACY_ROOT = FIXTURE_ROOT / "legacy"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(autouse=True)
@@ -39,3 +40,20 @@ def materialized_phase2_db(tmp_path: Path, fixture_artifacts_root: Path) -> Path
     finally:
         connection.close()
     return database_path
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        "requires_external_evidence(*paths): test needs non-versioned legacy or audit evidence",
+    )
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    for item in items:
+        marker = item.get_closest_marker("requires_external_evidence")
+        if marker is None:
+            continue
+        missing = [str(path) for path in marker.args if not (REPOSITORY_ROOT / str(path)).is_file()]
+        if missing:
+            item.add_marker(pytest.mark.skip(reason=f"external legacy evidence is unavailable: {', '.join(missing)}"))

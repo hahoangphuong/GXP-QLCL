@@ -16,6 +16,8 @@ CANONICAL_PLANNER_SHA256 = "f2a5ab81dd768aed45b4706167518b8c11378b1264ad82e3486e
 
 @pytest.fixture(scope="module")
 def canonical_payload() -> tuple[dict, dict, dict]:
+    if not Path("artifacts/phase3c/legacy_snapshot_v2.json").is_file():
+        pytest.skip("requires external legacy Snapshot V2 evidence")
     snapshot = json.loads(Path("artifacts/phase3c/legacy_snapshot_v2.json").read_text(encoding="utf-8"))
     plan = build_personnel_plan(snapshot, expected_snapshot_sha256=CANONICAL_SNAPSHOT_SHA256)
     return snapshot, plan, preview_team_crosswalk(snapshot, plan)

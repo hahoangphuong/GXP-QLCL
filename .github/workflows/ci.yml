@@ -30,10 +30,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Assert fresh checkout excludes production legacy artifacts
+      - name: Validate tracked-file hygiene policy
         run: |
           test ! -d legacy
-          test ! -d artifacts || test "$(find artifacts -type f | sort)" = "artifacts/a3/case_lifecycle_sweep.json"
+          python tools/check_repo_hygiene.py
 
       - name: Install backend dependencies
         run: python -m pip install -r backend/requirements.dev.lock.txt
@@ -97,7 +97,6 @@ jobs:
       - name: Assert fresh checkout excludes production legacy artifacts
         run: |
           test ! -d legacy
-          test ! -d artifacts || test "$(find artifacts -type f | sort)" = "artifacts/a3/case_lifecycle_sweep.json"
 
       - name: Install pip-tools
         run: python -m pip install pip-tools

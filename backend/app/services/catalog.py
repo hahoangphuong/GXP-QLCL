@@ -1860,6 +1860,7 @@ class CatalogReadService:
                 "sort_order": member.sort_order,
                 "identity_status": member_state["identity_status"],
             })
+        permissions = self._effective_permissions(user)
         outcome = session.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == case.id))
         period_segments = [] if outcome is None else list(session.scalars(
             select(InspectionPeriodSegment)

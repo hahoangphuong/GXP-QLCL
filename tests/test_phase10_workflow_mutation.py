@@ -3736,3 +3736,176 @@ def test_a4_business_eligibility_promotion_locks_site_before_revalidation():
 
     assert service.site_locked is True
     assert result["latest_flag"] is True
+
+def test_a4_business_eligibility_already_current_readiness_matches_noop_mutation_block():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    approver = build_authenticated_user("approver01", "manager", permissions={"certificate.approve"})
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        case = session.get(Case, case_id)
+        assert case is not None
+        site = session.get(Site, case.site_id)
+        assert site is not None
+        current = BusinessEligibilityCertificate(site_id=site.id, company_id=site.company_id, latest_flag=True)
+        session.add(current)
+        session.flush()
+        session.add(BusinessEligibilityVersion(
+            business_eligibility_certificate_id=current.id,
+            version_no=1,
+            certificate_number="DDKD-CURRENT",
+            issued_on=date(2026, 10, 5),
+        ))
+        session.commit()
+        current_id = current.id
+        expected_version = current.row_version
+
+    with Session(engine) as session:
+        readiness = service.get_business_eligibility_action_readiness(
+            session,
+            business_eligibility_certificate_id=current_id,
+            user=approver,
+        )
+        promote = next(item for item in readiness if item["action_key"] == "promote_current")
+        assert promote["available"] is False
+        assert promote["reason_code"] == "already_current"
+        with pytest.raises(HTTPException, match="already the current record"):
+            service.promote_business_eligibility_current(
+                session,
+                business_eligibility_certificate_id=current_id,
+                expected_version=expected_version,
+                reason="No-op promotion must be rejected.",
+                user=approver,
+            )
+        session.rollback()
+
+    with Session(engine) as session:
+        row = session.get(BusinessEligibilityCertificate, current_id)
+        assert row is not None
+        assert row.latest_flag is True
+        assert row.row_version == expected_version
+        assert session.scalars(
+            select(AuditEvent).where(
+                AuditEvent.entity_type == "business_eligibility_certificate",
+                AuditEvent.action == "business_eligibility.promote_current",
+            )
+        ).first() is None
+
+
+@pytest.mark.parametrize("link_role", ["arbitrary", "historical", ""])
+def test_a4_business_eligibility_runtime_rejects_unsupported_link_role_before_write(link_role):
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    user = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        case = session.get(Case, case_id)
+        assert case is not None
+        certificate = Certificate(site_id=case.site_id, certificate_type="GMP", latest_flag=True)
+        session.add(certificate)
+        session.flush()
+        session.add(CertificateVersion(
+            certificate_id=certificate.id,
+            version_no=1,
+            certificate_number="GMP-LINK-ROLE",
+            issue_date=date(2026, 9, 1),
+            expiry_date=date(2027, 9, 1),
+            is_latest_version=True,
+        ))
+        session.commit()
+        site_id, certificate_id = case.site_id, certificate.id
+
+    with Session(engine) as session:
+        with pytest.raises(HTTPException, match="Unsupported business eligibility link_role"):
+            service.issue_business_eligibility(
+                session,
+                site_id=site_id,
+                certificate_number="DDKD-BAD-ROLE",
+                issued_on=date(2026, 10, 5),
+                expires_on=None,
+                professional_responsible_person_name=None,
+                notes=None,
+                linked_certificates=[{"certificate_id": certificate_id, "link_role": link_role}],
+                reason="Reject unsupported link role.",
+                user=user,
+            )
+        session.rollback()
+        assert session.scalar(select(func.count()).select_from(BusinessEligibilityCertificateLink)) == 0
+
+
+def test_a4_business_eligibility_duplicate_basis_rejected_before_replace_all():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    user = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        case = session.get(Case, case_id)
+        assert case is not None
+        certificate = Certificate(site_id=case.site_id, certificate_type="GMP", latest_flag=True)
+        session.add(certificate)
+        session.flush()
+        session.add(CertificateVersion(
+            certificate_id=certificate.id,
+            version_no=1,
+            certificate_number="GMP-DUP",
+            issue_date=date(2026, 9, 1),
+            expiry_date=date(2027, 9, 1),
+            is_latest_version=True,
+        ))
+        session.flush()
+        issued = service.issue_business_eligibility(
+            session,
+            site_id=case.site_id,
+            certificate_number="DDKD-DUP",
+            issued_on=date(2026, 10, 5),
+            expires_on=None,
+            professional_responsible_person_name=None,
+            notes="original",
+            linked_certificates=[{"certificate_id": certificate.id, "link_role": "source_certificate"}],
+            reason="Seed canonical link.",
+            user=user,
+        )
+        session.commit()
+        dkkd_id = issued["business_eligibility_certificate_id"]
+        expected_version = issued["row_version"]
+        certificate_id = certificate.id
+
+    with Session(engine) as session:
+        with pytest.raises(HTTPException, match="Duplicate business eligibility linked certificate"):
+            service.upsert_business_eligibility_latest_version(
+                session,
+                business_eligibility_certificate_id=dkkd_id,
+                expected_version=expected_version,
+                certificate_number="DDKD-DUP-CHANGED",
+                issued_on=date(2026, 10, 6),
+                expires_on=None,
+                professional_responsible_person_name=None,
+                notes="must rollback",
+                linked_certificates=[
+                    {"certificate_id": certificate_id, "link_role": "source_certificate"},
+                    {"certificate_id": certificate_id, "link_role": "replacement_certificate"},
+                ],
+                reason="Duplicate basis must fail before destructive replacement.",
+                user=user,
+            )
+        session.rollback()
+
+    with Session(engine) as session:
+        version = session.scalars(select(BusinessEligibilityVersion).where(
+            BusinessEligibilityVersion.business_eligibility_certificate_id == dkkd_id
+        )).one()
+        links = list(session.scalars(select(BusinessEligibilityCertificateLink).where(
+            BusinessEligibilityCertificateLink.business_eligibility_version_id == version.id
+        )))
+        assert version.certificate_number == "DDKD-DUP"
+        assert version.notes == "original"
+        assert [(link.certificate_id, link.link_role) for link in links] == [
+            (certificate_id, "source_certificate")
+        ]
+

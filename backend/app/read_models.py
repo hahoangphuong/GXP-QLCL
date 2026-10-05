@@ -1090,7 +1090,7 @@ class CertificateMutationRead(BaseModel):
 
 class BusinessEligibilityLinkUpsertItem(BaseModel):
     certificate_id: str
-    link_role: str = "source_certificate"
+    link_role: Literal["source_certificate", "replacement_certificate"] = "source_certificate"
 
 
 class BusinessEligibilityIssueRequest(BaseModel):

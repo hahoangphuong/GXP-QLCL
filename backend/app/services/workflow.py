@@ -76,6 +76,7 @@ ALLOWED_CASE_TRANSITIONS: dict[CaseState, set[CaseState]] = {
 CAPA_BLOCKING_STATUSES = {"requested", "submitted"}
 CAPA_ACCEPTED_STATUS = "accepted"
 CAPA_REJECTED_STATUS = "rejected"
+BUSINESS_ELIGIBILITY_LINK_ROLES = frozenset({"source_certificate", "replacement_certificate"})
 SUPPORTED_CASE_GXP_TYPES = frozenset({"GMP", "GLP", "GMPbb"})
 OPEN_CASE_STATES = frozenset(
     {
@@ -435,6 +436,8 @@ class CaseWorkflowService:
         current_rows = self._business_eligibility_current_rows(session, site_id=certificate.site_id)
         if len(current_rows) > 1:
             return "multiple_current_records"
+        if len(current_rows) == 1 and current_rows[0].id == certificate.id:
+            return "already_current"
         if current_rows and current_rows[0].id != certificate.id:
             try:
                 current_version = self._load_latest_business_eligibility_version(session, current_rows[0].id)
@@ -860,15 +863,29 @@ class CaseWorkflowService:
         site_id: str,
     ) -> list[BusinessEligibilityCertificateLink]:
         validated_links: list[tuple[str, str]] = []
+        seen_certificate_ids: set[str] = set()
         for payload in linked_certificates:
             certificate_id = payload["certificate_id"]
+            raw_link_role = payload.get("link_role")
+            link_role = "source_certificate" if raw_link_role is None else raw_link_role
+            if link_role not in BUSINESS_ELIGIBILITY_LINK_ROLES:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Unsupported business eligibility link_role: {link_role}.",
+                )
+            if certificate_id in seen_certificate_ids:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Duplicate business eligibility linked certificate: {certificate_id}.",
+                )
+            seen_certificate_ids.add(certificate_id)
             certificate = session.get(Certificate, certificate_id)
             if certificate is None:
                 raise HTTPException(status_code=404, detail=f"Linked certificate {certificate_id} was not found.")
             if certificate.site_id != site_id:
                 raise HTTPException(status_code=409, detail="Business eligibility linked certificate belongs to a different site.")
             self._certificate_line_identity(session, certificate)
-            validated_links.append((certificate_id, payload.get("link_role") or "source_certificate"))
+            validated_links.append((certificate_id, link_role))
 
         existing = list(
             session.scalars(
@@ -3570,6 +3587,7 @@ class CaseWorkflowService:
                 "certificate_data_incomplete": "Business eligibility promotion requires certificate number and issue date.",
                 "invalid_linked_certificate": "Business eligibility promotion references an invalid linked Case, canonical ProductionLine, or cross-site certificate.",
                 "multiple_current_records": "Business eligibility promotion is blocked because the site has multiple current records.",
+                "already_current": "Business eligibility certificate is already the current record for this site.",
                 "current_record_incomplete": "Business eligibility promotion is blocked because the current record is incomplete.",
                 "candidate_issue_date_precedes_current": "Business eligibility promotion requires a candidate issue date that is not older than the current active record.",
             }

@@ -447,15 +447,6 @@ function buildCaseWorkspace(overrides: Record<string, unknown> = {}) {
         },
       ],
     },
-    affected_artifacts: [
-      {
-        link_id: "affected-cert-1",
-        artifact_kind: "certificate",
-        artifact_id: "cert-current-1",
-        source_affected_artifact_id: null,
-      },
-    ],
-    issued_artifacts: [],
     documents: {
       items: [
         {
@@ -616,6 +607,15 @@ function buildChangeRequestWorkspace(overrides: Record<string, unknown> = {}) {
     result_label: "Đang thẩm tra hồ sơ thay đổi",
     effective_on: null,
     approval_reference: null,
+    affected_artifacts: [
+      {
+        link_id: "affected-cert-1",
+        artifact_kind: "certificate",
+        artifact_id: "cert-current-1",
+        source_affected_artifact_id: null,
+      },
+    ],
+    issued_artifacts: [],
     documents: {
       items: [
         {

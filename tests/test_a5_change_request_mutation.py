@@ -716,7 +716,6 @@ def test_a5_issued_successor_promotion_readiness_delegates_to_artifact_owners(tm
         change = ChangeRequest(
             site_id=site.id,
             state=ChangeRequestState.EFFECTIVE,
-            row_version=7,
         )
         session.add_all(
             [
@@ -786,6 +785,9 @@ def test_a5_issued_successor_promotion_readiness_delegates_to_artifact_owners(tm
         )
         session.add_all([issued_certificate, issued_dkkd])
         session.commit()
+        change.scope_label = "Version bump for token-owner assertion"
+        session.commit()
+        session.refresh(change)
 
         change_id = change.id
         change_version = change.row_version

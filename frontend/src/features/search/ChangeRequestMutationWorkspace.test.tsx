@@ -98,7 +98,7 @@ function buildHandlers(): ChangeRequestMutationHandlers {
       issue_date: null,
       expiry_date: null,
       scopes: [],
-    } as GxpCertificateDetail),
+    } as unknown as GxpCertificateDetail),
     onEditIssuedCertificate: vi.fn().mockResolvedValue(undefined),
   };
 }

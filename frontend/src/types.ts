@@ -974,6 +974,7 @@ export type ChangeRequestWorkspaceDetail = {
 
 export type ChangeRequestWorkspace = {
   id: string;
+  row_version: number;
   legacy_change_request_id: number | null;
   site_id: string;
   facility_name: string;
@@ -990,6 +991,62 @@ export type ChangeRequestWorkspace = {
   approval_reference: string | null;
   documents: DocumentChecklist;
   details: ChangeRequestWorkspaceDetail[];
+  action_readiness: LifecycleActionReadiness[];
+};
+
+export type ChangeRequestCreateRequest = {
+  scope_label?: string | null;
+  description?: string | null;
+  submitted_on?: string | null;
+  requester_name?: string | null;
+  reason?: string | null;
+};
+
+export type ChangeRequestUpdateRequest = {
+  expected_version: number;
+  scope_label?: string | null;
+  description?: string | null;
+  submitted_on?: string | null;
+  requester_name?: string | null;
+  reason?: string | null;
+};
+
+export type ChangeRequestDetailCreateRequest = {
+  expected_version: number;
+  classification_id?: number | null;
+  classification_label?: string | null;
+  approval_status?: string | null;
+  old_value?: string | null;
+  new_value?: string | null;
+  note?: string | null;
+  reason?: string | null;
+};
+
+export type ChangeRequestDetailUpdateRequest = ChangeRequestDetailCreateRequest;
+
+export type ChangeApprovalUpsertRequest = {
+  expected_version: number;
+  handled_on?: string | null;
+  handled_by_name?: string | null;
+  result_label?: string | null;
+  effective_on?: string | null;
+  approval_reference?: string | null;
+  reason?: string | null;
+};
+
+export type ChangeRequestTransitionRequest = {
+  expected_version: number;
+  target_state: string;
+  reason?: string | null;
+};
+
+export type ChangeRequestMutationResponse = {
+  change_request_id: string;
+  row_version: number;
+  state: string;
+  audit_event_id: string;
+  change_detail_id: string | null;
+  change_approval_id: string | null;
 };
 
 export type DocumentPreparationResponse = {

@@ -9,6 +9,12 @@ const apiMocks = vi.hoisted(() => ({
   assessCapaCycle: vi.fn(),
   createCapaCycle: vi.fn(),
   createInspectionCase: vi.fn(),
+  createChangeRequest: vi.fn(),
+  createChangeRequestDetail: vi.fn(),
+  updateChangeRequest: vi.fn(),
+  updateChangeRequestDetail: vi.fn(),
+  upsertChangeApproval: vi.fn(),
+  transitionChangeRequest: vi.fn(),
   getAppStatus: vi.fn(),
   getCurrentIdentity: vi.fn(),
   getAdminSystemStatus: vi.fn(),
@@ -91,6 +97,12 @@ function resetApiMocks() {
   apiMocks.assessCapaCycle.mockReset();
   apiMocks.createCapaCycle.mockReset();
   apiMocks.createInspectionCase.mockReset();
+  apiMocks.createChangeRequest.mockReset();
+  apiMocks.createChangeRequestDetail.mockReset();
+  apiMocks.updateChangeRequest.mockReset();
+  apiMocks.updateChangeRequestDetail.mockReset();
+  apiMocks.upsertChangeApproval.mockReset();
+  apiMocks.transitionChangeRequest.mockReset();
   apiMocks.getDashboardSummary.mockReset();
   apiMocks.searchFacilities.mockReset();
   apiMocks.getFacilityWorkspace.mockReset();
@@ -151,6 +163,12 @@ function resetApiMocks() {
   apiMocks.assessCapaCycle.mockResolvedValue(null);
   apiMocks.createCapaCycle.mockResolvedValue(null);
   apiMocks.createInspectionCase.mockResolvedValue(null);
+  apiMocks.createChangeRequest.mockResolvedValue(null);
+  apiMocks.createChangeRequestDetail.mockResolvedValue(null);
+  apiMocks.updateChangeRequest.mockResolvedValue(null);
+  apiMocks.updateChangeRequestDetail.mockResolvedValue(null);
+  apiMocks.upsertChangeApproval.mockResolvedValue(null);
+  apiMocks.transitionChangeRequest.mockResolvedValue(null);
   apiMocks.getFacilityWorkspace.mockResolvedValue(null);
   apiMocks.getCaseDetail.mockResolvedValue(null);
   apiMocks.getCaseWorkspace.mockResolvedValue(null);
@@ -572,6 +590,7 @@ function buildCapaActions(...actions: ReturnType<typeof buildCapaAction>[]) {
 function buildChangeRequestWorkspace(overrides: Record<string, unknown> = {}) {
   return {
     id: "change-1",
+    row_version: 4,
     legacy_change_request_id: 1,
     site_id: "site-1",
     facility_name: "Nhà máy A",
@@ -631,6 +650,14 @@ function buildChangeRequestWorkspace(overrides: Record<string, unknown> = {}) {
         new_value: "Địa chỉ mới",
         note: null,
       },
+    ],
+    action_readiness: [
+      { action_key: "edit_change_request", label: "Sửa đề nghị", available: true, reason_code: null, required_permissions: ["change_request.edit"], expected_version: 4, target_state: null },
+      { action_key: "add_change_detail", label: "Thêm chi tiết", available: true, reason_code: null, required_permissions: ["change_request.edit"], expected_version: 4, target_state: null },
+      { action_key: "edit_change_detail", label: "Sửa chi tiết", available: true, reason_code: null, required_permissions: ["change_request.edit"], expected_version: 4, target_state: null },
+      { action_key: "edit_change_approval", label: "Cập nhật xử lý", available: true, reason_code: null, required_permissions: ["change_request.approve"], expected_version: 4, target_state: null },
+      { action_key: "transition_change_request:accepted", label: "Chấp nhận", available: true, reason_code: null, required_permissions: ["change_request.approve"], expected_version: 4, target_state: "accepted" },
+      { action_key: "transition_change_request:rejected", label: "Từ chối", available: true, reason_code: null, required_permissions: ["change_request.approve"], expected_version: 4, target_state: "rejected" },
     ],
     ...overrides,
   };
@@ -867,10 +894,12 @@ describe("App Slice A.4 search workspace", () => {
     for (const label of ["Công ty mới", "Cơ sở mới", "Dây chuyền mới", "Tái đánh giá", "Thay đổi"]) {
       expect(screen.getByRole("button", { name: label })).toBeDisabled();
     }
-    expect(screen.getByRole("button", { name: "Tái đánh giá" })).toHaveAttribute(
-      "title",
-      "Chưa có create contract owner-safe để tạo hồ sơ tái đánh giá mới cho ngữ cảnh GMP.",
-    );
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Tái đánh giá" })).toHaveAttribute(
+        "title",
+        "Chưa có create contract owner-safe để tạo hồ sơ tái đánh giá mới cho ngữ cảnh GMP.",
+      );
+    });
     expect(screen.queryByText(/^Prev$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Next$/)).not.toBeInTheDocument();
     expect(container.querySelector(".search-toolbar")).toBeNull();
@@ -3485,4 +3514,119 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Không tìm thấy ngữ cảnh được liên kết");
     expect(apiMocks.getFacilityWorkspace).not.toHaveBeenCalled();
   });
+
+  it("creates a change request from backend facility readiness and selects the canonical workspace", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    const readyWorkspace = buildWorkspace({
+      action_readiness: buildWorkspace().action_readiness.map((item) =>
+        item.action_key === "create_change_request"
+          ? {
+              ...item,
+              readiness_status: "available",
+              detail: "Có thể tạo yêu cầu thay đổi cho cơ sở đang chọn.",
+              required_permissions: ["change_request.edit"],
+            }
+          : item,
+      ),
+    });
+    const afterWorkspace = buildWorkspace({
+      history: [
+        {
+          id: "change-new",
+          source_type: "change_request",
+          reference_code: null,
+          event_type: "Thay đổi",
+          gxp_type: null,
+          standard: "Đổi kho",
+          occurred_on: "2026-10-05",
+          state: "received",
+        },
+        ...buildWorkspace().history,
+      ],
+    });
+    apiMocks.getFacilityWorkspace.mockResolvedValueOnce(readyWorkspace).mockResolvedValue(afterWorkspace);
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.createChangeRequest.mockResolvedValue({
+      change_request_id: "change-new",
+      row_version: 1,
+      state: "received",
+      audit_event_id: "audit-change-new",
+      change_detail_id: null,
+      change_approval_id: null,
+    });
+    apiMocks.getChangeRequestWorkspace.mockResolvedValue(
+      buildChangeRequestWorkspace({
+        id: "change-new",
+        row_version: 1,
+        legacy_change_request_id: null,
+        scope_label: "Đổi kho",
+        description: "Điều chỉnh kho bảo quản",
+        submitted_on: "2026-10-05",
+        requester_name: "QA",
+        state: "received",
+      }),
+    );
+
+    renderApp(["/search"]);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Thay đổi" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Thay đổi" }));
+    const dialog = await screen.findByRole("dialog", { name: "Tạo yêu cầu thay đổi" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Phạm vi yêu cầu thay đổi" }), { target: { value: "Đổi kho" } });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Mô tả yêu cầu thay đổi" }), { target: { value: "Điều chỉnh kho bảo quản" } });
+    fireEvent.change(within(dialog).getByLabelText("Ngày tạo yêu cầu thay đổi"), { target: { value: "2026-10-05" } });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Người tạo yêu cầu thay đổi" }), { target: { value: "QA" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Tạo yêu cầu thay đổi" }));
+
+    await waitFor(() => expect(apiMocks.createChangeRequest).toHaveBeenCalledTimes(1));
+    expect(apiMocks.createChangeRequest).toHaveBeenCalledWith(
+      "site-1",
+      {
+        scope_label: "Đổi kho",
+        description: "Điều chỉnh kho bảo quản",
+        submitted_on: "2026-10-05",
+        requester_name: "QA",
+      },
+      expect.objectContaining({ username: "operator.local" }),
+      true,
+      null,
+    );
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(apiMocks.getChangeRequestWorkspace).toHaveBeenCalledWith(
+      "change-new",
+      expect.any(Object),
+      true,
+      null,
+    ));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Tạo yêu cầu thay đổi" })).not.toBeInTheDocument());
+    expect(await screen.findByText("Điều chỉnh kho bảo quản")).toBeInTheDocument();
+  });
+
+  it("refreshes change-request and facility workspaces once after a stale 409 without retrying mutation", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.getChangeRequestWorkspace.mockResolvedValue(buildChangeRequestWorkspace());
+    apiMocks.updateChangeRequest.mockRejectedValue(Object.assign(new Error("Stale change_request update."), { status: 409 }));
+
+    const { container } = renderApp(["/search"]);
+    await waitFor(() => expect(container.querySelector(".history-panel")).not.toBeNull());
+    fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
+    expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sửa đề nghị" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Phạm vi thay đổi" }), { target: { value: "Đổi địa chỉ mới" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu đề nghị" }));
+
+    await waitFor(() => expect(apiMocks.updateChangeRequest).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(apiMocks.getChangeRequestWorkspace).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2));
+    expect(apiMocks.updateChangeRequest).toHaveBeenCalledTimes(1);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Stale change_request update.");
+    expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
+  });
+
 });

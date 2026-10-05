@@ -23,6 +23,13 @@ import type {
   CertificateMutationResponse,
   CaseWorkspace,
   ChangeRequestWorkspace,
+  ChangeApprovalUpsertRequest,
+  ChangeRequestCreateRequest,
+  ChangeRequestDetailCreateRequest,
+  ChangeRequestDetailUpdateRequest,
+  ChangeRequestMutationResponse,
+  ChangeRequestTransitionRequest,
+  ChangeRequestUpdateRequest,
   Company,
   DashboardSummary,
   DocumentDetail,
@@ -592,6 +599,102 @@ export function getChangeRequestWorkspace(
   bearerToken?: string | null,
 ): Promise<ChangeRequestWorkspace> {
   return requestJson<ChangeRequestWorkspace>(`/change-requests/${changeRequestId}/workspace`, {
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function createChangeRequest(
+  siteId: string,
+  payload: ChangeRequestCreateRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<ChangeRequestMutationResponse> {
+  return requestJson<ChangeRequestMutationResponse>(`/sites/${siteId}/change-requests`, {
+    method: "POST",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function updateChangeRequest(
+  changeRequestId: string,
+  payload: ChangeRequestUpdateRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<ChangeRequestMutationResponse> {
+  return requestJson<ChangeRequestMutationResponse>(`/change-requests/${changeRequestId}`, {
+    method: "PUT",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function createChangeRequestDetail(
+  changeRequestId: string,
+  payload: ChangeRequestDetailCreateRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<ChangeRequestMutationResponse> {
+  return requestJson<ChangeRequestMutationResponse>(`/change-requests/${changeRequestId}/details`, {
+    method: "POST",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function updateChangeRequestDetail(
+  changeDetailId: string,
+  payload: ChangeRequestDetailUpdateRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<ChangeRequestMutationResponse> {
+  return requestJson<ChangeRequestMutationResponse>(`/change-request-details/${changeDetailId}`, {
+    method: "PUT",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function upsertChangeApproval(
+  changeRequestId: string,
+  payload: ChangeApprovalUpsertRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<ChangeRequestMutationResponse> {
+  return requestJson<ChangeRequestMutationResponse>(`/change-requests/${changeRequestId}/approval`, {
+    method: "PUT",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function transitionChangeRequest(
+  changeRequestId: string,
+  payload: ChangeRequestTransitionRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<ChangeRequestMutationResponse> {
+  return requestJson<ChangeRequestMutationResponse>(`/change-requests/${changeRequestId}/transition`, {
+    method: "POST",
+    body: payload,
     auth,
     useStubAuth,
     bearerToken,

@@ -4,6 +4,12 @@ import {
   assessCapaCycle,
   createCapaCycle,
   createInspectionCase,
+  createChangeRequest,
+  createChangeRequestDetail,
+  updateChangeRequest,
+  updateChangeRequestDetail,
+  upsertChangeApproval,
+  transitionChangeRequest,
   getAdminSystemStatus,
   getAppStatus,
   getCurrentIdentity,
@@ -261,6 +267,66 @@ describe("frontend API routing contract", () => {
     for (const url of urls) {
       expect(String(url)).not.toContain("/api/api/");
     }
+  });
+
+
+
+  it("uses the canonical A5 ChangeRequest workflow routes and methods", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+    const auth = { username: "operator.local", role: "manager" as const };
+
+    await createChangeRequest("site-1", {
+      scope_label: "Đổi kho",
+      submitted_on: "2026-10-05",
+    }, auth, true);
+    await updateChangeRequest("change-1", {
+      expected_version: 2,
+      description: null,
+    }, auth, true);
+    await createChangeRequestDetail("change-1", {
+      expected_version: 3,
+      classification_label: "Thiết bị",
+      new_value: "Máy mới",
+    }, auth, true);
+    await updateChangeRequestDetail("detail-1", {
+      expected_version: 4,
+      note: "Bổ sung",
+    }, auth, true);
+    await upsertChangeApproval("change-1", {
+      expected_version: 5,
+      result_label: "Chấp nhận",
+      effective_on: "2026-10-06",
+    }, auth, true);
+    await transitionChangeRequest("change-1", {
+      expected_version: 6,
+      target_state: "accepted",
+    }, auth, true);
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/sites/site-1/change-requests",
+      "/api/change-requests/change-1",
+      "/api/change-requests/change-1/details",
+      "/api/change-request-details/detail-1",
+      "/api/change-requests/change-1/approval",
+      "/api/change-requests/change-1/transition",
+    ]);
+    expect(fetchMock.mock.calls.map((call) => (call[1] as RequestInit).method)).toEqual([
+      "POST",
+      "PUT",
+      "POST",
+      "PUT",
+      "PUT",
+      "POST",
+    ]);
+    expect(JSON.parse(String((fetchMock.mock.calls[1][1] as RequestInit).body))).toEqual({
+      expected_version: 2,
+      description: null,
+    });
+    expect(JSON.parse(String((fetchMock.mock.calls[5][1] as RequestInit).body))).toEqual({
+      expected_version: 6,
+      target_state: "accepted",
+    });
   });
 
   it("uses the explicit DDKD issue, edit-latest, and promote-current workflow routes", async () => {

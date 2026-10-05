@@ -30,6 +30,7 @@ import type {
 } from "../../types";
 import { StatusBadge } from "../../components/StatusBadge";
 import { EventWorkspace } from "./EventWorkspace";
+import type { ChangeRequestMutationHandlers } from "./ChangeRequestMutationWorkspace";
 import { BusinessEligibilityWorkspace } from "./BusinessEligibilityWorkspace";
 import { FacilitySummary } from "./FacilitySummary";
 import { GxpCertificateWorkspace } from "./GxpCertificateWorkspace";
@@ -56,6 +57,7 @@ export function FacilityWorkspaceTabs({
   changeRequestWorkspace,
   changeRequestWorkspaceLoading,
   changeRequestWorkspaceError,
+  changeRequestMutations,
   activeEventTab,
   onEventTabChange,
   gxpCertificates,
@@ -123,6 +125,7 @@ export function FacilityWorkspaceTabs({
   changeRequestWorkspace: ChangeRequestWorkspace | null;
   changeRequestWorkspaceLoading: boolean;
   changeRequestWorkspaceError: string | null;
+  changeRequestMutations: ChangeRequestMutationHandlers;
   activeEventTab: string;
   onEventTabChange: (tab: string) => void;
   gxpCertificates: GxpCertificateListItem[];
@@ -231,6 +234,7 @@ export function FacilityWorkspaceTabs({
                 changeRequestWorkspace={changeRequestWorkspace}
                 changeRequestWorkspaceError={changeRequestWorkspaceError}
                 changeRequestWorkspaceLoading={changeRequestWorkspaceLoading}
+                changeRequestMutations={changeRequestMutations}
                 onCaseApplicationSave={onCaseApplicationSave}
                 onCaseAssessmentSave={onCaseAssessmentSave}
                 onAssessCapaCycle={onAssessCapaCycle}

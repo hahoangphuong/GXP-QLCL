@@ -11,6 +11,12 @@ import {
   assessCapaCycle,
   createCapaCycle,
   createInspectionCase,
+  createChangeRequest,
+  createChangeRequestDetail,
+  updateChangeRequest,
+  updateChangeRequestDetail,
+  upsertChangeApproval,
+  transitionChangeRequest,
   getBusinessEligibilityDetail,
   issueBusinessEligibility,
   promoteBusinessEligibilityCurrent,
@@ -58,6 +64,12 @@ import type {
   CaseAssessmentUpsertRequest,
   CaseWorkspace,
   ChangeRequestWorkspace,
+  ChangeApprovalUpsertRequest,
+  ChangeRequestCreateRequest,
+  ChangeRequestDetailCreateRequest,
+  ChangeRequestDetailUpdateRequest,
+  ChangeRequestTransitionRequest,
+  ChangeRequestUpdateRequest,
   ContextualDocumentAction,
   DocumentDetail,
   FacilitySearchResult,
@@ -233,6 +245,14 @@ export function SearchPage({
   const [applicableStandardInput, setApplicableStandardInput] = useState("");
   const [createInspectionCasePending, setCreateInspectionCasePending] = useState(false);
   const [createInspectionCaseError, setCreateInspectionCaseError] = useState<string | null>(null);
+  const [createChangeRequestPending, setCreateChangeRequestPending] = useState(false);
+  const [createChangeRequestError, setCreateChangeRequestError] = useState<string | null>(null);
+  const [createChangeRequestDraft, setCreateChangeRequestDraft] = useState({
+    scopeLabel: "",
+    description: "",
+    submittedOn: "",
+    requesterName: "",
+  });
   const [selectedCaseWorkspace, setSelectedCaseWorkspace] = useState<CaseWorkspace | null>(null);
   const [caseWorkspaceLoading, setCaseWorkspaceLoading] = useState(false);
   const [caseWorkspaceError, setCaseWorkspaceError] = useState<string | null>(null);
@@ -289,6 +309,12 @@ export function SearchPage({
   const createReassessmentAction =
     workspace?.action_readiness.find((item) => item.action_key === "create_reassessment_case") ?? null;
   const reassessmentDialogOpen = selectedActionKey === "create_reassessment_case" && selectedResult && createReassessmentAction;
+  const createChangeRequestAction =
+    workspace?.action_readiness.find((item) => item.action_key === "create_change_request") ?? null;
+  const changeRequestDialogOpen =
+    selectedActionKey === "create_change_request" &&
+    selectedResult &&
+    createChangeRequestAction?.readiness_status === "available";
 
   // External same-route navigation owns URL -> state. Local interaction below owns state -> URL.
   useLayoutEffect(() => {
@@ -359,6 +385,24 @@ export function SearchPage({
     setApplicableStandardInput("");
     setCreateInspectionCasePending(false);
     setCreateInspectionCaseError(null);
+  }
+
+  function resetCreateChangeRequestState() {
+    setSelectedActionKey(null);
+    setCreateChangeRequestPending(false);
+    setCreateChangeRequestError(null);
+    setCreateChangeRequestDraft({
+      scopeLabel: "",
+      description: "",
+      submittedOn: "",
+      requesterName: "",
+    });
+  }
+
+  function closeChangeRequestDialog() {
+    if (!createChangeRequestPending) {
+      resetCreateChangeRequestState();
+    }
   }
 
   function closeReassessmentDialog() {
@@ -643,9 +687,9 @@ export function SearchPage({
           setWorkspaceError(null);
           setWorkspaceLoading(false);
           setSelectedActionKey((current) =>
-            current === "create_reassessment_case" &&
+            current &&
             payload.action_readiness.some(
-              (item) => item.action_key === "create_reassessment_case" && item.readiness_status === "available",
+              (item) => item.action_key === current && item.readiness_status === "available",
             )
               ? current
               : null,
@@ -944,6 +988,7 @@ export function SearchPage({
     setWorkspace(null);
     setWorkspaceError(null);
     resetCreateInspectionCaseState();
+    resetCreateChangeRequestState();
     setSelectedCaseWorkspace(null);
     setCaseWorkspaceError(null);
     setCaseWorkspaceLoading(false);
@@ -1036,6 +1081,63 @@ export function SearchPage({
         : payload.history[0]?.id ?? null;
     });
     return payload;
+  }
+
+  async function refreshSelectedChangeRequestWorkspace(changeRequestId: string) {
+    const payload = await getChangeRequestWorkspace(changeRequestId, auth, useStubAuth, bearerToken);
+    setSelectedChangeRequestWorkspace(payload);
+    setChangeRequestWorkspaceError(null);
+    return payload;
+  }
+
+  async function runSelectedChangeRequestMutation(
+    mutation: (changeRequestId: string) => Promise<unknown>,
+  ) {
+    if (!selectedHistory || selectedHistory.source_type !== "change_request") {
+      throw new Error("Chưa chọn yêu cầu thay đổi để cập nhật.");
+    }
+    const changeRequestId = selectedHistory.id;
+    try {
+      await mutation(changeRequestId);
+    } catch (error) {
+      const status = (error as Error & { status?: number }).status;
+      if (status === 409) {
+        await Promise.all([
+          refreshSelectedChangeRequestWorkspace(changeRequestId).catch(() => undefined),
+          refreshSelectedFacilityWorkspace(changeRequestId).catch(() => undefined),
+        ]);
+      }
+      throw error;
+    }
+    await Promise.all([
+      refreshSelectedChangeRequestWorkspace(changeRequestId),
+      refreshSelectedFacilityWorkspace(changeRequestId).catch(() => undefined),
+    ]);
+  }
+
+  async function handleChangeRequestHeaderUpdate(payload: ChangeRequestUpdateRequest) {
+    await runSelectedChangeRequestMutation((changeRequestId) =>
+      updateChangeRequest(changeRequestId, payload, auth, useStubAuth, bearerToken));
+  }
+
+  async function handleChangeRequestDetailCreate(payload: ChangeRequestDetailCreateRequest) {
+    await runSelectedChangeRequestMutation((changeRequestId) =>
+      createChangeRequestDetail(changeRequestId, payload, auth, useStubAuth, bearerToken));
+  }
+
+  async function handleChangeRequestDetailUpdate(changeDetailId: string, payload: ChangeRequestDetailUpdateRequest) {
+    await runSelectedChangeRequestMutation(() =>
+      updateChangeRequestDetail(changeDetailId, payload, auth, useStubAuth, bearerToken));
+  }
+
+  async function handleChangeApprovalUpsert(payload: ChangeApprovalUpsertRequest) {
+    await runSelectedChangeRequestMutation((changeRequestId) =>
+      upsertChangeApproval(changeRequestId, payload, auth, useStubAuth, bearerToken));
+  }
+
+  async function handleChangeRequestTransition(payload: ChangeRequestTransitionRequest) {
+    await runSelectedChangeRequestMutation((changeRequestId) =>
+      transitionChangeRequest(changeRequestId, payload, auth, useStubAuth, bearerToken));
   }
 
   async function handleCaseApplicationSave(payload: CaseApplicationUpsertRequest) {
@@ -1484,6 +1586,44 @@ export function SearchPage({
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
   }
 
+  async function handleCreateChangeRequestSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedResult) {
+      return;
+    }
+    setCreateChangeRequestPending(true);
+    setCreateChangeRequestError(null);
+    const payload: ChangeRequestCreateRequest = {
+      scope_label: createChangeRequestDraft.scopeLabel.trim() || null,
+      description: createChangeRequestDraft.description.trim() || null,
+      submitted_on: createChangeRequestDraft.submittedOn || null,
+      requester_name: createChangeRequestDraft.requesterName.trim() || null,
+    };
+    try {
+      const created = await createChangeRequest(
+        selectedResult.site_id,
+        payload,
+        auth,
+        useStubAuth,
+        bearerToken,
+      );
+      const changeRequestId = created.change_request_id;
+      const [changeWorkspace] = await Promise.all([
+        getChangeRequestWorkspace(changeRequestId, auth, useStubAuth, bearerToken),
+        refreshSelectedFacilityWorkspace(changeRequestId),
+      ]);
+      setSelectedChangeRequestWorkspace(changeWorkspace);
+      setChangeRequestWorkspaceError(null);
+      setSelectedFacilityTab(DEFAULT_FACILITY_TAB);
+      setSelectedHistoryId(changeRequestId);
+      setActiveTab("Đề nghị");
+      resetCreateChangeRequestState();
+    } catch (error) {
+      setCreateChangeRequestError(error instanceof Error ? error.message : "Không tạo được yêu cầu thay đổi.");
+      setCreateChangeRequestPending(false);
+    }
+  }
+
   async function handleCreateInspectionCaseSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedResult) {
@@ -1553,11 +1693,12 @@ export function SearchPage({
           <ActionCard
             actions={workspace?.action_readiness}
             onActionSelect={(actionKey) => {
-              if (actionKey !== "create_reassessment_case") {
+              if (actionKey !== "create_reassessment_case" && actionKey !== "create_change_request") {
                 return;
               }
               setSelectedActionKey((current) => (current === actionKey ? null : actionKey));
               setCreateInspectionCaseError(null);
+              setCreateChangeRequestError(null);
             }}
             onActionButtonRef={(actionKey, element) => {
               if (actionKey === "create_reassessment_case") {
@@ -1627,6 +1768,30 @@ export function SearchPage({
         </div>
       ) : null}
 
+      {changeRequestDialogOpen ? (
+        <div className="dialog-backdrop" role="presentation">
+          <section aria-labelledby="change-request-dialog-title" aria-modal="true" className="panel reassessment-dialog" role="dialog">
+            <header className="panel-header reassessment-dialog-header">
+              <div>
+                <h2 id="change-request-dialog-title">Tạo yêu cầu thay đổi</h2>
+                <p>{createChangeRequestAction?.detail}</p>
+              </div>
+            </header>
+            <form className="stack-form reassessment-form" onSubmit={handleCreateChangeRequestSubmit}>
+              <label><span>Phạm vi</span><input aria-label="Phạm vi yêu cầu thay đổi" disabled={createChangeRequestPending} onChange={(event) => setCreateChangeRequestDraft((current) => ({ ...current, scopeLabel: event.target.value }))} value={createChangeRequestDraft.scopeLabel} /></label>
+              <label><span>Ngày đề nghị</span><input aria-label="Ngày tạo yêu cầu thay đổi" disabled={createChangeRequestPending} onChange={(event) => setCreateChangeRequestDraft((current) => ({ ...current, submittedOn: event.target.value }))} type="date" value={createChangeRequestDraft.submittedOn} /></label>
+              <label><span>Đơn vị/người đề nghị</span><input aria-label="Người tạo yêu cầu thay đổi" disabled={createChangeRequestPending} onChange={(event) => setCreateChangeRequestDraft((current) => ({ ...current, requesterName: event.target.value }))} value={createChangeRequestDraft.requesterName} /></label>
+              <label><span>Mô tả</span><textarea aria-label="Mô tả yêu cầu thay đổi" disabled={createChangeRequestPending} onChange={(event) => setCreateChangeRequestDraft((current) => ({ ...current, description: event.target.value }))} value={createChangeRequestDraft.description} /></label>
+              {createChangeRequestError ? <p className="form-error" role="alert">{createChangeRequestError}</p> : null}
+              <div className="panel-actions reassessment-dialog-actions">
+                <button disabled={createChangeRequestPending} type="submit">{createChangeRequestPending ? "Đang tạo..." : "Tạo yêu cầu thay đổi"}</button>
+                <button disabled={createChangeRequestPending} onClick={closeChangeRequestDialog} type="button">Hủy</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
+
       {!resultsLoading && resultsTotalCount === 0 ? (
         <EmptyState title="Không có kết quả" description="Không tìm thấy cơ sở phù hợp với bộ lọc hiện tại." />
       ) : null}
@@ -1649,6 +1814,13 @@ export function SearchPage({
             changeRequestWorkspace={selectedChangeRequestWorkspace}
             changeRequestWorkspaceError={changeRequestWorkspaceError}
             changeRequestWorkspaceLoading={changeRequestWorkspaceLoading}
+            changeRequestMutations={{
+              onUpdateHeader: handleChangeRequestHeaderUpdate,
+              onCreateDetail: handleChangeRequestDetailCreate,
+              onUpdateDetail: handleChangeRequestDetailUpdate,
+              onUpsertApproval: handleChangeApprovalUpsert,
+              onTransition: handleChangeRequestTransition,
+            }}
             eligibilityCertificateDetail={eligibilityCertificateDetail}
             eligibilityCertificateDetailError={eligibilityCertificateDetailError}
             eligibilityCertificateDetailLoading={eligibilityCertificateDetailLoading}

@@ -32,6 +32,7 @@ import { CaseInspectionWorkspace } from "./CaseInspectionWorkspace";
 import { CaseProcessingWorkspace } from "./CaseProcessingWorkspace";
 import { CaseCertificateIssueWorkspace } from "./CaseCertificateIssueWorkspace";
 import { CaseRemediationWorkspace } from "./CaseRemediationWorkspace";
+import { ChangeRequestMutationWorkspace, type ChangeRequestMutationHandlers } from "./ChangeRequestMutationWorkspace";
 import { DetailValue } from "./DetailValue";
 import { EvaluationScopeWorkspace } from "./EvaluationScopeWorkspace";
 import { GxpCertificateDetailFields } from "./GxpCertificateDetailFields";
@@ -566,76 +567,18 @@ function renderCaseStepContent(
   return <LinkedBusinessEligibilityCertificates items={caseWorkspace.linked_business_eligibility_certificates} />;
 }
 
-function renderChangeRequestStepContent(activeTab: string, changeRequestWorkspace: ChangeRequestWorkspace) {
-  if (activeTab === "Đề nghị") {
+function renderChangeRequestStepContent(
+  activeTab: string,
+  changeRequestWorkspace: ChangeRequestWorkspace,
+  handlers: ChangeRequestMutationHandlers,
+) {
+  if (activeTab !== "Tài liệu") {
     return (
-      <div className="event-step-stack">
-        <WorkspaceSection title="Thông tin đề nghị thay đổi">
-          <div className="detail-grid compact-grid">
-            <DetailValue label="Mã thay đổi" value={changeRequestWorkspace.legacy_change_request_id ? `TD-${changeRequestWorkspace.legacy_change_request_id}` : null} />
-            <DetailValue label="Phạm vi" value={changeRequestWorkspace.scope_label} />
-            <DetailValue label="Ngày đề nghị" value={formatCompactDate(changeRequestWorkspace.submitted_on)} />
-            <DetailValue label="Đơn vị/người đề nghị" value={changeRequestWorkspace.requester_name} />
-            <DetailValue label="Trạng thái" value={formatStatusLabel(changeRequestWorkspace.state)} />
-            <DetailValue label="Mô tả" multiline value={changeRequestWorkspace.description} />
-          </div>
-        </WorkspaceSection>
-      </div>
-    );
-  }
-
-  if (activeTab === "Chi tiết") {
-    if (changeRequestWorkspace.details.length === 0) {
-      return (
-        <EmptyState
-          title="Chưa có chi tiết thay đổi"
-          description="Legacy db.Tdoi2 hiện không có dòng chi tiết canonical cho yêu cầu thay đổi này."
-        />
-      );
-    }
-    return (
-      <div className="event-step-stack">
-        <WorkspaceSection title="Danh mục chi tiết thay đổi">
-          <div className="table-scroll table-scroll-history">
-            <table className="dense-table change-request-detail-table">
-              <thead>
-                <tr>
-                  <th>Phân loại</th>
-                  <th>Trạng thái chấp nhận</th>
-                  <th>Thông tin cũ</th>
-                  <th>Thông tin mới</th>
-                </tr>
-              </thead>
-              <tbody>
-                {changeRequestWorkspace.details.map((item) => (
-                  <tr key={item.change_detail_id}>
-                    <td>{item.classification_label ?? "Chưa có"}</td>
-                    <td>{item.approval_status ?? "Chưa có"}</td>
-                    <td>{item.old_value ?? "Chưa có"}</td>
-                    <td>{item.new_value ?? "Chưa có"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </WorkspaceSection>
-      </div>
-    );
-  }
-
-  if (activeTab === "Xử lý") {
-    return (
-      <div className="event-step-stack">
-        <WorkspaceSection title="Kết quả xử lý thay đổi">
-          <div className="detail-grid compact-grid">
-            <DetailValue label="Ngày xử lý" value={formatCompactDate(changeRequestWorkspace.handled_on)} />
-            <DetailValue label="Người xử lý" value={changeRequestWorkspace.handled_by_name} />
-            <DetailValue label="Kết quả" multiline value={changeRequestWorkspace.result_label} />
-            <DetailValue label="Hiệu lực" value={formatCompactDate(changeRequestWorkspace.effective_on)} />
-            <DetailValue label="Tham chiếu phê duyệt" value={changeRequestWorkspace.approval_reference} />
-          </div>
-        </WorkspaceSection>
-      </div>
+      <ChangeRequestMutationWorkspace
+        activeTab={activeTab}
+        handlers={handlers}
+        workspace={changeRequestWorkspace}
+      />
     );
   }
 
@@ -657,6 +600,7 @@ export function EventWorkspace({
   changeRequestWorkspace,
   changeRequestWorkspaceLoading,
   changeRequestWorkspaceError,
+  changeRequestMutations,
   activeTab,
   onTabChange,
   onCaseApplicationSave,
@@ -689,6 +633,7 @@ export function EventWorkspace({
   changeRequestWorkspace: ChangeRequestWorkspace | null;
   changeRequestWorkspaceLoading: boolean;
   changeRequestWorkspaceError: string | null;
+  changeRequestMutations: ChangeRequestMutationHandlers;
   activeTab: string;
   onTabChange: (tab: string) => void;
   onCaseApplicationSave: (payload: CaseApplicationUpsertRequest) => Promise<void>;
@@ -757,7 +702,7 @@ export function EventWorkspace({
               description={changeRequestWorkspaceError}
             />
           ) : changeRequestWorkspace ? (
-            renderChangeRequestStepContent(effectiveActiveTab, changeRequestWorkspace)
+            renderChangeRequestStepContent(effectiveActiveTab, changeRequestWorkspace, changeRequestMutations)
           ) : (
             <EmptyState title="Chưa có workspace thay đổi" description="Backend chưa trả dữ liệu workspace cho lựa chọn thay đổi hiện tại." />
           )

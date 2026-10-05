@@ -8,6 +8,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from backend.app.auth import ROLE_PERMISSIONS, build_authenticated_user
+import backend.app.api.routers.workflow as workflow_router
 from backend.app.db.base import Base
 from backend.app.db.enums import ChangeRequestState
 from backend.app.db.models.phase1 import (
@@ -19,6 +20,7 @@ from backend.app.db.models.phase1 import (
     Site,
 )
 from backend.app.main import create_app
+from backend.app.read_models import ChangeRequestTransitionRequest, ChangeRequestUpdateRequest
 from backend.app.services import CatalogReadService, CaseWorkflowService
 
 
@@ -62,6 +64,108 @@ def test_a5_routes_and_bounded_context_permissions_are_registered():
     assert "change_request.approve" in ROLE_PERMISSIONS["manager"]
     assert "change_request.approve" not in ROLE_PERMISSIONS["inspector"]
     assert "change_request.edit" not in ROLE_PERMISSIONS["reader"]
+
+
+def test_a5_mutation_endpoint_denies_reader_before_write_or_audit(tmp_path):
+    database_url = f"sqlite:///{(tmp_path / 'a5-route-permission.sqlite').as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        site_id = _seed_site(session)
+        row = ChangeRequest(
+            site_id=site_id,
+            scope_label="Original",
+            state=ChangeRequestState.RECEIVED,
+        )
+        session.add(row)
+        session.commit()
+        change_id, version = row.id, row.row_version
+        before_audit_count = session.query(AuditEvent).count()
+
+    app = create_app(database_url)
+    route = next(
+        route
+        for route in app.routes
+        if getattr(route, "path", "") == "/change-requests/{change_request_id}"
+        and "PUT" in (route.methods or set())
+    )
+    reader = build_authenticated_user(
+        "reader01",
+        "reader",
+        permissions=ROLE_PERMISSIONS["reader"],
+    )
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as exc_info:
+            route.endpoint(
+                change_request_id=change_id,
+                payload=ChangeRequestUpdateRequest(
+                    expected_version=version,
+                    scope_label="Must not persist",
+                ),
+                session=session,
+                user=reader,
+            )
+        assert exc_info.value.status_code == 403
+        session.rollback()
+
+    with Session(engine) as session:
+        persisted = session.get(ChangeRequest, change_id)
+        assert persisted is not None
+        assert persisted.scope_label == "Original"
+        assert persisted.row_version == version
+        assert session.query(AuditEvent).count() == before_audit_count
+
+
+def test_a5_transition_route_delegates_permission_to_canonical_owner(tmp_path, monkeypatch):
+    database_url = f"sqlite:///{(tmp_path / 'a5-transition-permission-owner.sqlite').as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        site_id = _seed_site(session)
+        row = ChangeRequest(
+            site_id=site_id,
+            scope_label="Review",
+            state=ChangeRequestState.UNDER_REVIEW,
+        )
+        session.add(row)
+        session.commit()
+        change_id, version = row.id, row.row_version
+
+    app = create_app(database_url)
+    route = next(
+        route
+        for route in app.routes
+        if getattr(route, "path", "") == "/change-requests/{change_request_id}/transition"
+    )
+    monkeypatch.setattr(
+        workflow_router,
+        "change_request_transition_permission",
+        lambda target_state: "a5.permission.owner.sentinel",
+    )
+    manager = build_authenticated_user(
+        "manager01",
+        "manager",
+        permissions=ROLE_PERMISSIONS["manager"],
+    )
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as exc_info:
+            route.endpoint(
+                change_request_id=change_id,
+                payload=ChangeRequestTransitionRequest(
+                    expected_version=version,
+                    target_state="accepted",
+                ),
+                session=session,
+                user=manager,
+            )
+        assert exc_info.value.status_code == 403
+        session.rollback()
+
+    with Session(engine) as session:
+        persisted = session.get(ChangeRequest, change_id)
+        assert persisted is not None
+        assert persisted.state == ChangeRequestState.UNDER_REVIEW
+        assert persisted.row_version == version
 
 
 def test_a5_create_workspace_and_readiness_are_canonical_and_permission_owned(tmp_path):

@@ -52,6 +52,11 @@ from backend.app.read_models import (
     InspectionApprovalSubmissionCompleteRequest,
 )
 from backend.app.services import CatalogReadService, CaseWorkflowService
+from backend.app.services.workflow import (
+    CHANGE_REQUEST_APPROVE_PERMISSION,
+    CHANGE_REQUEST_EDIT_PERMISSION,
+    change_request_transition_permission,
+)
 
 def register_workflow_routes(app, session_factory) -> None:
     dependency = Depends(get_session_from_request_factory(session_factory))
@@ -432,7 +437,7 @@ def register_workflow_routes(app, session_factory) -> None:
         session: Session = dependency,
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
-        require_permissions(user, {"change_request.edit"})
+        require_permissions(user, {CHANGE_REQUEST_EDIT_PERMISSION})
         result = service.create_change_request(
             session,
             site_id=site_id,
@@ -452,7 +457,7 @@ def register_workflow_routes(app, session_factory) -> None:
         session: Session = dependency,
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
-        require_permissions(user, {"change_request.edit"})
+        require_permissions(user, {CHANGE_REQUEST_EDIT_PERMISSION})
         result = service.update_change_request(
             session,
             change_request_id=change_request_id,
@@ -474,7 +479,7 @@ def register_workflow_routes(app, session_factory) -> None:
         session: Session = dependency,
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
-        require_permissions(user, {"change_request.edit"})
+        require_permissions(user, {CHANGE_REQUEST_EDIT_PERMISSION})
         result = service.create_change_request_detail(
             session,
             change_request_id=change_request_id,
@@ -497,7 +502,7 @@ def register_workflow_routes(app, session_factory) -> None:
         session: Session = dependency,
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
-        require_permissions(user, {"change_request.edit"})
+        require_permissions(user, {CHANGE_REQUEST_EDIT_PERMISSION})
         result = service.update_change_request_detail(
             session,
             change_detail_id=change_detail_id,
@@ -521,7 +526,7 @@ def register_workflow_routes(app, session_factory) -> None:
         session: Session = dependency,
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
-        require_permissions(user, {"change_request.approve"})
+        require_permissions(user, {CHANGE_REQUEST_APPROVE_PERMISSION})
         result = service.upsert_change_approval(
             session,
             change_request_id=change_request_id,
@@ -548,11 +553,7 @@ def register_workflow_routes(app, session_factory) -> None:
             target_state = ChangeRequestState(payload.target_state)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=f"Unsupported change request state: {payload.target_state}") from exc
-        required_permission = (
-            "change_request.edit"
-            if target_state == ChangeRequestState.UNDER_REVIEW
-            else "change_request.approve"
-        )
+        required_permission = change_request_transition_permission(target_state)
         require_permissions(user, {required_permission})
         result = service.transition_change_request(
             session,

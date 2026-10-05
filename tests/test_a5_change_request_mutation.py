@@ -16,6 +16,7 @@ from backend.app.db.models.phase1 import (
     BusinessEligibilityCertificate,
     BusinessEligibilityVersion,
     Certificate,
+    CertificateScope,
     CertificateVersion,
     ChangeApproval,
     ChangeRequest,
@@ -356,6 +357,182 @@ def test_a5_create_snapshots_only_current_same_site_regulatory_artifacts(tmp_pat
             ("business_eligibility_certificate", current_dkkd_id),
         }
         assert workspace["issued_artifacts"] == []
+
+
+def test_a5_certificate_successor_preserves_context_resets_issue_fields_and_records_lineage(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{(tmp_path / 'a5-certificate-successor.sqlite').as_posix()}",
+        future=True,
+    )
+    Base.metadata.create_all(engine)
+    workflow = CaseWorkflowService()
+
+    with Session(engine) as session:
+        site_id = _seed_site(session)
+        site = session.get(Site, site_id)
+        assert site is not None
+        line = ProductionLine(
+            site_id=site.id,
+            code="A",
+            effective_from=date(2020, 1, 1),
+        )
+        session.add(line)
+        session.flush()
+        source = Certificate(
+            site_id=site.id,
+            certificate_type="GMP",
+            production_line_id=line.id,
+            line_code="legacy-a",
+            issuance_basis="inspection_case",
+            latest_flag=True,
+        )
+        session.add(source)
+        session.flush()
+        source_version = CertificateVersion(
+            certificate_id=source.id,
+            version_no=1,
+            certificate_number="GMP-CURRENT",
+            issue_date=date(2025, 1, 2),
+            expiry_date=date(2028, 1, 2),
+            applicable_standard="PIC/S GMP",
+            issuing_authority="Drug Administration",
+            lifecycle_state="GRANTED",
+            is_latest_version=True,
+        )
+        session.add(source_version)
+        session.flush()
+        session.add(
+            CertificateScope(
+                certificate_version_id=source_version.id,
+                scope_key="line-a",
+                scope_text="Sterile products",
+                language_code="en",
+                sort_order=3,
+            )
+        )
+        session.commit()
+        source_id = source.id
+        line_id = line.id
+
+    with Session(engine) as session:
+        created = workflow.create_change_request(
+            session,
+            site_id=site_id,
+            scope_label="Adjust current GMP certificate",
+            description=None,
+            submitted_on=date(2026, 10, 5),
+            requester_name="QA",
+            reason="Create change aggregate.",
+            user=_editor(),
+        )
+        session.commit()
+        change_id = created["change_request_id"]
+        initial_version = created["row_version"]
+
+    with Session(engine) as session:
+        source_link = session.scalars(
+            select(ChangeRequestAffectedArtifact).where(
+                ChangeRequestAffectedArtifact.change_request_id == change_id,
+                ChangeRequestAffectedArtifact.certificate_id == source_id,
+            )
+        ).one()
+        source_link_id = source_link.id
+        result = workflow.issue_change_request_certificate_successor(
+            session,
+            change_request_id=change_id,
+            source_affected_artifact_id=source_link_id,
+            expected_version=initial_version,
+            reason="Prepare adjusted GMP certificate.",
+            user=_editor(),
+        )
+        session.commit()
+        successor_id = result["certificate_id"]
+        successor_version = result["row_version"]
+        audit_id = result["audit_event_id"]
+
+    with Session(engine) as session:
+        source = session.get(Certificate, source_id)
+        successor = session.get(Certificate, successor_id)
+        assert source is not None
+        assert successor is not None
+        assert source.latest_flag is True
+        assert successor.latest_flag is False
+        assert successor.case_id is None
+        assert successor.certificate_type == source.certificate_type
+        assert successor.issuance_basis == "administrative_no_inspection"
+        assert successor.production_line_id == line_id
+        assert successor.line_code == "A"
+
+        version = session.scalars(
+            select(CertificateVersion).where(
+                CertificateVersion.certificate_id == successor.id
+            )
+        ).one()
+        assert version.version_no == 1
+        assert version.is_latest_version is True
+        assert version.certificate_number is None
+        assert version.issue_date is None
+        assert version.expiry_date is None
+        assert version.applicable_standard == "PIC/S GMP"
+        assert version.issuing_authority == "Drug Administration"
+        assert version.lifecycle_state is None
+
+        scopes = list(
+            session.scalars(
+                select(CertificateScope).where(
+                    CertificateScope.certificate_version_id == version.id
+                )
+            )
+        )
+        assert [
+            (
+                scope.scope_key,
+                scope.scope_text,
+                scope.language_code,
+                scope.sort_order,
+            )
+            for scope in scopes
+        ] == [("line-a", "Sterile products", "en", 3)]
+
+        issued_link = session.scalars(
+            select(ChangeRequestIssuedArtifact).where(
+                ChangeRequestIssuedArtifact.change_request_id == change_id
+            )
+        ).one()
+        assert issued_link.source_affected_artifact_id == source_link_id
+        assert issued_link.certificate_id == successor_id
+        assert issued_link.business_eligibility_certificate_id is None
+        assert session.get(ChangeRequest, change_id).row_version == successor_version
+
+        audit = session.get(AuditEvent, audit_id)
+        assert audit is not None
+        assert audit.action == "change_request.certificate_successor.issue"
+        assert audit.entity_type == "change_request"
+        assert audit.entity_id == change_id
+
+        certificate_count = session.query(Certificate).count()
+        issued_link_count = session.query(ChangeRequestIssuedArtifact).count()
+        audit_count = session.query(AuditEvent).count()
+
+    with Session(engine) as session:
+        with pytest.raises(HTTPException, match="Stale change_request update"):
+            workflow.issue_change_request_certificate_successor(
+                session,
+                change_request_id=change_id,
+                source_affected_artifact_id=source_link_id,
+                expected_version=initial_version,
+                reason="Stale retry must fail.",
+                user=_editor(),
+            )
+        session.rollback()
+
+    with Session(engine) as session:
+        assert session.query(Certificate).count() == certificate_count
+        assert (
+            session.query(ChangeRequestIssuedArtifact).count()
+            == issued_link_count
+        )
+        assert session.query(AuditEvent).count() == audit_count
 
 
 def test_a5_create_fails_closed_on_invalid_current_certificate_identity(tmp_path):

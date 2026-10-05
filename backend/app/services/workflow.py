@@ -1543,6 +1543,153 @@ class CaseWorkflowService:
         session.flush()
         return self._serialize_change_request_mutation(row, audit_event_id=audit.id)
 
+    def issue_change_request_certificate_successor(
+        self,
+        session: Session,
+        *,
+        change_request_id: str,
+        source_affected_artifact_id: str,
+        expected_version: int,
+        reason: str | None,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        row = self._get_change_request(session, change_request_id)
+        self._assert_expected_version(row, expected_version, label="change_request")
+        source_link = session.get(
+            ChangeRequestAffectedArtifact,
+            source_affected_artifact_id,
+        )
+        if source_link is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Change request affected artifact link not found.",
+            )
+        if source_link.change_request_id != row.id:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Affected artifact link belongs to a different change request."
+                ),
+            )
+        if source_link.certificate_id is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Affected artifact does not reference a certificate.",
+            )
+
+        site = self._get_site(session, row.site_id)
+        self._validate_change_request_artifact_target(
+            session,
+            site=site,
+            certificate_id=source_link.certificate_id,
+            business_eligibility_certificate_id=None,
+        )
+        source_certificate = self._get_certificate(
+            session,
+            source_link.certificate_id,
+        )
+        source_identity = self._certificate_line_identity(
+            session,
+            source_certificate,
+        )
+        source_version = self._load_latest_certificate_version(
+            session,
+            source_certificate.id,
+        )
+        source_scopes = list(
+            session.scalars(
+                select(CertificateScope)
+                .where(
+                    CertificateScope.certificate_version_id
+                    == source_version.id
+                )
+                .order_by(
+                    CertificateScope.sort_order.asc(),
+                    CertificateScope.created_at.asc(),
+                    CertificateScope.id.asc(),
+                )
+            )
+        )
+        scopes = [
+            {
+                "scope_key": scope.scope_key,
+                "scope_text": scope.scope_text,
+                "language_code": scope.language_code,
+                "sort_order": scope.sort_order,
+            }
+            for scope in source_scopes
+        ]
+
+        successor, successor_version, created_scopes = (
+            self._create_certificate_candidate(
+                session,
+                site=site,
+                case=None,
+                certificate_type=source_certificate.certificate_type,
+                issuance_basis="administrative_no_inspection",
+                production_line_id=source_identity["production_line_id"],
+                line_code=source_identity["production_line_code"],
+                certificate_number=None,
+                issue_date=None,
+                expiry_date=None,
+                scopes=scopes,
+                applicable_standard=source_version.applicable_standard,
+                issuing_authority=source_version.issuing_authority,
+            )
+        )
+        issued_link = ChangeRequestIssuedArtifact(
+            change_request_id=row.id,
+            source_affected_artifact_id=source_link.id,
+            certificate_id=successor.id,
+        )
+        session.add(issued_link)
+        row.row_version += 1
+        actor = self._get_or_create_app_user(session, user)
+        session.flush()
+
+        audit = self._write_audit_event(
+            session,
+            actor=actor,
+            entity_type="change_request",
+            entity_id=row.id,
+            action="change_request.certificate_successor.issue",
+            payload=self._build_stage_payload(
+                change_request_id=row.id,
+                source_affected_artifact_id=source_link.id,
+                source_certificate_id=source_certificate.id,
+                issued_artifact_link_id=issued_link.id,
+                successor_certificate_id=successor.id,
+                reason=reason,
+            ),
+            before=None,
+            after={
+                "source_affected_artifact_id": source_link.id,
+                "source_certificate_id": source_certificate.id,
+                "issued_artifact_link_id": issued_link.id,
+                "successor_certificate_id": successor.id,
+                "successor_latest_flag": successor.latest_flag,
+                "successor_certificate_number": successor_version.certificate_number,
+                "successor_issue_date": successor_version.issue_date,
+                "successor_expiry_date": successor_version.expiry_date,
+                "successor_applicable_standard": successor_version.applicable_standard,
+                "successor_issuing_authority": successor_version.issuing_authority,
+                "successor_scopes": self._serialize_certificate_scopes(
+                    created_scopes
+                ),
+            },
+            reason=reason,
+        )
+        session.flush()
+        return {
+            "change_request_id": row.id,
+            "row_version": row.row_version,
+            "state": row.state.value,
+            "source_affected_artifact_id": source_link.id,
+            "issued_artifact_link_id": issued_link.id,
+            "certificate_id": successor.id,
+            "audit_event_id": audit.id,
+        }
+
     def update_change_request(
         self,
         session: Session,
@@ -3247,6 +3394,8 @@ class CaseWorkflowService:
         issue_date,
         expiry_date,
         scopes: list[dict[str, Any]],
+        applicable_standard: str | None = None,
+        issuing_authority: str | None = None,
     ) -> tuple[Certificate, CertificateVersion, list[CertificateScope]]:
         certificate = Certificate(
             site_id=site.id,
@@ -3267,6 +3416,8 @@ class CaseWorkflowService:
             issue_date=issue_date,
             expiry_date=expiry_date,
             certificate_number=certificate_number,
+            applicable_standard=applicable_standard,
+            issuing_authority=issuing_authority,
             is_latest_version=True,
         )
         session.add(version)

@@ -678,6 +678,179 @@ def test_a5_business_eligibility_successor_readiness_is_source_permission_and_st
         assert rejected_action["source_affected_artifact_id"] == source_link_id
 
 
+def test_a5_issued_successor_promotion_readiness_delegates_to_artifact_owners(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{(tmp_path / 'a5-issued-promotion-readiness.sqlite').as_posix()}",
+        future=True,
+    )
+    Base.metadata.create_all(engine)
+    workflow = CaseWorkflowService()
+
+    with Session(engine) as session:
+        site_id = _seed_site(session)
+        site = session.get(Site, site_id)
+        assert site is not None
+
+        current_certificate = Certificate(
+            site_id=site.id,
+            certificate_type="GMP",
+            issuance_basis="administrative_no_inspection",
+            latest_flag=True,
+        )
+        candidate_certificate = Certificate(
+            site_id=site.id,
+            certificate_type="GMP",
+            issuance_basis="administrative_no_inspection",
+            latest_flag=False,
+        )
+        current_dkkd = BusinessEligibilityCertificate(
+            site_id=site.id,
+            company_id=site.company_id,
+            latest_flag=True,
+        )
+        candidate_dkkd = BusinessEligibilityCertificate(
+            site_id=site.id,
+            company_id=site.company_id,
+            latest_flag=False,
+        )
+        change = ChangeRequest(
+            site_id=site.id,
+            state=ChangeRequestState.EFFECTIVE,
+            row_version=7,
+        )
+        session.add_all(
+            [
+                current_certificate,
+                candidate_certificate,
+                current_dkkd,
+                candidate_dkkd,
+                change,
+            ]
+        )
+        session.flush()
+
+        session.add_all(
+            [
+                CertificateVersion(
+                    certificate_id=current_certificate.id,
+                    version_no=1,
+                    certificate_number="GMP-CURRENT",
+                    issue_date=date(2025, 1, 1),
+                    expiry_date=date(2030, 1, 1),
+                    is_latest_version=True,
+                ),
+                CertificateVersion(
+                    certificate_id=candidate_certificate.id,
+                    version_no=1,
+                    certificate_number=None,
+                    issue_date=None,
+                    expiry_date=None,
+                    is_latest_version=True,
+                ),
+                BusinessEligibilityVersion(
+                    business_eligibility_certificate_id=current_dkkd.id,
+                    version_no=1,
+                    certificate_number="DDKD-CURRENT",
+                    issued_on=date(2025, 1, 1),
+                ),
+                BusinessEligibilityVersion(
+                    business_eligibility_certificate_id=candidate_dkkd.id,
+                    version_no=1,
+                    certificate_number="DDKD-CANDIDATE",
+                    issued_on=date(2025, 1, 1),
+                ),
+            ]
+        )
+        session.flush()
+
+        affected_certificate = ChangeRequestAffectedArtifact(
+            change_request_id=change.id,
+            certificate_id=current_certificate.id,
+        )
+        affected_dkkd = ChangeRequestAffectedArtifact(
+            change_request_id=change.id,
+            business_eligibility_certificate_id=current_dkkd.id,
+        )
+        session.add_all([affected_certificate, affected_dkkd])
+        session.flush()
+
+        issued_certificate = ChangeRequestIssuedArtifact(
+            change_request_id=change.id,
+            source_affected_artifact_id=affected_certificate.id,
+            certificate_id=candidate_certificate.id,
+        )
+        issued_dkkd = ChangeRequestIssuedArtifact(
+            change_request_id=change.id,
+            source_affected_artifact_id=affected_dkkd.id,
+            business_eligibility_certificate_id=candidate_dkkd.id,
+        )
+        session.add_all([issued_certificate, issued_dkkd])
+        session.commit()
+
+        change_id = change.id
+        change_version = change.row_version
+        candidate_certificate_id = candidate_certificate.id
+        candidate_certificate_version = candidate_certificate.row_version
+        candidate_dkkd_id = candidate_dkkd.id
+        candidate_dkkd_version = candidate_dkkd.row_version
+        issued_certificate_id = issued_certificate.id
+        issued_dkkd_id = issued_dkkd.id
+        affected_certificate_id = affected_certificate.id
+        affected_dkkd_id = affected_dkkd.id
+
+    with Session(engine) as session:
+        admin_workspace = CatalogReadService().get_change_request_workspace(
+            session,
+            change_request_id=change_id,
+            user=_certificate_issuer(),
+        )
+        admin_actions = {
+            item["action_key"]: item
+            for item in admin_workspace["action_readiness"]
+        }
+
+        gxp_action = admin_actions[
+            f"promote_issued_certificate:{issued_certificate_id}"
+        ]
+        assert gxp_action["available"] is False
+        assert gxp_action["reason_code"] == "certificate_data_incomplete"
+        assert gxp_action["required_permissions"] == ["certificate.approve"]
+        assert gxp_action["expected_version"] == candidate_certificate_version
+        assert gxp_action["expected_version"] != change_version
+        assert gxp_action["issued_artifact_link_id"] == issued_certificate_id
+        assert gxp_action["source_affected_artifact_id"] == affected_certificate_id
+        assert gxp_action["target_artifact_kind"] == "certificate"
+        assert gxp_action["target_artifact_id"] == candidate_certificate_id
+
+        dkkd_action = admin_actions[
+            f"promote_issued_business_eligibility:{issued_dkkd_id}"
+        ]
+        assert dkkd_action["available"] is True
+        assert dkkd_action["reason_code"] is None
+        assert dkkd_action["required_permissions"] == ["certificate.approve"]
+        assert dkkd_action["expected_version"] == candidate_dkkd_version
+        assert dkkd_action["issued_artifact_link_id"] == issued_dkkd_id
+        assert dkkd_action["source_affected_artifact_id"] == affected_dkkd_id
+        assert dkkd_action["target_artifact_kind"] == "business_eligibility_certificate"
+        assert dkkd_action["target_artifact_id"] == candidate_dkkd_id
+
+        editor_workspace = CatalogReadService().get_change_request_workspace(
+            session,
+            change_request_id=change_id,
+            user=_editor(),
+        )
+        editor_actions = {
+            item["action_key"]: item
+            for item in editor_workspace["action_readiness"]
+        }
+        editor_dkkd_action = editor_actions[
+            f"promote_issued_business_eligibility:{issued_dkkd_id}"
+        ]
+        assert editor_dkkd_action["available"] is False
+        assert editor_dkkd_action["reason_code"] == "missing_permission"
+        assert editor_dkkd_action["expected_version"] == candidate_dkkd_version
+
+
 def test_a5_create_snapshots_only_current_same_site_regulatory_artifacts(tmp_path):
     engine = create_engine(f"sqlite:///{(tmp_path / 'a5-artifact-snapshot.sqlite').as_posix()}", future=True)
     Base.metadata.create_all(engine)

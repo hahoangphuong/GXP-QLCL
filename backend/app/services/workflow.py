@@ -1437,6 +1437,62 @@ class CaseWorkflowService:
                 }
             )
 
+        issued_links = list(
+            session.scalars(
+                select(ChangeRequestIssuedArtifact)
+                .where(ChangeRequestIssuedArtifact.change_request_id == row.id)
+                .order_by(ChangeRequestIssuedArtifact.id.asc())
+            )
+        )
+        for issued_link in issued_links:
+            artifact_kind, artifact_id = self._validate_change_request_artifact_target(
+                session,
+                site=site,
+                certificate_id=issued_link.certificate_id,
+                business_eligibility_certificate_id=issued_link.business_eligibility_certificate_id,
+            )
+            if artifact_kind == "certificate":
+                canonical_actions = self.get_certificate_action_readiness(
+                    session,
+                    certificate_id=artifact_id,
+                    user=user,
+                )
+                promote_action = next(
+                    item
+                    for item in canonical_actions
+                    if item["action_key"] == "promote_current"
+                )
+                action_key = f"promote_issued_certificate:{issued_link.id}"
+            else:
+                canonical_actions = self.get_business_eligibility_action_readiness(
+                    session,
+                    business_eligibility_certificate_id=artifact_id,
+                    user=user,
+                )
+                promote_action = next(
+                    item
+                    for item in canonical_actions
+                    if item["action_key"] == "promote_current"
+                )
+                action_key = (
+                    f"promote_issued_business_eligibility:{issued_link.id}"
+                )
+            actions.append(
+                {
+                    "action_key": action_key,
+                    "label": promote_action["label"],
+                    "available": promote_action["available"],
+                    "reason_code": promote_action["reason_code"],
+                    "required_permissions": promote_action["required_permissions"],
+                    "expected_version": promote_action["expected_version"],
+                    "target_state": None,
+                    "source_affected_artifact_id": issued_link.source_affected_artifact_id,
+                    "issued_artifact_link_id": issued_link.id,
+                    "target_artifact_kind": artifact_kind,
+                    "target_artifact_id": artifact_id,
+                }
+            )
+
         for target_state in sorted(ALLOWED_CHANGE_REQUEST_TRANSITIONS.get(row.state, set()), key=lambda item: item.value):
             permission = change_request_transition_permission(target_state)
             permitted = permission in user.permissions

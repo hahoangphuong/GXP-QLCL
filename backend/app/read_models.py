@@ -298,6 +298,9 @@ class LifecycleActionReadinessRead(BaseModel):
     expected_version: int | None = None
     target_state: str | None = None
     source_affected_artifact_id: str | None = None
+    issued_artifact_link_id: str | None = None
+    target_artifact_kind: Literal["certificate", "business_eligibility_certificate"] | None = None
+    target_artifact_id: str | None = None
 
 
 class InspectionPeriodSegmentRead(BaseModel):

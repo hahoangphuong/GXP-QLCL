@@ -462,7 +462,8 @@ export function ChangeRequestMutationWorkspace({
               {issuedArtifacts.map((item) => {
                 const promotionReadiness = workspace.action_readiness.find(
                   (readiness) =>
-                    readiness.issued_artifact_link_id === item.link_id
+                    readiness.action_key.startsWith("promote_issued_")
+                    && readiness.issued_artifact_link_id === item.link_id
                     && readiness.target_artifact_id === item.artifact_id,
                 ) ?? null;
                 return (

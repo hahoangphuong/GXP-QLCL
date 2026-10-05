@@ -62,6 +62,14 @@ def _approver():
     )
 
 
+def _certificate_issuer():
+    return build_authenticated_user(
+        "admin01",
+        "admin",
+        permissions=ROLE_PERMISSIONS["admin"],
+    )
+
+
 def test_a5_routes_and_bounded_context_permissions_are_registered():
     app = create_app("sqlite:///:memory:")
     routes = {(route.path, tuple(sorted(route.methods or []))) for route in app.routes if hasattr(route, "path")}
@@ -330,6 +338,124 @@ def test_a5_create_workspace_and_readiness_are_canonical_and_permission_owned(tm
         transition = actions["transition_change_request:under_review"]
         assert transition["available"] is True
         assert transition["expected_version"] == created["row_version"]
+
+
+def test_a5_certificate_successor_readiness_is_source_permission_and_state_owned(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{(tmp_path / 'a5-certificate-successor-readiness.sqlite').as_posix()}",
+        future=True,
+    )
+    Base.metadata.create_all(engine)
+    workflow = CaseWorkflowService()
+
+    with Session(engine) as session:
+        site_id = _seed_site(session)
+        site = session.get(Site, site_id)
+        assert site is not None
+        source = Certificate(
+            site_id=site.id,
+            certificate_type="GMP",
+            issuance_basis="administrative_no_inspection",
+            latest_flag=True,
+        )
+        session.add(source)
+        session.flush()
+        session.add(
+            CertificateVersion(
+                certificate_id=source.id,
+                version_no=1,
+                certificate_number="GMP-CURRENT",
+                is_latest_version=True,
+            )
+        )
+        session.commit()
+        source_id = source.id
+
+    with Session(engine) as session:
+        created = workflow.create_change_request(
+            session,
+            site_id=site_id,
+            scope_label="Adjust current GMP certificate",
+            description=None,
+            submitted_on=date(2026, 10, 5),
+            requester_name="QA",
+            reason="Create readiness aggregate.",
+            user=_editor(),
+        )
+        session.commit()
+        change_id = created["change_request_id"]
+        change_version = created["row_version"]
+
+    with Session(engine) as session:
+        source_link = session.scalars(
+            select(ChangeRequestAffectedArtifact).where(
+                ChangeRequestAffectedArtifact.change_request_id == change_id,
+                ChangeRequestAffectedArtifact.certificate_id == source_id,
+            )
+        ).one()
+        source_link_id = source_link.id
+
+        editor_workspace = CatalogReadService().get_change_request_workspace(
+            session,
+            change_request_id=change_id,
+            user=_editor(),
+        )
+        editor_actions = {
+            item["action_key"]: item
+            for item in editor_workspace["action_readiness"]
+        }
+        editor_action = editor_actions[
+            f"issue_certificate_successor:{source_link_id}"
+        ]
+        assert editor_action["available"] is False
+        assert editor_action["reason_code"] == "missing_permission"
+        assert editor_action["required_permissions"] == [
+            "change_request.edit",
+            "certificate.issue",
+        ]
+        assert editor_action["expected_version"] == change_version
+        assert editor_action["source_affected_artifact_id"] == source_link_id
+
+        issuer_workspace = CatalogReadService().get_change_request_workspace(
+            session,
+            change_request_id=change_id,
+            user=_certificate_issuer(),
+        )
+        issuer_actions = {
+            item["action_key"]: item
+            for item in issuer_workspace["action_readiness"]
+        }
+        issuer_action = issuer_actions[
+            f"issue_certificate_successor:{source_link_id}"
+        ]
+        assert issuer_action["available"] is True
+        assert issuer_action["reason_code"] is None
+        assert issuer_action["expected_version"] == change_version
+        assert issuer_action["source_affected_artifact_id"] == source_link_id
+
+        change = session.get(ChangeRequest, change_id)
+        assert change is not None
+        change.state = ChangeRequestState.REJECTED
+        session.commit()
+        rejected_version = change.row_version
+
+    with Session(engine) as session:
+        rejected_workspace = CatalogReadService().get_change_request_workspace(
+            session,
+            change_request_id=change_id,
+            user=_certificate_issuer(),
+        )
+        rejected_actions = {
+            item["action_key"]: item
+            for item in rejected_workspace["action_readiness"]
+        }
+        rejected_action = rejected_actions[
+            f"issue_certificate_successor:{source_link_id}"
+        ]
+        assert rejected_action["available"] is False
+        assert rejected_action["reason_code"] == "state_not_editable"
+        assert rejected_action["expected_version"] == rejected_version
+        assert rejected_action["source_affected_artifact_id"] == source_link_id
 
 
 def test_a5_create_snapshots_only_current_same_site_regulatory_artifacts(tmp_path):

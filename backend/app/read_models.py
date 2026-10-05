@@ -297,6 +297,7 @@ class LifecycleActionReadinessRead(BaseModel):
     required_permissions: list[str] = Field(default_factory=list)
     expected_version: int | None = None
     target_state: str | None = None
+    source_affected_artifact_id: str | None = None
 
 
 class InspectionPeriodSegmentRead(BaseModel):

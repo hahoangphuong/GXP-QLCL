@@ -25,6 +25,7 @@ from backend.app.db.enums import CaseState, ChangeRequestState, DocumentVariantT
 from backend.app.db.models.phase1 import (
     AppUser,
     AppUserRole,
+    AuditEvent,
     BusinessEligibilityCertificate,
     BusinessEligibilityCertificateLink,
     BusinessEligibilityVersion,
@@ -2159,8 +2160,9 @@ def test_case_workspace_projects_structured_inspection_team_and_selector_contrac
         options = selector_route.endpoint(session=session, user=manager)
 
     assert workspace.inspection.team is not None
-    assert workspace.inspection.team.round_trip_safe is True
-    assert workspace.inspection.team_edit_readiness.available is True
+    assert workspace.inspection.team.round_trip_safe is False
+    assert workspace.inspection.team_edit_readiness.available is False
+    assert workspace.inspection.team_edit_readiness.reason_code == "unresolved_member_identity"
     assert [(member.person_id, member.inspector_profile_id, member.role_label, member.sort_order) for member in workspace.inspection.team.members] == [
         (direct_person_id, None, "Thành viên", 1),
         (None, profile_id, "Trưởng đoàn", 2),

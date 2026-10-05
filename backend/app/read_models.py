@@ -490,6 +490,7 @@ class ChangeRequestWorkspaceDetailRead(BaseModel):
 
 class ChangeRequestWorkspaceRead(BaseModel):
     id: str
+    row_version: int
     legacy_change_request_id: int | None
     site_id: str
     facility_name: str
@@ -506,6 +507,7 @@ class ChangeRequestWorkspaceRead(BaseModel):
     approval_reference: str | None
     documents: DocumentChecklistRead
     details: list[ChangeRequestWorkspaceDetailRead]
+    action_readiness: list["LifecycleActionReadinessRead"] = Field(default_factory=list)
 
 
 class GxpCertificateListItemRead(BaseModel):
@@ -956,6 +958,70 @@ class InspectionApprovalSubmissionCompleteRequest(BaseModel):
     completed_on: date
     completed_time: time | None = None
     reason: str | None = None
+
+
+class ChangeRequestCreateRequest(BaseModel):
+    scope_label: str | None = None
+    description: str | None = None
+    submitted_on: date | None = None
+    requester_name: str | None = None
+    reason: str | None = None
+
+
+class ChangeRequestUpdateRequest(BaseModel):
+    expected_version: int
+    scope_label: str | None = None
+    description: str | None = None
+    submitted_on: date | None = None
+    requester_name: str | None = None
+    reason: str | None = None
+
+
+class ChangeRequestDetailCreateRequest(BaseModel):
+    expected_version: int
+    classification_id: int | None = None
+    classification_label: str | None = None
+    approval_status: str | None = None
+    old_value: str | None = None
+    new_value: str | None = None
+    note: str | None = None
+    reason: str | None = None
+
+
+class ChangeRequestDetailUpdateRequest(BaseModel):
+    expected_version: int
+    classification_id: int | None = None
+    classification_label: str | None = None
+    approval_status: str | None = None
+    old_value: str | None = None
+    new_value: str | None = None
+    note: str | None = None
+    reason: str | None = None
+
+
+class ChangeApprovalUpsertRequest(BaseModel):
+    expected_version: int
+    handled_on: date | None = None
+    handled_by_name: str | None = None
+    result_label: str | None = None
+    effective_on: date | None = None
+    approval_reference: str | None = None
+    reason: str | None = None
+
+
+class ChangeRequestTransitionRequest(BaseModel):
+    expected_version: int
+    target_state: str
+    reason: str | None = None
+
+
+class ChangeRequestMutationRead(BaseModel):
+    change_request_id: str
+    row_version: int
+    state: str
+    audit_event_id: str
+    change_detail_id: str | None = None
+    change_approval_id: str | None = None
 
 
 class CertificateScopeUpsertItem(BaseModel):

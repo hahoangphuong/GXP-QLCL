@@ -14,6 +14,8 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
+from backend.app.runtime_schema import expected_alembic_head_revision
+
 
 if os.environ.get("A3_POSTGRES_MIGRATION_INTEGRATION") != "1":
     pytest.skip(
@@ -59,6 +61,12 @@ def test_a3_capa_incoming_reference_downgrades_and_reupgrades_on_disposable_post
     engine = create_engine(DATABASE_URL, future=True)
     try:
         assert engine.dialect.name == "postgresql"
+        expected_head = expected_alembic_head_revision()
+        assert expected_head is not None
+        assert _revision(engine) == expected_head
+        assert _incoming_reference_column(engine) == ("character varying", 255, "YES")
+
+        _alembic("downgrade", "20261003_0018")
         assert _revision(engine) == "20261003_0018"
         assert _incoming_reference_column(engine) == ("character varying", 255, "YES")
 
@@ -66,8 +74,8 @@ def test_a3_capa_incoming_reference_downgrades_and_reupgrades_on_disposable_post
         assert _revision(engine) == "20260929_0017"
         assert _incoming_reference_column(engine) is None
 
-        _alembic("upgrade", "20261003_0018")
-        assert _revision(engine) == "20261003_0018"
+        _alembic("upgrade", "head")
+        assert _revision(engine) == expected_head
         assert _incoming_reference_column(engine) == ("character varying", 255, "YES")
     finally:
         engine.dispose()

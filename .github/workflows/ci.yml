@@ -41,11 +41,11 @@ jobs:
       - name: Validate Alembic upgrade
         run: python -m alembic upgrade head
 
-      - name: Validate A3 CAPA migration downgrade and re-upgrade
+      - name: Validate PostgreSQL migration downgrade and re-upgrade
         env:
           A3_POSTGRES_MIGRATION_INTEGRATION: "1"
           A3_DISPOSABLE_POSTGRES_DATABASE: gxp_qlcl_test
-        run: python -m pytest tests/test_a3_capa_incoming_reference_postgres.py -q
+        run: python -m pytest tests/test_a3_capa_incoming_reference_postgres.py tests/test_a5_change_request_postgres.py -q
 
       - name: Run backend tests
         run: python -m pytest -q

@@ -71,13 +71,11 @@ def _build_facility_action_readiness(
             production_line_id=selected_production_line_id,
             user=user,
         ),
-        {
-            "action_key": "create_change_request",
-            "label": "Thay đổi",
-            "readiness_status": "missing_contract",
-            "detail": "Change request hiện mới có canonical read model; chưa có authenticated write contract để tạo mới.",
-            "required_permissions": [],
-        },
+        workflow_service.get_create_change_request_action_readiness(
+            session,
+            site_id=site_id,
+            user=user,
+        ),
     ]
 
 
@@ -224,7 +222,7 @@ def register_catalog_routes(app, session_factory) -> None:
     ):
         require_role(user, ALLOWED_READ_ROLES)
         return ChangeRequestWorkspaceRead(
-            **service.get_change_request_workspace(session, change_request_id=change_request_id)
+            **service.get_change_request_workspace(session, change_request_id=change_request_id, user=user)
         )
 
     def get_dashboard_summary(

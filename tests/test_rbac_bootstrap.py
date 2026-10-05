@@ -31,11 +31,11 @@ def test_fresh_database_receives_builtin_rbac_baseline(tmp_path: Path) -> None:
         session.commit()
 
         assert summary.roles_created == 4
-        assert summary.permissions_created == 19
-        assert summary.role_permissions_created == 50
+        assert summary.permissions_created == 21
+        assert summary.role_permissions_created == 55
         assert session.query(RbacRole).count() == 4
-        assert session.query(RbacPermission).count() == 19
-        assert session.query(RbacRolePermission).count() == 50
+        assert session.query(RbacPermission).count() == 21
+        assert session.query(RbacRolePermission).count() == 55
         assert {row.role_code for row in session.query(RbacRole).all()} == set(BUILTIN_ROLE_CODES)
         assert {row.permission_code for row in session.query(RbacPermission).all()} == set(BUILTIN_PERMISSION_CODES)
 
@@ -51,11 +51,11 @@ def test_builtin_rbac_baseline_rerun_is_idempotent(tmp_path: Path) -> None:
         assert summary.permissions_created == 0
         assert summary.role_permissions_created == 0
         assert summary.roles_verified == 4
-        assert summary.permissions_verified == 19
-        assert summary.role_permissions_verified == 50
+        assert summary.permissions_verified == 21
+        assert summary.role_permissions_verified == 55
         assert session.query(RbacRole).count() == 4
-        assert session.query(RbacPermission).count() == 19
-        assert session.query(RbacRolePermission).count() == 50
+        assert session.query(RbacPermission).count() == 21
+        assert session.query(RbacRolePermission).count() == 55
 
 
 def test_builtin_rbac_baseline_fails_closed_on_unexpected_builtin_role_permission(tmp_path: Path) -> None:

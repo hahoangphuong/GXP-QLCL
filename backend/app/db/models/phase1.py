@@ -835,7 +835,7 @@ class BusinessEligibilityCertificateLink(UUIDPrimaryKeyMixin, TimestampMixin, Ba
     __table_args__ = (UniqueConstraint("business_eligibility_version_id", "certificate_id"),)
 
 
-class ChangeRequest(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+class ChangeRequest(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):
     __tablename__ = "change_request"
 
     legacy_change_request_id: Mapped[int | None] = mapped_column(Integer, unique=True)

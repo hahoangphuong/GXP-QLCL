@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.audit_payload import normalize_and_redact_audit_payload
 from backend.app.auth import AuthenticatedUser
-from backend.app.db.enums import AuditActorType, CaseState, InspectionEventType
+from backend.app.db.enums import AuditActorType, CaseState, ChangeRequestState, InspectionEventType
 from backend.app.db.models.phase1 import (
     AppUser,
     AuditEvent,
@@ -28,6 +28,9 @@ from backend.app.db.models.phase1 import (
     Certificate,
     CertificateScope,
     CertificateVersion,
+    ChangeApproval,
+    ChangeRequest,
+    ChangeRequestDetail,
     Company,
     InspectionEvent,
     InspectionTeam,
@@ -87,8 +90,36 @@ OPEN_CASE_STATES = frozenset(
     }
 )
 CREATE_INSPECTION_CASE_PERMISSION = "case.edit"
+CHANGE_REQUEST_EDIT_PERMISSION = "change_request.edit"
+CHANGE_REQUEST_APPROVE_PERMISSION = "change_request.approve"
+CHANGE_REQUEST_EDITABLE_STATES = frozenset({ChangeRequestState.RECEIVED, ChangeRequestState.UNDER_REVIEW})
+CHANGE_APPROVAL_EDITABLE_STATES = frozenset({ChangeRequestState.UNDER_REVIEW, ChangeRequestState.ACCEPTED})
+ALLOWED_CHANGE_REQUEST_TRANSITIONS: dict[ChangeRequestState, set[ChangeRequestState]] = {
+    ChangeRequestState.RECEIVED: {ChangeRequestState.UNDER_REVIEW},
+    ChangeRequestState.UNDER_REVIEW: {ChangeRequestState.ACCEPTED, ChangeRequestState.REJECTED},
+    ChangeRequestState.ACCEPTED: {ChangeRequestState.EFFECTIVE},
+    ChangeRequestState.REJECTED: set(),
+    ChangeRequestState.EFFECTIVE: set(),
+    ChangeRequestState.SUPERSEDED: set(),
+}
 REASSESSMENT_INSPECTION_TYPE = "Tái"
 TERMINAL_CASE_STATES = frozenset({CaseState.CLOSED, CaseState.CANCELLED})
+
+
+def change_request_transition_permission(target_state: ChangeRequestState) -> str:
+    return CHANGE_REQUEST_EDIT_PERMISSION if target_state == ChangeRequestState.UNDER_REVIEW else CHANGE_REQUEST_APPROVE_PERMISSION
+
+
+def change_request_transition_eligibility_reason(
+    *,
+    current_state: ChangeRequestState,
+    target_state: ChangeRequestState,
+) -> str | None:
+    if target_state == current_state:
+        return "already_in_target_state"
+    if target_state not in ALLOWED_CHANGE_REQUEST_TRANSITIONS.get(current_state, set()):
+        return "transition_not_allowed"
+    return None
 
 
 def case_transition_eligibility_reason(
@@ -1165,6 +1196,417 @@ class CaseWorkflowService:
             "detail": "Có thể tạo hồ sơ tái đánh giá mới cho đúng ngữ cảnh cơ sở/GxP/dây chuyền đang chọn.",
             "required_permissions": required_permissions,
         }
+
+    def _get_change_request(self, session: Session, change_request_id: str) -> ChangeRequest:
+        row = session.get(ChangeRequest, change_request_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Change request not found.")
+        return row
+
+    @staticmethod
+    def _serialize_change_request_mutation(
+        row: ChangeRequest,
+        *,
+        audit_event_id: str,
+        change_detail_id: str | None = None,
+        change_approval_id: str | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "change_request_id": row.id,
+            "row_version": row.row_version,
+            "state": row.state.value,
+            "audit_event_id": audit_event_id,
+            "change_detail_id": change_detail_id,
+            "change_approval_id": change_approval_id,
+        }
+
+    def get_create_change_request_action_readiness(
+        self,
+        session: Session,
+        *,
+        site_id: str,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        required_permissions = [CHANGE_REQUEST_EDIT_PERMISSION]
+        if session.get(Site, site_id) is None:
+            return {
+                "action_key": "create_change_request",
+                "label": "Thay đổi",
+                "readiness_status": "unavailable",
+                "detail": "Cơ sở không tồn tại.",
+                "required_permissions": required_permissions,
+            }
+        if CHANGE_REQUEST_EDIT_PERMISSION not in user.permissions:
+            return {
+                "action_key": "create_change_request",
+                "label": "Thay đổi",
+                "readiness_status": "forbidden",
+                "detail": "Tài khoản hiện tại không có quyền tạo yêu cầu thay đổi.",
+                "required_permissions": required_permissions,
+            }
+        return {
+            "action_key": "create_change_request",
+            "label": "Thay đổi",
+            "readiness_status": "available",
+            "detail": "Có thể tạo yêu cầu thay đổi canonical cho cơ sở đang chọn.",
+            "required_permissions": required_permissions,
+        }
+
+    def get_change_request_action_readiness(
+        self,
+        session: Session,
+        *,
+        change_request_id: str,
+        user: AuthenticatedUser,
+    ) -> list[dict[str, Any]]:
+        row = self._get_change_request(session, change_request_id)
+        actions: list[dict[str, Any]] = []
+        can_edit = CHANGE_REQUEST_EDIT_PERMISSION in user.permissions
+        can_approve = CHANGE_REQUEST_APPROVE_PERMISSION in user.permissions
+        editable = row.state in CHANGE_REQUEST_EDITABLE_STATES
+        approval_editable = row.state in CHANGE_APPROVAL_EDITABLE_STATES
+        actions.extend([
+            {
+                "action_key": "edit_change_request",
+                "label": "Sửa đề nghị",
+                "available": can_edit and editable,
+                "reason_code": None if can_edit and editable else "missing_permission" if not can_edit else "state_not_editable",
+                "required_permissions": [CHANGE_REQUEST_EDIT_PERMISSION],
+                "expected_version": row.row_version,
+                "target_state": None,
+            },
+            {
+                "action_key": "add_change_detail",
+                "label": "Thêm chi tiết",
+                "available": can_edit and editable,
+                "reason_code": None if can_edit and editable else "missing_permission" if not can_edit else "state_not_editable",
+                "required_permissions": [CHANGE_REQUEST_EDIT_PERMISSION],
+                "expected_version": row.row_version,
+                "target_state": None,
+            },
+            {
+                "action_key": "edit_change_detail",
+                "label": "Sửa chi tiết",
+                "available": can_edit and editable,
+                "reason_code": None if can_edit and editable else "missing_permission" if not can_edit else "state_not_editable",
+                "required_permissions": [CHANGE_REQUEST_EDIT_PERMISSION],
+                "expected_version": row.row_version,
+                "target_state": None,
+            },
+            {
+                "action_key": "edit_change_approval",
+                "label": "Cập nhật xử lý",
+                "available": can_approve and approval_editable,
+                "reason_code": None if can_approve and approval_editable else "missing_permission" if not can_approve else "state_not_editable",
+                "required_permissions": [CHANGE_REQUEST_APPROVE_PERMISSION],
+                "expected_version": row.row_version,
+                "target_state": None,
+            },
+        ])
+        for target_state in sorted(ALLOWED_CHANGE_REQUEST_TRANSITIONS.get(row.state, set()), key=lambda item: item.value):
+            permission = change_request_transition_permission(target_state)
+            permitted = permission in user.permissions
+            actions.append({
+                "action_key": f"transition_change_request:{target_state.value}",
+                "label": f"Chuyển sang {target_state.value}",
+                "available": permitted,
+                "reason_code": None if permitted else "missing_permission",
+                "required_permissions": [permission],
+                "expected_version": row.row_version,
+                "target_state": target_state.value,
+            })
+        return actions
+
+    def create_change_request(
+        self,
+        session: Session,
+        *,
+        site_id: str,
+        scope_label: str | None,
+        description: str | None,
+        submitted_on: date | None,
+        requester_name: str | None,
+        reason: str | None,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        site = session.get(Site, site_id)
+        if site is None:
+            raise HTTPException(status_code=404, detail="Site not found.")
+        actor = self._get_or_create_app_user(session, user)
+        row = ChangeRequest(
+            site_id=site.id,
+            scope_label=scope_label,
+            description=description,
+            submitted_on=submitted_on,
+            requester_name=requester_name,
+            state=ChangeRequestState.RECEIVED,
+        )
+        session.add(row)
+        session.flush()
+        after = {
+            "site_id": row.site_id,
+            "scope_label": row.scope_label,
+            "description": row.description,
+            "submitted_on": row.submitted_on,
+            "requester_name": row.requester_name,
+            "state": row.state.value,
+        }
+        audit = self._write_audit_event(
+            session,
+            actor=actor,
+            entity_type="change_request",
+            entity_id=row.id,
+            action="change_request.create",
+            payload=self._build_stage_payload(change_request_id=row.id, reason=reason),
+            before=None,
+            after=after,
+            reason=reason,
+        )
+        session.flush()
+        return self._serialize_change_request_mutation(row, audit_event_id=audit.id)
+
+    def update_change_request(
+        self,
+        session: Session,
+        *,
+        change_request_id: str,
+        expected_version: int,
+        scope_label: str | None,
+        description: str | None,
+        submitted_on: date | None,
+        requester_name: str | None,
+        reason: str | None,
+        user: AuthenticatedUser,
+        fields_set: set[str] | None = None,
+    ) -> dict[str, Any]:
+        row = self._get_change_request(session, change_request_id)
+        self._assert_expected_version(row, expected_version, label="change_request")
+        if row.state not in CHANGE_REQUEST_EDITABLE_STATES:
+            raise HTTPException(status_code=409, detail="Change request header is read-only in the current state.")
+        provided = self._provided_fields(fields_set, {"scope_label", "description", "submitted_on", "requester_name"})
+        before = {name: getattr(row, name) for name in ("scope_label", "description", "submitted_on", "requester_name")}
+        self._assign_provided(row, {
+            "scope_label": scope_label,
+            "description": description,
+            "submitted_on": submitted_on,
+            "requester_name": requester_name,
+        }, provided)
+        actor = self._get_or_create_app_user(session, user)
+        session.flush()
+        after = {name: getattr(row, name) for name in ("scope_label", "description", "submitted_on", "requester_name")}
+        audit = self._write_audit_event(
+            session,
+            actor=actor,
+            entity_type="change_request",
+            entity_id=row.id,
+            action="change_request.update",
+            payload=self._build_stage_payload(change_request_id=row.id, reason=reason),
+            before=before,
+            after=after,
+            reason=reason,
+        )
+        session.flush()
+        return self._serialize_change_request_mutation(row, audit_event_id=audit.id)
+
+    def create_change_request_detail(
+        self,
+        session: Session,
+        *,
+        change_request_id: str,
+        expected_version: int,
+        classification_id: int | None,
+        classification_label: str | None,
+        approval_status: str | None,
+        old_value: str | None,
+        new_value: str | None,
+        note: str | None,
+        reason: str | None,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        row = self._get_change_request(session, change_request_id)
+        self._assert_expected_version(row, expected_version, label="change_request")
+        if row.state not in CHANGE_REQUEST_EDITABLE_STATES:
+            raise HTTPException(status_code=409, detail="Change request details are read-only in the current state.")
+        detail = ChangeRequestDetail(
+            change_request_id=row.id,
+            classification_id=classification_id,
+            classification_label=classification_label,
+            approval_status=approval_status,
+            old_value=old_value,
+            new_value=new_value,
+            note=note,
+        )
+        session.add(detail)
+        session.flush()
+        row.row_version += 1
+        actor = self._get_or_create_app_user(session, user)
+        audit = self._write_audit_event(
+            session,
+            actor=actor,
+            entity_type="change_request_detail",
+            entity_id=detail.id,
+            action="change_request_detail.create",
+            payload=self._build_stage_payload(change_request_id=row.id, change_detail_id=detail.id, reason=reason),
+            before=None,
+            after={
+                "classification_id": detail.classification_id,
+                "classification_label": detail.classification_label,
+                "approval_status": detail.approval_status,
+                "old_value": detail.old_value,
+                "new_value": detail.new_value,
+                "note": detail.note,
+            },
+            reason=reason,
+        )
+        session.flush()
+        return self._serialize_change_request_mutation(row, audit_event_id=audit.id, change_detail_id=detail.id)
+
+    def update_change_request_detail(
+        self,
+        session: Session,
+        *,
+        change_detail_id: str,
+        expected_version: int,
+        classification_id: int | None,
+        classification_label: str | None,
+        approval_status: str | None,
+        old_value: str | None,
+        new_value: str | None,
+        note: str | None,
+        reason: str | None,
+        user: AuthenticatedUser,
+        fields_set: set[str] | None = None,
+    ) -> dict[str, Any]:
+        detail = session.get(ChangeRequestDetail, change_detail_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="Change request detail not found.")
+        row = self._get_change_request(session, detail.change_request_id)
+        self._assert_expected_version(row, expected_version, label="change_request")
+        if row.state not in CHANGE_REQUEST_EDITABLE_STATES:
+            raise HTTPException(status_code=409, detail="Change request details are read-only in the current state.")
+        provided = self._provided_fields(fields_set, {"classification_id", "classification_label", "approval_status", "old_value", "new_value", "note"})
+        before = {name: getattr(detail, name) for name in ("classification_id", "classification_label", "approval_status", "old_value", "new_value", "note")}
+        self._assign_provided(detail, {
+            "classification_id": classification_id,
+            "classification_label": classification_label,
+            "approval_status": approval_status,
+            "old_value": old_value,
+            "new_value": new_value,
+            "note": note,
+        }, provided)
+        row.row_version += 1
+        actor = self._get_or_create_app_user(session, user)
+        session.flush()
+        after = {name: getattr(detail, name) for name in ("classification_id", "classification_label", "approval_status", "old_value", "new_value", "note")}
+        audit = self._write_audit_event(
+            session,
+            actor=actor,
+            entity_type="change_request_detail",
+            entity_id=detail.id,
+            action="change_request_detail.update",
+            payload=self._build_stage_payload(change_request_id=row.id, change_detail_id=detail.id, reason=reason),
+            before=before,
+            after=after,
+            reason=reason,
+        )
+        session.flush()
+        return self._serialize_change_request_mutation(row, audit_event_id=audit.id, change_detail_id=detail.id)
+
+    def upsert_change_approval(
+        self,
+        session: Session,
+        *,
+        change_request_id: str,
+        expected_version: int,
+        handled_on: date | None,
+        handled_by_name: str | None,
+        result_label: str | None,
+        effective_on: date | None,
+        approval_reference: str | None,
+        reason: str | None,
+        user: AuthenticatedUser,
+        fields_set: set[str] | None = None,
+    ) -> dict[str, Any]:
+        row = self._get_change_request(session, change_request_id)
+        self._assert_expected_version(row, expected_version, label="change_request")
+        if row.state not in CHANGE_APPROVAL_EDITABLE_STATES:
+            raise HTTPException(status_code=409, detail="Change approval is read-only in the current state.")
+        approval = session.scalar(select(ChangeApproval).where(ChangeApproval.change_request_id == row.id))
+        created = approval is None
+        if approval is None:
+            approval = ChangeApproval(change_request_id=row.id)
+            session.add(approval)
+            session.flush()
+        provided = self._provided_fields(fields_set, {"handled_on", "handled_by_name", "result_label", "effective_on", "approval_reference"})
+        before = None if created else {name: getattr(approval, name) for name in ("handled_on", "handled_by_name", "result_label", "effective_on", "approval_reference")}
+        self._assign_provided(approval, {
+            "handled_on": handled_on,
+            "handled_by_name": handled_by_name,
+            "result_label": result_label,
+            "effective_on": effective_on,
+            "approval_reference": approval_reference,
+        }, provided)
+        row.row_version += 1
+        actor = self._get_or_create_app_user(session, user)
+        session.flush()
+        after = {name: getattr(approval, name) for name in ("handled_on", "handled_by_name", "result_label", "effective_on", "approval_reference")}
+        audit = self._write_audit_event(
+            session,
+            actor=actor,
+            entity_type="change_approval",
+            entity_id=approval.id,
+            action="change_approval.create" if created else "change_approval.update",
+            payload=self._build_stage_payload(change_request_id=row.id, change_approval_id=approval.id, reason=reason),
+            before=before,
+            after=after,
+            reason=reason,
+        )
+        session.flush()
+        return self._serialize_change_request_mutation(row, audit_event_id=audit.id, change_approval_id=approval.id)
+
+    def transition_change_request(
+        self,
+        session: Session,
+        *,
+        change_request_id: str,
+        target_state: str,
+        expected_version: int,
+        reason: str | None,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        row = self._get_change_request(session, change_request_id)
+        self._assert_expected_version(row, expected_version, label="change_request")
+        try:
+            parsed_target = ChangeRequestState(target_state)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"Unsupported change request state: {target_state}") from exc
+        transition_reason = change_request_transition_eligibility_reason(current_state=row.state, target_state=parsed_target)
+        if transition_reason == "already_in_target_state":
+            raise HTTPException(status_code=409, detail="Change request is already in the requested state.")
+        if transition_reason is not None:
+            raise HTTPException(status_code=409, detail=f"Transition from {row.state.value} to {parsed_target.value} is not allowed.")
+        previous = row.state
+        row.state = parsed_target
+        actor = self._get_or_create_app_user(session, user)
+        session.flush()
+        audit = self._write_audit_event(
+            session,
+            actor=actor,
+            entity_type="change_request",
+            entity_id=row.id,
+            action="change_request.transition",
+            payload=self._build_stage_payload(
+                change_request_id=row.id,
+                previous_state=previous.value,
+                target_state=parsed_target.value,
+                reason=reason,
+            ),
+            before={"state": previous.value},
+            after={"state": parsed_target.value},
+            reason=reason,
+        )
+        session.flush()
+        return self._serialize_change_request_mutation(row, audit_event_id=audit.id)
 
     def _serialize_capa_cycle(self, row: CapaCycle, *, audit_event_id: str | None = None) -> dict[str, Any]:
         return {

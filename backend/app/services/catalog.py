@@ -2386,7 +2386,7 @@ class CatalogReadService:
             "transition_actions": transition_actions,
         }
 
-    def get_change_request_workspace(self, session: Session, *, change_request_id: str) -> dict[str, object]:
+    def get_change_request_workspace(self, session: Session, *, change_request_id: str, user: AuthenticatedUser | None = None) -> dict[str, object]:
         change_request = session.get(ChangeRequest, change_request_id)
         if change_request is None:
             raise HTTPException(status_code=404, detail="Change request not found.")
@@ -2424,6 +2424,7 @@ class CatalogReadService:
 
         return {
             "id": change_request.id,
+            "row_version": change_request.row_version,
             "legacy_change_request_id": change_request.legacy_change_request_id,
             "site_id": change_request.site_id,
             "facility_name": site.site_name,
@@ -2455,4 +2456,13 @@ class CatalogReadService:
                 }
                 for row in details
             ],
+            "action_readiness": (
+                []
+                if user is None
+                else CaseWorkflowService().get_change_request_action_readiness(
+                    session,
+                    change_request_id=change_request.id,
+                    user=user,
+                )
+            ),
         }

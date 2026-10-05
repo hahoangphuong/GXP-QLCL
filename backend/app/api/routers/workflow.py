@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.app.api.session import commit_or_409, get_session_from_request_factory
 from backend.app.auth import AuthenticatedUser, get_authenticated_user, require_permissions
+from backend.app.db.enums import ChangeRequestState
 from backend.app.db.models.phase1 import Case
 from backend.app.read_models import (
     BusinessEligibilityIssueRequest,
@@ -30,6 +31,13 @@ from backend.app.read_models import (
     EvaluationScopeUpsertRequest,
     CaseTransitionRead,
     CaseTransitionRequest,
+    ChangeApprovalUpsertRequest,
+    ChangeRequestCreateRequest,
+    ChangeRequestDetailCreateRequest,
+    ChangeRequestDetailUpdateRequest,
+    ChangeRequestMutationRead,
+    ChangeRequestTransitionRequest,
+    ChangeRequestUpdateRequest,
     InspectionOutcomeRead,
     InspectionFinalEvaluationRequest,
     InspectionOutcomeUpsertRequest,
@@ -418,6 +426,145 @@ def register_workflow_routes(app, session_factory) -> None:
         commit_or_409(session)
         return CertificateMutationRead(**result)
 
+    def create_change_request(
+        site_id: str,
+        payload: ChangeRequestCreateRequest,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"change_request.edit"})
+        result = service.create_change_request(
+            session,
+            site_id=site_id,
+            scope_label=payload.scope_label,
+            description=payload.description,
+            submitted_on=payload.submitted_on,
+            requester_name=payload.requester_name,
+            reason=payload.reason,
+            user=user,
+        )
+        commit_or_409(session)
+        return ChangeRequestMutationRead(**result)
+
+    def update_change_request(
+        change_request_id: str,
+        payload: ChangeRequestUpdateRequest,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"change_request.edit"})
+        result = service.update_change_request(
+            session,
+            change_request_id=change_request_id,
+            expected_version=payload.expected_version,
+            scope_label=payload.scope_label,
+            description=payload.description,
+            submitted_on=payload.submitted_on,
+            requester_name=payload.requester_name,
+            reason=payload.reason,
+            user=user,
+            fields_set=set(payload.model_fields_set),
+        )
+        commit_or_409(session)
+        return ChangeRequestMutationRead(**result)
+
+    def create_change_request_detail(
+        change_request_id: str,
+        payload: ChangeRequestDetailCreateRequest,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"change_request.edit"})
+        result = service.create_change_request_detail(
+            session,
+            change_request_id=change_request_id,
+            expected_version=payload.expected_version,
+            classification_id=payload.classification_id,
+            classification_label=payload.classification_label,
+            approval_status=payload.approval_status,
+            old_value=payload.old_value,
+            new_value=payload.new_value,
+            note=payload.note,
+            reason=payload.reason,
+            user=user,
+        )
+        commit_or_409(session)
+        return ChangeRequestMutationRead(**result)
+
+    def update_change_request_detail(
+        change_detail_id: str,
+        payload: ChangeRequestDetailUpdateRequest,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"change_request.edit"})
+        result = service.update_change_request_detail(
+            session,
+            change_detail_id=change_detail_id,
+            expected_version=payload.expected_version,
+            classification_id=payload.classification_id,
+            classification_label=payload.classification_label,
+            approval_status=payload.approval_status,
+            old_value=payload.old_value,
+            new_value=payload.new_value,
+            note=payload.note,
+            reason=payload.reason,
+            user=user,
+            fields_set=set(payload.model_fields_set),
+        )
+        commit_or_409(session)
+        return ChangeRequestMutationRead(**result)
+
+    def upsert_change_approval(
+        change_request_id: str,
+        payload: ChangeApprovalUpsertRequest,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"change_request.approve"})
+        result = service.upsert_change_approval(
+            session,
+            change_request_id=change_request_id,
+            expected_version=payload.expected_version,
+            handled_on=payload.handled_on,
+            handled_by_name=payload.handled_by_name,
+            result_label=payload.result_label,
+            effective_on=payload.effective_on,
+            approval_reference=payload.approval_reference,
+            reason=payload.reason,
+            user=user,
+            fields_set=set(payload.model_fields_set),
+        )
+        commit_or_409(session)
+        return ChangeRequestMutationRead(**result)
+
+    def transition_change_request(
+        change_request_id: str,
+        payload: ChangeRequestTransitionRequest,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        try:
+            target_state = ChangeRequestState(payload.target_state)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"Unsupported change request state: {payload.target_state}") from exc
+        required_permission = (
+            "change_request.edit"
+            if target_state == ChangeRequestState.UNDER_REVIEW
+            else "change_request.approve"
+        )
+        require_permissions(user, {required_permission})
+        result = service.transition_change_request(
+            session,
+            change_request_id=change_request_id,
+            target_state=payload.target_state,
+            expected_version=payload.expected_version,
+            reason=payload.reason,
+            user=user,
+        )
+        commit_or_409(session)
+        return ChangeRequestMutationRead(**result)
+
     def issue_business_eligibility(
         site_id: str,
         payload: BusinessEligibilityIssueRequest,
@@ -607,6 +754,48 @@ def register_workflow_routes(app, session_factory) -> None:
         promote_certificate_current,
         methods=["POST"],
         response_model=CertificateMutationRead,
+        tags=["workflow"],
+    )
+    app.add_api_route(
+        "/sites/{site_id}/change-requests",
+        create_change_request,
+        methods=["POST"],
+        response_model=ChangeRequestMutationRead,
+        tags=["workflow"],
+    )
+    app.add_api_route(
+        "/change-requests/{change_request_id}",
+        update_change_request,
+        methods=["PUT"],
+        response_model=ChangeRequestMutationRead,
+        tags=["workflow"],
+    )
+    app.add_api_route(
+        "/change-requests/{change_request_id}/details",
+        create_change_request_detail,
+        methods=["POST"],
+        response_model=ChangeRequestMutationRead,
+        tags=["workflow"],
+    )
+    app.add_api_route(
+        "/change-request-details/{change_detail_id}",
+        update_change_request_detail,
+        methods=["PUT"],
+        response_model=ChangeRequestMutationRead,
+        tags=["workflow"],
+    )
+    app.add_api_route(
+        "/change-requests/{change_request_id}/approval",
+        upsert_change_approval,
+        methods=["PUT"],
+        response_model=ChangeRequestMutationRead,
+        tags=["workflow"],
+    )
+    app.add_api_route(
+        "/change-requests/{change_request_id}/transition",
+        transition_change_request,
+        methods=["POST"],
+        response_model=ChangeRequestMutationRead,
         tags=["workflow"],
     )
     app.add_api_route(

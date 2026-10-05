@@ -72,17 +72,17 @@ def _procedures(text: str) -> dict[str, dict[str, object]]:
     return {name: rows[0] for name, rows in result.items()}
 
 
-def _condition_status(condition: str) -> str:
+def _condition_status(condition: str, *, target_i: int = 2) -> str:
     normalized = re.sub(r"\s+", " ", condition.strip()).lower()
+    suffix = f"I{target_i}"
     match = re.fullmatch(r"(?:not\s*\(\s*)?i\s*(=|<>|<|<=|>|>=)\s*(\d+)(?:\s*\))?", normalized)
     if not match:
-        return "CONDITIONAL_I2"
+        return f"CONDITIONAL_{suffix}"
     operator, value = match.group(1), int(match.group(2))
-    actual = 2
-    result = {"=": actual == value, "<>": actual != value, "<": actual < value, "<=": actual <= value, ">": actual > value, ">=": actual >= value}[operator]
+    result = {"=": target_i == value, "<>": target_i != value, "<": target_i < value, "<=": target_i <= value, ">": target_i > value, ">=": target_i >= value}[operator]
     if normalized.startswith("not"):
         result = not result
-    return "TRUE_I2" if result else "FALSE_I2"
+    return f"TRUE_{suffix}" if result else f"FALSE_{suffix}"
 
 
 def _split_argument(text: str) -> tuple[str, str]:
@@ -100,7 +100,7 @@ def _split_argument(text: str) -> tuple[str, str]:
     return text.strip(), ""
 
 
-def _branch_context(lines: list[str], index: int) -> tuple[str, str]:
+def _branch_context(lines: list[str], index: int, *, target_i: int = 2) -> tuple[str, str]:
     stack: list[dict[str, object]] = []
     for row in lines[:index + 1]:
         code = _active(row)
@@ -126,15 +126,16 @@ def _branch_context(lines: list[str], index: int) -> tuple[str, str]:
     statuses = []
     for frame in stack:
         for atom in str(frame["effective"]).split(" AND "):
-            statuses.append(_condition_status(atom))
-    if any(item == "FALSE_I2" for item in statuses):
-        return predicates, "UNREACHABLE_I2"
-    if any(item == "CONDITIONAL_I2" for item in statuses):
-        return predicates, "CONDITIONAL_I2"
-    return predicates, "REACHABLE_I2"
+            statuses.append(_condition_status(atom, target_i=target_i))
+    suffix = f"I{target_i}"
+    if any(item == f"FALSE_{suffix}" for item in statuses):
+        return predicates, f"UNREACHABLE_{suffix}"
+    if any(item == f"CONDITIONAL_{suffix}" for item in statuses):
+        return predicates, f"CONDITIONAL_{suffix}"
+    return predicates, f"REACHABLE_{suffix}"
 
 
-def _operations(proc: dict[str, object]) -> list[dict[str, object]]:
+def _operations(proc: dict[str, object], *, target_i: int = 2) -> list[dict[str, object]]:
     lines = proc["lines"]
     offset = int(proc["offset"])
     result: list[dict[str, object]] = []
@@ -160,13 +161,14 @@ def _operations(proc: dict[str, object]) -> list[dict[str, object]]:
                 physical = quoted[0] if quoted else bookmark_expression.split(",", 1)[0].strip()
                 if len(quoted) > 1 and "&" in bookmark_expression:
                     physical = "".join(quoted)
-                condition, reachability = _branch_context(lines, index)
+                condition, reachability = _branch_context(lines, index, target_i=target_i)
                 if inline_condition:
                     condition = inline_condition if condition == "COMMON" else condition + " AND " + inline_condition
-                    inline_status = _condition_status(inline_condition)
-                    if inline_status == "FALSE_I2":
-                        reachability = "UNREACHABLE_I2"
-                    elif reachability != "UNREACHABLE_I2" and reachability != "CONDITIONAL_I2":
+                    inline_status = _condition_status(inline_condition, target_i=target_i)
+                    suffix = f"I{target_i}"
+                    if inline_status == f"FALSE_{suffix}":
+                        reachability = f"UNREACHABLE_{suffix}"
+                    elif reachability != f"UNREACHABLE_{suffix}" and reachability != f"CONDITIONAL_{suffix}":
                         reachability = inline_status.replace("TRUE", "REACHABLE")
                 result.append({
                     "physical_bookmark": physical,
@@ -175,15 +177,23 @@ def _operations(proc: dict[str, object]) -> list[dict[str, object]]:
                     "line": offset + index + 1,
                     "expression": value_expression,
                     "branch_predicates": condition,
-                    "reachability_i2": reachability,
+                    f"reachability_i{target_i}": reachability,
                 })
             range_match = RANGE_DELETE_RE.search(candidate)
             if range_match:
-                condition, reachability = _branch_context(lines, index)
+                condition, reachability = _branch_context(lines, index, target_i=target_i)
+                if inline_condition:
+                    condition = inline_condition if condition == "COMMON" else condition + " AND " + inline_condition
+                    inline_status = _condition_status(inline_condition, target_i=target_i)
+                    suffix = f"I{target_i}"
+                    if inline_status == f"FALSE_{suffix}":
+                        reachability = f"UNREACHABLE_{suffix}"
+                    elif reachability != f"UNREACHABLE_{suffix}" and reachability != f"CONDITIONAL_{suffix}":
+                        reachability = inline_status.replace("TRUE", "REACHABLE")
                 result.append({
                     "physical_bookmark": range_match.group(2), "operation_type": "RANGE_DELETE",
                     "line": offset + index + 1, "expression": candidate,
-                    "branch_predicates": condition, "reachability_i2": reachability,
+                    "branch_predicates": condition, f"reachability_i{target_i}": reachability,
                 })
     return result
 

@@ -1119,6 +1119,31 @@ export function SearchPage({
     ]);
   }
 
+  async function handleChangeRequestIssuedCertificateLoad(
+    certificateId: string,
+  ) {
+    return getGxpCertificateDetail(
+      certificateId,
+      auth,
+      useStubAuth,
+      bearerToken,
+    );
+  }
+
+  async function handleChangeRequestIssuedCertificateEdit(
+    certificateId: string,
+    payload: CertificateLatestVersionUpsertRequest,
+  ) {
+    await runSelectedChangeRequestMutation(() =>
+      upsertGxpCertificateLatestVersion(
+        certificateId,
+        payload,
+        auth,
+        useStubAuth,
+        bearerToken,
+      ));
+  }
+
   async function handleChangeRequestIssuedBusinessEligibilityPromote(
     businessEligibilityCertificateId: string,
     expectedVersion: number,
@@ -1882,6 +1907,8 @@ export function SearchPage({
               onIssueCertificateSuccessor: handleChangeRequestCertificateSuccessorIssue,
               onPromoteIssuedBusinessEligibility: handleChangeRequestIssuedBusinessEligibilityPromote,
               onPromoteIssuedCertificate: handleChangeRequestIssuedCertificatePromote,
+              onLoadIssuedCertificate: handleChangeRequestIssuedCertificateLoad,
+              onEditIssuedCertificate: handleChangeRequestIssuedCertificateEdit,
             }}
             eligibilityCertificateDetail={eligibilityCertificateDetail}
             eligibilityCertificateDetailError={eligibilityCertificateDetailError}

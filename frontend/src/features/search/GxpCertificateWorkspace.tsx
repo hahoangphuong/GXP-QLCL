@@ -17,7 +17,7 @@ function buildScopeDrafts(scopes: CertificateScope[]): ScopeDraft[] {
   }));
 }
 
-function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onSave, onStaleConflict }: {
+export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onSave, onStaleConflict }: {
   detail: GxpCertificateDetail;
   expectedVersion: number;
   onClose: () => void;

@@ -690,6 +690,7 @@ function buildChangeRequestWorkspace(overrides: Record<string, unknown> = {}) {
       { action_key: "edit_change_approval", label: "Cập nhật xử lý", available: true, reason_code: null, required_permissions: ["change_request.approve"], expected_version: 4, target_state: null },
       { action_key: "issue_certificate_successor:affected-cert-1", label: "Tạo GCN điều chỉnh", available: true, reason_code: null, required_permissions: ["change_request.edit", "certificate.issue"], expected_version: 4, target_state: null, source_affected_artifact_id: "affected-cert-1" },
       { action_key: "issue_business_eligibility_successor:affected-dkkd-1", label: "Tạo GCN ĐĐK điều chỉnh", available: true, reason_code: null, required_permissions: ["change_request.edit", "certificate.issue"], expected_version: 4, target_state: null, source_affected_artifact_id: "affected-dkkd-1" },
+      { action_key: "edit_issued_certificate:issued-cert-1", label: "Cập nhật chứng nhận", available: true, reason_code: null, required_permissions: ["certificate.edit"], expected_version: 11, target_state: null, source_affected_artifact_id: "affected-cert-1", issued_artifact_link_id: "issued-cert-1", target_artifact_kind: "certificate", target_artifact_id: "cert-successor-1" },
       { action_key: "promote_issued_certificate:issued-cert-1", label: "Đặt làm chứng nhận hiện hành", available: true, reason_code: null, required_permissions: ["certificate.approve"], expected_version: 11, target_state: null, source_affected_artifact_id: "affected-cert-1", issued_artifact_link_id: "issued-cert-1", target_artifact_kind: "certificate", target_artifact_id: "cert-successor-1" },
       { action_key: "promote_issued_business_eligibility:issued-dkkd-1", label: "Đặt làm GCN đủ điều kiện hiện hành", available: true, reason_code: null, required_permissions: ["certificate.approve"], expected_version: 13, target_state: null, source_affected_artifact_id: "affected-dkkd-1", issued_artifact_link_id: "issued-dkkd-1", target_artifact_kind: "business_eligibility_certificate", target_artifact_id: "dkkd-successor-1" },
       { action_key: "transition_change_request:accepted", label: "Chấp nhận", available: true, reason_code: null, required_permissions: ["change_request.approve"], expected_version: 4, target_state: "accepted" },
@@ -3761,6 +3762,103 @@ describe("App Slice A.4 search workspace", () => {
     await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(3));
     expect(apiMocks.promoteBusinessEligibilityCurrent).toHaveBeenCalledTimes(1);
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+  });
+
+  it("edits an issued GxP successor with its artifact-owned token and refreshes authoritative workspaces", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.getChangeRequestWorkspace.mockResolvedValue(buildChangeRequestWorkspace());
+    apiMocks.getGxpCertificateDetail.mockResolvedValue({
+      certificate_id: "cert-successor-1",
+      row_version: 11,
+      certificate_number: "GMP-DRAFT",
+      issue_date: null,
+      expiry_date: null,
+      scopes: [],
+    });
+    apiMocks.upsertGxpCertificateLatestVersion.mockResolvedValue(null);
+
+    const { container } = renderApp(["/search"]);
+    await waitFor(() => expect(container.querySelector(".history-panel")).not.toBeNull());
+    fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
+    expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+
+    await waitFor(() => expect(apiMocks.getGxpCertificateDetail).toHaveBeenCalledWith(
+      "cert-successor-1",
+      expect.objectContaining({ username: "operator.local" }),
+      true,
+      null,
+    ));
+    const dialog = await screen.findByRole("dialog", { name: "Sửa giấy chứng nhận GxP" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Số GCN" }), {
+      target: { value: "GMP-ADJUSTED" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Ngày cấp"), {
+      target: { value: "2026-10-05" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Ngày hết hạn"), {
+      target: { value: "2029-10-05" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Lưu thay đổi" }));
+
+    await waitFor(() => expect(apiMocks.upsertGxpCertificateLatestVersion).toHaveBeenCalledTimes(1));
+    expect(apiMocks.upsertGxpCertificateLatestVersion).toHaveBeenCalledWith(
+      "cert-successor-1",
+      {
+        expected_version: 11,
+        certificate_number: "GMP-ADJUSTED",
+        issue_date: "2026-10-05",
+        expiry_date: "2029-10-05",
+        scopes: [],
+        reason: null,
+      },
+      expect.objectContaining({ username: "operator.local" }),
+      true,
+      null,
+    );
+    await waitFor(() => expect(apiMocks.getChangeRequestWorkspace).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2));
+    expect(apiMocks.upsertGxpCertificateLatestVersion).toHaveBeenCalledTimes(1);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes ChangeRequest state after a stale issued-GxP edit without retrying the mutation", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.getChangeRequestWorkspace.mockResolvedValue(buildChangeRequestWorkspace());
+    apiMocks.getGxpCertificateDetail.mockResolvedValue({
+      certificate_id: "cert-successor-1",
+      row_version: 11,
+      certificate_number: "GMP-DRAFT",
+      issue_date: null,
+      expiry_date: null,
+      scopes: [],
+    });
+    apiMocks.upsertGxpCertificateLatestVersion.mockRejectedValue(
+      Object.assign(new Error("Stale certificate update."), { status: 409 }),
+    );
+
+    const { container } = renderApp(["/search"]);
+    await waitFor(() => expect(container.querySelector(".history-panel")).not.toBeNull());
+    fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
+    expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+    const dialog = await screen.findByRole("dialog", { name: "Sửa giấy chứng nhận GxP" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Lưu thay đổi" }));
+
+    await waitFor(() => expect(apiMocks.upsertGxpCertificateLatestVersion).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(apiMocks.getChangeRequestWorkspace).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2));
+    expect(apiMocks.upsertGxpCertificateLatestVersion).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog", { name: "Sửa giấy chứng nhận GxP" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Stale certificate update.");
   });
 
   it("refreshes change-request and facility workspaces once after a stale 409 without retrying mutation", async () => {

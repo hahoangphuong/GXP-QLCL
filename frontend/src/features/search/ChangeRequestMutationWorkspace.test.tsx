@@ -2,7 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ChangeRequestWorkspace } from "../../types";
+import type { ChangeRequestWorkspace, GxpCertificateDetail } from "../../types";
 import { ChangeRequestMutationWorkspace, type ChangeRequestMutationHandlers } from "./ChangeRequestMutationWorkspace";
 
 function buildWorkspace(overrides: Partial<ChangeRequestWorkspace> = {}): ChangeRequestWorkspace {
@@ -71,6 +71,7 @@ function buildWorkspace(overrides: Partial<ChangeRequestWorkspace> = {}): Change
       { action_key: "edit_change_approval", label: "Cập nhật xử lý", available: true, reason_code: null, required_permissions: ["change_request.approve"], expected_version: 7, target_state: null },
       { action_key: "issue_certificate_successor:affected-cert-1", label: "Tạo GCN điều chỉnh", available: true, reason_code: null, required_permissions: ["change_request.edit", "certificate.issue"], expected_version: 7, target_state: null, source_affected_artifact_id: "affected-cert-1" },
       { action_key: "issue_business_eligibility_successor:affected-dkkd-1", label: "Tạo GCN ĐĐK điều chỉnh", available: true, reason_code: null, required_permissions: ["change_request.edit", "certificate.issue"], expected_version: 7, target_state: null, source_affected_artifact_id: "affected-dkkd-1" },
+      { action_key: "edit_issued_certificate:issued-cert-1", label: "Cập nhật chứng nhận", available: true, reason_code: null, required_permissions: ["certificate.edit"], expected_version: 11, target_state: null, source_affected_artifact_id: "affected-cert-1", issued_artifact_link_id: "issued-cert-1", target_artifact_kind: "certificate", target_artifact_id: "cert-successor-1" },
       { action_key: "promote_issued_certificate:issued-cert-1", label: "Đặt làm chứng nhận hiện hành", available: true, reason_code: null, required_permissions: ["certificate.approve"], expected_version: 11, target_state: null, source_affected_artifact_id: "affected-cert-1", issued_artifact_link_id: "issued-cert-1", target_artifact_kind: "certificate", target_artifact_id: "cert-successor-1" },
       { action_key: "promote_issued_business_eligibility:issued-dkkd-1", label: "Đặt làm GCN đủ điều kiện hiện hành", available: true, reason_code: null, required_permissions: ["certificate.approve"], expected_version: 13, target_state: null, source_affected_artifact_id: "affected-dkkd-1", issued_artifact_link_id: "issued-dkkd-1", target_artifact_kind: "business_eligibility_certificate", target_artifact_id: "dkkd-successor-1" },
       { action_key: "transition_change_request:not-derived", label: "Chấp nhận", available: true, reason_code: null, required_permissions: ["change_request.approve"], expected_version: 7, target_state: "accepted" },
@@ -90,6 +91,15 @@ function buildHandlers(): ChangeRequestMutationHandlers {
     onIssueCertificateSuccessor: vi.fn().mockResolvedValue(undefined),
     onPromoteIssuedBusinessEligibility: vi.fn().mockResolvedValue(undefined),
     onPromoteIssuedCertificate: vi.fn().mockResolvedValue(undefined),
+    onLoadIssuedCertificate: vi.fn().mockResolvedValue({
+      certificate_id: "cert-successor-1",
+      row_version: 11,
+      certificate_number: "GMP-DRAFT",
+      issue_date: null,
+      expiry_date: null,
+      scopes: [],
+    } as GxpCertificateDetail),
+    onEditIssuedCertificate: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -135,6 +145,58 @@ describe("ChangeRequestMutationWorkspace backend-owned writes", () => {
       expected_version: 7,
       source_affected_artifact_id: "affected-dkkd-1",
     });
+  });
+
+  it("loads and edits an issued GxP successor with the target-owned readiness token", async () => {
+    const handlers = buildHandlers();
+    render(<ChangeRequestMutationWorkspace activeTab="Đề nghị" handlers={handlers} workspace={buildWorkspace()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+
+    await waitFor(() => expect(handlers.onLoadIssuedCertificate).toHaveBeenCalledTimes(1));
+    expect(handlers.onLoadIssuedCertificate).toHaveBeenCalledWith("cert-successor-1");
+    expect(await screen.findByRole("dialog", { name: "Sửa giấy chứng nhận GxP" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Số GCN" }), {
+      target: { value: "GMP-ADJUSTED" },
+    });
+    fireEvent.change(screen.getByLabelText("Ngày cấp"), {
+      target: { value: "2026-10-05" },
+    });
+    fireEvent.change(screen.getByLabelText("Ngày hết hạn"), {
+      target: { value: "2029-10-05" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+
+    await waitFor(() => expect(handlers.onEditIssuedCertificate).toHaveBeenCalledTimes(1));
+    expect(handlers.onEditIssuedCertificate).toHaveBeenCalledWith(
+      "cert-successor-1",
+      {
+        expected_version: 11,
+        certificate_number: "GMP-ADJUSTED",
+        issue_date: "2026-10-05",
+        expiry_date: "2029-10-05",
+        scopes: [],
+        reason: null,
+      },
+    );
+  });
+
+  it("keeps issued GxP edit disabled when backend readiness blocks it", () => {
+    const handlers = buildHandlers();
+    const workspace = buildWorkspace({
+      action_readiness: buildWorkspace().action_readiness.map((item) =>
+        item.action_key === "edit_issued_certificate:issued-cert-1"
+          ? { ...item, available: false, reason_code: "missing_permission" }
+          : item,
+      ),
+    });
+
+    render(<ChangeRequestMutationWorkspace activeTab="Đề nghị" handlers={handlers} workspace={workspace} />);
+
+    expect(screen.getByRole("button", { name: "Cập nhật chứng nhận" })).toBeDisabled();
+    expect(handlers.onLoadIssuedCertificate).not.toHaveBeenCalled();
+    expect(handlers.onEditIssuedCertificate).not.toHaveBeenCalled();
   });
 
   it("promotes issued successors with target-owned readiness tokens and target identities", async () => {

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
 import type {
+  CertificateLatestVersionUpsertRequest,
   ChangeApprovalUpsertRequest,
   ChangeRequestBusinessEligibilitySuccessorIssueRequest,
   ChangeRequestCertificateSuccessorIssueRequest,
@@ -11,9 +12,11 @@ import type {
   ChangeRequestUpdateRequest,
   ChangeRequestWorkspace,
   ChangeRequestWorkspaceDetail,
+  GxpCertificateDetail,
   LifecycleActionReadiness,
 } from "../../types";
 import { DetailValue } from "./DetailValue";
+import { GxpCertificateEditDialog } from "./GxpCertificateWorkspace";
 
 export type ChangeRequestMutationHandlers = {
   onUpdateHeader: (payload: ChangeRequestUpdateRequest) => Promise<void>;
@@ -25,6 +28,8 @@ export type ChangeRequestMutationHandlers = {
   onIssueCertificateSuccessor: (payload: ChangeRequestCertificateSuccessorIssueRequest) => Promise<void>;
   onPromoteIssuedBusinessEligibility: (businessEligibilityCertificateId: string, expectedVersion: number) => Promise<void>;
   onPromoteIssuedCertificate: (certificateId: string, expectedVersion: number) => Promise<void>;
+  onLoadIssuedCertificate: (certificateId: string) => Promise<GxpCertificateDetail>;
+  onEditIssuedCertificate: (certificateId: string, payload: CertificateLatestVersionUpsertRequest) => Promise<void>;
 };
 
 type HeaderDraft = {
@@ -109,6 +114,10 @@ export function ChangeRequestMutationWorkspace({
   const [detailDraft, setDetailDraft] = useState<DetailDraft>(() => detailDraftFrom());
   const [approvalEditing, setApprovalEditing] = useState(false);
   const [approvalDraft, setApprovalDraft] = useState<ApprovalDraft>(() => approvalDraftFrom(workspace));
+  const [issuedGxpEdit, setIssuedGxpEdit] = useState<{
+    detail: GxpCertificateDetail;
+    expectedVersion: number;
+  } | null>(null);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -119,6 +128,7 @@ export function ChangeRequestMutationWorkspace({
     setDetailDraft(detailDraftFrom());
     setApprovalEditing(false);
     setApprovalDraft(approvalDraftFrom(workspace));
+    setIssuedGxpEdit(null);
     setPending(false);
     setErrorMessage(null);
   }, [workspace.id, workspace.row_version]);
@@ -276,6 +286,46 @@ export function ChangeRequestMutationWorkspace({
     await runMutation(() => handlers.onIssueCertificateSuccessor(payload));
   }
 
+  async function openIssuedGxpEdit(issuedArtifactLinkId: string) {
+    const readiness = workspace.action_readiness.find(
+      (item) =>
+        item.action_key.startsWith("edit_issued_certificate:")
+        && item.issued_artifact_link_id === issuedArtifactLinkId
+        && item.target_artifact_kind === "certificate"
+        && item.target_artifact_id,
+    ) ?? null;
+    if (
+      !readiness?.available
+      || readiness.expected_version === null
+      || !readiness.target_artifact_id
+    ) {
+      return;
+    }
+    setPending(true);
+    setErrorMessage(null);
+    try {
+      const detail = await handlers.onLoadIssuedCertificate(readiness.target_artifact_id);
+      setIssuedGxpEdit({
+        detail,
+        expectedVersion: readiness.expected_version,
+      });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Không thể tải GCN điều chỉnh.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function saveIssuedGxpEdit(payload: CertificateLatestVersionUpsertRequest) {
+    if (!issuedGxpEdit) {
+      return;
+    }
+    await handlers.onEditIssuedCertificate(
+      issuedGxpEdit.detail.certificate_id,
+      payload,
+    );
+  }
+
   async function promoteIssuedArtifact(issuedArtifactLinkId: string) {
     const readiness = workspace.action_readiness.find(
       (item) =>
@@ -421,13 +471,30 @@ export function ChangeRequestMutationWorkspace({
                       label={item.artifact_kind === "certificate" ? "GCN điều chỉnh" : "GCN ĐĐK điều chỉnh"}
                       value={item.artifact_id}
                     />
-                    <button
-                      disabled={!promotionReadiness?.available || pending}
-                      onClick={() => void promoteIssuedArtifact(item.link_id)}
-                      type="button"
-                    >
-                      {pending ? "Đang cập nhật..." : promotionReadiness?.label ?? "Đặt làm hiện hành"}
-                    </button>
+                    <div className="panel-actions">
+                      {item.artifact_kind === "certificate" ? (() => {
+                        const editReadiness = workspace.action_readiness.find(
+                          (readiness) =>
+                            readiness.action_key.startsWith("edit_issued_certificate:")
+                            && readiness.issued_artifact_link_id === item.link_id
+                            && readiness.target_artifact_id === item.artifact_id,
+                        ) ?? null;
+                        return <button
+                          disabled={!editReadiness?.available || pending}
+                          onClick={() => void openIssuedGxpEdit(item.link_id)}
+                          type="button"
+                        >
+                          {editReadiness?.label ?? "Cập nhật chứng nhận"}
+                        </button>;
+                      })() : null}
+                      <button
+                        disabled={!promotionReadiness?.available || pending}
+                        onClick={() => void promoteIssuedArtifact(item.link_id)}
+                        type="button"
+                      >
+                        {pending ? "Đang cập nhật..." : promotionReadiness?.label ?? "Đặt làm hiện hành"}
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -447,6 +514,18 @@ export function ChangeRequestMutationWorkspace({
           ) : null}
         </section>
         {errorMessage ? <p className="form-error" role="alert">{errorMessage}</p> : null}
+        {issuedGxpEdit ? (
+          <GxpCertificateEditDialog
+            detail={issuedGxpEdit.detail}
+            expectedVersion={issuedGxpEdit.expectedVersion}
+            onClose={() => setIssuedGxpEdit(null)}
+            onSave={saveIssuedGxpEdit}
+            onStaleConflict={(message) => {
+              setIssuedGxpEdit(null);
+              setErrorMessage(message);
+            }}
+          />
+        ) : null}
       </div>
     );
   }

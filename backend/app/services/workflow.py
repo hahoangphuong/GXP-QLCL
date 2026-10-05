@@ -1457,11 +1457,17 @@ class CaseWorkflowService:
                     certificate_id=artifact_id,
                     user=user,
                 )
+                edit_action = next(
+                    item
+                    for item in canonical_actions
+                    if item["action_key"] == "edit_latest_version"
+                )
                 promote_action = next(
                     item
                     for item in canonical_actions
                     if item["action_key"] == "promote_current"
                 )
+                edit_action_key = f"edit_issued_certificate:{issued_link.id}"
                 action_key = f"promote_issued_certificate:{issued_link.id}"
             else:
                 canonical_actions = self.get_business_eligibility_action_readiness(
@@ -1469,14 +1475,37 @@ class CaseWorkflowService:
                     business_eligibility_certificate_id=artifact_id,
                     user=user,
                 )
+                edit_action = next(
+                    item
+                    for item in canonical_actions
+                    if item["action_key"] == "edit_latest_version"
+                )
                 promote_action = next(
                     item
                     for item in canonical_actions
                     if item["action_key"] == "promote_current"
                 )
+                edit_action_key = (
+                    f"edit_issued_business_eligibility:{issued_link.id}"
+                )
                 action_key = (
                     f"promote_issued_business_eligibility:{issued_link.id}"
                 )
+            actions.append(
+                {
+                    "action_key": edit_action_key,
+                    "label": edit_action["label"],
+                    "available": edit_action["available"],
+                    "reason_code": edit_action["reason_code"],
+                    "required_permissions": edit_action["required_permissions"],
+                    "expected_version": edit_action["expected_version"],
+                    "target_state": None,
+                    "source_affected_artifact_id": issued_link.source_affected_artifact_id,
+                    "issued_artifact_link_id": issued_link.id,
+                    "target_artifact_kind": artifact_kind,
+                    "target_artifact_id": artifact_id,
+                }
+            )
             actions.append(
                 {
                     "action_key": action_key,

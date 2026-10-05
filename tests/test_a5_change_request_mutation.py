@@ -678,7 +678,7 @@ def test_a5_business_eligibility_successor_readiness_is_source_permission_and_st
         assert rejected_action["source_affected_artifact_id"] == source_link_id
 
 
-def test_a5_issued_successor_promotion_readiness_delegates_to_artifact_owners(tmp_path):
+def test_a5_issued_successor_edit_and_promotion_readiness_delegate_to_artifact_owners(tmp_path):
     engine = create_engine(
         f"sqlite:///{(tmp_path / 'a5-issued-promotion-readiness.sqlite').as_posix()}",
         future=True,
@@ -811,6 +811,32 @@ def test_a5_issued_successor_promotion_readiness_delegates_to_artifact_owners(tm
             for item in admin_workspace["action_readiness"]
         }
 
+        gxp_edit_action = admin_actions[
+            f"edit_issued_certificate:{issued_certificate_id}"
+        ]
+        assert gxp_edit_action["available"] is True
+        assert gxp_edit_action["reason_code"] is None
+        assert gxp_edit_action["required_permissions"] == ["certificate.edit"]
+        assert gxp_edit_action["expected_version"] == candidate_certificate_version
+        assert gxp_edit_action["expected_version"] != change_version
+        assert gxp_edit_action["issued_artifact_link_id"] == issued_certificate_id
+        assert gxp_edit_action["source_affected_artifact_id"] == affected_certificate_id
+        assert gxp_edit_action["target_artifact_kind"] == "certificate"
+        assert gxp_edit_action["target_artifact_id"] == candidate_certificate_id
+
+        dkkd_edit_action = admin_actions[
+            f"edit_issued_business_eligibility:{issued_dkkd_id}"
+        ]
+        assert dkkd_edit_action["available"] is True
+        assert dkkd_edit_action["reason_code"] is None
+        assert dkkd_edit_action["required_permissions"] == ["certificate.edit"]
+        assert dkkd_edit_action["expected_version"] == candidate_dkkd_version
+        assert dkkd_edit_action["expected_version"] != change_version
+        assert dkkd_edit_action["issued_artifact_link_id"] == issued_dkkd_id
+        assert dkkd_edit_action["source_affected_artifact_id"] == affected_dkkd_id
+        assert dkkd_edit_action["target_artifact_kind"] == "business_eligibility_certificate"
+        assert dkkd_edit_action["target_artifact_id"] == candidate_dkkd_id
+
         gxp_action = admin_actions[
             f"promote_issued_certificate:{issued_certificate_id}"
         ]
@@ -845,6 +871,20 @@ def test_a5_issued_successor_promotion_readiness_delegates_to_artifact_owners(tm
             item["action_key"]: item
             for item in editor_workspace["action_readiness"]
         }
+        editor_gxp_edit_action = editor_actions[
+            f"edit_issued_certificate:{issued_certificate_id}"
+        ]
+        assert editor_gxp_edit_action["available"] is False
+        assert editor_gxp_edit_action["reason_code"] == "missing_permission"
+        assert editor_gxp_edit_action["expected_version"] == candidate_certificate_version
+
+        editor_dkkd_edit_action = editor_actions[
+            f"edit_issued_business_eligibility:{issued_dkkd_id}"
+        ]
+        assert editor_dkkd_edit_action["available"] is False
+        assert editor_dkkd_edit_action["reason_code"] == "missing_permission"
+        assert editor_dkkd_edit_action["expected_version"] == candidate_dkkd_version
+
         editor_dkkd_action = editor_actions[
             f"promote_issued_business_eligibility:{issued_dkkd_id}"
         ]

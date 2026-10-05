@@ -29,6 +29,7 @@ from backend.app.db.models.phase1 import (
 )
 from backend.app.main import create_app
 from backend.app.read_models import (
+    ChangeRequestBusinessEligibilitySuccessorIssueRequest,
     ChangeRequestCertificateSuccessorIssueRequest,
     ChangeRequestTransitionRequest,
     ChangeRequestUpdateRequest,
@@ -77,6 +78,10 @@ def test_a5_routes_and_bounded_context_permissions_are_registered():
     assert ("/change-requests/{change_request_id}", ("PUT",)) in routes
     assert (
         "/change-requests/{change_request_id}/certificate-successors",
+        ("POST",),
+    ) in routes
+    assert (
+        "/change-requests/{change_request_id}/business-eligibility-successors",
         ("POST",),
     ) in routes
     assert ("/change-requests/{change_request_id}/details", ("POST",)) in routes
@@ -237,6 +242,104 @@ def test_a5_certificate_successor_route_requires_both_permissions_and_delegates(
             "source_affected_artifact_id": "affected-link",
             "expected_version": 7,
             "reason": "Prepare adjusted certificate.",
+            "username": "admin01",
+        }
+    ]
+
+
+def test_a5_business_eligibility_successor_route_requires_both_permissions_and_delegates(
+    tmp_path,
+    monkeypatch,
+):
+    database_url = (
+        f"sqlite:///{(tmp_path / 'a5-business-eligibility-successor-route.sqlite').as_posix()}"
+    )
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+    calls: list[dict[str, object]] = []
+
+    def fake_issue_successor(
+        self,
+        session,
+        *,
+        change_request_id,
+        source_affected_artifact_id,
+        expected_version,
+        reason,
+        user,
+    ):
+        calls.append(
+            {
+                "change_request_id": change_request_id,
+                "source_affected_artifact_id": source_affected_artifact_id,
+                "expected_version": expected_version,
+                "reason": reason,
+                "username": user.username,
+            }
+        )
+        return {
+            "change_request_id": change_request_id,
+            "row_version": expected_version + 1,
+            "state": "received",
+            "source_affected_artifact_id": source_affected_artifact_id,
+            "issued_artifact_link_id": "issued-link",
+            "business_eligibility_certificate_id": "successor-dkkd",
+            "audit_event_id": "audit-event",
+        }
+
+    monkeypatch.setattr(
+        CaseWorkflowService,
+        "issue_change_request_business_eligibility_successor",
+        fake_issue_successor,
+    )
+    app = create_app(database_url)
+    route = next(
+        route
+        for route in app.routes
+        if getattr(route, "path", "")
+        == "/change-requests/{change_request_id}/business-eligibility-successors"
+    )
+    payload = ChangeRequestBusinessEligibilitySuccessorIssueRequest(
+        expected_version=7,
+        source_affected_artifact_id="affected-dkkd-link",
+        reason="Prepare adjusted business eligibility certificate.",
+    )
+    manager = build_authenticated_user(
+        "manager01",
+        "manager",
+        permissions=ROLE_PERMISSIONS["manager"],
+    )
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as exc_info:
+            route.endpoint(
+                change_request_id="change-request",
+                payload=payload,
+                session=session,
+                user=manager,
+            )
+        assert exc_info.value.status_code == 403
+        session.rollback()
+    assert calls == []
+
+    admin = _certificate_issuer()
+    with Session(engine) as session:
+        response = route.endpoint(
+            change_request_id="change-request",
+            payload=payload,
+            session=session,
+            user=admin,
+        )
+    assert response.change_request_id == "change-request"
+    assert response.row_version == 8
+    assert response.source_affected_artifact_id == "affected-dkkd-link"
+    assert response.issued_artifact_link_id == "issued-link"
+    assert response.business_eligibility_certificate_id == "successor-dkkd"
+    assert calls == [
+        {
+            "change_request_id": "change-request",
+            "source_affected_artifact_id": "affected-dkkd-link",
+            "expected_version": 7,
+            "reason": "Prepare adjusted business eligibility certificate.",
             "username": "admin01",
         }
     ]
@@ -593,6 +696,258 @@ def test_a5_create_snapshots_only_current_same_site_regulatory_artifacts(tmp_pat
             ("business_eligibility_certificate", current_dkkd_id),
         }
         assert workspace["issued_artifacts"] == []
+
+
+def test_a5_business_eligibility_successor_copies_business_data_and_records_canonical_lineage(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{(tmp_path / 'a5-business-eligibility-successor.sqlite').as_posix()}",
+        future=True,
+    )
+    Base.metadata.create_all(engine)
+    workflow = CaseWorkflowService()
+
+    with Session(engine) as session:
+        site_id = _seed_site(session)
+        site = session.get(Site, site_id)
+        assert site is not None
+        basis_certificate = Certificate(
+            site_id=site.id,
+            certificate_type="GMP",
+            issuance_basis="administrative_no_inspection",
+            latest_flag=True,
+        )
+        source = BusinessEligibilityCertificate(
+            site_id=site.id,
+            company_id=site.company_id,
+            latest_flag=True,
+            legacy_dkkd_id=101,
+            latest_legacy_dkkd_id=101,
+            replaces_legacy_dkkd_id=99,
+            replaced_by_legacy_dkkd_id=None,
+        )
+        session.add_all([basis_certificate, source])
+        session.flush()
+        basis_version = CertificateVersion(
+            certificate_id=basis_certificate.id,
+            version_no=1,
+            certificate_number="GMP-BASIS",
+            is_latest_version=True,
+        )
+        source_version = BusinessEligibilityVersion(
+            business_eligibility_certificate_id=source.id,
+            version_no=1,
+            certificate_number="DDKD-CURRENT",
+            issued_on=date(2025, 1, 2),
+            expires_on=date(2030, 1, 2),
+            professional_responsible_person_name="Responsible Person",
+            quality_assurance_person_name="QA Person",
+            professional_qualification_text="Pharmacist",
+            professional_license_number="LIC-01",
+            professional_license_issued_on=date(2020, 1, 1),
+            professional_license_issuer="Authority A",
+            responsible_license_issued_on=date(2020, 2, 1),
+            responsible_license_issuer="Authority B",
+            decision_reference="DEC-01",
+            issuance_sequence_text="Lần 2",
+            issuance_history_text="History source",
+            business_activity_text="Manufacture",
+            current_status_text="current",
+            handled_by_name="Handler",
+            application_dossier_reference="DOSSIER-01",
+            notes="Source notes",
+        )
+        session.add_all([basis_version, source_version])
+        session.flush()
+        source_basis_link = BusinessEligibilityCertificateLink(
+            business_eligibility_version_id=source_version.id,
+            certificate_id=basis_certificate.id,
+            link_role="source_certificate",
+        )
+        session.add(source_basis_link)
+        session.commit()
+        source_id = source.id
+        basis_id = basis_certificate.id
+
+    with Session(engine) as session:
+        created = workflow.create_change_request(
+            session,
+            site_id=site_id,
+            scope_label="Adjust DDKD",
+            description=None,
+            submitted_on=date(2026, 10, 5),
+            requester_name="QA",
+            reason="Create DDKD change aggregate.",
+            user=_editor(),
+        )
+        session.commit()
+        change_id = created["change_request_id"]
+        initial_version = created["row_version"]
+
+    with Session(engine) as session:
+        source_link = session.scalars(
+            select(ChangeRequestAffectedArtifact).where(
+                ChangeRequestAffectedArtifact.change_request_id == change_id,
+                ChangeRequestAffectedArtifact.business_eligibility_certificate_id == source_id,
+            )
+        ).one()
+        source_link_id = source_link.id
+        result = workflow.issue_change_request_business_eligibility_successor(
+            session,
+            change_request_id=change_id,
+            source_affected_artifact_id=source_link_id,
+            expected_version=initial_version,
+            reason="Prepare adjusted DDKD.",
+            user=_certificate_issuer(),
+        )
+        session.commit()
+        successor_id = result["business_eligibility_certificate_id"]
+        successor_change_version = result["row_version"]
+        audit_id = result["audit_event_id"]
+
+    with Session(engine) as session:
+        source = session.get(BusinessEligibilityCertificate, source_id)
+        successor = session.get(BusinessEligibilityCertificate, successor_id)
+        assert source is not None
+        assert successor is not None
+        assert source.latest_flag is True
+        assert successor.latest_flag is False
+        assert successor.site_id == source.site_id
+        assert successor.company_id == source.company_id
+        assert successor.legacy_dkkd_id is None
+        assert successor.latest_legacy_dkkd_id is None
+        assert successor.replaces_legacy_dkkd_id is None
+        assert successor.replaced_by_legacy_dkkd_id is None
+
+        version = session.scalars(
+            select(BusinessEligibilityVersion).where(
+                BusinessEligibilityVersion.business_eligibility_certificate_id == successor.id
+            )
+        ).one()
+        assert version.version_no == 1
+        assert version.certificate_number == "DDKD-CURRENT"
+        assert version.issued_on == date(2025, 1, 2)
+        assert version.expires_on == date(2030, 1, 2)
+        assert version.professional_responsible_person_name == "Responsible Person"
+        assert version.quality_assurance_person_name == "QA Person"
+        assert version.professional_qualification_text == "Pharmacist"
+        assert version.professional_license_number == "LIC-01"
+        assert version.decision_reference == "DEC-01"
+        assert version.issuance_sequence_text == "Lần 2"
+        assert version.issuance_history_text == "History source"
+        assert version.business_activity_text == "Manufacture"
+        assert version.current_status_text is None
+        assert version.handled_by_name == "Handler"
+        assert version.application_dossier_reference == "DOSSIER-01"
+        assert version.notes == "Source notes"
+
+        copied_links = list(
+            session.scalars(
+                select(BusinessEligibilityCertificateLink).where(
+                    BusinessEligibilityCertificateLink.business_eligibility_version_id == version.id
+                )
+            )
+        )
+        assert [(link.certificate_id, link.link_role) for link in copied_links] == [
+            (basis_id, "source_certificate"),
+        ]
+
+        issued_link = session.scalars(
+            select(ChangeRequestIssuedArtifact).where(
+                ChangeRequestIssuedArtifact.change_request_id == change_id,
+                ChangeRequestIssuedArtifact.business_eligibility_certificate_id == successor_id,
+            )
+        ).one()
+        assert issued_link.source_affected_artifact_id == source_link_id
+        assert issued_link.certificate_id is None
+        assert session.get(ChangeRequest, change_id).row_version == successor_change_version
+
+        audit = session.get(AuditEvent, audit_id)
+        assert audit is not None
+        assert audit.action == "change_request.business_eligibility_successor.issue"
+        assert audit.entity_type == "change_request"
+        assert audit.entity_id == change_id
+
+        dkkd_count = session.query(BusinessEligibilityCertificate).count()
+        issued_link_count = session.query(ChangeRequestIssuedArtifact).count()
+        audit_count = session.query(AuditEvent).count()
+
+    with Session(engine) as session:
+        with pytest.raises(HTTPException, match="Stale change_request update"):
+            workflow.issue_change_request_business_eligibility_successor(
+                session,
+                change_request_id=change_id,
+                source_affected_artifact_id=source_link_id,
+                expected_version=initial_version,
+                reason="Stale retry must fail.",
+                user=_certificate_issuer(),
+            )
+        session.rollback()
+
+    with Session(engine) as session:
+        assert session.query(BusinessEligibilityCertificate).count() == dkkd_count
+        assert session.query(ChangeRequestIssuedArtifact).count() == issued_link_count
+        assert session.query(AuditEvent).count() == audit_count
+
+
+def test_a5_business_eligibility_successor_is_blocked_when_change_request_is_not_editable(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{(tmp_path / 'a5-business-eligibility-successor-state-gate.sqlite').as_posix()}",
+        future=True,
+    )
+    Base.metadata.create_all(engine)
+    workflow = CaseWorkflowService()
+
+    with Session(engine) as session:
+        site_id = _seed_site(session)
+        site = session.get(Site, site_id)
+        assert site is not None
+        source = BusinessEligibilityCertificate(
+            site_id=site.id,
+            company_id=site.company_id,
+            latest_flag=True,
+        )
+        change = ChangeRequest(
+            site_id=site.id,
+            state=ChangeRequestState.REJECTED,
+        )
+        session.add_all([source, change])
+        session.flush()
+        session.add(
+            BusinessEligibilityVersion(
+                business_eligibility_certificate_id=source.id,
+                version_no=1,
+                certificate_number="DDKD-CURRENT",
+            )
+        )
+        source_link = ChangeRequestAffectedArtifact(
+            change_request_id=change.id,
+            business_eligibility_certificate_id=source.id,
+        )
+        session.add(source_link)
+        session.commit()
+        change_id = change.id
+        change_version = change.row_version
+        source_link_id = source_link.id
+        dkkd_count = session.query(BusinessEligibilityCertificate).count()
+        issued_link_count = session.query(ChangeRequestIssuedArtifact).count()
+        audit_count = session.query(AuditEvent).count()
+
+    with Session(engine) as session:
+        with pytest.raises(HTTPException, match="successors are read-only"):
+            workflow.issue_change_request_business_eligibility_successor(
+                session,
+                change_request_id=change_id,
+                source_affected_artifact_id=source_link_id,
+                expected_version=change_version,
+                reason="Must not issue after rejection.",
+                user=_certificate_issuer(),
+            )
+        session.rollback()
+
+    with Session(engine) as session:
+        assert session.query(BusinessEligibilityCertificate).count() == dkkd_count
+        assert session.query(ChangeRequestIssuedArtifact).count() == issued_link_count
+        assert session.query(AuditEvent).count() == audit_count
 
 
 def test_a5_certificate_successor_preserves_context_resets_issue_fields_and_records_lineage(tmp_path):

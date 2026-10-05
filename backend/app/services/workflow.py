@@ -107,6 +107,26 @@ ALLOWED_CHANGE_REQUEST_TRANSITIONS: dict[ChangeRequestState, set[ChangeRequestSt
 }
 REASSESSMENT_INSPECTION_TYPE = "Tái"
 TERMINAL_CASE_STATES = frozenset({CaseState.CLOSED, CaseState.CANCELLED})
+BUSINESS_ELIGIBILITY_SUCCESSOR_COPY_FIELDS = (
+    "certificate_number",
+    "issued_on",
+    "expires_on",
+    "professional_responsible_person_name",
+    "quality_assurance_person_name",
+    "professional_qualification_text",
+    "professional_license_number",
+    "professional_license_issued_on",
+    "professional_license_issuer",
+    "responsible_license_issued_on",
+    "responsible_license_issuer",
+    "decision_reference",
+    "issuance_sequence_text",
+    "issuance_history_text",
+    "business_activity_text",
+    "handled_by_name",
+    "application_dossier_reference",
+    "notes",
+)
 
 
 def change_request_transition_permission(target_state: ChangeRequestState) -> str:
@@ -1740,6 +1760,144 @@ class CaseWorkflowService:
             "source_affected_artifact_id": source_link.id,
             "issued_artifact_link_id": issued_link.id,
             "certificate_id": successor.id,
+            "audit_event_id": audit.id,
+        }
+
+    def issue_change_request_business_eligibility_successor(
+        self,
+        session: Session,
+        *,
+        change_request_id: str,
+        source_affected_artifact_id: str,
+        expected_version: int,
+        reason: str | None,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        row = self._get_change_request(session, change_request_id)
+        self._assert_expected_version(row, expected_version, label="change_request")
+        if row.state not in CHANGE_REQUEST_EDITABLE_STATES:
+            raise HTTPException(
+                status_code=409,
+                detail="Change request successors are read-only in the current state.",
+            )
+        source_link = session.get(
+            ChangeRequestAffectedArtifact,
+            source_affected_artifact_id,
+        )
+        if source_link is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Change request affected artifact link not found.",
+            )
+        if source_link.change_request_id != row.id:
+            raise HTTPException(
+                status_code=409,
+                detail="Affected artifact link belongs to a different change request.",
+            )
+        if source_link.business_eligibility_certificate_id is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Affected artifact does not reference a business eligibility certificate.",
+            )
+
+        site = self._get_site(session, row.site_id)
+        self._validate_change_request_artifact_target(
+            session,
+            site=site,
+            certificate_id=None,
+            business_eligibility_certificate_id=source_link.business_eligibility_certificate_id,
+        )
+        source_certificate = self._get_business_eligibility(
+            session,
+            source_link.business_eligibility_certificate_id,
+        )
+        source_version = self._load_latest_business_eligibility_version(
+            session,
+            source_certificate.id,
+        )
+        source_links = list(
+            session.scalars(
+                select(BusinessEligibilityCertificateLink)
+                .where(
+                    BusinessEligibilityCertificateLink.business_eligibility_version_id
+                    == source_version.id
+                )
+                .order_by(
+                    BusinessEligibilityCertificateLink.created_at.asc(),
+                    BusinessEligibilityCertificateLink.id.asc(),
+                )
+            )
+        )
+        linked_certificates = [
+            {
+                "certificate_id": link.certificate_id,
+                "link_role": link.link_role,
+            }
+            for link in source_links
+        ]
+        version_values = {
+            field_name: getattr(source_version, field_name)
+            for field_name in BUSINESS_ELIGIBILITY_SUCCESSOR_COPY_FIELDS
+        }
+        version_values["current_status_text"] = None
+
+        successor, successor_version, created_links = (
+            self._create_business_eligibility_candidate(
+                session,
+                site=site,
+                version_values=version_values,
+                linked_certificates=linked_certificates,
+            )
+        )
+        issued_link = ChangeRequestIssuedArtifact(
+            change_request_id=row.id,
+            source_affected_artifact_id=source_link.id,
+            business_eligibility_certificate_id=successor.id,
+        )
+        session.add(issued_link)
+        row.row_version += 1
+        actor = self._get_or_create_app_user(session, user)
+        session.flush()
+
+        audit = self._write_audit_event(
+            session,
+            actor=actor,
+            entity_type="change_request",
+            entity_id=row.id,
+            action="change_request.business_eligibility_successor.issue",
+            payload=self._build_stage_payload(
+                change_request_id=row.id,
+                source_affected_artifact_id=source_link.id,
+                source_business_eligibility_certificate_id=source_certificate.id,
+                issued_artifact_link_id=issued_link.id,
+                successor_business_eligibility_certificate_id=successor.id,
+                reason=reason,
+            ),
+            before=None,
+            after={
+                "source_affected_artifact_id": source_link.id,
+                "source_business_eligibility_certificate_id": source_certificate.id,
+                "issued_artifact_link_id": issued_link.id,
+                "successor_business_eligibility_certificate_id": successor.id,
+                "successor_latest_flag": successor.latest_flag,
+                "successor_certificate_number": successor_version.certificate_number,
+                "successor_issued_on": successor_version.issued_on,
+                "successor_expires_on": successor_version.expires_on,
+                "successor_current_status_text": successor_version.current_status_text,
+                "successor_linked_certificates": self._serialize_business_eligibility_links(
+                    created_links
+                ),
+            },
+            reason=reason,
+        )
+        session.flush()
+        return {
+            "change_request_id": row.id,
+            "row_version": row.row_version,
+            "state": row.state.value,
+            "source_affected_artifact_id": source_link.id,
+            "issued_artifact_link_id": issued_link.id,
+            "business_eligibility_certificate_id": successor.id,
             "audit_event_id": audit.id,
         }
 
@@ -3762,6 +3920,45 @@ class CaseWorkflowService:
             "inspection_event_id": None if inspection_event is None else inspection_event.id,
         }
 
+    def _create_business_eligibility_candidate(
+        self,
+        session: Session,
+        *,
+        site: Site,
+        version_values: dict[str, Any],
+        linked_certificates: list[dict[str, Any]],
+    ) -> tuple[
+        BusinessEligibilityCertificate,
+        BusinessEligibilityVersion,
+        list[BusinessEligibilityCertificateLink],
+    ]:
+        self._get_company(session, site.company_id)
+        row = BusinessEligibilityCertificate(
+            site_id=site.id,
+            company_id=site.company_id,
+            latest_flag=False,
+            latest_legacy_dkkd_id=None,
+            replaces_legacy_dkkd_id=None,
+            replaced_by_legacy_dkkd_id=None,
+        )
+        session.add(row)
+        session.flush()
+
+        version = BusinessEligibilityVersion(
+            business_eligibility_certificate_id=row.id,
+            version_no=1,
+            **version_values,
+        )
+        session.add(version)
+        session.flush()
+        created_links = self._replace_business_eligibility_links(
+            session,
+            business_eligibility_version_id=version.id,
+            linked_certificates=linked_certificates,
+            site_id=row.site_id,
+        )
+        return row, version, created_links
+
     def issue_business_eligibility(
         self,
         session: Session,
@@ -3777,34 +3974,19 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         site = self._get_site(session, site_id)
-        self._get_company(session, site.company_id)
         actor = self._get_or_create_app_user(session, user)
 
-        row = BusinessEligibilityCertificate(
-            site_id=site.id,
-            company_id=site.company_id,
-            latest_flag=False,
-            latest_legacy_dkkd_id=None,
-        )
-        session.add(row)
-        session.flush()
-
-        version = BusinessEligibilityVersion(
-            business_eligibility_certificate_id=row.id,
-            version_no=1,
-            certificate_number=certificate_number,
-            issued_on=issued_on,
-            expires_on=expires_on,
-            professional_responsible_person_name=professional_responsible_person_name,
-            notes=notes,
-        )
-        session.add(version)
-        session.flush()
-        created_links = self._replace_business_eligibility_links(
+        row, version, created_links = self._create_business_eligibility_candidate(
             session,
-            business_eligibility_version_id=version.id,
+            site=site,
+            version_values={
+                "certificate_number": certificate_number,
+                "issued_on": issued_on,
+                "expires_on": expires_on,
+                "professional_responsible_person_name": professional_responsible_person_name,
+                "notes": notes,
+            },
             linked_certificates=linked_certificates,
-            site_id=row.site_id,
         )
         after = {
             "site_id": row.site_id,

@@ -32,6 +32,8 @@ from backend.app.read_models import (
     CaseTransitionRead,
     CaseTransitionRequest,
     ChangeApprovalUpsertRequest,
+    ChangeRequestBusinessEligibilitySuccessorIssueRequest,
+    ChangeRequestBusinessEligibilitySuccessorMutationRead,
     ChangeRequestCertificateSuccessorIssueRequest,
     ChangeRequestCertificateSuccessorMutationRead,
     ChangeRequestCreateRequest,
@@ -474,6 +476,27 @@ def register_workflow_routes(app, session_factory) -> None:
         commit_or_409(session)
         return ChangeRequestCertificateSuccessorMutationRead(**result)
 
+    def issue_change_request_business_eligibility_successor(
+        change_request_id: str,
+        payload: ChangeRequestBusinessEligibilitySuccessorIssueRequest,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(
+            user,
+            {CHANGE_REQUEST_EDIT_PERMISSION, "certificate.issue"},
+        )
+        result = service.issue_change_request_business_eligibility_successor(
+            session,
+            change_request_id=change_request_id,
+            source_affected_artifact_id=payload.source_affected_artifact_id,
+            expected_version=payload.expected_version,
+            reason=payload.reason,
+            user=user,
+        )
+        commit_or_409(session)
+        return ChangeRequestBusinessEligibilitySuccessorMutationRead(**result)
+
     def update_change_request(
         change_request_id: str,
         payload: ChangeRequestUpdateRequest,
@@ -792,6 +815,13 @@ def register_workflow_routes(app, session_factory) -> None:
         issue_change_request_certificate_successor,
         methods=["POST"],
         response_model=ChangeRequestCertificateSuccessorMutationRead,
+        tags=["workflow"],
+    )
+    app.add_api_route(
+        "/change-requests/{change_request_id}/business-eligibility-successors",
+        issue_change_request_business_eligibility_successor,
+        methods=["POST"],
+        response_model=ChangeRequestBusinessEligibilitySuccessorMutationRead,
         tags=["workflow"],
     )
     app.add_api_route(

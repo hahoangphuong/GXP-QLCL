@@ -1041,6 +1041,22 @@ class ChangeRequestCertificateSuccessorMutationRead(BaseModel):
     audit_event_id: str
 
 
+class ChangeRequestBusinessEligibilitySuccessorIssueRequest(BaseModel):
+    expected_version: int
+    source_affected_artifact_id: str
+    reason: str | None = None
+
+
+class ChangeRequestBusinessEligibilitySuccessorMutationRead(BaseModel):
+    change_request_id: str
+    row_version: int
+    state: str
+    source_affected_artifact_id: str
+    issued_artifact_link_id: str
+    business_eligibility_certificate_id: str
+    audit_event_id: str
+
+
 class ChangeRequestMutationRead(BaseModel):
     change_request_id: str
     row_version: int

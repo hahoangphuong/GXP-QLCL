@@ -1,5 +1,8 @@
 import type {
   BusinessEligibilityDetail,
+  BusinessEligibilityIssueActionReadiness,
+  BusinessEligibilityIssueRequest,
+  BusinessEligibilityLatestVersionUpsertRequest,
   CapaCycleAssessRequest,
   CapaCycleCreateRequest,
   CapaCycleSubmitRequest,
@@ -76,6 +79,15 @@ export function FacilityWorkspaceTabs({
   eligibilityCertificateDetail,
   eligibilityCertificateDetailLoading,
   eligibilityCertificateDetailError,
+  eligibilityIssueReadiness,
+  eligibilityBasisCertificates,
+  eligibilityBasisLoading,
+  eligibilityBasisError,
+  eligibilityPromotionError,
+  eligibilityPromotionPending,
+  onIssueBusinessEligibility,
+  onEligibilityCertificateEditLatestVersion,
+  onEligibilityCertificatePromote,
   onCaseApplicationSave,
   onCaseAssessmentSave,
   onInspectionPlanSave,
@@ -134,6 +146,15 @@ export function FacilityWorkspaceTabs({
   eligibilityCertificateDetail: BusinessEligibilityDetail | null;
   eligibilityCertificateDetailLoading: boolean;
   eligibilityCertificateDetailError: string | null;
+  eligibilityIssueReadiness: BusinessEligibilityIssueActionReadiness | null;
+  eligibilityBasisCertificates: GxpCertificateListItem[];
+  eligibilityBasisLoading: boolean;
+  eligibilityBasisError: string | null;
+  eligibilityPromotionError: string | null;
+  eligibilityPromotionPending: boolean;
+  onIssueBusinessEligibility: (payload: BusinessEligibilityIssueRequest) => Promise<void>;
+  onEligibilityCertificateEditLatestVersion: (payload: BusinessEligibilityLatestVersionUpsertRequest) => Promise<void>;
+  onEligibilityCertificatePromote: (expectedVersion: number) => Promise<void>;
   onCaseApplicationSave: (payload: CaseApplicationUpsertRequest) => Promise<void>;
   onCaseAssessmentSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>;
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
@@ -264,6 +285,15 @@ export function FacilityWorkspaceTabs({
             items={eligibilityCertificates}
             listError={eligibilityCertificatesError}
             listLoading={eligibilityCertificatesLoading}
+            issueReadiness={eligibilityIssueReadiness}
+            basisCertificates={eligibilityBasisCertificates}
+            basisLoading={eligibilityBasisLoading}
+            basisError={eligibilityBasisError}
+            onIssue={onIssueBusinessEligibility}
+            onEditLatestVersion={onEligibilityCertificateEditLatestVersion}
+            onPromoteCurrent={onEligibilityCertificatePromote}
+            promotionError={eligibilityPromotionError}
+            promotionPending={eligibilityPromotionPending}
             onSelectCertificate={onEligibilityCertificateSelect}
             selectedCertificateId={selectedEligibilityCertificateId}
           />

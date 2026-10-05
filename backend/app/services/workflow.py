@@ -341,6 +341,118 @@ class CaseWorkflowService:
             "issuance_basis": "inspection_case",
         }
 
+    def get_business_eligibility_issue_readiness(
+        self,
+        session: Session,
+        *,
+        site_id: str,
+        user: AuthenticatedUser,
+    ) -> dict[str, Any]:
+        self._get_site(session, site_id)
+        permission = "certificate.issue"
+        reason = None if permission in user.permissions else "missing_permission"
+        return {
+            "action_key": "issue_business_eligibility",
+            "label": "Cấp GCN đủ điều kiện",
+            "available": reason is None,
+            "reason_code": reason,
+            "required_permissions": [permission],
+        }
+
+    def _business_eligibility_current_rows(
+        self,
+        session: Session,
+        *,
+        site_id: str,
+    ) -> list[BusinessEligibilityCertificate]:
+        return list(
+            session.scalars(
+                select(BusinessEligibilityCertificate)
+                .where(
+                    BusinessEligibilityCertificate.site_id == site_id,
+                    BusinessEligibilityCertificate.latest_flag.is_(True),
+                )
+                .order_by(BusinessEligibilityCertificate.id.asc())
+            )
+        )
+
+    def _get_business_eligibility_promotion_blocker(
+        self,
+        session: Session,
+        *,
+        certificate: BusinessEligibilityCertificate,
+        version: BusinessEligibilityVersion,
+    ) -> str | None:
+        if not version.certificate_number or version.issued_on is None:
+            return "certificate_data_incomplete"
+
+        for link in session.scalars(
+            select(BusinessEligibilityCertificateLink).where(
+                BusinessEligibilityCertificateLink.business_eligibility_version_id == version.id
+            )
+        ):
+            linked_certificate = session.get(Certificate, link.certificate_id)
+            if linked_certificate is None:
+                return "invalid_linked_certificate"
+            try:
+                if linked_certificate.site_id != certificate.site_id:
+                    return "invalid_linked_certificate"
+                self._certificate_line_identity(session, linked_certificate)
+            except HTTPException:
+                return "invalid_linked_certificate"
+
+        current_rows = self._business_eligibility_current_rows(session, site_id=certificate.site_id)
+        if len(current_rows) > 1:
+            return "multiple_current_records"
+        if current_rows and current_rows[0].id != certificate.id:
+            try:
+                current_version = self._load_latest_business_eligibility_version(session, current_rows[0].id)
+            except HTTPException:
+                return "current_record_incomplete"
+            if current_version.issued_on is None:
+                return "current_record_incomplete"
+            if version.issued_on < current_version.issued_on:
+                return "candidate_issue_date_precedes_current"
+        return None
+
+    def get_business_eligibility_action_readiness(
+        self,
+        session: Session,
+        *,
+        business_eligibility_certificate_id: str,
+        user: AuthenticatedUser,
+    ) -> list[dict[str, Any]]:
+        certificate = self._get_business_eligibility(session, business_eligibility_certificate_id)
+        version = self._load_latest_business_eligibility_version(session, certificate.id)
+        edit_permission = "certificate.edit"
+        promote_permission = "certificate.approve"
+        edit_reason = None if edit_permission in user.permissions else "missing_permission"
+        promote_reason = None if promote_permission in user.permissions else "missing_permission"
+        if promote_reason is None:
+            promote_reason = self._get_business_eligibility_promotion_blocker(
+                session,
+                certificate=certificate,
+                version=version,
+            )
+        return [
+            {
+                "action_key": "edit_latest_version",
+                "label": "Cập nhật GCN đủ điều kiện",
+                "available": edit_reason is None,
+                "reason_code": edit_reason,
+                "required_permissions": [edit_permission],
+                "expected_version": certificate.row_version,
+            },
+            {
+                "action_key": "promote_current",
+                "label": "Đặt làm GCN đủ điều kiện hiện hành",
+                "available": promote_reason is None,
+                "reason_code": promote_reason,
+                "required_permissions": [promote_permission],
+                "expected_version": certificate.row_version,
+            },
+        ]
+
     def _get_certificate_promotion_blocker(
         self,
         session: Session,
@@ -714,6 +826,7 @@ class CaseWorkflowService:
         *,
         business_eligibility_version_id: str,
         linked_certificates: list[dict[str, Any]],
+        site_id: str,
     ) -> list[BusinessEligibilityCertificateLink]:
         validated_links: list[tuple[str, str]] = []
         for payload in linked_certificates:
@@ -721,6 +834,8 @@ class CaseWorkflowService:
             certificate = session.get(Certificate, certificate_id)
             if certificate is None:
                 raise HTTPException(status_code=404, detail=f"Linked certificate {certificate_id} was not found.")
+            if certificate.site_id != site_id:
+                raise HTTPException(status_code=409, detail="Business eligibility linked certificate belongs to a different site.")
             self._certificate_line_identity(session, certificate)
             validated_links.append((certificate_id, payload.get("link_role") or "source_certificate"))
 
@@ -2835,6 +2950,7 @@ class CaseWorkflowService:
             session,
             business_eligibility_version_id=version.id,
             linked_certificates=linked_certificates,
+            site_id=row.site_id,
         )
         after = {
             "site_id": row.site_id,
@@ -2928,10 +3044,14 @@ class CaseWorkflowService:
         version.expires_on = expires_on
         version.professional_responsible_person_name = professional_responsible_person_name
         version.notes = notes
+        # The optimistic-lock token belongs to the aggregate root. Mutating only
+        # the child version/link rows would otherwise leave stale writers valid.
+        row.updated_at = datetime.now(timezone.utc)
         created_links = self._replace_business_eligibility_links(
             session,
             business_eligibility_version_id=version.id,
             linked_certificates=linked_certificates,
+            site_id=row.site_id,
         )
         after = {
             "certificate_number": version.certificate_number,
@@ -2992,37 +3112,26 @@ class CaseWorkflowService:
     ) -> dict[str, Any]:
         row = self._get_business_eligibility(session, business_eligibility_certificate_id)
         self._assert_expected_version(row, expected_version, label="business_eligibility_certificate")
-        actor = self._get_or_create_app_user(session, user)
         candidate_version = self._load_latest_business_eligibility_version(session, row.id)
-        if not candidate_version.certificate_number or candidate_version.issued_on is None:
-            raise HTTPException(
-                status_code=409,
-                detail="Business eligibility promotion requires certificate number and issue date.",
-            )
-        for link in session.scalars(
-            select(BusinessEligibilityCertificateLink).where(
-                BusinessEligibilityCertificateLink.business_eligibility_version_id == candidate_version.id
-            )
-        ):
-            certificate = session.get(Certificate, link.certificate_id)
-            if certificate is None:
-                raise HTTPException(status_code=409, detail="Business eligibility promotion references a missing certificate.")
-            self._certificate_line_identity(session, certificate)
+        blocker = self._get_business_eligibility_promotion_blocker(
+            session,
+            certificate=row,
+            version=candidate_version,
+        )
+        if blocker is not None:
+            details = {
+                "certificate_data_incomplete": "Business eligibility promotion requires certificate number and issue date.",
+                "invalid_linked_certificate": "Business eligibility promotion references an invalid linked Case, canonical ProductionLine, or cross-site certificate.",
+                "multiple_current_records": "Business eligibility promotion is blocked because the site has multiple current records.",
+                "current_record_incomplete": "Business eligibility promotion is blocked because the current record is incomplete.",
+                "candidate_issue_date_precedes_current": "Business eligibility promotion requires a candidate issue date that is not older than the current active record.",
+            }
+            raise HTTPException(status_code=409, detail=details[blocker])
 
-        current = session.scalars(
-            select(BusinessEligibilityCertificate).where(
-                BusinessEligibilityCertificate.site_id == row.site_id,
-                BusinessEligibilityCertificate.latest_flag.is_(True),
-            )
-        ).first()
+        actor = self._get_or_create_app_user(session, user)
+        current_rows = self._business_eligibility_current_rows(session, site_id=row.site_id)
+        current = current_rows[0] if current_rows else None
         previous_current_id = None if current is None else current.id
-        previous_current_version = None if current is None else self._load_latest_business_eligibility_version(session, current.id)
-        if previous_current_version is not None and previous_current_version.issued_on is not None:
-            if candidate_version.issued_on < previous_current_version.issued_on:
-                raise HTTPException(
-                    status_code=409,
-                    detail="Business eligibility promotion requires a candidate issue date that is not older than the current active record.",
-                )
         before = {
             "latest_flag": row.latest_flag,
             "previous_current_certificate_id": previous_current_id,

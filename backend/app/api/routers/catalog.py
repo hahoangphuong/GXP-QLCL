@@ -332,7 +332,13 @@ def register_catalog_routes(app, session_factory) -> None:
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
         require_role(user, ALLOWED_READ_ROLES)
-        return BusinessEligibilityListRead(**service.list_site_business_eligibility_certificates(session, site_id=site_id))
+        return BusinessEligibilityListRead(
+            **service.list_site_business_eligibility_certificates(
+                session,
+                site_id=site_id,
+                user=user,
+            )
+        )
 
     def get_business_eligibility_detail(
         business_eligibility_certificate_id: str,
@@ -344,6 +350,7 @@ def register_catalog_routes(app, session_factory) -> None:
             **service.get_business_eligibility_detail(
                 session,
                 business_eligibility_certificate_id=business_eligibility_certificate_id,
+                user=user,
             )
         )
 

@@ -2,7 +2,10 @@ import type {
   AppStatus,
   AuthenticatedIdentity,
   BusinessEligibilityDetail,
+  BusinessEligibilityIssueRequest,
+  BusinessEligibilityLatestVersionUpsertRequest,
   BusinessEligibilityList,
+  BusinessEligibilityMutationResponse,
   CapaCycleAssessRequest,
   CapaCycleCreateRequest,
   CapaCycleMutationResponse,
@@ -698,6 +701,54 @@ export function getBusinessEligibilityDetail(
   bearerToken?: string | null,
 ): Promise<BusinessEligibilityDetail> {
   return requestJson<BusinessEligibilityDetail>(`/business-eligibility-certificates/${businessEligibilityCertificateId}`, {
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function issueBusinessEligibility(
+  siteId: string,
+  payload: BusinessEligibilityIssueRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<BusinessEligibilityMutationResponse> {
+  return requestJson<BusinessEligibilityMutationResponse>(`/sites/${siteId}/business-eligibility-certificates`, {
+    method: "POST",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function upsertBusinessEligibilityLatestVersion(
+  businessEligibilityCertificateId: string,
+  payload: BusinessEligibilityLatestVersionUpsertRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<BusinessEligibilityMutationResponse> {
+  return requestJson<BusinessEligibilityMutationResponse>(`/business-eligibility-certificates/${businessEligibilityCertificateId}/latest-version`, {
+    method: "PUT",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function promoteBusinessEligibilityCurrent(
+  businessEligibilityCertificateId: string,
+  expectedVersion: number,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<BusinessEligibilityMutationResponse> {
+  return requestJson<BusinessEligibilityMutationResponse>(`/business-eligibility-certificates/${businessEligibilityCertificateId}/promote-current`, {
+    method: "POST",
+    body: { expected_version: expectedVersion },
     auth,
     useStubAuth,
     bearerToken,

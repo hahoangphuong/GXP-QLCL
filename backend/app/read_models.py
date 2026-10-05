@@ -597,17 +597,38 @@ class BusinessEligibilityListItemRead(BaseModel):
     current_status_text: str | None
 
 
+class BusinessEligibilityIssueActionReadinessRead(BaseModel):
+    action_key: Literal["issue_business_eligibility"]
+    label: str
+    available: bool
+    reason_code: str | None = None
+    required_permissions: list[str]
+
+
+class BusinessEligibilityActionReadinessRead(BaseModel):
+    action_key: Literal["edit_latest_version", "promote_current"]
+    label: str
+    available: bool
+    reason_code: str | None = None
+    required_permissions: list[str]
+    expected_version: int
+
+
 class BusinessEligibilityListRead(BaseModel):
     items: list[BusinessEligibilityListItemRead]
+    issue_readiness: BusinessEligibilityIssueActionReadinessRead | None = None
 
 
 class BusinessEligibilityDetailRead(BaseModel):
     business_eligibility_certificate_id: str
+    row_version: int
     site_id: str
     company_id: str
     latest_flag: bool
     certificate_number: str | None
     issued_on: date | None
+    expires_on: date | None
+    notes: str | None
     decision_reference: str | None
     issuance_sequence_text: str | None
     issuance_history_text: str | None
@@ -630,6 +651,7 @@ class BusinessEligibilityDetailRead(BaseModel):
     replaces_certificate_number: str | None
     replaced_by_certificate_number: str | None
     linked_gxp_certificates: list[BusinessEligibilityBasisCertificateRead]
+    action_readiness: list[BusinessEligibilityActionReadinessRead] = Field(default_factory=list)
 
 
 class CaseTransitionRequest(BaseModel):

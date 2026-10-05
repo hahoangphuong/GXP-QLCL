@@ -877,14 +877,18 @@ class CatalogReadService:
         company: Company,
         linked_gxp_certificates: list[dict[str, object]],
         replacement_map: dict[int, str | None],
+        action_readiness: list[dict[str, object]] | None = None,
     ) -> dict[str, object]:
         return {
             "business_eligibility_certificate_id": certificate.id,
+            "row_version": certificate.row_version,
             "site_id": certificate.site_id,
             "company_id": certificate.company_id,
             "latest_flag": certificate.latest_flag,
             "certificate_number": version.certificate_number,
             "issued_on": version.issued_on,
+            "expires_on": version.expires_on,
+            "notes": version.notes,
             "decision_reference": version.decision_reference,
             "issuance_sequence_text": version.issuance_sequence_text,
             "issuance_history_text": version.issuance_history_text,
@@ -907,6 +911,7 @@ class CatalogReadService:
             "replaces_certificate_number": replacement_map.get(certificate.replaces_legacy_dkkd_id),
             "replaced_by_certificate_number": replacement_map.get(certificate.replaced_by_legacy_dkkd_id),
             "linked_gxp_certificates": linked_gxp_certificates,
+            "action_readiness": action_readiness or [],
         }
 
     @staticmethod
@@ -1687,7 +1692,13 @@ class CatalogReadService:
         })
         return payload
 
-    def list_site_business_eligibility_certificates(self, session: Session, *, site_id: str):
+    def list_site_business_eligibility_certificates(
+        self,
+        session: Session,
+        *,
+        site_id: str,
+        user: AuthenticatedUser | None = None,
+    ):
         self.get_site(session, site_id)
         latest_version_sq = self._build_latest_business_eligibility_version_subquery()
         rows = list(
@@ -1728,9 +1739,24 @@ class CatalogReadService:
                 item["business_eligibility_certificate_id"],
             )
         )
-        return {"items": items}
+        issue_readiness = (
+            None
+            if user is None
+            else CaseWorkflowService().get_business_eligibility_issue_readiness(
+                session,
+                site_id=site_id,
+                user=user,
+            )
+        )
+        return {"items": items, "issue_readiness": issue_readiness}
 
-    def get_business_eligibility_detail(self, session: Session, *, business_eligibility_certificate_id: str):
+    def get_business_eligibility_detail(
+        self,
+        session: Session,
+        *,
+        business_eligibility_certificate_id: str,
+        user: AuthenticatedUser | None = None,
+    ):
         certificate = session.get(BusinessEligibilityCertificate, business_eligibility_certificate_id)
         if certificate is None:
             raise HTTPException(status_code=404, detail="Business eligibility certificate not found")
@@ -1809,6 +1835,15 @@ class CatalogReadService:
             }
             replacement_map.update(latest_versions_by_legacy_id)
 
+        action_readiness = (
+            []
+            if user is None
+            else CaseWorkflowService().get_business_eligibility_action_readiness(
+                session,
+                business_eligibility_certificate_id=certificate.id,
+                user=user,
+            )
+        )
         return self._serialize_business_eligibility_detail(
             certificate=certificate,
             version=version,
@@ -1816,6 +1851,7 @@ class CatalogReadService:
             company=company,
             linked_gxp_certificates=linked_gxp_certificates,
             replacement_map=replacement_map,
+            action_readiness=action_readiness,
         )
 
     def get_case_workspace(self, session: Session, *, case_id: str, user: AuthenticatedUser):

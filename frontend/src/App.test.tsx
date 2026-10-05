@@ -42,8 +42,11 @@ const apiMocks = vi.hoisted(() => ({
   promoteGxpCertificateCurrent: vi.fn(),
   upsertGxpCertificateLatestVersion: vi.fn(),
   issueGxpCertificate: vi.fn(),
-  listSiteBusinessEligibilityCertificates: vi.fn().mockResolvedValue({ items: [] }),
+  listSiteBusinessEligibilityCertificates: vi.fn().mockResolvedValue({ items: [], issue_readiness: null }),
   getBusinessEligibilityDetail: vi.fn().mockResolvedValue(null),
+  issueBusinessEligibility: vi.fn(),
+  upsertBusinessEligibilityLatestVersion: vi.fn(),
+  promoteBusinessEligibilityCurrent: vi.fn(),
   getDocumentDetail: vi.fn().mockResolvedValue(null),
   openCaseDocumentCurrentContent: vi.fn().mockResolvedValue({
     blob: new Blob(["doc"]),
@@ -110,6 +113,9 @@ function resetApiMocks() {
   apiMocks.issueGxpCertificate.mockReset();
   apiMocks.listSiteBusinessEligibilityCertificates.mockReset();
   apiMocks.getBusinessEligibilityDetail.mockReset();
+  apiMocks.issueBusinessEligibility.mockReset();
+  apiMocks.upsertBusinessEligibilityLatestVersion.mockReset();
+  apiMocks.promoteBusinessEligibilityCurrent.mockReset();
   apiMocks.getDocumentDetail.mockReset();
   apiMocks.openCaseDocumentCurrentContent.mockReset();
   apiMocks.openCapaCycleDocumentCurrentContent.mockReset();
@@ -163,8 +169,11 @@ function resetApiMocks() {
   apiMocks.promoteGxpCertificateCurrent.mockResolvedValue(null);
   apiMocks.upsertGxpCertificateLatestVersion.mockResolvedValue(null);
   apiMocks.issueGxpCertificate.mockResolvedValue(null);
-  apiMocks.listSiteBusinessEligibilityCertificates.mockResolvedValue({ items: [] });
+  apiMocks.listSiteBusinessEligibilityCertificates.mockResolvedValue({ items: [], issue_readiness: null });
   apiMocks.getBusinessEligibilityDetail.mockResolvedValue(null);
+  apiMocks.issueBusinessEligibility.mockResolvedValue(null);
+  apiMocks.upsertBusinessEligibilityLatestVersion.mockResolvedValue(null);
+  apiMocks.promoteBusinessEligibilityCurrent.mockResolvedValue(null);
   apiMocks.getDocumentDetail.mockResolvedValue(null);
   apiMocks.openCaseDocumentCurrentContent.mockResolvedValue({
     blob: new Blob(["doc"]),

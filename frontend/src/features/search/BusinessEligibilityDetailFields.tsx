@@ -7,6 +7,7 @@ export function BusinessEligibilityDetailFields({ detail }: { detail: BusinessEl
     <div className="detail-grid compact-grid detail-form-matrix certificate-detail-grid">
       <DetailValue label="Số GCN" value={detail.certificate_number} />
       <DetailValue label="Ngày cấp" value={formatCompactDate(detail.issued_on)} />
+      <DetailValue label="Ngày hết hạn" value={formatCompactDate(detail.expires_on)} />
       <DetailValue label="QĐ cấp" value={detail.decision_reference} />
       <DetailValue label="Cấp lần" value={detail.issuance_sequence_text ? `Lần ${detail.issuance_sequence_text}` : null} />
       <DetailValue label="Tên công ty" value={detail.company_name} />
@@ -28,6 +29,7 @@ export function BusinessEligibilityDetailFields({ detail }: { detail: BusinessEl
       <DetailValue label="Người xử lý" value={detail.handled_by_name} />
       <DetailValue label="Hồ sơ đề nghị" value={detail.application_dossier_reference} />
       <DetailValue label="Lịch sử cấp" multiline value={detail.issuance_history_text} />
+      <DetailValue label="Ghi chú" multiline value={detail.notes} />
       <div className="summary-span certificate-basis-section">
         <span>Chứng nhận GxP làm căn cứ</span>
         {detail.linked_gxp_certificates.length > 0 ? (

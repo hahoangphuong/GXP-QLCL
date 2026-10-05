@@ -3453,3 +3453,223 @@ def test_promote_business_eligibility_current_demotes_previous_current():
         assert len(rows) == 2
         assert rows[0].latest_flag is False
         assert rows[1].latest_flag is True
+
+
+def test_a4_business_eligibility_readiness_and_mutation_fail_closed_on_duplicate_current():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    manager = build_authenticated_user("manager01", "manager")
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        case = session.get(Case, case_id)
+        assert case is not None
+        site = session.get(Site, case.site_id)
+        assert site is not None
+        candidate = BusinessEligibilityCertificate(site_id=site.id, company_id=site.company_id, latest_flag=False)
+        current_a = BusinessEligibilityCertificate(site_id=site.id, company_id=site.company_id, latest_flag=True)
+        current_b = BusinessEligibilityCertificate(site_id=site.id, company_id=site.company_id, latest_flag=True)
+        session.add_all([candidate, current_a, current_b])
+        session.flush()
+        session.add_all([
+            BusinessEligibilityVersion(business_eligibility_certificate_id=candidate.id, version_no=1, certificate_number="CANDIDATE", issued_on=date(2026, 10, 1)),
+            BusinessEligibilityVersion(business_eligibility_certificate_id=current_a.id, version_no=1, certificate_number="CURRENT-A", issued_on=date(2026, 9, 1)),
+            BusinessEligibilityVersion(business_eligibility_certificate_id=current_b.id, version_no=1, certificate_number="CURRENT-B", issued_on=date(2026, 9, 2)),
+        ])
+        session.commit()
+        candidate_id, candidate_version = candidate.id, candidate.row_version
+        current_ids = [current_a.id, current_b.id]
+
+    with Session(engine) as session:
+        readiness = service.get_business_eligibility_action_readiness(
+            session,
+            business_eligibility_certificate_id=candidate_id,
+            user=manager,
+        )
+        promote = next(item for item in readiness if item["action_key"] == "promote_current")
+        assert promote["available"] is False
+        assert promote["reason_code"] == "multiple_current_records"
+        with pytest.raises(HTTPException, match="multiple current records"):
+            service.promote_business_eligibility_current(
+                session,
+                business_eligibility_certificate_id=candidate_id,
+                expected_version=candidate_version,
+                reason="Must fail closed.",
+                user=manager,
+            )
+        session.rollback()
+
+    with Session(engine) as session:
+        assert session.get(BusinessEligibilityCertificate, candidate_id).latest_flag is False
+        assert all(session.get(BusinessEligibilityCertificate, item).latest_flag is True for item in current_ids)
+
+
+def test_a4_business_eligibility_older_candidate_readiness_matches_mutation():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    manager = build_authenticated_user("manager01", "manager")
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        case = session.get(Case, case_id)
+        assert case is not None
+        site = session.get(Site, case.site_id)
+        assert site is not None
+        current = BusinessEligibilityCertificate(site_id=site.id, company_id=site.company_id, latest_flag=True)
+        candidate = BusinessEligibilityCertificate(site_id=site.id, company_id=site.company_id, latest_flag=False)
+        session.add_all([current, candidate])
+        session.flush()
+        session.add_all([
+            BusinessEligibilityVersion(business_eligibility_certificate_id=current.id, version_no=1, certificate_number="CURRENT", issued_on=date(2026, 10, 2)),
+            BusinessEligibilityVersion(business_eligibility_certificate_id=candidate.id, version_no=1, certificate_number="OLDER", issued_on=date(2026, 10, 1)),
+        ])
+        session.commit()
+        candidate_id, expected_version = candidate.id, candidate.row_version
+
+    with Session(engine) as session:
+        promote = next(
+            item
+            for item in service.get_business_eligibility_action_readiness(
+                session,
+                business_eligibility_certificate_id=candidate_id,
+                user=manager,
+            )
+            if item["action_key"] == "promote_current"
+        )
+        assert promote["available"] is False
+        assert promote["reason_code"] == "candidate_issue_date_precedes_current"
+        with pytest.raises(HTTPException, match="not older than the current active record"):
+            service.promote_business_eligibility_current(
+                session,
+                business_eligibility_certificate_id=candidate_id,
+                expected_version=expected_version,
+                reason="Parity check.",
+                user=manager,
+            )
+
+
+def test_a4_business_eligibility_latest_version_advances_parent_optimistic_lock():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    manager = build_authenticated_user("manager01", "manager")
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        case = session.get(Case, case_id)
+        assert case is not None
+        issued = service.issue_business_eligibility(
+            session,
+            site_id=case.site_id,
+            certificate_number="DDKD-A4",
+            issued_on=date(2026, 10, 1),
+            expires_on=date(2027, 10, 1),
+            professional_responsible_person_name="PTCM A",
+            notes="initial",
+            linked_certificates=[],
+            reason="Issue candidate.",
+            user=manager,
+        )
+        session.commit()
+        dkkd_id = issued["business_eligibility_certificate_id"]
+        original_version = issued["row_version"]
+
+    with Session(engine) as session:
+        updated = service.upsert_business_eligibility_latest_version(
+            session,
+            business_eligibility_certificate_id=dkkd_id,
+            expected_version=original_version,
+            certificate_number="DDKD-A4-REV",
+            issued_on=date(2026, 10, 2),
+            expires_on=date(2027, 10, 2),
+            professional_responsible_person_name="PTCM B",
+            notes="updated",
+            linked_certificates=[],
+            reason="Update candidate.",
+            user=manager,
+        )
+        session.commit()
+        assert updated["row_version"] > original_version
+
+    with Session(engine) as session:
+        with pytest.raises(HTTPException, match="Stale business_eligibility_certificate update"):
+            service.upsert_business_eligibility_latest_version(
+                session,
+                business_eligibility_certificate_id=dkkd_id,
+                expected_version=original_version,
+                certificate_number="STALE",
+                issued_on=date(2026, 10, 3),
+                expires_on=None,
+                professional_responsible_person_name=None,
+                notes=None,
+                linked_certificates=[],
+                reason="Stale overwrite.",
+                user=manager,
+            )
+
+
+def test_a4_business_eligibility_issue_readiness_is_permission_owned():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        case = session.get(Case, case_id)
+        assert case is not None
+        manager = build_authenticated_user("manager01", "manager")
+        reader = build_authenticated_user("reader01", "reader")
+        allowed = service.get_business_eligibility_issue_readiness(session, site_id=case.site_id, user=manager)
+        blocked = service.get_business_eligibility_issue_readiness(session, site_id=case.site_id, user=reader)
+    assert allowed["available"] is True
+    assert allowed["reason_code"] is None
+    assert blocked["available"] is False
+    assert blocked["reason_code"] == "missing_permission"
+
+
+def test_a4_business_eligibility_rejects_cross_site_gxp_basis_before_link_write():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    manager = build_authenticated_user("manager01", "manager")
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        case = session.get(Case, case_id)
+        assert case is not None
+        site = session.get(Site, case.site_id)
+        assert site is not None
+        other_site = Site(company_id=site.company_id, site_name="Other canonical site")
+        session.add(other_site)
+        session.flush()
+        foreign_certificate = Certificate(site_id=other_site.id, certificate_type="GMP", latest_flag=True)
+        session.add(foreign_certificate)
+        session.flush()
+        session.add(CertificateVersion(
+            certificate_id=foreign_certificate.id,
+            version_no=1,
+            certificate_number="FOREIGN-GMP",
+            issue_date=date(2026, 9, 1),
+            expiry_date=date(2027, 9, 1),
+            is_latest_version=True,
+        ))
+        session.commit()
+        site_id, foreign_id = site.id, foreign_certificate.id
+
+    with Session(engine) as session:
+        with pytest.raises(HTTPException, match="different site"):
+            service.issue_business_eligibility(
+                session,
+                site_id=site_id,
+                certificate_number="DDKD-CROSS-SITE",
+                issued_on=date(2026, 10, 1),
+                expires_on=None,
+                professional_responsible_person_name=None,
+                notes=None,
+                linked_certificates=[{"certificate_id": foreign_id, "link_role": "source_certificate"}],
+                reason="Must not cross site ownership.",
+                user=manager,
+            )
+        session.rollback()
+        assert session.scalar(select(func.count()).select_from(BusinessEligibilityCertificateLink)) == 0

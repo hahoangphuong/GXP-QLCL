@@ -852,17 +852,38 @@ export type BusinessEligibilityListItem = {
   current_status_text: string | null;
 };
 
+export type BusinessEligibilityIssueActionReadiness = {
+  action_key: "issue_business_eligibility";
+  label: string;
+  available: boolean;
+  reason_code: string | null;
+  required_permissions: string[];
+};
+
+export type BusinessEligibilityActionReadiness = {
+  action_key: "edit_latest_version" | "promote_current";
+  label: string;
+  available: boolean;
+  reason_code: string | null;
+  required_permissions: string[];
+  expected_version: number;
+};
+
 export type BusinessEligibilityList = {
   items: BusinessEligibilityListItem[];
+  issue_readiness: BusinessEligibilityIssueActionReadiness | null;
 };
 
 export type BusinessEligibilityDetail = {
   business_eligibility_certificate_id: string;
+  row_version: number;
   site_id: string;
   company_id: string;
   latest_flag: boolean;
   certificate_number: string | null;
   issued_on: string | null;
+  expires_on: string | null;
+  notes: string | null;
   decision_reference: string | null;
   issuance_sequence_text: string | null;
   issuance_history_text: string | null;
@@ -885,6 +906,44 @@ export type BusinessEligibilityDetail = {
   replaces_certificate_number: string | null;
   replaced_by_certificate_number: string | null;
   linked_gxp_certificates: BusinessEligibilityBasisCertificate[];
+  action_readiness: BusinessEligibilityActionReadiness[];
+};
+
+export type BusinessEligibilityLinkWrite = {
+  certificate_id: string;
+  link_role: string;
+};
+
+export type BusinessEligibilityIssueRequest = {
+  certificate_number: string | null;
+  issued_on: string | null;
+  expires_on: string | null;
+  professional_responsible_person_name: string | null;
+  notes: string | null;
+  linked_certificates: BusinessEligibilityLinkWrite[];
+  reason?: string | null;
+};
+
+export type BusinessEligibilityLatestVersionUpsertRequest = BusinessEligibilityIssueRequest & {
+  expected_version: number;
+};
+
+export type BusinessEligibilityMutationResponse = {
+  business_eligibility_certificate_id: string;
+  row_version: number;
+  site_id: string;
+  company_id: string;
+  latest_flag: boolean;
+  latest_version_id: string;
+  latest_version_no: number;
+  certificate_number: string | null;
+  issued_on: string | null;
+  expires_on: string | null;
+  professional_responsible_person_name: string | null;
+  notes: string | null;
+  linked_certificates: Array<{ id: string; certificate_id: string; link_role: string }>;
+  audit_event_id: string;
+  inspection_event_id: string | null;
 };
 
 export type CaseWorkspace = {

@@ -12,6 +12,9 @@ import {
   createCapaCycle,
   createInspectionCase,
   getBusinessEligibilityDetail,
+  issueBusinessEligibility,
+  promoteBusinessEligibilityCurrent,
+  upsertBusinessEligibilityLatestVersion,
   getCaseWorkspace,
   getInspectionFolder,
   getChangeRequestWorkspace,
@@ -43,6 +46,9 @@ import {
 } from "../lib/api";
 import type {
   BusinessEligibilityDetail,
+  BusinessEligibilityIssueActionReadiness,
+  BusinessEligibilityIssueRequest,
+  BusinessEligibilityLatestVersionUpsertRequest,
   BusinessEligibilityListItem,
   CapaCycleAssessRequest,
   CapaCycleCreateRequest,
@@ -249,6 +255,12 @@ export function SearchPage({
   const [eligibilityCertificateDetail, setEligibilityCertificateDetail] = useState<BusinessEligibilityDetail | null>(null);
   const [eligibilityCertificateDetailLoading, setEligibilityCertificateDetailLoading] = useState(false);
   const [eligibilityCertificateDetailError, setEligibilityCertificateDetailError] = useState<string | null>(null);
+  const [eligibilityIssueReadiness, setEligibilityIssueReadiness] = useState<BusinessEligibilityIssueActionReadiness | null>(null);
+  const [eligibilityBasisCertificates, setEligibilityBasisCertificates] = useState<GxpCertificateListItem[]>([]);
+  const [eligibilityBasisLoading, setEligibilityBasisLoading] = useState(false);
+  const [eligibilityBasisError, setEligibilityBasisError] = useState<string | null>(null);
+  const [eligibilityPromotionPending, setEligibilityPromotionPending] = useState(false);
+  const [eligibilityPromotionError, setEligibilityPromotionError] = useState<string | null>(null);
   const { auth, useStubAuth, bearerToken, canLoadSecureApi } = access;
   const reassessmentInputRef = useRef<HTMLInputElement | null>(null);
   const reassessmentTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -334,6 +346,12 @@ export function SearchPage({
     setEligibilityCertificateDetail(null);
     setEligibilityCertificateDetailLoading(false);
     setEligibilityCertificateDetailError(null);
+    setEligibilityIssueReadiness(null);
+    setEligibilityBasisCertificates([]);
+    setEligibilityBasisLoading(false);
+    setEligibilityBasisError(null);
+    setEligibilityPromotionPending(false);
+    setEligibilityPromotionError(null);
   }
 
   function resetCreateInspectionCaseState() {
@@ -808,6 +826,7 @@ export function SearchPage({
           return;
         }
         setEligibilityCertificates(payload.items);
+        setEligibilityIssueReadiness(payload.issue_readiness);
         setEligibilityCertificatesError(null);
         setEligibilityCertificatesLoading(false);
         setSelectedEligibilityCertificateId((current) =>
@@ -819,6 +838,7 @@ export function SearchPage({
       .catch((error: Error) => {
         if (!cancelled) {
           setEligibilityCertificates([]);
+          setEligibilityIssueReadiness(null);
           setEligibilityCertificatesError(error.message);
           setEligibilityCertificatesLoading(false);
         }
@@ -856,6 +876,38 @@ export function SearchPage({
       cancelled = true;
     };
   }, [auth, bearerToken, canLoadSecureApi, selectedEligibilityCertificateId, selectedFacilityTab, useStubAuth]);
+
+  useEffect(() => {
+    const editAvailable = (eligibilityCertificateDetail?.action_readiness ?? [])
+      .some((action) => action.action_key === "edit_latest_version" && action.available);
+    const needsBasis = eligibilityIssueReadiness?.available === true || editAvailable;
+    if (!selectedResult || !canLoadSecureApi || selectedFacilityTab !== "Giấy chứng nhận đủ điều kiện" || !needsBasis) {
+      setEligibilityBasisCertificates([]);
+      setEligibilityBasisLoading(false);
+      setEligibilityBasisError(null);
+      return;
+    }
+    let cancelled = false;
+    setEligibilityBasisLoading(true);
+    void listSiteGxpCertificates(selectedResult.site_id, auth, useStubAuth, null, null, bearerToken, null)
+      .then((payload) => {
+        if (!cancelled) {
+          setEligibilityBasisCertificates(payload.items);
+          setEligibilityBasisLoading(false);
+          setEligibilityBasisError(null);
+        }
+      })
+      .catch((error: Error) => {
+        if (!cancelled) {
+          setEligibilityBasisCertificates([]);
+          setEligibilityBasisLoading(false);
+          setEligibilityBasisError(error.message);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [auth, bearerToken, canLoadSecureApi, eligibilityCertificateDetail, eligibilityIssueReadiness, selectedFacilityTab, selectedResult, useStubAuth]);
 
   useEffect(() => {
     if (!reassessmentDialogOpen) {
@@ -1241,6 +1293,86 @@ export function SearchPage({
     await refreshSelectedCaseWorkspace(caseId, cycleId);
   }
 
+  async function refreshBusinessEligibilityAfterMutation(certificateId: string) {
+    if (!selectedResult) return;
+    const [detailPayload, listPayload] = await Promise.all([
+      getBusinessEligibilityDetail(certificateId, auth, useStubAuth, bearerToken),
+      listSiteBusinessEligibilityCertificates(selectedResult.site_id, auth, useStubAuth, bearerToken),
+    ]);
+    setSelectedEligibilityCertificateId(certificateId);
+    setEligibilityCertificateDetail(detailPayload);
+    setEligibilityCertificateDetailError(null);
+    setEligibilityCertificates(listPayload.items);
+    setEligibilityIssueReadiness(listPayload.issue_readiness);
+  }
+
+  async function handleIssueBusinessEligibility(payload: BusinessEligibilityIssueRequest) {
+    if (!selectedResult) {
+      throw new Error("Chưa chọn cơ sở để cấp GCN đủ điều kiện.");
+    }
+    const result = await issueBusinessEligibility(selectedResult.site_id, payload, auth, useStubAuth, bearerToken);
+    await refreshBusinessEligibilityAfterMutation(result.business_eligibility_certificate_id);
+  }
+
+  async function handleBusinessEligibilityLatestVersionUpdate(payload: BusinessEligibilityLatestVersionUpsertRequest) {
+    if (!selectedEligibilityCertificateId) {
+      throw new Error("Chưa chọn GCN đủ điều kiện để cập nhật.");
+    }
+    try {
+      await upsertBusinessEligibilityLatestVersion(
+        selectedEligibilityCertificateId,
+        payload,
+        auth,
+        useStubAuth,
+        bearerToken,
+      );
+      await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId);
+    } catch (error) {
+      const apiError = error as Error & { status?: number };
+      if (apiError.status === 409) {
+        try {
+          await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId);
+        } catch {
+          // Preserve the mutation conflict as the actionable error when refresh also fails.
+        }
+        const staleError = new Error("Dữ liệu GCN đủ điều kiện đã thay đổi. Hãy kiểm tra lại rồi lưu lại.") as Error & { status?: number };
+        staleError.status = 409;
+        throw staleError;
+      }
+      throw error;
+    }
+  }
+
+  async function handleBusinessEligibilityPromote(expectedVersion: number) {
+    if (!selectedEligibilityCertificateId) {
+      throw new Error("Chưa chọn GCN đủ điều kiện để cập nhật.");
+    }
+    setEligibilityPromotionPending(true);
+    setEligibilityPromotionError(null);
+    try {
+      await promoteBusinessEligibilityCurrent(
+        selectedEligibilityCertificateId,
+        expectedVersion,
+        auth,
+        useStubAuth,
+        bearerToken,
+      );
+      await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId);
+    } catch (error) {
+      const apiError = error as Error & { status?: number };
+      if (apiError.status === 409 && selectedEligibilityCertificateId) {
+        try {
+          await refreshBusinessEligibilityAfterMutation(selectedEligibilityCertificateId);
+        } catch {
+          // Keep the original promotion conflict as the actionable error.
+        }
+      }
+      setEligibilityPromotionError(error instanceof Error ? error.message : "Không thể cập nhật GCN đủ điều kiện hiện hành.");
+    } finally {
+      setEligibilityPromotionPending(false);
+    }
+  }
+
   async function handleGxpCertificatePromote(expectedVersion: number) {
     if (!selectedGxpCertificateId || !selectedResult) {
       throw new Error("Chưa chọn giấy chứng nhận để cập nhật.");
@@ -1523,6 +1655,12 @@ export function SearchPage({
             eligibilityCertificates={eligibilityCertificates}
             eligibilityCertificatesError={eligibilityCertificatesError}
             eligibilityCertificatesLoading={eligibilityCertificatesLoading}
+            eligibilityIssueReadiness={eligibilityIssueReadiness}
+            eligibilityBasisCertificates={eligibilityBasisCertificates}
+            eligibilityBasisLoading={eligibilityBasisLoading}
+            eligibilityBasisError={eligibilityBasisError}
+            eligibilityPromotionError={eligibilityPromotionError}
+            eligibilityPromotionPending={eligibilityPromotionPending}
             gxpCertificateDetail={gxpCertificateDetail}
             gxpCertificateDetailError={gxpCertificateDetailError}
             gxpCertificateDetailLoading={gxpCertificateDetailLoading}
@@ -1533,6 +1671,9 @@ export function SearchPage({
             gxpCertificatesLoading={gxpCertificatesLoading}
             history={workspace.history}
             onEligibilityCertificateSelect={setSelectedEligibilityCertificateId}
+            onIssueBusinessEligibility={handleIssueBusinessEligibility}
+            onEligibilityCertificateEditLatestVersion={handleBusinessEligibilityLatestVersionUpdate}
+            onEligibilityCertificatePromote={handleBusinessEligibilityPromote}
             onEventTabChange={setActiveTab}
             onFacilityTabChange={setSelectedFacilityTab}
             onGxpCertificateSelect={setSelectedGxpCertificateId}

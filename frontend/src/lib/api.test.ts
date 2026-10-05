@@ -12,6 +12,9 @@ import {
   getCaseWorkspace,
   getInspectionFolder,
   getFacilityWorkspace,
+  issueBusinessEligibility,
+  promoteBusinessEligibilityCurrent,
+  upsertBusinessEligibilityLatestVersion,
   getDocumentDetail,
   openCapaCycleDocumentCurrentContent,
   openCaseDocumentCurrentContent,
@@ -258,6 +261,41 @@ describe("frontend API routing contract", () => {
     for (const url of urls) {
       expect(String(url)).not.toContain("/api/api/");
     }
+  });
+
+  it("uses the explicit DDKD issue, edit-latest, and promote-current workflow routes", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+    const auth = { username: "operator.local", role: "manager" as const };
+
+    await issueBusinessEligibility("site-123", {
+      certificate_number: "DDKD-001",
+      issued_on: "2026-10-01",
+      expires_on: "2027-10-01",
+      professional_responsible_person_name: "PTCM",
+      notes: null,
+      linked_certificates: [{ certificate_id: "cert-1", link_role: "source_certificate" }],
+      reason: "issue",
+    }, auth, true);
+    await upsertBusinessEligibilityLatestVersion("dkkd-123", {
+      expected_version: 7,
+      certificate_number: "DDKD-001-REV",
+      issued_on: "2026-10-02",
+      expires_on: null,
+      professional_responsible_person_name: "PTCM",
+      notes: "updated",
+      linked_certificates: [],
+      reason: "edit",
+    }, auth, true);
+    await promoteBusinessEligibilityCurrent("dkkd-123", 8, auth, true);
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/sites/site-123/business-eligibility-certificates",
+      "/api/business-eligibility-certificates/dkkd-123/latest-version",
+      "/api/business-eligibility-certificates/dkkd-123/promote-current",
+    ]);
+    expect(fetchMock.mock.calls.map((call) => (call[1] as RequestInit).method)).toEqual(["POST", "PUT", "POST"]);
+    expect(JSON.parse(String((fetchMock.mock.calls[2][1] as RequestInit).body))).toEqual({ expected_version: 8 });
   });
 
   it("looks up inspection folders from exact case identity without sending a year", async () => {

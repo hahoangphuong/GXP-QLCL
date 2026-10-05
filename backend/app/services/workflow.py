@@ -1401,6 +1401,24 @@ class CaseWorkflowService:
                 certificate_id=certificate.id,
                 business_eligibility_certificate_id=None,
             )
+            current_context_rows = list(
+                session.scalars(
+                    select(Certificate)
+                    .where(
+                        self._certificate_context_clause(session, certificate),
+                        Certificate.latest_flag.is_(True),
+                    )
+                    .order_by(Certificate.id.asc())
+                )
+            )
+            if len(current_context_rows) > 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Change request creation is blocked because the site has "
+                        "multiple current certificates for the same regulatory context."
+                    ),
+                )
             affected.append(
                 {
                     "certificate_id": certificate.id,

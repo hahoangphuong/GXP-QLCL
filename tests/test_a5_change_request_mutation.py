@@ -409,6 +409,82 @@ def test_a5_create_fails_closed_on_invalid_current_certificate_identity(tmp_path
         assert session.query(AuditEvent).count() == before_audits
 
 
+def test_a5_create_fails_closed_on_multiple_current_certificates_in_same_context(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{(tmp_path / 'a5-artifact-multiple-current-certificate.sqlite').as_posix()}",
+        future=True,
+    )
+    Base.metadata.create_all(engine)
+    workflow = CaseWorkflowService()
+
+    with Session(engine) as session:
+        site_id = _seed_site(session)
+        site = session.get(Site, site_id)
+        assert site is not None
+        line = ProductionLine(
+            site_id=site.id,
+            code="A",
+            effective_from=date(2020, 1, 1),
+        )
+        session.add(line)
+        session.flush()
+        first = Certificate(
+            site_id=site.id,
+            certificate_type="GMP",
+            production_line_id=line.id,
+            line_code="A",
+            issuance_basis="administrative_no_inspection",
+            latest_flag=True,
+        )
+        second = Certificate(
+            site_id=site.id,
+            certificate_type="GMP",
+            production_line_id=line.id,
+            line_code="A",
+            issuance_basis="administrative_no_inspection",
+            latest_flag=True,
+        )
+        session.add_all([first, second])
+        session.flush()
+        session.add_all(
+            [
+                CertificateVersion(
+                    certificate_id=first.id,
+                    version_no=1,
+                    certificate_number="GMP-DUP-1",
+                    is_latest_version=True,
+                ),
+                CertificateVersion(
+                    certificate_id=second.id,
+                    version_no=1,
+                    certificate_number="GMP-DUP-2",
+                    is_latest_version=True,
+                ),
+            ]
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        before_audits = session.query(AuditEvent).count()
+        with pytest.raises(HTTPException, match="multiple current certificates"):
+            workflow.create_change_request(
+                session,
+                site_id=site_id,
+                scope_label="Must fail",
+                description=None,
+                submitted_on=None,
+                requester_name=None,
+                reason=None,
+                user=_editor(),
+            )
+        session.rollback()
+
+    with Session(engine) as session:
+        assert session.query(ChangeRequest).count() == 0
+        assert session.query(ChangeRequestAffectedArtifact).count() == 0
+        assert session.query(AuditEvent).count() == before_audits
+
+
 def test_a5_create_fails_closed_on_multiple_current_business_eligibility_rows(tmp_path):
     engine = create_engine(f"sqlite:///{(tmp_path / 'a5-artifact-multiple-dkkd.sqlite').as_posix()}", future=True)
     Base.metadata.create_all(engine)

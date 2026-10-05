@@ -645,6 +645,70 @@ def test_a5_certificate_successor_preserves_context_resets_issue_fields_and_reco
         assert session.query(AuditEvent).count() == audit_count
 
 
+def test_a5_certificate_successor_is_blocked_when_change_request_is_not_editable(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{(tmp_path / 'a5-certificate-successor-state-gate.sqlite').as_posix()}",
+        future=True,
+    )
+    Base.metadata.create_all(engine)
+    workflow = CaseWorkflowService()
+
+    with Session(engine) as session:
+        site_id = _seed_site(session)
+        site = session.get(Site, site_id)
+        assert site is not None
+        source = Certificate(
+            site_id=site.id,
+            certificate_type="GMP",
+            issuance_basis="administrative_no_inspection",
+            latest_flag=True,
+        )
+        change = ChangeRequest(
+            site_id=site.id,
+            state=ChangeRequestState.REJECTED,
+        )
+        session.add_all([source, change])
+        session.flush()
+        session.add(
+            CertificateVersion(
+                certificate_id=source.id,
+                version_no=1,
+                certificate_number="GMP-CURRENT",
+                is_latest_version=True,
+            )
+        )
+        session.flush()
+        source_link = ChangeRequestAffectedArtifact(
+            change_request_id=change.id,
+            certificate_id=source.id,
+        )
+        session.add(source_link)
+        session.commit()
+        change_id = change.id
+        change_version = change.row_version
+        source_link_id = source_link.id
+        certificate_count = session.query(Certificate).count()
+        issued_link_count = session.query(ChangeRequestIssuedArtifact).count()
+        audit_count = session.query(AuditEvent).count()
+
+    with Session(engine) as session:
+        with pytest.raises(HTTPException, match="successors are read-only"):
+            workflow.issue_change_request_certificate_successor(
+                session,
+                change_request_id=change_id,
+                source_affected_artifact_id=source_link_id,
+                expected_version=change_version,
+                reason="Must not issue after rejection.",
+                user=_editor(),
+            )
+        session.rollback()
+
+    with Session(engine) as session:
+        assert session.query(Certificate).count() == certificate_count
+        assert session.query(ChangeRequestIssuedArtifact).count() == issued_link_count
+        assert session.query(AuditEvent).count() == audit_count
+
+
 def test_a5_create_fails_closed_on_invalid_current_certificate_identity(tmp_path):
     engine = create_engine(f"sqlite:///{(tmp_path / 'a5-artifact-invalid-identity.sqlite').as_posix()}", future=True)
     Base.metadata.create_all(engine)

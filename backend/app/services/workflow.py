@@ -1555,6 +1555,11 @@ class CaseWorkflowService:
     ) -> dict[str, Any]:
         row = self._get_change_request(session, change_request_id)
         self._assert_expected_version(row, expected_version, label="change_request")
+        if row.state not in CHANGE_REQUEST_EDITABLE_STATES:
+            raise HTTPException(
+                status_code=409,
+                detail="Change request successors are read-only in the current state.",
+            )
         source_link = session.get(
             ChangeRequestAffectedArtifact,
             source_affected_artifact_id,

@@ -3459,7 +3459,7 @@ def test_a4_business_eligibility_readiness_and_mutation_fail_closed_on_duplicate
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    manager = build_authenticated_user("manager01", "manager")
+    manager = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
 
     with Session(engine) as session:
         case_id = seed_case(session)
@@ -3509,7 +3509,7 @@ def test_a4_business_eligibility_older_candidate_readiness_matches_mutation():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    manager = build_authenticated_user("manager01", "manager")
+    manager = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
 
     with Session(engine) as session:
         case_id = seed_case(session)
@@ -3554,7 +3554,7 @@ def test_a4_business_eligibility_latest_version_advances_parent_optimistic_lock(
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    manager = build_authenticated_user("manager01", "manager")
+    manager = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
 
     with Session(engine) as session:
         case_id = seed_case(session)
@@ -3618,7 +3618,7 @@ def test_a4_business_eligibility_issue_readiness_is_permission_owned():
         case_id = seed_case(session)
         case = session.get(Case, case_id)
         assert case is not None
-        manager = build_authenticated_user("manager01", "manager")
+        manager = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
         reader = build_authenticated_user("reader01", "reader")
         allowed = service.get_business_eligibility_issue_readiness(session, site_id=case.site_id, user=manager)
         blocked = service.get_business_eligibility_issue_readiness(session, site_id=case.site_id, user=reader)
@@ -3632,7 +3632,7 @@ def test_a4_business_eligibility_rejects_cross_site_gxp_basis_before_link_write(
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CaseWorkflowService()
-    manager = build_authenticated_user("manager01", "manager")
+    manager = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
 
     with Session(engine) as session:
         case_id = seed_case(session)

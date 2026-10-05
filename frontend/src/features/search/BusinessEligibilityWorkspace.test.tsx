@@ -170,6 +170,19 @@ describe("BusinessEligibilityWorkspace write workflow", () => {
     expect(screen.queryByRole("dialog", { name: "Cập nhật GCN đủ điều kiện" })).not.toBeInTheDocument();
   });
 
+  it("keeps an immediately opened edit dialog stable until the authoritative detail context actually changes", () => {
+    const props = baseProps();
+    const { rerender } = render(<BusinessEligibilityWorkspace {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "Cập nhật GCN đủ điều kiện" }));
+    expect(screen.getByRole("dialog", { name: "Cập nhật GCN đủ điều kiện" })).toBeInTheDocument();
+
+    rerender(<BusinessEligibilityWorkspace {...props} detail={{ ...detail() }} />);
+    expect(screen.getByRole("dialog", { name: "Cập nhật GCN đủ điều kiện" })).toBeInTheDocument();
+
+    rerender(<BusinessEligibilityWorkspace {...props} detail={{ ...detail(), row_version: 5 }} />);
+    expect(screen.queryByRole("dialog", { name: "Cập nhật GCN đủ điều kiện" })).not.toBeInTheDocument();
+  });
+
   it("does not expose write controls when backend readiness is absent", () => {
     const props = baseProps();
     render(<BusinessEligibilityWorkspace {...props} issueReadiness={null} detail={{ ...detail(), action_readiness: [] }} />);

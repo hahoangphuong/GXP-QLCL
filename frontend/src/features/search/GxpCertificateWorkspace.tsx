@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
@@ -157,8 +157,16 @@ export function GxpCertificateWorkspace({
 }) {
   const [editOpen, setEditOpen] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const detailContextKey = detail ? `${detail.certificate_id}:${detail.row_version}` : null;
+  const previousDetailContextKeyRef = useRef<string | null>(detailContextKey);
 
-  useEffect(() => setEditOpen(false), [detail?.certificate_id, detail?.row_version]);
+  useEffect(() => {
+    const previous = previousDetailContextKeyRef.current;
+    previousDetailContextKeyRef.current = detailContextKey;
+    if (previous !== null && previous !== detailContextKey) {
+      setEditOpen(false);
+    }
+  }, [detailContextKey]);
   if (listError) {
     return <ErrorState message={listError} />;
   }

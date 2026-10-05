@@ -119,6 +119,19 @@ describe("ChangeRequestMutationWorkspace backend-owned writes", () => {
     });
   });
 
+  it("rejects an invalid classification id instead of silently clearing it", async () => {
+    const handlers = buildHandlers();
+    render(<ChangeRequestMutationWorkspace activeTab="Chi tiết" handlers={handlers} workspace={buildWorkspace()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Thêm chi tiết" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Mã phân loại thay đổi" }), { target: { value: "not-a-number" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Phân loại thay đổi" }), { target: { value: "Thiết bị" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu chi tiết mới" }));
+
+    expect(handlers.onCreateDetail).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Mã phân loại phải là số nguyên hợp lệ.");
+  });
+
   it("uses backend target_state directly for transitions and never derives state from action_key", async () => {
     const handlers = buildHandlers();
     render(<ChangeRequestMutationWorkspace activeTab="Xử lý" handlers={handlers} workspace={buildWorkspace()} />);

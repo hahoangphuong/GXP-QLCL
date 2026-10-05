@@ -50,13 +50,6 @@ function textOrNull(value: string): string | null {
   return normalized || null;
 }
 
-function numberOrNull(value: string): number | null {
-  const normalized = value.trim();
-  if (!normalized) return null;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function action(workspace: ChangeRequestWorkspace, actionKey: string): LifecycleActionReadiness | null {
   return workspace.action_readiness.find((item) => item.action_key === actionKey) ?? null;
 }
@@ -179,7 +172,16 @@ export function ChangeRequestMutationWorkspace({
   }
 
   async function saveDetail() {
-    const classificationId = numberOrNull(detailDraft.classificationId);
+    const classificationIdText = detailDraft.classificationId.trim();
+    let classificationId: number | null = null;
+    if (classificationIdText) {
+      const parsedClassificationId = Number(classificationIdText);
+      if (!Number.isSafeInteger(parsedClassificationId)) {
+        setErrorMessage("Mã phân loại phải là số nguyên hợp lệ.");
+        return;
+      }
+      classificationId = parsedClassificationId;
+    }
     const classificationLabel = textOrNull(detailDraft.classificationLabel);
     const approvalStatus = textOrNull(detailDraft.approvalStatus);
     const oldValue = textOrNull(detailDraft.oldValue);

@@ -98,7 +98,7 @@ describe("ChangeRequestMutationWorkspace backend-owned writes", () => {
     fireEvent.click(screen.getByRole("button", { name: "Thêm chi tiết" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Phân loại thay đổi" }), { target: { value: "Thiết bị" } });
     fireEvent.change(screen.getByRole("textbox", { name: "Thông tin mới" }), { target: { value: "Máy mới" } });
-    fireEvent.click(screen.getByRole("button", { name: "Thêm chi tiết" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lưu chi tiết mới" }));
 
     await waitFor(() => expect(handlers.onCreateDetail).toHaveBeenCalledTimes(1));
     expect(handlers.onCreateDetail).toHaveBeenCalledWith(expect.objectContaining({

@@ -337,7 +337,7 @@ export function ChangeRequestMutationWorkspace({
               <label>Thông tin mới<textarea aria-label="Thông tin mới" disabled={pending} onChange={(event) => setDetailDraft((current) => ({ ...current, newValue: event.target.value }))} value={detailDraft.newValue} /></label>
               <label>Ghi chú<textarea aria-label="Ghi chú chi tiết thay đổi" disabled={pending} onChange={(event) => setDetailDraft((current) => ({ ...current, note: event.target.value }))} value={detailDraft.note} /></label>
               <div className="panel-actions">
-                <button disabled={pending} onClick={() => void saveDetail()} type="button">{pending ? "Đang lưu..." : detailEditor.mode === "create" ? "Thêm chi tiết" : "Lưu chi tiết"}</button>
+                <button disabled={pending} onClick={() => void saveDetail()} type="button">{pending ? "Đang lưu..." : detailEditor.mode === "create" ? "Lưu chi tiết mới" : "Lưu chi tiết"}</button>
                 <button disabled={pending} onClick={() => setDetailEditor(null)} type="button">Hủy</button>
               </div>
             </div>

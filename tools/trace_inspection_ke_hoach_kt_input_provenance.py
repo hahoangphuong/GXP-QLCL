@@ -132,25 +132,58 @@ def _case_template_assignment(
     return assignments[0]
 
 
-def _require_operation(
+def _active_operations_for(
     operations: list[dict[str, object]],
     *,
     bookmark: str,
     operation_type: str,
-) -> dict[str, object]:
-    matches = [
+) -> list[dict[str, object]]:
+    return [
         item
         for item in operations
         if str(item.get("physical_bookmark", "")).lower() == bookmark.lower()
         and item.get("operation_type") == operation_type
         and item.get(REACHABILITY_KEY) != "UNREACHABLE_I3"
     ]
+
+
+def _require_operation(
+    operations: list[dict[str, object]],
+    *,
+    bookmark: str,
+    operation_type: str,
+) -> dict[str, object]:
+    matches = _active_operations_for(
+        operations,
+        bookmark=bookmark,
+        operation_type=operation_type,
+    )
     if len(matches) != 1:
         raise RuntimeError(
             f"Expected exactly one active i=3 {operation_type} operation for "
             f"{bookmark}, found {len(matches)}"
         )
     return matches[0]
+
+
+def _require_write_sequence(
+    operations: list[dict[str, object]],
+    *,
+    bookmark: str,
+) -> dict[str, object]:
+    matches = _active_operations_for(
+        operations,
+        bookmark=bookmark,
+        operation_type="WRITE",
+    )
+    if not matches:
+        raise RuntimeError(
+            f"Expected at least one active i=3 WRITE operation for {bookmark}, found 0"
+        )
+    return {
+        "write_sequence": matches,
+        "effective_write": matches[-1],
+    }
 
 
 def build_i3_source_audit(
@@ -201,10 +234,9 @@ def build_i3_source_audit(
         if item.get(REACHABILITY_KEY) != "UNREACHABLE_I3"
     ]
     required_writes = {
-        name: _require_operation(
+        name: _require_write_sequence(
             all_operations,
             bookmark=name,
-            operation_type="WRITE",
         )
         for name in REQUIRED_WRITES
     }

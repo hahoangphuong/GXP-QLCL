@@ -57,6 +57,7 @@ End Sub
 
 Private Sub Tao_QDKT_KHKT_BBKT(wdDoc, i)
     Replace_Bookmark wdDoc, "Tencoso", TenCtydd
+    Replace_Bookmark wdDoc, "Diachicoso", Del_LastPeriod(Replace(DiachiDD, vbCrLf, ";"))
     If i = 2 Then Replace_Bookmark wdDoc, "VKN", Vkn2
     If i > 2 Then Replace_Bookmark wdDoc, "TT_VKNx", TTV_VKNdd
     If i > 2 Then Replace_Bookmark wdDoc, "TT_SYTx", TTV_SYTdd
@@ -125,6 +126,11 @@ def test_i3_source_audit_captures_template_loai_kt_and_section_deletes(tmp_path)
         "Diachicoso",
         "TieuchuanKT",
     }
+    assert len(report["required_writes"]["Diachicoso"]["write_sequence"]) == 2
+    assert (
+        report["required_writes"]["Diachicoso"]["effective_write"]["expression"]
+        == 'Replace(DiachiDD, vbCrLf, ";")'
+    )
     assert set(report["required_section_deletes"]) == {
         "PVCepha",
         "PVPeni",

@@ -14,6 +14,7 @@ from backend.app.db.enums import ChangeRequestState
 from backend.app.db.models.phase1 import (
     AuditEvent,
     BusinessEligibilityCertificate,
+    BusinessEligibilityCertificateLink,
     BusinessEligibilityVersion,
     Certificate,
     CertificateScope,

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { EmptyState } from "../../components/EmptyState";
-import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
+import { formatCompactDate } from "../../lib/presentation";
 import type {
   BusinessEligibilityDetail,
   CapaCycleAssessRequest,

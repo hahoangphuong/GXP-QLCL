@@ -1390,6 +1390,53 @@ class CaseWorkflowService:
                 }
             )
 
+        business_eligibility_successor_permissions = [
+            CHANGE_REQUEST_EDIT_PERMISSION,
+            "certificate.issue",
+        ]
+        can_issue_business_eligibility_successor = all(
+            permission in user.permissions
+            for permission in business_eligibility_successor_permissions
+        )
+        business_eligibility_source_links = list(
+            session.scalars(
+                select(ChangeRequestAffectedArtifact)
+                .where(
+                    ChangeRequestAffectedArtifact.change_request_id == row.id,
+                    ChangeRequestAffectedArtifact.business_eligibility_certificate_id.is_not(None),
+                )
+                .order_by(ChangeRequestAffectedArtifact.id.asc())
+            )
+        )
+        for source_link in business_eligibility_source_links:
+            self._validate_change_request_artifact_target(
+                session,
+                site=site,
+                certificate_id=None,
+                business_eligibility_certificate_id=source_link.business_eligibility_certificate_id,
+            )
+            available = editable and can_issue_business_eligibility_successor
+            actions.append(
+                {
+                    "action_key": f"issue_business_eligibility_successor:{source_link.id}",
+                    "label": "Tạo GCN ĐĐK điều chỉnh",
+                    "available": available,
+                    "reason_code": (
+                        None
+                        if available
+                        else (
+                            "missing_permission"
+                            if not can_issue_business_eligibility_successor
+                            else "state_not_editable"
+                        )
+                    ),
+                    "required_permissions": business_eligibility_successor_permissions,
+                    "expected_version": row.row_version,
+                    "target_state": None,
+                    "source_affected_artifact_id": source_link.id,
+                }
+            )
+
         for target_state in sorted(ALLOWED_CHANGE_REQUEST_TRANSITIONS.get(row.state, set()), key=lambda item: item.value):
             permission = change_request_transition_permission(target_state)
             permitted = permission in user.permissions

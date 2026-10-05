@@ -232,6 +232,41 @@ def test_request_boundary_maps_stale_data_error_to_http_409(tmp_path: Path):
         competing_session.close()
 
 
+def test_request_boundary_maps_service_flush_stale_data_error_to_http_409(tmp_path: Path):
+    engine = _create_engine(tmp_path)
+    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, future=True)
+    with factory() as seed_session:
+        case_id, _ = _seed_case(seed_session)
+
+    stale_session = factory()
+    competing_session = factory()
+    try:
+        stale_case = stale_session.get(Case, case_id)
+        competing_case = competing_session.get(Case, case_id)
+        assert stale_case is not None and competing_case is not None
+        competing_case.state = CaseState.AWAITING_CERTIFICATE_DECISION
+        competing_session.commit()
+
+        app = FastAPI()
+        dependency = Depends(get_session_from_request_factory(lambda: stale_session))
+
+        def mutate_case(session: Session = dependency):
+            assert session is stale_session
+            stale_case.state = CaseState.CANCELLED
+            # Reproduce the timing used by workflow services: the optimistic
+            # conflict is raised before the endpoint can call commit_or_409().
+            session.flush()
+            return {"ok": True}
+
+        app.add_api_route("/stale-case-flush", mutate_case, methods=["POST"])
+
+        messages = asyncio.run(_invoke_asgi(app, method="POST", path="/stale-case-flush"))
+        assert _status_from_messages(messages) == 409
+    finally:
+        stale_session.close()
+        competing_session.close()
+
+
 def test_capa_service_uses_row_version_for_stale_update_guard(tmp_path: Path):
     engine = _create_engine(tmp_path)
     service = CaseWorkflowService()

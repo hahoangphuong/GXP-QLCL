@@ -147,7 +147,7 @@ def test_a5_change_request_migration_round_trip_preserves_existing_rbac_data() -
                 )
             }
             assert set(permissions) == {"change_request.edit", "change_request.approve"}
-            assert permissions["change_request.edit"] == preexisting_edit_permission_id
+            assert str(permissions["change_request.edit"]) == preexisting_edit_permission_id
             mappings = set(
                 connection.execute(
                     text(
@@ -174,12 +174,14 @@ def test_a5_change_request_migration_round_trip_preserves_existing_rbac_data() -
         assert _revision(engine) == "20261003_0018"
         assert _row_version_column(engine) is None
         with engine.connect() as connection:
-            assert connection.execute(
-                text(
-                    "SELECT id FROM rbac_permission "
-                    "WHERE permission_code = 'change_request.edit'"
-                )
-            ).scalar_one() == preexisting_edit_permission_id
+            assert str(
+                connection.execute(
+                    text(
+                        "SELECT id FROM rbac_permission "
+                        "WHERE permission_code = 'change_request.edit'"
+                    )
+                ).scalar_one()
+            ) == preexisting_edit_permission_id
             assert connection.execute(
                 text(
                     "SELECT count(*) "
@@ -196,12 +198,14 @@ def test_a5_change_request_migration_round_trip_preserves_existing_rbac_data() -
         assert _revision(engine) == head
         assert _row_version_column(engine) is not None
         with engine.connect() as connection:
-            assert connection.execute(
-                text(
-                    "SELECT id FROM rbac_permission "
-                    "WHERE permission_code = 'change_request.edit'"
-                )
-            ).scalar_one() == preexisting_edit_permission_id
+            assert str(
+                connection.execute(
+                    text(
+                        "SELECT id FROM rbac_permission "
+                        "WHERE permission_code = 'change_request.edit'"
+                    )
+                ).scalar_one()
+            ) == preexisting_edit_permission_id
             mappings = set(
                 connection.execute(
                     text(

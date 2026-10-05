@@ -352,6 +352,9 @@ export type LifecycleActionReadiness = {
   expected_version: number | null;
   target_state?: string | null;
   source_affected_artifact_id?: string | null;
+  issued_artifact_link_id?: string | null;
+  target_artifact_kind?: "certificate" | "business_eligibility_certificate" | null;
+  target_artifact_id?: string | null;
 };
 
 export type InspectionApprovalSubmission = {

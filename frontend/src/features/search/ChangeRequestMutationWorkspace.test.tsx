@@ -38,7 +38,20 @@ function buildWorkspace(overrides: Partial<ChangeRequestWorkspace> = {}): Change
         source_affected_artifact_id: null,
       },
     ],
-    issued_artifacts: [],
+    issued_artifacts: [
+      {
+        link_id: "issued-cert-1",
+        artifact_kind: "certificate",
+        artifact_id: "cert-successor-1",
+        source_affected_artifact_id: "affected-cert-1",
+      },
+      {
+        link_id: "issued-dkkd-1",
+        artifact_kind: "business_eligibility_certificate",
+        artifact_id: "dkkd-successor-1",
+        source_affected_artifact_id: "affected-dkkd-1",
+      },
+    ],
     details: [
       {
         change_detail_id: "detail-1",
@@ -58,6 +71,8 @@ function buildWorkspace(overrides: Partial<ChangeRequestWorkspace> = {}): Change
       { action_key: "edit_change_approval", label: "Cập nhật xử lý", available: true, reason_code: null, required_permissions: ["change_request.approve"], expected_version: 7, target_state: null },
       { action_key: "issue_certificate_successor:affected-cert-1", label: "Tạo GCN điều chỉnh", available: true, reason_code: null, required_permissions: ["change_request.edit", "certificate.issue"], expected_version: 7, target_state: null, source_affected_artifact_id: "affected-cert-1" },
       { action_key: "issue_business_eligibility_successor:affected-dkkd-1", label: "Tạo GCN ĐĐK điều chỉnh", available: true, reason_code: null, required_permissions: ["change_request.edit", "certificate.issue"], expected_version: 7, target_state: null, source_affected_artifact_id: "affected-dkkd-1" },
+      { action_key: "promote_issued_certificate:issued-cert-1", label: "Đặt làm chứng nhận hiện hành", available: true, reason_code: null, required_permissions: ["certificate.approve"], expected_version: 11, target_state: null, source_affected_artifact_id: "affected-cert-1", issued_artifact_link_id: "issued-cert-1", target_artifact_kind: "certificate", target_artifact_id: "cert-successor-1" },
+      { action_key: "promote_issued_business_eligibility:issued-dkkd-1", label: "Đặt làm GCN đủ điều kiện hiện hành", available: true, reason_code: null, required_permissions: ["certificate.approve"], expected_version: 13, target_state: null, source_affected_artifact_id: "affected-dkkd-1", issued_artifact_link_id: "issued-dkkd-1", target_artifact_kind: "business_eligibility_certificate", target_artifact_id: "dkkd-successor-1" },
       { action_key: "transition_change_request:not-derived", label: "Chấp nhận", available: true, reason_code: null, required_permissions: ["change_request.approve"], expected_version: 7, target_state: "accepted" },
     ],
     ...overrides,
@@ -73,6 +88,8 @@ function buildHandlers(): ChangeRequestMutationHandlers {
     onTransition: vi.fn().mockResolvedValue(undefined),
     onIssueBusinessEligibilitySuccessor: vi.fn().mockResolvedValue(undefined),
     onIssueCertificateSuccessor: vi.fn().mockResolvedValue(undefined),
+    onPromoteIssuedBusinessEligibility: vi.fn().mockResolvedValue(undefined),
+    onPromoteIssuedCertificate: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -118,6 +135,41 @@ describe("ChangeRequestMutationWorkspace backend-owned writes", () => {
       expected_version: 7,
       source_affected_artifact_id: "affected-dkkd-1",
     });
+  });
+
+  it("promotes issued successors with target-owned readiness tokens and target identities", async () => {
+    const handlers = buildHandlers();
+    render(<ChangeRequestMutationWorkspace activeTab="Đề nghị" handlers={handlers} workspace={buildWorkspace()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" }));
+    await waitFor(() => expect(handlers.onPromoteIssuedCertificate).toHaveBeenCalledTimes(1));
+    expect(handlers.onPromoteIssuedCertificate).toHaveBeenCalledWith(
+      "cert-successor-1",
+      11,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Đặt làm GCN đủ điều kiện hiện hành" }));
+    await waitFor(() => expect(handlers.onPromoteIssuedBusinessEligibility).toHaveBeenCalledTimes(1));
+    expect(handlers.onPromoteIssuedBusinessEligibility).toHaveBeenCalledWith(
+      "dkkd-successor-1",
+      13,
+    );
+  });
+
+  it("keeps issued-successor promotion disabled when backend readiness blocks it", () => {
+    const handlers = buildHandlers();
+    const workspace = buildWorkspace({
+      action_readiness: buildWorkspace().action_readiness.map((item) =>
+        item.action_key === "promote_issued_certificate:issued-cert-1"
+          ? { ...item, available: false, reason_code: "certificate_data_incomplete" }
+          : item,
+      ),
+    });
+
+    render(<ChangeRequestMutationWorkspace activeTab="Đề nghị" handlers={handlers} workspace={workspace} />);
+
+    expect(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" })).toBeDisabled();
+    expect(handlers.onPromoteIssuedCertificate).not.toHaveBeenCalled();
   });
 
   it("keeps DDKD successor controls disabled when backend readiness blocks the action", () => {

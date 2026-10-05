@@ -23,6 +23,8 @@ export type ChangeRequestMutationHandlers = {
   onTransition: (payload: ChangeRequestTransitionRequest) => Promise<void>;
   onIssueBusinessEligibilitySuccessor: (payload: ChangeRequestBusinessEligibilitySuccessorIssueRequest) => Promise<void>;
   onIssueCertificateSuccessor: (payload: ChangeRequestCertificateSuccessorIssueRequest) => Promise<void>;
+  onPromoteIssuedBusinessEligibility: (businessEligibilityCertificateId: string, expectedVersion: number) => Promise<void>;
+  onPromoteIssuedCertificate: (certificateId: string, expectedVersion: number) => Promise<void>;
 };
 
 type HeaderDraft = {
@@ -131,6 +133,7 @@ export function ChangeRequestMutationWorkspace({
   const businessEligibilityAffectedArtifacts = workspace.affected_artifacts.filter(
     (item) => item.artifact_kind === "business_eligibility_certificate",
   );
+  const issuedArtifacts = workspace.issued_artifacts;
   const transitionActions = workspace.action_readiness.filter(
     (item) => item.target_state && item.action_key.startsWith("transition_change_request:"),
   );
@@ -273,6 +276,35 @@ export function ChangeRequestMutationWorkspace({
     await runMutation(() => handlers.onIssueCertificateSuccessor(payload));
   }
 
+  async function promoteIssuedArtifact(issuedArtifactLinkId: string) {
+    const readiness = workspace.action_readiness.find(
+      (item) =>
+        item.issued_artifact_link_id === issuedArtifactLinkId
+        && item.target_artifact_id,
+    ) ?? null;
+    if (
+      !readiness?.available
+      || readiness.expected_version === null
+      || !readiness.target_artifact_id
+      || !readiness.target_artifact_kind
+    ) {
+      return;
+    }
+    if (readiness.target_artifact_kind === "certificate") {
+      await runMutation(() =>
+        handlers.onPromoteIssuedCertificate(
+          readiness.target_artifact_id as string,
+          readiness.expected_version as number,
+        ));
+      return;
+    }
+    await runMutation(() =>
+      handlers.onPromoteIssuedBusinessEligibility(
+        readiness.target_artifact_id as string,
+        readiness.expected_version as number,
+      ));
+  }
+
   async function saveApproval() {
     const payload: ChangeApprovalUpsertRequest = {
       expected_version: expectedVersion(workspace, editApprovalReadiness),
@@ -368,6 +400,33 @@ export function ChangeRequestMutationWorkspace({
                       type="button"
                     >
                       {pending ? "Đang tạo..." : successorReadiness?.label ?? "Tạo GCN ĐĐK điều chỉnh"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+          {issuedArtifacts.length > 0 ? (
+            <div className="event-step-stack">
+              <h5>Chứng nhận điều chỉnh đã tạo</h5>
+              {issuedArtifacts.map((item) => {
+                const promotionReadiness = workspace.action_readiness.find(
+                  (readiness) =>
+                    readiness.issued_artifact_link_id === item.link_id
+                    && readiness.target_artifact_id === item.artifact_id,
+                ) ?? null;
+                return (
+                  <div className="workspace-section-heading" key={item.link_id}>
+                    <DetailValue
+                      label={item.artifact_kind === "certificate" ? "GCN điều chỉnh" : "GCN ĐĐK điều chỉnh"}
+                      value={item.artifact_id}
+                    />
+                    <button
+                      disabled={!promotionReadiness?.available || pending}
+                      onClick={() => void promoteIssuedArtifact(item.link_id)}
+                      type="button"
+                    >
+                      {pending ? "Đang cập nhật..." : promotionReadiness?.label ?? "Đặt làm hiện hành"}
                     </button>
                   </div>
                 );

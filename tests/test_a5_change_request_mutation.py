@@ -28,7 +28,11 @@ from backend.app.db.models.phase1 import (
     Site,
 )
 from backend.app.main import create_app
-from backend.app.read_models import ChangeRequestTransitionRequest, ChangeRequestUpdateRequest
+from backend.app.read_models import (
+    ChangeRequestCertificateSuccessorIssueRequest,
+    ChangeRequestTransitionRequest,
+    ChangeRequestUpdateRequest,
+)
 from backend.app.services import CatalogReadService, CaseWorkflowService
 
 
@@ -63,6 +67,10 @@ def test_a5_routes_and_bounded_context_permissions_are_registered():
     routes = {(route.path, tuple(sorted(route.methods or []))) for route in app.routes if hasattr(route, "path")}
     assert ("/sites/{site_id}/change-requests", ("POST",)) in routes
     assert ("/change-requests/{change_request_id}", ("PUT",)) in routes
+    assert (
+        "/change-requests/{change_request_id}/certificate-successors",
+        ("POST",),
+    ) in routes
     assert ("/change-requests/{change_request_id}/details", ("POST",)) in routes
     assert ("/change-request-details/{change_detail_id}", ("PUT",)) in routes
     assert ("/change-requests/{change_request_id}/approval", ("PUT",)) in routes
@@ -122,6 +130,108 @@ def test_a5_mutation_endpoint_denies_reader_before_write_or_audit(tmp_path):
         assert persisted.scope_label == "Original"
         assert persisted.row_version == version
         assert session.query(AuditEvent).count() == before_audit_count
+
+
+def test_a5_certificate_successor_route_requires_both_permissions_and_delegates(
+    tmp_path,
+    monkeypatch,
+):
+    database_url = (
+        f"sqlite:///{(tmp_path / 'a5-certificate-successor-route.sqlite').as_posix()}"
+    )
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+    calls: list[dict[str, object]] = []
+
+    def fake_issue_successor(
+        self,
+        session,
+        *,
+        change_request_id,
+        source_affected_artifact_id,
+        expected_version,
+        reason,
+        user,
+    ):
+        calls.append(
+            {
+                "change_request_id": change_request_id,
+                "source_affected_artifact_id": source_affected_artifact_id,
+                "expected_version": expected_version,
+                "reason": reason,
+                "username": user.username,
+            }
+        )
+        return {
+            "change_request_id": change_request_id,
+            "row_version": expected_version + 1,
+            "state": "received",
+            "source_affected_artifact_id": source_affected_artifact_id,
+            "issued_artifact_link_id": "issued-link",
+            "certificate_id": "successor-certificate",
+            "audit_event_id": "audit-event",
+        }
+
+    monkeypatch.setattr(
+        CaseWorkflowService,
+        "issue_change_request_certificate_successor",
+        fake_issue_successor,
+    )
+    app = create_app(database_url)
+    route = next(
+        route
+        for route in app.routes
+        if getattr(route, "path", "")
+        == "/change-requests/{change_request_id}/certificate-successors"
+    )
+    payload = ChangeRequestCertificateSuccessorIssueRequest(
+        expected_version=7,
+        source_affected_artifact_id="affected-link",
+        reason="Prepare adjusted certificate.",
+    )
+    manager = build_authenticated_user(
+        "manager01",
+        "manager",
+        permissions=ROLE_PERMISSIONS["manager"],
+    )
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as exc_info:
+            route.endpoint(
+                change_request_id="change-request",
+                payload=payload,
+                session=session,
+                user=manager,
+            )
+        assert exc_info.value.status_code == 403
+        session.rollback()
+    assert calls == []
+
+    admin = build_authenticated_user(
+        "admin01",
+        "admin",
+        permissions=ROLE_PERMISSIONS["admin"],
+    )
+    with Session(engine) as session:
+        response = route.endpoint(
+            change_request_id="change-request",
+            payload=payload,
+            session=session,
+            user=admin,
+        )
+    assert response.change_request_id == "change-request"
+    assert response.row_version == 8
+    assert response.source_affected_artifact_id == "affected-link"
+    assert response.issued_artifact_link_id == "issued-link"
+    assert response.certificate_id == "successor-certificate"
+    assert calls == [
+        {
+            "change_request_id": "change-request",
+            "source_affected_artifact_id": "affected-link",
+            "expected_version": 7,
+            "reason": "Prepare adjusted certificate.",
+            "username": "admin01",
+        }
+    ]
 
 
 def test_a5_transition_route_delegates_permission_to_canonical_owner(tmp_path, monkeypatch):

@@ -12,12 +12,13 @@ function workspace(overrides: Partial<CaseWorkspace["inspection"]> = {}): CaseWo
     inspection: {
       plan_row_version: null, plan_decision_reference: null, plan_decision_date: null, decision_document_hint: null, plan_start_on: null, plan_end_on: null, planning_sheet_name: null,
       outcome_row_version: null, inspected_on: null, inspected_to_on: null, executed_on: null, bbkt_reference: null, outcome_result: null,
+      inspection_period_edit_readiness: { action_key: "edit_inspection_period", label: "Sửa các đợt kiểm tra", available: true, reason_code: null, required_permissions: ["inspection.edit"], expected_version: 6, mode: "replace" },
       team_display_text: "Legacy: do not parse this text",
       team: { team_id: "team-1", row_version: 7, display_text: "Legacy: do not parse this text", round_trip_safe: true, blocked_reason_code: null, members: [
         { id: "member-1", inspector_profile_id: "profile-1", person_id: null, display_name: "Thanh tra A", role_code: "LEADER", role_label: "Trưởng đoàn", sort_order: 1, identity_kind: "INSPECTOR_PROFILE", identity_status: "resolved" },
         { id: "member-2", inspector_profile_id: null, person_id: "person-2", display_name: "Thành viên B", role_code: "SECRETARY", role_label: "Thư ký", sort_order: 2, identity_kind: "LEGACY_PERSON", identity_status: "resolved" },
       ] },
-      team_edit_readiness: { action_key: "edit_inspection_team", label: "Sửa đoàn kiểm tra", available: true, reason_code: null, required_permissions: ["inspection.edit"] },
+      team_edit_readiness: { action_key: "edit_inspection_team", label: "Sửa đoàn kiểm tra", available: true, reason_code: null, required_permissions: ["inspection.edit"], expected_version: 7, mode: "replace" },
       ...overrides,
     },
     remediation: { cycles: [] }, processing: { row_version: null, assessed_on: null, assessor_name: null, assessment_result: null, notes: null, events: [] },
@@ -27,7 +28,7 @@ function workspace(overrides: Partial<CaseWorkspace["inspection"]> = {}): CaseWo
 
 describe("CaseInspectionWorkspace inspection team editor", () => {
   it("does not enable edit without backend readiness or construct members from legacy text", () => {
-    render(<CaseInspectionWorkspace caseWorkspace={workspace({ team: null, team_edit_readiness: { action_key: "edit_inspection_team", label: "Sửa đoàn kiểm tra", available: false, reason_code: "structured_read_unavailable", required_permissions: ["inspection.edit"] } })} onInspectionOutcomeSave={vi.fn()} onInspectionPeriodSegmentsSave={vi.fn()} onInspectionPlanSave={vi.fn()} onInspectionTeamSave={vi.fn()} onLoadInspectionTeamIdentityOptions={vi.fn()} onCreateApprovalSubmission={vi.fn()} onCompleteApprovalSubmission={vi.fn()} onTransitionCase={vi.fn()} />);
+    render(<CaseInspectionWorkspace caseWorkspace={workspace({ team: null, team_edit_readiness: { action_key: "edit_inspection_team", label: "Sửa đoàn kiểm tra", available: false, reason_code: "structured_read_unavailable", required_permissions: ["inspection.edit"], expected_version: null, mode: null } })} onInspectionOutcomeSave={vi.fn()} onInspectionPeriodSegmentsSave={vi.fn()} onInspectionPlanSave={vi.fn()} onInspectionTeamSave={vi.fn()} onLoadInspectionTeamIdentityOptions={vi.fn()} onCreateApprovalSubmission={vi.fn()} onCompleteApprovalSubmission={vi.fn()} onTransitionCase={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Sửa đoàn kiểm tra" })).toBeDisabled();
     expect(screen.queryByLabelText("Định danh thành viên 1")).not.toBeInTheDocument();
   });
@@ -92,13 +93,13 @@ describe("CaseInspectionWorkspace canonical period editor", () => {
   });
 
   it.each(["MISSING", "PENDING_INPUT", "NON_DATE_EXPRESSION", "UNRESOLVED"])("fails closed for source-owned %s periods", (state) => {
-    render(<CaseInspectionWorkspace caseWorkspace={workspace({ outcome_row_version: 6, inspection_period_state: state })} onInspectionOutcomeSave={vi.fn()} onInspectionPeriodSegmentsSave={vi.fn()} onInspectionPlanSave={vi.fn()} onInspectionTeamSave={vi.fn()} onLoadInspectionTeamIdentityOptions={vi.fn()} onCreateApprovalSubmission={vi.fn()} onCompleteApprovalSubmission={vi.fn()} onTransitionCase={vi.fn()} />);
+    render(<CaseInspectionWorkspace caseWorkspace={workspace({ outcome_row_version: 6, inspection_period_state: state, inspection_period_edit_readiness: { action_key: "edit_inspection_period", label: "Sửa các đợt kiểm tra", available: false, reason_code: "source_owned_period_state", required_permissions: ["inspection.edit"], expected_version: 6, mode: null } })} onInspectionOutcomeSave={vi.fn()} onInspectionPeriodSegmentsSave={vi.fn()} onInspectionPlanSave={vi.fn()} onInspectionTeamSave={vi.fn()} onLoadInspectionTeamIdentityOptions={vi.fn()} onCreateApprovalSubmission={vi.fn()} onCompleteApprovalSubmission={vi.fn()} onTransitionCase={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Sửa các đợt kiểm tra" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Sửa Từ ngày kiểm tra" })).not.toBeInTheDocument();
   });
 
   it("fails closed when inspection period state is absent", () => {
-    render(<CaseInspectionWorkspace caseWorkspace={workspace({ outcome_row_version: 6, inspection_period_state: null })} onInspectionOutcomeSave={vi.fn()} onInspectionPeriodSegmentsSave={vi.fn()} onInspectionPlanSave={vi.fn()} onInspectionTeamSave={vi.fn()} onLoadInspectionTeamIdentityOptions={vi.fn()} onCreateApprovalSubmission={vi.fn()} onCompleteApprovalSubmission={vi.fn()} onTransitionCase={vi.fn()} />);
+    render(<CaseInspectionWorkspace caseWorkspace={workspace({ outcome_row_version: 6, inspection_period_state: null, inspection_period_edit_readiness: { action_key: "edit_inspection_period", label: "Sửa các đợt kiểm tra", available: false, reason_code: "legacy_period_state_unclassified", required_permissions: ["inspection.edit"], expected_version: 6, mode: null } })} onInspectionOutcomeSave={vi.fn()} onInspectionPeriodSegmentsSave={vi.fn()} onInspectionPlanSave={vi.fn()} onInspectionTeamSave={vi.fn()} onLoadInspectionTeamIdentityOptions={vi.fn()} onCreateApprovalSubmission={vi.fn()} onCompleteApprovalSubmission={vi.fn()} onTransitionCase={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Sửa các đợt kiểm tra" })).toBeDisabled();
   });
 });

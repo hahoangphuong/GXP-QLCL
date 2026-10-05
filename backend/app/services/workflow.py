@@ -91,6 +91,44 @@ REASSESSMENT_INSPECTION_TYPE = "Tái"
 TERMINAL_CASE_STATES = frozenset({CaseState.CLOSED, CaseState.CANCELLED})
 
 
+def case_transition_eligibility_reason(
+    *,
+    current_state: CaseState,
+    target_state: CaseState,
+    latest_capa_status: str | None,
+) -> str | None:
+    """Own the CAPA-dependent transition rule for projection and mutation."""
+    if target_state == current_state:
+        return "already_in_target_state"
+    if target_state not in ALLOWED_CASE_TRANSITIONS.get(current_state, set()):
+        return "transition_not_allowed"
+    if (
+        (current_state == CaseState.INSPECTION_COMPLETED and target_state == CaseState.AWAITING_CERTIFICATE_DECISION)
+        or (current_state == CaseState.AWAITING_CERTIFICATE_DECISION and target_state == CaseState.CERTIFIED)
+    ) and latest_capa_status is not None and latest_capa_status != CAPA_ACCEPTED_STATUS:
+        return "latest_capa_not_accepted"
+    return None
+
+
+def inspection_period_edit_readiness(*, outcome: InspectionOutcome | None, terminal_case: bool) -> dict[str, Any]:
+    """A missing outcome is a new runtime aggregate; an existing NULL is legacy-unknown."""
+    if terminal_case:
+        return {"available": False, "reason_code": "terminal_case", "expected_version": None if outcome is None else outcome.row_version, "mode": None}
+    if outcome is None:
+        return {"available": True, "reason_code": None, "expected_version": None, "mode": "initialize"}
+    if outcome.inspection_period_state != "KNOWN":
+        return {"available": False, "reason_code": "legacy_period_state_unclassified" if outcome.inspection_period_state is None else "source_owned_period_state", "expected_version": outcome.row_version, "mode": None}
+    return {"available": True, "reason_code": None, "expected_version": outcome.row_version, "mode": "replace"}
+
+
+def inspection_team_edit_readiness(*, team: InspectionTeam | None, terminal_case: bool, round_trip_safe: bool, blocked_reason_code: str | None) -> dict[str, Any]:
+    if terminal_case:
+        return {"available": False, "reason_code": "terminal_case", "expected_version": None if team is None else team.row_version, "mode": None}
+    if not round_trip_safe:
+        return {"available": False, "reason_code": blocked_reason_code or "unresolved_member_identity", "expected_version": None if team is None else team.row_version, "mode": None}
+    return {"available": True, "reason_code": None, "expected_version": None if team is None else team.row_version, "mode": "initialize" if team is None else "replace"}
+
+
 class CaseWorkflowService:
     @staticmethod
     def _provided_fields(fields_set: set[str] | None, defaults: set[str]) -> set[str]:
@@ -958,6 +996,11 @@ class CaseWorkflowService:
             blocked_detail="Case cannot advance to awaiting_certificate_decision while CAPA remains required or unaccepted.",
         )
 
+    def _assert_latest_capa_cycle(self, session: Session, row: CapaCycle) -> None:
+        latest = self._latest_case_capa_cycle(session, row.case_id)
+        if latest is None or latest.id != row.id:
+            raise HTTPException(status_code=409, detail="Only the latest CAPA cycle can be changed; earlier cycles are historical.")
+
     def transition_case(
         self,
         session: Session,
@@ -979,24 +1022,16 @@ class CaseWorkflowService:
         if parsed_target_state == previous_state:
             raise HTTPException(status_code=409, detail="Case is already in the requested state.")
 
-        allowed_targets = ALLOWED_CASE_TRANSITIONS.get(previous_state, set())
-        if parsed_target_state not in allowed_targets:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Transition from {previous_state.value} to {parsed_target_state.value} is not allowed.",
-            )
-        if (
-            previous_state == CaseState.INSPECTION_COMPLETED
-            and parsed_target_state == CaseState.AWAITING_CERTIFICATE_DECISION
-        ):
-            self._assert_case_can_advance_without_pending_capa(session, row.id)
-        if previous_state == CaseState.AWAITING_CERTIFICATE_DECISION and parsed_target_state == CaseState.CERTIFIED:
-            self._assert_case_certificate_eligibility(
-                session,
-                case=row,
-                allow_states={CaseState.AWAITING_CERTIFICATE_DECISION},
-                blocked_detail="Case cannot transition to certified while CAPA remains required or unaccepted.",
-            )
+        latest = self._latest_case_capa_cycle(session, row.id)
+        transition_reason = case_transition_eligibility_reason(
+            current_state=previous_state,
+            target_state=parsed_target_state,
+            latest_capa_status=None if latest is None else latest.status,
+        )
+        if transition_reason == "transition_not_allowed":
+            raise HTTPException(status_code=409, detail=f"Transition from {previous_state.value} to {parsed_target_state.value} is not allowed.")
+        if transition_reason == "latest_capa_not_accepted":
+            raise HTTPException(status_code=409, detail="Case cannot transition while CAPA remains required or unaccepted.")
 
         actor = self._get_or_create_app_user(session, user)
         before = {"state": previous_state.value}
@@ -1404,6 +1439,7 @@ class CaseWorkflowService:
         row = self._get_capa_cycle(session, capa_cycle_id)
         case = self._get_case(session, row.case_id)
         self._assert_case_not_terminal(case, operation="CAPA update")
+        self._assert_latest_capa_cycle(session, row)
         self._assert_expected_version(row, expected_version, label="capa_cycle")
         if row.status not in {"requested", CAPA_REJECTED_STATUS}:
             raise HTTPException(
@@ -1447,6 +1483,7 @@ class CaseWorkflowService:
         row = self._get_capa_cycle(session, capa_cycle_id)
         case = self._get_case(session, row.case_id)
         self._assert_case_not_terminal(case, operation="CAPA submit")
+        self._assert_latest_capa_cycle(session, row)
         self._assert_expected_version(row, expected_version, label="capa_cycle")
         if row.status not in {"requested", CAPA_REJECTED_STATUS}:
             raise HTTPException(status_code=409, detail="CAPA cycle cannot be submitted from its current status.")
@@ -1486,6 +1523,7 @@ class CaseWorkflowService:
         row = self._get_capa_cycle(session, capa_cycle_id)
         case = self._get_case(session, row.case_id)
         self._assert_case_not_terminal(case, operation="CAPA assess")
+        self._assert_latest_capa_cycle(session, row)
         self._assert_expected_version(row, expected_version, label="capa_cycle")
         normalized_result = (result or "").strip().lower()
         if normalized_result not in {CAPA_ACCEPTED_STATUS, CAPA_REJECTED_STATUS}:
@@ -2007,7 +2045,7 @@ class CaseWorkflowService:
         session: Session,
         *,
         case_id: str,
-        expected_version: int,
+        expected_version: int | None,
         segments: list[dict[str, Any]],
         reason: str | None,
         user: AuthenticatedUser,
@@ -2016,16 +2054,22 @@ class CaseWorkflowService:
         case = self._get_case(session, case_id)
         self._assert_case_not_terminal(case, operation="inspection period update")
         outcome = session.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == case.id))
-        if outcome is None:
-            outcome = InspectionOutcome(case_id=case.id, inspection_period_state=None)
-            session.add(outcome)
-            session.flush()
-        self._assert_expected_version(outcome, expected_version, label="inspection_outcome")
-        if outcome.inspection_period_state not in {None, "KNOWN"}:
+        readiness = inspection_period_edit_readiness(outcome=outcome, terminal_case=False)
+        if not readiness["available"]:
             raise HTTPException(
                 status_code=409,
-                detail="Inspection outcome has a source-owned non-KNOWN period state and cannot be replaced by runtime segments.",
+                detail="Inspection outcome period is source-owned or unclassified and cannot be replaced by runtime segments.",
             )
+        if outcome is None:
+            if expected_version is not None:
+                raise HTTPException(status_code=409, detail="Inspection period initialization requires a null expected_version.")
+            outcome = InspectionOutcome(case_id=case.id, inspection_period_state="KNOWN")
+            session.add(outcome)
+            session.flush()
+        else:
+            if expected_version is None:
+                raise HTTPException(status_code=409, detail="Existing inspection outcome requires an expected_version.")
+            self._assert_expected_version(outcome, expected_version, label="inspection_outcome")
         normalized = sorted(segments, key=lambda item: item["ordinal"])
         if not normalized:
             raise HTTPException(status_code=422, detail="Inspection period requires at least one ordered segment.")
@@ -2217,12 +2261,17 @@ class CaseWorkflowService:
         self._validate_team_member_identities(session, members)
         actor = self._get_or_create_app_user(session, user)
 
-        team = session.scalars(select(InspectionTeam).where(InspectionTeam.case_id == row.id)).first()
+        team = existing_team
         if team is None:
+            if expected_version is not None:
+                raise HTTPException(status_code=409, detail="Inspection team initialization requires a null expected_version.")
             team = InspectionTeam(case_id=row.id)
             session.add(team)
             session.flush()
-        self._assert_expected_version(team, expected_version, label="inspection_team")
+        else:
+            if expected_version is None:
+                raise HTTPException(status_code=409, detail="Existing inspection team requires an expected_version.")
+            self._assert_expected_version(team, expected_version, label="inspection_team")
         existing_members = list(session.scalars(select(InspectionTeamMember).where(InspectionTeamMember.team_id == team.id)))
         before = {
             "display_text": team.display_text,

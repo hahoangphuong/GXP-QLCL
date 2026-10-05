@@ -3,6 +3,7 @@ from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
@@ -1408,6 +1409,7 @@ def test_upsert_inspection_team_replaces_member_list_and_writes_audit():
         service.upsert_inspection_team(
             session,
             case_id=case_id,
+            expected_version=result["row_version"],
             members=[
                 {"person_id": None, "inspector_profile_id": identities["profile_id"], "role_code": "SECRETARY", "role_label": "chair", "sort_order": 2},
                 {"person_id": identities["direct_person_id"], "inspector_profile_id": None, "role_code": "LEADER", "role_label": "member", "sort_order": 1},
@@ -2783,6 +2785,33 @@ def test_transition_case_to_certified_allows_no_capa_when_workflow_state_is_corr
         session.commit()
 
     assert result["current_state"] == "certified"
+
+
+def test_non_latest_capa_cycle_is_historical_and_cannot_be_reopened():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        case = session.get(Case, case_id)
+        assert case is not None
+        case.state = CaseState.INSPECTION_COMPLETED
+        first = CapaCycle(case_id=case_id, round_no=1, status="rejected", result="rejected")
+        second = CapaCycle(case_id=case_id, round_no=2, status="requested")
+        session.add_all([first, second])
+        session.commit()
+        with pytest.raises(HTTPException, match="latest CAPA cycle"):
+            service.update_capa_cycle(
+                session, capa_cycle_id=first.id, expected_version=first.row_version,
+                requested_on=None, incoming_reference=None, notes=None, reason=None,
+                user=build_authenticated_user("manager01", "manager"),
+            )
+        with pytest.raises(HTTPException, match="latest CAPA cycle"):
+            service.submit_capa_cycle(
+                session, capa_cycle_id=first.id, expected_version=first.row_version,
+                submitted_on=date(2026, 10, 1), notes=None, reason=None,
+                user=build_authenticated_user("manager01", "manager"),
+            )
 
 
 def test_promote_certificate_current_rejects_older_candidate_than_current():

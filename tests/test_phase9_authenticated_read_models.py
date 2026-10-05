@@ -60,6 +60,7 @@ from backend.app.main import create_app
 from backend.app.read_models import (
     CaseDetailRead,
     CaseRead,
+    CaseTransitionRequest,
     CompanyDetailRead,
     CompanyRead,
     FacilitySearchPageRead,
@@ -68,6 +69,7 @@ from backend.app.read_models import (
 )
 from backend.app.domain.phase2_import import import_snapshot
 from backend.app.services.catalog import CatalogReadService
+from backend.app.services.workflow import CaseWorkflowService
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -4067,3 +4069,264 @@ def test_dashboard_summary_and_workspace_routes_return_business_read_models(tmp_
     assert workspace_payload.summary.company_name == "Công ty A"
     assert len(workspace_payload.history) == 1
     assert workspace_payload.history[0].reference_code == "KT-2026-GMP"
+
+
+def _workspace_transition_action(workspace: dict[str, object], target_state: str) -> dict[str, object]:
+    return next(
+        action
+        for action in workspace["transition_actions"]
+        if action["target_state"] == target_state
+    )
+
+
+@pytest.mark.parametrize(
+    ("current_state", "target_state", "latest_capa_status", "expected_available"),
+    [
+        (CaseState.INSPECTION_COMPLETED, "awaiting_certificate_decision", None, True),
+        (CaseState.INSPECTION_COMPLETED, "awaiting_certificate_decision", "requested", False),
+        (CaseState.INSPECTION_COMPLETED, "awaiting_certificate_decision", "submitted", False),
+        (CaseState.INSPECTION_COMPLETED, "awaiting_certificate_decision", "rejected", False),
+        (CaseState.INSPECTION_COMPLETED, "awaiting_certificate_decision", "accepted", True),
+        (CaseState.AWAITING_CERTIFICATE_DECISION, "certified", None, True),
+        (CaseState.AWAITING_CERTIFICATE_DECISION, "certified", "requested", False),
+        (CaseState.AWAITING_CERTIFICATE_DECISION, "certified", "submitted", False),
+        (CaseState.AWAITING_CERTIFICATE_DECISION, "certified", "rejected", False),
+        (CaseState.AWAITING_CERTIFICATE_DECISION, "certified", "accepted", True),
+    ],
+)
+def test_case_workspace_transition_readiness_matches_real_mutation_for_latest_capa_topology(
+    tmp_path,
+    current_state,
+    target_state,
+    latest_capa_status,
+    expected_available,
+):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'transition-parity.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+    manager = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
+    workflow = CaseWorkflowService()
+
+    with Session(engine) as session:
+        company = Company(legal_name="Transition parity", short_name="TP")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="Transition parity site")
+        session.add(site)
+        session.flush()
+        case = Case(site_id=site.id, gxp_type="GMP", state=current_state)
+        session.add(case)
+        session.flush()
+        if latest_capa_status is not None:
+            session.add(CapaCycle(case_id=case.id, round_no=1, status=latest_capa_status))
+        session.commit()
+        case_id = case.id
+
+    with Session(engine) as session:
+        workspace = CatalogReadService().get_case_workspace(session, case_id=case_id, user=manager)
+        action = _workspace_transition_action(workspace, target_state)
+        assert action["available"] is expected_available
+        if expected_available:
+            result = workflow.transition_case(
+                session,
+                case_id=case_id,
+                target_state=target_state,
+                expected_version=action["expected_version"],
+                reason="Parity test.",
+                user=manager,
+            )
+            assert result["current_state"] == target_state
+        else:
+            assert action["reason_code"] == "latest_capa_not_accepted"
+            with pytest.raises(HTTPException, match="CAPA remains required or unaccepted"):
+                workflow.transition_case(
+                    session,
+                    case_id=case_id,
+                    target_state=target_state,
+                    expected_version=action["expected_version"],
+                    reason="Parity test.",
+                    user=manager,
+                )
+
+
+def test_case_workspace_transition_permission_readiness_matches_transition_route(tmp_path):
+    database_url = f"sqlite:///{(tmp_path / 'transition-permission.sqlite').as_posix()}"
+    engine = create_engine(database_url, future=True)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        company = Company(legal_name="Transition permission", short_name="TP")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="Transition permission site")
+        session.add(site)
+        session.flush()
+        case = Case(site_id=site.id, gxp_type="GMP", state=CaseState.INSPECTION_COMPLETED)
+        session.add(case)
+        session.commit()
+        case_id = case.id
+
+    reader = build_authenticated_user("reader01", "reader", permissions=ROLE_PERMISSIONS["reader"])
+    with Session(engine) as session:
+        workspace = CatalogReadService().get_case_workspace(session, case_id=case_id, user=reader)
+        action = _workspace_transition_action(workspace, "awaiting_certificate_decision")
+        assert action["available"] is False
+        assert action["reason_code"] == "missing_permission"
+
+    app = create_app(database_url)
+    route = next(route for route in app.routes if getattr(route, "path", "") == "/cases/{case_id}/transition")
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as error:
+            route.endpoint(
+                case_id=case_id,
+                payload=CaseTransitionRequest(
+                    target_state="awaiting_certificate_decision",
+                    expected_version=action["expected_version"],
+                ),
+                session=session,
+                user=reader,
+            )
+    assert error.value.status_code == 403
+
+
+def test_case_workspace_team_initialization_readiness_matches_real_mutation_and_reread(tmp_path):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'team-initialize.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+    manager = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
+    workflow = CaseWorkflowService()
+    with Session(engine) as session:
+        company = Company(legal_name="Team initialization", short_name="TI")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="Team initialization site")
+        session.add(site)
+        session.flush()
+        case = Case(site_id=site.id, gxp_type="GMP", state=CaseState.DRAFT)
+        session.add(case)
+        session.flush()
+        person = Person(full_name="Canonical team leader")
+        session.add(person)
+        session.flush()
+        profile = InspectorProfile(person_id=person.id, legacy_display_text="Canonical team leader", is_active=True)
+        session.add(profile)
+        session.commit()
+        case_id, profile_id = case.id, profile.id
+
+    with Session(engine) as session:
+        before = CatalogReadService().get_case_workspace(session, case_id=case_id, user=manager)
+        readiness = before["inspection"]["team_edit_readiness"]
+        assert before["inspection"]["team"] is None
+        assert readiness == {
+            "action_key": "edit_inspection_team",
+            "label": "Sửa đoàn kiểm tra",
+            "required_permissions": ["inspection.edit"],
+            "available": True,
+            "reason_code": None,
+            "expected_version": None,
+            "mode": "initialize",
+        }
+        created = workflow.upsert_inspection_team(
+            session,
+            case_id=case_id,
+            expected_version=readiness["expected_version"],
+            members=[{
+                "person_id": None,
+                "inspector_profile_id": profile_id,
+                "role_code": "LEADER",
+                "role_label": "Trưởng đoàn",
+                "sort_order": 1,
+            }],
+            reason="Initialize team.",
+            user=manager,
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        after = CatalogReadService().get_case_workspace(session, case_id=case_id, user=manager)
+        readiness = after["inspection"]["team_edit_readiness"]
+        assert after["inspection"]["team"] is not None
+        assert [(member["role_code"], member["sort_order"]) for member in after["inspection"]["team"]["members"]] == [("LEADER", 1)]
+        assert readiness["available"] is True
+        assert readiness["mode"] == "replace"
+        assert readiness["expected_version"] == created["row_version"]
+        case = session.get(Case, case_id)
+        assert case is not None
+        case.state = CaseState.CLOSED
+        session.commit()
+
+    with Session(engine) as session:
+        terminal = CatalogReadService().get_case_workspace(session, case_id=case_id, user=manager)
+        assert terminal["inspection"]["team_edit_readiness"]["reason_code"] == "terminal_case"
+        with pytest.raises(HTTPException, match="terminal state closed"):
+            workflow.upsert_inspection_team(
+                session,
+                case_id=case_id,
+                expected_version=created["row_version"],
+                members=[],
+                reason="Must not alter a terminal team.",
+                user=manager,
+            )
+
+
+def test_case_workspace_capa_readiness_and_mutation_keep_only_latest_round_mutable(tmp_path):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'capa-latest-parity.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+    manager = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
+    workflow = CaseWorkflowService()
+    with Session(engine) as session:
+        company = Company(legal_name="CAPA parity", short_name="CP")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="CAPA parity site")
+        session.add(site)
+        session.flush()
+        case = Case(site_id=site.id, gxp_type="GMP", state=CaseState.INSPECTION_COMPLETED)
+        session.add(case)
+        session.flush()
+        first = CapaCycle(case_id=case.id, round_no=1, status="rejected", result="rejected")
+        second = CapaCycle(case_id=case.id, round_no=2, status="requested")
+        session.add_all([first, second])
+        session.commit()
+        case_id, first_id, second_id, first_version, second_version = case.id, first.id, second.id, first.row_version, second.row_version
+
+    with Session(engine) as session:
+        workspace = CatalogReadService().get_case_workspace(session, case_id=case_id, user=manager)
+        actions = workspace["remediation"]["actions"]
+        first_actions = [action for action in actions if action["action_key"].endswith(first_id)]
+        second_submit = next(action for action in actions if action["action_key"] == f"submit_capa_cycle:{second_id}")
+        assert all(action["available"] is False and action["reason_code"] == "historical_cycle" for action in first_actions)
+        assert second_submit["available"] is True
+        mutable_cycle_ids = {
+            action["action_key"].split(":", 1)[1]
+            for action in actions
+            if action["available"]
+            and action["action_key"].split(":", 1)[0]
+            in {"update_capa_cycle", "submit_capa_cycle", "assess_capa_cycle"}
+        }
+        assert mutable_cycle_ids == {second_id}
+        for operation in (
+            lambda: workflow.update_capa_cycle(session, capa_cycle_id=first_id, expected_version=first_version, requested_on=None, incoming_reference=None, notes=None, reason=None, user=manager),
+            lambda: workflow.submit_capa_cycle(session, capa_cycle_id=first_id, expected_version=first_version, submitted_on=date(2026, 10, 1), notes=None, reason=None, user=manager),
+            lambda: workflow.assess_capa_cycle(session, capa_cycle_id=first_id, expected_version=first_version, assessed_on=date(2026, 10, 1), assessor_name=None, result="rejected", notes=None, reason=None, user=manager),
+        ):
+            with pytest.raises(HTTPException, match="latest CAPA cycle"):
+                operation()
+        submitted = workflow.submit_capa_cycle(
+            session,
+            capa_cycle_id=second_id,
+            expected_version=second_version,
+            submitted_on=date(2026, 10, 2),
+            notes="Second round submitted.",
+            reason="Submit latest.",
+            user=manager,
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        workspace = CatalogReadService().get_case_workspace(session, case_id=case_id, user=manager)
+        actions = workspace["remediation"]["actions"]
+        assert next(action for action in actions if action["action_key"] == f"assess_capa_cycle:{second_id}")["available"] is True
+        assert all(
+            action["available"] is False
+            for action in actions
+            if action["action_key"].endswith(first_id)
+        )
+        assert submitted["status"] == "submitted"

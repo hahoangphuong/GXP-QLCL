@@ -1885,15 +1885,9 @@ class CatalogReadService:
                 "identity_status": "resolved" if identity_resolved else "unresolved",
             })
         permissions = self._effective_permissions(user)
-        team_reason: str | None = None
-        if "inspection.edit" not in permissions:
-            team_reason = "missing_permission"
-        elif case.state in {CaseState.CLOSED, CaseState.CANCELLED}:
-            team_reason = "terminal_case"
-        elif team is None:
-            team_reason = "team_not_initialized"
-        elif team is not None and not team_round_trip_safe:
-            team_reason = "contains_legacy_person" if any(member.identity_kind == "LEGACY_PERSON" for member in team_members) else "unresolved_member_identity"
+        team_blocked_reason = None if team_round_trip_safe else (
+            "contains_legacy_person" if any(member.identity_kind == "LEGACY_PERSON" for member in team_members) else "unresolved_member_identity"
+        )
         outcome = session.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == case.id))
         period_segments = [] if outcome is None else list(session.scalars(
             select(InspectionPeriodSegment)
@@ -1922,6 +1916,23 @@ class CatalogReadService:
 
         terminal_case = case.state in {CaseState.CLOSED, CaseState.CANCELLED}
         inspection_permission = "inspection.edit"
+        from backend.app.services.workflow import (
+            ALLOWED_CASE_TRANSITIONS,
+            case_transition_eligibility_reason,
+            inspection_period_edit_readiness,
+            inspection_team_edit_readiness,
+        )
+        period_edit_readiness = inspection_period_edit_readiness(outcome=outcome, terminal_case=terminal_case)
+        if inspection_permission not in permissions:
+            period_edit_readiness = {**period_edit_readiness, "available": False, "reason_code": "missing_permission"}
+        team_edit_readiness = inspection_team_edit_readiness(
+            team=team,
+            terminal_case=terminal_case,
+            round_trip_safe=team_round_trip_safe,
+            blocked_reason_code=team_blocked_reason,
+        )
+        if inspection_permission not in permissions:
+            team_edit_readiness = {**team_edit_readiness, "available": False, "reason_code": "missing_permission"}
         final_evaluation_reason = None
         if inspection_permission not in permissions:
             final_evaluation_reason = "missing_permission"
@@ -1973,14 +1984,16 @@ class CatalogReadService:
             })
         transition_actions: list[dict[str, object]] = []
         transition_permission = "case.edit"
-        # Use the service's transition graph rather than a UI-owned copy.
-        from backend.app.services.workflow import ALLOWED_CASE_TRANSITIONS
+        # Use the service-owned transition eligibility predicate, not a UI copy.
         for target in sorted(ALLOWED_CASE_TRANSITIONS.get(case.state, set()), key=lambda value: value.value):
             reason = None if transition_permission in permissions else "missing_permission"
-            if reason is None and target == CaseState.AWAITING_CERTIFICATE_DECISION:
+            if reason is None:
                 latest = capa_cycles[-1] if capa_cycles else None
-                if latest is not None and latest.status != "accepted":
-                    reason = "latest_capa_not_accepted"
+                reason = case_transition_eligibility_reason(
+                    current_state=case.state,
+                    target_state=target,
+                    latest_capa_status=None if latest is None else latest.status,
+                )
             transition_actions.append({
                 "action_key": f"transition:{target.value}",
                 "label": target.value,
@@ -2017,12 +2030,14 @@ class CatalogReadService:
                 ("submit_capa_cycle", "capa.edit", {"requested", "rejected"}),
                 ("assess_capa_cycle", "capa.assess", {"submitted"}),
             ):
-                available = permission in permissions and not terminal_case and cycle.status in allowed
+                latest_cycle = capa_cycles[-1] if capa_cycles else None
+                is_latest = latest_cycle is not None and latest_cycle.id == cycle.id
+                available = permission in permissions and not terminal_case and is_latest and cycle.status in allowed
                 capa_actions.append({
                     "action_key": f"{action_key}:{cycle.id}",
                     "label": action_key,
                     "available": available,
-                    "reason_code": None if available else ("missing_permission" if permission not in permissions else "invalid_cycle_state"),
+                    "reason_code": None if available else ("missing_permission" if permission not in permissions else ("historical_cycle" if not is_latest else "invalid_cycle_state")),
                     "required_permissions": [permission],
                     "expected_version": cycle.row_version,
                 })
@@ -2251,6 +2266,12 @@ class CatalogReadService:
                 "inspected_on": None if outcome is None else outcome.inspected_on,
                 "inspected_to_on": None if outcome is None else outcome.inspected_to_on,
                 "inspection_period_state": None if outcome is None else outcome.inspection_period_state,
+                "inspection_period_edit_readiness": {
+                    "action_key": "edit_inspection_period",
+                    "label": "Sửa các đợt kiểm tra",
+                    "required_permissions": [inspection_permission],
+                    **period_edit_readiness,
+                },
                 "inspection_period_segments": [
                     {"id": item.id, "ordinal": item.ordinal, "started_on": item.started_on, "ended_on": item.ended_on}
                     for item in period_segments
@@ -2290,9 +2311,8 @@ class CatalogReadService:
                 "team_edit_readiness": {
                     "action_key": "edit_inspection_team",
                     "label": "Sửa đoàn kiểm tra",
-                    "available": team_reason is None,
-                    "reason_code": team_reason,
                     "required_permissions": ["inspection.edit"],
+                    **team_edit_readiness,
                 },
             },
             "remediation": {

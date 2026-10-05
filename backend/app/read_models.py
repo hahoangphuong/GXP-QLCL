@@ -230,6 +230,7 @@ class CaseWorkspaceInspectionRead(BaseModel):
     inspected_to_on: date | None
     inspection_period_state: str | None = None
     inspection_period_segments: list["InspectionPeriodSegmentRead"] = Field(default_factory=list)
+    inspection_period_edit_readiness: "InspectionPeriodEditReadinessRead | None" = None
     executed_on: datetime | None
     bbkt_reference: str | None
     outcome_result: str | None
@@ -274,6 +275,18 @@ class InspectionTeamEditReadinessRead(BaseModel):
     available: bool
     reason_code: str | None = None
     required_permissions: list[str]
+    expected_version: int | None = None
+    mode: Literal["initialize", "replace"] | None = None
+
+
+class InspectionPeriodEditReadinessRead(BaseModel):
+    action_key: Literal["edit_inspection_period"]
+    label: str
+    available: bool
+    reason_code: str | None = None
+    required_permissions: list[str]
+    expected_version: int | None = None
+    mode: Literal["initialize", "replace"] | None = None
 
 
 class LifecycleActionReadinessRead(BaseModel):
@@ -762,7 +775,7 @@ class InspectionOutcomeUpsertRequest(BaseModel):
 
 
 class InspectionPeriodSegmentsUpsertRequest(BaseModel):
-    expected_version: int
+    expected_version: int | None = None
     segments: list["InspectionPeriodSegmentWrite"]
     reason: str | None = None
 

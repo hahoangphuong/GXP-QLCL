@@ -88,23 +88,21 @@ function InspectionPeriodSection({ caseWorkspace, onSave }: { caseWorkspace: Cas
   const [editing, setEditing] = useState(false);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  // Only the explicit canonical KNOWN state authorizes manual period edits.
-  // A missing state is source-owned/unknown rather than a safe editable default.
-  const sourceOwned = caseWorkspace.inspection.inspection_period_state !== "KNOWN";
+  const readiness = caseWorkspace.inspection.inspection_period_edit_readiness;
   useEffect(() => {
     if (!editing) setSegments((caseWorkspace.inspection.inspection_period_segments ?? []).map(({ ordinal, started_on, ended_on }) => ({ ordinal, started_on: normalizeDateInputValue(started_on), ended_on: normalizeDateInputValue(ended_on) })));
   }, [caseWorkspace.inspection.inspection_period_segments, editing]);
   const renumber = (next: InspectionPeriodSegmentsUpsertRequest["segments"]) => next.map((segment, index) => ({ ...segment, ordinal: index + 1 }));
   async function save() {
-    if (pending || caseWorkspace.inspection.outcome_row_version === null) return;
+    if (pending || !readiness?.available) return;
     setPending(true); setErrorMessage(null);
-    try { await onSave({ expected_version: caseWorkspace.inspection.outcome_row_version, segments: renumber(segments) }); setEditing(false); }
+    try { await onSave({ expected_version: readiness.expected_version, segments: renumber(segments) }); setEditing(false); }
     catch (error) { setErrorMessage(getSectionErrorMessage(error instanceof Error ? error : new Error("Không lưu được các đợt kiểm tra."), "các đợt kiểm tra")); }
     finally { setPending(false); }
   }
   return <section className="workspace-section inspection-period-section">
-    <div className="workspace-section-heading"><h4>Các đợt kiểm tra canonical</h4><button disabled={sourceOwned || pending || caseWorkspace.inspection.outcome_row_version === null} onClick={() => setEditing(true)} type="button">Sửa các đợt kiểm tra</button></div>
-    {sourceOwned ? <p className="workspace-note">Dữ liệu nguồn có trạng thái {caseWorkspace.inspection.inspection_period_state}; không thể thay bằng period runtime thông thường.</p> : null}
+    <div className="workspace-section-heading"><h4>Các đợt kiểm tra canonical</h4><button disabled={!readiness?.available || pending} onClick={() => setEditing(true)} type="button">{readiness?.label ?? "Sửa các đợt kiểm tra"}</button></div>
+    {!readiness?.available && readiness?.reason_code ? <p className="workspace-note">Không thể chỉnh sửa: {readiness.reason_code}.</p> : null}
     {!editing ? <DetailValue multiline label="Các lần kiểm tra" value={segments.length ? segments.map((segment) => `Lần ${segment.ordinal}: ${formatCompactDate(segment.started_on)} - ${formatCompactDate(segment.ended_on)}`).join("\n") : null} /> : <div className="inspection-period-editor">
       {segments.map((segment, index) => <div className="inspection-team-edit-row" key={segment.ordinal}>
         <span>Lần {index + 1}</span><input aria-label={`Từ ngày lần ${index + 1}`} disabled={pending} onChange={(event) => setSegments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, started_on: event.target.value } : item))} type="date" value={segment.started_on} />
@@ -264,6 +262,8 @@ function InspectionTeamSection({
     available: false,
     reason_code: "structured_read_unavailable",
     required_permissions: [],
+    expected_version: null,
+    mode: null,
   };
   const [editing, setEditing] = useState(false);
   const [options, setOptions] = useState<InspectionTeamIdentityOption[]>([]);
@@ -331,12 +331,12 @@ function InspectionTeamSection({
   }
 
   async function save() {
-    if (pending || !team || members.length === 0 || members.some((member) => !identityValue(member))) return;
+    if (pending || !readiness.available || members.length === 0 || members.some((member) => !identityValue(member))) return;
     setPending(true);
     setErrorMessage(null);
     try {
       await onSave({
-        expected_version: team.row_version,
+        expected_version: readiness.expected_version,
         members: members.map((member, index) => ({
           ...member,
           sort_order: index + 1,
@@ -348,7 +348,7 @@ function InspectionTeamSection({
       const nextError = error instanceof Error ? error : new Error("Không lưu được đoàn kiểm tra.");
       if (getErrorStatus(nextError) === 409) {
         setEditing(false);
-        setMembers((team.members ?? []).map((member) => ({
+        setMembers((team?.members ?? []).map((member) => ({
           inspector_profile_id: member.inspector_profile_id,
           person_id: member.person_id,
           identity_kind: member.identity_kind === "ORGANIZATION_REPRESENTATIVE" ? "ORGANIZATION_REPRESENTATIVE" : member.inspector_profile_id ? "INSPECTOR_PROFILE" : null,

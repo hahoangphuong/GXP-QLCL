@@ -1116,7 +1116,18 @@ export function SearchPage({
   async function handleCaseTransition(payload: import("../types").CaseTransitionRequest) {
     if (!selectedHistory || selectedHistory.source_type !== "case") throw new Error("Chưa chọn hồ sơ để chuyển trạng thái.");
     const caseId = selectedHistory.id;
-    await transitionCase(caseId, payload, auth, useStubAuth, bearerToken);
+    try {
+      await transitionCase(caseId, payload, auth, useStubAuth, bearerToken);
+    } catch (error) {
+      const status = (error as Error & { status?: number }).status;
+      if (status === 409) {
+        await Promise.all([
+          refreshSelectedCaseWorkspace(caseId).catch(() => undefined),
+          refreshSelectedFacilityWorkspace(caseId).catch(() => undefined),
+        ]);
+      }
+      throw error;
+    }
     await refreshSelectedCaseWorkspace(caseId);
     await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
   }

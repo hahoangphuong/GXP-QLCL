@@ -180,6 +180,50 @@ def test_period_segments_reject_invalid_dates_and_source_owned_states() -> None:
             )
 
 
+def test_fresh_runtime_period_initializes_but_existing_null_legacy_period_fails_closed() -> None:
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    with Session(engine) as session:
+        fresh_case_id = _case(session)
+        result = service.upsert_inspection_period_segments(
+            session, case_id=fresh_case_id, expected_version=None, user=_user(), reason=None,
+            segments=[{"ordinal": 1, "started_on": date(2026, 10, 1), "ended_on": date(2026, 10, 2)}],
+        )
+        assert result["inspection_period_state"] == "KNOWN"
+        assert result["inspected_on"] == date(2026, 10, 1)
+        legacy_case_id = _case(session)
+        legacy = InspectionOutcome(case_id=legacy_case_id, inspection_period_state=None)
+        session.add(legacy)
+        session.flush()
+        with pytest.raises(HTTPException, match="source-owned or unclassified"):
+            service.upsert_inspection_period_segments(
+                session, case_id=legacy_case_id, expected_version=legacy.row_version, user=_user(), reason=None,
+                segments=[{"ordinal": 1, "started_on": date(2026, 10, 1), "ended_on": date(2026, 10, 2)}],
+            )
+
+
+@pytest.mark.parametrize("source_state", ["MISSING", "PENDING_INPUT", "NON_DATE_EXPRESSION", "UNRESOLVED"])
+def test_existing_source_owned_period_states_are_never_replaced_by_runtime_segments(source_state: str) -> None:
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    with Session(engine) as session:
+        case_id = _case(session)
+        outcome = InspectionOutcome(case_id=case_id, inspection_period_state=source_state)
+        session.add(outcome)
+        session.commit()
+        with pytest.raises(HTTPException, match="source-owned"):
+            service.upsert_inspection_period_segments(
+                session,
+                case_id=case_id,
+                expected_version=outcome.row_version,
+                user=_user(),
+                reason=None,
+                segments=[{"ordinal": 1, "started_on": date(2026, 10, 1), "ended_on": date(2026, 10, 2)}],
+            )
+
+
 def test_a3_frontend_mutation_owners_do_not_reintroduce_compatibility_or_readiness_logic() -> None:
     root = Path("frontend/src/features/search")
     application = (root / "CaseApplicationWorkspace.tsx").read_text(encoding="utf-8")
@@ -191,7 +235,8 @@ def test_a3_frontend_mutation_owners_do_not_reintroduce_compatibility_or_readine
     assert "dossier_reference" not in application
     assert 'setEditingField("decision_document_hint")' not in inspection
     assert "inspected_on" not in inspection and "inspected_to_on" not in inspection
-    assert 'inspection_period_state !== "KNOWN"' in inspection
+    assert "inspection_period_edit_readiness" in inspection
+    assert 'inspection_period_state !== "KNOWN"' not in inspection
     assert "cycle.status ===" not in remediation
     assert "approval_actions ?? []" in approval
     assert 'stage === "CT" && !parentId' in approval

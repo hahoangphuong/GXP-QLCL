@@ -275,6 +275,7 @@ export type CaseWorkspaceInspection = {
   inspected_to_on: string | null;
   inspection_period_state: string | null;
   inspection_period_segments: InspectionPeriodSegment[];
+  inspection_period_edit_readiness: InspectionPeriodEditReadiness;
   executed_on: string | null;
   bbkt_reference: string | null;
   outcome_result: string | null;
@@ -313,8 +314,18 @@ export type InspectionPeriodSegment = {
 
 export type InspectionPeriodSegmentWrite = Omit<InspectionPeriodSegment, "id">;
 
+export type InspectionPeriodEditReadiness = {
+  action_key: "edit_inspection_period";
+  label: string;
+  available: boolean;
+  reason_code: string | null;
+  required_permissions: string[];
+  expected_version: number | null;
+  mode: "initialize" | "replace" | null;
+};
+
 export type InspectionPeriodSegmentsUpsertRequest = {
-  expected_version: number;
+  expected_version: number | null;
   segments: InspectionPeriodSegmentWrite[];
   reason?: string | null;
 };
@@ -389,6 +400,8 @@ export type InspectionTeamEditReadiness = {
   available: boolean;
   reason_code: string | null;
   required_permissions: string[];
+  expected_version: number | null;
+  mode: "initialize" | "replace" | null;
 };
 
 export type InspectionTeamIdentityOption = {

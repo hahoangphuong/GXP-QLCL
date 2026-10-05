@@ -100,8 +100,10 @@ export function CaseApprovalWorkspace({
       return <div className="inspection-team-member" key={item.approval_submission_id}>
         <strong>{item.stage} lần {item.round_no}</strong>
         <span>{item.reference ?? "Chưa có tham chiếu"}</span>
-        <span>Trình: {formatCompactDate(item.submitted_on)}</span>
-        <span>Hoàn tất: {formatCompactDate(item.completed_on)}</span>
+        <span>Ngày trình: {formatCompactDate(item.submitted_on)}</span>
+        <span>Giờ trình: {item.submitted_time ?? "Chưa có"}</span>
+        <span>Ngày hoàn tất: {formatCompactDate(item.completed_on)}</span>
+        <span>Giờ hoàn tất: {item.completed_time ?? "Chưa có"}</span>
         {item.stage === "CT" ? <span>PCT: {item.pct_submission_id ?? "Chưa có"}</span> : null}
         {readiness?.available ? <button disabled={!completedOn || pending !== null} onClick={() => void complete(item)} type="button">Hoàn tất {item.stage}</button> : readiness?.reason_code ? <span className="workspace-note">{readiness.reason_code}</span> : null}
       </div>;

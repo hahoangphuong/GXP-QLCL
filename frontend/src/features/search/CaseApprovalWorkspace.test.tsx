@@ -82,4 +82,13 @@ describe("CaseApprovalWorkspace", () => {
       reason: "Đủ điều kiện",
     }));
   });
+
+  it("renders submitted and completed dates and times without inventing a timestamp", () => {
+    render(<CaseApprovalWorkspace caseWorkspace={workspace({ approval_submissions: [{ approval_submission_id: "ct-1", case_id: "case-1", row_version: 1, stage: "CT", round_no: 1, reference: null, submitted_on: "2026-10-01", submitted_time: "09:30", completed_on: "2026-10-03", completed_time: "14:05", pct_submission_id: "pct-1" }] })} onCreate={vi.fn()} onComplete={vi.fn()} />);
+    expect(screen.getByText(/Ngày trình:.*01-10-2026/)).toBeInTheDocument();
+    expect(screen.getByText("Giờ trình: 09:30")).toBeInTheDocument();
+    expect(screen.getByText(/Ngày hoàn tất:.*03-10-2026/)).toBeInTheDocument();
+    expect(screen.getByText("Giờ hoàn tất: 14:05")).toBeInTheDocument();
+    expect(screen.getByText("PCT: pct-1")).toBeInTheDocument();
+  });
 });

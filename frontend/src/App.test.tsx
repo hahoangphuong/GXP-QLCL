@@ -389,6 +389,7 @@ function buildCaseWorkspace(overrides: Record<string, unknown> = {}) {
       inspected_to_on: "2026-08-06",
       inspection_period_state: "KNOWN",
       inspection_period_segments: [],
+      inspection_period_edit_readiness: { action_key: "edit_inspection_period", label: "Sửa các đợt kiểm tra", available: true, reason_code: null, required_permissions: ["inspection.edit"], expected_version: 6, mode: "replace" },
       executed_on: "2026-08-06T09:30:00Z",
       outcome_decision_reference_compatibility: "QĐ-KT-01",
       bbkt_reference: "BBKT-01",
@@ -2265,6 +2266,45 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(await screen.findByText("HS-2026-31")).toBeInTheDocument();
     expect(screen.getByText("31-08-2026")).toBeInTheDocument();
+    expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
+    expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
+  });
+
+  it("refreshes the selected case and facility exactly once after a transition 409 without retrying", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    const transitionWorkspace = buildCaseWorkspace({
+      transition_actions: [{
+        action_key: "transition:certified",
+        label: "Cấp chứng nhận",
+        target_state: "certified",
+        available: true,
+        expected_version: 8,
+        reason_code: null,
+        required_permissions: ["case.edit"],
+      }],
+    });
+    apiMocks.getFacilityWorkspace
+      .mockResolvedValueOnce(buildWorkspace())
+      .mockResolvedValueOnce(buildWorkspace());
+    apiMocks.getCaseWorkspace
+      .mockResolvedValueOnce(transitionWorkspace)
+      .mockResolvedValueOnce(transitionWorkspace);
+    apiMocks.transitionCase.mockRejectedValue(buildApiError("Stale case transition.", 409));
+
+    const { container } = renderApp(["/search"]);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Kiểm tra" }));
+    expect(await screen.findByRole("button", { name: "Cấp chứng nhận" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Stale case transition.");
+    await waitFor(() => {
+      expect(apiMocks.transitionCase).toHaveBeenCalledTimes(1);
+      expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
+      expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2);
+    });
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
   });

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
 import type {
   ChangeApprovalUpsertRequest,
+  ChangeRequestBusinessEligibilitySuccessorIssueRequest,
   ChangeRequestCertificateSuccessorIssueRequest,
   ChangeRequestDetailCreateRequest,
   ChangeRequestDetailUpdateRequest,
@@ -20,6 +21,7 @@ export type ChangeRequestMutationHandlers = {
   onUpdateDetail: (changeDetailId: string, payload: ChangeRequestDetailUpdateRequest) => Promise<void>;
   onUpsertApproval: (payload: ChangeApprovalUpsertRequest) => Promise<void>;
   onTransition: (payload: ChangeRequestTransitionRequest) => Promise<void>;
+  onIssueBusinessEligibilitySuccessor: (payload: ChangeRequestBusinessEligibilitySuccessorIssueRequest) => Promise<void>;
   onIssueCertificateSuccessor: (payload: ChangeRequestCertificateSuccessorIssueRequest) => Promise<void>;
 };
 
@@ -125,6 +127,9 @@ export function ChangeRequestMutationWorkspace({
   const editApprovalReadiness = action(workspace, "edit_change_approval");
   const certificateAffectedArtifacts = workspace.affected_artifacts.filter(
     (item) => item.artifact_kind === "certificate",
+  );
+  const businessEligibilityAffectedArtifacts = workspace.affected_artifacts.filter(
+    (item) => item.artifact_kind === "business_eligibility_certificate",
   );
   const transitionActions = workspace.action_readiness.filter(
     (item) => item.target_state && item.action_key.startsWith("transition_change_request:"),
@@ -236,6 +241,22 @@ export function ChangeRequestMutationWorkspace({
     }
   }
 
+  async function issueBusinessEligibilitySuccessor(sourceAffectedArtifactId: string) {
+    const readiness = workspace.action_readiness.find(
+      (item) =>
+        item.action_key.startsWith("issue_business_eligibility_successor:")
+        && item.source_affected_artifact_id === sourceAffectedArtifactId,
+    ) ?? null;
+    if (!readiness?.available) {
+      return;
+    }
+    const payload: ChangeRequestBusinessEligibilitySuccessorIssueRequest = {
+      expected_version: expectedVersion(workspace, readiness),
+      source_affected_artifact_id: sourceAffectedArtifactId,
+    };
+    await runMutation(() => handlers.onIssueBusinessEligibilitySuccessor(payload));
+  }
+
   async function issueCertificateSuccessor(sourceAffectedArtifactId: string) {
     const readiness = workspace.action_readiness.find(
       (item) =>
@@ -323,6 +344,30 @@ export function ChangeRequestMutationWorkspace({
                       type="button"
                     >
                       {pending ? "Đang tạo..." : successorReadiness?.label ?? "Tạo GCN điều chỉnh"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+          {businessEligibilityAffectedArtifacts.length > 0 ? (
+            <div className="event-step-stack">
+              <h5>GCN đủ điều kiện bị ảnh hưởng</h5>
+              {businessEligibilityAffectedArtifacts.map((item) => {
+                const successorReadiness = workspace.action_readiness.find(
+                  (readiness) =>
+                    readiness.action_key.startsWith("issue_business_eligibility_successor:")
+                    && readiness.source_affected_artifact_id === item.link_id,
+                ) ?? null;
+                return (
+                  <div className="workspace-section-heading" key={item.link_id}>
+                    <DetailValue label="GCN ĐĐK hiện hành" value={item.artifact_id} />
+                    <button
+                      disabled={!successorReadiness?.available || pending}
+                      onClick={() => void issueBusinessEligibilitySuccessor(item.link_id)}
+                      type="button"
+                    >
+                      {pending ? "Đang tạo..." : successorReadiness?.label ?? "Tạo GCN ĐĐK điều chỉnh"}
                     </button>
                   </div>
                 );

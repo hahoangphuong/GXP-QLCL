@@ -1066,6 +1066,22 @@ export type ChangeRequestCertificateSuccessorMutationResponse = {
   audit_event_id: string;
 };
 
+export type ChangeRequestBusinessEligibilitySuccessorIssueRequest = {
+  expected_version: number;
+  source_affected_artifact_id: string;
+  reason?: string | null;
+};
+
+export type ChangeRequestBusinessEligibilitySuccessorMutationResponse = {
+  change_request_id: string;
+  row_version: number;
+  state: string;
+  source_affected_artifact_id: string;
+  issued_artifact_link_id: string;
+  business_eligibility_certificate_id: string;
+  audit_event_id: string;
+};
+
 export type ChangeRequestMutationResponse = {
   change_request_id: string;
   row_version: number;

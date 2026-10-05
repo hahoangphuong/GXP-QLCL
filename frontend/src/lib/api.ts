@@ -27,6 +27,8 @@ import type {
   ChangeRequestCreateRequest,
   ChangeRequestDetailCreateRequest,
   ChangeRequestDetailUpdateRequest,
+  ChangeRequestBusinessEligibilitySuccessorIssueRequest,
+  ChangeRequestBusinessEligibilitySuccessorMutationResponse,
   ChangeRequestCertificateSuccessorIssueRequest,
   ChangeRequestCertificateSuccessorMutationResponse,
   ChangeRequestMutationResponse,
@@ -621,6 +623,25 @@ export function createChangeRequest(
     useStubAuth,
     bearerToken,
   });
+}
+
+export function issueChangeRequestBusinessEligibilitySuccessor(
+  changeRequestId: string,
+  payload: ChangeRequestBusinessEligibilitySuccessorIssueRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<ChangeRequestBusinessEligibilitySuccessorMutationResponse> {
+  return requestJson<ChangeRequestBusinessEligibilitySuccessorMutationResponse>(
+    `/change-requests/${changeRequestId}/business-eligibility-successors`,
+    {
+      method: "POST",
+      body: payload,
+      auth,
+      useStubAuth,
+      bearerToken,
+    },
+  );
 }
 
 export function issueChangeRequestCertificateSuccessor(

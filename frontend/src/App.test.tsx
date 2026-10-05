@@ -11,6 +11,7 @@ const apiMocks = vi.hoisted(() => ({
   createInspectionCase: vi.fn(),
   createChangeRequest: vi.fn(),
   createChangeRequestDetail: vi.fn(),
+  issueChangeRequestBusinessEligibilitySuccessor: vi.fn(),
   issueChangeRequestCertificateSuccessor: vi.fn(),
   updateChangeRequest: vi.fn(),
   updateChangeRequestDetail: vi.fn(),
@@ -100,6 +101,7 @@ function resetApiMocks() {
   apiMocks.createInspectionCase.mockReset();
   apiMocks.createChangeRequest.mockReset();
   apiMocks.createChangeRequestDetail.mockReset();
+  apiMocks.issueChangeRequestBusinessEligibilitySuccessor.mockReset();
   apiMocks.issueChangeRequestCertificateSuccessor.mockReset();
   apiMocks.updateChangeRequest.mockReset();
   apiMocks.updateChangeRequestDetail.mockReset();
@@ -614,6 +616,12 @@ function buildChangeRequestWorkspace(overrides: Record<string, unknown> = {}) {
         artifact_id: "cert-current-1",
         source_affected_artifact_id: null,
       },
+      {
+        link_id: "affected-dkkd-1",
+        artifact_kind: "business_eligibility_certificate",
+        artifact_id: "dkkd-current-1",
+        source_affected_artifact_id: null,
+      },
     ],
     issued_artifacts: [],
     documents: {
@@ -668,6 +676,7 @@ function buildChangeRequestWorkspace(overrides: Record<string, unknown> = {}) {
       { action_key: "edit_change_detail", label: "Sửa chi tiết", available: true, reason_code: null, required_permissions: ["change_request.edit"], expected_version: 4, target_state: null },
       { action_key: "edit_change_approval", label: "Cập nhật xử lý", available: true, reason_code: null, required_permissions: ["change_request.approve"], expected_version: 4, target_state: null },
       { action_key: "issue_certificate_successor:affected-cert-1", label: "Tạo GCN điều chỉnh", available: true, reason_code: null, required_permissions: ["change_request.edit", "certificate.issue"], expected_version: 4, target_state: null, source_affected_artifact_id: "affected-cert-1" },
+      { action_key: "issue_business_eligibility_successor:affected-dkkd-1", label: "Tạo GCN ĐĐK điều chỉnh", available: true, reason_code: null, required_permissions: ["change_request.edit", "certificate.issue"], expected_version: 4, target_state: null, source_affected_artifact_id: "affected-dkkd-1" },
       { action_key: "transition_change_request:accepted", label: "Chấp nhận", available: true, reason_code: null, required_permissions: ["change_request.approve"], expected_version: 4, target_state: "accepted" },
       { action_key: "transition_change_request:rejected", label: "Từ chối", available: true, reason_code: null, required_permissions: ["change_request.approve"], expected_version: 4, target_state: "rejected" },
     ],
@@ -3652,6 +3661,46 @@ describe("App Slice A.4 search workspace", () => {
     await waitFor(() => expect(apiMocks.getChangeRequestWorkspace).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2));
     expect(apiMocks.issueChangeRequestCertificateSuccessor).toHaveBeenCalledTimes(1);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+  });
+
+  it("issues an adjusted DDKD from backend successor readiness and refreshes authoritative workspaces", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.getChangeRequestWorkspace.mockResolvedValue(buildChangeRequestWorkspace());
+    apiMocks.issueChangeRequestBusinessEligibilitySuccessor.mockResolvedValue({
+      change_request_id: "change-1",
+      row_version: 5,
+      state: "under_review",
+      source_affected_artifact_id: "affected-dkkd-1",
+      issued_artifact_link_id: "issued-dkkd-1",
+      business_eligibility_certificate_id: "dkkd-successor-1",
+      audit_event_id: "audit-dkkd-successor-1",
+    });
+
+    const { container } = renderApp(["/search"]);
+    await waitFor(() => expect(container.querySelector(".history-panel")).not.toBeNull());
+    fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
+    expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Tạo GCN ĐĐK điều chỉnh" }));
+
+    await waitFor(() => expect(apiMocks.issueChangeRequestBusinessEligibilitySuccessor).toHaveBeenCalledTimes(1));
+    expect(apiMocks.issueChangeRequestBusinessEligibilitySuccessor).toHaveBeenCalledWith(
+      "change-1",
+      {
+        expected_version: 4,
+        source_affected_artifact_id: "affected-dkkd-1",
+      },
+      expect.objectContaining({ username: "operator.local" }),
+      true,
+      null,
+    );
+    await waitFor(() => expect(apiMocks.getChangeRequestWorkspace).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2));
+    expect(apiMocks.issueChangeRequestBusinessEligibilitySuccessor).toHaveBeenCalledTimes(1);
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
   });
 

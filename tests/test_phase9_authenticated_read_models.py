@@ -2320,10 +2320,9 @@ def test_facility_workspace_exposes_owner_managed_action_readiness_for_reassessm
     assert action_readiness["create_reassessment_case"].readiness_status == "forbidden"
     assert action_readiness["create_reassessment_case"].required_permissions == ["case.edit"]
     assert action_readiness["create_reassessment_case"].detail == "Tài khoản hiện tại không có quyền tạo hồ sơ tái đánh giá."
-    assert action_readiness["create_change_request"].detail == (
-        "Change request hiện mới có canonical read model; chưa có authenticated write contract để tạo mới."
-    )
-    assert action_readiness["create_change_request"].required_permissions == []
+    assert action_readiness["create_change_request"].readiness_status == "forbidden"
+    assert action_readiness["create_change_request"].detail == "Tài khoản hiện tại không có quyền tạo yêu cầu thay đổi."
+    assert action_readiness["create_change_request"].required_permissions == ["change_request.edit"]
 
 
 def test_facility_workspace_marks_reassessment_available_or_conflict_by_context_contract(tmp_path):

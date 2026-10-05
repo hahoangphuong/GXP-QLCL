@@ -133,7 +133,7 @@ def test_unapplied_period_state_migration_does_not_label_existing_rows_missing()
 
 
 def test_expected_alembic_head_revision_tracks_latest_runtime_migration():
-    assert expected_alembic_head_revision() == "20261003_0018"
+    assert expected_alembic_head_revision() == "20261005_0019"
 
 
 def test_a3_capa_incoming_reference_model_and_migration_are_expand_only_and_reversible():

@@ -299,7 +299,7 @@ def test_a5_stale_child_write_fails_before_mutating_or_auditing(tmp_path):
     with Session(engine) as session:
         before_count = session.query(ChangeRequestDetail).count()
         before_audits = session.query(AuditEvent).count()
-        with pytest.raises(HTTPException, match="version mismatch"):
+        with pytest.raises(HTTPException, match="Stale change_request update"):
             workflow.create_change_request_detail(
                 session,
                 change_request_id=change_id,

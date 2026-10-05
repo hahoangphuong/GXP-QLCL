@@ -102,8 +102,8 @@ def test_provision_cli_assigns_existing_admin_role_idempotently(tmp_path: Path, 
     assert first.user_created is True
     assert first.role_assignment_created is True
     assert first.rbac_role_count == 4
-    assert first.rbac_permission_count == 19
-    assert first.rbac_role_permission_count == 50
+    assert first.rbac_permission_count == 21
+    assert first.rbac_role_permission_count == 55
     assert second.user_created is False
     assert second.role_assignment_created is False
     assert second.external_subject == "google-subject-001"

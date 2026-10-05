@@ -53,10 +53,15 @@ def _row_version_column(engine):
         ).one_or_none()
 
 
-def test_a5_change_request_migration_round_trip_and_existing_rbac_upgrade() -> None:
+def test_a5_change_request_migration_round_trip_preserves_existing_rbac_data() -> None:
     engine = create_engine(DATABASE_URL, future=True)
     head = expected_alembic_head_revision()
     assert head == "20261005_0019"
+    preexisting_edit_permission_id = str(uuid4())
+    role_ids = {
+        name: str(uuid4())
+        for name in ("inspector", "manager", "admin", "custom_reviewer")
+    }
     try:
         assert _revision(engine) == head
         assert _row_version_column(engine) is not None
@@ -65,8 +70,37 @@ def test_a5_change_request_migration_round_trip_and_existing_rbac_upgrade() -> N
         assert _revision(engine) == "20261003_0018"
         assert _row_version_column(engine) is None
 
-        role_ids = {name: str(uuid4()) for name in ("inspector", "manager", "admin")}
+        # Build a controlled pre-0019 RBAC baseline. The initial head migration
+        # may already have seeded A5 permissions, and the corrected downgrade is
+        # deliberately non-destructive, so remove only those disposable-gate
+        # rows before seeding provenance that predates 0019.
         with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "DELETE FROM rbac_role_permission WHERE rbac_permission_id IN "
+                    "(SELECT id FROM rbac_permission WHERE permission_code IN "
+                    "('change_request.edit', 'change_request.approve'))"
+                )
+            )
+            connection.execute(
+                text(
+                    "DELETE FROM rbac_permission WHERE permission_code IN "
+                    "('change_request.edit', 'change_request.approve')"
+                )
+            )
+            connection.execute(
+                text(
+                    "DELETE FROM rbac_role_permission WHERE rbac_role_id IN "
+                    "(SELECT id FROM rbac_role WHERE role_code IN "
+                    "('inspector','manager','admin','custom_reviewer'))"
+                )
+            )
+            connection.execute(
+                text(
+                    "DELETE FROM rbac_role WHERE role_code IN "
+                    "('inspector','manager','admin','custom_reviewer')"
+                )
+            )
             for role_code, role_id in role_ids.items():
                 connection.execute(
                     text(
@@ -75,6 +109,28 @@ def test_a5_change_request_migration_round_trip_and_existing_rbac_upgrade() -> N
                     ),
                     {"id": role_id, "role_code": role_code, "description": f"A5 test {role_code}"},
                 )
+            connection.execute(
+                text(
+                    "INSERT INTO rbac_permission (id, permission_code, description) "
+                    "VALUES (:id, 'change_request.edit', :description)"
+                ),
+                {
+                    "id": preexisting_edit_permission_id,
+                    "description": "Create or update change requests and structured change details.",
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO rbac_role_permission "
+                    "(id, rbac_role_id, rbac_permission_id) "
+                    "VALUES (:id, :role_id, :permission_id)"
+                ),
+                {
+                    "id": str(uuid4()),
+                    "role_id": role_ids["custom_reviewer"],
+                    "permission_id": preexisting_edit_permission_id,
+                },
+            )
 
         _alembic("upgrade", "head")
         assert _revision(engine) == head
@@ -91,6 +147,7 @@ def test_a5_change_request_migration_round_trip_and_existing_rbac_upgrade() -> N
                 )
             }
             assert set(permissions) == {"change_request.edit", "change_request.approve"}
+            assert permissions["change_request.edit"] == preexisting_edit_permission_id
             mappings = set(
                 connection.execute(
                     text(
@@ -103,6 +160,61 @@ def test_a5_change_request_migration_round_trip_and_existing_rbac_upgrade() -> N
                 )
             )
             assert mappings == {
+                ("custom_reviewer", "change_request.edit"),
+                ("inspector", "change_request.edit"),
+                ("manager", "change_request.edit"),
+                ("manager", "change_request.approve"),
+                ("admin", "change_request.edit"),
+                ("admin", "change_request.approve"),
+            }
+
+        # Downgrade must remove only schema owned by 0019. It cannot delete RBAC
+        # rows by code because upgrade deliberately reuses pre-existing rows.
+        _alembic("downgrade", "20261003_0018")
+        assert _revision(engine) == "20261003_0018"
+        assert _row_version_column(engine) is None
+        with engine.connect() as connection:
+            assert connection.execute(
+                text(
+                    "SELECT id FROM rbac_permission "
+                    "WHERE permission_code = 'change_request.edit'"
+                )
+            ).scalar_one() == preexisting_edit_permission_id
+            assert connection.execute(
+                text(
+                    "SELECT count(*) "
+                    "FROM rbac_role_permission rp "
+                    "JOIN rbac_role r ON r.id = rp.rbac_role_id "
+                    "JOIN rbac_permission p ON p.id = rp.rbac_permission_id "
+                    "WHERE r.role_code = 'custom_reviewer' "
+                    "AND p.permission_code = 'change_request.edit'"
+                )
+            ).scalar_one() == 1
+
+        # Re-upgrade must be idempotent over the preserved data.
+        _alembic("upgrade", "head")
+        assert _revision(engine) == head
+        assert _row_version_column(engine) is not None
+        with engine.connect() as connection:
+            assert connection.execute(
+                text(
+                    "SELECT id FROM rbac_permission "
+                    "WHERE permission_code = 'change_request.edit'"
+                )
+            ).scalar_one() == preexisting_edit_permission_id
+            mappings = set(
+                connection.execute(
+                    text(
+                        "SELECT r.role_code, p.permission_code "
+                        "FROM rbac_role_permission rp "
+                        "JOIN rbac_role r ON r.id = rp.rbac_role_id "
+                        "JOIN rbac_permission p ON p.id = rp.rbac_permission_id "
+                        "WHERE p.permission_code IN ('change_request.edit', 'change_request.approve')"
+                    )
+                )
+            )
+            assert mappings == {
+                ("custom_reviewer", "change_request.edit"),
                 ("inspector", "change_request.edit"),
                 ("manager", "change_request.edit"),
                 ("manager", "change_request.approve"),
@@ -114,11 +226,15 @@ def test_a5_change_request_migration_round_trip_and_existing_rbac_upgrade() -> N
             connection.execute(
                 text(
                     "DELETE FROM rbac_role_permission WHERE rbac_role_id IN "
-                    "(SELECT id FROM rbac_role WHERE role_code IN ('inspector','manager','admin'))"
+                    "(SELECT id FROM rbac_role WHERE role_code IN "
+                    "('inspector','manager','admin','custom_reviewer'))"
                 )
             )
             connection.execute(
-                text("DELETE FROM rbac_role WHERE role_code IN ('inspector','manager','admin')")
+                text(
+                    "DELETE FROM rbac_role WHERE role_code IN "
+                    "('inspector','manager','admin','custom_reviewer')"
+                )
             )
     finally:
         engine.dispose()

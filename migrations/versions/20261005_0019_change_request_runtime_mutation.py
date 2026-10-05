@@ -98,23 +98,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    bind = op.get_bind()
-    role, permission, role_permission = _tables(bind)
-    permission_rows = list(
-        bind.execute(
-            sa.select(permission.c.id).where(
-                permission.c.permission_code.in_(tuple(_PERMISSION_DEFINITIONS))
-            )
-        )
-    )
-    permission_ids = [row.id for row in permission_rows]
-    if permission_ids:
-        bind.execute(
-            role_permission.delete().where(
-                role_permission.c.rbac_permission_id.in_(permission_ids)
-            )
-        )
-        bind.execute(
-            permission.delete().where(permission.c.id.in_(permission_ids))
-        )
+    # RBAC rows are a non-destructive data seed. upgrade() deliberately reuses
+    # matching permission rows and mappings that may predate this revision, so
+    # downgrade cannot prove which RBAC data it owns. Deleting by permission
+    # code would therefore destroy pre-existing/custom-role authorization data.
+    # Leave the additive RBAC rows in place; a later re-upgrade is idempotent.
     op.drop_column("change_request", "row_version")

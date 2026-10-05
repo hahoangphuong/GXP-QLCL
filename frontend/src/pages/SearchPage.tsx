@@ -13,6 +13,7 @@ import {
   createInspectionCase,
   createChangeRequest,
   createChangeRequestDetail,
+  issueChangeRequestCertificateSuccessor,
   updateChangeRequest,
   updateChangeRequestDetail,
   upsertChangeApproval,
@@ -66,6 +67,7 @@ import type {
   ChangeRequestWorkspace,
   ChangeApprovalUpsertRequest,
   ChangeRequestCreateRequest,
+  ChangeRequestCertificateSuccessorIssueRequest,
   ChangeRequestDetailCreateRequest,
   ChangeRequestDetailUpdateRequest,
   ChangeRequestTransitionRequest,
@@ -1115,6 +1117,19 @@ export function SearchPage({
     ]);
   }
 
+  async function handleChangeRequestCertificateSuccessorIssue(
+    payload: ChangeRequestCertificateSuccessorIssueRequest,
+  ) {
+    await runSelectedChangeRequestMutation((changeRequestId) =>
+      issueChangeRequestCertificateSuccessor(
+        changeRequestId,
+        payload,
+        auth,
+        useStubAuth,
+        bearerToken,
+      ));
+  }
+
   async function handleChangeRequestHeaderUpdate(payload: ChangeRequestUpdateRequest) {
     await runSelectedChangeRequestMutation((changeRequestId) =>
       updateChangeRequest(changeRequestId, payload, auth, useStubAuth, bearerToken));
@@ -1820,6 +1835,7 @@ export function SearchPage({
               onUpdateDetail: handleChangeRequestDetailUpdate,
               onUpsertApproval: handleChangeApprovalUpsert,
               onTransition: handleChangeRequestTransition,
+              onIssueCertificateSuccessor: handleChangeRequestCertificateSuccessorIssue,
             }}
             eligibilityCertificateDetail={eligibilityCertificateDetail}
             eligibilityCertificateDetailError={eligibilityCertificateDetailError}

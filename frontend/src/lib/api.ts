@@ -27,6 +27,8 @@ import type {
   ChangeRequestCreateRequest,
   ChangeRequestDetailCreateRequest,
   ChangeRequestDetailUpdateRequest,
+  ChangeRequestCertificateSuccessorIssueRequest,
+  ChangeRequestCertificateSuccessorMutationResponse,
   ChangeRequestMutationResponse,
   ChangeRequestTransitionRequest,
   ChangeRequestUpdateRequest,
@@ -619,6 +621,25 @@ export function createChangeRequest(
     useStubAuth,
     bearerToken,
   });
+}
+
+export function issueChangeRequestCertificateSuccessor(
+  changeRequestId: string,
+  payload: ChangeRequestCertificateSuccessorIssueRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<ChangeRequestCertificateSuccessorMutationResponse> {
+  return requestJson<ChangeRequestCertificateSuccessorMutationResponse>(
+    `/change-requests/${changeRequestId}/certificate-successors`,
+    {
+      method: "POST",
+      body: payload,
+      auth,
+      useStubAuth,
+      bearerToken,
+    },
+  );
 }
 
 export function updateChangeRequest(

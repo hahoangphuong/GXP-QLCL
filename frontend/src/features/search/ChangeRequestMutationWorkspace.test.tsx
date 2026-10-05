@@ -24,6 +24,15 @@ function buildWorkspace(overrides: Partial<ChangeRequestWorkspace> = {}): Change
     effective_on: null,
     approval_reference: null,
     documents: { items: [] },
+    affected_artifacts: [
+      {
+        link_id: "affected-cert-1",
+        artifact_kind: "certificate",
+        artifact_id: "cert-current-1",
+        source_affected_artifact_id: null,
+      },
+    ],
+    issued_artifacts: [],
     details: [
       {
         change_detail_id: "detail-1",
@@ -41,6 +50,7 @@ function buildWorkspace(overrides: Partial<ChangeRequestWorkspace> = {}): Change
       { action_key: "add_change_detail", label: "Thêm chi tiết", available: true, reason_code: null, required_permissions: ["change_request.edit"], expected_version: 7, target_state: null },
       { action_key: "edit_change_detail", label: "Sửa chi tiết", available: true, reason_code: null, required_permissions: ["change_request.edit"], expected_version: 7, target_state: null },
       { action_key: "edit_change_approval", label: "Cập nhật xử lý", available: true, reason_code: null, required_permissions: ["change_request.approve"], expected_version: 7, target_state: null },
+      { action_key: "issue_certificate_successor:affected-cert-1", label: "Tạo GCN điều chỉnh", available: true, reason_code: null, required_permissions: ["change_request.edit", "certificate.issue"], expected_version: 7, target_state: null, source_affected_artifact_id: "affected-cert-1" },
       { action_key: "transition_change_request:not-derived", label: "Chấp nhận", available: true, reason_code: null, required_permissions: ["change_request.approve"], expected_version: 7, target_state: "accepted" },
     ],
     ...overrides,
@@ -54,6 +64,7 @@ function buildHandlers(): ChangeRequestMutationHandlers {
     onUpdateDetail: vi.fn().mockResolvedValue(undefined),
     onUpsertApproval: vi.fn().mockResolvedValue(undefined),
     onTransition: vi.fn().mockResolvedValue(undefined),
+    onIssueCertificateSuccessor: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -73,6 +84,35 @@ describe("ChangeRequestMutationWorkspace backend-owned writes", () => {
       scope_label: "Đổi kho mới",
       description: null,
     });
+  });
+
+  it("issues a certificate successor with the backend readiness token and affected-link identity", async () => {
+    const handlers = buildHandlers();
+    render(<ChangeRequestMutationWorkspace activeTab="Đề nghị" handlers={handlers} workspace={buildWorkspace()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Tạo GCN điều chỉnh" }));
+
+    await waitFor(() => expect(handlers.onIssueCertificateSuccessor).toHaveBeenCalledTimes(1));
+    expect(handlers.onIssueCertificateSuccessor).toHaveBeenCalledWith({
+      expected_version: 7,
+      source_affected_artifact_id: "affected-cert-1",
+    });
+  });
+
+  it("keeps certificate successor controls disabled when backend readiness blocks the action", () => {
+    const handlers = buildHandlers();
+    const workspace = buildWorkspace({
+      action_readiness: buildWorkspace().action_readiness.map((item) =>
+        item.action_key === "issue_certificate_successor:affected-cert-1"
+          ? { ...item, available: false, reason_code: "missing_permission" }
+          : item,
+      ),
+    });
+
+    render(<ChangeRequestMutationWorkspace activeTab="Đề nghị" handlers={handlers} workspace={workspace} />);
+
+    expect(screen.getByRole("button", { name: "Tạo GCN điều chỉnh" })).toBeDisabled();
+    expect(handlers.onIssueCertificateSuccessor).not.toHaveBeenCalled();
   });
 
   it("keeps edit controls disabled when backend readiness blocks the action", () => {

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
 import type {
   ChangeApprovalUpsertRequest,
+  ChangeRequestCertificateSuccessorIssueRequest,
   ChangeRequestDetailCreateRequest,
   ChangeRequestDetailUpdateRequest,
   ChangeRequestTransitionRequest,
@@ -19,6 +20,7 @@ export type ChangeRequestMutationHandlers = {
   onUpdateDetail: (changeDetailId: string, payload: ChangeRequestDetailUpdateRequest) => Promise<void>;
   onUpsertApproval: (payload: ChangeApprovalUpsertRequest) => Promise<void>;
   onTransition: (payload: ChangeRequestTransitionRequest) => Promise<void>;
+  onIssueCertificateSuccessor: (payload: ChangeRequestCertificateSuccessorIssueRequest) => Promise<void>;
 };
 
 type HeaderDraft = {
@@ -121,6 +123,9 @@ export function ChangeRequestMutationWorkspace({
   const addDetailReadiness = action(workspace, "add_change_detail");
   const editDetailReadiness = action(workspace, "edit_change_detail");
   const editApprovalReadiness = action(workspace, "edit_change_approval");
+  const certificateAffectedArtifacts = workspace.affected_artifacts.filter(
+    (item) => item.artifact_kind === "certificate",
+  );
   const transitionActions = workspace.action_readiness.filter(
     (item) => item.target_state && item.action_key.startsWith("transition_change_request:"),
   );
@@ -231,6 +236,22 @@ export function ChangeRequestMutationWorkspace({
     }
   }
 
+  async function issueCertificateSuccessor(sourceAffectedArtifactId: string) {
+    const readiness = workspace.action_readiness.find(
+      (item) =>
+        item.action_key.startsWith("issue_certificate_successor:")
+        && item.source_affected_artifact_id === sourceAffectedArtifactId,
+    ) ?? null;
+    if (!readiness?.available) {
+      return;
+    }
+    const payload: ChangeRequestCertificateSuccessorIssueRequest = {
+      expected_version: expectedVersion(workspace, readiness),
+      source_affected_artifact_id: sourceAffectedArtifactId,
+    };
+    await runMutation(() => handlers.onIssueCertificateSuccessor(payload));
+  }
+
   async function saveApproval() {
     const payload: ChangeApprovalUpsertRequest = {
       expected_version: expectedVersion(workspace, editApprovalReadiness),
@@ -283,6 +304,30 @@ export function ChangeRequestMutationWorkspace({
           </div>
           {!editHeaderReadiness?.available && editHeaderReadiness?.reason_code ? (
             <p className="workspace-note">Không thể sửa: {editHeaderReadiness.reason_code}.</p>
+          ) : null}
+          {certificateAffectedArtifacts.length > 0 ? (
+            <div className="event-step-stack">
+              <h5>Chứng nhận GxP bị ảnh hưởng</h5>
+              {certificateAffectedArtifacts.map((item) => {
+                const successorReadiness = workspace.action_readiness.find(
+                  (readiness) =>
+                    readiness.action_key.startsWith("issue_certificate_successor:")
+                    && readiness.source_affected_artifact_id === item.link_id,
+                ) ?? null;
+                return (
+                  <div className="workspace-section-heading" key={item.link_id}>
+                    <DetailValue label="GCN hiện hành" value={item.artifact_id} />
+                    <button
+                      disabled={!successorReadiness?.available || pending}
+                      onClick={() => void issueCertificateSuccessor(item.link_id)}
+                      type="button"
+                    >
+                      {pending ? "Đang tạo..." : successorReadiness?.label ?? "Tạo GCN điều chỉnh"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           ) : null}
           {headerEditing ? (
             <div className="detail-form-grid">

@@ -11,6 +11,7 @@ const apiMocks = vi.hoisted(() => ({
   createInspectionCase: vi.fn(),
   createChangeRequest: vi.fn(),
   createChangeRequestDetail: vi.fn(),
+  issueChangeRequestCertificateSuccessor: vi.fn(),
   updateChangeRequest: vi.fn(),
   updateChangeRequestDetail: vi.fn(),
   upsertChangeApproval: vi.fn(),
@@ -99,6 +100,7 @@ function resetApiMocks() {
   apiMocks.createInspectionCase.mockReset();
   apiMocks.createChangeRequest.mockReset();
   apiMocks.createChangeRequestDetail.mockReset();
+  apiMocks.issueChangeRequestCertificateSuccessor.mockReset();
   apiMocks.updateChangeRequest.mockReset();
   apiMocks.updateChangeRequestDetail.mockReset();
   apiMocks.upsertChangeApproval.mockReset();
@@ -445,6 +447,15 @@ function buildCaseWorkspace(overrides: Record<string, unknown> = {}) {
         },
       ],
     },
+    affected_artifacts: [
+      {
+        link_id: "affected-cert-1",
+        artifact_kind: "certificate",
+        artifact_id: "cert-current-1",
+        source_affected_artifact_id: null,
+      },
+    ],
+    issued_artifacts: [],
     documents: {
       items: [
         {
@@ -656,6 +667,7 @@ function buildChangeRequestWorkspace(overrides: Record<string, unknown> = {}) {
       { action_key: "add_change_detail", label: "Thêm chi tiết", available: true, reason_code: null, required_permissions: ["change_request.edit"], expected_version: 4, target_state: null },
       { action_key: "edit_change_detail", label: "Sửa chi tiết", available: true, reason_code: null, required_permissions: ["change_request.edit"], expected_version: 4, target_state: null },
       { action_key: "edit_change_approval", label: "Cập nhật xử lý", available: true, reason_code: null, required_permissions: ["change_request.approve"], expected_version: 4, target_state: null },
+      { action_key: "issue_certificate_successor:affected-cert-1", label: "Tạo GCN điều chỉnh", available: true, reason_code: null, required_permissions: ["change_request.edit", "certificate.issue"], expected_version: 4, target_state: null, source_affected_artifact_id: "affected-cert-1" },
       { action_key: "transition_change_request:accepted", label: "Chấp nhận", available: true, reason_code: null, required_permissions: ["change_request.approve"], expected_version: 4, target_state: "accepted" },
       { action_key: "transition_change_request:rejected", label: "Từ chối", available: true, reason_code: null, required_permissions: ["change_request.approve"], expected_version: 4, target_state: "rejected" },
     ],
@@ -3601,6 +3613,46 @@ describe("App Slice A.4 search workspace", () => {
     ));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Tạo yêu cầu thay đổi" })).not.toBeInTheDocument());
     expect(await screen.findByText("Điều chỉnh kho bảo quản")).toBeInTheDocument();
+  });
+
+  it("issues an adjusted GxP certificate from backend successor readiness and refreshes authoritative workspaces", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.getChangeRequestWorkspace.mockResolvedValue(buildChangeRequestWorkspace());
+    apiMocks.issueChangeRequestCertificateSuccessor.mockResolvedValue({
+      change_request_id: "change-1",
+      row_version: 5,
+      state: "under_review",
+      source_affected_artifact_id: "affected-cert-1",
+      issued_artifact_link_id: "issued-cert-1",
+      certificate_id: "cert-successor-1",
+      audit_event_id: "audit-successor-1",
+    });
+
+    const { container } = renderApp(["/search"]);
+    await waitFor(() => expect(container.querySelector(".history-panel")).not.toBeNull());
+    fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
+    expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Tạo GCN điều chỉnh" }));
+
+    await waitFor(() => expect(apiMocks.issueChangeRequestCertificateSuccessor).toHaveBeenCalledTimes(1));
+    expect(apiMocks.issueChangeRequestCertificateSuccessor).toHaveBeenCalledWith(
+      "change-1",
+      {
+        expected_version: 4,
+        source_affected_artifact_id: "affected-cert-1",
+      },
+      expect.objectContaining({ username: "operator.local" }),
+      true,
+      null,
+    );
+    await waitFor(() => expect(apiMocks.getChangeRequestWorkspace).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2));
+    expect(apiMocks.issueChangeRequestCertificateSuccessor).toHaveBeenCalledTimes(1);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
   });
 
   it("refreshes change-request and facility workspaces once after a stale 409 without retrying mutation", async () => {

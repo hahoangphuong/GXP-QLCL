@@ -351,6 +351,7 @@ export type LifecycleActionReadiness = {
   required_permissions: string[];
   expected_version: number | null;
   target_state?: string | null;
+  source_affected_artifact_id?: string | null;
 };
 
 export type InspectionApprovalSubmission = {
@@ -972,6 +973,13 @@ export type ChangeRequestWorkspaceDetail = {
   note: string | null;
 };
 
+export type ChangeRequestArtifact = {
+  link_id: string;
+  artifact_kind: "certificate" | "business_eligibility_certificate";
+  artifact_id: string;
+  source_affected_artifact_id: string | null;
+};
+
 export type ChangeRequestWorkspace = {
   id: string;
   row_version: number;
@@ -991,6 +999,8 @@ export type ChangeRequestWorkspace = {
   approval_reference: string | null;
   documents: DocumentChecklist;
   details: ChangeRequestWorkspaceDetail[];
+  affected_artifacts: ChangeRequestArtifact[];
+  issued_artifacts: ChangeRequestArtifact[];
   action_readiness: LifecycleActionReadiness[];
 };
 
@@ -1038,6 +1048,22 @@ export type ChangeRequestTransitionRequest = {
   expected_version: number;
   target_state: string;
   reason?: string | null;
+};
+
+export type ChangeRequestCertificateSuccessorIssueRequest = {
+  expected_version: number;
+  source_affected_artifact_id: string;
+  reason?: string | null;
+};
+
+export type ChangeRequestCertificateSuccessorMutationResponse = {
+  change_request_id: string;
+  row_version: number;
+  state: string;
+  source_affected_artifact_id: string;
+  issued_artifact_link_id: string;
+  certificate_id: string;
+  audit_event_id: string;
 };
 
 export type ChangeRequestMutationResponse = {

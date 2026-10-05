@@ -1119,6 +1119,49 @@ export function SearchPage({
     ]);
   }
 
+  async function handleChangeRequestIssuedBusinessEligibilityLoad(
+    businessEligibilityCertificateId: string,
+  ) {
+    if (!selectedResult) {
+      throw new Error("Chưa chọn cơ sở để tải GCN đủ điều kiện.");
+    }
+    const [detail, basisPayload] = await Promise.all([
+      getBusinessEligibilityDetail(
+        businessEligibilityCertificateId,
+        auth,
+        useStubAuth,
+        bearerToken,
+      ),
+      listSiteGxpCertificates(
+        selectedResult.site_id,
+        auth,
+        useStubAuth,
+        null,
+        null,
+        bearerToken,
+        null,
+      ),
+    ]);
+    return {
+      detail,
+      basisCertificates: basisPayload.items,
+    };
+  }
+
+  async function handleChangeRequestIssuedBusinessEligibilityEdit(
+    businessEligibilityCertificateId: string,
+    payload: BusinessEligibilityLatestVersionUpsertRequest,
+  ) {
+    await runSelectedChangeRequestMutation(() =>
+      upsertBusinessEligibilityLatestVersion(
+        businessEligibilityCertificateId,
+        payload,
+        auth,
+        useStubAuth,
+        bearerToken,
+      ));
+  }
+
   async function handleChangeRequestIssuedCertificateLoad(
     certificateId: string,
   ) {
@@ -1909,6 +1952,8 @@ export function SearchPage({
               onPromoteIssuedCertificate: handleChangeRequestIssuedCertificatePromote,
               onLoadIssuedCertificate: handleChangeRequestIssuedCertificateLoad,
               onEditIssuedCertificate: handleChangeRequestIssuedCertificateEdit,
+              onLoadIssuedBusinessEligibility: handleChangeRequestIssuedBusinessEligibilityLoad,
+              onEditIssuedBusinessEligibility: handleChangeRequestIssuedBusinessEligibilityEdit,
             }}
             eligibilityCertificateDetail={eligibilityCertificateDetail}
             eligibilityCertificateDetailError={eligibilityCertificateDetailError}

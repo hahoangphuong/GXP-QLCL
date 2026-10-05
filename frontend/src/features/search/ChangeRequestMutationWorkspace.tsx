@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 
 import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
 import type {
+  BusinessEligibilityDetail,
+  BusinessEligibilityLatestVersionUpsertRequest,
   CertificateLatestVersionUpsertRequest,
   ChangeApprovalUpsertRequest,
   ChangeRequestBusinessEligibilitySuccessorIssueRequest,
@@ -13,8 +15,10 @@ import type {
   ChangeRequestWorkspace,
   ChangeRequestWorkspaceDetail,
   GxpCertificateDetail,
+  GxpCertificateListItem,
   LifecycleActionReadiness,
 } from "../../types";
+import { BusinessEligibilityMutationDialog } from "./BusinessEligibilityWorkspace";
 import { DetailValue } from "./DetailValue";
 import { GxpCertificateEditDialog } from "./GxpCertificateWorkspace";
 
@@ -30,6 +34,14 @@ export type ChangeRequestMutationHandlers = {
   onPromoteIssuedCertificate: (certificateId: string, expectedVersion: number) => Promise<void>;
   onLoadIssuedCertificate: (certificateId: string) => Promise<GxpCertificateDetail>;
   onEditIssuedCertificate: (certificateId: string, payload: CertificateLatestVersionUpsertRequest) => Promise<void>;
+  onLoadIssuedBusinessEligibility: (businessEligibilityCertificateId: string) => Promise<{
+    detail: BusinessEligibilityDetail;
+    basisCertificates: GxpCertificateListItem[];
+  }>;
+  onEditIssuedBusinessEligibility: (
+    businessEligibilityCertificateId: string,
+    payload: BusinessEligibilityLatestVersionUpsertRequest,
+  ) => Promise<void>;
 };
 
 type HeaderDraft = {
@@ -118,6 +130,11 @@ export function ChangeRequestMutationWorkspace({
     detail: GxpCertificateDetail;
     expectedVersion: number;
   } | null>(null);
+  const [issuedBusinessEligibilityEdit, setIssuedBusinessEligibilityEdit] = useState<{
+    detail: BusinessEligibilityDetail;
+    basisCertificates: GxpCertificateListItem[];
+    expectedVersion: number;
+  } | null>(null);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -129,6 +146,7 @@ export function ChangeRequestMutationWorkspace({
     setApprovalEditing(false);
     setApprovalDraft(approvalDraftFrom(workspace));
     setIssuedGxpEdit(null);
+    setIssuedBusinessEligibilityEdit(null);
     setPending(false);
     setErrorMessage(null);
   }, [workspace.id, workspace.row_version]);
@@ -326,6 +344,53 @@ export function ChangeRequestMutationWorkspace({
     );
   }
 
+  async function openIssuedBusinessEligibilityEdit(issuedArtifactLinkId: string) {
+    const readiness = workspace.action_readiness.find(
+      (item) =>
+        item.action_key.startsWith("edit_issued_business_eligibility:")
+        && item.issued_artifact_link_id === issuedArtifactLinkId
+        && item.target_artifact_kind === "business_eligibility_certificate"
+        && item.target_artifact_id,
+    ) ?? null;
+    if (
+      !readiness?.available
+      || readiness.expected_version === null
+      || !readiness.target_artifact_id
+    ) {
+      return;
+    }
+    setPending(true);
+    setErrorMessage(null);
+    try {
+      const payload = await handlers.onLoadIssuedBusinessEligibility(
+        readiness.target_artifact_id,
+      );
+      setIssuedBusinessEligibilityEdit({
+        detail: payload.detail,
+        basisCertificates: payload.basisCertificates,
+        expectedVersion: readiness.expected_version,
+      });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Không thể tải GCN đủ điều kiện điều chỉnh.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function saveIssuedBusinessEligibilityEdit(
+    payload: BusinessEligibilityLatestVersionUpsertRequest,
+  ) {
+    if (!issuedBusinessEligibilityEdit) {
+      return;
+    }
+    await handlers.onEditIssuedBusinessEligibility(
+      issuedBusinessEligibilityEdit.detail.business_eligibility_certificate_id,
+      payload,
+    );
+  }
+
   async function promoteIssuedArtifact(issuedArtifactLinkId: string) {
     const readiness = workspace.action_readiness.find(
       (item) =>
@@ -488,6 +553,21 @@ export function ChangeRequestMutationWorkspace({
                           {editReadiness?.label ?? "Cập nhật chứng nhận"}
                         </button>;
                       })() : null}
+                      {item.artifact_kind === "business_eligibility_certificate" ? (() => {
+                        const editReadiness = workspace.action_readiness.find(
+                          (readiness) =>
+                            readiness.action_key.startsWith("edit_issued_business_eligibility:")
+                            && readiness.issued_artifact_link_id === item.link_id
+                            && readiness.target_artifact_id === item.artifact_id,
+                        ) ?? null;
+                        return <button
+                          disabled={!editReadiness?.available || pending}
+                          onClick={() => void openIssuedBusinessEligibilityEdit(item.link_id)}
+                          type="button"
+                        >
+                          {editReadiness?.label ?? "Cập nhật GCN đủ điều kiện"}
+                        </button>;
+                      })() : null}
                       <button
                         disabled={!promotionReadiness?.available || pending}
                         onClick={() => void promoteIssuedArtifact(item.link_id)}
@@ -523,6 +603,23 @@ export function ChangeRequestMutationWorkspace({
             onSave={saveIssuedGxpEdit}
             onStaleConflict={(message) => {
               setIssuedGxpEdit(null);
+              setErrorMessage(message);
+            }}
+          />
+        ) : null}
+        {issuedBusinessEligibilityEdit ? (
+          <BusinessEligibilityMutationDialog
+            basisCertificates={issuedBusinessEligibilityEdit.basisCertificates}
+            basisError={null}
+            basisLoading={false}
+            detail={issuedBusinessEligibilityEdit.detail}
+            expectedVersion={issuedBusinessEligibilityEdit.expectedVersion}
+            mode="edit"
+            onClose={() => setIssuedBusinessEligibilityEdit(null)}
+            onEdit={saveIssuedBusinessEligibilityEdit}
+            onIssue={async () => undefined}
+            onStaleConflict={(message) => {
+              setIssuedBusinessEligibilityEdit(null);
               setErrorMessage(message);
             }}
           />

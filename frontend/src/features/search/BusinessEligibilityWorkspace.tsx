@@ -22,7 +22,7 @@ function buildLinkDrafts(detail: BusinessEligibilityDetail | null): LinkDraft[] 
   }));
 }
 
-function BusinessEligibilityMutationDialog({
+export function BusinessEligibilityMutationDialog({
   mode,
   detail,
   expectedVersion,

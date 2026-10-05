@@ -692,6 +692,7 @@ function buildChangeRequestWorkspace(overrides: Record<string, unknown> = {}) {
       { action_key: "issue_business_eligibility_successor:affected-dkkd-1", label: "Tạo GCN ĐĐK điều chỉnh", available: true, reason_code: null, required_permissions: ["change_request.edit", "certificate.issue"], expected_version: 4, target_state: null, source_affected_artifact_id: "affected-dkkd-1" },
       { action_key: "edit_issued_certificate:issued-cert-1", label: "Cập nhật chứng nhận", available: true, reason_code: null, required_permissions: ["certificate.edit"], expected_version: 11, target_state: null, source_affected_artifact_id: "affected-cert-1", issued_artifact_link_id: "issued-cert-1", target_artifact_kind: "certificate", target_artifact_id: "cert-successor-1" },
       { action_key: "promote_issued_certificate:issued-cert-1", label: "Đặt làm chứng nhận hiện hành", available: true, reason_code: null, required_permissions: ["certificate.approve"], expected_version: 11, target_state: null, source_affected_artifact_id: "affected-cert-1", issued_artifact_link_id: "issued-cert-1", target_artifact_kind: "certificate", target_artifact_id: "cert-successor-1" },
+      { action_key: "edit_issued_business_eligibility:issued-dkkd-1", label: "Cập nhật GCN đủ điều kiện", available: true, reason_code: null, required_permissions: ["certificate.edit"], expected_version: 13, target_state: null, source_affected_artifact_id: "affected-dkkd-1", issued_artifact_link_id: "issued-dkkd-1", target_artifact_kind: "business_eligibility_certificate", target_artifact_id: "dkkd-successor-1" },
       { action_key: "promote_issued_business_eligibility:issued-dkkd-1", label: "Đặt làm GCN đủ điều kiện hiện hành", available: true, reason_code: null, required_permissions: ["certificate.approve"], expected_version: 13, target_state: null, source_affected_artifact_id: "affected-dkkd-1", issued_artifact_link_id: "issued-dkkd-1", target_artifact_kind: "business_eligibility_certificate", target_artifact_id: "dkkd-successor-1" },
       { action_key: "transition_change_request:accepted", label: "Chấp nhận", available: true, reason_code: null, required_permissions: ["change_request.approve"], expected_version: 4, target_state: "accepted" },
       { action_key: "transition_change_request:rejected", label: "Từ chối", available: true, reason_code: null, required_permissions: ["change_request.approve"], expected_version: 4, target_state: "rejected" },
@@ -3823,6 +3824,130 @@ describe("App Slice A.4 search workspace", () => {
     await waitFor(() => expect(apiMocks.getChangeRequestWorkspace).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2));
     expect(apiMocks.upsertGxpCertificateLatestVersion).toHaveBeenCalledTimes(1);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+  });
+
+  it("edits an issued DDKD successor with its artifact-owned token and site GxP basis", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.getChangeRequestWorkspace.mockResolvedValue(buildChangeRequestWorkspace());
+    apiMocks.getBusinessEligibilityDetail.mockResolvedValue({
+      business_eligibility_certificate_id: "dkkd-successor-1",
+      row_version: 13,
+      site_id: "site-1",
+      company_id: "company-1",
+      latest_flag: false,
+      certificate_number: "DDKD-DRAFT",
+      issued_on: "2026-10-01",
+      expires_on: "2029-10-01",
+      notes: "Draft notes",
+      decision_reference: null,
+      issuance_sequence_text: "2",
+      issuance_history_text: null,
+      company_name: "Công ty A",
+      company_legal_address: null,
+      facility_name: "Nhà máy A",
+      address: null,
+      professional_responsible_person_name: "Responsible Person",
+      quality_assurance_person_name: null,
+      professional_qualification_text: null,
+      professional_license_number: null,
+      professional_license_issued_on: null,
+      professional_license_issuer: null,
+      responsible_license_issued_on: null,
+      responsible_license_issuer: null,
+      business_activity_text: null,
+      current_status_text: null,
+      handled_by_name: null,
+      application_dossier_reference: null,
+      replaces_certificate_number: null,
+      replaced_by_certificate_number: null,
+      linked_gxp_certificates: [{
+        certificate_id: "basis-cert-1",
+        certificate_type: "GMP",
+        line_code: "A",
+        certificate_number: "GMP-001",
+        issue_date: "2026-09-01",
+        link_role: "source_certificate",
+      }],
+      action_readiness: [],
+    });
+    apiMocks.listSiteGxpCertificates.mockResolvedValue({
+      items: [{
+        certificate_id: "basis-cert-1",
+        site_id: "site-1",
+        case_id: "case-basis",
+        certificate_type: "GMP",
+        line_code: "A",
+        production_line_id: "line-1",
+        production_line_code: "A",
+        production_line_identity_state: "canonical",
+        context_match_kind: "exact_line",
+        latest_flag: true,
+        certificate_number: "GMP-001",
+        issue_date: "2026-09-01",
+        expiry_date: "2029-09-01",
+        applicable_standard: "WHO-GMP",
+        issuing_authority: null,
+        status: "active",
+      }],
+    });
+    apiMocks.upsertBusinessEligibilityLatestVersion.mockResolvedValue(null);
+
+    const { container } = renderApp(["/search"]);
+    await waitFor(() => expect(container.querySelector(".history-panel")).not.toBeNull());
+    fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
+    expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cập nhật GCN đủ điều kiện" }));
+
+    await waitFor(() => expect(apiMocks.getBusinessEligibilityDetail).toHaveBeenCalledWith(
+      "dkkd-successor-1",
+      expect.objectContaining({ username: "operator.local" }),
+      true,
+      null,
+    ));
+    expect(apiMocks.listSiteGxpCertificates).toHaveBeenCalledWith(
+      "site-1",
+      expect.objectContaining({ username: "operator.local" }),
+      true,
+      null,
+      null,
+      null,
+      null,
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Cập nhật GCN đủ điều kiện" });
+    fireEvent.change(
+      within(dialog).getByRole("combobox", { name: /Vai trò căn cứ GMP A · GMP-001/ }),
+      { target: { value: "replacement_certificate" } },
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Lưu thay đổi" }));
+
+    await waitFor(() => expect(apiMocks.upsertBusinessEligibilityLatestVersion).toHaveBeenCalledTimes(1));
+    expect(apiMocks.upsertBusinessEligibilityLatestVersion).toHaveBeenCalledWith(
+      "dkkd-successor-1",
+      {
+        expected_version: 13,
+        certificate_number: "DDKD-DRAFT",
+        issued_on: "2026-10-01",
+        expires_on: "2029-10-01",
+        professional_responsible_person_name: "Responsible Person",
+        notes: "Draft notes",
+        linked_certificates: [{
+          certificate_id: "basis-cert-1",
+          link_role: "replacement_certificate",
+        }],
+        reason: null,
+      },
+      expect.objectContaining({ username: "operator.local" }),
+      true,
+      null,
+    );
+    await waitFor(() => expect(apiMocks.getChangeRequestWorkspace).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2));
+    expect(apiMocks.upsertBusinessEligibilityLatestVersion).toHaveBeenCalledTimes(1);
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
   });
 

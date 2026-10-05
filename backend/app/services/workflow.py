@@ -3233,6 +3233,51 @@ class CaseWorkflowService:
             "audit_event_id": audit_event.id,
         }
 
+    def _create_certificate_candidate(
+        self,
+        session: Session,
+        *,
+        site: Site,
+        case: Case | None,
+        certificate_type: str,
+        issuance_basis: str,
+        production_line_id: str | None,
+        line_code: str | None,
+        certificate_number: str | None,
+        issue_date,
+        expiry_date,
+        scopes: list[dict[str, Any]],
+    ) -> tuple[Certificate, CertificateVersion, list[CertificateScope]]:
+        certificate = Certificate(
+            site_id=site.id,
+            case_id=None if case is None else case.id,
+            certificate_type=certificate_type,
+            issuance_basis=issuance_basis,
+            production_line_id=production_line_id,
+            line_code=line_code,
+            latest_flag=False,
+            latest_legacy_certificate_id=None,
+        )
+        session.add(certificate)
+        session.flush()
+
+        version = CertificateVersion(
+            certificate_id=certificate.id,
+            version_no=1,
+            issue_date=issue_date,
+            expiry_date=expiry_date,
+            certificate_number=certificate_number,
+            is_latest_version=True,
+        )
+        session.add(version)
+        session.flush()
+        created_scopes = self._replace_certificate_scopes(
+            session,
+            certificate_version_id=version.id,
+            scopes=scopes,
+        )
+        return certificate, version, created_scopes
+
     def issue_certificate(
         self,
         session: Session,
@@ -3265,32 +3310,17 @@ class CaseWorkflowService:
             )
         actor = self._get_or_create_app_user(session, user)
 
-        certificate = Certificate(
-            site_id=site.id,
-            case_id=None if case is None else case.id,
+        certificate, version, created_scopes = self._create_certificate_candidate(
+            session,
+            site=site,
+            case=case,
             certificate_type=certificate_type,
             issuance_basis=issuance_basis,
             production_line_id=None if case is None else case.production_line_id,
-            line_code=(None if case is None else (case.scope_code or None)),
-            latest_flag=False,
-            latest_legacy_certificate_id=None,
-        )
-        session.add(certificate)
-        session.flush()
-
-        version = CertificateVersion(
-            certificate_id=certificate.id,
-            version_no=1,
+            line_code=None if case is None else (case.scope_code or None),
+            certificate_number=certificate_number,
             issue_date=issue_date,
             expiry_date=expiry_date,
-            certificate_number=certificate_number,
-            is_latest_version=True,
-        )
-        session.add(version)
-        session.flush()
-        created_scopes = self._replace_certificate_scopes(
-            session,
-            certificate_version_id=version.id,
             scopes=scopes,
         )
         after = {

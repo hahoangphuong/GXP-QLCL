@@ -1,4 +1,4 @@
-"""PostgreSQL round-trip coverage for A5 migration 20261005_0019."""
+"""PostgreSQL round-trip coverage for A5 ChangeRequest migrations."""
 from __future__ import annotations
 
 import os
@@ -53,10 +53,25 @@ def _row_version_column(engine):
         ).one_or_none()
 
 
+def _table_exists(engine, table_name: str) -> bool:
+    with engine.connect() as connection:
+        return bool(
+            connection.execute(
+                text(
+                    "SELECT EXISTS ("
+                    "SELECT 1 FROM information_schema.tables "
+                    "WHERE table_schema = current_schema() AND table_name = :table_name"
+                    ")"
+                ),
+                {"table_name": table_name},
+            ).scalar_one()
+        )
+
+
 def test_a5_change_request_migration_round_trip_preserves_existing_rbac_data() -> None:
     engine = create_engine(DATABASE_URL, future=True)
     head = expected_alembic_head_revision()
-    assert head == "20261005_0019"
+    assert head == "20261005_0020"
     preexisting_edit_permission_id = str(uuid4())
     role_ids = {
         name: str(uuid4())
@@ -65,10 +80,14 @@ def test_a5_change_request_migration_round_trip_preserves_existing_rbac_data() -
     try:
         assert _revision(engine) == head
         assert _row_version_column(engine) is not None
+        assert _table_exists(engine, "change_request_affected_artifact")
+        assert _table_exists(engine, "change_request_issued_artifact")
 
         _alembic("downgrade", "20261003_0018")
         assert _revision(engine) == "20261003_0018"
         assert _row_version_column(engine) is None
+        assert not _table_exists(engine, "change_request_affected_artifact")
+        assert not _table_exists(engine, "change_request_issued_artifact")
 
         # Build a controlled pre-0019 RBAC baseline. The initial head migration
         # may already have seeded A5 permissions, and the corrected downgrade is
@@ -135,6 +154,8 @@ def test_a5_change_request_migration_round_trip_preserves_existing_rbac_data() -
         _alembic("upgrade", "head")
         assert _revision(engine) == head
         assert _row_version_column(engine) is not None
+        assert _table_exists(engine, "change_request_affected_artifact")
+        assert _table_exists(engine, "change_request_issued_artifact")
 
         with engine.connect() as connection:
             permissions = {
@@ -173,6 +194,8 @@ def test_a5_change_request_migration_round_trip_preserves_existing_rbac_data() -
         _alembic("downgrade", "20261003_0018")
         assert _revision(engine) == "20261003_0018"
         assert _row_version_column(engine) is None
+        assert not _table_exists(engine, "change_request_affected_artifact")
+        assert not _table_exists(engine, "change_request_issued_artifact")
         with engine.connect() as connection:
             assert str(
                 connection.execute(
@@ -197,6 +220,8 @@ def test_a5_change_request_migration_round_trip_preserves_existing_rbac_data() -
         _alembic("upgrade", "head")
         assert _revision(engine) == head
         assert _row_version_column(engine) is not None
+        assert _table_exists(engine, "change_request_affected_artifact")
+        assert _table_exists(engine, "change_request_issued_artifact")
         with engine.connect() as connection:
             assert str(
                 connection.execute(

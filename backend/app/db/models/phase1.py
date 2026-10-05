@@ -864,6 +864,80 @@ class ChangeRequestDetail(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     note: Mapped[str | None] = mapped_column(Text)
 
 
+class ChangeRequestAffectedArtifact(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "change_request_affected_artifact"
+
+    change_request_id: Mapped[str] = mapped_column(
+        ForeignKey("change_request.id", name="fk_cr_affected_change"),
+        nullable=False,
+    )
+    certificate_id: Mapped[str | None] = mapped_column(
+        ForeignKey("certificate.id", name="fk_cr_affected_cert"),
+    )
+    business_eligibility_certificate_id: Mapped[str | None] = mapped_column(
+        ForeignKey("business_eligibility_certificate.id", name="fk_cr_affected_dkkd"),
+    )
+    __table_args__ = (
+        CheckConstraint(
+            "(certificate_id IS NOT NULL AND business_eligibility_certificate_id IS NULL) OR "
+            "(certificate_id IS NULL AND business_eligibility_certificate_id IS NOT NULL)",
+            name="one_target",
+        ),
+        UniqueConstraint(
+            "change_request_id",
+            "certificate_id",
+            name="uq_cr_affected_change_cert",
+        ),
+        UniqueConstraint(
+            "change_request_id",
+            "business_eligibility_certificate_id",
+            name="uq_cr_affected_change_dkkd",
+        ),
+        Index("ix_cr_affected_change", "change_request_id"),
+        Index("ix_cr_affected_cert", "certificate_id"),
+        Index("ix_cr_affected_dkkd", "business_eligibility_certificate_id"),
+    )
+
+
+class ChangeRequestIssuedArtifact(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "change_request_issued_artifact"
+
+    change_request_id: Mapped[str] = mapped_column(
+        ForeignKey("change_request.id", name="fk_cr_issued_change"),
+        nullable=False,
+    )
+    source_affected_artifact_id: Mapped[str | None] = mapped_column(
+        ForeignKey("change_request_affected_artifact.id", name="fk_cr_issued_source"),
+    )
+    certificate_id: Mapped[str | None] = mapped_column(
+        ForeignKey("certificate.id", name="fk_cr_issued_cert"),
+    )
+    business_eligibility_certificate_id: Mapped[str | None] = mapped_column(
+        ForeignKey("business_eligibility_certificate.id", name="fk_cr_issued_dkkd"),
+    )
+    __table_args__ = (
+        CheckConstraint(
+            "(certificate_id IS NOT NULL AND business_eligibility_certificate_id IS NULL) OR "
+            "(certificate_id IS NULL AND business_eligibility_certificate_id IS NOT NULL)",
+            name="one_target",
+        ),
+        UniqueConstraint(
+            "change_request_id",
+            "certificate_id",
+            name="uq_cr_issued_change_cert",
+        ),
+        UniqueConstraint(
+            "change_request_id",
+            "business_eligibility_certificate_id",
+            name="uq_cr_issued_change_dkkd",
+        ),
+        Index("ix_cr_issued_change", "change_request_id"),
+        Index("ix_cr_issued_source", "source_affected_artifact_id"),
+        Index("ix_cr_issued_cert", "certificate_id"),
+        Index("ix_cr_issued_dkkd", "business_eligibility_certificate_id"),
+    )
+
+
 class ChangeApproval(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "change_approval"
 

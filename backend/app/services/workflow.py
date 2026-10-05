@@ -30,7 +30,9 @@ from backend.app.db.models.phase1 import (
     CertificateVersion,
     ChangeApproval,
     ChangeRequest,
+    ChangeRequestAffectedArtifact,
     ChangeRequestDetail,
+    ChangeRequestIssuedArtifact,
     Company,
     InspectionEvent,
     InspectionTeam,
@@ -1334,6 +1336,129 @@ class CaseWorkflowService:
             })
         return actions
 
+    def _validate_change_request_artifact_target(
+        self,
+        session: Session,
+        *,
+        site: Site,
+        certificate_id: str | None,
+        business_eligibility_certificate_id: str | None,
+    ) -> tuple[str, str]:
+        if (certificate_id is None) == (business_eligibility_certificate_id is None):
+            raise HTTPException(
+                status_code=409,
+                detail="Change request artifact link must reference exactly one canonical artifact.",
+            )
+        if certificate_id is not None:
+            certificate = session.get(Certificate, certificate_id)
+            if certificate is None or certificate.site_id != site.id:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Change request artifact references a certificate outside the owning site.",
+                )
+            self._certificate_line_identity(session, certificate)
+            return "certificate", certificate.id
+
+        business_eligibility = session.get(
+            BusinessEligibilityCertificate,
+            business_eligibility_certificate_id,
+        )
+        if (
+            business_eligibility is None
+            or business_eligibility.site_id != site.id
+            or business_eligibility.company_id != site.company_id
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Change request artifact references a business eligibility "
+                    "record outside the owning site/company."
+                ),
+            )
+        return "business_eligibility_certificate", business_eligibility.id
+
+    def _resolve_change_request_affected_artifact_snapshot(
+        self,
+        session: Session,
+        *,
+        site: Site,
+    ) -> list[dict[str, str | None]]:
+        affected: list[dict[str, str | None]] = []
+        current_certificates = list(
+            session.scalars(
+                select(Certificate)
+                .where(
+                    Certificate.site_id == site.id,
+                    Certificate.latest_flag.is_(True),
+                )
+                .order_by(Certificate.id.asc())
+            )
+        )
+        for certificate in current_certificates:
+            self._validate_change_request_artifact_target(
+                session,
+                site=site,
+                certificate_id=certificate.id,
+                business_eligibility_certificate_id=None,
+            )
+            affected.append(
+                {
+                    "certificate_id": certificate.id,
+                    "business_eligibility_certificate_id": None,
+                }
+            )
+
+        current_business_eligibility = self._business_eligibility_current_rows(
+            session,
+            site_id=site.id,
+        )
+        if len(current_business_eligibility) > 1:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Change request creation is blocked because the site has "
+                    "multiple current business eligibility records."
+                ),
+            )
+        if current_business_eligibility:
+            business_eligibility = current_business_eligibility[0]
+            self._validate_change_request_artifact_target(
+                session,
+                site=site,
+                certificate_id=None,
+                business_eligibility_certificate_id=business_eligibility.id,
+            )
+            affected.append(
+                {
+                    "certificate_id": None,
+                    "business_eligibility_certificate_id": business_eligibility.id,
+                }
+            )
+        return affected
+
+    @staticmethod
+    def _serialize_change_request_artifact_link(
+        link: ChangeRequestAffectedArtifact | ChangeRequestIssuedArtifact,
+    ) -> dict[str, str | None]:
+        return {
+            "link_id": link.id,
+            "artifact_kind": (
+                "certificate"
+                if link.certificate_id is not None
+                else "business_eligibility_certificate"
+            ),
+            "artifact_id": (
+                link.certificate_id
+                if link.certificate_id is not None
+                else link.business_eligibility_certificate_id
+            ),
+            "source_affected_artifact_id": (
+                link.source_affected_artifact_id
+                if isinstance(link, ChangeRequestIssuedArtifact)
+                else None
+            ),
+        }
+
     def create_change_request(
         self,
         session: Session,
@@ -1349,6 +1474,10 @@ class CaseWorkflowService:
         site = session.get(Site, site_id)
         if site is None:
             raise HTTPException(status_code=404, detail="Site not found.")
+        affected_snapshot = self._resolve_change_request_affected_artifact_snapshot(
+            session,
+            site=site,
+        )
         actor = self._get_or_create_app_user(session, user)
         row = ChangeRequest(
             site_id=site.id,
@@ -1360,6 +1489,16 @@ class CaseWorkflowService:
         )
         session.add(row)
         session.flush()
+        affected_links = [
+            ChangeRequestAffectedArtifact(
+                change_request_id=row.id,
+                certificate_id=item["certificate_id"],
+                business_eligibility_certificate_id=item["business_eligibility_certificate_id"],
+            )
+            for item in affected_snapshot
+        ]
+        session.add_all(affected_links)
+        session.flush()
         after = {
             "site_id": row.site_id,
             "scope_label": row.scope_label,
@@ -1367,6 +1506,10 @@ class CaseWorkflowService:
             "submitted_on": row.submitted_on,
             "requester_name": row.requester_name,
             "state": row.state.value,
+            "affected_artifacts": [
+                self._serialize_change_request_artifact_link(link)
+                for link in affected_links
+            ],
         }
         audit = self._write_audit_event(
             session,

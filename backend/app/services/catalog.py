@@ -37,7 +37,9 @@ from backend.app.db.models.phase1 import (
     CertificateVersion,
     ChangeApproval,
     ChangeRequest,
+    ChangeRequestAffectedArtifact,
     ChangeRequestDetail,
+    ChangeRequestIssuedArtifact,
     Company,
     Document,
     DocumentVariant,
@@ -2422,6 +2424,48 @@ class CatalogReadService:
             )
         )
 
+        affected_links = list(
+            session.scalars(
+                select(ChangeRequestAffectedArtifact)
+                .where(ChangeRequestAffectedArtifact.change_request_id == change_request.id)
+                .order_by(ChangeRequestAffectedArtifact.id.asc())
+            )
+        )
+        issued_links = list(
+            session.scalars(
+                select(ChangeRequestIssuedArtifact)
+                .where(ChangeRequestIssuedArtifact.change_request_id == change_request.id)
+                .order_by(ChangeRequestIssuedArtifact.id.asc())
+            )
+        )
+        workflow_service = CaseWorkflowService()
+        for link in affected_links:
+            workflow_service._validate_change_request_artifact_target(
+                session,
+                site=site,
+                certificate_id=link.certificate_id,
+                business_eligibility_certificate_id=link.business_eligibility_certificate_id,
+            )
+        affected_link_ids = {link.id for link in affected_links}
+        for link in issued_links:
+            workflow_service._validate_change_request_artifact_target(
+                session,
+                site=site,
+                certificate_id=link.certificate_id,
+                business_eligibility_certificate_id=link.business_eligibility_certificate_id,
+            )
+            if (
+                link.source_affected_artifact_id is not None
+                and link.source_affected_artifact_id not in affected_link_ids
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Change request issued artifact references an affected-artifact "
+                        "link outside the owning change request."
+                    ),
+                )
+
         return {
             "id": change_request.id,
             "row_version": change_request.row_version,
@@ -2455,6 +2499,14 @@ class CatalogReadService:
                     "note": row.note,
                 }
                 for row in details
+            ],
+            "affected_artifacts": [
+                workflow_service._serialize_change_request_artifact_link(link)
+                for link in affected_links
+            ],
+            "issued_artifacts": [
+                workflow_service._serialize_change_request_artifact_link(link)
+                for link in issued_links
             ],
             "action_readiness": (
                 []

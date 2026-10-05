@@ -13,10 +13,17 @@ from backend.app.db.base import Base
 from backend.app.db.enums import ChangeRequestState
 from backend.app.db.models.phase1 import (
     AuditEvent,
+    BusinessEligibilityCertificate,
+    BusinessEligibilityVersion,
+    Certificate,
+    CertificateVersion,
     ChangeApproval,
     ChangeRequest,
+    ChangeRequestAffectedArtifact,
     ChangeRequestDetail,
+    ChangeRequestIssuedArtifact,
     Company,
+    ProductionLine,
     Site,
 )
 from backend.app.main import create_app
@@ -212,6 +219,327 @@ def test_a5_create_workspace_and_readiness_are_canonical_and_permission_owned(tm
         transition = actions["transition_change_request:under_review"]
         assert transition["available"] is True
         assert transition["expected_version"] == created["row_version"]
+
+
+def test_a5_create_snapshots_only_current_same_site_regulatory_artifacts(tmp_path):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'a5-artifact-snapshot.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+    workflow = CaseWorkflowService()
+
+    with Session(engine) as session:
+        site_id = _seed_site(session)
+        site = session.get(Site, site_id)
+        assert site is not None
+        other_site = Site(company_id=site.company_id, site_name="Other site")
+        session.add(other_site)
+        session.flush()
+
+        current_certificate = Certificate(
+            site_id=site.id,
+            certificate_type="GMP",
+            issuance_basis="administrative_no_inspection",
+            latest_flag=True,
+        )
+        historical_certificate = Certificate(
+            site_id=site.id,
+            certificate_type="GMP",
+            issuance_basis="administrative_no_inspection",
+            latest_flag=False,
+        )
+        foreign_current_certificate = Certificate(
+            site_id=other_site.id,
+            certificate_type="GMP",
+            issuance_basis="administrative_no_inspection",
+            latest_flag=True,
+        )
+        current_dkkd = BusinessEligibilityCertificate(
+            site_id=site.id,
+            company_id=site.company_id,
+            latest_flag=True,
+        )
+        session.add_all(
+            [
+                current_certificate,
+                historical_certificate,
+                foreign_current_certificate,
+                current_dkkd,
+            ]
+        )
+        session.flush()
+        session.add_all(
+            [
+                CertificateVersion(
+                    certificate_id=current_certificate.id,
+                    version_no=1,
+                    certificate_number="GMP-CURRENT",
+                    is_latest_version=True,
+                ),
+                CertificateVersion(
+                    certificate_id=historical_certificate.id,
+                    version_no=1,
+                    certificate_number="GMP-HISTORY",
+                    is_latest_version=True,
+                ),
+                CertificateVersion(
+                    certificate_id=foreign_current_certificate.id,
+                    version_no=1,
+                    certificate_number="GMP-FOREIGN",
+                    is_latest_version=True,
+                ),
+                BusinessEligibilityVersion(
+                    business_eligibility_certificate_id=current_dkkd.id,
+                    version_no=1,
+                    certificate_number="DDKD-CURRENT",
+                ),
+            ]
+        )
+        session.commit()
+        current_certificate_id = current_certificate.id
+        historical_certificate_id = historical_certificate.id
+        foreign_certificate_id = foreign_current_certificate.id
+        current_dkkd_id = current_dkkd.id
+
+    with Session(engine) as session:
+        created = workflow.create_change_request(
+            session,
+            site_id=site_id,
+            scope_label="Change ownership snapshot",
+            description=None,
+            submitted_on=date(2026, 10, 5),
+            requester_name="QA",
+            reason="Snapshot current regulated artifacts.",
+            user=_editor(),
+        )
+        session.commit()
+        change_id = created["change_request_id"]
+
+    with Session(engine) as session:
+        affected = list(
+            session.scalars(
+                select(ChangeRequestAffectedArtifact).where(
+                    ChangeRequestAffectedArtifact.change_request_id == change_id
+                )
+            )
+        )
+        issued = list(
+            session.scalars(
+                select(ChangeRequestIssuedArtifact).where(
+                    ChangeRequestIssuedArtifact.change_request_id == change_id
+                )
+            )
+        )
+        assert {
+            (row.certificate_id, row.business_eligibility_certificate_id)
+            for row in affected
+        } == {
+            (current_certificate_id, None),
+            (None, current_dkkd_id),
+        }
+        assert historical_certificate_id not in {
+            row.certificate_id for row in affected
+        }
+        assert foreign_certificate_id not in {
+            row.certificate_id for row in affected
+        }
+        assert issued == []
+
+        workspace = CatalogReadService().get_change_request_workspace(
+            session,
+            change_request_id=change_id,
+            user=_editor(),
+        )
+        assert {
+            (item["artifact_kind"], item["artifact_id"])
+            for item in workspace["affected_artifacts"]
+        } == {
+            ("certificate", current_certificate_id),
+            ("business_eligibility_certificate", current_dkkd_id),
+        }
+        assert workspace["issued_artifacts"] == []
+
+
+def test_a5_create_fails_closed_on_invalid_current_certificate_identity(tmp_path):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'a5-artifact-invalid-identity.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+    workflow = CaseWorkflowService()
+
+    with Session(engine) as session:
+        site_id = _seed_site(session)
+        site = session.get(Site, site_id)
+        assert site is not None
+        other_site = Site(company_id=site.company_id, site_name="Wrong line owner")
+        session.add(other_site)
+        session.flush()
+        foreign_line = ProductionLine(
+            site_id=other_site.id,
+            code="A",
+            effective_from=date(2020, 1, 1),
+        )
+        session.add(foreign_line)
+        session.flush()
+        invalid_current = Certificate(
+            site_id=site.id,
+            certificate_type="GMP",
+            production_line_id=foreign_line.id,
+            line_code="A",
+            issuance_basis="administrative_no_inspection",
+            latest_flag=True,
+        )
+        session.add(invalid_current)
+        session.commit()
+
+    with Session(engine) as session:
+        before_audits = session.query(AuditEvent).count()
+        with pytest.raises(HTTPException, match="invalid canonical ProductionLine"):
+            workflow.create_change_request(
+                session,
+                site_id=site_id,
+                scope_label="Must fail",
+                description=None,
+                submitted_on=None,
+                requester_name=None,
+                reason=None,
+                user=_editor(),
+            )
+        session.rollback()
+
+    with Session(engine) as session:
+        assert session.query(ChangeRequest).count() == 0
+        assert session.query(ChangeRequestAffectedArtifact).count() == 0
+        assert session.query(AuditEvent).count() == before_audits
+
+
+def test_a5_create_fails_closed_on_multiple_current_business_eligibility_rows(tmp_path):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'a5-artifact-multiple-dkkd.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+    workflow = CaseWorkflowService()
+
+    with Session(engine) as session:
+        site_id = _seed_site(session)
+        site = session.get(Site, site_id)
+        assert site is not None
+        session.add_all(
+            [
+                BusinessEligibilityCertificate(
+                    site_id=site.id,
+                    company_id=site.company_id,
+                    latest_flag=True,
+                ),
+                BusinessEligibilityCertificate(
+                    site_id=site.id,
+                    company_id=site.company_id,
+                    latest_flag=True,
+                ),
+            ]
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        with pytest.raises(HTTPException, match="multiple current business eligibility"):
+            workflow.create_change_request(
+                session,
+                site_id=site_id,
+                scope_label="Must fail",
+                description=None,
+                submitted_on=None,
+                requester_name=None,
+                reason=None,
+                user=_editor(),
+            )
+        session.rollback()
+
+    with Session(engine) as session:
+        assert session.query(ChangeRequest).count() == 0
+        assert session.query(ChangeRequestAffectedArtifact).count() == 0
+
+
+def test_a5_workspace_fails_closed_on_cross_site_affected_artifact(tmp_path):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'a5-cross-site-affected.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        site_id = _seed_site(session)
+        site = session.get(Site, site_id)
+        assert site is not None
+        other_site = Site(company_id=site.company_id, site_name="Foreign artifact site")
+        session.add(other_site)
+        session.flush()
+        change = ChangeRequest(site_id=site.id, state=ChangeRequestState.RECEIVED)
+        foreign_certificate = Certificate(
+            site_id=other_site.id,
+            certificate_type="GMP",
+            issuance_basis="administrative_no_inspection",
+            latest_flag=True,
+        )
+        session.add_all([change, foreign_certificate])
+        session.flush()
+        session.add(
+            ChangeRequestAffectedArtifact(
+                change_request_id=change.id,
+                certificate_id=foreign_certificate.id,
+            )
+        )
+        session.commit()
+        change_id = change.id
+
+    with Session(engine) as session:
+        with pytest.raises(HTTPException, match="outside the owning site"):
+            CatalogReadService().get_change_request_workspace(
+                session,
+                change_request_id=change_id,
+                user=_editor(),
+            )
+
+
+def test_a5_workspace_fails_closed_on_cross_change_issued_source(tmp_path):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'a5-cross-change-issued-source.sqlite').as_posix()}", future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        site_id = _seed_site(session)
+        site = session.get(Site, site_id)
+        assert site is not None
+        source_certificate = Certificate(
+            site_id=site.id,
+            certificate_type="GMP",
+            issuance_basis="administrative_no_inspection",
+            latest_flag=True,
+        )
+        issued_certificate = Certificate(
+            site_id=site.id,
+            certificate_type="GMP",
+            issuance_basis="administrative_no_inspection",
+            latest_flag=False,
+        )
+        first_change = ChangeRequest(site_id=site.id, state=ChangeRequestState.RECEIVED)
+        second_change = ChangeRequest(site_id=site.id, state=ChangeRequestState.RECEIVED)
+        session.add_all(
+            [source_certificate, issued_certificate, first_change, second_change]
+        )
+        session.flush()
+        foreign_source_link = ChangeRequestAffectedArtifact(
+            change_request_id=second_change.id,
+            certificate_id=source_certificate.id,
+        )
+        session.add(foreign_source_link)
+        session.flush()
+        session.add(
+            ChangeRequestIssuedArtifact(
+                change_request_id=first_change.id,
+                source_affected_artifact_id=foreign_source_link.id,
+                certificate_id=issued_certificate.id,
+            )
+        )
+        session.commit()
+        first_change_id = first_change.id
+
+    with Session(engine) as session:
+        with pytest.raises(HTTPException, match="outside the owning change request"):
+            CatalogReadService().get_change_request_workspace(
+                session,
+                change_request_id=first_change_id,
+                user=_editor(),
+            )
 
 
 def test_a5_aggregate_version_serializes_header_detail_approval_and_transition(tmp_path):

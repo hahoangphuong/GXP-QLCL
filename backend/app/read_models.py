@@ -488,6 +488,13 @@ class ChangeRequestWorkspaceDetailRead(BaseModel):
     note: str | None
 
 
+class ChangeRequestArtifactRead(BaseModel):
+    link_id: str
+    artifact_kind: Literal["certificate", "business_eligibility_certificate"]
+    artifact_id: str
+    source_affected_artifact_id: str | None = None
+
+
 class ChangeRequestWorkspaceRead(BaseModel):
     id: str
     row_version: int
@@ -507,6 +514,8 @@ class ChangeRequestWorkspaceRead(BaseModel):
     approval_reference: str | None
     documents: DocumentChecklistRead
     details: list[ChangeRequestWorkspaceDetailRead]
+    affected_artifacts: list[ChangeRequestArtifactRead] = Field(default_factory=list)
+    issued_artifacts: list[ChangeRequestArtifactRead] = Field(default_factory=list)
     action_readiness: list["LifecycleActionReadinessRead"] = Field(default_factory=list)
 
 

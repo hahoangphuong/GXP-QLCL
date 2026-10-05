@@ -38,6 +38,7 @@
   "inspection_period_frontend_infers_editability_without_backend_readiness": false,
   "inspection_team_initialization_missing": false,
   "inspection_team_readiness_blocks_supported_create": false,
+  "inspection_team_existing_identity_readiness_mutation_drift": false,
   "capa_non_latest_cycle_runtime_mutable": false,
   "capa_multiple_active_cycles_possible": false,
   "capa_readiness_exposes_historical_cycle_mutation": false,
@@ -55,6 +56,7 @@
   "evidence": {
     "application_and_period": "tests/test_a3_case_lifecycle_completion.py",
     "workflow_readiness_and_mutations": "tests/test_phase10_workflow_mutation.py; tests/test_inspection_runtime_convergence.py",
+    "inspection_team_existing_identity_parity": "tests/test_phase9_authenticated_read_models.py::test_case_workspace_team_existing_identity_readiness_matches_runtime_mutation",
     "frontend_workspace": "frontend/src/App.test.tsx; frontend/src/features/search/CaseInspectionWorkspace.test.tsx; frontend/src/features/search/CaseApprovalWorkspace.test.tsx; frontend/src/features/search/CaseLifecycleActions.test.tsx",
     "a1_production_line": "tests/test_production_line_canonical_state_b6h.py; tests/test_production_line_population_b6h.py"
   },

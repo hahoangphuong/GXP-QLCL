@@ -57,7 +57,7 @@ from backend.app.db.models.phase1 import (
     EvaluationScopeTaxonomyNode,
 )
 from backend.app.db.enums import InspectionEventType
-from backend.app.services.workflow import CaseWorkflowService
+from backend.app.services.workflow import CaseWorkflowService, inspection_team_existing_identity_state
 
 ACTIVE_CASE_STATES = [
     CaseState.DRAFT,
@@ -1835,59 +1835,31 @@ class CatalogReadService:
                 .order_by(InspectionTeamMember.sort_order.asc(), InspectionTeamMember.id.asc())
             )
         )
-        profile_ids = {member.inspector_profile_id for member in team_members if member.inspector_profile_id}
-        profiles_by_id = {
-            profile.id: profile
-            for profile in session.scalars(
-                select(InspectorProfile).where(InspectorProfile.id.in_(profile_ids))
-            )
-        } if team_members else {}
-        person_ids = {member.person_id for member in team_members if member.person_id} | {
-            profile.person_id for profile in profiles_by_id.values()
-        }
-        people_by_id = {
-            person.id: person
-            for person in session.scalars(
-                select(Person).where(Person.id.in_(person_ids))
-            )
-        } if team_members else {}
-        participant_ids = {member.participant_catalog_id for member in team_members if member.participant_catalog_id}
-        participants_by_id = {
-            participant.id: participant
-            for participant in session.scalars(select(InspectionTeamParticipantCatalog).where(InspectionTeamParticipantCatalog.id.in_(participant_ids)))
-        } if participant_ids else {}
+        team_identity_state = (
+            None
+            if team is None
+            else inspection_team_existing_identity_state(session, members=team_members)
+        )
+        team_round_trip_safe = team is None or bool(team_identity_state["round_trip_safe"])
+        team_blocked_reason = (
+            None if team_identity_state is None else team_identity_state["blocked_reason_code"]
+        )
         serialized_team_members: list[dict[str, object]] = []
-        team_round_trip_safe = team is None or bool(team_members)
         for member in team_members:
-            profile = profiles_by_id.get(member.inspector_profile_id) if member.inspector_profile_id else None
-            person = people_by_id.get(member.person_id) if member.person_id else (people_by_id.get(profile.person_id) if profile else None)
-            participant = participants_by_id.get(member.participant_catalog_id) if member.participant_catalog_id else None
-            identity_resolved = (
-                (member.identity_kind == "ORGANIZATION_REPRESENTATIVE" and participant is not None and participant.is_active)
-                or (member.identity_kind in {None, "INSPECTOR_PROFILE"}
-                    and (member.inspector_profile_id is not None) != (member.person_id is not None)
-                    and person is not None
-                    and (member.inspector_profile_id is None or profile is not None))
-            )
-            if not identity_resolved:
-                team_round_trip_safe = False
+            member_state = team_identity_state["member_states"][member.id]
             serialized_team_members.append({
                 "id": member.id,
                 "inspector_profile_id": member.inspector_profile_id,
                 "person_id": member.person_id,
-                "display_name": (member.display_name or (None if person is None else (person.display_name or person.full_name)) or (None if participant is None else participant.display_name)),
+                "display_name": member.display_name or member_state["display_name"],
                 "identity_kind": member.identity_kind,
                 "participant_catalog_id": member.participant_catalog_id,
                 "legacy_source_token": member.legacy_source_token,
                 "role_code": member.role_code,
                 "role_label": member.role_label,
                 "sort_order": member.sort_order,
-                "identity_status": "resolved" if identity_resolved else "unresolved",
+                "identity_status": member_state["identity_status"],
             })
-        permissions = self._effective_permissions(user)
-        team_blocked_reason = None if team_round_trip_safe else (
-            "contains_legacy_person" if any(member.identity_kind == "LEGACY_PERSON" for member in team_members) else "unresolved_member_identity"
-        )
         outcome = session.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == case.id))
         period_segments = [] if outcome is None else list(session.scalars(
             select(InspectionPeriodSegment)

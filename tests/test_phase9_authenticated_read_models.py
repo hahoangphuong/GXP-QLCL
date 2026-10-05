@@ -48,6 +48,7 @@ from backend.app.db.models.phase1 import (
     InspectionOutcome,
     InspectionTeam,
     InspectionTeamMember,
+    InspectionTeamParticipantCatalog,
     InspectorProfile,
     Person,
     ProductionLine,
@@ -4264,6 +4265,186 @@ def test_case_workspace_team_initialization_readiness_matches_real_mutation_and_
                 reason="Must not alter a terminal team.",
                 user=manager,
             )
+
+
+@pytest.mark.parametrize(
+    ("identity_variant", "expected_reason"),
+    [
+        ("unknown_person", "unresolved_member_identity"),
+        ("inactive_profile", "unresolved_member_identity"),
+        ("profile_owned_person", "unresolved_member_identity"),
+        ("inactive_organization_representative", "unresolved_member_identity"),
+        ("legacy_person", "contains_legacy_person"),
+    ],
+)
+def test_case_workspace_team_existing_identity_readiness_matches_runtime_mutation(
+    tmp_path,
+    identity_variant,
+    expected_reason,
+):
+    engine = create_engine(
+        f"sqlite:///{(tmp_path / f'team-existing-identity-{identity_variant}.sqlite').as_posix()}",
+        future=True,
+    )
+    Base.metadata.create_all(engine)
+    manager = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
+    workflow = CaseWorkflowService()
+
+    with Session(engine) as session:
+        company = Company(legal_name="Team identity parity", short_name="TIP")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="Team identity parity site")
+        session.add(site)
+        session.flush()
+        case = Case(site_id=site.id, gxp_type="GMP", state=CaseState.DRAFT)
+        session.add(case)
+        session.flush()
+        team = InspectionTeam(case_id=case.id)
+        session.add(team)
+        session.flush()
+
+        replacement_person = Person(full_name="Replacement canonical inspector")
+        session.add(replacement_person)
+        session.flush()
+        replacement_profile = InspectorProfile(
+            person_id=replacement_person.id,
+            legacy_display_text="Replacement canonical inspector",
+            is_active=True,
+        )
+        session.add(replacement_profile)
+        session.flush()
+
+        if identity_variant == "unknown_person":
+            member = InspectionTeamMember(
+                team_id=team.id,
+                person_id="00000000-0000-0000-0000-0000000000ff",
+                role_code="LEADER",
+                role_label="Trưởng đoàn",
+                sort_order=1,
+            )
+        elif identity_variant == "inactive_profile":
+            person = Person(full_name="Inactive inspector")
+            session.add(person)
+            session.flush()
+            profile = InspectorProfile(
+                person_id=person.id,
+                legacy_display_text="Inactive inspector",
+                is_active=False,
+            )
+            session.add(profile)
+            session.flush()
+            member = InspectionTeamMember(
+                team_id=team.id,
+                inspector_profile_id=profile.id,
+                identity_kind="INSPECTOR_PROFILE",
+                display_name="Inactive inspector",
+                role_code="LEADER",
+                role_label="Trưởng đoàn",
+                sort_order=1,
+            )
+        elif identity_variant == "profile_owned_person":
+            person = Person(full_name="Person now owned by inspector profile")
+            session.add(person)
+            session.flush()
+            member = InspectionTeamMember(
+                team_id=team.id,
+                person_id=person.id,
+                role_code="LEADER",
+                role_label="Trưởng đoàn",
+                sort_order=1,
+            )
+            session.add(
+                InspectorProfile(
+                    person_id=person.id,
+                    legacy_display_text="Person now owned by inspector profile",
+                    is_active=True,
+                )
+            )
+        elif identity_variant == "inactive_organization_representative":
+            participant = InspectionTeamParticipantCatalog(
+                code="ORG-INACTIVE-A3V4",
+                participant_kind="ORGANIZATION_REPRESENTATIVE",
+                display_name="Inactive organization representative",
+                organization_name="Inactive organization",
+                is_active=False,
+            )
+            session.add(participant)
+            session.flush()
+            member = InspectionTeamMember(
+                team_id=team.id,
+                participant_catalog_id=participant.id,
+                identity_kind="ORGANIZATION_REPRESENTATIVE",
+                display_name=participant.display_name,
+                role_code="LEADER",
+                role_label="Trưởng đoàn",
+                sort_order=1,
+            )
+        else:
+            member = InspectionTeamMember(
+                team_id=team.id,
+                identity_kind="LEGACY_PERSON",
+                display_name="Legacy unresolved person",
+                legacy_source_token="legacy-team-member",
+                role_code="LEADER",
+                role_label="Trưởng đoàn",
+                sort_order=1,
+            )
+
+        session.add(member)
+        session.commit()
+        case_id = case.id
+        member_id = member.id
+        replacement_profile_id = replacement_profile.id
+        initial_team_version = team.row_version
+
+    with Session(engine) as session:
+        workspace = CatalogReadService().get_case_workspace(session, case_id=case_id, user=manager)
+        team_workspace = workspace["inspection"]["team"]
+        readiness = workspace["inspection"]["team_edit_readiness"]
+        assert team_workspace["round_trip_safe"] is False
+        assert team_workspace["members"][0]["identity_status"] == "unresolved"
+        assert readiness["available"] is False
+        assert readiness["reason_code"] == expected_reason
+        assert readiness["expected_version"] == initial_team_version
+
+        with pytest.raises(HTTPException) as error:
+            workflow.upsert_inspection_team(
+                session,
+                case_id=case_id,
+                expected_version=readiness["expected_version"],
+                members=[{
+                    "person_id": None,
+                    "inspector_profile_id": replacement_profile_id,
+                    "role_code": "LEADER",
+                    "role_label": "Trưởng đoàn",
+                    "sort_order": 1,
+                }],
+                reason="Normal runtime editing must not repair unresolved imported identity state.",
+                user=manager,
+            )
+        assert error.value.status_code == 409
+        assert "cannot be replaced by normal runtime editing" in str(error.value.detail)
+        session.rollback()
+
+    with Session(engine) as session:
+        unchanged_team = session.scalar(select(InspectionTeam).where(InspectionTeam.case_id == case_id))
+        assert unchanged_team is not None
+        assert unchanged_team.row_version == initial_team_version
+        unchanged_members = list(
+            session.scalars(
+                select(InspectionTeamMember)
+                .where(InspectionTeamMember.team_id == unchanged_team.id)
+                .order_by(InspectionTeamMember.sort_order.asc(), InspectionTeamMember.id.asc())
+            )
+        )
+        assert [item.id for item in unchanged_members] == [member_id]
+        assert session.scalars(
+            select(AuditEvent).where(
+                AuditEvent.entity_type == "inspection_team",
+                AuditEvent.action == "inspection_team.upsert",
+            )
+        ).first() is None
 
 
 def test_case_workspace_capa_readiness_and_mutation_keep_only_latest_round_mutable(tmp_path):

@@ -129,6 +129,125 @@ def inspection_team_edit_readiness(*, team: InspectionTeam | None, terminal_case
     return {"available": True, "reason_code": None, "expected_version": None if team is None else team.row_version, "mode": "initialize" if team is None else "replace"}
 
 
+def inspection_team_existing_identity_state(
+    session: Session,
+    *,
+    members: list[InspectionTeamMember],
+) -> dict[str, Any]:
+    """Resolve persisted team identities for both readiness and runtime replacement."""
+    if not members:
+        return {
+            "round_trip_safe": False,
+            "blocked_reason_code": "unresolved_member_identity",
+            "member_states": {},
+        }
+
+    profile_ids = {member.inspector_profile_id for member in members if member.inspector_profile_id}
+    profiles_by_id = {
+        profile.id: profile
+        for profile in session.scalars(select(InspectorProfile).where(InspectorProfile.id.in_(profile_ids)))
+    } if profile_ids else {}
+
+    direct_person_ids = {member.person_id for member in members if member.person_id}
+    person_ids = direct_person_ids | {profile.person_id for profile in profiles_by_id.values()}
+    people_by_id = {
+        person.id: person
+        for person in session.scalars(select(Person).where(Person.id.in_(person_ids)))
+    } if person_ids else {}
+    inspector_owned_person_ids = set(
+        session.scalars(
+            select(InspectorProfile.person_id).where(InspectorProfile.person_id.in_(direct_person_ids))
+        )
+    ) if direct_person_ids else set()
+
+    participant_ids = {member.participant_catalog_id for member in members if member.participant_catalog_id}
+    participants_by_id = {
+        participant.id: participant
+        for participant in session.scalars(
+            select(InspectionTeamParticipantCatalog).where(
+                InspectionTeamParticipantCatalog.id.in_(participant_ids)
+            )
+        )
+    } if participant_ids else {}
+
+    member_states: dict[str, dict[str, Any]] = {}
+    all_resolved = True
+    contains_legacy_person = any(member.identity_kind == "LEGACY_PERSON" for member in members)
+
+    for member in members:
+        profile = profiles_by_id.get(member.inspector_profile_id) if member.inspector_profile_id else None
+        person = (
+            people_by_id.get(member.person_id)
+            if member.person_id
+            else (people_by_id.get(profile.person_id) if profile is not None else None)
+        )
+        participant = (
+            participants_by_id.get(member.participant_catalog_id)
+            if member.participant_catalog_id
+            else None
+        )
+
+        identity_resolved = False
+        canonical_display_name = None
+
+        if member.identity_kind == "ORGANIZATION_REPRESENTATIVE":
+            identity_resolved = bool(
+                member.participant_catalog_id
+                and member.inspector_profile_id is None
+                and member.person_id is None
+                and participant is not None
+                and participant.is_active
+                and participant.participant_kind == "ORGANIZATION_REPRESENTATIVE"
+            )
+            canonical_display_name = None if participant is None else participant.display_name
+        elif member.identity_kind in {None, "INSPECTOR_PROFILE"}:
+            profile_selected = member.inspector_profile_id is not None
+            person_selected = member.person_id is not None
+            valid_shape = (
+                member.participant_catalog_id is None
+                and profile_selected != person_selected
+                and (
+                    member.identity_kind is None
+                    or (member.identity_kind == "INSPECTOR_PROFILE" and profile_selected)
+                )
+            )
+            if profile_selected:
+                identity_resolved = bool(
+                    valid_shape
+                    and profile is not None
+                    and profile.is_active
+                    and person is not None
+                )
+            else:
+                identity_resolved = bool(
+                    valid_shape
+                    and person is not None
+                    and member.person_id not in inspector_owned_person_ids
+                )
+            canonical_display_name = (
+                None if person is None else (person.display_name or person.full_name)
+            )
+
+        if not identity_resolved:
+            all_resolved = False
+        member_states[member.id] = {
+            "identity_status": "resolved" if identity_resolved else "unresolved",
+            "display_name": canonical_display_name,
+        }
+
+    return {
+        "round_trip_safe": all_resolved,
+        "blocked_reason_code": (
+            None
+            if all_resolved
+            else "contains_legacy_person"
+            if contains_legacy_person
+            else "unresolved_member_identity"
+        ),
+        "member_states": member_states,
+    }
+
+
 class CaseWorkflowService:
     @staticmethod
     def _provided_fields(fields_set: set[str] | None, defaults: set[str]) -> set[str]:
@@ -2253,8 +2372,26 @@ class CaseWorkflowService:
         row = self._get_case(session, case_id)
         self._assert_case_not_terminal(row, operation="inspection team update")
         existing_team = session.scalar(select(InspectionTeam).where(InspectionTeam.case_id == row.id))
-        if existing_team is not None and session.scalar(select(InspectionTeamMember.id).where(InspectionTeamMember.team_id == existing_team.id, InspectionTeamMember.identity_kind == "LEGACY_PERSON")) is not None:
-            raise HTTPException(status_code=409, detail="Inspection team contains_legacy_person and is importer-only/read-only.")
+        existing_members = [] if existing_team is None else list(
+            session.scalars(
+                select(InspectionTeamMember)
+                .where(InspectionTeamMember.team_id == existing_team.id)
+                .order_by(InspectionTeamMember.sort_order.asc(), InspectionTeamMember.id.asc())
+            )
+        )
+        if existing_team is not None:
+            existing_identity_state = inspection_team_existing_identity_state(
+                session,
+                members=existing_members,
+            )
+            if not existing_identity_state["round_trip_safe"]:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Inspection team {existing_identity_state['blocked_reason_code']} "
+                        "and cannot be replaced by normal runtime editing."
+                    ),
+                )
         if display_text is not None:
             raise HTTPException(status_code=422, detail="Inspection team display_text is a legacy snapshot and cannot be edited with members.")
         self._validate_team_members(members)
@@ -2272,7 +2409,6 @@ class CaseWorkflowService:
             if expected_version is None:
                 raise HTTPException(status_code=409, detail="Existing inspection team requires an expected_version.")
             self._assert_expected_version(team, expected_version, label="inspection_team")
-        existing_members = list(session.scalars(select(InspectionTeamMember).where(InspectionTeamMember.team_id == team.id)))
         before = {
             "display_text": team.display_text,
             "members": [

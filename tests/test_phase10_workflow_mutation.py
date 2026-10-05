@@ -3618,10 +3618,10 @@ def test_a4_business_eligibility_issue_readiness_is_permission_owned():
         case_id = seed_case(session)
         case = session.get(Case, case_id)
         assert case is not None
+        issuer = build_authenticated_user("issuer01", "manager", permissions={"certificate.issue"})
         manager = build_authenticated_user("manager01", "manager", permissions=ROLE_PERMISSIONS["manager"])
-        reader = build_authenticated_user("reader01", "reader")
-        allowed = service.get_business_eligibility_issue_readiness(session, site_id=case.site_id, user=manager)
-        blocked = service.get_business_eligibility_issue_readiness(session, site_id=case.site_id, user=reader)
+        allowed = service.get_business_eligibility_issue_readiness(session, site_id=case.site_id, user=issuer)
+        blocked = service.get_business_eligibility_issue_readiness(session, site_id=case.site_id, user=manager)
     assert allowed["available"] is True
     assert allowed["reason_code"] is None
     assert blocked["available"] is False
@@ -3673,3 +3673,66 @@ def test_a4_business_eligibility_rejects_cross_site_gxp_basis_before_link_write(
             )
         session.rollback()
         assert session.scalar(select(func.count()).select_from(BusinessEligibilityCertificateLink)) == 0
+
+
+def test_a4_business_eligibility_promotion_locks_site_before_revalidation():
+    class OrderingService(CaseWorkflowService):
+        def __init__(self):
+            super().__init__()
+            self.site_locked = False
+
+        def _lock_site(self, session, site_id):
+            locked = super()._lock_site(session, site_id)
+            self.site_locked = True
+            return locked
+
+        def _get_business_eligibility_promotion_blocker(self, session, *, certificate, version):
+            assert self.site_locked is True
+            return super()._get_business_eligibility_promotion_blocker(
+                session,
+                certificate=certificate,
+                version=version,
+            )
+
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = OrderingService()
+    approver = build_authenticated_user("manager01", "manager", permissions={"certificate.approve"})
+
+    with Session(engine) as session:
+        case_id = seed_case(session)
+        case = session.get(Case, case_id)
+        assert case is not None
+        site = session.get(Site, case.site_id)
+        assert site is not None
+        candidate = BusinessEligibilityCertificate(
+            site_id=site.id,
+            company_id=site.company_id,
+            latest_flag=False,
+        )
+        session.add(candidate)
+        session.flush()
+        session.add(
+            BusinessEligibilityVersion(
+                business_eligibility_certificate_id=candidate.id,
+                version_no=1,
+                certificate_number="DDKD-LOCKED",
+                issued_on=date(2026, 10, 5),
+            )
+        )
+        session.commit()
+        candidate_id = candidate.id
+        expected_version = candidate.row_version
+
+    with Session(engine) as session:
+        result = service.promote_business_eligibility_current(
+            session,
+            business_eligibility_certificate_id=candidate_id,
+            expected_version=expected_version,
+            reason="Serialize current-owner mutation.",
+            user=approver,
+        )
+        session.commit()
+
+    assert service.site_locked is True
+    assert result["latest_flag"] is True

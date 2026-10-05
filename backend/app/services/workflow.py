@@ -3111,6 +3111,11 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         row = self._get_business_eligibility(session, business_eligibility_certificate_id)
+        # The site owns the single-current invariant. Serialize promotion for one
+        # site, then refresh/revalidate the candidate inside that lock so a
+        # readiness snapshot or optimistic-lock token cannot race another promote.
+        self._lock_site(session, row.site_id)
+        session.refresh(row)
         self._assert_expected_version(row, expected_version, label="business_eligibility_certificate")
         candidate_version = self._load_latest_business_eligibility_version(session, row.id)
         blocker = self._get_business_eligibility_promotion_blocker(

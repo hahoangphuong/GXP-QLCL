@@ -40,6 +40,20 @@ PROVEN_RENDERING_CONTRACTS: dict[str, dict[str, str]] = {
             "docx_bookmark_range owns structural deletion"
         ),
     },
+    "TTx/TT3x/TT3Del": {
+        "owner": "backend.app.document.inspection_ke_hoach_kt_team_projection",
+        "reason": (
+            "canonical InspectionTeamMember sort_order plus InspectorProfile.roster_group "
+            "reconstruct the legacy core TTviên list and its exact TT_ext/CRLF tail semantics"
+        ),
+    },
+    "TT_VKNx/TT_SYTx": {
+        "owner": "backend.app.document.inspection_ke_hoach_kt_team_projection",
+        "reason": (
+            "source-proven roster groups partition the three central-institute named ranges "
+            "from the provincial-health named range without parsing display text"
+        ),
+    },
 }
 
 # These are not missing database columns. They require a renderer/projection
@@ -56,14 +70,6 @@ RENDERING_BLOCKERS: dict[str, dict[str, str]] = {
     "VKNx": {
         "owner": "inspection authority projection",
         "reason": "Get_VKN derives authority prose from vaccine scope/province rules; it is not an inspection-team value",
-    },
-    "TTx/TT3x/TT3Del": {
-        "owner": "InspectionTeam + InspectionTeamMember rendering projection",
-        "reason": "ordered team ownership exists, but the exact legacy display/separator/deletion contract is not explicit",
-    },
-    "TT_VKNx/TT_SYTx": {
-        "owner": "InspectionTeam organization-group rendering projection",
-        "reason": "legacy separates central-institute and provincial-health representatives through roster groups; modern output grouping is not explicit",
     },
 }
 

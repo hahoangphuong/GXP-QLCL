@@ -33,8 +33,8 @@ def test_khkt_business_input_audit_separates_canonical_owners_from_rendering_sem
     assert report["status"] == "BUSINESS_INPUT_OWNERS_PROVEN_RENDERING_BLOCKED"
     assert report["summary"] == {
         "owner_proven": 10,
-        "rendering_contract_proven": 1,
-        "rendering_contract_missing": 5,
+        "rendering_contract_proven": 3,
+        "rendering_contract_missing": 3,
         "schema_migration_required": False,
         "contextual_create_readiness": "BUSINESS_INPUT_CONTRACT_MISSING",
     }
@@ -51,11 +51,17 @@ def test_khkt_business_input_audit_separates_canonical_owners_from_rendering_sem
     scope_contract = rendering_contracts["scope_section_suppression"]
     assert scope_contract["classification"] == "RENDERING_CONTRACT_PROVEN"
     assert "inspection_ke_hoach_kt_scope_suppression" in scope_contract["owner"]
+    assert rendering_contracts["TTx/TT3x/TT3Del"]["classification"] == "RENDERING_CONTRACT_PROVEN"
+    assert rendering_contracts["TT_VKNx/TT_SYTx"]["owner"].endswith(
+        "inspection_ke_hoach_kt_team_projection"
+    )
 
     blockers = report["rendering_blockers"]
     assert blockers["Diadiemx"]["classification"] == "RENDERING_CONTRACT_MISSING"
     assert blockers["VKNx"]["owner"] == "inspection authority projection"
     assert "scope_section_suppression" not in blockers
+    assert "TTx/TT3x/TT3Del" not in blockers
+    assert "TT_VKNx/TT_SYTx" not in blockers
     assert report["invariants"]["runtime_readiness_changed"] is False
 
 

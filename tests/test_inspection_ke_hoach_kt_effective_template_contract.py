@@ -5,6 +5,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
 
+import backend.app.document.inspection_ke_hoach_kt_effective_template_contract as contract_module
 from backend.app.document.inspection_ke_hoach_kt_effective_template_contract import (
     InspectionKeHoachKtEffectiveTemplateContractError,
     build_inspection_ke_hoach_kt_effective_template_contract,
@@ -128,4 +129,56 @@ def test_effective_contract_rejects_unsupported_gxp_type():
     ):
         build_inspection_ke_hoach_kt_effective_template_contract(
             gxp_type="GMPnn", template_bytes=_template("GMP")
+        )
+
+
+
+@pytest.mark.parametrize("gxp_type", ["GMP", "GLP", "GMPbb", "GSP"])
+def test_effective_khkt_input_coverage_has_proven_owner_for_every_active_source(gxp_type: str):
+    contract = build_inspection_ke_hoach_kt_effective_template_contract(
+        gxp_type=gxp_type,
+        template_bytes=_template(gxp_type),
+    )
+
+    assert contract.input_owner_by_source
+    assert "Fulldate" in contract.input_owner_by_source
+    assert "Tencoso" in contract.input_owner_by_source
+    assert "Diachicoso" in contract.input_owner_by_source
+    assert "Daychuyen" in contract.input_owner_by_source
+    assert "TT3Del" in contract.input_owner_by_source
+    assert set(contract.input_owner_by_source).isdisjoint(contract.legacy_noop_scalar_sources)
+
+
+def test_effective_khkt_input_coverage_records_variant_legacy_noops():
+    gmp = build_inspection_ke_hoach_kt_effective_template_contract(
+        gxp_type="GMP",
+        template_bytes=_template("GMP"),
+    )
+    gsp = build_inspection_ke_hoach_kt_effective_template_contract(
+        gxp_type="GSP",
+        template_bytes=_template("GSP"),
+    )
+
+    assert {"Diadiem", "HsDK", "NgaynopHsDK"}.issubset(gmp.legacy_noop_scalar_sources)
+    assert {"QDKT", "NgayQDKT", "GioiHanPvi", "TieuchuanKT", "VKNx"}.issubset(
+        gsp.legacy_noop_scalar_sources
+    )
+    assert "PVTiem" in gmp.input_owner_by_source
+    assert "PVTiem" not in gsp.input_owner_by_source
+
+
+def test_effective_khkt_input_coverage_fails_closed_for_new_unowned_active_source(monkeypatch):
+    monkeypatch.setitem(
+        contract_module._SCALAR_SOURCE_TARGETS,
+        "UnownedFutureSource",
+        ("Fulldate",),
+    )
+
+    with pytest.raises(
+        InspectionKeHoachKtEffectiveTemplateContractError,
+        match="without proven owners: UnownedFutureSource",
+    ):
+        build_inspection_ke_hoach_kt_effective_template_contract(
+            gxp_type="GMP",
+            template_bytes=_template("GMP"),
         )

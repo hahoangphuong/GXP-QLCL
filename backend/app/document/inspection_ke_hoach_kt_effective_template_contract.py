@@ -22,6 +22,8 @@ class InspectionKeHoachKtEffectiveTemplateContract:
     optional_team_targets: tuple[str, ...]
     third_member_delete_target: str
     scope_section_delete_targets: dict[str, tuple[str, ...]]
+    input_owner_by_source: dict[str, str]
+    legacy_noop_scalar_sources: tuple[str, ...]
 
 
 # This is the *effective* i=3 contract after VBA best-effort operations are
@@ -46,6 +48,35 @@ _SCALAR_SOURCE_TARGETS: dict[str, tuple[str, ...]] = {
     "Daychuyen": ("Daychuyen",),
     "GioiHanPvi": ("GioiHanPvi",),
     "TieuchuanKT": ("TieuchuanKT",),
+}
+
+_PROVEN_INPUT_OWNER_BY_SOURCE: dict[str, str] = {
+    "Fulldate": "backend.app.document.inspection_ke_hoach_kt_generation_date",
+    "Tencoso": "Site.site_name",
+    "Diadiem": "Site.province_name",
+    "Diadiemx": "backend.app.document.inspection_ke_hoach_kt_province_projection",
+    "Diachicoso": "Site.site_address",
+    "HsDK": "CaseApplication.dossier_code",
+    "NgaynopHsDK": "CaseApplication.submitted_on",
+    "VKNx": "backend.app.document.inspection_ke_hoach_kt_province_projection",
+    "TT1x": "backend.app.document.inspection_ke_hoach_kt_team_projection",
+    "TT2x": "backend.app.document.inspection_ke_hoach_kt_team_projection",
+    "TT3x": "backend.app.document.inspection_ke_hoach_kt_team_projection",
+    "TT_VKNx": "backend.app.document.inspection_ke_hoach_kt_team_projection",
+    "TT_SYTx": "backend.app.document.inspection_ke_hoach_kt_team_projection",
+    "QDKT": "InspectionPlan.decision_reference",
+    "NgayQDKT": "InspectionPlan.decision_date",
+    "Daychuyen": "CaseEvaluationScope projection: DC_cu",
+    "GioiHanPvi": "CaseEvaluationScope projection: GHanDC",
+    "TieuchuanKT": "Case.applicable_standard",
+    "TT3Del": "backend.app.document.inspection_ke_hoach_kt_team_projection",
+    "PVCepha": "backend.app.document.inspection_ke_hoach_kt_scope_suppression",
+    "PVPeni": "backend.app.document.inspection_ke_hoach_kt_scope_suppression",
+    "PVDuoclieu": "backend.app.document.inspection_ke_hoach_kt_scope_suppression",
+    "PVTiem": "backend.app.document.inspection_ke_hoach_kt_scope_suppression",
+    "PVNhomat": "backend.app.document.inspection_ke_hoach_kt_scope_suppression",
+    "PVNangmem": "backend.app.document.inspection_ke_hoach_kt_scope_suppression",
+    "PVSuibot": "backend.app.document.inspection_ke_hoach_kt_scope_suppression",
 }
 
 _SCOPE_DELETE_SOURCE_TARGETS: dict[str, tuple[str, ...]] = {
@@ -140,6 +171,24 @@ def build_inspection_ke_hoach_kt_effective_template_contract(
         for field, targets in _SCOPE_DELETE_SOURCE_TARGETS.items()
     }
     section_targets = {field: targets for field, targets in section_targets.items() if targets}
+    required_input_sources = {
+        field for field, targets in scalar_targets.items() if targets
+    }
+    required_input_sources.update(section_targets)
+    required_input_sources.add("TT3Del")
+    missing_input_owners = sorted(required_input_sources - set(_PROVEN_INPUT_OWNER_BY_SOURCE))
+    if missing_input_owners:
+        raise InspectionKeHoachKtEffectiveTemplateContractError(
+            "KHKT effective template exposes source inputs without proven owners: "
+            + ", ".join(missing_input_owners)
+        )
+    input_owner_by_source = {
+        field: _PROVEN_INPUT_OWNER_BY_SOURCE[field]
+        for field in sorted(required_input_sources, key=str.casefold)
+    }
+    legacy_noop_scalar_sources = tuple(
+        field for field, targets in scalar_targets.items() if not targets
+    )
     return InspectionKeHoachKtEffectiveTemplateContract(
         gxp_type=gxp_type,
         template_bookmarks=names,
@@ -151,4 +200,6 @@ def build_inspection_ke_hoach_kt_effective_template_contract(
         ),
         third_member_delete_target=index["tt3del"],
         scope_section_delete_targets=section_targets,
+        input_owner_by_source=input_owner_by_source,
+        legacy_noop_scalar_sources=legacy_noop_scalar_sources,
     )

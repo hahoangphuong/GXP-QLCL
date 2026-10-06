@@ -531,6 +531,19 @@ class CatalogReadService:
         )
 
     @staticmethod
+    def _document_version_open_available(version: DocumentVersion | None) -> bool:
+        if version is None or not version.is_current:
+            return False
+        return all(
+            value is not None and value.strip()
+            for value in (
+                version.storage_root,
+                version.storage_relative_path,
+                version.original_filename,
+            )
+        )
+
+    @staticmethod
     def _document_parent_pairs(document: Document) -> list[tuple[str, str]]:
         pairs: list[tuple[str, str]] = []
         if document.case_id is not None:
@@ -655,11 +668,7 @@ class CatalogReadService:
                     "issued_on": None if best_version is None else best_version.issued_on,
                     "available_variant_types": variant_types,
                     "detail_available": best_document is not None,
-                    "open_available": (
-                        best_version is not None
-                        and best_version.storage_root is not None
-                        and best_version.storage_relative_path is not None
-                    ),
+                    "open_available": self._document_version_open_available(best_version),
                 }
             )
 
@@ -686,11 +695,7 @@ class CatalogReadService:
                     "issued_on": None if best_version is None else best_version.issued_on,
                     "available_variant_types": variant_types,
                     "detail_available": True,
-                    "open_available": (
-                        best_version is not None
-                        and best_version.storage_root is not None
-                        and best_version.storage_relative_path is not None
-                    ),
+                    "open_available": self._document_version_open_available(best_version),
                 }
             )
 
@@ -792,7 +797,7 @@ class CatalogReadService:
                     "create_storage_scope": "inspection_folder",
                     "create_output_filename": get_inspection_ke_hoach_kt_output_filename(case.gxp_type),
                 }
-                if item["status"] == "available":
+                if bool(item["open_available"]):
                     effective_create_readiness = "READY_OPEN_HISTORY"
             contextual_items.append(
                 {

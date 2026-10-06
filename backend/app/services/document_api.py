@@ -657,14 +657,12 @@ class DocumentWorkflowService:
 
     @staticmethod
     def _pick_current_document_version(versions: list[DocumentVersion]) -> DocumentVersion | None:
-        if not versions:
-            return None
         current_versions = [row for row in versions if row.is_current]
-        candidates = current_versions or versions
+        if not current_versions:
+            return None
         return max(
-            candidates,
+            current_versions,
             key=lambda row: (
-                row.is_current,
                 row.issued_on or row.created_at,
                 row.version_no,
                 row.id,

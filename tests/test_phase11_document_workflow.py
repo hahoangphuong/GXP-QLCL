@@ -36,6 +36,7 @@ from backend.app.document.contextual_actions import (
 from backend.app.document.seed_runtime import seed_default_template_metadata
 from backend.app.document.template_binary import assign_template_binary_locator
 from backend.app.main import create_app
+from backend.app.services.catalog import CatalogReadService
 from backend.app.services.document_api import DocumentWorkflowService
 from backend.app.storage.filesystem import FilesystemStorageService
 from backend.app.storage.types import StorageConfig
@@ -749,6 +750,82 @@ def test_khkt_contextual_create_is_only_available_while_document_is_missing():
     assert "chỉ hỗ trợ mở và xem lịch sử" in existing_create["disabled_reason"]
 
 
+def test_khkt_contextual_create_retries_until_current_binary_exists():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CatalogReadService()
+    user = build_authenticated_user(
+        "manager01",
+        "manager",
+        permissions={"document.read", "document.write"},
+    )
+
+    with Session(engine) as session:
+        case_id, _ = _seed_case(session)
+        document = Document(
+            family_code="INSPECTION_KE_HOACH_KT",
+            document_type_code="INSPECTION_KE_HOACH_KT",
+            title="Kế hoạch kiểm tra",
+            case_id=case_id,
+        )
+        session.add(document)
+        session.flush()
+
+        def khkt_actions():
+            item = next(
+                row
+                for row in service._build_case_contextual_document_actions(
+                    session,
+                    case_id=case_id,
+                    capa_cycles=[],
+                    user=user,
+                )
+                if row["family_code"] == "INSPECTION_KE_HOACH_KT"
+            )
+            return {action["action_key"]: action for action in item["actions"]}
+
+        shell_actions = khkt_actions()
+        assert shell_actions["create"]["available"] is True
+        assert shell_actions["open"]["available"] is False
+        assert shell_actions["history"]["available"] is True
+
+        variant = DocumentVariant(
+            document_id=document.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="vi",
+            is_active=True,
+        )
+        session.add(variant)
+        session.flush()
+        version = DocumentVersion(
+            document_variant_id=variant.id,
+            version_no=1,
+            storage_binding_id=None,
+            storage_root="inspection",
+            storage_relative_path="2024/3. Kế hoạch kiểm tra GMP.docx",
+            original_filename="3. Kế hoạch kiểm tra GMP.docx",
+            checksum_sha256=None,
+            is_current=False,
+            issued_on=None,
+        )
+        session.add(version)
+        session.flush()
+
+        allocated_only_actions = khkt_actions()
+        assert allocated_only_actions["create"]["available"] is True
+        assert allocated_only_actions["open"]["available"] is False
+        assert allocated_only_actions["history"]["available"] is True
+
+        version.is_current = True
+        session.flush()
+
+        current_actions = khkt_actions()
+        assert current_actions["create"]["available"] is False
+        assert current_actions["create"]["reason_code"] == "ready_open_history"
+        assert current_actions["open"]["available"] is True
+        assert current_actions["history"]["available"] is True
+
+
 def test_get_document_detail_hides_storage_locator_fields_from_ui_projection():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
@@ -1025,7 +1102,16 @@ def test_owner_scoped_binary_locator_fails_closed_for_missing_or_incomplete_curr
             document_type_code="INSPECTION_KE_HOACH_KT",
             case_id=case_id,
         )
-        session.add_all([missing_version_document, incomplete_locator_document])
+        noncurrent_only_document = Document(
+            family_code="INSPECTION_KE_HOACH_KT",
+            document_type_code="INSPECTION_KE_HOACH_KT",
+            case_id=case_id,
+        )
+        session.add_all([
+            missing_version_document,
+            incomplete_locator_document,
+            noncurrent_only_document,
+        ])
         session.flush()
         variant = DocumentVariant(
             document_id=incomplete_locator_document.id,
@@ -1048,10 +1134,32 @@ def test_owner_scoped_binary_locator_fails_closed_for_missing_or_incomplete_curr
                 issued_on=None,
             )
         )
+        noncurrent_variant = DocumentVariant(
+            document_id=noncurrent_only_document.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="vi",
+            is_active=True,
+        )
+        session.add(noncurrent_variant)
+        session.flush()
+        session.add(
+            DocumentVersion(
+                document_variant_id=noncurrent_variant.id,
+                version_no=1,
+                storage_binding_id=None,
+                storage_root="inspection",
+                storage_relative_path="2026/not-current.docx",
+                original_filename="not-current.docx",
+                checksum_sha256=None,
+                is_current=False,
+                issued_on=None,
+            )
+        )
         session.commit()
 
         for document_id, expected_detail in [
             (missing_version_document.id, "Document does not have a current binary version."),
+            (noncurrent_only_document.id, "Document does not have a current binary version."),
             (incomplete_locator_document.id, "Document current version locator is incomplete."),
         ]:
             try:

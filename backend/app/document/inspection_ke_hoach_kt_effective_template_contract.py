@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import BytesIO
 from xml.etree import ElementTree as ET
 from zipfile import ZipFile
@@ -22,8 +22,8 @@ class InspectionKeHoachKtEffectiveTemplateContract:
     optional_team_targets: tuple[str, ...]
     third_member_delete_target: str
     scope_section_delete_targets: dict[str, tuple[str, ...]]
-    input_owner_by_source: dict[str, str]
-    legacy_noop_scalar_sources: tuple[str, ...]
+    input_owner_by_source: dict[str, str] = field(default_factory=dict)
+    legacy_noop_scalar_sources: tuple[str, ...] = ()
 
 
 # This is the *effective* i=3 contract after VBA best-effort operations are

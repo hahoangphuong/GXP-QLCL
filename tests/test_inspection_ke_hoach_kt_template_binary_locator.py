@@ -168,8 +168,8 @@ def test_khkt_mismatched_exact_binding_fails_closed():
         session.close()
 
 
-def test_khkt_contextual_create_remains_business_input_blocked():
+def test_khkt_contextual_create_reports_frontend_handler_blocker():
     spec = get_case_document_context_spec("INSPECTION_KE_HOACH_KT")
 
     assert spec is not None
-    assert spec.create_readiness == "BUSINESS_INPUT_CONTRACT_MISSING"
+    assert spec.create_readiness == "FRONTEND_CREATE_ACTION_MISSING"

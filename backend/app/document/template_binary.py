@@ -28,7 +28,7 @@ from backend.app.document.template_binary_binding import (
 from backend.app.storage.types import StorageServiceProtocol
 
 if TYPE_CHECKING:
-    from backend.app.document.service import AllocatedDocumentGeneration
+    from backend.app.document.service import AllocatedDocumentGeneration, PreparedDocumentGeneration
 
 
 class TemplateBinaryError(RuntimeError):
@@ -133,16 +133,16 @@ def get_template_binary_locator(
     )
 
 
-def build_template_binary_requirement(
+def build_prepared_template_binary_requirement(
     session: Session,
-    allocated: AllocatedDocumentGeneration,
+    prepared: "PreparedDocumentGeneration",
 ) -> TemplateBinaryRequirement:
-    template_definition_id = allocated.prepared.persisted_state.template_definition_id
+    template_definition_id = prepared.persisted_state.template_definition_id
     if template_definition_id is None:
         return TemplateBinaryRequirement(
             template_definition_id=None,
-            family_code=allocated.prepared.generation_plan.template.family_code,
-            template_name=allocated.prepared.generation_plan.template.template_pattern,
+            family_code=prepared.generation_plan.template.family_code,
+            template_name=prepared.generation_plan.template.template_pattern,
             storage_root=None,
             storage_relative_path=None,
             original_filename=None,
@@ -154,7 +154,7 @@ def build_template_binary_requirement(
     template_definition = _load_template_definition(session, template_definition_id)
 
     requested_gxp_type = getattr(
-        getattr(allocated.prepared.generation_plan, "request", None),
+        getattr(prepared.generation_plan, "request", None),
         "gxp_type",
         None,
     )
@@ -176,7 +176,7 @@ def build_template_binary_requirement(
                 detail=str(exc),
             )
 
-        template_binding_id = allocated.prepared.persisted_state.template_binding_id
+        template_binding_id = prepared.persisted_state.template_binding_id
         binding = session.get(TemplateBinding, template_binding_id) if template_binding_id else None
         if binding is None or binding.gxp_type != requested_gxp_type:
             return TemplateBinaryRequirement(
@@ -248,7 +248,7 @@ def build_template_binary_requirement(
             ),
         )
 
-    template_binding_id = allocated.prepared.persisted_state.template_binding_id
+    template_binding_id = prepared.persisted_state.template_binding_id
     if template_binding_id is not None:
         binding_locator = get_template_binary_binding_locator(
             session,
@@ -314,6 +314,13 @@ def build_template_binary_requirement(
         readiness_status="direct_stream_ready",
         detail="TemplateDefinition has an exact template binary locator and can be opened through StorageService.",
     )
+
+
+def build_template_binary_requirement(
+    session: Session,
+    allocated: "AllocatedDocumentGeneration",
+) -> TemplateBinaryRequirement:
+    return build_prepared_template_binary_requirement(session, allocated.prepared)
 
 
 @contextmanager

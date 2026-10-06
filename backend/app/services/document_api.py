@@ -43,7 +43,11 @@ from backend.app.document.service_contract import (
     DocumentTemplateSelectionError,
 )
 from backend.app.document.source_binary_contract import SourceBinaryContractError
-from backend.app.document.template_binary import TemplateBinaryError
+from backend.app.document.template_binary import (
+    TemplateBinaryError,
+    build_prepared_template_binary_requirement,
+    open_template_binary_stream,
+)
 from backend.app.document.template_contract_runtime import (
     TemplateContractRuntimeError,
     build_scalar_replacement_plan_for_template,
@@ -152,73 +156,37 @@ class DocumentWorkflowService:
         storage: StorageServiceProtocol | None,
         prepared,
     ) -> TemplateReadiness:
-        template_definition = self._load_template_definition(session, prepared.persisted_state.template_definition_id)
-        template_name = (
-            prepared.generation_plan.template.template_pattern
-            if template_definition is None
-            else template_definition.template_name
-        )
-        if template_definition is None:
+        requirement = build_prepared_template_binary_requirement(session, prepared)
+        if requirement.readiness_status != "direct_stream_ready":
             return TemplateReadiness(
-                template_definition_id=None,
-                family_code=prepared.generation_plan.template.family_code,
-                template_name=template_name,
-                readiness_status="missing_template_definition",
-                detail="No template_definition row is linked to the prepared generation.",
-                storage_root=None,
-                storage_relative_path=None,
-                original_filename=None,
-                checksum_sha256=None,
-                scalar_replacement_mode=None,
-                template_variant_key=None,
-            )
-        if template_definition.template_storage_root is None or template_definition.template_storage_relative_path is None:
-            return TemplateReadiness(
-                template_definition_id=template_definition.id,
-                family_code=template_definition.family_code,
-                template_name=template_definition.template_name,
-                readiness_status="missing_template_locator",
-                detail="TemplateDefinition has no exact template binary locator yet.",
-                storage_root=None,
-                storage_relative_path=None,
-                original_filename=template_definition.template_original_filename,
-                checksum_sha256=template_definition.template_checksum_sha256,
-                scalar_replacement_mode=None,
-                template_variant_key=None,
-            )
-        if template_definition.template_storage_root != "template":
-            return TemplateReadiness(
-                template_definition_id=template_definition.id,
-                family_code=template_definition.family_code,
-                template_name=template_definition.template_name,
-                readiness_status="invalid_template_root",
-                detail="TemplateDefinition template binary locator must use storage_root='template'.",
-                storage_root=template_definition.template_storage_root,
-                storage_relative_path=template_definition.template_storage_relative_path,
-                original_filename=template_definition.template_original_filename,
-                checksum_sha256=template_definition.template_checksum_sha256,
+                template_definition_id=requirement.template_definition_id,
+                family_code=requirement.family_code,
+                template_name=requirement.template_name,
+                readiness_status=requirement.readiness_status,
+                detail=requirement.detail,
+                storage_root=requirement.storage_root,
+                storage_relative_path=requirement.storage_relative_path,
+                original_filename=requirement.original_filename,
+                checksum_sha256=requirement.checksum_sha256,
                 scalar_replacement_mode=None,
                 template_variant_key=None,
             )
         if storage is None:
             return TemplateReadiness(
-                template_definition_id=template_definition.id,
-                family_code=template_definition.family_code,
-                template_name=template_definition.template_name,
+                template_definition_id=requirement.template_definition_id,
+                family_code=requirement.family_code,
+                template_name=requirement.template_name,
                 readiness_status="storage_service_unavailable",
                 detail="StorageService is not available, so template bytes cannot be opened.",
-                storage_root=template_definition.template_storage_root,
-                storage_relative_path=template_definition.template_storage_relative_path,
-                original_filename=template_definition.template_original_filename,
-                checksum_sha256=template_definition.template_checksum_sha256,
+                storage_root=requirement.storage_root,
+                storage_relative_path=requirement.storage_relative_path,
+                original_filename=requirement.original_filename,
+                checksum_sha256=requirement.checksum_sha256,
                 scalar_replacement_mode=None,
                 template_variant_key=None,
             )
         try:
-            with storage.read_stream(
-                template_definition.template_storage_relative_path,
-                root=template_definition.template_storage_root,
-            ) as stream:
+            with open_template_binary_stream(storage, requirement) as stream:
                 template_bytes = stream.read()
             if prepared.generation_plan.template.family_code == "INSPECTION_KE_HOACH_KT":
                 from backend.app.document.inspection_ke_hoach_kt_effective_template_contract import (
@@ -254,28 +222,28 @@ class DocumentWorkflowService:
                 )
         except (TemplateContractRuntimeError, TemplateBinaryError, StorageOperationError, FileNotFoundError) as exc:
             return TemplateReadiness(
-                template_definition_id=template_definition.id,
-                family_code=template_definition.family_code,
-                template_name=template_definition.template_name,
+                template_definition_id=requirement.template_definition_id,
+                family_code=requirement.family_code,
+                template_name=requirement.template_name,
                 readiness_status="runtime_contract_failed",
                 detail=str(exc),
-                storage_root=template_definition.template_storage_root,
-                storage_relative_path=template_definition.template_storage_relative_path,
-                original_filename=template_definition.template_original_filename,
-                checksum_sha256=template_definition.template_checksum_sha256,
+                storage_root=requirement.storage_root,
+                storage_relative_path=requirement.storage_relative_path,
+                original_filename=requirement.original_filename,
+                checksum_sha256=requirement.checksum_sha256,
                 scalar_replacement_mode=None,
                 template_variant_key=None,
             )
         return TemplateReadiness(
-            template_definition_id=template_definition.id,
-            family_code=template_definition.family_code,
-            template_name=template_definition.template_name,
+            template_definition_id=requirement.template_definition_id,
+            family_code=requirement.family_code,
+            template_name=requirement.template_name,
             readiness_status="direct_stream_ready",
-            detail="TemplateDefinition has an exact template binary locator and its runtime contract is inspectable.",
-            storage_root=template_definition.template_storage_root,
-            storage_relative_path=template_definition.template_storage_relative_path,
-            original_filename=template_definition.template_original_filename,
-            checksum_sha256=template_definition.template_checksum_sha256,
+            detail=requirement.detail,
+            storage_root=requirement.storage_root,
+            storage_relative_path=requirement.storage_relative_path,
+            original_filename=requirement.original_filename,
+            checksum_sha256=requirement.checksum_sha256,
             scalar_replacement_mode=replacement_plan.mode,
             template_variant_key=replacement_plan.template_variant_key,
         )

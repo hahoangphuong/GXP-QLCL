@@ -33,8 +33,8 @@ def test_khkt_business_input_audit_separates_canonical_owners_from_rendering_sem
     assert report["status"] == "BUSINESS_INPUT_OWNERS_PROVEN_RENDERING_BLOCKED"
     assert report["summary"] == {
         "owner_proven": 10,
-        "rendering_contract_proven": 3,
-        "rendering_contract_missing": 3,
+        "rendering_contract_proven": 5,
+        "rendering_contract_missing": 1,
         "schema_migration_required": False,
         "contextual_create_readiness": "BUSINESS_INPUT_CONTRACT_MISSING",
     }
@@ -55,10 +55,13 @@ def test_khkt_business_input_audit_separates_canonical_owners_from_rendering_sem
     assert rendering_contracts["TT_VKNx/TT_SYTx"]["owner"].endswith(
         "inspection_ke_hoach_kt_team_projection"
     )
+    assert rendering_contracts["Diadiemx"]["owner"].endswith(
+        "inspection_ke_hoach_kt_province_projection"
+    )
+    assert rendering_contracts["VKNx"]["classification"] == "RENDERING_CONTRACT_PROVEN"
 
     blockers = report["rendering_blockers"]
-    assert blockers["Diadiemx"]["classification"] == "RENDERING_CONTRACT_MISSING"
-    assert blockers["VKNx"]["owner"] == "inspection authority projection"
+    assert set(blockers) == {"Fulldate"}
     assert "scope_section_suppression" not in blockers
     assert "TTx/TT3x/TT3Del" not in blockers
     assert "TT_VKNx/TT_SYTx" not in blockers

@@ -54,6 +54,20 @@ PROVEN_RENDERING_CONTRACTS: dict[str, dict[str, str]] = {
             "from the provincial-health named range without parsing display text"
         ),
     },
+    "Diadiemx": {
+        "owner": "backend.app.document.inspection_ke_hoach_kt_province_projection",
+        "reason": (
+            "source-backed Dia_danh_x reference preserves the exact 63-row province order, "
+            "display-prefix column, historical TP rewrite, and LCase_FirstChar behavior"
+        ),
+    },
+    "VKNx": {
+        "owner": "backend.app.document.inspection_ke_hoach_kt_province_projection",
+        "reason": (
+            "Daychuyen is the source-proven DC_cu value and the province reference preserves "
+            "the exact Get_VKN index-32 boundary; unknown provinces fail closed"
+        ),
+    },
 }
 
 # These are not missing database columns. They require a renderer/projection
@@ -62,14 +76,6 @@ RENDERING_BLOCKERS: dict[str, dict[str, str]] = {
     "Fulldate": {
         "owner": "document generation context",
         "reason": "legacy uses workstation Date; runtime generation-date formatting contract is not explicit",
-    },
-    "Diadiemx": {
-        "owner": "province display projection",
-        "reason": "Dia_danh/Dia_danh_x prefix lookup and LCase_FirstChar semantics are not represented by a canonical projection",
-    },
-    "VKNx": {
-        "owner": "inspection authority projection",
-        "reason": "Get_VKN derives authority prose from vaccine scope/province rules; it is not an inspection-team value",
     },
 }
 

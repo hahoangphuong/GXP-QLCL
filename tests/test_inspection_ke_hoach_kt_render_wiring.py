@@ -282,7 +282,10 @@ def test_khkt_render_rejects_output_filename_drift_before_readiness_and_allocati
             template=SimpleNamespace(family_code="INSPECTION_KE_HOACH_KT")
         ),
         khkt_payload_input=_payload_input(),
-        persisted_state=SimpleNamespace(generation_run_id="run-khkt-filename"),
+        persisted_state=SimpleNamespace(
+            generation_run_id="run-khkt-filename",
+            reused_generation_run=False,
+        ),
     )
     failures: list[tuple[str, str]] = []
     allocation_calls: list[object] = []

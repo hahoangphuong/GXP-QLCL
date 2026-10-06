@@ -17,6 +17,16 @@ from backend.app.document.c5e_certificate_detail_semantic_projection import (
 from backend.app.document.c5e_certificate_detail_source_asset_locator import (
     build_runtime_source_asset_locator,
 )
+from backend.app.document.docx_bookmark_range import delete_bookmark_ranges
+from backend.app.document.inspection_ke_hoach_kt_effective_template_contract import (
+    FAMILY_CODE as KHKT_FAMILY_CODE,
+    InspectionKeHoachKtEffectiveTemplateContractError,
+    build_inspection_ke_hoach_kt_effective_template_contract,
+)
+from backend.app.document.inspection_ke_hoach_kt_payload_composer import (
+    InspectionKeHoachKtPayloadComposerError,
+    compose_inspection_ke_hoach_kt_render_plan,
+)
 from backend.app.document.output_version import finalize_output_document_version_write
 from backend.app.document.template_contract_runtime import (
     build_scalar_replacement_plan_for_template,
@@ -228,6 +238,8 @@ def _apply_certificate_detail_before_generic_render(
 def build_template_aware_docx_bytes(
     storage: "StorageServiceProtocol",
     allocated: "TemplateAwareAllocatedDocumentGeneration",
+    *,
+    session: "Session | None" = None,
 ) -> tuple[bytes, tuple[str, ...], tuple[str, ...], tuple[str, ...], str, str | None]:
     if not allocated.template_render_ready:
         raise DocxTemplateRenderError(
@@ -240,13 +252,47 @@ def build_template_aware_docx_bytes(
         )
     with open_template_binary_stream(storage, allocated.template_binary_requirement) as stream:
         template_bytes = stream.read()
-    replacement_plan = build_scalar_replacement_plan_for_template(
-        load_default_template_contract_reconciliation(),
-        prepared.generation_plan.template.family_code,
-        prepared.payload_result.envelope.fields,
-        template_bytes=template_bytes,
-    )
-    replacements = replacement_plan.bookmark_replacements
+    khkt_render_plan = None
+    if prepared.generation_plan.template.family_code == KHKT_FAMILY_CODE:
+        if session is None:
+            raise DocxTemplateRenderError(
+                "KHKT template rendering requires an active database session."
+            )
+        if prepared.khkt_payload_input is None:
+            raise DocxTemplateRenderError(
+                "KHKT template rendering requires canonical payload input."
+            )
+        if prepared.table_regions:
+            raise DocxTemplateRenderError(
+                "KHKT family-specific renderer does not accept generic table regions."
+            )
+        try:
+            khkt_contract = build_inspection_ke_hoach_kt_effective_template_contract(
+                gxp_type=prepared.khkt_payload_input.gxp_type,
+                template_bytes=template_bytes,
+            )
+            khkt_render_plan = compose_inspection_ke_hoach_kt_render_plan(
+                payload=prepared.khkt_payload_input,
+                contract=khkt_contract,
+            )
+        except (
+            InspectionKeHoachKtEffectiveTemplateContractError,
+            InspectionKeHoachKtPayloadComposerError,
+        ) as exc:
+            raise DocxTemplateRenderError(str(exc)) from exc
+        replacements = khkt_render_plan.bookmark_replacements
+        replacement_mode = "khkt_contract_exact"
+        replacement_variant_key = khkt_contract.gxp_type
+    else:
+        replacement_plan = build_scalar_replacement_plan_for_template(
+            load_default_template_contract_reconciliation(),
+            prepared.generation_plan.template.family_code,
+            prepared.payload_result.envelope.fields,
+            template_bytes=template_bytes,
+        )
+        replacements = replacement_plan.bookmark_replacements
+        replacement_mode = replacement_plan.mode
+        replacement_variant_key = replacement_plan.template_variant_key
 
     # Build the generic replacement plan against the untouched destination
     # package so ownership conflicts are detected before mutation. The C.5e
@@ -271,6 +317,12 @@ def build_template_aware_docx_bytes(
             payload = source_archive.read(name)
             if name == "word/document.xml":
                 root = ET.fromstring(payload)
+                if khkt_render_plan is not None:
+                    delete_bookmark_ranges(
+                        root,
+                        khkt_render_plan.delete_targets,
+                        missing_ok=False,
+                    )
                 replaced_regions = _apply_table_regions(root, prepared.table_regions)
                 replaced_in_part = _replace_bookmarks_in_container(root, replacements, require_all=False)
                 if replaced_in_part:
@@ -298,8 +350,8 @@ def build_template_aware_docx_bytes(
         unique_bookmarks,
         replaced_regions,
         unique_parts,
-        replacement_plan.mode,
-        replacement_plan.template_variant_key,
+        replacement_mode,
+        replacement_variant_key,
     )
 
 
@@ -311,6 +363,7 @@ def render_template_aware_docx_and_finalize(
     binary_payload, replaced_bookmarks, replaced_regions, replaced_parts, scalar_replacement_mode, template_variant_key = build_template_aware_docx_bytes(
         storage,
         allocated,
+        session=session,
     )
     checksum = finalize_output_document_version_write(
         session,

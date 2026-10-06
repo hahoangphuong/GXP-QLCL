@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -9,6 +10,12 @@ from backend.app.document.c5e_certificate_detail_semantic_projection import (
     CertificateDetailSemanticProjection,
     CertificateDetailSemanticProjectionError,
     project_certificate_detail_semantic_operations,
+)
+from backend.app.document.inspection_ke_hoach_kt_payload_input import (
+    FAMILY_CODE as KHKT_FAMILY_CODE,
+    InspectionKeHoachKtPayloadInput,
+    InspectionKeHoachKtPayloadInputError,
+    load_inspection_ke_hoach_kt_payload_input,
 )
 from backend.app.document.output_version import (
     OutputVersionAllocation,
@@ -36,6 +43,8 @@ from backend.app.document.evaluation_scope_payload import (
 from backend.app.document.service_contract import (
     DocumentGenerationPlan,
     DocumentGenerationRequest,
+    DocumentPayloadEnvelope,
+    DocumentPayloadField,
     load_default_registry,
     plan_document_generation,
 )
@@ -57,6 +66,7 @@ class DocumentPreparationInput:
     payload_notes: str | None = None
     strict_payload: bool = True
     copy_pt: bool = False
+    generated_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -76,6 +86,7 @@ class PreparedDocumentGeneration:
     persisted_state: PersistedGenerationState
     render_ready: bool
     certificate_detail_projection: CertificateDetailSemanticProjection | None = None
+    khkt_payload_input: InspectionKeHoachKtPayloadInput | None = None
 
 
 @dataclass(frozen=True)
@@ -91,11 +102,95 @@ class TemplateAwareAllocatedDocumentGeneration:
     template_render_ready: bool
 
 
+
+def _khkt_payload_result(
+    preparation_input: DocumentPreparationInput,
+    payload_input: InspectionKeHoachKtPayloadInput,
+) -> PayloadBuildResult:
+    if preparation_input.payload_values:
+        raise DocumentPayloadBuildError(
+            "INSPECTION_KE_HOACH_KT business payload is DB-owned and must not be supplied by the caller."
+        )
+    values = {
+        "Fulldate": payload_input.fulldate,
+        "Tencoso": payload_input.site_name,
+        "Diadiem": payload_input.province_name,
+        "Diadiemx": payload_input.diadiemx,
+        "Diachicoso": payload_input.site_address,
+        "VKNx": payload_input.vknx,
+        "QDKT": payload_input.decision_reference,
+        "NgayQDKT": f"{payload_input.decision_date.day:02d}/{payload_input.decision_date.month:02d}/{payload_input.decision_date.year:04d}",
+        "Daychuyen": payload_input.daychuyen,
+        "GioiHanPvi": payload_input.gioi_han_pvi,
+        "TieuchuanKT": payload_input.applicable_standard,
+    }
+    if payload_input.dossier_code is not None:
+        values["HsDK"] = payload_input.dossier_code
+    if payload_input.submitted_on is not None:
+        values["NgaynopHsDK"] = (
+            f"{payload_input.submitted_on.day:02d}/{payload_input.submitted_on.month:02d}/"
+            f"{payload_input.submitted_on.year:04d}"
+        )
+    fields = tuple(
+        DocumentPayloadField(
+            field_name=name,
+            value=value,
+            source="KHKT.canonical_payload_input",
+            is_sensitive=False,
+        )
+        for name, value in values.items()
+    )
+    return PayloadBuildResult(
+        envelope=DocumentPayloadEnvelope(
+            family_code=KHKT_FAMILY_CODE,
+            fields=fields,
+            source_procedures=("KHKT.canonical_payload_input",),
+            notes="Canonical DB-backed KHKT payload; final physical targets are template-contract owned.",
+        ),
+        used_fields=tuple(values),
+        missing_registry_fields=(),
+        unexpected_input_fields=(),
+    )
+
+
+def _build_khkt_payload_input(
+    session: Session,
+    preparation_input: DocumentPreparationInput,
+) -> InspectionKeHoachKtPayloadInput | None:
+    if preparation_input.request.family_code != KHKT_FAMILY_CODE:
+        return None
+    if preparation_input.request.case_id is None:
+        raise DocumentPayloadBuildError(
+            "INSPECTION_KE_HOACH_KT canonical payload requires case_id."
+        )
+    if preparation_input.generated_at is None:
+        raise DocumentPayloadBuildError(
+            "INSPECTION_KE_HOACH_KT canonical payload requires a frozen generated_at timestamp."
+        )
+    try:
+        return load_inspection_ke_hoach_kt_payload_input(
+            session,
+            case_id=preparation_input.request.case_id,
+            generated_at=preparation_input.generated_at,
+        )
+    except InspectionKeHoachKtPayloadInputError as exc:
+        raise DocumentPayloadBuildError(str(exc)) from exc
+
+
 def build_document_payload_result(
     session: Session,
     preparation_input: DocumentPreparationInput,
+    *,
+    khkt_payload_input: InspectionKeHoachKtPayloadInput | None = None,
 ) -> PayloadBuildResult:
-    """Build generic payload values, then apply C.5e scope ownership."""
+    """Build generic payload values, with KHKT owned by its canonical aggregate."""
+    if preparation_input.request.family_code == KHKT_FAMILY_CODE:
+        if khkt_payload_input is None:
+            khkt_payload_input = _build_khkt_payload_input(session, preparation_input)
+        if khkt_payload_input is None:  # pragma: no cover - guarded by family branch
+            raise DocumentPayloadBuildError("KHKT canonical payload input was not built.")
+        return _khkt_payload_result(preparation_input, khkt_payload_input)
+
     payload_registry = load_default_payload_builder_registry()
     assert_no_c5e_scope_field_override(
         family_code=preparation_input.request.family_code,
@@ -163,7 +258,12 @@ def prepare_document_generation_job(
     session: Session,
     preparation_input: DocumentPreparationInput,
 ) -> PreparedDocumentGeneration:
-    payload_result = build_document_payload_result(session, preparation_input)
+    khkt_payload_input = _build_khkt_payload_input(session, preparation_input)
+    payload_result = build_document_payload_result(
+        session,
+        preparation_input,
+        khkt_payload_input=khkt_payload_input,
+    )
     registry = load_default_registry()
     generation_plan = plan_document_generation(
         registry,
@@ -195,6 +295,7 @@ def prepare_document_generation_job(
         persisted_state=persisted_state,
         render_ready=render_ready,
         certificate_detail_projection=certificate_detail_projection,
+        khkt_payload_input=khkt_payload_input,
     )
 
 

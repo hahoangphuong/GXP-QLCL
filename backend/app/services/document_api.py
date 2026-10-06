@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 import mimetypes
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -137,6 +138,7 @@ class DocumentWorkflowService:
             payload_notes=payload.get("payload_notes"),
             strict_payload=bool(payload.get("strict_payload", True)),
             copy_pt=bool(payload.get("copy_pt", False)),
+            generated_at=datetime.now(timezone.utc),
         )
 
     def _load_template_definition(self, session: Session, template_definition_id: str | None) -> TemplateDefinition | None:
@@ -218,12 +220,34 @@ class DocumentWorkflowService:
                 root=template_definition.template_storage_root,
             ) as stream:
                 template_bytes = stream.read()
-            replacement_plan = build_scalar_replacement_plan_for_template(
-                load_default_template_contract_reconciliation(),
-                prepared.generation_plan.template.family_code,
-                prepared.payload_result.envelope.fields,
-                template_bytes=template_bytes,
-            )
+            if prepared.generation_plan.template.family_code == "INSPECTION_KE_HOACH_KT":
+                from backend.app.document.inspection_ke_hoach_kt_effective_template_contract import (
+                    build_inspection_ke_hoach_kt_effective_template_contract,
+                )
+
+                if prepared.khkt_payload_input is None:
+                    raise TemplateContractRuntimeError(
+                        "KHKT canonical payload input is unavailable during template readiness."
+                    )
+                contract = build_inspection_ke_hoach_kt_effective_template_contract(
+                    gxp_type=prepared.khkt_payload_input.gxp_type,
+                    template_bytes=template_bytes,
+                )
+                replacement_plan = type(
+                    "_KhktReadinessPlan",
+                    (),
+                    {
+                        "mode": "khkt_contract_exact",
+                        "template_variant_key": contract.gxp_type,
+                    },
+                )()
+            else:
+                replacement_plan = build_scalar_replacement_plan_for_template(
+                    load_default_template_contract_reconciliation(),
+                    prepared.generation_plan.template.family_code,
+                    prepared.payload_result.envelope.fields,
+                    template_bytes=template_bytes,
+                )
         except (TemplateContractRuntimeError, TemplateBinaryError, StorageOperationError, FileNotFoundError) as exc:
             return TemplateReadiness(
                 template_definition_id=template_definition.id,
@@ -264,7 +288,7 @@ class DocumentWorkflowService:
             reasons.append(f"source_application:{prepared.generation_plan.template.source_application}")
         if template_readiness.readiness_status != "direct_stream_ready":
             reasons.append(f"template:{template_readiness.readiness_status}")
-        elif template_readiness.scalar_replacement_mode not in {"contract_exact", "contract_variant_exact"}:
+        elif template_readiness.scalar_replacement_mode not in {"contract_exact", "contract_variant_exact", "khkt_contract_exact"}:
             reasons.append(f"template:{template_readiness.scalar_replacement_mode or 'unknown_mode'}")
         return reasons
 
@@ -482,9 +506,10 @@ class DocumentWorkflowService:
         if not render_payload.get("idempotency_key"):
             render_payload["idempotency_key"] = f"render-{uuid4()}"
         try:
+            preparation_input = self._build_preparation_input(render_payload, actor.id)
             prepared = prepare_document_generation_job(
                 session,
-                self._build_preparation_input(render_payload, actor.id),
+                preparation_input,
             )
             template_readiness = self._inspect_template_readiness(session, storage, prepared)
             blocked_reasons = self._build_blocked_reasons(prepared, template_readiness)
@@ -495,7 +520,7 @@ class DocumentWorkflowService:
             allocated = prepare_template_aware_docx_generation(
                 session,
                 storage,
-                self._build_preparation_input(render_payload, actor.id),
+                preparation_input,
                 output_filename=render_payload["output_filename"],
             )
             result = render_template_aware_docx_and_finalize(session, storage, allocated)

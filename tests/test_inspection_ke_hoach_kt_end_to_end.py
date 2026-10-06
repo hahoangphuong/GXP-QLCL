@@ -466,6 +466,7 @@ def test_khkt_gmp_end_to_end_applies_structural_team_and_scope_deletions(monkeyp
     storage, root = _storage()
     service = DocumentWorkflowService()
     try:
+        monkeypatch.setenv("GXP_ARTIFACTS_ROOT", str(repo_root() / "artifacts"))
         template_relative = "test/3. Kế hoạch kiểm tra GMP.dotx"
         template_path = root / "templates" / template_relative
         template_path.parent.mkdir(parents=True)

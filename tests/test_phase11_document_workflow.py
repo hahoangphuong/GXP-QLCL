@@ -15,7 +15,12 @@ from sqlalchemy.orm import Session
 from backend.app.auth import build_authenticated_user
 import backend.app.api.routers.document as document_router_module
 from backend.app.db.base import Base
-from backend.app.db.enums import CaseState, ChangeRequestState, DocumentVariantType
+from backend.app.db.enums import (
+    CaseState,
+    ChangeRequestState,
+    DocumentGenerationStatus,
+    DocumentVariantType,
+)
 from backend.app.db.models.phase1 import (
     AuditEvent,
     BusinessEligibilityCertificate,
@@ -25,6 +30,7 @@ from backend.app.db.models.phase1 import (
     Company,
     Document,
     DocumentGenerationRun,
+    DocumentSourceDependency,
     DocumentVariant,
     DocumentVersion,
     Site,
@@ -35,7 +41,19 @@ from backend.app.document.contextual_actions import (
     get_case_document_context_spec,
     list_case_document_context_specs,
 )
+import backend.app.document.persistence as persistence_module
 from backend.app.document.seed_runtime import seed_default_template_metadata
+from backend.app.document.source_resolver_contract import (
+    SourceDocumentCandidate,
+    SourceDocumentLookupRequest,
+    SourceDocumentResolution,
+)
+from backend.app.document.service_contract import (
+    DocumentGenerationPlan,
+    DocumentGenerationRequest,
+    DocumentPayloadEnvelope,
+    TemplateSelectionResult,
+)
 from backend.app.document.template_binary import assign_template_binary_locator
 from backend.app.main import create_app
 from backend.app.services.catalog import CatalogReadService
@@ -346,6 +364,160 @@ def test_prepare_generation_rejects_cross_owner_idempotency_reuse():
             )
         )
         assert second_documents == []
+
+
+def test_idempotent_generation_retry_requires_source_dependency_identity():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        case_id, _ = _seed_case(session)
+        source_document = Document(
+            family_code="SOURCE_FAMILY",
+            document_type_code="SOURCE_FAMILY",
+            title="Source",
+            case_id=case_id,
+        )
+        target_document = Document(
+            family_code="TARGET_FAMILY",
+            document_type_code="TARGET_FAMILY",
+            title="Target",
+            case_id=case_id,
+        )
+        session.add_all([source_document, target_document])
+        session.flush()
+
+        source_variant = DocumentVariant(
+            document_id=source_document.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="vi",
+            is_active=True,
+        )
+        session.add(source_variant)
+        session.flush()
+
+        source_v1 = DocumentVersion(
+            document_variant_id=source_variant.id,
+            version_no=1,
+            storage_binding_id=None,
+            storage_root="inspection",
+            storage_relative_path="source-v1.docx",
+            original_filename="source-v1.docx",
+            checksum_sha256="v1",
+            is_current=False,
+            issued_on=None,
+        )
+        source_v2 = DocumentVersion(
+            document_variant_id=source_variant.id,
+            version_no=2,
+            storage_binding_id=None,
+            storage_root="inspection",
+            storage_relative_path="source-v2.docx",
+            original_filename="source-v2.docx",
+            checksum_sha256="v2",
+            is_current=True,
+            issued_on=None,
+        )
+        session.add_all([source_v1, source_v2])
+        session.flush()
+
+        run = DocumentGenerationRun(
+            document_id=target_document.id,
+            template_binding_id=None,
+            template_definition_id=None,
+            output_document_version_id=None,
+            status=DocumentGenerationStatus.FAILED,
+            source_application="Word",
+            requested_by_user_id=None,
+            input_payload_redacted="{}",
+            error_summary="first attempt failed",
+            idempotency_key="source-lineage-retry-001",
+        )
+        session.add(run)
+        session.flush()
+        session.add(
+            DocumentSourceDependency(
+                document_generation_run_id=run.id,
+                source_document_id=source_document.id,
+                source_document_version_id=source_v1.id,
+                dependency_type="copy_forward",
+                source_bookmarks=json.dumps(["A", "B"], ensure_ascii=False),
+                notes=None,
+            )
+        )
+        session.flush()
+
+        request = SourceDocumentLookupRequest(
+            family_code="SOURCE_FAMILY",
+            required_bookmarks=("A", "B"),
+            dependency_type="copy_forward",
+            case_id=case_id,
+        )
+        exact_resolution = SourceDocumentResolution(
+            request=request,
+            candidate=SourceDocumentCandidate(
+                document_id=source_document.id,
+                family_code="SOURCE_FAMILY",
+                document_version_id=source_v1.id,
+                available_bookmarks=("A", "B"),
+                is_current_version=False,
+            ),
+        )
+        plan = DocumentGenerationPlan(
+            request=DocumentGenerationRequest(
+                family_code="TARGET_FAMILY",
+                requested_by_user_id=None,
+                case_id=case_id,
+                storage_scope="inspection_folder",
+                idempotency_key="source-lineage-retry-001",
+            ),
+            template=TemplateSelectionResult(
+                family_code="TARGET_FAMILY",
+                logical_name="Target",
+                template_pattern="target.dotx",
+                source_application="Word",
+                storage_scope="inspection_folder",
+                host_procedure="Target.Create",
+                population_procedures=(),
+                bookmarks=(),
+                copy_forward_dependencies=(),
+                notes=None,
+            ),
+            payload=DocumentPayloadEnvelope(
+                family_code="TARGET_FAMILY",
+                fields=(),
+                source_procedures=(),
+            ),
+            source_dependencies=(),
+        )
+        persistence_module._preflight_idempotent_generation_run(
+            session,
+            plan,
+            (exact_resolution,),
+        )
+
+        drifted_resolution = SourceDocumentResolution(
+            request=request,
+            candidate=SourceDocumentCandidate(
+                document_id=source_document.id,
+                family_code="SOURCE_FAMILY",
+                document_version_id=source_v2.id,
+                available_bookmarks=("A", "B"),
+                is_current_version=True,
+            ),
+        )
+        try:
+            persistence_module._preflight_idempotent_generation_run(
+                session,
+                plan,
+                (drifted_resolution,),
+            )
+        except persistence_module.DocumentPersistenceError as exc:
+            assert "different source dependencies" in str(exc)
+        else:
+            raise AssertionError(
+                "Expected idempotent retry with source-version drift to fail closed"
+            )
 
 
 def test_document_audit_payload_redacts_sensitive_keys():

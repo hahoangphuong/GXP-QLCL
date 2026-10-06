@@ -295,9 +295,67 @@ def persist_source_dependencies(
     return tuple(dependency_ids)
 
 
+def _source_resolution_signature(
+    resolution: SourceDocumentResolution,
+) -> tuple[str, str | None, str, str]:
+    return (
+        resolution.candidate.document_id,
+        resolution.candidate.document_version_id,
+        resolution.request.dependency_type,
+        json.dumps(
+            list(resolution.request.required_bookmarks),
+            ensure_ascii=False,
+        ),
+    )
+
+
+def _source_dependency_signature(
+    dependency: DocumentSourceDependency,
+) -> tuple[str, str | None, str, str]:
+    return (
+        dependency.source_document_id,
+        dependency.source_document_version_id,
+        dependency.dependency_type,
+        dependency.source_bookmarks or "[]",
+    )
+
+
+def _assert_idempotent_source_dependencies_match(
+    session: Session,
+    existing: DocumentGenerationRun,
+    source_resolutions: tuple[SourceDocumentResolution, ...],
+) -> None:
+    persisted = tuple(
+        sorted(
+            (
+                _source_dependency_signature(row)
+                for row in session.scalars(
+                    select(DocumentSourceDependency).where(
+                        DocumentSourceDependency.document_generation_run_id
+                        == existing.id
+                    )
+                )
+            ),
+            key=repr,
+        )
+    )
+    requested = tuple(
+        sorted(
+            (_source_resolution_signature(row) for row in source_resolutions),
+            key=repr,
+        )
+    )
+    if persisted != requested:
+        raise DocumentPersistenceError(
+            "Document generation idempotency key is already bound to different "
+            "source dependencies."
+        )
+
+
 def _preflight_idempotent_generation_run(
     session: Session,
     plan: DocumentGenerationPlan,
+    source_resolutions: tuple[SourceDocumentResolution, ...],
 ) -> None:
     existing = _existing_generation_run(session, plan.request.idempotency_key)
     if existing is None:
@@ -316,6 +374,11 @@ def _preflight_idempotent_generation_run(
         template_definition=template_definition,
         template_binding=template_binding,
     )
+    _assert_idempotent_source_dependencies_match(
+        session,
+        existing,
+        source_resolutions,
+    )
 
 
 def prepare_generation_persistence(
@@ -325,7 +388,11 @@ def prepare_generation_persistence(
 ) -> PersistedGenerationState:
     _require_parent_link(plan.request)
     _validate_capa_document_link(session, plan.request)
-    _preflight_idempotent_generation_run(session, plan)
+    _preflight_idempotent_generation_run(
+        session,
+        plan,
+        source_resolutions,
+    )
     document = ensure_document(session, plan)
     variant = ensure_document_variant(session, document, plan)
     template_definition = _lookup_template_definition(session, plan)

@@ -14,7 +14,6 @@ from tools.trace_inspection_qd_kt_vba import _branch_context
 
 MODULE = """Public Sub TaoQDKT_KHKT()
     RecordForm.CreateFile foo, 2, old
-    RecordForm.CreateFile foo, 3, plan
 End Sub
 """
 
@@ -28,6 +27,55 @@ Public TenCtydd As String
 Public Tinhthanh As String
 Public DiachiDD As String
 
+Private Sub btn3_Click():   btnFile 3:  End Sub
+Private Sub filler()
+End Sub
+
+Public Function Make_RecordKT(a, b, c, d) As Boolean
+    If Not PrepareRecordForm Then Exit Function
+End Function
+
+Private Function PrepareRecordForm() As Boolean
+    If Not GetTT_CsCty Then Exit Function
+    If Idx_Ktr > 0 Then
+        If Not GetTT_Ktra Then Exit Function
+    End If
+End Function
+
+Private Function GetTT_CsCty() As Boolean
+    TenCtydd = Trim(Rg.Cells(1, ColDBTenCS).Value)
+    DiachiDD = DelLastIf(Trim(Rg.Cells(1, ColDBDiachiCS).Value), ".")
+    Tinhthanh = Trim(Rg.Cells(1, ColDBTinhTpCS).Value)
+End Function
+
+Private Function GetTT_Ktra() As Boolean
+    s_MaHsDk = Rg3.Cells(1, ColDB_HSDK_Ktra + 1).Value: s_NgaynopHsDk = Rg3.Cells(1, ColDB_HSDK_Ktra).Value
+    s_LoaiKT = Rg3.Cells(1, ColDB_Tieuchuan_Ktra).Value
+    DaychuyenRaw = Trim(Rg3.Cells(1, ColDB_Pvi_Ktra).Value)
+    New_Form = Get_DCx(DaychuyenRaw, DC_cu, DC_moi, GHanDC)
+    ss = Trim(Rg3.Cells(1, ColDB_NgayKtra + 1).Value)
+    If Len(ss) > 1 Then
+        QDKT = Left(ss, k - 1): NgayQDKT = Right(ss, Len(ss) - m)
+    Else
+        QDKT = ss: NgayQDKT = ""
+    End If
+    ss = Rg3.Cells(1, ColDB_NgayKtra + 3).Value
+    If Len(ss) > 1 Then TTV = Trim(ss) Else TTV = vbNullString
+End Function
+
+Private Sub btnFile(ByVal i, Optional tempf As Boolean = False)
+    If (i = 2) Or (i = 3) Or (i = 4) Or (i = 11) Then
+        If Len(TTV) > 1 Then
+            If TTVForm.Get_TTV2(TTV, "|", i = 2) Then TTVdd = TTVForm.TTVdd: TTV_VKNdd = TTVForm.TTV_VKNdd: TTV_SYTdd = TTVForm.TTV_SYTdd Else Exit Sub
+        Else
+            If TTVForm.Get_TTV(TTV, "|", i = 2) Then TTVdd = TTVForm.TTVdd: TTV_VKNdd = TTVForm.TTV_VKNdd: TTV_SYTdd = TTVForm.TTV_SYTdd Else Exit Sub
+        End If
+    ElseIf i = 15 Then
+        If TTVForm.Get_TTV2(TTV, "|", False, True) Then TTVdd = TTVForm.TTVdd: TTV_VKNdd = TTVForm.TTV_VKNdd: TTV_SYTdd = TTVForm.TTV_SYTdd
+    End If
+    If CreateFile(s, i, Me.txtsyear.Text, tempf) Then done = True
+End Sub
+
 Private Function Get_Tpl(i, syear, tpl, fname, iFName)
     Select Case i
     Case 2
@@ -37,23 +85,11 @@ Private Function Get_Tpl(i, syear, tpl, fname, iFName)
     End Select
 End Function
 
-Private Sub CreateFile(i, foo, bar)
+Private Function CreateFile(s, i, syear, tempf) As Boolean
     If Not Get_Tpl(i, syear, tpl, fname, iFName) Then GoTo Quit0
     Tao_QDKT_KHKT_BBKT wdDoc, i
 Quit0:
-End Sub
-
-Private Sub GetTT_Ktra()
-    s_LoaiKT = Rg3.Cells(1, 8).Value
-    DC_cu = DaychuyenDD
-    GHanDC = Gioihan
-    TTVdd = team_value
-    TTV_VKNdd = vkn_value
-    TTV_SYTdd = syt_value
-    TenCtydd = site_value
-    Tinhthanh = province_value
-    DiachiDD = address_value
-End Sub
+End Function
 
 Private Sub Tao_QDKT_KHKT_BBKT(wdDoc, i)
     Replace_Bookmark wdDoc, "Tencoso", TenCtydd
@@ -66,22 +102,22 @@ Private Sub Tao_QDKT_KHKT_BBKT(wdDoc, i)
         Replace_Bookmark wdDoc, "GioiHanPvi", IIf(GHanDC = "", "Không", GHanDC)
         Replace_Bookmark wdDoc, "Diachicoso", Replace(DiachiDD, vbCrLf, ";")
         Replace_Bookmark wdDoc, "TieuchuanKT", s_LoaiKT
-        If InStr(1, DC_cu, "Cephalosporin") = 0 Then wdDoc.Bookmarks("PVCepha").Range.Delete
-        If InStr(1, DC_cu, "Penicillin") = 0 Then wdDoc.Bookmarks("PVPeni").Range.Delete
-        If InStr(1, DC_cu, "Dược liệu") = 0 Then wdDoc.Bookmarks("PVDuoclieu").Range.Delete
-        If InStr(1, DC_cu, "Tiêm") = 0 Then wdDoc.Bookmarks("PVTiem").Range.Delete
-        If InStr(1, DC_cu, "Nhỏ mắt") = 0 Then wdDoc.Bookmarks("PVNhomat").Range.Delete
-        If InStr(1, DC_cu, "Nang mềm") = 0 Then wdDoc.Bookmarks("PVNangmem").Range.Delete
-        If InStr(1, DC_cu, "Sủi bọt") = 0 Then wdDoc.Bookmarks("PVSuibot").Range.Delete
+        If InStr(1, DC_cu, "Cephalosporin") = 0 Then Delete_Bookmark wdDoc, "PVCepha", 1, 2
+        If InStr(1, DC_cu, "Penicillin") = 0 Then Delete_Bookmark wdDoc, "PVPeni", 1, 2
+        If InStr(1, DC_cu, "Dược liệu") = 0 Then Delete_Bookmark wdDoc, "PVDuoclieu", 1, 2
+        If InStr(1, DC_cu, "Tiêm") = 0 Then Delete_Bookmark wdDoc, "PVTiem", 1, 3
+        If InStr(1, DC_cu, "Nhỏ mắt") = 0 Then Delete_Bookmark wdDoc, "PVNhomat"
+        If InStr(1, DC_cu, "Nang mềm") = 0 Then Delete_Bookmark wdDoc, "PVNangmem", 1, 2
+        If InStr(1, DC_cu, "Sủi bọt") = 0 Then Delete_Bookmark wdDoc, "PVSuibot"
     End If
 End Sub
 """
 
 
-def _zip(tmp_path: Path, *, record: str = RECORD) -> Path:
+def _zip(tmp_path: Path, *, record: str = RECORD, module: str = MODULE) -> Path:
     path = tmp_path / "source.zip"
     with zipfile.ZipFile(path, "w") as archive:
-        archive.writestr("Module1.bas", MODULE)
+        archive.writestr("Module1.bas", module)
         archive.writestr("RecordForm.frm", record)
     return path
 
@@ -103,23 +139,25 @@ def test_i3_branch_evaluator_preserves_i2_default_and_supports_i3():
     assert _branch_context(lines, 5, target_i=3)[1] == "UNREACHABLE_I3"
 
 
-def test_i3_source_audit_captures_template_loai_kt_and_section_deletes(tmp_path):
+def test_i3_source_audit_follows_recordform_entry_and_real_delete_semantics(tmp_path):
     source = _zip(tmp_path)
     report = build_i3_source_audit(source, expected_sha256=None)
 
     assert report["status"] == "SOURCE_INSPECTION_KE_HOACH_KT_I3_CAPTURED"
+    assert report["schema_version"] == "inspection-ke-hoach-kt-i3-source-audit/v2"
     assert report["target_i"] == 3
+    assert report["call_chain"]["recordform_entry_call"]["code"].startswith(
+        "Private Sub btn3_Click():"
+    )
+    assert "CreateFile(s, i" in report["call_chain"]["btnfile_create_call"]["code"]
     assert (
         report["call_chain"]["template_assignment"]["code"]
         == 'tpl = "3. Ke hoach kiem tra " & S_GPs & ".dotx"'
     )
-    assert report["source_assignments"]["s_LoaiKT"] == [
-        {
-            "file": "RecordForm.frm",
-            "line": 27,
-            "code": "s_LoaiKT = Rg3.Cells(1, 8).Value",
-        }
-    ]
+    assert "Get_DCx(DaychuyenRaw, DC_cu, DC_moi, GHanDC)" in report[
+        "source_provenance"
+    ]["inspection_fields"]["DC_cu_and_GHanDC"]["code"]
+    assert len(report["source_provenance"]["team_transfers"]) == 2
     assert set(report["required_writes"]) == {
         "Daychuyen",
         "GioiHanPvi",
@@ -131,7 +169,7 @@ def test_i3_source_audit_captures_template_loai_kt_and_section_deletes(tmp_path)
         report["required_writes"]["Diachicoso"]["effective_write"]["expression"]
         == 'Replace(DiachiDD, vbCrLf, ";")'
     )
-    assert set(report["required_section_deletes"]) == {
+    assert set(report["required_section_suppressions"]) == {
         "PVCepha",
         "PVPeni",
         "PVDuoclieu",
@@ -140,14 +178,13 @@ def test_i3_source_audit_captures_template_loai_kt_and_section_deletes(tmp_path)
         "PVNangmem",
         "PVSuibot",
     }
-    assert "InStr" in report["required_section_deletes"]["PVCepha"]["branch_predicates"]
+    assert report["required_section_suppressions"]["PVCepha"]["operation_type"] == "DELETE"
+    assert "InStr" in report["required_section_suppressions"]["PVCepha"][
+        "branch_predicates"
+    ]
     assert (
-        report["required_section_deletes"]["PVCepha"]["reachability_i3"]
+        report["required_section_suppressions"]["PVCepha"]["reachability_i3"]
         == "CONDITIONAL_I3"
-    )
-    assert all(
-        item["reachability_i3"] != "UNREACHABLE_I3"
-        for item in report["active_physical_operations"]
     )
     assert not any(
         item["physical_bookmark"] == "VKN"
@@ -157,15 +194,33 @@ def test_i3_source_audit_captures_template_loai_kt_and_section_deletes(tmp_path)
     assert report["invariants"]["modern_owner_inferred"] is False
 
 
-def test_i3_source_audit_fails_closed_when_loai_kt_assignment_disappears(tmp_path):
+def test_i3_source_audit_does_not_depend_on_module_i3_dispatch(tmp_path):
+    source = _zip(
+        tmp_path,
+        module="""Public Sub TaoQDKT_KHKT()\n    RecordForm.CreateFile foo, 2, old\nEnd Sub\n""",
+    )
+    report = build_i3_source_audit(source, expected_sha256=None)
+    assert report["call_chain"]["recordform_entry_call"]["line"] == 11
+
+
+def test_i3_source_audit_fails_closed_when_scope_split_disappears(tmp_path):
     source = _zip(
         tmp_path,
         record=RECORD.replace(
-            "    s_LoaiKT = Rg3.Cells(1, 8).Value",
-            "    ' s_LoaiKT = Rg3.Cells(1, 8).Value",
+            "    New_Form = Get_DCx(DaychuyenRaw, DC_cu, DC_moi, GHanDC)",
+            "    ' removed scope split",
         ),
     )
-    with pytest.raises(RuntimeError, match="s_LoaiKT"):
+    with pytest.raises(RuntimeError, match="Get_DCx scope split"):
+        build_i3_source_audit(source, expected_sha256=None)
+
+
+def test_i3_source_audit_fails_closed_when_team_transfer_disappears(tmp_path):
+    source = _zip(
+        tmp_path,
+        record=RECORD.replace("TTVForm.TTV_SYTdd Else Exit Sub", "removed Else Exit Sub"),
+    )
+    with pytest.raises(RuntimeError, match="team transfer"):
         build_i3_source_audit(source, expected_sha256=None)
 
 

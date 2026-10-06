@@ -186,6 +186,12 @@ def _build_khkt_payload_input(
             "INSPECTION_KE_HOACH_KT request/case GxP mismatch: "
             f"request={requested_gxp_type!r}, case={payload_input.gxp_type!r}."
         )
+
+    requested_language_code = str(preparation_input.request.language_code or "").strip()
+    if requested_language_code != "vi":
+        raise DocumentPayloadBuildError(
+            "INSPECTION_KE_HOACH_KT language_code is backend-owned and must be 'vi'."
+        )
     return payload_input
 
 

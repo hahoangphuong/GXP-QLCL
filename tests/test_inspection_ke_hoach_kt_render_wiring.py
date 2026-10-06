@@ -58,6 +58,7 @@ def _preparation(
     payload_values=None,
     generated_at=None,
     gxp_type="GMP",
+    language_code="vi",
 ) -> DocumentPreparationInput:
     return DocumentPreparationInput(
         request=DocumentGenerationRequest(
@@ -66,6 +67,7 @@ def _preparation(
             case_id="case-1",
             gxp_type=gxp_type,
             storage_scope="inspection_folder",
+            language_code=language_code,
         ),
         payload_values={} if payload_values is None else payload_values,
         generated_at=generated_at or datetime(2026, 10, 5, 17, 0, tzinfo=timezone.utc),
@@ -118,6 +120,29 @@ def test_khkt_payload_loader_requires_request_gxp_type_matching_canonical_case(
             SimpleNamespace(),
             _preparation(gxp_type="GLP"),
         )
+
+
+def test_khkt_payload_loader_requires_vietnamese_language_variant(monkeypatch):
+    monkeypatch.setattr(
+        service_module,
+        "load_inspection_ke_hoach_kt_payload_input",
+        lambda *args, **kwargs: _payload_input(),
+    )
+
+    assert service_module._build_khkt_payload_input(
+        SimpleNamespace(),
+        _preparation(language_code="vi"),
+    ) == _payload_input()
+
+    for language_code in ("en", "", "VI"):
+        with pytest.raises(
+            DocumentPayloadBuildError,
+            match="language_code is backend-owned and must be 'vi'",
+        ):
+            service_module._build_khkt_payload_input(
+                SimpleNamespace(),
+                _preparation(language_code=language_code),
+            )
 
 
 def test_khkt_payload_loader_requires_frozen_generation_timestamp(monkeypatch):

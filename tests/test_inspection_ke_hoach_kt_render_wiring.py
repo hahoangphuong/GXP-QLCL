@@ -53,13 +53,18 @@ def _payload_input() -> InspectionKeHoachKtPayloadInput:
     )
 
 
-def _preparation(*, payload_values=None, generated_at=None) -> DocumentPreparationInput:
+def _preparation(
+    *,
+    payload_values=None,
+    generated_at=None,
+    gxp_type="GMP",
+) -> DocumentPreparationInput:
     return DocumentPreparationInput(
         request=DocumentGenerationRequest(
             family_code="INSPECTION_KE_HOACH_KT",
             requested_by_user_id="user-1",
             case_id="case-1",
-            gxp_type="GMP",
+            gxp_type=gxp_type,
             storage_scope="inspection_folder",
         ),
         payload_values={} if payload_values is None else payload_values,
@@ -84,6 +89,34 @@ def test_khkt_document_payload_result_is_canonical_and_rejects_caller_business_p
             SimpleNamespace(),
             _preparation(payload_values={"Tencoso": "caller override"}),
             khkt_payload_input=_payload_input(),
+        )
+
+
+def test_khkt_payload_loader_requires_request_gxp_type_matching_canonical_case(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        service_module,
+        "load_inspection_ke_hoach_kt_payload_input",
+        lambda *args, **kwargs: _payload_input(),
+    )
+
+    with pytest.raises(
+        DocumentPayloadBuildError,
+        match="requires request gxp_type to match the canonical case GxP",
+    ):
+        service_module._build_khkt_payload_input(
+            SimpleNamespace(),
+            _preparation(gxp_type=None),
+        )
+
+    with pytest.raises(
+        DocumentPayloadBuildError,
+        match="request/case GxP mismatch",
+    ):
+        service_module._build_khkt_payload_input(
+            SimpleNamespace(),
+            _preparation(gxp_type="GLP"),
         )
 
 

@@ -168,13 +168,25 @@ def _build_khkt_payload_input(
             "INSPECTION_KE_HOACH_KT canonical payload requires a frozen generated_at timestamp."
         )
     try:
-        return load_inspection_ke_hoach_kt_payload_input(
+        payload_input = load_inspection_ke_hoach_kt_payload_input(
             session,
             case_id=preparation_input.request.case_id,
             generated_at=preparation_input.generated_at,
         )
     except InspectionKeHoachKtPayloadInputError as exc:
         raise DocumentPayloadBuildError(str(exc)) from exc
+
+    requested_gxp_type = str(preparation_input.request.gxp_type or "").strip()
+    if not requested_gxp_type:
+        raise DocumentPayloadBuildError(
+            "INSPECTION_KE_HOACH_KT requires request gxp_type to match the canonical case GxP."
+        )
+    if requested_gxp_type != payload_input.gxp_type:
+        raise DocumentPayloadBuildError(
+            "INSPECTION_KE_HOACH_KT request/case GxP mismatch: "
+            f"request={requested_gxp_type!r}, case={payload_input.gxp_type!r}."
+        )
+    return payload_input
 
 
 def build_document_payload_result(

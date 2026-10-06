@@ -2,9 +2,9 @@ from __future__ import annotations
 
 """Owner-level audit for the INSPECTION_KE_HOACH_KT business input contract.
 
-The source trace proves what legacy VBA branch i=3 reads/writes.  This module
-maps those source endpoints to *existing* canonical owners only where the
-repository already has an explicit owner contract.  Rendering/formatting
+The source trace proves what legacy VBA branch i=3 reads/writes. This module
+maps those source endpoints to existing canonical owners only where the
+repository already has an explicit owner contract. Rendering/formatting
 semantics stay separate and fail closed until their own contracts exist.
 """
 
@@ -14,7 +14,7 @@ from typing import Any
 FAMILY_CODE = "INSPECTION_KE_HOACH_KT"
 
 # These mappings are supported by the current canonical schema/import/runtime
-# ownership.  Do not add a field here merely because a similarly named value
+# ownership. Do not add a field here merely because a similarly named value
 # exists somewhere else.
 PROVEN_BUSINESS_OWNERS: dict[str, dict[str, str]] = {
     "Tencoso": {"owner": "Site.site_name", "source": "GetTT_CsCty.TenCtydd"},
@@ -29,7 +29,20 @@ PROVEN_BUSINESS_OWNERS: dict[str, dict[str, str]] = {
     "GioiHanPvi": {"owner": "CaseEvaluationScope projection: GHanDC", "source": "Get_DCx.GHanDC"},
 }
 
-# These are not missing database columns.  They require a renderer/projection
+# A rendering contract belongs here only after both source semantics and the
+# modern owner/structural implementation have been proven.
+PROVEN_RENDERING_CONTRACTS: dict[str, dict[str, str]] = {
+    "scope_section_suppression": {
+        "owner": "backend.app.document.inspection_ke_hoach_kt_scope_suppression",
+        "reason": (
+            "legacy InStr(..., vbTextCompare) decisions are projected from Daychuyen; "
+            "effective template contracts own physical targets and "
+            "docx_bookmark_range owns structural deletion"
+        ),
+    },
+}
+
+# These are not missing database columns. They require a renderer/projection
 # contract before contextual create may be enabled.
 RENDERING_BLOCKERS: dict[str, dict[str, str]] = {
     "Fulldate": {
@@ -51,10 +64,6 @@ RENDERING_BLOCKERS: dict[str, dict[str, str]] = {
     "TT_VKNx/TT_SYTx": {
         "owner": "InspectionTeam organization-group rendering projection",
         "reason": "legacy separates central-institute and provincial-health representatives through roster groups; modern output grouping is not explicit",
-    },
-    "scope_section_suppression": {
-        "owner": "KHKT DOCX renderer",
-        "reason": "legacy conditionally deletes bookmark ranges for scope-specific sections; scalar bookmark replacement cannot express this",
     },
 }
 
@@ -92,6 +101,13 @@ def build_business_input_audit(source_audit: dict[str, Any]) -> dict[str, Any]:
         }
         for name, spec in PROVEN_BUSINESS_OWNERS.items()
     }
+    rendering_contracts = {
+        name: {
+            "classification": "RENDERING_CONTRACT_PROVEN",
+            **deepcopy(spec),
+        }
+        for name, spec in PROVEN_RENDERING_CONTRACTS.items()
+    }
     blockers = {
         name: {
             "classification": "RENDERING_CONTRACT_MISSING",
@@ -100,13 +116,15 @@ def build_business_input_audit(source_audit: dict[str, Any]) -> dict[str, Any]:
         for name, spec in RENDERING_BLOCKERS.items()
     }
     return {
-        "schema_version": "inspection-ke-hoach-kt-business-input-audit/v1",
+        "schema_version": "inspection-ke-hoach-kt-business-input-audit/v2",
         "family_code": FAMILY_CODE,
         "status": "BUSINESS_INPUT_OWNERS_PROVEN_RENDERING_BLOCKED",
         "business_input_fields": fields,
+        "rendering_contracts": rendering_contracts,
         "rendering_blockers": blockers,
         "summary": {
             "owner_proven": len(fields),
+            "rendering_contract_proven": len(rendering_contracts),
             "rendering_contract_missing": len(blockers),
             "schema_migration_required": False,
             "contextual_create_readiness": "BUSINESS_INPUT_CONTRACT_MISSING",

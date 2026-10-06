@@ -29,10 +29,12 @@ def test_khkt_business_input_audit_separates_canonical_owners_from_rendering_sem
     report = build_business_input_audit(source)
 
     assert source == before
+    assert report["schema_version"] == "inspection-ke-hoach-kt-business-input-audit/v2"
     assert report["status"] == "BUSINESS_INPUT_OWNERS_PROVEN_RENDERING_BLOCKED"
     assert report["summary"] == {
         "owner_proven": 10,
-        "rendering_contract_missing": 6,
+        "rendering_contract_proven": 1,
+        "rendering_contract_missing": 5,
         "schema_migration_required": False,
         "contextual_create_readiness": "BUSINESS_INPUT_CONTRACT_MISSING",
     }
@@ -45,10 +47,15 @@ def test_khkt_business_input_audit_separates_canonical_owners_from_rendering_sem
     assert owners["Daychuyen"]["owner"].startswith("CaseEvaluationScope projection")
     assert owners["GioiHanPvi"]["owner"].startswith("CaseEvaluationScope projection")
 
+    rendering_contracts = report["rendering_contracts"]
+    scope_contract = rendering_contracts["scope_section_suppression"]
+    assert scope_contract["classification"] == "RENDERING_CONTRACT_PROVEN"
+    assert "inspection_ke_hoach_kt_scope_suppression" in scope_contract["owner"]
+
     blockers = report["rendering_blockers"]
     assert blockers["Diadiemx"]["classification"] == "RENDERING_CONTRACT_MISSING"
     assert blockers["VKNx"]["owner"] == "inspection authority projection"
-    assert blockers["scope_section_suppression"]["owner"] == "KHKT DOCX renderer"
+    assert "scope_section_suppression" not in blockers
     assert report["invariants"]["runtime_readiness_changed"] is False
 
 

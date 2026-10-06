@@ -20,6 +20,10 @@ from backend.app.document.contextual_actions import (
 )
 from backend.app.rbac import ROLE_PERMISSIONS
 from backend.app.document.service_contract import load_default_registry
+from backend.app.document.inspection_ke_hoach_kt_template_asset_contract import (
+    INSPECTION_KE_HOACH_KT_FAMILY,
+    get_inspection_ke_hoach_kt_output_filename,
+)
 from backend.app.db.models.phase1 import (
     BusinessEligibilityCertificate,
     BusinessEligibilityCertificateLink,
@@ -751,6 +755,9 @@ class CatalogReadService:
         user: AuthenticatedUser,
     ) -> list[dict[str, object]]:
         definitions = []
+        case = session.get(Case, case_id)
+        if case is None:
+            raise HTTPException(status_code=404, detail="Case not found.")
         spec_by_key: dict[tuple[str, str, str], dict[str, object]] = {}
         for spec, parent_id in build_case_contextual_document_specs(capa_cycles):
             resolved_parent_id = case_id if spec.parent_scope == "case" else parent_id
@@ -777,6 +784,13 @@ class CatalogReadService:
             spec = spec_by_key.get((str(item["parent_scope"]), str(item["parent_id"]), family_code))
             if spec is None:
                 continue
+            create_contract = None
+            if family_code == INSPECTION_KE_HOACH_KT_FAMILY:
+                create_contract = {
+                    "create_gxp_type": case.gxp_type,
+                    "create_storage_scope": "inspection_folder",
+                    "create_output_filename": get_inspection_ke_hoach_kt_output_filename(case.gxp_type),
+                }
             contextual_items.append(
                 {
                     **item,
@@ -790,6 +804,7 @@ class CatalogReadService:
                         parent_scope=str(item["parent_scope"]),
                         parent_id=str(item["parent_id"]),
                         document_type_code=item.get("document_type_code"),
+                        create_contract=create_contract,
                     ),
                 }
             )

@@ -698,6 +698,9 @@ export type ContextualDocumentActionAvailability = {
   parent_scope?: "case" | "capa_cycle" | null;
   parent_id?: string | null;
   document_type_code?: string | null;
+  create_gxp_type?: string | null;
+  create_storage_scope?: string | null;
+  create_output_filename?: string | null;
 };
 
 export type ContextualDocumentAction = {

@@ -29,6 +29,7 @@ import {
   getDocumentDetail,
   openCapaCycleDocumentCurrentContent,
   openCaseDocumentCurrentContent,
+  renderTemplateDocx,
   getFacilityWorkspace,
   getGxpCertificateDetail,
   issueGxpCertificate,
@@ -1694,6 +1695,43 @@ export function SearchPage({
     return getDocumentDetail(documentId, auth, useStubAuth, bearerToken);
   }
 
+  async function handleCreateDocument(
+    caseId: string,
+    item: ContextualDocumentAction,
+    action: ContextualDocumentAction["actions"][number],
+  ): Promise<void> {
+    if (action.action_key !== "create" || !action.available) {
+      throw new Error("Thao tác tạo tài liệu hiện không khả dụng.");
+    }
+    if (
+      item.family_code !== "INSPECTION_KE_HOACH_KT" ||
+      action.family_code !== item.family_code ||
+      action.parent_scope !== "case" ||
+      action.parent_id !== caseId ||
+      !action.create_gxp_type ||
+      !action.create_storage_scope ||
+      !action.create_output_filename
+    ) {
+      throw new Error("Backend chưa trả create contract KHKT đầy đủ hoặc ngữ cảnh đã thay đổi.");
+    }
+    await renderTemplateDocx(
+      {
+        family_code: action.family_code,
+        case_id: action.parent_id,
+        gxp_type: action.create_gxp_type,
+        storage_scope: action.create_storage_scope,
+        payload: {},
+        strict_payload: true,
+        output_filename: action.create_output_filename,
+      },
+      auth,
+      useStubAuth,
+      bearerToken,
+    );
+    await refreshSelectedCaseWorkspace(caseId);
+    await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
+  }
+
   async function handleOpenDocument(caseId: string, item: ContextualDocumentAction): Promise<void> {
     if (!item.document_id) {
       throw new Error("Tài liệu chưa có binary hiện hành để mở.");
@@ -2005,6 +2043,7 @@ export function SearchPage({
             onLoadInspectionTeamIdentityOptions={handleLoadInspectionTeamIdentityOptions}
             onEvaluationScopeSave={handleEvaluationScopeSave}
             onInspectionPlanSave={handleInspectionPlanSave}
+            onCreateDocument={handleCreateDocument}
             onLoadDocumentDetail={handleLoadDocumentDetail}
             onOpenDocument={handleOpenDocument}
             onResolveInspectionFolder={handleResolveInspectionFolder}

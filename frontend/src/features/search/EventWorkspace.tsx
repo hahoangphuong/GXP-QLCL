@@ -112,14 +112,19 @@ function DocumentChecklistSection({
   );
 }
 
-function ContextualDocumentSection({
+export function ContextualDocumentSection({
   items,
   onOpenDocument,
   onLoadDocumentDetail,
+  onCreateDocument,
 }: {
   items: ContextualDocumentAction[];
   onOpenDocument: (item: ContextualDocumentAction) => Promise<void>;
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
+  onCreateDocument: (
+    item: ContextualDocumentAction,
+    action: ContextualDocumentAction["actions"][number],
+  ) => Promise<void>;
 }) {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [detail, setDetail] = useState<DocumentDetail | null>(null);
@@ -164,6 +169,23 @@ function ContextualDocumentSection({
     }
   }
 
+  async function handleCreate(
+    item: ContextualDocumentAction,
+    action: ContextualDocumentAction["actions"][number],
+  ) {
+    setLoading(true);
+    setLoadingMessage("Đang tạo tài liệu...");
+    setError(null);
+    try {
+      await onCreateDocument(item, action);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Không tạo được tài liệu.");
+    } finally {
+      setLoading(false);
+      setLoadingMessage(null);
+    }
+  }
+
   async function handleOpen(item: ContextualDocumentAction) {
     if (!item.document_id) {
       return;
@@ -197,9 +219,7 @@ function ContextualDocumentSection({
             </div>
             <div className="contextual-document-actions">
               <span className={`document-status-pill document-status-${item.status}`}>{DOCUMENT_STATUS_LABELS[item.status] ?? item.status}</span>
-              {item.actions
-                .filter((action) => action.action_key !== "create")
-                .map((action) => (
+              {item.actions.map((action) => (
                   <button
                     aria-label={`${action.label} ${item.label}`}
                     disabled={!action.available}
@@ -210,6 +230,9 @@ function ContextualDocumentSection({
                       }
                       if (action.action_key === "history") {
                         void handleLoadHistory(item);
+                      }
+                      if (action.action_key === "create") {
+                        void handleCreate(item, action);
                       }
                     }}
                     title={action.disabled_reason ?? `${action.label} ${item.label}`}
@@ -458,6 +481,11 @@ function renderCaseStepContent(
   onResolveInspectionFolder: () => Promise<InspectionFolderLookup>,
   onOpenDocument: (caseId: string, item: ContextualDocumentAction) => Promise<void>,
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>,
+  onCreateDocument: (
+    caseId: string,
+    item: ContextualDocumentAction,
+    action: ContextualDocumentAction["actions"][number],
+  ) => Promise<void>,
   onIssueCertificate: (payload: CertificateIssueRequest) => Promise<void>,
   onFinalizeInspectionOutcome?: (payload: InspectionFinalEvaluationRequest) => Promise<void>,
 ) {
@@ -481,6 +509,9 @@ function renderCaseStepContent(
         />
         <ContextualDocumentSection
           items={documentItems}
+          onCreateDocument={(item, action) =>
+            onCreateDocument(caseWorkspace.case_summary.id, item, action)
+          }
           onLoadDocumentDetail={onLoadDocumentDetail}
           onOpenDocument={(item) => onOpenDocument(caseWorkspace.case_summary.id, item)}
         />
@@ -505,6 +536,9 @@ function renderCaseStepContent(
         />
         <ContextualDocumentSection
           items={documentItems}
+          onCreateDocument={(item, action) =>
+            onCreateDocument(caseWorkspace.case_summary.id, item, action)
+          }
           onLoadDocumentDetail={onLoadDocumentDetail}
           onOpenDocument={(item) => onOpenDocument(caseWorkspace.case_summary.id, item)}
         />
@@ -526,6 +560,9 @@ function renderCaseStepContent(
         />
         <ContextualDocumentSection
           items={documentItems}
+          onCreateDocument={(item, action) =>
+            onCreateDocument(caseWorkspace.case_summary.id, item, action)
+          }
           onLoadDocumentDetail={onLoadDocumentDetail}
           onOpenDocument={(item) => onOpenDocument(caseWorkspace.case_summary.id, item)}
         />
@@ -539,6 +576,9 @@ function renderCaseStepContent(
         <CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} />
         <ContextualDocumentSection
           items={documentItems}
+          onCreateDocument={(item, action) =>
+            onCreateDocument(caseWorkspace.case_summary.id, item, action)
+          }
           onLoadDocumentDetail={onLoadDocumentDetail}
           onOpenDocument={(item) => onOpenDocument(caseWorkspace.case_summary.id, item)}
         />
@@ -557,6 +597,9 @@ function renderCaseStepContent(
         />
         <ContextualDocumentSection
           items={documentItems}
+          onCreateDocument={(item, action) =>
+            onCreateDocument(caseWorkspace.case_summary.id, item, action)
+          }
           onLoadDocumentDetail={onLoadDocumentDetail}
           onOpenDocument={(item) => onOpenDocument(caseWorkspace.case_summary.id, item)}
         />
@@ -616,6 +659,7 @@ export function EventWorkspace({
   onEvaluationScopeSave,
   onOpenDocument,
   onLoadDocumentDetail,
+  onCreateDocument,
   onIssueCertificate,
   selectedRemediationCycleId,
   onSelectedRemediationCycleChange,
@@ -649,6 +693,11 @@ export function EventWorkspace({
   onEvaluationScopeSave: (payload: EvaluationScopeUpsertRequest) => Promise<void>;
   onOpenDocument: (caseId: string, item: ContextualDocumentAction) => Promise<void>;
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
+  onCreateDocument: (
+    caseId: string,
+    item: ContextualDocumentAction,
+    action: ContextualDocumentAction["actions"][number],
+  ) => Promise<void>;
   onIssueCertificate: (payload: CertificateIssueRequest) => Promise<void>;
   selectedRemediationCycleId: string | null;
   onSelectedRemediationCycleChange: (cycleId: string | null) => void;
@@ -736,6 +785,7 @@ export function EventWorkspace({
             onResolveInspectionFolder,
             onOpenDocument,
             onLoadDocumentDetail,
+            onCreateDocument,
             onIssueCertificate,
             onFinalizeInspectionOutcome,
           )

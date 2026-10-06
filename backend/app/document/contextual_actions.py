@@ -62,7 +62,7 @@ _CASE_DOCUMENT_CONTEXT_SPECS: tuple[CaseDocumentContextSpec, ...] = (
         workflow_step="Kiểm tra",
         parent_scope="case",
         classification="PROVEN",
-        create_readiness="FRONTEND_CREATE_ACTION_MISSING",
+        create_readiness="READY_CREATE_OPEN_HISTORY",
         legacy_host_procedure="RecordForm.CreateFile",
         legacy_case_numbers=(3,),
     ),
@@ -212,6 +212,7 @@ def build_document_action_states(
     parent_scope: ParentScope,
     parent_id: str,
     document_type_code: str | None,
+    create_contract: dict[str, str] | None = None,
 ) -> list[dict[str, object]]:
     def available_or_reason(
         *,
@@ -287,6 +288,7 @@ def build_document_action_states(
         "parent_scope": parent_scope,
         "parent_id": parent_id,
         "document_type_code": document_type_code,
+        **({} if create_contract is None else create_contract),
     }
 
     return [

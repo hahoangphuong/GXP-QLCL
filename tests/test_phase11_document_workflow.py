@@ -539,7 +539,7 @@ def test_contextual_create_contracts_remain_typed_and_fail_closed_until_promoted
     assert visible_specs
     khkt = get_case_document_context_spec("INSPECTION_KE_HOACH_KT")
     assert khkt is not None
-    assert khkt.create_readiness == "FRONTEND_CREATE_ACTION_MISSING"
+    assert khkt.create_readiness == "READY_CREATE_OPEN_HISTORY"
     assert all(
         spec.create_readiness == "BUSINESS_INPUT_CONTRACT_MISSING"
         for spec in visible_specs
@@ -559,11 +559,10 @@ def test_contextual_create_contracts_remain_typed_and_fail_closed_until_promoted
     )
     create = next(action for action in actions if action["action_key"] == "create")
 
-    assert create["available"] is False
-    assert create["reason_code"] == "frontend_create_action_missing"
+    assert create["available"] is True
+    assert create["reason_code"] is None
     assert create["family_code"] == khkt.family_code
     assert create["parent_scope"] == khkt.parent_scope
-    assert "frontend contextual action" in create["disabled_reason"]
     assert create["parent_id"] == "case-123"
 
     denied_actions = build_document_action_states(

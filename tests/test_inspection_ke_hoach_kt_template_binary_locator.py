@@ -11,6 +11,7 @@ from backend.app.db.enums import DocumentVariantType
 from backend.app.db.models.phase1 import TemplateBinding, TemplateDefinition
 from backend.app.document.contextual_actions import get_case_document_context_spec
 from backend.app.document.inspection_ke_hoach_kt_template_asset_contract import (
+    get_inspection_ke_hoach_kt_output_filename,
     get_inspection_ke_hoach_kt_template_asset,
     load_inspection_ke_hoach_kt_template_assets,
 )
@@ -168,8 +169,16 @@ def test_khkt_mismatched_exact_binding_fails_closed():
         session.close()
 
 
-def test_khkt_contextual_create_reports_frontend_handler_blocker():
+def test_khkt_contextual_create_is_promoted_after_typed_frontend_handler():
     spec = get_case_document_context_spec("INSPECTION_KE_HOACH_KT")
 
     assert spec is not None
-    assert spec.create_readiness == "FRONTEND_CREATE_ACTION_MISSING"
+    assert spec.create_readiness == "READY_CREATE_OPEN_HISTORY"
+
+
+
+@pytest.mark.parametrize("gxp_type", ["GMP", "GLP", "GMPbb", "GSP"])
+def test_khkt_output_filename_is_backend_owned_by_exact_template_variant(gxp_type):
+    assert get_inspection_ke_hoach_kt_output_filename(gxp_type) == (
+        f"3. Kế hoạch kiểm tra {gxp_type}.docx"
+    )

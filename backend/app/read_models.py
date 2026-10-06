@@ -436,6 +436,9 @@ class ContextualDocumentActionAvailabilityRead(BaseModel):
     parent_scope: Literal["case", "capa_cycle"] | None = None
     parent_id: str | None = None
     document_type_code: str | None = None
+    create_gxp_type: str | None = None
+    create_storage_scope: str | None = None
+    create_output_filename: str | None = None
 
 
 class ContextualDocumentActionRead(BaseModel):

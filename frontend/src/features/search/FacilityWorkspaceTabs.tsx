@@ -102,6 +102,7 @@ export function FacilityWorkspaceTabs({
   onLoadInspectionTeamIdentityOptions,
   onEvaluationScopeSave,
   onOpenDocument,
+  onCreateDocument,
   onLoadDocumentDetail,
   selectedRemediationCycleId,
   onSelectedRemediationCycleChange,
@@ -170,6 +171,11 @@ export function FacilityWorkspaceTabs({
   onLoadInspectionTeamIdentityOptions: () => Promise<InspectionTeamIdentityOption[]>;
   onEvaluationScopeSave: (payload: EvaluationScopeUpsertRequest) => Promise<void>;
   onOpenDocument: (caseId: string, item: ContextualDocumentAction) => Promise<void>;
+  onCreateDocument: (
+    caseId: string,
+    item: ContextualDocumentAction,
+    action: ContextualDocumentAction["actions"][number],
+  ) => Promise<void>;
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
   selectedRemediationCycleId: string | null;
   onSelectedRemediationCycleChange: (cycleId: string | null) => void;
@@ -251,6 +257,7 @@ export function FacilityWorkspaceTabs({
                 onEvaluationScopeSave={onEvaluationScopeSave}
                 onInspectionPlanSave={onInspectionPlanSave}
                 onIssueCertificate={onIssueCertificate}
+                onCreateDocument={onCreateDocument}
                 onLoadDocumentDetail={onLoadDocumentDetail}
                 onOpenDocument={onOpenDocument}
                 onSelectedRemediationCycleChange={onSelectedRemediationCycleChange}

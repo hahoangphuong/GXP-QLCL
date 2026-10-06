@@ -103,3 +103,13 @@ def get_inspection_ke_hoach_kt_template_asset(
     raise InspectionKeHoachKtTemplateAssetContractError(
         f"No inspection KHKT template asset is defined for GxP type {normalized!r}."
     )
+
+
+def get_inspection_ke_hoach_kt_output_filename(gxp_type: str) -> str:
+    """Return the backend-owned editable output filename for a KHKT template variant."""
+    filename = get_inspection_ke_hoach_kt_template_asset(gxp_type).filename
+    if not filename.casefold().endswith(".dotx"):
+        raise InspectionKeHoachKtTemplateAssetContractError(
+            "Inspection KHKT template filename must end with .dotx to derive editable output."
+        )
+    return filename[:-5] + ".docx"

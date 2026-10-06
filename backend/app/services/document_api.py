@@ -520,6 +520,52 @@ class DocumentWorkflowService:
             storage_relative_path=allocation.storage_relative_path,
         )
 
+    @staticmethod
+    def _capture_previous_current_version_ids(
+        session: Session,
+        allocated: object,
+    ) -> tuple[str, ...]:
+        allocation = allocated.allocated.output_allocation
+        return tuple(
+            row.id
+            for row in session.scalars(
+                select(DocumentVersion).where(
+                    DocumentVersion.document_variant_id
+                    == allocation.document_variant_id
+                )
+            )
+            if row.id != allocation.document_version_id and row.is_current
+        )
+
+    @staticmethod
+    def _restore_render_version_state(
+        session: Session,
+        allocated: object | None,
+        previous_current_version_ids: tuple[str, ...],
+        *,
+        output_was_current_before_render: bool,
+    ) -> None:
+        if allocated is None or output_was_current_before_render:
+            return
+        allocation = allocated.allocated.output_allocation
+        previous_ids = set(previous_current_version_ids)
+        versions = list(
+            session.scalars(
+                select(DocumentVersion).where(
+                    DocumentVersion.document_variant_id
+                    == allocation.document_variant_id
+                )
+            )
+        )
+        for row in versions:
+            if row.id == allocation.document_version_id:
+                row.is_current = False
+                row.checksum_sha256 = None
+                row.issued_on = None
+            elif row.id in previous_ids:
+                row.is_current = True
+        session.flush()
+
     def cleanup_render_output_after_commit_failure(
         self,
         storage: StorageServiceProtocol,
@@ -550,12 +596,29 @@ class DocumentWorkflowService:
         prepared = None
         allocated = None
         output_was_current_before_render = True
+        previous_current_version_ids: tuple[str, ...] = ()
         try:
             preparation_input = self._build_preparation_input(render_payload, actor.id)
             prepared = prepare_document_generation_job(
                 session,
                 preparation_input,
             )
+            if prepared.persisted_state.reused_generation_run:
+                reused_run = session.get(
+                    DocumentGenerationRun,
+                    prepared.persisted_state.generation_run_id,
+                )
+                if (
+                    reused_run is not None
+                    and reused_run.status == DocumentGenerationStatus.SUCCEEDED
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "Document generation run already succeeded; open the "
+                            "current document instead of rendering it again."
+                        ),
+                    )
             output_filename = self._resolve_render_output_filename(
                 prepared,
                 render_payload.get("output_filename"),
@@ -581,6 +644,11 @@ class DocumentWorkflowService:
                     "Allocated document version disappeared before render."
                 )
             output_was_current_before_render = bool(allocated_version.is_current)
+            if not output_was_current_before_render:
+                previous_current_version_ids = self._capture_previous_current_version_ids(
+                    session,
+                    allocated,
+                )
             result = render_template_aware_docx_and_finalize(session, storage, allocated)
             audit_event = self._write_audit_event(
                 session,
@@ -633,6 +701,12 @@ class DocumentWorkflowService:
                 "_rollback_cleanup_required": not output_was_current_before_render,
             }
         except HTTPException as exc:
+            self._restore_render_version_state(
+                session,
+                allocated,
+                previous_current_version_ids,
+                output_was_current_before_render=output_was_current_before_render,
+            )
             cleanup_error = self._cleanup_allocated_render_output(
                 storage,
                 allocated,
@@ -659,6 +733,12 @@ class DocumentWorkflowService:
             DocxTemplateRenderError,
             StorageOperationError,
         ) as exc:
+            self._restore_render_version_state(
+                session,
+                allocated,
+                previous_current_version_ids,
+                output_was_current_before_render=output_was_current_before_render,
+            )
             cleanup_error = self._cleanup_allocated_render_output(
                 storage,
                 allocated,
@@ -676,6 +756,12 @@ class DocumentWorkflowService:
             status_code = 500 if cleanup_error is not None else 409
             raise HTTPException(status_code=status_code, detail=detail) from exc
         except Exception as exc:
+            self._restore_render_version_state(
+                session,
+                allocated,
+                previous_current_version_ids,
+                output_was_current_before_render=output_was_current_before_render,
+            )
             cleanup_error = self._cleanup_allocated_render_output(
                 storage,
                 allocated,

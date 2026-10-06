@@ -509,7 +509,9 @@ def test_render_template_docx_succeeds_for_dkkd_certificate_and_updates_lineage(
         shutil.rmtree(root, ignore_errors=True)
 
 
-def test_render_template_docx_removes_written_output_when_post_write_audit_fails(monkeypatch):
+def test_render_template_docx_restores_previous_current_when_post_write_audit_fails(
+    monkeypatch,
+):
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = DocumentWorkflowService()
@@ -543,6 +545,58 @@ def test_render_template_docx_removes_written_output_when_post_write_audit_fails
                 storage_relative_path=template_relative,
                 original_filename="z2 giay chung nhan ddkkdd sanitized.dotx",
             )
+
+            common_payload = {
+                "family_code": "DDKD_CERTIFICATE",
+                "business_eligibility_certificate_id": dkkd_id,
+                "storage_scope": "dkkd_folder",
+                "payload": {
+                    "TenCty": "Cong ty A",
+                    "DiachiCoso": "123 Duong A",
+                    "HoatdongKD": "Bao quan, ban buon thuoc",
+                },
+                "strict_payload": True,
+            }
+            baseline_payload = {
+                **common_payload,
+                "idempotency_key": "phase11-render-baseline-001",
+                "output_filename": "baseline.docx",
+            }
+            baseline = service.render_template_docx(
+                session,
+                storage=storage,
+                payload=baseline_payload,
+                user=build_authenticated_user("inspector01", "inspector"),
+            )
+            session.commit()
+
+            baseline_path = output_dir / "baseline.docx"
+            baseline_bytes = baseline_path.read_bytes()
+            try:
+                service.render_template_docx(
+                    session,
+                    storage=storage,
+                    payload=baseline_payload,
+                    user=build_authenticated_user("inspector01", "inspector"),
+                )
+            except HTTPException as exc:
+                assert exc.status_code == 409
+                assert exc.detail == (
+                    "Document generation run already succeeded; open the current "
+                    "document instead of rendering it again."
+                )
+            else:
+                raise AssertionError(
+                    "Expected successful idempotent replay to avoid re-rendering"
+                )
+            assert baseline_path.read_bytes() == baseline_bytes
+            baseline_run = session.get(
+                DocumentGenerationRun,
+                baseline["generation_run_id"],
+            )
+            assert baseline_run is not None
+            assert baseline_run.status.value == "succeeded"
+
             monkeypatch.setattr(
                 service,
                 "_write_audit_event",
@@ -556,17 +610,9 @@ def test_render_template_docx_removes_written_output_when_post_write_audit_fails
                     session,
                     storage=storage,
                     payload={
-                        "family_code": "DDKD_CERTIFICATE",
-                        "business_eligibility_certificate_id": dkkd_id,
-                        "storage_scope": "dkkd_folder",
+                        **common_payload,
                         "idempotency_key": "phase11-render-cleanup-001",
-                        "output_filename": "z2. Giay chung nhan DDKKDD.docx",
-                        "payload": {
-                            "TenCty": "Cong ty A",
-                            "DiachiCoso": "123 Duong A",
-                            "HoatdongKD": "Bao quan, ban buon thuoc",
-                        },
-                        "strict_payload": True,
+                        "output_filename": "candidate.docx",
                     },
                     user=build_authenticated_user("inspector01", "inspector"),
                 )
@@ -574,10 +620,34 @@ def test_render_template_docx_removes_written_output_when_post_write_audit_fails
                 assert "simulated post-write audit failure" in str(exc)
             else:
                 raise AssertionError("Expected post-write audit failure")
-            session.rollback()
 
-        written = output_dir / "z2. Giay chung nhan DDKKDD.docx"
-        assert written.exists() is False
+            session.commit()
+
+            baseline_version = session.get(
+                DocumentVersion,
+                baseline["document_version_id"],
+            )
+            assert baseline_version is not None
+            assert baseline_version.is_current is True
+            failed_run = session.scalars(
+                select(DocumentGenerationRun).where(
+                    DocumentGenerationRun.idempotency_key
+                    == "phase11-render-cleanup-001"
+                )
+            ).one()
+            assert failed_run.status.value == "failed"
+            failed_version = session.get(
+                DocumentVersion,
+                failed_run.output_document_version_id,
+            )
+            assert failed_version is not None
+            assert failed_version.is_current is False
+            assert failed_version.checksum_sha256 is None
+            assert failed_version.issued_on is None
+
+        candidate_path = output_dir / "candidate.docx"
+        assert baseline_path.exists() is True
+        assert candidate_path.exists() is False
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from xml.etree import ElementTree as ET
 
+import pytest
+
 from backend.app.document.inspection_ke_hoach_kt_effective_template_contract import (
     InspectionKeHoachKtEffectiveTemplateContract,
 )
@@ -69,6 +71,54 @@ def test_scope_suppression_preserves_vbtextcompare_substring_semantics():
         "PVNhomat",
         "PVSuibot",
     )
+
+
+@pytest.mark.parametrize(
+    ("section_name", "daychuyen"),
+    [
+        ("PVTiem", "Tiêm"),
+        ("PVNhomat", "Nhỏ mắt"),
+        ("PVNangmem", "Nang mềm"),
+        ("PVSuibot", "Sủi bọt"),
+    ],
+)
+def test_scope_suppression_preserves_legacy_leading_space_boundary_at_string_start(
+    section_name,
+    daychuyen,
+):
+    contract = _contract({section_name: (f"{section_name}Target",)})
+
+    plan = build_inspection_ke_hoach_kt_scope_suppression_plan(
+        daychuyen=daychuyen,
+        contract=contract,
+    )
+
+    assert plan.suppressed_sections == (section_name,)
+    assert plan.delete_targets == (f"{section_name}Target",)
+
+
+@pytest.mark.parametrize(
+    ("section_name", "daychuyen"),
+    [
+        ("PVTiem", "Thuốc tiêm"),
+        ("PVNhomat", "Thuốc nhỏ mắt"),
+        ("PVNangmem", "Viên nang mềm"),
+        ("PVSuibot", "Viên sủi bọt"),
+    ],
+)
+def test_scope_suppression_matches_legacy_trigger_when_leading_space_is_present(
+    section_name,
+    daychuyen,
+):
+    contract = _contract({section_name: (f"{section_name}Target",)})
+
+    plan = build_inspection_ke_hoach_kt_scope_suppression_plan(
+        daychuyen=daychuyen,
+        contract=contract,
+    )
+
+    assert plan.suppressed_sections == ()
+    assert plan.delete_targets == ()
 
 
 def test_scope_suppression_is_noop_when_template_has_no_section_targets():

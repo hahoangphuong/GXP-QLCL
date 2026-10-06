@@ -16,10 +16,10 @@ _SECTION_TRIGGER_TEXT: tuple[tuple[str, str], ...] = (
     ("PVCepha", "Cephalosporin"),
     ("PVPeni", "Penicillin"),
     ("PVDuoclieu", "Dược liệu"),
-    ("PVTiem", "Tiêm"),
-    ("PVNhomat", "Nhỏ mắt"),
-    ("PVNangmem", "Nang mềm"),
-    ("PVSuibot", "Sủi bọt"),
+    ("PVTiem", " tiêm"),
+    ("PVNhomat", " nhỏ mắt"),
+    ("PVNangmem", " nang mềm"),
+    ("PVSuibot", " sủi bọt"),
 )
 
 

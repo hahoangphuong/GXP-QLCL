@@ -106,10 +106,10 @@ Private Sub Tao_QDKT_KHKT_BBKT(wdDoc, i)
         If InStr(1, DC_cu, "Cephalosporin") = 0 Then Delete_Bookmark wdDoc, "PVCepha", 1, 2
         If InStr(1, DC_cu, "Penicillin") = 0 Then Delete_Bookmark wdDoc, "PVPeni", 1, 2
         If InStr(1, DC_cu, "Dược liệu") = 0 Then Delete_Bookmark wdDoc, "PVDuoclieu", 1, 2
-        If InStr(1, DC_cu, "Tiêm") = 0 Then Delete_Bookmark wdDoc, "PVTiem", 1, 3
-        If InStr(1, DC_cu, "Nhỏ mắt") = 0 Then Delete_Bookmark wdDoc, "PVNhomat"
-        If InStr(1, DC_cu, "Nang mềm") = 0 Then Delete_Bookmark wdDoc, "PVNangmem", 1, 2
-        If InStr(1, DC_cu, "Sủi bọt") = 0 Then Delete_Bookmark wdDoc, "PVSuibot"
+        If InStr(1, DC_cu, " tiêm") = 0 Then Delete_Bookmark wdDoc, "PVTiem", 1, 3
+        If InStr(1, DC_cu, " nhỏ mắt") = 0 Then Delete_Bookmark wdDoc, "PVNhomat"
+        If InStr(1, DC_cu, " nang mềm") = 0 Then Delete_Bookmark wdDoc, "PVNangmem", 1, 2
+        If InStr(1, DC_cu, " sủi bọt") = 0 Then Delete_Bookmark wdDoc, "PVSuibot"
     End If
 End Sub
 """

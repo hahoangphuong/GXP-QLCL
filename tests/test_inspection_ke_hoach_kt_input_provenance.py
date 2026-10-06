@@ -169,6 +169,23 @@ def test_i3_source_audit_follows_recordform_entry_and_real_delete_semantics(tmp_
         report["required_writes"]["Diachicoso"]["effective_write"]["expression"]
         == 'Replace(DiachiDD, vbCrLf, ";")'
     )
+    tencoso = next(
+        item
+        for item in report["active_physical_operations"]
+        if item["physical_bookmark"] == "Tencoso"
+    )
+    diadiemx = next(
+        item
+        for item in report["active_physical_operations"]
+        if item["physical_bookmark"] == "Diadiemx"
+    )
+    assert tencoso["physical_bookmark_targets"] == [
+        "Tencoso1", "Tencoso2", "Tencoso3", "Tencoso4",
+        "Tencoso5", "Tencoso6", "Tencoso7", "Tencoso8",
+    ]
+    assert diadiemx["physical_bookmark_targets"] == [
+        "Diadiemx1", "Diadiemx2", "Diadiemx3",
+    ]
     assert set(report["required_section_suppressions"]) == {
         "PVCepha",
         "PVPeni",
@@ -179,6 +196,12 @@ def test_i3_source_audit_follows_recordform_entry_and_real_delete_semantics(tmp_
         "PVSuibot",
     }
     assert report["required_section_suppressions"]["PVCepha"]["operation_type"] == "DELETE"
+    assert report["required_section_suppressions"]["PVCepha"][
+        "physical_bookmark_targets"
+    ] == ["PVCepha1", "PVCepha2"]
+    assert report["required_section_suppressions"]["PVTiem"][
+        "physical_bookmark_targets"
+    ] == ["PVTiem1", "PVTiem2", "PVTiem3"]
     assert "InStr" in report["required_section_suppressions"]["PVCepha"][
         "branch_predicates"
     ]

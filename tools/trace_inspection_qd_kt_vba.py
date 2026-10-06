@@ -100,6 +100,62 @@ def _split_argument(text: str) -> tuple[str, str]:
     return text.strip(), ""
 
 
+def _split_arguments(text: str) -> tuple[str, ...]:
+    """Split one VBA argument list on top-level commas only."""
+    arguments: list[str] = []
+    quoted = False
+    depth = 0
+    start = 0
+    for index, char in enumerate(text):
+        if char == '"':
+            quoted = not quoted
+        elif not quoted and char == "(":
+            depth += 1
+        elif not quoted and char == ")":
+            depth -= 1
+        elif not quoted and depth == 0 and char == ",":
+            arguments.append(text[start:index].strip())
+            start = index + 1
+    arguments.append(text[start:].strip())
+    return tuple(arguments)
+
+
+def _literal_int(value: str) -> int | None:
+    normalized = value.strip()
+    if not re.fullmatch(r"[+-]?\d+", normalized):
+        return None
+    return int(normalized)
+
+
+def _helper_bookmark_targets(
+    physical_bookmark: str,
+    arguments: tuple[str, ...],
+    *,
+    operation_type: str,
+) -> tuple[str, ...]:
+    """Expand the literal optional i/j range owned by the VBA helper itself.
+
+    Replace_Bookmark(wdDoc, bm, txt, i, j) writes bm{suffix} for i..j,
+    using the unsuffixed bm only when k=0. Delete_Bookmark uses the same
+    suffix range but requires i>0. Dynamic/non-literal ranges remain
+    fail-closed as the base physical expression.
+    """
+    range_offset = 2 if operation_type == "WRITE" else 1
+    if len(arguments) <= range_offset + 1:
+        return (physical_bookmark,)
+    start = _literal_int(arguments[range_offset])
+    end = _literal_int(arguments[range_offset + 1])
+    if start is None or end is None:
+        return (physical_bookmark,)
+    enabled = (start >= 0 and end > 0) if operation_type == "WRITE" else (start > 0 and end > 0)
+    if not enabled or end < start:
+        return (physical_bookmark,)
+    return tuple(
+        physical_bookmark if index == 0 else f"{physical_bookmark}{index}"
+        for index in range(start, end + 1)
+    )
+
+
 def _branch_context(lines: list[str], index: int, *, target_i: int = 2) -> tuple[str, str]:
     stack: list[dict[str, object]] = []
     for row in lines[:index + 1]:
@@ -156,11 +212,25 @@ def _operations(proc: dict[str, object], *, target_i: int = 2) -> list[dict[str,
                 argument = re.match(r"\w+\s*,\s*(.+)$", statement)
                 if not argument:
                     continue
-                bookmark_expression, value_expression = _split_argument(argument.group(1))
+                parsed_arguments = _split_arguments(argument.group(1))
+                if not parsed_arguments:
+                    continue
+                bookmark_expression = parsed_arguments[0]
+                value_expression = (
+                    ", ".join(parsed_arguments[1:])
+                    if len(parsed_arguments) > 1
+                    else ""
+                )
                 quoted = re.findall(r'\"([^\"]+)\"', bookmark_expression)
                 physical = quoted[0] if quoted else bookmark_expression.split(",", 1)[0].strip()
                 if len(quoted) > 1 and "&" in bookmark_expression:
                     physical = "".join(quoted)
+                operation_type = "WRITE" if start.group(1).lower().startswith("replace") else "DELETE"
+                physical_targets = _helper_bookmark_targets(
+                    physical,
+                    parsed_arguments,
+                    operation_type=operation_type,
+                )
                 condition, reachability = _branch_context(lines, index, target_i=target_i)
                 if inline_condition:
                     condition = inline_condition if condition == "COMMON" else condition + " AND " + inline_condition
@@ -173,7 +243,8 @@ def _operations(proc: dict[str, object], *, target_i: int = 2) -> list[dict[str,
                 result.append({
                     "physical_bookmark": physical,
                     "physical_bookmark_expression": bookmark_expression,
-                    "operation_type": "WRITE" if start.group(1).lower().startswith("replace") else "DELETE",
+                    "physical_bookmark_targets": list(physical_targets),
+                    "operation_type": operation_type,
                     "line": offset + index + 1,
                     "expression": value_expression,
                     "branch_predicates": condition,
@@ -191,7 +262,9 @@ def _operations(proc: dict[str, object], *, target_i: int = 2) -> list[dict[str,
                     elif reachability != f"UNREACHABLE_{suffix}" and reachability != f"CONDITIONAL_{suffix}":
                         reachability = inline_status.replace("TRUE", "REACHABLE")
                 result.append({
-                    "physical_bookmark": range_match.group(2), "operation_type": "RANGE_DELETE",
+                    "physical_bookmark": range_match.group(2),
+                    "physical_bookmark_targets": [range_match.group(2)],
+                    "operation_type": "RANGE_DELETE",
                     "line": offset + index + 1, "expression": candidate,
                     "branch_predicates": condition, f"reachability_i{target_i}": reachability,
                 })

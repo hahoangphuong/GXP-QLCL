@@ -222,6 +222,7 @@ class DocumentWorkflowService:
                 template_bytes = stream.read()
             if prepared.generation_plan.template.family_code == "INSPECTION_KE_HOACH_KT":
                 from backend.app.document.inspection_ke_hoach_kt_effective_template_contract import (
+                    InspectionKeHoachKtEffectiveTemplateContractError,
                     build_inspection_ke_hoach_kt_effective_template_contract,
                 )
 
@@ -229,10 +230,13 @@ class DocumentWorkflowService:
                     raise TemplateContractRuntimeError(
                         "KHKT canonical payload input is unavailable during template readiness."
                     )
-                contract = build_inspection_ke_hoach_kt_effective_template_contract(
-                    gxp_type=prepared.khkt_payload_input.gxp_type,
-                    template_bytes=template_bytes,
-                )
+                try:
+                    contract = build_inspection_ke_hoach_kt_effective_template_contract(
+                        gxp_type=prepared.khkt_payload_input.gxp_type,
+                        template_bytes=template_bytes,
+                    )
+                except InspectionKeHoachKtEffectiveTemplateContractError as exc:
+                    raise TemplateContractRuntimeError(str(exc)) from exc
                 replacement_plan = type(
                     "_KhktReadinessPlan",
                     (),

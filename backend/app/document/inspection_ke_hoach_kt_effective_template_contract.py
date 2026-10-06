@@ -8,6 +8,8 @@ from zipfile import ZipFile
 FAMILY_CODE = "INSPECTION_KE_HOACH_KT"
 WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 W_NAME = f"{{{WORD_NS}}}name"
+W_ID = f"{{{WORD_NS}}}id"
+W_TEXT = f"{{{WORD_NS}}}t"
 
 
 class InspectionKeHoachKtEffectiveTemplateContractError(RuntimeError):
@@ -24,6 +26,7 @@ class InspectionKeHoachKtEffectiveTemplateContract:
     scope_section_delete_targets: dict[str, tuple[str, ...]]
     input_owner_by_source: dict[str, str] = field(default_factory=dict)
     legacy_noop_scalar_sources: tuple[str, ...] = ()
+    team_separator_text: str = ""
 
 
 # This is the *effective* i=3 contract after VBA best-effort operations are
@@ -128,6 +131,49 @@ def _bookmark_names(template_bytes: bytes) -> tuple[str, ...]:
     return tuple(name for name in names if name and not name.startswith("_"))
 
 
+
+
+def _bookmark_text(root: ET.Element, bookmark_name: str) -> str:
+    starts = [
+        node for node in root.iter()
+        if node.tag == f"{{{WORD_NS}}}bookmarkStart"
+        and node.attrib.get(W_NAME, "").casefold() == bookmark_name.casefold()
+    ]
+    if len(starts) != 1:
+        raise InspectionKeHoachKtEffectiveTemplateContractError(
+            f"KHKT template must contain exactly one {bookmark_name} bookmark"
+        )
+    bookmark_id = starts[0].attrib.get(W_ID)
+    if bookmark_id is None:
+        raise InspectionKeHoachKtEffectiveTemplateContractError(
+            f"KHKT {bookmark_name} bookmark has no w:id"
+        )
+
+    collecting = False
+    pieces: list[str] = []
+    for node in root.iter():
+        if node is starts[0]:
+            collecting = True
+            continue
+        if not collecting:
+            continue
+        if (
+            node.tag == f"{{{WORD_NS}}}bookmarkEnd"
+            and node.attrib.get(W_ID) == bookmark_id
+        ):
+            text = "".join(pieces)
+            if not text:
+                raise InspectionKeHoachKtEffectiveTemplateContractError(
+                    f"KHKT {bookmark_name} bookmark text is blank"
+                )
+            return text
+        if node.tag == W_TEXT and node.text:
+            pieces.append(node.text)
+    raise InspectionKeHoachKtEffectiveTemplateContractError(
+        f"KHKT {bookmark_name} bookmark end is missing"
+    )
+
+
 def _casefold_index(names: tuple[str, ...]) -> dict[str, str]:
     result: dict[str, str] = {}
     for name in names:
@@ -156,7 +202,18 @@ def build_inspection_ke_hoach_kt_effective_template_contract(
         raise InspectionKeHoachKtEffectiveTemplateContractError(
             f"Unsupported KHKT GxP type: {gxp_type!r}"
         )
-    names = _bookmark_names(template_bytes)
+    try:
+        with ZipFile(BytesIO(template_bytes), "r") as archive:
+            root = ET.fromstring(archive.read("word/document.xml"))
+    except (KeyError, ET.ParseError, OSError) as exc:
+        raise InspectionKeHoachKtEffectiveTemplateContractError(
+            "KHKT template bytes are not an inspectable DOCX package"
+        ) from exc
+    names = tuple(
+        name
+        for node in root.findall(f".//{{{WORD_NS}}}bookmarkStart")
+        if (name := node.attrib.get(W_NAME)) and not name.startswith("_")
+    )
     if names != _EXPECTED_BOOKMARKS[gxp_type]:
         raise InspectionKeHoachKtEffectiveTemplateContractError(
             f"KHKT {gxp_type} bookmark geometry changed; fail closed"
@@ -202,4 +259,5 @@ def build_inspection_ke_hoach_kt_effective_template_contract(
         scope_section_delete_targets=section_targets,
         input_owner_by_source=input_owner_by_source,
         legacy_noop_scalar_sources=legacy_noop_scalar_sources,
+        team_separator_text=_bookmark_text(root, "TT_ext"),
     )

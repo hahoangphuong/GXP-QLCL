@@ -35,11 +35,16 @@ BOOKMARKS = {
 }
 
 
-def _template(gxp_type: str, *, bookmarks: tuple[str, ...] | None = None) -> bytes:
+def _template(
+    gxp_type: str,
+    *,
+    bookmarks: tuple[str, ...] | None = None,
+    tt_ext_text: str = " – Thành viên;",
+) -> bytes:
     names = BOOKMARKS[gxp_type] if bookmarks is None else bookmarks
     bookmark_xml = "".join(
         f'<w:bookmarkStart w:id="{index}" w:name="{name}"/>'
-        f'<w:r><w:t>{name}</w:t></w:r>'
+        f'<w:r><w:t>{tt_ext_text if name == "TT_ext" else name}</w:t></w:r>'
         f'<w:bookmarkEnd w:id="{index}"/>'
         for index, name in enumerate(names, 1)
     )
@@ -71,6 +76,7 @@ def test_exact_khkt_geometry_resolves_effective_i3_targets(gxp_type: str):
     assert contract.scalar_targets["NgaynopHsDK"] == ()
     assert contract.scalar_targets["Daychuyen"] == ("DayChuyen",)
     assert contract.third_member_delete_target == "TT3Del"
+    assert contract.team_separator_text == " – Thành viên;"
 
 
 def test_gmp_is_the_only_khkt_geometry_with_scope_section_delete_targets():

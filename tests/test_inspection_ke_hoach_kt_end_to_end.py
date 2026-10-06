@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 import backend.app.document.template_binary as template_binary_module
 from backend.app.auth import build_authenticated_user
 from backend.app.db.base import Base
-from backend.app.db.enums import CaseState
+from backend.app.db.enums import CaseState, DocumentVariantType
 from backend.app.db.models.phase1 import (
     Case,
     CaseEvaluationScope,
@@ -35,7 +35,6 @@ from backend.app.db.models.phase1 import (
 from backend.app.document.inspection_ke_hoach_kt_template_asset_contract import (
     InspectionKeHoachKtTemplateAssetContractError,
 )
-from backend.app.document.seed_runtime import seed_default_template_metadata
 from backend.app.document.template_binary_binding import assign_template_binary_binding
 from backend.app.services.document_api import DocumentWorkflowService
 from backend.app.storage.filesystem import FilesystemStorageService
@@ -270,22 +269,32 @@ def test_khkt_binary_end_to_end_renders_canonical_db_payload_and_writes_output(m
 
         with Session(engine) as session:
             case_id, _ = _seed_canonical_khkt(session)
-            seed_default_template_metadata(session)
-            definition = session.scalar(
-                select(TemplateDefinition).where(
-                    TemplateDefinition.family_code == "INSPECTION_KE_HOACH_KT"
-                )
+            definition = TemplateDefinition(
+                family_code="INSPECTION_KE_HOACH_KT",
+                document_type_code="INSPECTION_KE_HOACH_KT",
+                source_application="Word",
+                storage_scope="inspection_folder",
+                legacy_host_procedure="RecordForm.CreateFile",
+                legacy_case_number=3,
+                variant_type=DocumentVariantType.EDITABLE_DOCX,
+                template_name="3. Kế hoạch kiểm tra {GP}.dotx",
+                template_pattern="3. Kế hoạch kiểm tra {GP}.dotx",
+                bookmark_contract=None,
+                notes=None,
+                is_active=True,
             )
-            assert definition is not None
-            binding = session.scalar(
-                select(TemplateBinding).where(
-                    TemplateBinding.family_code == "INSPECTION_KE_HOACH_KT",
-                    TemplateBinding.template_definition_id == definition.id,
-                    TemplateBinding.gxp_type == "GLP",
-                    TemplateBinding.storage_scope == "inspection_folder",
-                )
+            session.add(definition)
+            session.flush()
+            binding = TemplateBinding(
+                family_code="INSPECTION_KE_HOACH_KT",
+                template_definition_id=definition.id,
+                gxp_type="GLP",
+                legacy_mode=None,
+                storage_scope="inspection_folder",
+                is_active=True,
             )
-            assert binding is not None
+            session.add(binding)
+            session.flush()
             assign_template_binary_binding(
                 session,
                 template_binding_id=binding.id,

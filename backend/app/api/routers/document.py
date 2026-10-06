@@ -45,13 +45,31 @@ def register_document_routes(app, session_factory) -> None:
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
         require_permissions(user, {"document.write"})
+        storage = request.app.state.storage_service
         result = service.render_template_docx(
             session,
-            storage=request.app.state.storage_service,
+            storage=storage,
             payload=payload.model_dump(),
             user=user,
         )
-        commit_or_409(session)
+        try:
+            commit_or_409(session)
+        except Exception as exc:
+            if storage is not None:
+                cleanup_error = service.cleanup_render_output_after_commit_failure(
+                    storage,
+                    result,
+                )
+                if cleanup_error is not None:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=(
+                            "Document DB commit failed and output cleanup also failed: "
+                            + cleanup_error
+                        ),
+                    ) from exc
+            raise
+        result.pop("_rollback_cleanup_required", None)
         return DocumentRenderRead(**result)
 
     def get_document_generation_run(

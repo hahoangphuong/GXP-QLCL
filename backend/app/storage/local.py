@@ -212,6 +212,15 @@ class LocalStorageService:
             raise
         return self._entry_for(base_root, target)
 
+    def delete(self, relative_path: str, *, root: str = "inspection") -> None:
+        base_root = self._select_root(root)
+        target = self._path_under(base_root, relative_path)
+        if not target.exists():
+            raise FileNotFoundError(target)
+        if target.is_dir():
+            raise IsADirectoryError(target)
+        target.unlink()
+
     def create_folder(self, relative_path: str, *, root: str = "inspection") -> StorageEntry:
         base_root = self._select_root(root)
         target = self._path_under(base_root, relative_path)

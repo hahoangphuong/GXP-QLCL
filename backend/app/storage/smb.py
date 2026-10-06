@@ -234,6 +234,14 @@ class SmbStorageService:
             raise
         return self._entry_for(base_root, target)
 
+    def delete(self, relative_path: str, *, root: str = "inspection") -> None:
+        target = self._join_root(self._select_root(root), relative_path)
+        if not smbpath.exists(target):
+            raise FileNotFoundError(target)
+        if smbpath.isdir(target):
+            raise IsADirectoryError(target)
+        smbclient.remove(target)
+
     def create_folder(self, relative_path: str, *, root: str = "inspection") -> StorageEntry:
         base_root = self._select_root(root)
         target = self._join_root(base_root, relative_path)

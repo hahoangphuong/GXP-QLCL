@@ -263,6 +263,13 @@ class ExternalBridgeStorageService:
             finally:
                 connection.close()
 
+    def delete(self, relative_path: str, *, root: str = "inspection") -> None:
+        self._request_json(
+            "POST",
+            "/bridge/storage/delete",
+            payload={"root": root, "relative_path": relative_path},
+        )
+
     def create_folder(self, relative_path: str, *, root: str = "inspection") -> StorageEntry:
         payload = self._request_json(
             "POST",

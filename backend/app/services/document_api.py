@@ -490,6 +490,49 @@ class DocumentWorkflowService:
             "audit_event_id": audit_event.id,
         }
 
+    @staticmethod
+    def _cleanup_render_output_path(
+        storage: StorageServiceProtocol,
+        *,
+        storage_root: str,
+        storage_relative_path: str,
+    ) -> str | None:
+        try:
+            if storage.exists(storage_relative_path, root=storage_root):
+                storage.delete(storage_relative_path, root=storage_root)
+        except Exception as exc:
+            return str(exc)
+        return None
+
+    def _cleanup_allocated_render_output(
+        self,
+        storage: StorageServiceProtocol,
+        allocated: object | None,
+        *,
+        output_was_current_before_render: bool,
+    ) -> str | None:
+        if allocated is None or output_was_current_before_render:
+            return None
+        allocation = allocated.allocated.output_allocation
+        return self._cleanup_render_output_path(
+            storage,
+            storage_root=allocation.storage_root,
+            storage_relative_path=allocation.storage_relative_path,
+        )
+
+    def cleanup_render_output_after_commit_failure(
+        self,
+        storage: StorageServiceProtocol,
+        render_result: dict[str, Any],
+    ) -> str | None:
+        if not bool(render_result.get("_rollback_cleanup_required")):
+            return None
+        return self._cleanup_render_output_path(
+            storage,
+            storage_root=str(render_result["output_storage_root"]),
+            storage_relative_path=str(render_result["output_storage_relative_path"]),
+        )
+
     def render_template_docx(
         self,
         session: Session,
@@ -504,6 +547,9 @@ class DocumentWorkflowService:
         render_payload = dict(payload)
         if not render_payload.get("idempotency_key"):
             render_payload["idempotency_key"] = f"render-{uuid4()}"
+        prepared = None
+        allocated = None
+        output_was_current_before_render = True
         try:
             preparation_input = self._build_preparation_input(render_payload, actor.id)
             prepared = prepare_document_generation_job(
@@ -526,8 +572,81 @@ class DocumentWorkflowService:
                 preparation_input,
                 output_filename=output_filename,
             )
+            allocated_version = session.get(
+                DocumentVersion,
+                allocated.allocated.output_allocation.document_version_id,
+            )
+            if allocated_version is None:
+                raise OutputVersionAllocationError(
+                    "Allocated document version disappeared before render."
+                )
+            output_was_current_before_render = bool(allocated_version.is_current)
             result = render_template_aware_docx_and_finalize(session, storage, allocated)
-        except HTTPException:
+            audit_event = self._write_audit_event(
+                session,
+                actor=actor,
+                entity_type="document_generation_run",
+                entity_id=result.generation_run_id,
+                action="document.render_template_docx",
+                payload={
+                    "document_version_id": result.document_version_id,
+                    "generation_run_id": result.generation_run_id,
+                    "checksum_sha256": result.checksum_sha256,
+                    "scalar_replacement_mode": result.scalar_replacement_mode,
+                    "template_variant_key": result.template_variant_key,
+                },
+            )
+            session.flush()
+            document_version = session.get(DocumentVersion, result.document_version_id)
+            if (
+                document_version is None
+                or document_version.storage_root is None
+                or document_version.storage_relative_path is None
+            ):
+                raise HTTPException(
+                    status_code=500,
+                    detail="Rendered document version locator is incomplete.",
+                )
+            generation_run = session.get(DocumentGenerationRun, result.generation_run_id)
+            if generation_run is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Rendered generation run disappeared unexpectedly.",
+                )
+            return {
+                "document_id": generation_run.document_id,
+                "document_variant_id": document_version.document_variant_id,
+                "document_version_id": result.document_version_id,
+                "generation_run_id": result.generation_run_id,
+                "generation_status": generation_run.status.value,
+                "output_storage_root": document_version.storage_root,
+                "output_storage_relative_path": document_version.storage_relative_path,
+                "output_original_filename": document_version.original_filename,
+                "checksum_sha256": result.checksum_sha256,
+                "byte_size": result.byte_size,
+                "scalar_replacement_mode": result.scalar_replacement_mode,
+                "template_variant_key": result.template_variant_key,
+                "replaced_bookmarks": list(result.replaced_bookmarks),
+                "replaced_table_regions": list(result.replaced_table_regions),
+                "replaced_parts": list(result.replaced_parts),
+                "audit_event_id": audit_event.id,
+                "_rollback_cleanup_required": not output_was_current_before_render,
+            }
+        except HTTPException as exc:
+            cleanup_error = self._cleanup_allocated_render_output(
+                storage,
+                allocated,
+                output_was_current_before_render=output_was_current_before_render,
+            )
+            if cleanup_error is not None:
+                detail = f"{exc.detail} Output cleanup failed: {cleanup_error}"
+                if prepared is not None:
+                    self._mark_generation_run_failed(
+                        session,
+                        prepared.persisted_state.generation_run_id,
+                        detail,
+                    )
+                raise HTTPException(status_code=500, detail=detail) from exc
             raise
         except (
             DocumentTemplateSelectionError,
@@ -540,48 +659,40 @@ class DocumentWorkflowService:
             DocxTemplateRenderError,
             StorageOperationError,
         ) as exc:
-            if "prepared" in locals():
-                self._mark_generation_run_failed(session, prepared.persisted_state.generation_run_id, str(exc))
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        audit_event = self._write_audit_event(
-            session,
-            actor=actor,
-            entity_type="document_generation_run",
-            entity_id=result.generation_run_id,
-            action="document.render_template_docx",
-            payload={
-                "document_version_id": result.document_version_id,
-                "generation_run_id": result.generation_run_id,
-                "checksum_sha256": result.checksum_sha256,
-                "scalar_replacement_mode": result.scalar_replacement_mode,
-                "template_variant_key": result.template_variant_key,
-            },
-        )
-        session.flush()
-        document_version = session.get(DocumentVersion, result.document_version_id)
-        if document_version is None or document_version.storage_root is None or document_version.storage_relative_path is None:
-            raise HTTPException(status_code=500, detail="Rendered document version locator is incomplete.")
-        generation_run = session.get(DocumentGenerationRun, result.generation_run_id)
-        if generation_run is None:
-            raise HTTPException(status_code=500, detail="Rendered generation run disappeared unexpectedly.")
-        return {
-            "document_id": generation_run.document_id,
-            "document_variant_id": document_version.document_variant_id,
-            "document_version_id": result.document_version_id,
-            "generation_run_id": result.generation_run_id,
-            "generation_status": generation_run.status.value,
-            "output_storage_root": document_version.storage_root,
-            "output_storage_relative_path": document_version.storage_relative_path,
-            "output_original_filename": document_version.original_filename,
-            "checksum_sha256": result.checksum_sha256,
-            "byte_size": result.byte_size,
-            "scalar_replacement_mode": result.scalar_replacement_mode,
-            "template_variant_key": result.template_variant_key,
-            "replaced_bookmarks": list(result.replaced_bookmarks),
-            "replaced_table_regions": list(result.replaced_table_regions),
-            "replaced_parts": list(result.replaced_parts),
-            "audit_event_id": audit_event.id,
-        }
+            cleanup_error = self._cleanup_allocated_render_output(
+                storage,
+                allocated,
+                output_was_current_before_render=output_was_current_before_render,
+            )
+            detail = str(exc)
+            if cleanup_error is not None:
+                detail += f" Output cleanup failed: {cleanup_error}"
+            if prepared is not None:
+                self._mark_generation_run_failed(
+                    session,
+                    prepared.persisted_state.generation_run_id,
+                    detail,
+                )
+            status_code = 500 if cleanup_error is not None else 409
+            raise HTTPException(status_code=status_code, detail=detail) from exc
+        except Exception as exc:
+            cleanup_error = self._cleanup_allocated_render_output(
+                storage,
+                allocated,
+                output_was_current_before_render=output_was_current_before_render,
+            )
+            detail = str(exc)
+            if cleanup_error is not None:
+                detail += f" Output cleanup failed: {cleanup_error}"
+            if prepared is not None:
+                self._mark_generation_run_failed(
+                    session,
+                    prepared.persisted_state.generation_run_id,
+                    detail,
+                )
+            if cleanup_error is not None:
+                raise RuntimeError(detail) from exc
+            raise
 
     def get_generation_run(self, session: Session, generation_run_id: str) -> dict[str, Any]:
         return self._serialize_generation_status(session, generation_run_id)

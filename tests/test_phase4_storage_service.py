@@ -80,6 +80,23 @@ def add_anchor(
     session.flush()
 
 
+def test_local_storage_delete_removes_file_and_rejects_directory(tmp_path: Path):
+    service = build_service(tmp_path)
+    target = service.inspection_root / "2026" / "orphan.docx"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"orphan")
+
+    service.delete("2026/orphan.docx")
+
+    assert target.exists() is False
+    try:
+        service.delete("2026")
+    except IsADirectoryError:
+        pass
+    else:
+        raise AssertionError("Storage delete must reject directories")
+
+
 def test_resolve_inspection_folder_returns_resolved_for_unique_match(tmp_path: Path):
     service = build_service(tmp_path)
     folder = service.inspection_root / "2026" / "120 Armephaco - (ID-103) - (KT-1376-GMP)"

@@ -5,6 +5,7 @@ import json
 import shutil
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import HTTPException, Request
@@ -12,6 +13,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from backend.app.auth import build_authenticated_user
+import backend.app.api.routers.document as document_router_module
 from backend.app.db.base import Base
 from backend.app.db.enums import CaseState, ChangeRequestState, DocumentVariantType
 from backend.app.db.models.phase1 import (
@@ -503,6 +505,130 @@ def test_render_template_docx_succeeds_for_dkkd_certificate_and_updates_lineage(
 
         written = root / "dkkd" / "Cong ty A - Dia chi A (100)" / "z2. Giay chung nhan DDKKDD.docx"
         assert written.exists()
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_render_template_docx_removes_written_output_when_post_write_audit_fails(monkeypatch):
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = DocumentWorkflowService()
+    storage, root = _build_storage()
+    try:
+        with Session(engine) as session:
+            _, site_id = _seed_case(session)
+            company_id = session.get(Site, site_id).company_id  # type: ignore[union-attr]
+            dkkd_id = _seed_dkkd(session, site_id, company_id)
+            seed_default_template_metadata(session)
+
+            output_dir = root / "dkkd" / "Cong ty A - Dia chi A (100)"
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            template = session.execute(
+                select(TemplateDefinition).where(
+                    TemplateDefinition.family_code == "DDKD_CERTIFICATE"
+                )
+            ).scalar_one()
+            template_relative = "dkkd/z2 giay chung nhan ddkkdd sanitized.dotx"
+            template_path = root / "templates" / template_relative
+            template_path.parent.mkdir(parents=True, exist_ok=True)
+            _build_minimal_docx_with_bookmarks(
+                template_path,
+                ["TenCty", "DiachiCoso", "HoatdongKD"],
+            )
+            assign_template_binary_locator(
+                session,
+                template_definition_id=template.id,
+                storage_root="template",
+                storage_relative_path=template_relative,
+                original_filename="z2 giay chung nhan ddkkdd sanitized.dotx",
+            )
+            monkeypatch.setattr(
+                service,
+                "_write_audit_event",
+                lambda *args, **kwargs: (_ for _ in ()).throw(
+                    RuntimeError("simulated post-write audit failure")
+                ),
+            )
+
+            try:
+                service.render_template_docx(
+                    session,
+                    storage=storage,
+                    payload={
+                        "family_code": "DDKD_CERTIFICATE",
+                        "business_eligibility_certificate_id": dkkd_id,
+                        "storage_scope": "dkkd_folder",
+                        "idempotency_key": "phase11-render-cleanup-001",
+                        "output_filename": "z2. Giay chung nhan DDKKDD.docx",
+                        "payload": {
+                            "TenCty": "Cong ty A",
+                            "DiachiCoso": "123 Duong A",
+                            "HoatdongKD": "Bao quan, ban buon thuoc",
+                        },
+                        "strict_payload": True,
+                    },
+                    user=build_authenticated_user("inspector01", "inspector"),
+                )
+            except RuntimeError as exc:
+                assert "simulated post-write audit failure" in str(exc)
+            else:
+                raise AssertionError("Expected post-write audit failure")
+            session.rollback()
+
+        written = output_dir / "z2. Giay chung nhan DDKKDD.docx"
+        assert written.exists() is False
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_render_route_removes_new_output_when_db_commit_fails(monkeypatch):
+    storage, root = _build_storage()
+    try:
+        target = root / "inspection" / "2026" / "orphan.docx"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"orphan")
+
+        app = create_app("sqlite:///:memory:", storage_service=storage)
+        route = next(
+            route
+            for route in app.routes
+            if getattr(route, "path", None) == "/documents/render-template-docx"
+        )
+
+        monkeypatch.setattr(
+            DocumentWorkflowService,
+            "render_template_docx",
+            lambda self, session, *, storage, payload, user: {
+                "output_storage_root": "inspection",
+                "output_storage_relative_path": "2026/orphan.docx",
+                "_rollback_cleanup_required": True,
+            },
+        )
+        monkeypatch.setattr(
+            document_router_module,
+            "commit_or_409",
+            lambda session: (_ for _ in ()).throw(
+                RuntimeError("simulated commit failure")
+            ),
+        )
+
+        try:
+            route.endpoint(
+                payload=SimpleNamespace(model_dump=lambda: {}),
+                request=_request_for_app(app),
+                session=SimpleNamespace(),
+                user=build_authenticated_user(
+                    "inspector01",
+                    permissions={"document.write"},
+                ),
+            )
+        except RuntimeError as exc:
+            assert "simulated commit failure" in str(exc)
+        else:
+            raise AssertionError("Expected DB commit failure")
+
+        assert target.exists() is False
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

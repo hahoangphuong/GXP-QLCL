@@ -234,6 +234,18 @@ def create_storage_bridge_app(storage_service: FilesystemStorageService | None =
         except Exception as exc:  # pragma: no cover
             raise_http_error(exc)
 
+    @app.post("/bridge/storage/delete")
+    def delete_entry(
+        payload: dict = Body(...),
+        storage: FilesystemStorageService = Depends(get_storage),
+        _claims: dict = Depends(require_bridge_request_auth),
+    ):
+        try:
+            storage.delete(str(payload["relative_path"]), root=str(payload["root"]))
+            return {"deleted": True}
+        except Exception as exc:  # pragma: no cover
+            raise_http_error(exc)
+
     @app.post("/bridge/storage/create-folder")
     def create_folder(
         payload: dict = Body(...),

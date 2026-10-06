@@ -104,6 +104,9 @@ class _BridgeStorageHarness:
         self.fail_after_reads = fail_after_reads
         self.last_stream: _TrackingStream | None = None
 
+    def delete(self, relative_path: str, *, root: str = "inspection") -> None:
+        del self.files[relative_path]
+
     @contextmanager
     def read_stream(self, relative_path: str, *, root: str = "inspection"):
         payload = self.files[relative_path]
@@ -308,6 +311,57 @@ def test_bridge_request_auth_rejects_missing_token(monkeypatch):
         assert exc.status_code == 401
     else:
         raise AssertionError("Expected missing token to be rejected")
+
+
+def test_bridge_delete_endpoint_removes_file(monkeypatch):
+    headers = _authorized_headers(monkeypatch)
+    storage = _BridgeStorageHarness({"orphan.bin": b"orphan"})
+    app = create_storage_bridge_app(storage)
+
+    messages = asyncio.run(
+        _invoke_asgi(
+            app,
+            method="POST",
+            path="/bridge/storage/delete",
+            headers={**headers, "content-type": "application/json"},
+            body=json.dumps(
+                {"root": "inspection", "relative_path": "orphan.bin"}
+            ).encode("utf-8"),
+        )
+    )
+
+    assert _status_from_messages(messages) == 200
+    assert "orphan.bin" not in storage.files
+
+
+def test_external_bridge_delete_uses_bridge_delete_contract(monkeypatch):
+    service = ExternalBridgeStorageService(
+        ExternalBridgeStorageConfig(
+            base_url="http://bridge.internal",
+            auth_mode=BRIDGE_AUTH_MODE_GOOGLE_OIDC,
+            auth_audience=None,
+        )
+    )
+    calls: list[tuple[str, str, dict[str, str]]] = []
+
+    monkeypatch.setattr(
+        service,
+        "_request_json",
+        lambda method, path, *, payload=None, query=None: calls.append(
+            (method, path, payload)
+        )
+        or {"deleted": True},
+    )
+
+    service.delete("2026/orphan.docx", root="inspection")
+
+    assert calls == [
+        (
+            "POST",
+            "/bridge/storage/delete",
+            {"root": "inspection", "relative_path": "2026/orphan.docx"},
+        )
+    ]
 
 
 def test_external_bridge_write_stream_sends_chunks(monkeypatch):

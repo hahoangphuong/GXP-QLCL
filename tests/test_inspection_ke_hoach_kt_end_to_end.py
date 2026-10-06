@@ -36,6 +36,7 @@ from backend.app.document.inspection_ke_hoach_kt_template_asset_contract import 
     InspectionKeHoachKtTemplateAssetContractError,
 )
 from backend.app.document.template_binary_binding import assign_template_binary_binding
+from backend.app.project_paths import repo_root
 from backend.app.services.document_api import DocumentWorkflowService
 from backend.app.storage.filesystem import FilesystemStorageService
 from backend.app.storage.types import StorageConfig
@@ -238,6 +239,7 @@ def test_khkt_binary_end_to_end_renders_canonical_db_payload_and_writes_output(m
     storage, root = _storage()
     service = DocumentWorkflowService()
     try:
+        monkeypatch.setenv("GXP_ARTIFACTS_ROOT", str(repo_root() / "artifacts"))
         template_relative = "test/3. Kế hoạch kiểm tra GLP.dotx"
         template_path = root / "templates" / template_relative
         template_path.parent.mkdir(parents=True)
@@ -277,8 +279,8 @@ def test_khkt_binary_end_to_end_renders_canonical_db_payload_and_writes_output(m
                 legacy_host_procedure="RecordForm.CreateFile",
                 legacy_case_number=3,
                 variant_type=DocumentVariantType.EDITABLE_DOCX,
-                template_name="3. Kế hoạch kiểm tra {GP}.dotx",
-                template_pattern="3. Kế hoạch kiểm tra {GP}.dotx",
+                template_name="3. Ke hoach kiem tra {GP}.dotx",
+                template_pattern="3. Ke hoach kiem tra {GP}.dotx",
                 bookmark_contract=None,
                 notes=None,
                 is_active=True,

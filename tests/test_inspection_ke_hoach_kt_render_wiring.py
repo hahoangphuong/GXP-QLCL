@@ -59,6 +59,7 @@ def _preparation(
     generated_at=None,
     gxp_type="GMP",
     language_code="vi",
+    **request_overrides,
 ) -> DocumentPreparationInput:
     return DocumentPreparationInput(
         request=DocumentGenerationRequest(
@@ -68,6 +69,7 @@ def _preparation(
             gxp_type=gxp_type,
             storage_scope="inspection_folder",
             language_code=language_code,
+            **request_overrides,
         ),
         payload_values={} if payload_values is None else payload_values,
         generated_at=generated_at or datetime(2026, 10, 5, 17, 0, tzinfo=timezone.utc),
@@ -92,6 +94,75 @@ def test_khkt_document_payload_result_is_canonical_and_rejects_caller_business_p
             _preparation(payload_values={"Tencoso": "caller override"}),
             khkt_payload_input=_payload_input(),
         )
+
+
+@pytest.mark.parametrize("case_id", (None, "", "   "))
+def test_khkt_payload_loader_requires_nonblank_case_parent_before_db_load(
+    monkeypatch,
+    case_id,
+):
+    load_calls: list[object] = []
+    monkeypatch.setattr(
+        service_module,
+        "load_inspection_ke_hoach_kt_payload_input",
+        lambda *args, **kwargs: load_calls.append(object()),
+    )
+    preparation = _preparation()
+    request = DocumentGenerationRequest(
+        family_code=preparation.request.family_code,
+        requested_by_user_id=preparation.request.requested_by_user_id,
+        case_id=case_id,
+        gxp_type=preparation.request.gxp_type,
+        storage_scope=preparation.request.storage_scope,
+        language_code=preparation.request.language_code,
+    )
+
+    with pytest.raises(
+        DocumentPayloadBuildError,
+        match="requires a nonblank case_id",
+    ):
+        service_module._build_khkt_payload_input(
+            SimpleNamespace(),
+            DocumentPreparationInput(
+                request=request,
+                payload_values={},
+                generated_at=preparation.generated_at,
+            ),
+        )
+
+    assert load_calls == []
+
+
+@pytest.mark.parametrize(
+    "parent_field",
+    (
+        "capa_cycle_id",
+        "certificate_id",
+        "business_eligibility_certificate_id",
+        "change_request_id",
+    ),
+)
+def test_khkt_payload_loader_rejects_non_case_parent_links_before_db_load(
+    monkeypatch,
+    parent_field,
+):
+    load_calls: list[object] = []
+    monkeypatch.setattr(
+        service_module,
+        "load_inspection_ke_hoach_kt_payload_input",
+        lambda *args, **kwargs: load_calls.append(object()),
+    )
+
+    with pytest.raises(
+        DocumentPayloadBuildError,
+        match=rf"case-owned and rejects additional parent links: {parent_field}",
+    ):
+        service_module._build_khkt_payload_input(
+            SimpleNamespace(),
+            _preparation(**{parent_field: f"{parent_field}-1"}),
+        )
+
+    assert load_calls == []
 
 
 def test_khkt_payload_loader_requires_request_gxp_type_matching_canonical_case(

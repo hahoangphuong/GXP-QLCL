@@ -159,9 +159,25 @@ def _build_khkt_payload_input(
 ) -> InspectionKeHoachKtPayloadInput | None:
     if preparation_input.request.family_code != KHKT_FAMILY_CODE:
         return None
-    if preparation_input.request.case_id is None:
+    case_id = str(preparation_input.request.case_id or "").strip()
+    if not case_id:
         raise DocumentPayloadBuildError(
-            "INSPECTION_KE_HOACH_KT canonical payload requires case_id."
+            "INSPECTION_KE_HOACH_KT canonical payload requires a nonblank case_id."
+        )
+    forbidden_parent_links = {
+        "capa_cycle_id": preparation_input.request.capa_cycle_id,
+        "certificate_id": preparation_input.request.certificate_id,
+        "business_eligibility_certificate_id": preparation_input.request.business_eligibility_certificate_id,
+        "change_request_id": preparation_input.request.change_request_id,
+    }
+    unexpected_parent_links = tuple(
+        name for name, value in forbidden_parent_links.items() if value is not None
+    )
+    if unexpected_parent_links:
+        raise DocumentPayloadBuildError(
+            "INSPECTION_KE_HOACH_KT is case-owned and rejects additional parent links: "
+            + ", ".join(unexpected_parent_links)
+            + "."
         )
     if preparation_input.generated_at is None:
         raise DocumentPayloadBuildError(
@@ -170,7 +186,7 @@ def _build_khkt_payload_input(
     try:
         payload_input = load_inspection_ke_hoach_kt_payload_input(
             session,
-            case_id=preparation_input.request.case_id,
+            case_id=case_id,
             generated_at=preparation_input.generated_at,
         )
     except InspectionKeHoachKtPayloadInputError as exc:

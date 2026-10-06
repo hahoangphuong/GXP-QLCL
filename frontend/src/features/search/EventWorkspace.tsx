@@ -219,7 +219,9 @@ export function ContextualDocumentSection({
             </div>
             <div className="contextual-document-actions">
               <span className={`document-status-pill document-status-${item.status}`}>{DOCUMENT_STATUS_LABELS[item.status] ?? item.status}</span>
-              {item.actions.map((action) => (
+              {item.actions
+                .filter((action) => action.action_key !== "create" || action.available)
+                .map((action) => (
                   <button
                     aria-label={`${action.label} ${item.label}`}
                     disabled={!action.available}

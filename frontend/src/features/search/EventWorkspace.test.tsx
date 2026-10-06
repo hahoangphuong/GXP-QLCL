@@ -71,7 +71,7 @@ describe("ContextualDocumentSection typed create", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "Tạo Kế hoạch kiểm tra" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Tạo Kế hoạch kiểm tra" })).not.toBeInTheDocument();
     expect(screen.getByText("blocked")).toBeInTheDocument();
   });
 });

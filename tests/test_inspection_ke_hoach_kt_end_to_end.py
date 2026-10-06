@@ -8,6 +8,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from zipfile import ZIP_DEFLATED, ZipFile
 
+import pytest
+
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
@@ -177,6 +179,156 @@ def _build_gmp_structural_template(path: Path) -> bytes:
         archive.writestr("_rels/.rels", rels)
         archive.writestr("word/document.xml", document_xml)
     return path.read_bytes()
+
+
+NON_GMP_VARIANT_BOOKMARKS = {
+    "GMPbb": (
+        "Fulldate", "TenCoSo1", "DiaChiCoSo", "DayChuyen", "TT1x", "TT2x", "TT3x",
+        "TT3Del", "TT_ext", "TT_VKNx", "VKNx", "TT_SYTx", "Diadiemx", "Diadiemx1",
+    ),
+    "GSP": (
+        "Fulldate", "TenCoSo1", "DiaChiCoSo", "DayChuyen", "TT1x", "TT2x", "TT3x",
+        "TT3Del", "TT_ext", "TT_SYTx", "Diadiemx", "Diadiemx1",
+    ),
+}
+
+
+def _build_non_gmp_structural_template(path: Path, gxp_type: str) -> bytes:
+    names = NON_GMP_VARIANT_BOOKMARKS[gxp_type]
+    tt3del_index = names.index("TT3Del")
+    assert names[tt3del_index + 1] == "TT_ext"
+
+    parts: list[str] = []
+    for index, name in enumerate(names[:tt3del_index], start=1):
+        parts.append(
+            f'<w:p><w:bookmarkStart w:id="{index}" w:name="{name}"/>'
+            f'<w:r><w:t>SOURCE-{name}</w:t></w:r>'
+            f'<w:bookmarkEnd w:id="{index}"/></w:p>'
+        )
+
+    tt3del_id = tt3del_index + 1
+    tt_ext_id = tt3del_id + 1
+    parts.append(
+        f'<w:p><w:bookmarkStart w:id="{tt3del_id}" w:name="TT3Del"/>'
+        '<w:r><w:t>DELETE-THIRD-MEMBER</w:t></w:r></w:p>'
+        f'<w:p><w:bookmarkEnd w:id="{tt3del_id}"/>'
+        f'<w:bookmarkStart w:id="{tt_ext_id}" w:name="TT_ext"/>'
+        '<w:r><w:t> – Thành viên;</w:t></w:r>'
+        f'<w:bookmarkEnd w:id="{tt_ext_id}"/></w:p>'
+    )
+
+    for index, name in enumerate(names[tt3del_index + 2 :], start=tt_ext_id + 1):
+        parts.append(
+            f'<w:p><w:bookmarkStart w:id="{index}" w:name="{name}"/>'
+            f'<w:r><w:t>SOURCE-{name}</w:t></w:r>'
+            f'<w:bookmarkEnd w:id="{index}"/></w:p>'
+        )
+
+    document_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:body>' + ''.join(parts) + '</w:body></w:document>'
+    ).encode("utf-8")
+    content_types = b"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>"""
+    rels = b"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>"""
+    with ZipFile(path, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", content_types)
+        archive.writestr("_rels/.rels", rels)
+        archive.writestr("word/document.xml", document_xml)
+    return path.read_bytes()
+
+
+def _seed_non_gmp_variant_shell(
+    session: Session,
+    *,
+    gxp_type: str,
+    template_relative: str,
+    checksum: str,
+    storage_root: Path,
+) -> tuple[str, str]:
+    company = Company(legacy_company_id=921, legal_name=f"Cong ty {gxp_type}", short_name=gxp_type)
+    session.add(company)
+    session.flush()
+    site = Site(
+        legacy_site_id=922,
+        company_id=company.id,
+        site_name=f"Cơ sở {gxp_type} A",
+        site_address=f"Số 3 Đường {gxp_type}",
+        province_name="Hà Nội",
+    )
+    session.add(site)
+    session.flush()
+    inspection_code = f"KT-2026-{gxp_type}-E2E"
+    case = Case(
+        legacy_inspection_id=923,
+        legacy_inspection_code=inspection_code,
+        site_id=site.id,
+        gxp_type=gxp_type,
+        applicable_standard=f"WHO {gxp_type}",
+        state=CaseState.PLANNED,
+        opened_year=2026,
+    )
+    session.add(case)
+    session.flush()
+
+    definition = TemplateDefinition(
+        family_code="INSPECTION_KE_HOACH_KT",
+        document_type_code="INSPECTION_KE_HOACH_KT",
+        source_application="Word",
+        storage_scope="inspection_folder",
+        legacy_host_procedure="RecordForm.CreateFile",
+        legacy_case_number=3,
+        variant_type=DocumentVariantType.EDITABLE_DOCX,
+        template_name="3. Ke hoach kiem tra {GP}.dotx",
+        template_pattern="3. Ke hoach kiem tra {GP}.dotx",
+        bookmark_contract=None,
+        notes=None,
+        is_active=True,
+    )
+    session.add(definition)
+    session.flush()
+    binding = TemplateBinding(
+        family_code="INSPECTION_KE_HOACH_KT",
+        template_definition_id=definition.id,
+        gxp_type=gxp_type,
+        legacy_mode=None,
+        storage_scope="inspection_folder",
+        is_active=True,
+    )
+    session.add(binding)
+    session.flush()
+    assign_template_binary_binding(
+        session,
+        template_binding_id=binding.id,
+        storage_root="template",
+        storage_relative_path=template_relative,
+        original_filename=f"3. Kế hoạch kiểm tra {gxp_type}.dotx",
+        checksum_sha256=checksum,
+    )
+
+    output_folder = f"2026/922-{inspection_code}"
+    (storage_root / "inspection" / output_folder).mkdir(parents=True)
+    session.add(
+        StorageBinding(
+            case_id=case.id,
+            year=2026,
+            site_legacy_id=922,
+            inspection_legacy_code=inspection_code,
+            relative_path=output_folder,
+            observed_folder_label=f"922-{inspection_code}",
+            storage_class="synology_legacy",
+        )
+    )
+    session.commit()
+    return case.id, output_folder
 
 
 def _seed_canonical_khkt(session: Session) -> tuple[str, str]:
@@ -643,5 +795,162 @@ def test_khkt_gmp_end_to_end_applies_structural_team_and_scope_deletions(monkeyp
             assert f"DELETE-{kept_name}-A" in xml
             assert f"DELETE-{kept_name}-B" in xml
             assert f"KEEP-{kept_name}" in xml
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+
+@pytest.mark.parametrize(
+    ("gxp_type", "expects_vkn"),
+    (("GMPbb", True), ("GSP", False)),
+)
+def test_khkt_gmpbb_and_gsp_end_to_end_render_exact_variant_contract(
+    monkeypatch,
+    gxp_type,
+    expects_vkn,
+):
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    storage, root = _storage()
+    service = DocumentWorkflowService()
+    try:
+        monkeypatch.setenv("GXP_ARTIFACTS_ROOT", str(repo_root() / "artifacts"))
+        template_relative = f"test/3. Kế hoạch kiểm tra {gxp_type}.dotx"
+        template_path = root / "templates" / template_relative
+        template_path.parent.mkdir(parents=True)
+        template_bytes = _build_non_gmp_structural_template(template_path, gxp_type)
+        checksum = hashlib.sha256(template_bytes).hexdigest()
+        expected_asset = SimpleNamespace(
+            gxp_type=gxp_type,
+            filename=f"3. Kế hoạch kiểm tra {gxp_type}.dotx",
+            storage_root="template",
+            storage_relative_path=template_relative,
+            checksum_sha256=checksum,
+        )
+        monkeypatch.setitem(
+            template_binary_module._EXACT_INSPECTION_GXP_ASSET_LOADERS,
+            "INSPECTION_KE_HOACH_KT",
+            (
+                lambda requested_gxp: expected_asset
+                if requested_gxp == gxp_type
+                else (_ for _ in ()).throw(
+                    InspectionKeHoachKtTemplateAssetContractError("unexpected GxP")
+                ),
+                InspectionKeHoachKtTemplateAssetContractError,
+            ),
+        )
+
+        with Session(engine) as session:
+            case_id, output_folder = _seed_non_gmp_variant_shell(
+                session,
+                gxp_type=gxp_type,
+                template_relative=template_relative,
+                checksum=checksum,
+                storage_root=root,
+            )
+            typed_payload = InspectionKeHoachKtPayloadInput(
+                case_id=case_id,
+                gxp_type=gxp_type,
+                site_name=f"Cơ sở {gxp_type} A",
+                site_address=f"Số 3 Đường {gxp_type}",
+                province_name="Hà Nội",
+                dossier_code="HS-NOOP",
+                submitted_on=None,
+                decision_reference="789/QĐ-QLD",
+                decision_date=date(2026, 10, 3),
+                applicable_standard=f"WHO {gxp_type}",
+                daychuyen=f"Phạm vi {gxp_type}",
+                gioi_han_pvi="Không",
+                diadiemx="thành phố Hà Nội",
+                vknx="Viện Kiểm nghiệm thuốc Trung ương",
+                team_members=(
+                    InspectionKeHoachKtTeamMemberInput(
+                        display_name=f"Trưởng đoàn {gxp_type}",
+                        sort_order=1,
+                        role_code="LEADER",
+                        identity_kind="INSPECTOR_PROFILE",
+                        roster_group="DRUG_ADMINISTRATION_AND_TRADITIONAL_MEDICINE",
+                    ),
+                ),
+                generated_on=date(2026, 10, 6),
+                fulldate="ngày 06 tháng 10 năm 2026",
+            )
+            monkeypatch.setattr(
+                document_service_module,
+                "load_inspection_ke_hoach_kt_payload_input",
+                lambda _session, *, case_id, generated_at: typed_payload,
+            )
+
+            result = service.render_template_docx(
+                session,
+                storage=storage,
+                payload={
+                    "family_code": "INSPECTION_KE_HOACH_KT",
+                    "case_id": case_id,
+                    "gxp_type": gxp_type,
+                    "storage_scope": "inspection_folder",
+                    "idempotency_key": f"khkt-e2e-{gxp_type.casefold()}-001",
+                    "output_filename": f"3. Kế hoạch kiểm tra {gxp_type}.docx",
+                    "payload": {},
+                    "strict_payload": True,
+                },
+                user=build_authenticated_user(
+                    f"khkt-e2e-{gxp_type.casefold()}",
+                    permissions={"document.read", "document.write"},
+                ),
+            )
+            session.commit()
+
+        assert result["generation_status"] == "succeeded"
+        assert result["scalar_replacement_mode"] == "khkt_contract_exact"
+        assert result["template_variant_key"] == gxp_type
+        assert result["output_original_filename"] == (
+            f"3. Kế hoạch kiểm tra {gxp_type}.docx"
+        )
+
+        replaced = set(result["replaced_bookmarks"])
+        assert {
+            "Fulldate",
+            "TenCoSo1",
+            "DiaChiCoSo",
+            "DayChuyen",
+            "TT1x",
+            "TT2x",
+            "TT3x",
+            "TT_SYTx",
+            "Diadiemx1",
+        }.issubset(replaced)
+        assert "TT3Del" not in replaced
+        assert "Diadiemx" not in replaced
+        if expects_vkn:
+            assert {"TT_VKNx", "VKNx"}.issubset(replaced)
+        else:
+            assert "TT_VKNx" not in replaced
+            assert "VKNx" not in replaced
+
+        output_path = (
+            root
+            / "inspection"
+            / output_folder
+            / f"3. Kế hoạch kiểm tra {gxp_type}.docx"
+        )
+        assert output_path.exists()
+        with ZipFile(output_path, "r") as archive:
+            xml = archive.read("word/document.xml").decode("utf-8")
+
+        assert "DELETE-THIRD-MEMBER" not in xml
+        assert f"Cơ sở {gxp_type} A" in xml
+        assert f"Số 3 Đường {gxp_type}" in xml
+        assert f"Phạm vi {gxp_type}" in xml
+        assert f"Trưởng đoàn {gxp_type}" in xml
+        assert "thành phố Hà Nội" in xml
+        assert "789/QĐ-QLD" not in xml
+        assert "HS-NOOP" not in xml
+        assert f"WHO {gxp_type}" not in xml
+        assert "SOURCE-Diadiemx" in xml
+        if expects_vkn:
+            assert "Viện Kiểm nghiệm thuốc Trung ương" in xml
+        else:
+            assert "Viện Kiểm nghiệm thuốc Trung ương" not in xml
     finally:
         shutil.rmtree(root, ignore_errors=True)

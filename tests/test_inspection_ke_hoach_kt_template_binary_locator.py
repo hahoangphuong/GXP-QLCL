@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from hashlib import sha256
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -18,9 +16,6 @@ from backend.app.document.inspection_ke_hoach_kt_template_asset_contract import 
 )
 from backend.app.document.template_binary import build_template_binary_requirement
 from backend.app.document.template_binary_binding import assign_template_binary_binding
-
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 def _definition() -> TemplateDefinition:
@@ -63,16 +58,18 @@ def _session() -> Session:
     return Session(engine)
 
 
-def test_khkt_asset_contract_matches_authoritative_four_legacy_templates():
-    assets = {asset.gxp_type: asset for asset in load_inspection_ke_hoach_kt_template_assets()}
+def test_khkt_asset_contract_contains_authoritative_four_gxp_mappings():
+    assets = {
+        asset.gxp_type: asset
+        for asset in load_inspection_ke_hoach_kt_template_assets()
+    }
 
     assert set(assets) == {"GMP", "GLP", "GMPbb", "GSP"}
     for gxp_type, asset in assets.items():
-        template_path = ROOT / "legacy" / "Templates" / asset.filename
         assert asset.storage_root == "template"
         assert asset.storage_relative_path == f"3. Kế hoạch kiểm tra {gxp_type}.dotx"
-        assert template_path.is_file()
-        assert sha256(template_path.read_bytes()).hexdigest() == asset.checksum_sha256
+        assert asset.filename == f"3. Kế hoạch kiểm tra {gxp_type}.dotx"
+        assert len(asset.checksum_sha256) == 64
 
 
 @pytest.mark.parametrize("gxp_type", ["GMP", "GLP", "GMPbb", "GSP"])

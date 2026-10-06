@@ -537,34 +537,42 @@ def test_contextual_create_contracts_remain_typed_and_fail_closed_until_promoted
     visible_specs = [spec for spec in specs if spec.classification == "PROVEN" and spec.workflow_step is not None]
 
     assert visible_specs
-    assert all(spec.create_readiness == "BUSINESS_INPUT_CONTRACT_MISSING" for spec in visible_specs)
+    khkt = get_case_document_context_spec("INSPECTION_KE_HOACH_KT")
+    assert khkt is not None
+    assert khkt.create_readiness == "FRONTEND_CREATE_ACTION_MISSING"
+    assert all(
+        spec.create_readiness == "BUSINESS_INPUT_CONTRACT_MISSING"
+        for spec in visible_specs
+        if spec.family_code != "INSPECTION_KE_HOACH_KT"
+    )
     assert get_case_document_context_spec("ASSESSMENT_MINUTES").create_readiness == "LEGACY_ONLY_UNRESOLVED"
 
     actions = build_document_action_states(
         open_available=False,
         history_available=False,
-        create_readiness=visible_specs[0].create_readiness,
+        create_readiness=khkt.create_readiness,
         permissions=frozenset({"document.write"}),
-        family_code=visible_specs[0].family_code,
-        parent_scope=visible_specs[0].parent_scope,
+        family_code=khkt.family_code,
+        parent_scope=khkt.parent_scope,
         parent_id="case-123",
         document_type_code=None,
     )
     create = next(action for action in actions if action["action_key"] == "create")
 
     assert create["available"] is False
-    assert create["reason_code"] == "business_input_contract_missing"
-    assert create["family_code"] == visible_specs[0].family_code
-    assert create["parent_scope"] == visible_specs[0].parent_scope
+    assert create["reason_code"] == "frontend_create_action_missing"
+    assert create["family_code"] == khkt.family_code
+    assert create["parent_scope"] == khkt.parent_scope
+    assert "frontend contextual action" in create["disabled_reason"]
     assert create["parent_id"] == "case-123"
 
     denied_actions = build_document_action_states(
         open_available=False,
         history_available=False,
-        create_readiness=visible_specs[0].create_readiness,
+        create_readiness=khkt.create_readiness,
         permissions=frozenset(),
-        family_code=visible_specs[0].family_code,
-        parent_scope=visible_specs[0].parent_scope,
+        family_code=khkt.family_code,
+        parent_scope=khkt.parent_scope,
         parent_id="case-123",
         document_type_code=None,
     )

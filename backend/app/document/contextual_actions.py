@@ -15,6 +15,7 @@ TypedCreateReadiness = Literal[
     "TEMPLATE_READY_BUT_BACKEND_ACTION_MISSING",
     "STORAGE_WRITE_CONTRACT_MISSING",
     "BUSINESS_INPUT_CONTRACT_MISSING",
+    "FRONTEND_CREATE_ACTION_MISSING",
     "LEGACY_ONLY_UNRESOLVED",
     "OTHER_BLOCKED",
 ]
@@ -61,7 +62,7 @@ _CASE_DOCUMENT_CONTEXT_SPECS: tuple[CaseDocumentContextSpec, ...] = (
         workflow_step="Kiểm tra",
         parent_scope="case",
         classification="PROVEN",
-        create_readiness="BUSINESS_INPUT_CONTRACT_MISSING",
+        create_readiness="FRONTEND_CREATE_ACTION_MISSING",
         legacy_host_procedure="RecordForm.CreateFile",
         legacy_case_numbers=(3,),
     ),
@@ -258,6 +259,10 @@ def build_document_action_states(
         ),
         "BUSINESS_INPUT_CONTRACT_MISSING": (
             "Thiếu contract input nghiệp vụ typed theo ngữ cảnh; không hiển thị thao tác tạo generic."
+        ),
+        "FRONTEND_CREATE_ACTION_MISSING": (
+            "Backend KHKT đã có canonical create/render contract nhưng frontend contextual action "
+            "chưa có typed handler để gọi thao tác tạo tài liệu."
         ),
         "LEGACY_ONLY_UNRESOLVED": (
             "Family legacy chưa có owner mapping/workflow đủ chắc chắn để tạo tài liệu."

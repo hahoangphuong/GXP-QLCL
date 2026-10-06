@@ -9,7 +9,7 @@ import pytest
 from tools.trace_inspection_ke_hoach_kt_input_provenance import (
     build_i3_source_audit,
 )
-from tools.trace_inspection_qd_kt_vba import _branch_context
+from tools.trace_inspection_qd_kt_vba import _branch_context, _operations
 
 
 MODULE = """Public Sub TaoQDKT_KHKT()
@@ -139,6 +139,29 @@ def test_i3_branch_evaluator_preserves_i2_default_and_supports_i3():
     assert _branch_context(lines, 5, target_i=3)[1] == "UNREACHABLE_I3"
 
 
+def test_vba_bookmark_helper_literal_ranges_expand_to_physical_targets():
+    proc = {
+        "lines": [
+            'Replace_Bookmark wdDoc, "Tencoso", TenCtydd, 1, 8',
+            'Delete_Bookmark wdDoc, "PVCepha", 1, 2',
+            'Delete_Bookmark wdDoc, "PVNhomat"',
+        ],
+        "offset": 0,
+    }
+
+    operations = _operations(proc, target_i=3)
+    by_bookmark = {item["physical_bookmark"]: item for item in operations}
+
+    assert by_bookmark["Tencoso"]["physical_bookmark_targets"] == [
+        "Tencoso1", "Tencoso2", "Tencoso3", "Tencoso4",
+        "Tencoso5", "Tencoso6", "Tencoso7", "Tencoso8",
+    ]
+    assert by_bookmark["PVCepha"]["physical_bookmark_targets"] == [
+        "PVCepha1", "PVCepha2",
+    ]
+    assert by_bookmark["PVNhomat"]["physical_bookmark_targets"] == ["PVNhomat"]
+
+
 def test_i3_source_audit_follows_recordform_entry_and_real_delete_semantics(tmp_path):
     source = _zip(tmp_path)
     report = build_i3_source_audit(source, expected_sha256=None)
@@ -174,10 +197,7 @@ def test_i3_source_audit_follows_recordform_entry_and_real_delete_semantics(tmp_
         for item in report["active_physical_operations"]
         if item["physical_bookmark"] == "Tencoso"
     )
-    assert tencoso["physical_bookmark_targets"] == [
-        "Tencoso1", "Tencoso2", "Tencoso3", "Tencoso4",
-        "Tencoso5", "Tencoso6", "Tencoso7", "Tencoso8",
-    ]
+    assert tencoso["physical_bookmark_targets"] == ["Tencoso"]
     assert set(report["required_section_suppressions"]) == {
         "PVCepha",
         "PVPeni",

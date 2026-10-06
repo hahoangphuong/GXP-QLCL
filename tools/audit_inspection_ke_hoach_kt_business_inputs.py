@@ -68,16 +68,18 @@ PROVEN_RENDERING_CONTRACTS: dict[str, dict[str, str]] = {
             "the exact Get_VKN index-32 boundary; unknown provinces fail closed"
         ),
     },
+    "Fulldate": {
+        "owner": "backend.app.document.inspection_ke_hoach_kt_generation_date",
+        "reason": (
+            "legacy writes FormatDateS(Date, 1); the modern business-calendar policy is "
+            "explicitly Asia/Ho_Chi_Minh and rejects timezone-naive generation timestamps"
+        ),
+    },
 }
 
 # These are not missing database columns. They require a renderer/projection
 # contract before contextual create may be enabled.
-RENDERING_BLOCKERS: dict[str, dict[str, str]] = {
-    "Fulldate": {
-        "owner": "document generation context",
-        "reason": "legacy uses workstation Date; runtime generation-date formatting contract is not explicit",
-    },
-}
+RENDERING_BLOCKERS: dict[str, dict[str, str]] = {}
 
 
 def _require_mapping(value: object, label: str) -> dict[str, Any]:
@@ -97,7 +99,7 @@ def build_business_input_audit(source_audit: dict[str, Any]) -> dict[str, Any]:
         source_audit.get("required_section_suppressions", source_audit.get("required_section_deletes")),
         "required_section_suppressions",
     )
-    for name in ("Daychuyen", "GioiHanPvi", "Diachicoso", "TieuchuanKT"):
+    for name in ("Daychuyen", "GioiHanPvi", "Diachicoso", "TieuchuanKT", "Fulldate"):
         if name not in required_writes:
             raise RuntimeError(f"source audit is missing required KHKT write: {name}")
     expected_suppressions = {
@@ -130,7 +132,11 @@ def build_business_input_audit(source_audit: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": "inspection-ke-hoach-kt-business-input-audit/v2",
         "family_code": FAMILY_CODE,
-        "status": "BUSINESS_INPUT_OWNERS_PROVEN_RENDERING_BLOCKED",
+        "status": (
+            "BUSINESS_INPUT_OWNERS_AND_RENDERING_CONTRACTS_PROVEN"
+            if not blockers
+            else "BUSINESS_INPUT_OWNERS_PROVEN_RENDERING_BLOCKED"
+        ),
         "business_input_fields": fields,
         "rendering_contracts": rendering_contracts,
         "rendering_blockers": blockers,

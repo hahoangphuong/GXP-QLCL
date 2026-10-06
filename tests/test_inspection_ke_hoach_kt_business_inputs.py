@@ -13,7 +13,7 @@ def _source_audit() -> dict[str, object]:
         "target_i": 3,
         "required_writes": {
             name: {"effective_write": {"physical_bookmark": name}}
-            for name in ("Daychuyen", "GioiHanPvi", "Diachicoso", "TieuchuanKT")
+            for name in ("Daychuyen", "GioiHanPvi", "Diachicoso", "TieuchuanKT", "Fulldate")
         },
         "required_section_suppressions": {
             name: {"operation_type": "DELETE"}
@@ -30,11 +30,11 @@ def test_khkt_business_input_audit_separates_canonical_owners_from_rendering_sem
 
     assert source == before
     assert report["schema_version"] == "inspection-ke-hoach-kt-business-input-audit/v2"
-    assert report["status"] == "BUSINESS_INPUT_OWNERS_PROVEN_RENDERING_BLOCKED"
+    assert report["status"] == "BUSINESS_INPUT_OWNERS_AND_RENDERING_CONTRACTS_PROVEN"
     assert report["summary"] == {
         "owner_proven": 10,
-        "rendering_contract_proven": 5,
-        "rendering_contract_missing": 1,
+        "rendering_contract_proven": 6,
+        "rendering_contract_missing": 0,
         "schema_migration_required": False,
         "contextual_create_readiness": "BUSINESS_INPUT_CONTRACT_MISSING",
     }
@@ -59,9 +59,12 @@ def test_khkt_business_input_audit_separates_canonical_owners_from_rendering_sem
         "inspection_ke_hoach_kt_province_projection"
     )
     assert rendering_contracts["VKNx"]["classification"] == "RENDERING_CONTRACT_PROVEN"
+    assert rendering_contracts["Fulldate"]["owner"].endswith(
+        "inspection_ke_hoach_kt_generation_date"
+    )
 
     blockers = report["rendering_blockers"]
-    assert set(blockers) == {"Fulldate"}
+    assert blockers == {}
     assert "scope_section_suppression" not in blockers
     assert "TTx/TT3x/TT3Del" not in blockers
     assert "TT_VKNx/TT_SYTx" not in blockers

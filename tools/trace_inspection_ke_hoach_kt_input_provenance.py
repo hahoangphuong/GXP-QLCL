@@ -40,6 +40,7 @@ REQUIRED_WRITES = (
     "GioiHanPvi",
     "Diachicoso",
     "TieuchuanKT",
+    "Fulldate",
 )
 REQUIRED_SECTION_SUPPRESSIONS = (
     "PVCepha",

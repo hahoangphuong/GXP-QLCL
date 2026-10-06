@@ -102,6 +102,7 @@ Private Sub Tao_QDKT_KHKT_BBKT(wdDoc, i)
         Replace_Bookmark wdDoc, "GioiHanPvi", IIf(GHanDC = "", "Không", GHanDC)
         Replace_Bookmark wdDoc, "Diachicoso", Replace(DiachiDD, vbCrLf, ";")
         Replace_Bookmark wdDoc, "TieuchuanKT", s_LoaiKT
+        Replace_Bookmark wdDoc, "Fulldate", FormatDateS(Date, 1)
         If InStr(1, DC_cu, "Cephalosporin") = 0 Then Delete_Bookmark wdDoc, "PVCepha", 1, 2
         If InStr(1, DC_cu, "Penicillin") = 0 Then Delete_Bookmark wdDoc, "PVPeni", 1, 2
         If InStr(1, DC_cu, "Dược liệu") = 0 Then Delete_Bookmark wdDoc, "PVDuoclieu", 1, 2
@@ -186,8 +187,13 @@ def test_i3_source_audit_follows_recordform_entry_and_real_delete_semantics(tmp_
         "GioiHanPvi",
         "Diachicoso",
         "TieuchuanKT",
+        "Fulldate",
     }
     assert len(report["required_writes"]["Diachicoso"]["write_sequence"]) == 2
+    assert (
+        report["required_writes"]["Fulldate"]["effective_write"]["expression"]
+        == "FormatDateS(Date, 1)"
+    )
     assert (
         report["required_writes"]["Diachicoso"]["effective_write"]["expression"]
         == 'Replace(DiachiDD, vbCrLf, ";")'

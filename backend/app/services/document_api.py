@@ -8,7 +8,7 @@ from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.audit_payload import normalize_and_redact_audit_payload
@@ -299,29 +299,17 @@ class DocumentWorkflowService:
         if not prepared.persisted_state.reused_generation_run:
             return
         generation_run_id = prepared.persisted_state.generation_run_id
-        result = session.execute(
-            update(DocumentGenerationRun)
-            .where(
-                DocumentGenerationRun.id == generation_run_id,
-                DocumentGenerationRun.status == DocumentGenerationStatus.FAILED,
-            )
-            .values(
-                status=DocumentGenerationStatus.PENDING,
-                error_summary=None,
-            )
-            .execution_options(synchronize_session=False)
-        )
-        row = session.get(DocumentGenerationRun, generation_run_id)
-        if row is not None:
-            session.refresh(row)
-        if result.rowcount == 1:
-            session.flush()
-            return
+        row = session.execute(
+            select(DocumentGenerationRun)
+            .where(DocumentGenerationRun.id == generation_run_id)
+            .with_for_update()
+        ).scalar_one_or_none()
         if row is None:
             raise HTTPException(
                 status_code=409,
                 detail="Reused document generation run no longer exists.",
             )
+        session.refresh(row)
         if row.status == DocumentGenerationStatus.SUCCEEDED:
             raise HTTPException(
                 status_code=409,
@@ -330,19 +318,21 @@ class DocumentWorkflowService:
                     "document instead of rendering it again."
                 ),
             )
-        if row.status == DocumentGenerationStatus.PENDING:
-            raise HTTPException(
-                status_code=409,
-                detail="Document generation run is already pending.",
-            )
         if row.status == DocumentGenerationStatus.CANCELLED:
             raise HTTPException(
                 status_code=409,
                 detail="Cancelled document generation run cannot be retried.",
             )
+        if row.status == DocumentGenerationStatus.FAILED:
+            row.status = DocumentGenerationStatus.PENDING
+            row.error_summary = None
+            session.flush()
+            return
+        if row.status == DocumentGenerationStatus.PENDING:
+            return
         raise HTTPException(
             status_code=409,
-            detail=f"Document generation run is not retryable from status {row.status.value!r}.",
+            detail=f"Document generation run is not renderable from status {row.status.value!r}.",
         )
 
     def _mark_generation_run_failed(self, session: Session, generation_run_id: str, detail: str) -> None:

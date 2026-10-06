@@ -639,22 +639,37 @@ def test_render_template_docx_succeeds_for_dkkd_certificate_and_updates_lineage(
                 storage_relative_path=template_relative,
                 original_filename="z2 giay chung nhan ddkkdd sanitized.dotx",
             )
+            render_payload = {
+                "family_code": "DDKD_CERTIFICATE",
+                "business_eligibility_certificate_id": dkkd_id,
+                "storage_scope": "dkkd_folder",
+                "idempotency_key": "phase11-render-success-001",
+                "output_filename": "z2. Giay chung nhan DDKKDD.docx",
+                "payload": {
+                    "TenCty": "Cong ty A",
+                    "DiachiCoso": "123 Duong A",
+                    "HoatdongKD": "Bao quan, ban buon thuoc",
+                },
+                "strict_payload": True,
+            }
+            prepared = service.prepare_generation(
+                session,
+                storage=storage,
+                payload=render_payload,
+                user=build_authenticated_user("inspector01", "inspector"),
+            )
+            prepared_run = session.get(
+                DocumentGenerationRun,
+                prepared["generation_run_id"],
+            )
+            assert prepared_run is not None
+            assert prepared_run.status == DocumentGenerationStatus.PENDING
+            session.commit()
+
             result = service.render_template_docx(
                 session,
                 storage=storage,
-                payload={
-                    "family_code": "DDKD_CERTIFICATE",
-                    "business_eligibility_certificate_id": dkkd_id,
-                    "storage_scope": "dkkd_folder",
-                    "idempotency_key": "phase11-render-success-001",
-                    "output_filename": "z2. Giay chung nhan DDKKDD.docx",
-                    "payload": {
-                        "TenCty": "Cong ty A",
-                        "DiachiCoso": "123 Duong A",
-                        "HoatdongKD": "Bao quan, ban buon thuoc",
-                    },
-                    "strict_payload": True,
-                },
+                payload=render_payload,
                 user=build_authenticated_user("inspector01", "inspector"),
             )
             session.commit()
@@ -681,7 +696,7 @@ def test_render_template_docx_succeeds_for_dkkd_certificate_and_updates_lineage(
         shutil.rmtree(root, ignore_errors=True)
 
 
-def test_reused_generation_run_state_machine_allows_only_failed_retry():
+def test_reused_generation_run_state_machine_allows_prepared_pending_and_failed_retry():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = DocumentWorkflowService()
@@ -722,15 +737,10 @@ def test_reused_generation_run_state_machine_allows_only_failed_retry():
         assert run.status == DocumentGenerationStatus.PENDING
         assert run.error_summary is None
 
-        try:
-            service._claim_reused_generation_run_for_render(session, prepared)
-        except HTTPException as exc:
-            assert exc.status_code == 409
-            assert exc.detail == "Document generation run is already pending."
-        else:
-            raise AssertionError("Expected a second contender to fail closed")
+        service._claim_reused_generation_run_for_render(session, prepared)
         session.refresh(run)
         assert run.status == DocumentGenerationStatus.PENDING
+        assert run.error_summary is None
 
         run.status = DocumentGenerationStatus.CANCELLED
         run.error_summary = "cancelled by operator"

@@ -205,6 +205,41 @@ def _existing_generation_run(session: Session, idempotency_key: str | None) -> D
     return session.execute(stmt).scalar_one_or_none()
 
 
+def _assert_idempotent_generation_run_matches_request(
+    existing: DocumentGenerationRun,
+    *,
+    plan: DocumentGenerationPlan,
+    document: Document,
+    template_definition: TemplateDefinition | None,
+    template_binding: TemplateBinding | None,
+) -> None:
+    expected_payload = json.dumps(
+        plan.payload.redacted_payload(),
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    expected_definition_id = template_definition.id if template_definition else None
+    expected_binding_id = template_binding.id if template_binding else None
+    mismatches: list[str] = []
+    if existing.document_id != document.id:
+        mismatches.append("document")
+    if existing.template_definition_id != expected_definition_id:
+        mismatches.append("template_definition")
+    if existing.template_binding_id != expected_binding_id:
+        mismatches.append("template_binding")
+    if existing.source_application != plan.template.source_application:
+        mismatches.append("source_application")
+    if existing.requested_by_user_id != plan.request.requested_by_user_id:
+        mismatches.append("requested_by_user")
+    if existing.input_payload_redacted != expected_payload:
+        mismatches.append("payload")
+    if mismatches:
+        raise DocumentPersistenceError(
+            "Document generation idempotency key is already bound to a different "
+            "request: " + ", ".join(mismatches) + "."
+        )
+
+
 def create_document_generation_run(
     session: Session,
     plan: DocumentGenerationPlan,
@@ -214,6 +249,13 @@ def create_document_generation_run(
 ) -> tuple[DocumentGenerationRun, bool]:
     existing = _existing_generation_run(session, plan.request.idempotency_key)
     if existing is not None:
+        _assert_idempotent_generation_run_matches_request(
+            existing,
+            plan=plan,
+            document=document,
+            template_definition=template_definition,
+            template_binding=template_binding,
+        )
         return existing, True
     generation_run = DocumentGenerationRun(
         document_id=document.id,
@@ -253,11 +295,37 @@ def persist_source_dependencies(
     return tuple(dependency_ids)
 
 
+def _preflight_idempotent_generation_run(
+    session: Session,
+    plan: DocumentGenerationPlan,
+) -> None:
+    existing = _existing_generation_run(session, plan.request.idempotency_key)
+    if existing is None:
+        return
+    document = _find_existing_document(session, plan.request)
+    if document is None:
+        raise DocumentPersistenceError(
+            "Document generation idempotency key is already bound to a different request: document."
+        )
+    template_definition = _lookup_template_definition(session, plan)
+    template_binding = _lookup_template_binding(session, plan, template_definition)
+    _assert_idempotent_generation_run_matches_request(
+        existing,
+        plan=plan,
+        document=document,
+        template_definition=template_definition,
+        template_binding=template_binding,
+    )
+
+
 def prepare_generation_persistence(
     session: Session,
     plan: DocumentGenerationPlan,
     source_resolutions: tuple[SourceDocumentResolution, ...] = (),
 ) -> PersistedGenerationState:
+    _require_parent_link(plan.request)
+    _validate_capa_document_link(session, plan.request)
+    _preflight_idempotent_generation_run(session, plan)
     document = ensure_document(session, plan)
     variant = ensure_document_variant(session, document, plan)
     template_definition = _lookup_template_definition(session, plan)

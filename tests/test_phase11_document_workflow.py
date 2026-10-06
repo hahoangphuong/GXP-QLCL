@@ -221,6 +221,130 @@ def test_prepare_generation_persists_pending_run_and_status():
         assert len(detail["generation_runs"]) == 1
 
 
+def test_prepare_generation_reuses_idempotency_key_only_for_exact_request():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = DocumentWorkflowService()
+
+    with Session(engine) as session:
+        case_id, _ = _seed_case(session)
+        seed_default_template_metadata(session)
+        payload = {
+            "family_code": "CERTIFICATE_DECISION",
+            "case_id": case_id,
+            "gxp_type": "GP",
+            "storage_scope": "inspection_folder",
+            "idempotency_key": "phase11-idempotent-exact-001",
+            "payload": {"TenCty": "Cong ty A"},
+            "strict_payload": True,
+        }
+        user = build_authenticated_user("inspector01", "inspector")
+        first = service.prepare_generation(
+            session,
+            storage=None,
+            payload=payload,
+            user=user,
+        )
+        second = service.prepare_generation(
+            session,
+            storage=None,
+            payload=payload,
+            user=user,
+        )
+        session.commit()
+
+    assert second["reused_generation_run"] is True
+    assert second["generation_run_id"] == first["generation_run_id"]
+    assert second["document_id"] == first["document_id"]
+
+
+def test_prepare_generation_rejects_cross_owner_idempotency_reuse():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = DocumentWorkflowService()
+
+    with Session(engine) as session:
+        first_case_id, _ = _seed_case(session)
+        company = Company(
+            legacy_company_id=2,
+            legal_name="Cong ty B",
+            short_name="CTB",
+        )
+        session.add(company)
+        session.flush()
+        site = Site(
+            legacy_site_id=101,
+            company_id=company.id,
+            site_name="Co so B",
+        )
+        session.add(site)
+        session.flush()
+        second_case = Case(
+            legacy_inspection_id=201,
+            legacy_inspection_code="KT-2024-GMP-B",
+            site_id=site.id,
+            gxp_type="GMP",
+            state=CaseState.PLANNED,
+            opened_year=2024,
+        )
+        session.add(second_case)
+        session.flush()
+        second_case_id = second_case.id
+        seed_default_template_metadata(session)
+
+        user = build_authenticated_user("inspector01", "inspector")
+        common = {
+            "family_code": "CERTIFICATE_DECISION",
+            "gxp_type": "GP",
+            "storage_scope": "inspection_folder",
+            "idempotency_key": "phase11-idempotent-owner-001",
+            "payload": {"TenCty": "Cong ty A"},
+            "strict_payload": True,
+        }
+        first = service.prepare_generation(
+            session,
+            storage=None,
+            payload={**common, "case_id": first_case_id},
+            user=user,
+        )
+
+        try:
+            service.prepare_generation(
+                session,
+                storage=None,
+                payload={**common, "case_id": second_case_id},
+                user=user,
+            )
+        except HTTPException as exc:
+            assert exc.status_code == 409
+            assert "idempotency key is already bound to a different request" in str(
+                exc.detail
+            )
+            assert "document" in str(exc.detail)
+        else:
+            raise AssertionError("Expected cross-owner idempotency reuse to fail closed")
+
+        session.commit()
+
+    with Session(engine) as session:
+        runs = list(
+            session.scalars(
+                select(DocumentGenerationRun).where(
+                    DocumentGenerationRun.idempotency_key
+                    == "phase11-idempotent-owner-001"
+                )
+            )
+        )
+        assert len(runs) == 1
+        assert runs[0].id == first["generation_run_id"]
+        second_documents = list(
+            session.scalars(
+                select(Document).where(Document.case_id == second_case_id)
+            )
+        )
+        assert second_documents == []
+
+
 def test_document_audit_payload_redacts_sensitive_keys():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)

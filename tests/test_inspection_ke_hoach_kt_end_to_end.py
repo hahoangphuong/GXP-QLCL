@@ -203,32 +203,40 @@ def _seed_canonical_khkt(session: Session) -> tuple[str, str]:
         )
     )
 
-    person = Person(full_name="Trưởng đoàn A", display_name="Trưởng đoàn A")
-    session.add(person)
-    session.flush()
-    profile = InspectorProfile(
-        person_id=person.id,
-        is_active=True,
-        roster_group="DRUG_ADMINISTRATION_AND_TRADITIONAL_MEDICINE",
-    )
-    session.add(profile)
-    session.flush()
     team = InspectionTeam(case_id=case.id, display_text=None)
     session.add(team)
     session.flush()
-    session.add(
-        InspectionTeamMember(
-            team_id=team.id,
-            inspector_profile_id=profile.id,
-            person_id=None,
-            participant_catalog_id=None,
-            identity_kind="INSPECTOR_PROFILE",
-            display_name="Trưởng đoàn A",
-            role_code="LEADER",
-            role_label="Trưởng đoàn",
-            sort_order=1,
+    for sort_order, (display_name, role_code, role_label) in enumerate(
+        (
+            ("Trưởng đoàn A", "LEADER", "Trưởng đoàn"),
+            ("Thư ký B", "SECRETARY", "Thư ký"),
+            ("Thành viên C", "MEMBER", "Thành viên"),
+        ),
+        start=1,
+    ):
+        person = Person(full_name=display_name, display_name=display_name)
+        session.add(person)
+        session.flush()
+        profile = InspectorProfile(
+            person_id=person.id,
+            is_active=True,
+            roster_group="DRUG_ADMINISTRATION_AND_TRADITIONAL_MEDICINE",
         )
-    )
+        session.add(profile)
+        session.flush()
+        session.add(
+            InspectionTeamMember(
+                team_id=team.id,
+                inspector_profile_id=profile.id,
+                person_id=None,
+                participant_catalog_id=None,
+                identity_kind="INSPECTOR_PROFILE",
+                display_name=display_name,
+                role_code=role_code,
+                role_label=role_label,
+                sort_order=sort_order,
+            )
+        )
     session.flush()
     return case.id, site.id
 
@@ -360,8 +368,10 @@ def test_khkt_binary_end_to_end_renders_canonical_db_payload_and_writes_output(m
         assert "Số 1 Đường Kiểm nghiệm" in xml
         assert "123/QĐ-QLD" in xml
         assert "Trưởng đoàn A" in xml
+        assert "Thư ký B" in xml
+        assert "Thành viên C" in xml
         assert "β-Lactam" in xml
-        assert "SOURCE-TT3Del" not in xml
+        assert "SOURCE-TT3Del" in xml
         assert "SOURCE-TenCoSo1" not in xml
 
         monkeypatch.setitem(

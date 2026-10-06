@@ -10,6 +10,11 @@ from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from backend.app.db.models.phase1 import TemplateBinding, TemplateDefinition
+from backend.app.document.inspection_ke_hoach_kt_template_asset_contract import (
+    INSPECTION_KE_HOACH_KT_FAMILY,
+    InspectionKeHoachKtTemplateAssetContractError,
+    get_inspection_ke_hoach_kt_template_asset,
+)
 from backend.app.document.inspection_qd_kt_template_asset_contract import (
     INSPECTION_QD_KT_FAMILY,
     InspectionQdKtTemplateAssetContractError,
@@ -28,6 +33,18 @@ if TYPE_CHECKING:
 
 class TemplateBinaryError(RuntimeError):
     pass
+
+
+_EXACT_INSPECTION_GXP_ASSET_LOADERS = {
+    INSPECTION_QD_KT_FAMILY: (
+        get_inspection_qd_kt_template_asset,
+        InspectionQdKtTemplateAssetContractError,
+    ),
+    INSPECTION_KE_HOACH_KT_FAMILY: (
+        get_inspection_ke_hoach_kt_template_asset,
+        InspectionKeHoachKtTemplateAssetContractError,
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -141,10 +158,12 @@ def build_template_binary_requirement(
         "gxp_type",
         None,
     )
-    if template_definition.family_code == INSPECTION_QD_KT_FAMILY and requested_gxp_type is not None:
+    exact_asset_loader = _EXACT_INSPECTION_GXP_ASSET_LOADERS.get(template_definition.family_code)
+    if exact_asset_loader is not None and requested_gxp_type is not None:
+        asset_loader, asset_error = exact_asset_loader
         try:
-            expected_asset = get_inspection_qd_kt_template_asset(requested_gxp_type)
-        except InspectionQdKtTemplateAssetContractError as exc:
+            expected_asset = asset_loader(requested_gxp_type)
+        except asset_error as exc:
             return TemplateBinaryRequirement(
                 template_definition_id=template_definition.id,
                 family_code=template_definition.family_code,
@@ -170,8 +189,8 @@ def build_template_binary_requirement(
                 checksum_sha256=None,
                 readiness_status="missing_exact_template_binding",
                 detail=(
-                    "INSPECTION_QD_KT requires an exact GxP TemplateBinding with a binary locator; "
-                    "generic TemplateDefinition fallback is not allowed."
+                    f"{template_definition.family_code} requires an exact GxP TemplateBinding "
+                    "with a binary locator; generic TemplateDefinition fallback is not allowed."
                 ),
             )
         binding_locator = get_template_binary_binding_locator(session, binding.id)
@@ -185,7 +204,7 @@ def build_template_binary_requirement(
                 original_filename=None,
                 checksum_sha256=None,
                 readiness_status="missing_template_locator",
-                detail="The exact INSPECTION_QD_KT TemplateBinding has no binary locator.",
+                detail=f"The exact {template_definition.family_code} TemplateBinding has no binary locator.",
             )
         actual_locator = (
             binding_locator.storage_root,
@@ -209,7 +228,10 @@ def build_template_binary_requirement(
                 original_filename=None,
                 checksum_sha256=None,
                 readiness_status="invalid_template_binding",
-                detail="The exact INSPECTION_QD_KT TemplateBinding does not match the immutable asset contract.",
+                detail=(
+                    f"The exact {template_definition.family_code} TemplateBinding does not match "
+                    "the immutable asset contract."
+                ),
             )
         return TemplateBinaryRequirement(
             template_definition_id=template_definition.id,
@@ -220,7 +242,10 @@ def build_template_binary_requirement(
             original_filename=binding_locator.original_filename,
             checksum_sha256=binding_locator.checksum_sha256,
             readiness_status="direct_stream_ready",
-            detail="INSPECTION_QD_KT exact GxP TemplateBinding matches the immutable binary asset contract.",
+            detail=(
+                f"{template_definition.family_code} exact GxP TemplateBinding matches the immutable "
+                "binary asset contract."
+            ),
         )
 
     template_binding_id = allocated.prepared.persisted_state.template_binding_id

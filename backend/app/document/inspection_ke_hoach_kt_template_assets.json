@@ -1,0 +1,35 @@
+{
+  "schema_version": "inspection-ke-hoach-kt-template-assets-v1",
+  "family_code": "INSPECTION_KE_HOACH_KT",
+  "source_variant": "recordform_get_tpl_case_3",
+  "assets": [
+    {
+      "gxp_type": "GLP",
+      "filename": "3. Kế hoạch kiểm tra GLP.dotx",
+      "storage_root": "template",
+      "storage_relative_path": "3. Kế hoạch kiểm tra GLP.dotx",
+      "checksum_sha256": "7badb0bb9af155f32217a83063aacea8ace053ea111979f50629921e570a1932"
+    },
+    {
+      "gxp_type": "GMP",
+      "filename": "3. Kế hoạch kiểm tra GMP.dotx",
+      "storage_root": "template",
+      "storage_relative_path": "3. Kế hoạch kiểm tra GMP.dotx",
+      "checksum_sha256": "f2a079c96f912b985b11ead90068aea9a933b5a9b903fa416f0b6b433c30bde2"
+    },
+    {
+      "gxp_type": "GMPbb",
+      "filename": "3. Kế hoạch kiểm tra GMPbb.dotx",
+      "storage_root": "template",
+      "storage_relative_path": "3. Kế hoạch kiểm tra GMPbb.dotx",
+      "checksum_sha256": "d63b0d37af11c1f6871daf296ec074c9e17080799358534e0b8ad2b562aa406d"
+    },
+    {
+      "gxp_type": "GSP",
+      "filename": "3. Kế hoạch kiểm tra GSP.dotx",
+      "storage_root": "template",
+      "storage_relative_path": "3. Kế hoạch kiểm tra GSP.dotx",
+      "checksum_sha256": "6d53a4278fed1757c75728d21667261e61d52e40d1a5becc588c138b7c5b6f16"
+    }
+  ]
+}

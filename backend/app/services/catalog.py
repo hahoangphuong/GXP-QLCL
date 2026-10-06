@@ -785,12 +785,15 @@ class CatalogReadService:
             if spec is None:
                 continue
             create_contract = None
+            effective_create_readiness = spec["create_readiness"]
             if family_code == INSPECTION_KE_HOACH_KT_FAMILY:
                 create_contract = {
                     "create_gxp_type": case.gxp_type,
                     "create_storage_scope": "inspection_folder",
                     "create_output_filename": get_inspection_ke_hoach_kt_output_filename(case.gxp_type),
                 }
+                if item["status"] == "available":
+                    effective_create_readiness = "READY_OPEN_HISTORY"
             contextual_items.append(
                 {
                     **item,
@@ -798,7 +801,7 @@ class CatalogReadService:
                     "actions": build_document_action_states(
                         open_available=bool(item["open_available"]),
                         history_available=bool(item["detail_available"]),
-                        create_readiness=spec["create_readiness"],
+                        create_readiness=effective_create_readiness,
                         permissions=permissions,
                         family_code=family_code,
                         parent_scope=str(item["parent_scope"]),

@@ -581,6 +581,50 @@ def test_contextual_create_contracts_remain_typed_and_fail_closed_until_promoted
     assert denied_create["disabled_reason"] == "Tài khoản hiện tại không có quyền tạo tài liệu."
 
 
+def test_khkt_contextual_create_is_only_available_while_document_is_missing():
+    khkt = get_case_document_context_spec("INSPECTION_KE_HOACH_KT")
+    assert khkt is not None
+
+    missing_actions = build_document_action_states(
+        open_available=False,
+        history_available=False,
+        create_readiness=khkt.create_readiness,
+        permissions=frozenset({"document.write"}),
+        family_code=khkt.family_code,
+        parent_scope=khkt.parent_scope,
+        parent_id="case-123",
+        document_type_code=None,
+        create_contract={
+            "create_gxp_type": "GMP",
+            "create_storage_scope": "inspection_folder",
+            "create_output_filename": "3. Kế hoạch kiểm tra GMP.docx",
+        },
+    )
+    missing_create = next(action for action in missing_actions if action["action_key"] == "create")
+    assert missing_create["available"] is True
+    assert missing_create["create_output_filename"] == "3. Kế hoạch kiểm tra GMP.docx"
+
+    existing_actions = build_document_action_states(
+        open_available=True,
+        history_available=True,
+        create_readiness="READY_OPEN_HISTORY",
+        permissions=frozenset({"document.read", "document.write"}),
+        family_code=khkt.family_code,
+        parent_scope=khkt.parent_scope,
+        parent_id="case-123",
+        document_type_code="INSPECTION_KE_HOACH_KT",
+        create_contract={
+            "create_gxp_type": "GMP",
+            "create_storage_scope": "inspection_folder",
+            "create_output_filename": "3. Kế hoạch kiểm tra GMP.docx",
+        },
+    )
+    existing_create = next(action for action in existing_actions if action["action_key"] == "create")
+    assert existing_create["available"] is False
+    assert existing_create["reason_code"] == "ready_open_history"
+    assert "chỉ hỗ trợ mở và xem lịch sử" in existing_create["disabled_reason"]
+
+
 def test_get_document_detail_hides_storage_locator_fields_from_ui_projection():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)

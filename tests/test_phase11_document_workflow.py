@@ -952,6 +952,94 @@ def test_khkt_contextual_create_retries_until_current_binary_exists():
         assert current_actions["history"]["available"] is True
 
 
+def test_khkt_workspace_prefers_openable_current_binary_over_incomplete_duplicate():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CatalogReadService()
+    user = build_authenticated_user(
+        "manager01",
+        "manager",
+        permissions={"document.read", "document.write"},
+    )
+
+    with Session(engine) as session:
+        case_id, _ = _seed_case(session)
+        usable_document = Document(
+            family_code="INSPECTION_KE_HOACH_KT",
+            document_type_code="INSPECTION_KE_HOACH_KT",
+            title="Kế hoạch kiểm tra usable",
+            case_id=case_id,
+        )
+        broken_document = Document(
+            family_code="INSPECTION_KE_HOACH_KT",
+            document_type_code="INSPECTION_KE_HOACH_KT",
+            title="Kế hoạch kiểm tra broken",
+            case_id=case_id,
+        )
+        session.add_all([usable_document, broken_document])
+        session.flush()
+        usable_variant = DocumentVariant(
+            document_id=usable_document.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="vi",
+            is_active=True,
+        )
+        broken_variant = DocumentVariant(
+            document_id=broken_document.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="vi",
+            is_active=True,
+        )
+        session.add_all([usable_variant, broken_variant])
+        session.flush()
+        session.add_all(
+            [
+                DocumentVersion(
+                    document_variant_id=usable_variant.id,
+                    version_no=1,
+                    storage_binding_id=None,
+                    storage_root="inspection",
+                    storage_relative_path="2024/usable-khkt.docx",
+                    original_filename="usable-khkt.docx",
+                    checksum_sha256="usable",
+                    is_current=True,
+                    issued_on=None,
+                ),
+                DocumentVersion(
+                    document_variant_id=broken_variant.id,
+                    version_no=2,
+                    storage_binding_id=None,
+                    storage_root="inspection",
+                    storage_relative_path="",
+                    original_filename="broken-khkt.docx",
+                    checksum_sha256="broken",
+                    is_current=True,
+                    issued_on=None,
+                ),
+            ]
+        )
+        session.flush()
+
+        item = next(
+            row
+            for row in service._build_case_contextual_document_actions(
+                session,
+                case_id=case_id,
+                capa_cycles=[],
+                user=user,
+            )
+            if row["family_code"] == "INSPECTION_KE_HOACH_KT"
+        )
+        actions = {action["action_key"]: action for action in item["actions"]}
+
+    assert item["document_id"] == usable_document.id
+    assert item["original_filename"] == "usable-khkt.docx"
+    assert item["open_available"] is True
+    assert actions["open"]["available"] is True
+    assert actions["create"]["available"] is False
+    assert actions["create"]["reason_code"] == "ready_open_history"
+
+
 def test_get_document_detail_hides_storage_locator_fields_from_ui_projection():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
@@ -1046,6 +1134,17 @@ def test_get_current_document_binary_locator_prefers_current_version_and_guesses
                     storage_relative_path="2026/current.docx",
                     original_filename="current.docx",
                     checksum_sha256="new",
+                    is_current=True,
+                    issued_on=None,
+                ),
+                DocumentVersion(
+                    document_variant_id=variant.id,
+                    version_no=3,
+                    storage_binding_id=None,
+                    storage_root="inspection",
+                    storage_relative_path="",
+                    original_filename="broken-current.docx",
+                    checksum_sha256="broken",
                     is_current=True,
                     issued_on=None,
                 ),

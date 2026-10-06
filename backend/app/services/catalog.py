@@ -523,6 +523,15 @@ class CatalogReadService:
         return max(
             candidates,
             key=lambda row: (
+                row.is_current
+                and all(
+                    value is not None and value.strip()
+                    for value in (
+                        row.storage_root,
+                        row.storage_relative_path,
+                        row.original_filename,
+                    )
+                ),
                 row.is_current,
                 row.issued_on or row.created_at,
                 row.version_no,
@@ -630,6 +639,7 @@ class CatalogReadService:
                 selected_version = self._pick_document_version(candidate_versions)
                 variant_types = sorted({variant.variant_type.value for variant in candidate_variants if variant.variant_type})
                 sort_key = (
+                    self._document_version_open_available(selected_version),
                     selected_version is not None,
                     False if selected_version is None or selected_version.issued_on is None else True,
                     date.min if selected_version is None or selected_version.issued_on is None else selected_version.issued_on.date(),

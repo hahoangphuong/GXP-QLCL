@@ -774,6 +774,14 @@ class DocumentWorkflowService:
         return max(
             current_versions,
             key=lambda row: (
+                all(
+                    value is not None and value.strip()
+                    for value in (
+                        row.storage_root,
+                        row.storage_relative_path,
+                        row.original_filename,
+                    )
+                ),
                 row.issued_on or row.created_at,
                 row.version_no,
                 row.id,

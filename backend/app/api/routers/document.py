@@ -17,6 +17,7 @@ from backend.app.read_models import (
     DocumentTemplateRenderRequest,
 )
 from backend.app.services.document_api import DocumentWorkflowService
+from backend.app.storage.types import StorageOperationError
 
 def register_document_routes(app, session_factory) -> None:
     dependency = Depends(get_session_from_request_factory(session_factory))
@@ -98,8 +99,32 @@ def register_document_routes(app, session_factory) -> None:
         storage = request.app.state.storage_service
         if storage is None:
             raise HTTPException(status_code=503, detail="StorageService is unavailable for document content access.")
-        stream_context = storage.read_stream(locator.storage_relative_path, root=locator.storage_root)
-        stream = stream_context.__enter__()
+        try:
+            if not storage.exists(
+                locator.storage_relative_path,
+                root=locator.storage_root,
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Document current binary is missing from storage.",
+                )
+            stream_context = storage.read_stream(
+                locator.storage_relative_path,
+                root=locator.storage_root,
+            )
+            stream = stream_context.__enter__()
+        except HTTPException:
+            raise
+        except FileNotFoundError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="Document current binary is missing from storage.",
+            ) from exc
+        except StorageOperationError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="StorageService failed while opening document content.",
+            ) from exc
 
         def iter_chunks():
             try:

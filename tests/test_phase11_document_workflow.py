@@ -41,7 +41,7 @@ from backend.app.main import create_app
 from backend.app.services.catalog import CatalogReadService
 from backend.app.services.document_api import DocumentWorkflowService
 from backend.app.storage.filesystem import FilesystemStorageService
-from backend.app.storage.types import StorageConfig
+from backend.app.storage.types import StorageConfig, StorageOperationError
 
 
 def _document_content_endpoint(app, path: str):
@@ -1224,6 +1224,152 @@ def test_document_content_route_streams_current_binary_without_locator_leakage(t
             )
             assert "filename*=UTF-8''decision.docx" in response.headers["content-disposition"]
             assert "2026/decision.docx" not in str(response.headers)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_document_content_route_fails_closed_when_current_binary_is_missing_from_storage(
+    tmp_path: Path,
+):
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    storage, root = _build_storage()
+    try:
+        with Session(engine) as session:
+            case_id, _ = _seed_case(session)
+            document = Document(
+                family_code="INSPECTION_KE_HOACH_KT",
+                document_type_code="INSPECTION_KE_HOACH_KT",
+                title="Kế hoạch kiểm tra",
+                case_id=case_id,
+            )
+            session.add(document)
+            session.flush()
+            variant = DocumentVariant(
+                document_id=document.id,
+                variant_type=DocumentVariantType.EDITABLE_DOCX,
+                language_code="vi",
+                is_active=True,
+            )
+            session.add(variant)
+            session.flush()
+            session.add(
+                DocumentVersion(
+                    document_variant_id=variant.id,
+                    version_no=1,
+                    storage_binding_id=None,
+                    storage_root="inspection",
+                    storage_relative_path="2026/missing-khkt.docx",
+                    original_filename="missing-khkt.docx",
+                    checksum_sha256="db-checksum-only",
+                    is_current=True,
+                    issued_on=None,
+                )
+            )
+            session.commit()
+            document_id = document.id
+
+        app = create_app(str(engine.url), storage_service=storage)
+        with Session(engine) as read_session:
+            try:
+                _document_content_endpoint(
+                    app,
+                    "/cases/{case_id}/documents/{document_id}/content",
+                )(
+                    case_id,
+                    document_id,
+                    _request_for_app(app),
+                    read_session,
+                    build_authenticated_user(
+                        "reader.local",
+                        permissions={"document.read"},
+                    ),
+                )
+            except HTTPException as exc:
+                assert exc.status_code == 409
+                assert exc.detail == "Document current binary is missing from storage."
+            else:
+                raise AssertionError(
+                    "Expected missing current document binary to fail closed"
+                )
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_document_content_route_reports_storage_service_failure_before_stream(
+    tmp_path: Path,
+    monkeypatch,
+):
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    storage, root = _build_storage()
+    try:
+        with Session(engine) as session:
+            case_id, _ = _seed_case(session)
+            document = Document(
+                family_code="INSPECTION_KE_HOACH_KT",
+                document_type_code="INSPECTION_KE_HOACH_KT",
+                title="Kế hoạch kiểm tra",
+                case_id=case_id,
+            )
+            session.add(document)
+            session.flush()
+            variant = DocumentVariant(
+                document_id=document.id,
+                variant_type=DocumentVariantType.EDITABLE_DOCX,
+                language_code="vi",
+                is_active=True,
+            )
+            session.add(variant)
+            session.flush()
+            session.add(
+                DocumentVersion(
+                    document_variant_id=variant.id,
+                    version_no=1,
+                    storage_binding_id=None,
+                    storage_root="inspection",
+                    storage_relative_path="2026/unavailable-khkt.docx",
+                    original_filename="unavailable-khkt.docx",
+                    checksum_sha256="db-checksum-only",
+                    is_current=True,
+                    issued_on=None,
+                )
+            )
+            session.commit()
+            document_id = document.id
+
+        monkeypatch.setattr(
+            storage,
+            "exists",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                StorageOperationError("simulated storage outage")
+            ),
+        )
+        app = create_app(str(engine.url), storage_service=storage)
+        with Session(engine) as read_session:
+            try:
+                _document_content_endpoint(
+                    app,
+                    "/cases/{case_id}/documents/{document_id}/content",
+                )(
+                    case_id,
+                    document_id,
+                    _request_for_app(app),
+                    read_session,
+                    build_authenticated_user(
+                        "reader.local",
+                        permissions={"document.read"},
+                    ),
+                )
+            except HTTPException as exc:
+                assert exc.status_code == 503
+                assert exc.detail == (
+                    "StorageService failed while opening document content."
+                )
+            else:
+                raise AssertionError(
+                    "Expected storage failure to remain distinct from missing binary"
+                )
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

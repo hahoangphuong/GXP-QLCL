@@ -33,6 +33,11 @@ from backend.app.document.docx_template_render import (
 from backend.app.document.output_version import OutputVersionAllocationError
 from backend.app.document.persistence import DocumentPersistenceError
 from backend.app.document.payload_builders import DocumentPayloadBuildError
+from backend.app.document.inspection_ke_hoach_kt_template_asset_contract import (
+    INSPECTION_KE_HOACH_KT_FAMILY,
+    InspectionKeHoachKtTemplateAssetContractError,
+    get_inspection_ke_hoach_kt_output_filename,
+)
 from backend.app.document.service import (
     DocumentPreparationInput,
     prepare_document_generation_job,
@@ -144,6 +149,28 @@ class DocumentWorkflowService:
             copy_pt=bool(payload.get("copy_pt", False)),
             generated_at=datetime.now(timezone.utc),
         )
+
+    @staticmethod
+    def _resolve_render_output_filename(prepared, requested_output_filename: object) -> str:
+        requested = str(requested_output_filename or "").strip()
+        if prepared.generation_plan.template.family_code != INSPECTION_KE_HOACH_KT_FAMILY:
+            return requested
+        if prepared.khkt_payload_input is None:
+            raise DocumentPayloadBuildError(
+                "INSPECTION_KE_HOACH_KT canonical payload input is unavailable while resolving output filename."
+            )
+        try:
+            canonical = get_inspection_ke_hoach_kt_output_filename(
+                prepared.khkt_payload_input.gxp_type
+            )
+        except InspectionKeHoachKtTemplateAssetContractError as exc:
+            raise DocumentPayloadBuildError(str(exc)) from exc
+        if requested != canonical:
+            raise DocumentPayloadBuildError(
+                "INSPECTION_KE_HOACH_KT output filename is backend-owned by the exact "
+                f"template variant; expected {canonical!r}."
+            )
+        return canonical
 
     def _load_template_definition(self, session: Session, template_definition_id: str | None) -> TemplateDefinition | None:
         if template_definition_id is None:
@@ -483,6 +510,10 @@ class DocumentWorkflowService:
                 session,
                 preparation_input,
             )
+            output_filename = self._resolve_render_output_filename(
+                prepared,
+                render_payload.get("output_filename"),
+            )
             template_readiness = self._inspect_template_readiness(session, storage, prepared)
             blocked_reasons = self._build_blocked_reasons(prepared, template_readiness)
             if blocked_reasons:
@@ -493,7 +524,7 @@ class DocumentWorkflowService:
                 session,
                 storage,
                 preparation_input,
-                output_filename=render_payload["output_filename"],
+                output_filename=output_filename,
             )
             result = render_template_aware_docx_and_finalize(session, storage, allocated)
         except HTTPException:

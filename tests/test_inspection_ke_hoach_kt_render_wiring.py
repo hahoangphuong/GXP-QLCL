@@ -4,13 +4,16 @@ from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
 import backend.app.document.service as service_module
+import backend.app.services.document_api as document_api_module
 from backend.app.document.payload_builders import DocumentPayloadBuildError
 from backend.app.document.service import (
     DocumentPreparationInput,
     build_document_payload_result,
 )
+from backend.app.services.document_api import DocumentWorkflowService
 from backend.app.document.service_contract import DocumentGenerationRequest
 from backend.app.document.inspection_ke_hoach_kt_payload_input import (
     InspectionKeHoachKtPayloadInput,
@@ -103,3 +106,115 @@ def test_khkt_payload_loader_requires_frozen_generation_timestamp(monkeypatch):
                 generated_at=None,
             ),
         )
+
+
+def test_khkt_render_output_filename_is_backend_owned_by_exact_variant():
+    service = DocumentWorkflowService()
+    prepared = SimpleNamespace(
+        generation_plan=SimpleNamespace(
+            template=SimpleNamespace(family_code="INSPECTION_KE_HOACH_KT")
+        ),
+        khkt_payload_input=_payload_input(),
+    )
+
+    assert service._resolve_render_output_filename(
+        prepared,
+        "3. Kế hoạch kiểm tra GMP.docx",
+    ) == "3. Kế hoạch kiểm tra GMP.docx"
+
+    with pytest.raises(DocumentPayloadBuildError, match="backend-owned"):
+        service._resolve_render_output_filename(
+            prepared,
+            "caller-controlled-name.docx",
+        )
+
+
+def test_non_khkt_render_output_filename_remains_caller_owned():
+    service = DocumentWorkflowService()
+    prepared = SimpleNamespace(
+        generation_plan=SimpleNamespace(
+            template=SimpleNamespace(family_code="DDKD_CERTIFICATE")
+        ),
+        khkt_payload_input=None,
+    )
+
+    assert service._resolve_render_output_filename(
+        prepared,
+        "caller-selected.docx",
+    ) == "caller-selected.docx"
+
+
+def test_khkt_render_rejects_output_filename_drift_before_readiness_and_allocation(
+    monkeypatch,
+):
+    service = DocumentWorkflowService()
+    prepared = SimpleNamespace(
+        generation_plan=SimpleNamespace(
+            template=SimpleNamespace(family_code="INSPECTION_KE_HOACH_KT")
+        ),
+        khkt_payload_input=_payload_input(),
+        persisted_state=SimpleNamespace(generation_run_id="run-khkt-filename"),
+    )
+    failures: list[tuple[str, str]] = []
+    allocation_calls: list[object] = []
+
+    monkeypatch.setattr(
+        service,
+        "_get_or_create_app_user",
+        lambda _session, _user: SimpleNamespace(id="user-1"),
+    )
+    monkeypatch.setattr(
+        service,
+        "_build_preparation_input",
+        lambda _payload, _user_id: SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        document_api_module,
+        "prepare_document_generation_job",
+        lambda _session, _preparation_input: prepared,
+    )
+    monkeypatch.setattr(
+        service,
+        "_inspect_template_readiness",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("filename drift must fail before template readiness")
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "_mark_generation_run_failed",
+        lambda _session, generation_run_id, detail: failures.append(
+            (generation_run_id, detail)
+        ),
+    )
+    monkeypatch.setattr(
+        document_api_module,
+        "prepare_template_aware_docx_generation",
+        lambda *_args, **_kwargs: allocation_calls.append(object()),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        service.render_template_docx(
+            SimpleNamespace(),
+            storage=object(),
+            payload={
+                "family_code": "INSPECTION_KE_HOACH_KT",
+                "case_id": "case-1",
+                "gxp_type": "GMP",
+                "storage_scope": "inspection_folder",
+                "output_filename": "caller-controlled-name.docx",
+                "payload": {},
+            },
+            user=SimpleNamespace(),
+        )
+
+    assert exc_info.value.status_code == 409
+    assert "backend-owned" in exc_info.value.detail
+    assert allocation_calls == []
+    assert failures == [
+        (
+            "run-khkt-filename",
+            "INSPECTION_KE_HOACH_KT output filename is backend-owned by the exact "
+            "template variant; expected '3. Kế hoạch kiểm tra GMP.docx'.",
+        )
+    ]

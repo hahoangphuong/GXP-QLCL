@@ -8,7 +8,7 @@ from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from backend.app.audit_payload import normalize_and_redact_audit_payload
@@ -290,6 +290,60 @@ class DocumentWorkflowService:
         elif template_readiness.scalar_replacement_mode not in {"contract_exact", "contract_variant_exact", "khkt_contract_exact"}:
             reasons.append(f"template:{template_readiness.scalar_replacement_mode or 'unknown_mode'}")
         return reasons
+
+    @staticmethod
+    def _claim_reused_generation_run_for_render(
+        session: Session,
+        prepared: object,
+    ) -> None:
+        if not prepared.persisted_state.reused_generation_run:
+            return
+        generation_run_id = prepared.persisted_state.generation_run_id
+        result = session.execute(
+            update(DocumentGenerationRun)
+            .where(
+                DocumentGenerationRun.id == generation_run_id,
+                DocumentGenerationRun.status == DocumentGenerationStatus.FAILED,
+            )
+            .values(
+                status=DocumentGenerationStatus.PENDING,
+                error_summary=None,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        row = session.get(DocumentGenerationRun, generation_run_id)
+        if row is not None:
+            session.refresh(row)
+        if result.rowcount == 1:
+            session.flush()
+            return
+        if row is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Reused document generation run no longer exists.",
+            )
+        if row.status == DocumentGenerationStatus.SUCCEEDED:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Document generation run already succeeded; open the current "
+                    "document instead of rendering it again."
+                ),
+            )
+        if row.status == DocumentGenerationStatus.PENDING:
+            raise HTTPException(
+                status_code=409,
+                detail="Document generation run is already pending.",
+            )
+        if row.status == DocumentGenerationStatus.CANCELLED:
+            raise HTTPException(
+                status_code=409,
+                detail="Cancelled document generation run cannot be retried.",
+            )
+        raise HTTPException(
+            status_code=409,
+            detail=f"Document generation run is not retryable from status {row.status.value!r}.",
+        )
 
     def _mark_generation_run_failed(self, session: Session, generation_run_id: str, detail: str) -> None:
         row = session.get(DocumentGenerationRun, generation_run_id)
@@ -603,22 +657,10 @@ class DocumentWorkflowService:
                 session,
                 preparation_input,
             )
-            if prepared.persisted_state.reused_generation_run:
-                reused_run = session.get(
-                    DocumentGenerationRun,
-                    prepared.persisted_state.generation_run_id,
-                )
-                if (
-                    reused_run is not None
-                    and reused_run.status == DocumentGenerationStatus.SUCCEEDED
-                ):
-                    raise HTTPException(
-                        status_code=409,
-                        detail=(
-                            "Document generation run already succeeded; open the "
-                            "current document instead of rendering it again."
-                        ),
-                    )
+            self._claim_reused_generation_run_for_render(
+                session,
+                prepared,
+            )
             output_filename = self._resolve_render_output_filename(
                 prepared,
                 render_payload.get("output_filename"),

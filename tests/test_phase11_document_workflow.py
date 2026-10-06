@@ -681,6 +681,72 @@ def test_render_template_docx_succeeds_for_dkkd_certificate_and_updates_lineage(
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_reused_generation_run_state_machine_allows_only_failed_retry():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = DocumentWorkflowService()
+
+    with Session(engine) as session:
+        case_id, _ = _seed_case(session)
+        document = Document(
+            family_code="STATE_MACHINE_TEST",
+            document_type_code="state_machine_test",
+            title="State machine test",
+            case_id=case_id,
+        )
+        session.add(document)
+        session.flush()
+        run = DocumentGenerationRun(
+            document_id=document.id,
+            template_binding_id=None,
+            template_definition_id=None,
+            output_document_version_id=None,
+            status=DocumentGenerationStatus.FAILED,
+            source_application="Word",
+            requested_by_user_id=None,
+            input_payload_redacted="{}",
+            error_summary="first attempt failed",
+            idempotency_key="state-machine-retry-001",
+        )
+        session.add(run)
+        session.flush()
+        prepared = SimpleNamespace(
+            persisted_state=SimpleNamespace(
+                reused_generation_run=True,
+                generation_run_id=run.id,
+            )
+        )
+
+        service._claim_reused_generation_run_for_render(session, prepared)
+        session.refresh(run)
+        assert run.status == DocumentGenerationStatus.PENDING
+        assert run.error_summary is None
+
+        try:
+            service._claim_reused_generation_run_for_render(session, prepared)
+        except HTTPException as exc:
+            assert exc.status_code == 409
+            assert exc.detail == "Document generation run is already pending."
+        else:
+            raise AssertionError("Expected a second contender to fail closed")
+        session.refresh(run)
+        assert run.status == DocumentGenerationStatus.PENDING
+
+        run.status = DocumentGenerationStatus.CANCELLED
+        run.error_summary = "cancelled by operator"
+        session.flush()
+        try:
+            service._claim_reused_generation_run_for_render(session, prepared)
+        except HTTPException as exc:
+            assert exc.status_code == 409
+            assert exc.detail == "Cancelled document generation run cannot be retried."
+        else:
+            raise AssertionError("Expected cancelled generation run to fail closed")
+        session.refresh(run)
+        assert run.status == DocumentGenerationStatus.CANCELLED
+        assert run.error_summary == "cancelled by operator"
+
+
 def test_render_template_docx_restores_previous_current_when_post_write_audit_fails(
     monkeypatch,
 ):
@@ -769,6 +835,7 @@ def test_render_template_docx_restores_previous_current_when_post_write_audit_fa
             assert baseline_run is not None
             assert baseline_run.status.value == "succeeded"
 
+            original_write_audit_event = service._write_audit_event
             monkeypatch.setattr(
                 service,
                 "_write_audit_event",
@@ -776,16 +843,17 @@ def test_render_template_docx_restores_previous_current_when_post_write_audit_fa
                     RuntimeError("simulated post-write audit failure")
                 ),
             )
+            candidate_payload = {
+                **common_payload,
+                "idempotency_key": "phase11-render-cleanup-001",
+                "output_filename": "candidate.docx",
+            }
 
             try:
                 service.render_template_docx(
                     session,
                     storage=storage,
-                    payload={
-                        **common_payload,
-                        "idempotency_key": "phase11-render-cleanup-001",
-                        "output_filename": "candidate.docx",
-                    },
+                    payload=candidate_payload,
                     user=build_authenticated_user("inspector01", "inspector"),
                 )
             except RuntimeError as exc:
@@ -817,9 +885,36 @@ def test_render_template_docx_restores_previous_current_when_post_write_audit_fa
             assert failed_version.checksum_sha256 is None
             assert failed_version.issued_on is None
 
-        candidate_path = output_dir / "candidate.docx"
+            candidate_path = output_dir / "candidate.docx"
+            assert candidate_path.exists() is False
+
+            monkeypatch.setattr(
+                service,
+                "_write_audit_event",
+                original_write_audit_event,
+            )
+            retry = service.render_template_docx(
+                session,
+                storage=storage,
+                payload=candidate_payload,
+                user=build_authenticated_user("inspector01", "inspector"),
+            )
+            session.commit()
+
+            session.refresh(failed_run)
+            session.refresh(failed_version)
+            session.refresh(baseline_version)
+            assert retry["generation_run_id"] == failed_run.id
+            assert retry["document_version_id"] == failed_version.id
+            assert failed_run.status == DocumentGenerationStatus.SUCCEEDED
+            assert failed_run.error_summary is None
+            assert failed_version.is_current is True
+            assert failed_version.checksum_sha256
+            assert failed_version.issued_on is not None
+            assert baseline_version.is_current is False
+
         assert baseline_path.exists() is True
-        assert candidate_path.exists() is False
+        assert candidate_path.exists() is True
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

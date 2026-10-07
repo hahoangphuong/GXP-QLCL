@@ -318,7 +318,7 @@ def test_output_allocation_serializes_version_number_assignment_on_document_vari
             session.commit()
             run_id = run.id
 
-            folder_name = f"Allocation Lock Site {token} (ID-{site.legacy_site_id})"
+            folder_name = f"Allocation Lock Site {token} ({site.legacy_site_id})"
             (dkkd_root / folder_name).mkdir(parents=True, exist_ok=True)
 
             prepared = SimpleNamespace(

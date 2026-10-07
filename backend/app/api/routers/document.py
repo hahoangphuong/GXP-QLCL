@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from hashlib import sha256
+import tempfile
 from urllib.parse import quote
 
 from fastapi import Depends, HTTPException, Request
@@ -99,6 +101,7 @@ def register_document_routes(app, session_factory) -> None:
         storage = request.app.state.storage_service
         if storage is None:
             raise HTTPException(status_code=503, detail="StorageService is unavailable for document content access.")
+        verified_stream = tempfile.SpooledTemporaryFile(max_size=8 * 1024 * 1024)
         try:
             if not storage.exists(
                 locator.storage_relative_path,
@@ -108,33 +111,54 @@ def register_document_routes(app, session_factory) -> None:
                     status_code=409,
                     detail="Document current binary is missing from storage.",
                 )
-            stream_context = storage.read_stream(
+            digest = sha256()
+            with storage.read_stream(
                 locator.storage_relative_path,
                 root=locator.storage_root,
-            )
-            stream = stream_context.__enter__()
+            ) as stream:
+                while True:
+                    chunk = stream.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+                    verified_stream.write(chunk)
+            if digest.hexdigest() != locator.checksum_sha256:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Document current binary checksum does not match the "
+                        "persisted document version."
+                    ),
+                )
+            verified_stream.seek(0)
         except HTTPException:
+            verified_stream.close()
             raise
         except FileNotFoundError as exc:
+            verified_stream.close()
             raise HTTPException(
                 status_code=409,
                 detail="Document current binary is missing from storage.",
             ) from exc
         except StorageOperationError as exc:
+            verified_stream.close()
             raise HTTPException(
                 status_code=503,
                 detail="StorageService failed while opening document content.",
             ) from exc
+        except Exception:
+            verified_stream.close()
+            raise
 
         def iter_chunks():
             try:
                 while True:
-                    chunk = stream.read(1024 * 1024)
+                    chunk = verified_stream.read(1024 * 1024)
                     if not chunk:
                         break
                     yield chunk
             finally:
-                stream_context.__exit__(None, None, None)
+                verified_stream.close()
 
         response = StreamingResponse(iter_chunks(), media_type=locator.media_type)
         response.headers["Content-Disposition"] = (

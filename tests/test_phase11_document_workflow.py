@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from hashlib import sha256
 import json
 import shutil
 import tempfile
@@ -3083,6 +3084,7 @@ def test_get_current_document_binary_locator_preserves_current_selection_across_
     assert locator.storage_root == "inspection"
     assert locator.storage_relative_path == "2026/current.docx"
     assert locator.original_filename == "current.docx"
+    assert locator.checksum_sha256 == "current"
     assert locator.media_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
@@ -3121,7 +3123,7 @@ def test_document_content_route_streams_current_binary_without_locator_leakage(t
                     storage_root="inspection",
                     storage_relative_path="2026/decision.docx",
                     original_filename="decision.docx",
-                    checksum_sha256="checksum",
+                    checksum_sha256=sha256(b"docx-binary").hexdigest(),
                     is_current=True,
                     issued_on=None,
                 )
@@ -3146,6 +3148,81 @@ def test_document_content_route_streams_current_binary_without_locator_leakage(t
             )
             assert "filename*=UTF-8''decision.docx" in response.headers["content-disposition"]
             assert "2026/decision.docx" not in str(response.headers)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_document_content_route_rejects_current_binary_checksum_drift():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    storage, root = _build_storage()
+    try:
+        with Session(engine) as session:
+            case_id, _ = _seed_case(session)
+            target_dir = root / "inspection" / "2026"
+            target_dir.mkdir(parents=True, exist_ok=True)
+            target_file = target_dir / "drifted-current.docx"
+            target_file.write_bytes(b"foreign-replacement")
+            document = Document(
+                family_code="CERTIFICATE_DECISION",
+                document_type_code="CERTIFICATE_DECISION",
+                title="Quyết định cấp CC",
+                case_id=case_id,
+            )
+            session.add(document)
+            session.flush()
+            variant = DocumentVariant(
+                document_id=document.id,
+                variant_type=DocumentVariantType.EDITABLE_DOCX,
+                language_code="vi",
+                is_active=True,
+            )
+            session.add(variant)
+            session.flush()
+            session.add(
+                DocumentVersion(
+                    document_variant_id=variant.id,
+                    version_no=1,
+                    storage_binding_id=None,
+                    storage_root="inspection",
+                    storage_relative_path="2026/drifted-current.docx",
+                    original_filename="drifted-current.docx",
+                    checksum_sha256=sha256(b"canonical-current").hexdigest(),
+                    is_current=True,
+                    issued_on=None,
+                )
+            )
+            session.commit()
+            document_id = document.id
+
+        app = create_app(str(engine.url), storage_service=storage)
+        with Session(engine) as read_session:
+            try:
+                _document_content_endpoint(
+                    app,
+                    "/cases/{case_id}/documents/{document_id}/content",
+                )(
+                    case_id,
+                    document_id,
+                    _request_for_app(app),
+                    read_session,
+                    build_authenticated_user(
+                        "reader.local",
+                        permissions={"document.read"},
+                    ),
+                )
+            except HTTPException as exc:
+                assert exc.status_code == 409
+                assert exc.detail == (
+                    "Document current binary checksum does not match the "
+                    "persisted document version."
+                )
+            else:
+                raise AssertionError(
+                    "Expected checksum-drifted current binary to fail closed"
+                )
+
+        assert target_file.read_bytes() == b"foreign-replacement"
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -3376,6 +3453,59 @@ def test_document_content_routes_enforce_exact_case_and_capa_parent_ownership():
                     raise AssertionError("Expected binary document route to reject an unrelated business owner")
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+def test_owner_scoped_binary_locator_requires_current_checksum():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = DocumentWorkflowService()
+
+    with Session(engine) as session:
+        case_id, _ = _seed_case(session)
+        document = Document(
+            family_code="INSPECTION_QD_KT",
+            document_type_code="INSPECTION_QD_KT",
+            case_id=case_id,
+        )
+        session.add(document)
+        session.flush()
+        variant = DocumentVariant(
+            document_id=document.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="vi",
+            is_active=True,
+        )
+        session.add(variant)
+        session.flush()
+        session.add(
+            DocumentVersion(
+                document_variant_id=variant.id,
+                version_no=1,
+                storage_binding_id=None,
+                storage_root="inspection",
+                storage_relative_path="2026/missing-checksum.docx",
+                original_filename="missing-checksum.docx",
+                checksum_sha256=None,
+                is_current=True,
+                issued_on=None,
+            )
+        )
+        session.commit()
+
+        try:
+            service.get_current_document_binary_locator_for_parent(
+                session,
+                document_id=document.id,
+                expected_parent_scope="case",
+                expected_parent_id=case_id,
+            )
+        except HTTPException as exc:
+            assert exc.status_code == 409
+            assert exc.detail == "Document current version locator is incomplete."
+        else:
+            raise AssertionError(
+                "Expected current document version without checksum to fail closed"
+            )
 
 
 def test_owner_scoped_binary_locator_fails_closed_for_missing_or_incomplete_current_version():

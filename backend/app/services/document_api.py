@@ -90,6 +90,7 @@ class DocumentBinaryLocator:
     storage_root: str
     storage_relative_path: str
     original_filename: str
+    checksum_sha256: str
     media_type: str
 
 
@@ -901,6 +902,7 @@ class DocumentWorkflowService:
                 document_version.storage_root,
                 document_version.storage_relative_path,
                 document_version.original_filename,
+                document_version.checksum_sha256,
             )
         ):
             raise HTTPException(status_code=409, detail="Document current version locator is incomplete.")
@@ -911,6 +913,7 @@ class DocumentWorkflowService:
             storage_root=document_version.storage_root,
             storage_relative_path=document_version.storage_relative_path,
             original_filename=document_version.original_filename,
+            checksum_sha256=document_version.checksum_sha256,
             media_type=media_type or "application/octet-stream",
         )
 
@@ -940,6 +943,7 @@ class DocumentWorkflowService:
                         row.storage_root,
                         row.storage_relative_path,
                         row.original_filename,
+                        row.checksum_sha256,
                     )
                 ),
                 row.issued_on or row.created_at,

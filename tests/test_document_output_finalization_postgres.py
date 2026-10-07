@@ -24,6 +24,7 @@ from backend.app.db.models.phase1 import (
     DocumentVersion,
     Site,
 )
+import backend.app.document.output_version as output_version_module
 from backend.app.document.output_version import (
     OutputVersionAllocation,
     allocate_output_document_version,
@@ -337,6 +338,47 @@ def test_output_allocation_serializes_version_number_assignment_on_document_vari
             )
 
         blocker = factory()
+        locked_run = blocker.execute(
+            select(DocumentGenerationRun)
+            .where(DocumentGenerationRun.id == run_id)
+            .with_for_update()
+        ).scalar_one()
+        assert locked_run.id == run_id
+
+        with factory() as contender:
+            contender.execute(text("SET LOCAL lock_timeout = '250ms'"))
+            try:
+                allocate_output_document_version(
+                    contender,
+                    storage,
+                    prepared,
+                    output_filename="candidate.docx",
+                )
+            except OperationalError as exc:
+                assert "lock timeout" in str(exc).lower()
+                contender.rollback()
+            else:
+                raise AssertionError(
+                    "Expected allocation to block on the generation_run row lock"
+                )
+
+        with factory() as verify:
+            run = verify.get(DocumentGenerationRun, run_id)
+            assert run is not None
+            assert run.output_document_version_id is None
+            assert list(
+                verify.scalars(
+                    select(DocumentVersion).where(
+                        DocumentVersion.document_variant_id == variant_id
+                    )
+                )
+            ) == []
+
+        blocker.rollback()
+        blocker.close()
+        blocker = None
+
+        blocker = factory()
         locked_variant = blocker.execute(
             select(DocumentVariant)
             .where(DocumentVariant.id == variant_id)
@@ -429,6 +471,142 @@ def test_output_allocation_serializes_version_number_assignment_on_document_vari
                         BusinessEligibilityCertificate.id == dkkd_id
                     )
                 )
+            if case_id is not None:
+                cleanup.execute(delete(Case).where(Case.id == case_id))
+            if site_id is not None:
+                cleanup.execute(delete(Site).where(Site.id == site_id))
+            if company_id is not None:
+                cleanup.execute(delete(Company).where(Company.id == company_id))
+            cleanup.commit()
+        engine.dispose()
+
+
+def test_output_allocation_run_lock_refreshes_preloaded_generation_run_identity():
+    engine = create_engine(DATABASE_URL, future=True)
+    factory = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+        future=True,
+    )
+    token = uuid4().hex
+    company_id = site_id = case_id = document_id = variant_id = version_id = run_id = None
+    contender = None
+    try:
+        with factory() as session:
+            company = Company(legal_name=f"Allocation Refresh Co {token}")
+            session.add(company)
+            session.flush()
+            company_id = company.id
+
+            site = Site(
+                company_id=company.id,
+                site_name=f"Allocation Refresh Site {token}",
+            )
+            session.add(site)
+            session.flush()
+            site_id = site.id
+
+            case = Case(
+                site_id=site.id,
+                gxp_type="GMP",
+                state=CaseState.DRAFT,
+            )
+            session.add(case)
+            session.flush()
+            case_id = case.id
+
+            document = Document(
+                family_code="ALLOCATION_REFRESH_TEST",
+                document_type_code="allocation_refresh_test",
+                title="Allocation refresh test",
+                case_id=case.id,
+            )
+            session.add(document)
+            session.flush()
+            document_id = document.id
+
+            variant = DocumentVariant(
+                document_id=document.id,
+                variant_type=DocumentVariantType.EDITABLE_DOCX,
+                language_code="vi",
+                is_active=True,
+            )
+            session.add(variant)
+            session.flush()
+            variant_id = variant.id
+
+            run = DocumentGenerationRun(
+                document_id=document.id,
+                template_binding_id=None,
+                template_definition_id=None,
+                output_document_version_id=None,
+                status=DocumentGenerationStatus.PENDING,
+                source_application="Word",
+                requested_by_user_id=None,
+                input_payload_redacted="{}",
+                error_summary=None,
+                idempotency_key=f"allocation-refresh-{token}",
+            )
+            session.add(run)
+            session.commit()
+            run_id = run.id
+
+        contender = factory()
+        stale_run = contender.get(DocumentGenerationRun, run_id)
+        assert stale_run is not None
+        assert stale_run.output_document_version_id is None
+
+        with factory() as winner:
+            version = DocumentVersion(
+                document_variant_id=variant_id,
+                version_no=1,
+                storage_binding_id=None,
+                storage_root="inspection",
+                storage_relative_path=f"allocation-refresh/{token}/candidate.docx",
+                original_filename="candidate.docx",
+                checksum_sha256=None,
+                is_current=False,
+                issued_on=None,
+            )
+            winner.add(version)
+            winner.flush()
+            version_id = version.id
+            winner_run = winner.get(DocumentGenerationRun, run_id)
+            assert winner_run is not None
+            winner_run.output_document_version_id = version.id
+            winner.commit()
+
+        refreshed_run = output_version_module._lock_generation_run_for_output_allocation(
+            contender,
+            run_id,
+        )
+        assert refreshed_run is stale_run
+        assert refreshed_run.output_document_version_id == version_id
+        contender.rollback()
+        contender.close()
+        contender = None
+    finally:
+        if contender is not None:
+            contender.rollback()
+            contender.close()
+        with factory() as cleanup:
+            if run_id is not None:
+                cleanup.execute(
+                    delete(DocumentGenerationRun).where(
+                        DocumentGenerationRun.id == run_id
+                    )
+                )
+            if version_id is not None:
+                cleanup.execute(
+                    delete(DocumentVersion).where(DocumentVersion.id == version_id)
+                )
+            if variant_id is not None:
+                cleanup.execute(
+                    delete(DocumentVariant).where(DocumentVariant.id == variant_id)
+                )
+            if document_id is not None:
+                cleanup.execute(delete(Document).where(Document.id == document_id))
             if case_id is not None:
                 cleanup.execute(delete(Case).where(Case.id == case_id))
             if site_id is not None:

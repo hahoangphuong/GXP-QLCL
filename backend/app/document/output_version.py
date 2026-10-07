@@ -61,6 +61,24 @@ def _load_generation_run(session: Session, generation_run_id: str) -> DocumentGe
     return generation_run
 
 
+def _lock_generation_run_for_output_allocation(
+    session: Session,
+    generation_run_id: str,
+) -> DocumentGenerationRun:
+    stmt: Select[tuple[DocumentGenerationRun]] = (
+        select(DocumentGenerationRun)
+        .where(DocumentGenerationRun.id == generation_run_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    generation_run = session.execute(stmt).scalar_one_or_none()
+    if generation_run is None:
+        raise OutputVersionAllocationError(
+            f"DocumentGenerationRun {generation_run_id!r} was not found during output allocation."
+        )
+    return generation_run
+
+
 def _load_case_storage_identity(session: Session, case_id: str) -> tuple[int, int, str]:
     stmt: Select[tuple[Case, Site]] = (
         select(Case, Site)
@@ -288,7 +306,10 @@ def allocate_output_document_version(
     output_filename: str,
 ) -> OutputVersionAllocation:
     filename = _normalize_filename(output_filename)
-    generation_run = _load_generation_run(session, prepared.persisted_state.generation_run_id)
+    generation_run = _lock_generation_run_for_output_allocation(
+        session,
+        prepared.persisted_state.generation_run_id,
+    )
     existing = _existing_output_allocation(session, generation_run)
     if existing is not None:
         variant = _load_document_variant_for_output_version(

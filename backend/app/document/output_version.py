@@ -194,17 +194,41 @@ def allocate_output_document_version(
 ) -> OutputVersionAllocation:
     filename = _normalize_filename(output_filename)
     generation_run = _load_generation_run(session, prepared.persisted_state.generation_run_id)
+    storage_root, folder_relative_path, binding = _resolve_output_binding(
+        session,
+        storage,
+        prepared,
+    )
+    storage_relative_path = f"{folder_relative_path}/{filename}"
+    binding_id = binding.id if binding is not None else None
     existing = _existing_output_allocation(session, generation_run)
     if existing is not None:
+        mismatches: list[str] = []
         if existing.original_filename != filename:
+            mismatches.append(
+                f"filename={existing.original_filename!r}->{filename!r}"
+            )
+        if existing.storage_root != storage_root:
+            mismatches.append(
+                f"storage_root={existing.storage_root!r}->{storage_root!r}"
+            )
+        if existing.storage_binding_id != binding_id:
+            mismatches.append(
+                "storage_binding_id="
+                f"{existing.storage_binding_id!r}->{binding_id!r}"
+            )
+        if existing.storage_relative_path != storage_relative_path:
+            mismatches.append(
+                "storage_relative_path="
+                f"{existing.storage_relative_path!r}->{storage_relative_path!r}"
+            )
+        if mismatches:
             raise OutputVersionAllocationError(
-                "Generation run output allocation is already bound to "
-                f"{existing.original_filename!r}; requested {filename!r}."
+                "Generation run output allocation is already bound to a different "
+                "output identity: " + ", ".join(mismatches) + "."
             )
         return existing
     _load_document_variant(session, prepared.persisted_state.document_variant_id)
-    storage_root, folder_relative_path, binding = _resolve_output_binding(session, storage, prepared)
-    storage_relative_path = f"{folder_relative_path}/{filename}"
     if storage.exists(storage_relative_path, root=storage_root):
         raise OutputVersionAllocationError(
             f"Output path already exists and will not be overwritten automatically: {storage_relative_path!r}"

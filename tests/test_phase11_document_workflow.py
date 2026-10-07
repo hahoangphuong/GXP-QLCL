@@ -41,6 +41,7 @@ from backend.app.document.contextual_actions import (
     get_case_document_context_spec,
     list_case_document_context_specs,
 )
+import backend.app.document.output_version as output_version_module
 import backend.app.document.persistence as persistence_module
 from backend.app.document.seed_runtime import seed_default_template_metadata
 from backend.app.document.source_resolver_contract import (
@@ -903,6 +904,45 @@ def test_render_template_docx_restores_previous_current_when_post_write_audit_fa
                 "_write_audit_event",
                 original_write_audit_event,
             )
+            original_resolve_output_binding = (
+                output_version_module._resolve_output_binding
+            )
+            monkeypatch.setattr(
+                output_version_module,
+                "_resolve_output_binding",
+                lambda session, storage, prepared: (
+                    "dkkd",
+                    "drifted-folder",
+                    None,
+                ),
+            )
+            try:
+                service.render_template_docx(
+                    session,
+                    storage=storage,
+                    payload=candidate_payload,
+                    user=build_authenticated_user("inspector01", "inspector"),
+                )
+            except HTTPException as exc:
+                assert exc.status_code == 409
+                assert "different output identity" in exc.detail
+                assert "storage_relative_path=" in exc.detail
+            else:
+                raise AssertionError(
+                    "Expected idempotent retry with storage-binding drift to fail closed"
+                )
+            session.refresh(failed_run)
+            session.refresh(failed_version)
+            assert failed_run.status == DocumentGenerationStatus.FAILED
+            assert failed_version.storage_relative_path.endswith("/candidate.docx")
+            assert candidate_path.exists() is False
+
+            monkeypatch.setattr(
+                output_version_module,
+                "_resolve_output_binding",
+                original_resolve_output_binding,
+            )
+
             mismatched_payload = {
                 **candidate_payload,
                 "output_filename": "different-candidate.docx",
@@ -916,11 +956,9 @@ def test_render_template_docx_restores_previous_current_when_post_write_audit_fa
                 )
             except HTTPException as exc:
                 assert exc.status_code == 409
-                assert (
-                    "Generation run output allocation is already bound to "
-                    "'candidate.docx'; requested 'different-candidate.docx'."
-                    == exc.detail
-                )
+                assert "different output identity" in exc.detail
+                assert "filename='candidate.docx'->'different-candidate.docx'" in exc.detail
+                assert "storage_relative_path=" in exc.detail
             else:
                 raise AssertionError(
                     "Expected idempotent retry with a different output filename "

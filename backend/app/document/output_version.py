@@ -87,6 +87,16 @@ def _lock_generation_run_for_output_allocation(
     return generation_run
 
 
+def _assert_generation_run_allocatable(
+    generation_run: DocumentGenerationRun,
+) -> None:
+    if generation_run.status != DocumentGenerationStatus.PENDING:
+        raise OutputVersionAllocationError(
+            "Document generation run cannot allocate output from status "
+            f"{generation_run.status.value!r}; expected 'pending'."
+        )
+
+
 def _load_case_storage_identity(session: Session, case_id: str) -> tuple[int, int, str]:
     stmt: Select[tuple[Case, Site]] = (
         select(Case, Site)
@@ -318,6 +328,7 @@ def allocate_output_document_version(
         session,
         prepared.persisted_state.generation_run_id,
     )
+    _assert_generation_run_allocatable(generation_run)
     existing = _existing_output_allocation(session, generation_run)
     if existing is not None:
         variant = _load_document_variant_for_output_version(

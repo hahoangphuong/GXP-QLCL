@@ -18,6 +18,7 @@ The next missing step before introducing a render adapter is:
 ## Decision
 - Add an output-allocation step that:
   - locks the persisted `document_generation_run` row with `SELECT ... FOR UPDATE` and refreshes any preloaded ORM identity before reading `output_document_version_id`, so concurrent callers for the same run cannot allocate twice from stale state
+  - requires the locked generation run to be `pending` before creating or reusing an output allocation; `failed` runs must be explicitly reclaimed to `pending` by the workflow owner first, while `cancelled` and `succeeded` runs fail closed without output-version mutation
   - validates persisted generation-run/document/variant lineage against the prepared persisted state before storage resolution or output-version mutation; reused allocations fail closed on the same lineage mismatch
   - locks the persisted `document_variant` row with `SELECT ... FOR UPDATE` before folder resolution, occupancy checks, and `max(version_no)+1` assignment so concurrent allocations for the same variant serialize
   - resolves the target storage folder through `StorageService`

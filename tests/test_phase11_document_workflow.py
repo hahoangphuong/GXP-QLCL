@@ -1258,6 +1258,145 @@ def test_reused_inspection_output_allocation_detects_folder_drift_without_mutati
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_output_allocation_rejects_non_pending_generation_run_before_mutation():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    storage, root = _build_storage()
+    try:
+        with Session(engine) as session:
+            _, site_id = _seed_case(session)
+            company_id = session.get(Site, site_id).company_id  # type: ignore[union-attr]
+            dkkd_id = _seed_dkkd(session, site_id, company_id)
+            seed_default_template_metadata(session)
+
+            output_dir = root / "dkkd" / "Cong ty A - Dia chi A (100)"
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            preparation_input = DocumentPreparationInput(
+                request=DocumentGenerationRequest(
+                    family_code="DDKD_CERTIFICATE",
+                    requested_by_user_id=None,
+                    business_eligibility_certificate_id=dkkd_id,
+                    storage_scope="dkkd_folder",
+                    idempotency_key="phase11-allocation-status-001",
+                ),
+                payload_values={
+                    "TenCty": "Cong ty A",
+                    "DiachiCoso": "123 Duong A",
+                    "HoatdongKD": "Bao quan, ban buon thuoc",
+                },
+            )
+            prepared = prepare_document_generation_job(
+                session,
+                preparation_input,
+            )
+            run = session.get(
+                DocumentGenerationRun,
+                prepared.persisted_state.generation_run_id,
+            )
+            assert run is not None
+            target = output_dir / "candidate.docx"
+
+            for blocked_status in (
+                DocumentGenerationStatus.FAILED,
+                DocumentGenerationStatus.CANCELLED,
+                DocumentGenerationStatus.SUCCEEDED,
+            ):
+                marker = f"{blocked_status.value} before allocation"
+                run.status = blocked_status
+                run.error_summary = marker
+                session.flush()
+
+                try:
+                    output_version_module.allocate_output_document_version(
+                        session,
+                        storage,
+                        prepared,
+                        output_filename="candidate.docx",
+                    )
+                except output_version_module.OutputVersionAllocationError as exc:
+                    assert "cannot allocate output from status" in str(exc)
+                    assert repr(blocked_status.value) in str(exc)
+                    assert "expected 'pending'" in str(exc)
+                else:
+                    raise AssertionError(
+                        f"Expected {blocked_status.value} generation run to fail before output allocation"
+                    )
+
+                session.refresh(run)
+                assert run.status == blocked_status
+                assert run.error_summary == marker
+                assert run.output_document_version_id is None
+                assert session.query(DocumentVersion).count() == 0
+                assert target.exists() is False
+
+            run.status = DocumentGenerationStatus.PENDING
+            run.error_summary = None
+            session.flush()
+            allocation = output_version_module.allocate_output_document_version(
+                session,
+                storage,
+                prepared,
+                output_filename="candidate.docx",
+            )
+            version = session.get(
+                DocumentVersion,
+                allocation.document_version_id,
+            )
+            assert version is not None
+            original_identity = (
+                version.document_variant_id,
+                version.version_no,
+                version.storage_binding_id,
+                version.storage_root,
+                version.storage_relative_path,
+                version.original_filename,
+            )
+
+            for blocked_status in (
+                DocumentGenerationStatus.FAILED,
+                DocumentGenerationStatus.CANCELLED,
+                DocumentGenerationStatus.SUCCEEDED,
+            ):
+                marker = f"{blocked_status.value} after allocation"
+                run.status = blocked_status
+                run.error_summary = marker
+                session.flush()
+
+                try:
+                    output_version_module.allocate_output_document_version(
+                        session,
+                        storage,
+                        prepared,
+                        output_filename="candidate.docx",
+                    )
+                except output_version_module.OutputVersionAllocationError as exc:
+                    assert "cannot allocate output from status" in str(exc)
+                    assert repr(blocked_status.value) in str(exc)
+                else:
+                    raise AssertionError(
+                        f"Expected {blocked_status.value} generation run to reject allocation reuse"
+                    )
+
+                session.refresh(run)
+                session.refresh(version)
+                assert run.status == blocked_status
+                assert run.error_summary == marker
+                assert run.output_document_version_id == allocation.document_version_id
+                assert (
+                    version.document_variant_id,
+                    version.version_no,
+                    version.storage_binding_id,
+                    version.storage_root,
+                    version.storage_relative_path,
+                    version.original_filename,
+                ) == original_identity
+                assert session.query(DocumentVersion).count() == 1
+                assert target.exists() is False
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_output_allocation_rejects_stale_prepared_lineage_before_mutation():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)

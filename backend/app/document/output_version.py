@@ -265,19 +265,22 @@ def _existing_output_allocation(
     )
 
 
-def _load_document_variant_for_output_version(
+def _assert_reused_output_allocation_is_latest(
     session: Session,
-    document_variant_id: str,
-) -> DocumentVariant:
-    stmt: Select[tuple[DocumentVariant]] = select(DocumentVariant).where(
-        DocumentVariant.id == document_variant_id
-    )
-    variant = session.execute(stmt).scalar_one_or_none()
-    if variant is None:
-        raise OutputVersionAllocationError(
-            f"DocumentVariant {document_variant_id!r} was not found during output allocation."
+    allocation: OutputVersionAllocation,
+) -> None:
+    latest_version_no = session.execute(
+        select(func.max(DocumentVersion.version_no)).where(
+            DocumentVersion.document_variant_id == allocation.document_variant_id
         )
-    return variant
+    ).scalar_one()
+    if latest_version_no is None or allocation.version_no != int(latest_version_no):
+        raise OutputVersionAllocationError(
+            "Generation run output allocation is no longer the latest persisted "
+            "version for its variant; "
+            f"allocated version_no={allocation.version_no!r}, "
+            f"latest version_no={latest_version_no!r}."
+        )
 
 
 def _assert_output_allocation_lineage_identity(
@@ -331,7 +334,7 @@ def allocate_output_document_version(
     _assert_generation_run_allocatable(generation_run)
     existing = _existing_output_allocation(session, generation_run)
     if existing is not None:
-        variant = _load_document_variant_for_output_version(
+        variant = _lock_document_variant_for_output_version(
             session,
             existing.document_variant_id,
         )
@@ -339,6 +342,10 @@ def allocate_output_document_version(
             generation_run,
             variant,
             prepared,
+        )
+        _assert_reused_output_allocation_is_latest(
+            session,
+            existing,
         )
         storage_root, folder_relative_path, binding_id = _resolve_reused_output_identity(
             session,

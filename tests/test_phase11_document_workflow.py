@@ -1397,6 +1397,118 @@ def test_output_allocation_rejects_non_pending_generation_run_before_mutation():
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_reused_output_allocation_rejects_version_superseded_by_newer_allocation():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    storage, root = _build_storage()
+    try:
+        with Session(engine) as session:
+            _, site_id = _seed_case(session)
+            company_id = session.get(Site, site_id).company_id  # type: ignore[union-attr]
+            dkkd_id = _seed_dkkd(session, site_id, company_id)
+            seed_default_template_metadata(session)
+
+            output_dir = root / "dkkd" / "Cong ty A - Dia chi A (100)"
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            def build_prepared(idempotency_key: str):
+                return prepare_document_generation_job(
+                    session,
+                    DocumentPreparationInput(
+                        request=DocumentGenerationRequest(
+                            family_code="DDKD_CERTIFICATE",
+                            requested_by_user_id=None,
+                            business_eligibility_certificate_id=dkkd_id,
+                            storage_scope="dkkd_folder",
+                            idempotency_key=idempotency_key,
+                        ),
+                        payload_values={
+                            "TenCty": "Cong ty A",
+                            "DiachiCoso": "123 Duong A",
+                            "HoatdongKD": "Bao quan, ban buon thuoc",
+                        },
+                    ),
+                )
+
+            older_prepared = build_prepared("phase11-stale-reuse-older")
+            older_allocation = output_version_module.allocate_output_document_version(
+                session,
+                storage,
+                older_prepared,
+                output_filename="older-candidate.docx",
+            )
+            newer_prepared = build_prepared("phase11-stale-reuse-newer")
+            newer_allocation = output_version_module.allocate_output_document_version(
+                session,
+                storage,
+                newer_prepared,
+                output_filename="newer-candidate.docx",
+            )
+
+            assert (
+                older_allocation.document_variant_id
+                == newer_allocation.document_variant_id
+            )
+            assert older_allocation.version_no == 1
+            assert newer_allocation.version_no == 2
+
+            older_run = session.get(
+                DocumentGenerationRun,
+                older_allocation.generation_run_id,
+            )
+            newer_run = session.get(
+                DocumentGenerationRun,
+                newer_allocation.generation_run_id,
+            )
+            assert older_run is not None
+            assert newer_run is not None
+            assert older_run.status == DocumentGenerationStatus.PENDING
+            assert newer_run.status == DocumentGenerationStatus.PENDING
+
+            try:
+                output_version_module.allocate_output_document_version(
+                    session,
+                    storage,
+                    older_prepared,
+                    output_filename="older-candidate.docx",
+                )
+            except output_version_module.OutputVersionAllocationError as exc:
+                assert "no longer the latest persisted version" in str(exc)
+                assert "allocated version_no=1" in str(exc)
+                assert "latest version_no=2" in str(exc)
+            else:
+                raise AssertionError(
+                    "Expected superseded output allocation reuse to fail closed"
+                )
+
+            session.refresh(older_run)
+            session.refresh(newer_run)
+            assert (
+                older_run.output_document_version_id
+                == older_allocation.document_version_id
+            )
+            assert (
+                newer_run.output_document_version_id
+                == newer_allocation.document_version_id
+            )
+            versions = list(
+                session.scalars(
+                    select(DocumentVersion)
+                    .where(
+                        DocumentVersion.document_variant_id
+                        == older_allocation.document_variant_id
+                    )
+                    .order_by(DocumentVersion.version_no.asc())
+                )
+            )
+            assert [row.version_no for row in versions] == [1, 2]
+            assert all(row.is_current is False for row in versions)
+            assert (output_dir / "older-candidate.docx").exists() is False
+            assert (output_dir / "newer-candidate.docx").exists() is False
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_output_allocation_rejects_stale_prepared_lineage_before_mutation():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)

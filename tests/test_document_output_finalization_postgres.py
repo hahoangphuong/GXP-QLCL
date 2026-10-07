@@ -616,6 +616,49 @@ def test_output_allocation_serializes_version_number_assignment_on_document_vari
             assert run.output_document_version_id == version.id
             assert version.document_variant_id == variant_id
             assert version.version_no == 1
+
+        blocker = factory()
+        locked_variant = blocker.execute(
+            select(DocumentVariant)
+            .where(DocumentVariant.id == variant_id)
+            .with_for_update()
+        ).scalar_one()
+        assert locked_variant.id == variant_id
+
+        with factory() as contender:
+            contender.execute(text("SET LOCAL lock_timeout = '250ms'"))
+            try:
+                allocate_output_document_version(
+                    contender,
+                    storage,
+                    prepared,
+                    output_filename="candidate.docx",
+                )
+            except OperationalError as exc:
+                assert "lock timeout" in str(exc).lower()
+                contender.rollback()
+            else:
+                raise AssertionError(
+                    "Expected reused allocation to block on the document_variant row lock"
+                )
+
+        with factory() as verify:
+            run = verify.get(DocumentGenerationRun, run_id)
+            assert run is not None
+            assert run.output_document_version_id == version_id
+            versions = list(
+                verify.scalars(
+                    select(DocumentVersion).where(
+                        DocumentVersion.document_variant_id == variant_id
+                    )
+                )
+            )
+            assert [row.id for row in versions] == [version_id]
+            assert versions[0].version_no == 1
+
+        blocker.rollback()
+        blocker.close()
+        blocker = None
     finally:
         if blocker is not None:
             blocker.rollback()

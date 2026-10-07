@@ -319,12 +319,11 @@ def allocate_output_document_version(
 
 
 def _assert_finalization_allocation_identity(
-    session: Session,
     generation_run: DocumentGenerationRun,
     document_version: DocumentVersion,
+    variant: DocumentVariant,
     allocation: OutputVersionAllocation,
 ) -> None:
-    variant = _load_document_variant(session, document_version.document_variant_id)
     mismatches: list[str] = []
 
     comparisons = (
@@ -381,6 +380,23 @@ def _assert_generation_run_finalizable(
         )
 
 
+def _lock_document_variant_for_finalization(
+    session: Session,
+    document_variant_id: str,
+) -> DocumentVariant:
+    stmt: Select[tuple[DocumentVariant]] = (
+        select(DocumentVariant)
+        .where(DocumentVariant.id == document_variant_id)
+        .with_for_update()
+    )
+    variant = session.execute(stmt).scalar_one_or_none()
+    if variant is None:
+        raise OutputVersionAllocationError(
+            f"DocumentVariant {document_variant_id!r} was not found during output finalization."
+        )
+    return variant
+
+
 def finalize_output_document_version_write(
     session: Session,
     storage: LocalStorageService,
@@ -397,10 +413,14 @@ def finalize_output_document_version_write(
     document_version = session.execute(stmt).scalar_one_or_none()
     if document_version is None:
         raise OutputVersionAllocationError(f"Allocated DocumentVersion {allocation.document_version_id!r} was not found.")
-    _assert_finalization_allocation_identity(
+    variant = _lock_document_variant_for_finalization(
         session,
+        document_version.document_variant_id,
+    )
+    _assert_finalization_allocation_identity(
         generation_run,
         document_version,
+        variant,
         allocation,
     )
     storage.write_stream(

@@ -28,6 +28,7 @@ The next missing step before introducing a render adapter is:
 - Add a write-finalization step that:
   - requires the generation run to be `pending` before any output I/O; `failed`, `cancelled`, and `succeeded` runs fail closed, and a retry must be explicitly re-claimed to `pending` by the workflow owner first
   - locks the persisted `document_variant` row with `SELECT ... FOR UPDATE` before output I/O so concurrent finalizers for the same variant serialize before changing current-version state
+  - requires the locked variant to have at most one pre-existing `is_current=true` version before output I/O; duplicate-current lineage fails closed instead of being normalized by the new write
   - writes the rendered binary through `StorageService.write_stream(..., overwrite=False)` so a target that appears after allocation cannot be overwritten
   - treats an existing target as a fail-closed storage conflict and does not delete that pre-existing file during render cleanup
   - computes checksum through `StorageService.checksum`

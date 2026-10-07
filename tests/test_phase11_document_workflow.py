@@ -1469,10 +1469,61 @@ def test_finalize_output_write_rejects_stale_allocation_identity_before_storage_
             assert version is not None
             assert run.status == DocumentGenerationStatus.PENDING
 
+            corrupt_current_a = DocumentVersion(
+                document_variant_id=allocation.document_variant_id,
+                version_no=allocation.version_no + 1,
+                storage_binding_id=None,
+                storage_root="dkkd",
+                storage_relative_path="corrupt/current-a.docx",
+                original_filename="current-a.docx",
+                checksum_sha256="corrupt-a",
+                is_current=True,
+                issued_on=None,
+            )
+            corrupt_current_b = DocumentVersion(
+                document_variant_id=allocation.document_variant_id,
+                version_no=allocation.version_no + 2,
+                storage_binding_id=None,
+                storage_root="dkkd",
+                storage_relative_path="corrupt/current-b.docx",
+                original_filename="current-b.docx",
+                checksum_sha256="corrupt-b",
+                is_current=True,
+                issued_on=None,
+            )
+            session.add_all([corrupt_current_a, corrupt_current_b])
+            session.flush()
+
             original_target = (
                 root / "dkkd" / allocation.storage_relative_path
             )
             assert original_target.exists() is False
+
+            try:
+                output_version_module.finalize_output_document_version_write(
+                    session,
+                    storage,
+                    allocation,
+                    binary_payload=b"must-not-repair-corrupt-current-lineage",
+                )
+            except output_version_module.OutputVersionAllocationError as exc:
+                assert "multiple current versions before output finalization" in str(exc)
+            else:
+                raise AssertionError(
+                    "Expected duplicate current lineage to fail before output write"
+                )
+
+            assert original_target.exists() is False
+            session.refresh(run)
+            session.refresh(version)
+            assert run.status == DocumentGenerationStatus.PENDING
+            assert version.is_current is False
+            assert corrupt_current_a.is_current is True
+            assert corrupt_current_b.is_current is True
+
+            corrupt_current_a.is_current = False
+            corrupt_current_b.is_current = False
+            session.flush()
 
             for blocked_status in (
                 DocumentGenerationStatus.FAILED,

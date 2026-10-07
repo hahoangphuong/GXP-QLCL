@@ -461,6 +461,25 @@ def _assert_generation_run_finalizable(
         )
 
 
+def _assert_single_current_version_before_finalization(
+    session: Session,
+    document_variant_id: str,
+) -> None:
+    stmt = (
+        select(DocumentVersion.id)
+        .where(
+            DocumentVersion.document_variant_id == document_variant_id,
+            DocumentVersion.is_current.is_(True),
+        )
+        .limit(2)
+    )
+    current_ids = tuple(session.scalars(stmt))
+    if len(current_ids) > 1:
+        raise OutputVersionAllocationError(
+            "Document variant has multiple current versions before output finalization."
+        )
+
+
 def _lock_document_variant_for_output_version(
     session: Session,
     document_variant_id: str,
@@ -503,6 +522,10 @@ def finalize_output_document_version_write(
         document_version,
         variant,
         allocation,
+    )
+    _assert_single_current_version_before_finalization(
+        session,
+        document_version.document_variant_id,
     )
     storage.write_stream(
         allocation.storage_relative_path,

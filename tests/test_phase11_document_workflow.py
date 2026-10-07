@@ -1258,6 +1258,165 @@ def test_reused_inspection_output_allocation_detects_folder_drift_without_mutati
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_output_allocation_rejects_stale_prepared_lineage_before_mutation():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    storage, root = _build_storage()
+    try:
+        with Session(engine) as session:
+            _, site_id = _seed_case(session)
+            company_id = session.get(Site, site_id).company_id  # type: ignore[union-attr]
+            dkkd_id = _seed_dkkd(session, site_id, company_id)
+            seed_default_template_metadata(session)
+
+            output_dir = root / "dkkd" / "Cong ty A - Dia chi A (100)"
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            prepared = prepare_document_generation_job(
+                session,
+                DocumentPreparationInput(
+                    request=DocumentGenerationRequest(
+                        family_code="DDKD_CERTIFICATE",
+                        requested_by_user_id=None,
+                        business_eligibility_certificate_id=dkkd_id,
+                        storage_scope="dkkd_folder",
+                        idempotency_key="phase11-output-lineage-001",
+                    ),
+                    payload_values={
+                        "TenCty": "Cong ty A",
+                        "DiachiCoso": "123 Duong A",
+                        "HoatdongKD": "Bao quan, ban buon thuoc",
+                    },
+                ),
+            )
+            run = session.get(
+                DocumentGenerationRun,
+                prepared.persisted_state.generation_run_id,
+            )
+            assert run is not None
+            canonical_document_id = prepared.persisted_state.document_id
+            canonical_variant_id = prepared.persisted_state.document_variant_id
+
+            foreign_document = Document(
+                family_code="FOREIGN_OUTPUT_LINEAGE",
+                document_type_code="foreign_output_lineage",
+                title="Foreign output lineage",
+                business_eligibility_certificate_id=dkkd_id,
+            )
+            session.add(foreign_document)
+            session.flush()
+            foreign_variant = DocumentVariant(
+                document_id=foreign_document.id,
+                variant_type=DocumentVariantType.EDITABLE_DOCX,
+                language_code="vi",
+                is_active=True,
+            )
+            session.add(foreign_variant)
+            session.flush()
+
+            cross_document_prepared = replace(
+                prepared,
+                persisted_state=replace(
+                    prepared.persisted_state,
+                    document_id=foreign_document.id,
+                    document_variant_id=foreign_variant.id,
+                ),
+            )
+            try:
+                output_version_module.allocate_output_document_version(
+                    session,
+                    storage,
+                    cross_document_prepared,
+                    output_filename="candidate.docx",
+                )
+            except output_version_module.OutputVersionAllocationError as exc:
+                assert "allocation lineage identity mismatch" in str(exc)
+                assert "generation_run.document_id" in str(exc)
+            else:
+                raise AssertionError(
+                    "Expected cross-document prepared lineage to fail closed"
+                )
+
+            variant_owner_mismatch_prepared = replace(
+                prepared,
+                persisted_state=replace(
+                    prepared.persisted_state,
+                    document_variant_id=foreign_variant.id,
+                ),
+            )
+            try:
+                output_version_module.allocate_output_document_version(
+                    session,
+                    storage,
+                    variant_owner_mismatch_prepared,
+                    output_filename="candidate.docx",
+                )
+            except output_version_module.OutputVersionAllocationError as exc:
+                assert "allocation lineage identity mismatch" in str(exc)
+                assert "document_variant.document_id" in str(exc)
+            else:
+                raise AssertionError(
+                    "Expected foreign variant ownership to fail closed"
+                )
+
+            session.refresh(run)
+            assert run.document_id == canonical_document_id
+            assert run.output_document_version_id is None
+            assert (
+                session.query(DocumentVersion)
+                .filter(DocumentVersion.document_variant_id == canonical_variant_id)
+                .count()
+                == 0
+            )
+            assert (
+                session.query(DocumentVersion)
+                .filter(DocumentVersion.document_variant_id == foreign_variant.id)
+                .count()
+                == 0
+            )
+
+            allocation = output_version_module.allocate_output_document_version(
+                session,
+                storage,
+                prepared,
+                output_filename="candidate.docx",
+            )
+            assert allocation.document_id == canonical_document_id
+            assert allocation.document_variant_id == canonical_variant_id
+            assert session.query(DocumentVersion).count() == 1
+
+            reused_variant_mismatch_prepared = replace(
+                prepared,
+                persisted_state=replace(
+                    prepared.persisted_state,
+                    document_variant_id=foreign_variant.id,
+                ),
+            )
+            try:
+                output_version_module.allocate_output_document_version(
+                    session,
+                    storage,
+                    reused_variant_mismatch_prepared,
+                    output_filename="candidate.docx",
+                )
+            except output_version_module.OutputVersionAllocationError as exc:
+                assert "allocation lineage identity mismatch" in str(exc)
+                assert "document_variant.id" in str(exc)
+            else:
+                raise AssertionError(
+                    "Expected reused allocation with stale variant identity to fail closed"
+                )
+
+            session.refresh(run)
+            assert run.output_document_version_id == allocation.document_version_id
+            assert session.query(DocumentVersion).count() == 1
+            version = session.get(DocumentVersion, allocation.document_version_id)
+            assert version is not None
+            assert version.document_variant_id == canonical_variant_id
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_finalize_output_write_rejects_stale_allocation_identity_before_storage_io():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)

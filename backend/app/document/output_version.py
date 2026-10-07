@@ -229,6 +229,57 @@ def _existing_output_allocation(
     )
 
 
+def _load_document_variant_for_output_version(
+    session: Session,
+    document_variant_id: str,
+) -> DocumentVariant:
+    stmt: Select[tuple[DocumentVariant]] = select(DocumentVariant).where(
+        DocumentVariant.id == document_variant_id
+    )
+    variant = session.execute(stmt).scalar_one_or_none()
+    if variant is None:
+        raise OutputVersionAllocationError(
+            f"DocumentVariant {document_variant_id!r} was not found during output allocation."
+        )
+    return variant
+
+
+def _assert_output_allocation_lineage_identity(
+    generation_run: DocumentGenerationRun,
+    variant: DocumentVariant,
+    prepared: PreparedDocumentGeneration,
+) -> None:
+    persisted_state = prepared.persisted_state
+    comparisons = (
+        (
+            "generation_run.document_id",
+            generation_run.document_id,
+            persisted_state.document_id,
+        ),
+        (
+            "document_variant.id",
+            variant.id,
+            persisted_state.document_variant_id,
+        ),
+        (
+            "document_variant.document_id",
+            variant.document_id,
+            persisted_state.document_id,
+        ),
+    )
+    mismatches = [
+        f"{label}={persisted!r}->{requested!r}"
+        for label, persisted, requested in comparisons
+        if persisted != requested
+    ]
+    if mismatches:
+        raise OutputVersionAllocationError(
+            "Output allocation lineage identity mismatch: "
+            + ", ".join(mismatches)
+            + "."
+        )
+
+
 def allocate_output_document_version(
     session: Session,
     storage: LocalStorageService,
@@ -240,6 +291,15 @@ def allocate_output_document_version(
     generation_run = _load_generation_run(session, prepared.persisted_state.generation_run_id)
     existing = _existing_output_allocation(session, generation_run)
     if existing is not None:
+        variant = _load_document_variant_for_output_version(
+            session,
+            existing.document_variant_id,
+        )
+        _assert_output_allocation_lineage_identity(
+            generation_run,
+            variant,
+            prepared,
+        )
         storage_root, folder_relative_path, binding_id = _resolve_reused_output_identity(
             session,
             storage,
@@ -271,9 +331,14 @@ def allocate_output_document_version(
                 "output identity: " + ", ".join(mismatches) + "."
             )
         return existing
-    _lock_document_variant_for_output_version(
+    variant = _lock_document_variant_for_output_version(
         session,
         prepared.persisted_state.document_variant_id,
+    )
+    _assert_output_allocation_lineage_identity(
+        generation_run,
+        variant,
+        prepared,
     )
     storage_root, folder_relative_path, binding = _resolve_output_binding(
         session,

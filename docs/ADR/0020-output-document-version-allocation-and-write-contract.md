@@ -17,6 +17,7 @@ The next missing step before introducing a render adapter is:
 
 ## Decision
 - Add an output-allocation step that:
+  - validates persisted generation-run/document/variant lineage against the prepared persisted state before storage resolution or output-version mutation; reused allocations fail closed on the same lineage mismatch
   - locks the persisted `document_variant` row with `SELECT ... FOR UPDATE` before folder resolution, occupancy checks, and `max(version_no)+1` assignment so concurrent allocations for the same variant serialize
   - resolves the target storage folder through `StorageService`
   - creates a new `document_version` with the next `version_no`

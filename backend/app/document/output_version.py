@@ -318,6 +318,59 @@ def allocate_output_document_version(
     )
 
 
+def _assert_finalization_allocation_identity(
+    session: Session,
+    generation_run: DocumentGenerationRun,
+    document_version: DocumentVersion,
+    allocation: OutputVersionAllocation,
+) -> None:
+    variant = _load_document_variant(session, document_version.document_variant_id)
+    mismatches: list[str] = []
+
+    comparisons = (
+        ("generation_run.document_id", generation_run.document_id, allocation.document_id),
+        (
+            "generation_run.output_document_version_id",
+            generation_run.output_document_version_id,
+            allocation.document_version_id,
+        ),
+        ("document_variant.id", variant.id, allocation.document_variant_id),
+        ("document_variant.document_id", variant.document_id, allocation.document_id),
+        (
+            "document_version.document_variant_id",
+            document_version.document_variant_id,
+            allocation.document_variant_id,
+        ),
+        ("document_version.version_no", document_version.version_no, allocation.version_no),
+        (
+            "document_version.storage_binding_id",
+            document_version.storage_binding_id,
+            allocation.storage_binding_id,
+        ),
+        ("document_version.storage_root", document_version.storage_root, allocation.storage_root),
+        (
+            "document_version.storage_relative_path",
+            document_version.storage_relative_path,
+            allocation.storage_relative_path,
+        ),
+        (
+            "document_version.original_filename",
+            document_version.original_filename,
+            allocation.original_filename,
+        ),
+    )
+    for label, persisted, requested in comparisons:
+        if persisted != requested:
+            mismatches.append(f"{label}={persisted!r}->{requested!r}")
+
+    if mismatches:
+        raise OutputVersionAllocationError(
+            "Output finalization allocation identity mismatch: "
+            + ", ".join(mismatches)
+            + "."
+        )
+
+
 def finalize_output_document_version_write(
     session: Session,
     storage: LocalStorageService,
@@ -333,6 +386,12 @@ def finalize_output_document_version_write(
     document_version = session.execute(stmt).scalar_one_or_none()
     if document_version is None:
         raise OutputVersionAllocationError(f"Allocated DocumentVersion {allocation.document_version_id!r} was not found.")
+    _assert_finalization_allocation_identity(
+        session,
+        generation_run,
+        document_version,
+        allocation,
+    )
     storage.write_stream(
         allocation.storage_relative_path,
         BytesIO(binary_payload),

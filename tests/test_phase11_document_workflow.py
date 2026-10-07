@@ -4,6 +4,7 @@ import asyncio
 import json
 import shutil
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -1141,6 +1142,163 @@ def test_reused_inspection_output_allocation_detects_folder_drift_without_mutati
             session.refresh(binding)
             assert binding.relative_path == original_relative_folder
             assert session.query(DocumentVersion).count() == 1
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_finalize_output_write_rejects_stale_allocation_identity_before_storage_io():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    storage, root = _build_storage()
+    try:
+        with Session(engine) as session:
+            _, site_id = _seed_case(session)
+            company_id = session.get(Site, site_id).company_id  # type: ignore[union-attr]
+            dkkd_id = _seed_dkkd(session, site_id, company_id)
+            seed_default_template_metadata(session)
+
+            output_dir = root / "dkkd" / "Cong ty A - Dia chi A (100)"
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            preparation_input = DocumentPreparationInput(
+                request=DocumentGenerationRequest(
+                    family_code="DDKD_CERTIFICATE",
+                    requested_by_user_id=None,
+                    business_eligibility_certificate_id=dkkd_id,
+                    storage_scope="dkkd_folder",
+                    idempotency_key="phase11-finalize-identity-001",
+                ),
+                payload_values={
+                    "TenCty": "Cong ty A",
+                    "DiachiCoso": "123 Duong A",
+                    "HoatdongKD": "Bao quan, ban buon thuoc",
+                },
+            )
+            prepared = prepare_document_generation_job(
+                session,
+                preparation_input,
+            )
+            allocation = output_version_module.allocate_output_document_version(
+                session,
+                storage,
+                prepared,
+                output_filename="candidate.docx",
+            )
+            session.commit()
+
+            run = session.get(
+                DocumentGenerationRun,
+                allocation.generation_run_id,
+            )
+            version = session.get(
+                DocumentVersion,
+                allocation.document_version_id,
+            )
+            assert run is not None
+            assert version is not None
+            assert run.status == DocumentGenerationStatus.PENDING
+
+            original_target = (
+                root / "dkkd" / allocation.storage_relative_path
+            )
+            assert original_target.exists() is False
+
+            version.storage_relative_path = (
+                "Cong ty A - Dia chi A (100)/drifted-candidate.docx"
+            )
+            session.flush()
+            try:
+                output_version_module.finalize_output_document_version_write(
+                    session,
+                    storage,
+                    allocation,
+                    binary_payload=b"must-not-be-written",
+                )
+            except output_version_module.OutputVersionAllocationError as exc:
+                assert "finalization allocation identity mismatch" in str(exc)
+                assert "document_version.storage_relative_path=" in str(exc)
+            else:
+                raise AssertionError(
+                    "Expected DB locator drift to fail before output write"
+                )
+
+            assert original_target.exists() is False
+            assert (
+                output_dir / "drifted-candidate.docx"
+            ).exists() is False
+            session.refresh(run)
+            assert run.status == DocumentGenerationStatus.PENDING
+            assert version.checksum_sha256 is None
+            assert version.is_current is False
+            assert version.issued_on is None
+
+            version.storage_relative_path = allocation.storage_relative_path
+            run.output_document_version_id = None
+            session.flush()
+            try:
+                output_version_module.finalize_output_document_version_write(
+                    session,
+                    storage,
+                    allocation,
+                    binary_payload=b"must-not-be-written",
+                )
+            except output_version_module.OutputVersionAllocationError as exc:
+                assert "finalization allocation identity mismatch" in str(exc)
+                assert "generation_run.output_document_version_id=" in str(exc)
+            else:
+                raise AssertionError(
+                    "Expected generation-run linkage drift to fail before output write"
+                )
+
+            assert original_target.exists() is False
+            session.refresh(version)
+            assert version.checksum_sha256 is None
+            assert version.is_current is False
+            assert version.issued_on is None
+
+            run.output_document_version_id = allocation.document_version_id
+            session.flush()
+            tampered_allocation = replace(
+                allocation,
+                storage_relative_path=(
+                    "Cong ty A - Dia chi A (100)/tampered-candidate.docx"
+                ),
+            )
+            try:
+                output_version_module.finalize_output_document_version_write(
+                    session,
+                    storage,
+                    tampered_allocation,
+                    binary_payload=b"must-not-be-written",
+                )
+            except output_version_module.OutputVersionAllocationError as exc:
+                assert "finalization allocation identity mismatch" in str(exc)
+                assert "document_version.storage_relative_path=" in str(exc)
+            else:
+                raise AssertionError(
+                    "Expected tampered allocation to fail before output write"
+                )
+
+            assert original_target.exists() is False
+            assert (
+                output_dir / "tampered-candidate.docx"
+            ).exists() is False
+
+            checksum = output_version_module.finalize_output_document_version_write(
+                session,
+                storage,
+                allocation,
+                binary_payload=b"canonical-output",
+            )
+            session.commit()
+
+            session.refresh(run)
+            session.refresh(version)
+            assert original_target.read_bytes() == b"canonical-output"
+            assert checksum == version.checksum_sha256
+            assert version.is_current is True
+            assert version.issued_on is not None
+            assert run.status == DocumentGenerationStatus.SUCCEEDED
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

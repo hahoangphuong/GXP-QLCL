@@ -1525,6 +1525,31 @@ def test_finalize_output_write_rejects_stale_allocation_identity_before_storage_
             corrupt_current_b.is_current = False
             session.flush()
 
+            try:
+                output_version_module.finalize_output_document_version_write(
+                    session,
+                    storage,
+                    allocation,
+                    binary_payload=b"must-not-finalize-stale-version",
+                )
+            except output_version_module.OutputVersionAllocationError as exc:
+                assert "not the latest persisted version" in str(exc)
+                assert f"allocated version_no={allocation.version_no!r}" in str(exc)
+            else:
+                raise AssertionError(
+                    "Expected an older allocated version to fail before output write"
+                )
+
+            assert original_target.exists() is False
+            session.refresh(run)
+            session.refresh(version)
+            assert run.status == DocumentGenerationStatus.PENDING
+            assert version.is_current is False
+
+            session.delete(corrupt_current_a)
+            session.delete(corrupt_current_b)
+            session.flush()
+
             for blocked_status in (
                 DocumentGenerationStatus.FAILED,
                 DocumentGenerationStatus.CANCELLED,
@@ -1686,6 +1711,86 @@ def test_finalize_output_write_rejects_stale_allocation_identity_before_storage_
             assert run.status == DocumentGenerationStatus.SUCCEEDED
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+def test_restore_render_version_state_does_not_reactivate_stale_previous_current_when_candidate_was_never_promoted():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        case_id, _ = _seed_case(session)
+        document = Document(
+            family_code="RESTORE_STALE_CURRENT_TEST",
+            document_type_code="RESTORE_STALE_CURRENT_TEST",
+            title="Restore stale current test",
+            case_id=case_id,
+        )
+        session.add(document)
+        session.flush()
+        variant = DocumentVariant(
+            document_id=document.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="vi",
+            is_active=True,
+        )
+        session.add(variant)
+        session.flush()
+
+        previous = DocumentVersion(
+            document_variant_id=variant.id,
+            version_no=1,
+            storage_binding_id=None,
+            storage_root="inspection",
+            storage_relative_path="restore/previous.docx",
+            original_filename="previous.docx",
+            checksum_sha256="previous",
+            is_current=False,
+            issued_on=None,
+        )
+        candidate = DocumentVersion(
+            document_variant_id=variant.id,
+            version_no=2,
+            storage_binding_id=None,
+            storage_root="inspection",
+            storage_relative_path="restore/candidate.docx",
+            original_filename="candidate.docx",
+            checksum_sha256=None,
+            is_current=False,
+            issued_on=None,
+        )
+        newer = DocumentVersion(
+            document_variant_id=variant.id,
+            version_no=3,
+            storage_binding_id=None,
+            storage_root="inspection",
+            storage_relative_path="restore/newer.docx",
+            original_filename="newer.docx",
+            checksum_sha256="newer",
+            is_current=True,
+            issued_on=None,
+        )
+        session.add_all([previous, candidate, newer])
+        session.flush()
+
+        allocated = SimpleNamespace(
+            allocated=SimpleNamespace(
+                output_allocation=SimpleNamespace(
+                    document_variant_id=variant.id,
+                    document_version_id=candidate.id,
+                )
+            )
+        )
+        DocumentWorkflowService._restore_render_version_state(
+            session,
+            allocated,
+            (previous.id,),
+            output_was_current_before_render=False,
+        )
+        session.flush()
+
+        assert previous.is_current is False
+        assert candidate.is_current is False
+        assert newer.is_current is True
 
 
 def test_render_route_removes_new_output_when_db_commit_fails(monkeypatch):

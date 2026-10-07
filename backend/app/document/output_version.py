@@ -461,6 +461,24 @@ def _assert_generation_run_finalizable(
         )
 
 
+def _assert_finalization_targets_latest_version(
+    session: Session,
+    document_version: DocumentVersion,
+) -> None:
+    latest_version_no = session.execute(
+        select(func.max(DocumentVersion.version_no)).where(
+            DocumentVersion.document_variant_id
+            == document_version.document_variant_id
+        )
+    ).scalar_one()
+    if latest_version_no is None or document_version.version_no != int(latest_version_no):
+        raise OutputVersionAllocationError(
+            "Allocated document version is not the latest persisted version for its variant; "
+            f"allocated version_no={document_version.version_no!r}, "
+            f"latest version_no={latest_version_no!r}."
+        )
+
+
 def _assert_single_current_version_before_finalization(
     session: Session,
     document_variant_id: str,
@@ -526,6 +544,10 @@ def finalize_output_document_version_write(
     _assert_single_current_version_before_finalization(
         session,
         document_version.document_variant_id,
+    )
+    _assert_finalization_targets_latest_version(
+        session,
+        document_version,
     )
     storage.write_stream(
         allocation.storage_relative_path,

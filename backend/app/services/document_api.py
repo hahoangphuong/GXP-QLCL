@@ -596,17 +596,18 @@ class DocumentWorkflowService:
         if allocated is None or output_was_current_before_render:
             return
         allocation = allocated.allocated.output_allocation
-        previous_ids = tuple(dict.fromkeys(previous_current_version_ids))
+        allocated_version = session.get(
+            DocumentVersion,
+            allocation.document_version_id,
+        )
+        if allocated_version is None or not allocated_version.is_current:
+            return
 
+        previous_ids = tuple(dict.fromkeys(previous_current_version_ids))
         if len(previous_ids) > 1:
-            allocated_version = session.get(
-                DocumentVersion,
-                allocation.document_version_id,
-            )
-            if allocated_version is not None:
-                allocated_version.is_current = False
-                allocated_version.checksum_sha256 = None
-                allocated_version.issued_on = None
+            allocated_version.is_current = False
+            allocated_version.checksum_sha256 = None
+            allocated_version.issued_on = None
             session.flush()
             return
 

@@ -903,6 +903,36 @@ def test_render_template_docx_restores_previous_current_when_post_write_audit_fa
                 "_write_audit_event",
                 original_write_audit_event,
             )
+            mismatched_payload = {
+                **candidate_payload,
+                "output_filename": "different-candidate.docx",
+            }
+            try:
+                service.render_template_docx(
+                    session,
+                    storage=storage,
+                    payload=mismatched_payload,
+                    user=build_authenticated_user("inspector01", "inspector"),
+                )
+            except HTTPException as exc:
+                assert exc.status_code == 409
+                assert (
+                    "Generation run output allocation is already bound to "
+                    "'candidate.docx'; requested 'different-candidate.docx'."
+                    == exc.detail
+                )
+            else:
+                raise AssertionError(
+                    "Expected idempotent retry with a different output filename "
+                    "to fail closed"
+                )
+            session.refresh(failed_run)
+            session.refresh(failed_version)
+            assert failed_run.status == DocumentGenerationStatus.FAILED
+            assert failed_version.original_filename == "candidate.docx"
+            assert failed_version.storage_relative_path.endswith("/candidate.docx")
+            assert candidate_path.exists() is False
+
             retry = service.render_template_docx(
                 session,
                 storage=storage,

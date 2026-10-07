@@ -196,6 +196,11 @@ def allocate_output_document_version(
     generation_run = _load_generation_run(session, prepared.persisted_state.generation_run_id)
     existing = _existing_output_allocation(session, generation_run)
     if existing is not None:
+        if existing.original_filename != filename:
+            raise OutputVersionAllocationError(
+                "Generation run output allocation is already bound to "
+                f"{existing.original_filename!r}; requested {filename!r}."
+            )
         return existing
     _load_document_variant(session, prepared.persisted_state.document_variant_id)
     storage_root, folder_relative_path, binding = _resolve_output_binding(session, storage, prepared)

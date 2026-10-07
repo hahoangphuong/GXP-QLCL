@@ -33,6 +33,9 @@ class _FakeSmbClient:
     def reset_connection_cache(self) -> None:
         self.connection_cache_available = False
 
+    def makedirs(self, path: str, exist_ok: bool = False) -> None:
+        return None
+
     def scandir(self, path: str) -> list[_DirectoryEntry]:
         if not self.connection_cache_available:
             assert self.client_config_calls == [{"username": "test-user", "password": "test-password"}]

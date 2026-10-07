@@ -327,7 +327,7 @@ def test_khkt_render_rejects_output_filename_drift_before_readiness_and_allocati
 
     with pytest.raises(HTTPException) as exc_info:
         service.render_template_docx(
-            SimpleNamespace(),
+            SimpleNamespace(is_active=True),
             storage=object(),
             payload={
                 "family_code": "INSPECTION_KE_HOACH_KT",

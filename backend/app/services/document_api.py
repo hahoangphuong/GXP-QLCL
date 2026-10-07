@@ -639,11 +639,31 @@ class DocumentWorkflowService:
     ) -> str | None:
         if not bool(render_result.get("_rollback_cleanup_required")):
             return None
-        return self._cleanup_render_output_path(
-            storage,
-            storage_root=str(render_result["output_storage_root"]),
-            storage_relative_path=str(render_result["output_storage_relative_path"]),
-        )
+        storage_root = str(render_result["output_storage_root"])
+        storage_relative_path = str(render_result["output_storage_relative_path"])
+        expected_checksum = str(render_result.get("checksum_sha256") or "").strip()
+        if not expected_checksum:
+            return (
+                "Rendered output checksum is unavailable; refusing commit-failure "
+                "cleanup without file-ownership evidence."
+            )
+        try:
+            if not storage.exists(storage_relative_path, root=storage_root):
+                return None
+            actual_checksum = storage.checksum(
+                storage_relative_path,
+                root=storage_root,
+            )
+            if actual_checksum != expected_checksum:
+                return (
+                    "Rendered output changed before commit-failure cleanup; "
+                    "refusing to delete a target whose checksum no longer matches "
+                    "the render result."
+                )
+            storage.delete(storage_relative_path, root=storage_root)
+        except Exception as exc:
+            return str(exc)
+        return None
 
     def render_template_docx(
         self,

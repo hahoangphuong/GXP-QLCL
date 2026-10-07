@@ -2262,7 +2262,8 @@ def test_render_route_removes_new_output_when_db_commit_fails(monkeypatch):
     try:
         target = root / "inspection" / "2026" / "orphan.docx"
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(b"orphan")
+        target.write_bytes(b"render-owned-output")
+        checksum = storage.checksum("2026/orphan.docx", root="inspection")
 
         app = create_app("sqlite:///:memory:", storage_service=storage)
         route = next(
@@ -2277,6 +2278,7 @@ def test_render_route_removes_new_output_when_db_commit_fails(monkeypatch):
             lambda self, session, *, storage, payload, user: {
                 "output_storage_root": "inspection",
                 "output_storage_relative_path": "2026/orphan.docx",
+                "checksum_sha256": checksum,
                 "_rollback_cleanup_required": True,
             },
         )
@@ -2304,6 +2306,69 @@ def test_render_route_removes_new_output_when_db_commit_fails(monkeypatch):
             raise AssertionError("Expected DB commit failure")
 
         assert target.exists() is False
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_render_route_preserves_replaced_output_when_db_commit_fails(monkeypatch):
+    storage, root = _build_storage()
+    try:
+        target = root / "inspection" / "2026" / "replaced.docx"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"render-owned-output")
+        rendered_checksum = storage.checksum(
+            "2026/replaced.docx",
+            root="inspection",
+        )
+
+        app = create_app("sqlite:///:memory:", storage_service=storage)
+        route = next(
+            route
+            for route in app.routes
+            if getattr(route, "path", None) == "/documents/render-template-docx"
+        )
+
+        monkeypatch.setattr(
+            DocumentWorkflowService,
+            "render_template_docx",
+            lambda self, session, *, storage, payload, user: {
+                "output_storage_root": "inspection",
+                "output_storage_relative_path": "2026/replaced.docx",
+                "checksum_sha256": rendered_checksum,
+                "_rollback_cleanup_required": True,
+            },
+        )
+
+        def replace_output_then_fail_commit(session):
+            target.write_bytes(b"foreign-replacement")
+            raise RuntimeError("simulated commit failure after foreign replacement")
+
+        monkeypatch.setattr(
+            document_router_module,
+            "commit_or_409",
+            replace_output_then_fail_commit,
+        )
+
+        try:
+            route.endpoint(
+                payload=SimpleNamespace(model_dump=lambda: {}),
+                request=_request_for_app(app),
+                session=SimpleNamespace(),
+                user=build_authenticated_user(
+                    "inspector01",
+                    permissions={"document.write"},
+                ),
+            )
+        except HTTPException as exc:
+            assert exc.status_code == 500
+            assert "Document DB commit failed and output cleanup also failed" in exc.detail
+            assert "checksum no longer matches the render result" in exc.detail
+        else:
+            raise AssertionError(
+                "Expected commit-failure cleanup to fail closed on replaced output"
+            )
+
+        assert target.read_bytes() == b"foreign-replacement"
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

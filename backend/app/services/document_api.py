@@ -897,6 +897,18 @@ class DocumentWorkflowService:
         current_versions = [row for row in versions if row.is_current]
         if not current_versions:
             return None
+
+        current_counts_by_variant: dict[str, int] = {}
+        for row in current_versions:
+            current_counts_by_variant[row.document_variant_id] = (
+                current_counts_by_variant.get(row.document_variant_id, 0) + 1
+            )
+        if any(count > 1 for count in current_counts_by_variant.values()):
+            raise HTTPException(
+                status_code=409,
+                detail="Document variant has multiple current binary versions.",
+            )
+
         return max(
             current_versions,
             key=lambda row: (

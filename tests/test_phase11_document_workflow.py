@@ -2145,7 +2145,7 @@ def test_get_document_detail_hides_storage_locator_fields_from_ui_projection():
     assert "checksum_sha256" not in version_payload
 
 
-def test_get_current_document_binary_locator_prefers_current_version_and_guesses_media_type():
+def test_get_current_document_binary_locator_rejects_multiple_current_versions_in_one_variant():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = DocumentWorkflowService()
@@ -2206,6 +2206,80 @@ def test_get_current_document_binary_locator_prefers_current_version_and_guesses
             ]
         )
         session.commit()
+
+        try:
+            service.get_current_document_binary_locator_for_parent(
+                session,
+                document_id=document.id,
+                expected_parent_scope="case",
+                expected_parent_id=case_id,
+            )
+        except HTTPException as exc:
+            assert exc.status_code == 409
+            assert exc.detail == "Document variant has multiple current binary versions."
+        else:
+            raise AssertionError(
+                "Expected duplicate current versions in one document variant to fail closed"
+            )
+
+
+def test_get_current_document_binary_locator_preserves_current_selection_across_distinct_variants():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = DocumentWorkflowService()
+
+    with Session(engine) as session:
+        case_id, _ = _seed_case(session)
+        document = Document(
+            family_code="CERTIFICATE_DECISION",
+            document_type_code="CERTIFICATE_DECISION",
+            title="Quyết định cấp CC",
+            case_id=case_id,
+        )
+        session.add(document)
+        session.flush()
+        incomplete_variant = DocumentVariant(
+            document_id=document.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="vi",
+            is_active=True,
+        )
+        complete_variant = DocumentVariant(
+            document_id=document.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="en",
+            is_active=True,
+        )
+        session.add_all([incomplete_variant, complete_variant])
+        session.flush()
+        session.add_all(
+            [
+                DocumentVersion(
+                    document_variant_id=incomplete_variant.id,
+                    version_no=1,
+                    storage_binding_id=None,
+                    storage_root="inspection",
+                    storage_relative_path="",
+                    original_filename="incomplete-current.docx",
+                    checksum_sha256="incomplete",
+                    is_current=True,
+                    issued_on=None,
+                ),
+                DocumentVersion(
+                    document_variant_id=complete_variant.id,
+                    version_no=1,
+                    storage_binding_id=None,
+                    storage_root="inspection",
+                    storage_relative_path="2026/current.docx",
+                    original_filename="current.docx",
+                    checksum_sha256="current",
+                    is_current=True,
+                    issued_on=None,
+                ),
+            ]
+        )
+        session.commit()
+
         locator = service.get_current_document_binary_locator_for_parent(
             session,
             document_id=document.id,

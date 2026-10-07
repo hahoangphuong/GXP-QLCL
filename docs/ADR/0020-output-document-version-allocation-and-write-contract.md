@@ -24,6 +24,7 @@ The next missing step before introducing a render adapter is:
   - creates a new `document_version` with the next `version_no`
   - persists exact output locator fields before rendering starts
   - links that `document_version` to `document_generation_run.output_document_version_id`
+- Require current-binary readers to fail closed when one persisted `document_variant` has more than one `is_current=true` version; readers must not rank through or repair that lineage corruption.
 - Add a write-finalization step that:
   - requires the generation run to be `pending` before any output I/O; `failed`, `cancelled`, and `succeeded` runs fail closed, and a retry must be explicitly re-claimed to `pending` by the workflow owner first
   - locks the persisted `document_variant` row with `SELECT ... FOR UPDATE` before output I/O so concurrent finalizers for the same variant serialize before changing current-version state

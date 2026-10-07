@@ -918,12 +918,12 @@ def test_render_template_docx_restores_previous_current_when_post_write_audit_fa
                 "_write_audit_event",
                 original_write_audit_event,
             )
-            original_resolve_output_binding = (
-                output_version_module._resolve_output_binding
+            original_resolve_reused_output_identity = (
+                output_version_module._resolve_reused_output_identity
             )
             monkeypatch.setattr(
                 output_version_module,
-                "_resolve_output_binding",
+                "_resolve_reused_output_identity",
                 lambda session, storage, prepared: (
                     "dkkd",
                     "drifted-folder",
@@ -960,8 +960,8 @@ def test_render_template_docx_restores_previous_current_when_post_write_audit_fa
 
             monkeypatch.setattr(
                 output_version_module,
-                "_resolve_output_binding",
-                original_resolve_output_binding,
+                "_resolve_reused_output_identity",
+                original_resolve_reused_output_identity,
             )
 
             mismatched_payload = {

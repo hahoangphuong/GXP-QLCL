@@ -898,6 +898,15 @@ def test_render_template_docx_restores_previous_current_when_post_write_audit_fa
 
             candidate_path = output_dir / "candidate.docx"
             assert candidate_path.exists() is False
+            original_output_identity = (
+                failed_version.storage_root,
+                failed_version.storage_binding_id,
+                failed_version.storage_relative_path,
+                failed_version.original_filename,
+            )
+            assert failed_version.storage_relative_path == candidate_path.relative_to(
+                root / "dkkd"
+            ).as_posix()
 
             monkeypatch.setattr(
                 service,
@@ -934,8 +943,15 @@ def test_render_template_docx_restores_previous_current_when_post_write_audit_fa
             session.refresh(failed_run)
             session.refresh(failed_version)
             assert failed_run.status == DocumentGenerationStatus.FAILED
-            assert failed_version.storage_relative_path.endswith("/candidate.docx")
+            assert (
+                failed_version.storage_root,
+                failed_version.storage_binding_id,
+                failed_version.storage_relative_path,
+                failed_version.original_filename,
+            ) == original_output_identity
             assert candidate_path.exists() is False
+            drifted_path = root / "dkkd" / "drifted-folder" / "candidate.docx"
+            assert drifted_path.exists() is False
 
             monkeypatch.setattr(
                 output_version_module,
@@ -967,9 +983,14 @@ def test_render_template_docx_restores_previous_current_when_post_write_audit_fa
             session.refresh(failed_run)
             session.refresh(failed_version)
             assert failed_run.status == DocumentGenerationStatus.FAILED
-            assert failed_version.original_filename == "candidate.docx"
-            assert failed_version.storage_relative_path.endswith("/candidate.docx")
+            assert (
+                failed_version.storage_root,
+                failed_version.storage_binding_id,
+                failed_version.storage_relative_path,
+                failed_version.original_filename,
+            ) == original_output_identity
             assert candidate_path.exists() is False
+            assert drifted_path.exists() is False
 
             retry = service.render_template_docx(
                 session,
@@ -990,6 +1011,13 @@ def test_render_template_docx_restores_previous_current_when_post_write_audit_fa
             assert failed_version.checksum_sha256
             assert failed_version.issued_on is not None
             assert baseline_version.is_current is False
+            assert (
+                failed_version.storage_root,
+                failed_version.storage_binding_id,
+                failed_version.storage_relative_path,
+                failed_version.original_filename,
+            ) == original_output_identity
+            assert drifted_path.exists() is False
 
         assert baseline_path.exists() is True
         assert candidate_path.exists() is True

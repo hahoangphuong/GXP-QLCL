@@ -22,6 +22,7 @@ The next missing step before introducing a render adapter is:
   - persists exact output locator fields before rendering starts
   - links that `document_version` to `document_generation_run.output_document_version_id`
 - Add a write-finalization step that:
+  - requires the generation run to be `pending` before any output I/O; `failed`, `cancelled`, and `succeeded` runs fail closed, and a retry must be explicitly re-claimed to `pending` by the workflow owner first
   - writes the rendered binary through `StorageService.write_stream(..., overwrite=False)` so a target that appears after allocation cannot be overwritten
   - treats an existing target as a fail-closed storage conflict and does not delete that pre-existing file during render cleanup
   - computes checksum through `StorageService.checksum`

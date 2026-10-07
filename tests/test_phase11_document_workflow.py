@@ -1315,6 +1315,45 @@ def test_finalize_output_write_rejects_stale_allocation_identity_before_storage_
             )
             assert original_target.exists() is False
 
+            for blocked_status in (
+                DocumentGenerationStatus.FAILED,
+                DocumentGenerationStatus.CANCELLED,
+                DocumentGenerationStatus.SUCCEEDED,
+            ):
+                marker = f"{blocked_status.value} marker"
+                run.status = blocked_status
+                run.error_summary = marker
+                session.flush()
+
+                try:
+                    output_version_module.finalize_output_document_version_write(
+                        session,
+                        storage,
+                        allocation,
+                        binary_payload=b"must-not-be-written",
+                    )
+                except output_version_module.OutputVersionAllocationError as exc:
+                    assert "cannot be finalized from status" in str(exc)
+                    assert repr(blocked_status.value) in str(exc)
+                    assert "expected 'pending'" in str(exc)
+                else:
+                    raise AssertionError(
+                        f"Expected {blocked_status.value} generation run to fail before output write"
+                    )
+
+                assert original_target.exists() is False
+                session.refresh(run)
+                session.refresh(version)
+                assert run.status == blocked_status
+                assert run.error_summary == marker
+                assert version.checksum_sha256 is None
+                assert version.is_current is False
+                assert version.issued_on is None
+
+            run.status = DocumentGenerationStatus.PENDING
+            run.error_summary = None
+            session.flush()
+
             version.storage_relative_path = (
                 "Cong ty A - Dia chi A (100)/drifted-candidate.docx"
             )

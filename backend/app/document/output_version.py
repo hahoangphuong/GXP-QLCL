@@ -371,6 +371,16 @@ def _assert_finalization_allocation_identity(
         )
 
 
+def _assert_generation_run_finalizable(
+    generation_run: DocumentGenerationRun,
+) -> None:
+    if generation_run.status != DocumentGenerationStatus.PENDING:
+        raise OutputVersionAllocationError(
+            "Document generation run cannot be finalized from status "
+            f"{generation_run.status.value!r}; expected 'pending'."
+        )
+
+
 def finalize_output_document_version_write(
     session: Session,
     storage: LocalStorageService,
@@ -380,6 +390,7 @@ def finalize_output_document_version_write(
     issued_on: datetime | None = None,
 ) -> str:
     generation_run = _load_generation_run(session, allocation.generation_run_id)
+    _assert_generation_run_finalizable(generation_run)
     stmt: Select[tuple[DocumentVersion]] = select(DocumentVersion).where(
         DocumentVersion.id == allocation.document_version_id
     )

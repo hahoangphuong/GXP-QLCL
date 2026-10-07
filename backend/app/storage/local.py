@@ -13,6 +13,7 @@ from backend.app.storage.types import (
     StorageConfig,
     StorageEntry,
     StorageOperationError,
+    StorageTargetExistsError,
     StorageResolution,
     matches_inspection_identity,
 )
@@ -192,10 +193,37 @@ class LocalStorageService:
         with target.open("rb") as fh:
             yield fh
 
-    def write_stream(self, relative_path: str, stream: BinaryIO, *, root: str = "inspection") -> StorageEntry:
+    def write_stream(
+        self,
+        relative_path: str,
+        stream: BinaryIO,
+        *,
+        root: str = "inspection",
+        overwrite: bool = True,
+    ) -> StorageEntry:
         base_root = self._select_root(root)
         target = self._path_under(base_root, relative_path)
         target.parent.mkdir(parents=True, exist_ok=True)
+        if not overwrite:
+            created = False
+            try:
+                with target.open("xb") as fh:
+                    created = True
+                    while True:
+                        chunk = stream.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        fh.write(chunk)
+            except FileExistsError as exc:
+                raise StorageTargetExistsError(
+                    f"Storage target already exists and will not be overwritten: {relative_path!r}."
+                ) from exc
+            except Exception:
+                if created and target.exists():
+                    target.unlink(missing_ok=True)
+                raise
+            return self._entry_for(base_root, target)
+
         temp_path: Path | None = None
         try:
             with tempfile.NamedTemporaryFile(delete=False, dir=target.parent) as tmp:

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from io import BytesIO
+
 from backend.app.db.enums import StorageResolutionStatus
 from backend.app.storage import smb as smb_storage
-from backend.app.storage.types import SmbStorageConfig
+from backend.app.storage.types import SmbStorageConfig, StorageTargetExistsError
 
 
 class _DirectoryEntry:
@@ -65,6 +67,26 @@ def _service(monkeypatch, directory_names: list[str]) -> tuple[_FakeSmbClient, s
         )
     )
     return fake_client, service
+
+
+def test_smb_exclusive_write_rejects_existing_target(monkeypatch) -> None:
+    fake_client, service = _service(monkeypatch, [])
+
+    def existing_target(*args, **kwargs):
+        raise OSError("target exists")
+
+    monkeypatch.setattr(fake_client, "open_file", existing_target, raising=False)
+
+    try:
+        service.write_stream(
+            "2026/existing.docx",
+            BytesIO(b"new"),
+            overwrite=False,
+        )
+    except StorageTargetExistsError as exc:
+        assert "will not be overwritten" in str(exc)
+    else:
+        raise AssertionError("Expected SMB exclusive write to reject the existing target")
 
 
 def test_smb_service_configures_default_credentials_for_resolution_after_cache_loss(monkeypatch) -> None:

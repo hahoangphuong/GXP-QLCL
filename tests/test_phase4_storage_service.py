@@ -13,7 +13,11 @@ from backend.app.db.enums import StorageResolutionStatus
 from backend.app.db.models.phase1 import LegacyInspectionStorageAnchor, StorageBinding, StorageResolutionLog
 from backend.app.storage.binding_service import StorageBindingService
 from backend.app.storage.local import LocalStorageService
-from backend.app.storage.types import StorageConfig, StorageOperationError
+from backend.app.storage.types import (
+    StorageConfig,
+    StorageOperationError,
+    StorageTargetExistsError,
+)
 
 
 def build_service(tmp_path: Path) -> LocalStorageService:
@@ -334,6 +338,31 @@ def test_storage_io_operations_stay_within_root_and_support_checksum(tmp_path: P
     assert service.exists("2026/demo/test.txt") is True
     assert service.stat("2026/demo/test.txt").size == 11
     assert service.checksum("2026/demo/test.txt") == sha256(b"hello world").hexdigest()
+
+
+def test_storage_write_stream_can_create_exclusively_without_overwriting(tmp_path: Path):
+    service = build_service(tmp_path)
+
+    created = service.write_stream(
+        "2026/demo/exclusive.txt",
+        BytesIO(b"first"),
+        overwrite=False,
+    )
+    assert created.relative_path == "2026/demo/exclusive.txt"
+    assert (service.inspection_root / "2026/demo/exclusive.txt").read_bytes() == b"first"
+
+    try:
+        service.write_stream(
+            "2026/demo/exclusive.txt",
+            BytesIO(b"second"),
+            overwrite=False,
+        )
+    except StorageTargetExistsError as exc:
+        assert "will not be overwritten" in str(exc)
+    else:
+        raise AssertionError("Expected exclusive storage write to reject an existing target")
+
+    assert (service.inspection_root / "2026/demo/exclusive.txt").read_bytes() == b"first"
 
 
 def test_storage_copy_move_and_rename_work(tmp_path: Path):

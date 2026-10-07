@@ -396,6 +396,7 @@ def finalize_output_document_version_write(
         allocation.storage_relative_path,
         BytesIO(binary_payload),
         root=allocation.storage_root,
+        overwrite=False,
     )
     checksum = storage.checksum(
         allocation.storage_relative_path,

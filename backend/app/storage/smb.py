@@ -12,6 +12,7 @@ from backend.app.storage.types import (
     SmbStorageConfig,
     StorageEntry,
     StorageOperationError,
+    StorageTargetExistsError,
     StorageResolution,
     matches_inspection_identity,
 )
@@ -214,11 +215,44 @@ class SmbStorageService:
         with smbclient.open_file(target, mode="rb") as fh:
             yield fh
 
-    def write_stream(self, relative_path: str, stream: BinaryIO, *, root: str = "inspection") -> StorageEntry:
+    def write_stream(
+        self,
+        relative_path: str,
+        stream: BinaryIO,
+        *,
+        root: str = "inspection",
+        overwrite: bool = True,
+    ) -> StorageEntry:
         base_root = self._select_root(root)
         target = self._join_root(base_root, relative_path)
         parent = target.rsplit("\\", 1)[0]
         smbclient.makedirs(parent, exist_ok=True)
+        if not overwrite:
+            created = False
+            try:
+                with smbclient.open_file(target, mode="xb") as fh:
+                    created = True
+                    while True:
+                        chunk = stream.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        fh.write(chunk)
+            except OSError as exc:
+                if created:
+                    if smbpath.exists(target):
+                        smbclient.remove(target)
+                    raise
+                if smbpath.exists(target):
+                    raise StorageTargetExistsError(
+                        f"Storage target already exists and will not be overwritten: {relative_path!r}."
+                    ) from exc
+                raise
+            except Exception:
+                if created and smbpath.exists(target):
+                    smbclient.remove(target)
+                raise
+            return self._entry_for(base_root, target)
+
         temp_target = target + f".tmp-{uuid4().hex}"
         try:
             with smbclient.open_file(temp_target, mode="wb") as fh:

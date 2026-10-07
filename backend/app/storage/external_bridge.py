@@ -21,6 +21,7 @@ from backend.app.storage.types import (
     ExternalBridgeStorageConfig,
     StorageEntry,
     StorageOperationError,
+    StorageTargetExistsError,
     StorageResolution,
 )
 
@@ -218,11 +219,22 @@ class ExternalBridgeStorageService:
         ) as response:
             yield response
 
-    def write_stream(self, relative_path: str, stream: BinaryIO, *, root: str = "inspection") -> StorageEntry:
+    def write_stream(
+        self,
+        relative_path: str,
+        stream: BinaryIO,
+        *,
+        root: str = "inspection",
+        overwrite: bool = True,
+    ) -> StorageEntry:
         parsed = urllib_parse.urlparse(
             self._build_url(
                 "/bridge/storage/write",
-                query={"root": root, "relative_path": relative_path},
+                query={
+                    "root": root,
+                    "relative_path": relative_path,
+                    "overwrite": "true" if overwrite else "false",
+                },
             )
         )
         with tempfile.SpooledTemporaryFile(max_size=self._chunk_size) as spool:
@@ -255,6 +267,10 @@ class ExternalBridgeStorageService:
                     connection.send(chunk)
                 response = connection.getresponse()
                 payload = response.read().decode("utf-8", errors="replace")
+                if response.status == 409:
+                    raise StorageTargetExistsError(
+                        f"external_bridge request failed: {response.status} {payload}".strip()
+                    )
                 if response.status >= 400:
                     raise StorageOperationError(
                         f"external_bridge request failed: {response.status} {payload}".strip()

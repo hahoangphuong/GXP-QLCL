@@ -97,6 +97,8 @@ Allowed operations:
 - `stat`
 - `read_stream`
 - `write_stream`
+  - default `overwrite=True` preserves the existing replace/update behavior for callers that explicitly own the target
+  - `overwrite=False` is the exclusive-create path for preallocated document outputs and must fail closed with `StorageTargetExistsError` when the target already exists
 - `create_folder`
 - `exists`
 - `copy`
@@ -158,6 +160,7 @@ Non-responsibilities:
 - The DDKD site folder display-name prefix remains mutable presentation text only.
 - The DDKD `Láº§n n` issuance-cycle subfolder and exact file placement remain higher-level issuance/document concerns.
 - Output writes also target a preallocated exact locator on `document_version`; the render adapter must not invent storage paths on its own.
+- Output finalization must use `StorageService.write_stream(..., overwrite=False)`; if a file appears after allocation but before finalization, finalization fails closed and must not overwrite or cleanup/delete that pre-existing file.
 - Template-aware renderers must read managed template binaries through the `template` storage root, not through ad-hoc local paths.
 - Because legacy DDKD folder creation uses a display-name prefix plus `(<site_id>)`, the storage adapter must treat the site ID token as the durable resolver key and the descriptive prefix as mutable presentation text only.
 

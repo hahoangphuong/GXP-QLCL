@@ -66,7 +66,11 @@ from backend.app.main import create_app
 from backend.app.services.catalog import CatalogReadService
 from backend.app.services.document_api import DocumentWorkflowService
 from backend.app.storage.filesystem import FilesystemStorageService
-from backend.app.storage.types import StorageConfig, StorageOperationError
+from backend.app.storage.types import (
+    StorageConfig,
+    StorageOperationError,
+    StorageTargetExistsError,
+)
 
 
 def _document_content_endpoint(app, path: str):
@@ -703,6 +707,114 @@ def test_render_template_docx_succeeds_for_dkkd_certificate_and_updates_lineage(
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_render_conflict_preserves_foreign_output_created_after_allocation(monkeypatch):
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = DocumentWorkflowService()
+    storage, root = _build_storage()
+    try:
+        with Session(engine) as session:
+            _, site_id = _seed_case(session)
+            company_id = session.get(Site, site_id).company_id  # type: ignore[union-attr]
+            dkkd_id = _seed_dkkd(session, site_id, company_id)
+            seed_default_template_metadata(session)
+
+            output_dir = root / "dkkd" / "Cong ty A - Dia chi A (100)"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            template = session.execute(
+                select(TemplateDefinition).where(
+                    TemplateDefinition.family_code == "DDKD_CERTIFICATE"
+                )
+            ).scalar_one()
+            template_relative = "dkkd/z2 giay chung nhan ddkkdd sanitized.dotx"
+            template_path = root / "templates" / template_relative
+            template_path.parent.mkdir(parents=True, exist_ok=True)
+            _build_minimal_docx_with_bookmarks(
+                template_path,
+                ["TenCty", "DiachiCoso", "HoatdongKD"],
+            )
+            assign_template_binary_locator(
+                session,
+                template_definition_id=template.id,
+                storage_root="template",
+                storage_relative_path=template_relative,
+                original_filename="z2 giay chung nhan ddkkdd sanitized.dotx",
+            )
+
+            render_payload = {
+                "family_code": "DDKD_CERTIFICATE",
+                "business_eligibility_certificate_id": dkkd_id,
+                "storage_scope": "dkkd_folder",
+                "idempotency_key": "phase11-render-exclusive-conflict-001",
+                "output_filename": "exclusive-conflict.docx",
+                "payload": {
+                    "TenCty": "Cong ty A",
+                    "DiachiCoso": "123 Duong A",
+                    "HoatdongKD": "Bao quan, ban buon thuoc",
+                },
+                "strict_payload": True,
+            }
+            original_write_stream = storage.write_stream
+            foreign_path = output_dir / "exclusive-conflict.docx"
+
+            def conflict_on_exclusive_write(
+                relative_path,
+                stream,
+                *,
+                root="inspection",
+                overwrite=True,
+            ):
+                if overwrite is False:
+                    foreign_path.write_bytes(b"foreign-output")
+                    raise StorageTargetExistsError(
+                        "Storage target already exists and will not be overwritten."
+                    )
+                return original_write_stream(
+                    relative_path,
+                    stream,
+                    root=root,
+                    overwrite=overwrite,
+                )
+
+            monkeypatch.setattr(
+                storage,
+                "write_stream",
+                conflict_on_exclusive_write,
+            )
+
+            try:
+                service.render_template_docx(
+                    session,
+                    storage=storage,
+                    payload=render_payload,
+                    user=build_authenticated_user("inspector01", "inspector"),
+                )
+            except HTTPException as exc:
+                assert exc.status_code == 409
+                assert "will not be overwritten" in exc.detail
+            else:
+                raise AssertionError(
+                    "Expected render to fail closed when output appears after allocation"
+                )
+            session.commit()
+
+            assert foreign_path.read_bytes() == b"foreign-output"
+            run = session.scalars(
+                select(DocumentGenerationRun).where(
+                    DocumentGenerationRun.idempotency_key
+                    == "phase11-render-exclusive-conflict-001"
+                )
+            ).one()
+            assert run.status == DocumentGenerationStatus.FAILED
+            version = session.get(DocumentVersion, run.output_document_version_id)
+            assert version is not None
+            assert version.is_current is False
+            assert version.checksum_sha256 is None
+            assert version.issued_on is None
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_reused_generation_run_state_machine_allows_prepared_pending_and_failed_retry():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
@@ -1284,6 +1396,30 @@ def test_finalize_output_write_rejects_stale_allocation_identity_before_storage_
                 output_dir / "tampered-candidate.docx"
             ).exists() is False
 
+            original_target.write_bytes(b"foreign-output")
+            try:
+                output_version_module.finalize_output_document_version_write(
+                    session,
+                    storage,
+                    allocation,
+                    binary_payload=b"must-not-overwrite-foreign-output",
+                )
+            except StorageTargetExistsError as exc:
+                assert "will not be overwritten" in str(exc)
+            else:
+                raise AssertionError(
+                    "Expected output finalization to reject a target created after allocation"
+                )
+
+            assert original_target.read_bytes() == b"foreign-output"
+            session.refresh(run)
+            session.refresh(version)
+            assert run.status == DocumentGenerationStatus.PENDING
+            assert version.checksum_sha256 is None
+            assert version.is_current is False
+            assert version.issued_on is None
+
+            original_target.unlink()
             checksum = output_version_module.finalize_output_document_version_write(
                 session,
                 storage,

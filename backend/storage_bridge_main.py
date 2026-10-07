@@ -11,7 +11,12 @@ import tempfile
 from backend.app.storage.bridge_auth import load_bridge_auth_config, require_bridge_request_auth
 from backend.app.storage import ExternalBridgeStorageService, FilesystemStorageService, create_storage_service_from_env
 from backend.app.storage.socket_proxy import enable_socket_proxy_from_env
-from backend.app.storage.types import StorageEntry, StorageOperationError, StorageResolution
+from backend.app.storage.types import (
+    StorageEntry,
+    StorageOperationError,
+    StorageResolution,
+    StorageTargetExistsError,
+)
 
 
 def _bootstrap_allows_unconfigured_auth() -> bool:
@@ -84,6 +89,8 @@ def create_storage_bridge_app(storage_service: FilesystemStorageService | None =
     def raise_http_error(exc: Exception) -> None:
         if isinstance(exc, FileNotFoundError):
             raise HTTPException(status_code=404, detail="Storage target not found.") from exc
+        if isinstance(exc, StorageTargetExistsError):
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         if isinstance(exc, StorageOperationError):
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         raise exc
@@ -207,6 +214,7 @@ def create_storage_bridge_app(storage_service: FilesystemStorageService | None =
         request: Request,
         root: str = Query("inspection"),
         relative_path: str = Query(...),
+        overwrite: bool = Query(True),
         storage: FilesystemStorageService = Depends(get_storage),
         _claims: dict = Depends(require_bridge_request_auth),
     ):
@@ -229,7 +237,12 @@ def create_storage_bridge_app(storage_service: FilesystemStorageService | None =
                     tmp.close()
 
             async with request_stream() as stream:
-                entry = storage.write_stream(relative_path, stream, root=root)
+                entry = storage.write_stream(
+                    relative_path,
+                    stream,
+                    root=root,
+                    overwrite=overwrite,
+                )
             return _entry_payload(entry)
         except Exception as exc:  # pragma: no cover
             raise_http_error(exc)

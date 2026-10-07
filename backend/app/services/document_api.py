@@ -58,7 +58,11 @@ from backend.app.document.template_contract_runtime import (
     build_scalar_replacement_plan_for_template,
     load_default_template_contract_reconciliation,
 )
-from backend.app.storage.types import StorageOperationError, StorageServiceProtocol
+from backend.app.storage.types import (
+    StorageOperationError,
+    StorageServiceProtocol,
+    StorageTargetExistsError,
+)
 
 
 @dataclass(frozen=True)
@@ -771,10 +775,14 @@ class DocumentWorkflowService:
                 previous_current_version_ids,
                 output_was_current_before_render=output_was_current_before_render,
             )
-            cleanup_error = self._cleanup_allocated_render_output(
-                storage,
-                allocated,
-                output_was_current_before_render=output_was_current_before_render,
+            cleanup_error = (
+                None
+                if isinstance(exc, StorageTargetExistsError)
+                else self._cleanup_allocated_render_output(
+                    storage,
+                    allocated,
+                    output_was_current_before_render=output_was_current_before_render,
+                )
             )
             detail = str(exc)
             if cleanup_error is not None:

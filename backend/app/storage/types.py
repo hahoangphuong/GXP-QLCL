@@ -11,6 +11,10 @@ class StorageOperationError(RuntimeError):
     pass
 
 
+class StorageTargetExistsError(StorageOperationError):
+    pass
+
+
 @dataclass(frozen=True)
 class StorageConfig:
     inspection_root: Path
@@ -94,7 +98,14 @@ class StorageServiceProtocol(Protocol):
     def stat(self, relative_path: str, *, root: str = "inspection") -> StorageEntry: ...
     def exists(self, relative_path: str, *, root: str = "inspection") -> bool: ...
     def read_stream(self, relative_path: str, *, root: str = "inspection") -> Iterator[BinaryIO]: ...
-    def write_stream(self, relative_path: str, stream: BinaryIO, *, root: str = "inspection") -> StorageEntry: ...
+    def write_stream(
+        self,
+        relative_path: str,
+        stream: BinaryIO,
+        *,
+        root: str = "inspection",
+        overwrite: bool = True,
+    ) -> StorageEntry: ...
     def delete(self, relative_path: str, *, root: str = "inspection") -> None: ...
     def create_folder(self, relative_path: str, *, root: str = "inspection") -> StorageEntry: ...
     def copy(self, source_relative_path: str, target_relative_path: str, *, root: str = "inspection") -> StorageEntry: ...

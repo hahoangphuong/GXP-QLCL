@@ -11,6 +11,7 @@ from backend.app.storage.types import (
     StorageConfig,
     StorageEntry,
     StorageOperationError,
+    StorageTargetExistsError,
     StorageResolution,
     StorageServiceProtocol,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "StorageConfig",
     "StorageEntry",
     "StorageOperationError",
+    "StorageTargetExistsError",
     "StorageResolution",
     "StorageServiceProtocol",
     "create_storage_service_from_env",

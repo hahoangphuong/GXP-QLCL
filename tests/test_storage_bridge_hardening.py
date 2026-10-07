@@ -20,7 +20,12 @@ from backend.app.storage.bridge_auth import (
     verify_google_oidc_token,
 )
 from backend.app.storage.external_bridge import ExternalBridgeStorageService
-from backend.app.storage.types import ExternalBridgeStorageConfig, StorageConfig
+from backend.app.storage.types import (
+    ExternalBridgeStorageConfig,
+    StorageConfig,
+    StorageEntry,
+    StorageTargetExistsError,
+)
 from backend.storage_bridge_main import create_storage_bridge_app
 
 
@@ -103,6 +108,27 @@ class _BridgeStorageHarness:
         self.files = files
         self.fail_after_reads = fail_after_reads
         self.last_stream: _TrackingStream | None = None
+
+    def write_stream(
+        self,
+        relative_path: str,
+        stream,
+        *,
+        root: str = "inspection",
+        overwrite: bool = True,
+    ) -> StorageEntry:
+        if not overwrite and relative_path in self.files:
+            raise StorageTargetExistsError(
+                f"Storage target already exists and will not be overwritten: {relative_path!r}."
+            )
+        payload = stream.read()
+        self.files[relative_path] = payload
+        return StorageEntry(
+            relative_path=relative_path,
+            name=Path(relative_path).name,
+            is_dir=False,
+            size=len(payload),
+        )
 
     def delete(self, relative_path: str, *, root: str = "inspection") -> None:
         del self.files[relative_path]
@@ -375,11 +401,35 @@ def test_external_bridge_write_stream_sends_chunks(monkeypatch):
         chunk_size=4,
     )
 
-    entry = service.write_stream("2026/demo.bin", BytesIO(b"abcdefghij"))
+    entry = service.write_stream(
+        "2026/demo.bin",
+        BytesIO(b"abcdefghij"),
+        overwrite=False,
+    )
 
     assert entry.size == 10
     assert _FakeHttpConnection.last_instance is not None
     assert _FakeHttpConnection.last_instance.sent_chunks == [b"abcd", b"efgh", b"ij"]
+    assert "overwrite=false" in (_FakeHttpConnection.last_instance.path or "")
+
+
+def test_bridge_exclusive_write_returns_conflict_without_overwriting(monkeypatch):
+    headers = _authorized_headers(monkeypatch)
+    storage = _BridgeStorageHarness({"existing.bin": b"original"})
+    app = create_storage_bridge_app(storage)
+
+    messages = asyncio.run(
+        _invoke_asgi(
+            app,
+            method="POST",
+            path=f"/bridge/storage/write?{urlencode({'root': 'inspection', 'relative_path': 'existing.bin', 'overwrite': 'false'})}",
+            headers={**headers, "content-type": "application/octet-stream"},
+            body=b"replacement",
+        )
+    )
+
+    assert _status_from_messages(messages) == 409
+    assert storage.files["existing.bin"] == b"original"
 
 
 def test_bridge_upload_limit_rejects_large_payload(monkeypatch):

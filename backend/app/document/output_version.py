@@ -51,13 +51,21 @@ def _normalize_filename(filename: str) -> str:
     return normalized
 
 
-def _load_generation_run(session: Session, generation_run_id: str) -> DocumentGenerationRun:
-    stmt: Select[tuple[DocumentGenerationRun]] = select(DocumentGenerationRun).where(
-        DocumentGenerationRun.id == generation_run_id
+def _lock_generation_run_for_output_finalization(
+    session: Session,
+    generation_run_id: str,
+) -> DocumentGenerationRun:
+    stmt: Select[tuple[DocumentGenerationRun]] = (
+        select(DocumentGenerationRun)
+        .where(DocumentGenerationRun.id == generation_run_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     generation_run = session.execute(stmt).scalar_one_or_none()
     if generation_run is None:
-        raise OutputVersionAllocationError(f"DocumentGenerationRun {generation_run_id!r} was not found.")
+        raise OutputVersionAllocationError(
+            f"DocumentGenerationRun {generation_run_id!r} was not found during output finalization."
+        )
     return generation_run
 
 
@@ -523,7 +531,10 @@ def finalize_output_document_version_write(
     binary_payload: bytes,
     issued_on: datetime | None = None,
 ) -> str:
-    generation_run = _load_generation_run(session, allocation.generation_run_id)
+    generation_run = _lock_generation_run_for_output_finalization(
+        session,
+        allocation.generation_run_id,
+    )
     _assert_generation_run_finalizable(generation_run)
     stmt: Select[tuple[DocumentVersion]] = select(DocumentVersion).where(
         DocumentVersion.id == allocation.document_version_id

@@ -1713,6 +1713,97 @@ def test_finalize_output_write_rejects_stale_allocation_identity_before_storage_
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_finalize_output_write_refreshes_preloaded_generation_run_status_before_storage_io(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{(tmp_path / 'finalize-generation-run-refresh.sqlite').as_posix()}",
+        future=True,
+    )
+    Base.metadata.create_all(engine)
+    storage, root = _build_storage()
+    contender = None
+    try:
+        with Session(engine) as session:
+            _, site_id = _seed_case(session)
+            company_id = session.get(Site, site_id).company_id  # type: ignore[union-attr]
+            dkkd_id = _seed_dkkd(session, site_id, company_id)
+            seed_default_template_metadata(session)
+
+            output_dir = root / "dkkd" / "Cong ty A - Dia chi A (100)"
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            preparation_input = DocumentPreparationInput(
+                request=DocumentGenerationRequest(
+                    family_code="DDKD_CERTIFICATE",
+                    requested_by_user_id=None,
+                    business_eligibility_certificate_id=dkkd_id,
+                    storage_scope="dkkd_folder",
+                    idempotency_key="phase11-finalize-run-refresh-001",
+                ),
+                payload_values={
+                    "TenCty": "Cong ty A",
+                    "DiachiCoso": "123 Duong A",
+                    "HoatdongKD": "Bao quan, ban buon thuoc",
+                },
+            )
+            prepared = prepare_document_generation_job(session, preparation_input)
+            allocation = output_version_module.allocate_output_document_version(
+                session,
+                storage,
+                prepared,
+                output_filename="candidate.docx",
+            )
+            session.commit()
+
+        contender = Session(engine, expire_on_commit=False)
+        stale_run = contender.get(DocumentGenerationRun, allocation.generation_run_id)
+        assert stale_run is not None
+        assert stale_run.status == DocumentGenerationStatus.PENDING
+        contender.commit()
+
+        with Session(engine) as canceller:
+            canonical_run = canceller.get(
+                DocumentGenerationRun,
+                allocation.generation_run_id,
+            )
+            assert canonical_run is not None
+            canonical_run.status = DocumentGenerationStatus.CANCELLED
+            canonical_run.error_summary = "cancelled concurrently"
+            canceller.commit()
+
+        target = root / "dkkd" / allocation.storage_relative_path
+        assert target.exists() is False
+
+        try:
+            output_version_module.finalize_output_document_version_write(
+                contender,
+                storage,
+                allocation,
+                binary_payload=b"must-not-write-from-stale-pending-state",
+            )
+        except output_version_module.OutputVersionAllocationError as exc:
+            assert "cannot be finalized from status" in str(exc)
+            assert repr(DocumentGenerationStatus.CANCELLED.value) in str(exc)
+        else:
+            raise AssertionError(
+                "Expected finalization to refresh persisted generation-run status before output I/O"
+            )
+
+        assert target.exists() is False
+        assert stale_run.status == DocumentGenerationStatus.CANCELLED
+        assert stale_run.error_summary == "cancelled concurrently"
+        version = contender.get(DocumentVersion, allocation.document_version_id)
+        assert version is not None
+        assert version.is_current is False
+        assert version.checksum_sha256 is None
+        assert version.issued_on is None
+    finally:
+        if contender is not None:
+            contender.rollback()
+            contender.close()
+        shutil.rmtree(root, ignore_errors=True)
+        engine.dispose()
+
+
 def test_restore_render_version_state_does_not_reactivate_stale_previous_current_when_candidate_was_never_promoted():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)

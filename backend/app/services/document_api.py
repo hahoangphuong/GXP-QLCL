@@ -755,20 +755,21 @@ class DocumentWorkflowService:
                 "_rollback_cleanup_required": not output_was_current_before_render,
             }
         except HTTPException as exc:
-            self._restore_render_version_state(
-                session,
-                allocated,
-                previous_current_version_ids,
-                output_was_current_before_render=output_was_current_before_render,
-            )
             cleanup_error = self._cleanup_allocated_render_output(
                 storage,
                 allocated,
                 output_was_current_before_render=output_was_current_before_render,
             )
+            if session.is_active:
+                self._restore_render_version_state(
+                    session,
+                    allocated,
+                    previous_current_version_ids,
+                    output_was_current_before_render=output_was_current_before_render,
+                )
             if cleanup_error is not None:
                 detail = f"{exc.detail} Output cleanup failed: {cleanup_error}"
-                if prepared is not None:
+                if prepared is not None and session.is_active:
                     self._mark_generation_run_failed(
                         session,
                         prepared.persisted_state.generation_run_id,
@@ -787,12 +788,6 @@ class DocumentWorkflowService:
             DocxTemplateRenderError,
             StorageOperationError,
         ) as exc:
-            self._restore_render_version_state(
-                session,
-                allocated,
-                previous_current_version_ids,
-                output_was_current_before_render=output_was_current_before_render,
-            )
             cleanup_error = (
                 None
                 if isinstance(exc, StorageTargetExistsError)
@@ -802,10 +797,17 @@ class DocumentWorkflowService:
                     output_was_current_before_render=output_was_current_before_render,
                 )
             )
+            if session.is_active:
+                self._restore_render_version_state(
+                    session,
+                    allocated,
+                    previous_current_version_ids,
+                    output_was_current_before_render=output_was_current_before_render,
+                )
             detail = str(exc)
             if cleanup_error is not None:
                 detail += f" Output cleanup failed: {cleanup_error}"
-            if prepared is not None:
+            if prepared is not None and session.is_active:
                 self._mark_generation_run_failed(
                     session,
                     prepared.persisted_state.generation_run_id,
@@ -814,21 +816,22 @@ class DocumentWorkflowService:
             status_code = 500 if cleanup_error is not None else 409
             raise HTTPException(status_code=status_code, detail=detail) from exc
         except Exception as exc:
-            self._restore_render_version_state(
-                session,
-                allocated,
-                previous_current_version_ids,
-                output_was_current_before_render=output_was_current_before_render,
-            )
             cleanup_error = self._cleanup_allocated_render_output(
                 storage,
                 allocated,
                 output_was_current_before_render=output_was_current_before_render,
             )
+            if session.is_active:
+                self._restore_render_version_state(
+                    session,
+                    allocated,
+                    previous_current_version_ids,
+                    output_was_current_before_render=output_was_current_before_render,
+                )
             detail = str(exc)
             if cleanup_error is not None:
                 detail += f" Output cleanup failed: {cleanup_error}"
-            if prepared is not None:
+            if prepared is not None and session.is_active:
                 self._mark_generation_run_failed(
                     session,
                     prepared.persisted_state.generation_run_id,

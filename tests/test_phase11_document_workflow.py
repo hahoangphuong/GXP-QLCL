@@ -11,6 +11,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import HTTPException, Request
 from sqlalchemy import create_engine, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.auth import build_authenticated_user
@@ -23,6 +24,7 @@ from backend.app.db.enums import (
     DocumentVariantType,
 )
 from backend.app.db.models.phase1 import (
+    AppUser,
     AuditEvent,
     BusinessEligibilityCertificate,
     Case,
@@ -703,6 +705,126 @@ def test_render_template_docx_succeeds_for_dkkd_certificate_and_updates_lineage(
 
         written = root / "dkkd" / "Cong ty A - Dia chi A (100)" / "z2. Giay chung nhan DDKKDD.docx"
         assert written.exists()
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_render_failure_cleans_written_output_when_db_session_is_inactive(monkeypatch):
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = DocumentWorkflowService()
+    storage, root = _build_storage()
+    try:
+        with Session(engine) as session:
+            _, site_id = _seed_case(session)
+            company_id = session.get(Site, site_id).company_id  # type: ignore[union-attr]
+            dkkd_id = _seed_dkkd(session, site_id, company_id)
+            seed_default_template_metadata(session)
+
+            output_dir = root / "dkkd" / "Cong ty A - Dia chi A (100)"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            template = session.execute(
+                select(TemplateDefinition).where(
+                    TemplateDefinition.family_code == "DDKD_CERTIFICATE"
+                )
+            ).scalar_one()
+            template_relative = "dkkd/z2 giay chung nhan ddkkdd sanitized.dotx"
+            template_path = root / "templates" / template_relative
+            template_path.parent.mkdir(parents=True, exist_ok=True)
+            _build_minimal_docx_with_bookmarks(
+                template_path,
+                ["TenCty", "DiachiCoso", "HoatdongKD"],
+            )
+            assign_template_binary_locator(
+                session,
+                template_definition_id=template.id,
+                storage_root="template",
+                storage_relative_path=template_relative,
+                original_filename="z2 giay chung nhan ddkkdd sanitized.dotx",
+            )
+            render_payload = {
+                "family_code": "DDKD_CERTIFICATE",
+                "business_eligibility_certificate_id": dkkd_id,
+                "storage_scope": "dkkd_folder",
+                "idempotency_key": "phase11-render-inactive-session-cleanup-001",
+                "output_filename": "candidate.docx",
+                "payload": {
+                    "TenCty": "Cong ty A",
+                    "DiachiCoso": "123 Duong A",
+                    "HoatdongKD": "Bao quan, ban buon thuoc",
+                },
+                "strict_payload": True,
+            }
+            prepared = service.prepare_generation(
+                session,
+                storage=storage,
+                payload=render_payload,
+                user=build_authenticated_user("inspector01", "inspector"),
+            )
+            session.commit()
+
+            target = output_dir / "candidate.docx"
+            assert target.exists() is False
+
+            def fail_post_write_audit(
+                audit_session,
+                *,
+                actor,
+                entity_type,
+                entity_id,
+                action,
+                payload,
+            ):
+                audit_session.add(
+                    AppUser(
+                        username=actor.username,
+                        display_name="duplicate username",
+                        is_active=True,
+                    )
+                )
+                audit_session.flush()
+                raise AssertionError("duplicate username flush should fail")
+
+            monkeypatch.setattr(
+                service,
+                "_write_audit_event",
+                fail_post_write_audit,
+            )
+
+            try:
+                service.render_template_docx(
+                    session,
+                    storage=storage,
+                    payload=render_payload,
+                    user=build_authenticated_user("inspector01", "inspector"),
+                )
+            except IntegrityError:
+                assert session.is_active is False
+            else:
+                raise AssertionError(
+                    "Expected post-write DB flush failure to propagate"
+                )
+
+            assert target.exists() is False
+            session.rollback()
+
+        with Session(engine) as verify:
+            run = verify.get(
+                DocumentGenerationRun,
+                prepared["generation_run_id"],
+            )
+            assert run is not None
+            assert run.status == DocumentGenerationStatus.PENDING
+            assert run.output_document_version_id is None
+            versions = list(
+                verify.scalars(
+                    select(DocumentVersion).where(
+                        DocumentVersion.document_variant_id
+                        == prepared["document_variant_id"]
+                    )
+                )
+            )
+            assert versions == []
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

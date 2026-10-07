@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy import create_engine, delete, select, text
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.db.enums import (
@@ -30,6 +30,7 @@ from backend.app.document.output_version import (
     allocate_output_document_version,
     finalize_output_document_version_write,
 )
+from backend.app.services.document_api import DocumentWorkflowService
 from backend.app.storage.filesystem import FilesystemStorageService
 from backend.app.storage.types import StorageConfig
 
@@ -602,6 +603,278 @@ def test_output_allocation_run_lock_refreshes_preloaded_generation_run_identity(
                     delete(DocumentVersion).where(DocumentVersion.id == version_id)
                 )
             if variant_id is not None:
+                cleanup.execute(
+                    delete(DocumentVariant).where(DocumentVariant.id == variant_id)
+                )
+            if document_id is not None:
+                cleanup.execute(delete(Document).where(Document.id == document_id))
+            if case_id is not None:
+                cleanup.execute(delete(Case).where(Case.id == case_id))
+            if site_id is not None:
+                cleanup.execute(delete(Site).where(Site.id == site_id))
+            if company_id is not None:
+                cleanup.execute(delete(Company).where(Company.id == company_id))
+            cleanup.commit()
+        engine.dispose()
+
+
+def test_postgres_rejects_multiple_current_versions_for_one_document_variant():
+    engine = create_engine(DATABASE_URL, future=True)
+    factory = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+        future=True,
+    )
+    token = uuid4().hex
+    company_id = site_id = case_id = document_id = variant_id = first_version_id = noncurrent_version_id = None
+    try:
+        with factory() as session:
+            company = Company(legal_name=f"Current Uniqueness Co {token}")
+            session.add(company)
+            session.flush()
+            company_id = company.id
+
+            site = Site(
+                company_id=company.id,
+                site_name=f"Current Uniqueness Site {token}",
+            )
+            session.add(site)
+            session.flush()
+            site_id = site.id
+
+            case = Case(
+                site_id=site.id,
+                gxp_type="GMP",
+                state=CaseState.DRAFT,
+            )
+            session.add(case)
+            session.flush()
+            case_id = case.id
+
+            document = Document(
+                family_code="CURRENT_UNIQUENESS_TEST",
+                document_type_code="current_uniqueness_test",
+                title="Current uniqueness test",
+                case_id=case.id,
+            )
+            session.add(document)
+            session.flush()
+            document_id = document.id
+
+            variant = DocumentVariant(
+                document_id=document.id,
+                variant_type=DocumentVariantType.EDITABLE_DOCX,
+                language_code="vi",
+                is_active=True,
+            )
+            session.add(variant)
+            session.flush()
+            variant_id = variant.id
+
+            first_current = DocumentVersion(
+                document_variant_id=variant.id,
+                version_no=1,
+                storage_binding_id=None,
+                storage_root="inspection",
+                storage_relative_path=f"current-uniqueness/{token}/current.docx",
+                original_filename="current.docx",
+                checksum_sha256="first-current",
+                is_current=True,
+                issued_on=None,
+            )
+            noncurrent = DocumentVersion(
+                document_variant_id=variant.id,
+                version_no=2,
+                storage_binding_id=None,
+                storage_root="inspection",
+                storage_relative_path=f"current-uniqueness/{token}/history.docx",
+                original_filename="history.docx",
+                checksum_sha256="history",
+                is_current=False,
+                issued_on=None,
+            )
+            session.add_all([first_current, noncurrent])
+            session.commit()
+            first_version_id = first_current.id
+            noncurrent_version_id = noncurrent.id
+
+        with factory() as contender:
+            second_current = DocumentVersion(
+                document_variant_id=variant_id,
+                version_no=3,
+                storage_binding_id=None,
+                storage_root="inspection",
+                storage_relative_path=f"current-uniqueness/{token}/second-current.docx",
+                original_filename="second-current.docx",
+                checksum_sha256="second-current",
+                is_current=True,
+                issued_on=None,
+            )
+            contender.add(second_current)
+            with pytest.raises(IntegrityError) as exc_info:
+                contender.flush()
+            assert "ux_document_version_current_per_variant" in str(exc_info.value)
+            contender.rollback()
+
+        with factory() as verify:
+            current_ids = tuple(
+                verify.scalars(
+                    select(DocumentVersion.id).where(
+                        DocumentVersion.document_variant_id == variant_id,
+                        DocumentVersion.is_current.is_(True),
+                    )
+                )
+            )
+            assert current_ids == (first_version_id,)
+            assert verify.get(DocumentVersion, noncurrent_version_id) is not None
+    finally:
+        with factory() as cleanup:
+            if variant_id is not None:
+                cleanup.execute(
+                    delete(DocumentVersion).where(
+                        DocumentVersion.document_variant_id == variant_id
+                    )
+                )
+                cleanup.execute(
+                    delete(DocumentVariant).where(DocumentVariant.id == variant_id)
+                )
+            if document_id is not None:
+                cleanup.execute(delete(Document).where(Document.id == document_id))
+            if case_id is not None:
+                cleanup.execute(delete(Case).where(Case.id == case_id))
+            if site_id is not None:
+                cleanup.execute(delete(Site).where(Site.id == site_id))
+            if company_id is not None:
+                cleanup.execute(delete(Company).where(Company.id == company_id))
+            cleanup.commit()
+        engine.dispose()
+
+
+def test_postgres_render_state_restore_swaps_current_versions_without_transient_uniqueness_violation():
+    engine = create_engine(DATABASE_URL, future=True)
+    factory = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+        future=True,
+    )
+    token = uuid4().hex
+    company_id = site_id = case_id = document_id = variant_id = baseline_id = candidate_id = None
+    try:
+        with factory() as session:
+            company = Company(legal_name=f"Restore Current Co {token}")
+            session.add(company)
+            session.flush()
+            company_id = company.id
+
+            site = Site(
+                company_id=company.id,
+                site_name=f"Restore Current Site {token}",
+            )
+            session.add(site)
+            session.flush()
+            site_id = site.id
+
+            case = Case(
+                site_id=site.id,
+                gxp_type="GMP",
+                state=CaseState.DRAFT,
+            )
+            session.add(case)
+            session.flush()
+            case_id = case.id
+
+            document = Document(
+                family_code="RESTORE_CURRENT_TEST",
+                document_type_code="restore_current_test",
+                title="Restore current test",
+                case_id=case.id,
+            )
+            session.add(document)
+            session.flush()
+            document_id = document.id
+
+            variant = DocumentVariant(
+                document_id=document.id,
+                variant_type=DocumentVariantType.EDITABLE_DOCX,
+                language_code="vi",
+                is_active=True,
+            )
+            session.add(variant)
+            session.flush()
+            variant_id = variant.id
+
+            baseline = DocumentVersion(
+                document_variant_id=variant.id,
+                version_no=1,
+                storage_binding_id=None,
+                storage_root="inspection",
+                storage_relative_path=f"restore-current/{token}/baseline.docx",
+                original_filename="baseline.docx",
+                checksum_sha256="baseline",
+                is_current=True,
+                issued_on=None,
+            )
+            candidate = DocumentVersion(
+                document_variant_id=variant.id,
+                version_no=2,
+                storage_binding_id=None,
+                storage_root="inspection",
+                storage_relative_path=f"restore-current/{token}/candidate.docx",
+                original_filename="candidate.docx",
+                checksum_sha256="candidate",
+                is_current=False,
+                issued_on=None,
+            )
+            session.add_all([baseline, candidate])
+            session.commit()
+            baseline_id = baseline.id
+            candidate_id = candidate.id
+
+        with factory() as session:
+            baseline = session.get(DocumentVersion, baseline_id)
+            candidate = session.get(DocumentVersion, candidate_id)
+            assert baseline is not None
+            assert candidate is not None
+
+            baseline.is_current = False
+            candidate.is_current = True
+            session.flush()
+
+            allocated = SimpleNamespace(
+                allocated=SimpleNamespace(
+                    output_allocation=SimpleNamespace(
+                        document_variant_id=variant_id,
+                        document_version_id=candidate_id,
+                    )
+                )
+            )
+            DocumentWorkflowService._restore_render_version_state(
+                session,
+                allocated,
+                (baseline_id,),
+                output_was_current_before_render=False,
+            )
+            session.commit()
+
+        with factory() as verify:
+            baseline = verify.get(DocumentVersion, baseline_id)
+            candidate = verify.get(DocumentVersion, candidate_id)
+            assert baseline is not None
+            assert candidate is not None
+            assert baseline.is_current is True
+            assert candidate.is_current is False
+            assert candidate.checksum_sha256 is None
+            assert candidate.issued_on is None
+    finally:
+        with factory() as cleanup:
+            if variant_id is not None:
+                cleanup.execute(
+                    delete(DocumentVersion).where(
+                        DocumentVersion.document_variant_id == variant_id
+                    )
+                )
                 cleanup.execute(
                     delete(DocumentVariant).where(DocumentVariant.id == variant_id)
                 )

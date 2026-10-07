@@ -1,7 +1,10 @@
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 
-from sqlalchemy.schema import CreateTable
+import pytest
+from sqlalchemy.schema import CreateIndex, CreateTable
+from sqlalchemy.dialects import postgresql
 
 from backend.app.db.models import Base
 from backend.app.db.models.phase1 import (
@@ -57,6 +60,20 @@ def test_document_variant_and_version_are_separate_layers():
     assert DocumentVariant.__table__.c.document_id.foreign_keys
     assert DocumentVersion.__table__.c.document_variant_id.foreign_keys
     assert Document.__table__.c.case_id.foreign_keys
+
+
+def test_document_version_postgres_metadata_enforces_single_current_per_variant():
+    index = next(
+        item
+        for item in DocumentVersion.__table__.indexes
+        if item.name == "ux_document_version_current_per_variant"
+    )
+    assert index.unique is True
+    ddl = str(CreateIndex(index).compile(dialect=postgresql.dialect()))
+    assert "CREATE UNIQUE INDEX ux_document_version_current_per_variant" in ddl
+    assert "WHERE is_current IS TRUE" in ddl
+    assert index._ddl_if is not None
+    assert index._ddl_if.dialect == "postgresql"
 
 
 def test_storage_binding_uses_stable_legacy_triplet():
@@ -133,7 +150,47 @@ def test_unapplied_period_state_migration_does_not_label_existing_rows_missing()
 
 
 def test_expected_alembic_head_revision_tracks_latest_runtime_migration():
-    assert expected_alembic_head_revision() == "20261005_0020"
+    assert expected_alembic_head_revision() == "20261007_0021"
+
+
+def test_document_version_current_uniqueness_migration_fails_closed_on_existing_duplicates():
+    path = Path("migrations/versions/20261007_0021_document_version_current_uniqueness.py")
+    spec = importlib.util.spec_from_file_location("migration_20261007_0021", path)
+    assert spec is not None and spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    class DuplicateResult:
+        def scalar_one_or_none(self):
+            return "duplicate-variant-id"
+
+    class DuplicateBind:
+        dialect = SimpleNamespace(name="postgresql")
+
+        def execute(self, statement):
+            return DuplicateResult()
+
+    class RecordingOperations:
+        def __init__(self):
+            self.created_indexes = []
+
+        def get_bind(self):
+            return DuplicateBind()
+
+        def create_index(self, *args, **kwargs):
+            self.created_indexes.append((args, kwargs))
+
+    operations = RecordingOperations()
+    migration.op = operations
+
+    with pytest.raises(RuntimeError, match="duplicate-variant-id"):
+        migration.upgrade()
+    assert operations.created_indexes == []
+
+    content = path.read_text(encoding="utf-8")
+    assert 'revision = "20261007_0021"' in content
+    assert 'down_revision = "20261005_0020"' in content
+    assert "UPDATE document_version" not in content
 
 
 def test_a3_capa_incoming_reference_model_and_migration_are_expand_only_and_reversible():

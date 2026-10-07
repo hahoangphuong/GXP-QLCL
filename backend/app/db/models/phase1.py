@@ -1256,3 +1256,9 @@ class LegacyIdMap(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 Index("ix_case_site_state", Case.site_id, Case.state)
 Index("ix_certificate_case_type", Certificate.case_id, Certificate.certificate_type)
 Index("ix_storage_resolution_lookup", StorageResolutionLog.year, StorageResolutionLog.site_legacy_id, StorageResolutionLog.inspection_legacy_code)
+Index(
+    "ux_document_version_current_per_variant",
+    DocumentVersion.document_variant_id,
+    unique=True,
+    postgresql_where=text("is_current IS TRUE"),
+).ddl_if(dialect="postgresql")

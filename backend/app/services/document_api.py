@@ -8,7 +8,7 @@ from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from backend.app.audit_payload import normalize_and_redact_audit_payload
@@ -596,22 +596,39 @@ class DocumentWorkflowService:
         if allocated is None or output_was_current_before_render:
             return
         allocation = allocated.allocated.output_allocation
-        previous_ids = set(previous_current_version_ids)
-        versions = list(
-            session.scalars(
-                select(DocumentVersion).where(
-                    DocumentVersion.document_variant_id
-                    == allocation.document_variant_id
-                )
+        previous_ids = tuple(dict.fromkeys(previous_current_version_ids))
+
+        if len(previous_ids) > 1:
+            allocated_version = session.get(
+                DocumentVersion,
+                allocation.document_version_id,
+            )
+            if allocated_version is not None:
+                allocated_version.is_current = False
+                allocated_version.checksum_sha256 = None
+                allocated_version.issued_on = None
+            session.flush()
+            return
+
+        session.execute(
+            update(DocumentVersion)
+            .where(DocumentVersion.id == allocation.document_version_id)
+            .values(
+                is_current=False,
+                checksum_sha256=None,
+                issued_on=None,
             )
         )
-        for row in versions:
-            if row.id == allocation.document_version_id:
-                row.is_current = False
-                row.checksum_sha256 = None
-                row.issued_on = None
-            elif row.id in previous_ids:
-                row.is_current = True
+        if previous_ids:
+            session.execute(
+                update(DocumentVersion)
+                .where(
+                    DocumentVersion.id == previous_ids[0],
+                    DocumentVersion.document_variant_id
+                    == allocation.document_variant_id,
+                )
+                .values(is_current=True)
+            )
         session.flush()
 
     def cleanup_render_output_after_commit_failure(

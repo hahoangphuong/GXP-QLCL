@@ -24,6 +24,8 @@ The next missing step before introducing a render adapter is:
   - creates a new `document_version` with the next `version_no`
   - persists exact output locator fields before rendering starts
   - links that `document_version` to `document_generation_run.output_document_version_id`
+- Enforce the canonical PostgreSQL persistence invariant with a partial unique index on `document_version(document_variant_id) WHERE is_current`; the migration refuses to proceed when duplicate-current lineage already exists and does not auto-repair historical data. SQLite remains a test/development surface where runtime guards can exercise corrupt legacy states.
+- When rolling back an uncommitted finalized render, clear the newly-current version in the database before reactivating the single previous current version, so rollback never crosses the PostgreSQL uniqueness boundary transiently; if corrupt legacy state reports multiple previous currents, do not auto-repair them.
 - Require current-binary readers to fail closed when one persisted `document_variant` has more than one `is_current=true` version; readers must not rank through or repair that lineage corruption.
 - Add a write-finalization step that:
   - requires the generation run to be `pending` before any output I/O; `failed`, `cancelled`, and `succeeded` runs fail closed, and a retry must be explicitly re-claimed to `pending` by the workflow owner first

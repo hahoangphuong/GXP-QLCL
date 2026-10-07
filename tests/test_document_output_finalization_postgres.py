@@ -1110,3 +1110,270 @@ def test_postgres_render_state_restore_swaps_current_versions_without_transient_
                 cleanup.execute(delete(Company).where(Company.id == company_id))
             cleanup.commit()
         engine.dispose()
+
+
+def test_current_binary_reader_refreshes_identity_and_serializes_with_finalizer(tmp_path):
+    engine = create_engine(DATABASE_URL, future=True)
+    factory = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+        future=True,
+    )
+    token = uuid4().hex
+    inspection_root = tmp_path / "inspection"
+    inspection_root.mkdir(parents=True, exist_ok=True)
+    storage = FilesystemStorageService(
+        StorageConfig(inspection_root=inspection_root)
+    )
+    service = DocumentWorkflowService()
+
+    company_id = site_id = case_id = document_id = variant_id = None
+    baseline_id = candidate_id = later_candidate_id = None
+    run_id = later_run_id = None
+    reader = None
+    try:
+        with factory() as session:
+            company = Company(legal_name=f"Current Reader Lock Co {token}")
+            session.add(company)
+            session.flush()
+            company_id = company.id
+
+            site = Site(
+                company_id=company.id,
+                site_name=f"Current Reader Lock Site {token}",
+            )
+            session.add(site)
+            session.flush()
+            site_id = site.id
+
+            case = Case(
+                site_id=site.id,
+                gxp_type="GMP",
+                state=CaseState.DRAFT,
+            )
+            session.add(case)
+            session.flush()
+            case_id = case.id
+
+            document = Document(
+                family_code="CURRENT_READER_LOCK_TEST",
+                document_type_code="current_reader_lock_test",
+                title="Current reader lock test",
+                case_id=case.id,
+            )
+            session.add(document)
+            session.flush()
+            document_id = document.id
+
+            variant = DocumentVariant(
+                document_id=document.id,
+                variant_type=DocumentVariantType.EDITABLE_DOCX,
+                language_code="vi",
+                is_active=True,
+            )
+            session.add(variant)
+            session.flush()
+            variant_id = variant.id
+
+            baseline = DocumentVersion(
+                document_variant_id=variant.id,
+                version_no=1,
+                storage_binding_id=None,
+                storage_root="inspection",
+                storage_relative_path=f"current-reader/{token}/baseline.docx",
+                original_filename="baseline.docx",
+                checksum_sha256="baseline-checksum",
+                is_current=True,
+                issued_on=None,
+            )
+            candidate = DocumentVersion(
+                document_variant_id=variant.id,
+                version_no=2,
+                storage_binding_id=None,
+                storage_root="inspection",
+                storage_relative_path=f"current-reader/{token}/candidate.docx",
+                original_filename="candidate.docx",
+                checksum_sha256=None,
+                is_current=False,
+                issued_on=None,
+            )
+            session.add_all([baseline, candidate])
+            session.flush()
+            baseline_id = baseline.id
+            candidate_id = candidate.id
+
+            run = DocumentGenerationRun(
+                document_id=document.id,
+                template_binding_id=None,
+                template_definition_id=None,
+                output_document_version_id=candidate.id,
+                status=DocumentGenerationStatus.PENDING,
+                source_application="Word",
+                requested_by_user_id=None,
+                input_payload_redacted="{}",
+                error_summary=None,
+                idempotency_key=f"current-reader-v2-{token}",
+            )
+            session.add(run)
+            session.commit()
+            run_id = run.id
+
+            candidate_allocation = OutputVersionAllocation(
+                document_id=document.id,
+                document_variant_id=variant.id,
+                document_version_id=candidate.id,
+                generation_run_id=run.id,
+                version_no=candidate.version_no,
+                storage_root="inspection",
+                storage_relative_path=candidate.storage_relative_path,
+                original_filename=candidate.original_filename,
+                storage_binding_id=None,
+            )
+
+        reader = factory()
+        stale_baseline = reader.get(DocumentVersion, baseline_id)
+        stale_candidate = reader.get(DocumentVersion, candidate_id)
+        assert stale_baseline is not None
+        assert stale_candidate is not None
+        assert stale_baseline.is_current is True
+        assert stale_candidate.is_current is False
+
+        with factory() as writer:
+            candidate_checksum = finalize_output_document_version_write(
+                writer,
+                storage,
+                candidate_allocation,
+                binary_payload=b"candidate-current-binary",
+            )
+            writer.commit()
+
+        with factory() as session:
+            later_candidate = DocumentVersion(
+                document_variant_id=variant_id,
+                version_no=3,
+                storage_binding_id=None,
+                storage_root="inspection",
+                storage_relative_path=f"current-reader/{token}/later.docx",
+                original_filename="later.docx",
+                checksum_sha256=None,
+                is_current=False,
+                issued_on=None,
+            )
+            session.add(later_candidate)
+            session.flush()
+            later_candidate_id = later_candidate.id
+
+            later_run = DocumentGenerationRun(
+                document_id=document_id,
+                template_binding_id=None,
+                template_definition_id=None,
+                output_document_version_id=later_candidate.id,
+                status=DocumentGenerationStatus.PENDING,
+                source_application="Word",
+                requested_by_user_id=None,
+                input_payload_redacted="{}",
+                error_summary=None,
+                idempotency_key=f"current-reader-v3-{token}",
+            )
+            session.add(later_run)
+            session.commit()
+            later_run_id = later_run.id
+
+            later_allocation = OutputVersionAllocation(
+                document_id=document_id,
+                document_variant_id=variant_id,
+                document_version_id=later_candidate.id,
+                generation_run_id=later_run.id,
+                version_no=later_candidate.version_no,
+                storage_root="inspection",
+                storage_relative_path=later_candidate.storage_relative_path,
+                original_filename=later_candidate.original_filename,
+                storage_binding_id=None,
+            )
+
+        locator = service.get_current_document_binary_locator_for_parent(
+            reader,
+            document_id=document_id,
+            expected_parent_scope="case",
+            expected_parent_id=case_id,
+        )
+        assert locator.document_version_id == candidate_id
+        assert locator.checksum_sha256 == candidate_checksum
+        assert stale_baseline.is_current is False
+        assert stale_candidate.is_current is True
+
+        with factory() as contender:
+            contender.execute(text("SET LOCAL lock_timeout = '250ms'"))
+            try:
+                finalize_output_document_version_write(
+                    contender,
+                    storage,
+                    later_allocation,
+                    binary_payload=b"must-wait-for-current-reader",
+                )
+            except OperationalError as exc:
+                assert "lock timeout" in str(exc).lower()
+                contender.rollback()
+            else:
+                raise AssertionError(
+                    "Expected finalization to wait for the current-binary reader's "
+                    "shared document_variant lock"
+                )
+
+        assert (
+            inspection_root / later_allocation.storage_relative_path
+        ).exists() is False
+
+        reader.rollback()
+        reader.close()
+        reader = None
+
+        with factory() as writer:
+            finalize_output_document_version_write(
+                writer,
+                storage,
+                later_allocation,
+                binary_payload=b"later-current-binary",
+            )
+            writer.commit()
+
+        assert (
+            inspection_root / later_allocation.storage_relative_path
+        ).read_bytes() == b"later-current-binary"
+    finally:
+        if reader is not None:
+            reader.rollback()
+            reader.close()
+        with factory() as cleanup:
+            if run_id is not None:
+                cleanup.execute(
+                    delete(DocumentGenerationRun).where(
+                        DocumentGenerationRun.id == run_id
+                    )
+                )
+            if later_run_id is not None:
+                cleanup.execute(
+                    delete(DocumentGenerationRun).where(
+                        DocumentGenerationRun.id == later_run_id
+                    )
+                )
+            if variant_id is not None:
+                cleanup.execute(
+                    delete(DocumentVersion).where(
+                        DocumentVersion.document_variant_id == variant_id
+                    )
+                )
+                cleanup.execute(
+                    delete(DocumentVariant).where(DocumentVariant.id == variant_id)
+                )
+            if document_id is not None:
+                cleanup.execute(delete(Document).where(Document.id == document_id))
+            if case_id is not None:
+                cleanup.execute(delete(Case).where(Case.id == case_id))
+            if site_id is not None:
+                cleanup.execute(delete(Site).where(Site.id == site_id))
+            if company_id is not None:
+                cleanup.execute(delete(Company).where(Company.id == company_id))
+            cleanup.commit()
+        engine.dispose()

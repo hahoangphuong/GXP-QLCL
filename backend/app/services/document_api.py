@@ -885,12 +885,22 @@ class DocumentWorkflowService:
                 raise HTTPException(status_code=404, detail="CAPA cycle not found for requested case.")
             if session.get(Case, expected_case_id) is None:
                 raise HTTPException(status_code=404, detail="Case not found.")
-        variants = list(session.scalars(select(DocumentVariant).where(DocumentVariant.document_id == row.id)))
+        variants = list(
+            session.scalars(
+                select(DocumentVariant)
+                .where(DocumentVariant.document_id == row.id)
+                .order_by(DocumentVariant.id)
+                .with_for_update(read=True)
+                .execution_options(populate_existing=True)
+            )
+        )
         versions = [
             version
             for variant in variants
             for version in session.scalars(
-                select(DocumentVersion).where(DocumentVersion.document_variant_id == variant.id)
+                select(DocumentVersion)
+                .where(DocumentVersion.document_variant_id == variant.id)
+                .execution_options(populate_existing=True)
             )
         ]
         document_version = self._pick_current_document_version(versions)

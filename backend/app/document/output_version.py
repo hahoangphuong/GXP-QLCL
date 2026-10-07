@@ -144,6 +144,58 @@ def _resolve_output_binding(
     )
 
 
+def _resolve_reused_output_identity(
+    session: Session,
+    storage: LocalStorageService,
+    prepared: PreparedDocumentGeneration,
+) -> tuple[str, str, str | None]:
+    scope = prepared.generation_plan.template.storage_scope
+    request = prepared.generation_plan.request
+    if scope == "inspection_folder":
+        if request.case_id is None:
+            raise OutputVersionAllocationError("Inspection-folder output allocation requires case_id.")
+        year, site_legacy_id, inspection_legacy_code = _load_case_storage_identity(session, request.case_id)
+        stmt: Select[tuple[StorageBinding]] = select(StorageBinding).where(
+            StorageBinding.year == year,
+            StorageBinding.site_legacy_id == site_legacy_id,
+            StorageBinding.inspection_legacy_code == inspection_legacy_code,
+        )
+        binding = session.execute(stmt).scalar_one_or_none()
+        if binding is not None and storage.exists(binding.relative_path):
+            return "inspection", binding.relative_path, binding.id
+        resolution = storage.resolve_inspection_folder(
+            case_id=request.case_id,
+            year=year,
+            site_legacy_id=site_legacy_id,
+            inspection_legacy_code=inspection_legacy_code,
+        )
+        if resolution.status.value != "resolved" or resolution.relative_path is None:
+            raise OutputVersionAllocationError(
+                f"Inspection folder resolution failed for reused output allocation: {resolution.status.value}."
+            )
+        return (
+            "inspection",
+            resolution.relative_path,
+            None if binding is None else binding.id,
+        )
+    if scope == "dkkd_folder":
+        if request.business_eligibility_certificate_id is None:
+            raise OutputVersionAllocationError("DDKD-folder output allocation requires business_eligibility_certificate_id.")
+        site_legacy_id = _load_dkkd_storage_identity(session, request.business_eligibility_certificate_id)
+        resolution = storage.resolve_dkkd_folder(
+            case_id=None,
+            site_legacy_id=site_legacy_id,
+        )
+        if resolution.status.value != "resolved" or resolution.relative_path is None:
+            raise OutputVersionAllocationError(
+                f"DDKD folder resolution failed for reused output allocation: {resolution.status.value}."
+            )
+        return "dkkd", resolution.relative_path, None
+    raise OutputVersionAllocationError(
+        f"Output allocation for storage_scope={scope!r} is not implemented yet; fail closed."
+    )
+
+
 def _next_version_no(session: Session, document_variant_id: str) -> int:
     stmt = select(func.max(DocumentVersion.version_no)).where(DocumentVersion.document_variant_id == document_variant_id)
     current = session.execute(stmt).scalar_one()
@@ -194,15 +246,14 @@ def allocate_output_document_version(
 ) -> OutputVersionAllocation:
     filename = _normalize_filename(output_filename)
     generation_run = _load_generation_run(session, prepared.persisted_state.generation_run_id)
-    storage_root, folder_relative_path, binding = _resolve_output_binding(
-        session,
-        storage,
-        prepared,
-    )
-    storage_relative_path = f"{folder_relative_path}/{filename}"
-    binding_id = binding.id if binding is not None else None
     existing = _existing_output_allocation(session, generation_run)
     if existing is not None:
+        storage_root, folder_relative_path, binding_id = _resolve_reused_output_identity(
+            session,
+            storage,
+            prepared,
+        )
+        storage_relative_path = f"{folder_relative_path}/{filename}"
         mismatches: list[str] = []
         if existing.original_filename != filename:
             mismatches.append(
@@ -229,6 +280,12 @@ def allocate_output_document_version(
             )
         return existing
     _load_document_variant(session, prepared.persisted_state.document_variant_id)
+    storage_root, folder_relative_path, binding = _resolve_output_binding(
+        session,
+        storage,
+        prepared,
+    )
+    storage_relative_path = f"{folder_relative_path}/{filename}"
     if storage.exists(storage_relative_path, root=storage_root):
         raise OutputVersionAllocationError(
             f"Output path already exists and will not be overwritten automatically: {storage_relative_path!r}"

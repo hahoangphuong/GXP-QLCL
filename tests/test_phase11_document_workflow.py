@@ -34,6 +34,7 @@ from backend.app.db.models.phase1 import (
     DocumentVariant,
     DocumentVersion,
     Site,
+    StorageBinding,
     TemplateDefinition,
 )
 from backend.app.document.contextual_actions import (
@@ -44,6 +45,10 @@ from backend.app.document.contextual_actions import (
 import backend.app.document.output_version as output_version_module
 import backend.app.document.persistence as persistence_module
 from backend.app.document.seed_runtime import seed_default_template_metadata
+from backend.app.document.service import (
+    DocumentPreparationInput,
+    prepare_document_generation_job,
+)
 from backend.app.document.source_resolver_contract import (
     SourceDocumentCandidate,
     SourceDocumentLookupRequest,
@@ -1021,6 +1026,121 @@ def test_render_template_docx_restores_previous_current_when_post_write_audit_fa
 
         assert baseline_path.exists() is True
         assert candidate_path.exists() is True
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_reused_inspection_output_allocation_detects_folder_drift_without_mutating_binding():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    storage, root = _build_storage()
+    try:
+        with Session(engine) as session:
+            case_id, _ = _seed_case(session)
+            seed_default_template_metadata(session)
+
+            original_folder = (
+                root
+                / "inspection"
+                / "2024"
+                / "Original Folder - (ID-100) - (KT-2024-GMP)"
+            )
+            original_folder.mkdir(parents=True, exist_ok=True)
+
+            preparation_input = DocumentPreparationInput(
+                request=DocumentGenerationRequest(
+                    family_code="CERTIFICATE_DECISION",
+                    requested_by_user_id=None,
+                    case_id=case_id,
+                    gxp_type="GP",
+                    storage_scope="inspection_folder",
+                    idempotency_key="phase11-output-inspection-drift-001",
+                ),
+                payload_values={"TenCty": "Cong ty A"},
+            )
+            prepared = prepare_document_generation_job(
+                session,
+                preparation_input,
+            )
+            original_allocation = output_version_module.allocate_output_document_version(
+                session,
+                storage,
+                prepared,
+                output_filename="candidate.docx",
+            )
+            session.commit()
+
+            assert original_allocation.storage_binding_id is not None
+            binding = session.get(
+                StorageBinding,
+                original_allocation.storage_binding_id,
+            )
+            version = session.get(
+                DocumentVersion,
+                original_allocation.document_version_id,
+            )
+            assert binding is not None
+            assert version is not None
+            original_relative_folder = (
+                "2024/Original Folder - (ID-100) - (KT-2024-GMP)"
+            )
+            assert binding.relative_path == original_relative_folder
+            assert version.storage_relative_path == (
+                original_relative_folder + "/candidate.docx"
+            )
+
+            drifted_folder = (
+                root
+                / "inspection"
+                / "2024"
+                / "Drifted Folder - (ID-100) - (KT-2024-GMP)"
+            )
+            original_folder.rename(drifted_folder)
+
+            try:
+                output_version_module.allocate_output_document_version(
+                    session,
+                    storage,
+                    prepared,
+                    output_filename="candidate.docx",
+                )
+            except output_version_module.OutputVersionAllocationError as exc:
+                assert "different output identity" in str(exc)
+                assert "storage_relative_path=" in str(exc)
+            else:
+                raise AssertionError(
+                    "Expected inspection-folder drift to fail closed"
+                )
+
+            session.refresh(binding)
+            session.refresh(version)
+            assert binding.relative_path == original_relative_folder
+            assert binding.observed_folder_label == (
+                "Original Folder - (ID-100) - (KT-2024-GMP)"
+            )
+            assert version.storage_binding_id == binding.id
+            assert version.storage_relative_path == (
+                original_relative_folder + "/candidate.docx"
+            )
+            assert (
+                original_folder / "candidate.docx"
+            ).exists() is False
+            assert (
+                drifted_folder / "candidate.docx"
+            ).exists() is False
+            assert session.query(DocumentVersion).count() == 1
+
+            drifted_folder.rename(original_folder)
+            retry = output_version_module.allocate_output_document_version(
+                session,
+                storage,
+                prepared,
+                output_filename="candidate.docx",
+            )
+            assert retry == original_allocation
+            session.refresh(binding)
+            assert binding.relative_path == original_relative_folder
+            assert session.query(DocumentVersion).count() == 1
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

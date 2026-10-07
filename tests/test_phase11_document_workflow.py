@@ -1790,7 +1790,7 @@ def test_output_allocation_rejects_stale_prepared_lineage_before_mutation():
         shutil.rmtree(root, ignore_errors=True)
 
 
-def test_finalize_output_write_rejects_stale_allocation_identity_before_storage_io():
+def test_finalize_output_write_rejects_stale_allocation_identity_before_storage_io(monkeypatch):
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     storage, root = _build_storage()
@@ -2067,6 +2067,85 @@ def test_finalize_output_write_rejects_stale_allocation_identity_before_storage_
             assert version.issued_on is None
 
             original_target.unlink()
+
+            original_execute = session.execute
+
+            def fail_post_write_db_update(statement, *args, **kwargs):
+                if getattr(statement, "is_update", False):
+                    raise RuntimeError("simulated post-write DB failure")
+                return original_execute(statement, *args, **kwargs)
+
+            monkeypatch.setattr(
+                session,
+                "execute",
+                fail_post_write_db_update,
+            )
+            try:
+                output_version_module.finalize_output_document_version_write(
+                    session,
+                    storage,
+                    allocation,
+                    binary_payload=b"must-clean-after-post-write-db-failure",
+                )
+            except RuntimeError as exc:
+                assert "simulated post-write DB failure" in str(exc)
+            else:
+                raise AssertionError(
+                    "Expected post-write DB mutation failure"
+                )
+            assert original_target.exists() is False
+
+            monkeypatch.setattr(session, "execute", original_execute)
+            session.rollback()
+            run = session.get(DocumentGenerationRun, allocation.generation_run_id)
+            version = session.get(DocumentVersion, allocation.document_version_id)
+            assert run is not None
+            assert version is not None
+            assert run.status == DocumentGenerationStatus.PENDING
+            assert version.is_current is False
+            assert version.checksum_sha256 is None
+
+            def replace_target_then_fail_db_update(statement, *args, **kwargs):
+                if getattr(statement, "is_update", False):
+                    original_target.write_bytes(b"foreign-replacement")
+                    raise RuntimeError(
+                        "simulated DB failure after foreign replacement"
+                    )
+                return original_execute(statement, *args, **kwargs)
+
+            monkeypatch.setattr(
+                session,
+                "execute",
+                replace_target_then_fail_db_update,
+            )
+            try:
+                output_version_module.finalize_output_document_version_write(
+                    session,
+                    storage,
+                    allocation,
+                    binary_payload=b"render-owned-before-replacement",
+                )
+            except RuntimeError as exc:
+                assert "simulated DB failure after foreign replacement" in str(exc)
+                assert "Output cleanup failed" in str(exc)
+                assert "checksum no longer matches the render result" in str(exc)
+            else:
+                raise AssertionError(
+                    "Expected ownership drift to fail closed during finalizer cleanup"
+                )
+            assert original_target.read_bytes() == b"foreign-replacement"
+
+            monkeypatch.setattr(session, "execute", original_execute)
+            original_target.unlink()
+            session.rollback()
+            run = session.get(DocumentGenerationRun, allocation.generation_run_id)
+            version = session.get(DocumentVersion, allocation.document_version_id)
+            assert run is not None
+            assert version is not None
+            assert run.status == DocumentGenerationStatus.PENDING
+            assert version.is_current is False
+            assert version.checksum_sha256 is None
+
             checksum = output_version_module.finalize_output_document_version_write(
                 session,
                 storage,
@@ -2255,6 +2334,35 @@ def test_restore_render_version_state_does_not_reactivate_stale_previous_current
         assert previous.is_current is False
         assert candidate.is_current is False
         assert newer.is_current is True
+
+
+def test_render_cleanup_preserves_target_before_finalizer_returns_checksum():
+    service = DocumentWorkflowService()
+    storage, root = _build_storage()
+    try:
+        target = root / "inspection" / "2026" / "foreign-before-finalizer.docx"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"foreign-output")
+        allocated = SimpleNamespace(
+            allocated=SimpleNamespace(
+                output_allocation=SimpleNamespace(
+                    storage_root="inspection",
+                    storage_relative_path="2026/foreign-before-finalizer.docx",
+                )
+            )
+        )
+
+        cleanup_error = service._cleanup_allocated_render_output(
+            storage,
+            allocated,
+            output_was_current_before_render=False,
+            expected_checksum=None,
+        )
+
+        assert cleanup_error is None
+        assert target.read_bytes() == b"foreign-output"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 def test_render_route_removes_new_output_when_db_commit_fails(monkeypatch):

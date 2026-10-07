@@ -30,7 +30,10 @@ from backend.app.document.docx_template_render import (
     DocxTemplateRenderError,
     render_template_aware_docx_and_finalize,
 )
-from backend.app.document.output_version import OutputVersionAllocationError
+from backend.app.document.output_version import (
+    OutputVersionAllocationError,
+    cleanup_output_target_if_owned,
+)
 from backend.app.document.persistence import DocumentPersistenceError
 from backend.app.document.payload_builders import DocumentPayloadBuildError
 from backend.app.document.inspection_ke_hoach_kt_template_asset_contract import (
@@ -538,34 +541,26 @@ class DocumentWorkflowService:
             "audit_event_id": audit_event.id,
         }
 
-    @staticmethod
-    def _cleanup_render_output_path(
-        storage: StorageServiceProtocol,
-        *,
-        storage_root: str,
-        storage_relative_path: str,
-    ) -> str | None:
-        try:
-            if storage.exists(storage_relative_path, root=storage_root):
-                storage.delete(storage_relative_path, root=storage_root)
-        except Exception as exc:
-            return str(exc)
-        return None
-
     def _cleanup_allocated_render_output(
         self,
         storage: StorageServiceProtocol,
         allocated: object | None,
         *,
         output_was_current_before_render: bool,
+        expected_checksum: str | None,
     ) -> str | None:
-        if allocated is None or output_was_current_before_render:
+        if (
+            allocated is None
+            or output_was_current_before_render
+            or not str(expected_checksum or "").strip()
+        ):
             return None
         allocation = allocated.allocated.output_allocation
-        return self._cleanup_render_output_path(
+        return cleanup_output_target_if_owned(
             storage,
             storage_root=allocation.storage_root,
             storage_relative_path=allocation.storage_relative_path,
+            expected_checksum=str(expected_checksum),
         )
 
     @staticmethod
@@ -639,31 +634,12 @@ class DocumentWorkflowService:
     ) -> str | None:
         if not bool(render_result.get("_rollback_cleanup_required")):
             return None
-        storage_root = str(render_result["output_storage_root"])
-        storage_relative_path = str(render_result["output_storage_relative_path"])
-        expected_checksum = str(render_result.get("checksum_sha256") or "").strip()
-        if not expected_checksum:
-            return (
-                "Rendered output checksum is unavailable; refusing commit-failure "
-                "cleanup without file-ownership evidence."
-            )
-        try:
-            if not storage.exists(storage_relative_path, root=storage_root):
-                return None
-            actual_checksum = storage.checksum(
-                storage_relative_path,
-                root=storage_root,
-            )
-            if actual_checksum != expected_checksum:
-                return (
-                    "Rendered output changed before commit-failure cleanup; "
-                    "refusing to delete a target whose checksum no longer matches "
-                    "the render result."
-                )
-            storage.delete(storage_relative_path, root=storage_root)
-        except Exception as exc:
-            return str(exc)
-        return None
+        return cleanup_output_target_if_owned(
+            storage,
+            storage_root=str(render_result["output_storage_root"]),
+            storage_relative_path=str(render_result["output_storage_relative_path"]),
+            expected_checksum=str(render_result.get("checksum_sha256") or ""),
+        )
 
     def render_template_docx(
         self,
@@ -682,6 +658,7 @@ class DocumentWorkflowService:
         prepared = None
         allocated = None
         output_was_current_before_render = True
+        rendered_checksum: str | None = None
         previous_current_version_ids: tuple[str, ...] = ()
         try:
             preparation_input = self._build_preparation_input(render_payload, actor.id)
@@ -724,6 +701,7 @@ class DocumentWorkflowService:
                     allocated,
                 )
             result = render_template_aware_docx_and_finalize(session, storage, allocated)
+            rendered_checksum = result.checksum_sha256
             audit_event = self._write_audit_event(
                 session,
                 actor=actor,
@@ -779,6 +757,7 @@ class DocumentWorkflowService:
                 storage,
                 allocated,
                 output_was_current_before_render=output_was_current_before_render,
+                expected_checksum=rendered_checksum,
             )
             if session.is_active:
                 self._restore_render_version_state(
@@ -815,6 +794,7 @@ class DocumentWorkflowService:
                     storage,
                     allocated,
                     output_was_current_before_render=output_was_current_before_render,
+                    expected_checksum=rendered_checksum,
                 )
             )
             if session.is_active:
@@ -840,6 +820,7 @@ class DocumentWorkflowService:
                 storage,
                 allocated,
                 output_was_current_before_render=output_was_current_before_render,
+                expected_checksum=rendered_checksum,
             )
             if session.is_active:
                 self._restore_render_version_state(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from hashlib import sha256
 from io import BytesIO
 from typing import TYPE_CHECKING
 
@@ -19,7 +20,7 @@ from backend.app.db.models.phase1 import (
 )
 from backend.app.storage.binding_service import StorageBindingService
 from backend.app.db.models.phase1 import StorageBinding
-from backend.app.storage.local import LocalStorageService
+from backend.app.storage.types import StorageServiceProtocol
 
 if TYPE_CHECKING:
     from backend.app.document.service import PreparedDocumentGeneration
@@ -541,9 +542,40 @@ def _lock_document_variant_for_output_version(
     return variant
 
 
+def cleanup_output_target_if_owned(
+    storage: StorageServiceProtocol,
+    *,
+    storage_root: str,
+    storage_relative_path: str,
+    expected_checksum: str,
+) -> str | None:
+    normalized_checksum = str(expected_checksum or "").strip()
+    if not normalized_checksum:
+        return (
+            "Rendered output checksum is unavailable; refusing cleanup without "
+            "file-ownership evidence."
+        )
+    try:
+        if not storage.exists(storage_relative_path, root=storage_root):
+            return None
+        actual_checksum = storage.checksum(
+            storage_relative_path,
+            root=storage_root,
+        )
+        if actual_checksum != normalized_checksum:
+            return (
+                "Rendered output changed before cleanup; refusing to delete a "
+                "target whose checksum no longer matches the render result."
+            )
+        storage.delete(storage_relative_path, root=storage_root)
+    except Exception as exc:
+        return str(exc)
+    return None
+
+
 def finalize_output_document_version_write(
     session: Session,
-    storage: LocalStorageService,
+    storage: StorageServiceProtocol,
     allocation: OutputVersionAllocation,
     *,
     binary_payload: bytes,
@@ -578,28 +610,47 @@ def finalize_output_document_version_write(
         session,
         document_version,
     )
+    expected_checksum = sha256(binary_payload).hexdigest()
     storage.write_stream(
         allocation.storage_relative_path,
         BytesIO(binary_payload),
         root=allocation.storage_root,
         overwrite=False,
     )
-    checksum = storage.checksum(
-        allocation.storage_relative_path,
-        root=allocation.storage_root,
-    )
-    session.execute(
-        update(DocumentVersion)
-        .where(
-            DocumentVersion.document_variant_id == allocation.document_variant_id,
-            DocumentVersion.id != allocation.document_version_id,
+    try:
+        checksum = storage.checksum(
+            allocation.storage_relative_path,
+            root=allocation.storage_root,
         )
-        .values(is_current=False)
-    )
-    document_version.checksum_sha256 = checksum
-    document_version.is_current = True
-    document_version.issued_on = issued_on or datetime.now(timezone.utc)
-    generation_run.status = DocumentGenerationStatus.SUCCEEDED
-    generation_run.error_summary = None
-    session.flush()
-    return checksum
+        if checksum != expected_checksum:
+            raise OutputVersionAllocationError(
+                "Output target checksum changed after the exclusive render write; "
+                "refusing to finalize document-version lineage."
+            )
+        session.execute(
+            update(DocumentVersion)
+            .where(
+                DocumentVersion.document_variant_id == allocation.document_variant_id,
+                DocumentVersion.id != allocation.document_version_id,
+            )
+            .values(is_current=False)
+        )
+        document_version.checksum_sha256 = checksum
+        document_version.is_current = True
+        document_version.issued_on = issued_on or datetime.now(timezone.utc)
+        generation_run.status = DocumentGenerationStatus.SUCCEEDED
+        generation_run.error_summary = None
+        session.flush()
+        return checksum
+    except Exception as exc:
+        cleanup_error = cleanup_output_target_if_owned(
+            storage,
+            storage_root=allocation.storage_root,
+            storage_relative_path=allocation.storage_relative_path,
+            expected_checksum=expected_checksum,
+        )
+        if cleanup_error is not None:
+            raise RuntimeError(
+                f"{exc} Output cleanup failed: {cleanup_error}"
+            ) from exc
+        raise

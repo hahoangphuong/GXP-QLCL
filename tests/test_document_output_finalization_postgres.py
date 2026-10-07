@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -14,6 +15,7 @@ from backend.app.db.enums import (
     DocumentVariantType,
 )
 from backend.app.db.models.phase1 import (
+    BusinessEligibilityCertificate,
     Case,
     Company,
     Document,
@@ -24,6 +26,7 @@ from backend.app.db.models.phase1 import (
 )
 from backend.app.document.output_version import (
     OutputVersionAllocation,
+    allocate_output_document_version,
     finalize_output_document_version_write,
 )
 from backend.app.storage.filesystem import FilesystemStorageService
@@ -214,6 +217,217 @@ def test_output_finalization_serializes_on_document_variant_before_storage_io(tm
             if document_id is not None:
                 cleanup.execute(
                     delete(Document).where(Document.id == document_id)
+                )
+            if case_id is not None:
+                cleanup.execute(delete(Case).where(Case.id == case_id))
+            if site_id is not None:
+                cleanup.execute(delete(Site).where(Site.id == site_id))
+            if company_id is not None:
+                cleanup.execute(delete(Company).where(Company.id == company_id))
+            cleanup.commit()
+        engine.dispose()
+
+
+def test_output_allocation_serializes_version_number_assignment_on_document_variant(tmp_path):
+    engine = create_engine(DATABASE_URL, future=True)
+    factory = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+        future=True,
+    )
+    token = uuid4().hex
+    dkkd_root = tmp_path / "dkkd"
+    dkkd_root.mkdir(parents=True, exist_ok=True)
+    storage = FilesystemStorageService(
+        StorageConfig(
+            inspection_root=tmp_path / "inspection",
+            dkkd_root=dkkd_root,
+        )
+    )
+
+    company_id = site_id = case_id = dkkd_id = document_id = variant_id = run_id = version_id = None
+    blocker = None
+    try:
+        with factory() as session:
+            company = Company(legal_name=f"Allocation Lock Co {token}")
+            session.add(company)
+            session.flush()
+            company_id = company.id
+
+            site = Site(
+                company_id=company.id,
+                site_name=f"Allocation Lock Site {token}",
+                legacy_site_id=910000000 + int(token[:6], 16) % 80000000,
+            )
+            session.add(site)
+            session.flush()
+            site_id = site.id
+
+            case = Case(
+                site_id=site.id,
+                gxp_type="GMP",
+                state=CaseState.DRAFT,
+            )
+            session.add(case)
+            session.flush()
+            case_id = case.id
+
+            dkkd = BusinessEligibilityCertificate(
+                site_id=site.id,
+                company_id=company.id,
+                latest_flag=False,
+            )
+            session.add(dkkd)
+            session.flush()
+            dkkd_id = dkkd.id
+
+            document = Document(
+                family_code="ALLOCATION_LOCK_TEST",
+                document_type_code="allocation_lock_test",
+                title="Allocation lock test",
+                business_eligibility_certificate_id=dkkd.id,
+            )
+            session.add(document)
+            session.flush()
+            document_id = document.id
+
+            variant = DocumentVariant(
+                document_id=document.id,
+                variant_type=DocumentVariantType.EDITABLE_DOCX,
+                language_code="vi",
+                is_active=True,
+            )
+            session.add(variant)
+            session.flush()
+            variant_id = variant.id
+
+            run = DocumentGenerationRun(
+                document_id=document.id,
+                template_binding_id=None,
+                template_definition_id=None,
+                output_document_version_id=None,
+                status=DocumentGenerationStatus.PENDING,
+                source_application="Word",
+                requested_by_user_id=None,
+                input_payload_redacted="{}",
+                error_summary=None,
+                idempotency_key=f"allocation-lock-{token}",
+            )
+            session.add(run)
+            session.commit()
+            run_id = run.id
+
+            folder_name = f"Allocation Lock Site {token} (ID-{site.legacy_site_id})"
+            (dkkd_root / folder_name).mkdir(parents=True, exist_ok=True)
+
+            prepared = SimpleNamespace(
+                persisted_state=SimpleNamespace(
+                    generation_run_id=run.id,
+                    document_variant_id=variant.id,
+                    document_id=document.id,
+                ),
+                generation_plan=SimpleNamespace(
+                    template=SimpleNamespace(storage_scope="dkkd_folder"),
+                    request=SimpleNamespace(
+                        case_id=None,
+                        business_eligibility_certificate_id=dkkd.id,
+                    ),
+                ),
+            )
+
+        blocker = factory()
+        locked_variant = blocker.execute(
+            select(DocumentVariant)
+            .where(DocumentVariant.id == variant_id)
+            .with_for_update()
+        ).scalar_one()
+        assert locked_variant.id == variant_id
+
+        with factory() as contender:
+            contender.execute(text("SET LOCAL lock_timeout = '250ms'"))
+            try:
+                allocate_output_document_version(
+                    contender,
+                    storage,
+                    prepared,
+                    output_filename="candidate.docx",
+                )
+            except OperationalError as exc:
+                assert "lock timeout" in str(exc).lower()
+                contender.rollback()
+            else:
+                raise AssertionError(
+                    "Expected allocation to block before assigning version_no"
+                )
+
+        with factory() as verify:
+            run = verify.get(DocumentGenerationRun, run_id)
+            assert run is not None
+            assert run.output_document_version_id is None
+            versions = list(
+                verify.scalars(
+                    select(DocumentVersion).where(
+                        DocumentVersion.document_variant_id == variant_id
+                    )
+                )
+            )
+            assert versions == []
+
+        blocker.rollback()
+        blocker.close()
+        blocker = None
+
+        with factory() as session:
+            allocation = allocate_output_document_version(
+                session,
+                storage,
+                prepared,
+                output_filename="candidate.docx",
+            )
+            session.commit()
+            version_id = allocation.document_version_id
+
+        assert allocation.version_no == 1
+        with factory() as session:
+            run = session.get(DocumentGenerationRun, run_id)
+            version = session.get(DocumentVersion, version_id)
+            assert run is not None
+            assert version is not None
+            assert run.output_document_version_id == version.id
+            assert version.document_variant_id == variant_id
+            assert version.version_no == 1
+    finally:
+        if blocker is not None:
+            blocker.rollback()
+            blocker.close()
+        with factory() as cleanup:
+            if run_id is not None:
+                cleanup.execute(
+                    delete(DocumentGenerationRun).where(
+                        DocumentGenerationRun.id == run_id
+                    )
+                )
+            if version_id is not None:
+                cleanup.execute(
+                    delete(DocumentVersion).where(DocumentVersion.id == version_id)
+                )
+            if variant_id is not None:
+                cleanup.execute(
+                    delete(DocumentVersion).where(
+                        DocumentVersion.document_variant_id == variant_id
+                    )
+                )
+                cleanup.execute(
+                    delete(DocumentVariant).where(DocumentVariant.id == variant_id)
+                )
+            if document_id is not None:
+                cleanup.execute(delete(Document).where(Document.id == document_id))
+            if dkkd_id is not None:
+                cleanup.execute(
+                    delete(BusinessEligibilityCertificate).where(
+                        BusinessEligibilityCertificate.id == dkkd_id
+                    )
                 )
             if case_id is not None:
                 cleanup.execute(delete(Case).where(Case.id == case_id))

@@ -61,14 +61,6 @@ def _load_generation_run(session: Session, generation_run_id: str) -> DocumentGe
     return generation_run
 
 
-def _load_document_variant(session: Session, document_variant_id: str) -> DocumentVariant:
-    stmt: Select[tuple[DocumentVariant]] = select(DocumentVariant).where(DocumentVariant.id == document_variant_id)
-    variant = session.execute(stmt).scalar_one_or_none()
-    if variant is None:
-        raise OutputVersionAllocationError(f"DocumentVariant {document_variant_id!r} was not found.")
-    return variant
-
-
 def _load_case_storage_identity(session: Session, case_id: str) -> tuple[int, int, str]:
     stmt: Select[tuple[Case, Site]] = (
         select(Case, Site)
@@ -279,7 +271,10 @@ def allocate_output_document_version(
                 "output identity: " + ", ".join(mismatches) + "."
             )
         return existing
-    _load_document_variant(session, prepared.persisted_state.document_variant_id)
+    _lock_document_variant_for_output_version(
+        session,
+        prepared.persisted_state.document_variant_id,
+    )
     storage_root, folder_relative_path, binding = _resolve_output_binding(
         session,
         storage,
@@ -380,7 +375,7 @@ def _assert_generation_run_finalizable(
         )
 
 
-def _lock_document_variant_for_finalization(
+def _lock_document_variant_for_output_version(
     session: Session,
     document_variant_id: str,
 ) -> DocumentVariant:
@@ -392,7 +387,7 @@ def _lock_document_variant_for_finalization(
     variant = session.execute(stmt).scalar_one_or_none()
     if variant is None:
         raise OutputVersionAllocationError(
-            f"DocumentVariant {document_variant_id!r} was not found during output finalization."
+            f"DocumentVariant {document_variant_id!r} was not found during output version mutation."
         )
     return variant
 
@@ -413,7 +408,7 @@ def finalize_output_document_version_write(
     document_version = session.execute(stmt).scalar_one_or_none()
     if document_version is None:
         raise OutputVersionAllocationError(f"Allocated DocumentVersion {allocation.document_version_id!r} was not found.")
-    variant = _lock_document_variant_for_finalization(
+    variant = _lock_document_variant_for_output_version(
         session,
         document_version.document_variant_id,
     )

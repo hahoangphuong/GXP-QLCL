@@ -1014,7 +1014,10 @@ def test_postgres_render_state_restore_swaps_current_versions_without_transient_
             assert baseline is not None
             assert candidate is not None
 
+            # Establish the post-finalization pre-state without crossing the
+            # PostgreSQL single-current uniqueness boundary transiently.
             baseline.is_current = False
+            session.flush()
             candidate.is_current = True
             session.flush()
 

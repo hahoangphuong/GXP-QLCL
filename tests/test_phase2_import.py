@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, event, func, select
 from sqlalchemy.orm import Session
 
 from backend.app.db.models.phase1 import (
@@ -16,6 +16,7 @@ from backend.app.db.models.phase1 import (
     ChangeApproval,
     ChangeRequest,
     Company,
+    EvaluationScopeTaxonomyNode,
     InspectionOutcome,
     InspectionPeriodSegment,
     LegacyIdMap,
@@ -37,6 +38,52 @@ from backend.app.domain.phase2_import import (
 )
 from backend.app.domain import phase2_import as phase2_import_module
 
+
+
+def test_evaluation_scope_taxonomy_seed_avoids_uuid_returning_sentinel_path():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    taxonomy_insert_statements: list[tuple[str, bool]] = []
+
+    @event.listens_for(engine, "before_cursor_execute")
+    def capture_taxonomy_insert(conn, cursor, statement, parameters, context, executemany):
+        if "INSERT INTO evaluation_scope_taxonomy_node" in statement:
+            taxonomy_insert_statements.append((statement, executemany))
+
+    with Session(engine) as session:
+        phase2_import_module.create_schema(session)
+        artifact, version = phase2_import_module._load_evaluation_scope_taxonomy(session)
+        expected_count = sum(
+            len(definition["rows"])
+            for definition in artifact["named_ranges"].values()
+        )
+        expected_parent_count = sum(
+            1
+            for definition in artifact["named_ranges"].values()
+            for row in definition["rows"]
+            if "." in row["key"]
+        )
+        actual_count = session.scalar(
+            select(func.count())
+            .select_from(EvaluationScopeTaxonomyNode)
+            .where(EvaluationScopeTaxonomyNode.taxonomy_version_id == version.id)
+        )
+        actual_parent_count = session.scalar(
+            select(func.count())
+            .select_from(EvaluationScopeTaxonomyNode)
+            .where(
+                EvaluationScopeTaxonomyNode.taxonomy_version_id == version.id,
+                EvaluationScopeTaxonomyNode.parent_node_id.is_not(None),
+            )
+        )
+
+    assert actual_count == expected_count
+    assert actual_parent_count == expected_parent_count
+    assert taxonomy_insert_statements
+    assert any(executemany for _, executemany in taxonomy_insert_statements)
+    assert all(
+        "RETURNING" not in statement.upper()
+        for statement, _ in taxonomy_insert_statements
+    )
 
 def sample_snapshot():
     return {

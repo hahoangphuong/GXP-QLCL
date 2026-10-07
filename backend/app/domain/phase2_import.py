@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any, Callable
+from uuid import uuid4
 import json
 import re
 
@@ -2038,38 +2039,55 @@ def _load_evaluation_scope_taxonomy(session: Session) -> tuple[dict[str, Any], E
     version = EvaluationScopeTaxonomyVersion(taxonomy_content_sha256=artifact["taxonomy_content_sha256"], source_workbook_sha256=artifact.get("source_workbook_sha256"), schema_version=artifact["schema_version"])
     session.add(version)
     session.flush()
-    pending: list[tuple[EvaluationScopeTaxonomyNode, str | None]] = []
+    pending: list[tuple[dict[str, Any], str | None]] = []
     for definition in artifact["named_ranges"].values():
         gxp_type = definition["gxp_type"]
         for row in definition["rows"]:
             key = row["key"]
             parent_key = key.rsplit(".", 1)[0] if "." in key else None
-            node = EvaluationScopeTaxonomyNode(
-                taxonomy_version_id=version.id,
-                gxp_type=gxp_type,
-                source_name=definition["source_name"],
-                node_key=key,
-                description=row["description"],
-                hint=row["hint"] or None,
-                main_topic=row["main_topic"] or None,
-                short_render=row["short_render"] or None,
-                no_expand=row["no_expand"] or None,
-                source_order=row["source_order"],
-                source_excel_row=row["source_excel_row"],
+            pending.append(
+                (
+                    {
+                        "id": str(uuid4()),
+                        "taxonomy_version_id": version.id,
+                        "parent_node_id": None,
+                        "gxp_type": gxp_type,
+                        "source_name": definition["source_name"],
+                        "node_key": key,
+                        "description": row["description"],
+                        "hint": row["hint"] or None,
+                        "main_topic": row["main_topic"] or None,
+                        "short_render": row["short_render"] or None,
+                        "no_expand": row["no_expand"] or None,
+                        "source_order": row["source_order"],
+                        "source_excel_row": row["source_excel_row"],
+                    },
+                    parent_key,
+                )
             )
-            pending.append((node, parent_key))
-    session.add_all(node for node, _ in pending)
-    # A single flush assigns all node identities before parent links are resolved.
-    session.flush()
-    node_ids = {(node.gxp_type, node.node_key): node.id for node, _ in pending}
-    for node, parent_key in pending:
+    node_ids = {
+        (row["gxp_type"], row["node_key"]): row["id"]
+        for row, _ in pending
+    }
+    for row, parent_key in pending:
         if parent_key is not None:
-            parent_id = node_ids.get((node.gxp_type, parent_key))
+            parent_id = node_ids.get((row["gxp_type"], parent_key))
             if parent_id is None:
                 raise ImportCollisionError(
-                    f"Taxonomy node {node.node_key!r} has no authoritative parent {parent_key!r}."
+                    f"Taxonomy node {row['node_key']!r} has no authoritative parent {parent_key!r}."
                 )
-            node.parent_node_id = parent_id
+            row["parent_node_id"] = parent_id
+    insert_rows = sorted(
+        (row for row, _ in pending),
+        key=lambda row: (
+            row["gxp_type"],
+            row["node_key"].count("."),
+            row["source_order"],
+        ),
+    )
+    # Use Core executemany with explicit UUIDs so taxonomy seeding does not
+    # depend on ORM ordered INSERT..RETURNING UUID sentinel correlation.
+    session.execute(EvaluationScopeTaxonomyNode.__table__.insert(), insert_rows)
     session.flush()
     return artifact, version
 

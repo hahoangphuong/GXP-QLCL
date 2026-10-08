@@ -314,7 +314,7 @@ def _seed_non_gmp_variant_shell(
         checksum_sha256=checksum,
     )
 
-    output_folder = f"2026/922-{inspection_code}"
+    output_folder = f"2026/Cơ sở {gxp_type} A (ID-922) ({inspection_code})"
     (storage_root / "inspection" / output_folder).mkdir(parents=True)
     session.add(
         StorageBinding(
@@ -323,7 +323,7 @@ def _seed_non_gmp_variant_shell(
             site_legacy_id=922,
             inspection_legacy_code=inspection_code,
             relative_path=output_folder,
-            observed_folder_label=f"922-{inspection_code}",
+            observed_folder_label=output_folder.split("/", 1)[1],
             storage_class="synology_legacy",
         )
     )
@@ -542,7 +542,7 @@ def test_khkt_binary_end_to_end_renders_canonical_db_payload_and_writes_output(m
                 original_filename=expected_asset.filename,
                 checksum_sha256=checksum,
             )
-            output_folder = "2026/902-KT-2026-GLP-E2E"
+            output_folder = "2026/Cơ sở GLP A (ID-902) (KT-2026-GLP-E2E)"
             (root / "inspection" / output_folder).mkdir(parents=True)
             session.add(
                 StorageBinding(
@@ -551,7 +551,7 @@ def test_khkt_binary_end_to_end_renders_canonical_db_payload_and_writes_output(m
                     site_legacy_id=902,
                     inspection_legacy_code="KT-2026-GLP-E2E",
                     relative_path=output_folder,
-                    observed_folder_label="902-KT-2026-GLP-E2E",
+                    observed_folder_label=output_folder.split("/", 1)[1],
                     storage_class="synology_legacy",
                 )
             )
@@ -703,7 +703,7 @@ def test_khkt_gmp_end_to_end_applies_structural_team_and_scope_deletions(monkeyp
                 original_filename=expected_asset.filename,
                 checksum_sha256=checksum,
             )
-            output_folder = "2026/912-KT-2026-GMP-STRUCT"
+            output_folder = "2026/Cơ sở GMP A (ID-912) (KT-2026-GMP-STRUCT)"
             (root / "inspection" / output_folder).mkdir(parents=True)
             session.add(
                 StorageBinding(
@@ -712,7 +712,7 @@ def test_khkt_gmp_end_to_end_applies_structural_team_and_scope_deletions(monkeyp
                     site_legacy_id=912,
                     inspection_legacy_code="KT-2026-GMP-STRUCT",
                     relative_path=output_folder,
-                    observed_folder_label="912-KT-2026-GMP-STRUCT",
+                    observed_folder_label=output_folder.split("/", 1)[1],
                     storage_class="synology_legacy",
                 )
             )

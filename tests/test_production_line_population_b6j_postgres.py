@@ -179,6 +179,25 @@ def test_postgres_writer_rejects_resealed_mismatched_link_before_write(fixture_s
         assert _counts(session) == before
 
 
+def test_postgres_writer_rejects_omitted_blocked_candidate_source_before_write(fixture_state):
+    with Session(fixture_state) as session:
+        plan = _plan(session)
+        tampered = dict(plan)
+        tampered["certificate_links"] = [dict(record) for record in plan["certificate_links"]]
+        blocked = next(
+            record for record in tampered["certificate_links"]
+            if record["classification"] == "BLOCKED_SITE_MISMATCH" and record["candidate_key"] is not None
+        )
+        tampered["certificate_links"].remove(blocked)
+        tampered["plan_sha256"] = plan_digest(tampered)
+        before = _counts(session)
+        with pytest.raises(ProductionLinePopulationApplyError, match="omits candidate source actions"):
+            guarded_apply(session, tampered, expected_database_name=DATABASE_NAME, apply=True)
+        session.rollback()
+    with Session(fixture_state) as session:
+        assert _counts(session) == before
+
+
 def test_postgres_writer_rejects_resealed_wrong_dialect_before_write(fixture_state):
     with Session(fixture_state) as session:
         plan = _plan(session)

@@ -406,6 +406,57 @@ def test_prepare_generation_rejects_legacy_run_without_proven_variant_identity()
         session.rollback()
 
 
+def test_prepare_generation_rejects_duplicate_legacy_logical_documents_before_mutation():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = DocumentWorkflowService()
+
+    with Session(engine) as session:
+        case_id, _ = _seed_case(session)
+        seed_default_template_metadata(session)
+        session.add_all([
+            Document(
+                family_code="CERTIFICATE_DECISION",
+                document_type_code="certificate_decision",
+                title="Legacy duplicate A",
+                case_id=case_id,
+            ),
+            Document(
+                family_code="CERTIFICATE_DECISION",
+                document_type_code="certificate_decision",
+                title="Legacy duplicate B",
+                case_id=case_id,
+            ),
+        ])
+        session.flush()
+        before = set(session.scalars(select(DocumentGenerationRun.id)))
+        try:
+            service.prepare_generation(
+                session,
+                storage=None,
+                payload={
+                    "family_code": "CERTIFICATE_DECISION",
+                    "case_id": case_id,
+                    "gxp_type": "GP",
+                    "storage_scope": "inspection_folder",
+                    "idempotency_key": "duplicate-logical-document-001",
+                    "payload": {"TenCty": "Cong ty A"},
+                    "strict_payload": True,
+                },
+                user=build_authenticated_user("inspector01", "inspector"),
+            )
+        except HTTPException as exc:
+            assert exc.status_code == 409
+            assert "Ambiguous logical document rows" in str(exc.detail)
+        else:
+            raise AssertionError("Duplicate historical documents must fail closed.")
+        assert set(session.scalars(select(DocumentGenerationRun.id))) == before
+        assert len(list(session.scalars(select(Document).where(
+            Document.family_code == "CERTIFICATE_DECISION",
+            Document.case_id == case_id,
+        )))) == 2
+
+
 def test_prepare_generation_rejects_cross_owner_idempotency_reuse():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)

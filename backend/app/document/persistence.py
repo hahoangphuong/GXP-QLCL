@@ -99,7 +99,12 @@ def _find_existing_document(session: Session, request: DocumentGenerationRequest
         Document.family_code == request.family_code,
         *_document_parent_filters(request),
     )
-    return session.execute(stmt).scalar_one_or_none()
+    matches = list(session.scalars(stmt.limit(2)))
+    if len(matches) > 1:
+        raise DocumentPersistenceError(
+            "Ambiguous logical document rows for the same family and parent identity."
+        )
+    return matches[0] if matches else None
 
 
 def ensure_document(session: Session, plan: DocumentGenerationPlan) -> Document:

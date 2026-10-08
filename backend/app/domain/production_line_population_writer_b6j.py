@@ -12,7 +12,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from backend.app.db.models.phase1 import Case, Certificate, ProductionLine, Site
-from backend.app.domain.production_line_canonical_state import PROTECTED_DATABASE_NAMES, canonical_state_digest_pair, export_canonical_state
+from backend.app.domain.production_line_canonical_state import PROTECTED_DATABASE_NAMES, SUPPORTED_ALEMBIC_REVISIONS, canonical_state_digest_pair, export_canonical_state
 from backend.app.domain.production_line_population_b6j import PLAN_SCHEMA_VERSION, REQUIRED_ALEMBIC_REVISION, plan_digest
 
 REHEARSAL_DATABASE_NAME = "gxp_legacy_rehearsal"
@@ -35,7 +35,7 @@ def _require_clean_session(session: Session) -> None:
 def _validate_plan(plan: Mapping[str, Any]) -> None:
     _require(plan.get("schema_version") == PLAN_SCHEMA_VERSION, "B6J writer received an unsupported plan schema")
     _require(plan.get("plan_sha256") == plan_digest(plan), "B6J writer plan SHA256 does not match plan content")
-    _require(plan.get("source_alembic_revision") == REQUIRED_ALEMBIC_REVISION, "B6J writer plan has an unsupported Alembic revision")
+    _require(plan.get("source_alembic_revision") in SUPPORTED_ALEMBIC_REVISIONS, "B6J writer plan has an unsupported Alembic revision")
     for field in ("legacy_snapshot_sha256", "canonical_state_sha256", "candidate_set_sha256"):
         _require(isinstance(plan.get(field), str) and len(plan[field]) == 64, f"B6J writer plan has invalid {field}")
     for field in (
@@ -99,8 +99,8 @@ def _validate_target_mode(
     _require(expected_database_name not in PROTECTED_DATABASE_NAMES | {"postgres", REHEARSAL_DATABASE_NAME}, "B6J writer refuses protected database")
     if apply:
         _require(
-            expected_database_name.startswith("gxp_b6j_test_"),
-            "B6J non-rehearsal apply is limited to a disposable gxp_b6j_test_ database",
+            expected_database_name.startswith(("gxp_b6j_test_", "gxp_b6c_test_")),
+            "B6J non-rehearsal apply is limited to a disposable gxp_b6j_test_ or gxp_b6c_test_ database",
         )
 
 
@@ -108,13 +108,15 @@ def _validate_authoritative_rehearsal_plan(plan: Mapping[str, Any]) -> None:
     identity = plan.get("source_database_identity")
     _require(plan.get("candidate_set_roster_item_count") == 386 and len(plan.get("candidates", [])) == 386, "B6J rehearsal plan must bind exactly 386 candidates")
     _require(isinstance(identity, Mapping) and identity.get("database_name") == REHEARSAL_DATABASE_NAME and identity.get("dialect") == "postgresql", "B6J rehearsal plan database identity differs from target")
+    _require(plan.get("source_alembic_revision") == REQUIRED_ALEMBIC_REVISION, "B6J protected rehearsal remains pinned to exact Alembic 20260929_0017")
 
 
-def _verify_target(session: Session, *, expected_database_name: str) -> None:
+def _verify_target(session: Session, *, expected_database_name: str, expected_revision: str) -> None:
     _require(isinstance(expected_database_name, str) and expected_database_name.strip(), "B6J expected database name is required")
     _require(session.bind is not None and session.bind.dialect.name == "postgresql", "B6J writer requires PostgreSQL")
     _require(session.execute(text("SELECT current_database()")).scalar_one() == expected_database_name, "B6J writer connected to an unexpected database")
-    _require(session.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none() == REQUIRED_ALEMBIC_REVISION, "B6J writer requires exact Alembic 20260929_0017")
+    _require(expected_revision in SUPPORTED_ALEMBIC_REVISIONS, "B6J writer plan revision is not supported")
+    _require(session.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none() == expected_revision, "B6J writer target Alembic revision differs from sealed plan")
 
 
 def _lock_link_target(session: Session, record: Mapping[str, Any], *, certificate: bool) -> Case | Certificate:
@@ -135,7 +137,7 @@ def _prepared(session: Session, plan: Mapping[str, Any], *, expected_database_na
     _validate_target_mode(plan, expected_database_name=expected_database_name, apply=apply, allow_rehearsal_dry_run=allow_rehearsal_dry_run, allow_rehearsal_apply=allow_rehearsal_apply)
     if expected_database_name == REHEARSAL_DATABASE_NAME:
         _validate_authoritative_rehearsal_plan(plan)
-    _verify_target(session, expected_database_name=expected_database_name)
+    _verify_target(session, expected_database_name=expected_database_name, expected_revision=plan["source_alembic_revision"])
     identity = plan.get("source_database_identity")
     _require(isinstance(identity, Mapping) and identity.get("database_name") == expected_database_name, "B6J plan database identity differs from target")
     current_state = export_canonical_state(session, require_read_only=False)

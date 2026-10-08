@@ -9,6 +9,7 @@ import re
 from typing import Any, Mapping
 from uuid import NAMESPACE_URL, uuid5
 
+from backend.app.domain.production_line_canonical_state import REQUIRED_ALEMBIC_REVISION, SUPPORTED_ALEMBIC_REVISIONS
 from backend.app.domain.inspection_periods import InspectionPeriodSourceState, parse_legacy_inspection_periods
 from backend.app.domain.legacy_db_ktra_source_v2 import excel_serial_date, snapshot_cell, snapshot_cell_value, snapshot_header_map
 from backend.app.domain.phase2_import import parse_date
@@ -20,7 +21,6 @@ from backend.app.domain.production_line_review_workspace import REVIEW_SCHEMA_VE
 PLANNER_VERSION = "b6j-production-line-population/v1"
 PLAN_SCHEMA_VERSION = "production-line-population-plan/v1"
 PLAN_NAMESPACE = "https://gxp.example/migration/b6j/production-line-plan/v1"
-REQUIRED_ALEMBIC_REVISION = "20260929_0017"
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
@@ -88,7 +88,7 @@ def _dates(snapshot: Mapping[str, Any]) -> tuple[dict[int, tuple[date, object, s
 
 def _index(state: Mapping[str, Any], expected: str) -> dict[str, Any]:
     _sha(expected, "canonical state SHA256")
-    if state.get("schema_version") != CANONICAL_STATE_SCHEMA_VERSION or state.get("source_alembic_revision") != REQUIRED_ALEMBIC_REVISION:
+    if state.get("schema_version") != CANONICAL_STATE_SCHEMA_VERSION or state.get("source_alembic_revision") not in SUPPORTED_ALEMBIC_REVISIONS:
         raise ProductionLinePopulationPlanError("B6J canonical state schema or revision is invalid")
     if _digest(state) != expected:
         raise ProductionLinePopulationPlanError("B6J canonical state SHA256 does not match semantic content")
@@ -250,6 +250,6 @@ def build_population_plan(snapshot: Mapping[str, Any], *, snapshot_sha256: str, 
             if previous != desired:
                 raise ProductionLinePopulationPlanError(f"B6J conflicting duplicate canonical {label} write targets")
     roster_provenance = {} if candidate_roster is None else bind_candidate_roster(candidate_roster, roster_raw_sha256=_sha(candidate_roster_raw_sha256, "candidate roster raw SHA256"), candidate_set_sha256=candidate_set_sha256, snapshot_sha256=snapshot_sha256, canonical_state_sha256=canonical_state_sha256, candidates=candidates)
-    plan = {"schema_version": PLAN_SCHEMA_VERSION, "planner_version": PLANNER_VERSION, "legacy_snapshot_sha256": snapshot_sha256, "canonical_state_sha256": canonical_state_sha256, "candidate_set_sha256": candidate_set_sha256, **roster_provenance, "source_database_identity": index["database"], "source_alembic_revision": REQUIRED_ALEMBIC_REVISION, "candidates": candidates, "case_links": case_links, "certificate_links": certificate_links, "summary_counts": {"candidates": _counts(candidates), "cases": _counts(case_links), "certificates": _counts(certificate_links)}, "transformation_actions": [], "scope_actions": [], "certificate_relationship_actions": []}
+    plan = {"schema_version": PLAN_SCHEMA_VERSION, "planner_version": PLANNER_VERSION, "legacy_snapshot_sha256": snapshot_sha256, "canonical_state_sha256": canonical_state_sha256, "candidate_set_sha256": candidate_set_sha256, **roster_provenance, "source_database_identity": index["database"], "source_alembic_revision": canonical_state["source_alembic_revision"], "candidates": candidates, "case_links": case_links, "certificate_links": certificate_links, "summary_counts": {"candidates": _counts(candidates), "cases": _counts(case_links), "certificates": _counts(certificate_links)}, "transformation_actions": [], "scope_actions": [], "certificate_relationship_actions": []}
     plan["plan_sha256"] = plan_digest(plan)
     return plan

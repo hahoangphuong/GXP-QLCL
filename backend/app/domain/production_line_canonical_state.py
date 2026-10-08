@@ -19,6 +19,9 @@ from backend.app.domain.production_line_population import (
 
 
 REQUIRED_ALEMBIC_REVISION = "20260929_0017"
+# Explicit schema-compatible revisions verified with disposable PostgreSQL
+# schema/data probes; never interpret this as an open-ended >=0017 range.
+SUPPORTED_ALEMBIC_REVISIONS = frozenset({REQUIRED_ALEMBIC_REVISION, "20261008_0022"})
 PROTECTED_DATABASE_NAMES = frozenset({"gxp_qlcl"})
 
 
@@ -46,8 +49,8 @@ def export_canonical_state(session: Session, *, require_read_only: bool = True) 
     if not isinstance(database_name, str) or database_name in PROTECTED_DATABASE_NAMES:
         raise ProductionLinePlanningError("B6H canonical-state exporter refuses protected or invalid database")
     revision = session.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
-    if revision != REQUIRED_ALEMBIC_REVISION:
-        raise ProductionLinePlanningError("B6H canonical-state exporter requires exact Alembic 20260929_0017")
+    if revision not in SUPPORTED_ALEMBIC_REVISIONS:
+        raise ProductionLinePlanningError("B6H canonical-state exporter requires an explicitly supported Alembic revision")
     read_only = session.execute(text("SHOW transaction_read_only")).scalar_one()
     if require_read_only and read_only != "on":
         raise ProductionLinePlanningError("B6H canonical-state exporter requires a PostgreSQL READ ONLY transaction")

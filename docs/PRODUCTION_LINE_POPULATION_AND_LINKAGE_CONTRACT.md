@@ -75,3 +75,24 @@ Excel-1900 date-only conversion owner.  Before writes, B6J also recomputes the
 canonical-state semantic digest through the canonical exporter; any unrelated
 migration-relevant Site, Case, Certificate, or ProductionLine drift rejects
 the plan before target-level fences or mutations run.
+
+
+## B6H/B6J Revision 0022 Compatibility Boundary
+
+The B6 owner source tables were checked on disposable PostgreSQL across
+`20260929_0017 → 20261008_0022`. The approved revision set is **explicit**,
+not a minimum version or automatic forward-compatibility rule. The B6H
+canonical-state exporter records the **actual database revision**; B6J plans
+copy it unchanged and bind it into their semantic SHA, roster provenance, and
+plan-scoped UUID. The B6J writer checks that **the target revision equals
+the sealed plan revision** before reading current canonical state or writing.
+
+An artifact exported at `0017` must not be replayed against `0022`, even
+if all Site/Case/Certificate/ProductionLine rows are otherwise identical.
+Re-export and re-plan against the actual target revision using the immutable
+candidate roster workflow. A later unknown revision remains blocked.
+
+Protected `gxp_legacy_rehearsal` apply/dry-run remains pinned to exact
+`20260929_0017` with its existing 386-candidate and SHA authorization.
+Non-rehearsal apply remains disposable-only (`gxp_b6j_test_*` or
+`gxp_b6c_test_*`); **no production apply or deploy** is authorized here.

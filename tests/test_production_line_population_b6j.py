@@ -208,12 +208,31 @@ def test_generic_roster_cardinality_is_relative_to_sealed_plan():
 
 @pytest.mark.parametrize("count,allowed", ((385, False), (386, True), (387, False)))
 def test_authoritative_rehearsal_cardinality_is_exactly_386(count: int, allowed: bool):
-    plan = {"candidate_set_roster_item_count": count, "candidates": [{} for _ in range(count)], "source_database_identity": {"database_name": "gxp_legacy_rehearsal", "dialect": "postgresql"}}
+    plan = {"candidate_set_roster_item_count": count, "candidates": [{} for _ in range(count)], "source_database_identity": {"database_name": "gxp_legacy_rehearsal", "dialect": "postgresql"}, "source_alembic_revision": "20260929_0017"}
     if allowed:
         _validate_authoritative_rehearsal_plan(plan)
     else:
         with pytest.raises(ProductionLinePopulationApplyError, match="exactly 386"):
             _validate_authoritative_rehearsal_plan(plan)
+
+
+@pytest.mark.parametrize("revision", ("20260929_0017", "20261008_0022"))
+def test_b6j_supported_revision_is_bound_to_export_plan_and_candidate_uuid(revision):
+    state, _ = _state()
+    state["source_alembic_revision"] = revision
+    state["source_state_fingerprint"] = sha256(canonical_json_bytes({key: value for key, value in state.items() if key != "source_state_fingerprint"})).hexdigest()
+    digest = sha256(canonical_json_bytes(state)).hexdigest()
+    plan, _ = _bound_plan(_snapshot(), state, digest)
+    assert plan["source_alembic_revision"] == revision
+    _validate_plan(plan)
+
+
+def test_b6j_rejects_0022_plan_for_protected_rehearsal():
+    plan = {"candidate_set_roster_item_count": 386, "candidates": [{} for _ in range(386)],
+            "source_database_identity": {"database_name": "gxp_legacy_rehearsal", "dialect": "postgresql"},
+            "source_alembic_revision": "20261008_0022"}
+    with pytest.raises(ProductionLinePopulationApplyError, match="protected rehearsal remains pinned"):
+        _validate_authoritative_rehearsal_plan(plan)
 
 
 def test_writer_rejects_wrong_alembic_revision_before_target_access():
@@ -306,6 +325,12 @@ def test_non_rehearsal_apply_rejects_any_non_b6j_disposable_database(database_na
         _validate_target_mode(
             plan, expected_database_name=database_name, apply=True, allow_rehearsal_dry_run=False,
         )
+
+
+def test_non_rehearsal_apply_accepts_0022_compatibility_disposable_database():
+    name = "gxp_b6c_test_contract"
+    plan = {"source_database_identity": {"database_name": name, "dialect": "postgresql"}}
+    _validate_target_mode(plan, expected_database_name=name, apply=True, allow_rehearsal_dry_run=False)
 
 
 def test_non_rehearsal_apply_accepts_explicit_b6j_disposable_database():

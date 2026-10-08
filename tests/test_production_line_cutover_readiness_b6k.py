@@ -144,3 +144,23 @@ def test_cli_requires_independent_file_sha_before_any_output(tmp_path, capsys):
     args[args.index("0" * 64)] = sha256(roster_path.read_bytes()).hexdigest()
     assert main(args) == 0
     assert json.loads(report_path.read_text())["cutover_authorized"] is False
+
+
+def test_cli_writes_blocker_report_and_returns_nonzero(tmp_path):
+    plan, roster = fixture()
+    roster["items"][0]["review_decision"] = "DEFER_INSUFFICIENT_EVIDENCE"
+    reseal(roster)
+    plan_path, roster_path, report_path = (tmp_path / x for x in ("plan.json", "roster.json", "report.json"))
+    plan_path.write_text(json.dumps(plan))
+    roster_path.write_text(json.dumps(roster))
+    args = [
+        "--plan", str(plan_path), "--reviewed-roster", str(roster_path),
+        "--expected-plan-file-sha256", sha256(plan_path.read_bytes()).hexdigest(),
+        "--expected-reviewed-roster-file-sha256", sha256(roster_path.read_bytes()).hexdigest(),
+        "--output", str(report_path),
+    ]
+    assert main(args) == 3
+    report = json.loads(report_path.read_text())
+    assert report["status"] == "REVIEW_ALIGNMENT_BLOCKED"
+    assert report["cutover_authorized"] is False
+    assert "NEW_LINE_NOT_APPROVED" in report["findings"][0]["blockers"]

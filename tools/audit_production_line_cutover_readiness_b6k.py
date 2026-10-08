@@ -28,7 +28,9 @@ def main(argv: list[str] | None = None) -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"B6K_REVIEW_ALIGNMENT={report['status']};BLOCKED_CANDIDATES={report['blocked_candidate_count']}")
-    return 0
+    # Keep the complete audit artifact, but never report success to CI/shell
+    # when a human review or planned action remains unresolved.
+    return 3 if report["status"] == "REVIEW_ALIGNMENT_BLOCKED" else 0
 
 
 if __name__ == "__main__":

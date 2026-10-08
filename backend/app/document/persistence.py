@@ -310,6 +310,12 @@ def _assert_idempotent_generation_run_matches_request(
         mismatches.append("requested_by_user")
     if existing.input_payload_redacted != expected_payload:
         mismatches.append("payload")
+    if any(field.is_sensitive for field in plan.payload.fields):
+        # The persisted redacted payload cannot distinguish different values
+        # of sensitive fields. No secret values or reversible substitutes are
+        # stored in a generation run, so even an apparently identical retry
+        # cannot prove payload equality and must fail closed.
+        mismatches.append("sensitive_payload_unverifiable")
     if mismatches:
         raise DocumentPersistenceError(
             "Document generation idempotency key is already bound to a different "

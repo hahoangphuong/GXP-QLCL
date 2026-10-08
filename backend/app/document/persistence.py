@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from dataclasses import dataclass
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, select, text
 from sqlalchemy.orm import Session
 
 from backend.app.db.enums import DocumentGenerationStatus, DocumentVariantType, LegacyEntityType
@@ -194,6 +195,25 @@ def _lookup_template_binding(
             f"Ambiguous template_binding rows for family_code={plan.template.family_code!r}"
         )
     return matches[0] if matches else None
+
+
+def _lock_generation_idempotency_key(
+    session: Session,
+    idempotency_key: str | None,
+) -> None:
+    if not idempotency_key or session.get_bind().dialect.name != "postgresql":
+        return
+    # A transaction-scoped lock must precede both the key preflight and document
+    # creation: otherwise two uncommitted preparations can each create a shell
+    # before the database's unique idempotency-key index rejects the loser.
+    digest = sha256(
+        ("document-generation-idempotency:" + idempotency_key).encode("utf-8")
+    ).digest()
+    lock_key = int.from_bytes(digest[:8], "big", signed=True)
+    session.execute(
+        text("SELECT pg_advisory_xact_lock(:lock_key)"),
+        {"lock_key": lock_key},
+    )
 
 
 def _existing_generation_run(session: Session, idempotency_key: str | None) -> DocumentGenerationRun | None:
@@ -388,6 +408,7 @@ def prepare_generation_persistence(
 ) -> PersistedGenerationState:
     _require_parent_link(plan.request)
     _validate_capa_document_link(session, plan.request)
+    _lock_generation_idempotency_key(session, plan.request.idempotency_key)
     _preflight_idempotent_generation_run(
         session,
         plan,

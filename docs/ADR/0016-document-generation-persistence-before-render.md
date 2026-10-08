@@ -23,6 +23,7 @@ Template definition/binding references are attached when seeded rows exist; othe
 
 Idempotency rule:
 - if `idempotency_key` already exists, reuse the prior `document_generation_run` instead of creating a duplicate.
+- On PostgreSQL, serialize preparations sharing a nonempty key with a transaction-scoped advisory lock derived from that exact key **before** the idempotency preflight and before creating document/variant shells. The winning transaction commits its run and dependencies before the next preparation rechecks the key, reuses the same run for a matching request, or fails closed for request/source drift. Preserve the database unique constraint as the final identity guard. Calls without a key are unchanged, and SQLite tests do not emulate the advisory lock.
 
 ## Consequences
 - Generation attempts can be audited even before a render adapter is implemented.

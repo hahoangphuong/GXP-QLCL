@@ -179,6 +179,20 @@ def test_postgres_writer_rejects_resealed_mismatched_link_before_write(fixture_s
         assert _counts(session) == before
 
 
+def test_postgres_writer_rejects_resealed_wrong_dialect_before_write(fixture_state):
+    with Session(fixture_state) as session:
+        plan = _plan(session)
+        altered = dict(plan)
+        altered["source_database_identity"] = {**plan["source_database_identity"], "dialect": "sqlite"}
+        altered["plan_sha256"] = plan_digest(altered)
+        before = _counts(session)
+        with pytest.raises(ProductionLinePopulationApplyError, match="identity differs from PostgreSQL target"):
+            guarded_apply(session, altered, expected_database_name=DATABASE_NAME, apply=True)
+        session.rollback()
+    with Session(fixture_state) as session:
+        assert _counts(session) == before
+
+
 def test_postgres_writer_rejects_unrelated_global_canonical_state_drift(fixture_state):
     with Session(fixture_state) as session:
         plan = _plan(session)

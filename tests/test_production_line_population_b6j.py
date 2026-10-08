@@ -329,6 +329,18 @@ def test_non_rehearsal_writer_rejects_non_disposable_database_for_dry_run_and_ap
 
 
 @pytest.mark.parametrize("apply", (False, True))
+@pytest.mark.parametrize("apply", (False, True))
+@pytest.mark.parametrize("dialect", (None, "sqlite", "postgresql+psycopg"))
+def test_non_rehearsal_requires_exact_postgresql_source_dialect(apply, dialect):
+    database_name = "gxp_b6j_test_contract"
+    plan = {"source_database_identity": {"database_name": database_name, "dialect": dialect}}
+    with pytest.raises(ProductionLinePopulationApplyError, match="identity differs from PostgreSQL target"):
+        _validate_target_mode(
+            plan, expected_database_name=database_name,
+            apply=apply, allow_rehearsal_dry_run=False,
+        )
+
+
 def test_non_rehearsal_apply_accepts_0022_compatibility_disposable_database(apply):
     name = "gxp_b6c_test_contract"
     plan = {"source_database_identity": {"database_name": name, "dialect": "postgresql"}}

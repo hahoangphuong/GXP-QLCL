@@ -90,10 +90,13 @@ def _validate_target_mode(
     _require(isinstance(expected_database_name, str) and expected_database_name.strip(), "B6J expected database name is required")
     identity = plan.get("source_database_identity")
     _require(isinstance(identity, Mapping), "B6J plan has no source database identity")
+    _require(
+        identity.get("database_name") == expected_database_name and identity.get("dialect") == "postgresql",
+        "B6J plan database identity differs from PostgreSQL target",
+    )
     if expected_database_name == REHEARSAL_DATABASE_NAME:
         _require((apply and allow_rehearsal_apply) or (not apply and allow_rehearsal_dry_run), "B6J rehearsal operation lacks its explicit authorization")
         _require(expected_database_name == REHEARSAL_DATABASE_NAME, "B6J rehearsal override requires the exact rehearsal database")
-        _require(identity.get("database_name") == REHEARSAL_DATABASE_NAME and identity.get("dialect") == "postgresql", "B6J rehearsal plan database identity differs from target")
         return
     _require(not allow_rehearsal_dry_run and not allow_rehearsal_apply, "B6J rehearsal override requires the exact rehearsal database")
     _require(expected_database_name not in PROTECTED_DATABASE_NAMES | {"postgres", REHEARSAL_DATABASE_NAME}, "B6J writer refuses protected database")
@@ -139,8 +142,6 @@ def _prepared(session: Session, plan: Mapping[str, Any], *, expected_database_na
     if expected_database_name == REHEARSAL_DATABASE_NAME:
         _validate_authoritative_rehearsal_plan(plan)
     _verify_target(session, expected_database_name=expected_database_name, expected_revision=plan["source_alembic_revision"])
-    identity = plan.get("source_database_identity")
-    _require(isinstance(identity, Mapping) and identity.get("database_name") == expected_database_name, "B6J plan database identity differs from target")
     current_state = export_canonical_state(session, require_read_only=False)
     current_semantic_sha, _ = canonical_state_digest_pair(current_state)
     _require(current_semantic_sha == plan["canonical_state_sha256"], "B6J writer global canonical state changed")

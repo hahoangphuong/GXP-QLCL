@@ -97,5 +97,8 @@ candidate roster workflow. A later unknown revision remains blocked.
 
 Protected `gxp_legacy_rehearsal` apply/dry-run remains pinned to exact
 `20260929_0017` with its existing 386-candidate and SHA authorization.
-Non-rehearsal apply remains disposable-only (`gxp_b6j_test_*` or
-`gxp_b6c_test_*`); **no production apply or deploy** is authorized here.
+All non-rehearsal B6J modes, **including rollback dry-run**, remain
+disposable-only (`gxp_b6j_test_*` or `gxp_b6c_test_*`). A dry-run performs
+writes in a transaction before rolling back, so its target guard must be
+identical to the non-rehearsal apply guard. **No production apply, dry-run,
+or deploy** is authorized here.

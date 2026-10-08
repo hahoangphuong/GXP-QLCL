@@ -315,29 +315,32 @@ def test_rehearsal_dry_run_override_is_exact_and_never_grants_apply(expected_dat
             _validate_target_mode(plan, expected_database_name=expected_database_name, apply=apply, allow_rehearsal_dry_run=allow)
 
 
+@pytest.mark.parametrize("apply", (False, True))
 @pytest.mark.parametrize(
     "database_name",
     ("gxp_qlcl_prod", "gxp_qlcl_test", "gxp_b6h_test_staging", "gxp_legacy_rehearsal_copy"),
 )
-def test_non_rehearsal_apply_rejects_any_non_b6j_disposable_database(database_name):
+def test_non_rehearsal_writer_rejects_non_disposable_database_for_dry_run_and_apply(database_name, apply):
     plan = {"source_database_identity": {"database_name": database_name, "dialect": "postgresql"}}
     with pytest.raises(ProductionLinePopulationApplyError, match="disposable gxp_b6j_test_"):
         _validate_target_mode(
-            plan, expected_database_name=database_name, apply=True, allow_rehearsal_dry_run=False,
+            plan, expected_database_name=database_name, apply=apply, allow_rehearsal_dry_run=False,
         )
 
 
-def test_non_rehearsal_apply_accepts_0022_compatibility_disposable_database():
+@pytest.mark.parametrize("apply", (False, True))
+def test_non_rehearsal_apply_accepts_0022_compatibility_disposable_database(apply):
     name = "gxp_b6c_test_contract"
     plan = {"source_database_identity": {"database_name": name, "dialect": "postgresql"}}
-    _validate_target_mode(plan, expected_database_name=name, apply=True, allow_rehearsal_dry_run=False)
+    _validate_target_mode(plan, expected_database_name=name, apply=apply, allow_rehearsal_dry_run=False)
 
 
-def test_non_rehearsal_apply_accepts_explicit_b6j_disposable_database():
+@pytest.mark.parametrize("apply", (False, True))
+def test_non_rehearsal_apply_accepts_explicit_b6j_disposable_database(apply):
     database_name = "gxp_b6j_test_contract"
     plan = {"source_database_identity": {"database_name": database_name, "dialect": "postgresql"}}
     _validate_target_mode(
-        plan, expected_database_name=database_name, apply=True, allow_rehearsal_dry_run=False,
+        plan, expected_database_name=database_name, apply=apply, allow_rehearsal_dry_run=False,
     )
 
 

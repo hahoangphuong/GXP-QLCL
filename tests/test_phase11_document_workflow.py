@@ -315,7 +315,7 @@ def test_sensitive_generation_payload_never_reuses_unverifiable_idempotency_iden
             notes=None,
         )
 
-        def plan(account_number: str, *, key: str) -> DocumentGenerationPlan:
+        def plan(account_number: str, *, key: str, sensitive: bool = True) -> DocumentGenerationPlan:
             return DocumentGenerationPlan(
                 request=DocumentGenerationRequest(
                     family_code=family,
@@ -336,7 +336,7 @@ def test_sensitive_generation_payload_never_reuses_unverifiable_idempotency_iden
                             field_name="SoTK",
                             value=account_number,
                             source="sensitive-test",
-                            is_sensitive=True,
+                            is_sensitive=sensitive,
                         ),
                     ),
                     source_procedures=("sensitive-test",),
@@ -355,15 +355,22 @@ def test_sensitive_generation_payload_never_reuses_unverifiable_idempotency_iden
             "TenCty": "Cong ty A",
         }
 
-        for account in ("0123456789", "9988776655"):
+        # A caller may mark the same field as nonsensitive and supply the
+        # literal redaction marker; it still cannot prove the original value.
+        for account, sensitive in (
+            ("0123456789", True),
+            ("9988776655", True),
+            ("<redacted>", False),
+        ):
             try:
                 persistence_module.prepare_generation_persistence(
                     session,
-                    plan(account, key="sensitive-payload-retry-001"),
+                    plan(account, key="sensitive-payload-retry-001", sensitive=sensitive),
                 )
             except persistence_module.DocumentPersistenceError as exc:
                 assert "sensitive_payload_unverifiable" in str(exc)
-                assert account not in str(exc)
+                if sensitive:
+                    assert account not in str(exc)
             else:
                 raise AssertionError(
                     "Sensitive payload identity cannot be proven from redacted data."

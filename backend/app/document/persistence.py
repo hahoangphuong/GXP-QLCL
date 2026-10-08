@@ -284,8 +284,9 @@ def _assert_idempotent_generation_run_matches_request(
     template_definition: TemplateDefinition | None,
     template_binding: TemplateBinding | None,
 ) -> None:
+    redacted_payload = plan.payload.redacted_payload()
     expected_payload = json.dumps(
-        plan.payload.redacted_payload(),
+        redacted_payload,
         ensure_ascii=False,
         sort_keys=True,
     )
@@ -310,11 +311,15 @@ def _assert_idempotent_generation_run_matches_request(
         mismatches.append("requested_by_user")
     if existing.input_payload_redacted != expected_payload:
         mismatches.append("payload")
-    if any(field.is_sensitive for field in plan.payload.fields):
-        # The persisted redacted payload cannot distinguish different values
-        # of sensitive fields. No secret values or reversible substitutes are
-        # stored in a generation run, so even an apparently identical retry
-        # cannot prove payload equality and must fail closed.
+    if (
+        any(field.is_sensitive for field in plan.payload.fields)
+        or "<redacted>" in redacted_payload.values()
+    ):
+        # The redaction marker can also be supplied as a literal nonsensitive
+        # value on retry. A persisted marker is not evidence that the original
+        # value was literally the marker rather than a redacted secret.
+        # Fail closed for both forms; never infer sensitivity solely from the
+        # current request's is_sensitive flag.
         mismatches.append("sensitive_payload_unverifiable")
     if mismatches:
         raise DocumentPersistenceError(

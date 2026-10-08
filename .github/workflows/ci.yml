@@ -120,7 +120,7 @@ jobs:
           python -m alembic upgrade 20260929_0017
           python -m pytest tests/test_production_line_population_b6j_postgres.py -q -p no:cacheprovider
 
-      - name: B6 revision 0022 read-only compatibility probe (guard remains closed)
+      - name: B6 revision 0022 exact-provenance export, plan, rollback and disposable apply
         env:
           DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_b6c_test_ci
           B6_0022_COMPAT_INTEGRATION: "1"

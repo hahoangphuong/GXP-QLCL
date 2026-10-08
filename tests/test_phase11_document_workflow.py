@@ -724,24 +724,22 @@ def test_source_binary_readiness_rejects_foreign_version_and_binding_identity():
         session.add_all([source_version, foreign_version])
         session.flush()
 
-        lookup = SourceDocumentLookupRequest(
-            family_code="INSPECTION_BB_KT",
-            required_bookmarks=("DsTT",),
-            dependency_type="copy_forward",
-            case_id=case_id,
-        )
-
         def requirement(
             version_id: str,
             binding_id: str,
             *,
-            candidate_family: str = "INSPECTION_BB_KT",
+            request_family: str = "INSPECTION_BB_KT",
         ):
             resolution = SourceDocumentResolution(
-                request=lookup,
+                request=SourceDocumentLookupRequest(
+                    family_code=request_family,
+                    required_bookmarks=("DsTT",),
+                    dependency_type="copy_forward",
+                    case_id=case_id,
+                ),
                 candidate=SourceDocumentCandidate(
                     document_id=source.id,
-                    family_code=candidate_family,
+                    family_code="INSPECTION_BB_KT",
                     document_version_id=version_id,
                     available_bookmarks=("DsTT",),
                     is_current_version=True,
@@ -763,7 +761,7 @@ def test_source_binary_readiness_rejects_foreign_version_and_binding_identity():
 
         wrong_family = requirement(
             source_version.id, source_binding.id,
-            candidate_family="INSPECTION_CAPA_LAN_1",
+            request_family="INSPECTION_CAPA_LAN_1",
         )
         assert wrong_family.readiness_status == "source_version_lineage_mismatch"
 

@@ -343,6 +343,8 @@ class DocumentWorkflowService:
             detail=f"Document generation run is not renderable from status {row.status.value!r}.",
         )
 
+    _RENDER_FAILURE_COMMIT_KEY = "document.render_failure_state_ready_to_commit"
+
     def _mark_generation_run_failed(self, session: Session, generation_run_id: str, detail: str) -> None:
         row = session.get(DocumentGenerationRun, generation_run_id)
         if row is None:
@@ -350,6 +352,14 @@ class DocumentWorkflowService:
         row.status = DocumentGenerationStatus.FAILED
         row.error_summary = detail
         session.flush()
+        # Only a successfully flushed failure transition is eligible for the
+        # route's intentional error-response commit. Preflight conflicts must
+        # still roll back through the normal session dependency.
+        session.info[self._RENDER_FAILURE_COMMIT_KEY] = generation_run_id
+
+    @classmethod
+    def consume_render_failure_commit_request(cls, session: Session) -> bool:
+        return bool(session.info.pop(cls._RENDER_FAILURE_COMMIT_KEY, None))
 
     def _serialize_generation_status(self, session: Session, generation_run_id: str) -> dict[str, Any]:
         row = session.get(DocumentGenerationRun, generation_run_id)
@@ -658,6 +668,7 @@ class DocumentWorkflowService:
             render_payload["idempotency_key"] = f"render-{uuid4()}"
         prepared = None
         allocated = None
+        render_claimed = False
         output_was_current_before_render = True
         rendered_checksum: str | None = None
         previous_current_version_ids: tuple[str, ...] = ()
@@ -671,6 +682,7 @@ class DocumentWorkflowService:
                 session,
                 prepared,
             )
+            render_claimed = True
             output_filename = self._resolve_render_output_filename(
                 prepared,
                 render_payload.get("output_filename"),
@@ -679,7 +691,6 @@ class DocumentWorkflowService:
             blocked_reasons = self._build_blocked_reasons(prepared, template_readiness)
             if blocked_reasons:
                 detail = "Document family is not render-safe: " + ", ".join(blocked_reasons)
-                self._mark_generation_run_failed(session, prepared.persisted_state.generation_run_id, detail)
                 raise HTTPException(status_code=409, detail=detail)
             allocated = prepare_template_aware_docx_generation(
                 session,
@@ -767,14 +778,16 @@ class DocumentWorkflowService:
                     previous_current_version_ids,
                     output_was_current_before_render=output_was_current_before_render,
                 )
+            detail = str(exc.detail)
             if cleanup_error is not None:
-                detail = f"{exc.detail} Output cleanup failed: {cleanup_error}"
-                if prepared is not None and session.is_active:
-                    self._mark_generation_run_failed(
-                        session,
-                        prepared.persisted_state.generation_run_id,
-                        detail,
-                    )
+                detail += f" Output cleanup failed: {cleanup_error}"
+            if render_claimed and prepared is not None and session.is_active:
+                self._mark_generation_run_failed(
+                    session,
+                    prepared.persisted_state.generation_run_id,
+                    detail,
+                )
+            if cleanup_error is not None:
                 raise HTTPException(status_code=500, detail=detail) from exc
             raise
         except (

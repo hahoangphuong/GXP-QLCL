@@ -795,6 +795,127 @@ def test_render_template_docx_blocks_payload_passthrough_family_and_marks_run_fa
         shutil.rmtree(root, ignore_errors=True)
 
 
+
+def test_render_route_persists_failed_run_even_when_dependency_rolls_back():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    storage, root = _build_storage()
+    try:
+        with Session(engine) as session:
+            case_id, _ = _seed_case(session)
+            seed_default_template_metadata(session)
+            session.commit()
+
+        app = create_app("sqlite:///:memory:", storage_service=storage)
+        route = next(
+            route for route in app.routes
+            if getattr(route, "path", None) == "/documents/render-template-docx"
+        )
+        with Session(engine) as session:
+            try:
+                route.endpoint(
+                    payload=SimpleNamespace(model_dump=lambda: {
+                        "family_code": "CERTIFICATE_DECISION",
+                        "case_id": case_id,
+                        "gxp_type": "GP",
+                        "storage_scope": "inspection_folder",
+                        "idempotency_key": "route-failure-durability-001",
+                        "output_filename": "blocked.docx",
+                        "payload": {"TenCty": "Cong ty A"},
+                        "strict_payload": True,
+                    }),
+                    request=_request_for_app(app),
+                    session=session,
+                    user=build_authenticated_user(
+                        "inspector01", "inspector", permissions={"document.write"}
+                    ),
+                )
+            except HTTPException as exc:
+                assert exc.status_code == 409
+                assert "not render-safe" in str(exc.detail)
+            else:
+                raise AssertionError("Unready family must not render")
+            session.rollback()  # The exception path in the request dependency.
+
+        with Session(engine) as session:
+            run = session.scalars(
+                select(DocumentGenerationRun).where(
+                    DocumentGenerationRun.idempotency_key == "route-failure-durability-001"
+                )
+            ).one()
+            assert run.status == DocumentGenerationStatus.FAILED
+            assert "not render-safe" in str(run.error_summary)
+            assert run.output_document_version_id is None
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_render_route_preflight_identity_conflict_does_not_commit_side_effects():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    storage, root = _build_storage()
+    try:
+        with Session(engine) as session:
+            case_id, _ = _seed_case(session)
+            seed_default_template_metadata(session)
+            prepared = DocumentWorkflowService().prepare_generation(
+                session,
+                storage=storage,
+                payload={
+                    "family_code": "CERTIFICATE_DECISION",
+                    "case_id": case_id,
+                    "gxp_type": "GP",
+                    "storage_scope": "inspection_folder",
+                    "idempotency_key": "route-preflight-no-commit-001",
+                    "payload": {"TenCty": "Cong ty A"},
+                    "strict_payload": True,
+                },
+                user=build_authenticated_user("inspector01", "inspector"),
+            )
+            session.commit()
+
+        app = create_app("sqlite:///:memory:", storage_service=storage)
+        route = next(
+            route for route in app.routes
+            if getattr(route, "path", None) == "/documents/render-template-docx"
+        )
+        with Session(engine) as session:
+            try:
+                route.endpoint(
+                    payload=SimpleNamespace(model_dump=lambda: {
+                        "family_code": "CERTIFICATE_DECISION",
+                        "case_id": case_id,
+                        "gxp_type": "GP",
+                        "storage_scope": "inspection_folder",
+                        "idempotency_key": "route-preflight-no-commit-001",
+                        "output_filename": "must-not-write.docx",
+                        "payload": {"TenCty": "Cong ty A"},
+                        "strict_payload": True,
+                    }),
+                    request=_request_for_app(app),
+                    session=session,
+                    user=build_authenticated_user(
+                        "inspector02", "inspector", permissions={"document.write"}
+                    ),
+                )
+            except HTTPException as exc:
+                assert exc.status_code == 409
+                assert "different request" in str(exc.detail)
+            else:
+                raise AssertionError("Another user's idempotency identity must fail closed")
+            session.rollback()
+
+        with Session(engine) as session:
+            run = session.get(DocumentGenerationRun, prepared["generation_run_id"])
+            assert run is not None and run.status == DocumentGenerationStatus.PENDING
+            assert run.output_document_version_id is None
+            assert session.scalars(
+                select(AppUser).where(AppUser.username == "inspector02")
+            ).first() is None
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_render_template_docx_succeeds_for_dkkd_certificate_and_updates_lineage():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)

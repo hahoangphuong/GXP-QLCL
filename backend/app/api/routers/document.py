@@ -49,12 +49,20 @@ def register_document_routes(app, session_factory) -> None:
     ):
         require_permissions(user, {"document.write"})
         storage = request.app.state.storage_service
-        result = service.render_template_docx(
-            session,
-            storage=storage,
-            payload=payload.model_dump(),
-            user=user,
-        )
+        try:
+            result = service.render_template_docx(
+                session,
+                storage=storage,
+                payload=payload.model_dump(),
+                user=user,
+            )
+        except Exception:
+            # A claimed render attempt may have been flushed as FAILED.
+            # Commit only that explicitly signaled failure path; ordinary
+            # preflight errors still roll back through the session dependency.
+            if session.is_active and service.consume_render_failure_commit_request(session):
+                commit_or_409(session)
+            raise
         try:
             commit_or_409(session)
         except Exception as exc:

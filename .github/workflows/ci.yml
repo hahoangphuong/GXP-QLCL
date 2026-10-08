@@ -50,6 +50,76 @@ jobs:
       - name: Run backend tests
         run: python -m pytest -q
 
+  b6-postgres-integration:
+    # Recovery-only, disposable PostgreSQL coverage. Never connects to a VM.
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/recovery/b6-') }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: gxp_b6_ci_admin
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d gxp_b6_ci_admin"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements.dev.lock.txt
+
+      - name: Create disposable B6 PostgreSQL databases
+        env:
+          B6_CI_ADMIN_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_b6_ci_admin
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine
+
+          engine = create_engine(os.environ["B6_CI_ADMIN_URL"], isolation_level="AUTOCOMMIT")
+          try:
+              with engine.connect() as connection:
+                  for name in ("gxp_b6g_test_ci", "gxp_b6h_test_ci", "gxp_b6j_test_ci"):
+                      assert name.startswith(("gxp_b6g_test_", "gxp_b6h_test_", "gxp_b6j_test_"))
+                      connection.exec_driver_sql(f'CREATE DATABASE "{name}"')
+          finally:
+              engine.dispose()
+          PY
+
+      - name: B6G isolated schema expand and downgrade regression
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_b6g_test_ci
+          B6G_POSTGRES_INTEGRATION: "1"
+        run: |
+          python -m alembic upgrade 20260915_0016
+          python -m pytest tests/test_b6g_schema_expand_foundation_postgres.py -q -p no:cacheprovider
+
+      - name: B6H isolated canonical-state exporter regression
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_b6h_test_ci
+          B6H_POSTGRES_INTEGRATION: "1"
+        run: |
+          python -m alembic upgrade 20260929_0017
+          python -m pytest tests/test_production_line_population_b6h_postgres.py -q -p no:cacheprovider
+
+      - name: B6J isolated planner and guarded-writer regression
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_b6j_test_ci
+          B6J_POSTGRES_INTEGRATION: "1"
+        run: |
+          python -m alembic upgrade 20260929_0017
+          python -m pytest tests/test_production_line_population_b6j_postgres.py -q -p no:cacheprovider
+
   frontend:
     runs-on: ubuntu-latest
     steps:

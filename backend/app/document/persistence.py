@@ -124,19 +124,26 @@ def ensure_document(session: Session, plan: DocumentGenerationPlan) -> Document:
     return document
 
 
-def ensure_document_variant(session: Session, document: Document, plan: DocumentGenerationPlan) -> DocumentVariant:
-    variant_type = _variant_type_for_source_application(plan.template.source_application)
+def _find_existing_document_variant(
+    session: Session,
+    document: Document,
+    plan: DocumentGenerationPlan,
+) -> DocumentVariant | None:
     stmt: Select[tuple[DocumentVariant]] = select(DocumentVariant).where(
         DocumentVariant.document_id == document.id,
-        DocumentVariant.variant_type == variant_type,
+        DocumentVariant.variant_type == _variant_type_for_source_application(plan.template.source_application),
         DocumentVariant.language_code == plan.request.language_code,
     )
-    existing = session.execute(stmt).scalar_one_or_none()
+    return session.execute(stmt).scalar_one_or_none()
+
+
+def ensure_document_variant(session: Session, document: Document, plan: DocumentGenerationPlan) -> DocumentVariant:
+    existing = _find_existing_document_variant(session, document, plan)
     if existing is not None:
         return existing
     variant = DocumentVariant(
         document_id=document.id,
-        variant_type=variant_type,
+        variant_type=_variant_type_for_source_application(plan.template.source_application),
         language_code=plan.request.language_code,
         is_active=True,
     )
@@ -268,6 +275,7 @@ def _assert_idempotent_generation_run_matches_request(
     *,
     plan: DocumentGenerationPlan,
     document: Document,
+    variant: DocumentVariant | None,
     template_definition: TemplateDefinition | None,
     template_binding: TemplateBinding | None,
 ) -> None:
@@ -281,6 +289,12 @@ def _assert_idempotent_generation_run_matches_request(
     mismatches: list[str] = []
     if existing.document_id != document.id:
         mismatches.append("document")
+    if (
+        variant is None
+        or existing.document_variant_id is None
+        or existing.document_variant_id != variant.id
+    ):
+        mismatches.append("document_variant")
     if existing.template_definition_id != expected_definition_id:
         mismatches.append("template_definition")
     if existing.template_binding_id != expected_binding_id:
@@ -302,6 +316,7 @@ def create_document_generation_run(
     session: Session,
     plan: DocumentGenerationPlan,
     document: Document,
+    variant: DocumentVariant,
     template_definition: TemplateDefinition | None,
     template_binding: TemplateBinding | None,
 ) -> tuple[DocumentGenerationRun, bool]:
@@ -311,12 +326,14 @@ def create_document_generation_run(
             existing,
             plan=plan,
             document=document,
+            variant=variant,
             template_definition=template_definition,
             template_binding=template_binding,
         )
         return existing, True
     generation_run = DocumentGenerationRun(
         document_id=document.id,
+        document_variant_id=variant.id,
         template_binding_id=template_binding.id if template_binding else None,
         template_definition_id=template_definition.id if template_definition else None,
         output_document_version_id=None,
@@ -423,12 +440,14 @@ def _preflight_idempotent_generation_run(
         raise DocumentPersistenceError(
             "Document generation idempotency key is already bound to a different request: document."
         )
+    variant = _find_existing_document_variant(session, document, plan)
     template_definition = _lookup_template_definition(session, plan)
     template_binding = _lookup_template_binding(session, plan, template_definition)
     _assert_idempotent_generation_run_matches_request(
         existing,
         plan=plan,
         document=document,
+        variant=variant,
         template_definition=template_definition,
         template_binding=template_binding,
     )
@@ -461,6 +480,7 @@ def prepare_generation_persistence(
         session,
         plan,
         document,
+        variant,
         template_definition,
         template_binding,
     )

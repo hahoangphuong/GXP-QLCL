@@ -293,6 +293,119 @@ def test_prepare_generation_reuses_idempotency_key_only_for_exact_request():
     assert second["document_id"] == first["document_id"]
 
 
+
+def test_prepare_generation_rejects_idempotency_reuse_for_different_language_variant():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = DocumentWorkflowService()
+
+    with Session(engine) as session:
+        case_id, _ = _seed_case(session)
+        seed_default_template_metadata(session)
+        user = build_authenticated_user("inspector01", "inspector")
+        payload = {
+            "family_code": "CERTIFICATE_DECISION",
+            "case_id": case_id,
+            "gxp_type": "GP",
+            "storage_scope": "inspection_folder",
+            "idempotency_key": "phase11-idempotent-variant-001",
+            "payload": {"TenCty": "Cong ty A"},
+            "strict_payload": True,
+        }
+        original = service.prepare_generation(
+            session,
+            storage=None,
+            payload={**payload, "language_code": "vi"},
+            user=user,
+        )
+        run = session.get(DocumentGenerationRun, original["generation_run_id"])
+        assert run is not None
+        assert run.document_variant_id == original["document_variant_id"]
+        assert run.output_document_version_id is None
+
+        try:
+            service.prepare_generation(
+                session,
+                storage=None,
+                payload={**payload, "language_code": "en"},
+                user=user,
+            )
+        except HTTPException as exc:
+            assert exc.status_code == 409
+            assert "different request: document_variant" in str(exc.detail)
+        else:
+            raise AssertionError(
+                "Expected idempotency reuse across language variants to fail before mutation."
+            )
+
+        variants = list(
+            session.scalars(
+                select(DocumentVariant).where(
+                    DocumentVariant.document_id == original["document_id"]
+                )
+            )
+        )
+        assert len(variants) == 1
+        assert variants[0].id == original["document_variant_id"]
+        assert variants[0].language_code == "vi"
+        same_request = service.prepare_generation(
+            session,
+            storage=None,
+            payload={**payload, "language_code": "vi"},
+            user=user,
+        )
+        assert same_request["reused_generation_run"] is True
+        assert same_request["generation_run_id"] == original["generation_run_id"]
+        session.commit()
+
+
+def test_prepare_generation_rejects_legacy_run_without_proven_variant_identity():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = DocumentWorkflowService()
+
+    with Session(engine) as session:
+        case_id, _ = _seed_case(session)
+        seed_default_template_metadata(session)
+        user = build_authenticated_user("inspector01", "inspector")
+        payload = {
+            "family_code": "CERTIFICATE_DECISION",
+            "case_id": case_id,
+            "gxp_type": "GP",
+            "storage_scope": "inspection_folder",
+            "idempotency_key": "phase11-idempotent-legacy-variant-001",
+            "payload": {"TenCty": "Cong ty A"},
+            "strict_payload": True,
+        }
+        original = service.prepare_generation(
+            session,
+            storage=None,
+            payload=payload,
+            user=user,
+        )
+        run = session.get(DocumentGenerationRun, original["generation_run_id"])
+        assert run is not None
+        run.document_variant_id = None
+        session.flush()
+
+        try:
+            service.prepare_generation(
+                session,
+                storage=None,
+                payload=payload,
+                user=user,
+            )
+        except HTTPException as exc:
+            assert exc.status_code == 409
+            assert "different request: document_variant" in str(exc.detail)
+        else:
+            raise AssertionError(
+                "Expected historical run without variant lineage to fail closed."
+            )
+        assert run.document_variant_id is None
+        session.rollback()
+
+
 def test_prepare_generation_rejects_cross_owner_idempotency_reuse():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
@@ -407,7 +520,13 @@ def test_idempotent_generation_retry_requires_source_dependency_identity():
             language_code="vi",
             is_active=True,
         )
-        session.add(source_variant)
+        target_variant = DocumentVariant(
+            document_id=target_document.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="vi",
+            is_active=True,
+        )
+        session.add_all([source_variant, target_variant])
         session.flush()
 
         source_v1 = DocumentVersion(
@@ -437,6 +556,7 @@ def test_idempotent_generation_retry_requires_source_dependency_identity():
 
         run = DocumentGenerationRun(
             document_id=target_document.id,
+            document_variant_id=target_variant.id,
             template_binding_id=None,
             template_definition_id=None,
             output_document_version_id=None,

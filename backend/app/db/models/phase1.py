@@ -1070,6 +1070,8 @@ class DocumentGenerationRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "document_generation_run"
 
     document_id: Mapped[str] = mapped_column(ForeignKey("document.id"), nullable=False, index=True)
+    # Nullable for historical rows without provable variant lineage at migration time.
+    document_variant_id: Mapped[str | None] = mapped_column(ForeignKey("document_variant.id"), index=True)
     template_binding_id: Mapped[str | None] = mapped_column(ForeignKey("template_binding.id"), index=True)
     template_definition_id: Mapped[str | None] = mapped_column(ForeignKey("template_definition.id"), index=True)
     output_document_version_id: Mapped[str | None] = mapped_column(ForeignKey("document_version.id"), index=True)

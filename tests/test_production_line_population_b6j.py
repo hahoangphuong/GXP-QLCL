@@ -347,6 +347,45 @@ def test_apply_cli_refuses_missing_or_mismatched_independent_digests(tmp_path, c
         assert error in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("mutation", ("classification", "block_reason"))
+def test_resealed_blocked_action_requires_original_independent_approval_digests(tmp_path, capsys, mutation):
+    state, digest = _state()
+    plan, _ = _bound_plan(_snapshot(), state, digest)
+    approved_semantic_sha = plan["plan_sha256"]
+    approved_file_sha = sha256(canonical_artifact_bytes(plan)).hexdigest()
+    record = next(item for item in plan["certificate_links"] if item["classification"] == "BLOCKED_SITE_MISMATCH")
+    if mutation == "classification":
+        record["classification"] = "NOT_APPLICABLE"
+        plan["summary_counts"]["certificates"] = {
+            key: sum(action["classification"] == key for action in plan["certificate_links"])
+            for key in sorted({action["classification"] for action in plan["certificate_links"]})
+        }
+    else:
+        record["block_reason"] = "NO_ACTION_REVIEWED"
+    plan["plan_sha256"] = plan_digest(plan)
+    # The internal SHA/summary check does not reconstruct the original
+    # evidence-derived classification: that requires external provenance.
+    _validate_plan(plan)
+    path = tmp_path / "edited-plan.json"
+    path.write_bytes(canonical_artifact_bytes(plan))
+    args = ["--database-url", "postgresql+psycopg://invalid@invalid/no_db",
+            "--expected-database-name", "gxp_b6j_test_no_db", "--plan", str(path)]
+    with pytest.raises(SystemExit) as byte_mismatch:
+        writer_cli_main(args + [
+            "--expected-plan-sha256", approved_semantic_sha,
+            "--expected-plan-file-sha256", approved_file_sha,
+        ])
+    assert byte_mismatch.value.code == 2
+    assert "does not match exact plan bytes" in capsys.readouterr().err
+    with pytest.raises(SystemExit) as semantic_mismatch:
+        writer_cli_main(args + [
+            "--expected-plan-sha256", approved_semantic_sha,
+            "--expected-plan-file-sha256", sha256(path.read_bytes()).hexdigest(),
+        ])
+    assert semantic_mismatch.value.code == 2
+    assert "does not match sealed plan" in capsys.readouterr().err
+
+
 def test_b6j_writer_rejects_resealed_duplicate_candidate_key():
     state, digest = _state()
     plan, _ = _bound_plan(_snapshot(), state, digest)

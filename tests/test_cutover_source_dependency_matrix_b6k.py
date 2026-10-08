@@ -31,4 +31,26 @@ def test_b6j_matrix_retains_all_cutover_provenance_bindings() -> None:
         "canonical_state_sha256",
         "candidate_set_sha256",
         "candidate_set_roster_sha256",
+        "candidate_set_roster_content_sha256",
+        "candidate_set_roster_item_count",
+        "source_alembic_revision",
+        "source_database_identity",
+        "plan_sha256",
     }
+    assert set(MATRIX["B6J"]["external_approval_fields"]) == {
+        "expected_plan_sha256", "expected_plan_file_sha256",
+    }
+    assert set(MATRIX["B6J"]["owner_files"]) >= {
+        "backend/app/domain/production_line_population_b6j.py",
+        "backend/app/domain/production_line_population_writer_b6j.py",
+        "tools/plan_production_line_population_b6j.py",
+        "tools/apply_production_line_population_b6j.py",
+    }
+    assert "independently record approved plan and file SHA" in MATRIX["B6J"]["cutover_action"]
+
+
+def test_b6k_roster_binding_is_not_a_human_review_decision() -> None:
+    assert MATRIX["B6I"]["classification"] == "REVIEWED_SOURCE_BOUND"
+    assert "explicit review decisions" in MATRIX["B6I"]["cutover_action"]
+    assert MATRIX["B6J"]["classification"] == "DATABASE_STATE_BOUND"
+    assert "external_approval_fields" not in MATRIX["B6I"]

@@ -109,6 +109,22 @@ for trusted-plan provenance and remain restricted by the writer's existing
 database fences. Neither the digests nor this CLI change authorize a production
 or protected rehearsal operation.
 
+## B6K Cutover Handoff and Required Approval Boundaries
+
+The B6K source-dependency matrix must reflect the active B6J planner,
+writer, planner CLI and apply CLI owners. For B6J, the legacy snapshot,
+canonical-state semantic digest, B6I candidate roster raw/content hashes
+and candidate count, actual Alembic revision, exact database identity and
+semantic plan SHA all bind the approved run. The **independent** expected
+semantic plan SHA and exact plan-file SHA live outside the plan and are
+supplied to the CLI. A B6I roster binds candidate membership; it does not
+substitute for an explicit physical-identity review decision or permission
+to apply. Before any cutover: re-export the canonical state, rebuild and
+review source/roster artifacts, replan at the actual target revision,
+record both approval digests independently, and verify the authorized
+database/mode. A passing CI run proves code behavior, not completion of
+human review, source freeze, or authorization to write.
+
 ## B6H/B6J Revision 0022 Compatibility Boundary
 
 The B6 owner source tables were checked on disposable PostgreSQL across

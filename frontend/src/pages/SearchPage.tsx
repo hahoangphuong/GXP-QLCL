@@ -154,15 +154,20 @@ function initialResolutionState(pending: PendingDeepLink): ResolutionState {
   return hasExplicitResultIdentity(pending) ? "pending" : "none";
 }
 
+function matchesDeclaredTargetHints(row: FacilitySearchResult, pending: PendingDeepLink): boolean {
+  // All supplied identity hints must agree with the explicit result, not just result_key.
+  if (pending.siteId !== null && row.site_id !== pending.siteId) return false;
+  const targetGxp = targetGxpConstraint(pending);
+  if (targetGxp && row.gxp_type !== targetGxp) return false;
+  if (pending.productionLineId !== null && row.production_line_id !== pending.productionLineId) return false;
+  if (pending.lineCode !== null && normalizeLineHint(row.line_code) !== pending.lineCode) return false;
+  return true;
+}
+
 function matchesCompatibilityHints(row: FacilitySearchResult, pending: PendingDeepLink): boolean {
-  if (pending.siteId && row.site_id !== pending.siteId) return false;
-  const contextGxp = normalizeExplicitGxpHint(pending.contextGxp);
-  if (contextGxp && row.gxp_type !== contextGxp) return false;
-  if (pending.productionLineId) return row.production_line_id === pending.productionLineId;
-  if (pending.lineCode) {
-    return row.production_line_identity_state === "legacy_unlinked"
-      && normalizeLineHint(row.line_code) === pending.lineCode;
-  }
+  if (!matchesDeclaredTargetHints(row, pending)) return false;
+  if (pending.productionLineId !== null) return true;
+  if (pending.lineCode !== null) return row.production_line_identity_state === "legacy_unlinked";
   return Boolean(pending.siteId && pending.contextGxp && row.production_line_identity_state === "facility_wide");
 }
 
@@ -583,7 +588,7 @@ export function SearchPage({
           ? nextResults.filter((item) => matchesCompatibilityHints(item, pendingDeepLink))
           : [];
         const pendingMatch = explicitTarget && pendingDeepLink.resultKey
-          ? nextResults.find((item) => item.result_key === pendingDeepLink.resultKey) ?? null
+          ? nextResults.find((item) => item.result_key === pendingDeepLink.resultKey && matchesDeclaredTargetHints(item, pendingDeepLink)) ?? null
           : null;
         const resolveExplicitTarget = (target: FacilitySearchResult) => {
           const resolvedGxpType = normalizeGxpSelection(target.gxp_type);

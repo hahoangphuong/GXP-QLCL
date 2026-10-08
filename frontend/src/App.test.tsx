@@ -3073,6 +3073,44 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.searchFacilities.mock.calls.map((call) => call[0].offset)).toEqual([0, 100]);
   });
 
+  it.each([
+    ["canonical UUID", "production_line_id=p2"],
+    ["Site UUID", "site_id=site-2"],
+    ["line hint", "line_code=B"],
+    ["GxP context", "context_gxp=GLP"],
+  ])("fails safe for an exact result_key with a contradictory %s", async (_label, contradictoryHint) => {
+    const target = buildSearchResult({
+      result_key: "site-1:GMP:canonical:p1",
+      production_line_id: "p1",
+      production_line_identity_state: "canonical",
+      line_code: "A",
+    });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [target], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp([`/search?result_key=site-1%3AGMP%3Acanonical%3Ap1&${contradictoryHint}`]);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Không tìm thấy ngữ cảnh được liên kết");
+    expect(apiMocks.getFacilityWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("accepts exact result_key with mutually consistent canonical identity hints", async () => {
+    const target = buildSearchResult({
+      result_key: "site-1:GMP:canonical:p1",
+      production_line_id: "p1",
+      production_line_identity_state: "canonical",
+      line_code: "A",
+    });
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [target], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp(["/search?result_key=site-1%3AGMP%3Acanonical%3Ap1&site_id=site-1&context_gxp=GMP&production_line_id=p1&line_code=A"]);
+
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("p1");
+  });
+
   it("fails safe when an explicit result_key is stale instead of opening the first row", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult({ result_key: "site-1:GMP:canonical:other" })], total_count: 1, offset: 0, limit: 100 });

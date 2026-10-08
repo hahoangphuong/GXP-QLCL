@@ -5,6 +5,7 @@ upsert, resume, or force mode: a second application is stale by design.
 """
 from __future__ import annotations
 
+from collections import Counter
 from datetime import date
 from typing import Any, Mapping
 
@@ -63,12 +64,35 @@ def _validate_plan(plan: Mapping[str, Any]) -> None:
         _require(isinstance(records, list), f"B6J plan {field} records are invalid")
         seen_legacy_ids: set[int] = set()
         seen_canonical_owners: set[str] = set()
+        # Cover every B6I roster-bound source, including blocked/no-op rows.
+        expected_members: dict[int, str] = {}
+        for candidate in items:
+            candidate_key = candidate["candidate_key"]
+            ids = candidate.get(source_field)
+            _require(isinstance(ids, list), f"B6J plan {source_field} membership must be a list")
+            for source_id in ids:
+                _require(
+                    isinstance(source_id, int) and not isinstance(source_id, bool)
+                    and source_id not in expected_members,
+                    f"B6J plan {source_field} has duplicate or invalid source membership",
+                )
+                expected_members[source_id] = candidate_key
         for record in records:
             _require(isinstance(record, Mapping), f"B6J plan {field} record is invalid")
             legacy_id = record.get("legacy_id")
             _require(isinstance(legacy_id, int) and not isinstance(legacy_id, bool) and legacy_id not in seen_legacy_ids,
                      f"B6J plan {field} repeats or lacks a legacy source identity")
             seen_legacy_ids.add(legacy_id)
+            expected_candidate = expected_members.get(legacy_id)
+            _require(
+                record.get("candidate_key") == expected_candidate,
+                f"B6J plan {field} candidate membership differs from source roster",
+            )
+            if expected_candidate is not None:
+                _require(
+                    record.get("canonical_line_code") == candidates[expected_candidate].get("canonical_line_code"),
+                    f"B6J plan {field} source code differs from candidate",
+                )
             owner_id = record.get("canonical_record_id")
             if owner_id is not None:
                 _require(isinstance(owner_id, str) and owner_id and owner_id not in seen_canonical_owners,
@@ -87,6 +111,12 @@ def _validate_plan(plan: Mapping[str, Any]) -> None:
             _require(record.get("expected_production_line_id") is None, "B6J writer refuses to replace an existing canonical ProductionLine link")
             destination = candidate.get("proposed_production_line_id") if classification == "LINK_TO_NEW_LINE" else candidate.get("existing_production_line_id")
             _require(destination is not None and record.get("planned_production_line_id") == destination, "B6J link target differs from sealed candidate")
+        _require(set(expected_members).issubset(seen_legacy_ids), f"B6J plan {field} omits candidate source actions")
+    summaries = plan.get("summary_counts")
+    _require(isinstance(summaries, Mapping), "B6J plan summary counts are missing")
+    for label, records in (("candidates", items), ("cases", plan["case_links"]), ("certificates", plan["certificate_links"])):
+        actual = dict(sorted(Counter(record.get("classification") for record in records).items()))
+        _require(summaries.get(label) == actual, f"B6J plan {label} summary counts disagree with actions")
     # Plan SHA alone cannot authorize an orphan ProductionLine create action.
     eligible_new_keys = {
         record["candidate_key"]

@@ -44,7 +44,12 @@ source ID in B6J canonical state. Multiple legacy IDs mapped to one canonical
 owner are inconsistent with the writer's row-level legacy-ID ownership fence
 and are rejected, even if their target line UUID would be the same. The writer
 also rejects resealed duplicate legacy actions or canonical write owners rather
-than silently deduplicating them.
+than silently deduplicating them. B6J validates that all source IDs in each
+roster-bound candidate have exactly one Case/Certificate action, including
+blocked/no-op actions. An omitted or reassigned source is rejected. Summary
+counts are verified against the actual actions. Non-candidate legacy rows
+remain covered by the independently retained plan file hash, not by candidate
+membership.
 The source-only plan intentionally records canonical Case/Certificate counts as
 `NOT_RUN_NO_DATABASE_READ`; a future apply requires a separately reviewed,
 read-only canonical-state enrichment before it can construct any action.
@@ -90,6 +95,19 @@ are explicit no-ops; conflicting existing links are blocked. The sealed plan
 validator and row-lock checks independently refuse to replace any non-null
 canonical `production_line_id`.
 
+
+## Independent B6J Plan Approval Digest
+
+The planner prints both `PRODUCTION_LINE_POPULATION_PLAN_SHA256` and
+`PRODUCTION_LINE_POPULATION_PLAN_FILE_SHA256`. Retain these values outside
+the plan in an immutable review/approval record. The B6J apply CLI requires
+`--expected-plan-sha256` and `--expected-plan-file-sha256` for **every**
+execution, including rollback dry-run, before database access. Hashes
+calculated again from an already edited plan are **not** independent approval.
+This strengthens the CLI entrypoint; direct library callers remain responsible
+for trusted-plan provenance and remain restricted by the writer's existing
+database fences. Neither the digests nor this CLI change authorize a production
+or protected rehearsal operation.
 
 ## B6H/B6J Revision 0022 Compatibility Boundary
 

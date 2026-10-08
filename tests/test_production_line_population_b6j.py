@@ -12,6 +12,7 @@ from backend.app.domain.legacy_db_ktra_source_v2 import snapshot_cell, snapshot_
 from backend.app.domain.legacy_snapshot_v2 import snapshot_legacy_int
 from backend.app.domain.production_line_review_workspace import REVIEW_SCHEMA_VERSION, candidate_set_digest
 from tools.plan_production_line_population_b6j import main as planner_main
+from tools.apply_production_line_population_b6j import main as writer_cli_main
 
 
 SITE_7 = "00000000-0000-0000-0000-000000000007"
@@ -265,6 +266,59 @@ def test_writer_refuses_resealed_two_legacy_sources_for_one_canonical_owner():
         _validate_plan(plan)
 
 
+@pytest.mark.parametrize("field", ("case_links", "certificate_links"))
+def test_writer_rejects_omission_of_candidate_source_even_if_plan_resealed(field):
+    state, digest = _state()
+    plan, _ = _bound_plan(_snapshot(), state, digest)
+    victim = next(r for r in plan[field] if r["candidate_key"] is not None)
+    plan[field].remove(victim)
+    plan["plan_sha256"] = plan_digest(plan)
+    with pytest.raises(ProductionLinePopulationApplyError, match="omits candidate source actions"):
+        _validate_plan(plan)
+
+
+def test_writer_rejects_blocked_source_reassigned_to_other_candidate():
+    state, digest = _state()
+    plan, _ = _bound_plan(_snapshot(), state, digest)
+    victim = next(r for r in plan["certificate_links"]
+                  if r["classification"].startswith("BLOCKED_") and r["candidate_key"] is not None)
+    victim["candidate_key"] = next(c["candidate_key"] for c in plan["candidates"]
+                                    if c["candidate_key"] != victim["candidate_key"])
+    plan["plan_sha256"] = plan_digest(plan)
+    with pytest.raises(ProductionLinePopulationApplyError, match="candidate membership differs"):
+        _validate_plan(plan)
+
+
+def test_writer_rejects_falsified_action_summary_even_if_resealed():
+    state, digest = _state()
+    plan, _ = _bound_plan(_snapshot(), state, digest)
+    plan["summary_counts"]["cases"] = {"LINK_TO_NEW_LINE": 999}
+    plan["plan_sha256"] = plan_digest(plan)
+    with pytest.raises(ProductionLinePopulationApplyError, match="summary counts disagree"):
+        _validate_plan(plan)
+
+
+def test_apply_cli_refuses_missing_or_mismatched_independent_digests(tmp_path, capsys):
+    state, digest = _state()
+    plan, _ = _bound_plan(_snapshot(), state, digest)
+    path = tmp_path / "sealed.json"
+    path.write_bytes(canonical_artifact_bytes(plan))
+    args = ["--database-url", "postgresql+psycopg://invalid@invalid/no_db",
+            "--expected-database-name", "gxp_b6j_test_no_db", "--plan", str(path)]
+    bad_cases = (
+        ([], "independently recorded"),
+        (["--expected-plan-sha256", plan["plan_sha256"],
+          "--expected-plan-file-sha256", "0" * 64], "does not match exact plan bytes"),
+        (["--expected-plan-sha256", "0" * 64,
+          "--expected-plan-file-sha256", sha256(path.read_bytes()).hexdigest()], "does not match sealed plan"),
+    )
+    for options, error in bad_cases:
+        with pytest.raises(SystemExit) as exc:
+            writer_cli_main(args + options)
+        assert exc.value.code == 2
+        assert error in capsys.readouterr().err
+
+
 def test_b6j_writer_rejects_resealed_duplicate_candidate_key():
     state, digest = _state()
     plan, _ = _bound_plan(_snapshot(), state, digest)
@@ -336,7 +390,7 @@ def test_writer_rejects_wrong_alembic_revision_before_target_access():
         _validate_plan(plan)
 
 
-def test_planner_cli_requires_exact_raw_roster_sha256(tmp_path):
+def test_planner_cli_requires_exact_raw_roster_sha256(tmp_path, capsys):
     state, digest = _state()
     snapshot = _snapshot()
     snapshot_path, state_path, roster_path, output_path = (tmp_path / name for name in ("snapshot.json", "state.json", "roster.json", "plan.json"))
@@ -352,6 +406,7 @@ def test_planner_cli_requires_exact_raw_roster_sha256(tmp_path):
     with pytest.raises(SystemExit):
         planner_main([*args, "not-a-sha", "--output", str(output_path)])
     assert planner_main([*args, sha256(roster_bytes).hexdigest(), "--output", str(output_path)]) == 0
+    assert f"PRODUCTION_LINE_POPULATION_PLAN_FILE_SHA256={sha256(output_path.read_bytes()).hexdigest()}" in capsys.readouterr().out
     assert json.loads(output_path.read_bytes())["candidate_set_roster_sha256"] == sha256(roster_bytes).hexdigest()
 
 

@@ -40,8 +40,10 @@ def main(argv: list[str] | None = None) -> int:
         candidate_roster_raw_sha256=roster_raw_sha256,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_bytes(canonical_artifact_bytes(plan))
+    plan_bytes = canonical_artifact_bytes(plan)
+    args.output.write_bytes(plan_bytes)
     print(f"PRODUCTION_LINE_POPULATION_PLAN_SHA256={plan['plan_sha256']}")
+    print(f"PRODUCTION_LINE_POPULATION_PLAN_FILE_SHA256={sha256(plan_bytes).hexdigest()}")
     return 0
 
 

@@ -29,13 +29,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--expected-plan-file-sha256")
     args = parser.parse_args(argv)
     plan_bytes = args.plan.read_bytes()
-    if args.allow_rehearsal_apply:
-        if not args.apply or args.allow_rehearsal_dry_run or not args.expected_plan_sha256 or not args.expected_plan_file_sha256:
-            parser.error("protected rehearsal apply requires --apply and both exact plan SHA256 arguments")
-        if sha256(plan_bytes).hexdigest() != args.expected_plan_file_sha256:
-            parser.error("expected plan file SHA256 does not match exact plan bytes")
+    # Every execution must match two hashes retained independently at review
+    # time. The plan's own digest can otherwise be recomputed after editing.
+    if not args.expected_plan_sha256 or not args.expected_plan_file_sha256:
+        parser.error("B6J requires independently recorded --expected-plan-sha256 and --expected-plan-file-sha256")
+    if args.allow_rehearsal_apply and (not args.apply or args.allow_rehearsal_dry_run):
+        parser.error("protected rehearsal apply requires --apply without a dry-run override")
+    if sha256(plan_bytes).hexdigest() != args.expected_plan_file_sha256:
+        parser.error("expected plan file SHA256 does not match exact plan bytes")
     plan = json.loads(plan_bytes)
-    if args.allow_rehearsal_apply and plan.get("plan_sha256") != args.expected_plan_sha256:
+    if plan.get("plan_sha256") != args.expected_plan_sha256:
         parser.error("expected semantic plan SHA256 does not match sealed plan")
     engine = create_engine(args.database_url, future=True)
     try:

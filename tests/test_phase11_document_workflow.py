@@ -646,7 +646,21 @@ def test_source_binary_readiness_rejects_foreign_version_and_binding_identity():
 
     with Session(engine) as session:
         case_id, _ = _seed_case(session)
-        seed_default_template_metadata(session)
+        # The default seed only covers render-enabled families; source-read
+        # contracts must be explicitly present for this synthetic fixture.
+        session.add(
+            TemplateDefinition(
+                family_code="INSPECTION_BB_KT",
+                document_type_code="inspection_bb_kt",
+                source_application="Word",
+                storage_scope="inspection_folder",
+                variant_type=DocumentVariantType.EDITABLE_DOCX,
+                template_name="bbkt-source-contract.dotx",
+                bookmark_contract=json.dumps({"bookmarks": ["DsTT"]}),
+                is_active=True,
+            )
+        )
+        session.flush()
         source = Document(
             family_code="INSPECTION_BB_KT",
             document_type_code="inspection_bb_kt",

@@ -44,7 +44,7 @@ from backend.app.document.inspection_ke_hoach_kt_template_asset_contract import 
 from backend.app.document.service import (
     DocumentPreparationInput,
     prepare_document_generation_job,
-    prepare_template_aware_docx_generation,
+    allocate_prepared_template_aware_docx_generation,
 )
 from backend.app.document.service_contract import (
     DocumentGenerationRequest,
@@ -692,10 +692,10 @@ class DocumentWorkflowService:
             if blocked_reasons:
                 detail = "Document family is not render-safe: " + ", ".join(blocked_reasons)
                 raise HTTPException(status_code=409, detail=detail)
-            allocated = prepare_template_aware_docx_generation(
+            allocated = allocate_prepared_template_aware_docx_generation(
                 session,
                 storage,
-                preparation_input,
+                prepared,
                 output_filename=output_filename,
             )
             allocated_version = session.get(

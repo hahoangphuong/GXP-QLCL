@@ -353,6 +353,37 @@ def prepare_and_allocate_document_generation_job(
     )
 
 
+def allocate_prepared_template_aware_docx_generation(
+    session: Session,
+    storage: LocalStorageService,
+    prepared: PreparedDocumentGeneration,
+    *,
+    output_filename: str,
+) -> TemplateAwareAllocatedDocumentGeneration:
+    """Allocate and inspect the exact generation state already prepared once."""
+    allocation = allocate_output_document_version(
+        session,
+        storage,
+        prepared,
+        output_filename=output_filename,
+    )
+    allocated = AllocatedDocumentGeneration(
+        prepared=prepared,
+        output_allocation=allocation,
+    )
+    template_binary_requirement = build_template_binary_requirement(session, allocated)
+    template_render_ready = (
+        prepared.generation_plan.template.source_application == "Word"
+        and prepared.render_ready
+        and template_binary_requirement.readiness_status == "direct_stream_ready"
+    )
+    return TemplateAwareAllocatedDocumentGeneration(
+        allocated=allocated,
+        template_binary_requirement=template_binary_requirement,
+        template_render_ready=template_render_ready,
+    )
+
+
 def prepare_template_aware_docx_generation(
     session: Session,
     storage: LocalStorageService,
@@ -360,22 +391,15 @@ def prepare_template_aware_docx_generation(
     *,
     output_filename: str,
 ) -> TemplateAwareAllocatedDocumentGeneration:
-    allocated = prepare_and_allocate_document_generation_job(
+    # Standalone callers still prepare here; an orchestrator with a prepared
+    # generation should call allocate_prepared_template_aware_docx_generation
+    # instead, avoiding a second idempotency preflight for the same request.
+    prepared = prepare_document_generation_job(session, preparation_input)
+    return allocate_prepared_template_aware_docx_generation(
         session,
         storage,
-        preparation_input,
+        prepared,
         output_filename=output_filename,
-    )
-    template_binary_requirement = build_template_binary_requirement(session, allocated)
-    template_render_ready = (
-        allocated.prepared.generation_plan.template.source_application == "Word"
-        and allocated.prepared.render_ready
-        and template_binary_requirement.readiness_status == "direct_stream_ready"
-    )
-    return TemplateAwareAllocatedDocumentGeneration(
-        allocated=allocated,
-        template_binary_requirement=template_binary_requirement,
-        template_render_ready=template_render_ready,
     )
 
 

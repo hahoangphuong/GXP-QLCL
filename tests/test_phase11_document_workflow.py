@@ -1011,7 +1011,7 @@ def test_render_route_preflight_identity_conflict_does_not_commit_side_effects()
         shutil.rmtree(root, ignore_errors=True)
 
 
-def test_render_template_docx_succeeds_for_dkkd_certificate_and_updates_lineage():
+def test_render_template_docx_succeeds_for_dkkd_certificate_and_updates_lineage(monkeypatch):
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = DocumentWorkflowService()
@@ -1067,6 +1067,18 @@ def test_render_template_docx_succeeds_for_dkkd_certificate_and_updates_lineage(
             assert prepared_run.status == DocumentGenerationStatus.PENDING
             session.commit()
 
+            # Rendering must allocate from the already prepared generation.
+            # A second prepare here is both redundant and fails idempotency
+            # for redacted sensitive payloads on the same first render call.
+            def reject_duplicate_preparation(*args, **kwargs):
+                raise AssertionError(
+                    "Render attempted a second generation preparation inside allocation."
+                )
+
+            monkeypatch.setattr(
+                "backend.app.document.service.prepare_document_generation_job",
+                reject_duplicate_preparation,
+            )
             result = service.render_template_docx(
                 session,
                 storage=storage,

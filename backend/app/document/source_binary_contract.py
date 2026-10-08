@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
-from backend.app.db.models.phase1 import DocumentVersion, StorageBinding, TemplateDefinition
+from backend.app.db.models.phase1 import Document, DocumentVariant, DocumentVersion, StorageBinding, TemplateDefinition
 from backend.app.document.source_resolver_contract import SourceDocumentResolution
 
 
@@ -100,6 +100,12 @@ def build_source_binary_requirements(
         storage_root = _storage_root_for_scope(template_definition.storage_scope)
         binding = _storage_binding(session, resolution.candidate.storage_binding_id)
         document_version = _document_version(session, resolution.candidate.document_version_id)
+        source_document = session.get(Document, resolution.candidate.document_id)
+        source_variant = (
+            session.get(DocumentVariant, document_version.document_variant_id)
+            if document_version is not None
+            else None
+        )
 
         if resolution.candidate.document_version_id is None:
             readiness_status = "missing_document_version"
@@ -107,6 +113,24 @@ def build_source_binary_requirements(
         elif document_version is None:
             readiness_status = "missing_document_version_row"
             detail = "Source dependency references a document_version_id that does not exist."
+        elif (
+            source_document is None
+            or source_document.family_code != resolution.request.family_code
+            or source_document.family_code != resolution.candidate.family_code
+            or source_variant is None
+            or source_variant.document_id != source_document.id
+        ):
+            readiness_status = "source_version_lineage_mismatch"
+            detail = (
+                "Resolved source version is not owned by the selected source document "
+                "and requested source family."
+            )
+        elif document_version.storage_binding_id != resolution.candidate.storage_binding_id:
+            readiness_status = "source_binding_identity_mismatch"
+            detail = (
+                "Resolved source binding does not match the source document version's "
+                "persisted storage_binding_id."
+            )
         elif resolution.candidate.storage_binding_id is None:
             readiness_status = "missing_storage_binding"
             detail = "Source document version has no storage_binding_id, so the source folder cannot be resolved."

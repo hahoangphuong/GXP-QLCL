@@ -18,6 +18,7 @@ Create persistence/orchestration baseline that prepares generation state before 
 - ensure or create matching `document_variant`
 - create `document_generation_run` in `pending` with the exact prepared `document_variant_id`, before an output version exists
 - persist resolved source dependencies when available
+- Source binary readiness is owned by the source contract: a resolved document version must belong to the selected logical source document and requested source family, and its persisted storage binding must exactly match the candidate binding before the locator can be marked `direct_stream_ready`. Drifted/foreign version or binding identity fails closed before source storage reads.
 
 Template definition/binding references are attached when seeded rows exist; otherwise the baseline allows null references while keeping the rest of the generation run auditable.
 

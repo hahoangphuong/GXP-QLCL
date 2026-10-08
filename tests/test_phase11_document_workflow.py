@@ -53,6 +53,7 @@ from backend.app.document.service import (
     DocumentPreparationInput,
     prepare_document_generation_job,
 )
+from backend.app.document.source_binary_contract import build_source_binary_requirements
 from backend.app.document.source_resolver_contract import (
     SourceDocumentCandidate,
     SourceDocumentLookupRequest,
@@ -637,6 +638,120 @@ def test_prepare_generation_rejects_cross_owner_idempotency_reuse():
             )
         )
         assert second_documents == []
+
+
+def test_source_binary_readiness_rejects_foreign_version_and_binding_identity():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        case_id, _ = _seed_case(session)
+        seed_default_template_metadata(session)
+        source = Document(
+            family_code="INSPECTION_BB_KT",
+            document_type_code="inspection_bb_kt",
+            title="Source",
+            case_id=case_id,
+        )
+        foreign = Document(
+            family_code="INSPECTION_CAPA_LAN_1",
+            document_type_code="inspection_capa_lan_1",
+            title="Foreign",
+            case_id=case_id,
+        )
+        session.add_all([source, foreign])
+        session.flush()
+
+        source_variant = DocumentVariant(
+            document_id=source.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="vi",
+            is_active=True,
+        )
+        foreign_variant = DocumentVariant(
+            document_id=foreign.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="vi",
+            is_active=True,
+        )
+        source_binding = StorageBinding(
+            case_id=case_id, relative_path="inspection/source"
+        )
+        foreign_binding = StorageBinding(
+            case_id=case_id, relative_path="inspection/foreign"
+        )
+        session.add_all(
+            [source_variant, foreign_variant, source_binding, foreign_binding]
+        )
+        session.flush()
+
+        source_version = DocumentVersion(
+            document_variant_id=source_variant.id,
+            version_no=1,
+            storage_binding_id=source_binding.id,
+            storage_root="inspection",
+            storage_relative_path="inspection/source/current.docx",
+            original_filename="current.docx",
+            checksum_sha256="source-checksum",
+            is_current=True,
+            issued_on=None,
+        )
+        foreign_version = DocumentVersion(
+            document_variant_id=foreign_variant.id,
+            version_no=1,
+            storage_binding_id=foreign_binding.id,
+            storage_root="inspection",
+            storage_relative_path="inspection/foreign/current.docx",
+            original_filename="current.docx",
+            checksum_sha256="foreign-checksum",
+            is_current=True,
+            issued_on=None,
+        )
+        session.add_all([source_version, foreign_version])
+        session.flush()
+
+        lookup = SourceDocumentLookupRequest(
+            family_code="INSPECTION_BB_KT",
+            required_bookmarks=("DsTT",),
+            dependency_type="copy_forward",
+            case_id=case_id,
+        )
+
+        def requirement(
+            version_id: str,
+            binding_id: str,
+            *,
+            candidate_family: str = "INSPECTION_BB_KT",
+        ):
+            resolution = SourceDocumentResolution(
+                request=lookup,
+                candidate=SourceDocumentCandidate(
+                    document_id=source.id,
+                    family_code=candidate_family,
+                    document_version_id=version_id,
+                    available_bookmarks=("DsTT",),
+                    is_current_version=True,
+                    storage_binding_id=binding_id,
+                ),
+            )
+            (result,) = build_source_binary_requirements(session, (resolution,))
+            return result
+
+        valid = requirement(source_version.id, source_binding.id)
+        assert valid.readiness_status == "direct_stream_ready"
+        assert valid.exact_storage_relative_path == "inspection/source/current.docx"
+
+        foreign_version_result = requirement(foreign_version.id, foreign_binding.id)
+        assert foreign_version_result.readiness_status == "source_version_lineage_mismatch"
+
+        wrong_binding = requirement(source_version.id, foreign_binding.id)
+        assert wrong_binding.readiness_status == "source_binding_identity_mismatch"
+
+        wrong_family = requirement(
+            source_version.id, source_binding.id,
+            candidate_family="INSPECTION_CAPA_LAN_1",
+        )
+        assert wrong_family.readiness_status == "source_version_lineage_mismatch"
 
 
 def test_idempotent_generation_retry_requires_source_dependency_identity():

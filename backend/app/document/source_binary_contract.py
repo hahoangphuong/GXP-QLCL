@@ -28,6 +28,9 @@ class SourceBinaryRequirement:
     legacy_filename_prefix_hints: tuple[str, ...]
     readiness_status: str
     detail: str
+    # Legacy source versions can lack a checksum; an available checksum must
+    # be verified by the binary-access owner before yielding source bytes.
+    checksum_sha256: str | None = None
 
 
 def _storage_root_for_scope(storage_scope: str) -> str | None:
@@ -199,6 +202,11 @@ def build_source_binary_requirements(
                 legacy_filename_prefix_hints=_prefix_hints_for_family(resolution.candidate.family_code),
                 readiness_status=readiness_status,
                 detail=detail,
+                checksum_sha256=(
+                    document_version.checksum_sha256
+                    if document_version is not None
+                    else None
+                ),
             )
         )
     return tuple(requirements)

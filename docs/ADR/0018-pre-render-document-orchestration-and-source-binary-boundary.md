@@ -26,6 +26,8 @@ However, source-document binary reuse still has a gap:
 - Keep copy-forward fail-closed:
   - a known source folder is not enough to start bookmark/table copy
   - exact source file location must be modeled or otherwise proven before render/copy-forward starts
+  - if a resolved source document version has a persisted checksum, the source-binary access owner reads the full binary, verifies its SHA-256, and only then yields the verified snapshot to copy-forward; mismatches fail closed without yielding bytes
+  - historical source versions lacking any checksum retain direct-stream access for compatibility and have no cryptographic integrity guarantee until a checksum is registered; readiness alone does not prove physical content integrity
 
 ## Consequences
 - The project now has one orchestration owner for document generation before render.

@@ -883,6 +883,7 @@ def test_source_binary_readiness_rejects_foreign_version_and_binding_identity():
         valid = requirement(source_version.id, source_binding.id)
         assert valid.readiness_status == "direct_stream_ready"
         assert valid.exact_storage_relative_path == "inspection/source/current.docx"
+        assert valid.checksum_sha256 == "source-checksum"
 
         foreign_version_result = requirement(foreign_version.id, foreign_binding.id)
         assert foreign_version_result.readiness_status == "source_version_lineage_mismatch"

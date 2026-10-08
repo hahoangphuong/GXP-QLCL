@@ -277,6 +277,28 @@ def test_writer_rejects_omission_of_candidate_source_even_if_plan_resealed(field
         _validate_plan(plan)
 
 
+def test_ineligible_case_sharing_valid_site_code_has_no_candidate_membership():
+    state, _ = _state()
+    snapshot = _snapshot()
+    snapshot["sheets"][0]["raw_rows"].append(
+        _row(8, {1: 99, 2: None, 3: 7, 4: "A", 5: "21/07/2026"})
+    )
+    state["cases"].append({
+        "id": "case-99", "legacy_inspection_id": 99, "site_id": SITE_7,
+        "production_line_id": None, "row_version": 1,
+    })
+    state["source_state_fingerprint"] = sha256(canonical_json_bytes({
+        key: value for key, value in state.items() if key != "source_state_fingerprint"
+    })).hexdigest()
+    digest = sha256(canonical_json_bytes(state)).hexdigest()
+    plan, _ = _bound_plan(snapshot, state, digest)
+    excluded = next(record for record in plan["case_links"] if record["legacy_id"] == 99)
+    assert excluded["classification"] == "NOT_APPLICABLE"
+    assert excluded["block_reason"] == "CASE_SOURCE_NOT_ELIGIBLE"
+    assert excluded["candidate_key"] is None
+    _validate_plan(plan)
+
+
 def test_writer_rejects_blocked_source_reassigned_to_other_candidate():
     state, digest = _state()
     plan, _ = _bound_plan(_snapshot(), state, digest)

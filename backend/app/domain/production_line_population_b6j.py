@@ -224,7 +224,12 @@ def build_population_plan(snapshot: Mapping[str, Any], *, snapshot_sha256: str, 
         for source in records:
             identity = source["legacy_inspection_id"] if kind == "CASE" else source["legacy_certificate_id"]
             line, site = source["line"], source.get("source_site_legacy_id")
-            candidate = by_key.get((site, line.get("canonical_text"))) if line["state"] == "CANONICAL" and isinstance(site, int) else None
+            candidate = (
+                by_key.get((site, line.get("canonical_text")))
+                if line["state"] == "CANONICAL" and isinstance(site, int)
+                and (kind != "CASE" or source.get("eligible_case_source"))
+                else None
+            )
             canonical = index["cases" if kind == "CASE" else "certificates"].get(identity)
             classification, reason = "NOT_APPLICABLE", "NO_CANONICAL_LINE_TEXT"
             if kind == "CASE" and not source.get("eligible_case_source"):

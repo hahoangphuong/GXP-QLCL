@@ -6,6 +6,7 @@ import json
 import shutil
 import tempfile
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -3739,6 +3740,87 @@ def test_get_current_document_binary_locator_preserves_current_selection_across_
     assert locator.original_filename == "current.docx"
     assert locator.checksum_sha256 == "current"
     assert locator.media_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+
+def test_current_binary_reader_ignores_inactive_variants_and_fails_without_active():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = DocumentWorkflowService()
+
+    with Session(engine) as session:
+        case_id, _ = _seed_case(session)
+        document = Document(
+            family_code="CERTIFICATE_DECISION",
+            document_type_code="CERTIFICATE_DECISION",
+            title="Quyết định cấp CC",
+            case_id=case_id,
+        )
+        session.add(document)
+        session.flush()
+        active_variant = DocumentVariant(
+            document_id=document.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="vi",
+            is_active=True,
+        )
+        retired_variant = DocumentVariant(
+            document_id=document.id,
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+            language_code="en",
+            is_active=False,
+        )
+        session.add_all([active_variant, retired_variant])
+        session.flush()
+        session.add_all([
+            DocumentVersion(
+                document_variant_id=active_variant.id,
+                version_no=1,
+                storage_binding_id=None,
+                storage_root="inspection",
+                storage_relative_path="2026/active.docx",
+                original_filename="active.docx",
+                checksum_sha256="active-checksum",
+                is_current=True,
+                issued_on=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            ),
+            DocumentVersion(
+                document_variant_id=retired_variant.id,
+                version_no=1,
+                storage_binding_id=None,
+                storage_root="inspection",
+                storage_relative_path="2026/retired.docx",
+                original_filename="retired.docx",
+                checksum_sha256="retired-checksum",
+                is_current=True,
+                issued_on=datetime(2030, 1, 1, tzinfo=timezone.utc),
+            ),
+        ])
+        session.commit()
+
+        locator = service.get_current_document_binary_locator_for_parent(
+            session,
+            document_id=document.id,
+            expected_parent_scope="case",
+            expected_parent_id=case_id,
+        )
+        assert locator.original_filename == "active.docx"
+        assert locator.checksum_sha256 == "active-checksum"
+
+        active_variant.is_active = False
+        session.commit()
+        try:
+            service.get_current_document_binary_locator_for_parent(
+                session,
+                document_id=document.id,
+                expected_parent_scope="case",
+                expected_parent_id=case_id,
+            )
+        except HTTPException as exc:
+            assert exc.status_code == 409
+            assert exc.detail == "Document does not have a current binary version."
+        else:
+            raise AssertionError("Retired variants must not serve current binary content")
 
 
 def test_document_content_route_streams_current_binary_without_locator_leakage(tmp_path: Path):

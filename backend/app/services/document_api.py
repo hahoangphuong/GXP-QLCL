@@ -907,9 +907,13 @@ class DocumentWorkflowService:
                 .execution_options(populate_existing=True)
             )
         )
+        # Lock every variant, including retired ones, so concurrent status
+        # changes cannot alter the eligible set during binary verification.
+        # Only active variants may supply the current binary.
+        active_variants = [variant for variant in variants if variant.is_active]
         versions = [
             version
-            for variant in variants
+            for variant in active_variants
             for version in session.scalars(
                 select(DocumentVersion)
                 .where(DocumentVersion.document_variant_id == variant.id)

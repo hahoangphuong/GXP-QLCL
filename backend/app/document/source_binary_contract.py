@@ -66,7 +66,11 @@ def _active_template_definition(session: Session, family_code: str) -> TemplateD
 def _storage_binding(session: Session, storage_binding_id: str | None) -> StorageBinding | None:
     if storage_binding_id is None:
         return None
-    stmt: Select[tuple[StorageBinding]] = select(StorageBinding).where(StorageBinding.id == storage_binding_id)
+    stmt: Select[tuple[StorageBinding]] = (
+        select(StorageBinding)
+        .where(StorageBinding.id == storage_binding_id)
+        .execution_options(populate_existing=True)
+    )
     return session.execute(stmt).scalar_one_or_none()
 
 
@@ -79,6 +83,23 @@ def _document_version(session: Session, document_version_id: str | None) -> Docu
         .execution_options(populate_existing=True)
     )
     return session.execute(stmt).scalar_one_or_none()
+
+
+def _source_parent_identity_matches(
+    source_document: Document,
+    resolution: SourceDocumentResolution,
+) -> bool:
+    # Mirror the DB resolver's four exact parent filters. CAPA source rounds
+    # may belong to another capa_cycle_id; the resolver intentionally does
+    # not use that field to select a prior-round source.
+    request = resolution.request
+    return (
+        source_document.case_id == request.case_id
+        and source_document.certificate_id == request.certificate_id
+        and source_document.business_eligibility_certificate_id
+        == request.business_eligibility_certificate_id
+        and source_document.change_request_id == request.change_request_id
+    )
 
 
 def _locator_matches_binding(
@@ -107,7 +128,11 @@ def build_source_binary_requirements(
         storage_root = _storage_root_for_scope(template_definition.storage_scope)
         binding = _storage_binding(session, resolution.candidate.storage_binding_id)
         document_version = _document_version(session, resolution.candidate.document_version_id)
-        source_document = session.get(Document, resolution.candidate.document_id)
+        source_document = session.get(
+            Document,
+            resolution.candidate.document_id,
+            populate_existing=True,
+        )
         source_variant = (
             session.get(
                 DocumentVariant,
@@ -136,6 +161,12 @@ def build_source_binary_requirements(
                 "Resolved source version is not owned by the selected source document "
                 "and requested source family."
             )
+        elif not _source_parent_identity_matches(source_document, resolution):
+            readiness_status = "source_parent_identity_mismatch"
+            detail = (
+                "Resolved source document's persisted business parent identity "
+                "does not match the requested source lookup owner."
+            )
         elif document_version.storage_binding_id != resolution.candidate.storage_binding_id:
             readiness_status = "source_binding_identity_mismatch"
             detail = (
@@ -160,6 +191,16 @@ def build_source_binary_requirements(
         elif binding is None:
             readiness_status = "missing_storage_binding_row"
             detail = "Source document version references a storage_binding_id that does not exist."
+        elif (
+            storage_root == "inspection"
+            and binding.case_id is not None
+            and binding.case_id != source_document.case_id
+        ):
+            readiness_status = "source_binding_owner_mismatch"
+            detail = (
+                "Resolved source storage binding belongs to a different "
+                "inspection case than the selected source document."
+            )
         elif storage_root is None:
             readiness_status = "unsupported_storage_scope"
             detail = (

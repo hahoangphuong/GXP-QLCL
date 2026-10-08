@@ -773,7 +773,17 @@ def test_source_binary_readiness_rejects_foreign_version_and_binding_identity():
     Base.metadata.create_all(engine)
 
     with Session(engine) as session:
-        case_id, _ = _seed_case(session)
+        case_id, site_id = _seed_case(session)
+        other_case = Case(
+            legacy_inspection_id=201,
+            legacy_inspection_code="KT-2024-OTHER",
+            site_id=site_id,
+            gxp_type="GMP",
+            state=CaseState.PLANNED,
+            opened_year=2024,
+        )
+        session.add(other_case)
+        session.flush()
         # The default seed only covers render-enabled families; source-read
         # contracts must be explicitly present for this synthetic fixture.
         session.add(
@@ -859,13 +869,16 @@ def test_source_binary_readiness_rejects_foreign_version_and_binding_identity():
             request_family: str = "INSPECTION_BB_KT",
             candidate_current: bool = True,
             prefer_current: bool = True,
+            request_case_id: str | None = None,
+            request_certificate_id: str | None = None,
         ):
             resolution = SourceDocumentResolution(
                 request=SourceDocumentLookupRequest(
                     family_code=request_family,
                     required_bookmarks=("DsTT",),
                     dependency_type="copy_forward",
-                    case_id=case_id,
+                    case_id=case_id if request_case_id is None else request_case_id,
+                    certificate_id=request_certificate_id,
                     prefer_current_version=prefer_current,
                 ),
                 candidate=SourceDocumentCandidate(
@@ -890,6 +903,36 @@ def test_source_binary_readiness_rejects_foreign_version_and_binding_identity():
 
         wrong_binding = requirement(source_version.id, foreign_binding.id)
         assert wrong_binding.readiness_status == "source_binding_identity_mismatch"
+
+        wrong_parent = requirement(
+            source_version.id,
+            source_binding.id,
+            request_case_id=other_case.id,
+        )
+        assert wrong_parent.readiness_status == "source_parent_identity_mismatch"
+        wrong_parent_certificate = requirement(
+            source_version.id,
+            source_binding.id,
+            request_certificate_id="unrelated-certificate",
+        )
+        assert wrong_parent_certificate.readiness_status == "source_parent_identity_mismatch"
+
+        # Even when the version and candidate agree on binding_id and the
+        # locator stays in that binding's folder, an explicitly foreign
+        # binding owner must not be used to read another case's source.
+        source_binding.case_id = other_case.id
+        session.flush()
+        wrong_binding_owner = requirement(source_version.id, source_binding.id)
+        assert wrong_binding_owner.readiness_status == "source_binding_owner_mismatch"
+
+        # Legacy inspection bindings with no recorded case owner remain
+        # eligible, provided the source document itself matches the request.
+        source_binding.case_id = None
+        session.flush()
+        legacy_owner_unknown = requirement(source_version.id, source_binding.id)
+        assert legacy_owner_unknown.readiness_status == "direct_stream_ready"
+        source_binding.case_id = case_id
+        session.flush()
 
         wrong_family = requirement(
             source_version.id, source_binding.id,

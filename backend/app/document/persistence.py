@@ -139,12 +139,16 @@ def _find_existing_document_variant(
         DocumentVariant.variant_type == _variant_type_for_source_application(plan.template.source_application),
         DocumentVariant.language_code == plan.request.language_code,
     )
-    return session.execute(stmt).scalar_one_or_none()
+    return session.execute(stmt.execution_options(populate_existing=True)).scalar_one_or_none()
 
 
 def ensure_document_variant(session: Session, document: Document, plan: DocumentGenerationPlan) -> DocumentVariant:
     existing = _find_existing_document_variant(session, document, plan)
     if existing is not None:
+        if not existing.is_active:
+            raise DocumentPersistenceError(
+                "Document generation cannot reuse an inactive document variant."
+            )
         return existing
     variant = DocumentVariant(
         document_id=document.id,

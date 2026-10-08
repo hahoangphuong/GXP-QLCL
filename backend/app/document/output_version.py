@@ -284,11 +284,19 @@ def _assert_reused_output_allocation_is_latest(
         )
 
 
+def _assert_active_output_variant(variant: DocumentVariant) -> None:
+    if not variant.is_active:
+        raise OutputVersionAllocationError(
+            "Inactive document variant cannot be used for output allocation or finalization."
+        )
+
+
 def _assert_output_allocation_lineage_identity(
     generation_run: DocumentGenerationRun,
     variant: DocumentVariant,
     prepared: PreparedDocumentGeneration,
 ) -> None:
+    _assert_active_output_variant(variant)
     persisted_state = prepared.persisted_state
     comparisons = (
         (
@@ -437,6 +445,7 @@ def _assert_finalization_allocation_identity(
     variant: DocumentVariant,
     allocation: OutputVersionAllocation,
 ) -> None:
+    _assert_active_output_variant(variant)
     mismatches: list[str] = []
 
     comparisons = (
@@ -543,6 +552,7 @@ def _lock_document_variant_for_output_version(
         select(DocumentVariant)
         .where(DocumentVariant.id == document_variant_id)
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     variant = session.execute(stmt).scalar_one_or_none()
     if variant is None:

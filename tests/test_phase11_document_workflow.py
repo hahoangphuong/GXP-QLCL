@@ -259,6 +259,133 @@ def test_prepare_generation_persists_pending_run_and_status():
         assert len(detail["generation_runs"]) == 1
 
 
+
+def test_document_generation_rejects_inactive_variant_at_prepare():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = DocumentWorkflowService()
+
+    with Session(engine) as session:
+        case_id, _ = _seed_case(session)
+        seed_default_template_metadata(session)
+        user = build_authenticated_user("inspector01", "inspector")
+        request = {
+            "family_code": "CERTIFICATE_DECISION",
+            "case_id": case_id,
+            "gxp_type": "GP",
+            "storage_scope": "inspection_folder",
+            "idempotency_key": "inactive-variant-first",
+            "payload": {"TenCty": "Cong ty A"},
+            "strict_payload": True,
+        }
+        prepared = service.prepare_generation(
+            session, storage=None, payload=request, user=user
+        )
+        variant = session.get(DocumentVariant, prepared["document_variant_id"])
+        assert variant is not None
+        variant.is_active = False
+        session.commit()
+
+        # Even a new idempotency key must not generate a current version
+        # under a retired variant or silently reactivate it.
+        try:
+            service.prepare_generation(
+                session,
+                storage=None,
+                payload={**request, "idempotency_key": "inactive-variant-second"},
+                user=user,
+            )
+        except HTTPException as exc:
+            assert exc.status_code == 409
+            assert "inactive document variant" in str(exc.detail)
+        else:
+            raise AssertionError("Inactive variant must block new generation preparation")
+        session.rollback()
+
+        assert session.get(DocumentVariant, variant.id).is_active is False
+        assert session.query(DocumentGenerationRun).count() == 1
+
+
+def test_output_version_rejects_inactive_variant_at_allocation_and_finalization():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    storage, root = _build_storage()
+    try:
+        with Session(engine) as session:
+            _, site_id = _seed_case(session)
+            company_id = session.get(Site, site_id).company_id
+            dkkd_id = _seed_dkkd(session, site_id, company_id)
+            seed_default_template_metadata(session)
+            folder = root / "dkkd" / "Cong ty A - Dia chi A (100)"
+            folder.mkdir(parents=True, exist_ok=True)
+            prepared = prepare_document_generation_job(
+                session,
+                DocumentPreparationInput(
+                    request=DocumentGenerationRequest(
+                        family_code="DDKD_CERTIFICATE",
+                        requested_by_user_id=None,
+                        business_eligibility_certificate_id=dkkd_id,
+                        storage_scope="dkkd_folder",
+                        idempotency_key="inactive-variant-output",
+                    ),
+                    payload_values={
+                        "TenCty": "Cong ty A",
+                        "DiachiCoso": "123 Duong A",
+                        "HoatdongKD": "Bao quan, ban buon thuoc",
+                    },
+                ),
+            )
+            variant = session.get(DocumentVariant, prepared.persisted_state.document_variant_id)
+            assert variant is not None
+            variant.is_active = False
+            session.flush()
+
+            try:
+                output_version_module.allocate_output_document_version(
+                    session, storage, prepared, output_filename="active-only.docx"
+                )
+            except output_version_module.OutputVersionAllocationError as exc:
+                assert "Inactive document variant" in str(exc)
+            else:
+                raise AssertionError("Inactive variant must not receive an output allocation")
+            assert session.query(DocumentVersion).count() == 0
+
+            variant.is_active = True
+            session.flush()
+            allocation = output_version_module.allocate_output_document_version(
+                session, storage, prepared, output_filename="active-only.docx"
+            )
+
+            variant.is_active = False
+            session.flush()
+            try:
+                output_version_module.allocate_output_document_version(
+                    session, storage, prepared, output_filename="active-only.docx"
+                )
+            except output_version_module.OutputVersionAllocationError as exc:
+                assert "Inactive document variant" in str(exc)
+            else:
+                raise AssertionError("Inactive variant must block reused allocation")
+
+            try:
+                output_version_module.finalize_output_document_version_write(
+                    session, storage, allocation, binary_payload=b"should-not-write"
+                )
+            except output_version_module.OutputVersionAllocationError as exc:
+                assert "Inactive document variant" in str(exc)
+            else:
+                raise AssertionError("Inactive variant must block output finalization")
+
+            run = session.get(DocumentGenerationRun, allocation.generation_run_id)
+            version = session.get(DocumentVersion, allocation.document_version_id)
+            assert run is not None and run.status == DocumentGenerationStatus.PENDING
+            assert version is not None and version.is_current is False
+            assert version.checksum_sha256 is None
+            assert not (folder / "active-only.docx").exists()
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_prepare_generation_reuses_idempotency_key_only_for_exact_request():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)

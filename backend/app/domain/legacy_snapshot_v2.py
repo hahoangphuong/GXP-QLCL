@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,26 @@ PROVEN_RELATIONSHIPS = (
     ("db.dkkd", "ID CC", "db.cc", "ID"),
     ("db.Tdoi2", "ID Gốc", "db.Tdoi", "ID"),
 )
+
+
+def snapshot_legacy_int(value: Any) -> int | None:
+    """Decode a Snapshot V2 legacy numeric key without truncating fractions."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value) if math.isfinite(value) and value.is_integer() else None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or text in {"-", "???"}:
+            return None
+        try:
+            parsed = float(text)
+        except ValueError:
+            return None
+        return int(parsed) if math.isfinite(parsed) and parsed.is_integer() else None
+    return None
 
 
 def _sha_bytes(value: bytes) -> str:

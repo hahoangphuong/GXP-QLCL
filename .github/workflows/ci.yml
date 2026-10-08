@@ -89,8 +89,8 @@ jobs:
           engine = create_engine(os.environ["B6_CI_ADMIN_URL"], isolation_level="AUTOCOMMIT")
           try:
               with engine.connect() as connection:
-                  for name in ("gxp_b6g_test_ci", "gxp_b6h_test_ci", "gxp_b6j_test_ci"):
-                      assert name.startswith(("gxp_b6g_test_", "gxp_b6h_test_", "gxp_b6j_test_"))
+                  for name in ("gxp_b6g_test_ci", "gxp_b6h_test_ci", "gxp_b6j_test_ci", "gxp_b6c_test_ci"):
+                      assert name.startswith(("gxp_b6g_test_", "gxp_b6h_test_", "gxp_b6j_test_", "gxp_b6c_test_"))
                       connection.exec_driver_sql(f'CREATE DATABASE "{name}"')
           finally:
               engine.dispose()
@@ -119,6 +119,14 @@ jobs:
         run: |
           python -m alembic upgrade 20260929_0017
           python -m pytest tests/test_production_line_population_b6j_postgres.py -q -p no:cacheprovider
+
+      - name: B6 revision 0022 read-only compatibility probe (guard remains closed)
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_b6c_test_ci
+          B6_0022_COMPAT_INTEGRATION: "1"
+        run: |
+          python -m alembic upgrade 20260929_0017
+          python -m pytest tests/test_b6_0022_schema_compat_postgres.py -q -p no:cacheprovider
 
   frontend:
     runs-on: ubuntu-latest

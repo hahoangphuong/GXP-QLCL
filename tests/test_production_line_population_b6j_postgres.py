@@ -193,6 +193,59 @@ def test_postgres_writer_rejects_resealed_wrong_dialect_before_write(fixture_sta
         assert _counts(session) == before
 
 
+def test_postgres_writer_rejects_resealed_swapped_certificate_owner(fixture_state):
+    # Certificate 22 and 20 both have Site 7 / raw code A; 22 is blocked by
+    # the source inspection Site 8. A resealed plan must not link certificate
+    # 22 merely because its raw text, Site and row-version fences all match.
+    with Session(fixture_state) as session:
+        plan = _plan(session)
+        source = next(item for item in plan["certificate_links"]
+                      if item["legacy_id"] == 20 and item["classification"] == "LINK_TO_NEW_LINE")
+        blocked = session.scalar(select(Certificate).where(Certificate.legacy_certificate_id == 22))
+        altered = dict(plan)
+        altered["certificate_links"] = [dict(item) for item in plan["certificate_links"]]
+        link = next(item for item in altered["certificate_links"] if item["legacy_id"] == 20)
+        assert blocked.site_id == source["expected_site_id"]
+        assert blocked.line_code == source["expected_canonical_raw_line_code"]
+        assert blocked.row_version == source["expected_row_version"]
+        link["canonical_record_id"] = blocked.id
+        altered["plan_sha256"] = plan_digest(altered)
+        before = _counts(session)
+        with pytest.raises(ProductionLinePopulationApplyError, match="target legacy identity"):
+            guarded_apply(session, altered, expected_database_name=DATABASE_NAME, apply=True)
+        session.rollback()
+    with Session(fixture_state) as session:
+        assert _counts(session) == before
+
+
+def test_postgres_writer_rejects_resealed_swapped_case_owner(fixture_state):
+    # Create a same-site/same-raw Case that is unrelated to the source
+    # candidate. Both target fences pass except legacy ownership.
+    with Session(fixture_state) as session:
+        unrelated = session.scalar(select(Case).where(Case.legacy_inspection_id == 14))
+        unrelated.scope_code = "A"
+        session.commit()
+    with Session(fixture_state) as session:
+        plan = _plan(session)
+        source = next(item for item in plan["case_links"]
+                      if item["legacy_id"] == 10 and item["classification"] == "LINK_TO_NEW_LINE")
+        unrelated = session.scalar(select(Case).where(Case.legacy_inspection_id == 14))
+        altered = dict(plan)
+        altered["case_links"] = [dict(item) for item in plan["case_links"]]
+        link = next(item for item in altered["case_links"] if item["legacy_id"] == 10)
+        assert unrelated.site_id == source["expected_site_id"]
+        assert unrelated.scope_code == source["expected_canonical_raw_line_code"]
+        link["canonical_record_id"] = unrelated.id
+        link["expected_row_version"] = unrelated.row_version
+        altered["plan_sha256"] = plan_digest(altered)
+        before = _counts(session)
+        with pytest.raises(ProductionLinePopulationApplyError, match="target legacy identity"):
+            guarded_apply(session, altered, expected_database_name=DATABASE_NAME, apply=True)
+        session.rollback()
+    with Session(fixture_state) as session:
+        assert _counts(session) == before
+
+
 def test_postgres_writer_rejects_unrelated_global_canonical_state_drift(fixture_state):
     with Session(fixture_state) as session:
         plan = _plan(session)

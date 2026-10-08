@@ -127,6 +127,8 @@ def _lock_link_target(session: Session, record: Mapping[str, Any], *, certificat
     model = Certificate if certificate else Case
     row = session.scalar(select(model).where(model.id == record["canonical_record_id"]).with_for_update())
     _require(row is not None, "B6J writer target record disappeared")
+    legacy_id = row.legacy_certificate_id if certificate else row.legacy_inspection_id
+    _require(legacy_id == record["legacy_id"], "B6J writer target legacy identity differs from sealed source")
     _require(row.site_id == record["expected_site_id"], "B6J writer target Site changed")
     _require(row.production_line_id == record["expected_production_line_id"], "B6J writer target ProductionLine link changed")
     _require(row.row_version == record["expected_row_version"], "B6J writer target version changed")

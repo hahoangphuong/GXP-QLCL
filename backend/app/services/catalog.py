@@ -530,6 +530,7 @@ class CatalogReadService:
                         row.storage_root,
                         row.storage_relative_path,
                         row.original_filename,
+                        row.checksum_sha256,
                     )
                 ),
                 row.is_current,
@@ -549,6 +550,7 @@ class CatalogReadService:
                 version.storage_root,
                 version.storage_relative_path,
                 version.original_filename,
+                version.checksum_sha256,
             )
         )
 

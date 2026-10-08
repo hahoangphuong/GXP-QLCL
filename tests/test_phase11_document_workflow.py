@@ -2725,7 +2725,7 @@ def test_khkt_contextual_create_is_only_available_while_document_is_missing():
     assert "chỉ hỗ trợ mở và xem lịch sử" in existing_create["disabled_reason"]
 
 
-def test_khkt_contextual_create_retries_until_current_binary_exists():
+def test_khkt_contextual_create_retries_until_current_binary_integrity_is_complete():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CatalogReadService()
@@ -2794,11 +2794,53 @@ def test_khkt_contextual_create_retries_until_current_binary_exists():
         version.is_current = True
         session.flush()
 
+        current_without_checksum_actions = khkt_actions()
+        assert current_without_checksum_actions["create"]["available"] is True
+        assert current_without_checksum_actions["open"]["available"] is False
+        assert current_without_checksum_actions["history"]["available"] is True
+
+        version.checksum_sha256 = "canonical-checksum"
+        session.flush()
+
         current_actions = khkt_actions()
         assert current_actions["create"]["available"] is False
         assert current_actions["create"]["reason_code"] == "ready_open_history"
         assert current_actions["open"]["available"] is True
         assert current_actions["history"]["available"] is True
+
+
+def test_catalog_document_version_ranking_requires_checksum_for_openable_current():
+    service = CatalogReadService()
+    complete = SimpleNamespace(
+        is_current=True,
+        storage_root="inspection",
+        storage_relative_path="2026/complete.docx",
+        original_filename="complete.docx",
+        checksum_sha256="canonical-checksum",
+        issued_on=None,
+        created_at=1,
+        version_no=1,
+        id="complete",
+    )
+    missing_checksum = SimpleNamespace(
+        is_current=True,
+        storage_root="inspection",
+        storage_relative_path="2026/missing-checksum.docx",
+        original_filename="missing-checksum.docx",
+        checksum_sha256=None,
+        issued_on=None,
+        created_at=1,
+        version_no=2,
+        id="missing-checksum",
+    )
+
+    selected = service._pick_document_version(
+        [complete, missing_checksum]
+    )
+
+    assert selected is complete
+    assert service._document_version_open_available(complete) is True
+    assert service._document_version_open_available(missing_checksum) is False
 
 
 def test_khkt_workspace_prefers_openable_current_binary_over_incomplete_duplicate():

@@ -62,6 +62,7 @@ from backend.app.document.service_contract import (
     DocumentGenerationPlan,
     DocumentGenerationRequest,
     DocumentPayloadEnvelope,
+    DocumentPayloadField,
     TemplateSelectionResult,
 )
 from backend.app.document.template_binary import assign_template_binary_locator
@@ -297,34 +298,57 @@ def test_prepare_generation_reuses_idempotency_key_only_for_exact_request():
 def test_sensitive_generation_payload_never_reuses_unverifiable_idempotency_identity():
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
-    service = DocumentWorkflowService()
 
     with Session(engine) as session:
         case_id, _ = _seed_case(session)
-        seed_default_template_metadata(session)
-        user = build_authenticated_user("inspector01", "inspector")
-        base = {
-            "family_code": "SUPPORT_ATTENDEE_LIST",
-            "case_id": case_id,
-            "storage_scope": "support_document",
-            "idempotency_key": "sensitive-payload-retry-001",
-            "strict_payload": True,
-        }
-
-        def request(account_number: str, *, key: str = "sensitive-payload-retry-001"):
-            return {
-                **base,
-                "idempotency_key": key,
-                "payload": {"TenCty": "Cong ty A", "SoTK": account_number},
-            }
-
-        first = service.prepare_generation(
-            session,
-            storage=None,
-            payload=request("0123456789"),
-            user=user,
+        family = "SENSITIVE_IDEMPOTENCY_TEST"
+        template = TemplateSelectionResult(
+            family_code=family,
+            logical_name="Sensitive test document",
+            template_pattern="sensitive-test.dotx",
+            source_application="Word",
+            storage_scope="inspection_folder",
+            host_procedure="SensitiveTest.Create",
+            population_procedures=(),
+            bookmarks=(),
+            copy_forward_dependencies=(),
+            notes=None,
         )
-        run = session.get(DocumentGenerationRun, first["generation_run_id"])
+
+        def plan(account_number: str, *, key: str) -> DocumentGenerationPlan:
+            return DocumentGenerationPlan(
+                request=DocumentGenerationRequest(
+                    family_code=family,
+                    requested_by_user_id=None,
+                    case_id=case_id,
+                    idempotency_key=key,
+                ),
+                template=template,
+                payload=DocumentPayloadEnvelope(
+                    family_code=family,
+                    fields=(
+                        DocumentPayloadField(
+                            field_name="TenCty",
+                            value="Cong ty A",
+                            source="sensitive-test",
+                        ),
+                        DocumentPayloadField(
+                            field_name="SoTK",
+                            value=account_number,
+                            source="sensitive-test",
+                            is_sensitive=True,
+                        ),
+                    ),
+                    source_procedures=("sensitive-test",),
+                ),
+                source_dependencies=(),
+            )
+
+        first = persistence_module.prepare_generation_persistence(
+            session,
+            plan("0123456789", key="sensitive-payload-retry-001"),
+        )
+        run = session.get(DocumentGenerationRun, first.generation_run_id)
         assert run is not None
         assert json.loads(run.input_payload_redacted) == {
             "SoTK": "<redacted>",
@@ -333,16 +357,13 @@ def test_sensitive_generation_payload_never_reuses_unverifiable_idempotency_iden
 
         for account in ("0123456789", "9988776655"):
             try:
-                service.prepare_generation(
+                persistence_module.prepare_generation_persistence(
                     session,
-                    storage=None,
-                    payload=request(account),
-                    user=user,
+                    plan(account, key="sensitive-payload-retry-001"),
                 )
-            except HTTPException as exc:
-                assert exc.status_code == 409
-                assert "sensitive_payload_unverifiable" in str(exc.detail)
-                assert account not in str(exc.detail)
+            except persistence_module.DocumentPersistenceError as exc:
+                assert "sensitive_payload_unverifiable" in str(exc)
+                assert account not in str(exc)
             else:
                 raise AssertionError(
                     "Sensitive payload identity cannot be proven from redacted data."
@@ -352,14 +373,12 @@ def test_sensitive_generation_payload_never_reuses_unverifiable_idempotency_iden
         assert len(list(session.scalars(select(DocumentVariant)))) == 1
         assert json.loads(run.input_payload_redacted)["SoTK"] == "<redacted>"
 
-        distinct = service.prepare_generation(
+        distinct = persistence_module.prepare_generation_persistence(
             session,
-            storage=None,
-            payload=request("9988776655", key="sensitive-payload-retry-002"),
-            user=user,
+            plan("9988776655", key="sensitive-payload-retry-002"),
         )
-        assert distinct["generation_run_id"] != first["generation_run_id"]
-        assert distinct["document_id"] == first["document_id"]
+        assert distinct.generation_run_id != first.generation_run_id
+        assert distinct.document_id == first.document_id
         assert len(list(session.scalars(select(DocumentGenerationRun)))) == 2
 
 

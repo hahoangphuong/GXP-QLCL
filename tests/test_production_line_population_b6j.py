@@ -153,6 +153,45 @@ def test_writer_rejects_plan_without_immutable_b6i_roster_binding():
     _validate_plan(bound)
 
 
+@pytest.mark.parametrize(
+    ("field", "corrupt", "error"),
+    (
+        ("planned_production_line_id", "00000000-0000-0000-0000-000000000099", "target differs"),
+        ("expected_site_id", SITE_8, "crosses candidate Site"),
+        ("canonical_line_code", "OTHER", "code differs"),
+        ("legacy_id", 999, "source is absent"),
+        ("classification", "LINK_TO_EXISTING_LINE", "classifications disagree"),
+    ),
+)
+def test_b6j_writer_rejects_resealed_inconsistent_link_before_database_access(field, corrupt, error):
+    state, digest = _state()
+    plan, _ = _bound_plan(_snapshot(), state, digest)
+    link = next(item for item in plan["case_links"] if item["classification"] == "LINK_TO_NEW_LINE")
+    link[field] = corrupt
+    plan["plan_sha256"] = plan_digest(plan)
+    with pytest.raises(ProductionLinePopulationApplyError, match=error):
+        _validate_plan(plan)
+
+
+def test_b6j_writer_rejects_resealed_duplicate_candidate_key():
+    state, digest = _state()
+    plan, _ = _bound_plan(_snapshot(), state, digest)
+    plan["candidates"][1]["candidate_key"] = plan["candidates"][0]["candidate_key"]
+    plan["plan_sha256"] = plan_digest(plan)
+    with pytest.raises(ProductionLinePopulationApplyError, match="duplicate or missing"):
+        _validate_plan(plan)
+
+
+def test_b6j_writer_accepts_existing_line_mapping_consistency():
+    state, digest = _state()
+    state["existing_production_lines"] = [{"id": "line-7-a", "site_id": SITE_7, "code": "A"}]
+    state["source_state_fingerprint"] = sha256(canonical_json_bytes({key: value for key, value in state.items() if key != "source_state_fingerprint"})).hexdigest()
+    digest = sha256(canonical_json_bytes(state)).hexdigest()
+    plan, _ = _bound_plan(_snapshot(), state, digest)
+    assert any(record["classification"] == "LINK_TO_EXISTING_LINE" for record in plan["case_links"])
+    _validate_plan(plan)
+
+
 def test_generic_roster_cardinality_is_relative_to_sealed_plan():
     state, digest = _state()
     plan, _ = _bound_plan(_snapshot(), state, digest)

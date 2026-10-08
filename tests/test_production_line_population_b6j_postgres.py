@@ -164,7 +164,7 @@ def test_postgres_writer_dry_run_apply_and_second_apply(fixture_state):
         assert _counts(session) == (3, 3, 2)
 
 
-def test_postgres_writer_rolls_back_after_insert_before_link_failure(fixture_state):
+def test_postgres_writer_rejects_resealed_mismatched_link_before_write(fixture_state):
     with Session(fixture_state) as session:
         plan = _plan(session)
         altered = dict(plan)
@@ -172,7 +172,7 @@ def test_postgres_writer_rolls_back_after_insert_before_link_failure(fixture_sta
         next(item for item in altered["case_links"] if item["classification"] == "LINK_TO_NEW_LINE")["planned_production_line_id"] = "00000000-0000-0000-0000-000000000099"
         altered["plan_sha256"] = plan_digest(altered)
         before = _counts(session)
-        with pytest.raises(IntegrityError):
+        with pytest.raises(ProductionLinePopulationApplyError, match="target differs from sealed candidate"):
             guarded_apply(session, altered, expected_database_name=DATABASE_NAME, apply=True)
         session.rollback()
     with Session(fixture_state) as session:

@@ -52,6 +52,31 @@ def _validate_plan(plan: Mapping[str, Any]) -> None:
     _require(not plan.get("scope_actions"), "B6J writer refuses scope lifecycle writes")
     _require(not plan.get("certificate_relationship_actions"), "B6J writer refuses CertificateRelationship writes")
 
+    # A self-consistent digest is not an authorization to redirect a link to
+    # a different line. Reconcile every writable link with its sealed candidate.
+    items = plan.get("candidates")
+    _require(isinstance(items, list) and all(isinstance(item, Mapping) for item in items), "B6J plan candidate records are invalid")
+    candidates = {item.get("candidate_key"): item for item in items}
+    _require(len(candidates) == len(items) and None not in candidates, "B6J plan candidate identities are duplicate or missing")
+    for field, source_field in (("case_links", "source_case_ids"), ("certificate_links", "source_certificate_ids")):
+        records = plan.get(field)
+        _require(isinstance(records, list), f"B6J plan {field} records are invalid")
+        for record in records:
+            _require(isinstance(record, Mapping), f"B6J plan {field} record is invalid")
+            classification = record.get("classification")
+            if classification not in {"LINK_TO_NEW_LINE", "LINK_TO_EXISTING_LINE"}:
+                continue
+            candidate = candidates.get(record.get("candidate_key"))
+            _require(candidate is not None, "B6J writer link candidate is missing")
+            required_class = "CREATE_NEW_PRODUCTION_LINE" if classification == "LINK_TO_NEW_LINE" else "MAP_TO_EXISTING_PRODUCTION_LINE"
+            _require(candidate.get("classification") == required_class, "B6J link and candidate classifications disagree")
+            _require(record.get("expected_site_id") == candidate.get("canonical_site_id") and record.get("expected_site_id") is not None, "B6J link crosses candidate Site")
+            _require(record.get("canonical_line_code") == candidate.get("canonical_line_code"), "B6J link code differs from candidate")
+            _require(record.get("legacy_id") in (candidate.get(source_field) or []), "B6J link source is absent from candidate evidence")
+            destination = candidate.get("proposed_production_line_id") if classification == "LINK_TO_NEW_LINE" else candidate.get("existing_production_line_id")
+            _require(destination is not None and record.get("planned_production_line_id") == destination, "B6J link target differs from sealed candidate")
+
+
 
 def _validate_target_mode(
     plan: Mapping[str, Any], *, expected_database_name: str, apply: bool, allow_rehearsal_dry_run: bool,
@@ -134,6 +159,17 @@ def _prepared(session: Session, plan: Mapping[str, Any], *, expected_database_na
     for record, certificate in deduplicated.values():
         target = _lock_link_target(session, record, certificate=certificate)
         prepared_links.append((record, target, certificate))
+    for candidate in candidates.values():
+        if candidate.get("classification") != "MAP_TO_EXISTING_PRODUCTION_LINE":
+            continue
+        existing = session.scalar(
+            select(ProductionLine).where(ProductionLine.id == candidate.get("existing_production_line_id")).with_for_update()
+        )
+        _require(
+            existing is not None and existing.site_id == candidate.get("canonical_site_id")
+            and existing.code == candidate.get("canonical_line_code"),
+            "B6J existing ProductionLine identity or Site changed",
+        )
     for item in creates:
         _require(item.get("canonical_site_id") and item.get("proposed_production_line_id") and item.get("effective_from"), "B6J writer create candidate is incomplete")
         _require(session.scalar(select(Site.id).where(Site.id == item["canonical_site_id"]).with_for_update()) is not None, "B6J writer candidate Site disappeared")

@@ -81,7 +81,10 @@ the plan before target-level fences or mutations run.
 
 The B6 owner source tables were checked on disposable PostgreSQL across
 `20260929_0017 → 20261008_0022`. The approved revision set is **explicit**,
-not a minimum version or automatic forward-compatibility rule. The B6H
+not a minimum version or automatic forward-compatibility rule. The disposable B6 compatibility integration additionally exercises schema
+and source-row survival across the upgrade, fresh export and plan at `0022`,
+transactional dry-run rollback, apply on a `gxp_b6c_test_*` database, stale
+second apply rejection, and rejection of a `0017` plan at `0022`. The B6H
 canonical-state exporter records the **actual database revision**; B6J plans
 copy it unchanged and bind it into their semantic SHA, roster provenance, and
 plan-scoped UUID. The B6J writer checks that **the target revision equals

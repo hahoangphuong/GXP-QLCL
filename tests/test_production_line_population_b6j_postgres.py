@@ -225,6 +225,10 @@ def test_postgres_writer_rejects_resealed_swapped_certificate_owner(fixture_stat
         assert blocked.line_code == source["expected_canonical_raw_line_code"]
         assert blocked.row_version == source["expected_row_version"]
         link["canonical_record_id"] = blocked.id
+        # Remove the old blocked action so this probe reaches the row-level
+        # legacy-ID ownership fence rather than the earlier duplicate-owner
+        # plan validation. Duplicate-owner rejection has its own tests.
+        altered["certificate_links"] = [item for item in altered["certificate_links"] if item["legacy_id"] != 22]
         altered["plan_sha256"] = plan_digest(altered)
         before = _counts(session)
         with pytest.raises(ProductionLinePopulationApplyError, match="target legacy identity"):
@@ -253,6 +257,9 @@ def test_postgres_writer_rejects_resealed_swapped_case_owner(fixture_state):
         assert unrelated.scope_code == source["expected_canonical_raw_line_code"]
         link["canonical_record_id"] = unrelated.id
         link["expected_row_version"] = unrelated.row_version
+        # Exclude the owner source's separate blocked record to exercise the
+        # locked-row legacy-ID guard independently of duplicate-plan detection.
+        altered["case_links"] = [item for item in altered["case_links"] if item["legacy_id"] != 14]
         altered["plan_sha256"] = plan_digest(altered)
         before = _counts(session)
         with pytest.raises(ProductionLinePopulationApplyError, match="target legacy identity"):

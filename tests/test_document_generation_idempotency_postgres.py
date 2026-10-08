@@ -201,7 +201,7 @@ def test_concurrent_same_key_preparation_waits_before_document_mutations():
         engine.dispose()
 
 
-@pytest.mark.parametrize("key_mode", ["different", "none"])
+@pytest.mark.parametrize("key_mode", ["different", "none", "uuid_case"])
 def test_concurrent_preparations_for_one_logical_document_share_identity(key_mode):
     engine = create_engine(DATABASE_URL, future=True)
     factory = sessionmaker(
@@ -232,8 +232,8 @@ def test_concurrent_preparations_for_one_logical_document_share_identity(key_mod
             session.commit()
             case_id = case.id
 
-        first_key = f"first-{token}" if key_mode == "different" else None
-        second_key = f"second-{token}" if key_mode == "different" else None
+        first_key = f"first-{token}" if key_mode != "none" else None
+        second_key = f"second-{token}" if key_mode != "none" else None
         plan = DocumentGenerationPlan(
             request=DocumentGenerationRequest(
                 family_code=family_code,
@@ -262,7 +262,11 @@ def test_concurrent_preparations_for_one_logical_document_share_identity(key_mod
         )
         second_plan = replace(
             plan,
-            request=replace(plan.request, idempotency_key=second_key),
+            request=replace(
+                plan.request,
+                idempotency_key=second_key,
+                case_id=case_id.upper() if key_mode == "uuid_case" else case_id,
+            ),
         )
 
         blocker = factory()

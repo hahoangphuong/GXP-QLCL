@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from hashlib import sha256
 from dataclasses import dataclass
+from uuid import UUID
 
 from sqlalchemy import Select, select, text
 from sqlalchemy.orm import Session
@@ -221,6 +222,17 @@ def _lock_generation_idempotency_key(
     )
 
 
+def _canonical_parent_lock_id(parent_id: str | None) -> str | None:
+    if parent_id is None:
+        return None
+    # PostgreSQL UUID equality treats alternative text spellings as identical.
+    # The advisory-lock key must encode the same database UUID identity.
+    try:
+        return str(UUID(str(parent_id)))
+    except (ValueError, AttributeError, TypeError):
+        return str(parent_id)
+
+
 def _lock_logical_document_preparation(
     session: Session,
     request: DocumentGenerationRequest,
@@ -230,11 +242,11 @@ def _lock_logical_document_preparation(
     identity = json.dumps(
         [
             request.family_code,
-            request.case_id,
-            request.capa_cycle_id,
-            request.certificate_id,
-            request.business_eligibility_certificate_id,
-            request.change_request_id,
+            _canonical_parent_lock_id(request.case_id),
+            _canonical_parent_lock_id(request.capa_cycle_id),
+            _canonical_parent_lock_id(request.certificate_id),
+            _canonical_parent_lock_id(request.business_eligibility_certificate_id),
+            _canonical_parent_lock_id(request.change_request_id),
         ],
         ensure_ascii=False,
         separators=(",", ":"),

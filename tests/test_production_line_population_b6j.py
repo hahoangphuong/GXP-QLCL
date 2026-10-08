@@ -198,6 +198,41 @@ def test_planner_preserves_prelinked_canonical_owners_without_reassignment():
     _validate_plan(plan)
 
 
+def test_dated_source_without_eligible_canonical_owner_is_blocked_and_rostered():
+    snapshot = _snapshot()
+    state, _ = _state()
+    # The Site 8 / A Case is present in the source but absent canonically.
+    # The Site 7 certificate linked to its source ID cannot substitute.
+    state["cases"] = [x for x in state["cases"] if x["legacy_inspection_id"] != 11]
+    state["source_state_fingerprint"] = sha256(canonical_json_bytes({
+        key: value for key, value in state.items() if key != "source_state_fingerprint"
+    })).hexdigest()
+    digest = sha256(canonical_json_bytes(state)).hexdigest()
+    plan, roster = _bound_plan(snapshot, state, digest)
+    orphan = next(c for c in plan["candidates"] if c["legacy_site_id"] == 8)
+    assert orphan["effective_from"] == "2026-07-20"
+    assert orphan["classification"] == "BLOCKED_NO_ELIGIBLE_LINK_TARGET"
+    assert orphan["block_reason"] == "NO_CANONICAL_OWNER_ELIGIBLE_FOR_LINK"
+    assert orphan["proposed_production_line_id"] is None
+    assert any(item["candidate_key"] == orphan["candidate_key"] for item in roster["items"])
+    assert not any(r["classification"] == "LINK_TO_NEW_LINE" and r["candidate_key"] == orphan["candidate_key"]
+                   for r in (*plan["case_links"], *plan["certificate_links"]))
+    _validate_plan(plan)
+
+
+def test_writer_rejects_resealed_orphan_creation_even_with_valid_plan_sha():
+    state, digest = _state()
+    plan, _ = _bound_plan(_snapshot(), state, digest)
+    candidate = next(c for c in plan["candidates"] if c["legacy_site_id"] == 8)
+    for record in (*plan["case_links"], *plan["certificate_links"]):
+        if record["candidate_key"] == candidate["candidate_key"] and record["classification"] == "LINK_TO_NEW_LINE":
+            record["classification"] = "BLOCKED_STALE_STATE"
+            record["block_reason"] = "SYNTHETIC_REVIEW_ONLY"
+    plan["plan_sha256"] = plan_digest(plan)
+    with pytest.raises(ProductionLinePopulationApplyError, match="creation without an eligible canonical link"):
+        _validate_plan(plan)
+
+
 def test_writer_rejects_resealed_action_to_reassign_existing_canonical_fk():
     state, digest = _state()
     plan, _ = _bound_plan(_snapshot(), state, digest)

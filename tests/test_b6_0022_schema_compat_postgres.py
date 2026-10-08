@@ -95,6 +95,7 @@ def _snapshot() -> dict[str, object]:
             _row(4, {1: "ID", 2: "LOẠI KT", 3: "ID CƠ SỞ", 4: "MÃ DC", 5: "Ngày K.tra"}),
             _row(5, {1: 920022, 2: "GMP", 3: 920022, 4: "LINE-1", 5: "05/01/2026"}),
             _row(6, {1: 920023, 2: "GMP", 3: 920022, 4: "LINE-2", 5: "20/01/2026"}),
+            _row(7, {1: 920024, 2: "GMP", 3: 920022, 4: "LINE-ORPHAN", 5: "21/01/2026"}),
         ]},
         {"sheet_name": "db.cc", "raw_rows": [
             _row(4, {1: "ID", 4: "LOẠI CC", 5: "ID ĐỢT KTRA", 8: "ID CƠ SỞ", 9: "MÃ DC", 10: "Ngày cấp CC"}),
@@ -228,6 +229,9 @@ def test_0022_schema_is_source_stable_and_guarded_population_is_revision_bound()
         by_code = {item["canonical_line_code"]: item for item in plan_0022["candidates"]}
         assert by_code["LINE-1"]["classification"] == "MAP_TO_EXISTING_PRODUCTION_LINE"
         assert by_code["LINE-2"]["classification"] == "CREATE_NEW_PRODUCTION_LINE"
+        assert by_code["LINE-ORPHAN"]["classification"] == "BLOCKED_NO_ELIGIBLE_LINK_TARGET"
+        assert by_code["LINE-ORPHAN"]["proposed_production_line_id"] is None
+        assert by_code["LINE-ORPHAN"]["effective_from"] == "2026-01-21"
         for kind in ("case_links", "certificate_links"):
             existing = next(item for item in plan_0022[kind] if item["legacy_id"] == 920022)
             assert existing["classification"] == "NOT_APPLICABLE"
@@ -257,6 +261,7 @@ def test_0022_schema_is_source_stable_and_guarded_population_is_revision_bound()
             line2 = session.scalar(select(ProductionLine).where(ProductionLine.code == "LINE-2"))
             assert line2 is not None
             assert line2.id == by_code["LINE-2"]["proposed_production_line_id"]
+            assert session.scalar(select(ProductionLine).where(ProductionLine.code == "LINE-ORPHAN")) is None
             assert session.scalar(select(Case).where(Case.legacy_inspection_id == 920023)).production_line_id == line2.id
             assert session.scalar(select(Certificate).where(Certificate.legacy_certificate_id == 920023)).production_line_id == line2.id
             assert session.scalar(select(ProductionLine).where(ProductionLine.code == "LINE-1")).id == by_code["LINE-1"]["existing_production_line_id"]

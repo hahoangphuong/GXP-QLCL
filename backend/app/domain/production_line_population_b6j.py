@@ -242,6 +242,22 @@ def build_population_plan(snapshot: Mapping[str, Any], *, snapshot_sha256: str, 
             results.append({"legacy_id": identity, "candidate_key": None if candidate is None else candidate["candidate_key"], "classification": classification, "block_reason": reason, "raw_line_code": line.get("source_text"), "canonical_line_code": line.get("canonical_text"), "source_ref": source.get("source_ref"), "canonical_record_id": None if canonical is None else canonical.get("id"), "expected_site_id": expected_site, "expected_production_line_id": None if canonical is None else canonical.get("production_line_id"), "expected_row_version": None if canonical is None else canonical.get("row_version"), "expected_canonical_raw_line_code": None if canonical is None else canonical.get("scope_code_raw" if kind == "CASE" else "line_code_raw"), "planned_production_line_id": target})
         return results
     case_links, certificate_links = links(source_cases, "CASE"), links(source_certificates, "CERTIFICATE")
+    # Dated source evidence does not justify creating a line with no canonical
+    # Case/Certificate eligible to own its ProductionLine link.
+    eligible_new_keys = {
+        record["candidate_key"]
+        for record in (*case_links, *certificate_links)
+        if record["classification"] == "LINK_TO_NEW_LINE"
+    }
+    for candidate in candidates:
+        if candidate["classification"] != "CREATE_NEW_PRODUCTION_LINE" or candidate["candidate_key"] in eligible_new_keys:
+            continue
+        candidate["classification"] = "BLOCKED_NO_ELIGIBLE_LINK_TARGET"
+        candidate["block_reason"] = "NO_CANONICAL_OWNER_ELIGIBLE_FOR_LINK"
+        candidate["proposed_production_line_id"] = None
+        for record in (*case_links, *certificate_links):
+            if record["candidate_key"] == candidate["candidate_key"]:
+                record["planned_production_line_id"] = None
     # Source accounting can contain several legacy references for one DB owner.
     # Retain every source record, but refuse any non-convergent write target.
     for label, records in (("Case", case_links), ("Certificate", certificate_links)):

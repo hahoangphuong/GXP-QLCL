@@ -67,7 +67,11 @@ cross-Site reuse is normal.  It creates no transformation, scope-lifecycle, or
 certificate-relationship records.  A created line's `effective_from` means
 `EARLIEST_EVIDENCED_ACTIVE_DATE`, not commissioning: the earliest valid dated
 inspection evidence bound to that exact Site/code, with certificate issue date
-only as fallback.  Missing dated evidence blocks creation.  The immutable plan
+only as fallback.  Missing dated evidence blocks creation. A dated candidate without an eligible
+canonical Case/Certificate link target is retained for accounting as
+`BLOCKED_NO_ELIGIBLE_LINK_TARGET` and cannot create an orphan ProductionLine.
+The writer separately refuses a resealed create action without a
+`LINK_TO_NEW_LINE` owner. The immutable plan
 stores the selected raw date and source state, uses a plan-scoped UUID, locks
 and revalidates every target before one all-or-nothing transaction, and rejects
 a second application as stale state.  Date cells use the shared Snapshot V2

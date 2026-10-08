@@ -76,6 +76,19 @@ def _validate_plan(plan: Mapping[str, Any]) -> None:
             _require(record.get("expected_production_line_id") is None, "B6J writer refuses to replace an existing canonical ProductionLine link")
             destination = candidate.get("proposed_production_line_id") if classification == "LINK_TO_NEW_LINE" else candidate.get("existing_production_line_id")
             _require(destination is not None and record.get("planned_production_line_id") == destination, "B6J link target differs from sealed candidate")
+    # Plan SHA alone cannot authorize an orphan ProductionLine create action.
+    eligible_new_keys = {
+        record["candidate_key"]
+        for records in (plan["case_links"], plan["certificate_links"])
+        for record in records
+        if record["classification"] == "LINK_TO_NEW_LINE"
+    }
+    for candidate in items:
+        if candidate.get("classification") == "CREATE_NEW_PRODUCTION_LINE":
+            _require(
+                candidate["candidate_key"] in eligible_new_keys,
+                "B6J writer refuses creation without an eligible canonical link target",
+            )
 
 
 

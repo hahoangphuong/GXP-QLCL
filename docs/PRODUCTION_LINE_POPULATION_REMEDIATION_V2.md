@@ -13,10 +13,13 @@ certificate relationship row.
 Every plan binds the exact Snapshot V2 SHA256, canonical-state semantic JSON SHA256 (or
 `null` when the export has not run), roster SHA256 (or `null`), and planner
 version. The canonical-state format is `production-line-canonical-state/v1` and
-requires database identity, exact Alembic `20260929_0017`, source-state
-fingerprint, UUID-form canonical IDs for Sites, lines, Cases, Certificates and
-transformations, and explicit
-physical evidence. The roster format is
+requires database identity, an explicitly approved Alembic revision
+(`20260929_0017` or `20261008_0022` for the separately tested B6H/B6J
+disposable compatibility path), source-state fingerprint, UUID-form canonical
+IDs for Sites, lines, Cases, Certificates and transformations, and explicit
+physical evidence. Protected B6J rehearsal apply remains pinned to
+`20260929_0017`; approval of the `0022` disposable path does not authorize
+rehearsal or production writes. The roster format is
 `production-line-physical-identity-roster/v1`.
 
 `canonical_state_sha256` and `physical_identity_roster_sha256` mean SHA256 of

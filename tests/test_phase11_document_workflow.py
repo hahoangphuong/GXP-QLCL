@@ -730,6 +730,8 @@ def test_source_binary_readiness_rejects_foreign_version_and_binding_identity():
             binding_id: str,
             *,
             request_family: str = "INSPECTION_BB_KT",
+            candidate_current: bool = True,
+            prefer_current: bool = True,
         ):
             resolution = SourceDocumentResolution(
                 request=SourceDocumentLookupRequest(
@@ -737,13 +739,14 @@ def test_source_binary_readiness_rejects_foreign_version_and_binding_identity():
                     required_bookmarks=("DsTT",),
                     dependency_type="copy_forward",
                     case_id=case_id,
+                    prefer_current_version=prefer_current,
                 ),
                 candidate=SourceDocumentCandidate(
                     document_id=source.id,
                     family_code="INSPECTION_BB_KT",
                     document_version_id=version_id,
                     available_bookmarks=("DsTT",),
-                    is_current_version=True,
+                    is_current_version=candidate_current,
                     storage_binding_id=binding_id,
                 ),
             )
@@ -765,6 +768,42 @@ def test_source_binary_readiness_rejects_foreign_version_and_binding_identity():
             request_family="INSPECTION_CAPA_LAN_1",
         )
         assert wrong_family.readiness_status == "source_version_lineage_mismatch"
+
+        # A cached candidate must not claim a formerly current source is
+        # still current after the persisted version has changed.
+        source_version.is_current = False
+        session.flush()
+        stale_current = requirement(source_version.id, source_binding.id)
+        assert stale_current.readiness_status == "source_version_current_state_mismatch"
+
+        # Explicit historical reads remain valid when the candidate agrees
+        # with the persisted state and the lookup opts out of current-only.
+        historical = requirement(
+            source_version.id,
+            source_binding.id,
+            candidate_current=False,
+            prefer_current=False,
+        )
+        assert historical.readiness_status == "direct_stream_ready"
+
+        current_required = requirement(
+            source_version.id,
+            source_binding.id,
+            candidate_current=False,
+        )
+        assert current_required.readiness_status == "source_version_not_current"
+
+        source_version.is_current = True
+        source_variant.is_active = False
+        session.flush()
+        inactive_source = requirement(source_version.id, source_binding.id)
+        assert inactive_source.readiness_status == "source_variant_inactive"
+        inactive_historical = requirement(
+            source_version.id,
+            source_binding.id,
+            prefer_current=False,
+        )
+        assert inactive_historical.readiness_status == "source_variant_inactive"
 
 
 def test_idempotent_generation_retry_requires_source_dependency_identity():

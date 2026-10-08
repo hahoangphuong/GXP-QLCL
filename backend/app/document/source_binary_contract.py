@@ -70,7 +70,11 @@ def _storage_binding(session: Session, storage_binding_id: str | None) -> Storag
 def _document_version(session: Session, document_version_id: str | None) -> DocumentVersion | None:
     if document_version_id is None:
         return None
-    stmt: Select[tuple[DocumentVersion]] = select(DocumentVersion).where(DocumentVersion.id == document_version_id)
+    stmt: Select[tuple[DocumentVersion]] = (
+        select(DocumentVersion)
+        .where(DocumentVersion.id == document_version_id)
+        .execution_options(populate_existing=True)
+    )
     return session.execute(stmt).scalar_one_or_none()
 
 
@@ -102,7 +106,11 @@ def build_source_binary_requirements(
         document_version = _document_version(session, resolution.candidate.document_version_id)
         source_document = session.get(Document, resolution.candidate.document_id)
         source_variant = (
-            session.get(DocumentVariant, document_version.document_variant_id)
+            session.get(
+                DocumentVariant,
+                document_version.document_variant_id,
+                populate_existing=True,
+            )
             if document_version is not None
             else None
         )
@@ -131,6 +139,18 @@ def build_source_binary_requirements(
                 "Resolved source binding does not match the source document version's "
                 "persisted storage_binding_id."
             )
+        elif not source_variant.is_active:
+            readiness_status = "source_variant_inactive"
+            detail = "Resolved source version belongs to an inactive document variant."
+        elif document_version.is_current != resolution.candidate.is_current_version:
+            readiness_status = "source_version_current_state_mismatch"
+            detail = (
+                "Resolved source candidate's current-version flag no longer matches "
+                "the persisted document version."
+            )
+        elif resolution.request.prefer_current_version and not document_version.is_current:
+            readiness_status = "source_version_not_current"
+            detail = "Source lookup requires a current version, but the persisted version is historical."
         elif resolution.candidate.storage_binding_id is None:
             readiness_status = "missing_storage_binding"
             detail = "Source document version has no storage_binding_id, so the source folder cannot be resolved."

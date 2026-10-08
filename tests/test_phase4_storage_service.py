@@ -303,6 +303,95 @@ def test_stale_binding_cannot_bypass_anchor_bounded_lookup(tmp_path: Path):
     assert result.resolution.relative_path.startswith("2025/")
 
 
+
+def test_existing_foreign_folder_does_not_satisfy_persisted_binding(tmp_path: Path):
+    service = build_counting_service(tmp_path)
+    binding_service = StorageBindingService(service)
+    foreign = service.inspection_root / "2024" / "Other site (ID-999) (KT-FOREIGN)"
+    valid = service.inspection_root / "2024" / "Real site (ID-103) (KT-1376-GMP)"
+    foreign.mkdir(parents=True)
+    valid.mkdir(parents=True)
+    case_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0009"
+
+    with build_session() as session:
+        binding = StorageBinding(
+            case_id=case_id, year=2024, site_legacy_id=103,
+            inspection_legacy_code="KT-1376-GMP",
+            relative_path="2024/Other site (ID-999) (KT-FOREIGN)",
+            storage_class=service.config.storage_class,
+        )
+        session.add(binding)
+        session.commit()
+        result = binding_service.resolve_inspection_folder(
+            session, case_id=case_id, year=2024,
+            site_legacy_id=103, inspection_legacy_code="KT-1376-GMP",
+        )
+        session.commit()
+        assert binding.id == result.binding.id
+        assert binding.relative_path == "2024/Real site (ID-103) (KT-1376-GMP)"
+
+    assert result.source == "live_resolution"
+    assert result.resolution.status == StorageResolutionStatus.RESOLVED
+    assert service.lookup_years == [2024]
+
+
+def test_existing_wrong_year_binding_cannot_bypass_live_not_found(tmp_path: Path):
+    service = build_counting_service(tmp_path)
+    binding_service = StorageBindingService(service)
+    wrong_year = service.inspection_root / "2025" / "Real site (ID-103) (KT-1376-GMP)"
+    wrong_year.mkdir(parents=True)
+    case_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0010"
+
+    with build_session() as session:
+        binding = StorageBinding(
+            case_id=case_id, year=2024, site_legacy_id=103,
+            inspection_legacy_code="KT-1376-GMP",
+            relative_path="2025/Real site (ID-103) (KT-1376-GMP)",
+            storage_class=service.config.storage_class,
+        )
+        session.add(binding)
+        session.commit()
+        result = binding_service.resolve_inspection_folder(
+            session, case_id=case_id, year=2024,
+            site_legacy_id=103, inspection_legacy_code="KT-1376-GMP",
+        )
+        session.commit()
+        assert binding.relative_path == "2025/Real site (ID-103) (KT-1376-GMP)"
+        assert session.scalars(select(StorageBinding)).all() == [binding]
+
+    assert result.source == "live_resolution"
+    assert result.binding is None
+    assert result.resolution.status == StorageResolutionStatus.NOT_FOUND
+    assert service.lookup_years == [2024]
+
+
+def test_existing_file_is_not_a_resolved_storage_binding_folder(tmp_path: Path):
+    service = build_counting_service(tmp_path)
+    binding_service = StorageBindingService(service)
+    file = service.inspection_root / "2024" / "Real site (ID-103) (KT-1376-GMP)"
+    file.parent.mkdir(parents=True)
+    file.write_bytes(b"this is a file, not an inspection folder")
+    case_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0011"
+
+    with build_session() as session:
+        session.add(StorageBinding(
+            case_id=case_id, year=2024, site_legacy_id=103,
+            inspection_legacy_code="KT-1376-GMP",
+            relative_path="2024/Real site (ID-103) (KT-1376-GMP)",
+            storage_class=service.config.storage_class,
+        ))
+        session.commit()
+        result = binding_service.resolve_inspection_folder(
+            session, case_id=case_id, year=2024,
+            site_legacy_id=103, inspection_legacy_code="KT-1376-GMP",
+        )
+
+    assert result.source == "live_resolution"
+    assert result.binding is None
+    assert result.resolution.status == StorageResolutionStatus.NOT_FOUND
+    assert service.lookup_years == [2024]
+
+
 def test_explicit_year_binding_fast_path_is_unchanged(tmp_path: Path):
     service = build_service(tmp_path)
     binding_service = StorageBindingService(service)

@@ -9,7 +9,11 @@ from sqlalchemy.orm import Session
 
 from backend.app.db.enums import StorageResolutionStatus
 from backend.app.db.models.phase1 import LegacyInspectionStorageAnchor, StorageBinding, StorageResolutionLog
-from backend.app.storage.types import StorageResolution, StorageServiceProtocol
+from backend.app.storage.types import (
+    StorageResolution,
+    StorageServiceProtocol,
+    matches_inspection_identity,
+)
 
 
 @dataclass(frozen=True)
@@ -136,6 +140,34 @@ class StorageBindingService:
         session.flush()
         return binding
 
+    def _persisted_binding_folder_is_eligible(
+        self,
+        binding: StorageBinding,
+        *,
+        year: int,
+        site_legacy_id: int,
+        inspection_legacy_code: str,
+    ) -> bool:
+        # A persisted path is a cache of a physical identity resolution, not
+        # proof that a still-existing path has retained the same identity.
+        # Live inspection resolution searches exactly one folder below year.
+        parts = binding.relative_path.replace("\\", "/").split("/")
+        if (
+            len(parts) != 2
+            or parts[0] != str(year)
+            or not matches_inspection_identity(
+                parts[1],
+                site_legacy_id=site_legacy_id,
+                inspection_legacy_code=inspection_legacy_code,
+            )
+        ):
+            return False
+        try:
+            entry = self.storage.stat(binding.relative_path, root="inspection")
+        except (FileNotFoundError, NotADirectoryError):
+            return False
+        return entry.is_dir
+
     def resolve_inspection_folder(
         self,
         session: Session,
@@ -153,7 +185,16 @@ class StorageBindingService:
                 site_legacy_id=site_legacy_id,
                 inspection_legacy_code=inspection_legacy_code,
             )
-        if binding is not None and self.storage.exists(binding.relative_path):
+        if (
+            binding is not None
+            and year is not None
+            and self._persisted_binding_folder_is_eligible(
+                binding,
+                year=year,
+                site_legacy_id=site_legacy_id,
+                inspection_legacy_code=inspection_legacy_code,
+            )
+        ):
             resolution = StorageResolution(
                 status=StorageResolutionStatus.RESOLVED,
                 relative_path=binding.relative_path,

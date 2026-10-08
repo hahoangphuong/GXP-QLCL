@@ -24,6 +24,7 @@ The system needs a durable record of proven folder mappings, but must not persis
 - Store only root-relative path and observed folder label.
 - Do not create `storage_binding` rows for `NOT_FOUND`, `AMBIGUOUS`, or `INVALID`.
 - Re-resolution of the same triplet updates the existing binding in place.
+- The explicit-year persisted binding fast path may reuse a cached folder only when its root-relative path is exactly `<year>/<folder>`, the folder label still matches both literal legacy tokens, and StorageService confirms the path is a directory. An existing but foreign, wrong-year, or file path is not an identity proof: use the ordinary live resolution; update the binding only on an unambiguous RESOLVED result, and otherwise preserve the existing row without exposing it as resolved.
 
 ## Consequences
 Positive:

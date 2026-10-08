@@ -23,7 +23,7 @@ RUNNERS = (
     ("create_result", "expected_status", "expected_commands"),
     (
         (9, 9, ("createdb",)),
-        (0, 13, ("createdb", "dropdb")),
+        (0, 13, ("createdb", "probe-python", "dropdb")),
     ),
 )
 def test_runner_never_deletes_an_existing_database(
@@ -72,4 +72,5 @@ def test_runner_never_deletes_an_existing_database(
     assert [line.split(":", 1)[0] for line in invocations] == list(expected_commands)
     assert invocations[0] == f"createdb:--host={socket_host} --username=postgres {name}"
     if create_result == 0:
-        assert invocations[1] == f"dropdb:--host={socket_host} --username=postgres --if-exists {name}"
+        assert invocations[1].startswith("probe-python:-m alembic upgrade ")
+        assert invocations[2] == f"dropdb:--host={socket_host} --username=postgres --if-exists {name}"

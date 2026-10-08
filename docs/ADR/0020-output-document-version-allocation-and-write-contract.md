@@ -19,7 +19,7 @@ The next missing step before introducing a render adapter is:
 - Add an output-allocation step that:
   - locks the persisted `document_generation_run` row with `SELECT ... FOR UPDATE` and refreshes any preloaded ORM identity before reading `output_document_version_id`, so concurrent callers for the same run cannot allocate twice from stale state
   - requires the locked generation run to be `pending` before creating or reusing an output allocation; `failed` runs must be explicitly reclaimed to `pending` by the workflow owner first, while `cancelled` and `succeeded` runs fail closed without output-version mutation
-  - validates persisted generation-run/document/variant lineage against the prepared persisted state before storage resolution or output-version mutation; reused allocations fail closed on the same lineage mismatch
+  - validates persisted generation-run/document/variant lineage (including the run's prepared `document_variant_id`) against the prepared persisted state before storage resolution or output-version mutation; reused allocations fail closed on the same lineage mismatch
   - locks the persisted `document_variant` row with `SELECT ... FOR UPDATE` for both new and reused allocations so the lock order remains `DocumentGenerationRun -> DocumentVariant` and concurrent allocation cannot supersede a reused version while it is being accepted
   - requires a reused allocation to still be the highest persisted `version_no` for the locked variant; a superseded allocation fails closed instead of proceeding into render work that finalization can never accept
   - resolves folder/occupancy and assigns `max(version_no)+1` only while holding that variant lock for new allocations
@@ -40,6 +40,7 @@ The next missing step before introducing a render adapter is:
 - Add a write-finalization step that:
   - locks and refreshes the persisted `document_generation_run` row with `SELECT ... FOR UPDATE` before evaluating finalizability, so a preloaded ORM identity cannot hide a concurrent lifecycle change and another transaction cannot change run status while finalization proceeds into output I/O
   - requires the generation run to be `pending` before any output I/O; `failed`, `cancelled`, and `succeeded` runs fail closed, and a retry must be explicitly re-claimed to `pending` by the workflow owner first
+  - verifies the locked generation run's persisted `document_variant_id` is the allocated version's variant before any output I/O; missing or different lineage fails closed without promoting a different variant
   - locks the persisted `document_variant` row with `SELECT ... FOR UPDATE` after the generation-run lock and before output I/O, preserving the mutation lock order `DocumentGenerationRun -> DocumentVariant` while concurrent finalizers for the same variant serialize before changing current-version state
   - requires the allocated version to still be the highest persisted `version_no` for the locked variant before output I/O; retries of older allocations fail closed instead of rewinding document-version lineage
   - requires the locked variant to have at most one pre-existing `is_current=true` version before output I/O; duplicate-current lineage fails closed instead of being normalized by the new write

@@ -1859,6 +1859,38 @@ def test_output_allocation_rejects_stale_prepared_lineage_before_mutation():
             session.add(foreign_variant)
             session.flush()
 
+            other_language_variant = DocumentVariant(
+                document_id=canonical_document_id,
+                variant_type=DocumentVariantType.EDITABLE_DOCX,
+                language_code="en",
+                is_active=True,
+            )
+            session.add(other_language_variant)
+            session.flush()
+
+            # The prepared-state checks alone cannot prove which variant the
+            # persisted generation run was originally bound to.
+            for invalid_variant_id in (None, other_language_variant.id):
+                run.document_variant_id = invalid_variant_id
+                session.flush()
+                try:
+                    output_version_module.allocate_output_document_version(
+                        session,
+                        storage,
+                        prepared,
+                        output_filename="candidate.docx",
+                    )
+                except output_version_module.OutputVersionAllocationError as exc:
+                    assert "generation_run.document_variant_id" in str(exc)
+                else:
+                    raise AssertionError(
+                        "Allocation must reject missing or different persisted run variant lineage."
+                    )
+                assert run.output_document_version_id is None
+                assert session.query(DocumentVersion).count() == 0
+            run.document_variant_id = canonical_variant_id
+            session.flush()
+
             cross_document_prepared = replace(
                 prepared,
                 persisted_state=replace(
@@ -1929,6 +1961,26 @@ def test_output_allocation_rejects_stale_prepared_lineage_before_mutation():
             assert allocation.document_id == canonical_document_id
             assert allocation.document_variant_id == canonical_variant_id
             assert session.query(DocumentVersion).count() == 1
+
+            run.document_variant_id = other_language_variant.id
+            session.flush()
+            try:
+                output_version_module.allocate_output_document_version(
+                    session,
+                    storage,
+                    prepared,
+                    output_filename="candidate.docx",
+                )
+            except output_version_module.OutputVersionAllocationError as exc:
+                assert "generation_run.document_variant_id" in str(exc)
+            else:
+                raise AssertionError(
+                    "Reused allocation must reject a drifted persisted run variant."
+                )
+            assert run.output_document_version_id == allocation.document_version_id
+            assert session.query(DocumentVersion).count() == 1
+            run.document_variant_id = canonical_variant_id
+            session.flush()
 
             reused_variant_mismatch_prepared = replace(
                 prepared,
@@ -2013,6 +2065,39 @@ def test_finalize_output_write_rejects_stale_allocation_identity_before_storage_
             assert run is not None
             assert version is not None
             assert run.status == DocumentGenerationStatus.PENDING
+            assert run.document_variant_id == allocation.document_variant_id
+            other_language_variant = DocumentVariant(
+                document_id=allocation.document_id,
+                variant_type=DocumentVariantType.EDITABLE_DOCX,
+                language_code="en",
+                is_active=True,
+            )
+            session.add(other_language_variant)
+            session.flush()
+
+            original_target = root / "dkkd" / allocation.storage_relative_path
+            for invalid_variant_id in (None, other_language_variant.id):
+                run.document_variant_id = invalid_variant_id
+                session.flush()
+                try:
+                    output_version_module.finalize_output_document_version_write(
+                        session,
+                        storage,
+                        allocation,
+                        binary_payload=b"must-not-write-wrong-run-variant",
+                    )
+                except output_version_module.OutputVersionAllocationError as exc:
+                    assert "generation_run.document_variant_id" in str(exc)
+                else:
+                    raise AssertionError(
+                        "Finalization must reject missing or different persisted run variant lineage."
+                    )
+                assert original_target.exists() is False
+                assert run.status == DocumentGenerationStatus.PENDING
+                assert version.checksum_sha256 is None
+                assert version.is_current is False
+            run.document_variant_id = allocation.document_variant_id
+            session.flush()
 
             corrupt_current_a = DocumentVersion(
                 document_variant_id=allocation.document_variant_id,

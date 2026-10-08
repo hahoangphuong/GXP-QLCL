@@ -297,6 +297,11 @@ def _assert_output_allocation_lineage_identity(
             persisted_state.document_id,
         ),
         (
+            "generation_run.document_variant_id",
+            generation_run.document_variant_id,
+            persisted_state.document_variant_id,
+        ),
+        (
             "document_variant.id",
             variant.id,
             persisted_state.document_variant_id,
@@ -436,6 +441,11 @@ def _assert_finalization_allocation_identity(
 
     comparisons = (
         ("generation_run.document_id", generation_run.document_id, allocation.document_id),
+        (
+            "generation_run.document_variant_id",
+            generation_run.document_variant_id,
+            allocation.document_variant_id,
+        ),
         (
             "generation_run.output_document_version_id",
             generation_run.output_document_version_id,

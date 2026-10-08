@@ -122,6 +122,7 @@ def test_output_finalization_serializes_on_document_variant_before_storage_io(tm
 
             run = DocumentGenerationRun(
                 document_id=document.id,
+                document_variant_id=variant.id,
                 template_binding_id=None,
                 template_definition_id=None,
                 output_document_version_id=version.id,
@@ -309,6 +310,7 @@ def test_output_finalization_locks_generation_run_before_storage_io(tmp_path):
 
             run = DocumentGenerationRun(
                 document_id=document.id,
+                document_variant_id=variant.id,
                 template_binding_id=None,
                 template_definition_id=None,
                 output_document_version_id=version.id,
@@ -482,6 +484,7 @@ def test_output_allocation_serializes_version_number_assignment_on_document_vari
 
             run = DocumentGenerationRun(
                 document_id=document.id,
+                document_variant_id=variant.id,
                 template_binding_id=None,
                 template_definition_id=None,
                 output_document_version_id=None,
@@ -758,6 +761,7 @@ def test_output_allocation_run_lock_refreshes_preloaded_generation_run_identity(
 
             run = DocumentGenerationRun(
                 document_id=document.id,
+                document_variant_id=variant.id,
                 template_binding_id=None,
                 template_definition_id=None,
                 output_document_version_id=None,
@@ -1205,6 +1209,7 @@ def test_current_binary_reader_refreshes_identity_and_serializes_with_finalizer(
 
             run = DocumentGenerationRun(
                 document_id=document.id,
+                document_variant_id=variant.id,
                 template_binding_id=None,
                 template_definition_id=None,
                 output_document_version_id=candidate.id,
@@ -1266,6 +1271,7 @@ def test_current_binary_reader_refreshes_identity_and_serializes_with_finalizer(
 
             later_run = DocumentGenerationRun(
                 document_id=document_id,
+                document_variant_id=variant_id,
                 template_binding_id=None,
                 template_definition_id=None,
                 output_document_version_id=later_candidate.id,

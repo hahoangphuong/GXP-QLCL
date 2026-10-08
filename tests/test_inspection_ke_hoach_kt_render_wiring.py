@@ -321,7 +321,7 @@ def test_khkt_render_rejects_output_filename_drift_before_readiness_and_allocati
     )
     monkeypatch.setattr(
         document_api_module,
-        "prepare_template_aware_docx_generation",
+        "allocate_prepared_template_aware_docx_generation",
         lambda *_args, **_kwargs: allocation_calls.append(object()),
     )
 

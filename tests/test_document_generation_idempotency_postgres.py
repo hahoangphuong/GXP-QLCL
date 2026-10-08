@@ -199,3 +199,167 @@ def test_concurrent_same_key_preparation_waits_before_document_mutations():
                 cleanup.execute(delete(Company).where(Company.id == company_id))
             cleanup.commit()
         engine.dispose()
+
+
+@pytest.mark.parametrize("key_mode", ["different", "none"])
+def test_concurrent_preparations_for_one_logical_document_share_identity(key_mode):
+    engine = create_engine(DATABASE_URL, future=True)
+    factory = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+        future=True,
+    )
+    token = uuid4().hex
+    company_id = site_id = case_id = None
+    blocker = contender = None
+    family_code = "SAME_LOGICAL_DOCUMENT_CONCURRENT_TEST"
+    try:
+        with factory() as session:
+            company = Company(legal_name=f"Logical Document Lock Co {token}")
+            session.add(company)
+            session.flush()
+            company_id = company.id
+            site = Site(
+                company_id=company.id,
+                site_name=f"Logical Document Lock Site {token}",
+            )
+            session.add(site)
+            session.flush()
+            site_id = site.id
+            case = Case(site_id=site.id, gxp_type="GMP", state=CaseState.DRAFT)
+            session.add(case)
+            session.commit()
+            case_id = case.id
+
+        first_key = f"first-{token}" if key_mode == "different" else None
+        second_key = f"second-{token}" if key_mode == "different" else None
+        plan = DocumentGenerationPlan(
+            request=DocumentGenerationRequest(
+                family_code=family_code,
+                requested_by_user_id=None,
+                case_id=case_id,
+                storage_scope="inspection_folder",
+                idempotency_key=first_key,
+            ),
+            template=TemplateSelectionResult(
+                family_code=family_code,
+                logical_name="Logical document identity",
+                template_pattern="logical-document-identity.dotx",
+                source_application="Word",
+                storage_scope="inspection_folder",
+                host_procedure="Prepare.Test",
+                population_procedures=(),
+                bookmarks=(),
+                copy_forward_dependencies=(),
+            ),
+            payload=DocumentPayloadEnvelope(
+                family_code=family_code,
+                fields=(),
+                source_procedures=(),
+            ),
+            source_dependencies=(),
+        )
+        second_plan = replace(
+            plan,
+            request=replace(plan.request, idempotency_key=second_key),
+        )
+
+        blocker = factory()
+        first = prepare_generation_persistence(blocker, plan)
+        assert first.reused_generation_run is False
+
+        contender = factory()
+        contender.execute(text("SET LOCAL lock_timeout = '250ms'"))
+        contender_connection = contender.connection()
+        mutations: list[str] = []
+
+        def record_contender_sql(conn, cursor, statement, parameters, context, executemany):
+            if conn is contender_connection and statement.lstrip().upper().startswith(
+                ("INSERT", "UPDATE", "DELETE")
+            ):
+                mutations.append(statement)
+
+        event.listen(engine, "before_cursor_execute", record_contender_sql)
+        try:
+            with pytest.raises(OperationalError, match="lock timeout"):
+                prepare_generation_persistence(contender, second_plan)
+        finally:
+            event.remove(engine, "before_cursor_execute", record_contender_sql)
+            contender.rollback()
+        assert mutations == []
+
+        blocker.commit()
+        second = prepare_generation_persistence(contender, second_plan)
+        assert second.reused_generation_run is False
+        assert second.generation_run_id != first.generation_run_id
+        assert second.document_id == first.document_id
+        assert second.document_variant_id == first.document_variant_id
+        contender.commit()
+
+        with factory() as verify:
+            documents = list(
+                verify.scalars(
+                    select(Document).where(
+                        Document.family_code == family_code,
+                        Document.case_id == case_id,
+                    )
+                )
+            )
+            assert len(documents) == 1
+            variants = list(
+                verify.scalars(
+                    select(DocumentVariant).where(
+                        DocumentVariant.document_id == first.document_id
+                    )
+                )
+            )
+            assert len(variants) == 1
+            runs = list(
+                verify.scalars(
+                    select(DocumentGenerationRun).where(
+                        DocumentGenerationRun.document_id == first.document_id
+                    )
+                )
+            )
+            assert {run.id for run in runs} == {
+                first.generation_run_id,
+                second.generation_run_id,
+            }
+    finally:
+        if contender is not None:
+            contender.rollback()
+            contender.close()
+        if blocker is not None:
+            blocker.rollback()
+            blocker.close()
+        with factory() as cleanup:
+            if case_id is not None:
+                documents = list(
+                    cleanup.scalars(
+                        select(Document).where(
+                            Document.case_id == case_id,
+                            Document.family_code == family_code,
+                        )
+                    )
+                )
+                for document in documents:
+                    cleanup.execute(
+                        delete(DocumentGenerationRun).where(
+                            DocumentGenerationRun.document_id == document.id
+                        )
+                    )
+                    cleanup.execute(
+                        delete(DocumentVariant).where(
+                            DocumentVariant.document_id == document.id
+                        )
+                    )
+                    cleanup.delete(document)
+                cleanup.flush()
+                cleanup.execute(delete(Case).where(Case.id == case_id))
+            if site_id is not None:
+                cleanup.execute(delete(Site).where(Site.id == site_id))
+            if company_id is not None:
+                cleanup.execute(delete(Company).where(Company.id == company_id))
+            cleanup.commit()
+        engine.dispose()

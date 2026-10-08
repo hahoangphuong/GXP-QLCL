@@ -197,23 +197,49 @@ def _lookup_template_binding(
     return matches[0] if matches else None
 
 
-def _lock_generation_idempotency_key(
-    session: Session,
-    idempotency_key: str | None,
-) -> None:
-    if not idempotency_key or session.get_bind().dialect.name != "postgresql":
+def _lock_preparation_identity(session: Session, identity: str) -> None:
+    if session.get_bind().dialect.name != "postgresql":
         return
-    # A transaction-scoped lock must precede both the key preflight and document
-    # creation: otherwise two uncommitted preparations can each create a shell
-    # before the database's unique idempotency-key index rejects the loser.
-    digest = sha256(
-        ("document-generation-idempotency:" + idempotency_key).encode("utf-8")
-    ).digest()
+    digest = sha256(identity.encode("utf-8")).digest()
     lock_key = int.from_bytes(digest[:8], "big", signed=True)
     session.execute(
         text("SELECT pg_advisory_xact_lock(:lock_key)"),
         {"lock_key": lock_key},
     )
+
+
+def _lock_generation_idempotency_key(
+    session: Session,
+    idempotency_key: str | None,
+) -> None:
+    if not idempotency_key:
+        return
+    # Lock before preflight so two uncommitted preparations sharing the key
+    # cannot both pass the not-yet-present check.
+    _lock_preparation_identity(
+        session, "document-generation-idempotency:" + idempotency_key
+    )
+
+
+def _lock_logical_document_preparation(
+    session: Session,
+    request: DocumentGenerationRequest,
+) -> None:
+    # The exact same fields used by _find_existing_document define the owner
+    # identity; include null links so case-only and case+cycle do not alias.
+    identity = json.dumps(
+        [
+            request.family_code,
+            request.case_id,
+            request.capa_cycle_id,
+            request.certificate_id,
+            request.business_eligibility_certificate_id,
+            request.change_request_id,
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    _lock_preparation_identity(session, "document-generation-logical:" + identity)
 
 
 def _existing_generation_run(session: Session, idempotency_key: str | None) -> DocumentGenerationRun | None:
@@ -409,6 +435,7 @@ def prepare_generation_persistence(
     _require_parent_link(plan.request)
     _validate_capa_document_link(session, plan.request)
     _lock_generation_idempotency_key(session, plan.request.idempotency_key)
+    _lock_logical_document_preparation(session, plan.request)
     _preflight_idempotent_generation_run(
         session,
         plan,

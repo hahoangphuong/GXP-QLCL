@@ -160,7 +160,7 @@ def test_writer_rejects_plan_without_immutable_b6i_roster_binding():
         ("planned_production_line_id", "00000000-0000-0000-0000-000000000099", "target differs"),
         ("expected_site_id", SITE_8, "crosses candidate Site"),
         ("canonical_line_code", "OTHER", "code differs"),
-        ("legacy_id", 999, "source is absent"),
+        ("legacy_id", 999, "candidate membership differs from source roster"),
         ("classification", "LINK_TO_EXISTING_LINE", "classifications disagree"),
     ),
 )
@@ -229,6 +229,12 @@ def test_writer_rejects_resealed_orphan_creation_even_with_valid_plan_sha():
         if record["candidate_key"] == candidate["candidate_key"] and record["classification"] == "LINK_TO_NEW_LINE":
             record["classification"] = "BLOCKED_STALE_STATE"
             record["block_reason"] = "SYNTHETIC_REVIEW_ONLY"
+    # Keep the plan's summary honest to isolate the orphan-create fence.
+    for label, records in (("cases", plan["case_links"]), ("certificates", plan["certificate_links"])):
+        plan["summary_counts"][label] = {
+            key: sum(record["classification"] == key for record in records)
+            for key in sorted({record["classification"] for record in records})
+        }
     plan["plan_sha256"] = plan_digest(plan)
     with pytest.raises(ProductionLinePopulationApplyError, match="creation without an eligible canonical link"):
         _validate_plan(plan)

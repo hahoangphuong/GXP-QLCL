@@ -17,6 +17,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--expected-reviewed-roster-file-sha256", required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
+    # The report must not overwrite either independently approved input
+    # (including aliases via symlinks or relative/absolute path spellings).
+    if args.output.resolve() in {args.plan.resolve(), args.reviewed_roster.resolve()}:
+        parser.error("B6K report output must differ from both immutable input artifacts")
     pbytes, rbytes = args.plan.read_bytes(), args.reviewed_roster.read_bytes()
     for label, payload, expected in (
         ("plan", pbytes, args.expected_plan_file_sha256),

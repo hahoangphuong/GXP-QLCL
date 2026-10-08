@@ -253,3 +253,26 @@ def test_invalid_b6i_b6j_provenance_cannot_be_reported_as_review_pass(change):
         plan["plan_sha256"] = plan_digest(plan)
     with pytest.raises(B6KReviewAlignmentError):
         audit_b6j_review_alignment(plan, roster)
+
+
+@pytest.mark.parametrize("overwrite", ("plan", "roster"))
+def test_cli_never_overwrites_approved_input_artifact(tmp_path, capsys, overwrite):
+    plan, roster = fixture()
+    plan_path = tmp_path / "plan.json"
+    roster_path = tmp_path / "roster.json"
+    plan_path.write_text(json.dumps(plan))
+    roster_path.write_text(json.dumps(roster))
+    before_plan, before_roster = plan_path.read_bytes(), roster_path.read_bytes()
+    report_path = plan_path if overwrite == "plan" else roster_path
+    args = [
+        "--plan", str(plan_path), "--reviewed-roster", str(roster_path),
+        "--expected-plan-file-sha256", sha256(before_plan).hexdigest(),
+        "--expected-reviewed-roster-file-sha256", sha256(before_roster).hexdigest(),
+        "--output", str(report_path),
+    ]
+    with pytest.raises(SystemExit) as exc:
+        main(args)
+    assert exc.value.code == 2
+    assert "must differ from both immutable input artifacts" in capsys.readouterr().err
+    assert plan_path.read_bytes() == before_plan
+    assert roster_path.read_bytes() == before_roster

@@ -3108,7 +3108,7 @@ describe("App Slice A.4 search workspace", () => {
 
     renderApp(["/search?result_key=site-1%3AGMP%3Acanonical%3Ap1&site_id=site-1&context_gxp=GMP&production_line_id=p1&line_code=A"]);
 
-    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("p1");
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("p1"));
   });
 
   it("fails safe when an explicit result_key is stale instead of opening the first row", async () => {

@@ -18,10 +18,9 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from backend.app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from backend.app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, UUID_TEXT_SAFE
 from backend.app.db.enums import (
     AuditActorType,
     CaseState,
@@ -258,7 +257,7 @@ class EvaluationScopeTaxonomyNode(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "evaluation_scope_taxonomy_node"
 
     taxonomy_version_id: Mapped[str] = mapped_column(ForeignKey("evaluation_scope_taxonomy_version.id"), nullable=False, index=True)
-    parent_node_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), index=True)
+    parent_node_id: Mapped[str | None] = mapped_column(UUID_TEXT_SAFE, index=True)
     gxp_type: Mapped[str] = mapped_column(String(32), nullable=False)
     source_name: Mapped[str] = mapped_column(String(64), nullable=False)
     node_key: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -354,7 +353,7 @@ class CaseScopeRevision(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Bas
     is_current_established: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
-    supersedes_revision_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
+    supersedes_revision_id: Mapped[str | None] = mapped_column(UUID_TEXT_SAFE)
     created_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"), index=True)
     established_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     established_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"), index=True)

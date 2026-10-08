@@ -74,7 +74,11 @@ a second application as stale state.  Date cells use the shared Snapshot V2
 Excel-1900 date-only conversion owner.  Before writes, B6J also recomputes the
 canonical-state semantic digest through the canonical exporter; any unrelated
 migration-relevant Site, Case, Certificate, or ProductionLine drift rejects
-the plan before target-level fences or mutations run.
+the plan before target-level fences or mutations run. B6J is a **missing-link
+population**: already-linked Cases/Certificates that match the planned UUID
+are explicit no-ops; conflicting existing links are blocked. The sealed plan
+validator and row-lock checks independently refuse to replace any non-null
+canonical `production_line_id`.
 
 
 ## B6H/B6J Revision 0022 Compatibility Boundary

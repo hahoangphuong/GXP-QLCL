@@ -73,6 +73,7 @@ def _validate_plan(plan: Mapping[str, Any]) -> None:
             _require(record.get("expected_site_id") == candidate.get("canonical_site_id") and record.get("expected_site_id") is not None, "B6J link crosses candidate Site")
             _require(record.get("canonical_line_code") == candidate.get("canonical_line_code"), "B6J link code differs from candidate")
             _require(record.get("legacy_id") in (candidate.get(source_field) or []), "B6J link source is absent from candidate evidence")
+            _require(record.get("expected_production_line_id") is None, "B6J writer refuses to replace an existing canonical ProductionLine link")
             destination = candidate.get("proposed_production_line_id") if classification == "LINK_TO_NEW_LINE" else candidate.get("existing_production_line_id")
             _require(destination is not None and record.get("planned_production_line_id") == destination, "B6J link target differs from sealed candidate")
 
@@ -131,6 +132,7 @@ def _lock_link_target(session: Session, record: Mapping[str, Any], *, certificat
     _require(legacy_id == record["legacy_id"], "B6J writer target legacy identity differs from sealed source")
     _require(row.site_id == record["expected_site_id"], "B6J writer target Site changed")
     _require(row.production_line_id == record["expected_production_line_id"], "B6J writer target ProductionLine link changed")
+    _require(row.production_line_id is None, "B6J writer refuses to replace an existing canonical ProductionLine link")
     _require(row.row_version == record["expected_row_version"], "B6J writer target version changed")
     raw = row.line_code if certificate else row.scope_code
     _require(raw == record["expected_canonical_raw_line_code"], "B6J writer compatibility line source changed")

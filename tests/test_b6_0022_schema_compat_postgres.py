@@ -228,6 +228,13 @@ def test_0022_schema_is_source_stable_and_guarded_population_is_revision_bound()
         by_code = {item["canonical_line_code"]: item for item in plan_0022["candidates"]}
         assert by_code["LINE-1"]["classification"] == "MAP_TO_EXISTING_PRODUCTION_LINE"
         assert by_code["LINE-2"]["classification"] == "CREATE_NEW_PRODUCTION_LINE"
+        for kind in ("case_links", "certificate_links"):
+            existing = next(item for item in plan_0022[kind] if item["legacy_id"] == 920022)
+            assert existing["classification"] == "NOT_APPLICABLE"
+            assert existing["block_reason"] == "ALREADY_LINKED_TO_PLANNED_LINE"
+            new_link = next(item for item in plan_0022[kind] if item["legacy_id"] == 920023)
+            assert new_link["classification"] == "LINK_TO_NEW_LINE"
+            assert new_link["block_reason"] is None
         old_line2 = next(item for item in plan_0017["candidates"] if item["canonical_line_code"] == "LINE-2")
         assert by_code["LINE-2"]["proposed_production_line_id"] != old_line2["proposed_production_line_id"]
 
@@ -239,7 +246,7 @@ def test_0022_schema_is_source_stable_and_guarded_population_is_revision_bound()
             session.rollback()
         with Session(engine) as session:
             dry = guarded_apply(session, plan_0022, expected_database_name=DATABASE_NAME, apply=False)
-            assert (dry["would_create_production_lines"], dry["would_link_cases"], dry["would_link_certificates"]) == (1, 2, 2)
+            assert (dry["would_create_production_lines"], dry["would_link_cases"], dry["would_link_certificates"]) == (1, 1, 1)
             session.rollback()
         assert _read_only_state(engine) == state_0022, "Dry-run modified canonical state"
 

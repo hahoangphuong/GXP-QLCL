@@ -173,6 +173,41 @@ def test_b6j_writer_rejects_resealed_inconsistent_link_before_database_access(fi
         _validate_plan(plan)
 
 
+def test_planner_preserves_prelinked_canonical_owners_without_reassignment():
+    state, _ = _state()
+    candidate_site7 = SITE_7
+    state["existing_production_lines"] = [
+        {"id": "line-existing-A", "site_id": candidate_site7, "code": "A"},
+        {"id": "line-unrelated", "site_id": candidate_site7, "code": "OTHER"},
+    ]
+    state["cases"][0]["production_line_id"] = "line-existing-A"
+    state["certificates"][0]["production_line_id"] = "line-unrelated"
+    state["source_state_fingerprint"] = sha256(canonical_json_bytes({
+        key: value for key, value in state.items() if key != "source_state_fingerprint"
+    })).hexdigest()
+    digest = sha256(canonical_json_bytes(state)).hexdigest()
+    plan, _ = _bound_plan(_snapshot(), state, digest)
+    existing_case = next(item for item in plan["case_links"] if item["legacy_id"] == 10)
+    conflicting_certificate = next(item for item in plan["certificate_links"] if item["legacy_id"] == 20)
+    assert existing_case["classification"] == "NOT_APPLICABLE"
+    assert existing_case["block_reason"] == "ALREADY_LINKED_TO_PLANNED_LINE"
+    assert conflicting_certificate["classification"] == "BLOCKED_EXISTING_LINK"
+    assert conflicting_certificate["block_reason"] == "CANONICAL_LINK_CONFLICT"
+    assert not any(item["legacy_id"] in (10, 20) and item["classification"].startswith("LINK_")
+                   for group in (plan["case_links"], plan["certificate_links"]) for item in group)
+    _validate_plan(plan)
+
+
+def test_writer_rejects_resealed_action_to_reassign_existing_canonical_fk():
+    state, digest = _state()
+    plan, _ = _bound_plan(_snapshot(), state, digest)
+    record = next(item for item in plan["case_links"] if item["classification"] == "LINK_TO_NEW_LINE")
+    record["expected_production_line_id"] = "00000000-0000-0000-0000-0000000000ff"
+    plan["plan_sha256"] = plan_digest(plan)
+    with pytest.raises(ProductionLinePopulationApplyError, match="refuses to replace an existing canonical"):
+        _validate_plan(plan)
+
+
 def test_b6j_writer_rejects_resealed_duplicate_candidate_key():
     state, digest = _state()
     plan, _ = _bound_plan(_snapshot(), state, digest)

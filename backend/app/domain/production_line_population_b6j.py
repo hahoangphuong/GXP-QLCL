@@ -225,13 +225,20 @@ def build_population_plan(snapshot: Mapping[str, Any], *, snapshot_sha256: str, 
             elif not isinstance(site, int): classification, reason = "BLOCKED_SITE_UNRESOLVED", "SOURCE_SITE_MISSING"
             elif kind == "CERTIFICATE" and (case := source_case_by_id.get(source.get("source_inspection_legacy_id"))) is not None and case.get("source_site_legacy_id") != site: classification, reason = "BLOCKED_SITE_MISMATCH", "CASE_CERTIFICATE_SITE_DIFFERS"
             elif candidate is None: classification, reason = "BLOCKED_IDENTITY_CONFLICT", "CANDIDATE_NOT_RESOLVED"
-            elif candidate["classification"] == "CREATE_NEW_PRODUCTION_LINE": classification = "LINK_TO_NEW_LINE"
-            elif candidate["classification"] == "MAP_TO_EXISTING_PRODUCTION_LINE": classification = "LINK_TO_EXISTING_LINE"
+            elif candidate["classification"] == "CREATE_NEW_PRODUCTION_LINE": classification, reason = "LINK_TO_NEW_LINE", None
+            elif candidate["classification"] == "MAP_TO_EXISTING_PRODUCTION_LINE": classification, reason = "LINK_TO_EXISTING_LINE", None
             else: classification, reason = candidate["classification"], candidate["block_reason"]
             expected_site = None if candidate is None else candidate["canonical_site_id"]
             if classification.startswith("LINK_") and canonical is None: classification, reason = "BLOCKED_STALE_STATE", "CANONICAL_RECORD_MISSING"
             elif classification.startswith("LINK_") and canonical.get("site_id") != expected_site: classification, reason = "BLOCKED_SITE_MISMATCH", "CANONICAL_SITE_DIFFERS"
             target = None if candidate is None else candidate["proposed_production_line_id"] or candidate["existing_production_line_id"]
+            # B6J is migration-only population of missing canonical links.
+            # A pre-existing FK is not permission to remap a physical identity.
+            if classification.startswith("LINK_") and canonical.get("production_line_id") is not None:
+                if canonical["production_line_id"] == target:
+                    classification, reason = "NOT_APPLICABLE", "ALREADY_LINKED_TO_PLANNED_LINE"
+                else:
+                    classification, reason = "BLOCKED_EXISTING_LINK", "CANONICAL_LINK_CONFLICT"
             results.append({"legacy_id": identity, "candidate_key": None if candidate is None else candidate["candidate_key"], "classification": classification, "block_reason": reason, "raw_line_code": line.get("source_text"), "canonical_line_code": line.get("canonical_text"), "source_ref": source.get("source_ref"), "canonical_record_id": None if canonical is None else canonical.get("id"), "expected_site_id": expected_site, "expected_production_line_id": None if canonical is None else canonical.get("production_line_id"), "expected_row_version": None if canonical is None else canonical.get("row_version"), "expected_canonical_raw_line_code": None if canonical is None else canonical.get("scope_code_raw" if kind == "CASE" else "line_code_raw"), "planned_production_line_id": target})
         return results
     case_links, certificate_links = links(source_cases, "CASE"), links(source_certificates, "CERTIFICATE")

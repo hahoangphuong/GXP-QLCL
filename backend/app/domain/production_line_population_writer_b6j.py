@@ -72,6 +72,11 @@ def _validate_target_mode(
         return
     _require(not allow_rehearsal_dry_run and not allow_rehearsal_apply, "B6J rehearsal override requires the exact rehearsal database")
     _require(expected_database_name not in PROTECTED_DATABASE_NAMES | {"postgres", REHEARSAL_DATABASE_NAME}, "B6J writer refuses protected database")
+    if apply:
+        _require(
+            expected_database_name.startswith("gxp_b6j_test_"),
+            "B6J non-rehearsal apply is limited to a disposable gxp_b6j_test_ database",
+        )
 
 
 def _validate_authoritative_rehearsal_plan(plan: Mapping[str, Any]) -> None:

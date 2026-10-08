@@ -257,6 +257,26 @@ def test_rehearsal_dry_run_override_is_exact_and_never_grants_apply(expected_dat
             _validate_target_mode(plan, expected_database_name=expected_database_name, apply=apply, allow_rehearsal_dry_run=allow)
 
 
+@pytest.mark.parametrize(
+    "database_name",
+    ("gxp_qlcl_prod", "gxp_qlcl_test", "gxp_b6h_test_staging", "gxp_legacy_rehearsal_copy"),
+)
+def test_non_rehearsal_apply_rejects_any_non_b6j_disposable_database(database_name):
+    plan = {"source_database_identity": {"database_name": database_name, "dialect": "postgresql"}}
+    with pytest.raises(ProductionLinePopulationApplyError, match="disposable gxp_b6j_test_"):
+        _validate_target_mode(
+            plan, expected_database_name=database_name, apply=True, allow_rehearsal_dry_run=False,
+        )
+
+
+def test_non_rehearsal_apply_accepts_explicit_b6j_disposable_database():
+    database_name = "gxp_b6j_test_contract"
+    plan = {"source_database_identity": {"database_name": database_name, "dialect": "postgresql"}}
+    _validate_target_mode(
+        plan, expected_database_name=database_name, apply=True, allow_rehearsal_dry_run=False,
+    )
+
+
 def test_existing_line_maps_and_links_without_new_uuid():
     state, digest = _state()
     state["existing_production_lines"] = [{"id": "line-7-a", "site_id": SITE_7, "code": "A"}]

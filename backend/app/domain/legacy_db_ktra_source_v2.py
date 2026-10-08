@@ -104,3 +104,16 @@ def snapshot_cell(snapshot_row: Mapping[str, Any], *, sheet_name: str, header: s
         raise ValueError("Snapshot V2 source row has duplicate cell coordinates")
     cell = {} if not matches else dict(matches[0])
     return {"sheet_name": sheet_name, "source_row_number": snapshot_row.get("source_row_number"), "column_ordinal": column_ordinal, "header": header, "raw_value": cell.get("raw_value"), "raw_state": cell.get("raw_state"), "observed_type": cell.get("observed_type")}
+
+
+def snapshot_sheet(snapshot: Mapping[str, Any], sheet_name: str) -> Mapping[str, Any]:
+    """Return one Snapshot V2 sheet by its exact, case-sensitive legacy name."""
+    if not isinstance(sheet_name, str) or not sheet_name:
+        raise ValueError("Snapshot V2 sheet name is invalid")
+    sheets = snapshot.get("sheets")
+    if not isinstance(sheets, list):
+        raise ValueError("Snapshot V2 sheets are invalid")
+    matches = [item for item in sheets if isinstance(item, Mapping) and item.get("sheet_name") == sheet_name]
+    if len(matches) != 1:
+        raise ValueError(f"Snapshot V2 is missing or ambiguous exact sheet {sheet_name}")
+    return matches[0]

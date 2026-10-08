@@ -142,6 +142,35 @@ MATRIX = {
     "classification": "REVIEWED_SOURCE_BOUND",
     "cutover_action": "reproduce",
     "reason": "reviewed source artifact"
+  },
+  "B6K_review_alignment": {
+    "owner_files": [
+      "backend/app/domain/production_line_cutover_readiness_b6k.py",
+      "tools/audit_production_line_cutover_readiness_b6k.py"
+    ],
+    "binding_fields": [
+      "legacy_snapshot_sha256",
+      "canonical_state_sha256",
+      "candidate_set_sha256",
+      "candidate_key",
+      "source_case_ids",
+      "source_certificate_ids",
+      "review_decision",
+      "review_status",
+      "reviewer",
+      "reviewed_at",
+      "review_reason",
+      "plan_sha256"
+    ],
+    "external_approval_fields": [
+      "expected_plan_file_sha256",
+      "expected_reviewed_roster_file_sha256"
+    ],
+    "hardcoded_constants": [],
+    "current_known_sha_values": [],
+    "classification": "REVIEWED_SOURCE_BOUND",
+    "cutover_action": "Run read-only alignment audit against independently pinned plan and reviewed roster; resolve all blockers and obtain separate write authorization",
+    "reason": "B6J binds review candidate universe but does not enforce B6I human decisions while writing"
   }
 }
 if __name__=="__main__": print(json.dumps(MATRIX,ensure_ascii=False,sort_keys=True,indent=2))

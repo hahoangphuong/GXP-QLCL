@@ -125,6 +125,33 @@ record both approval digests independently, and verify the authorized
 database/mode. A passing CI run proves code behavior, not completion of
 human review, source freeze, or authorization to write.
 
+## B6K Read-only Human Review Alignment
+
+B6J checks the B6I **immutable candidate set** but deliberately does not
+interpret decisions such as `APPROVE_NEW_PHYSICAL_LINE`,
+`MAP_TO_EXISTING_PRODUCTION_LINE`, `DEFER_INSUFFICIENT_EVIDENCE` or
+`REJECT_NOT_PHYSICAL_LINE`. Therefore, passing the B6J writer's technical
+fences is not proof that a physical-line identity has been approved.
+
+The read-only `tools/audit_production_line_cutover_readiness_b6k.py` compares
+one sealed B6J plan to a separately reviewed B6I roster, requiring the
+reviewed roster's source/semantic identities, exact candidate universe,
+canonical Site/code and legacy source IDs to match the plan. It reports
+blocked/unfinished decisions, missing reviewer, reviewed date or reason,
+conflicting new-line display codes, conflicting existing-line targets, and
+planner-blocked candidates. Invoke it only with independently retained
+`--expected-plan-file-sha256` and
+`--expected-reviewed-roster-file-sha256`; these must not be recomputed from
+unapproved modified files.
+
+The report always contains `"cutover_authorized": false`, even when
+`status` is `REVIEW_ALIGNMENT_PASS`. Such a PASS means **only** that reviewed
+decisions align with the technical plan. Frozen source provenance, separate
+human sign-off, writer-specific external plan approval, database identity,
+authorized revision and authorized operating mode remain independent
+requirements. No reviewer decision is invented, and this audit never
+creates a line, links a Case/Certificate, or grants permission to apply.
+
 ## B6H/B6J Revision 0022 Compatibility Boundary
 
 The B6 owner source tables were checked on disposable PostgreSQL across

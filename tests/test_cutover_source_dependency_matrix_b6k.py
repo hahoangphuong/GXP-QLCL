@@ -49,6 +49,19 @@ def test_b6j_matrix_retains_all_cutover_provenance_bindings() -> None:
     assert "independently record approved plan and file SHA" in MATRIX["B6J"]["cutover_action"]
 
 
+def test_b6k_read_only_review_alignment_gate_is_explicit_in_handoff() -> None:
+    gate = MATRIX["B6K_review_alignment"]
+    assert gate["classification"] == "REVIEWED_SOURCE_BOUND"
+    assert set(gate["external_approval_fields"]) == {
+        "expected_plan_file_sha256", "expected_reviewed_roster_file_sha256",
+    }
+    assert set(gate["owner_files"]) == {
+        "backend/app/domain/production_line_cutover_readiness_b6k.py",
+        "tools/audit_production_line_cutover_readiness_b6k.py",
+    }
+    assert "resolve all blockers" in gate["cutover_action"]
+
+
 def test_b6k_roster_binding_is_not_a_human_review_decision() -> None:
     assert MATRIX["B6I"]["classification"] == "REVIEWED_SOURCE_BOUND"
     assert "explicit review decisions" in MATRIX["B6I"]["cutover_action"]

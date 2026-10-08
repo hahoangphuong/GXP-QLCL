@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from backend.app.db.models.phase1 import Case, Certificate, ProductionLine, ProductionLineTransformation, Site
 from backend.app.domain.production_line_population import (
     CANONICAL_STATE_SCHEMA_VERSION,
+    SUPPORTED_ALEMBIC_REVISIONS,
     ProductionLinePlanningError,
     canonical_artifact_bytes,
     canonical_json_bytes,
@@ -19,9 +20,6 @@ from backend.app.domain.production_line_population import (
 
 
 REQUIRED_ALEMBIC_REVISION = "20260929_0017"
-# Explicit schema-compatible revisions verified with disposable PostgreSQL
-# schema/data probes; never interpret this as an open-ended >=0017 range.
-SUPPORTED_ALEMBIC_REVISIONS = frozenset({REQUIRED_ALEMBIC_REVISION, "20261008_0022"})
 PROTECTED_DATABASE_NAMES = frozenset({"gxp_qlcl"})
 
 

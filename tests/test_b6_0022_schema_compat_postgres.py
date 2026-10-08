@@ -19,7 +19,9 @@ from sqlalchemy.orm import Session
 from backend.app.db.enums import CaseState
 from backend.app.db.models.phase1 import Case, Certificate, Company, ProductionLine, Site
 from backend.app.domain.production_line_canonical_state import canonical_state_digest_pair, export_canonical_state
-from backend.app.domain.production_line_population import canonical_artifact_bytes
+from backend.app.domain.production_line_population import (
+    build_production_line_population_plan, canonical_artifact_bytes,
+)
 from backend.app.domain.production_line_population_b6j import build_population_plan
 from backend.app.domain.production_line_population_writer_b6j import ProductionLinePopulationApplyError, _verify_target, guarded_apply
 from backend.app.domain.production_line_review_workspace import REVIEW_SCHEMA_VERSION, candidate_set_digest
@@ -213,6 +215,14 @@ def test_0022_schema_is_source_stable_and_guarded_population_is_revision_bound()
         assert state_0022["source_alembic_revision"] == "20261008_0022"
         for field in ("sites", "existing_production_lines", "cases", "certificates", "transformations"):
             assert state_0022[field] == state_0017[field], f"B6 canonical {field} drifted across schema upgrade"
+        # The B6H physical-identity discovery/review owner must consume the
+        # same 0022 export, not only the separately approved B6J migration plan.
+        b6h_plan = build_production_line_population_plan(
+            _snapshot(), snapshot_sha256="a" * 64,
+            canonical_state=state_0022,
+            canonical_state_sha256=canonical_state_digest_pair(state_0022)[0],
+        )
+        assert b6h_plan["discovery"]["candidates"]
         plan_0022 = _plan(state_0022)
         assert plan_0022["source_alembic_revision"] == "20261008_0022"
         by_code = {item["canonical_line_code"]: item for item in plan_0022["candidates"]}

@@ -27,6 +27,9 @@ from backend.app.domain.phase2_import import normalize_inspection_gxp_type
 PLANNER_VERSION = "b6h-production-line-population/v2"
 CANONICAL_SNAPSHOT_SHA256 = "484cf37603aacc5ff01a7bde5ffab01ed444748d5c7b1a0b30e7fc3a04936caa"
 CANONICAL_STATE_SCHEMA_VERSION = "production-line-canonical-state/v1"
+# One B6H source-of-truth for verified PostgreSQL revisions.  An unknown or
+# intermediate revision must never inherit compatibility by numeric ordering.
+SUPPORTED_ALEMBIC_REVISIONS = frozenset({"20260929_0017", "20261008_0022"})
 ROSTER_SCHEMA_VERSION = "production-line-physical-identity-roster/v2"
 LEGACY_ROSTER_SCHEMA_VERSION = "production-line-physical-identity-roster/v1"
 SUPPORTED_ROSTER_ACTIONS = frozenset({
@@ -73,7 +76,7 @@ def _validate_canonical_state(canonical_state: Mapping[str, Any] | None, *, supp
         return None, None
     if canonical_state.get("schema_version") != CANONICAL_STATE_SCHEMA_VERSION:
         raise ProductionLinePlanningError("B6H canonical state has missing or unsupported schema_version")
-    if canonical_state.get("source_alembic_revision") != "20260929_0017":
+    if canonical_state.get("source_alembic_revision") not in SUPPORTED_ALEMBIC_REVISIONS:
         raise ProductionLinePlanningError("B6H canonical state has stale or unknown Alembic revision")
     if not isinstance(canonical_state.get("source_database_identity"), Mapping):
         raise ProductionLinePlanningError("B6H canonical state has no source database identity")

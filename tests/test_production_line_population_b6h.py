@@ -88,6 +88,34 @@ def test_canonical_state_requires_explicit_schema_and_provenance_contract():
         build_production_line_population_plan(snapshot, snapshot_sha256="a" * 64, canonical_state={})
 
 
+@pytest.mark.parametrize("revision", ("20260929_0017", "20261008_0022"))
+def test_b6h_discovery_accepts_only_explicit_compatible_revisions(revision):
+    state = {
+        "schema_version": CANONICAL_STATE_SCHEMA_VERSION, "exported_at": None,
+        "source_database_identity": {"database_name": "gxp_b6h_test_fixture"},
+        "source_alembic_revision": revision,
+        "sites": [], "existing_production_lines": [], "cases": [],
+        "certificates": [], "physical_line_evidence": [], "transformations": [],
+    }
+    state["source_state_fingerprint"] = sha256(canonical_json_bytes(state)).hexdigest()
+    plan = _plan(_snapshot(ktra=[], certificates=[]), state)
+    assert plan["discovery"]["candidates"] == []
+
+
+@pytest.mark.parametrize("revision", ("20261003_0018", "20261008_0023", None))
+def test_b6h_discovery_rejects_unapproved_revisions(revision):
+    state = {
+        "schema_version": CANONICAL_STATE_SCHEMA_VERSION, "exported_at": None,
+        "source_database_identity": {"database_name": "gxp_b6h_test_fixture"},
+        "source_alembic_revision": revision,
+        "sites": [], "existing_production_lines": [], "cases": [],
+        "certificates": [], "physical_line_evidence": [], "transformations": [],
+    }
+    state["source_state_fingerprint"] = sha256(canonical_json_bytes(state)).hexdigest()
+    with pytest.raises(ProductionLinePlanningError, match="stale or unknown Alembic revision"):
+        _plan(_snapshot(ktra=[], certificates=[]), state)
+
+
 def test_supplied_semantic_digests_are_verified_not_merely_format_checked():
     snapshot = _snapshot(ktra=[], certificates=[])
     state = {"schema_version": CANONICAL_STATE_SCHEMA_VERSION, "exported_at": None, "source_database_identity": {"database_name": "gxp_b6h_test_fixture"}, "source_alembic_revision": "20260929_0017", "sites": [], "existing_production_lines": [], "cases": [], "certificates": [], "physical_line_evidence": [], "transformations": []}

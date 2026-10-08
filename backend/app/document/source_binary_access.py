@@ -24,16 +24,27 @@ def open_source_binary_stream(
         )
     if requirement.exact_storage_root is None or requirement.exact_storage_relative_path is None:
         raise SourceBinaryAccessError("Source binary locator is incomplete.")
-    expected_checksum = str(requirement.checksum_sha256 or "").strip().lower()
-    if not expected_checksum:
-        # Legacy source documents without a recorded checksum retain the
-        # existing direct-stream behavior; integrity cannot be proven here.
+    registered_checksum = requirement.checksum_sha256
+    if registered_checksum is None:
+        # Only SQL NULL means a legacy source never registered a checksum.
+        # A persisted blank or malformed digest is corrupt metadata, not
+        # evidence that this source is exempt from integrity verification.
         with storage.read_stream(
             requirement.exact_storage_relative_path,
             root=requirement.exact_storage_root,
         ) as stream:
             yield stream
         return
+
+    if (
+        not isinstance(registered_checksum, str)
+        or len(registered_checksum) != 64
+        or any(char not in "0123456789abcdefABCDEF" for char in registered_checksum)
+    ):
+        raise SourceBinaryAccessError(
+            "Persisted source checksum is not a valid SHA-256 hex digest."
+        )
+    expected_checksum = registered_checksum.lower()
 
     # Consume the full source once and verify the exact snapshot that will
     # be read by copy-forward. Never yield unverified or partially read bytes.

@@ -27,7 +27,8 @@ However, source-document binary reuse still has a gap:
   - a known source folder is not enough to start bookmark/table copy
   - exact source file location must be modeled or otherwise proven before render/copy-forward starts
   - if a resolved source document version has a persisted checksum, the source-binary access owner reads the full binary, verifies its SHA-256, and only then yields the verified snapshot to copy-forward; mismatches fail closed without yielding bytes
-  - historical source versions lacking any checksum retain direct-stream access for compatibility and have no cryptographic integrity guarantee until a checksum is registered; readiness alone does not prove physical content integrity
+  - historical source versions with a genuinely absent checksum (`NULL`) retain direct-stream access for compatibility and have no cryptographic integrity guarantee until a checksum is registered; readiness alone does not prove physical content integrity
+  - a non-NULL checksum must be exactly 64 hexadecimal SHA-256 characters (case-insensitive); blank, whitespace-only or malformed registered checksums fail closed before storage access instead of silently being treated as legacy absence
 
 ## Consequences
 - The project now has one orchestration owner for document generation before render.

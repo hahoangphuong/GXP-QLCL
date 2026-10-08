@@ -73,3 +73,33 @@ def test_source_binary_access_rejects_not_ready_before_storage_io(tmp_path):
     with pytest.raises(SourceBinaryAccessError, match="source_variant_inactive"):
         with open_source_binary_stream(storage, requirement):
             pytest.fail("A blocked source must not open storage")
+
+
+@pytest.mark.parametrize(
+    "invalid_checksum",
+    ("", " ", "0" * 63, "z" * 64, "0" * 65),
+)
+def test_source_binary_access_rejects_invalid_registered_checksum_before_io(
+    tmp_path, invalid_checksum
+):
+    storage = FilesystemStorageService(StorageConfig(inspection_root=tmp_path))
+    # The locator intentionally does not exist. An invalid checksum must be
+    # rejected before StorageService is accessed, not treated as SQL NULL.
+    with pytest.raises(
+        SourceBinaryAccessError, match="not a valid SHA-256 hex digest"
+    ):
+        with open_source_binary_stream(storage, _requirement(invalid_checksum)):
+            pytest.fail("Invalid persisted checksum must not yield source bytes")
+
+
+def test_source_binary_access_accepts_uppercase_sha256_hex(tmp_path):
+    source = tmp_path / "2026" / "source" / "document.docx"
+    source.parent.mkdir(parents=True)
+    payload = b"uppercase digest is still a valid SHA-256 representation"
+    source.write_bytes(payload)
+    storage = FilesystemStorageService(StorageConfig(inspection_root=tmp_path))
+
+    with open_source_binary_stream(
+        storage, _requirement(sha256(payload).hexdigest().upper())
+    ) as stream:
+        assert stream.read() == payload

@@ -39,6 +39,12 @@ write candidate must preserve the source site, compatibility text, expected
 nullable FK, canonical row/version data when available, and the approved plan
 digest. Site equality is mandatory. A changed source, Site, compatibility text,
 or target FK must reject a future apply rather than be repaired downstream.
+Each canonical Case/Certificate UUID must correspond to no more than one legacy
+source ID in B6J canonical state. Multiple legacy IDs mapped to one canonical
+owner are inconsistent with the writer's row-level legacy-ID ownership fence
+and are rejected, even if their target line UUID would be the same. The writer
+also rejects resealed duplicate legacy actions or canonical write owners rather
+than silently deduplicating them.
 The source-only plan intentionally records canonical Case/Certificate counts as
 `NOT_RUN_NO_DATABASE_READ`; a future apply requires a separately reviewed,
 read-only canonical-state enrichment before it can construct any action.

@@ -193,6 +193,22 @@ def test_postgres_writer_rejects_resealed_wrong_dialect_before_write(fixture_sta
         assert _counts(session) == before
 
 
+@pytest.mark.parametrize("field", ("case_links", "certificate_links"))
+def test_postgres_writer_rejects_resealed_duplicate_actions_without_write(fixture_state, field):
+    with Session(fixture_state) as session:
+        plan = _plan(session)
+        tampered = {**plan, field: [dict(record) for record in plan[field]]}
+        item = next(record for record in tampered[field] if record["classification"] == "LINK_TO_NEW_LINE")
+        tampered[field].append(dict(item))
+        tampered["plan_sha256"] = plan_digest(tampered)
+        before = _counts(session)
+        with pytest.raises(ProductionLinePopulationApplyError, match="repeats or lacks a legacy source identity"):
+            guarded_apply(session, tampered, expected_database_name=DATABASE_NAME, apply=True)
+        session.rollback()
+    with Session(fixture_state) as session:
+        assert _counts(session) == before
+
+
 def test_postgres_writer_rejects_resealed_swapped_certificate_owner(fixture_state):
     # Certificate 22 and 20 both have Site 7 / raw code A; 22 is blocked by
     # the source inspection Site 8. A resealed plan must not link certificate

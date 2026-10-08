@@ -104,9 +104,17 @@ def _index(state: Mapping[str, Any], expected: str) -> dict[str, Any]:
         if not isinstance(values, list):
             raise ProductionLinePopulationPlanError(f"B6J canonical {key} are invalid")
         result = {}
+        canonical_owners: set[str] = set()
         for value in values:
             if not isinstance(value, Mapping) or not isinstance(value.get(identity_key), int) or value[identity_key] in result:
                 raise ProductionLinePopulationPlanError(f"B6J canonical {key} contain duplicate or invalid identities")
+            if key in {"cases", "certificates"}:
+                owner_id = value.get("id")
+                if not isinstance(owner_id, str) or not owner_id or owner_id in canonical_owners:
+                    raise ProductionLinePopulationPlanError(
+                        f"B6J canonical {key} map multiple legacy IDs to one canonical owner or have an invalid UUID"
+                    )
+                canonical_owners.add(owner_id)
             result[value[identity_key]] = value
         return result
     return {"sites": items("sites", "legacy_site_id"), "cases": items("cases", "legacy_inspection_id"), "certificates": items("certificates", "legacy_certificate_id"), "lines": list(state.get("existing_production_lines") or []), "database": dict(identity)}
@@ -258,20 +266,8 @@ def build_population_plan(snapshot: Mapping[str, Any], *, snapshot_sha256: str, 
         for record in (*case_links, *certificate_links):
             if record["candidate_key"] == candidate["candidate_key"]:
                 record["planned_production_line_id"] = None
-    # Source accounting can contain several legacy references for one DB owner.
-    # Retain every source record, but refuse any non-convergent write target.
-    for label, records in (("Case", case_links), ("Certificate", certificate_links)):
-        targets: dict[object, tuple[object, object]] = {}
-        for record in records:
-            if not record["classification"].startswith("LINK_"):
-                continue
-            owner = record.get("canonical_record_id")
-            if owner is None:
-                continue
-            desired = (record.get("planned_production_line_id"), record.get("expected_site_id"))
-            previous = targets.setdefault(owner, desired)
-            if previous != desired:
-                raise ProductionLinePopulationPlanError(f"B6J conflicting duplicate canonical {label} write targets")
+    # Each source legacy ID and canonical owner is unique in the verified
+    # state; links do not need an additional convergence or deduplication path.
     roster_provenance = {} if candidate_roster is None else bind_candidate_roster(candidate_roster, roster_raw_sha256=_sha(candidate_roster_raw_sha256, "candidate roster raw SHA256"), candidate_set_sha256=candidate_set_sha256, snapshot_sha256=snapshot_sha256, canonical_state_sha256=canonical_state_sha256, candidates=candidates)
     plan = {"schema_version": PLAN_SCHEMA_VERSION, "planner_version": PLANNER_VERSION, "legacy_snapshot_sha256": snapshot_sha256, "canonical_state_sha256": canonical_state_sha256, "candidate_set_sha256": candidate_set_sha256, **roster_provenance, "source_database_identity": index["database"], "source_alembic_revision": canonical_state["source_alembic_revision"], "candidates": candidates, "case_links": case_links, "certificate_links": certificate_links, "summary_counts": {"candidates": _counts(candidates), "cases": _counts(case_links), "certificates": _counts(certificate_links)}, "transformation_actions": [], "scope_actions": [], "certificate_relationship_actions": []}
     plan["plan_sha256"] = plan_digest(plan)

@@ -61,8 +61,19 @@ def _validate_plan(plan: Mapping[str, Any]) -> None:
     for field, source_field in (("case_links", "source_case_ids"), ("certificate_links", "source_certificate_ids")):
         records = plan.get(field)
         _require(isinstance(records, list), f"B6J plan {field} records are invalid")
+        seen_legacy_ids: set[int] = set()
+        seen_canonical_owners: set[str] = set()
         for record in records:
             _require(isinstance(record, Mapping), f"B6J plan {field} record is invalid")
+            legacy_id = record.get("legacy_id")
+            _require(isinstance(legacy_id, int) and not isinstance(legacy_id, bool) and legacy_id not in seen_legacy_ids,
+                     f"B6J plan {field} repeats or lacks a legacy source identity")
+            seen_legacy_ids.add(legacy_id)
+            owner_id = record.get("canonical_record_id")
+            if owner_id is not None:
+                _require(isinstance(owner_id, str) and owner_id and owner_id not in seen_canonical_owners,
+                         f"B6J plan {field} repeats a canonical owner")
+                seen_canonical_owners.add(owner_id)
             classification = record.get("classification")
             if classification not in {"LINK_TO_NEW_LINE", "LINK_TO_EXISTING_LINE"}:
                 continue
@@ -167,17 +178,8 @@ def _prepared(session: Session, plan: Mapping[str, Any], *, expected_database_na
     links.extend((item, True) for item in plan.get("certificate_links", []) if item.get("classification") in {"LINK_TO_NEW_LINE", "LINK_TO_EXISTING_LINE"})
     candidates = {item.get("candidate_key"): item for item in plan.get("candidates", [])}
     prepared_links: list[tuple[Mapping[str, Any], Case | Certificate, bool]] = []
-    deduplicated: dict[tuple[bool, object], tuple[Mapping[str, Any], bool]] = {}
     for record, certificate in links:
-        candidate = candidates.get(record.get("candidate_key"))
-        _require(candidate is not None, "B6J writer link candidate is missing")
-        target_key = (certificate, record.get("canonical_record_id"))
-        previous = deduplicated.get(target_key)
-        if previous is not None:
-            _require(previous[0].get("planned_production_line_id") == record.get("planned_production_line_id") and previous[0].get("expected_site_id") == record.get("expected_site_id"), "B6J writer has conflicting duplicate canonical write targets")
-            continue
-        deduplicated[target_key] = (record, certificate)
-    for record, certificate in deduplicated.values():
+        _require(record.get("candidate_key") in candidates, "B6J writer link candidate is missing")
         target = _lock_link_target(session, record, certificate=certificate)
         prepared_links.append((record, target, certificate))
     for candidate in candidates.values():

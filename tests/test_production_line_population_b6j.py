@@ -243,6 +243,28 @@ def test_writer_rejects_resealed_action_to_reassign_existing_canonical_fk():
         _validate_plan(plan)
 
 
+@pytest.mark.parametrize("field", ("case_links", "certificate_links"))
+def test_writer_refuses_resealed_duplicate_legacy_action_even_if_identical(field):
+    state, digest = _state()
+    plan, _ = _bound_plan(_snapshot(), state, digest)
+    action = next(item for item in plan[field] if item["classification"] == "LINK_TO_NEW_LINE")
+    plan[field].append(dict(action))
+    plan["plan_sha256"] = plan_digest(plan)
+    with pytest.raises(ProductionLinePopulationApplyError, match="repeats or lacks a legacy source identity"):
+        _validate_plan(plan)
+
+
+def test_writer_refuses_resealed_two_legacy_sources_for_one_canonical_owner():
+    state, digest = _state()
+    plan, _ = _bound_plan(_snapshot(), state, digest)
+    links = [item for item in plan["case_links"] if item["classification"] == "LINK_TO_NEW_LINE"]
+    assert len(links) >= 2
+    links[1]["canonical_record_id"] = links[0]["canonical_record_id"]
+    plan["plan_sha256"] = plan_digest(plan)
+    with pytest.raises(ProductionLinePopulationApplyError, match="repeats a canonical owner"):
+        _validate_plan(plan)
+
+
 def test_b6j_writer_rejects_resealed_duplicate_candidate_key():
     state, digest = _state()
     plan, _ = _bound_plan(_snapshot(), state, digest)
@@ -531,7 +553,7 @@ def test_excel_serial_date_cells_are_used_only_for_authoritative_date_headers():
     assert candidates[7, "B"]["effective_from_source_type"] == "CERTIFICATE"
 
 
-def test_duplicate_canonical_write_targets_converge_when_the_target_is_identical():
+def test_duplicate_canonical_case_owner_is_rejected_even_when_legacy_targets_converge():
     state, digest = _state()
     snapshot = _snapshot()
     for cell in snapshot["sheets"][0]["raw_rows"][2]["cells"]:
@@ -540,10 +562,8 @@ def test_duplicate_canonical_write_targets_converge_when_the_target_is_identical
     state["cases"][1] = {**state["cases"][1], "id": "case-10", "site_id": SITE_7}
     state["source_state_fingerprint"] = sha256(canonical_json_bytes({key: value for key, value in state.items() if key != "source_state_fingerprint"})).hexdigest()
     digest = sha256(canonical_json_bytes(state)).hexdigest()
-    plan = build_population_plan(snapshot, snapshot_sha256="a" * 64, canonical_state=state, canonical_state_sha256=digest, candidate_set_sha256="b" * 64)
-    links = [item for item in plan["case_links"] if item["canonical_record_id"] == "case-10"]
-    assert len(links) == 2
-    assert {item["planned_production_line_id"] for item in links} == {links[0]["planned_production_line_id"]}
+    with pytest.raises(ProductionLinePopulationPlanError, match="map multiple legacy IDs to one canonical owner"):
+        build_population_plan(snapshot, snapshot_sha256="a" * 64, canonical_state=state, canonical_state_sha256=digest, candidate_set_sha256="b" * 64)
 
 
 def test_duplicate_canonical_write_targets_with_different_lines_fail_closed():
@@ -557,7 +577,7 @@ def test_duplicate_canonical_write_targets_with_different_lines_fail_closed():
     state["cases"][1] = {**state["cases"][1], "id": "case-10", "site_id": SITE_7}
     state["source_state_fingerprint"] = sha256(canonical_json_bytes({key: value for key, value in state.items() if key != "source_state_fingerprint"})).hexdigest()
     digest = sha256(canonical_json_bytes(state)).hexdigest()
-    with pytest.raises(ProductionLinePopulationPlanError, match="conflicting duplicate canonical Case"):
+    with pytest.raises(ProductionLinePopulationPlanError, match="map multiple legacy IDs to one canonical owner"):
         build_population_plan(snapshot, snapshot_sha256="a" * 64, canonical_state=state, canonical_state_sha256=digest, candidate_set_sha256="b" * 64)
 
 

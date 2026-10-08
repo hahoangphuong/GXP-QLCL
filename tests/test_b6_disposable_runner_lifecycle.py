@@ -41,6 +41,7 @@ def test_runner_never_deletes_an_existing_database(
     fake_bin.mkdir()
     commands_file = tmp_path / "invocations.txt"
     name = f"gxp_b6{suffix.lower()}_test_existing"
+    socket_host = "/tmp/b6-explicit-test-socket"
 
     def fake_command(command: str, exit_code: int) -> None:
         script_path = fake_bin / command
@@ -59,6 +60,9 @@ def test_runner_never_deletes_an_existing_database(
     env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
     env[f"B6{suffix}_DISPOSABLE_DATABASE"] = name
     env[f"B6{suffix}_PYTHON_BIN"] = str(fake_bin / "probe-python")
+    env[f"B6{suffix}_POSTGRES_SOCKET_HOST"] = socket_host
+    env["PGHOST"] = "/tmp/should-never-be-used"
+    env["PGUSER"] = "someone-else"
     env["B6_FAKE_INVOCATIONS"] = str(commands_file)
     result = subprocess.run(
         ["bash", str(ROOT / script)], cwd=ROOT, env=env, capture_output=True, text=True, check=False
@@ -66,6 +70,6 @@ def test_runner_never_deletes_an_existing_database(
     assert result.returncode == expected_status, result.stdout + result.stderr
     invocations = commands_file.read_text(encoding="utf-8").splitlines()
     assert [line.split(":", 1)[0] for line in invocations] == list(expected_commands)
-    assert invocations[0] == f"createdb:{name}"
+    assert invocations[0] == f"createdb:--host={socket_host} --username=postgres {name}"
     if create_result == 0:
-        assert invocations[1] == f"dropdb:--if-exists {name}"
+        assert invocations[1] == f"dropdb:--host={socket_host} --username=postgres --if-exists {name}"

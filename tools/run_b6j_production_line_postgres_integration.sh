@@ -14,8 +14,8 @@ DATABASE_URL="postgresql+psycopg://postgres@/${B6J_DISPOSABLE_DATABASE}?host=${S
 
 # Fail closed if the name already exists.  A cleanup trap is installed only
 # after this process has successfully created its own disposable database.
-createdb "${B6J_DISPOSABLE_DATABASE}"
-trap 'dropdb --if-exists "${B6J_DISPOSABLE_DATABASE}"' EXIT
+createdb --host="$SOCKET_HOST" --username=postgres "${B6J_DISPOSABLE_DATABASE}"
+trap 'dropdb --host="$SOCKET_HOST" --username=postgres --if-exists "${B6J_DISPOSABLE_DATABASE}"' EXIT
 
 DATABASE_URL="${DATABASE_URL}" "${PYTHON_BIN}" -m alembic upgrade 20260929_0017
 B6J_POSTGRES_INTEGRATION=1 DATABASE_URL="${DATABASE_URL}" \

@@ -12,7 +12,8 @@ SOCKET_HOST="${B6H_POSTGRES_SOCKET_HOST:-/var/run/postgresql}"
 PYTHON_BIN="${B6H_PYTHON_BIN:-python3}"
 DATABASE_URL="postgresql+psycopg://postgres@/${B6H_DISPOSABLE_DATABASE}?host=${SOCKET_HOST}"
 
-dropdb --if-exists "$B6H_DISPOSABLE_DATABASE"
+# Fail closed if the name already exists.  A cleanup trap is installed only
+# after this process has successfully created its own disposable database.
 createdb "$B6H_DISPOSABLE_DATABASE"
 trap 'dropdb --if-exists "$B6H_DISPOSABLE_DATABASE"' EXIT
 

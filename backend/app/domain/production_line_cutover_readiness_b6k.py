@@ -7,7 +7,16 @@ from typing import Any, Mapping
 
 from backend.app.domain.production_line_population import canonical_artifact_bytes
 from backend.app.domain.production_line_population_b6j import PLAN_SCHEMA_VERSION, plan_digest
-from backend.app.domain.production_line_review_workspace import REVIEW_SCHEMA_VERSION, candidate_set_digest
+from backend.app.domain.production_line_population_writer_b6j import (
+    ProductionLinePopulationApplyError,
+    _validate_plan,
+)
+from backend.app.domain.production_line_review_workspace import (
+    REVIEW_SCHEMA_VERSION,
+    ProductionLineReviewWorkspaceError,
+    candidate_set_digest,
+    validate_review_decision,
+)
 
 
 class B6KReviewAlignmentError(ValueError):
@@ -23,6 +32,12 @@ def audit_b6j_review_alignment(plan: Mapping[str, Any], roster: Mapping[str, Any
     """Compare immutable identities and explicit human decisions without repair."""
     require(plan.get("schema_version") == PLAN_SCHEMA_VERSION
             and plan.get("plan_sha256") == plan_digest(plan), "B6K plan seal invalid")
+    # Reuse the authoritative B6J structural validator. A self-resealed
+    # orphan, missing action or altered source count is not a review-ready plan.
+    try:
+        _validate_plan(plan)
+    except ProductionLinePopulationApplyError as exc:
+        raise B6KReviewAlignmentError(f"B6K B6J plan structure invalid: {exc}") from exc
     require(roster.get("schema_version") == REVIEW_SCHEMA_VERSION
             and roster.get("artifact_kind") == "production_line_physical_identity_review_roster",
             "B6K requires a B6I review roster")
@@ -32,7 +47,8 @@ def audit_b6j_review_alignment(plan: Mapping[str, Any], roster: Mapping[str, Any
     require(isinstance(seal, str)
             and seal == sha256(canonical_artifact_bytes(unsealed)).hexdigest(),
             "B6K reviewed roster content SHA256 invalid")
-    for field in ("legacy_snapshot_sha256", "canonical_state_sha256"):
+    for field in ("legacy_snapshot_sha256", "canonical_state_sha256",
+                  "planner_version", "candidate_set_sha256"):
         require(roster.get(field) == plan.get(field), f"B6K source {field} changed")
     items, candidates = roster.get("items"), plan.get("candidates")
     require(isinstance(items, list) and isinstance(candidates, list)
@@ -53,11 +69,22 @@ def audit_b6j_review_alignment(plan: Mapping[str, Any], roster: Mapping[str, Any
         for field in ("source_case_ids", "source_certificate_ids"):
             require(isinstance(item.get(field), list) and isinstance(c.get(field), list)
                     and sorted(item[field]) == sorted(c[field]), f"B6K {key} source drift")
+    # B6I reviews are not implicitly authenticated by their "REVIEWED" flag.
+    # Reuse the B6I decision contract to reject contradictory decision payloads.
+    permitted_existing_line_ids = {
+        candidate["existing_production_line_id"] for candidate in candidates
+        if isinstance(candidate.get("existing_production_line_id"), str)
+        and candidate["existing_production_line_id"]
+    }
     findings = []
     for key in sorted(pi):
         c, item = pi[key], ri[key]
         classification, decision = c.get("classification"), item.get("review_decision")
         reasons = []
+        try:
+            validate_review_decision(item, existing_line_ids=permitted_existing_line_ids)
+        except ProductionLineReviewWorkspaceError:
+            reasons.append("INVALID_B6I_DECISION_PAYLOAD")
         if item.get("review_status") != "REVIEWED":
             reasons.append("REVIEW_NOT_COMPLETED")
         for field in ("review_reason", "reviewer", "reviewed_at"):

@@ -7,6 +7,7 @@ import pytest
 
 from backend.app.domain.production_line_population import canonical_artifact_bytes
 from backend.app.domain.production_line_population_b6j import PLAN_SCHEMA_VERSION, plan_digest
+from backend.app.domain.production_line_population_writer_b6j import _validate_plan
 from backend.app.domain.production_line_review_workspace import REVIEW_SCHEMA_VERSION, candidate_set_digest
 from backend.app.domain.production_line_cutover_readiness_b6k import B6KReviewAlignmentError, audit_b6j_review_alignment
 from tools.audit_production_line_cutover_readiness_b6k import main
@@ -37,13 +38,45 @@ def fixture():
         "classification": "CREATE_NEW_PRODUCTION_LINE",
         "proposed_display_code": "A",
     }
+    candidate["existing_production_line_id"] = None
+    candidate["proposed_production_line_id"] = "33333333-3333-4333-8333-333333333333"
+    roster["planner_version"] = "b6h-production-line-population/v2"
+    reseal(roster)
+    def link(identity, owner):
+        return {
+            "legacy_id": identity, "candidate_key": key,
+            "canonical_record_id": owner, "classification": "LINK_TO_NEW_LINE",
+            "canonical_line_code": "A", "expected_site_id": site,
+            "expected_production_line_id": None,
+            "planned_production_line_id": candidate["proposed_production_line_id"],
+        }
     plan = {
         "schema_version": PLAN_SCHEMA_VERSION,
+        "planner_version": roster["planner_version"],
+        "source_alembic_revision": "20260929_0017",
+        "source_database_identity": {"database_name": "fixture"},
         "legacy_snapshot_sha256": "a" * 64, "canonical_state_sha256": "b" * 64,
         "candidate_set_sha256": roster["candidate_set_sha256"],
+        "candidate_set_roster_sha256": "c" * 64,
+        "candidate_set_roster_content_sha256": "d" * 64,
+        "candidate_set_roster_schema_version": REVIEW_SCHEMA_VERSION,
+        "candidate_set_roster_artifact_kind": roster["artifact_kind"],
+        "candidate_set_roster_planner_version": roster["planner_version"],
+        "candidate_set_roster_content_sha256_verified": True,
+        "candidate_set_roster_item_count": 1,
         "candidates": [candidate],
+        "case_links": [link(10, "case-10")],
+        "certificate_links": [link(20, "certificate-20")],
+        "summary_counts": {
+            "candidates": {"CREATE_NEW_PRODUCTION_LINE": 1},
+            "cases": {"LINK_TO_NEW_LINE": 1},
+            "certificates": {"LINK_TO_NEW_LINE": 1},
+        },
+        "transformation_actions": [], "scope_actions": [],
+        "certificate_relationship_actions": [],
     }
     plan["plan_sha256"] = plan_digest(plan)
+    _validate_plan(plan)
     return plan, roster
 
 
@@ -84,7 +117,15 @@ def test_incomplete_review_creates_blocker(field, value, reason):
 def test_blocked_plan_candidate_is_not_ready():
     plan, roster = fixture()
     plan["candidates"][0]["classification"] = "BLOCKED_NO_ELIGIBLE_LINK_TARGET"
+    plan["candidates"][0]["proposed_production_line_id"] = None
+    for group in ("case_links", "certificate_links"):
+        for action in plan[group]:
+            action["classification"] = "BLOCKED_STALE_STATE"
+            action["planned_production_line_id"] = None
+        plan["summary_counts"]["cases" if group == "case_links" else "certificates"] = {"BLOCKED_STALE_STATE": 1}
+    plan["summary_counts"]["candidates"] = {"BLOCKED_NO_ELIGIBLE_LINK_TARGET": 1}
     plan["plan_sha256"] = plan_digest(plan)
+    _validate_plan(plan)
     result = audit_b6j_review_alignment(plan, roster)
     assert "PLAN_CANDIDATE_BLOCKED" in result["findings"][0]["blockers"]
 
@@ -94,7 +135,15 @@ def test_map_existing_requires_exact_reviewed_line_uuid():
     c, item = plan["candidates"][0], roster["items"][0]
     c["classification"] = "MAP_TO_EXISTING_PRODUCTION_LINE"
     c["existing_production_line_id"] = "22222222-2222-4222-8222-222222222222"
+    c["proposed_production_line_id"] = None
+    for group in ("case_links", "certificate_links"):
+        for action in plan[group]:
+            action["classification"] = "LINK_TO_EXISTING_LINE"
+            action["planned_production_line_id"] = c["existing_production_line_id"]
+        plan["summary_counts"]["cases" if group == "case_links" else "certificates"] = {"LINK_TO_EXISTING_LINE": 1}
+    plan["summary_counts"]["candidates"] = {"MAP_TO_EXISTING_PRODUCTION_LINE": 1}
     plan["plan_sha256"] = plan_digest(plan)
+    _validate_plan(plan)
     item["review_decision"] = "MAP_TO_EXISTING_PRODUCTION_LINE"
     item["approved_display_code"] = None
     item["existing_production_line_id"] = "33333333-3333-4333-8333-333333333333"
@@ -164,3 +213,43 @@ def test_cli_writes_blocker_report_and_returns_nonzero(tmp_path):
     assert report["status"] == "REVIEW_ALIGNMENT_BLOCKED"
     assert report["cutover_authorized"] is False
     assert "NEW_LINE_NOT_APPROVED" in report["findings"][0]["blockers"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("existing_production_line_id", "44444444-4444-4444-8444-444444444444"),
+        ("approved_display_code", None),
+    ],
+)
+def test_review_approval_with_contradictory_payload_does_not_pass(field, value):
+    plan, roster = fixture()
+    roster["items"][0][field] = value
+    if field == "approved_display_code":
+        plan["candidates"][0]["proposed_display_code"] = None
+        plan["plan_sha256"] = plan_digest(plan)
+        _validate_plan(plan)
+    reseal(roster)
+    report = audit_b6j_review_alignment(plan, roster)
+    assert report["status"] == "REVIEW_ALIGNMENT_BLOCKED"
+    assert "INVALID_B6I_DECISION_PAYLOAD" in report["findings"][0]["blockers"]
+
+
+@pytest.mark.parametrize("change", ["roster_claim", "planner", "plan_roster_count", "plan_source_omission"])
+def test_invalid_b6i_b6j_provenance_cannot_be_reported_as_review_pass(change):
+    plan, roster = fixture()
+    if change == "roster_claim":
+        roster["candidate_set_sha256"] = "f" * 64
+        reseal(roster)
+    elif change == "planner":
+        roster["planner_version"] = "other"
+        reseal(roster)
+    elif change == "plan_roster_count":
+        plan["candidate_set_roster_item_count"] = 2
+        plan["plan_sha256"] = plan_digest(plan)
+    else:
+        plan["case_links"] = []
+        plan["summary_counts"]["cases"] = {}
+        plan["plan_sha256"] = plan_digest(plan)
+    with pytest.raises(B6KReviewAlignmentError):
+        audit_b6j_review_alignment(plan, roster)

@@ -587,7 +587,7 @@ def test_khkt_binary_end_to_end_renders_canonical_db_payload_and_writes_output(m
         output_path = (
             root
             / "inspection"
-            / "2026/902-KT-2026-GLP-E2E"
+            / output_folder
             / "3. Kế hoạch kiểm tra GLP.docx"
         )
         assert output_path.exists()
@@ -776,7 +776,7 @@ def test_khkt_gmp_end_to_end_applies_structural_team_and_scope_deletions(monkeyp
         output_path = (
             root
             / "inspection"
-            / "2026/912-KT-2026-GMP-STRUCT"
+            / output_folder
             / "3. Kế hoạch kiểm tra GMP.docx"
         )
         with ZipFile(output_path, "r") as archive:

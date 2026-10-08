@@ -3,10 +3,13 @@
 set -euo pipefail
 
 : "${B6J_DISPOSABLE_DATABASE:?set a disposable database name}"
-case "${B6J_DISPOSABLE_DATABASE}" in
-  gxp_b6j_test_*) ;;
-  *) echo "B6J refuses non-disposable database" >&2; exit 2 ;;
-esac
+# Use only simple PostgreSQL identifier characters. This name is embedded
+# unescaped in a connection URL and passed to createdb/dropdb: it must have
+# identical meaning in both places. PostgreSQL names are at most 63 bytes.
+if [[ ! "${B6J_DISPOSABLE_DATABASE}" =~ ^gxp_b6j_test_[a-z0-9_]+$ ]] || (( ${#B6J_DISPOSABLE_DATABASE} > 63 )); then
+  echo "B6J refuses invalid or non-disposable database name" >&2
+  exit 2
+fi
 
 SOCKET_HOST="${B6J_POSTGRES_SOCKET_HOST:-/var/run/postgresql}"
 PYTHON_BIN="${B6J_PYTHON_BIN:-python3}"

@@ -3,10 +3,12 @@
 set -euo pipefail
 
 : "${B6H_DISPOSABLE_DATABASE:?set a new disposable database name}"
-case "$B6H_DISPOSABLE_DATABASE" in
-  gxp_b6h_test_*) ;;
-  *) echo "refusing non-disposable or protected database" >&2; exit 2 ;;
-esac
+# Reject URL delimiters and invalid PostgreSQL names before createdb.
+# The exact same identifier must be used for creation, URL and cleanup.
+if [[ ! "$B6H_DISPOSABLE_DATABASE" =~ ^gxp_b6h_test_[a-z0-9_]+$ ]] || (( ${#B6H_DISPOSABLE_DATABASE} > 63 )); then
+  echo "refusing invalid or non-disposable database name" >&2
+  exit 2
+fi
 
 SOCKET_HOST="${B6H_POSTGRES_SOCKET_HOST:-/var/run/postgresql}"
 PYTHON_BIN="${B6H_PYTHON_BIN:-python3}"

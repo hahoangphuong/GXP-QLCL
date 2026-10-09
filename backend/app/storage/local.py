@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import ctypes
+import errno
 from hashlib import sha256
 from pathlib import Path
 import os
 import shutil
+import sys
 import tempfile
 from typing import BinaryIO, Iterator
 
@@ -289,18 +292,59 @@ class LocalStorageService:
             raise
         return entry
 
+    @staticmethod
+    def _rename_noreplace(source: Path, target: Path, relative_path: str) -> None:
+        """Use an OS-enforced no-replace move; never trust a prior exists check.
+
+        Production Linux requires renameat2(RENAME_NOREPLACE), including on
+        mounted CIFS shares. Unsupported filesystems fail closed rather than
+        falling back to shutil.move/os.rename, which can overwrite on POSIX.
+        """
+        if sys.platform.startswith("linux"):
+            libc = ctypes.CDLL(None, use_errno=True)
+            renameat2 = getattr(libc, "renameat2", None)
+            if renameat2 is None:
+                raise StorageOperationError("Atomic no-replace rename is unavailable on this runtime.")
+            renameat2.argtypes = (
+                ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint,
+            )
+            renameat2.restype = ctypes.c_int
+            # AT_FDCWD=-100, RENAME_NOREPLACE=1, Linux renameat2(2).
+            result = renameat2(-100, os.fsencode(source), -100, os.fsencode(target), 1)
+            if result == 0:
+                return
+            error_code = ctypes.get_errno()
+            if error_code in {errno.EEXIST, errno.ENOTEMPTY}:
+                raise StorageTargetExistsError(
+                    f"Storage target already exists and will not be overwritten: {relative_path!r}."
+                )
+            if error_code in {errno.ENOSYS, errno.EINVAL, errno.EOPNOTSUPP, errno.EXDEV}:
+                raise StorageOperationError(
+                    "Atomic no-replace rename is unsupported for this storage location."
+                )
+            raise OSError(error_code, os.strerror(error_code), str(source))
+
+        if os.name == "nt":
+            # Windows os.rename does not replace an existing destination.
+            try:
+                os.rename(source, target)
+            except OSError as exc:
+                if os.path.lexists(target):
+                    raise StorageTargetExistsError(
+                        f"Storage target already exists and will not be overwritten: {relative_path!r}."
+                    ) from exc
+                raise
+            return
+
+        raise StorageOperationError("Atomic no-replace rename is unsupported on this platform.")
+
     def move(self, source_relative_path: str, target_relative_path: str, *, root: str = "inspection") -> StorageEntry:
         base_root = self._select_root(root)
         source = self._path_under(base_root, source_relative_path)
         target = self._path_under(base_root, target_relative_path)
         self._require_vacant_target(target, target_relative_path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            shutil.move(str(source), str(target))
-        except FileExistsError as exc:
-            raise StorageTargetExistsError(
-                f"Storage target already exists and will not be overwritten: {target_relative_path!r}."
-            ) from exc
+        self._rename_noreplace(source, target, target_relative_path)
         return self._entry_for(base_root, target)
 
     def rename(self, source_relative_path: str, new_name: str, *, root: str = "inspection") -> StorageEntry:
@@ -311,12 +355,7 @@ class LocalStorageService:
         target = source.with_name(new_name)
         self._ensure_within_root(base_root, target)
         self._require_vacant_target(target, target.relative_to(base_root).as_posix())
-        try:
-            source.rename(target)
-        except FileExistsError as exc:
-            raise StorageTargetExistsError(
-                f"Storage target already exists and will not be overwritten: {target.relative_to(base_root).as_posix()!r}."
-            ) from exc
+        self._rename_noreplace(source, target, target.relative_to(base_root).as_posix())
         return self._entry_for(base_root, target)
 
     def checksum(self, relative_path: str, *, root: str = "inspection") -> str:

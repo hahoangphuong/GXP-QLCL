@@ -566,6 +566,51 @@ def test_storage_file_operations_reject_existing_target_without_data_loss(tmp_pa
     assert target.read_bytes() == b"preserve-existing"
 
 
+@pytest.mark.parametrize("operation", ["move", "rename"])
+def test_storage_no_replace_blocks_destination_created_after_preflight(tmp_path: Path, monkeypatch, operation: str):
+    service = build_service(tmp_path)
+    source = service.inspection_root / "source.txt"
+    target = service.inspection_root / "target.txt"
+    source.write_bytes(b"original-source")
+
+    # Simulate another writer racing with this operation after the
+    # optimistic fast-path vacancy check but before the atomic OS rename.
+    original_check = service._require_vacant_target
+    def race_after_check(target_path: Path, relative_path: str):
+        original_check(target_path, relative_path)
+        target.write_bytes(b"other-writer-data")
+
+    monkeypatch.setattr(service, "_require_vacant_target", race_after_check)
+    with pytest.raises(StorageTargetExistsError, match="will not be overwritten"):
+        if operation == "move":
+            service.move("source.txt", "target.txt")
+        else:
+            service.rename("source.txt", "target.txt")
+
+    assert target.read_bytes() == b"other-writer-data"
+    assert source.read_bytes() == b"original-source"
+
+
+@pytest.mark.parametrize("operation", ["move", "rename"])
+def test_storage_atomic_no_replace_unsupported_storage_fails_closed(tmp_path: Path, monkeypatch, operation: str):
+    service = build_service(tmp_path)
+    source = service.inspection_root / "source.txt"
+    target = service.inspection_root / "target.txt"
+    source.write_bytes(b"source-unchanged")
+
+    def unavailable(*args):
+        raise StorageOperationError("Atomic no-replace rename is unsupported.")
+
+    monkeypatch.setattr(service, "_rename_noreplace", unavailable)
+    with pytest.raises(StorageOperationError, match="unsupported"):
+        if operation == "move":
+            service.move("source.txt", "target.txt")
+        else:
+            service.rename("source.txt", "target.txt")
+    assert source.read_bytes() == b"source-unchanged"
+    assert not target.exists()
+
+
 def test_storage_copy_preserves_bytes_and_reports_relative_path(tmp_path: Path):
     service = build_service(tmp_path)
     source = service.inspection_root / "source.txt"

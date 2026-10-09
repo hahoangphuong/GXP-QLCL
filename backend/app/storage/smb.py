@@ -303,11 +303,17 @@ class SmbStorageService:
         parent = target.rsplit("\\", 1)[0]
         smbclient.makedirs(parent, exist_ok=True)
         try:
+            # smbclient.rename sends replace_if_exists=False to the server.
             smbclient.rename(source, target)
-        except FileExistsError as exc:
-            raise StorageTargetExistsError(
-                f"Storage target already exists and will not be overwritten: {target_relative_path!r}."
-            ) from exc
+        except OSError as exc:
+            # SMB may surface STATUS_OBJECT_NAME_COLLISION as a generic
+            # SMBOSError instead of FileExistsError. Inspect the destination
+            # only after server-side no-replace failed, never retry/replace.
+            if smbpath.exists(target):
+                raise StorageTargetExistsError(
+                    f"Storage target already exists and will not be overwritten: {target_relative_path!r}."
+                ) from exc
+            raise
         return self._entry_for(base_root, target)
 
     def rename(self, source_relative_path: str, new_name: str, *, root: str = "inspection") -> StorageEntry:
@@ -319,10 +325,12 @@ class SmbStorageService:
         self._require_vacant_target(target, new_name)
         try:
             smbclient.rename(source, target)
-        except FileExistsError as exc:
-            raise StorageTargetExistsError(
-                f"Storage target already exists and will not be overwritten: {new_name!r}."
-            ) from exc
+        except OSError as exc:
+            if smbpath.exists(target):
+                raise StorageTargetExistsError(
+                    f"Storage target already exists and will not be overwritten: {new_name!r}."
+                ) from exc
+            raise
         return self._entry_for(base_root, target)
 
     def checksum(self, relative_path: str, *, root: str = "inspection") -> str:

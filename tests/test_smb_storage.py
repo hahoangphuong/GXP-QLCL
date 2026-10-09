@@ -109,6 +109,32 @@ def test_smb_file_operations_reject_existing_destination_before_rename(monkeypat
     assert calls == []
 
 
+@pytest.mark.parametrize("operation", ["move", "rename"])
+def test_smb_rename_server_collision_after_preflight_returns_conflict(monkeypatch, operation: str):
+    client, service = _service(monkeypatch, [])
+    checks = []
+    def fake_exists(path):
+        checks.append(path)
+        # Destination is initially absent; the concurrent writer creates it
+        # before the server processes the no-replace SMB rename.
+        return len(checks) > 1
+
+    monkeypatch.setattr(smb_storage.smbpath, "exists", fake_exists)
+    calls = []
+    def reject_server_replace(source, target):
+        calls.append((source, target))
+        raise OSError("STATUS_OBJECT_NAME_COLLISION")
+
+    monkeypatch.setattr(client, "rename", reject_server_replace, raising=False)
+    with pytest.raises(StorageTargetExistsError, match="will not be overwritten"):
+        if operation == "move":
+            service.move("2026/source.txt", "2026/target.txt")
+        else:
+            service.rename("2026/source.txt", "target.txt")
+    assert len(calls) == 1
+    assert len(checks) == 2
+
+
 def test_smb_copy_uses_exclusive_destination_and_never_wb(monkeypatch) -> None:
     client, service = _service(monkeypatch, [])
     modes = []

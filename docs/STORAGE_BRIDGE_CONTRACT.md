@@ -86,3 +86,17 @@ Storage adapters must never silently turn a collision into a rename into an
 existing directory or a replaced document. Exclusive creation is used for
 copy destinations; moves and renames check destination occupancy before
 invoking their backend-specific operation.
+
+## No-replace atomicity after destination preflight
+
+An existence check alone is never the safety boundary for `move` or
+`rename`: another writer may create the destination between the check and
+the operation. On Linux, the filesystem-backed adapter requires
+`renameat2(RENAME_NOREPLACE)`; on Windows it uses non-replacing
+`os.rename`. If a platform, kernel, filesystem or mount cannot guarantee
+no-replace, the adapter fails closed instead of falling back to potentially
+overwriting `shutil.move` or POSIX `os.rename`. On SMB, `smbclient.rename`
+uses `replace_if_exists=False` server-side; destination collisions returned
+as generic SMB OSErrors are mapped to `StorageTargetExistsError` (HTTP 409).
+The no-replace operation prevents implicit replacement. It does not provide
+a multi-file transaction, version ownership, or document-business locking.

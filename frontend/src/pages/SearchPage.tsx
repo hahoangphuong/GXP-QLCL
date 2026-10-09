@@ -7,7 +7,6 @@ import { ErrorState } from "../components/ErrorState";
 import { ActionCard } from "../features/search/ActionCard";
 import { FacilityTable } from "../features/search/FacilityTable";
 import { FacilityHistoryPane } from "../features/search/FacilityHistoryPane";
-import { LegacySearchFilters } from "../features/search/LegacySearchFilters";
 import { FacilityWorkspaceTabs } from "../features/search/FacilityWorkspaceTabs";
 import { DEFAULT_FACILITY_TAB, resolveFacilityTab } from "../features/search/facilityTabs";
 import {
@@ -1918,7 +1917,6 @@ export function SearchPage({
   return (
     <section className="page-section search-page legacy-search-page">
       <div className="search-workspace search-workspace-split search-master-history">
-        <LegacySearchFilters filters={{ generalQuery, province, caseState: caseStates.length === 1 ? caseStates[0] : "", certificateState, certificateExpiringWithinDays }} multipleCaseStates={caseStates.length > 1} onChange={updateFilter} />
         <div className="legacy-master-pane">
         <FacilityTable
           filters={{

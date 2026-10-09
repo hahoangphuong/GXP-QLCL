@@ -5,6 +5,23 @@ recommendations in UI_REDESIGN_VBA_REFERENCE and PHASE12. Preserve legacy UI whe
 evidenced. Baseline: `50576b0b383161e26e27b6cdc4a1a469aff1ae17`; work branch:
 `codex/legacy-ui-parity-20261010`. This delivery is partial; it does not close #1.
 
+Latest user correction (2026-10-10): remove the entire Lọc / Lọc dữ liệu row;
+retain only the existing master name/scope inputs. Remove the facility context
+summary below history and extend history to the bottom of the workspace. Restore
+the original three visible history columns (Loại / Tiêu chuẩn / Ngày). State is
+retained in each row's accessible label and hover title, with unchanged canonical
+identity and keyboard behavior. These instructions supersede the earlier filter
+disclosure and context-summary presentation decisions documented below. Existing
+deep-link filter values remain supported by the router/API; they are not cleared
+merely because the additional filter controls are no longer rendered.
+
+Fixture browser: history bottom equals workspace bottom at 1366x768 and
+1920x1080; no horizontal history scrollbar. At 390x844, no page overflow and Arrow
+navigation changes focus without selection. Captures outside git:
+expanded-history-1366/1920/390.png. Full legacy parity remains partial.
+Latest correction validation: typecheck, lint, 309 tests / 23 files and build PASS.
+The obsolete context-summary assertion was updated; no timeout was increased.
+
 User exception (2026-10-10, latest two screenshots): preserve the existing web
 master search table, vertical GMP/GLP/GMPbb rail, right-hand action panel and
 history table appearance. These surfaces are excluded from legacy palette,

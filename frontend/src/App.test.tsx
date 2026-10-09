@@ -927,7 +927,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.searchFacilities).not.toHaveBeenCalled();
   });
 
-  it("renders legacy quick search and grouped server filters alongside the result fields", async () => {
+  it("keeps only master column filters and removes the redundant facility context summary", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult({ result_key: "site-1:GMP:canonical:line-p2", production_line_id: "line-uuid-2", production_line_code: "A", line_code: "A" })], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [{ id: "case-2", source_type: "case", title: "Case two", occurred_on: "2026-01-02", state: "planned" }] }));
@@ -939,9 +939,11 @@ describe("App Slice A.4 search workspace", () => {
     expect((await screen.findAllByText("1.1A")).length).toBeGreaterThan(0);
     expect(screen.getByRole("textbox", { name: "Tên cơ sở" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Phạm vi" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Tìm nhanh" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Trạng thái hồ sơ")).toBeInTheDocument();
-    expect(screen.getByLabelText("Tỉnh/thành")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Tìm nhanh" })).not.toBeInTheDocument();
+    expect(container.querySelector(".legacy-search-filters")).toBeNull();
+    expect(container.querySelector(".facility-context-bar")).toBeNull();
+    expect(screen.queryByLabelText("Trạng thái hồ sơ")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Tỉnh/thành")).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Chứng nhận" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Xử lý" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Cơ sở/dây chuyền" })).not.toBeInTheDocument();
@@ -979,8 +981,8 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".facility-workspace-panel .history-panel")).toBeNull();
     expect(container.querySelectorAll(".history-table")).toHaveLength(1);
     expect(container.querySelector(".event-workspace > .panel-header")).toBeNull();
-    expect(container.querySelectorAll(".facility-context-facts .status-badge")).toHaveLength(1);
-    expect(container.querySelector(".facility-context-code")).not.toBeNull();
+    expect(container.querySelectorAll(".facility-context-facts .status-badge")).toHaveLength(0);
+    expect(container.querySelector(".facility-context-code")).toBeNull();
   }, 10000);
 
   it("keeps the inspection and certificate scopes as one permanent sibling context for every case step", async () => {
@@ -1446,10 +1448,9 @@ describe("App Slice A.4 search workspace", () => {
       "Loại",
       "Tiêu chuẩn",
       "Ngày",
-      "Trạng thái",
     ]);
-    expect(within(historyTable as HTMLElement).getByText("Đã hoàn tất kiểm tra")).toBeInTheDocument();
-    expect(historyTable?.querySelector("tbody tr")?.querySelectorAll("td")).toHaveLength(4);
+    expect(historyTable?.querySelector("tbody tr")).toHaveAttribute("title", "Đã hoàn tất kiểm tra");
+    expect(historyTable?.querySelector("tbody tr")?.querySelectorAll("td")).toHaveLength(3);
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Thông tin chung" }));
     expect(await screen.findByText("01-06-2026")).toBeInTheDocument();

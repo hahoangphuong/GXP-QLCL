@@ -2519,3 +2519,25 @@ tr:focus-visible {
   .legacy-search-page .legacy-dossier-section { grid-template-columns: minmax(0, 1fr); }
   .legacy-search-page .case-assessment-result { grid-column: 1; grid-row: 4; }
 }
+
+/* Latest user correction: only the two master column filters remain, and
+   history occupies the full lower pane without a context summary below it. */
+.legacy-search-page {
+  grid-template-rows: clamp(190px, 30vh, 260px) auto minmax(0, 1fr);
+  grid-template-areas: "master master actions" "tabs tabs tabs" "history detail detail";
+}
+.legacy-search-page:has(.facility-tabs .workspace-tab:nth-child(n+3)[aria-selected="true"]) {
+  grid-template-areas: "master master actions" "tabs tabs tabs" "detail detail detail";
+}
+.legacy-search-page .history-table { min-width: 0; }
+.legacy-search-page .history-table td:nth-child(2) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1100px) {
+  .legacy-search-page {
+    grid-template-rows: minmax(230px, auto) auto auto minmax(300px, 45vh) minmax(420px, auto);
+    grid-template-areas: "master" "actions" "tabs" "history" "detail";
+  }
+  .legacy-search-page:has(.facility-tabs .workspace-tab:nth-child(n+3)[aria-selected="true"]) {
+    grid-template-rows: minmax(230px, auto) auto auto minmax(420px, auto);
+    grid-template-areas: "master" "actions" "tabs" "detail";
+  }
+}

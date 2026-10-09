@@ -46,7 +46,10 @@ def _inventory(*keys: tuple[str, str]) -> StagingAudit:
         candidates=tuple(StagingCandidate(root=root, relative_path=path,
                                           category="managed_candidate", size=10)
                          for root, path in keys),
-        scanned_directories=1, scanned_entries=len(keys),
+        scanned_directories=max(1, len({root for root, _ in keys})),
+        scanned_entries=len(keys), requested_roots=tuple(dict.fromkeys(
+            root for root, _ in keys
+        )),
         truncated=False, incomplete_reason=None,
     )
 

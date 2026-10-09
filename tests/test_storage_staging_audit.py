@@ -44,6 +44,7 @@ def test_audit_finds_candidates_without_mutating_files(tmp_path: Path):
     report = audit_staging_candidates(service, roots=("inspection",))
     assert report.truncated is False
     assert report.scanned_directories == 2
+    assert report.requested_roots == ("inspection",)
     assert {item.relative_path for item in report.candidates} == {
         f"2026/{modern.name}", f"2026/{legacy.name}",
     }
@@ -204,3 +205,17 @@ def test_staging_stream_error_after_partial_entries_fails_closed(tmp_path: Path,
     assert report.scanned_entries == 1
     assert report.candidates[0].relative_path == stage_name
     assert (service.inspection_root / stage_name).read_bytes() == b"preserve"
+
+
+def test_staging_audit_preserves_all_requested_root_scope_on_partial_scan(tmp_path):
+    service = _storage(tmp_path)
+    # The directory budget is consumed by inspection before touching dkkd;
+    # requested scope must still declare the not-yet-scanned root.
+    report = audit_staging_candidates(
+        service, roots=("inspection", "dkkd", "inspection"),
+        max_directories=1,
+    )
+    assert report.requested_roots == ("inspection", "dkkd")
+    assert report.truncated
+    assert report.incomplete_reason == "directory_budget_exceeded"
+    assert report.scanned_directories == 1

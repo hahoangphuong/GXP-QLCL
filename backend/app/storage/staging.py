@@ -46,6 +46,9 @@ class StagingAudit:
     incomplete_reason: str | None
     failed_root: str | None = None
     failed_relative_path: str | None = None
+    # Explicit scope of the scan, not a cryptographic attestation that roots
+    # were actually scanned. Empty tuple denotes legacy/unknown scope.
+    requested_roots: tuple[str, ...] = ()
 
 
 def audit_staging_candidates(
@@ -134,4 +137,5 @@ def audit_staging_candidates(
         incomplete_reason=incomplete_reason,
         failed_root=failed_root,
         failed_relative_path=failed_relative_path,
+        requested_roots=tuple(dict.fromkeys(roots)),
     )

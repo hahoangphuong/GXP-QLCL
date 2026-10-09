@@ -18,7 +18,9 @@ def _inventory(*candidates: tuple[str, str], truncated: bool = False) -> Staging
         candidates=tuple(StagingCandidate(
             root=root, relative_path=path, category="managed_candidate", size=10,
         ) for root, path in candidates),
-        scanned_directories=2, scanned_entries=8, truncated=truncated,
+        scanned_directories=max(2, len({root for root, _ in candidates})),
+        scanned_entries=8, truncated=truncated,
+        requested_roots=tuple(dict.fromkeys(root for root, _ in candidates)),
         incomplete_reason="storage_access_failed" if truncated else None,
         failed_root="inspection" if truncated else None,
         failed_relative_path="" if truncated else None,
@@ -179,5 +181,41 @@ def test_staging_lineage_rejects_contradictory_inventory_before_database_queries
     ]:
         with pytest.raises(ValueError):
             validate_staging_inventory(inventory)
+        with pytest.raises(ValueError):
+            reconcile_staging_lineage(session, inventory)
+
+
+def test_staging_lineage_empty_complete_scope_is_explicit(session):
+    inventory = StagingAudit(
+        candidates=(), scanned_directories=1, scanned_entries=0,
+        truncated=False, incomplete_reason=None, requested_roots=("inspection",),
+    )
+    report = reconcile_staging_lineage(session, inventory)
+    assert report.items == ()
+    assert report.inspected_candidates == 0
+    assert report.input_requested_roots == ("inspection",)
+    assert report.status == "review_only"
+
+
+def test_staging_lineage_rejects_empty_complete_scan_and_wrong_scope(session):
+    invalid = [
+        StagingAudit(
+            candidates=(), scanned_directories=0, scanned_entries=0,
+            truncated=False, incomplete_reason=None, requested_roots=("inspection",),
+        ),
+        StagingAudit(
+            candidates=(), scanned_directories=1, scanned_entries=0,
+            truncated=False, incomplete_reason=None,
+            requested_roots=("inspection", "dkkd"),
+        ),
+        StagingAudit(
+            candidates=(StagingCandidate(
+                root="template", relative_path="word/.gxp-stage-abc123.tmp",
+                category="managed_candidate", size=1,
+            ),), scanned_directories=1, scanned_entries=1,
+            truncated=False, incomplete_reason=None, requested_roots=("inspection",),
+        ),
+    ]
+    for inventory in invalid:
         with pytest.raises(ValueError):
             reconcile_staging_lineage(session, inventory)

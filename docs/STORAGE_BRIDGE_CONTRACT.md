@@ -337,3 +337,28 @@ still fabricate a well-formed JSON audit; there is no signed capture,
 authenticated provenance, cross-system snapshot or proof of orphan
 ownership. `review_only` therefore remains mandatory, and the command
 must never authorize cleanup.
+
+### Explicit inventory root scope
+
+New read-only scanner exports include `requested_roots`, a de-duplicated
+array of the logical roots requested by the operator (`inspection`,
+`dkkd`, `template`). The opt-in lineage CLI requires this field and
+rejects missing, empty, duplicated or unknown roots, any candidate outside
+the declared roots, and inconsistent failed-root metadata. A purportedly
+complete scan with no directory examined, or fewer directories than
+requested roots, is invalid. A failed storage setup still carries the
+requested roots but is always marked truncated and cannot be interpreted
+as clean.
+
+The lineage report propagates `input_requested_roots` independently of
+its `status=review_only`; e.g. a valid, empty `inspection` inventory
+does **not** make statements about `dkkd` or `template`. Older JSON
+exports without explicit root scope are refused by the operator CLI:
+regenerate an inventory rather than fabricating scope metadata. In-memory
+callers may retain legacy/unknown scope (`requested_roots=()`) for
+compatibility; the report preserves that unknown scope rather than
+inventing one.
+
+The scope field remains **self-declared, not authenticated**. It does
+not prove that NAS enumeration finished, that no files changed since
+scanning, or that a file is safe to delete.

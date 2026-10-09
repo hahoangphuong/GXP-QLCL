@@ -35,6 +35,7 @@ class StagingLineageReport:
     input_incomplete_reason: str | None
     inspected_candidates: int
     status: str = "review_only"
+    input_requested_roots: tuple[str, ...] = ()
 
 
 def _batches(items: list, batch_size: int = 200) -> Iterator[list]:
@@ -73,6 +74,7 @@ def validate_staging_inventory(
     *,
     max_candidates: int = 10000,
     require_scanner_categories: bool = False,
+    require_declared_scope: bool = False,
 ) -> None:
     """Validate metadata only; never attest authenticity or deletion safety.
 
@@ -87,6 +89,14 @@ def validate_staging_inventory(
         raise ValueError("Staging lineage candidate limit exceeded.")
     if not isinstance(inventory.candidates, tuple):
         raise ValueError("Invalid staging candidate collection.")
+    scope = inventory.requested_roots
+    if (
+        not isinstance(scope, tuple) or
+        any(not isinstance(root, str) or root not in _KNOWN_ROOTS for root in scope)
+        or len(set(scope)) != len(scope)
+        or (require_declared_scope and not scope)
+    ):
+        raise ValueError("Invalid or missing staging inventory root scope.")
     if (
         type(inventory.scanned_directories) is not int or inventory.scanned_directories < 0
         or type(inventory.scanned_entries) is not int
@@ -97,11 +107,21 @@ def validate_staging_inventory(
     if inventory.truncated:
         if inventory.incomplete_reason not in _INCOMPLETE_REASONS:
             raise ValueError("Invalid staging incomplete reason.")
-    elif inventory.incomplete_reason is not None:
-        raise ValueError("Complete staging inventory cannot contain an incomplete reason.")
+    else:
+        if inventory.incomplete_reason is not None:
+            raise ValueError("Complete staging inventory cannot contain an incomplete reason.")
+        # Every requested root needs at least its initial directory scan.
+        # Even without a scope field, a scanner cannot call an empty,
+        # zero-directory inventory "complete".
+        if inventory.scanned_directories == 0 or (
+            scope and inventory.scanned_directories < len(scope)
+        ):
+            raise ValueError("A complete inventory requires scanned root directories.")
     if inventory.incomplete_reason == "storage_access_failed":
-        if inventory.failed_root not in _KNOWN_ROOTS or not _valid_locator(
-            inventory.failed_relative_path, allow_empty=True,
+        if (
+            inventory.failed_root not in _KNOWN_ROOTS
+            or (scope and inventory.failed_root not in scope)
+            or not _valid_locator(inventory.failed_relative_path, allow_empty=True)
         ):
             raise ValueError("Invalid staging access failure locator.")
     elif inventory.failed_root is not None or inventory.failed_relative_path is not None:
@@ -115,7 +135,11 @@ def validate_staging_inventory(
     for candidate in inventory.candidates:
         if not isinstance(candidate, StagingCandidate):
             raise ValueError("Invalid staging candidate record.")
-        if candidate.root not in _KNOWN_ROOTS or not _valid_locator(candidate.relative_path):
+        if (
+            candidate.root not in _KNOWN_ROOTS
+            or (scope and candidate.root not in scope)
+            or not _valid_locator(candidate.relative_path)
+        ):
             raise ValueError("Staging inventory contains an invalid logical locator.")
         if candidate.category not in _CATEGORIES:
             raise ValueError("Invalid staging candidate category.")
@@ -212,4 +236,5 @@ def reconcile_staging_lineage(
         input_inventory_truncated=inventory.truncated,
         input_incomplete_reason=inventory.incomplete_reason,
         inspected_candidates=len(inventory.candidates),
+        input_requested_roots=inventory.requested_roots,
     )

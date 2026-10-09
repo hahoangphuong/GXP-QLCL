@@ -18,6 +18,7 @@ def _write_inventory(tmp_path: Path, *, truncated: bool = False) -> Path:
             "category": "managed_candidate", "size": 10,
         }],
         "scanned_directories": 1, "scanned_entries": 3,
+        "requested_roots": ["inspection"],
         "truncated": truncated,
         "incomplete_reason": "storage_access_failed" if truncated else None,
         "failed_root": "inspection" if truncated else None,
@@ -263,6 +264,10 @@ def test_lineage_cli_db_failure_never_leaks_secret_and_rolls_back(tmp_path, monk
         "failure_path_without_error", "counter_lower_than_findings",
         "unknown_candidate_key", "unknown_root_key", "missing_required_key",
         "invalid_incomplete_reason",
+        "missing_root_scope", "empty_root_scope", "string_root_scope",
+        "duplicate_root_scope", "unknown_root_scope",
+        "candidate_outside_declared_root", "failed_root_outside_scope",
+        "complete_without_directories", "complete_with_too_few_scanned_roots",
     ],
 )
 def test_lineage_cli_rejects_structurally_invalid_inventory_before_db(
@@ -314,6 +319,27 @@ def test_lineage_cli_rejects_structurally_invalid_inventory_before_db(
     elif case == "invalid_incomplete_reason":
         data["truncated"] = True
         data["incomplete_reason"] = "already_deleted"
+    elif case == "missing_root_scope":
+        del data["requested_roots"]
+    elif case == "empty_root_scope":
+        data["requested_roots"] = []
+    elif case == "string_root_scope":
+        data["requested_roots"] = "inspection"
+    elif case == "duplicate_root_scope":
+        data["requested_roots"] = ["inspection", "inspection"]
+    elif case == "unknown_root_scope":
+        data["requested_roots"] = ["inspection", "unknown"]
+    elif case == "candidate_outside_declared_root":
+        candidate["root"] = "dkkd"
+    elif case == "failed_root_outside_scope":
+        data["truncated"] = True
+        data["incomplete_reason"] = "storage_access_failed"
+        data["failed_root"] = "template"
+        data["failed_relative_path"] = ""
+    elif case == "complete_without_directories":
+        data["scanned_directories"] = 0
+    elif case == "complete_with_too_few_scanned_roots":
+        data["requested_roots"] = ["inspection", "dkkd"]
     path.write_text(json.dumps(data), encoding="utf-8")
 
     monkeypatch.setenv(
@@ -379,6 +405,7 @@ def test_lineage_direct_read_only_reconciliation_validates_before_engine(
         ),),
         scanned_directories=1, scanned_entries=1,
         truncated=False, incomplete_reason=None,
+        requested_roots=("inspection",),
     )
     monkeypatch.setattr(
         cli, "create_engine",
@@ -386,3 +413,35 @@ def test_lineage_direct_read_only_reconciliation_validates_before_engine(
     )
     with pytest.raises(ValueError, match="invalid logical locator"):
         cli._read_only_reconcile("postgresql+psycopg://reader:secret@localhost/db", inventory)
+
+
+def test_lineage_cli_empty_scanned_scope_is_not_all_roots(
+    tmp_path, monkeypatch, capsys,
+):
+    path = _write_inventory(tmp_path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["candidates"] = []
+    data["scanned_directories"] = 1
+    data["scanned_entries"] = 0
+    path.write_text(json.dumps(data), encoding="utf-8")
+    monkeypatch.setenv(
+        "GXP_STORAGE_LINEAGE_READONLY_DATABASE_URL",
+        "postgresql+psycopg://reader:secret@localhost/test",
+    )
+    from backend.app.storage.staging_lineage import StagingLineageReport
+    observed = []
+
+    def fake_reconcile(url, inventory):
+        observed.append(inventory)
+        return StagingLineageReport(
+            items=(), inspected_candidates=0,
+            input_inventory_truncated=False,
+            input_incomplete_reason=None,
+            input_requested_roots=inventory.requested_roots,
+        )
+    monkeypatch.setattr(cli, "_read_only_reconcile", fake_reconcile)
+    assert cli.main(["--inventory-json", str(path)]) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["input_requested_roots"] == ["inspection"]
+    assert output["status"] == "review_only"
+    assert observed[0].requested_roots == ("inspection",)

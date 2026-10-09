@@ -49,7 +49,7 @@ def _parse_inventory(path: Path) -> StagingAudit:
     data = json.loads(raw.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
     required = {
         "candidates", "scanned_directories", "scanned_entries",
-        "truncated", "incomplete_reason",
+        "truncated", "incomplete_reason", "requested_roots",
     }
     optional = {"failed_root", "failed_relative_path"}
     if not isinstance(data, dict) or not required.issubset(data) or set(data) - required - optional:
@@ -62,8 +62,11 @@ def _parse_inventory(path: Path) -> StagingAudit:
         if not isinstance(item, dict) or set(item) != {"root", "relative_path", "category", "size"}:
             raise ValueError("Invalid staging candidate format.")
         candidates.append(StagingCandidate(**item))
+    if not isinstance(data["requested_roots"], list):
+        raise ValueError("Invalid staging inventory root scope.")
     inventory = StagingAudit(
         candidates=tuple(candidates),
+        requested_roots=tuple(data["requested_roots"]),
         scanned_directories=data["scanned_directories"],
         scanned_entries=data["scanned_entries"],
         truncated=data["truncated"],
@@ -74,7 +77,8 @@ def _parse_inventory(path: Path) -> StagingAudit:
     # Scanner category/filename identity is a trust-boundary contract.
     # This validates structure, not that the file was actually observed.
     validate_staging_inventory(
-        inventory, max_candidates=_MAX_CANDIDATES, require_scanner_categories=True,
+        inventory, max_candidates=_MAX_CANDIDATES,
+        require_scanner_categories=True, require_declared_scope=True,
     )
     return inventory
 
@@ -132,7 +136,9 @@ def _require_metadata_reader(conn) -> None:
 def _read_only_reconcile(database_url: str, inventory: StagingAudit):
     # Reject even programmatically supplied malformed inventory before a
     # socket, engine, role or DB session is created.
-    validate_staging_inventory(inventory, max_candidates=_MAX_CANDIDATES)
+    validate_staging_inventory(
+        inventory, max_candidates=_MAX_CANDIDATES, require_declared_scope=True,
+    )
     # PostgreSQL only. Transaction-level read-only is confirmed before
     # any lineage SELECT. A rollback is issued even for successful audits.
     url = make_url(database_url)

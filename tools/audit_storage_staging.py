@@ -34,6 +34,7 @@ def main(argv: list[str] | None = None) -> int:
         report = StagingAudit(
             candidates=(), scanned_directories=0, scanned_entries=0,
             truncated=True, incomplete_reason="storage_setup_failed",
+            requested_roots=tuple(dict.fromkeys(args.root)),
         )
         print(json.dumps(asdict(report), ensure_ascii=False, indent=2))
         return 3

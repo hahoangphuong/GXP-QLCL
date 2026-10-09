@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from io import BytesIO
+import json
 from pathlib import Path
+
+from tools import audit_storage_staging as cli
 
 import pytest
 
@@ -11,7 +13,7 @@ from backend.app.storage.staging import (
     classify_staging_candidate,
     new_staging_name,
 )
-from backend.app.storage.types import StorageConfig
+from backend.app.storage.types import StorageConfig, StorageOperationError
 
 
 def _storage(tmp_path: Path) -> LocalStorageService:
@@ -73,3 +75,89 @@ def test_audit_rejects_invalid_scope_and_budgets(tmp_path: Path):
         audit_staging_candidates(service, roots=("unrecognized",))
     with pytest.raises(ValueError):
         audit_staging_candidates(service, max_entries=0)
+
+
+def test_staging_audit_excludes_directories_named_like_stage_files(tmp_path: Path):
+    service = _storage(tmp_path)
+    dirname = new_staging_name()
+    (service.inspection_root / dirname).mkdir()
+    report = audit_staging_candidates(service, max_depth=0)
+    assert report.candidates == ()
+    assert report.truncated
+    assert report.incomplete_reason == "depth_budget_exceeded"
+
+
+def test_staging_audit_marks_failed_nas_read_and_preserves_previous_findings(tmp_path: Path):
+    service = _storage(tmp_path)
+    modern = new_staging_name()
+    (service.inspection_root / modern).write_bytes(b"private bytes")
+    (service.inspection_root / "2026").mkdir()
+
+    original_list = service.list
+    def interrupted(relative_path="", *, root="inspection"):
+        if relative_path == "2026":
+            raise OSError("smb connection lost: private UNC hostname and secret marker")
+        return original_list(relative_path, root=root)
+
+    service.list = interrupted
+    report = audit_staging_candidates(service)
+    assert report.truncated
+    assert report.incomplete_reason == "storage_access_failed"
+    assert report.failed_root == "inspection"
+    assert report.failed_relative_path == "2026"
+    assert report.scanned_directories == 1
+    assert {candidate.relative_path for candidate in report.candidates} == {modern}
+    assert "private UNC" not in repr(report)
+    assert (service.inspection_root / modern).read_bytes() == b"private bytes"
+
+
+def test_staging_audit_initial_root_failure_never_reports_clean(tmp_path: Path):
+    service = _storage(tmp_path)
+    def offline(*args, **kwargs):
+        raise OSError("NAS offline with secret connection detail")
+    service.list = offline
+    report = audit_staging_candidates(service)
+    assert report.truncated and report.incomplete_reason == "storage_access_failed"
+    assert report.scanned_directories == 0
+    assert report.scanned_entries == 0
+    assert report.failed_relative_path == ""
+    assert report.candidates == ()
+
+
+def test_staging_cli_reports_partial_inventory_and_failure_exit_status(tmp_path: Path, monkeypatch, capsys):
+    service = _storage(tmp_path)
+    stage = new_staging_name()
+    (service.inspection_root / stage).write_bytes(b"intact")
+    (service.inspection_root / "2026").mkdir()
+    original = service.list
+
+    def disconnected(relative_path="", *, root="inspection"):
+        if relative_path == "2026":
+            raise OSError("NAS password leaked from exception if printed")
+        return original(relative_path, root=root)
+
+    service.list = disconnected
+    monkeypatch.setattr(cli, "create_storage_service_from_env", lambda: service)
+    exit_status = cli.main(["--root", "inspection"])
+    output = capsys.readouterr()
+    parsed = json.loads(output.out)
+    assert exit_status == 3
+    assert parsed["truncated"] is True
+    assert parsed["incomplete_reason"] == "storage_access_failed"
+    assert parsed["failed_relative_path"] == "2026"
+    assert parsed["candidates"][0]["relative_path"] == stage
+    assert "NAS password" not in output.out + output.err
+    assert (service.inspection_root / stage).read_bytes() == b"intact"
+
+
+def test_staging_cli_setup_failure_emits_safe_incomplete_report(monkeypatch, capsys):
+    def denied():
+        raise StorageOperationError("Secret SMB connection information")
+    monkeypatch.setattr(cli, "create_storage_service_from_env", denied)
+    exit_status = cli.main(["--root", "inspection"])
+    output = capsys.readouterr()
+    data = json.loads(output.out)
+    assert exit_status == 3
+    assert data["incomplete_reason"] == "storage_setup_failed"
+    assert data["candidates"] == []
+    assert "Secret SMB" not in output.out + output.err

@@ -158,3 +158,28 @@ Old SMB `<target>.tmp-<32 hex>` paths are reported as
 cannot be reliably distinguished from unrelated files using their names,
 so they are intentionally **not** classified or deleted. This inventory
 does not assert exhaustive recovery of earlier staging artifacts.
+
+## Audit failure and recovery boundaries
+
+The metadata-only staging inventory reports `truncated=true` and
+`incomplete_reason=storage_access_failed` if the NAS becomes unavailable,
+a scanned path becomes unreadable, or an adapter rejects a path. Earlier
+candidate metadata is retained in the report, together with the failed
+logical root and relative folder, but the scan **stops immediately**.
+No underlying exception messages, SMB credential values or UNC connection
+details are included. A storage adapter initialization failure reports
+`storage_setup_failed`, zero scanned entries and an incomplete result.
+
+CLI exit status: `0` for a complete inventory, `2` for a scan budget
+limit, and `3` for storage setup/access failure. A successful command
+execution is not evidence that an unreported folder has no staging files.
+Directories whose names look like staging files are not staging-file
+candidates. The scanner does not retry, create folders, read binary
+contents, delete files or attempt recovery after a connection outage.
+
+The entry budget limits **processed** entries, but the current
+`StorageService.list` contract materializes one complete directory listing
+per call. Therefore, it does not guarantee bounded NAS enumeration cost or
+RAM for a single exceptionally large directory. Any future streaming
+enumeration must be implemented at the storage adapter owner, not by
+silent client-side post-filtering.

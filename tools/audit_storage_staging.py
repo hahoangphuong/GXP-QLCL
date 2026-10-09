@@ -14,7 +14,8 @@ from dataclasses import asdict
 import json
 
 from backend.app.storage.factory import create_storage_service_from_env
-from backend.app.storage.staging import audit_staging_candidates
+from backend.app.storage.staging import StagingAudit, audit_staging_candidates
+from backend.app.storage.types import StorageOperationError
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -25,7 +26,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-depth", type=int, default=8)
     args = parser.parse_args(argv)
 
-    service = create_storage_service_from_env()
+    try:
+        service = create_storage_service_from_env()
+    except (OSError, StorageOperationError):
+        # Connection/setup failure is not a zero-candidate clean inventory.
+        # Avoid including exception text, NAS hostnames or credentials.
+        report = StagingAudit(
+            candidates=(), scanned_directories=0, scanned_entries=0,
+            truncated=True, incomplete_reason="storage_setup_failed",
+        )
+        print(json.dumps(asdict(report), ensure_ascii=False, indent=2))
+        return 3
     if service.config.storage_class not in {"synology_smb", "local_filesystem_fake"}:
         parser.error("Inventory requires an explicitly configured direct storage adapter.")
 
@@ -37,6 +48,8 @@ def main(argv: list[str] | None = None) -> int:
         max_depth=args.max_depth,
     )
     print(json.dumps(asdict(report), ensure_ascii=False, indent=2))
+    if report.incomplete_reason == "storage_access_failed":
+        return 3
     return 2 if report.truncated else 0
 
 

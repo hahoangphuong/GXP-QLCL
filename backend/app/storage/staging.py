@@ -7,11 +7,10 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from typing import Literal
 from uuid import uuid4
 import re
 
-from backend.app.storage.types import StorageServiceProtocol
+from backend.app.storage.types import StorageOperationError, StorageServiceProtocol
 
 
 _MANAGED = re.compile(r"^\.gxp-stage-[a-z0-9_-]{6,64}\.tmp$")
@@ -45,6 +44,8 @@ class StagingAudit:
     scanned_entries: int
     truncated: bool
     incomplete_reason: str | None
+    failed_root: str | None = None
+    failed_relative_path: str | None = None
 
 
 def audit_staging_candidates(
@@ -70,20 +71,32 @@ def audit_staging_candidates(
     scanned_directories = 0
     scanned_entries = 0
     incomplete_reason = None
+    failed_root = None
+    failed_relative_path = None
 
     while queue:
         if scanned_directories >= max_directories:
             incomplete_reason = "directory_budget_exceeded"
             break
         root, folder, depth = queue.popleft()
-        entries = storage.list(folder, root=root)
+        try:
+            entries = storage.list(folder, root=root)
+        except (OSError, StorageOperationError):
+            # A lost NAS connection, unreadable path, or unsafe symlink
+            # must never be reported as a complete/clean audit. Keep earlier
+            # metadata-only findings and stop; never expose exception text
+            # that may contain UNC roots or SMB connection details.
+            incomplete_reason = "storage_access_failed"
+            failed_root = root
+            failed_relative_path = folder
+            break
         scanned_directories += 1
         for entry in entries:
             if scanned_entries >= max_entries:
                 incomplete_reason = "entry_budget_exceeded"
                 break
             scanned_entries += 1
-            category = classify_staging_candidate(entry.name)
+            category = None if entry.is_dir else classify_staging_candidate(entry.name)
             if category is not None:
                 findings.append(StagingCandidate(
                     root=root,
@@ -105,4 +118,6 @@ def audit_staging_candidates(
         scanned_entries=scanned_entries,
         truncated=incomplete_reason is not None,
         incomplete_reason=incomplete_reason,
+        failed_root=failed_root,
+        failed_relative_path=failed_relative_path,
     )

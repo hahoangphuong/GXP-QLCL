@@ -58,3 +58,19 @@ This contract defines what a bridge-backed Synology integration is and is not al
 - That transport change must not require business-layer changes in Cloud Run.
 - The first integration PoC may use Cloud Run with application-level transport over Tailscale without introducing a dedicated bridge host yet.
 - If that PoC fails, a dedicated bridge host near Synology is the fallback infrastructure shape.
+
+## HMAC bridge-token integrity
+
+When `BRIDGE_AUTH_MODE=hmac_jwt` is enabled, the bridge accepts only the
+token format produced by `issue_bridge_token`: canonical unpadded Base64URL
+components, an `HS256` JWT header, a JSON-object payload and an exact HMAC
+signature. Identity claims (`iss`, `aud`, `sub`) must match the configured
+service identity. Integer `iat` and `exp` claims must describe a bounded,
+not-yet-expired lifetime within `STORAGE_BRIDGE_TOKEN_TTL_SECONDS`, with a
+small tolerance for issuance clock skew.
+
+Malformed, tampered, unsupported, expired or out-of-contract tokens return
+HTTP 401 and must never expose storage contents or produce an unhandled
+server error. These checks are owned by the bridge authentication adapter;
+the business workflow, frontend and storage backends do not duplicate JWT
+validation. Google OIDC verification remains a separate explicit auth mode.

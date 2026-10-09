@@ -400,6 +400,21 @@ def test_bridge_read_endpoint_returns_500_and_closes_stream_on_generator_error(m
     assert storage.last_stream.closed_flag is True
 
 
+def test_bridge_http_read_rejects_malformed_hmac_token_with_401(monkeypatch):
+    _authorized_headers(monkeypatch)
+    app = create_storage_bridge_app(_BridgeStorageHarness({"private.bin": b"protected-content"}))
+    messages = asyncio.run(
+        _invoke_asgi(
+            app,
+            method="GET",
+            path=f"/bridge/storage/read?{urlencode({'root': 'inspection', 'relative_path': 'private.bin'})}",
+            headers={"Authorization": "Bearer a.b.%"},
+        )
+    )
+    assert _status_from_messages(messages) == 401
+    assert b"protected-content" not in _body_from_messages(messages)
+
+
 def test_bridge_request_auth_rejects_missing_token(monkeypatch):
     monkeypatch.setenv("BRIDGE_AUTH_MODE", "hmac_jwt")
     monkeypatch.setenv("STORAGE_BRIDGE_SIGNING_KEY", "super-secret-signing-key")

@@ -566,7 +566,7 @@ def test_storage_file_operations_reject_existing_target_without_data_loss(tmp_pa
     assert target.read_bytes() == b"preserve-existing"
 
 
-def test_storage_copy_failure_cleans_partial_target(tmp_path: Path):
+def test_storage_copy_preserves_bytes_and_reports_relative_path(tmp_path: Path):
     service = build_service(tmp_path)
     source = service.inspection_root / "source.txt"
     source.write_bytes(b"hello")
@@ -575,6 +575,23 @@ def test_storage_copy_failure_cleans_partial_target(tmp_path: Path):
     assert copied.relative_path == "copied.txt"
     assert target.read_bytes() == b"hello"
     assert service.checksum("copied.txt") == sha256(b"hello").hexdigest()
+
+
+def test_storage_copy_metadata_failure_cleans_exclusive_target(tmp_path: Path, monkeypatch):
+    service = build_service(tmp_path)
+    source = service.inspection_root / "source.txt"
+    target = service.inspection_root / "copied.txt"
+    source.write_bytes(b"keep source")
+
+    def fail_metadata_copy(*args, **kwargs):
+        raise OSError("simulated metadata error")
+
+    monkeypatch.setattr("backend.app.storage.local.shutil.copystat", fail_metadata_copy)
+    with pytest.raises(OSError, match="simulated metadata error"):
+        service.copy("source.txt", "copied.txt")
+
+    assert source.read_bytes() == b"keep source"
+    assert not target.exists()
 
 
 def test_storage_rejects_path_traversal(tmp_path: Path):

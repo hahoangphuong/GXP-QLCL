@@ -573,6 +573,39 @@ def test_bridge_exclusive_write_returns_conflict_without_overwriting(monkeypatch
     assert storage.files["existing.bin"] == b"original"
 
 
+@pytest.mark.parametrize("operation", ["copy", "move", "rename"])
+def test_bridge_file_operations_return_conflict_and_preserve_existing_content(monkeypatch, tmp_path, operation):
+    headers = _authorized_headers(monkeypatch)
+    root = tmp_path / "inspection"
+    root.mkdir()
+    source = root / "source.txt"
+    target = root / "existing.txt"
+    source.write_bytes(b"unmodified-source")
+    target.write_bytes(b"existing-document")
+
+    app = create_storage_bridge_app(
+        FilesystemStorageService(StorageConfig(inspection_root=root))
+    )
+    payload = {"root": "inspection", "source_relative_path": "source.txt"}
+    if operation == "rename":
+        payload["new_name"] = "existing.txt"
+    else:
+        payload["target_relative_path"] = "existing.txt"
+
+    messages = asyncio.run(
+        _invoke_asgi(
+            app,
+            method="POST",
+            path=f"/bridge/storage/{operation}",
+            headers={**headers, "content-type": "application/json"},
+            body=json.dumps(payload).encode("utf-8"),
+        )
+    )
+    assert _status_from_messages(messages) == 409
+    assert source.read_bytes() == b"unmodified-source"
+    assert target.read_bytes() == b"existing-document"
+
+
 def test_bridge_upload_limit_rejects_large_payload(monkeypatch):
     headers = _authorized_headers(monkeypatch)
     monkeypatch.setenv("STORAGE_BRIDGE_MAX_UPLOAD_BYTES", "4")

@@ -238,9 +238,10 @@ jobs:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_qlcl_test
       GXP_CROSS_HEAD_DISPOSABLE_GATE: "1"
     steps:
-      - name: Checkout the combined candidate without repository credentials
+      - name: Checkout combined candidate with full Git ancestry (no credentials retained)
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Prove integrated parents and byte-identical reviewed frontend subtree
@@ -248,7 +249,7 @@ jobs:
           set -euo pipefail
           BACKEND="b5e0ebd7c5e047c4cdc8c7cdc206872b8b68cb14"
           FRONTEND="50576b0b383161e26e27b6cdc4a1a469aff1ae17"
-          test "$(git branch --show-current)" = "integration/frontend-backend-20261009"
+          test "${GITHUB_REF}" = "refs/heads/integration/frontend-backend-20261009"
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
           git merge-base --is-ancestor "${BACKEND}" HEAD
           git merge-base --is-ancestor "${FRONTEND}" HEAD

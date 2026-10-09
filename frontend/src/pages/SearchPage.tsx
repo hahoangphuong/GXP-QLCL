@@ -217,7 +217,7 @@ type WorkspaceRequest = {
 } & (
   | { status: "loading"; previous?: FacilityWorkspace }
   | { status: "ready"; data: FacilityWorkspace }
-  | { status: "error"; error: string }
+  | { status: "error"; error: string; previous?: FacilityWorkspace }
 );
 
 function facilityContextIdentity(result: FacilitySearchResult): string {
@@ -288,10 +288,11 @@ export function SearchPage({
   });
   const [selectedCaseWorkspace, setSelectedCaseWorkspace] = useState<CaseWorkspace | null>(null);
   const [caseWorkspaceLoading, setCaseWorkspaceLoading] = useState(false);
-  const [caseWorkspaceError, setCaseWorkspaceError] = useState<string | null>(null);
+  const [caseWorkspaceError, setCaseWorkspaceError] = useState<{ historyId: string; message: string } | null>(null);
+  const caseRequestSequence = useRef(0);
   const [selectedChangeRequestWorkspace, setSelectedChangeRequestWorkspace] = useState<ChangeRequestWorkspace | null>(null);
   const [changeRequestWorkspaceLoading, setChangeRequestWorkspaceLoading] = useState(false);
-  const [changeRequestWorkspaceError, setChangeRequestWorkspaceError] = useState<string | null>(null);
+  const [changeRequestWorkspaceError, setChangeRequestWorkspaceError] = useState<{ historyId: string; message: string } | null>(null);
   const [gxpCertificates, setGxpCertificates] = useState<GxpCertificateListItem[]>([]);
   const [gxpCertificatesLoading, setGxpCertificatesLoading] = useState(false);
   const [gxpCertificatesError, setGxpCertificatesError] = useState<string | null>(null);
@@ -363,7 +364,7 @@ export function SearchPage({
     setWorkspaceRequest((current) => ({
       context, requestId, status: "loading",
       previous: current?.context === context
-        ? current.status === "ready" ? current.data : current.status === "loading" ? current.previous : undefined
+        ? current.status === "ready" ? current.data : current.previous
         : undefined,
     }));
     return requestId;
@@ -375,13 +376,20 @@ export function SearchPage({
 
   function publishWorkspaceRequest(next: WorkspaceRequest) {
     if (committedContextRef.current !== next.context) return;
-    setWorkspaceRequest((current) => current?.requestId === next.requestId && current.context === next.context ? next : current);
+    setWorkspaceRequest((current) => current?.requestId === next.requestId && current.context === next.context
+      ? next.status === "error" ? { ...next, previous: current.status === "ready" ? current.data : current.previous } : next
+      : current);
   }
 
   // Retain the event request identity during a same-context refresh; previous
   // data is never exposed by the workspace projection while loading.
-  const eventContext = ownedWorkspace ?? (ownedRequest?.status === "loading" ? ownedRequest.previous : null);
+  const eventContext = ownedWorkspace ?? (ownedRequest && ownedRequest.status !== "ready" ? ownedRequest.previous : null);
   const selectedHistory = deepLinkError ? null : eventContext?.history.find((item) => item.id === selectedHistoryId) ?? null;
+  const documentContextRef = useRef({ context: selectedContext, historyId: selectedHistoryId, cycleId: selectedRemediationCycleId });
+  useLayoutEffect(() => {
+    documentContextRef.current = { context: selectedContext, historyId: selectedHistoryId, cycleId: selectedRemediationCycleId };
+  }, [selectedContext, selectedHistoryId, selectedRemediationCycleId]);
+  const retainedWorkspace = !deepLinkError && historyResolution !== "pending" ? eventContext : null;
   const hasMoreResults = results.length < resultsTotalCount;
   const createReassessmentAction =
     workspace?.action_readiness.find((item) => item.action_key === "create_reassessment_case") ?? null;
@@ -795,6 +803,7 @@ export function SearchPage({
   }, [historyResolution, pendingDeepLink.historyId, ownedWorkspace]);
 
   useEffect(() => {
+    const requestId = ++caseRequestSequence.current;
     setSelectedCaseWorkspace(null);
     setCaseWorkspaceError(null);
     setCaseWorkspaceLoading(false);
@@ -806,7 +815,7 @@ export function SearchPage({
     setCaseWorkspaceLoading(true);
     void getCaseWorkspace(selectedHistoryId, auth, useStubAuth, bearerToken)
       .then((payload) => {
-        if (!cancelled) {
+        if (!cancelled && caseRequestSequence.current === requestId) {
           setSelectedCaseWorkspace(payload);
           setSelectedRemediationCycleId((current) => resolveSelectedRemediationCycleId(payload, current));
           setCaseWorkspaceError(null);
@@ -814,10 +823,10 @@ export function SearchPage({
         }
       })
       .catch((error: Error) => {
-        if (!cancelled) {
+        if (!cancelled && caseRequestSequence.current === requestId) {
           setSelectedCaseWorkspace(null);
           setSelectedRemediationCycleId(null);
-          setCaseWorkspaceError(error.message);
+          setCaseWorkspaceError({ historyId: selectedHistoryId, message: error.message });
           setCaseWorkspaceLoading(false);
         }
       });
@@ -846,7 +855,7 @@ export function SearchPage({
       .catch((error: Error) => {
         if (!cancelled) {
           setSelectedChangeRequestWorkspace(null);
-          setChangeRequestWorkspaceError(error.message);
+          setChangeRequestWorkspaceError({ historyId: selectedHistoryId, message: error.message });
           setChangeRequestWorkspaceLoading(false);
         }
       });
@@ -1528,9 +1537,10 @@ export function SearchPage({
   }
 
   async function refreshSelectedCaseWorkspace(caseId: string, preferredCycleId?: string | null) {
-    if (!isCurrentContext()) return null;
+    if (!isCurrentContext() || documentContextRef.current.historyId !== caseId) return null;
+    const requestId = ++caseRequestSequence.current;
     const payload = await getCaseWorkspace(caseId, auth, useStubAuth, bearerToken);
-    if (!isCurrentContext()) return payload;
+    if (!isCurrentContext() || documentContextRef.current.historyId !== caseId || caseRequestSequence.current !== requestId) return payload;
     setSelectedCaseWorkspace(payload);
     setCaseWorkspaceError(null);
     setSelectedRemediationCycleId((current) => resolveSelectedRemediationCycleId(payload, preferredCycleId ?? current));
@@ -1789,9 +1799,14 @@ export function SearchPage({
     await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
   }
 
-  async function handleOpenDocument(caseId: string, item: ContextualDocumentAction): Promise<void> {
+  async function handleOpenDocument(caseId: string, item: ContextualDocumentAction, isCurrentDocument?: () => boolean): Promise<void> {
     if (!item.document_id) {
       throw new Error("Tài liệu chưa có binary hiện hành để mở.");
+    }
+    const openingContext = documentContextRef.current;
+    if (openingContext.context !== selectedContext || openingContext.historyId !== caseId
+      || (item.parent_scope === "case" ? item.parent_id !== caseId : item.parent_id !== openingContext.cycleId)) {
+      throw new Error("Ngữ cảnh tài liệu đã thay đổi.");
     }
     let response: Awaited<ReturnType<typeof openCaseDocumentCurrentContent>>;
     if (item.parent_scope === "case") {
@@ -1801,6 +1816,7 @@ export function SearchPage({
     } else {
       throw new Error("Phạm vi sở hữu tài liệu chưa được hỗ trợ để mở.");
     }
+    if (documentContextRef.current !== openingContext || (isCurrentDocument && !isCurrentDocument())) return;
     const { blob } = response;
     const objectUrl = URL.createObjectURL(blob);
     window.open(objectUrl, "_blank", "noopener");
@@ -2036,21 +2052,26 @@ export function SearchPage({
           <EmptyState title="Không có kết quả" description="Không tìm thấy cơ sở phù hợp với bộ lọc hiện tại." />
         ) : null}
 
-        {resultsTotalCount > 0 ? (
-          deepLinkError ? null : workspaceError && !workspaceLoading ? (
-            <EmptyState title="Chưa tải được workspace" description="Chưa tải được chi tiết. Xem lỗi tại vùng lịch sử hoặc chọn lại ngữ cảnh cơ sở." />
-          ) : workspaceLoading || !workspace ? (
-            <section className="panel panel-tight facility-workspace-panel">
-              <EmptyState title="Đang tải workspace" description="Đang đồng bộ ngữ cảnh cơ sở, dây chuyền và chứng nhận hiện hành." />
-            </section>
-          ) : (
+        {resultsTotalCount > 0 && !deepLinkError && workspaceError && !workspaceLoading ? (
+          <section className="panel panel-tight">
+            <EmptyState title="Chưa tải được workspace" description="Chưa tải được chi tiết. Bản nháp cùng ngữ cảnh được giữ trong khi workspace bị ẩn." />
+            <button type="button" onClick={() => { void refreshSelectedFacilityWorkspace(selectedHistoryId).catch(() => undefined); }}>Tải lại workspace</button>
+          </section>
+        ) : null}
+        {resultsTotalCount > 0 && !deepLinkError && (workspaceLoading || (!workspace && !workspaceError)) ? (
+          <section className="panel panel-tight facility-workspace-panel">
+            <EmptyState title="Đang tải workspace" description="Đang đồng bộ ngữ cảnh cơ sở, dây chuyền và chứng nhận hiện hành." />
+          </section>
+        ) : null}
+        {resultsTotalCount > 0 && retainedWorkspace ? (
+          <div className="retained-facility-workspace" hidden={!workspace} inert={!workspace}>
             <FacilityWorkspaceTabs
               activeEventTab={activeTab}
               caseWorkspace={selectedCaseWorkspace}
-              caseWorkspaceError={caseWorkspaceError}
+              caseWorkspaceError={caseWorkspaceError?.historyId === selectedHistoryId ? caseWorkspaceError.message : null}
               caseWorkspaceLoading={caseWorkspaceLoading}
               changeRequestWorkspace={selectedChangeRequestWorkspace}
-              changeRequestWorkspaceError={changeRequestWorkspaceError}
+              changeRequestWorkspaceError={changeRequestWorkspaceError?.historyId === selectedHistoryId ? changeRequestWorkspaceError.message : null}
               changeRequestWorkspaceLoading={changeRequestWorkspaceLoading}
               changeRequestMutations={{
                 onUpdateHeader: handleChangeRequestHeaderUpdate,
@@ -2123,9 +2144,9 @@ export function SearchPage({
               selectedGxpCertificateId={selectedGxpCertificateId}
               selectedHistory={selectedHistory}
               selectedRemediationCycleId={selectedRemediationCycleId}
-              summary={workspace.summary}
+              summary={retainedWorkspace.summary}
             />
-          )
+          </div>
         ) : null}
       </div>
     </section>

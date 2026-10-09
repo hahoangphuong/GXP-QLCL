@@ -76,6 +76,7 @@ export function CaseProcessingWorkspace({
   const currentDraft = useMemo(() => buildDraft(caseWorkspace), [caseWorkspace]);
   const [draft, setDraft] = useState<ProcessingDraft>(currentDraft);
   const [editingField, setEditingField] = useState<keyof ProcessingDraft | null>(null);
+  const [draftVersion, setDraftVersion] = useState(caseWorkspace.processing.row_version);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -94,7 +95,7 @@ export function CaseProcessingWorkspace({
     setErrorMessage(null);
     try {
       await onSave({
-        expected_version: caseWorkspace.processing.row_version,
+        expected_version: draftVersion,
         assessed_on: toDateTimePayload(draft.assessed_on),
         assessor_name: normalizeText(draft.assessor_name),
         assessment_result: normalizeText(draft.assessment_result),
@@ -127,6 +128,7 @@ export function CaseProcessingWorkspace({
             label="Ngày thẩm định"
             onCancel={cancelEdit}
             onEdit={() => {
+              setDraftVersion(caseWorkspace.processing.row_version);
               setEditingField("assessed_on");
               setErrorMessage(null);
             }}
@@ -150,6 +152,7 @@ export function CaseProcessingWorkspace({
             label="Người thẩm định"
             onCancel={cancelEdit}
             onEdit={() => {
+              setDraftVersion(caseWorkspace.processing.row_version);
               setEditingField("assessor_name");
               setErrorMessage(null);
             }}
@@ -173,6 +176,7 @@ export function CaseProcessingWorkspace({
             multiline
             onCancel={cancelEdit}
             onEdit={() => {
+              setDraftVersion(caseWorkspace.processing.row_version);
               setEditingField("assessment_result");
               setErrorMessage(null);
             }}

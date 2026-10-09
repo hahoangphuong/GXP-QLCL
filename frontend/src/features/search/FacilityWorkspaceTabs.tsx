@@ -158,7 +158,7 @@ export function FacilityWorkspaceTabs({
   onInspectionTeamSave: (payload: InspectionTeamUpsertRequest) => Promise<void>;
   onLoadInspectionTeamIdentityOptions: () => Promise<InspectionTeamIdentityOption[]>;
   onEvaluationScopeSave: (payload: EvaluationScopeUpsertRequest) => Promise<void>;
-  onOpenDocument: (caseId: string, item: ContextualDocumentAction) => Promise<void>;
+  onOpenDocument: (caseId: string, item: ContextualDocumentAction, isCurrentDocument?: () => boolean) => Promise<void>;
   onCreateDocument: (
     caseId: string,
     item: ContextualDocumentAction,

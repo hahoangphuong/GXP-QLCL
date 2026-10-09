@@ -2226,6 +2226,81 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.getDocumentDetail).not.toHaveBeenCalled();
   });
 
+  it.each(["ready", "error"])("keeps document selection and an unsaved processing draft through an authoritative same-context refresh: %s", async (state) => {
+    const base = buildCaseWorkspace();
+    const document = { ...base.contextual_document_actions[1], family_code: "INSPECTION_KE_HOACH_KT", actions: [
+      ...base.contextual_document_actions[1].actions.filter(action => action.action_key !== "create"),
+      { action_key: "create", label: "Tạo", available: true, disabled_reason: null, required_permissions: [], family_code: "INSPECTION_KE_HOACH_KT", parent_scope: "case", parent_id: "case-1", create_gxp_type: "GMP", create_storage_scope: "inspection_folder", create_output_filename: "khkt.docx" },
+    ] };
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    let release!: (value: ReturnType<typeof buildWorkspace>) => void;
+    let rejectRefresh!: (error: Error) => void;
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace()).mockResolvedValueOnce(buildWorkspace()).mockImplementationOnce(() => new Promise((resolve, reject) => { release = resolve; rejectRefresh = reject; }));
+    apiMocks.getCaseWorkspace.mockResolvedValueOnce(buildCaseWorkspace({ contextual_document_actions: [document] })).mockResolvedValue(buildCaseWorkspace({ processing: { ...base.processing, row_version: 9 }, contextual_document_actions: [document] }));
+    apiMocks.getDocumentDetail.mockResolvedValue({ document_id: document.document_id, family_code: document.family_code, case_id: "case-1", title: "Exact selected document", variants: [], generation_runs: [] });
+    apiMocks.renderTemplateDocx.mockResolvedValue({});
+    renderApp(["/search"]);
+    await screen.findByText("HS-001"); fireEvent.click(screen.getByRole("button", { name: "Xử lý" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chọn Quyết định cấp CC" })); await screen.findByText("Exact selected document");
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Kết quả" }));
+    fireEvent.change(screen.getByLabelText("Kết quả"), { target: { value: "unsaved processing draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tạo Quyết định cấp CC" }));
+    await screen.findByText("Đang tải workspace");
+    expect(screen.queryByRole("table", { name: "Danh sách tài liệu liên quan" })).not.toBeInTheDocument();
+    if (state === "error") {
+      await act(async () => rejectRefresh(new Error("refresh failed")));
+      expect(screen.getByRole("heading", { name: "Chưa tải được workspace" })).toBeInTheDocument();
+      expect(screen.queryByRole("table", { name: "Danh sách tài liệu liên quan" })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Tải lại workspace" }));
+      await screen.findByRole("table", { name: "Danh sách tài liệu liên quan" });
+    } else await act(async () => release(buildWorkspace()));
+    expect(screen.getByLabelText("Kết quả")).toHaveValue("unsaved processing draft");
+    expect(screen.getByRole("button", { name: "Chọn Quyết định cấp CC" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Exact selected document")).toBeInTheDocument();
+    expect(apiMocks.getDocumentDetail).toHaveBeenCalledTimes(1);
+    expect(apiMocks.renderTemplateDocx).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(state === "error" ? 3 : 2);
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
+    apiMocks.upsertCaseAssessment.mockRejectedValue(buildApiError("stale", 409));
+    fireEvent.click(screen.getByRole("button", { name: "Lưu Kết quả" }));
+    await screen.findByRole("alert");
+    expect(apiMocks.upsertCaseAssessment.mock.calls[0][1]).toMatchObject({ expected_version: 2, assessment_result: "unsaved processing draft" });
+    expect(screen.getByLabelText("Kết quả")).toHaveValue("unsaved processing draft");
+    expect(apiMocks.upsertCaseAssessment).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not open a late document binary after history navigation", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace()); apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    let release!: (value: { blob: Blob }) => void;
+    apiMocks.openCaseDocumentCurrentContent.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    renderApp(["/search"]); await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Xử lý" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mở Quyết định cấp CC" }));
+    fireEvent.click(screen.getByRole("row", { name: /Đổi địa chỉ/ }));
+    await act(async () => release({ blob: new Blob(["late content"]) }));
+    expect(window.open).not.toHaveBeenCalled(); expect(apiMocks.openCaseDocumentCurrentContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not open document A's late binary after selecting document B within the same event", async () => {
+    const base = buildCaseWorkspace(); const a = base.contextual_document_actions[1];
+    const b = { ...a, checklist_key: "slot-B", document_id: "document-B", label: "Second document", original_filename: a.original_filename };
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace()); apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ contextual_document_actions: [a, b] }));
+    apiMocks.getDocumentDetail.mockResolvedValue({ document_id: b.document_id, family_code: b.family_code, case_id: "case-1", title: "Only B detail", variants: [], generation_runs: [] });
+    let release!: (value: { blob: Blob }) => void;
+    apiMocks.openCaseDocumentCurrentContent.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    renderApp(["/search"]); await screen.findByText("HS-001"); fireEvent.click(screen.getByRole("button", { name: "Xử lý" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mở Quyết định cấp CC" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chọn Second document" })); await screen.findByText("Only B detail");
+    await act(async () => release({ blob: new Blob(["late A"]) }));
+    expect(window.open).not.toHaveBeenCalled(); expect(apiMocks.openCaseDocumentCurrentContent).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Chọn Second document" })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("opens current document binary for Mở and keeps metadata loading on Lịch sử", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
@@ -3643,7 +3718,7 @@ describe("App Slice A.4 search workspace", () => {
       { ...buildWorkspace().history[0], id: "case-other", occurred_on: "2026-01-01", state: "planned" },
       { ...buildWorkspace().history[0], id: "case-target", occurred_on: "2026-01-02", state: "planned" },
     ] }));
-    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ case_summary: { ...buildCaseWorkspace().case_summary, id: "case-target" } }));
 
     const { container } = renderApp(["/search?result_key=site-1%3AGMP%3Acanonical%3Aline-uuid-1&history_id=case-target&facility_tab=Th%C3%B4ng%20tin%20chung&event_tab=Ki%E1%BB%83m%20tra"]);
     await waitFor(() => expect(apiMocks.getCaseWorkspace.mock.calls.at(-1)?.[0]).toBe("case-target"));

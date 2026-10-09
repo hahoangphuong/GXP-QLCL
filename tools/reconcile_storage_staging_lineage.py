@@ -125,9 +125,17 @@ def _read_only_reconcile(database_url: str, inventory: StagingAudit):
         with engine.connect() as conn:
             tx = conn.begin()
             try:
-                conn.exec_driver_sql("SET TRANSACTION READ ONLY")
+                # A lineage report must reflect one coherent metadata
+                # snapshot, even if another transaction commits between
+                # the batched SELECTs. Read-only alone defaults to READ
+                # COMMITTED and can mix different committed epochs.
+                conn.exec_driver_sql(
+                    "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
+                )
                 if conn.exec_driver_sql("SHOW transaction_read_only").scalar_one() != "on":
                     raise RuntimeError("Read-only transaction was not confirmed.")
+                if conn.exec_driver_sql("SHOW transaction_isolation").scalar_one() != "repeatable read":
+                    raise RuntimeError("Repeatable-read isolation was not confirmed.")
                 # Bound the unqualified ORM SELECT names to the migrated
                 # application schema, regardless of URL-provided search_path
                 # or preexisting temporary tables. Explicit pg_temp last

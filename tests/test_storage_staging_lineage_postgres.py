@@ -243,6 +243,79 @@ def test_postgres_dedicated_reader_cannot_update_lineage_tables(disposable_reade
         engine.dispose()
 
 
+def test_postgres_repeatable_read_holds_one_lineage_snapshot(disposable_reader_url):
+    # One authorized reader observes a stable reference set while a separate
+    # disposable writer commits a new template with the exact candidate path.
+    # The next reader transaction must then observe that committed metadata.
+    suffix = uuid4().hex[:12]
+    template_id = str(uuid4())
+    path = f"ci-snapshot-{suffix}/.gxp-stage-abc123.tmp"
+    inventory = _inventory(("template", path))
+    writer = create_engine(DATABASE_URL, future=True)
+    reader = create_engine(disposable_reader_url, future=True)
+    try:
+        with reader.connect() as connection:
+            tx = connection.begin()
+            try:
+                connection.exec_driver_sql(
+                    "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
+                )
+                assert connection.exec_driver_sql(
+                    "SHOW transaction_isolation"
+                ).scalar_one() == "repeatable read"
+                connection.exec_driver_sql(
+                    "SET LOCAL search_path = pg_catalog, public, pg_temp"
+                )
+                with Session(bind=connection, autoflush=False) as session:
+                    before = reconcile_staging_lineage(session, inventory)
+                assert before.items[0].evidence == "no_exact_locator_evidence"
+
+                with Session(writer) as seed:
+                    seed.add(TemplateDefinition(
+                        id=template_id, family_code=f"CI_SNAPSHOT_{suffix}",
+                        document_type_code="CI_TEMPLATE",
+                        source_application="word",
+                        storage_scope="inspection_folder",
+                        variant_type=DocumentVariantType.EDITABLE_DOCX,
+                        template_name=f"CI snapshot {suffix}",
+                        template_storage_root="template",
+                        template_storage_relative_path=path,
+                    ))
+                    seed.commit()
+
+                with Session(bind=connection, autoflush=False) as session:
+                    during = reconcile_staging_lineage(session, inventory)
+                assert during.items[0].evidence == "no_exact_locator_evidence"
+                assert during.items[0].template_definition_ids == ()
+            finally:
+                tx.rollback()
+
+            tx = connection.begin()
+            try:
+                connection.exec_driver_sql(
+                    "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
+                )
+                connection.exec_driver_sql(
+                    "SET LOCAL search_path = pg_catalog, public, pg_temp"
+                )
+                with Session(bind=connection, autoflush=False) as session:
+                    after = reconcile_staging_lineage(session, inventory)
+                assert after.items[0].evidence == "registered_exact_locator"
+                assert after.items[0].template_definition_ids == (template_id,)
+            finally:
+                tx.rollback()
+    finally:
+        try:
+            with Session(writer) as cleanup:
+                cleanup.execute(
+                    delete(TemplateDefinition).where(TemplateDefinition.id == template_id)
+                )
+                cleanup.commit()
+        finally:
+            reader.dispose()
+            writer.dispose()
+
+
 def test_postgres_lineage_query_batches_large_inventory_without_mutation():
     engine = create_engine(DATABASE_URL, future=True)
     try:

@@ -307,3 +307,13 @@ connection URL may put first. An installation intentionally using a
 different application schema is not supported by this audit until a
 separately reviewed contract is introduced. The search-path change is
 transaction-local and is rolled back with the audit.
+
+### Consistent metadata snapshot
+
+The optional PostgreSQL CLI uses a transaction at `REPEATABLE READ, READ
+ONLY` isolation and explicitly verifies both session settings before
+performing lineage reads. This gives the entire batched audit a single
+database snapshot instead of mixing rows committed at different times
+under `READ COMMITTED`. The transaction is rolled back after use.
+The NAS inventory and this database snapshot are **not** an atomic
+cross-system snapshot, so neither source can authorize staging cleanup.

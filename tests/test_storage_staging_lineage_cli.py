@@ -88,7 +88,11 @@ class _FakeConnection:
         self.statements.append(sql)
         return _FakeResult(
             role_flags=self.role_flags,
-            value=self.can_write_other_tables if "pg_catalog.pg_class" in sql else "on",
+            value=(
+                self.can_write_other_tables if "pg_catalog.pg_class" in sql
+                else "repeatable read" if sql == "SHOW transaction_isolation"
+                else "on"
+            ),
         )
 
     def __enter__(self):
@@ -153,14 +157,15 @@ def test_lineage_cli_confirms_read_only_and_always_rolls_back(tmp_path, monkeypa
     assert result == 2
     assert data["input_inventory_truncated"] is True
     assert data["status"] == "review_only"
-    assert engine.connection.statements[:3] == [
-        "SET TRANSACTION READ ONLY",
+    assert engine.connection.statements[:4] == [
+        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY",
         "SHOW transaction_read_only",
+        "SHOW transaction_isolation",
         "SET LOCAL search_path = pg_catalog, public, pg_temp",
     ]
-    assert len(engine.connection.statements) == 5
-    assert "public.document_version" in engine.connection.statements[3]
-    assert "pg_catalog.pg_class" in engine.connection.statements[4]
+    assert len(engine.connection.statements) == 6
+    assert "public.document_version" in engine.connection.statements[4]
+    assert "pg_catalog.pg_class" in engine.connection.statements[5]
     assert engine.connection.transaction.rollbacks == 1
     assert engine.disposed
     assert len(seen) == 1

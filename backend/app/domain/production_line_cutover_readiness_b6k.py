@@ -58,6 +58,21 @@ def audit_b6j_review_alignment(plan: Mapping[str, Any], roster: Mapping[str, Any
     require(isinstance(items, list) and isinstance(candidates, list)
             and all(isinstance(x, Mapping) for x in (*items, *candidates)),
             "B6K candidates must be mappings")
+    # B6J planner copies this provenance directly from the roster. A
+    # re-sealed plan with contradictory metadata must never pass review.
+    for plan_field, roster_field in (
+        ("candidate_set_roster_schema_version", "schema_version"),
+        ("candidate_set_roster_artifact_kind", "artifact_kind"),
+        ("candidate_set_roster_planner_version", "planner_version"),
+    ):
+        require(
+            plan.get(plan_field) == roster.get(roster_field),
+            f"B6K plan-bound reviewed roster {plan_field} differs",
+        )
+    require(
+        plan.get("candidate_set_roster_item_count") == len(items),
+        "B6K plan-bound reviewed roster item count differs",
+    )
     require(candidate_set_digest(items) == plan.get("candidate_set_sha256"),
             "B6K candidate-set evidence differs")
     ri = {x.get("candidate_key"): x for x in items}

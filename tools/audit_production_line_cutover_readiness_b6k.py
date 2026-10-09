@@ -41,7 +41,11 @@ def main(argv: list[str] | None = None) -> int:
     report = audit_b6j_review_alignment(plan, json.loads(rbytes))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"B6K_REVIEW_ALIGNMENT={report['status']};BLOCKED_CANDIDATES={report['blocked_candidate_count']}")
+    print(
+        f"B6K_REVIEW_ALIGNMENT={report['status']};"
+        f"BLOCKED_CANDIDATES={report['blocked_candidate_count']};"
+        f"BLOCKED_SOURCE_ACTIONS={report['blocked_source_action_count']}"
+    )
     # Keep the complete audit artifact, but never report success to CI/shell
     # when a human review or planned action remains unresolved.
     return 3 if report["status"] == "REVIEW_ALIGNMENT_BLOCKED" else 0

@@ -484,3 +484,52 @@ def test_audit_cli_executes_from_external_working_directory_without_pythonpath(t
     )
     assert result.returncode == 0, result.stderr
     assert "--reviewed-roster" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("plan_field", "wrong_value"),
+    [
+        ("candidate_set_roster_schema_version", "obsolete-review-schema"),
+        ("candidate_set_roster_artifact_kind", "not-a-review-roster"),
+        ("candidate_set_roster_planner_version", "obsolete-planner"),
+        ("candidate_set_roster_item_count", 999),
+    ],
+)
+def test_plan_cannot_reseal_inconsistent_review_roster_metadata(
+    plan_field, wrong_value,
+):
+    plan, roster = fixture()
+    plan[plan_field] = wrong_value
+    plan["plan_sha256"] = plan_digest(plan)
+    # These metadata fields were copied by B6J planner, but its structural
+    # validator alone cannot compare them with the actual review input.
+    if plan_field != "candidate_set_roster_item_count":
+        _validate_plan(plan)
+    with pytest.raises(B6KReviewAlignmentError, match="B6K"):
+        audit_b6j_review_alignment(plan, roster)
+
+
+def test_cli_prints_both_candidate_and_source_action_blocker_counts(tmp_path, capsys):
+    plan, roster = fixture()
+    plan["certificate_links"][0].update(
+        classification="BLOCKED_SITE_MISMATCH",
+        block_reason="CASE_CERTIFICATE_SITE_DIFFERS",
+    )
+    plan["summary_counts"]["certificates"] = {"BLOCKED_SITE_MISMATCH": 1}
+    plan["plan_sha256"] = plan_digest(plan)
+    plan_path = tmp_path / "plan.json"
+    roster_path = tmp_path / "roster.json"
+    output_path = tmp_path / "review_audit.json"
+    plan_path.write_text(json.dumps(plan))
+    roster_path.write_bytes(canonical_artifact_bytes(roster))
+    args = [
+        "--plan", str(plan_path), "--reviewed-roster", str(roster_path),
+        "--expected-plan-file-sha256", sha256(plan_path.read_bytes()).hexdigest(),
+        "--expected-reviewed-roster-file-sha256", sha256(roster_path.read_bytes()).hexdigest(),
+        "--output", str(output_path),
+    ]
+    assert main(args) == 3
+    message = capsys.readouterr().out
+    assert "BLOCKED_CANDIDATES=0" in message
+    assert "BLOCKED_SOURCE_ACTIONS=1" in message
+    assert json.loads(output_path.read_text())["cutover_authorized"] is False

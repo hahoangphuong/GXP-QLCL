@@ -160,9 +160,12 @@ A B6J plan built from a **pending B6I roster** must be rebuilt after
 review; the immutable `candidate_set_sha256` intentionally excludes human
 decisions. B6K requires the B6J plan to bind the **exact reviewed roster**:
 `candidate_set_roster_content_sha256` must match decision-bearing content
-and `candidate_set_roster_sha256` must match its exact file bytes. Every
-subsequent review edit requires replan, independent plan approval, and
-fresh audit; a self-recomputed SHA is not approval.
+and `candidate_set_roster_sha256` must match its exact file bytes. The
+plan-bound review schema, artifact kind, planner version and item count
+must also match that same roster; re-sealing contradictory metadata does
+not make it valid. Every subsequent review edit requires replan,
+independent plan approval, and fresh audit; a self-recomputed SHA
+is not approval.
 
 The report always contains `"cutover_authorized": false`, even when
 `status` is `REVIEW_ALIGNMENT_PASS`. Such a PASS means **only** that reviewed

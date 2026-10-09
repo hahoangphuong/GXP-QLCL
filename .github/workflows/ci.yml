@@ -280,12 +280,12 @@ jobs:
 
       - name: Start isolated synthetic backend fixture
         run: |
-          python -m uvicorn tools.cross_head_fixture_app:app --host 127.0.0.1 --port 8877 \
+          python -m uvicorn tools.cross_head_fixture_app:app --host 127.0.0.1 --port 8000 \
             > "${RUNNER_TEMP}/gxp-cross-head-server.log" 2>&1 &
           echo "GXP_CROSS_HEAD_SERVER_PID=$!" >> "${GITHUB_ENV}"
           READY=0
           for attempt in $(seq 1 40); do
-            if curl --fail --silent http://127.0.0.1:8877/healthz >/dev/null; then
+            if curl --fail --silent http://127.0.0.1:8000/healthz >/dev/null; then
               READY=1
               break
             fi
@@ -306,6 +306,44 @@ jobs:
           cp ../../tests/cross_head_frontend_api.test.ts src/lib/cross_head_api_ci.test.ts
           pnpm exec vitest run src/lib/cross_head_api_ci.test.ts --reporter=verbose
 
+      - name: Install pinned disposable browser driver and Chromium
+        run: |
+          echo "GXP_CROSS_HEAD_PW_DIR=${RUNNER_TEMP}/gxp-browser-driver" >> "${GITHUB_ENV}"
+          echo "GXP_CROSS_HEAD_SCREENSHOTS=${GITHUB_WORKSPACE}/cross-head-screenshots" >> "${GITHUB_ENV}"
+          npm install --no-save --prefix "${RUNNER_TEMP}/gxp-browser-driver" playwright@1.56.1
+          "${RUNNER_TEMP}/gxp-browser-driver/node_modules/.bin/playwright" install --with-deps chromium
+
+      - name: Start loopback-only Codex frontend staging preview
+        working-directory: cross-head-frontend/frontend
+        run: |
+          pnpm exec vite --host 127.0.0.1 --port 4173 --strictPort \
+            > "${RUNNER_TEMP}/gxp-cross-head-frontend.log" 2>&1 &
+          echo "GXP_CROSS_HEAD_FRONTEND_PID=$!" >> "${GITHUB_ENV}"
+          READY=0
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:4173/search >/dev/null; then
+              READY=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "${READY}" != "1" ]; then
+            echo "Disposable loopback UI failed to boot."
+            exit 1
+          fi
+
+      - name: Run real Chromium navigation on three screen sizes
+        run: node tests/cross_head_browser.mjs
+
+      - name: Archive synthetic-only browser QA screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cross-head-browser-evidence
+          path: cross-head-screenshots/*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Validate immutable frontend checkout after integration
         run: |
           test "$(git -C cross-head-frontend rev-parse HEAD)" = "50576b0b383161e26e27b6cdc4a1a469aff1ae17"
@@ -316,5 +354,8 @@ jobs:
         run: |
           if [ -n "${GXP_CROSS_HEAD_SERVER_PID:-}" ]; then
             kill "${GXP_CROSS_HEAD_SERVER_PID}" 2>/dev/null || true
+          fi
+          if [ -n "${GXP_CROSS_HEAD_FRONTEND_PID:-}" ]; then
+            kill "${GXP_CROSS_HEAD_FRONTEND_PID}" 2>/dev/null || true
           fi
 

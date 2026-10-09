@@ -23,7 +23,7 @@ const fixturePath = process.env.GXP_CROSS_HEAD_FIXTURE_JSON;
 if (!fixturePath) throw new Error("Disposable cross-head fixture metadata path missing.");
 const fixture = JSON.parse(readFileSync(fixturePath, "utf-8")) as Fixture;
 const auth = { username: "ci-only-reader", role: "reader" } as const;
-const backend = "http://127.0.0.1:8877";
+const backend = "http://127.0.0.1:8000";
 const routeCalls: { path: string; method: string }[] = [];
 
 beforeAll(() => {

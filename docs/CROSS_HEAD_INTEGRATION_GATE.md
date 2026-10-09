@@ -58,3 +58,32 @@ remain separate staging/UAT gates.
 The selected frontend SHA changes **only** through a reviewed update
 to this workflow. Do not auto-follow branch HEAD, auto-merge, swap
 production credentials, or treat a green gate as deploy approval.
+
+## Temporary browser staging (CI-only)
+
+The cross-head job now provisions the three items needed for **automated**
+browser staging without borrowing production resources:
+
+- Frontend preview URL: `http://127.0.0.1:4173/search` bound only
+  inside the short-lived GitHub runner; reverse proxy `/api` reaches
+  the synthetic FastAPI server on runner-loopback port 8000.
+  **This is not a publicly accessible staging URL.**
+- Synthetic test identity: local header-stub `ci-browser-inspector`
+  with the fixed `inspector` role. The existing `reader` and second
+  inspector identities remain confined to the HTTP gate.
+  No password, Google OAuth enrollment, or standing login is created.
+- Synthetic dataset: one disposable PostgreSQL database
+  `gxp_qlcl_test` and temporary LocalStorageService document bytes.
+  The fixture IDs are generated anew per run and discarded after CI.
+
+The Chromium UI test is pinned to the reviewed Codex source commit and
+runs at 1366x768, 1920x1080, and 390x844. It checks that authenticated
+Search UI loads a synthetic facility and its event/documents, and that
+focus-only document keyboard navigation creates no API requests. Screenshots
+contain synthetic data only and expire from GitHub Actions artifacts after
+seven days. All UI network access is restricted to runner loopback.
+
+This is **not** a remotely accessible staging deployment and **not**
+human-assisted NVDA/JAWS speech verification. Those still require an
+approved remote staging environment and operator accounts. Never use
+header-stub auth on an externally exposed staging/production server.

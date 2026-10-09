@@ -4,7 +4,11 @@ import type { ContextualDocumentAction, DocumentDetail } from "../../types";
 import { formatCompactDate } from "../../lib/presentation";
 
 type Selection = { context: string; key: string; id: string | null };
-type Request = Selection & { sequence: number; pending: boolean; detail?: DocumentDetail; error?: string };
+type Request = Selection & { generation: number; sequence: number; pending: boolean; detail?: DocumentDetail; error?: string };
+
+function sameSelection(left: Selection | null | undefined, right: Selection) {
+  return left?.context === right.context && left.key === right.key && left.id === right.id;
+}
 
 function message(error: unknown): string {
   const status = (error as { status?: number } | null)?.status;
@@ -39,81 +43,104 @@ export function ContextualDocumentSection({ items, contextKey, onOpenDocument, o
     setFocusKey(null);
   }
   const sequence = useRef(0);
+  const selectionGeneration = useRef(0);
   const operationSequence = useRef(0);
   const committed = useRef<{ context: string; items: ContextualDocumentAction[] } | null>(null);
   const inFlight = useRef(new Set<string>());
   const pendingHistory = useRef<Request | null>(null);
-  const operationFocus = useRef<(Selection & { element: HTMLElement }) | null>(null);
+  const operationFocus = useRef<(Selection & { generation: number; element: HTMLElement }) | null>(null);
   const selectedIdentity = useRef(selection);
   useLayoutEffect(() => { selectedIdentity.current = selection; }, [selection]);
   useLayoutEffect(() => {
     if (committed.current?.context !== context) {
+      selectionGeneration.current++;
       sequence.current++;
       operationSequence.current++;
     }
     committed.current = { context, items };
+    const selectedTarget = selectedIdentity.current;
+    if (selectedTarget && !items.some(item => item.checklist_key === selectedTarget.key && item.document_id === selectedTarget.id)) {
+      selectionGeneration.current++;
+      sequence.current++;
+      selectedIdentity.current = null;
+      setSelection(null);
+    }
   }, [context, items]);
-  useLayoutEffect(() => () => { committed.current = null; sequence.current++; operationSequence.current++; }, []);
+  useLayoutEffect(() => () => { committed.current = null; selectionGeneration.current++; sequence.current++; operationSequence.current++; }, []);
   useLayoutEffect(() => {
     if (operation?.pending) return;
     const target = operationFocus.current;
-    if (target?.context === context && target.key === selectedIdentity.current?.key && target.id === selectedIdentity.current?.id && document.activeElement === document.body
+    if (target?.generation === selectionGeneration.current && sameSelection(selectedIdentity.current, target) && document.activeElement === document.body
       && target.element.isConnected && !target.element.matches(":disabled") && !target.element.closest("[hidden],[inert]")) target.element.focus();
     operationFocus.current = null;
   }, [context, operation]);
 
   const selected = selection?.context === context
     ? items.find(item => item.checklist_key === selection.key && item.document_id === selection.id) : undefined;
-  const owned = selected && request?.context === context && request.key === selected.checklist_key && request.id === selected.document_id ? request : null;
+  const owned = selected && request?.generation === selectionGeneration.current && sameSelection(request, { context, key: selected.checklist_key, id: selected.document_id }) ? request : null;
   const ownedOperation = operation?.context === context && items.some(item => item.checklist_key === operation.key && item.document_id === operation.id) ? operation : null;
-  const visibleOperation = selected?.checklist_key === ownedOperation?.key && selected?.document_id === ownedOperation?.id ? ownedOperation : null;
+  const visibleOperation = selected?.checklist_key === ownedOperation?.key && selected?.document_id === ownedOperation?.id
+    && (ownedOperation?.pending || ownedOperation?.generation === selectionGeneration.current) ? ownedOperation : null;
   const effectiveFocus = items.some(item => item.checklist_key === focusKey) ? focusKey : items[0]?.checklist_key;
 
   function current(target: Selection) {
     return committed.current?.context === target.context && committed.current.items.some(item => item.checklist_key === target.key && item.document_id === target.id);
   }
+  function select(target: Selection) {
+    if (!sameSelection(selectedIdentity.current, target)) {
+      selectionGeneration.current++;
+      sequence.current++;
+    }
+    // Update synchronously too: batched A → B → A must never revive A's epoch.
+    selectedIdentity.current = target;
+    setSelection(target);
+    return selectionGeneration.current;
+  }
+  function currentSelection(target: Selection, generation: number) {
+    return current(target) && selectionGeneration.current === generation && sameSelection(selectedIdentity.current, target);
+  }
   async function history(item: ContextualDocumentAction, explicit = false) {
     const target: Selection = { context, key: item.checklist_key, id: item.document_id };
-    setSelection(target);
+    const generation = select(target);
     if (!item.document_id || !item.actions.some(action => action.action_key === "history" && action.available)) return;
     if (pendingHistory.current?.context === context && pendingHistory.current.key === target.key
       && pendingHistory.current.id === target.id && pendingHistory.current.sequence === sequence.current) return;
-    if (!explicit && owned?.id === item.document_id && (owned.pending || owned.detail)) return;
+    if (!explicit && owned?.generation === generation && sameSelection(owned, target) && (owned.pending || owned.detail)) return;
     const token = ++sequence.current;
-    pendingHistory.current = { ...target, sequence: token, pending: true };
-    setRequest({ ...target, sequence: token, pending: true });
+    pendingHistory.current = { ...target, generation, sequence: token, pending: true };
+    setRequest({ ...target, generation, sequence: token, pending: true });
     try {
       const detail = await onLoadDocumentDetail(item.document_id);
-      if (!current(target) || sequence.current !== token) return;
+      if (!currentSelection(target, generation) || sequence.current !== token) return;
       if (detail.document_id !== item.document_id || detail.family_code !== item.family_code
         || (item.parent_scope === "case" ? detail.case_id !== item.parent_id : detail.capa_cycle_id !== item.parent_id)) {
         throw new Error("Chi tiết tài liệu không khớp định danh được backend cấp.");
       }
-      setRequest({ ...target, sequence: token, pending: false, detail });
+      setRequest({ ...target, generation, sequence: token, pending: false, detail });
     } catch (error) {
-      if (current(target) && sequence.current === token) setRequest({ ...target, sequence: token, pending: false, error: message(error) });
+      if (currentSelection(target, generation) && sequence.current === token) setRequest({ ...target, generation, sequence: token, pending: false, error: message(error) });
     } finally { if (pendingHistory.current?.sequence === token) pendingHistory.current = null; }
   }
   async function act(item: ContextualDocumentAction, action: ContextualDocumentAction["actions"][number]) {
     if (!action.available) return;
     if (action.action_key === "history") { await history(item, true); return; }
-    sequence.current++;
-    setRequest(previous => previous?.pending ? null : previous);
     const target: Selection = { context, key: item.checklist_key, id: item.document_id };
-    const key = JSON.stringify([context, item.checklist_key, action.action_key]);
+    const key = JSON.stringify([context, item.checklist_key, item.document_id, action.action_key]);
     if (inFlight.current.has(key)) return;
     inFlight.current.add(key);
-    if (document.activeElement instanceof HTMLElement) operationFocus.current = { ...target, element: document.activeElement };
+    const generation = select(target);
+    sequence.current++;
+    setRequest(previous => previous?.pending ? null : previous);
+    if (document.activeElement instanceof HTMLElement) operationFocus.current = { ...target, generation, element: document.activeElement };
     const token = ++operationSequence.current;
-    setSelection(target);
-    setOperation({ ...target, sequence: token, pending: true });
+    setOperation({ ...target, generation, sequence: token, pending: true });
     try {
-      if (action.action_key === "open") await onOpenDocument(item, () => current(target) && operationSequence.current === token
-        && selectedIdentity.current?.context === context && selectedIdentity.current.key === target.key && selectedIdentity.current.id === target.id);
+      if (action.action_key === "open") await onOpenDocument(item, () => currentSelection(target, generation) && operationSequence.current === token);
       else await onCreateDocument(item, action);
       if (current(target) && operationSequence.current === token) setOperation(null);
     } catch (error) {
-      if (current(target) && operationSequence.current === token) setOperation({ ...target, sequence: token, pending: false, error: message(error) });
+      if (current(target) && operationSequence.current === token) setOperation(currentSelection(target, generation)
+        ? { ...target, generation, sequence: token, pending: false, error: message(error) } : null);
     } finally { inFlight.current.delete(key); }
   }
   function navigate(event: KeyboardEvent<HTMLButtonElement>, index: number) {

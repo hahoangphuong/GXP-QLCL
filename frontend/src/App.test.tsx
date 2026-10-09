@@ -2284,21 +2284,22 @@ describe("App Slice A.4 search workspace", () => {
     expect(window.open).not.toHaveBeenCalled(); expect(apiMocks.openCaseDocumentCurrentContent).toHaveBeenCalledTimes(1);
   });
 
-  it("does not open document A's late binary after selecting document B within the same event", async () => {
+  it.each([false, true])("does not open document A's late binary after same-event selection navigation (return A: %s)", async (returnToA) => {
     const base = buildCaseWorkspace(); const a = base.contextual_document_actions[1];
     const b = { ...a, checklist_key: "slot-B", document_id: "document-B", label: "Second document", original_filename: a.original_filename };
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace()); apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ contextual_document_actions: [a, b] }));
-    apiMocks.getDocumentDetail.mockResolvedValue({ document_id: b.document_id, family_code: b.family_code, case_id: "case-1", title: "Only B detail", variants: [], generation_runs: [] });
+    apiMocks.getDocumentDetail.mockImplementation(async (id: string) => ({ document_id: id, family_code: a.family_code, case_id: "case-1", title: id === b.document_id ? "Only B detail" : "New A detail", variants: [], generation_runs: [] }));
     let release!: (value: { blob: Blob }) => void;
     apiMocks.openCaseDocumentCurrentContent.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
     renderApp(["/search"]); await screen.findByText("HS-001"); fireEvent.click(screen.getByRole("button", { name: "Xử lý" }));
     fireEvent.click(screen.getByRole("button", { name: "Mở Quyết định cấp CC" }));
     fireEvent.click(screen.getByRole("button", { name: "Chọn Second document" })); await screen.findByText("Only B detail");
+    if (returnToA) { fireEvent.click(screen.getByRole("button", { name: "Chọn Quyết định cấp CC" })); await screen.findByText("New A detail"); }
     await act(async () => release({ blob: new Blob(["late A"]) }));
     expect(window.open).not.toHaveBeenCalled(); expect(apiMocks.openCaseDocumentCurrentContent).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "Chọn Second document" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: returnToA ? "Chọn Quyết định cấp CC" : "Chọn Second document" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("opens current document binary for Mở and keeps metadata loading on Lịch sử", async () => {

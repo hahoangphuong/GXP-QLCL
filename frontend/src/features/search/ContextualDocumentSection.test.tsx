@@ -16,10 +16,81 @@ function detail(id: string): DocumentDetail {
     variants: [{ id: `rendition-${id}`, variant_type: "DOCX", language_code: "vi", is_active: true,
       versions: [{ id: `version-${id}`, version_no: 1, original_filename: "same-prefix.docx", is_current: true, issued_on: null }] }], generation_runs: [] };
 }
-function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
+function deferred<T>() { let resolve!: (value: T) => void; let reject!: (error: Error) => void; const promise = new Promise<T>((r, j) => { resolve = r; reject = j; }); return { promise, resolve, reject }; }
 const defaults = { onCreateDocument: vi.fn(), onOpenDocument: vi.fn() };
 
 describe("Document workspace identity and focus", () => {
+  it("R1 rejects an initial binary after same-event A → B → A selection", async () => {
+    const pending = deferred<void>(); const opened = vi.fn();
+    const a = item("A"); a.actions.push({ action_key: "open", label: "Mở", available: true, disabled_reason: null, required_permissions: [] });
+    const open = vi.fn(async (_item, isCurrent) => { await pending.promise; if (isCurrent()) opened(); });
+    render(<ContextualDocumentSection {...defaults} contextKey="event" items={[a, item("B")]} onLoadDocumentDetail={async id => detail(id)} onOpenDocument={open} />);
+    fireEvent.click(screen.getByRole("button", { name: "Mở A" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chọn B" })); await screen.findByText("Detail B");
+    fireEvent.click(screen.getByRole("button", { name: "Chọn A" })); await screen.findByText("Detail A");
+    await act(async () => pending.resolve());
+    expect(opened).not.toHaveBeenCalled();
+  });
+  it("R2 allows the replacement document in the same slot while the old operation is pending", async () => {
+    const pending = deferred<void>(); const create = vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValue(undefined);
+    const a = item("A"); a.actions = [{ action_key: "create", label: "Tạo", available: true, disabled_reason: null, required_permissions: [] }];
+    const b = { ...a, document_id: "B", label: "B" };
+    const props = { ...defaults, contextKey: "event", onLoadDocumentDetail: vi.fn(), onCreateDocument: create };
+    const view = render(<ContextualDocumentSection {...props} items={[a]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Tạo A" }));
+    view.rerender(<ContextualDocumentSection {...props} items={[b]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Tạo B" }));
+    expect(create).toHaveBeenCalledTimes(2); expect(create.mock.calls[1][0].document_id).toBe("B");
+    await act(async () => pending.resolve());
+  });
+  it("R3 loads owned detail for a second slot sharing the same document ID", async () => {
+    const a = item("A"); const b = { ...a, checklist_key: "slot-B", label: "B" };
+    const load = vi.fn(async id => detail(id));
+    render(<ContextualDocumentSection {...defaults} contextKey="event" items={[a, b]} onLoadDocumentDetail={load} />);
+    fireEvent.click(screen.getByRole("button", { name: "Chọn A" })); await screen.findByText("Detail A");
+    fireEvent.click(screen.getByRole("button", { name: "Chọn B" }));
+    expect(await screen.findByText("Detail A")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chọn B" })).toHaveAttribute("aria-pressed", "true");
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+  it.each([403, 404, 409])("ignores stale metadata %s after same-event A → B → A", async status => {
+    const first = deferred<DocumentDetail>();
+    const load = vi.fn().mockReturnValueOnce(first.promise).mockImplementation(async id => detail(id));
+    render(<ContextualDocumentSection {...defaults} contextKey="event" items={[item("A"), item("B")]} onLoadDocumentDetail={load} />);
+    fireEvent.click(screen.getByRole("button", { name: "Chọn A" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chọn B" })); await screen.findByText("Detail B");
+    fireEvent.click(screen.getByRole("button", { name: "Chọn A" })); await screen.findByText("Detail A");
+    await act(async () => first.reject(Object.assign(new Error("old response"), { status })));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument(); expect(screen.getByText("Detail A")).toBeInTheDocument();
+    expect(load).toHaveBeenCalledTimes(3);
+  });
+  it.each([403, 404, 409])("ignores stale mutation %s and releases only its own full-identity lock", async status => {
+    const first = deferred<void>(); const second = deferred<void>();
+    const create = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const a = item("A"); a.actions = [{ action_key: "create", label: "Tạo", available: true, disabled_reason: null, required_permissions: [] }];
+    const b = { ...a, document_id: "B", label: "B" };
+    const props = { ...defaults, contextKey: "event", onLoadDocumentDetail: vi.fn(), onCreateDocument: create };
+    const view = render(<ContextualDocumentSection {...props} items={[a]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Tạo A" }));
+    view.rerender(<ContextualDocumentSection {...props} items={[b]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Tạo B" }));
+    await act(async () => first.reject(Object.assign(new Error("old operation"), { status })));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tạo B" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Tạo B" })); expect(create).toHaveBeenCalledTimes(2);
+    await act(async () => second.resolve()); expect(screen.getByRole("button", { name: "Tạo B" })).toBeEnabled();
+  });
+  it("invalidates a binary on same-slot ID replacement and cannot revive it by restoring the old ID", async () => {
+    const pending = deferred<void>(); const opened = vi.fn(); const a = item("A");
+    a.actions.push({ action_key: "open", label: "Mở", available: true, disabled_reason: null, required_permissions: [] });
+    const props = { ...defaults, contextKey: "event", onLoadDocumentDetail: async (id: string) => detail(id), onOpenDocument: async (_item: ContextualDocumentAction, isCurrent?: () => boolean) => { await pending.promise; if (isCurrent?.()) opened(); } };
+    const view = render(<ContextualDocumentSection {...props} items={[a]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Mở A" }));
+    view.rerender(<ContextualDocumentSection {...props} items={[{ ...a, document_id: "B", label: "B" }]} />);
+    view.rerender(<ContextualDocumentSection {...props} items={[a]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Chọn A" })); await screen.findByText("Detail A");
+    await act(async () => pending.resolve()); expect(opened).not.toHaveBeenCalled();
+  });
   it("moves focus without selecting or requesting; Enter selection and F6 move between panes", async () => {
     const load = vi.fn().mockImplementation(async id => detail(id));
     render(<ContextualDocumentSection {...defaults} items={[item("A"), item("B")]} onLoadDocumentDetail={load} />);

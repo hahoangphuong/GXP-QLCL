@@ -84,3 +84,30 @@ def test_legacy_email_only_provisioning_still_works(tmp_path, provider):
     user = _authenticate(app, provider, subject="original-google-account")
     assert user.username == "account-owner"
     assert user.auth_mode == provider
+
+
+@pytest.mark.parametrize("verified_claim", (False, None, "true"))
+@pytest.mark.parametrize("bound_subject", (None, "original-google-account"))
+def test_oidc_rejects_unverified_email_claim_even_when_identity_matches(
+    tmp_path, verified_claim, bound_subject,
+):
+    app = _provisioned_app(tmp_path, "google_oidc", bound_subject=bound_subject)
+    claims = {"email": "alice@example.com", "sub": "original-google-account"}
+    if verified_claim is not None:
+        claims["email_verified"] = verified_claim
+    request = SimpleNamespace(app=app, headers={"Authorization": "Bearer verified-signature-token"})
+    with pytest.raises(HTTPException) as exc:
+        authenticate_google_oidc_request(request, verifier=lambda *_: claims)
+    assert exc.value.status_code == 403
+    assert "not verified" in exc.value.detail
+
+
+def test_iap_assertion_does_not_require_google_oidc_email_verified_claim(tmp_path):
+    app = _provisioned_app(tmp_path, "google_iap_jwt", bound_subject="original-google-account")
+    request = SimpleNamespace(app=app, headers={"X-Goog-IAP-JWT-Assertion": "verified-assertion"})
+    user = authenticate_google_iap_request(
+        request,
+        verifier=lambda *_: {"email": "alice@example.com", "sub": "original-google-account"},
+    )
+    assert user.username == "account-owner"
+    assert user.role == "reader"

@@ -329,6 +329,11 @@ def authenticate_google_oidc_request(request: Request, *, verifier: Any | None =
 
     email = str(claims.get("email") or "").strip().lower() or None
     subject = str(claims.get("sub") or "").strip() or None
+    # Google OIDC email claims are only suitable for account lookup after
+    # Google has positively verified the address. Signed tokens alone do not
+    # guarantee that the email claim belongs to the authenticated account.
+    if email and claims.get("email_verified") is not True:
+        raise HTTPException(status_code=403, detail="Google OIDC email claim is not verified.")
     validate_email_domain(email, config.auth_iap_allowed_email_domain)
     role_source = request.app.state.config.auth_role_source.strip().lower()
     if role_source == "database":

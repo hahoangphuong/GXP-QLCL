@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from io import BytesIO
 
+import pytest
+
 from backend.app.db.enums import StorageResolutionStatus
 from backend.app.storage import smb as smb_storage
 from backend.app.storage.types import SmbStorageConfig, StorageTargetExistsError
@@ -90,6 +92,41 @@ def test_smb_exclusive_write_rejects_existing_target(monkeypatch) -> None:
         assert "will not be overwritten" in str(exc)
     else:
         raise AssertionError("Expected SMB exclusive write to reject the existing target")
+
+
+@pytest.mark.parametrize("operation", ["move", "rename"])
+def test_smb_file_operations_reject_existing_destination_before_rename(monkeypatch, operation: str) -> None:
+    client, service = _service(monkeypatch, [])
+    calls = []
+    monkeypatch.setattr(client, "rename", lambda *args: calls.append(args), raising=False)
+
+    with pytest.raises(StorageTargetExistsError, match="will not be overwritten"):
+        if operation == "move":
+            service.move("2026/source.txt", "2026/existing.txt")
+        else:
+            service.rename("2026/source.txt", "existing.txt")
+
+    assert calls == []
+
+
+def test_smb_copy_uses_exclusive_destination_and_never_wb(monkeypatch) -> None:
+    client, service = _service(monkeypatch, [])
+    modes = []
+
+    def open_file(path, mode):
+        modes.append(mode)
+        if mode == "rb":
+            return BytesIO(b"source")
+        if mode == "xb":
+            raise FileExistsError("target exists")
+        raise AssertionError(f"Unsafe destination mode: {mode}")
+
+    monkeypatch.setattr(client, "open_file", open_file, raising=False)
+
+    with pytest.raises(StorageTargetExistsError, match="will not be overwritten"):
+        service.copy("2026/source.txt", "2026/existing.txt")
+
+    assert modes == ["rb", "xb"]
 
 
 def test_smb_service_configures_default_credentials_for_resolution_after_cache_loss(monkeypatch) -> None:

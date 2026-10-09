@@ -282,23 +282,32 @@ class SmbStorageService:
         smbclient.makedirs(target, exist_ok=True)
         return self._entry_for(base_root, target)
 
+    @staticmethod
+    def _require_vacant_target(target: str, relative_path: str) -> None:
+        if smbpath.exists(target):
+            raise StorageTargetExistsError(
+                f"Storage target already exists and will not be overwritten: {relative_path!r}."
+            )
+
     def copy(self, source_relative_path: str, target_relative_path: str, *, root: str = "inspection") -> StorageEntry:
-        base_root = self._select_root(root)
-        source = self._join_root(base_root, source_relative_path)
-        target = self._join_root(base_root, target_relative_path)
-        parent = target.rsplit("\\", 1)[0]
-        smbclient.makedirs(parent, exist_ok=True)
-        with smbclient.open_file(source, mode="rb") as src, smbclient.open_file(target, mode="wb") as dst:
-            shutil.copyfileobj(src, dst, length=1024 * 1024)
-        return self._entry_for(base_root, target)
+        source = self._join_root(self._select_root(root), source_relative_path)
+        # Reuse the exclusive-create and partial-write cleanup owner.
+        with smbclient.open_file(source, mode="rb") as stream:
+            return self.write_stream(target_relative_path, stream, root=root, overwrite=False)
 
     def move(self, source_relative_path: str, target_relative_path: str, *, root: str = "inspection") -> StorageEntry:
         base_root = self._select_root(root)
         source = self._join_root(base_root, source_relative_path)
         target = self._join_root(base_root, target_relative_path)
+        self._require_vacant_target(target, target_relative_path)
         parent = target.rsplit("\\", 1)[0]
         smbclient.makedirs(parent, exist_ok=True)
-        smbclient.rename(source, target)
+        try:
+            smbclient.rename(source, target)
+        except FileExistsError as exc:
+            raise StorageTargetExistsError(
+                f"Storage target already exists and will not be overwritten: {target_relative_path!r}."
+            ) from exc
         return self._entry_for(base_root, target)
 
     def rename(self, source_relative_path: str, new_name: str, *, root: str = "inspection") -> StorageEntry:
@@ -307,7 +316,13 @@ class SmbStorageService:
         base_root = self._select_root(root)
         source = self._join_root(base_root, source_relative_path)
         target = source.rsplit("\\", 1)[0] + "\\" + new_name
-        smbclient.rename(source, target)
+        self._require_vacant_target(target, new_name)
+        try:
+            smbclient.rename(source, target)
+        except FileExistsError as exc:
+            raise StorageTargetExistsError(
+                f"Storage target already exists and will not be overwritten: {new_name!r}."
+            ) from exc
         return self._entry_for(base_root, target)
 
     def checksum(self, relative_path: str, *, root: str = "inspection") -> str:

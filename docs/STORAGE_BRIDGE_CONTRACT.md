@@ -74,3 +74,15 @@ HTTP 401 and must never expose storage contents or produce an unhandled
 server error. These checks are owned by the bridge authentication adapter;
 the business workflow, frontend and storage backends do not duplicate JWT
 validation. Google OIDC verification remains a separate explicit auth mode.
+
+## Collision safety of storage file operations
+
+`copy`, `move` and `rename` do not have an overwrite flag and therefore
+must reject an existing destination with `StorageTargetExistsError`
+(HTTP 409 through the storage bridge). The pre-existing content and source
+remain unchanged. The only explicit overwrite operation is
+`write_stream(overwrite=True)`, whose caller must already own that action.
+Storage adapters must never silently turn a collision into a rename into an
+existing directory or a replaced document. Exclusive creation is used for
+copy destinations; moves and renames check destination occupancy before
+invoking their backend-specific operation.

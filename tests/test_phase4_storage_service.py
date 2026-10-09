@@ -545,6 +545,38 @@ def test_storage_copy_move_and_rename_work(tmp_path: Path):
     assert renamed.relative_path == "2026/archive/final.txt"
 
 
+@pytest.mark.parametrize("operation", ["copy", "move", "rename"])
+def test_storage_file_operations_reject_existing_target_without_data_loss(tmp_path: Path, operation: str):
+    service = build_service(tmp_path)
+    source = service.inspection_root / "2026" / "source.txt"
+    target = service.inspection_root / "2026" / "target.txt"
+    source.parent.mkdir()
+    source.write_bytes(b"original-source")
+    target.write_bytes(b"preserve-existing")
+
+    with pytest.raises(StorageTargetExistsError, match="will not be overwritten"):
+        if operation == "copy":
+            service.copy("2026/source.txt", "2026/target.txt")
+        elif operation == "move":
+            service.move("2026/source.txt", "2026/target.txt")
+        else:
+            service.rename("2026/source.txt", "target.txt")
+
+    assert source.read_bytes() == b"original-source"
+    assert target.read_bytes() == b"preserve-existing"
+
+
+def test_storage_copy_failure_cleans_partial_target(tmp_path: Path):
+    service = build_service(tmp_path)
+    source = service.inspection_root / "source.txt"
+    source.write_bytes(b"hello")
+    target = service.inspection_root / "copied.txt"
+    copied = service.copy("source.txt", "copied.txt")
+    assert copied.relative_path == "copied.txt"
+    assert target.read_bytes() == b"hello"
+    assert service.checksum("copied.txt") == sha256(b"hello").hexdigest()
+
+
 def test_storage_rejects_path_traversal(tmp_path: Path):
     service = build_service(tmp_path)
 

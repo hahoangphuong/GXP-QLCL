@@ -266,20 +266,41 @@ class LocalStorageService:
         target.mkdir(parents=True, exist_ok=True)
         return self._entry_for(base_root, target)
 
+    @staticmethod
+    def _require_vacant_target(target: Path, relative_path: str) -> None:
+        # lexists also rejects dangling links, which Path.exists() misses.
+        if os.path.lexists(target):
+            raise StorageTargetExistsError(
+                f"Storage target already exists and will not be overwritten: {relative_path!r}."
+            )
+
     def copy(self, source_relative_path: str, target_relative_path: str, *, root: str = "inspection") -> StorageEntry:
         base_root = self._select_root(root)
         source = self._path_under(base_root, source_relative_path)
         target = self._path_under(base_root, target_relative_path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
-        return self._entry_for(base_root, target)
+        # write_stream(overwrite=False) creates the destination exclusively;
+        # shutil.copy2() would instead overwrite it.
+        with source.open("rb") as stream:
+            entry = self.write_stream(target_relative_path, stream, root=root, overwrite=False)
+        try:
+            shutil.copystat(source, target)
+        except Exception:
+            target.unlink(missing_ok=True)
+            raise
+        return entry
 
     def move(self, source_relative_path: str, target_relative_path: str, *, root: str = "inspection") -> StorageEntry:
         base_root = self._select_root(root)
         source = self._path_under(base_root, source_relative_path)
         target = self._path_under(base_root, target_relative_path)
+        self._require_vacant_target(target, target_relative_path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(source), str(target))
+        try:
+            shutil.move(str(source), str(target))
+        except FileExistsError as exc:
+            raise StorageTargetExistsError(
+                f"Storage target already exists and will not be overwritten: {target_relative_path!r}."
+            ) from exc
         return self._entry_for(base_root, target)
 
     def rename(self, source_relative_path: str, new_name: str, *, root: str = "inspection") -> StorageEntry:
@@ -289,7 +310,13 @@ class LocalStorageService:
         source = self._path_under(base_root, source_relative_path)
         target = source.with_name(new_name)
         self._ensure_within_root(base_root, target)
-        source.rename(target)
+        self._require_vacant_target(target, target.relative_to(base_root).as_posix())
+        try:
+            source.rename(target)
+        except FileExistsError as exc:
+            raise StorageTargetExistsError(
+                f"Storage target already exists and will not be overwritten: {target.relative_to(base_root).as_posix()!r}."
+            ) from exc
         return self._entry_for(base_root, target)
 
     def checksum(self, relative_path: str, *, root: str = "inspection") -> str:

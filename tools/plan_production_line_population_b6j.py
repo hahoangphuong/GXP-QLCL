@@ -24,6 +24,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--candidate-set-roster-sha256", required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
+    # Plans are immutable, independently approved artifacts. Never overwrite
+    # an input snapshot/state/roster, or an earlier sealed plan via any alias.
+    if args.output.resolve() in {
+        args.snapshot.resolve(), args.canonical_state.resolve(), args.candidate_set_roster.resolve()
+    }:
+        parser.error("B6J plan output must differ from all source artifacts")
+    if args.output.exists() or args.output.is_symlink():
+        parser.error("B6J plan output already exists; select a fresh path")
     snapshot_bytes = args.snapshot.read_bytes()
     state = json.loads(args.canonical_state.read_bytes())
     roster_bytes = args.candidate_set_roster.read_bytes()
@@ -41,7 +49,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     plan_bytes = canonical_artifact_bytes(plan)
-    args.output.write_bytes(plan_bytes)
+    try:
+        with args.output.open("xb") as handle:
+            handle.write(plan_bytes)
+    except FileExistsError:
+        parser.error("B6J plan output already exists; select a fresh path")
     print(f"PRODUCTION_LINE_POPULATION_PLAN_SHA256={plan['plan_sha256']}")
     print(f"PRODUCTION_LINE_POPULATION_PLAN_FILE_SHA256={sha256(plan_bytes).hexdigest()}")
     return 0

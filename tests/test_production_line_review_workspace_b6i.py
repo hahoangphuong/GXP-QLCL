@@ -212,3 +212,68 @@ def test_xlsx_workspace_round_trip_preserves_pending_rows_and_metadata(tmp_path)
         "--output", str(reviewed), "--node", str(RUNTIME_NODE), "--artifact-tool-url", RUNTIME_ARTIFACT_TOOL.as_uri(),
     ], cwd=ROOT, check=True, env=environment)
     assert json.loads(reviewed.read_text(encoding="utf-8"))["candidate_set_sha256"] == workspace["roster"]["candidate_set_sha256"]
+
+
+
+@pytest.mark.parametrize("target", ("workbook", "template", "existing_output", "hardlink_template"))
+def test_b6i_import_cli_never_clobbers_inputs_or_existing_review(tmp_path, capsys, target):
+    from tools import import_production_line_review_workbook_b6i as importer
+
+    workbook = tmp_path / "review.xlsx"
+    template = tmp_path / "roster_template.json"
+    output = tmp_path / "reviewed.json"
+    workbook.write_bytes(b"keep-original-workbook")
+    template.write_bytes(b"keep-original-template")
+    if target == "workbook":
+        output = workbook
+    elif target == "template":
+        output = template
+    elif target == "existing_output":
+        output.write_bytes(b"keep-previous-reviewed-roster")
+    else:
+        output.hardlink_to(template)
+    before = (workbook.read_bytes(), template.read_bytes(), output.read_bytes())
+    with pytest.raises(SystemExit) as error:
+        importer.main([
+            "--workbook", str(workbook), "--template", str(template),
+            "--output", str(output),
+        ])
+    assert error.value.code == 2
+    assert "output" in capsys.readouterr().err
+    assert (workbook.read_bytes(), template.read_bytes(), output.read_bytes()) == before
+
+
+def test_b6i_import_cli_uses_private_extraction_path_and_preserves_existing_neighbor(tmp_path, monkeypatch):
+    from tools import import_production_line_review_workbook_b6i as importer
+
+    roster = _workspace()["roster"]
+    template = tmp_path / "template.json"
+    workbook = tmp_path / "review.xlsx"
+    output = tmp_path / "reviewed.json"
+    legacy_extracted = output.with_suffix(".extracted.json")
+    template.write_text(json.dumps(roster), encoding="utf-8")
+    workbook.write_bytes(b"mock workbook, extractor is replaced")
+    legacy_extracted.write_bytes(b"do-not-delete-preexisting-evidence")
+    metadata = {key: roster[key] for key in ("legacy_snapshot_sha256", "canonical_state_sha256", "planner_version", "candidate_set_sha256")}
+    row_fields = ("candidate_key", "source_site_legacy_id", "canonical_site_id", "canonical_line_text",
+                  "review_decision", "approved_display_code", "existing_production_line_id",
+                  "review_reason", "reviewer", "reviewed_at")
+    rows = [{key: item.get(key) for key in row_fields} for item in roster["items"]]
+    extraction_paths = []
+
+    def fake_extract(command, *, check, env):
+        path = Path(command[command.index("--output") + 1])
+        extraction_paths.append(path)
+        assert check is True
+        assert path != legacy_extracted
+        path.write_text(json.dumps({"metadata": metadata, "rows": rows}), encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(importer.subprocess, "run", fake_extract)
+    assert importer.main([
+        "--workbook", str(workbook), "--template", str(template), "--output", str(output),
+    ]) == 0
+    assert json.loads(output.read_text(encoding="utf-8"))["candidate_set_sha256"] == roster["candidate_set_sha256"]
+    assert legacy_extracted.read_bytes() == b"do-not-delete-preexisting-evidence"
+    assert len(extraction_paths) == 1
+    assert not extraction_paths[0].exists()

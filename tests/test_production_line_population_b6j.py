@@ -740,3 +740,34 @@ def test_float_snapshot_certificate_id_supplies_fallback_when_case_is_not_dated(
     assert candidate["classification"] == "CREATE_NEW_PRODUCTION_LINE"
     assert candidate["effective_from"] == "2020-01-01"
     assert candidate["effective_from_source_type"] == "CERTIFICATE"
+
+
+
+@pytest.mark.parametrize("target", ("snapshot", "canonical_state", "roster", "existing_plan", "hardlink_roster"))
+def test_b6j_planner_cli_never_clobbers_input_or_existing_plan(tmp_path, capsys, target):
+    snapshot, state, roster = (tmp_path / name for name in ("snapshot.json", "state.json", "roster.json"))
+    output = tmp_path / "plan.json"
+    for path, value in ((snapshot, b"original-snapshot"), (state, b"original-state"), (roster, b"original-roster")):
+        path.write_bytes(value)
+    if target == "snapshot":
+        output = snapshot
+    elif target == "canonical_state":
+        output = state
+    elif target == "roster":
+        output = roster
+    elif target == "existing_plan":
+        output.write_bytes(b"previous-sealed-plan")
+    else:
+        output.hardlink_to(roster)
+    before = (snapshot.read_bytes(), state.read_bytes(), roster.read_bytes(), output.read_bytes())
+    with pytest.raises(SystemExit) as error:
+        planner_main([
+            "--snapshot", str(snapshot), "--canonical-state", str(state),
+            "--candidate-set-sha256", "a" * 64,
+            "--candidate-set-roster", str(roster),
+            "--candidate-set-roster-sha256", "b" * 64,
+            "--output", str(output),
+        ])
+    assert error.value.code == 2
+    assert "output" in capsys.readouterr().err
+    assert (snapshot.read_bytes(), state.read_bytes(), roster.read_bytes(), output.read_bytes()) == before

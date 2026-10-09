@@ -213,3 +213,17 @@ ASCII letters, digits, and underscores after their exact prefix, with at most
 writes in a transaction before rolling back, so its target guard must be
 identical to the non-rehearsal apply guard. **No production apply, dry-run,
 or deploy** is authorized here.
+
+
+## B6I/B6J Artifact Output Integrity
+
+The B6I workbook-import CLI and B6J plan CLI reject an output that resolves
+to any of their input paths, or that already exists (including an existing
+hard link or symbolic link). Both produce a *new* output using exclusive
+file creation rather than replacing approved or pending evidence. The B6I
+importer's XLSX extraction uses an isolated temporary directory, not the
+old predictable `<output>.extracted.json` neighbor that could overwrite
+or delete independent files. Keep every generated reviewed roster and sealed
+plan as a distinct, immutable file and record its exact-byte SHA externally.
+This is filesystem protection only: it does not authenticate a reviewer
+or authorize database writes.

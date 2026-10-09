@@ -24,6 +24,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--expected-reviewed-roster-file-sha256", required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
+    # Reports are immutable cutover evidence. Reusing an existing output
+    # would silently replace an older result or modify a hard-linked input.
+    # Exclusive creation below also closes a path-alias/race window.
+    if args.output.exists() or args.output.is_symlink():
+        parser.error("B6K output already exists; select a fresh report path")
     # The report must not overwrite either independently approved input
     # (including aliases via symlinks or relative/absolute path spellings).
     if args.output.resolve() in {args.plan.resolve(), args.reviewed_roster.resolve()}:
@@ -39,8 +44,16 @@ def main(argv: list[str] | None = None) -> int:
     if plan.get("candidate_set_roster_sha256") != sha256(rbytes).hexdigest():
         parser.error("B6K reviewed roster exact bytes differ from plan-bound roster; replan required")
     report = audit_b6j_review_alignment(plan, json.loads(rbytes))
+    # Persist exact-byte identifiers alongside the semantic plan/roster
+    # digests; these are evidence of checked inputs, not an approval.
+    report["plan_file_sha256"] = sha256(pbytes).hexdigest()
+    report["reviewed_roster_file_sha256"] = sha256(rbytes).hexdigest()
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    try:
+        with args.output.open("x", encoding="utf-8") as handle:
+            handle.write(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    except FileExistsError:
+        parser.error("B6K output already exists; select a fresh report path")
     print(
         f"B6K_REVIEW_ALIGNMENT={report['status']};"
         f"BLOCKED_CANDIDATES={report['blocked_candidate_count']};"

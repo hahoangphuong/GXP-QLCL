@@ -148,13 +148,20 @@ candidate are still counted when explicitly blocked. The intended
 **only when the original canonical FK already equals the planned line**;
 a resealed no-op label alone is insufficient. Unknown source classifications
 (including unbound sources) and writable links missing canonical owners
-are also blockers.
+are also blockers. For unbound sources, B6J's recognized
+`NOT_APPLICABLE` reasons are `CASE_SOURCE_NOT_ELIGIBLE` (Case only)
+and `NO_CANONICAL_LINE_TEXT`; an arbitrary no-op reason cannot mask
+an unresolved source action.
 The report includes separate `blocked_candidate_count` and
 `blocked_source_action_count`; either nonzero blocks the audit CLI.
 Invoke it only with independently retained
 `--expected-plan-file-sha256` and
 `--expected-reviewed-roster-file-sha256`; these must not be recomputed from
-unapproved modified files.
+unapproved modified files. Supply a **new** `--output` path for each run:
+B6K refuses to overwrite an existing report, or another path pointing to
+an existing artifact. It creates the report exclusively and includes
+`plan_file_sha256` and `reviewed_roster_file_sha256` for cross-checking
+the exact input bytes. These are evidence identifiers, not sign-off.
 
 A B6J plan built from a **pending B6I roster** must be rebuilt after
 review; the immutable `candidate_set_sha256` intentionally excludes human

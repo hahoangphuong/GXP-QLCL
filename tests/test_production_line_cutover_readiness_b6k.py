@@ -563,3 +563,93 @@ def test_b6k_reuses_complete_planner_roster_evidence_fence(field, bad_value):
     # source membership, source counts or physical identity contract.
     with pytest.raises(B6KReviewAlignmentError, match="reviewed roster binding invalid"):
         audit_b6j_review_alignment(plan, roster)
+
+
+@pytest.mark.parametrize(
+    ("source_kind", "reason", "should_block"),
+    [
+        ("CASE", "CASE_SOURCE_NOT_ELIGIBLE", False),
+        ("CASE", "NO_CANONICAL_LINE_TEXT", False),
+        ("CERTIFICATE", "NO_CANONICAL_LINE_TEXT", False),
+        ("CERTIFICATE", "CASE_SOURCE_NOT_ELIGIBLE", True),
+        ("CASE", "CONFLICT_MARKED_AS_NOOP", True),
+        ("CERTIFICATE", "CANONICAL_LINK_CONFLICT", True),
+    ],
+)
+def test_unbound_noop_only_accepts_b6j_planner_owned_reasons(
+    source_kind, reason, should_block,
+):
+    plan, roster = fixture()
+    field = "case_links" if source_kind == "CASE" else "certificate_links"
+    plan[field].append({
+        "legacy_id": 99, "candidate_key": None,
+        "classification": "NOT_APPLICABLE", "block_reason": reason,
+        "canonical_record_id": None, "canonical_line_code": None,
+    })
+    summary = "cases" if source_kind == "CASE" else "certificates"
+    plan["summary_counts"][summary] = {
+        "LINK_TO_NEW_LINE": 1, "NOT_APPLICABLE": 1,
+    }
+    plan["plan_sha256"] = plan_digest(plan)
+    _validate_plan(plan)
+    report = audit_b6j_review_alignment(plan, roster)
+    assert (report["status"] == "REVIEW_ALIGNMENT_BLOCKED") is should_block
+    if should_block:
+        assert report["blocked_source_action_count"] == 1
+        assert "UNEXPECTED_UNBOUND_NOOP" in report["source_action_findings"][0]["blockers"]
+    else:
+        assert report["blocked_source_action_count"] == 0
+
+
+@pytest.mark.parametrize("alias", ["previous_report", "hardlinked_plan", "hardlinked_roster"])
+def test_cli_never_replaces_existing_report_or_hardlinked_artifact(tmp_path, capsys, alias):
+    plan, roster = fixture()
+    plan_path = tmp_path / "plan.json"
+    roster_path = tmp_path / "roster.json"
+    output_path = tmp_path / "report.json"
+    plan_path.write_text(json.dumps(plan))
+    roster_path.write_bytes(canonical_artifact_bytes(roster))
+    before_plan = plan_path.read_bytes()
+    before_roster = roster_path.read_bytes()
+    if alias == "previous_report":
+        output_path.write_text("previous independently reviewed audit report")
+        previous_report = output_path.read_bytes()
+    else:
+        os.link(plan_path if alias == "hardlinked_plan" else roster_path, output_path)
+        previous_report = output_path.read_bytes()
+    args = [
+        "--plan", str(plan_path), "--reviewed-roster", str(roster_path),
+        "--expected-plan-file-sha256", sha256(before_plan).hexdigest(),
+        "--expected-reviewed-roster-file-sha256", sha256(before_roster).hexdigest(),
+        "--output", str(output_path),
+    ]
+    with pytest.raises(SystemExit) as result:
+        main(args)
+    assert result.value.code == 2
+    assert "output already exists" in capsys.readouterr().err
+    assert plan_path.read_bytes() == before_plan
+    assert roster_path.read_bytes() == before_roster
+    assert output_path.read_bytes() == previous_report
+
+
+def test_b6k_report_pins_exact_checked_file_digests_without_authorization(tmp_path):
+    plan, roster = fixture()
+    plan_path = tmp_path / "plan.json"
+    roster_path = tmp_path / "roster.json"
+    output_path = tmp_path / "report.json"
+    plan_path.write_text(json.dumps(plan))
+    roster_path.write_bytes(canonical_artifact_bytes(roster))
+    expected_plan_hash = sha256(plan_path.read_bytes()).hexdigest()
+    expected_roster_hash = sha256(roster_path.read_bytes()).hexdigest()
+    args = [
+        "--plan", str(plan_path), "--reviewed-roster", str(roster_path),
+        "--expected-plan-file-sha256", expected_plan_hash,
+        "--expected-reviewed-roster-file-sha256", expected_roster_hash,
+        "--output", str(output_path),
+    ]
+    assert main(args) == 0
+    result = json.loads(output_path.read_text(encoding="utf-8"))
+    assert result["plan_file_sha256"] == expected_plan_hash
+    assert result["reviewed_roster_file_sha256"] == expected_roster_hash
+    assert result["status"] == "REVIEW_ALIGNMENT_PASS"
+    assert result["cutover_authorized"] is False

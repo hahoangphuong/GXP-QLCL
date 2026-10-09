@@ -115,6 +115,15 @@ def audit_b6j_review_alignment(plan: Mapping[str, Any], roster: Mapping[str, Any
             reasons = []
             if isinstance(classification, str) and classification.startswith("BLOCKED_"):
                 reasons.append("BLOCKED_SOURCE_ACTION")
+            elif classification == "NOT_APPLICABLE" and candidate_key is None:
+                # The B6J planner emits unbound no-ops only for source
+                # ineligibility. Arbitrary no-op labels must not hide a
+                # previously blocked Case/Certificate from cutover review.
+                allowed_reasons = {"NO_CANONICAL_LINE_TEXT"}
+                if kind == "CASE":
+                    allowed_reasons.add("CASE_SOURCE_NOT_ELIGIBLE")
+                if action.get("block_reason") not in allowed_reasons:
+                    reasons.append("UNEXPECTED_UNBOUND_NOOP")
             elif candidate_key is not None and classification == "NOT_APPLICABLE":
                 if action.get("block_reason") != "ALREADY_LINKED_TO_PLANNED_LINE":
                     reasons.append("UNEXPECTED_CANDIDATE_NOOP")

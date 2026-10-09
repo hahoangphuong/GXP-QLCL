@@ -478,6 +478,9 @@ def _bash_style(path: Path) -> str:
 
 def _base_env(fake_bin: Path, runtime_env: Path) -> dict[str, str]:
     env = dict(os.environ)
+    # CI's disposable DATABASE_URL must not leak into VM runtime fixtures
+    # that own their own database configuration.
+    env.pop("DATABASE_URL", None)
     env["PATH"] = f"{_bash_style(fake_bin)}:{env['PATH']}"
     env["VM_RUNTIME_ENV_FILE"] = _bash_style(runtime_env)
     return env
@@ -1674,6 +1677,7 @@ def test_deploy_script_defers_application_database_url_resolution_until_release_
                 "DB_PASSWORD=secret",
                 "DB_HOST=127.0.0.1",
                 "DB_PORT=5432",
+                "DATABASE_URL=postgresql+psycopg://gxp_app:secret@127.0.0.1:5432/gxp_qlcl",
                 "STORAGE_CLASS=synology_smb",
                 "STORAGE_INSPECTION_ROOT=//synology/inspection",
                 "STORAGE_DKKD_ROOT=//synology/dkkd",
@@ -2096,6 +2100,7 @@ def test_deploy_script_prepares_frontend_staging_dir_for_app_user_rsync(tmp_path
                 "DB_PASSWORD=secret",
                 "DB_HOST=127.0.0.1",
                 "DB_PORT=5432",
+                "DATABASE_URL=postgresql+psycopg://gxp_app:secret@127.0.0.1:5432/gxp_qlcl",
                 "STORAGE_CLASS=synology_smb",
                 "STORAGE_INSPECTION_ROOT=//synology/inspection",
                 "STORAGE_DKKD_ROOT=//synology/dkkd",

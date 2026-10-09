@@ -57,8 +57,9 @@ jobs:
         run: python -m pytest -q
 
   b6-postgres-integration:
-    # Recovery-only, disposable PostgreSQL coverage. Never connects to a VM.
-    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/recovery/b6-') }}
+    # Recovery and reviewed integration branches only; four disposable DBs.
+    # Never connects to the production VM or NAS.
+    if: ${{ github.event_name == 'push' && (startsWith(github.ref, 'refs/heads/recovery/b6-') || github.ref == 'refs/heads/integration/frontend-backend-20261009') }}
     runs-on: ubuntu-latest
     services:
       postgres:

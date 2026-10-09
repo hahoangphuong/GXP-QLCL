@@ -32,10 +32,14 @@ fail-closed cases. Chromium E2E exercises a synthetic inspector account,
 document navigation and focus-only keyboard behavior at 1366x768,
 1920x1080 and 390x844; screenshots are retained for 7 days.
 
-The B6 PostgreSQL integration job may legitimately be skipped on this
-branch by its existing branch policy. The absence of production SMB/
-Synology, IAP or Google OIDC integration is **not** a PASS for those
-concerns.
+For this integration branch, the B6 PostgreSQL integration job is
+**required**: it creates four isolated CI databases and checks B6G
+schema migration, B6H export, B6J guarded writer, and B6 revision 0022.
+The `recovery/b6-*` branch policy remains unchanged. These tests run
+only on the GitHub runner and do not connect to any VM/NAS. A failed
+or skipped B6 integration on the candidate must block sign-off.
+The absence of production SMB/Synology, IAP or Google OIDC integration
+is **not** a PASS for those concerns.
 
 ## Release controls — not yet approved
 

@@ -133,3 +133,28 @@ Collisions return `StorageTargetExistsError` (HTTP 409). Interrupted writes
 only remove their private staging file, never another writer's destination.
 The final requested path is not exposed until the write completes.
 `overwrite=True` retains its existing intentional SMB replace behavior.
+
+## Read-only staging candidate inventory
+
+Successful writes publish a fully completed temporary file. Unexpected
+process death may leave unpublished private staging files on Synology.
+New filesystem and native SMB staging files use a distinct
+`.gxp-stage-<random>.tmp` name. A bounded, read-only operator command can
+inventory their metadata:
+
+`python -m tools.audit_storage_staging --root inspection --max-directories 250 --max-entries 10000 --max-depth 8`
+
+Add `--root dkkd` and/or `--root template` only when authorized and
+configured. Output contains candidate paths/sizes and a mandatory
+`truncated` indicator with the limit reached; an incomplete scan is not
+proof of no staging files. There is **no automatic deletion**, age-based
+purge, background task or mutation endpoint. A matching name does not prove
+orphan ownership: an active transfer or an ordinary similarly named file
+may exist. Operator review and external ownership verification are required
+before any separately approved cleanup.
+
+Old SMB `<target>.tmp-<32 hex>` paths are reported as
+`legacy_smb_candidate`. Older filesystem-backed `tmpXXXXXX` files
+cannot be reliably distinguished from unrelated files using their names,
+so they are intentionally **not** classified or deleted. This inventory
+does not assert exhaustive recovery of earlier staging artifacts.

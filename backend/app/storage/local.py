@@ -11,6 +11,8 @@ import sys
 import tempfile
 from typing import BinaryIO, Iterator
 
+from backend.app.storage.staging import new_staging_name
+
 from backend.app.db.enums import StorageResolutionStatus
 from backend.app.storage.types import (
     StorageConfig,
@@ -223,7 +225,7 @@ class LocalStorageService:
         # expose a partially written document or unlink a competing writer.
         temp_path: Path | None = None
         try:
-            with tempfile.NamedTemporaryFile(delete=False, dir=target.parent) as tmp:
+            with tempfile.NamedTemporaryFile(delete=False, dir=target.parent, prefix=".gxp-stage-", suffix=".tmp") as tmp:
                 temp_path = Path(tmp.name)
                 while True:
                     chunk = stream.read(1024 * 1024)

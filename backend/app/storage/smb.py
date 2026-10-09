@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from hashlib import sha256
 import shutil
 from typing import BinaryIO, Iterator
-from uuid import uuid4
+from backend.app.storage.staging import new_staging_name
 
 from backend.app.db.enums import StorageResolutionStatus
 from backend.app.storage.local import _normalize_relative
@@ -231,7 +231,7 @@ class SmbStorageService:
             # Stage the complete file on the same SMB share. Server-side
             # smbclient.rename() uses replace_if_exists=False, so publication
             # is atomic and cannot expose partially streamed document bytes.
-            temp_target = target + f".tmp-{uuid4().hex}"
+            temp_target = parent + "\\" + new_staging_name()
             staged = False
             try:
                 with smbclient.open_file(temp_target, mode="xb") as fh:
@@ -256,7 +256,7 @@ class SmbStorageService:
                     smbclient.remove(temp_target)
             return self._entry_for(base_root, target)
 
-        temp_target = target + f".tmp-{uuid4().hex}"
+        temp_target = parent + "\\" + new_staging_name()
         try:
             with smbclient.open_file(temp_target, mode="wb") as fh:
                 while True:

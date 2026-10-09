@@ -237,7 +237,6 @@ jobs:
     env:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_qlcl_test
       GXP_CROSS_HEAD_DISPOSABLE_GATE: "1"
-      GXP_CROSS_HEAD_FIXTURE_JSON: ${{ runner.temp }}/gxp-cross-head-fixture.json
     steps:
       - name: Checkout backend integration owner
         uses: actions/checkout@v4
@@ -275,6 +274,9 @@ jobs:
 
       - name: Migrate disposable local PostgreSQL
         run: python -m alembic upgrade head
+
+      - name: Declare runner-local synthetic fixture path
+        run: echo "GXP_CROSS_HEAD_FIXTURE_JSON=${RUNNER_TEMP}/gxp-cross-head-fixture.json" >> "${GITHUB_ENV}"
 
       - name: Start isolated synthetic backend fixture
         run: |

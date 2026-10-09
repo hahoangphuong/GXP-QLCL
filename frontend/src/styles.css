@@ -1127,6 +1127,15 @@ tr:focus-visible {
   padding-right: 0.15rem;
 }
 
+.facility-tab-panel {
+  min-width: 0;
+  min-height: 0;
+}
+
+.facility-tab-panel[hidden] {
+  display: none;
+}
+
 .summary-panel {
   display: grid;
   gap: 0.55rem;

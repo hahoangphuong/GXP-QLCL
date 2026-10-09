@@ -1,3 +1,4 @@
+import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import type {
   BusinessEligibilityDetail,
   BusinessEligibilityIssueActionReadiness,
@@ -179,6 +180,125 @@ export function FacilityWorkspaceTabs({
   onResolveInspectionFolder: () => Promise<InspectionFolderLookup>;
   onFinalizeInspectionOutcome?: (payload: InspectionFinalEvaluationRequest) => Promise<void>;
 }) {
+  const tabGroupId = useId();
+  const selectedIndex = Math.max(0, FACILITY_TABS.findIndex((tab) => tab === selectedFacilityTab));
+  const [focusedIndex, setFocusedIndex] = useState(selectedIndex);
+  const tabListRef = useRef<HTMLDivElement>(null);
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  useLayoutEffect(() => {
+    setFocusedIndex(selectedIndex);
+    // External selection updates the entry point without stealing focus from
+    // history rows or form controls outside this tablist.
+    if (tabListRef.current?.contains(document.activeElement)) tabRefs.current[selectedIndex]?.focus();
+  }, [selectedIndex, summary.site_id, summary.selected_gxp_type, summary.selected_production_line_id, summary.selected_line_code, summary.production_line_identity_state]);
+
+  function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    let next: number;
+    switch (event.key) {
+      case "ArrowLeft": next = (index + FACILITY_TABS.length - 1) % FACILITY_TABS.length; break;
+      case "ArrowRight": next = (index + 1) % FACILITY_TABS.length; break;
+      case "Home": next = 0; break;
+      case "End": next = FACILITY_TABS.length - 1; break;
+      case "Enter":
+      case " ":
+        event.preventDefault();
+        onFacilityTabChange(FACILITY_TABS[index]);
+        return;
+      default: return;
+    }
+    event.preventDefault();
+    setFocusedIndex(next);
+    tabRefs.current[next]?.focus();
+  }
+
+  const selectedTabContent = (
+    <>
+    {selectedFacilityTab === "Thông tin chung" ? (
+      <FacilitySummary summary={summary} />
+    ) : null}
+
+    {selectedFacilityTab === "Các đợt kiểm tra & thay đổi" ? (
+      <div className="event-workspace-detail-pane detail-pane">
+        <EventWorkspace
+          activeTab={activeEventTab}
+          caseWorkspace={caseWorkspace}
+          caseWorkspaceError={caseWorkspaceError}
+          caseWorkspaceLoading={caseWorkspaceLoading}
+          changeRequestWorkspace={changeRequestWorkspace}
+          changeRequestWorkspaceError={changeRequestWorkspaceError}
+          changeRequestWorkspaceLoading={changeRequestWorkspaceLoading}
+          changeRequestMutations={changeRequestMutations}
+          onCaseApplicationSave={onCaseApplicationSave}
+          onCaseAssessmentSave={onCaseAssessmentSave}
+          onAssessCapaCycle={onAssessCapaCycle}
+          onResolveInspectionFolder={onResolveInspectionFolder}
+          onCreateCapaCycle={onCreateCapaCycle}
+          onInspectionOutcomeSave={onInspectionOutcomeSave}
+          onInspectionPeriodSegmentsSave={onInspectionPeriodSegmentsSave}
+          onCreateApprovalSubmission={onCreateApprovalSubmission}
+          onCompleteApprovalSubmission={onCompleteApprovalSubmission}
+          onTransitionCase={onTransitionCase}
+          onFinalizeInspectionOutcome={onFinalizeInspectionOutcome}
+          onInspectionTeamSave={onInspectionTeamSave}
+          onLoadInspectionTeamIdentityOptions={onLoadInspectionTeamIdentityOptions}
+          onEvaluationScopeSave={onEvaluationScopeSave}
+          onInspectionPlanSave={onInspectionPlanSave}
+          onIssueCertificate={onIssueCertificate}
+          onCreateDocument={onCreateDocument}
+          onLoadDocumentDetail={onLoadDocumentDetail}
+          onOpenDocument={onOpenDocument}
+          onSelectedRemediationCycleChange={onSelectedRemediationCycleChange}
+          onSubmitCapaCycle={onSubmitCapaCycle}
+          onTabChange={onEventTabChange}
+          onUpdateCapaCycle={onUpdateCapaCycle}
+          selectedRemediationCycleId={selectedRemediationCycleId}
+          selectedHistory={selectedHistory}
+        />
+      </div>
+    ) : null}
+
+    {selectedFacilityTab === "Giấy chứng nhận GxP" ? (
+      <GxpCertificateWorkspace
+        detail={gxpCertificateDetail}
+        detailError={gxpCertificateDetailError}
+        detailLoading={gxpCertificateDetailLoading}
+        items={gxpCertificates}
+        listError={gxpCertificatesError}
+        listLoading={gxpCertificatesLoading}
+        onSelectCertificate={onGxpCertificateSelect}
+      onPromoteCurrent={onGxpCertificatePromote}
+      onEditLatestVersion={onGxpCertificateEditLatestVersion}
+        promotionError={gxpCertificatePromotionError}
+        promotionPending={gxpCertificatePromotionPending}
+        selectedCertificateId={selectedGxpCertificateId}
+      />
+    ) : null}
+
+    {selectedFacilityTab === "Giấy chứng nhận đủ điều kiện" ? (
+      <BusinessEligibilityWorkspace
+        detail={eligibilityCertificateDetail}
+        detailError={eligibilityCertificateDetailError}
+        detailLoading={eligibilityCertificateDetailLoading}
+        items={eligibilityCertificates}
+        listError={eligibilityCertificatesError}
+        listLoading={eligibilityCertificatesLoading}
+        issueReadiness={eligibilityIssueReadiness}
+        basisCertificates={eligibilityBasisCertificates}
+        basisLoading={eligibilityBasisLoading}
+        basisError={eligibilityBasisError}
+        onIssue={onIssueBusinessEligibility}
+        onEditLatestVersion={onEligibilityCertificateEditLatestVersion}
+        onPromoteCurrent={onEligibilityCertificatePromote}
+        promotionError={eligibilityPromotionError}
+        promotionPending={eligibilityPromotionPending}
+        onSelectCertificate={onEligibilityCertificateSelect}
+        selectedCertificateId={selectedEligibilityCertificateId}
+      />
+    ) : null}
+    </>
+  );
+
   return (
     <section className="panel panel-tight facility-workspace-panel">
       <header className="facility-context-bar">
@@ -199,13 +319,25 @@ export function FacilityWorkspaceTabs({
           <div><dt>Trạng thái gần nhất</dt><dd><StatusBadge value={summary.current_state} /></dd></div>
         </dl>
       </header>
-      <div className="workspace-tabs facility-tabs tab-strip tab-strip-primary" role="tablist" aria-label="Tab nghiệp vụ cơ sở">
-        {FACILITY_TABS.map((tab) => (
+      <div
+        className="workspace-tabs facility-tabs tab-strip tab-strip-primary"
+        role="tablist"
+        aria-label="Tab nghiệp vụ cơ sở"
+        ref={tabListRef}
+        onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setFocusedIndex(selectedIndex); }}
+      >
+        {FACILITY_TABS.map((tab, index) => (
           <button
             aria-selected={selectedFacilityTab === tab}
+            aria-controls={`${tabGroupId}-panel-${index}`}
+            id={`${tabGroupId}-tab-${index}`}
             className={selectedFacilityTab === tab ? "workspace-tab active" : "workspace-tab"}
             key={tab}
-            onClick={() => onFacilityTabChange(tab)}
+            ref={(element) => { tabRefs.current[index] = element; }}
+            tabIndex={focusedIndex === index ? 0 : -1}
+            onFocus={() => setFocusedIndex(index)}
+            onKeyDown={(event) => handleTabKeyDown(event, index)}
+            onClick={() => { setFocusedIndex(index); onFacilityTabChange(tab); }}
             role="tab"
             type="button"
           >
@@ -215,88 +347,19 @@ export function FacilityWorkspaceTabs({
       </div>
 
       <div className="facility-tab-body">
-        {selectedFacilityTab === "Thông tin chung" ? (
-          <FacilitySummary summary={summary} />
-        ) : null}
-
-        {selectedFacilityTab === "Các đợt kiểm tra & thay đổi" ? (
-          <div className="event-workspace-detail-pane detail-pane">
-            <EventWorkspace
-              activeTab={activeEventTab}
-              caseWorkspace={caseWorkspace}
-              caseWorkspaceError={caseWorkspaceError}
-              caseWorkspaceLoading={caseWorkspaceLoading}
-              changeRequestWorkspace={changeRequestWorkspace}
-              changeRequestWorkspaceError={changeRequestWorkspaceError}
-              changeRequestWorkspaceLoading={changeRequestWorkspaceLoading}
-              changeRequestMutations={changeRequestMutations}
-              onCaseApplicationSave={onCaseApplicationSave}
-              onCaseAssessmentSave={onCaseAssessmentSave}
-              onAssessCapaCycle={onAssessCapaCycle}
-              onResolveInspectionFolder={onResolveInspectionFolder}
-              onCreateCapaCycle={onCreateCapaCycle}
-              onInspectionOutcomeSave={onInspectionOutcomeSave}
-              onInspectionPeriodSegmentsSave={onInspectionPeriodSegmentsSave}
-              onCreateApprovalSubmission={onCreateApprovalSubmission}
-              onCompleteApprovalSubmission={onCompleteApprovalSubmission}
-              onTransitionCase={onTransitionCase}
-              onFinalizeInspectionOutcome={onFinalizeInspectionOutcome}
-              onInspectionTeamSave={onInspectionTeamSave}
-              onLoadInspectionTeamIdentityOptions={onLoadInspectionTeamIdentityOptions}
-              onEvaluationScopeSave={onEvaluationScopeSave}
-              onInspectionPlanSave={onInspectionPlanSave}
-              onIssueCertificate={onIssueCertificate}
-              onCreateDocument={onCreateDocument}
-              onLoadDocumentDetail={onLoadDocumentDetail}
-              onOpenDocument={onOpenDocument}
-              onSelectedRemediationCycleChange={onSelectedRemediationCycleChange}
-              onSubmitCapaCycle={onSubmitCapaCycle}
-              onTabChange={onEventTabChange}
-              onUpdateCapaCycle={onUpdateCapaCycle}
-              selectedRemediationCycleId={selectedRemediationCycleId}
-              selectedHistory={selectedHistory}
-            />
+        {FACILITY_TABS.map((tab, index) => (
+          <div
+            className="facility-tab-panel"
+            key={tab}
+            id={`${tabGroupId}-panel-${index}`}
+            role="tabpanel"
+            aria-labelledby={`${tabGroupId}-tab-${index}`}
+            hidden={selectedFacilityTab !== tab}
+            tabIndex={0}
+          >
+            {selectedFacilityTab === tab ? selectedTabContent : null}
           </div>
-        ) : null}
-
-        {selectedFacilityTab === "Giấy chứng nhận GxP" ? (
-          <GxpCertificateWorkspace
-            detail={gxpCertificateDetail}
-            detailError={gxpCertificateDetailError}
-            detailLoading={gxpCertificateDetailLoading}
-            items={gxpCertificates}
-            listError={gxpCertificatesError}
-            listLoading={gxpCertificatesLoading}
-            onSelectCertificate={onGxpCertificateSelect}
-          onPromoteCurrent={onGxpCertificatePromote}
-          onEditLatestVersion={onGxpCertificateEditLatestVersion}
-            promotionError={gxpCertificatePromotionError}
-            promotionPending={gxpCertificatePromotionPending}
-            selectedCertificateId={selectedGxpCertificateId}
-          />
-        ) : null}
-
-        {selectedFacilityTab === "Giấy chứng nhận đủ điều kiện" ? (
-          <BusinessEligibilityWorkspace
-            detail={eligibilityCertificateDetail}
-            detailError={eligibilityCertificateDetailError}
-            detailLoading={eligibilityCertificateDetailLoading}
-            items={eligibilityCertificates}
-            listError={eligibilityCertificatesError}
-            listLoading={eligibilityCertificatesLoading}
-            issueReadiness={eligibilityIssueReadiness}
-            basisCertificates={eligibilityBasisCertificates}
-            basisLoading={eligibilityBasisLoading}
-            basisError={eligibilityBasisError}
-            onIssue={onIssueBusinessEligibility}
-            onEditLatestVersion={onEligibilityCertificateEditLatestVersion}
-            onPromoteCurrent={onEligibilityCertificatePromote}
-            promotionError={eligibilityPromotionError}
-            promotionPending={eligibilityPromotionPending}
-            onSelectCertificate={onEligibilityCertificateSelect}
-            selectedCertificateId={selectedEligibilityCertificateId}
-          />
-        ) : null}
+        ))}
       </div>
     </section>
   );

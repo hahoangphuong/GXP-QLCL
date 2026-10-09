@@ -61,9 +61,16 @@ def _parse_inventory(path: Path) -> StagingAudit:
 def _read_only_reconcile(database_url: str, inventory: StagingAudit):
     # PostgreSQL only. Transaction-level read-only is confirmed before
     # any lineage SELECT. A rollback is issued even for successful audits.
-    if make_url(database_url).get_backend_name() != "postgresql":
+    url = make_url(database_url)
+    if url.get_backend_name() != "postgresql":
         raise ValueError("Only PostgreSQL read-only reconciliation is supported.")
-    engine = create_engine(database_url, future=True, connect_args={"connect_timeout": 10})
+    # VM runtime locks psycopg3, not psycopg2. An unqualified PostgreSQL URL
+    # otherwise makes SQLAlchemy attempt the unavailable psycopg2 driver.
+    if url.drivername == "postgresql":
+        url = url.set(drivername="postgresql+psycopg")
+    if url.drivername != "postgresql+psycopg":
+        raise ValueError("Unsupported PostgreSQL driver for read-only reconciliation.")
+    engine = create_engine(url, future=True, connect_args={"connect_timeout": 10})
     try:
         with engine.connect() as conn:
             tx = conn.begin()

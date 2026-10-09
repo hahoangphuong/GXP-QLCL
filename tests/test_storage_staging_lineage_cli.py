@@ -112,7 +112,11 @@ class _FakeSession:
 def test_lineage_cli_confirms_read_only_and_always_rolls_back(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("GXP_STORAGE_LINEAGE_READONLY_DATABASE_URL", "postgresql://reader:private@host/db")
     engine = _FakeEngine()
-    monkeypatch.setattr(cli, "create_engine", lambda *args, **kwargs: engine)
+    engine_urls = []
+    def configured_engine(url, **kwargs):
+        engine_urls.append(url)
+        return engine
+    monkeypatch.setattr(cli, "create_engine", configured_engine)
     monkeypatch.setattr(cli, "Session", _FakeSession)
     seen = []
 
@@ -141,6 +145,19 @@ def test_lineage_cli_confirms_read_only_and_always_rolls_back(tmp_path, monkeypa
     assert engine.connection.transaction.rollbacks == 1
     assert engine.disposed
     assert len(seen) == 1
+    assert len(engine_urls) == 1
+    assert engine_urls[0].drivername == "postgresql+psycopg"
+
+
+def test_lineage_cli_rejects_unsupported_postgres_driver(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv(
+        "GXP_STORAGE_LINEAGE_READONLY_DATABASE_URL",
+        "postgresql+psycopg2://reader:secret@host/db",
+    )
+    monkeypatch.setattr(cli, "create_engine",
+        lambda *args, **kwargs: pytest.fail("unsupported driver must never connect"))
+    assert cli.main(["--inventory-json", str(_write_inventory(tmp_path))]) == 3
+    assert json.loads(capsys.readouterr().out)["reason"] == "lineage_audit_failed"
 
 
 def test_lineage_cli_db_failure_never_leaks_secret_and_rolls_back(tmp_path, monkeypatch, capsys):

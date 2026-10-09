@@ -252,3 +252,11 @@ scheduled jobs, or production deployment.
 The command **does not access NAS**, mutate PostgreSQL, or clean staging
 files. Real-world credential/permissions and Synology checks remain separate
 operator-controlled UAT; neither is performed by GitHub CI.
+
+### PostgreSQL driver compatibility
+
+The VM dependency lock supplies `psycopg` version 3. The optional
+reconciliation CLI accepts `postgresql+psycopg://` explicitly, or the
+generic `postgresql://` form which it maps in memory to the psycopg3
+driver. Other PostgreSQL dialect/driver identifiers are rejected before
+connecting. The URL, including credentials, is never printed.

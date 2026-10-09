@@ -228,29 +228,32 @@ class SmbStorageService:
         parent = target.rsplit("\\", 1)[0]
         smbclient.makedirs(parent, exist_ok=True)
         if not overwrite:
-            created = False
+            # Stage the complete file on the same SMB share. Server-side
+            # smbclient.rename() uses replace_if_exists=False, so publication
+            # is atomic and cannot expose partially streamed document bytes.
+            temp_target = target + f".tmp-{uuid4().hex}"
+            staged = False
             try:
-                with smbclient.open_file(target, mode="xb") as fh:
-                    created = True
+                with smbclient.open_file(temp_target, mode="xb") as fh:
+                    staged = True
                     while True:
                         chunk = stream.read(1024 * 1024)
                         if not chunk:
                             break
                         fh.write(chunk)
-            except OSError as exc:
-                if created:
+                try:
+                    smbclient.rename(temp_target, target)
+                except OSError as exc:
                     if smbpath.exists(target):
-                        smbclient.remove(target)
+                        raise StorageTargetExistsError(
+                            f"Storage target already exists and will not be overwritten: {relative_path!r}."
+                        ) from exc
                     raise
-                if smbpath.exists(target):
-                    raise StorageTargetExistsError(
-                        f"Storage target already exists and will not be overwritten: {relative_path!r}."
-                    ) from exc
-                raise
-            except Exception:
-                if created and smbpath.exists(target):
-                    smbclient.remove(target)
-                raise
+                staged = False
+            finally:
+                # Only our private temporary file is eligible for cleanup.
+                if staged and smbpath.exists(temp_target):
+                    smbclient.remove(temp_target)
             return self._entry_for(base_root, target)
 
         temp_target = target + f".tmp-{uuid4().hex}"

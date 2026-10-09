@@ -123,3 +123,13 @@ only the private staging file. `overwrite=True` retains its intentional
 atomic `os.replace` behavior. This guarantee applies to the local/mounted
 filesystem adapter; the SMB-native adapter's exclusive stream operation
 requires separate parity review.
+
+## SMB exclusive-write publication parity
+
+Native SMB `write_stream(overwrite=False)` stages a complete file on the
+same share using exclusive mode `xb`, then publishes with
+`smbclient.rename` (server-side `replace_if_exists=False`).
+Collisions return `StorageTargetExistsError` (HTTP 409). Interrupted writes
+only remove their private staging file, never another writer's destination.
+The final requested path is not exposed until the write completes.
+`overwrite=True` retains its existing intentional SMB replace behavior.

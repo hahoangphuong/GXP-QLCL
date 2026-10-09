@@ -76,22 +76,28 @@ def _service(monkeypatch, directory_names: list[str]) -> tuple[_FakeSmbClient, s
 
 def test_smb_exclusive_write_rejects_existing_target(monkeypatch) -> None:
     fake_client, service = _service(monkeypatch, [])
+    removed = []
+    modes = []
 
-    def existing_target(*args, **kwargs):
-        raise OSError("target exists")
+    def stage_file(path, mode):
+        assert ".tmp-" in path
+        modes.append(mode)
+        return BytesIO()
 
-    monkeypatch.setattr(fake_client, "open_file", existing_target, raising=False)
+    def collision(*args):
+        raise OSError("STATUS_OBJECT_NAME_COLLISION")
 
-    try:
-        service.write_stream(
-            "2026/existing.docx",
-            BytesIO(b"new"),
-            overwrite=False,
-        )
-    except StorageTargetExistsError as exc:
-        assert "will not be overwritten" in str(exc)
-    else:
-        raise AssertionError("Expected SMB exclusive write to reject the existing target")
+    monkeypatch.setattr(fake_client, "open_file", stage_file, raising=False)
+    monkeypatch.setattr(fake_client, "rename", collision, raising=False)
+    monkeypatch.setattr(fake_client, "remove", removed.append, raising=False)
+
+    with pytest.raises(StorageTargetExistsError, match="will not be overwritten"):
+        service.write_stream("2026/existing.docx", BytesIO(b"new"), overwrite=False)
+
+    assert modes == ["xb"]
+    assert len(removed) == 1
+    assert ".tmp-" in removed[0]
+    assert not removed[0].endswith("\\existing.docx")
 
 
 @pytest.mark.parametrize("operation", ["move", "rename"])
@@ -135,24 +141,90 @@ def test_smb_rename_server_collision_after_preflight_returns_conflict(monkeypatc
     assert len(checks) == 2
 
 
-def test_smb_copy_uses_exclusive_destination_and_never_wb(monkeypatch) -> None:
+def test_smb_copy_uses_exclusive_staging_and_never_wb(monkeypatch) -> None:
     client, service = _service(monkeypatch, [])
     modes = []
+    removed = []
 
     def open_file(path, mode):
         modes.append(mode)
         if mode == "rb":
             return BytesIO(b"source")
         if mode == "xb":
-            raise FileExistsError("target exists")
+            assert ".tmp-" in path
+            return BytesIO()
         raise AssertionError(f"Unsafe destination mode: {mode}")
 
+    def collision(*args):
+        raise OSError("STATUS_OBJECT_NAME_COLLISION")
+
     monkeypatch.setattr(client, "open_file", open_file, raising=False)
+    monkeypatch.setattr(client, "rename", collision, raising=False)
+    monkeypatch.setattr(client, "remove", removed.append, raising=False)
 
     with pytest.raises(StorageTargetExistsError, match="will not be overwritten"):
         service.copy("2026/source.txt", "2026/existing.txt")
 
     assert modes == ["rb", "xb"]
+    assert len(removed) == 1 and ".tmp-" in removed[0]
+
+
+def test_smb_exclusive_write_publishes_only_after_stream_closed(monkeypatch) -> None:
+    client, service = _service(monkeypatch, [])
+    events = []
+    removed = []
+
+    class CaptureStream(BytesIO):
+        def close(self):
+            events.append("closed")
+            super().close()
+
+    def open_file(path, mode):
+        assert ".tmp-" in path and mode == "xb"
+        events.append("stage-open")
+        return CaptureStream()
+
+    def rename(source, target):
+        assert ".tmp-" in source
+        assert events == ["stage-open", "closed"]
+        events.append("published")
+
+    monkeypatch.setattr(client, "open_file", open_file, raising=False)
+    monkeypatch.setattr(client, "rename", rename, raising=False)
+    monkeypatch.setattr(client, "remove", removed.append, raising=False)
+    monkeypatch.setattr(client, "stat", lambda path: type("Stat", (), {"st_size": 8})(), raising=False)
+    monkeypatch.setattr(smb_storage.smbpath, "isdir", lambda path: False)
+
+    entry = service.write_stream("2026/new.txt", BytesIO(b"complete"), overwrite=False)
+    assert entry.relative_path == "2026/new.txt"
+    assert events == ["stage-open", "closed", "published"]
+    assert removed == []
+
+
+def test_smb_exclusive_write_stream_interruption_removes_only_temp(monkeypatch) -> None:
+    client, service = _service(monkeypatch, [])
+    removed = []
+    published = []
+
+    class Interrupted:
+        calls = 0
+
+        def read(self, size):
+            self.calls += 1
+            if self.calls == 1:
+                return b"partial"
+            raise OSError("SMB stream interrupted")
+
+    monkeypatch.setattr(client, "open_file", lambda path, mode: BytesIO(), raising=False)
+    monkeypatch.setattr(client, "rename", lambda src, dst: published.append((src, dst)), raising=False)
+    monkeypatch.setattr(client, "remove", removed.append, raising=False)
+
+    with pytest.raises(OSError, match="SMB stream interrupted"):
+        service.write_stream("2026/new.txt", Interrupted(), overwrite=False)
+
+    assert published == []
+    assert len(removed) == 1 and ".tmp-" in removed[0]
+    assert not removed[0].endswith("\\new.txt")
 
 
 def test_smb_service_configures_default_credentials_for_resolution_after_cache_loss(monkeypatch) -> None:

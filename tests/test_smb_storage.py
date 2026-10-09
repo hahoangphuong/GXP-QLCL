@@ -228,7 +228,7 @@ def test_smb_exclusive_write_stream_interruption_removes_only_temp(monkeypatch) 
 
 
 def test_smb_service_configures_default_credentials_for_resolution_after_cache_loss(monkeypatch) -> None:
-    folder_name = "IMEXPHARM - Đồng Tháp (ID-1)"
+    folder_name = "IMEXPHARM - Đồng Tháp (1)"
     fake_client, service = _service(monkeypatch, [folder_name])
 
     initial = service.resolve_dkkd_folder(site_legacy_id=1)
@@ -251,23 +251,36 @@ def test_smb_service_configures_default_credentials_for_resolution_after_cache_l
     }
 
 
-def test_smb_dkkd_resolution_rejects_obsolete_unkeyed_and_duplicate_identity_forms(monkeypatch) -> None:
-    fake_client, service = _service(monkeypatch, ["Legacy sample (1)"])
-    obsolete = service.resolve_dkkd_folder(site_legacy_id=1)
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("Factory (1)", True),
+        ("Factory (1) - Lần 2", True),
+        ("Factory (ID-1)", False),
+        ("Factory (10)", False),
+        ("Factory (01)", False),
+        ("Factory(1)", False),
+        ("Factory (2)", False),
+        ("Unkeyed facility", False),
+    ],
+)
+def test_smb_dkkd_matches_exact_legacy_site_token(monkeypatch, name: str, expected: bool) -> None:
+    _, service = _service(monkeypatch, [name])
 
-    assert obsolete.status is StorageResolutionStatus.NOT_FOUND
-    assert obsolete.candidate_count == 0
+    result = service.resolve_dkkd_folder(site_legacy_id=1)
 
-    fake_client.directory_names = ["Phương Đông TNHH"]
-    unkeyed = service.resolve_dkkd_folder(site_legacy_id=1)
+    assert result.status is (
+        StorageResolutionStatus.RESOLVED if expected else StorageResolutionStatus.NOT_FOUND
+    )
+    assert result.candidate_count == (1 if expected else 0)
 
-    assert unkeyed.status is StorageResolutionStatus.NOT_FOUND
-    assert unkeyed.candidate_count == 0
 
-    fake_client.directory_names = [
-        "TNHH BV Pharma - TP Hồ Chí Minh (ID-284)",
-        "BV Pharma - TP Hồ Chí Minh (ID-284)",
-    ]
+def test_smb_dkkd_legacy_duplicate_identity_fails_closed(monkeypatch) -> None:
+    _, service = _service(monkeypatch, [
+        "TNHH BV Pharma - TP Hồ Chí Minh (284)",
+        "BV Pharma - TP Hồ Chí Minh (284)",
+    ])
+
     duplicate = service.resolve_dkkd_folder(site_legacy_id=284)
 
     assert duplicate.status is StorageResolutionStatus.AMBIGUOUS

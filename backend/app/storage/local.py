@@ -19,6 +19,7 @@ from backend.app.storage.types import (
     StorageTargetExistsError,
     StorageResolution,
     matches_inspection_identity,
+    matches_dkkd_identity,
 )
 
 
@@ -128,11 +129,10 @@ class LocalStorageService:
                 detail="Missing or invalid site legacy ID for DDKD folder resolution.",
             )
 
-        site_token = f"({site_legacy_id})".lower()
         matches = [
             path
             for path in self.dkkd_root.iterdir()
-            if path.is_dir() and site_token in path.name.lower()
+            if path.is_dir() and matches_dkkd_identity(path.name, site_legacy_id=site_legacy_id)
         ]
         return self._resolution_from_matches(
             root=self.dkkd_root,

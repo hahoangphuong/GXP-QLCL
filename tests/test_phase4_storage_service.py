@@ -420,6 +420,42 @@ def test_resolve_dkkd_folder_uses_site_token_match(tmp_path: Path):
     assert resolution.relative_path == "US Pharma - 12 Street (91)"
 
 
+@pytest.mark.parametrize(
+    ("folder_name", "expected"),
+    [
+        ("US Pharma - 12 Street (91)", True),
+        ("US Pharma - 12 Street (91) - Lần 2", True),
+        ("US Pharma - 12 Street (ID-91)", False),
+        ("US Pharma - 12 Street (910)", False),
+        ("US Pharma - 12 Street (091)", False),
+        ("US Pharma - 12 Street(91)", False),
+        ("US Pharma - 12 Street (92)", False),
+    ],
+)
+def test_local_dkkd_exact_legacy_site_token(tmp_path: Path, folder_name: str, expected: bool):
+    service = build_service(tmp_path)
+    (service.dkkd_root / folder_name).mkdir()
+
+    resolution = service.resolve_dkkd_folder(site_legacy_id=91)
+
+    assert resolution.status is (
+        StorageResolutionStatus.RESOLVED if expected else StorageResolutionStatus.NOT_FOUND
+    )
+    assert resolution.candidate_count == (1 if expected else 0)
+
+
+def test_local_dkkd_multiple_exact_site_tokens_fail_ambiguous(tmp_path: Path):
+    service = build_service(tmp_path)
+    for name in ("Factory A (91)", "Factory B (91)"):
+        (service.dkkd_root / name).mkdir()
+
+    result = service.resolve_dkkd_folder(site_legacy_id=91)
+
+    assert result.status is StorageResolutionStatus.AMBIGUOUS
+    assert result.candidate_count == 2
+    assert result.relative_path is None
+
+
 def test_storage_io_operations_stay_within_root_and_support_checksum(tmp_path: Path):
     service = build_service(tmp_path)
 

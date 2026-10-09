@@ -15,6 +15,7 @@ from backend.app.storage.types import (
     StorageTargetExistsError,
     StorageResolution,
     matches_inspection_identity,
+    matches_dkkd_identity,
 )
 
 try:
@@ -174,11 +175,10 @@ class SmbStorageService:
                 candidate_count=0,
                 detail="Missing or invalid site legacy ID for DDKD folder resolution.",
             )
-        site_token = f"(ID-{site_legacy_id})".lower()
         matches = [
             entry.path
             for entry in smbclient.scandir(self.dkkd_root)
-            if entry.is_dir() and site_token in entry.name.lower()
+            if entry.is_dir() and matches_dkkd_identity(entry.name, site_legacy_id=site_legacy_id)
         ]
         return self._resolution_from_matches(
             root=self.dkkd_root,

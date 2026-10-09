@@ -156,7 +156,7 @@ Non-responsibilities:
 - Exact file identity lives on `document_version`, not on `storage_binding`.
 - Inspection-scoped outputs may carry both exact locator and inspection-style `storage_binding_id`.
 - DDKD-scoped outputs may carry an exact locator with `storage_binding_id = NULL` until a DDKD-specific binding key is formally proven.
-- Current Phase 4 evidence is sufficient to standardize the DDKD site-folder resolver on the durable token `(<site_id>)`.
+- Current Phase 4 evidence is sufficient to standardize the DDKD site-folder resolver on the durable literal token ` (<site_id>)` (including the preceding space), matching the VBA wildcard `* (<site_id>)*`. This is distinct from the inspection token `(ID-<site_id>)`; numeric variants and IDs without the space are not inferred. Local filesystem and SMB must use the same matcher.
 - The DDKD site folder display-name prefix remains mutable presentation text only.
 - The DDKD `Láº§n n` issuance-cycle subfolder and exact file placement remain higher-level issuance/document concerns.
 - Output writes also target a preallocated exact locator on `document_version`; the render adapter must not invent storage paths on its own.

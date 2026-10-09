@@ -69,6 +69,15 @@ def is_numeric_inspection_year(value: str) -> bool:
     return len(value) == 4 and value.isascii() and value.isdigit()
 
 
+def matches_dkkd_identity(folder_name: str, *, site_legacy_id: int) -> bool:
+    """Match the legacy DDKD folder token ` (<site_id>)`, not inspection's `(ID-n)`.
+
+    Proven VBA folder lookup uses the literal wildcard `* (<site_id>)*`.
+    The name/address prefix is mutable; the site token is the only key.
+    """
+    return site_legacy_id > 0 and f" ({site_legacy_id})" in folder_name
+
+
 def matches_inspection_identity(
     folder_name: str,
     *,

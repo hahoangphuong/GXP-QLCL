@@ -1410,9 +1410,10 @@ describe("App Slice A.4 search workspace", () => {
       "Loại",
       "Tiêu chuẩn",
       "Ngày",
+      "Trạng thái",
     ]);
-    expect(within(historyTable as HTMLElement).queryByRole("columnheader", { name: "Trạng thái" })).not.toBeInTheDocument();
-    expect(historyTable?.querySelector("tbody tr")?.querySelectorAll("td")).toHaveLength(3);
+    expect(within(historyTable as HTMLElement).getByText("Đã hoàn tất kiểm tra")).toBeInTheDocument();
+    expect(historyTable?.querySelector("tbody tr")?.querySelectorAll("td")).toHaveLength(4);
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Thông tin chung" }));
     expect(await screen.findByText("01-06-2026")).toBeInTheDocument();
@@ -1580,6 +1581,32 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".event-workspace-split.master-detail-split.master-detail-split-history")).not.toBeNull();
     expect(container.querySelector(".event-workspace-history-pane.master-list-pane .history-panel")).not.toBeNull();
     expect(container.querySelector(".event-workspace-detail-pane.detail-pane .event-workspace")).not.toBeNull();
+  });
+
+  it("selects history by keyboard without refetching master results or losing facility context across tabs", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.getChangeRequestWorkspace.mockResolvedValue(buildChangeRequestWorkspace());
+    const { container } = renderApp(["/search"]);
+    await screen.findByRole("heading", { name: "Thông tin hồ sơ" });
+    const historyRows = within(container.querySelector(".history-table") as HTMLElement).getAllByRole("row").slice(1);
+    const facilityRow = container.querySelector(".facility-table tbody tr.selected");
+    historyRows[0].focus();
+    fireEvent.keyDown(historyRows[0], { key: "ArrowDown" });
+    expect(historyRows[1]).toHaveFocus();
+    expect(historyRows[0]).toHaveAttribute("aria-selected", "true");
+    expect(apiMocks.getChangeRequestWorkspace).not.toHaveBeenCalled();
+    fireEvent.keyDown(historyRows[1], { key: "Enter" });
+    await screen.findByText("Điều chỉnh địa chỉ kho bảo quản");
+    expect(historyRows[1]).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("tab", { name: "Thông tin chung" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Các đợt kiểm tra & thay đổi" }));
+    expect(container.querySelector(".history-table tbody tr.selected")).toHaveAttribute("aria-label", historyRows[1].getAttribute("aria-label"));
+    expect(container.querySelector(".facility-table tbody tr.selected")).toBe(facilityRow);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getChangeRequestWorkspace).toHaveBeenCalledTimes(1);
   });
 
   it("updates only the right event pane when history selection changes and keeps ActionCard free of duplicated facility context", async () => {

@@ -3,6 +3,7 @@ import { useState, type ComponentProps } from "react";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FacilityWorkspaceTabs } from "./FacilityWorkspaceTabs";
+import { FACILITY_TABS as labels, type FacilityTab } from "./facilityTabs";
 
 // Isolate the tab owner. Each stub marks a mounted business workspace; hidden
 // ARIA shells must never mount these children.
@@ -13,8 +14,7 @@ vi.mock("./BusinessEligibilityWorkspace", () => ({ BusinessEligibilityWorkspace:
 
 afterEach(cleanup);
 type Props = ComponentProps<typeof FacilityWorkspaceTabs>;
-const labels = ["Thông tin chung", "Các đợt kiểm tra & thay đổi", "Giấy chứng nhận GxP", "Giấy chứng nhận đủ điều kiện"];
-function props(selectedFacilityTab = labels[0]): Props {
+function props(selectedFacilityTab: FacilityTab = labels[0]): Props {
   // Unused child callbacks are intentionally omitted by this isolated test.
   return {
     summary: { site_id: "site-1", facility_name: "Facility A", gxp_types: ["GMP"], selected_gxp_type: "GMP", selected_line_code: "A", selected_production_line_id: "uuid-A", current_state: "planned" },
@@ -22,7 +22,7 @@ function props(selectedFacilityTab = labels[0]): Props {
   } as unknown as Props;
 }
 function ControlledTabs() {
-  const [tab, setTab] = useState(labels[0]);
+  const [tab, setTab] = useState<FacilityTab>(labels[0]);
   return <FacilityWorkspaceTabs {...props(tab)} onFacilityTabChange={setTab} />;
 }
 function tabs() { return within(screen.getByRole("tablist", { name: "Tab nghiệp vụ cơ sở" })).getAllByRole("tab"); }

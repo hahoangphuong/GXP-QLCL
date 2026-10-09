@@ -1,5 +1,5 @@
-import { startTransition, useDeferredValue, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
-import { useSearchParams } from "react-router-dom";
+import { startTransition, useDeferredValue, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useLocation, useNavigationType, useSearchParams } from "react-router-dom";
 
 import type { ApiAccess } from "../App";
 import { EmptyState } from "../components/EmptyState";
@@ -8,6 +8,7 @@ import { ActionCard } from "../features/search/ActionCard";
 import { FacilityTable } from "../features/search/FacilityTable";
 import { FacilityHistoryPane } from "../features/search/FacilityHistoryPane";
 import { FacilityWorkspaceTabs } from "../features/search/FacilityWorkspaceTabs";
+import { DEFAULT_FACILITY_TAB, resolveFacilityTab } from "../features/search/facilityTabs";
 import {
   assessCapaCycle,
   createCapaCycle,
@@ -93,7 +94,6 @@ import type {
 } from "../types";
 
 const DEFAULT_EVENT_TAB = "Hồ sơ";
-const DEFAULT_FACILITY_TAB = "Các đợt kiểm tra & thay đổi";
 const RESULT_PAGE_SIZE = 100;
 const GXP_FILTER_OPTIONS = new Set(["GMP", "GLP", "GMPbb"]);
 
@@ -236,6 +236,9 @@ export function SearchPage({
   statusError: string | null;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  const urlSyncOwner = useId();
   const searchSignature = searchParams.toString();
   const [generalQuery, setGeneralQuery] = useState(searchParams.get("q") ?? "");
   const [facilityName, setFacilityName] = useState(searchParams.get("facility_name") ?? "");
@@ -254,7 +257,7 @@ export function SearchPage({
   const [resultResolution, setResultResolution] = useState<ResolutionState>(() => initialResolutionState(readPendingDeepLink(searchParams)));
   const [historyResolution, setHistoryResolution] = useState<ResolutionState>(() => searchParams.get("history_id") ? "pending" : "none");
   const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
-  const [selectedFacilityTab, setSelectedFacilityTab] = useState(searchParams.get("facility_tab") ?? DEFAULT_FACILITY_TAB);
+  const [selectedFacilityTab, setSelectedFacilityTab] = useState(() => resolveFacilityTab(searchParams.get("facility_tab")));
   const [activeTab, setActiveTab] = useState(searchParams.get("event_tab") ?? DEFAULT_EVENT_TAB);
   const [selectedRemediationCycleId, setSelectedRemediationCycleId] = useState<string | null>(null);
   const deferredGeneralQuery = useDeferredValue(generalQuery);
@@ -314,12 +317,13 @@ export function SearchPage({
   const { auth, useStubAuth, bearerToken, canLoadSecureApi } = access;
   const reassessmentInputRef = useRef<HTMLInputElement | null>(null);
   const reassessmentTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const internalUrlWriteRef = useRef<string | null>(null);
-  const suppressUrlSyncRef = useRef(false);
+  const [hydratedSearchSignature, setHydratedSearchSignature] = useState(searchSignature);
   const didHydrateInitialUrlRef = useRef(false);
   const latestSearchSignatureRef = useRef(searchSignature);
+  const latestLocationKeyRef = useRef(location.key);
   const resultsRef = useRef<FacilitySearchResult[]>([]);
   latestSearchSignatureRef.current = searchSignature;
+  latestLocationKeyRef.current = location.key;
 
   useEffect(() => {
     resultsRef.current = results;
@@ -385,20 +389,18 @@ export function SearchPage({
   useLayoutEffect(() => {
     const signature = searchSignature;
     const params = new URLSearchParams(signature);
-    // Initial state is derived from the initial URL. Mark it before consuming a
-    // possible normalization write so the next external navigation is hydrated.
+    // Initial state is derived from the URL. Internal REPLACE writes carry
+    // their origin on that navigation, rather than in a single mutable marker
+    // that another write can overwrite. POP always rehydrates Back/Forward.
     if (!didHydrateInitialUrlRef.current) {
       didHydrateInitialUrlRef.current = true;
-      if (internalUrlWriteRef.current === signature) {
-        internalUrlWriteRef.current = null;
-      }
       return;
     }
-    if (internalUrlWriteRef.current === signature) {
-      internalUrlWriteRef.current = null;
+    if (navigationType === "REPLACE" && location.state?.gxpSearchUrlSyncOwner === urlSyncOwner) {
+      setHydratedSearchSignature(signature);
       return;
     }
-    suppressUrlSyncRef.current = true;
+    setHydratedSearchSignature(signature);
     setGeneralQuery(params.get("q") ?? "");
     setFacilityName(params.get("facility_name") ?? "");
     setCertificateScope(params.get("certificate_scope") ?? "");
@@ -415,12 +417,12 @@ export function SearchPage({
     setHistoryResolution(pending.historyId ? "pending" : "none");
     setSelectedResultKey(pending.resultKey);
     setSelectedHistoryId(pending.historyId);
-    setSelectedFacilityTab(params.get("facility_tab") ?? DEFAULT_FACILITY_TAB);
+    setSelectedFacilityTab(resolveFacilityTab(params.get("facility_tab")));
     setActiveTab(params.get("event_tab") ?? DEFAULT_EVENT_TAB);
     setResultsOffset(0);
     setSearchEpoch((current) => current + 1);
     setDeepLinkError(null);
-  }, [searchSignature]);
+  }, [location.key, location.state, navigationType, searchSignature, urlSyncOwner]);
 
   function resetCertificateWorkspaceState() {
     setGxpCertificates([]);
@@ -479,10 +481,7 @@ export function SearchPage({
   }
 
   useLayoutEffect(() => {
-    if (suppressUrlSyncRef.current) {
-      suppressUrlSyncRef.current = false;
-      return;
-    }
+    if (hydratedSearchSignature !== searchSignature) return;
     // Do not let an effect from a previous render overwrite a newer external navigation.
     if (latestSearchSignatureRef.current !== searchSignature) {
       return;
@@ -560,8 +559,15 @@ export function SearchPage({
     }
     const nextSignature = nextParams.toString();
     if (nextSignature !== searchSignature) {
-      internalUrlWriteRef.current = nextSignature;
-      setSearchParams(nextParams, { replace: true });
+      let cancelled = false;
+      // A sibling may navigate during this commit before this layout effect
+      // sees the new route. Give that navigation its render/hydration first.
+      queueMicrotask(() => {
+        if (cancelled || latestSearchSignatureRef.current !== searchSignature || latestLocationKeyRef.current !== location.key) return;
+        setHydratedSearchSignature(nextSignature);
+        setSearchParams(nextParams, { replace: true, state: { ...location.state, gxpSearchUrlSyncOwner: urlSyncOwner } });
+      });
+      return () => { cancelled = true; };
     }
   }, [
     activeTab,
@@ -579,6 +585,10 @@ export function SearchPage({
     selectedResult,
     pendingDeepLink,
     historyResolution,
+    hydratedSearchSignature,
+    location.key,
+    location.state,
+    urlSyncOwner,
     resultResolution,
     searchSignature,
     setSearchParams,

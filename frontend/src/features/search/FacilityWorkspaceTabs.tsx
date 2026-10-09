@@ -35,13 +35,7 @@ import type { ChangeRequestMutationHandlers } from "./ChangeRequestMutationWorks
 import { BusinessEligibilityWorkspace } from "./BusinessEligibilityWorkspace";
 import { FacilitySummary } from "./FacilitySummary";
 import { GxpCertificateWorkspace } from "./GxpCertificateWorkspace";
-
-const FACILITY_TABS = [
-  "Thông tin chung",
-  "Các đợt kiểm tra & thay đổi",
-  "Giấy chứng nhận GxP",
-  "Giấy chứng nhận đủ điều kiện",
-] as const;
+import { FACILITY_TABS, type FacilityTab } from "./facilityTabs";
 
 export function FacilityWorkspaceTabs({
   summary,
@@ -111,8 +105,8 @@ export function FacilityWorkspaceTabs({
   onFinalizeInspectionOutcome,
 }: {
   summary: FacilityWorkspaceSummary;
-  selectedFacilityTab: string;
-  onFacilityTabChange: (tab: string) => void;
+  selectedFacilityTab: FacilityTab;
+  onFacilityTabChange: (tab: FacilityTab) => void;
   selectedHistory: FacilityHistoryItem | null;
   caseWorkspace: CaseWorkspace | null;
   caseWorkspaceLoading: boolean;
@@ -181,7 +175,7 @@ export function FacilityWorkspaceTabs({
   onFinalizeInspectionOutcome?: (payload: InspectionFinalEvaluationRequest) => Promise<void>;
 }) {
   const tabGroupId = useId();
-  const selectedIndex = Math.max(0, FACILITY_TABS.findIndex((tab) => tab === selectedFacilityTab));
+  const selectedIndex = FACILITY_TABS.indexOf(selectedFacilityTab);
   const [focusedIndex, setFocusedIndex] = useState(selectedIndex);
   const tabListRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);

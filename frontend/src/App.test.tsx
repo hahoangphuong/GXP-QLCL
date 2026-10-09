@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import { useLayoutEffect } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -734,8 +735,24 @@ function SearchRouteNavigator({ to }: { to: string }) {
   return <>
     <button onClick={() => navigate(to)} type="button">Đi tới ngữ cảnh khác</button>
     <button onClick={() => navigate(-1)} type="button">Quay lại ngữ cảnh trước</button>
+    <button onClick={() => navigate(1)} type="button">Tới ngữ cảnh tiếp theo</button>
     <output data-testid="route-location">{location.search}</output>
   </>;
+}
+
+function NavigateOnInitialHistoryCommit({ to }: { to: string }) {
+  const navigate = useNavigate();
+  useLayoutEffect(() => {
+    let navigated = false;
+    contextCommit.observe.mockImplementation(() => {
+      if (!navigated && document.querySelector(".history-table")) {
+        navigated = true;
+        navigate(to);
+      }
+    });
+    return () => { contextCommit.observe.mockReset(); };
+  }, [navigate, to]);
+  return null;
 }
 
 describe("App Slice A.4 search workspace", () => {
@@ -1821,6 +1838,64 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2);
   });
 
+  it.each([
+    { parameter: "&facility_tab=wrong-tab", selected: "Các đợt kiểm tra & thay đổi" },
+    { parameter: "&facility_tab=", selected: "Các đợt kiểm tra & thay đổi" },
+    { parameter: "", selected: "Các đợt kiểm tra & thay đổi" },
+    { parameter: "&facility_tab=Thông+tin+chung", selected: "Thông tin chung" },
+  ])("normalizes initial facility tab input $parameter without losing tab semantics", async ({ parameter, selected }) => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
+    render(<MemoryRouter initialEntries={[`/search?gxp_type=GMP${parameter}`]}><SearchRouteNavigator to="/search" /><App /></MemoryRouter>);
+    await screen.findByRole("tabpanel", { name: selected });
+    const tabs = within(screen.getByRole("tablist", { name: "Tab nghiệp vụ cơ sở" })).getAllByRole("tab");
+    expect(tabs.filter((tab) => tab.getAttribute("aria-selected") === "true")).toHaveLength(1);
+    expect(tabs.filter((tab) => tab.tabIndex === 0)).toHaveLength(1);
+    await waitFor(() => expect(new URLSearchParams(screen.getByTestId("route-location").textContent ?? "").get("facility_tab")).toBe(selected === "Thông tin chung" ? selected : null));
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["&facility_tab=wrong-tab", "&facility_tab=", "", "&facility_tab=Giấy+chứng+nhận+GxP"])("handles external tab input %s through Back and Forward without normalization loops", async (parameter) => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
+    render(<MemoryRouter initialEntries={["/search?gxp_type=GMP&facility_tab=Thông+tin+chung"]}>
+      <SearchRouteNavigator to={`/search?gxp_type=GMP${parameter}`} /><App />
+    </MemoryRouter>);
+    await screen.findByRole("tabpanel", { name: "Thông tin chung" });
+    await waitFor(() => expect(screen.getByTestId("route-location")).toHaveTextContent("result_key="));
+    const selected = parameter.includes("GxP") ? "Giấy chứng nhận GxP" : "Các đợt kiểm tra & thay đổi";
+    for (const [button, tab] of [["Đi tới ngữ cảnh khác", selected], ["Quay lại ngữ cảnh trước", "Thông tin chung"], ["Tới ngữ cảnh tiếp theo", selected]]) {
+      fireEvent.click(screen.getByRole("button", { name: button }));
+      await screen.findByRole("tabpanel", { name: tab });
+      expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
+      expect(screen.getByRole("tab", { name: tab })).toHaveAttribute("tabindex", "0");
+      await waitFor(() => expect(new URLSearchParams(screen.getByTestId("route-location").textContent ?? "").get("facility_tab")).toBe(tab === "Các đợt kiểm tra & thay đổi" ? null : tab));
+    }
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(4);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(4);
+  });
+
+  it("external navigation wins over an initial A normalization in the same layout commit", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockImplementation((query: { gxp_type: string }) => Promise.resolve({ items: [buildSearchResult(query.gxp_type === "GLP" ? { result_key: "B", gxp_type: "GLP", production_line_id: "line-2" } : {})], total_count: 1, offset: 0, limit: 100 }));
+    apiMocks.getFacilityWorkspace.mockImplementation((_site, _auth, _stub, _gxp, _line, _token, uuid) => Promise.resolve(buildWorkspace(uuid === "line-2" ? { history: [{ ...buildWorkspace().history[0], id: "case-B" }] } : {})));
+    const destination = "/search?gxp_type=GLP&result_key=B&production_line_id=line-2&history_id=missing-B";
+    render(<MemoryRouter initialEntries={["/search?gxp_type=GMP"]}>
+      <SearchRouteNavigator to={destination} />
+      <NavigateOnInitialHistoryCommit to={destination} />
+      <App />
+    </MemoryRouter>);
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("line-2"));
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId("route-location")).toHaveTextContent("gxp_type=GLP");
+    expect(screen.getByTestId("route-location")).toHaveTextContent("history_id=missing-B");
+    await screen.findByText(/Không tìm thấy hồ sơ được liên kết/);
+    expect(apiMocks.getCaseWorkspace.mock.calls.some((call) => call[0] === "case-B" || call[0] === "missing-B")).toBe(false);
+  });
+
   it.each(["case-B", "stale-explicit-history"])("keeps exact external B identity and explicit history %s during navigation", async (historyId) => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     const first = buildSearchResult();
@@ -1833,6 +1908,9 @@ describe("App Slice A.4 search workspace", () => {
       <App />
     </MemoryRouter>);
     await screen.findByRole("table", { name: "Lịch sử kiểm tra & thay đổi" });
+    // This user-click test starts from a settled route; the preceding test
+    // deliberately exercises navigation before initial normalization settles.
+    await waitFor(() => expect(screen.getByTestId("route-location")).toHaveTextContent("history_id=case-1"));
     const snapshots: boolean[] = [];
     contextCommit.observe.mockImplementation((key: string) => { if (key === "B") snapshots.push(Boolean(container.querySelector(".history-table") || container.querySelector(".facility-context-bar"))); });
     fireEvent.click(screen.getByRole("button", { name: "Đi tới ngữ cảnh khác" }));

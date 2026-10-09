@@ -21,7 +21,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
-from backend.app.storage.staging import StagingAudit, StagingCandidate
+from backend.app.storage.staging import RootScanCoverage, StagingAudit, StagingCandidate
 from backend.app.storage.staging_lineage import reconcile_staging_lineage, validate_staging_inventory
 
 
@@ -49,7 +49,7 @@ def _parse_inventory(path: Path) -> StagingAudit:
     data = json.loads(raw.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
     required = {
         "candidates", "scanned_directories", "scanned_entries",
-        "truncated", "incomplete_reason", "requested_roots",
+        "truncated", "incomplete_reason", "requested_roots", "root_coverage",
     }
     optional = {"failed_root", "failed_relative_path"}
     if not isinstance(data, dict) or not required.issubset(data) or set(data) - required - optional:
@@ -64,7 +64,17 @@ def _parse_inventory(path: Path) -> StagingAudit:
         candidates.append(StagingCandidate(**item))
     if not isinstance(data["requested_roots"], list):
         raise ValueError("Invalid staging inventory root scope.")
+    if not isinstance(data["root_coverage"], list):
+        raise ValueError("Invalid staging root coverage.")
+    coverage = []
+    for entry in data["root_coverage"]:
+        if not isinstance(entry, dict) or set(entry) != {
+            "root", "status", "scanned_directories", "scanned_entries",
+        }:
+            raise ValueError("Invalid staging root coverage record.")
+        coverage.append(RootScanCoverage(**entry))
     inventory = StagingAudit(
+        root_coverage=tuple(coverage),
         candidates=tuple(candidates),
         requested_roots=tuple(data["requested_roots"]),
         scanned_directories=data["scanned_directories"],
@@ -79,6 +89,7 @@ def _parse_inventory(path: Path) -> StagingAudit:
     validate_staging_inventory(
         inventory, max_candidates=_MAX_CANDIDATES,
         require_scanner_categories=True, require_declared_scope=True,
+        require_root_coverage=True,
     )
     return inventory
 
@@ -137,7 +148,8 @@ def _read_only_reconcile(database_url: str, inventory: StagingAudit):
     # Reject even programmatically supplied malformed inventory before a
     # socket, engine, role or DB session is created.
     validate_staging_inventory(
-        inventory, max_candidates=_MAX_CANDIDATES, require_declared_scope=True,
+        inventory, max_candidates=_MAX_CANDIDATES,
+        require_declared_scope=True, require_root_coverage=True,
     )
     # PostgreSQL only. Transaction-level read-only is confirmed before
     # any lineage SELECT. A rollback is issued even for successful audits.

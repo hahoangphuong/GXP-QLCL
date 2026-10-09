@@ -13,7 +13,9 @@ from sqlalchemy import select, tuple_
 from sqlalchemy.orm import Session
 
 from backend.app.db.models.phase1 import DocumentVersion, StorageBinding, TemplateDefinition
-from backend.app.storage.staging import StagingAudit, StagingCandidate, classify_staging_candidate
+from backend.app.storage.staging import (
+    RootScanCoverage, StagingAudit, StagingCandidate, classify_staging_candidate,
+)
 
 
 @dataclass(frozen=True)
@@ -36,6 +38,7 @@ class StagingLineageReport:
     inspected_candidates: int
     status: str = "review_only"
     input_requested_roots: tuple[str, ...] = ()
+    input_root_coverage: tuple[RootScanCoverage, ...] = ()
 
 
 def _batches(items: list, batch_size: int = 200) -> Iterator[list]:
@@ -75,6 +78,7 @@ def validate_staging_inventory(
     max_candidates: int = 10000,
     require_scanner_categories: bool = False,
     require_declared_scope: bool = False,
+    require_root_coverage: bool = False,
 ) -> None:
     """Validate metadata only; never attest authenticity or deletion safety.
 
@@ -97,6 +101,37 @@ def validate_staging_inventory(
         or (require_declared_scope and not scope)
     ):
         raise ValueError("Invalid or missing staging inventory root scope.")
+    coverage = inventory.root_coverage
+    if not isinstance(coverage, tuple) or (require_root_coverage and not coverage):
+        raise ValueError("Missing or invalid staging root coverage.")
+    if coverage:
+        if not scope or len(coverage) != len(scope):
+            raise ValueError("Staging root coverage does not match requested scope.")
+        for expected_root, entry in zip(scope, coverage):
+            if (
+                not isinstance(entry, RootScanCoverage)
+                or entry.root != expected_root
+                or entry.status not in {"complete", "partial", "not_started"}
+                or type(entry.scanned_directories) is not int
+                or entry.scanned_directories < 0
+                or type(entry.scanned_entries) is not int
+                or entry.scanned_entries < 0
+                or (entry.status == "not_started" and (
+                    entry.scanned_directories != 0 or entry.scanned_entries != 0
+                ))
+                or (entry.status == "complete" and entry.scanned_directories < 1)
+            ):
+                raise ValueError("Invalid per-root staging scan coverage.")
+        if (
+            sum(entry.scanned_directories for entry in coverage) != inventory.scanned_directories
+            or sum(entry.scanned_entries for entry in coverage) != inventory.scanned_entries
+        ):
+            raise ValueError("Per-root scan counters do not match the inventory totals.")
+        if inventory.truncated:
+            if all(entry.status == "complete" for entry in coverage):
+                raise ValueError("Truncated inventory must include incomplete root coverage.")
+        elif any(entry.status != "complete" for entry in coverage):
+            raise ValueError("Complete inventory cannot have incomplete root coverage.")
     if (
         type(inventory.scanned_directories) is not int or inventory.scanned_directories < 0
         or type(inventory.scanned_entries) is not int
@@ -126,11 +161,20 @@ def validate_staging_inventory(
             raise ValueError("Invalid staging access failure locator.")
     elif inventory.failed_root is not None or inventory.failed_relative_path is not None:
         raise ValueError("Unexpected staging failure locator.")
-    if inventory.incomplete_reason == "storage_setup_failed" and (
-        inventory.candidates or inventory.scanned_directories or inventory.scanned_entries
-    ):
-        raise ValueError("A storage setup failure cannot contain scanned entries.")
+    if inventory.incomplete_reason == "storage_setup_failed":
+        if (
+            inventory.candidates or inventory.scanned_directories or inventory.scanned_entries
+            or (coverage and any(entry.status != "not_started" for entry in coverage))
+        ):
+            raise ValueError("A storage setup failure cannot contain scanned entries.")
+    if inventory.incomplete_reason == "storage_access_failed" and coverage:
+        failed = next(entry for entry in coverage if entry.root == inventory.failed_root)
+        if failed.status != "partial":
+            raise ValueError("A failed root must be marked partially scanned.")
 
+    not_started_roots = {
+        entry.root for entry in coverage if entry.status == "not_started"
+    }
     seen: set[tuple[str, str]] = set()
     for candidate in inventory.candidates:
         if not isinstance(candidate, StagingCandidate):
@@ -138,6 +182,7 @@ def validate_staging_inventory(
         if (
             candidate.root not in _KNOWN_ROOTS
             or (scope and candidate.root not in scope)
+            or candidate.root in not_started_roots
             or not _valid_locator(candidate.relative_path)
         ):
             raise ValueError("Staging inventory contains an invalid logical locator.")
@@ -237,4 +282,5 @@ def reconcile_staging_lineage(
         input_incomplete_reason=inventory.incomplete_reason,
         inspected_candidates=len(inventory.candidates),
         input_requested_roots=inventory.requested_roots,
+        input_root_coverage=inventory.root_coverage,
     )

@@ -45,6 +45,9 @@ def test_audit_finds_candidates_without_mutating_files(tmp_path: Path):
     assert report.truncated is False
     assert report.scanned_directories == 2
     assert report.requested_roots == ("inspection",)
+    assert [(r.root, r.status, r.scanned_directories) for r in report.root_coverage] == [
+        ("inspection", "complete", 2),
+    ]
     assert {item.relative_path for item in report.candidates} == {
         f"2026/{modern.name}", f"2026/{legacy.name}",
     }
@@ -57,10 +60,12 @@ def test_audit_marks_depth_and_entry_limit_incomplete(tmp_path: Path):
     (service.inspection_root / "2026" / new_staging_name()).write_bytes(b"x")
     deep = audit_staging_candidates(service, max_depth=0)
     assert deep.truncated and deep.incomplete_reason == "depth_budget_exceeded"
+    assert deep.root_coverage[0].status == "partial"
     assert deep.candidates == ()
 
     entries = audit_staging_candidates(service, max_entries=1)
     assert entries.truncated and entries.incomplete_reason == "entry_budget_exceeded"
+    assert entries.root_coverage[0].status == "partial"
 
 
 def test_audit_directory_budget_never_claims_completeness(tmp_path: Path):
@@ -219,3 +224,45 @@ def test_staging_audit_preserves_all_requested_root_scope_on_partial_scan(tmp_pa
     assert report.truncated
     assert report.incomplete_reason == "directory_budget_exceeded"
     assert report.scanned_directories == 1
+    assert [(r.root, r.status) for r in report.root_coverage] == [
+        ("inspection", "complete"), ("dkkd", "not_started"),
+    ]
+
+
+def test_root_coverage_two_completed_scopes(tmp_path):
+    inspection, dkkd = tmp_path / "inspection", tmp_path / "dkkd"
+    inspection.mkdir()
+    dkkd.mkdir()
+    service = LocalStorageService(StorageConfig(inspection_root=inspection, dkkd_root=dkkd))
+    name = new_staging_name()
+    (dkkd / name).write_bytes(b"preserve")
+    report = audit_staging_candidates(service, roots=("inspection", "dkkd"))
+    assert not report.truncated
+    assert [(x.root, x.status, x.scanned_directories, x.scanned_entries)
+            for x in report.root_coverage] == [
+                ("inspection", "complete", 1, 0),
+                ("dkkd", "complete", 1, 1),
+            ]
+    assert report.scanned_directories == 2
+    assert report.scanned_entries == 1
+    assert (dkkd / name).read_bytes() == b"preserve"
+
+
+def test_root_coverage_completed_root_followed_by_failed_root(tmp_path):
+    inspection, dkkd = tmp_path / "inspection", tmp_path / "dkkd"
+    inspection.mkdir()
+    dkkd.mkdir()
+    service = LocalStorageService(StorageConfig(inspection_root=inspection, dkkd_root=dkkd))
+    original = service.iter_entries_for_audit
+    def fails_dkkd(relative_path="", *, root="inspection"):
+        if root == "dkkd":
+            raise OSError("private SMB fault")
+        yield from original(relative_path, root=root)
+    service.iter_entries_for_audit = fails_dkkd
+    report = audit_staging_candidates(service, roots=("inspection", "dkkd"))
+    assert report.truncated and report.incomplete_reason == "storage_access_failed"
+    assert report.failed_root == "dkkd"
+    assert [(x.root, x.status, x.scanned_directories) for x in report.root_coverage] == [
+        ("inspection", "complete", 1),
+        ("dkkd", "partial", 0),
+    ]

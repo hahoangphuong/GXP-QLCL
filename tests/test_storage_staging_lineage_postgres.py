@@ -19,7 +19,7 @@ from backend.app.db.models.phase1 import (
     Case, Company, Document, DocumentVariant, DocumentVersion,
     Site, StorageBinding, TemplateDefinition,
 )
-from backend.app.storage.staging import StagingAudit, StagingCandidate
+from backend.app.storage.staging import RootScanCoverage, StagingAudit, StagingCandidate
 from backend.app.storage.staging_lineage import reconcile_staging_lineage
 from tools.reconcile_storage_staging_lineage import _read_only_reconcile
 
@@ -50,6 +50,10 @@ def _inventory(*keys: tuple[str, str]) -> StagingAudit:
         scanned_entries=len(keys), requested_roots=tuple(dict.fromkeys(
             root for root, _ in keys
         )),
+        root_coverage=tuple(RootScanCoverage(
+            root=root, status="complete", scanned_directories=1,
+            scanned_entries=sum(1 for key_root, _ in keys if key_root == root),
+        ) for root in dict.fromkeys(root for root, _ in keys)),
         truncated=False, incomplete_reason=None,
     )
 

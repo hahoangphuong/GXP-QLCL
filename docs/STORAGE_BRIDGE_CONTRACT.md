@@ -362,3 +362,25 @@ inventing one.
 The scope field remains **self-declared, not authenticated**. It does
 not prove that NAS enumeration finished, that no files changed since
 scanning, or that a file is safe to delete.
+
+### Per-root scan coverage
+
+The scanner now records a `root_coverage` array, in `requested_roots`
+order, with each root's `complete`, `partial` or `not_started` status,
+and separately counted directories and entries. A root is `complete`
+only when all queued directories in that root were enumerated without an
+access failure or depth/entry limit; a root that was entered but interrupted
+is `partial`; a root never attempted is `not_started`. An aggregate
+truncated audit can therefore contain a completed `inspection` root and
+an unstarted `dkkd` root without implying either one was silently
+verified or cleared. A depth limit makes that root partial even if all
+its shallower directories were scanned.
+
+The optional lineage CLI requires this new field and validates its order,
+statuses, per-root counters, totals and failure/root consistency before
+opening a database connection. Incomplete or legacy JSON lacking
+`root_coverage` must be re-collected. The lineage output propagates
+`input_root_coverage` unchanged and remains `review_only`.
+The statuses describe **enumeration progress**, not a synchronized NAS
+snapshot, proof of file existence, authenticated collection or authority
+to delete anything.

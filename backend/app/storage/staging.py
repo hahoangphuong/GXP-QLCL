@@ -38,6 +38,14 @@ class StagingCandidate:
 
 
 @dataclass(frozen=True)
+class RootScanCoverage:
+    root: str
+    status: str  # complete | partial | not_started
+    scanned_directories: int
+    scanned_entries: int
+
+
+@dataclass(frozen=True)
 class StagingAudit:
     candidates: tuple[StagingCandidate, ...]
     scanned_directories: int
@@ -49,6 +57,7 @@ class StagingAudit:
     # Explicit scope of the scan, not a cryptographic attestation that roots
     # were actually scanned. Empty tuple denotes legacy/unknown scope.
     requested_roots: tuple[str, ...] = ()
+    root_coverage: tuple[RootScanCoverage, ...] = ()
 
 
 def audit_staging_candidates(
@@ -76,12 +85,18 @@ def audit_staging_candidates(
     incomplete_reason = None
     failed_root = None
     failed_relative_path = None
+    ordered_roots = tuple(dict.fromkeys(roots))
+    scanned_by_root = {root: 0 for root in ordered_roots}
+    entries_by_root = {root: 0 for root in ordered_roots}
+    attempted_roots: set[str] = set()
+    partial_roots: set[str] = set()
 
     while queue:
         if scanned_directories >= max_directories:
             incomplete_reason = "directory_budget_exceeded"
             break
         root, folder, depth = queue.popleft()
+        attempted_roots.add(root)
         iterator = None
         try:
             # Direct filesystem/SMB adapters provide lazy directory
@@ -101,6 +116,7 @@ def audit_staging_candidates(
                         incomplete_reason = "entry_budget_exceeded"
                         break
                     scanned_entries += 1
+                    entries_by_root[root] += 1
                     category = None if entry.is_dir else classify_staging_candidate(entry.name)
                     if category is not None:
                         findings.append(StagingCandidate(
@@ -111,6 +127,7 @@ def audit_staging_candidates(
                         ))
                     if entry.is_dir:
                         if depth >= max_depth:
+                            partial_roots.add(root)
                             incomplete_reason = incomplete_reason or "depth_budget_exceeded"
                         else:
                             queue.append((root, entry.relative_path, depth + 1))
@@ -119,16 +136,30 @@ def audit_staging_candidates(
                 if callable(closer):
                     closer()
             scanned_directories += 1
+            scanned_by_root[root] += 1
         except (OSError, StorageOperationError):
             # Also catch errors after a generator has yielded some entries.
             # Preserve partial metadata, stop, and redact exception text.
             incomplete_reason = "storage_access_failed"
+            partial_roots.add(root)
             failed_root = root
             failed_relative_path = folder
             break
         if incomplete_reason == "entry_budget_exceeded":
+            partial_roots.add(root)
             break
 
+    unfinished = {root for root, _folder, _depth in queue} | partial_roots
+    coverage = tuple(RootScanCoverage(
+        root=root,
+        status=(
+            "not_started" if root not in attempted_roots
+            else "partial" if root in unfinished
+            else "complete"
+        ),
+        scanned_directories=scanned_by_root[root],
+        scanned_entries=entries_by_root[root],
+    ) for root in ordered_roots)
     return StagingAudit(
         candidates=tuple(sorted(findings, key=lambda item: (item.root, item.relative_path))),
         scanned_directories=scanned_directories,
@@ -137,5 +168,6 @@ def audit_staging_candidates(
         incomplete_reason=incomplete_reason,
         failed_root=failed_root,
         failed_relative_path=failed_relative_path,
-        requested_roots=tuple(dict.fromkeys(roots)),
+        requested_roots=ordered_roots,
+        root_coverage=coverage,
     )

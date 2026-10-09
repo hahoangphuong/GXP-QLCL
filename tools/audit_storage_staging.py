@@ -14,7 +14,9 @@ from dataclasses import asdict
 import json
 
 from backend.app.storage.factory import create_storage_service_from_env
-from backend.app.storage.staging import StagingAudit, audit_staging_candidates
+from backend.app.storage.staging import (
+    RootScanCoverage, StagingAudit, audit_staging_candidates,
+)
 from backend.app.storage.types import StorageOperationError
 
 
@@ -35,6 +37,10 @@ def main(argv: list[str] | None = None) -> int:
             candidates=(), scanned_directories=0, scanned_entries=0,
             truncated=True, incomplete_reason="storage_setup_failed",
             requested_roots=tuple(dict.fromkeys(args.root)),
+            root_coverage=tuple(RootScanCoverage(
+                root=root, status="not_started",
+                scanned_directories=0, scanned_entries=0,
+            ) for root in dict.fromkeys(args.root)),
         )
         print(json.dumps(asdict(report), ensure_ascii=False, indent=2))
         return 3

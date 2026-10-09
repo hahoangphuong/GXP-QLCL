@@ -219,3 +219,27 @@ def test_staging_lineage_rejects_empty_complete_scan_and_wrong_scope(session):
     for inventory in invalid:
         with pytest.raises(ValueError):
             reconcile_staging_lineage(session, inventory)
+
+
+def test_staging_lineage_report_preserves_per_root_coverage(session):
+    from backend.app.storage.staging import RootScanCoverage
+    inventory = StagingAudit(
+        candidates=(StagingCandidate(
+            root="inspection", relative_path="year/site/.gxp-stage-aabbcc.tmp",
+            category="managed_candidate", size=4,
+        ),),
+        scanned_directories=1, scanned_entries=1, truncated=True,
+        incomplete_reason="directory_budget_exceeded",
+        requested_roots=("inspection", "dkkd"),
+        root_coverage=(
+            RootScanCoverage("inspection", "complete", 1, 1),
+            RootScanCoverage("dkkd", "not_started", 0, 0),
+        ),
+    )
+    result = reconcile_staging_lineage(session, inventory)
+    assert [(x.root, x.status) for x in result.input_root_coverage] == [
+        ("inspection", "complete"), ("dkkd", "not_started"),
+    ]
+    assert result.input_inventory_truncated
+    assert result.items[0].evidence == "no_exact_locator_evidence"
+    assert result.status == "review_only"

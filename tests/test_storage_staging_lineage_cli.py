@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.app.storage.staging import StagingAudit, StagingCandidate
+from backend.app.storage.staging import RootScanCoverage, StagingAudit, StagingCandidate
 from backend.app.storage.staging_lineage import StagingLineageItem, StagingLineageReport
 from tools import reconcile_storage_staging_lineage as cli
 
@@ -19,6 +19,11 @@ def _write_inventory(tmp_path: Path, *, truncated: bool = False) -> Path:
         }],
         "scanned_directories": 1, "scanned_entries": 3,
         "requested_roots": ["inspection"],
+        "root_coverage": [{
+            "root": "inspection",
+            "status": "partial" if truncated else "complete",
+            "scanned_directories": 1, "scanned_entries": 3,
+        }],
         "truncated": truncated,
         "incomplete_reason": "storage_access_failed" if truncated else None,
         "failed_root": "inspection" if truncated else None,
@@ -268,6 +273,11 @@ def test_lineage_cli_db_failure_never_leaks_secret_and_rolls_back(tmp_path, monk
         "duplicate_root_scope", "unknown_root_scope",
         "candidate_outside_declared_root", "failed_root_outside_scope",
         "complete_without_directories", "complete_with_too_few_scanned_roots",
+        "missing_coverage", "coverage_string", "coverage_unknown_status",
+        "coverage_wrong_root", "coverage_extra_root", "coverage_invalid_count",
+        "coverage_count_mismatch", "complete_with_partial_coverage",
+        "truncated_with_complete_coverage", "not_started_with_counts",
+        "failed_root_coverage_complete", "candidate_under_unstarted_root",
     ],
 )
 def test_lineage_cli_rejects_structurally_invalid_inventory_before_db(
@@ -340,6 +350,42 @@ def test_lineage_cli_rejects_structurally_invalid_inventory_before_db(
         data["scanned_directories"] = 0
     elif case == "complete_with_too_few_scanned_roots":
         data["requested_roots"] = ["inspection", "dkkd"]
+    elif case == "missing_coverage":
+        del data["root_coverage"]
+    elif case == "coverage_string":
+        data["root_coverage"] = "complete"
+    elif case == "coverage_unknown_status":
+        data["root_coverage"][0]["status"] = "maybe"
+    elif case == "coverage_wrong_root":
+        data["root_coverage"][0]["root"] = "dkkd"
+    elif case == "coverage_extra_root":
+        data["root_coverage"].append(dict(data["root_coverage"][0]))
+    elif case == "coverage_invalid_count":
+        data["root_coverage"][0]["scanned_entries"] = "3"
+    elif case == "coverage_count_mismatch":
+        data["root_coverage"][0]["scanned_entries"] = 2
+    elif case == "complete_with_partial_coverage":
+        data["root_coverage"][0]["status"] = "partial"
+    elif case == "truncated_with_complete_coverage":
+        data["truncated"] = True
+        data["incomplete_reason"] = "directory_budget_exceeded"
+    elif case == "not_started_with_counts":
+        data["truncated"] = True
+        data["incomplete_reason"] = "directory_budget_exceeded"
+        data["root_coverage"][0]["status"] = "not_started"
+    elif case == "failed_root_coverage_complete":
+        data["truncated"] = True
+        data["incomplete_reason"] = "storage_access_failed"
+        data["failed_root"] = "inspection"
+        data["failed_relative_path"] = ""
+    elif case == "candidate_under_unstarted_root":
+        data["truncated"] = True
+        data["incomplete_reason"] = "directory_budget_exceeded"
+        data["root_coverage"][0]["status"] = "not_started"
+        data["root_coverage"][0]["scanned_directories"] = 0
+        data["root_coverage"][0]["scanned_entries"] = 0
+        data["scanned_directories"] = 0
+        data["scanned_entries"] = 0
     path.write_text(json.dumps(data), encoding="utf-8")
 
     monkeypatch.setenv(
@@ -406,6 +452,10 @@ def test_lineage_direct_read_only_reconciliation_validates_before_engine(
         scanned_directories=1, scanned_entries=1,
         truncated=False, incomplete_reason=None,
         requested_roots=("inspection",),
+        root_coverage=(RootScanCoverage(
+            root="inspection", status="complete",
+            scanned_directories=1, scanned_entries=1,
+        ),),
     )
     monkeypatch.setattr(
         cli, "create_engine",
@@ -423,6 +473,7 @@ def test_lineage_cli_empty_scanned_scope_is_not_all_roots(
     data["candidates"] = []
     data["scanned_directories"] = 1
     data["scanned_entries"] = 0
+    data["root_coverage"][0]["scanned_entries"] = 0
     path.write_text(json.dumps(data), encoding="utf-8")
     monkeypatch.setenv(
         "GXP_STORAGE_LINEAGE_READONLY_DATABASE_URL",
@@ -438,10 +489,15 @@ def test_lineage_cli_empty_scanned_scope_is_not_all_roots(
             input_inventory_truncated=False,
             input_incomplete_reason=None,
             input_requested_roots=inventory.requested_roots,
+            input_root_coverage=inventory.root_coverage,
         )
     monkeypatch.setattr(cli, "_read_only_reconcile", fake_reconcile)
     assert cli.main(["--inventory-json", str(path)]) == 0
     output = json.loads(capsys.readouterr().out)
     assert output["input_requested_roots"] == ["inspection"]
+    assert output["input_root_coverage"] == [{
+        "root": "inspection", "status": "complete",
+        "scanned_directories": 1, "scanned_entries": 0,
+    }]
     assert output["status"] == "review_only"
     assert observed[0].requested_roots == ("inspection",)

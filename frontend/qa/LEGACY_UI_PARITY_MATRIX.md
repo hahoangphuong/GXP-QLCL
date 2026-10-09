@@ -186,3 +186,35 @@ Latest workspace group: targeted filter/certificate tests 38 passed, full suite
 mount only while the disclosure is open, keeping the closed search DOM compact;
 opening/closing still has no query or mutation effect. Native disclosure, desktop
 pane geometry and certificate tab round-trips were checked in the fixture browser.
+
+## Dossier assessment placement follow-up
+
+Image 1 and MainForm DataKT mappings place submitted date, application code,
+assessment date/person at left and assessment result at right in registration.
+The domain contract identifies CaseAssessment as the dossier assessment owner;
+InspectionOutcome owns inspection/final conclusions separately. Registration now
+composes the existing application and assessment editors. Processing shows the
+administrative timeline. No assessment mutation, row_version, authorization or
+document workflow_step mapping changed, and only one assessment editor mounts.
+
+Additional canonical metadata remains below the four primary fields. This and
+the document list/detail surface are remaining density/placement differences.
+The other inspection/CAPA/final field groups and RecordForm/pickers still need
+further parity implementation; this is not acceptance of the whole Issue #1.
+Static FRX controls are available, but complete runtime captures of the master,
+General Information, RecordForm, FilterForm and pickers remain EVIDENCE_MISSING.
+
+Regression covers registration/timeline round-trips without extra workspace
+requests, assessment save, 409 draft retention, same-context refresh preserving
+document selection/draft/original concurrency token, and late binary A/B/A.
+Fixture browser confirms a draft survives scope-tab navigation, selected history
+survives narrow layout, and no horizontal overflow at 390px. Captures:
+legacy-dossier-1366.png, legacy-dossier-1920.png, legacy-dossier-390.png.
+All browser evidence is fixture API E2E; no real-backend integration or production
+UAT is claimed. User screenshots and real business payloads remain outside git.
+
+Latest validation: pnpm typecheck, pnpm lint, pnpm test --maxWorkers=1
+(309 passed / 23 files), pnpm build. No timeout was increased. Existing
+non-failing React act warnings remain. The three initial failures were outdated
+assessment-placement expectations and one mistakenly changed document-step
+selector; the backend document workflow_step contract remains authoritative.

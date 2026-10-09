@@ -69,9 +69,11 @@ const PROCESSING_EVENT_LABELS: Record<string, string> = {
 export function CaseProcessingWorkspace({
   caseWorkspace,
   onSave,
+  view,
 }: {
   caseWorkspace: CaseWorkspace;
   onSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>;
+  view?: "assessment" | "timeline";
 }) {
   const currentDraft = useMemo(() => buildDraft(caseWorkspace), [caseWorkspace]);
   const [draft, setDraft] = useState<ProcessingDraft>(currentDraft);
@@ -117,10 +119,11 @@ export function CaseProcessingWorkspace({
   }
 
   return (
-    <div className="event-step-stack">
-      <section className="workspace-section">
-        <h4>Thông tin xử lý</h4>
-        <div className="detail-grid compact-grid detail-form-matrix">
+    <div className={`event-step-stack${view === "assessment" ? " case-assessment-stack" : ""}`}>
+      {view !== "timeline" ? <section className="workspace-section case-assessment-section">
+        <h4 className={view === "assessment" ? "sr-only" : undefined}>{view === "assessment" ? "Thẩm định hồ sơ" : "Thông tin xử lý"}</h4>
+        <div className="case-assessment-grid">
+        <div className="detail-grid compact-grid detail-form-matrix case-assessment-metadata">
           <EditableDetailValue
             editButtonLabel="Sửa Ngày thẩm định"
             error={editingField === "assessed_on" ? errorMessage : null}
@@ -168,11 +171,13 @@ export function CaseProcessingWorkspace({
             />
           </EditableDetailValue>
 
+        </div>
+        <div className="case-assessment-result">
           <EditableDetailValue
-            editButtonLabel="Sửa Kết quả"
+            editButtonLabel="Sửa Kết quả thẩm định"
             error={editingField === "assessment_result" ? errorMessage : null}
             isEditing={editingField === "assessment_result"}
-            label="Kết quả"
+            label="Kết quả thẩm định"
             multiline
             onCancel={cancelEdit}
             onEdit={() => {
@@ -185,7 +190,7 @@ export function CaseProcessingWorkspace({
             value={caseWorkspace.processing.assessment_result}
           >
             <textarea
-              aria-label="Kết quả"
+              aria-label="Kết quả thẩm định"
               className="inspection-textarea"
               disabled={pending}
               onChange={(event) => setDraft((current) => ({ ...current, assessment_result: event.target.value }))}
@@ -194,9 +199,10 @@ export function CaseProcessingWorkspace({
             />
           </EditableDetailValue>
         </div>
-      </section>
+        </div>
+      </section> : null}
 
-      <section className="workspace-section">
+      {view !== "assessment" ? <section className="workspace-section">
         <h4>Các mốc xử lý hành chính</h4>
         {caseWorkspace.processing.events.length > 0 ? (
           <div className="table-scroll table-scroll-history">
@@ -222,7 +228,7 @@ export function CaseProcessingWorkspace({
         ) : (
           <EmptyState title="Chưa có mốc xử lý" description="Chưa có inspection event canonical nào cho bước xử lý của hồ sơ này." />
         )}
-      </section>
+      </section> : null}
     </div>
   );
 }

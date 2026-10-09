@@ -2151,7 +2151,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByText("Đạt")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Xử lý/ }));
-    expect(await screen.findByText("Đề xuất cấp chứng nhận")).toBeInTheDocument();
+    expect(screen.queryByText("Đề xuất cấp chứng nhận")).not.toBeInTheDocument();
     expect(screen.getByText("Tiếp nhận hồ sơ")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Tài liệu" })).not.toBeInTheDocument();
     expect(screen.getByText("Tài liệu liên quan")).toBeInTheDocument();
@@ -2232,7 +2232,7 @@ describe("App Slice A.4 search workspace", () => {
 
   it.each(["ready", "error"])("keeps document selection and an unsaved processing draft through an authoritative same-context refresh: %s", async (state) => {
     const base = buildCaseWorkspace();
-    const document = { ...base.contextual_document_actions[1], family_code: "INSPECTION_KE_HOACH_KT", actions: [
+    const document = { ...base.contextual_document_actions[1], workflow_step: "Hồ sơ", family_code: "INSPECTION_KE_HOACH_KT", actions: [
       ...base.contextual_document_actions[1].actions.filter(action => action.action_key !== "create"),
       { action_key: "create", label: "Tạo", available: true, disabled_reason: null, required_permissions: [], family_code: "INSPECTION_KE_HOACH_KT", parent_scope: "case", parent_id: "case-1", create_gxp_type: "GMP", create_storage_scope: "inspection_folder", create_output_filename: "khkt.docx" },
     ] };
@@ -2245,10 +2245,10 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.getDocumentDetail.mockResolvedValue({ document_id: document.document_id, family_code: document.family_code, case_id: "case-1", title: "Exact selected document", variants: [], generation_runs: [] });
     apiMocks.renderTemplateDocx.mockResolvedValue({});
     renderApp(["/search"]);
-    await screen.findByText("HS-001"); fireEvent.click(screen.getByRole("button", { name: "Xử lý tiếp" }));
+    await screen.findByText("HS-001"); fireEvent.click(screen.getByRole("button", { name: "Hồ sơ đăng ký" }));
     fireEvent.click(screen.getByRole("button", { name: "Chọn Quyết định cấp CC" })); await screen.findByText("Exact selected document");
-    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Kết quả" }));
-    fireEvent.change(screen.getByLabelText("Kết quả"), { target: { value: "unsaved processing draft" } });
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Kết quả thẩm định" }));
+    fireEvent.change(screen.getByLabelText("Kết quả thẩm định"), { target: { value: "unsaved processing draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Tạo Quyết định cấp CC" }));
     await screen.findByText("Đang tải workspace");
     expect(screen.queryByRole("table", { name: "Danh sách tài liệu liên quan" })).not.toBeInTheDocument();
@@ -2259,7 +2259,7 @@ describe("App Slice A.4 search workspace", () => {
       fireEvent.click(screen.getByRole("button", { name: "Tải lại workspace" }));
       await screen.findByRole("table", { name: "Danh sách tài liệu liên quan" });
     } else await act(async () => release(buildWorkspace()));
-    expect(screen.getByLabelText("Kết quả")).toHaveValue("unsaved processing draft");
+    expect(screen.getByLabelText("Kết quả thẩm định")).toHaveValue("unsaved processing draft");
     expect(screen.getByRole("button", { name: "Chọn Quyết định cấp CC" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("Exact selected document")).toBeInTheDocument();
     expect(apiMocks.getDocumentDetail).toHaveBeenCalledTimes(1);
@@ -2267,10 +2267,10 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(state === "error" ? 3 : 2);
     expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
     apiMocks.upsertCaseAssessment.mockRejectedValue(buildApiError("stale", 409));
-    fireEvent.click(screen.getByRole("button", { name: "Lưu Kết quả" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lưu Kết quả thẩm định" }));
     await screen.findByRole("alert");
     expect(apiMocks.upsertCaseAssessment.mock.calls[0][1]).toMatchObject({ expected_version: 2, assessment_result: "unsaved processing draft" });
-    expect(screen.getByLabelText("Kết quả")).toHaveValue("unsaved processing draft");
+    expect(screen.getByLabelText("Kết quả thẩm định")).toHaveValue("unsaved processing draft");
     expect(apiMocks.upsertCaseAssessment).toHaveBeenCalledTimes(1);
   });
 
@@ -3111,10 +3111,10 @@ describe("App Slice A.4 search workspace", () => {
       inspection_event_id: null,
     });
 
-    renderApp(["/search?event_tab=X%E1%BB%AD+l%C3%BD"]);
+    renderApp(["/search?event_tab=H%E1%BB%93+s%C6%A1"]);
 
-    expect(await screen.findByText("Thông tin xử lý")).toBeInTheDocument();
-    expect(screen.getByText("Các mốc xử lý hành chính")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Sửa Người thẩm định" })).toBeInTheDocument();
+    expect(screen.queryByText("Các mốc xử lý hành chính")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Ghi chú")).not.toBeInTheDocument();
 
     fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Người thẩm định" }));
@@ -3145,7 +3145,28 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(await screen.findByText("Chuyên viên C")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xử lý tiếp" }));
+    expect(screen.queryByRole("button", { name: "Sửa Người thẩm định" })).not.toBeInTheDocument();
     expect(screen.getByText("Tiếp nhận hồ sơ")).toBeInTheDocument();
+  });
+
+  it("places dossier assessment in registration and keeps timeline navigation independent of its mutation owner", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    const { container } = renderApp(["/search"]);
+    await screen.findByRole("button", { name: "Sửa Người thẩm định" });
+    expect(screen.getByRole("button", { name: "Sửa Kết quả thẩm định" })).toBeInTheDocument();
+    expect(screen.queryByText("Các mốc xử lý hành chính")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xử lý tiếp" }));
+    expect(screen.getByText("Các mốc xử lý hành chính")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sửa Người thẩm định" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hồ sơ đăng ký" }));
+    expect(screen.getAllByRole("button", { name: "Sửa Người thẩm định" })).toHaveLength(1);
+    expect(container.querySelectorAll('.history-table tr[aria-selected="true"]')).toHaveLength(1);
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.upsertCaseAssessment).not.toHaveBeenCalled();
   });
 
   it("preserves unsaved case assessment value on 409 conflict and keeps the timeline read-only", async () => {
@@ -3157,17 +3178,18 @@ describe("App Slice A.4 search workspace", () => {
       buildApiError("Stale case_assessment update. Expected version 2, current version is 3.", 409),
     );
 
-    renderApp(["/search?event_tab=X%E1%BB%AD+l%C3%BD"]);
+    renderApp(["/search?event_tab=H%E1%BB%93+s%C6%A1"]);
 
-    expect(await screen.findByText("Thông tin xử lý")).toBeInTheDocument();
-    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Kết quả" }));
-    fireEvent.change(screen.getByLabelText("Kết quả"), { target: { value: "Đề xuất trình ký" } });
-    fireEvent.click(screen.getByRole("button", { name: "Lưu Kết quả" }));
+    expect(await screen.findByRole("button", { name: "Sửa Người thẩm định" })).toBeInTheDocument();
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Kết quả thẩm định" }));
+    fireEvent.change(screen.getByLabelText("Kết quả thẩm định"), { target: { value: "Đề xuất trình ký" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu Kết quả thẩm định" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Không thể lưu vì bước xử lý đã bị thay đổi hoặc hồ sơ đã ở trạng thái kết thúc. Tải lại workspace rồi thử lại.",
     );
-    expect(screen.getByLabelText("Kết quả")).toHaveValue("Đề xuất trình ký");
+    expect(screen.getByLabelText("Kết quả thẩm định")).toHaveValue("Đề xuất trình ký");
+    fireEvent.click(screen.getByRole("button", { name: "Xử lý tiếp" }));
     expect(screen.getByText("Tiếp nhận hồ sơ")).toBeInTheDocument();
     expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);

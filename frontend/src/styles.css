@@ -2483,3 +2483,20 @@ tr:focus-visible {
   .legacy-search-page .master-detail-split-certificate,
   .legacy-search-page .master-detail-split-eligibility { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* MainForm dossier assessment is distinct from inspection/final conclusions.
+   Compose the existing application and assessment owners without copying state. */
+.legacy-search-page .legacy-dossier-section { display: grid; grid-template-columns: minmax(0, .48fr) minmax(0, .52fr); gap: 4px 10px; }
+.legacy-search-page .legacy-dossier-section > h4 { grid-column: 1 / -1; margin: 0; }
+.legacy-search-page .case-application-primary { grid-column: 1; grid-row: 2; grid-template-columns: max-content minmax(0, 1fr); }
+.legacy-search-page :is(.case-assessment-stack, .case-assessment-section, .case-assessment-grid) { display: contents; }
+.legacy-search-page .case-assessment-metadata { grid-column: 1; grid-row: 3; grid-template-columns: max-content minmax(0, 1fr); }
+.legacy-search-page .case-assessment-result { grid-column: 2; grid-row: 2 / 4; min-width: 0; }
+.legacy-search-page .case-assessment-result .editable-detail-value { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+.legacy-search-page .case-assessment-result .detail-value-slot { min-height: 90px; }
+.legacy-search-page .case-application-extra { grid-column: 1 / -1; }
+.legacy-search-page .legacy-dossier-section > .panel-actions { grid-column: 1 / -1; }
+@media (max-width: 600px) {
+  .legacy-search-page .legacy-dossier-section { grid-template-columns: minmax(0, 1fr); }
+  .legacy-search-page .case-assessment-result { grid-column: 1; grid-row: 4; }
+}

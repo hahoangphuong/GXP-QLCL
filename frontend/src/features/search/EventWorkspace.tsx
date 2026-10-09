@@ -323,6 +323,7 @@ function renderCaseStepContent(
     return (
       <div className="event-step-stack">
         <CaseApplicationWorkspace
+          assessment={<CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} view="assessment" />}
           caseWorkspace={caseWorkspace}
           onResolveInspectionFolder={onResolveInspectionFolder}
           onSave={onCaseApplicationSave}
@@ -396,7 +397,7 @@ function renderCaseStepContent(
   if (activeTab === "Xử lý") {
     return (
       <div className="event-step-stack">
-        <CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} />
+        <CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} view="timeline" />
         <ContextualDocumentSection
           contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
           items={documentItems}

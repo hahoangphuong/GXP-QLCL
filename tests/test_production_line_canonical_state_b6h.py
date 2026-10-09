@@ -4,6 +4,9 @@ from hashlib import sha256
 
 import json
 
+import pytest
+from tools.export_production_line_canonical_state_b6h import main as exporter_main
+
 from backend.app.domain.production_line_canonical_state import PROTECTED_DATABASE_NAMES, canonical_state_digest_pair
 from backend.app.domain.production_line_population import CANONICAL_STATE_SCHEMA_VERSION, build_production_line_population_plan, canonical_artifact_bytes, canonical_json_bytes
 from tools.plan_production_line_population_b6h import load_json_with_sha256
@@ -56,3 +59,17 @@ def test_planner_accepts_exporter_semantic_digest_not_file_digest():
         assert "does not match semantic content" in str(exc)
     else:
         raise AssertionError("file SHA must not be accepted as canonical semantic provenance")
+
+
+
+def test_b6h_canonical_export_cli_does_not_replace_previous_snapshot(tmp_path, capsys):
+    output = tmp_path / "canonical_state.json"
+    output.write_bytes(b"immutable-prior-canonical-state")
+    with pytest.raises(SystemExit) as error:
+        exporter_main([
+            "--database-url", "postgresql://unused:unused@localhost/unused",
+            "--output", str(output),
+        ])
+    assert error.value.code == 2
+    assert "already exists" in capsys.readouterr().err
+    assert output.read_bytes() == b"immutable-prior-canonical-state"

@@ -23,6 +23,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--database-url", required=True, help="Explicit PostgreSQL URL; never serialized.")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
+    # Canonical export bytes are source provenance; never replace a previous
+    # snapshot even before opening a READ ONLY PostgreSQL connection.
+    if args.output.exists() or args.output.is_symlink():
+        parser.error("B6H canonical-state output already exists; select a fresh path")
     url = make_url(args.database_url)
     if url.get_backend_name() != "postgresql":
         parser.error("B6H exporter requires PostgreSQL")
@@ -42,7 +46,11 @@ def main(argv: list[str] | None = None) -> int:
     payload = canonical_artifact_bytes(state)
     semantic_sha256, file_sha256 = canonical_state_digest_pair(state)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_bytes(payload)
+    try:
+        with args.output.open("xb") as handle:
+            handle.write(payload)
+    except FileExistsError:
+        parser.error("B6H canonical-state output already exists; select a fresh path")
     print(f"CANONICAL_STATE_SHA256={semantic_sha256}")
     print(f"CANONICAL_STATE_FILE_SHA256={file_sha256}")
     return 0

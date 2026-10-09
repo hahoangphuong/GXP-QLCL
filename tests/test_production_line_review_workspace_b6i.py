@@ -277,3 +277,65 @@ def test_b6i_import_cli_uses_private_extraction_path_and_preserves_existing_neig
     assert legacy_extracted.read_bytes() == b"do-not-delete-preexisting-evidence"
     assert len(extraction_paths) == 1
     assert not extraction_paths[0].exists()
+
+
+
+def test_b6i_workspace_cli_refuses_preexisting_artifact_before_source_access(tmp_path, capsys):
+    from tools import build_production_line_review_workspace_b6i as builder
+
+    output_dir = tmp_path / "workspace"
+    output_dir.mkdir()
+    prior = output_dir / "production_line_physical_identity_roster_template_v2.json"
+    prior.write_bytes(b"existing-source-evidence")
+    with pytest.raises(SystemExit) as error:
+        builder.main([
+            "--snapshot", str(tmp_path / "nonexistent-snapshot"),
+            "--canonical-state", str(tmp_path / "nonexistent-state"),
+            "--output-dir", str(output_dir), "--skip-xlsx",
+        ])
+    assert error.value.code == 2
+    assert "already exists" in capsys.readouterr().err
+    assert prior.read_bytes() == b"existing-source-evidence"
+
+
+def test_b6i_workspace_cli_stages_xlsx_before_exclusive_publication(tmp_path, monkeypatch):
+    from tools import build_production_line_review_workspace_b6i as builder
+
+    snapshot = tmp_path / "snapshot.json"
+    state = tmp_path / "state.json"
+    output_dir = tmp_path / "workspace"
+    snapshot.write_bytes(b"{}")
+    state.write_bytes(b"{}")
+    monkeypatch.setattr(builder, "CANONICAL_SNAPSHOT_SHA256", sha256(b"{}").hexdigest())
+    roster = {
+        "schema_version": "production-line-physical-identity-review/v2",
+        "planner_version": "test-planner",
+        "legacy_snapshot_sha256": "a" * 64, "canonical_state_sha256": "b" * 64,
+        "candidate_set_sha256": "c" * 64, "items": [],
+    }
+    monkeypatch.setattr(builder, "build_review_workspace", lambda *args, **kwargs: {"roster": roster, "evidence": []})
+    monkeypatch.setattr(builder, "build_certificate_site_mismatch_report", lambda *args: {"records": []})
+    monkeypatch.setattr(builder, "build_cross_site_text_report", lambda *args: {"records": []})
+    monkeypatch.setattr(builder, "build_review_summary", lambda *args, **kwargs: "test-summary\n")
+    staged_paths = []
+
+    def fake_build(command, *, check, env):
+        roster_in = Path(command[command.index("--roster") + 1])
+        evidence_in = Path(command[command.index("--evidence") + 1])
+        workbook_out = Path(command[command.index("--output") + 1])
+        assert check is True
+        assert json.loads(roster_in.read_bytes()) == roster
+        assert json.loads(evidence_in.read_bytes())["records"] == []
+        assert workbook_out.parent != output_dir
+        staged_paths.append(workbook_out)
+        workbook_out.write_bytes(b"mock-xlsx")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(builder.subprocess, "run", fake_build)
+    assert builder.main([
+        "--snapshot", str(snapshot), "--canonical-state", str(state),
+        "--output-dir", str(output_dir),
+    ]) == 0
+    assert (output_dir / "production_line_physical_identity_review_v1.xlsx").read_bytes() == b"mock-xlsx"
+    assert (output_dir / "production_line_physical_identity_review_summary_v2.md").read_text() == "test-summary\n"
+    assert len(staged_paths) == 1 and not staged_paths[0].exists()

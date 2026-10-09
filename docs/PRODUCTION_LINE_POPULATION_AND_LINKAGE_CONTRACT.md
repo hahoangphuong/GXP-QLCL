@@ -227,3 +227,12 @@ or delete independent files. Keep every generated reviewed roster and sealed
 plan as a distinct, immutable file and record its exact-byte SHA externally.
 This is filesystem protection only: it does not authenticate a reviewer
 or authorize database writes.
+
+
+The B6I workspace builder now preflights *all* generated artifact paths,
+renders the optional XLSX in a private staging directory, then publishes each
+JSON/Markdown/XLSX file exclusively. A failed workbook conversion must not
+replace an existing review artifact or publish partially rendered outputs.
+The B6H canonical-state exporter likewise refuses an existing snapshot path
+before database access and writes a new snapshot exclusively. The caller must
+use fresh output locations for independent source-freeze and review cycles.

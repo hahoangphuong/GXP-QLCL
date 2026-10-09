@@ -6,6 +6,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import subprocess
 import sys
 from typing import Any
@@ -43,6 +44,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--artifact-tool-url", help="Explicit file URL for the approved bundled @oai/artifact-tool runtime.")
     parser.add_argument("--skip-xlsx", action="store_true", help="Write JSON/Markdown review artifacts only.")
     args = parser.parse_args(argv)
+    output_dir = args.output_dir.resolve()
+    generated_names = (
+        "production_line_physical_identity_roster_template_v2.json",
+        "production_line_physical_identity_evidence_v1.json",
+        "production_line_certificate_site_mismatch_review_v1.json",
+        "production_line_cross_site_text_review_v1.json",
+        "production_line_physical_identity_review_summary_v2.md",
+    ) + (() if args.skip_xlsx else ("production_line_physical_identity_review_v1.xlsx",))
+    source_paths = {args.snapshot.resolve(), args.canonical_state.resolve()}
+    destinations = [output_dir / name for name in generated_names]
+    if any(path.resolve() in source_paths for path in destinations):
+        parser.error("B6I workspace output must not alias snapshot or canonical-state input")
+    if any(path.exists() or path.is_symlink() for path in destinations):
+        parser.error("B6I workspace output already exists; select a fresh directory")
     snapshot_raw = args.snapshot.read_bytes()
     snapshot_sha = sha256(snapshot_raw).hexdigest()
     if snapshot_sha != CANONICAL_SNAPSHOT_SHA256:
@@ -55,8 +70,6 @@ def main(argv: list[str] | None = None) -> int:
         canonical_state=canonical_state,
         canonical_state_sha256=canonical_state_sha,
     )
-    output_dir = args.output_dir.resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
     mismatch_report = build_certificate_site_mismatch_report(workspace, canonical_state)
     cross_site_report = build_cross_site_text_report(workspace["roster"])
     artifacts = {
@@ -70,29 +83,43 @@ def main(argv: list[str] | None = None) -> int:
         "production_line_certificate_site_mismatch_review_v1.json": mismatch_report,
         "production_line_cross_site_text_review_v1.json": cross_site_report,
     }
-    for filename, payload in artifacts.items():
-        (output_dir / filename).write_bytes(canonical_artifact_bytes(payload))
-    (output_dir / "production_line_physical_identity_review_summary_v2.md").write_text(
-        build_review_summary(
-            workspace["roster"],
-            certificate_mismatch_report=mismatch_report,
-            cross_site_report=cross_site_report,
-        ), encoding="utf-8", newline="\n"
-    )
-    roster_path = output_dir / "production_line_physical_identity_roster_template_v2.json"
+    # Render every component before creating final evidence files: if the
+    # optional XLSX builder fails, no partial review workspace is published.
+    payloads = {name: canonical_artifact_bytes(payload) for name, payload in artifacts.items()}
+    payloads["production_line_physical_identity_review_summary_v2.md"] = build_review_summary(
+        workspace["roster"],
+        certificate_mismatch_report=mismatch_report,
+        cross_site_report=cross_site_report,
+    ).encode("utf-8")
     if not args.skip_xlsx:
         node = args.node or "node"
         environment = dict(os.environ)
         if args.artifact_tool_url:
             environment["B6I_ARTIFACT_TOOL_URL"] = args.artifact_tool_url
-        subprocess.run([
-            node,
-            str(ROOT / "tools" / "build_production_line_review_workbook_b6i.mjs"),
-            "--roster", str(roster_path),
-            "--evidence", str(output_dir / "production_line_physical_identity_evidence_v1.json"),
-            "--output", str(output_dir / "production_line_physical_identity_review_v1.xlsx"),
-        ], check=True, env=environment)
-    print(f"REVIEW_ROSTER_SHA256={sha256(roster_path.read_bytes()).hexdigest()}")
+        with TemporaryDirectory(prefix="gxp-b6i-workspace-") as temporary:
+            staged = Path(temporary)
+            staged_roster = staged / "roster.json"
+            staged_evidence = staged / "evidence.json"
+            staged_workbook = staged / "review.xlsx"
+            staged_roster.write_bytes(payloads["production_line_physical_identity_roster_template_v2.json"])
+            staged_evidence.write_bytes(payloads["production_line_physical_identity_evidence_v1.json"])
+            subprocess.run([
+                node,
+                str(ROOT / "tools" / "build_production_line_review_workbook_b6i.mjs"),
+                "--roster", str(staged_roster),
+                "--evidence", str(staged_evidence),
+                "--output", str(staged_workbook),
+            ], check=True, env=environment)
+            payloads["production_line_physical_identity_review_v1.xlsx"] = staged_workbook.read_bytes()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for filename, payload in payloads.items():
+        try:
+            with (output_dir / filename).open("xb") as output:
+                output.write(payload)
+        except FileExistsError:
+            parser.error(f"B6I workspace output already exists: {filename}")
+    roster_path = output_dir / "production_line_physical_identity_roster_template_v2.json"
+    print(f"REVIEW_ROSTER_SHA256={sha256(payloads[roster_path.name]).hexdigest()}")
     print(f"CANDIDATE_SET_SHA256={workspace['roster']['candidate_set_sha256']}")
     return 0
 

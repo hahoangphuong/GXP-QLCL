@@ -59,7 +59,15 @@ it("reads real synthetic document bytes through case-scoped StorageService", asy
   const result = await openCaseDocumentCurrentContent(
     fixture.case, fixture.document, auth, true,
   );
-  expect(await result.blob.text()).toBe(fixture.binary_text);
+  // Vitest's jsdom Blob does not implement Blob.text; use the browser's
+  // actual FileReader interface rather than mocking the binary response.
+  const body = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(result.blob);
+  });
+  expect(body).toBe(fixture.binary_text);
   expect(result.filename).toBe("synthetic-current.docx");
   expect(result.contentType).toContain("application/");
 });
@@ -95,7 +103,7 @@ it("enforces real backend write RBAC for a reader; no mutation proceeds", async 
 
 it("responds with real UUID-owned case and facility workspaces", async () => {
   const caseResult = await getCaseWorkspace(fixture.case, auth, true);
-  expect(caseResult.summary.id).toBe(fixture.case);
+  expect(caseResult.case_summary.id).toBe(fixture.case);
   const facility = await getFacilityWorkspace(fixture.site, auth, true);
   expect(facility.summary.site_id).toBe(fixture.site);
 });

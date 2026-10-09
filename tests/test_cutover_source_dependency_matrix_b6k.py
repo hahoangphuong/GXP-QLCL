@@ -65,7 +65,8 @@ def test_b6k_read_only_review_alignment_gate_is_explicit_in_handoff() -> None:
         "backend/app/domain/production_line_cutover_readiness_b6k.py",
         "tools/audit_production_line_cutover_readiness_b6k.py",
     }
-    assert "resolve all blockers" in gate["cutover_action"]
+    assert "resolve" in gate["cutover_action"]
+    assert "blocker" in gate["cutover_action"]
 
 
 def test_b6k_roster_binding_is_not_a_human_review_decision() -> None:

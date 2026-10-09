@@ -144,7 +144,11 @@ planner-blocked candidates. It also reports **source-action** blockers in
 have a blocked Case/Certificate action, an unexpected candidate no-op, or
 an unknown source-action classification. Source actions not bound to a
 candidate are still counted when explicitly blocked. The intended
-`NOT_APPLICABLE / ALREADY_LINKED_TO_PLANNED_LINE` no-op does not block.
+`NOT_APPLICABLE / ALREADY_LINKED_TO_PLANNED_LINE` no-op does not block
+**only when the original canonical FK already equals the planned line**;
+a resealed no-op label alone is insufficient. Unknown source classifications
+(including unbound sources) and writable links missing canonical owners
+are also blockers.
 The report includes separate `blocked_candidate_count` and
 `blocked_source_action_count`; either nonzero blocks the audit CLI.
 Invoke it only with independently retained

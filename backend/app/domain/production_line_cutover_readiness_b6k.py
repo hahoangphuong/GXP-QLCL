@@ -120,8 +120,18 @@ def audit_b6j_review_alignment(plan: Mapping[str, Any], roster: Mapping[str, Any
             elif candidate_key is not None and classification == "NOT_APPLICABLE":
                 if action.get("block_reason") != "ALREADY_LINKED_TO_PLANNED_LINE":
                     reasons.append("UNEXPECTED_CANDIDATE_NOOP")
-            elif candidate_key is not None and classification not in accepted_links:
-                reasons.append("UNKNOWN_CANDIDATE_ACTION")
+                else:
+                    candidate = pi[candidate_key]
+                    target = (
+                        candidate.get("proposed_production_line_id")
+                        or candidate.get("existing_production_line_id")
+                    )
+                    if target is None or action.get("expected_production_line_id") != target:
+                        reasons.append("NOOP_TARGET_NOT_PRELINKED")
+            elif classification not in accepted_links and classification != "NOT_APPLICABLE":
+                reasons.append("UNKNOWN_SOURCE_ACTION")
+            if classification in accepted_links and not action.get("canonical_record_id"):
+                reasons.append("LINK_MISSING_CANONICAL_OWNER")
             if reasons:
                 source_action_findings.append({
                     "source_type": kind,

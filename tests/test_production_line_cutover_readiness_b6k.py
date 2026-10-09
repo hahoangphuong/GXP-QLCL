@@ -283,7 +283,7 @@ def test_cli_never_overwrites_approved_input_artifact(tmp_path, capsys, overwrit
     [
         ("BLOCKED_SITE_MISMATCH", "CASE_CERTIFICATE_SITE_DIFFERS", "BLOCKED_SOURCE_ACTION"),
         ("NOT_APPLICABLE", "UNREVIEWED_NOOP", "UNEXPECTED_CANDIDATE_NOOP"),
-        ("UNCLASSIFIED", "UNKNOWN_STATE", "UNKNOWN_CANDIDATE_ACTION"),
+        ("UNCLASSIFIED", "UNKNOWN_STATE", "UNKNOWN_SOURCE_ACTION"),
     ],
 )
 def test_approved_candidate_cannot_hide_blocked_source_action(
@@ -308,13 +308,34 @@ def test_approved_candidate_cannot_hide_blocked_source_action(
 
 def test_already_linked_noop_is_not_falsely_reported_as_source_blocker():
     plan, roster = fixture()
+    # In genuine B6J state, an already-linked source belongs to an
+    # existing ProductionLine. Another missing Case FK can still be linked.
+    candidate = plan["candidates"][0]
+    target = "22222222-2222-4222-8222-222222222222"
+    candidate["classification"] = "MAP_TO_EXISTING_PRODUCTION_LINE"
+    candidate["proposed_production_line_id"] = None
+    candidate["existing_production_line_id"] = target
+    case = plan["case_links"][0]
+    case["classification"] = "LINK_TO_EXISTING_LINE"
+    case["planned_production_line_id"] = target
     plan["certificate_links"][0].update(
         classification="NOT_APPLICABLE",
         block_reason="ALREADY_LINKED_TO_PLANNED_LINE",
+        expected_production_line_id=target,
+        planned_production_line_id=target,
     )
+    plan["summary_counts"]["candidates"] = {"MAP_TO_EXISTING_PRODUCTION_LINE": 1}
+    plan["summary_counts"]["cases"] = {"LINK_TO_EXISTING_LINE": 1}
     plan["summary_counts"]["certificates"] = {"NOT_APPLICABLE": 1}
     plan["plan_sha256"] = plan_digest(plan)
     _validate_plan(plan)
+    item = roster["items"][0]
+    item.update(
+        review_decision="MAP_TO_EXISTING_PRODUCTION_LINE",
+        approved_display_code=None,
+        existing_production_line_id=target,
+    )
+    reseal(roster)
     report = audit_b6j_review_alignment(plan, roster)
     assert report["status"] == "REVIEW_ALIGNMENT_PASS"
     assert report["blocked_source_action_count"] == 0
@@ -366,3 +387,42 @@ def test_source_only_blocker_causes_cli_exit_three_with_preserved_report(tmp_pat
     assert report["blocked_candidate_count"] == 0
     assert report["blocked_source_action_count"] == 1
     assert report["cutover_authorized"] is False
+
+
+def test_resealed_noop_label_cannot_hide_missing_prior_production_line_fk():
+    plan, roster = fixture()
+    record = plan["certificate_links"][0]
+    record["classification"] = "NOT_APPLICABLE"
+    record["block_reason"] = "ALREADY_LINKED_TO_PLANNED_LINE"
+    # expected_production_line_id is still None, unlike a true linked no-op.
+    plan["summary_counts"]["certificates"] = {"NOT_APPLICABLE": 1}
+    plan["plan_sha256"] = plan_digest(plan)
+    _validate_plan(plan)
+    report = audit_b6j_review_alignment(plan, roster)
+    assert report["status"] == "REVIEW_ALIGNMENT_BLOCKED"
+    assert "NOOP_TARGET_NOT_PRELINKED" in report["source_action_findings"][0]["blockers"]
+
+
+def test_unknown_unbound_source_classification_is_not_silently_accepted():
+    plan, roster = fixture()
+    plan["certificate_links"].append({
+        "legacy_id": 21, "candidate_key": None, "classification": "UNKNOWN",
+        "canonical_record_id": None,
+    })
+    plan["summary_counts"]["certificates"] = {"LINK_TO_NEW_LINE": 1, "UNKNOWN": 1}
+    plan["plan_sha256"] = plan_digest(plan)
+    _validate_plan(plan)
+    report = audit_b6j_review_alignment(plan, roster)
+    assert report["status"] == "REVIEW_ALIGNMENT_BLOCKED"
+    assert report["source_action_findings"][0]["candidate_key"] is None
+    assert "UNKNOWN_SOURCE_ACTION" in report["source_action_findings"][0]["blockers"]
+
+
+def test_missing_linked_canonical_owner_is_a_review_blocker():
+    plan, roster = fixture()
+    plan["certificate_links"][0]["canonical_record_id"] = None
+    plan["plan_sha256"] = plan_digest(plan)
+    _validate_plan(plan)
+    report = audit_b6j_review_alignment(plan, roster)
+    assert report["status"] == "REVIEW_ALIGNMENT_BLOCKED"
+    assert "LINK_MISSING_CANONICAL_OWNER" in report["source_action_findings"][0]["blockers"]

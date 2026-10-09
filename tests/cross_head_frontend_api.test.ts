@@ -11,6 +11,7 @@ import {
   getDocumentDetail,
   getFacilityWorkspace,
   openCaseDocumentCurrentContent,
+  upsertCaseApplication,
 } from "./api";
 
 type Fixture = Record<
@@ -106,4 +107,45 @@ it("responds with real UUID-owned case and facility workspaces", async () => {
   expect(caseResult.case_summary.id).toBe(fixture.case);
   const facility = await getFacilityWorkspace(fixture.site, auth, true);
   expect(facility.summary.site_id).toBe(fixture.site);
+});
+
+
+it("enforces real optimistic-concurrency 409 across two authorized sessions", async () => {
+  // Distinct users and distinct requests, with a stale token retained by A.
+  // All writes are confined to a synthetic case in disposable PostgreSQL.
+  const writerA = { username: "cross-head-writer-a", role: "inspector" } as const;
+  const writerB = { username: "cross-head-writer-b", role: "inspector" } as const;
+  const initialize = await upsertCaseApplication(
+    fixture.other_case,
+    { expected_version: null, dossier_code: "CI_INITIAL" },
+    writerA, true,
+  );
+  expect(initialize.case_id).toBe(fixture.other_case);
+  expect(initialize.dossier_code).toBe("CI_INITIAL");
+  const staleToken = initialize.row_version;
+
+  const winner = await upsertCaseApplication(
+    fixture.other_case,
+    { expected_version: staleToken, dossier_code: "CI_WINNER" },
+    writerB, true,
+  );
+  expect(winner.row_version).toBeGreaterThan(staleToken);
+  expect(winner.dossier_code).toBe("CI_WINNER");
+
+  const callsBeforeConflict = routeCalls.length;
+  const staleDraft = { expected_version: staleToken, dossier_code: "CI_STALE_DRAFT" };
+  await expect(upsertCaseApplication(
+    fixture.other_case, staleDraft, writerA, true,
+  )).rejects.toMatchObject({ status: 409 });
+  expect(routeCalls.slice(callsBeforeConflict)).toEqual([
+    { path: `/cases/${fixture.other_case}/application`, method: "PUT" },
+  ]);
+  // A caller's stale draft/token must not be silently rewritten, retried
+  // or accepted by the server after B has committed a newer version.
+  expect(staleDraft).toEqual({
+    expected_version: staleToken, dossier_code: "CI_STALE_DRAFT",
+  });
+  const workspace = await getCaseWorkspace(fixture.other_case, writerA, true);
+  expect(workspace.application.row_version).toBe(winner.row_version);
+  expect(workspace.application.dossier_code).toBe("CI_WINNER");
 });

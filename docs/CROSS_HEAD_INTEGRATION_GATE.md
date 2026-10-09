@@ -40,13 +40,17 @@ JSON errors and binary responses.
 - Wrong parent / unknown document 404 responses.
 - Missing current document binary 409, with a single network request.
 - Reader role cannot call the case creation mutation (403).
+- Real version-token 409 conflict: two distinct inspector identities
+  update an application on a synthetic disposable case; an older token is
+  rejected, the winning persisted value/version remains unchanged, and
+  the client issues exactly one request without implicit retry.
 - Case and facility workspace reads on synthetic UUID identities.
 - Ref identity checked before and after the probe.
 
 The client fixture is not a browser. This gate **does not** certify
 real device focus/ARIA speech, NVDA/JAWS, navigation behavior, production
 authentication/OIDC/IAP, real live-backend staging, legacy SMB/Tailscale,
-concurrent mutation conflict semantics or persistent draft state. Those
+simultaneous racing transaction ordering or browser draft persistence. Those
 remain separate staging/UAT gates.
 
 The selected frontend SHA changes **only** through a reviewed update

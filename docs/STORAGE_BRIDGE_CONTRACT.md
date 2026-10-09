@@ -272,3 +272,16 @@ documents and templates may legitimately refer to the same binary.
 It is a review signal, never a winner-selection, orphan classification,
 database correction or cleanup authorization. Registry overlap is
 distinct from an `inspection` `storage_binding` folder hint.
+
+## Mandatory metadata-reader privilege gate
+
+Before querying lineage, the optional CLI confirms the transaction is
+read-only **and** queries PostgreSQL role attributes/effective grants.
+The role must have SELECT on `document_version`,
+`template_definition`, and `storage_binding`, but no INSERT, UPDATE,
+DELETE, TRUNCATE, REFERENCES or TRIGGER rights on those tables; it must
+also lack elevated PostgreSQL role attributes and database/schema CREATE.
+This check includes inherited table grants and refuses superuser,
+runtime/migration or inadequately provisioned identities. A failure
+returns a generic incomplete audit and rolls back. Transaction read-only
+is an additional control, not a substitute for this permission gate.

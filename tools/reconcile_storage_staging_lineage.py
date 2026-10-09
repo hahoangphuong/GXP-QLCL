@@ -58,6 +58,36 @@ def _parse_inventory(path: Path) -> StagingAudit:
     )
 
 
+def _require_metadata_reader(conn) -> None:
+    """Reject privileged or writable DB identities, even in a read-only tx.
+
+    Operator policy requires a dedicated reader, not a runtime/migration
+    account that happens to use a SELECT-only transaction in this process.
+    PostgreSQL computes inherited grants via has_table_privilege.
+    """
+    row = conn.exec_driver_sql(
+        """
+        SELECT
+            (r.rolsuper OR r.rolcreatedb OR r.rolcreaterole
+             OR r.rolreplication OR r.rolbypassrls) AS elevated,
+            has_database_privilege(current_database(), 'CREATE') AS db_create,
+            has_schema_privilege(current_schema(), 'CREATE') AS schema_create,
+            has_table_privilege('document_version', 'SELECT') AS version_read,
+            has_table_privilege('template_definition', 'SELECT') AS template_read,
+            has_table_privilege('storage_binding', 'SELECT') AS binding_read,
+            has_table_privilege('document_version', 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') AS version_write,
+            has_table_privilege('template_definition', 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') AS template_write,
+            has_table_privilege('storage_binding', 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') AS binding_write
+        FROM pg_roles AS r WHERE r.rolname = current_user
+        """
+    ).one()
+    elevated, db_create, schema_create, *table_flags = row
+    if elevated or db_create or schema_create or table_flags != [
+        True, True, True, False, False, False,
+    ]:
+        raise RuntimeError("A dedicated metadata SELECT-only PostgreSQL role is required.")
+
+
 def _read_only_reconcile(database_url: str, inventory: StagingAudit):
     # PostgreSQL only. Transaction-level read-only is confirmed before
     # any lineage SELECT. A rollback is issued even for successful audits.
@@ -78,6 +108,7 @@ def _read_only_reconcile(database_url: str, inventory: StagingAudit):
                 conn.exec_driver_sql("SET TRANSACTION READ ONLY")
                 if conn.exec_driver_sql("SHOW transaction_read_only").scalar_one() != "on":
                     raise RuntimeError("Read-only transaction was not confirmed.")
+                _require_metadata_reader(conn)
                 with Session(bind=conn, autoflush=False) as session:
                     return reconcile_staging_lineage(
                         session, inventory, max_candidates=_MAX_CANDIDATES,

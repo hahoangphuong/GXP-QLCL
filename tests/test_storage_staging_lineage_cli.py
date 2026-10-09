@@ -55,8 +55,14 @@ def test_lineage_cli_rejects_non_postgres_database(tmp_path, monkeypatch, capsys
 
 
 class _FakeResult:
+    def __init__(self, *, role_flags=None):
+        self.role_flags = role_flags or (False, False, False, True, True, True, False, False, False)
+
     def scalar_one(self):
         return "on"
+
+    def one(self):
+        return self.role_flags
 
 
 class _FakeTransaction:
@@ -71,13 +77,14 @@ class _FakeConnection:
     def __init__(self):
         self.transaction = _FakeTransaction()
         self.statements = []
+        self.role_flags = (False, False, False, True, True, True, False, False, False)
 
     def begin(self):
         return self.transaction
 
     def exec_driver_sql(self, sql):
         self.statements.append(sql)
-        return _FakeResult()
+        return _FakeResult(role_flags=self.role_flags)
 
     def __enter__(self):
         return self
@@ -141,7 +148,9 @@ def test_lineage_cli_confirms_read_only_and_always_rolls_back(tmp_path, monkeypa
     assert result == 2
     assert data["input_inventory_truncated"] is True
     assert data["status"] == "review_only"
-    assert engine.connection.statements == ["SET TRANSACTION READ ONLY", "SHOW transaction_read_only"]
+    assert engine.connection.statements[:2] == ["SET TRANSACTION READ ONLY", "SHOW transaction_read_only"]
+    assert len(engine.connection.statements) == 3
+    assert "has_table_privilege" in engine.connection.statements[2]
     assert engine.connection.transaction.rollbacks == 1
     assert engine.disposed
     assert len(seen) == 1
@@ -158,6 +167,38 @@ def test_lineage_cli_rejects_unsupported_postgres_driver(tmp_path, monkeypatch, 
         lambda *args, **kwargs: pytest.fail("unsupported driver must never connect"))
     assert cli.main(["--inventory-json", str(_write_inventory(tmp_path))]) == 3
     assert json.loads(capsys.readouterr().out)["reason"] == "lineage_audit_failed"
+
+
+@pytest.mark.parametrize(
+    "role_flags",
+    [
+        (True, False, False, True, True, True, False, False, False),
+        (False, True, False, True, True, True, False, False, False),
+        (False, False, True, True, True, True, False, False, False),
+        (False, False, False, True, True, True, True, False, False),
+        (False, False, False, True, True, True, False, True, False),
+        (False, False, False, True, True, True, False, False, True),
+        (False, False, False, True, False, True, False, False, False),
+    ],
+)
+def test_lineage_cli_rejects_privileged_or_incomplete_reader_grants(
+    tmp_path, monkeypatch, capsys, role_flags,
+):
+    monkeypatch.setenv(
+        "GXP_STORAGE_LINEAGE_READONLY_DATABASE_URL",
+        "postgresql+psycopg://admin:secret@localhost/test",
+    )
+    engine = _FakeEngine()
+    engine.connection.role_flags = role_flags
+    monkeypatch.setattr(cli, "create_engine", lambda *args, **kwargs: engine)
+    monkeypatch.setattr(cli, "Session", lambda **kwargs:
+        pytest.fail("unauthorized DB role must be rejected before Session"))
+    assert cli.main(["--inventory-json", str(_write_inventory(tmp_path))]) == 3
+    output = capsys.readouterr().out
+    assert json.loads(output)["reason"] == "lineage_audit_failed"
+    assert "secret" not in output
+    assert engine.connection.transaction.rollbacks == 1
+    assert engine.disposed
 
 
 def test_lineage_cli_db_failure_never_leaks_secret_and_rolls_back(tmp_path, monkeypatch, capsys):

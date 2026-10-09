@@ -24,15 +24,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--expected-reviewed-roster-file-sha256", required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
-    # Reports are immutable cutover evidence. Reusing an existing output
-    # would silently replace an older result or modify a hard-linked input.
-    # Exclusive creation below also closes a path-alias/race window.
-    if args.output.exists() or args.output.is_symlink():
-        parser.error("B6K output already exists; select a fresh report path")
-    # The report must not overwrite either independently approved input
-    # (including aliases via symlinks or relative/absolute path spellings).
+    # Reject the exact original input path (or symlink alias) first, so
+    # the protected-source diagnostic stays precise.
     if args.output.resolve() in {args.plan.resolve(), args.reviewed_roster.resolve()}:
         parser.error("B6K report output must differ from both immutable input artifacts")
+    # Reports are immutable cutover evidence. Refuse existing output files,
+    # including hard-link aliases and previously approved reports. Exclusive
+    # creation below also closes the check/open race window.
+    if args.output.exists() or args.output.is_symlink():
+        parser.error("B6K output already exists; select a fresh report path")
     pbytes, rbytes = args.plan.read_bytes(), args.reviewed_roster.read_bytes()
     for label, payload, expected in (
         ("plan", pbytes, args.expected_plan_file_sha256),

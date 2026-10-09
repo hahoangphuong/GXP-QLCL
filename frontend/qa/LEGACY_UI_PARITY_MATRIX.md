@@ -66,7 +66,7 @@ evidenced. Baseline: `50576b0b383161e26e27b6cdc4a1a469aff1ae17`; work branch:
 
 | ID | LEGACY_EXPECTED | CURRENT_CONTRACT / WHY_CONFLICT | Minimal resolution and affected checks |
 | --- | --- | --- | --- |
-| C1 | Full FilterForm flags: registration, inspection, compliance, product classification, dosage form and date ranges; persisted workbook names | Existing search API supports q, facility/scope/province, canonical states, certificate state/expiry; no equivalent for all legacy flags or saved workbook names | Expose only supported server filters. No client-only filtering of a paginated subset. Full FilterForm parity requires an explicit separate contract decision; filter and URL tests apply. |
+| C1 | Full FilterForm flags: registration, inspection, compliance, product classification, dosage form and date ranges; persisted workbook names | Existing search API supports q, facility/scope/province, canonical states, certificate state/expiry; no equivalent for all legacy flags or saved workbook names | User resolved: keep unsupported legacy conditions visibly disabled in their evidenced groups. Supported controls alone update server filters. No client-only filtering of a paginated subset; filter and URL tests apply. |
 | C2 | Native Explorer/Word, opening raw folders and prefix-selected files | Backend owns storage binding/access, logical document/rendition/version identity; frontend cannot resolve NAS paths | Preserve available backend open/create/history commands and IDs. Do not implement raw-path fallback or fake file actions. Document races/storage contract checks apply. |
 | C3 | Legacy row editing may be directly available | RBAC, readiness and optimistic concurrency own permission/mutation availability | Preserve disabled/omitted commands and real 403/409 behavior. Caption/placement changes do not enable commands. Certificate/modal/draft tests apply. |
 | C4 | Runtime legacy pixel layout and all form states | FRX supplies structure, but runtime resizing, visibility, font/OS rendering and macro-driven states are not fully established; captures now available for case and certificate pages only | Keep verified arrangement/captions; do not invent colors, additional tabs or forms. Obtain redacted runtime captures before exact geometry/style work and screenshot comparison. Exact font metrics, main-list, RecordForm and FilterForm runtime states remain unverified. |
@@ -218,3 +218,5 @@ Latest validation: pnpm typecheck, pnpm lint, pnpm test --maxWorkers=1
 non-failing React act warnings remain. The three initial failures were outdated
 assessment-placement expectations and one mistakenly changed document-step
 selector; the backend document workflow_step contract remains authoritative.
+Repeated targeted regression: 6 passed (A/B/A late binary, refresh draft/token,
+assessment placement and 409). Repository tracked-file hygiene also passed.

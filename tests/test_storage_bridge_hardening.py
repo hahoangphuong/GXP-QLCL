@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 from contextlib import contextmanager
+import hashlib
+import hmac
 from io import BytesIO
 import json
 from pathlib import Path
 import tempfile
+import time
 from urllib.parse import urlencode
+
+import pytest
 
 from fastapi import HTTPException
 
@@ -213,6 +219,95 @@ def test_bridge_auth_token_roundtrip(monkeypatch):
 
     assert claims["iss"] == "gxp-web-api"
     assert claims["aud"] == "storage-bridge"
+
+
+def _sign_test_bridge_token(config, header, payload):
+    """Build deliberately invalid but correctly signed tokens for verifier tests."""
+    def encode(value):
+        if isinstance(value, bytes):
+            data = value
+        else:
+            data = json.dumps(value, separators=(",", ":")).encode("utf-8")
+        return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+    signing_input = f"{encode(header)}.{encode(payload)}"
+    signature = hmac.new(config.signing_key.encode("utf-8"), signing_input.encode("ascii"), hashlib.sha256).digest()
+    return f"{signing_input}.{encode(signature)}"
+
+
+@pytest.mark.parametrize("token", [
+    "", "a.b", "a.b.c.d", "a.b.%",
+    "😀.abc.def", "abc.def.==", "abc.def./",
+    "a" * 8193,
+])
+def test_bridge_hmac_malformed_untrusted_tokens_return_401_not_server_errors(monkeypatch, token):
+    _authorized_headers(monkeypatch)
+    with pytest.raises(HTTPException) as error:
+        verify_bridge_hmac_token(token, load_bridge_auth_config())
+    assert error.value.status_code == 401
+
+
+@pytest.mark.parametrize(("header", "payload"), [
+    ({"alg": "none", "typ": "JWT"}, "default"),
+    ({"alg": "HS512", "typ": "JWT"}, "default"),
+    ({"alg": "HS256", "typ": "other"}, "default"),
+    (["HS256", "JWT"], "default"),
+    ({"alg": "HS256", "typ": "JWT"}, b"not json"),
+    ({"alg": "HS256", "typ": "JWT"}, ["not", "claims"]),
+    ({"alg": "HS256", "typ": "JWT"}, None),
+])
+def test_bridge_hmac_rejects_noncontract_headers_and_payloads(monkeypatch, header, payload):
+    _authorized_headers(monkeypatch)
+    config = load_bridge_auth_config()
+    now = int(time.time())
+    claims = {
+        "iss": config.issuer, "aud": config.audience, "sub": config.client_id,
+        "iat": now, "exp": now + 60,
+    }
+    token = _sign_test_bridge_token(config, header, claims if payload == "default" else payload)
+    with pytest.raises(HTTPException) as error:
+        verify_bridge_hmac_token(token, config)
+    assert error.value.status_code == 401
+
+
+@pytest.mark.parametrize(("changes", "reason"), [
+    ({"iat": None}, "timestamps"),
+    ({"iat": True}, "timestamps"),
+    ({"exp": "9999999999"}, "timestamps"),
+    ({"exp": 9999999999.0}, "timestamps"),
+    ({"iat": 9999999999}, "lifetime"),
+    ({"exp": 9999999999}, "lifetime"),
+    ({"exp": 0}, "lifetime"),
+])
+def test_bridge_hmac_rejects_invalid_or_unbounded_lifetime(monkeypatch, changes, reason):
+    _authorized_headers(monkeypatch)
+    config = load_bridge_auth_config()
+    now = int(time.time())
+    claims = {
+        "iss": config.issuer, "aud": config.audience, "sub": config.client_id,
+        "iat": now, "exp": now + 60,
+    }
+    claims.update(changes)
+    token = _sign_test_bridge_token(config, {"alg": "HS256", "typ": "JWT"}, claims)
+    with pytest.raises(HTTPException) as error:
+        verify_bridge_hmac_token(token, config)
+    assert error.value.status_code == 401
+    assert reason in str(error.value.detail).lower()
+
+
+def test_bridge_hmac_rejects_expired_but_well_formed_token(monkeypatch):
+    _authorized_headers(monkeypatch)
+    config = load_bridge_auth_config()
+    now = int(time.time())
+    claims = {
+        "iss": config.issuer, "aud": config.audience, "sub": config.client_id,
+        "iat": now - 120, "exp": now - 60,
+    }
+    token = _sign_test_bridge_token(config, {"alg": "HS256", "typ": "JWT"}, claims)
+    with pytest.raises(HTTPException) as error:
+        verify_bridge_hmac_token(token, config)
+    assert error.value.status_code == 401
+    assert "expired" in str(error.value.detail).lower()
 
 
 def test_bridge_google_oidc_mode_uses_explicit_verifier():

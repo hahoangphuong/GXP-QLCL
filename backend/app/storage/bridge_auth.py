@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
 import json
 import os
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -21,8 +23,18 @@ def _b64url_encode(raw: bytes) -> str:
 
 
 def _b64url_decode(raw: str) -> bytes:
-    padding = "=" * (-len(raw) % 4)
-    return base64.urlsafe_b64decode(raw + padding)
+    # No padded, non-URL-safe or ambiguous encodings in our issued tokens.
+    # Reject before decoding: permissive Base64 decoders otherwise ignore
+    # arbitrary invalid characters.
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", raw):
+        raise ValueError("Malformed Base64URL token component.")
+    try:
+        decoded = base64.b64decode(raw + "=" * (-len(raw) % 4), altchars=b"-_", validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("Malformed Base64URL token component.") from exc
+    if _b64url_encode(decoded) != raw:
+        raise ValueError("Noncanonical Base64URL token component.")
+    return decoded
 
 
 @dataclass(frozen=True)
@@ -92,23 +104,38 @@ def verify_bridge_hmac_token(token: str, config: BridgeAuthConfig) -> dict[str, 
         raise HTTPException(status_code=401, detail="Bridge auth mode mismatch.")
     if config.signing_key is None or config.issuer is None or config.client_id is None:
         raise HTTPException(status_code=503, detail="Storage bridge HMAC auth is not configured.")
+    if len(token) > 8192:
+        raise HTTPException(status_code=401, detail="Malformed storage bridge token.")
     try:
         encoded_header, encoded_payload, encoded_signature = token.split(".")
-    except ValueError as exc:
+        signature = _b64url_decode(encoded_signature)
+        signing_input = f"{encoded_header}.{encoded_payload}".encode("ascii")
+    except (ValueError, UnicodeError) as exc:
         raise HTTPException(status_code=401, detail="Malformed storage bridge token.") from exc
-    signing_input = f"{encoded_header}.{encoded_payload}".encode("ascii")
     expected_signature = hmac.new(config.signing_key.encode("utf-8"), signing_input, hashlib.sha256).digest()
-    if not hmac.compare_digest(expected_signature, _b64url_decode(encoded_signature)):
+    if not hmac.compare_digest(expected_signature, signature):
         raise HTTPException(status_code=401, detail="Invalid storage bridge token signature.")
-    payload = json.loads(_b64url_decode(encoded_payload).decode("utf-8"))
+    try:
+        header = json.loads(_b64url_decode(encoded_header).decode("utf-8"))
+        payload = json.loads(_b64url_decode(encoded_payload).decode("utf-8"))
+    except (ValueError, UnicodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=401, detail="Malformed storage bridge token.") from exc
+    if not isinstance(header, dict) or header.get("alg") != "HS256" or header.get("typ") != "JWT":
+        raise HTTPException(status_code=401, detail="Unsupported storage bridge token header.")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=401, detail="Malformed storage bridge token payload.")
     if payload.get("iss") != config.issuer:
         raise HTTPException(status_code=401, detail="Invalid storage bridge token issuer.")
     if payload.get("aud") != config.audience:
         raise HTTPException(status_code=401, detail="Invalid storage bridge token audience.")
     if payload.get("sub") != config.client_id:
         raise HTTPException(status_code=401, detail="Invalid storage bridge token subject.")
+    iat, exp = payload.get("iat"), payload.get("exp")
+    if type(iat) is not int or type(exp) is not int:
+        raise HTTPException(status_code=401, detail="Invalid storage bridge token timestamps.")
     now = int(time.time())
-    exp = int(payload.get("exp", 0))
+    if iat > now + 30 or exp <= iat or exp - iat > config.ttl_seconds:
+        raise HTTPException(status_code=401, detail="Invalid storage bridge token lifetime.")
     if exp <= now:
         raise HTTPException(status_code=401, detail="Expired storage bridge token.")
     return payload

@@ -316,7 +316,26 @@ jobs:
       - name: Start loopback-only Codex frontend staging preview
         working-directory: cross-head-frontend/frontend
         run: |
-          pnpm exec vite --host 127.0.0.1 --port 4173 --strictPort \
+          # A runner-only reverse-proxy simulation: the real FastAPI routes
+          # lack the /api prefix; do not modify the pinned Codex source.
+          cat > cross-head.vite.config.mjs <<'EOF'
+          import { defineConfig } from "vite";
+          import react from "@vitejs/plugin-react";
+          export default defineConfig({
+            plugins: [react()],
+            server: {
+              host: "127.0.0.1", port: 4173, strictPort: true,
+              proxy: {
+                "/api": {
+                  target: "http://127.0.0.1:8000",
+                  changeOrigin: false,
+                  rewrite: path => path.replace(/^\\/api(?=\\/|$)/, ""),
+                },
+              },
+            },
+          });
+          EOF
+          pnpm exec vite --config cross-head.vite.config.mjs --host 127.0.0.1 --port 4173 --strictPort \
             > "${RUNNER_TEMP}/gxp-cross-head-frontend.log" 2>&1 &
           echo "GXP_CROSS_HEAD_FRONTEND_PID=$!" >> "${GITHUB_ENV}"
           READY=0
@@ -331,6 +350,9 @@ jobs:
             echo "Disposable loopback UI failed to boot."
             exit 1
           fi
+          # Verify frontend-to-backend proxy before launching Chromium.
+          curl --fail --silent http://127.0.0.1:4173/api/app/status \
+            | python -c 'import json,sys; assert json.load(sys.stdin)["auth_mode"] == "header_stub"'
 
       - name: Run real Chromium navigation on three screen sizes
         run: node tests/cross_head_browser.mjs

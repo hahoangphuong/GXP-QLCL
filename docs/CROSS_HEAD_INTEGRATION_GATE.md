@@ -87,3 +87,13 @@ This is **not** a remotely accessible staging deployment and **not**
 human-assisted NVDA/JAWS speech verification. Those still require an
 approved remote staging environment and operator accounts. Never use
 header-stub auth on an externally exposed staging/production server.
+
+### CI reverse-proxy parity
+
+The pinned frontend's development Vite config forwards `/api` without
+rewriting the prefix; the real FastAPI fixture routes are defined without
+`/api`. A runner-generated, **untracked** Vite config simulates the
+deployment reverse proxy's `/api` stripping for browser QA. The gate
+asserts `/api/app/status` reaches FastAPI before Chromium starts. Neither
+the Codex checkout nor product routing is patched; this gate does not
+verify any separate real deployment's proxy configuration.

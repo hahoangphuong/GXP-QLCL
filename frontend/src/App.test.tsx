@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import { useLayoutEffect } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -81,6 +82,19 @@ const oidcMocks = vi.hoisted(() => ({
   decodeOidcCredential: vi.fn(),
   isOidcSessionValid: vi.fn(() => false),
 }));
+
+// Observe the committed DOM before SearchPage's passive request effects run.
+const contextCommit = vi.hoisted(() => ({ observe: vi.fn() }));
+vi.mock("./features/search/FacilityTable", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./features/search/FacilityTable")>();
+  const { useLayoutEffect, createElement } = await import("react");
+  return {
+    FacilityTable: (props: Parameters<typeof original.FacilityTable>[0]) => {
+      useLayoutEffect(() => { contextCommit.observe(props.selectedResultKey); });
+      return createElement(original.FacilityTable, props);
+    },
+  };
+});
 
 vi.mock("./lib/api", () => apiMocks);
 vi.mock("./lib/oidc", () => oidcMocks);
@@ -721,12 +735,29 @@ function SearchRouteNavigator({ to }: { to: string }) {
   return <>
     <button onClick={() => navigate(to)} type="button">Đi tới ngữ cảnh khác</button>
     <button onClick={() => navigate(-1)} type="button">Quay lại ngữ cảnh trước</button>
+    <button onClick={() => navigate(1)} type="button">Tới ngữ cảnh tiếp theo</button>
     <output data-testid="route-location">{location.search}</output>
   </>;
 }
 
+function NavigateOnInitialHistoryCommit({ to }: { to: string }) {
+  const navigate = useNavigate();
+  useLayoutEffect(() => {
+    let navigated = false;
+    contextCommit.observe.mockImplementation(() => {
+      if (!navigated && document.querySelector(".history-table")) {
+        navigated = true;
+        navigate(to);
+      }
+    });
+    return () => { contextCommit.observe.mockReset(); };
+  }, [navigate, to]);
+  return null;
+}
+
 describe("App Slice A.4 search workspace", () => {
   beforeEach(() => {
+    contextCommit.observe.mockReset();
     resetApiMocks();
     resetOidcMocks();
     window.google = {
@@ -941,8 +972,9 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.queryByText(/^Prev$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Next$/)).not.toBeInTheDocument();
     expect(container.querySelector(".search-toolbar")).toBeNull();
-    expect(container.querySelector(".search-workspace-split .history-panel")).toBeNull();
-    expect(container.querySelector(".facility-workspace-panel .history-panel")).not.toBeNull();
+    expect(container.querySelector(".search-master-history > .history-panel")).not.toBeNull();
+    expect(container.querySelector(".facility-workspace-panel .history-panel")).toBeNull();
+    expect(container.querySelectorAll(".history-table")).toHaveLength(1);
     expect(container.querySelector(".event-workspace > .panel-header")).toBeNull();
     expect(container.querySelectorAll(".facility-context-facts .status-badge")).toHaveLength(1);
     expect(container.querySelector(".facility-context-code")).not.toBeNull();
@@ -1093,7 +1125,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(within(dialog).getByRole("textbox", { name: "Tiêu chuẩn áp dụng" })).toHaveFocus();
     expect(within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Hủy" })).toBeInTheDocument();
-    expect(container.querySelector(".action-stack .create-inspection-case-panel")).toBeNull();
+    expect(container.querySelector(".search-context-actions .create-inspection-case-panel")).toBeNull();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Hủy" }));
     await waitFor(() => {
@@ -1401,7 +1433,7 @@ describe("App Slice A.4 search workspace", () => {
     const { container } = renderApp(["/search"]);
 
     expect(await screen.findByText("01-08-2026")).toBeInTheDocument();
-    await screen.findByText("Lịch sử kiểm tra & thay đổi");
+    await screen.findByRole("table", { name: "Lịch sử kiểm tra & thay đổi" });
     const historyTable = container.querySelector(".history-table");
     expect(screen.getByText("05-08-2026")).toBeInTheDocument();
     expect(within(historyTable as HTMLElement).getByRole("columnheader", { name: "Loại" })).toBeInTheDocument();
@@ -1410,9 +1442,10 @@ describe("App Slice A.4 search workspace", () => {
       "Loại",
       "Tiêu chuẩn",
       "Ngày",
+      "Trạng thái",
     ]);
-    expect(within(historyTable as HTMLElement).queryByRole("columnheader", { name: "Trạng thái" })).not.toBeInTheDocument();
-    expect(historyTable?.querySelector("tbody tr")?.querySelectorAll("td")).toHaveLength(3);
+    expect(within(historyTable as HTMLElement).getByText("Đã hoàn tất kiểm tra")).toBeInTheDocument();
+    expect(historyTable?.querySelector("tbody tr")?.querySelectorAll("td")).toHaveLength(4);
     expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Thông tin chung" }));
     expect(await screen.findByText("01-06-2026")).toBeInTheDocument();
@@ -1562,7 +1595,7 @@ describe("App Slice A.4 search workspace", () => {
     await waitFor(() => expect(apiMocks.listSiteGxpCertificates.mock.calls.at(-1)?.[6]).toBeNull());
   });
 
-  it("renders history inside the facility tab and uses workflow-step navigation instead of nested peer tabs", async () => {
+  it("renders history beside master results and keeps event workflow inside its facility tab", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
@@ -1577,9 +1610,399 @@ describe("App Slice A.4 search workspace", () => {
     expect(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi")).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Hồ sơ" })).not.toBeInTheDocument();
     expect(container.querySelector(".workspace-context-strip")).toBeNull();
-    expect(container.querySelector(".event-workspace-split.master-detail-split.master-detail-split-history")).not.toBeNull();
-    expect(container.querySelector(".event-workspace-history-pane.master-list-pane .history-panel")).not.toBeNull();
+    expect(container.querySelector(".search-master-history > .results-panel")).not.toBeNull();
+    expect(container.querySelector(".search-master-history > .history-panel")).not.toBeNull();
+    expect(container.querySelector(".facility-workspace-panel .history-panel")).toBeNull();
+    expect(container.querySelectorAll(".history-table")).toHaveLength(1);
     expect(container.querySelector(".event-workspace-detail-pane.detail-pane .event-workspace")).not.toBeNull();
+  });
+
+  it("keeps one history pane available across facility tabs and opens event detail on explicit selection", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.getChangeRequestWorkspace.mockResolvedValue(buildChangeRequestWorkspace());
+    const { container } = renderApp(["/search?event_tab=Ki%E1%BB%83m+tra"]);
+    await screen.findByRole("heading", { name: "Kế hoạch kiểm tra" });
+    const history = container.querySelector(".history-table");
+    for (const tab of ["Thông tin chung", "Giấy chứng nhận GxP", "Giấy chứng nhận đủ điều kiện"]) {
+      fireEvent.click(screen.getByRole("tab", { name: tab }));
+      expect(container.querySelector(".history-table")).toBe(history);
+      expect(container.querySelectorAll(".history-table")).toHaveLength(1);
+      expect(history?.querySelector("tr.selected")).toHaveAttribute("aria-selected", "true");
+      expect(container.querySelector(".facility-table tr.selected")).not.toBeNull();
+    }
+    fireEvent.click(within(history as HTMLElement).getByText("Thay đổi"));
+    await screen.findByText("Điều chỉnh địa chỉ kho bảo quản");
+    expect(screen.getByRole("tab", { name: "Các đợt kiểm tra & thay đổi" })).toHaveAttribute("aria-selected", "true");
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getChangeRequestWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it("manually activates facility tabs while focus navigation preserves exact context and makes no requests", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.getChangeRequestWorkspace.mockResolvedValue(buildChangeRequestWorkspace());
+    const { container } = render(<MemoryRouter initialEntries={["/search?gxp_type=GMP&result_key=site-1%3AGMP%3AA&production_line_id=line-uuid-1&history_id=case-1&event_tab=Kiểm+tra"]}>
+      <SearchRouteNavigator to="/search" /><App />
+    </MemoryRouter>);
+    await screen.findByRole("table", { name: "Lịch sử kiểm tra & thay đổi" });
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
+    await act(async () => { await apiMocks.getCaseWorkspace.mock.results[0].value; });
+    await screen.findByRole("heading", { name: "Kế hoạch kiểm tra" });
+    const tablist = screen.getByRole("tablist", { name: "Tab nghiệp vụ cơ sở" });
+    const tabs = within(tablist).getAllByRole("tab");
+    const master = container.querySelector(".facility-table");
+    const history = container.querySelector(".history-table");
+    act(() => tabs[1].focus());
+    for (const key of ["ArrowRight", "End", "Home"]) fireEvent.keyDown(document.activeElement!, { key });
+    expect(tabs[0]).toHaveFocus();
+    expect(tabs[1]).toHaveAttribute("aria-selected", "true");
+    expect(apiMocks.listSiteGxpCertificates).not.toHaveBeenCalled();
+    expect(apiMocks.listSiteBusinessEligibilityCertificates).not.toHaveBeenCalled();
+    fireEvent.keyDown(tabs[0], { key: "Enter" });
+    expect(screen.getByRole("tabpanel", { name: "Thông tin chung" })).toBeInTheDocument();
+    fireEvent.keyDown(tabs[0], { key: "ArrowLeft" });
+    expect(tabs[3]).toHaveFocus();
+    fireEvent.keyDown(tabs[3], { key: " " });
+    await waitFor(() => expect(apiMocks.listSiteBusinessEligibilityCertificates).toHaveBeenCalledTimes(1));
+    expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
+    expect(tabs.filter((tab) => tab.tabIndex === 0)).toEqual([tabs[3]]);
+    fireEvent.click(tabs[1]);
+    await screen.findByRole("heading", { name: "Kế hoạch kiểm tra" });
+    // Keys on a real nested workflow control must not reach the facility owner.
+    fireEvent.keyDown(screen.getByRole("button", { name: "Kiểm tra" }), { key: "ArrowRight" });
+    expect(tabs[1]).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("route-location")).toHaveTextContent("history_id=case-1");
+    expect(screen.getByTestId("route-location")).toHaveTextContent("production_line_id=line-uuid-1");
+    expect(container.querySelector(".facility-table")).toBe(master);
+    expect(container.querySelector(".history-table")).toBe(history);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    fireEvent.click(tabs[0]);
+    const changeRow = within(history as HTMLElement).getByText("Thay đổi").closest("tr")!;
+    act(() => changeRow.focus());
+    fireEvent.keyDown(changeRow, { key: "Enter" });
+    await screen.findByText("Điều chỉnh địa chỉ kho bảo quản");
+    expect(tabs[1]).toHaveAttribute("aria-selected", "true");
+    expect(tabs[1]).toHaveAttribute("tabindex", "0");
+    expect(changeRow).toHaveFocus();
+    expect(apiMocks.getChangeRequestWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it("updates history for the exact new physical line while retaining master rows and hiding stale history during loading", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult(), buildSearchResult({ result_key: "site-1:GMP:canonical:line-2", context_code: "1.1A-2", production_line_id: "line-2" })], total_count: 2, offset: 0, limit: 100 });
+    const nextWorkspace = buildWorkspace({ summary: { ...buildWorkspace().summary, context_code: "1.1A-2", selected_production_line_id: "line-2" }, history: [{ ...buildWorkspace().history[0], id: "case-line-2", standard: "Tiêu chuẩn dây chuyền thứ hai" }] });
+    let resolveWorkspace!: (value: ReturnType<typeof buildWorkspace>) => void;
+    apiMocks.getFacilityWorkspace.mockResolvedValueOnce(buildWorkspace()).mockImplementationOnce(() => new Promise((resolve) => { resolveWorkspace = resolve; }));
+    apiMocks.getCaseWorkspace.mockImplementation((id: string) => Promise.resolve(buildCaseWorkspace({ case_summary: { ...buildCaseWorkspace().case_summary, id } })));
+    const { container } = renderApp(["/search"]);
+    const initialHistory = await screen.findByRole("table", { name: "Lịch sử kiểm tra & thay đổi" });
+    fireEvent.click(within(initialHistory).getByText("Định kỳ"));
+    await screen.findByRole("heading", { name: "Thông tin hồ sơ" });
+    const master = container.querySelector(".facility-table");
+    fireEvent.click(within(master as HTMLElement).getByText("1.1A-2"));
+    expect(await screen.findByText("Đang tải lịch sử của ngữ cảnh đang chọn...")).toBeInTheDocument();
+    expect(container.querySelector(".history-table")).toBeNull();
+    expect(container.querySelector(".facility-table")).toBe(master);
+    expect(within(master as HTMLElement).getByText("1.1A-2")).toBeInTheDocument();
+    expect(screen.queryByText("Đang tải danh sách cơ sở...")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeDisabled();
+    await act(async () => { resolveWorkspace(nextWorkspace); });
+    const nextEvent = await screen.findByText("Tiêu chuẩn dây chuyền thứ hai");
+    fireEvent.click(nextEvent);
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenLastCalledWith("case-line-2", expect.anything(), true, null));
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("line-2");
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[4]).toBe("A");
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2);
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(within(container.querySelector(".history-table") as HTMLElement).queryByText("Đổi địa chỉ")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { name: "canonical same-code UUID", production_line_id: "line-2", line_code: "A", production_line_identity_state: "canonical", result_grain: "production_line" },
+    { name: "legacy-unlinked", production_line_id: null, line_code: "A", production_line_identity_state: "legacy_unlinked", result_grain: "production_line" },
+    { name: "facility-wide", production_line_id: null, line_code: null, production_line_identity_state: "facility_wide", result_grain: "facility" },
+  ])("hides every old business surface at the first commit when selecting $name", async (identity) => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    const target = buildSearchResult({ ...identity, result_key: `target-${identity.name}`, context_code: "target-B" });
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult(), target], total_count: 2, offset: 0, limit: 100 });
+    const previous = buildWorkspace();
+    previous.action_readiness[3] = { ...previous.action_readiness[3], readiness_status: "available" };
+    apiMocks.getFacilityWorkspace.mockResolvedValueOnce(previous).mockImplementationOnce(() => new Promise(() => {}));
+    const { container } = renderApp(["/search?facility_tab=Thông+tin+chung"]);
+    await screen.findByRole("table", { name: "Lịch sử kiểm tra & thay đổi" });
+    const snapshots: { history: boolean; detail: boolean; action: boolean }[] = [];
+    contextCommit.observe.mockImplementation((key: string) => {
+      if (key === target.result_key) snapshots.push({
+        history: Boolean(container.querySelector(".history-table")),
+        detail: Boolean(container.querySelector(".facility-context-bar")),
+        action: !(screen.getByRole("button", { name: "Tái đánh giá" }) as HTMLButtonElement).disabled,
+      });
+    });
+    const row = within(container.querySelector(".facility-table") as HTMLElement).getByText("target-B").closest("tr")!;
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(snapshots.length).toBeGreaterThan(0);
+    expect(snapshots[0]).toEqual({ history: false, detail: false, action: false });
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe(identity.production_line_id);
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[4]).toBe(identity.line_code);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not carry an old workspace error into the first committed render of B", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult(), buildSearchResult({ result_key: "B", context_code: "target-B", production_line_id: "line-2" })], total_count: 2, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockRejectedValueOnce(new Error("Error owned by A")).mockImplementationOnce(() => new Promise(() => {}));
+    const { container } = renderApp(["/search"]);
+    await screen.findByText("Error owned by A");
+    const snapshots: boolean[] = [];
+    contextCommit.observe.mockImplementation((key: string) => { if (key === "B") snapshots.push(Boolean(screen.queryByText("Error owned by A"))); });
+    fireEvent.click(within(container.querySelector(".facility-table") as HTMLElement).getByText("target-B"));
+    expect(snapshots[0]).toBe(false);
+  });
+
+  it("keeps B when the cancelled request A completes after B", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult(), buildSearchResult({ result_key: "B", context_code: "target-B", production_line_id: "line-2" })], total_count: 2, offset: 0, limit: 100 });
+    let finishA!: (value: ReturnType<typeof buildWorkspace>) => void;
+    let finishB!: (value: ReturnType<typeof buildWorkspace>) => void;
+    apiMocks.getFacilityWorkspace.mockImplementationOnce(() => new Promise((resolve) => { finishA = resolve; })).mockImplementationOnce(() => new Promise((resolve) => { finishB = resolve; }));
+    const { container } = renderApp(["/search"]);
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1));
+    const master = container.querySelector(".facility-table");
+    fireEvent.click(within(master as HTMLElement).getByText("target-B"));
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2));
+    await act(async () => { finishB(buildWorkspace({ history: [{ ...buildWorkspace().history[0], id: "case-B", standard: "History B" }] })); });
+    await screen.findByText("History B");
+    await act(async () => { finishA(buildWorkspace()); });
+    expect(screen.getByText("History B")).toBeInTheDocument();
+    expect(screen.queryByText("Đổi địa chỉ")).not.toBeInTheDocument();
+    expect(container.querySelector(".facility-table")).toBe(master);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not publish a confirmed mutation's late refresh over the newly selected line", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult(), buildSearchResult({ result_key: "B", context_code: "target-B", production_line_id: "line-2" })], total_count: 2, offset: 0, limit: 100 });
+    const previous = buildWorkspace();
+    previous.action_readiness[3] = { ...previous.action_readiness[3], readiness_status: "available" };
+    let finishRefresh!: (value: ReturnType<typeof buildWorkspace>) => void;
+    apiMocks.getFacilityWorkspace.mockResolvedValueOnce(previous).mockImplementationOnce(() => new Promise((resolve) => { finishRefresh = resolve; })).mockResolvedValueOnce(buildWorkspace({ history: [] }));
+    apiMocks.createInspectionCase.mockResolvedValue({ case_id: "confirmed-case-A" });
+    const { container } = renderApp(["/search"]);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Tái đánh giá" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" }));
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2));
+    fireEvent.click(within(container.querySelector(".facility-table") as HTMLElement).getByText("target-B"));
+    await screen.findByText(/Chưa có lịch sử kiểm tra hoặc thay đổi/);
+    await act(async () => { finishRefresh(buildWorkspace({ history: [{ ...previous.history[0], id: "confirmed-case-A", standard: "Confirmed A" }] })); });
+    expect(screen.queryByText("Confirmed A")).not.toBeInTheDocument();
+    expect(screen.getByText(/Chưa có lịch sử kiểm tra hoặc thay đổi/)).toBeInTheDocument();
+    expect(apiMocks.createInspectionCase).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(3);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides certificate data at the first B commit and throughout B loading and error", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult(), buildSearchResult({ result_key: "B", context_code: "target-B", production_line_id: "line-2" })], total_count: 2, offset: 0, limit: 100 });
+    let failB!: (error: Error) => void;
+    apiMocks.getFacilityWorkspace.mockResolvedValueOnce(buildWorkspace()).mockImplementationOnce(() => new Promise((_resolve, reject) => { failB = reject; }));
+    const certificate = { certificate_id: "cert-A", site_id: "site-1", case_id: "case-1", certificate_type: "GMP", line_code: "A", context_match_kind: "exact_line", latest_flag: true, certificate_number: "CERTIFICATE-A", issue_date: null, expiry_date: null, applicable_standard: "WHO-GMP", issuing_authority: null, status: "active" };
+    apiMocks.listSiteGxpCertificates.mockResolvedValueOnce({ items: [certificate] }).mockResolvedValueOnce({ items: [] });
+    apiMocks.getGxpCertificateDetail.mockResolvedValue({ ...certificate, facility_name: "Nhà máy A", scope_summary: "Certificate details A", action_readiness: [] });
+    const { container } = renderApp(["/search?facility_tab=Giấy+chứng+nhận+GxP"]);
+    await screen.findByText("Certificate details A");
+    const snapshots: boolean[] = [];
+    contextCommit.observe.mockImplementation((key: string) => { if (key === "B") snapshots.push(Boolean(screen.queryByText("Certificate details A") || screen.queryByText("CERTIFICATE-A"))); });
+    fireEvent.click(within(container.querySelector(".facility-table") as HTMLElement).getByText("target-B"));
+    expect(snapshots[0]).toBe(false);
+    expect(screen.queryByText("Certificate details A")).not.toBeInTheDocument();
+    await act(async () => { failB(new Error("Workspace B unavailable")); });
+    await screen.findByText("Workspace B unavailable");
+    expect(screen.queryByText("CERTIFICATE-A")).not.toBeInTheDocument();
+    expect(container.querySelector(".history-table")).toBeNull();
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    { parameter: "&facility_tab=wrong-tab", selected: "Các đợt kiểm tra & thay đổi" },
+    { parameter: "&facility_tab=", selected: "Các đợt kiểm tra & thay đổi" },
+    { parameter: "", selected: "Các đợt kiểm tra & thay đổi" },
+    { parameter: "&facility_tab=Thông+tin+chung", selected: "Thông tin chung" },
+  ])("normalizes initial facility tab input $parameter without losing tab semantics", async ({ parameter, selected }) => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
+    render(<MemoryRouter initialEntries={[`/search?gxp_type=GMP${parameter}`]}><SearchRouteNavigator to="/search" /><App /></MemoryRouter>);
+    await screen.findByRole("tabpanel", { name: selected });
+    const tabs = within(screen.getByRole("tablist", { name: "Tab nghiệp vụ cơ sở" })).getAllByRole("tab");
+    expect(tabs.filter((tab) => tab.getAttribute("aria-selected") === "true")).toHaveLength(1);
+    expect(tabs.filter((tab) => tab.tabIndex === 0)).toHaveLength(1);
+    await waitFor(() => expect(new URLSearchParams(screen.getByTestId("route-location").textContent ?? "").get("facility_tab")).toBe(selected === "Thông tin chung" ? selected : null));
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["&facility_tab=wrong-tab", "&facility_tab=", "", "&facility_tab=Giấy+chứng+nhận+GxP"])("handles external tab input %s through Back and Forward without normalization loops", async (parameter) => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
+    render(<MemoryRouter initialEntries={["/search?gxp_type=GMP&facility_tab=Thông+tin+chung"]}>
+      <SearchRouteNavigator to={`/search?gxp_type=GMP${parameter}`} /><App />
+    </MemoryRouter>);
+    await screen.findByRole("tabpanel", { name: "Thông tin chung" });
+    await waitFor(() => expect(screen.getByTestId("route-location")).toHaveTextContent("result_key="));
+    const selected = parameter.includes("GxP") ? "Giấy chứng nhận GxP" : "Các đợt kiểm tra & thay đổi";
+    for (const [button, tab] of [["Đi tới ngữ cảnh khác", selected], ["Quay lại ngữ cảnh trước", "Thông tin chung"], ["Tới ngữ cảnh tiếp theo", selected]]) {
+      fireEvent.click(screen.getByRole("button", { name: button }));
+      await screen.findByRole("tabpanel", { name: tab });
+      expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
+      expect(screen.getByRole("tab", { name: tab })).toHaveAttribute("tabindex", "0");
+      await waitFor(() => expect(new URLSearchParams(screen.getByTestId("route-location").textContent ?? "").get("facility_tab")).toBe(tab === "Các đợt kiểm tra & thay đổi" ? null : tab));
+    }
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(4);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(4);
+  });
+
+  it("external navigation wins over an initial A normalization in the same layout commit", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockImplementation((query: { gxp_type: string }) => Promise.resolve({ items: [buildSearchResult(query.gxp_type === "GLP" ? { result_key: "B", gxp_type: "GLP", production_line_id: "line-2" } : {})], total_count: 1, offset: 0, limit: 100 }));
+    apiMocks.getFacilityWorkspace.mockImplementation((_site, _auth, _stub, _gxp, _line, _token, uuid) => Promise.resolve(buildWorkspace(uuid === "line-2" ? { history: [{ ...buildWorkspace().history[0], id: "case-B" }] } : {})));
+    const destination = "/search?gxp_type=GLP&result_key=B&production_line_id=line-2&history_id=missing-B";
+    render(<MemoryRouter initialEntries={["/search?gxp_type=GMP"]}>
+      <SearchRouteNavigator to={destination} />
+      <NavigateOnInitialHistoryCommit to={destination} />
+      <App />
+    </MemoryRouter>);
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("line-2"));
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId("route-location")).toHaveTextContent("gxp_type=GLP");
+    expect(screen.getByTestId("route-location")).toHaveTextContent("history_id=missing-B");
+    await screen.findByText(/Không tìm thấy hồ sơ được liên kết/);
+    expect(apiMocks.getCaseWorkspace.mock.calls.some((call) => call[0] === "case-B" || call[0] === "missing-B")).toBe(false);
+  });
+
+  it.each(["case-B", "stale-explicit-history"])("keeps exact external B identity and explicit history %s during navigation", async (historyId) => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    const first = buildSearchResult();
+    const second = buildSearchResult({ result_key: "B", context_code: "target-B", gxp_type: "GLP", production_line_id: "line-2" });
+    apiMocks.searchFacilities.mockImplementation((query: { gxp_type: string }) => Promise.resolve({ items: [query.gxp_type === "GLP" ? second : first], total_count: 1, offset: 0, limit: 100 }));
+    let finishB!: (value: ReturnType<typeof buildWorkspace>) => void;
+    apiMocks.getFacilityWorkspace.mockResolvedValueOnce(buildWorkspace()).mockImplementationOnce(() => new Promise((resolve) => { finishB = resolve; }));
+    const { container } = render(<MemoryRouter initialEntries={["/search?gxp_type=GMP"]}>
+      <SearchRouteNavigator to={`/search?gxp_type=GLP&result_key=B&production_line_id=line-2&history_id=${historyId}&facility_tab=Thông+tin+chung&event_tab=Kiểm+tra`} />
+      <App />
+    </MemoryRouter>);
+    await screen.findByRole("table", { name: "Lịch sử kiểm tra & thay đổi" });
+    // This user-click test starts from a settled route; the preceding test
+    // deliberately exercises navigation before initial normalization settles.
+    await waitFor(() => expect(screen.getByTestId("route-location")).toHaveTextContent("history_id=case-1"));
+    const snapshots: boolean[] = [];
+    contextCommit.observe.mockImplementation((key: string) => { if (key === "B") snapshots.push(Boolean(container.querySelector(".history-table") || container.querySelector(".facility-context-bar"))); });
+    fireEvent.click(screen.getByRole("button", { name: "Đi tới ngữ cảnh khác" }));
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2));
+    expect(snapshots[0]).toBe(false);
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("line-2");
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[3]).toBe("GLP");
+    const history = { ...buildWorkspace().history[0], id: "case-B", standard: "Only B history" };
+    await act(async () => { finishB(buildWorkspace({ history: [history] })); });
+    if (historyId === "case-B") {
+      await screen.findByText("Only B history");
+      expect(container.querySelector(".history-table tr.selected")).not.toBeNull();
+      expect(screen.getByRole("tab", { name: "Thông tin chung" })).toHaveAttribute("aria-selected", "true");
+    } else {
+      await screen.findByText(/Không tìm thấy hồ sơ được liên kết/);
+      expect(container.querySelector(".history-table")).toBeNull();
+      expect(apiMocks.getCaseWorkspace.mock.calls.some((call) => call[0] === "case-B")).toBe(false);
+      expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeDisabled();
+    }
+    expect(screen.getByTestId("route-location")).toHaveTextContent(`history_id=${historyId}`);
+    expect(screen.getByTestId("route-location")).toHaveTextContent("production_line_id=line-2");
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows workspace errors in the history pane once and retains selectable master results", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockRejectedValue(new Error("Không thể tải lịch sử cơ sở"));
+    const { container } = renderApp(["/search"]);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Không thể tải lịch sử cơ sở");
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(container.querySelector(".search-master-history .history-table")).toBeNull();
+    expect(container.querySelector(".facility-table tr.selected")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeDisabled();
+    expect(apiMocks.getCaseWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("replaces the previous context error with loading and recovers history when selecting another facility", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult(), buildSearchResult({ result_key: "site-2:GMP:canonical:line-2", site_id: "site-2", context_code: "2.1A", production_line_id: "line-2" })], total_count: 2, offset: 0, limit: 100 });
+    let resolveWorkspace!: (value: ReturnType<typeof buildWorkspace>) => void;
+    apiMocks.getFacilityWorkspace.mockRejectedValueOnce(new Error("Lỗi cơ sở trước")).mockImplementationOnce(() => new Promise((resolve) => { resolveWorkspace = resolve; }));
+    const { container } = renderApp(["/search"]);
+    await screen.findByRole("alert");
+    fireEvent.click(within(container.querySelector(".facility-table") as HTMLElement).getByText("2.1A"));
+    expect(await screen.findByText("Đang tải lịch sử của ngữ cảnh đang chọn...")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Đang tải workspace" })).toBeInTheDocument();
+    await act(async () => { resolveWorkspace(buildWorkspace({ history: [] })); });
+    expect(await screen.findByText(/Chưa có lịch sử kiểm tra hoặc thay đổi/)).toBeInTheDocument();
+    expect(screen.queryByText("Lỗi cơ sở trước")).not.toBeInTheDocument();
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[0]).toBe("site-2");
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("line-2");
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders genuine empty history beside master without requesting event detail", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
+    const { container } = renderApp(["/search"]);
+    expect(await screen.findByText(/Chưa có lịch sử kiểm tra hoặc thay đổi/)).toBeInTheDocument();
+    expect(container.querySelector(".search-master-history .history-table")).not.toBeNull();
+    expect(container.querySelector(".facility-table tr.selected")).not.toBeNull();
+    expect(apiMocks.getCaseWorkspace).not.toHaveBeenCalled();
+    expect(apiMocks.getChangeRequestWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("selects history by keyboard without refetching master results or losing facility context across tabs", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.getChangeRequestWorkspace.mockResolvedValue(buildChangeRequestWorkspace());
+    const { container } = renderApp(["/search"]);
+    await screen.findByRole("heading", { name: "Thông tin hồ sơ" });
+    const historyRows = within(container.querySelector(".history-table") as HTMLElement).getAllByRole("row").slice(1);
+    const facilityRow = container.querySelector(".facility-table tbody tr.selected");
+    historyRows[0].focus();
+    fireEvent.keyDown(historyRows[0], { key: "ArrowDown" });
+    expect(historyRows[1]).toHaveFocus();
+    expect(historyRows[0]).toHaveAttribute("aria-selected", "true");
+    expect(apiMocks.getChangeRequestWorkspace).not.toHaveBeenCalled();
+    fireEvent.keyDown(historyRows[1], { key: "Enter" });
+    await screen.findByText("Điều chỉnh địa chỉ kho bảo quản");
+    expect(historyRows[1]).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("tab", { name: "Thông tin chung" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Các đợt kiểm tra & thay đổi" }));
+    expect(container.querySelector(".history-table tbody tr.selected")).toHaveAttribute("aria-label", historyRows[1].getAttribute("aria-label"));
+    expect(container.querySelector(".facility-table tbody tr.selected")).toBe(facilityRow);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getChangeRequestWorkspace).toHaveBeenCalledTimes(1);
   });
 
   it("updates only the right event pane when history selection changes and keeps ActionCard free of duplicated facility context", async () => {
@@ -1599,8 +2022,9 @@ describe("App Slice A.4 search workspace", () => {
     expect(actionPanel?.textContent ?? "").not.toContain("Công ty cổ phần dược phẩm Trung ương I");
 
     await waitFor(() => {
-      expect(container.querySelector(".history-panel")).not.toBeNull();
+      expect(container.querySelector(".history-table")).not.toBeNull();
     });
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
 
     await waitFor(() => expect(screen.getByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument());
@@ -1659,6 +2083,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.queryByRole("heading", { name: "KT-2026-GMP-A" })).not.toBeInTheDocument();
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
 
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
 
     expect(screen.queryByRole("heading", { name: "TD-01" })).not.toBeInTheDocument();
@@ -1689,6 +2114,7 @@ describe("App Slice A.4 search workspace", () => {
 
     await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("heading", { name: "KT-2026-GMP-A" })).not.toBeInTheDocument();
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
 
     expect(await screen.findByText("Không tải được workspace thay đổi")).toBeInTheDocument();
@@ -1798,6 +2224,82 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByRole("button", { name: /Xử lý/ })).toHaveAttribute("aria-current", "step");
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(apiMocks.getDocumentDetail).not.toHaveBeenCalled();
+  });
+
+  it.each(["ready", "error"])("keeps document selection and an unsaved processing draft through an authoritative same-context refresh: %s", async (state) => {
+    const base = buildCaseWorkspace();
+    const document = { ...base.contextual_document_actions[1], family_code: "INSPECTION_KE_HOACH_KT", actions: [
+      ...base.contextual_document_actions[1].actions.filter(action => action.action_key !== "create"),
+      { action_key: "create", label: "Tạo", available: true, disabled_reason: null, required_permissions: [], family_code: "INSPECTION_KE_HOACH_KT", parent_scope: "case", parent_id: "case-1", create_gxp_type: "GMP", create_storage_scope: "inspection_folder", create_output_filename: "khkt.docx" },
+    ] };
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    let release!: (value: ReturnType<typeof buildWorkspace>) => void;
+    let rejectRefresh!: (error: Error) => void;
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace()).mockResolvedValueOnce(buildWorkspace()).mockImplementationOnce(() => new Promise((resolve, reject) => { release = resolve; rejectRefresh = reject; }));
+    apiMocks.getCaseWorkspace.mockResolvedValueOnce(buildCaseWorkspace({ contextual_document_actions: [document] })).mockResolvedValue(buildCaseWorkspace({ processing: { ...base.processing, row_version: 9 }, contextual_document_actions: [document] }));
+    apiMocks.getDocumentDetail.mockResolvedValue({ document_id: document.document_id, family_code: document.family_code, case_id: "case-1", title: "Exact selected document", variants: [], generation_runs: [] });
+    apiMocks.renderTemplateDocx.mockResolvedValue({});
+    renderApp(["/search"]);
+    await screen.findByText("HS-001"); fireEvent.click(screen.getByRole("button", { name: "Xử lý" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chọn Quyết định cấp CC" })); await screen.findByText("Exact selected document");
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Kết quả" }));
+    fireEvent.change(screen.getByLabelText("Kết quả"), { target: { value: "unsaved processing draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tạo Quyết định cấp CC" }));
+    await screen.findByText("Đang tải workspace");
+    expect(screen.queryByRole("table", { name: "Danh sách tài liệu liên quan" })).not.toBeInTheDocument();
+    if (state === "error") {
+      await act(async () => rejectRefresh(new Error("refresh failed")));
+      expect(screen.getByRole("heading", { name: "Chưa tải được workspace" })).toBeInTheDocument();
+      expect(screen.queryByRole("table", { name: "Danh sách tài liệu liên quan" })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Tải lại workspace" }));
+      await screen.findByRole("table", { name: "Danh sách tài liệu liên quan" });
+    } else await act(async () => release(buildWorkspace()));
+    expect(screen.getByLabelText("Kết quả")).toHaveValue("unsaved processing draft");
+    expect(screen.getByRole("button", { name: "Chọn Quyết định cấp CC" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Exact selected document")).toBeInTheDocument();
+    expect(apiMocks.getDocumentDetail).toHaveBeenCalledTimes(1);
+    expect(apiMocks.renderTemplateDocx).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(state === "error" ? 3 : 2);
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
+    apiMocks.upsertCaseAssessment.mockRejectedValue(buildApiError("stale", 409));
+    fireEvent.click(screen.getByRole("button", { name: "Lưu Kết quả" }));
+    await screen.findByRole("alert");
+    expect(apiMocks.upsertCaseAssessment.mock.calls[0][1]).toMatchObject({ expected_version: 2, assessment_result: "unsaved processing draft" });
+    expect(screen.getByLabelText("Kết quả")).toHaveValue("unsaved processing draft");
+    expect(apiMocks.upsertCaseAssessment).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not open a late document binary after history navigation", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace()); apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    let release!: (value: { blob: Blob }) => void;
+    apiMocks.openCaseDocumentCurrentContent.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    renderApp(["/search"]); await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Xử lý" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mở Quyết định cấp CC" }));
+    fireEvent.click(screen.getByRole("row", { name: /Đổi địa chỉ/ }));
+    await act(async () => release({ blob: new Blob(["late content"]) }));
+    expect(window.open).not.toHaveBeenCalled(); expect(apiMocks.openCaseDocumentCurrentContent).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([false, true])("does not open document A's late binary after same-event selection navigation (return A: %s)", async (returnToA) => {
+    const base = buildCaseWorkspace(); const a = base.contextual_document_actions[1];
+    const b = { ...a, checklist_key: "slot-B", document_id: "document-B", label: "Second document", original_filename: a.original_filename };
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace()); apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ contextual_document_actions: [a, b] }));
+    apiMocks.getDocumentDetail.mockImplementation(async (id: string) => ({ document_id: id, family_code: a.family_code, case_id: "case-1", title: id === b.document_id ? "Only B detail" : "New A detail", variants: [], generation_runs: [] }));
+    let release!: (value: { blob: Blob }) => void;
+    apiMocks.openCaseDocumentCurrentContent.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    renderApp(["/search"]); await screen.findByText("HS-001"); fireEvent.click(screen.getByRole("button", { name: "Xử lý" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mở Quyết định cấp CC" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chọn Second document" })); await screen.findByText("Only B detail");
+    if (returnToA) { fireEvent.click(screen.getByRole("button", { name: "Chọn Quyết định cấp CC" })); await screen.findByText("New A detail"); }
+    await act(async () => release({ blob: new Blob(["late A"]) }));
+    expect(window.open).not.toHaveBeenCalled(); expect(apiMocks.openCaseDocumentCurrentContent).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: returnToA ? "Chọn Quyết định cấp CC" : "Chọn Second document" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("opens current document binary for Mở and keeps metadata loading on Lịch sử", async () => {
@@ -2890,6 +3392,73 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByRole("button", { name: "Cấp chứng nhận GxP" })).toBeDisabled();
   });
 
+  it.each([
+    { kind: "GxP", tab: "Giấy chứng nhận GxP", list: "listSiteGxpCertificates", load: "getGxpCertificateDetail", id: "certificate_id", table: "Danh mục GCN GxP" },
+    { kind: "ĐĐK", tab: "Giấy chứng nhận đủ điều kiện", list: "listSiteBusinessEligibilityCertificates", load: "getBusinessEligibilityDetail", id: "business_eligibility_certificate_id", table: "Danh mục GCN đủ điều kiện" },
+  ] as const)("$kind keeps focus separate from requests and rejects a late A detail after B selection", async ({ tab, list, load, id, table }) => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
+    const item = { site_id: "site-1", certificate_number: "SAME-REFERENCE", certificate_type: "GMP", line_code: "A", production_line_id: "line-uuid-1", context_match_kind: "exact_line", latest_flag: false, issue_date: null, issued_on: null, expiry_date: null, issuance_sequence_text: "1" };
+    apiMocks[list].mockResolvedValue({ items: [{ ...item, [id]: "certificate-A" }, { ...item, [id]: "certificate-B" }], issue_readiness: null });
+    let resolveA!: (value: unknown) => void;
+    let resolveB!: (value: unknown) => void;
+    apiMocks[load].mockImplementationOnce(() => new Promise(resolve => { resolveA = resolve; })).mockImplementationOnce(() => new Promise(resolve => { resolveB = resolve; }));
+    renderApp([`/search?gxp_type=GMP&facility_tab=${encodeURIComponent(tab)}`]);
+    const rows = within(await screen.findByRole("table", { name: table })).getAllByRole("row").slice(1);
+    await waitFor(() => expect(apiMocks[load]).toHaveBeenCalledTimes(1));
+    act(() => rows[0].focus());
+    for (const key of ["ArrowDown", "Home", "End", "ArrowUp", "ArrowDown"]) fireEvent.keyDown(document.activeElement!, { key });
+    expect(rows[1]).toHaveFocus();
+    expect(rows[0]).toHaveAttribute("aria-selected", "true");
+    expect(apiMocks[load]).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(rows[1], { key: "Enter" });
+    await waitFor(() => expect(apiMocks[load]).toHaveBeenCalledTimes(2));
+    expect(apiMocks[load].mock.calls.map(call => call[0])).toEqual(["certificate-A", "certificate-B"]);
+    expect(screen.getByText(/Đang tải chi tiết/)).toBeInTheDocument();
+    const detail = { ...item, [id]: "certificate-B", row_version: 3, facility_name: "B authoritative detail", linked_gxp_certificates: [], scopes: [], action_readiness: [] };
+    await act(async () => resolveB(detail));
+    expect(await screen.findByText("B authoritative detail")).toBeInTheDocument();
+    await act(async () => resolveA({ ...detail, [id]: "certificate-A", facility_name: "A stale detail" }));
+    expect(screen.queryByText("A stale detail")).not.toBeInTheDocument();
+    expect(rows[1]).toHaveFocus();
+    fireEvent.keyDown(rows[1], { key: " " });
+    fireEvent.click(rows[1]);
+    expect(apiMocks[load]).toHaveBeenCalledTimes(2);
+    expect(apiMocks[list]).toHaveBeenCalledTimes(1);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { tab: "Giấy chứng nhận GxP", list: "listSiteGxpCertificates", load: "getGxpCertificateDetail", id: "certificate_id", table: "Danh mục GCN GxP" },
+    { tab: "Giấy chứng nhận đủ điều kiện", list: "listSiteBusinessEligibilityCertificates", load: "getBusinessEligibilityDetail", id: "business_eligibility_certificate_id", table: "Danh mục GCN đủ điều kiện" },
+  ] as const)("$tab clears A-owned error in B's first commit and shows B's own failure", async ({ tab, list, load, id, table }) => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
+    apiMocks[list].mockResolvedValue({ items: [{ [id]: "certificate-A" }, { [id]: "certificate-B" }], issue_readiness: null });
+    let rejectB!: (error: Error) => void;
+    apiMocks[load].mockRejectedValueOnce(new Error("Error owned by certificate A")).mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectB = reject; }));
+    renderApp([`/search?gxp_type=GMP&facility_tab=${encodeURIComponent(tab)}`]);
+    await screen.findByRole("table", { name: table });
+    await waitFor(() => expect(apiMocks[load]).toHaveBeenCalledTimes(1));
+    await screen.findByText("Error owned by certificate A");
+    const snapshots: boolean[] = [];
+    contextCommit.observe.mockImplementation(() => {
+      const rows = screen.queryByRole("table", { name: table })?.querySelectorAll("tbody tr");
+      if (rows?.[1]?.getAttribute("aria-selected") === "true") snapshots.push(Boolean(screen.queryByText("Error owned by certificate A")));
+    });
+    fireEvent.click(within(screen.getByRole("table", { name: table })).getAllByRole("row")[2]);
+    await waitFor(() => expect(apiMocks[load]).toHaveBeenCalledTimes(2));
+    expect(snapshots.length).toBeGreaterThan(0);
+    expect(snapshots.every(value => !value)).toBe(true);
+    expect(screen.getByText(/Đang tải chi tiết/)).toBeInTheDocument();
+    await act(async () => rejectB(new Error("B own failure")));
+    expect(await screen.findByRole("alert")).toHaveTextContent("B own failure");
+    expect(apiMocks[load]).toHaveBeenCalledTimes(2);
+  });
+
   it("refreshes only the selected certificate after an edit conflict and keeps the edit form open", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
@@ -2923,7 +3492,8 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Dữ liệu chứng nhận đã thay đổi");
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(apiMocks.listSiteGxpCertificates).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("dialog", { name: "Sửa giấy chứng nhận GxP" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Sửa giấy chứng nhận GxP" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Lưu thay đổi" })).toBeDisabled();
     expect(screen.getByText("GCN-NEW")).toBeInTheDocument();
   });
 
@@ -3142,17 +3712,26 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.getFacilityWorkspace).not.toHaveBeenCalled();
   });
 
-  it("loads the exact deep-linked history case and refuses a stale history id", async () => {
+  it("loads the exact deep-linked line and history in the shared pane without overriding facility or event tabs", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult({ result_key: "site-1:GMP:canonical:line-uuid-1" })], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [
-      { id: "case-other", source_type: "case", title: "Other", occurred_on: "2026-01-01", state: "planned" },
-      { id: "case-target", source_type: "case", title: "Target", occurred_on: "2026-01-02", state: "planned" },
+      { ...buildWorkspace().history[0], id: "case-other", occurred_on: "2026-01-01", state: "planned" },
+      { ...buildWorkspace().history[0], id: "case-target", occurred_on: "2026-01-02", state: "planned" },
     ] }));
-    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ case_summary: { ...buildCaseWorkspace().case_summary, id: "case-target" } }));
 
-    renderApp(["/search?result_key=site-1%3AGMP%3Acanonical%3Aline-uuid-1&history_id=case-target"]);
+    const { container } = renderApp(["/search?result_key=site-1%3AGMP%3Acanonical%3Aline-uuid-1&history_id=case-target&facility_tab=Th%C3%B4ng%20tin%20chung&event_tab=Ki%E1%BB%83m%20tra"]);
     await waitFor(() => expect(apiMocks.getCaseWorkspace.mock.calls.at(-1)?.[0]).toBe("case-target"));
+    expect(container.querySelectorAll(".history-table")).toHaveLength(1);
+    expect(container.querySelector(".search-master-history .history-table tr.selected")).toHaveTextContent("02-01-2026");
+    expect(container.querySelector(".facility-table tr.selected")).not.toBeNull();
+    expect(screen.getByRole("tab", { name: "Thông tin chung" })).toHaveAttribute("aria-selected", "true");
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("line-uuid-1");
+    fireEvent.click(screen.getByRole("tab", { name: "Các đợt kiểm tra & thay đổi" }));
+    expect(await screen.findByRole("heading", { name: "Kế hoạch kiểm tra" })).toBeInTheDocument();
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
   });
 
   it("does not substitute the first history item for a stale deep-link history id", async () => {
@@ -3193,6 +3772,10 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.searchFacilities.mock.calls.at(-1)?.[0]).toMatchObject({ q: "B", gxp_type: "GLP" });
     expect(screen.getByRole("tab", { name: "Các đợt kiểm tra & thay đổi" })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByRole("button", { name: "Kiểm tra" })).toHaveAttribute("aria-current", "step");
+    const selectedTab = screen.getByRole("tab", { name: "Các đợt kiểm tra & thay đổi" });
+    expect(selectedTab).toHaveAttribute("tabindex", "0");
+    expect(screen.getByRole("tabpanel", { name: "Các đợt kiểm tra & thay đổi" })).toHaveAttribute("id", selectedTab.getAttribute("aria-controls"));
+    expect(within(screen.getByRole("tablist", { name: "Tab nghiệp vụ cơ sở" })).getAllByRole("tab").filter((tab) => tab.tabIndex === 0)).toHaveLength(1);
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Quay lại ngữ cảnh trước" })); });
     await waitFor(() => expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("line-first"));
     expect(apiMocks.searchFacilities.mock.calls.at(-1)?.[0]).toMatchObject({ q: "A", gxp_type: "GMP" });
@@ -3696,7 +4279,8 @@ describe("App Slice A.4 search workspace", () => {
     });
 
     const { container } = renderApp(["/search"]);
-    await waitFor(() => expect(container.querySelector(".history-panel")).not.toBeNull());
+    await waitFor(() => expect(container.querySelector(".history-table")).not.toBeNull());
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
     expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
 
@@ -3736,7 +4320,8 @@ describe("App Slice A.4 search workspace", () => {
     });
 
     const { container } = renderApp(["/search"]);
-    await waitFor(() => expect(container.querySelector(".history-panel")).not.toBeNull());
+    await waitFor(() => expect(container.querySelector(".history-table")).not.toBeNull());
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
     expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
 
@@ -3769,7 +4354,8 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.promoteBusinessEligibilityCurrent.mockResolvedValue(null);
 
     const { container } = renderApp(["/search"]);
-    await waitFor(() => expect(container.querySelector(".history-panel")).not.toBeNull());
+    await waitFor(() => expect(container.querySelector(".history-table")).not.toBeNull());
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
     expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
 
@@ -3820,7 +4406,8 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.upsertGxpCertificateLatestVersion.mockResolvedValue(null);
 
     const { container } = renderApp(["/search"]);
-    await waitFor(() => expect(container.querySelector(".history-panel")).not.toBeNull());
+    await waitFor(() => expect(container.querySelector(".history-table")).not.toBeNull());
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
     expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
 
@@ -3935,7 +4522,8 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.upsertBusinessEligibilityLatestVersion.mockResolvedValue(null);
 
     const { container } = renderApp(["/search"]);
-    await waitFor(() => expect(container.querySelector(".history-panel")).not.toBeNull());
+    await waitFor(() => expect(container.querySelector(".history-table")).not.toBeNull());
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
     expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
 
@@ -4008,7 +4596,8 @@ describe("App Slice A.4 search workspace", () => {
     );
 
     const { container } = renderApp(["/search"]);
-    await waitFor(() => expect(container.querySelector(".history-panel")).not.toBeNull());
+    await waitFor(() => expect(container.querySelector(".history-table")).not.toBeNull());
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
     expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
 
@@ -4033,7 +4622,8 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.updateChangeRequest.mockRejectedValue(Object.assign(new Error("Stale change_request update."), { status: 409 }));
 
     const { container } = renderApp(["/search"]);
-    await waitFor(() => expect(container.querySelector(".history-panel")).not.toBeNull());
+    await waitFor(() => expect(container.querySelector(".history-table")).not.toBeNull());
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
     expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
 

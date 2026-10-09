@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+
+import { ContextualDocumentSection } from "./ContextualDocumentSection";
+export { ContextualDocumentSection } from "./ContextualDocumentSection";
 
 import { EmptyState } from "../../components/EmptyState";
 import { formatCompactDate } from "../../lib/presentation";
@@ -33,7 +36,6 @@ import { CaseProcessingWorkspace } from "./CaseProcessingWorkspace";
 import { CaseCertificateIssueWorkspace } from "./CaseCertificateIssueWorkspace";
 import { CaseRemediationWorkspace } from "./CaseRemediationWorkspace";
 import { ChangeRequestMutationWorkspace, type ChangeRequestMutationHandlers } from "./ChangeRequestMutationWorkspace";
-import { DetailValue } from "./DetailValue";
 import { EvaluationScopeWorkspace } from "./EvaluationScopeWorkspace";
 import { GxpCertificateDetailFields } from "./GxpCertificateDetailFields";
 
@@ -79,7 +81,7 @@ function DocumentChecklistSection({
 
   return (
     <div className="table-scroll table-scroll-history">
-      <table className="dense-table event-document-table">
+      <table className="dense-table event-document-table" aria-label="Checklist tài liệu thay đổi">
         <thead>
           <tr>
             <th>Loại tài liệu</th>
@@ -109,194 +111,6 @@ function DocumentChecklistSection({
         </tbody>
       </table>
     </div>
-  );
-}
-
-export function ContextualDocumentSection({
-  items,
-  onOpenDocument,
-  onLoadDocumentDetail,
-  onCreateDocument,
-}: {
-  items: ContextualDocumentAction[];
-  onOpenDocument: (item: ContextualDocumentAction) => Promise<void>;
-  onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
-  onCreateDocument: (
-    item: ContextualDocumentAction,
-    action: ContextualDocumentAction["actions"][number],
-  ) => Promise<void>;
-}) {
-  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<DocumentDetail | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [detailMode, setDetailMode] = useState<"open" | "history">("open");
-
-  const currentItem = useMemo(
-    () => items.find((item) => item.document_id === selectedDocumentId) ?? null,
-    [items, selectedDocumentId],
-  );
-
-  useEffect(() => {
-    if (!currentItem) {
-      setDetail(null);
-      setLoading(false);
-      setLoadingMessage(null);
-      setError(null);
-    }
-  }, [currentItem]);
-
-  async function handleLoadHistory(item: ContextualDocumentAction) {
-    if (!item.document_id) {
-      return;
-    }
-    setSelectedDocumentId(item.document_id);
-    setDetailMode("history");
-    setDetail(null);
-    setLoading(true);
-    setLoadingMessage("Đang tải lịch sử tài liệu...");
-    setError(null);
-    try {
-      const payload = await onLoadDocumentDetail(item.document_id);
-      setDetail(payload);
-    } catch (nextError) {
-      setDetail(null);
-      setError(nextError instanceof Error ? nextError.message : "Không mở được chi tiết tài liệu.");
-    } finally {
-      setLoading(false);
-      setLoadingMessage(null);
-    }
-  }
-
-  async function handleCreate(
-    item: ContextualDocumentAction,
-    action: ContextualDocumentAction["actions"][number],
-  ) {
-    setLoading(true);
-    setLoadingMessage("Đang tạo tài liệu...");
-    setError(null);
-    try {
-      await onCreateDocument(item, action);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Không tạo được tài liệu.");
-    } finally {
-      setLoading(false);
-      setLoadingMessage(null);
-    }
-  }
-
-  async function handleOpen(item: ContextualDocumentAction) {
-    if (!item.document_id) {
-      return;
-    }
-    setSelectedDocumentId(item.document_id);
-    setLoading(true);
-    setLoadingMessage("Đang mở tài liệu...");
-    setError(null);
-    try {
-      await onOpenDocument(item);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Không mở được tài liệu.");
-    } finally {
-      setLoading(false);
-      setLoadingMessage(null);
-    }
-  }
-
-  if (items.length === 0) {
-    return null;
-  }
-
-  return (
-    <WorkspaceSection title="Tài liệu liên quan">
-      <div className="contextual-document-list">
-        {items.map((item) => (
-          <div className="contextual-document-row" key={item.checklist_key}>
-            <div className="contextual-document-main">
-              <strong>{item.label}</strong>
-              <span>{item.original_filename ?? DOCUMENT_STATUS_LABELS[item.status] ?? item.status}</span>
-            </div>
-            <div className="contextual-document-actions">
-              <span className={`document-status-pill document-status-${item.status}`}>{DOCUMENT_STATUS_LABELS[item.status] ?? item.status}</span>
-              {item.actions
-                .filter((action) => action.action_key !== "create" || action.available)
-                .map((action) => (
-                  <button
-                    aria-label={`${action.label} ${item.label}`}
-                    disabled={!action.available}
-                    key={action.action_key}
-                    onClick={() => {
-                      if (action.action_key === "open") {
-                        void handleOpen(item);
-                      }
-                      if (action.action_key === "history") {
-                        void handleLoadHistory(item);
-                      }
-                      if (action.action_key === "create") {
-                        void handleCreate(item, action);
-                      }
-                    }}
-                    title={action.disabled_reason ?? `${action.label} ${item.label}`}
-                    type="button"
-                  >
-                    {action.label}
-                  </button>
-                ))}
-            </div>
-            {item.actions
-              .filter((action) => action.action_key === "create" && !action.available)
-              .map((action) => (
-                <p className="workspace-note contextual-document-blocked" key={action.action_key}>
-                  {action.disabled_reason}
-                </p>
-              ))}
-          </div>
-        ))}
-      </div>
-      {loading && loadingMessage ? <p className="workspace-note">{loadingMessage}</p> : null}
-      {error ? (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      ) : null}
-      {detail ? (
-        <div className="document-detail-shell">
-          <div className="detail-grid compact-grid">
-            <DetailValue label="Tài liệu" value={currentItem?.label ?? detail.title ?? detail.family_code} />
-            <DetailValue label="Tiêu đề" value={detail.title} />
-            <DetailValue label="Loại" value={detail.family_code} />
-            <DetailValue label="Chế độ" value={detailMode === "history" ? "Lịch sử tài liệu" : "Chi tiết tài liệu"} />
-          </div>
-          <div className="table-scroll table-scroll-history">
-            <table className="dense-table event-document-table">
-              <thead>
-                <tr>
-                  <th>Biến thể</th>
-                  <th>Ngôn ngữ</th>
-                  <th>Phiên bản hiện có</th>
-                </tr>
-              </thead>
-              <tbody>
-                {detail.variants.map((variant) => (
-                  <tr key={variant.id}>
-                    <td>{variant.variant_type}</td>
-                    <td>{variant.language_code}</td>
-                    <td>
-                      {variant.versions.length > 0
-                        ? variant.versions
-                            .map((version) => `${version.original_filename ?? `v${version.version_no}`}${version.is_current ? " (hiện hành)" : ""}`)
-                            .join(", ")
-                        : "Chưa có"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : null}
-    </WorkspaceSection>
   );
 }
 
@@ -481,7 +295,7 @@ function renderCaseStepContent(
   onSubmitCapaCycle: (cycleId: string, payload: CapaCycleSubmitRequest) => Promise<void>,
   onAssessCapaCycle: (cycleId: string, payload: CapaCycleAssessRequest) => Promise<void>,
   onResolveInspectionFolder: () => Promise<InspectionFolderLookup>,
-  onOpenDocument: (caseId: string, item: ContextualDocumentAction) => Promise<void>,
+  onOpenDocument: (caseId: string, item: ContextualDocumentAction, isCurrentDocument?: () => boolean) => Promise<void>,
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>,
   onCreateDocument: (
     caseId: string,
@@ -510,12 +324,13 @@ function renderCaseStepContent(
           onSave={onCaseApplicationSave}
         />
         <ContextualDocumentSection
+          contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
           items={documentItems}
           onCreateDocument={(item, action) =>
             onCreateDocument(caseWorkspace.case_summary.id, item, action)
           }
           onLoadDocumentDetail={onLoadDocumentDetail}
-          onOpenDocument={(item) => onOpenDocument(caseWorkspace.case_summary.id, item)}
+          onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
         />
       </div>
     );
@@ -537,12 +352,13 @@ function renderCaseStepContent(
           onFinalizeInspectionOutcome={onFinalizeInspectionOutcome}
         />
         <ContextualDocumentSection
+          contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
           items={documentItems}
           onCreateDocument={(item, action) =>
             onCreateDocument(caseWorkspace.case_summary.id, item, action)
           }
           onLoadDocumentDetail={onLoadDocumentDetail}
-          onOpenDocument={(item) => onOpenDocument(caseWorkspace.case_summary.id, item)}
+          onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
         />
       </div>
     );
@@ -561,12 +377,13 @@ function renderCaseStepContent(
           selectedCycleId={selectedRemediationCycleId}
         />
         <ContextualDocumentSection
+          contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
           items={documentItems}
           onCreateDocument={(item, action) =>
             onCreateDocument(caseWorkspace.case_summary.id, item, action)
           }
           onLoadDocumentDetail={onLoadDocumentDetail}
-          onOpenDocument={(item) => onOpenDocument(caseWorkspace.case_summary.id, item)}
+          onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
         />
       </div>
     );
@@ -577,12 +394,13 @@ function renderCaseStepContent(
       <div className="event-step-stack">
         <CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} />
         <ContextualDocumentSection
+          contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
           items={documentItems}
           onCreateDocument={(item, action) =>
             onCreateDocument(caseWorkspace.case_summary.id, item, action)
           }
           onLoadDocumentDetail={onLoadDocumentDetail}
-          onOpenDocument={(item) => onOpenDocument(caseWorkspace.case_summary.id, item)}
+          onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
         />
       </div>
     );
@@ -598,12 +416,13 @@ function renderCaseStepContent(
           readiness={caseWorkspace.certificate_issue_readiness}
         />
         <ContextualDocumentSection
+          contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
           items={documentItems}
           onCreateDocument={(item, action) =>
             onCreateDocument(caseWorkspace.case_summary.id, item, action)
           }
           onLoadDocumentDetail={onLoadDocumentDetail}
-          onOpenDocument={(item) => onOpenDocument(caseWorkspace.case_summary.id, item)}
+          onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
         />
       </div>
     );
@@ -693,7 +512,7 @@ export function EventWorkspace({
   onInspectionTeamSave: (payload: InspectionTeamUpsertRequest) => Promise<void>;
   onLoadInspectionTeamIdentityOptions: () => Promise<InspectionTeamIdentityOption[]>;
   onEvaluationScopeSave: (payload: EvaluationScopeUpsertRequest) => Promise<void>;
-  onOpenDocument: (caseId: string, item: ContextualDocumentAction) => Promise<void>;
+  onOpenDocument: (caseId: string, item: ContextualDocumentAction, isCurrentDocument?: () => boolean) => Promise<void>;
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
   onCreateDocument: (
     caseId: string,
@@ -718,6 +537,10 @@ export function EventWorkspace({
       />
     );
   }
+
+  // The old payload can survive until its owner's effect runs; fail closed in this render.
+  if (caseWorkspace?.case_summary.id !== selectedHistory.id) caseWorkspace = null;
+  if (changeRequestWorkspace?.id !== selectedHistory.id) changeRequestWorkspace = null;
 
   const tabs = selectedHistory.source_type === "change_request" ? CHANGE_REQUEST_EVENT_TABS : CASE_EVENT_TABS;
   const effectiveActiveTab = tabs.some((tab) => tab === activeTab) ? activeTab : tabs[0];

@@ -236,3 +236,12 @@ replace an existing review artifact or publish partially rendered outputs.
 The B6H canonical-state exporter likewise refuses an existing snapshot path
 before database access and writes a new snapshot exclusively. The caller must
 use fresh output locations for independent source-freeze and review cycles.
+
+
+The B6H source-only discovery/planning CLI now protects its full seven-file
+artifact set (four planning JSONs, v1 roster JSON, summary Markdown and CSV)
+before source processing, renders all payloads before publication, then uses
+exclusive creation for every file. An existing output, including a hard-link
+alias to prior evidence, is never replaced. This extends the B6I/B6J
+no-clobber policy to the earlier discovery stage; it does not freeze or
+approve the sources, authenticate review, or grant cutover authority.

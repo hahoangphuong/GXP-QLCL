@@ -342,3 +342,51 @@ def test_canonical_snapshot_counts_when_local_source_evidence_is_available():
         "BLOCKED_SITE_MISMATCH": 4,
     }
     assert plan["transformation_evidence"]["classification_counts"] == {"NO_TRANSFORMATION_EVIDENCE": 1}
+
+
+def test_b6h_planner_refuses_existing_output_before_reading_sources(tmp_path, capsys):
+    from tools.plan_production_line_population_b6h import main
+
+    output_dir = tmp_path / "b6h"
+    output_dir.mkdir()
+    prior = output_dir / "production_line_discovery_v2.json"
+    prior.write_bytes(b"immutable-b6h-discovery")
+    with pytest.raises(SystemExit) as error:
+        main(["--snapshot", str(tmp_path / "unavailable-source"), "--output-dir", str(output_dir)])
+    assert error.value.code == 2
+    assert "already exists" in capsys.readouterr().err
+    assert prior.read_bytes() == b"immutable-b6h-discovery"
+
+
+def test_b6h_planner_rejects_input_alias_before_source_access(tmp_path, capsys):
+    from tools.plan_production_line_population_b6h import main
+
+    output_dir = tmp_path / "b6h"
+    snapshot = output_dir / "production_line_discovery_v2.json"
+    with pytest.raises(SystemExit) as error:
+        main(["--snapshot", str(snapshot), "--output-dir", str(output_dir)])
+    assert error.value.code == 2
+    assert "differ from all source" in capsys.readouterr().err
+    assert not snapshot.exists()
+
+
+def test_b6h_artifact_publisher_preserves_existing_outputs_and_exclusively_creates_new(tmp_path):
+    from tools.plan_production_line_population_b6h import write_artifacts
+
+    output_dir = tmp_path / "out"
+    first = output_dir / "discovery.json"
+    second = output_dir / "roster.json"
+    output_dir.mkdir()
+    second.write_bytes(b"approved-prior-review")
+    with pytest.raises(FileExistsError, match="already exists"):
+        write_artifacts(output_dir, {"discovery.json": b"new-discovery", "roster.json": b"new-roster"})
+    assert second.read_bytes() == b"approved-prior-review"
+    assert not first.exists()
+    second.unlink()
+    digests = write_artifacts(output_dir, {"discovery.json": b"new-discovery", "roster.json": b"new-roster"})
+    assert digests["discovery.json"] == sha256(b"new-discovery").hexdigest()
+    assert first.read_bytes() == b"new-discovery"
+    assert second.read_bytes() == b"new-roster"
+    with pytest.raises(FileExistsError, match="already exists"):
+        write_artifacts(output_dir, {"discovery.json": b"forbidden-rewrite"})
+    assert first.read_bytes() == b"new-discovery"

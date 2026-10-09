@@ -55,13 +55,19 @@ def load_json_with_sha256(path: Path | None) -> tuple[dict[str, Any] | None, str
     return payload, sha256(canonical_json_bytes(payload)).hexdigest()
 
 
-def write_artifacts(output_dir: Path, artifacts: dict[str, dict[str, Any]]) -> dict[str, str]:
+def write_artifacts(output_dir: Path, artifacts: dict[str, bytes]) -> dict[str, str]:
+    """Publish one immutable B6H artifact set without clobbering evidence."""
+    destinations = {name: output_dir / name for name in artifacts}
+    if any(path.exists() or path.is_symlink() for path in destinations.values()):
+        raise FileExistsError("B6H output already exists; select a fresh directory")
     output_dir.mkdir(parents=True, exist_ok=True)
     digests: dict[str, str] = {}
-    for kind, artifact in artifacts.items():
-        payload = canonical_artifact_bytes(artifact)
-        (output_dir / ARTIFACT_FILENAMES[kind]).write_bytes(payload)
-        digests[kind] = sha256(payload).hexdigest()
+    for name, payload in artifacts.items():
+        # Exclusive create prevents another process from replacing an artifact
+        # between the preflight and the actual publish.
+        with destinations[name].open("xb") as output:
+            output.write(payload)
+        digests[name] = sha256(payload).hexdigest()
     return digests
 
 
@@ -72,6 +78,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--physical-identity-roster", type=Path, help="Reviewed roster JSON; no apply mode exists.")
     parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
     args = parser.parse_args(argv)
+    output_dir = args.output_dir.resolve()
+    generated = (*ARTIFACT_FILENAMES.values(),
+                 "production_line_physical_identity_roster_template_v1.json",
+                 "production_line_physical_identity_review_summary_v1.md",
+                 "production_line_physical_identity_roster_template_v1.csv")
+    inputs = {args.snapshot.resolve()}
+    if args.canonical_state is not None:
+        inputs.add(args.canonical_state.resolve())
+    if args.physical_identity_roster is not None:
+        inputs.add(args.physical_identity_roster.resolve())
+    destinations = [output_dir / name for name in generated]
+    if any(path.resolve() in inputs for path in destinations):
+        parser.error("B6H output must differ from all source inputs")
+    if any(path.exists() or path.is_symlink() for path in destinations):
+        parser.error("B6H output already exists; select a fresh directory")
     snapshot, snapshot_sha256 = load_verified_snapshot(args.snapshot.resolve())
     canonical_state, canonical_state_sha256 = load_json_with_sha256(args.canonical_state)
     roster, roster_sha256 = load_json_with_sha256(args.physical_identity_roster)
@@ -83,23 +104,25 @@ def main(argv: list[str] | None = None) -> int:
         roster=roster,
         roster_sha256=roster_sha256,
     )
-    output_dir = args.output_dir.resolve()
-    for kind, digest in sorted(write_artifacts(output_dir, artifacts).items()):
-        print(f"{kind.upper()}_SHA256={digest}")
     template = build_physical_identity_roster_template(
         artifacts["discovery"], snapshot_sha256=snapshot_sha256, canonical_state_sha256=canonical_state_sha256
-    )
-    roster_path = output_dir / "production_line_physical_identity_roster_template_v1.json"
-    roster_path.write_bytes(canonical_artifact_bytes(template))
-    (output_dir / "production_line_physical_identity_review_summary_v1.md").write_text(
-        build_review_summary(template), encoding="utf-8", newline="\n"
     )
     csv_rows = ["candidate_key,legacy_site_id,canonical_site_id,canonical_line_text,review_status,physical_identity_action,review_reason,production_line_id"]
     for item in template["items"]:
         csv_rows.append(",".join(f'"{str(value or "").replace(chr(34), chr(34) * 2)}"' for value in (
             item["candidate_key"], item["source_site_legacy_id"], item["canonical_site_id"], item["canonical_line_text"], item["review_status"], item["physical_identity_action"], "", "")))
-    (output_dir / "production_line_physical_identity_roster_template_v1.csv").write_text("\n".join(csv_rows) + "\n", encoding="utf-8", newline="\n")
-    print(f"ROSTER_TEMPLATE_SHA256={sha256(roster_path.read_bytes()).hexdigest()}")
+    payloads = {ARTIFACT_FILENAMES[kind]: canonical_artifact_bytes(artifact) for kind, artifact in artifacts.items()}
+    roster_name = "production_line_physical_identity_roster_template_v1.json"
+    payloads[roster_name] = canonical_artifact_bytes(template)
+    payloads["production_line_physical_identity_review_summary_v1.md"] = build_review_summary(template).encode("utf-8")
+    payloads["production_line_physical_identity_roster_template_v1.csv"] = ("\n".join(csv_rows) + "\n").encode("utf-8")
+    try:
+        digests = write_artifacts(output_dir, payloads)
+    except FileExistsError:
+        parser.error("B6H output already exists; select a fresh directory")
+    for kind, filename in sorted(ARTIFACT_FILENAMES.items()):
+        print(f"{kind.upper()}_SHA256={digests[filename]}")
+    print(f"ROSTER_TEMPLATE_SHA256={digests[roster_name]}")
     return 0
 
 

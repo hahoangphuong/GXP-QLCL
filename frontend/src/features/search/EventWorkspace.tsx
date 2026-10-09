@@ -40,6 +40,10 @@ import { EvaluationScopeWorkspace } from "./EvaluationScopeWorkspace";
 import { GxpCertificateDetailFields } from "./GxpCertificateDetailFields";
 
 const CASE_EVENT_TABS = ["Hồ sơ", "Kiểm tra", "Khắc phục", "Xử lý", "Chứng nhận GxP", "Chứng nhận ĐĐK"] as const;
+export const CASE_EVENT_LABELS: Record<string, string> = {
+  "Hồ sơ": "Hồ sơ đăng ký", "Kiểm tra": "Kiểm tra thực tế", "Khắc phục": "Báo cáo khắc phục",
+  "Xử lý": "Xử lý tiếp", "Chứng nhận GxP": "Cấp chứng nhận GPs", "Chứng nhận ĐĐK": "Cấp chứng nhận ĐĐK",
+};
 const CHANGE_REQUEST_EVENT_TABS = ["Đề nghị", "Chi tiết", "Xử lý", "Tài liệu"] as const;
 
 const DOCUMENT_STATUS_LABELS: Record<string, string> = {
@@ -319,6 +323,7 @@ function renderCaseStepContent(
     return (
       <div className="event-step-stack">
         <CaseApplicationWorkspace
+          assessment={<CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} view="assessment" />}
           caseWorkspace={caseWorkspace}
           onResolveInspectionFolder={onResolveInspectionFolder}
           onSave={onCaseApplicationSave}
@@ -392,7 +397,7 @@ function renderCaseStepContent(
   if (activeTab === "Xử lý") {
     return (
       <div className="event-step-stack">
-        <CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} />
+        <CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} view="timeline" />
         <ContextualDocumentSection
           contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
           items={documentItems}
@@ -552,14 +557,14 @@ export function EventWorkspace({
           {tabs.map((tab, index) => (
             <li key={tab}>
               <button
-                aria-label={tab}
+                aria-label={selectedHistory.source_type === "case" ? CASE_EVENT_LABELS[tab] ?? tab : tab}
                 aria-current={effectiveActiveTab === tab ? "step" : undefined}
                 className={effectiveActiveTab === tab ? "workflow-step active" : "workflow-step"}
                 onClick={() => onTabChange(tab)}
                 type="button"
               >
                 <span className="workflow-step-index">{index + 1}</span>
-                <span>{tab}</span>
+                <span>{selectedHistory.source_type === "case" ? CASE_EVENT_LABELS[tab] ?? tab : tab}</span>
               </button>
             </li>
           ))}

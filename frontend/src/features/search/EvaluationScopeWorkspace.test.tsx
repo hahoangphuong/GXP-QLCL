@@ -22,6 +22,26 @@ function workspace(overrides: Partial<CaseWorkspace["evaluation_scope"]> = {}): 
 }
 
 describe("EvaluationScopeWorkspace", () => {
+  it("moves keyboard focus independently of the visible scope and performs no mutation on navigation", () => {
+    const onSave = vi.fn();
+    render(<EvaluationScopeWorkspace caseWorkspace={workspace()} onSave={onSave} />);
+    const evaluation = screen.getByRole("tab", { name: "Phạm vi đánh giá" });
+    const certificate = screen.getByRole("tab", { name: "Phạm vi chứng nhận GPs" });
+    evaluation.focus();
+    fireEvent.keyDown(evaluation, { key: "ArrowRight" });
+    expect(certificate).toHaveFocus();
+    expect(evaluation).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel", { name: "Phạm vi đánh giá" })).toBeVisible();
+    fireEvent.click(certificate);
+    expect(screen.getByRole("tabpanel", { name: "Phạm vi chứng nhận GPs" })).toBeVisible();
+    expect(screen.getByText("Phạm vi canonical hiện hành")).not.toBeVisible();
+    fireEvent.keyDown(certificate, { key: "Home" });
+    expect(evaluation).toHaveFocus();
+    fireEvent.click(evaluation);
+    expect(screen.getByText("Phạm vi canonical hiện hành")).toBeVisible();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
   it("renders only compact canonical summary until the editor is explicitly opened", () => {
     render(<EvaluationScopeWorkspace caseWorkspace={workspace()} onSave={vi.fn()} />);
     expect(screen.getByText("Phạm vi canonical hiện hành")).toBeVisible();

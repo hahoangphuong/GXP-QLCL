@@ -2301,3 +2301,243 @@ tr:focus-visible {
 .document-workspace .event-document-table td { white-space: normal; overflow-wrap: anywhere; }
 .document-workspace h5:focus { outline: 2px solid #245f9d; outline-offset: 3px; }
 @media (max-width: 1000px) { .document-workspace-panes { grid-template-columns: minmax(0, 1fr); } }
+
+/* MainForm FRX: lbDsCoso above MultiPage6; lbHist left of MpgHoatdong.
+   Scope this geometry to search so public/auth pages keep their own layout. */
+.legacy-search-page {
+  grid-template-columns: minmax(280px, 27%) minmax(0, 1fr);
+  grid-template-rows: clamp(190px, 30vh, 260px) minmax(0, 1fr);
+  grid-template-areas: "master master" "history detail";
+  gap: 4px;
+
+}
+.legacy-search-page .search-master-history { display: contents; }
+.legacy-master-pane { grid-area: master; display: flex; flex-direction: column; min-height: 0; min-width: 0; gap: 3px; }
+.legacy-master-pane > .results-panel { flex: 1; min-height: 0; }
+
+/* User-supplied MainForm runtime references, 2026-10-10. Presentation colors
+   do not imply completion, permissions or certificate validity. */
+.legacy-search-page :is(.facility-tab-body, .facility-tabs, .facility-context-bar, .legacy-search-filters) {
+  --radius: 2px; --control-height: 28px; --shadow: none;
+  --bg: #f0f0f0; --surface: #f0f0f0; --surface-alt: #f0f0f0;
+  --surface-muted: #eaeaea; --border: #b0b0b0; --border-strong: #808080;
+  --text: #000; --text-muted: #444; --accent: #0078d7;
+  --accent-strong: #005a9e; --accent-soft: #e6f2ff;
+  color: #000; background: #f0f0f0;
+}
+.legacy-search-page :is(.workspace-tab, .workflow-step, .legacy-scope-tabs button) {
+  background: #f0f0f0; border: 1px solid #808080;
+  border-top-color: #fff; border-left-color: #fff; border-radius: 0;
+}
+.legacy-search-page .facility-tabs .workspace-tab { color: #0000c0; font-weight: 700; }
+.legacy-search-page :is(.workflow-step, .legacy-scope-tabs button) { color: #006800; font-weight: 700; }
+.legacy-search-page :is(.workspace-tab.active, .workflow-step.active, .legacy-scope-tabs [aria-selected="true"]) {
+  background: #fff; border-bottom-color: #fff;
+}
+.legacy-search-page :is(.facility-tab-body, .legacy-search-filters) :is(input, select, textarea, .detail-value-slot) {
+  background: #fff; color: #000; border: 1px solid #aaa;
+  border-top-color: #808080; border-left-color: #808080; border-radius: 0;
+}
+.legacy-search-page .detail-value-slot { padding: 3px 5px; }
+.legacy-search-page .detail-grid :is(.detail-label, .detail-value-slot > strong) { color: #000; }
+.legacy-search-page .certificate-detail-grid .detail-value-slot { background: #c0ffff; }
+.legacy-search-page .evaluation-scope-summary { background: #fff; color: #c00000; }
+.legacy-search-page .evaluation-scope-workspace { display: flex; flex-direction: column; min-height: 0; }
+.legacy-scope-tabs { display: flex; flex-shrink: 0; overflow-x: auto; gap: 2px; }
+.legacy-scope-tabs button { white-space: nowrap; }
+.legacy-search-page .scope-information-grid { grid-template-columns: minmax(0, 1fr); min-height: 0; flex: 1; }
+.legacy-search-page .scope-information-pane { overflow: auto; }
+.legacy-search-page [hidden] { display: none !important; }
+.legacy-search-page .workflow-step-list { overflow-x: auto; }
+.legacy-search-page .workflow-step-list li { flex: 0 0 auto; }
+.legacy-search-page .workflow-step { white-space: nowrap; }
+.legacy-search-page .facility-tab-panel { height: 100%; overflow: auto; }
+.legacy-search-page .facility-tab-panel > .event-workspace { height: 100%; }
+.legacy-search-page .event-workspace-detail-pane { height: 100%; }
+.legacy-search-page .facility-workspace-panel { display: grid; grid-template-rows: auto auto minmax(0, 1fr); }
+.legacy-search-page .facility-tab-body { overflow: hidden; }
+.legacy-search-page .event-workspace-body.has-scope-context {
+  grid-template-rows: minmax(90px, 1fr) minmax(100px, .8fr);
+  gap: 4px;
+}
+.legacy-search-page .event-workspace-body.has-scope-context .event-step-content { min-block-size: 0; }
+.legacy-search-page .event-workspace-body.has-scope-context .scope-information-grid { height: auto; padding: 0; background: #fff; }
+.legacy-search-page .scope-information-pane { background: #fff; border-color: #808080; }
+.legacy-search-page .certificate-shell .master-list-pane .table-scroll-history { background: #c0ffc0; }
+.legacy-search-page .certificate-history-table td { background: #c0ffc0; }
+.legacy-search-page .master-list-pane .table-scroll-history:has(.certificate-history-table) { background: #c0ffc0; }
+.legacy-search-page .certificate-history-table tr[aria-selected="true"] > td {
+  background: #0078d7; color: #fff;
+}
+.legacy-filter-form { position: relative; }
+.legacy-filter-form[open] .legacy-filter-groups {
+  position: absolute; z-index: 10; top: 32px; right: 0;
+  width: min(940px, calc(100vw - 40px)); max-height: min(65vh, 520px);
+  overflow: auto; padding: 6px; background: #f0f0f0; border: 1px solid #808080;
+}
+.legacy-unavailable-filters { grid-column: 1 / -1; }
+.legacy-unavailable-filters > p { margin: 4px 0; font-size: .8rem; }
+.legacy-unavailable-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.legacy-unavailable-columns > div { display: grid; align-content: start; gap: 5px; }
+.legacy-filter-groups .legacy-unavailable-filters label { display: flex; justify-content: start; font-weight: 400; }
+.legacy-unavailable-filters input[type="checkbox"] { width: 13px; height: 13px; min-height: 0; flex: 0 0 13px; margin: 0; }
+.legacy-disabled-date-range { display: grid; gap: 3px; font-size: .8rem; margin-top: 6px; }
+.legacy-unavailable-filters .legacy-disabled-date-range label { display: grid; grid-template-columns: 35px minmax(0, 1fr); }
+.legacy-unavailable-filters .legacy-disabled-date-range > label:first-child { display: flex; }
+.legacy-disabled-dose-row { font-size: .8rem; margin: 4px 0; }
+.legacy-disabled-dose-row > div { display: flex; flex-wrap: wrap; gap: 0 8px; }
+.legacy-search-page:has(.legacy-filter-form[open]) { grid-template-rows: clamp(190px, 30vh, 260px) minmax(0, 1fr); }
+@media (max-width: 1100px) {
+  .legacy-search-page:has(.legacy-filter-form[open]) { grid-template-rows: minmax(230px, auto) 200px minmax(420px, auto); }
+  .legacy-unavailable-columns { grid-template-columns: minmax(0, 1fr); }
+}
+.legacy-search-page .history-panel { grid-area: history; }
+.legacy-search-page .search-detail-area { grid-area: detail; }
+.legacy-search-page :is(.facility-tab-body, .facility-tabs, .facility-context-bar, .legacy-search-filters) :is(.panel, .table-scroll, .workspace-section, button, input, select, textarea, .workspace-tab, .workflow-step) { border-radius: 2px; box-shadow: none; }
+.legacy-search-page .workflow-step-index { display: none; }
+.legacy-search-page .workflow-step { padding: 3px 8px; }
+.legacy-search-page .workflow-step-list { gap: 2px; }
+.legacy-search-page .workflow-step-list li:not(:last-child)::after { display: none; }
+.legacy-search-page .workspace-section { padding: 5px; }
+.legacy-search-page .facility-context-bar { padding: 4px 6px; }
+.legacy-search-page .facility-context-title h2 { font-size: 0.95rem; }
+.legacy-search-filters { display: flex; align-items: start; gap: 8px; padding: 3px 5px; border: 1px solid var(--border-strong); background: var(--surface-muted); }
+.legacy-quick-filter { display: flex; align-items: center; gap: 5px; width: min(480px, 50%); flex-shrink: 0; }
+.legacy-filter-form { min-width: 0; flex: 1; }
+.legacy-filter-form summary { cursor: pointer; min-height: 28px; padding: 4px; }
+.legacy-filter-form summary:focus-visible { outline: 2px solid var(--accent); }
+.legacy-filter-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.legacy-filter-groups fieldset { min-width: 0; margin: 0; padding: 5px; border: 1px solid var(--border-strong); }
+.legacy-filter-groups label { display: grid; grid-template-columns: minmax(70px, 0.7fr) minmax(0, 1fr); align-items: center; gap: 4px; margin-bottom: 3px; font-size: 0.82rem; }
+@media (max-width: 1100px) {
+  .legacy-search-page, .legacy-search-page:has(.legacy-filter-form[open]) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "master" "history" "detail";
+    grid-template-rows: minmax(230px, auto) 200px minmax(420px, auto);
+    height: auto;
+  }
+  .legacy-master-pane { min-height: 230px; }
+  .legacy-master-pane > .results-panel { max-height: 300px; }
+  .legacy-search-filters { flex-direction: column; }
+  .legacy-quick-filter { width: 100%; }
+  .legacy-filter-form { width: 100%; }
+  .legacy-filter-groups { grid-template-columns: 1fr; }
+}
+
+/* A single mounted workspace supplies the full-width MainForm tab strip.
+   Layout wrappers have no request/state ownership; hidden/inert retention stays
+   in force while the canonical context is changing. */
+.legacy-search-page {
+  grid-template-rows: clamp(190px, 30vh, 260px) auto auto minmax(120px, .64fr) minmax(100px, .36fr);
+  grid-template-areas: "master master" "actions actions" "tabs tabs" "history detail" "context detail";
+}
+.legacy-search-page .search-detail-area,
+.legacy-search-page .retained-facility-workspace:not([hidden]),
+.legacy-search-page .facility-workspace-panel { display: contents; }
+.legacy-search-page .search-context-actions { grid-area: actions; }
+.legacy-search-page .facility-tabs { grid-area: tabs; margin: 0; }
+.legacy-search-page .facility-tab-body { grid-area: detail; margin: 0; }
+.legacy-search-page .facility-context-bar {
+  grid-area: context; flex-direction: column; align-items: stretch; overflow: auto;
+  border: 1px solid #808080; background: #f0f0f0;
+}
+.legacy-search-page .facility-context-identity { background: #c0ffff; padding: 4px; min-width: 0; }
+.legacy-search-page .facility-context-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.legacy-search-page .search-detail-area > .state-panel { grid-area: detail; overflow: auto; }
+.legacy-search-page .master-detail-split-certificate,
+.legacy-search-page .master-detail-split-eligibility { grid-template-columns: minmax(280px, 28%) minmax(0, 1fr); }
+.legacy-search-page .legacy-certificate-fields { display: flex; flex-direction: column; align-items: stretch; gap: 5px; }
+.legacy-search-page .legacy-certificate-heading { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+.legacy-search-page .legacy-certificate-heading > .detail-field { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 4px; }
+.legacy-search-page .legacy-certificate-body > .detail-field { display: grid; grid-template-columns: 140px minmax(0, 1fr); align-items: start; gap: 4px; margin: 4px 0; }
+.legacy-search-page .legacy-certificate-fields .detail-label { text-align: right; color: #000; }
+.legacy-search-page .legacy-certificate-fields .detail-value-slot > strong { display: block; color: #000; font-size: .84rem; }
+@media (max-width: 1400px) {
+  .legacy-search-page .legacy-certificate-heading { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .legacy-search-page .legacy-certificate-heading { grid-template-columns: minmax(0, 1fr); }
+  .legacy-search-page .legacy-certificate-body > .detail-field { grid-template-columns: 100px minmax(0, 1fr); }
+}
+.legacy-search-page:has(.facility-tabs .workspace-tab:nth-child(n+3)[aria-selected="true"]) {
+  grid-template-areas: "master master" "actions actions" "tabs tabs" "detail detail" "detail detail";
+}
+.legacy-search-page:has(.facility-tabs .workspace-tab:nth-child(n+3)[aria-selected="true"]) :is(.history-panel, .facility-context-bar) { display: none; }
+.legacy-search-page:has(.legacy-filter-form[open]) {
+  grid-template-rows: clamp(190px, 30vh, 260px) auto auto minmax(120px, .64fr) minmax(100px, .36fr);
+}
+@media (max-width: 1100px) {
+  .legacy-search-page, .legacy-search-page:has(.legacy-filter-form[open]) {
+    grid-template-rows: minmax(230px, auto) auto auto 200px 160px minmax(420px, auto);
+    grid-template-areas: "master" "actions" "tabs" "history" "context" "detail";
+  }
+  .legacy-search-page:has(.facility-tabs .workspace-tab:nth-child(n+3)[aria-selected="true"]) {
+    grid-template-rows: minmax(230px, auto) auto auto minmax(420px, auto);
+    grid-template-areas: "master" "actions" "tabs" "detail";
+  }
+  .legacy-search-page .master-detail-split-certificate,
+  .legacy-search-page .master-detail-split-eligibility { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* MainForm dossier assessment is distinct from inspection/final conclusions.
+   Compose the existing application and assessment owners without copying state. */
+.legacy-search-page .legacy-dossier-section { display: grid; grid-template-columns: minmax(0, .48fr) minmax(0, .52fr); gap: 4px 10px; }
+.legacy-search-page .legacy-dossier-section > h4 { grid-column: 1 / -1; margin: 0; }
+.legacy-search-page .case-application-primary { grid-column: 1; grid-row: 2; grid-template-columns: max-content minmax(0, 1fr); }
+.legacy-search-page :is(.case-assessment-stack, .case-assessment-section, .case-assessment-grid) { display: contents; }
+.legacy-search-page .case-assessment-metadata { grid-column: 1; grid-row: 3; grid-template-columns: max-content minmax(0, 1fr); }
+.legacy-search-page .case-assessment-result { grid-column: 2; grid-row: 2 / 4; min-width: 0; }
+.legacy-search-page .case-assessment-result .editable-detail-value { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+.legacy-search-page .case-assessment-result .detail-value-slot { min-height: 90px; }
+.legacy-search-page .case-application-extra { grid-column: 1 / -1; }
+.legacy-search-page .legacy-dossier-section > .panel-actions { grid-column: 1 / -1; }
+/* User exception: keep the existing master, GxP rail, action panel and history
+   appearance. Legacy styling applies only to the detail/filter surfaces. */
+.legacy-search-page, .legacy-search-page:has(.legacy-filter-form[open]) {
+  grid-template-columns: minmax(280px, 27%) minmax(0, 1fr) 160px;
+  grid-template-rows: clamp(190px, 30vh, 260px) auto auto minmax(120px, .64fr) minmax(100px, .36fr);
+  grid-template-areas: "master master actions" "filters filters filters" "tabs tabs tabs" "history detail detail" "context detail detail";
+  gap: .45rem;
+}
+.legacy-search-page .legacy-search-filters { grid-area: filters; }
+.legacy-search-page .search-context-actions .action-grid { display: grid; grid-template-columns: 1fr; }
+.legacy-search-page:has(.facility-tabs .workspace-tab:nth-child(n+3)[aria-selected="true"]) {
+  grid-template-areas: "master master actions" "filters filters filters" "tabs tabs tabs" "detail detail detail" "detail detail detail";
+}
+@media (max-width: 1100px) {
+  .legacy-search-page, .legacy-search-page:has(.legacy-filter-form[open]) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(230px, auto) auto auto auto 200px 160px minmax(420px, auto);
+    grid-template-areas: "master" "actions" "filters" "tabs" "history" "context" "detail";
+  }
+  .legacy-search-page:has(.facility-tabs .workspace-tab:nth-child(n+3)[aria-selected="true"]) {
+    grid-template-rows: minmax(230px, auto) auto auto auto minmax(420px, auto);
+    grid-template-areas: "master" "actions" "filters" "tabs" "detail";
+  }
+}
+@media (max-width: 600px) {
+  .legacy-search-page .legacy-dossier-section { grid-template-columns: minmax(0, 1fr); }
+  .legacy-search-page .case-assessment-result { grid-column: 1; grid-row: 4; }
+}
+
+/* Latest user correction: only the two master column filters remain, and
+   history occupies the full lower pane without a context summary below it. */
+.legacy-search-page {
+  grid-template-rows: clamp(190px, 30vh, 260px) auto minmax(0, 1fr);
+  grid-template-areas: "master master actions" "tabs tabs tabs" "history detail detail";
+}
+.legacy-search-page:has(.facility-tabs .workspace-tab:nth-child(n+3)[aria-selected="true"]) {
+  grid-template-areas: "master master actions" "tabs tabs tabs" "detail detail detail";
+}
+.legacy-search-page .history-table { min-width: 0; }
+.legacy-search-page .history-table td:nth-child(2) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1100px) {
+  .legacy-search-page {
+    grid-template-rows: minmax(230px, auto) auto auto minmax(300px, 45vh) minmax(420px, auto);
+    grid-template-areas: "master" "actions" "tabs" "history" "detail";
+  }
+  .legacy-search-page:has(.facility-tabs .workspace-tab:nth-child(n+3)[aria-selected="true"]) {
+    grid-template-rows: minmax(230px, auto) auto auto minmax(420px, auto);
+    grid-template-areas: "master" "actions" "tabs" "detail";
+  }
+}

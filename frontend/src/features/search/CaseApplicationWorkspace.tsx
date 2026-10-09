@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
 import type { CaseApplicationUpsertRequest, CaseWorkspace, InspectionFolderLookup } from "../../types";
@@ -61,10 +61,12 @@ export function CaseApplicationWorkspace({
   caseWorkspace,
   onSave,
   onResolveInspectionFolder,
+  assessment,
 }: {
   caseWorkspace: CaseWorkspace;
   onSave: (payload: CaseApplicationUpsertRequest) => Promise<void>;
   onResolveInspectionFolder: () => Promise<InspectionFolderLookup>;
+  assessment?: ReactNode;
 }) {
   const currentDraft = useMemo(() => buildDraft(caseWorkspace), [caseWorkspace]);
   const [draft, setDraft] = useState<FormDraft>(currentDraft);
@@ -126,9 +128,9 @@ export function CaseApplicationWorkspace({
 
   return (
     <div className="event-step-stack">
-      <section className="workspace-section case-application-section">
+      <section className={`workspace-section case-application-section${assessment ? " legacy-dossier-section" : ""}`}>
         <h4>Thông tin hồ sơ</h4>
-        <div className="detail-grid compact-grid detail-form-matrix case-application-grid">
+        <div className="detail-grid compact-grid detail-form-matrix case-application-grid case-application-primary">
           <EditableDetailValue
             editButtonLabel="Sửa Ngày nộp"
             error={editingField === "submitted_on" ? errorMessage : null}
@@ -174,6 +176,9 @@ export function CaseApplicationWorkspace({
             />
           </EditableDetailValue>
 
+        </div>
+        {assessment}
+        <div className="detail-grid compact-grid detail-form-matrix case-application-grid case-application-extra">
           <DetailValue label="Loại kiểm tra" value={caseWorkspace.case_summary.inspection_type} />
           <DetailValue label="GxP" value={caseWorkspace.case_summary.gxp_type} />
           <DetailValue label="Dây chuyền" value={caseWorkspace.case_summary.scope_code} />

@@ -1074,7 +1074,7 @@ export function SearchPage({
     resetCertificateWorkspaceState();
   }
 
-  function updateFilter(field: "facilityName" | "certificateScope" | "caseState" | "gxpType", value: string) {
+  function updateFilter(field: "facilityName" | "certificateScope" | "caseState" | "gxpType" | "generalQuery" | "province" | "certificateState" | "certificateExpiringWithinDays", value: string) {
     startTransition(() => {
       resetDependentContext();
       if (field === "facilityName") {
@@ -1085,6 +1085,14 @@ export function SearchPage({
         setGxpType(value);
       } else if (field === "caseState") {
         setCaseStates(value ? [value] : []);
+      } else if (field === "generalQuery") {
+        setGeneralQuery(value);
+      } else if (field === "province") {
+        setProvince(value);
+      } else if (field === "certificateState") {
+        setCertificateState(value);
+      } else if (field === "certificateExpiringWithinDays") {
+        setCertificateExpiringWithinDays(value);
       }
     });
   }
@@ -1907,8 +1915,9 @@ export function SearchPage({
   }
 
   return (
-    <section className="page-section search-page">
+    <section className="page-section search-page legacy-search-page">
       <div className="search-workspace search-workspace-split search-master-history">
+        <div className="legacy-master-pane">
         <FacilityTable
           filters={{
             facilityName,
@@ -1931,6 +1940,7 @@ export function SearchPage({
           selectedResultKey={selectedResultKey}
           selectedGxpType={gxpType}
         />
+        </div>
         <FacilityHistoryPane
           rows={workspace?.history ?? []}
           selectedHistoryId={selectedHistoryId}

@@ -223,3 +223,32 @@ staging candidate is abandoned, unowned, or safe to delete; legacy paths,
 in-progress writes and unregistered source files may still be relevant.
 Any future production integration must enforce a read-only transaction
 and obtain operator authorization separately.
+
+## Opt-in operator reconciliation against PostgreSQL metadata
+
+After creating a staging inventory JSON with the read-only
+`tools.audit_storage_staging` command, a separate operator can compare its
+candidates with exact DB locators. This is not part of startup, requests,
+scheduled jobs, or production deployment.
+
+1. Obtain a **dedicated metadata read-only PostgreSQL credential** approved
+   for this purpose and assign it to the environment variable
+   `GXP_STORAGE_LINEAGE_READONLY_DATABASE_URL`. It must not be the runtime,
+   owner, or migration credential. Do not put the URL in command arguments,
+   shell history, the input JSON, logs, or source control.
+2. Run `python -m tools.reconcile_storage_staging_lineage --inventory-json staging.json`
+   in a separately authorized environment. Without the dedicated environment
+   variable, the command refuses to connect.
+3. The command verifies PostgreSQL, executes `SET TRANSACTION READ ONLY`
+   and `SHOW transaction_read_only`, runs SELECT-only lineage reconciliation,
+   then rolls back even a successful transaction. A failed query emits a
+   generic incomplete report, without database exceptions or credentials.
+4. Review exact document-version and template-definition references and
+   inspection-folder binding hints. The output always states `review_only`
+   and never declares any file safe to delete. Exit status `0` means the
+   supplied storage inventory was complete, `2` means it was incomplete,
+   and `3` means the lineage audit could not complete.
+
+The command **does not access NAS**, mutate PostgreSQL, or clean staging
+files. Real-world credential/permissions and Synology checks remain separate
+operator-controlled UAT; neither is performed by GitHub CI.

@@ -110,7 +110,16 @@ def reconcile_staging_lineage(
             for folder in (_parent_folders(candidate.relative_path) if candidate.root == "inspection" else ())
             for binding_id in binding_refs.get(folder, ())
         }))
-        evidence = "registered_exact_locator" if versions or templates else "no_exact_locator_evidence"
+        # Two different DB records can name the same exact binary path.
+        # Report the overlap explicitly, without inferring it is invalid or
+        # resolving ownership from labels, filenames or apparent recency.
+        reference_count = len(versions) + len(templates)
+        if reference_count > 1:
+            evidence = "multiple_exact_locator_references"
+        elif reference_count == 1:
+            evidence = "registered_exact_locator"
+        else:
+            evidence = "no_exact_locator_evidence"
         items.append(StagingLineageItem(
             root=candidate.root,
             relative_path=candidate.relative_path,

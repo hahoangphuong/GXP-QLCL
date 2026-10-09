@@ -260,3 +260,15 @@ reconciliation CLI accepts `postgresql+psycopg://` explicitly, or the
 generic `postgresql://` form which it maps in memory to the psycopg3
 driver. Other PostgreSQL dialect/driver identifiers are rejected before
 connecting. The URL, including credentials, is never printed.
+
+## Shared exact-locator evidence
+
+When two or more `document_version` or `template_definition` records
+refer to the same exact `(storage_root, storage_relative_path)`, the
+read-only report marks the candidate
+`multiple_exact_locator_references` and includes *all* matching IDs.
+This is **not** an automatic consistency violation: distinct logical
+documents and templates may legitimately refer to the same binary.
+It is a review signal, never a winner-selection, orphan classification,
+database correction or cleanup authorization. Registry overlap is
+distinct from an `inspection` `storage_binding` folder hint.

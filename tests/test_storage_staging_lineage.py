@@ -64,6 +64,48 @@ def test_staging_lineage_template_exact_location_only_matching_root(session):
     assert matches[("inspection", "word/t.docx")].evidence == "no_exact_locator_evidence"
 
 
+def test_staging_lineage_flags_multiple_versions_at_same_exact_locator_for_review(session):
+    path = "2026/site/.gxp-stage-abc123.tmp"
+    first, second = str(uuid4()), str(uuid4())
+    session.add_all([
+        DocumentVersion(id=first, document_variant_id=str(uuid4()), version_no=1,
+                        storage_root="inspection", storage_relative_path=path),
+        DocumentVersion(id=second, document_variant_id=str(uuid4()), version_no=1,
+                        storage_root="inspection", storage_relative_path=path),
+    ])
+    session.flush()
+    report = reconcile_staging_lineage(session, _inventory(
+        ("inspection", path),
+        ("dkkd", path),
+    ))
+    rows = {(item.root, item.relative_path): item for item in report.items}
+    assert rows[("inspection", path)].evidence == "multiple_exact_locator_references"
+    assert rows[("inspection", path)].document_version_ids == tuple(sorted((first, second)))
+    assert rows[("inspection", path)].template_definition_ids == ()
+    assert rows[("dkkd", path)].evidence == "no_exact_locator_evidence"
+    assert report.status == "review_only"
+
+
+def test_staging_lineage_flags_cross_registry_overlap_without_guessing_owner(session):
+    path = "2026/shared/.gxp-stage-abc123.tmp"
+    session.add(DocumentVersion(
+        document_variant_id=str(uuid4()), version_no=1,
+        storage_root="inspection", storage_relative_path=path,
+    ))
+    session.add(TemplateDefinition(
+        family_code="STAGING_SHARED", document_type_code="DOC",
+        source_application="word", storage_scope="inspection_folder",
+        variant_type=DocumentVariantType.EDITABLE_DOCX,
+        template_name="overlap", is_active=True,
+        template_storage_root="inspection", template_storage_relative_path=path,
+    ))
+    session.flush()
+    item = reconcile_staging_lineage(session, _inventory(("inspection", path))).items[0]
+    assert len(item.document_version_ids) == 1
+    assert len(item.template_definition_ids) == 1
+    assert item.evidence == "multiple_exact_locator_references"
+
+
 def test_staging_lineage_binding_is_folder_only_not_file_identity(session):
     session.add(StorageBinding(
         case_id=None, year=2026, site_legacy_id=91,

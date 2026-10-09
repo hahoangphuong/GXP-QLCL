@@ -57,8 +57,8 @@ def fixture():
         "source_database_identity": {"database_name": "fixture"},
         "legacy_snapshot_sha256": "a" * 64, "canonical_state_sha256": "b" * 64,
         "candidate_set_sha256": roster["candidate_set_sha256"],
-        "candidate_set_roster_sha256": "c" * 64,
-        "candidate_set_roster_content_sha256": "d" * 64,
+        "candidate_set_roster_sha256": sha256(canonical_artifact_bytes(roster)).hexdigest(),
+        "candidate_set_roster_content_sha256": roster["content_sha256"],
         "candidate_set_roster_schema_version": REVIEW_SCHEMA_VERSION,
         "candidate_set_roster_artifact_kind": roster["artifact_kind"],
         "candidate_set_roster_planner_version": roster["planner_version"],
@@ -86,6 +86,13 @@ def reseal(roster):
     roster["content_sha256"] = sha256(canonical_artifact_bytes(payload)).hexdigest()
 
 
+def replan_for_review(plan, roster):
+    """Rebind a decision-bearing B6I roster, as B6J planner would."""
+    plan["candidate_set_roster_sha256"] = sha256(canonical_artifact_bytes(roster)).hexdigest()
+    plan["candidate_set_roster_content_sha256"] = roster["content_sha256"]
+    plan["plan_sha256"] = plan_digest(plan)
+
+
 def test_review_aligned_does_not_authorize_apply():
     plan, roster = fixture()
     result = audit_b6j_review_alignment(plan, roster)
@@ -109,6 +116,7 @@ def test_incomplete_review_creates_blocker(field, value, reason):
     plan, roster = fixture()
     roster["items"][0][field] = value
     reseal(roster)
+    replan_for_review(plan, roster)
     result = audit_b6j_review_alignment(plan, roster)
     assert result["status"] == "REVIEW_ALIGNMENT_BLOCKED"
     assert reason in result["findings"][0]["blockers"]
@@ -148,9 +156,11 @@ def test_map_existing_requires_exact_reviewed_line_uuid():
     item["approved_display_code"] = None
     item["existing_production_line_id"] = "33333333-3333-4333-8333-333333333333"
     reseal(roster)
+    replan_for_review(plan, roster)
     assert "MAPPED_LINE_ID_DIFFERS" in audit_b6j_review_alignment(plan, roster)["findings"][0]["blockers"]
     item["existing_production_line_id"] = c["existing_production_line_id"]
     reseal(roster)
+    replan_for_review(plan, roster)
     assert audit_b6j_review_alignment(plan, roster)["status"] == "REVIEW_ALIGNMENT_PASS"
 
 
@@ -178,7 +188,7 @@ def test_cli_requires_independent_file_sha_before_any_output(tmp_path, capsys):
     plan, roster = fixture()
     plan_path, roster_path, report_path = (tmp_path / x for x in ("plan.json", "roster.json", "report.json"))
     plan_path.write_text(json.dumps(plan))
-    roster_path.write_text(json.dumps(roster))
+    roster_path.write_bytes(canonical_artifact_bytes(roster))
     args = [
         "--plan", str(plan_path), "--reviewed-roster", str(roster_path),
         "--expected-plan-file-sha256", sha256(plan_path.read_bytes()).hexdigest(),
@@ -199,9 +209,10 @@ def test_cli_writes_blocker_report_and_returns_nonzero(tmp_path):
     plan, roster = fixture()
     roster["items"][0]["review_decision"] = "DEFER_INSUFFICIENT_EVIDENCE"
     reseal(roster)
+    replan_for_review(plan, roster)
     plan_path, roster_path, report_path = (tmp_path / x for x in ("plan.json", "roster.json", "report.json"))
     plan_path.write_text(json.dumps(plan))
-    roster_path.write_text(json.dumps(roster))
+    roster_path.write_bytes(canonical_artifact_bytes(roster))
     args = [
         "--plan", str(plan_path), "--reviewed-roster", str(roster_path),
         "--expected-plan-file-sha256", sha256(plan_path.read_bytes()).hexdigest(),
@@ -230,6 +241,7 @@ def test_review_approval_with_contradictory_payload_does_not_pass(field, value):
         plan["plan_sha256"] = plan_digest(plan)
         _validate_plan(plan)
     reseal(roster)
+    replan_for_review(plan, roster)
     report = audit_b6j_review_alignment(plan, roster)
     assert report["status"] == "REVIEW_ALIGNMENT_BLOCKED"
     assert "INVALID_B6I_DECISION_PAYLOAD" in report["findings"][0]["blockers"]
@@ -261,7 +273,7 @@ def test_cli_never_overwrites_approved_input_artifact(tmp_path, capsys, overwrit
     plan_path = tmp_path / "plan.json"
     roster_path = tmp_path / "roster.json"
     plan_path.write_text(json.dumps(plan))
-    roster_path.write_text(json.dumps(roster))
+    roster_path.write_bytes(canonical_artifact_bytes(roster))
     before_plan, before_roster = plan_path.read_bytes(), roster_path.read_bytes()
     report_path = plan_path if overwrite == "plan" else roster_path
     args = [
@@ -336,6 +348,7 @@ def test_already_linked_noop_is_not_falsely_reported_as_source_blocker():
         existing_production_line_id=target,
     )
     reseal(roster)
+    replan_for_review(plan, roster)
     report = audit_b6j_review_alignment(plan, roster)
     assert report["status"] == "REVIEW_ALIGNMENT_PASS"
     assert report["blocked_source_action_count"] == 0
@@ -374,7 +387,7 @@ def test_source_only_blocker_causes_cli_exit_three_with_preserved_report(tmp_pat
     roster_path = tmp_path / "roster.json"
     report_path = tmp_path / "report.json"
     plan_path.write_text(json.dumps(plan))
-    roster_path.write_text(json.dumps(roster))
+    roster_path.write_bytes(canonical_artifact_bytes(roster))
     args = [
         "--plan", str(plan_path), "--reviewed-roster", str(roster_path),
         "--expected-plan-file-sha256", sha256(plan_path.read_bytes()).hexdigest(),
@@ -426,3 +439,32 @@ def test_missing_linked_canonical_owner_is_a_review_blocker():
     report = audit_b6j_review_alignment(plan, roster)
     assert report["status"] == "REVIEW_ALIGNMENT_BLOCKED"
     assert "LINK_MISSING_CANONICAL_OWNER" in report["source_action_findings"][0]["blockers"]
+
+
+def test_new_review_version_requires_replanned_b6j_artifact():
+    plan, roster = fixture()
+    roster["items"][0]["reviewer"] = "Second reviewer"
+    reseal(roster)
+    with pytest.raises(B6KReviewAlignmentError, match="replan required"):
+        audit_b6j_review_alignment(plan, roster)
+    replan_for_review(plan, roster)
+    assert audit_b6j_review_alignment(plan, roster)["status"] == "REVIEW_ALIGNMENT_PASS"
+
+
+def test_cli_refuses_identical_review_content_with_different_file_bytes(tmp_path, capsys):
+    plan, roster = fixture()
+    plan_path, roster_path, output_path = (tmp_path / x for x in ("plan.json", "roster.json", "audit.json"))
+    plan_path.write_text(json.dumps(plan))
+    roster_path.write_text(json.dumps(roster, sort_keys=True, indent=2))
+    assert sha256(roster_path.read_bytes()).hexdigest() != plan["candidate_set_roster_sha256"]
+    args = [
+        "--plan", str(plan_path), "--reviewed-roster", str(roster_path),
+        "--expected-plan-file-sha256", sha256(plan_path.read_bytes()).hexdigest(),
+        "--expected-reviewed-roster-file-sha256", sha256(roster_path.read_bytes()).hexdigest(),
+        "--output", str(output_path),
+    ]
+    with pytest.raises(SystemExit) as exc:
+        main(args)
+    assert exc.value.code == 2
+    assert "plan-bound roster" in capsys.readouterr().err
+    assert not output_path.exists()

@@ -47,6 +47,10 @@ def audit_b6j_review_alignment(plan: Mapping[str, Any], roster: Mapping[str, Any
     require(isinstance(seal, str)
             and seal == sha256(canonical_artifact_bytes(unsealed)).hexdigest(),
             "B6K reviewed roster content SHA256 invalid")
+    # Candidate-set SHA excludes reviewer decisions; the plan must be
+    # explicitly rebuilt from this precise decision-bearing roster.
+    require(plan.get("candidate_set_roster_content_sha256") == seal,
+            "B6K reviewed roster decision content differs from plan; replan required")
     for field in ("legacy_snapshot_sha256", "canonical_state_sha256",
                   "planner_version", "candidate_set_sha256"):
         require(roster.get(field) == plan.get(field), f"B6K source {field} changed")

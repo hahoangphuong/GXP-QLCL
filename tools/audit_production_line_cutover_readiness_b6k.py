@@ -28,7 +28,10 @@ def main(argv: list[str] | None = None) -> int:
     ):
         if sha256(payload).hexdigest() != expected:
             parser.error(f"B6K {label} file SHA256 differs from independently approved value")
-    report = audit_b6j_review_alignment(json.loads(pbytes), json.loads(rbytes))
+    plan = json.loads(pbytes)
+    if plan.get("candidate_set_roster_sha256") != sha256(rbytes).hexdigest():
+        parser.error("B6K reviewed roster exact bytes differ from plan-bound roster; replan required")
+    report = audit_b6j_review_alignment(plan, json.loads(rbytes))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"B6K_REVIEW_ALIGNMENT={report['status']};BLOCKED_CANDIDATES={report['blocked_candidate_count']}")

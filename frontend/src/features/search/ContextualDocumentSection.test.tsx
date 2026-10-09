@@ -87,4 +87,3 @@ describe("Document workspace identity and focus", () => {
     expect(screen.getByRole("button", { name: "Lịch sử A" })).toBeEnabled();
   });
 });
-

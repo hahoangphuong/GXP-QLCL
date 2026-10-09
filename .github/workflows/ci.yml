@@ -47,6 +47,12 @@ jobs:
           A3_DISPOSABLE_POSTGRES_DATABASE: gxp_qlcl_test
         run: python -m pytest tests/test_a3_capa_incoming_reference_postgres.py tests/test_a5_change_request_postgres.py -q
 
+      - name: Validate staging lineage with disposable PostgreSQL
+        env:
+          GXP_STAGING_LINEAGE_POSTGRES_INTEGRATION: "1"
+          GXP_STAGING_LINEAGE_DISPOSABLE_DATABASE: gxp_qlcl_test
+        run: python -m pytest tests/test_storage_staging_lineage_postgres.py -q -p no:cacheprovider
+
       - name: Run backend tests
         run: python -m pytest -q
 

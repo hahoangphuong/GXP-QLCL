@@ -86,6 +86,26 @@ def _require_metadata_reader(conn) -> None:
         True, True, True, False, False, False,
     ]:
         raise RuntimeError("A dedicated metadata SELECT-only PostgreSQL role is required.")
+    # Checking only the three queried tables is insufficient: a runtime role
+    # may have business-table DML elsewhere in the same schema. Reject
+    # effective write grants on any user table/view in the active schema.
+    any_schema_write = conn.exec_driver_sql(
+        """
+        SELECT EXISTS (
+            SELECT 1
+            FROM pg_catalog.pg_class AS c
+            JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
+            WHERE n.nspname = current_schema()
+              AND c.relkind IN ('r', 'p', 'v', 'f', 'm')
+              AND has_table_privilege(
+                    c.oid,
+                    'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER'
+                  )
+        )
+        """
+    ).scalar_one()
+    if any_schema_write:
+        raise RuntimeError("A dedicated metadata SELECT-only PostgreSQL role is required.")
 
 
 def _read_only_reconcile(database_url: str, inventory: StagingAudit):

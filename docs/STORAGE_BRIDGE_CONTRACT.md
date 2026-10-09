@@ -285,3 +285,12 @@ This check includes inherited table grants and refuses superuser,
 runtime/migration or inadequately provisioned identities. A failure
 returns a generic incomplete audit and rolls back. Transaction read-only
 is an additional control, not a substitute for this permission gate.
+
+The CLI also rejects roles with effective write grants on **any** table,
+partitioned table, view, foreign table, or materialized view in the active
+application schema. This prevents a general application writer from being
+mistaken for a dedicated metadata reader merely because the three lineage
+tables themselves are SELECT-only. External cross-schema privileges and
+role membership remain operator IAM responsibilities; this check does not
+certify the absence of every possible database privilege outside the
+application schema.

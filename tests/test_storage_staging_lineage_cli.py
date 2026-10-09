@@ -55,11 +55,12 @@ def test_lineage_cli_rejects_non_postgres_database(tmp_path, monkeypatch, capsys
 
 
 class _FakeResult:
-    def __init__(self, *, role_flags=None):
+    def __init__(self, *, role_flags=None, value="on"):
         self.role_flags = role_flags or (False, False, False, True, True, True, False, False, False)
+        self.value = value
 
     def scalar_one(self):
-        return "on"
+        return self.value
 
     def one(self):
         return self.role_flags
@@ -78,13 +79,17 @@ class _FakeConnection:
         self.transaction = _FakeTransaction()
         self.statements = []
         self.role_flags = (False, False, False, True, True, True, False, False, False)
+        self.can_write_other_tables = False
 
     def begin(self):
         return self.transaction
 
     def exec_driver_sql(self, sql):
         self.statements.append(sql)
-        return _FakeResult(role_flags=self.role_flags)
+        return _FakeResult(
+            role_flags=self.role_flags,
+            value=self.can_write_other_tables if "pg_catalog.pg_class" in sql else "on",
+        )
 
     def __enter__(self):
         return self
@@ -149,8 +154,9 @@ def test_lineage_cli_confirms_read_only_and_always_rolls_back(tmp_path, monkeypa
     assert data["input_inventory_truncated"] is True
     assert data["status"] == "review_only"
     assert engine.connection.statements[:2] == ["SET TRANSACTION READ ONLY", "SHOW transaction_read_only"]
-    assert len(engine.connection.statements) == 3
+    assert len(engine.connection.statements) == 4
     assert "has_table_privilege" in engine.connection.statements[2]
+    assert "pg_catalog.pg_class" in engine.connection.statements[3]
     assert engine.connection.transaction.rollbacks == 1
     assert engine.disposed
     assert len(seen) == 1
@@ -197,6 +203,24 @@ def test_lineage_cli_rejects_privileged_or_incomplete_reader_grants(
     output = capsys.readouterr().out
     assert json.loads(output)["reason"] == "lineage_audit_failed"
     assert "secret" not in output
+    assert engine.connection.transaction.rollbacks == 1
+    assert engine.disposed
+
+
+def test_lineage_cli_rejects_reader_with_writes_to_other_business_tables(
+    tmp_path, monkeypatch, capsys,
+):
+    monkeypatch.setenv(
+        "GXP_STORAGE_LINEAGE_READONLY_DATABASE_URL",
+        "postgresql+psycopg://other_writer:secret@localhost/test",
+    )
+    engine = _FakeEngine()
+    engine.connection.can_write_other_tables = True
+    monkeypatch.setattr(cli, "create_engine", lambda *args, **kwargs: engine)
+    monkeypatch.setattr(cli, "Session", lambda **kwargs:
+        pytest.fail("writable schema role must not reach lineage SELECTs"))
+    assert cli.main(["--inventory-json", str(_write_inventory(tmp_path))]) == 3
+    assert json.loads(capsys.readouterr().out)["reason"] == "lineage_audit_failed"
     assert engine.connection.transaction.rollbacks == 1
     assert engine.disposed
 

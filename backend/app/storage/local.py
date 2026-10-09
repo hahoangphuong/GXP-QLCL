@@ -79,7 +79,9 @@ class LocalStorageService:
                 detail="Missing or invalid inspection folder identity input.",
             )
 
-        year_roots = [self.inspection_root / str(year)]
+        # Do not enumerate a year directory that resolves outside the
+        # inspection root (for example, a year-named symlink).
+        year_roots = [self._path_under(self.inspection_root, str(year))]
         matches = [
             path
             for year_root in year_roots
@@ -144,6 +146,11 @@ class LocalStorageService:
         not_found_detail: str,
         ambiguous_detail: str,
     ) -> StorageResolution:
+        # Check all matching paths before reporting a count. Without this,
+        # multiple outside-root symlinks are reported as AMBIGUOUS and leak
+        # information about paths the adapter must never examine.
+        for path in matches:
+            self._ensure_within_root(root, path)
         if not matches:
             return StorageResolution(
                 status=StorageResolutionStatus.NOT_FOUND,

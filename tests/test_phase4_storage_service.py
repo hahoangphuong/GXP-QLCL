@@ -462,6 +462,37 @@ def test_storage_list_rejects_child_symlinks_escaping_root(tmp_path: Path, is_di
         assert outside.read_text(encoding="utf-8") == "private metadata"
 
 
+def test_inspection_resolution_rejects_year_symlink_outside_root(tmp_path: Path):
+    service = build_service(tmp_path)
+    outside_year = tmp_path / "external-year"
+    outside_year.mkdir()
+    (outside_year / "A (ID-103) (KT-1376-GMP)").mkdir()
+    (outside_year / "B (ID-103) (KT-1376-GMP)").mkdir()
+    _create_storage_symlink_or_skip(
+        service.inspection_root / "2026", outside_year, is_dir=True
+    )
+
+    with pytest.raises(StorageOperationError, match="escapes configured storage root"):
+        service.resolve_inspection_folder(
+            year=2026, site_legacy_id=103, inspection_legacy_code="KT-1376-GMP"
+        )
+
+
+def test_dkkd_resolution_rejects_multiple_matching_symlinks_outside_root(tmp_path: Path):
+    service = build_service(tmp_path)
+    external_parent = tmp_path / "other-sites"
+    external_parent.mkdir()
+    for name in ["Facility A (91)", "Facility B (91)"]:
+        destination = external_parent / name
+        destination.mkdir()
+        _create_storage_symlink_or_skip(
+            service.dkkd_root / name, destination, is_dir=True
+        )
+
+    with pytest.raises(StorageOperationError, match="escapes configured storage root"):
+        service.resolve_dkkd_folder(site_legacy_id=91)
+
+
 def test_storage_list_allows_symlink_to_a_target_within_root(tmp_path: Path):
     service = build_service(tmp_path)
     target = service.inspection_root / "2026" / "report.txt"

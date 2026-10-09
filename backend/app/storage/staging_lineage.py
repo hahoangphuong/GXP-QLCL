@@ -13,7 +13,7 @@ from sqlalchemy import select, tuple_
 from sqlalchemy.orm import Session
 
 from backend.app.db.models.phase1 import DocumentVersion, StorageBinding, TemplateDefinition
-from backend.app.storage.staging import StagingAudit
+from backend.app.storage.staging import StagingAudit, StagingCandidate, classify_staging_candidate
 
 
 @dataclass(frozen=True)
@@ -48,6 +48,89 @@ def _parent_folders(path: str) -> tuple[str, ...]:
     return tuple("/".join(parts[:index]) for index in range(1, len(parts) + 1))
 
 
+_KNOWN_ROOTS = frozenset({"inspection", "dkkd", "template"})
+_CATEGORIES = frozenset({"managed_candidate", "legacy_smb_candidate"})
+_INCOMPLETE_REASONS = frozenset({
+    "directory_budget_exceeded", "entry_budget_exceeded",
+    "depth_budget_exceeded", "storage_access_failed", "storage_setup_failed",
+})
+
+
+def _valid_locator(path: str, *, allow_empty: bool = False) -> bool:
+    if not isinstance(path, str):
+        return False
+    if path == "":
+        return allow_empty
+    if path.startswith("/") or "\\" in path or ":" in path:
+        return False
+    if any(ord(char) < 32 or ord(char) == 127 for char in path):
+        return False
+    return all(segment not in {"", ".", ".."} for segment in path.split("/"))
+
+
+def validate_staging_inventory(
+    inventory: StagingAudit,
+    *,
+    max_candidates: int = 10000,
+    require_scanner_categories: bool = False,
+) -> None:
+    """Validate metadata only; never attest authenticity or deletion safety.
+
+    The optional CLI requires category/basename consistency because its input
+    is supposed to be a real scanner export. Pure in-memory callers can pass
+    artificial category labels for isolated lineage tests, but must still
+    supply safe, internally consistent paths and counters.
+    """
+    if not isinstance(inventory, StagingAudit):
+        raise ValueError("Invalid staging inventory.")
+    if type(max_candidates) is not int or max_candidates < 1 or len(inventory.candidates) > max_candidates:
+        raise ValueError("Staging lineage candidate limit exceeded.")
+    if not isinstance(inventory.candidates, tuple):
+        raise ValueError("Invalid staging candidate collection.")
+    if (
+        type(inventory.scanned_directories) is not int or inventory.scanned_directories < 0
+        or type(inventory.scanned_entries) is not int
+        or inventory.scanned_entries < len(inventory.candidates)
+        or type(inventory.truncated) is not bool
+    ):
+        raise ValueError("Invalid staging inventory counters or truncation flag.")
+    if inventory.truncated:
+        if inventory.incomplete_reason not in _INCOMPLETE_REASONS:
+            raise ValueError("Invalid staging incomplete reason.")
+    elif inventory.incomplete_reason is not None:
+        raise ValueError("Complete staging inventory cannot contain an incomplete reason.")
+    if inventory.incomplete_reason == "storage_access_failed":
+        if inventory.failed_root not in _KNOWN_ROOTS or not _valid_locator(
+            inventory.failed_relative_path, allow_empty=True,
+        ):
+            raise ValueError("Invalid staging access failure locator.")
+    elif inventory.failed_root is not None or inventory.failed_relative_path is not None:
+        raise ValueError("Unexpected staging failure locator.")
+    if inventory.incomplete_reason == "storage_setup_failed" and (
+        inventory.candidates or inventory.scanned_directories or inventory.scanned_entries
+    ):
+        raise ValueError("A storage setup failure cannot contain scanned entries.")
+
+    seen: set[tuple[str, str]] = set()
+    for candidate in inventory.candidates:
+        if not isinstance(candidate, StagingCandidate):
+            raise ValueError("Invalid staging candidate record.")
+        if candidate.root not in _KNOWN_ROOTS or not _valid_locator(candidate.relative_path):
+            raise ValueError("Staging inventory contains an invalid logical locator.")
+        if candidate.category not in _CATEGORIES:
+            raise ValueError("Invalid staging candidate category.")
+        if candidate.size is not None and (type(candidate.size) is not int or candidate.size < 0):
+            raise ValueError("Invalid staging candidate size.")
+        key = (candidate.root, candidate.relative_path)
+        if key in seen:
+            raise ValueError("Duplicate staging candidate locator.")
+        seen.add(key)
+        if require_scanner_categories and classify_staging_candidate(
+            candidate.relative_path.rsplit("/", 1)[-1],
+        ) != candidate.category:
+            raise ValueError("Staging candidate name does not match its category.")
+
+
 def reconcile_staging_lineage(
     session: Session,
     inventory: StagingAudit,
@@ -59,14 +142,8 @@ def reconcile_staging_lineage(
     Only exact registered root/path pairs count as file-level references.
     Never infer a deletion decision from lack of a match.
     """
-    if max_candidates < 1 or len(inventory.candidates) > max_candidates:
-        raise ValueError("Staging lineage candidate limit exceeded.")
+    validate_staging_inventory(inventory, max_candidates=max_candidates)
     keys = sorted({(c.root, c.relative_path) for c in inventory.candidates})
-    if any(root not in {"inspection", "dkkd", "template"} or not path or
-           path.startswith("/") or "\\" in path or
-           any(segment in {"", ".", ".."} for segment in path.split("/"))
-           for root, path in keys):
-        raise ValueError("Staging inventory contains an invalid logical locator.")
 
     version_refs: dict[tuple[str, str], set[str]] = {}
     template_refs: dict[tuple[str, str], set[str]] = {}

@@ -22,7 +22,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from backend.app.storage.staging import StagingAudit, StagingCandidate
-from backend.app.storage.staging_lineage import reconcile_staging_lineage
+from backend.app.storage.staging_lineage import reconcile_staging_lineage, validate_staging_inventory
 
 
 _ENV_KEY = "GXP_STORAGE_LINEAGE_READONLY_DATABASE_URL"
@@ -30,32 +30,53 @@ _MAX_JSON_BYTES = 8 * 1024 * 1024
 _MAX_CANDIDATES = 10000
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict:
+    result: dict = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate JSON object key.")
+        result[key] = value
+    return result
+
+
 def _parse_inventory(path: Path) -> StagingAudit:
-    if path.stat().st_size > _MAX_JSON_BYTES:
+    # Bound the actual read (rather than checking stat then reading an
+    # unbounded, potentially replaced file). Reject ambiguous JSON keys.
+    with path.open("rb") as fh:
+        raw = fh.read(_MAX_JSON_BYTES + 1)
+    if len(raw) > _MAX_JSON_BYTES:
         raise ValueError("Audit input exceeds the allowed size.")
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict) or not isinstance(data.get("candidates"), list):
-        raise ValueError("Invalid inventory format.")
-    if len(data["candidates"]) > _MAX_CANDIDATES:
-        raise ValueError("Audit candidate limit exceeded.")
-    candidates = tuple(
-        StagingCandidate(
-            root=item["root"],
-            relative_path=item["relative_path"],
-            category=item["category"],
-            size=item["size"],
-        )
-        for item in data["candidates"]
-    )
-    return StagingAudit(
-        candidates=candidates,
+    data = json.loads(raw.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
+    required = {
+        "candidates", "scanned_directories", "scanned_entries",
+        "truncated", "incomplete_reason",
+    }
+    optional = {"failed_root", "failed_relative_path"}
+    if not isinstance(data, dict) or not required.issubset(data) or set(data) - required - optional:
+        raise ValueError("Invalid staging inventory format.")
+    entries = data["candidates"]
+    if not isinstance(entries, list) or len(entries) > _MAX_CANDIDATES:
+        raise ValueError("Invalid staging candidate list.")
+    candidates = []
+    for item in entries:
+        if not isinstance(item, dict) or set(item) != {"root", "relative_path", "category", "size"}:
+            raise ValueError("Invalid staging candidate format.")
+        candidates.append(StagingCandidate(**item))
+    inventory = StagingAudit(
+        candidates=tuple(candidates),
         scanned_directories=data["scanned_directories"],
         scanned_entries=data["scanned_entries"],
         truncated=data["truncated"],
-        incomplete_reason=data.get("incomplete_reason"),
+        incomplete_reason=data["incomplete_reason"],
         failed_root=data.get("failed_root"),
         failed_relative_path=data.get("failed_relative_path"),
     )
+    # Scanner category/filename identity is a trust-boundary contract.
+    # This validates structure, not that the file was actually observed.
+    validate_staging_inventory(
+        inventory, max_candidates=_MAX_CANDIDATES, require_scanner_categories=True,
+    )
+    return inventory
 
 
 def _require_metadata_reader(conn) -> None:
@@ -109,6 +130,9 @@ def _require_metadata_reader(conn) -> None:
 
 
 def _read_only_reconcile(database_url: str, inventory: StagingAudit):
+    # Reject even programmatically supplied malformed inventory before a
+    # socket, engine, role or DB session is created.
+    validate_staging_inventory(inventory, max_candidates=_MAX_CANDIDATES)
     # PostgreSQL only. Transaction-level read-only is confirmed before
     # any lineage SELECT. A rollback is issued even for successful audits.
     url = make_url(database_url)

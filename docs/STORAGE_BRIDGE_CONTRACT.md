@@ -317,3 +317,23 @@ database snapshot instead of mixing rows committed at different times
 under `READ COMMITTED`. The transaction is rolled back after use.
 The NAS inventory and this database snapshot are **not** an atomic
 cross-system snapshot, so neither source can authorize staging cleanup.
+
+### Staging inventory input validation (fail closed)
+
+The opt-in lineage CLI treats inventory JSON as untrusted operator input.
+Before **any** PostgreSQL connection it enforces a bounded 8 MiB read,
+rejects repeated JSON keys and unknown fields, requires exact scalar
+types (particularly boolean `truncated` and nonnegative integer counters
+and sizes), ensures truncation/reason/failure-path consistency and forbids
+duplicate or unsafe logical locators. Every candidate must have a
+scanner-recognized filename matching its declared category. Malformed
+input returns the existing generic `lineage_audit_failed` response with
+exit code 3, without exposing input contents, file paths or DB credentials.
+Direct service callers also validate safe inventory structure before
+running SELECT statements.
+
+These checks establish **structural plausibility only**. A caller can
+still fabricate a well-formed JSON audit; there is no signed capture,
+authenticated provenance, cross-system snapshot or proof of orphan
+ownership. `review_only` therefore remains mandatory, and the command
+must never authorize cleanup.

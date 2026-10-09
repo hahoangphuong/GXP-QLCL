@@ -20,6 +20,8 @@ def _write_inventory(tmp_path: Path, *, truncated: bool = False) -> Path:
         "scanned_directories": 1, "scanned_entries": 3,
         "truncated": truncated,
         "incomplete_reason": "storage_access_failed" if truncated else None,
+        "failed_root": "inspection" if truncated else None,
+        "failed_relative_path": "" if truncated else None,
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
@@ -248,3 +250,139 @@ def test_lineage_cli_db_failure_never_leaks_secret_and_rolls_back(tmp_path, monk
     assert "private-db-password" not in output
     assert engine.connection.transaction.rollbacks == 1
     assert engine.disposed
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "truncated_string", "entries_string", "directories_boolean",
+        "size_negative", "size_boolean", "wrong_category",
+        "bad_root", "traversal", "absolute_path", "not_staging_filename",
+        "duplicate_locator", "complete_with_failure_reason",
+        "incomplete_without_reason", "incomplete_without_failed_root",
+        "failure_path_without_error", "counter_lower_than_findings",
+        "unknown_candidate_key", "unknown_root_key", "missing_required_key",
+        "invalid_incomplete_reason",
+    ],
+)
+def test_lineage_cli_rejects_structurally_invalid_inventory_before_db(
+    tmp_path, monkeypatch, capsys, case,
+):
+    path = _write_inventory(tmp_path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    candidate = data["candidates"][0]
+    if case == "truncated_string":
+        data["truncated"] = "false"
+    elif case == "entries_string":
+        data["scanned_entries"] = "3"
+    elif case == "directories_boolean":
+        data["scanned_directories"] = True
+    elif case == "size_negative":
+        candidate["size"] = -1
+    elif case == "size_boolean":
+        candidate["size"] = False
+    elif case == "wrong_category":
+        candidate["category"] = "legacy_smb_candidate"
+    elif case == "bad_root":
+        candidate["root"] = "arbitrary"
+    elif case == "traversal":
+        candidate["relative_path"] = "../escape/.gxp-stage-aabbcc.tmp"
+    elif case == "absolute_path":
+        candidate["relative_path"] = "/tmp/.gxp-stage-aabbcc.tmp"
+    elif case == "not_staging_filename":
+        candidate["relative_path"] = "2026/one/regular-file.pdf"
+    elif case == "duplicate_locator":
+        data["candidates"].append(dict(candidate))
+    elif case == "complete_with_failure_reason":
+        data["incomplete_reason"] = "storage_access_failed"
+    elif case == "incomplete_without_reason":
+        data["truncated"] = True
+    elif case == "incomplete_without_failed_root":
+        data["truncated"] = True
+        data["incomplete_reason"] = "storage_access_failed"
+    elif case == "failure_path_without_error":
+        data["failed_root"] = "inspection"
+        data["failed_relative_path"] = ""
+    elif case == "counter_lower_than_findings":
+        data["scanned_entries"] = 0
+    elif case == "unknown_candidate_key":
+        candidate["unknown"] = "not in scanner export"
+    elif case == "unknown_root_key":
+        data["unknown"] = "not in scanner export"
+    elif case == "missing_required_key":
+        del data["scanned_entries"]
+    elif case == "invalid_incomplete_reason":
+        data["truncated"] = True
+        data["incomplete_reason"] = "already_deleted"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    monkeypatch.setenv(
+        "GXP_STORAGE_LINEAGE_READONLY_DATABASE_URL",
+        "postgresql+psycopg://reader:secret@localhost/gxp_qlcl_test",
+    )
+    monkeypatch.setattr(
+        cli, "create_engine",
+        lambda *args, **kwargs: pytest.fail("untrusted JSON opened database"),
+    )
+    assert cli.main(["--inventory-json", str(path)]) == 3
+    result = json.loads(capsys.readouterr().out)
+    assert result == {"status": "incomplete", "reason": "lineage_audit_failed"}
+
+
+def test_lineage_cli_rejects_duplicate_json_object_key_before_db(
+    tmp_path, monkeypatch, capsys,
+):
+    path = _write_inventory(tmp_path)
+    data = path.read_text(encoding="utf-8")
+    assert '"scanned_entries": 3' in data
+    path.write_text(
+        data.replace('"scanned_entries": 3', '"scanned_entries": 3, "scanned_entries": 300'),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(
+        "GXP_STORAGE_LINEAGE_READONLY_DATABASE_URL",
+        "postgresql+psycopg://reader:secret@localhost/gxp_qlcl_test",
+    )
+    monkeypatch.setattr(
+        cli, "create_engine",
+        lambda *args, **kwargs: pytest.fail("duplicate JSON keys opened database"),
+    )
+    assert cli.main(["--inventory-json", str(path)]) == 3
+    assert json.loads(capsys.readouterr().out)["reason"] == "lineage_audit_failed"
+
+
+def test_lineage_cli_rejects_oversized_json_without_unbounded_read(
+    tmp_path, monkeypatch, capsys,
+):
+    path = tmp_path / "oversized.json"
+    path.write_bytes(b" " * (cli._MAX_JSON_BYTES + 1))
+    monkeypatch.setenv(
+        "GXP_STORAGE_LINEAGE_READONLY_DATABASE_URL",
+        "postgresql+psycopg://reader:secret@localhost/gxp_qlcl_test",
+    )
+    monkeypatch.setattr(
+        cli, "create_engine",
+        lambda *args, **kwargs: pytest.fail("oversized JSON opened database"),
+    )
+    assert cli.main(["--inventory-json", str(path)]) == 3
+    assert json.loads(capsys.readouterr().out)["reason"] == "lineage_audit_failed"
+
+
+def test_lineage_direct_read_only_reconciliation_validates_before_engine(
+    tmp_path, monkeypatch,
+):
+    from backend.app.storage.staging import StagingAudit, StagingCandidate
+    inventory = StagingAudit(
+        candidates=(StagingCandidate(
+            root="inspection", relative_path="../.gxp-stage-aabbcc.tmp",
+            category="managed_candidate", size=8,
+        ),),
+        scanned_directories=1, scanned_entries=1,
+        truncated=False, incomplete_reason=None,
+    )
+    monkeypatch.setattr(
+        cli, "create_engine",
+        lambda *args, **kwargs: pytest.fail("bad direct inventory opened database"),
+    )
+    with pytest.raises(ValueError, match="invalid logical locator"):
+        cli._read_only_reconcile("postgresql+psycopg://reader:secret@localhost/db", inventory)

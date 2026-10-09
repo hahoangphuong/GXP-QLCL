@@ -20,6 +20,8 @@ def _inventory(*candidates: tuple[str, str], truncated: bool = False) -> Staging
         ) for root, path in candidates),
         scanned_directories=2, scanned_entries=8, truncated=truncated,
         incomplete_reason="storage_access_failed" if truncated else None,
+        failed_root="inspection" if truncated else None,
+        failed_relative_path="" if truncated else None,
     )
 
 
@@ -155,3 +157,27 @@ def test_staging_lineage_uses_selects_and_does_not_autoflush(session):
     assert report.items[0].document_version_ids == ()
     assert seen and all(sql.lstrip().upper().startswith("SELECT") for sql in seen)
     assert not session.new and not session.dirty and not session.deleted
+
+
+def test_staging_lineage_rejects_contradictory_inventory_before_database_queries(session):
+    from backend.app.storage.staging_lineage import validate_staging_inventory
+
+    for inventory in [
+        StagingAudit(
+            candidates=(), scanned_directories=0, scanned_entries=0,
+            truncated="false", incomplete_reason=None,
+        ),
+        StagingAudit(
+            candidates=(), scanned_directories=0, scanned_entries=0,
+            truncated=False, incomplete_reason="storage_access_failed",
+        ),
+        StagingAudit(
+            candidates=(), scanned_directories=0, scanned_entries=0,
+            truncated=True, incomplete_reason="storage_setup_failed",
+            failed_root="inspection",
+        ),
+    ]:
+        with pytest.raises(ValueError):
+            validate_staging_inventory(inventory)
+        with pytest.raises(ValueError):
+            reconcile_staging_lineage(session, inventory)

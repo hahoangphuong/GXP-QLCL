@@ -60,6 +60,8 @@ physical_path.write_bytes(payload)
 fixture_ids = {key: str(uuid4()) for key in (
     "company", "site", "case", "other_case", "document", "variant",
     "version", "conflict_document", "conflict_variant",
+    "missing_file_document", "missing_file_variant", "missing_file_version",
+    "wrong_checksum_document", "wrong_checksum_variant", "wrong_checksum_version",
 )}
 
 engine = create_engine(_database, future=True)
@@ -91,6 +93,16 @@ try:
                 family_code="CROSS_HEAD_CI", document_type_code="TEST_DOC",
                 title="Synthetic document missing current version",
             ),
+            Document(
+                id=fixture_ids["missing_file_document"], case_id=fixture_ids["case"],
+                family_code="CROSS_HEAD_CI", document_type_code="TEST_DOC",
+                title="Synthetic document whose registered binary was never stored",
+            ),
+            Document(
+                id=fixture_ids["wrong_checksum_document"], case_id=fixture_ids["case"],
+                family_code="CROSS_HEAD_CI", document_type_code="TEST_DOC",
+                title="Synthetic document whose content checksum is incorrect",
+            ),
         ])
         session.flush()
         session.add_all([
@@ -103,16 +115,45 @@ try:
                 document_id=fixture_ids["conflict_document"],
                 variant_type=DocumentVariantType.EDITABLE_DOCX,
             ),
+            DocumentVariant(
+                id=fixture_ids["missing_file_variant"],
+                document_id=fixture_ids["missing_file_document"],
+                variant_type=DocumentVariantType.EDITABLE_DOCX,
+            ),
+            DocumentVariant(
+                id=fixture_ids["wrong_checksum_variant"],
+                document_id=fixture_ids["wrong_checksum_document"],
+                variant_type=DocumentVariantType.EDITABLE_DOCX,
+            ),
         ])
         session.flush()
-        session.add(DocumentVersion(
-            id=fixture_ids["version"],
-            document_variant_id=fixture_ids["variant"], version_no=1,
-            storage_root="inspection", storage_relative_path=relative_path,
-            original_filename="synthetic-current.docx",
-            checksum_sha256=sha256(payload).hexdigest(),
-            is_current=True,
-        ))
+        session.add_all([
+            DocumentVersion(
+                id=fixture_ids["version"],
+                document_variant_id=fixture_ids["variant"], version_no=1,
+                storage_root="inspection", storage_relative_path=relative_path,
+                original_filename="synthetic-current.docx",
+                checksum_sha256=sha256(payload).hexdigest(),
+                is_current=True,
+            ),
+            DocumentVersion(
+                id=fixture_ids["missing_file_version"],
+                document_variant_id=fixture_ids["missing_file_variant"], version_no=1,
+                storage_root="inspection",
+                storage_relative_path="ci-document/missing-binary.docx",
+                original_filename="missing-binary.docx",
+                checksum_sha256=sha256(payload).hexdigest(),
+                is_current=True,
+            ),
+            DocumentVersion(
+                id=fixture_ids["wrong_checksum_version"],
+                document_variant_id=fixture_ids["wrong_checksum_variant"], version_no=1,
+                storage_root="inspection", storage_relative_path=relative_path,
+                original_filename="wrong-checksum.docx",
+                checksum_sha256=sha256(b"not-the-actual-file").hexdigest(),
+                is_current=True,
+            ),
+        ])
         session.commit()
 finally:
     engine.dispose()

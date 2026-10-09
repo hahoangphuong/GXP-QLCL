@@ -15,7 +15,8 @@ import {
 } from "./api";
 
 type Fixture = Record<
-  "case" | "other_case" | "site" | "document" | "conflict_document" | "version" | "binary_text",
+  "case" | "other_case" | "site" | "document" | "conflict_document" |
+  "missing_file_document" | "wrong_checksum_document" | "version" | "binary_text",
   string
 >;
 const fixturePath = process.env.GXP_CROSS_HEAD_FIXTURE_JSON;
@@ -148,4 +149,18 @@ it("enforces real optimistic-concurrency 409 across two authorized sessions", as
   const workspace = await getCaseWorkspace(fixture.other_case, writerA, true);
   expect(workspace.application.row_version).toBe(winner.row_version);
   expect(workspace.application.dossier_code).toBe("CI_WINNER");
+});
+
+
+it.each([
+  ["missing file", fixture.missing_file_document],
+  ["checksum mismatch", fixture.wrong_checksum_document],
+])("rejects persisted binary %s with 409 and never returns bytes", async (_kind, documentId) => {
+  const before = routeCalls.length;
+  await expect(openCaseDocumentCurrentContent(
+    fixture.case, documentId, auth, true,
+  )).rejects.toMatchObject({ status: 409 });
+  expect(routeCalls.slice(before)).toEqual([
+    { path: `/cases/${fixture.case}/documents/${documentId}/content`, method: "GET" },
+  ]);
 });

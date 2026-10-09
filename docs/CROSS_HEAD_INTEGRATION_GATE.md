@@ -39,6 +39,8 @@ JSON errors and binary responses.
   returning the exact fixture bytes and filename.
 - Wrong parent / unknown document 404 responses.
 - Missing current document binary 409, with a single network request.
+- Persisted current-version binary missing on disk or checksum mismatch:
+  409 with no binary response and exactly one network request.
 - Reader role cannot call the case creation mutation (403).
 - Real version-token 409 conflict: two distinct inspector identities
   update an application on a synthetic disposable case; an older token is

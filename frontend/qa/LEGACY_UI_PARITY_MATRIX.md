@@ -129,3 +129,27 @@ and production build passed. Scope Tab/Enter navigation was exercised in the
 fixture browser with unchanged request counters. An existing pagination test was
 made deterministic by waiting for committed settled rows before scrolling; no
 timeout was increased. Existing React act warnings remain non-failing.
+
+## User resolution of C1 — disabled legacy conditions
+
+The user chose to retain unsupported legacy conditions visibly disabled.
+LegacyUnavailableFilters preserves three relative columns from FilterForm FRX:
+certificate/compliance at left, registration/inspection/processing in the middle,
+product/dosage/validity at right. Checkbox captions were recovered with the
+MorphData caption string aligned after Value relative to the control block;
+this fixes the initial parser's three-byte caption offset. No original asset or
+installed oletools source was modified. This evidence includes Non-beta/Peni/Cepha
+and separate dosage rows; procedure names were not used as caption evidence.
+
+Every unsupported input is inside a disabled fieldset and has no callback,
+request or local selection state. Existing supported query controls remain
+separate. The filter surface overlays the workspace and scrolls independently;
+opening it leaves the master pane at the same height. Escape closes it and
+restores summary focus. Runtime FilterForm screenshots are still missing, so
+exact dimensions/fonts and the complete native window appearance remain unverified.
+The web disclosure substitutes for a separate VBA window; this is a documented
+remaining interaction difference, not a claim of complete FilterForm parity.
+
+Fixture evidence: legacy-filter-disabled-1366.png and
+legacy-filter-disabled-390.png. Both have no horizontal page overflow, all
+unsupported inputs disabled, and unchanged master height across open/close.

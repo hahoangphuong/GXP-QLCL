@@ -5,6 +5,15 @@ import { LegacySearchFilters } from "./LegacySearchFilters";
 
 const filters = { generalQuery: "", province: "", caseState: "", certificateState: "", certificateExpiringWithinDays: "" };
 describe("Legacy search filter ownership", () => {
+  it("closes the filter surface with Escape and restores focus without changing the query", () => {
+    const change = vi.fn(); const { container } = render(<LegacySearchFilters filters={filters} onChange={change} />);
+    const details = container.querySelector("details")!;
+    details.open = true;
+    fireEvent.keyDown(screen.getByLabelText("Tỉnh/thành"), { key: "Escape" });
+    expect(details.open).toBe(false);
+    expect(container.querySelector("summary")).toHaveFocus();
+    expect(change).not.toHaveBeenCalled();
+  });
   it("preserves a URL-owned expiry window outside the offered presets", () => {
     const change = vi.fn(); render(<LegacySearchFilters filters={{ ...filters, certificateExpiringWithinDays: "15" }} onChange={change} />);
     expect(screen.getByLabelText("Sắp hết hạn")).toHaveValue("15");

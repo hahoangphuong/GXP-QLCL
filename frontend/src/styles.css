@@ -2369,6 +2369,28 @@ tr:focus-visible {
 .legacy-search-page :is(.facility-table, .history-table, .certificate-history-table) tr[aria-selected="true"] > td {
   background: #0078d7; color: #fff;
 }
+.legacy-filter-form { position: relative; }
+.legacy-filter-form[open] .legacy-filter-groups {
+  position: absolute; z-index: 10; top: 32px; right: 0;
+  width: min(940px, calc(100vw - 40px)); max-height: min(65vh, 520px);
+  overflow: auto; padding: 6px; background: #f0f0f0; border: 1px solid #808080;
+}
+.legacy-unavailable-filters { grid-column: 1 / -1; }
+.legacy-unavailable-filters > p { margin: 4px 0; font-size: .8rem; }
+.legacy-unavailable-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.legacy-unavailable-columns > div { display: grid; align-content: start; gap: 5px; }
+.legacy-filter-groups .legacy-unavailable-filters label { display: flex; justify-content: start; font-weight: 400; }
+.legacy-unavailable-filters input[type="checkbox"] { width: 13px; height: 13px; min-height: 0; flex: 0 0 13px; margin: 0; }
+.legacy-disabled-date-range { display: grid; gap: 3px; font-size: .8rem; margin-top: 6px; }
+.legacy-unavailable-filters .legacy-disabled-date-range label { display: grid; grid-template-columns: 35px minmax(0, 1fr); }
+.legacy-unavailable-filters .legacy-disabled-date-range > label:first-child { display: flex; }
+.legacy-disabled-dose-row { font-size: .8rem; margin: 4px 0; }
+.legacy-disabled-dose-row > div { display: flex; flex-wrap: wrap; gap: 0 8px; }
+.legacy-search-page:has(.legacy-filter-form[open]) { grid-template-rows: clamp(190px, 30vh, 260px) minmax(0, 1fr); }
+@media (max-width: 1100px) {
+  .legacy-search-page:has(.legacy-filter-form[open]) { grid-template-rows: minmax(230px, auto) 200px minmax(420px, auto); }
+  .legacy-unavailable-columns { grid-template-columns: minmax(0, 1fr); }
+}
 .legacy-search-page .history-panel { grid-area: history; }
 .legacy-search-page .search-detail-area { grid-area: detail; }
 .legacy-search-page .facility-table-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
@@ -2391,7 +2413,6 @@ tr:focus-visible {
 .legacy-filter-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
 .legacy-filter-groups fieldset { min-width: 0; margin: 0; padding: 5px; border: 1px solid var(--border-strong); }
 .legacy-filter-groups label { display: grid; grid-template-columns: minmax(70px, 0.7fr) minmax(0, 1fr); align-items: center; gap: 4px; margin-bottom: 3px; font-size: 0.82rem; }
-.legacy-search-page:has(.legacy-filter-form[open]) { grid-template-rows: clamp(270px, 40vh, 340px) minmax(0, 1fr); }
 @media (max-width: 1100px) {
   .legacy-search-page, .legacy-search-page:has(.legacy-filter-form[open]) {
     grid-template-columns: minmax(0, 1fr);

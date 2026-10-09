@@ -1,4 +1,5 @@
 import { CASE_STATE_OPTIONS, formatStatusLabel } from "../../lib/presentation";
+import { LegacyUnavailableFilters } from "./LegacyUnavailableFilters";
 
 type Filters = {
   generalQuery: string;
@@ -16,7 +17,11 @@ export function LegacySearchFilters({ filters, onChange, multipleCaseStates = fa
 }) {
   return <div className="legacy-search-filters">
     <label className="legacy-quick-filter"><span>Lọc:</span><input aria-label="Tìm nhanh" value={filters.generalQuery} onChange={event => onChange("generalQuery", event.target.value)} /></label>
-    <details className="legacy-filter-form">
+    <details className="legacy-filter-form" onKeyDown={event => {
+      if (event.key !== "Escape" || !event.currentTarget.open) return;
+      event.preventDefault(); event.currentTarget.open = false;
+      event.currentTarget.querySelector("summary")?.focus();
+    }}>
       <summary>Lọc dữ liệu</summary>
       <div className="legacy-filter-groups">
         <fieldset><legend>Cơ sở</legend><label><span>Tỉnh/thành</span><input value={filters.province} onChange={event => onChange("province", event.target.value)} /></label></fieldset>
@@ -25,6 +30,7 @@ export function LegacySearchFilters({ filters, onChange, multipleCaseStates = fa
           <label><span>Hiệu lực</span><select value={filters.certificateState} onChange={event => onChange("certificateState", event.target.value)}><option value="">Không lọc</option><option value="active">Còn hiệu lực</option></select></label>
           <label><span>Sắp hết hạn</span><select value={filters.certificateExpiringWithinDays} onChange={event => onChange("certificateExpiringWithinDays", event.target.value)}><option value="">Không lọc</option>{filters.certificateExpiringWithinDays && !["30", "60", "90"].includes(filters.certificateExpiringWithinDays) ? <option value={filters.certificateExpiringWithinDays}>{filters.certificateExpiringWithinDays} ngày</option> : null}{[30, 60, 90].map(days => <option key={days} value={days}>{days} ngày</option>)}</select></label>
         </fieldset>
+        <LegacyUnavailableFilters />
       </div>
     </details>
   </div>;

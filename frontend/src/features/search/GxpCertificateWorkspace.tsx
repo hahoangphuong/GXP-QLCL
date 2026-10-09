@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
 import { formatCompactDate } from "../../lib/presentation";
 import type { CertificateLatestVersionUpsertRequest, CertificateScope, GxpCertificateDetail, GxpCertificateListItem } from "../../types";
 import { GxpCertificateDetailFields } from "./GxpCertificateDetailFields";
+import { useCertificateRows } from "./useCertificateRows";
+import { useCertificateDialogFocus } from "./useCertificateDialogFocus";
 
 type ScopeDraft = Omit<CertificateScope, "id">;
 
@@ -17,12 +19,13 @@ function buildScopeDrafts(scopes: CertificateScope[]): ScopeDraft[] {
   }));
 }
 
-export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onSave, onStaleConflict }: {
+export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onSave, onStaleConflict, saveAvailable = true }: {
   detail: GxpCertificateDetail;
   expectedVersion: number;
   onClose: () => void;
   onSave: (payload: CertificateLatestVersionUpsertRequest) => Promise<void>;
   onStaleConflict: (message: string) => void;
+  saveAvailable?: boolean;
 }) {
   const [certificateNumber, setCertificateNumber] = useState(detail.certificate_number ?? "");
   const [issueDate, setIssueDate] = useState(detail.issue_date ?? "");
@@ -31,6 +34,8 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
   const [scopes, setScopes] = useState<ScopeDraft[]>(() => buildScopeDrafts(detail.scopes));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [conflicted, setConflicted] = useState(false);
+  const dialogRef = useCertificateDialogFocus();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -64,7 +69,7 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
   }
 
   async function submit() {
-    if (pending) return;
+    if (pending || conflicted || !saveAvailable) return;
     setPending(true);
     setError(null);
     try {
@@ -85,6 +90,8 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
     } catch (nextError) {
       const apiError = nextError as Error & { status?: number };
       if (apiError.status === 409) {
+        setError(apiError.message);
+        setConflicted(true);
         onStaleConflict(apiError.message);
         return;
       }
@@ -95,7 +102,7 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
   }
 
   return <div className="dialog-backdrop" role="presentation">
-    <section aria-labelledby="gxp-certificate-edit-title" aria-modal="true" className="panel certificate-edit-dialog" role="dialog">
+    <section ref={dialogRef} tabIndex={-1} aria-labelledby="gxp-certificate-edit-title" aria-modal="true" className="panel certificate-edit-dialog" role="dialog">
       <header className="panel-header certificate-edit-dialog-header">
         <div><h2 id="gxp-certificate-edit-title">Sửa giấy chứng nhận GxP</h2><p>Thay đổi phiên bản hiện tại theo quyền và trạng thái do backend xác nhận.</p></div>
       </header>
@@ -120,8 +127,9 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
         </div>) }
       </section>
       {error ? <p className="form-error" role="alert">{error}</p> : null}
+      {conflicted ? <p className="workspace-note">Bản nháp được giữ để đối chiếu. Sao chép nội dung cần giữ, đóng và mở lại form sau khi kiểm tra dữ liệu mới.</p> : null}
       <div className="panel-actions certificate-edit-dialog-actions">
-        <button disabled={pending} onClick={() => void submit()} type="button">{pending ? "Đang lưu..." : "Lưu thay đổi"}</button>
+        <button disabled={pending || conflicted || !saveAvailable} onClick={() => void submit()} type="button">{pending ? "Đang lưu..." : "Lưu thay đổi"}</button>
         <button disabled={pending} onClick={onClose} type="button">Hủy</button>
       </div>
     </section>
@@ -155,19 +163,13 @@ export function GxpCertificateWorkspace({
   promotionPending: boolean;
   onEditLatestVersion: (payload: CertificateLatestVersionUpsertRequest) => Promise<void>;
 }) {
-  const [editOpen, setEditOpen] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
-  const detailContextKey = detail ? `${detail.certificate_id}:${detail.row_version}` : null;
-  const previousDetailContextKeyRef = useRef<string | null>(detailContextKey);
-
-  useEffect(() => {
-    const previous = previousDetailContextKeyRef.current;
-    previousDetailContextKeyRef.current = detailContextKey;
-    if (previous !== null && previous !== detailContextKey) {
-      setEditOpen(false);
-    }
-  }, [detailContextKey]);
-  if (listError) {
+  const [editDraft, setEditDraft] = useState<{ detail: GxpCertificateDetail; expectedVersion: number } | null>(null);
+  const hintId = useId();
+  const rowProps = useCertificateRows(items.map((item) => item.certificate_id), selectedCertificateId, onSelectCertificate, listLoading || Boolean(listError));
+  // The selected ID, never the certificate number or version, owns visibility.
+  detail = detail?.certificate_id === selectedCertificateId ? detail : null;
+  const visibleDraft = editDraft?.detail.certificate_id === selectedCertificateId ? editDraft : null;
+  if (listError && items.length === 0) {
     return <ErrorState message={listError} />;
   }
 
@@ -186,8 +188,11 @@ export function GxpCertificateWorkspace({
           <h3>Danh mục GCN GxP</h3>
           <span className="panel-meta">{items.length} giấy</span>
         </div>
+        <p className="workspace-note" id={hintId}>↑/↓, Home/End: di chuyển · Enter/Space: chọn giấy</p>
+        {listLoading ? <p role="status" className="workspace-note">Đang tải danh mục GxP…</p> : null}
+        {listError ? <ErrorState message={listError} /> : null}
         <div className="table-scroll table-scroll-history">
-          <table className="dense-table certificate-history-table">
+          <table aria-label="Danh mục GCN GxP" aria-describedby={hintId} aria-busy={listLoading} className="dense-table certificate-history-table">
             <colgroup>
               <col className="col-line" />
               <col className="col-cert-number" />
@@ -206,14 +211,7 @@ export function GxpCertificateWorkspace({
                   aria-selected={selectedCertificateId === item.certificate_id}
                   className={selectedCertificateId === item.certificate_id ? "selected" : ""}
                   key={item.certificate_id}
-                  onClick={() => onSelectCertificate(item.certificate_id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      onSelectCertificate(item.certificate_id);
-                    }
-                  }}
-                  tabIndex={0}
+                  {...rowProps(item.certificate_id)}
                 >
                   <td title={item.line_code ?? "Toàn cơ sở"}>
                     {item.line_code ?? (item.context_match_kind === "site_wide" ? "Toàn cơ sở" : "Cơ sở")}
@@ -235,9 +233,9 @@ export function GxpCertificateWorkspace({
       <section className="panel panel-tight certificate-detail-panel detail-pane">
         {detailError ? (
           <ErrorState message={detailError} />
-        ) : detailLoading || !detail ? (
+        ) : detailLoading || (selectedCertificateId && !detail) ? (
           <EmptyState title="Đang tải chi tiết GxP" description="Đang lấy chi tiết giấy chứng nhận đang chọn." />
-        ) : (
+        ) : !detail ? <EmptyState title="Chưa chọn GCN GxP" description="Chọn một giấy trong danh mục." /> : (
           <>
             <GxpCertificateDetailFields detail={detail} />
             {(() => {
@@ -246,9 +244,8 @@ export function GxpCertificateWorkspace({
               if (!promote && !edit) return null;
               return (
                 <div className="certificate-action-bar">
-                  {edit ? <button disabled={!edit.available || promotionPending} onClick={() => { setEditError(null); setEditOpen(true); }} title={edit.reason_code ?? undefined} type="button">{edit.label}</button> : null}
+                  {edit ? <button disabled={!edit.available || promotionPending} onClick={() => setEditDraft({ detail, expectedVersion: edit.expected_version })} title={edit.reason_code ?? undefined} type="button">{edit.label}</button> : null}
                   {!edit?.available && edit?.reason_code ? <span>{edit.reason_code}</span> : null}
-                  {editError ? <span role="alert">{editError}</span> : null}
                   {promote ? <button
                     disabled={!promote.available || promotionPending}
                     onClick={() => void onPromoteCurrent(promote.expected_version)}
@@ -262,13 +259,10 @@ export function GxpCertificateWorkspace({
                 </div>
               );
             })()}
-            {(() => {
-              const edit = (detail.action_readiness ?? []).find((action) => action.action_key === "edit_latest_version");
-              return edit && editOpen ? <GxpCertificateEditDialog detail={detail} expectedVersion={edit.expected_version} onClose={() => setEditOpen(false)} onSave={onEditLatestVersion} onStaleConflict={(message) => { setEditOpen(false); setEditError(message); }} /> : null;
-            })()}
           </>
         )}
       </section>
+      {visibleDraft ? <GxpCertificateEditDialog detail={visibleDraft.detail} expectedVersion={visibleDraft.expectedVersion} saveAvailable={!detailLoading && (detail?.action_readiness ?? []).some(action => action.action_key === "edit_latest_version" && action.available)} onClose={() => setEditDraft(null)} onSave={onEditLatestVersion} onStaleConflict={() => undefined} /> : null}
     </div>
   );
 }

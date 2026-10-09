@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
@@ -12,6 +12,8 @@ import type {
   GxpCertificateListItem,
 } from "../../types";
 import { BusinessEligibilityDetailFields } from "./BusinessEligibilityDetailFields";
+import { useCertificateRows } from "./useCertificateRows";
+import { useCertificateDialogFocus } from "./useCertificateDialogFocus";
 
 type LinkDraft = { certificate_id: string; link_role: string };
 
@@ -33,6 +35,7 @@ export function BusinessEligibilityMutationDialog({
   onIssue,
   onEdit,
   onStaleConflict,
+  saveAvailable = true,
 }: {
   mode: "issue" | "edit";
   detail: BusinessEligibilityDetail | null;
@@ -44,6 +47,7 @@ export function BusinessEligibilityMutationDialog({
   onIssue: (payload: BusinessEligibilityIssueRequest) => Promise<void>;
   onEdit: (payload: BusinessEligibilityLatestVersionUpsertRequest) => Promise<void>;
   onStaleConflict: (message: string) => void;
+  saveAvailable?: boolean;
 }) {
   const [certificateNumber, setCertificateNumber] = useState(detail?.certificate_number ?? "");
   const [issuedOn, setIssuedOn] = useState(detail?.issued_on ?? "");
@@ -54,6 +58,8 @@ export function BusinessEligibilityMutationDialog({
   const [links, setLinks] = useState<LinkDraft[]>(() => buildLinkDrafts(detail));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [conflicted, setConflicted] = useState(false);
+  const dialogRef = useCertificateDialogFocus();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -79,7 +85,7 @@ export function BusinessEligibilityMutationDialog({
   }
 
   async function submit() {
-    if (pending) return;
+    if (pending || conflicted || !saveAvailable) return;
     if (mode === "edit" && expectedVersion === null) {
       setError("Thiếu phiên bản đồng bộ để cập nhật GCN đủ điều kiện.");
       return;
@@ -105,6 +111,8 @@ export function BusinessEligibilityMutationDialog({
     } catch (nextError) {
       const apiError = nextError as Error & { status?: number };
       if (mode === "edit" && apiError.status === 409) {
+        setError(apiError.message);
+        setConflicted(true);
         onStaleConflict(apiError.message);
         return;
       }
@@ -115,7 +123,7 @@ export function BusinessEligibilityMutationDialog({
   }
 
   return <div className="dialog-backdrop" role="presentation">
-    <section aria-labelledby="business-eligibility-mutation-title" aria-modal="true" className="panel certificate-edit-dialog" role="dialog">
+    <section ref={dialogRef} tabIndex={-1} aria-labelledby="business-eligibility-mutation-title" aria-modal="true" className="panel certificate-edit-dialog" role="dialog">
       <header className="panel-header certificate-edit-dialog-header">
         <div>
           <h2 id="business-eligibility-mutation-title">{mode === "issue" ? "Cấp GCN đủ điều kiện" : "Cập nhật GCN đủ điều kiện"}</h2>
@@ -159,8 +167,9 @@ export function BusinessEligibilityMutationDialog({
         })}
       </section>
       {error ? <p className="form-error" role="alert">{error}</p> : null}
+      {conflicted ? <p className="workspace-note">Bản nháp được giữ để đối chiếu. Sao chép nội dung cần giữ, đóng và mở lại form sau khi kiểm tra dữ liệu mới.</p> : null}
       <div className="panel-actions certificate-edit-dialog-actions">
-        <button disabled={pending} onClick={() => void submit()} type="button">{pending ? "Đang lưu..." : mode === "issue" ? "Cấp GCN" : "Lưu thay đổi"}</button>
+        <button disabled={pending || conflicted || !saveAvailable} onClick={() => void submit()} type="button">{pending ? "Đang lưu..." : mode === "issue" ? "Cấp GCN" : "Lưu thay đổi"}</button>
         <button disabled={pending} onClick={onClose} type="button">Hủy</button>
       </div>
     </section>
@@ -205,22 +214,11 @@ export function BusinessEligibilityWorkspace({
   promotionPending: boolean;
 }) {
   const [issueOpen, setIssueOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
-  const detailContextKey = detail
-    ? `${detail.business_eligibility_certificate_id}:${detail.row_version}`
-    : null;
-  const previousDetailContextKeyRef = useRef<string | null>(detailContextKey);
-
-  useEffect(() => {
-    const previous = previousDetailContextKeyRef.current;
-    previousDetailContextKeyRef.current = detailContextKey;
-    if (previous !== null && previous !== detailContextKey) {
-      setEditOpen(false);
-    }
-  }, [detailContextKey]);
-
-  if (listError) return <ErrorState message={listError} />;
+  const [editDraft, setEditDraft] = useState<{ detail: BusinessEligibilityDetail; expectedVersion: number } | null>(null);
+  const hintId = useId();
+  const rowProps = useCertificateRows(items.map((item) => item.business_eligibility_certificate_id), selectedCertificateId, onSelectCertificate, listLoading || Boolean(listError));
+  detail = detail?.business_eligibility_certificate_id === selectedCertificateId ? detail : null;
+  const visibleDraft = editDraft?.detail.business_eligibility_certificate_id === selectedCertificateId ? editDraft : null;
 
   const actions = detail?.action_readiness ?? [];
   const edit = actions.find((action) => action.action_key === "edit_latest_version");
@@ -238,11 +236,14 @@ export function BusinessEligibilityWorkspace({
             type="button"
           >{issueReadiness.label}</button> : null}
         </div>
+        <p className="workspace-note" id={hintId}>↑/↓, Home/End: di chuyển · Enter/Space: chọn giấy</p>
+        {listError ? <ErrorState message={listError} /> : null}
+        {listLoading && items.length > 0 ? <p role="status" className="workspace-note">Đang tải danh mục ĐĐK…</p> : null}
         {!issueReadiness?.available && issueReadiness?.reason_code ? <p className="workspace-note">{issueReadiness.reason_code}</p> : null}
         {listLoading && items.length === 0 ? <EmptyState title="Đang tải GCN đủ điều kiện" description="Đang đồng bộ danh mục chứng nhận của cơ sở." /> : null}
-        {!listLoading && items.length === 0 ? <EmptyState title="Chưa có GCN đủ điều kiện" description="Có thể cấp bản ghi mới nếu backend cho phép thao tác cấp." /> : null}
+        {!listLoading && !listError && items.length === 0 ? <EmptyState title="Chưa có GCN đủ điều kiện" description="Có thể cấp bản ghi mới nếu backend cho phép thao tác cấp." /> : null}
         {items.length > 0 ? <div className="table-scroll table-scroll-history">
-          <table className="dense-table certificate-history-table">
+          <table aria-label="Danh mục GCN đủ điều kiện" aria-describedby={hintId} aria-busy={listLoading} className="dense-table certificate-history-table">
             <colgroup><col className="col-cert-number" /><col className="col-date" /><col className="col-line" /></colgroup>
             <thead><tr><th className="col-cert-number">Số GCN</th><th className="col-date">Ngày cấp</th><th className="col-line">Lần</th></tr></thead>
             <tbody>
@@ -250,14 +251,7 @@ export function BusinessEligibilityWorkspace({
                 aria-selected={selectedCertificateId === item.business_eligibility_certificate_id}
                 className={selectedCertificateId === item.business_eligibility_certificate_id ? "selected" : ""}
                 key={item.business_eligibility_certificate_id}
-                onClick={() => onSelectCertificate(item.business_eligibility_certificate_id)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    onSelectCertificate(item.business_eligibility_certificate_id);
-                  }
-                }}
-                tabIndex={0}
+                {...rowProps(item.business_eligibility_certificate_id)}
               >
                 <td><div className="cell-stack"><strong>{item.certificate_number ?? "Chưa có"}</strong>{item.latest_flag ? <span>Hiện hành</span> : null}</div></td>
                 <td>{formatCompactDate(item.issued_on)}</td>
@@ -269,7 +263,7 @@ export function BusinessEligibilityWorkspace({
       </section>
 
       <section className="panel panel-tight certificate-detail-panel detail-pane">
-        {detailError ? <ErrorState message={detailError} /> : detailLoading ? (
+        {detailError ? <ErrorState message={detailError} /> : detailLoading || (selectedCertificateId && !detail) ? (
           <EmptyState title="Đang tải chi tiết GCN đủ điều kiện" description="Đang lấy chi tiết giấy đang chọn." />
         ) : !detail ? (
           <EmptyState title="Chưa chọn GCN đủ điều kiện" description="Chọn một giấy trong danh mục hoặc cấp giấy mới." />
@@ -277,9 +271,8 @@ export function BusinessEligibilityWorkspace({
           <>
             <BusinessEligibilityDetailFields detail={detail} />
             <div className="certificate-action-bar">
-              {edit ? <button disabled={!edit.available || promotionPending} onClick={() => { setEditError(null); setEditOpen(true); }} title={edit.reason_code ?? undefined} type="button">{edit.label}</button> : null}
+              {edit ? <button disabled={!edit.available || promotionPending} onClick={() => setEditDraft({ detail, expectedVersion: edit.expected_version })} title={edit.reason_code ?? undefined} type="button">{edit.label}</button> : null}
               {!edit?.available && edit?.reason_code ? <span>{edit.reason_code}</span> : null}
-              {editError ? <span role="alert">{editError}</span> : null}
               {promote ? <button disabled={!promote.available || promotionPending} onClick={() => void onPromoteCurrent(promote.expected_version)} title={promote.reason_code ?? undefined} type="button">{promotionPending ? "Đang cập nhật..." : promote.label}</button> : null}
               {!promote?.available && promote?.reason_code ? <span>{promote.reason_code}</span> : null}
               {promotionError ? <span role="alert">{promotionError}</span> : null}
@@ -301,17 +294,18 @@ export function BusinessEligibilityWorkspace({
         onStaleConflict={() => undefined}
       /> : null}
 
-      {editOpen && detail && edit ? <BusinessEligibilityMutationDialog
+      {visibleDraft ? <BusinessEligibilityMutationDialog
         basisCertificates={basisCertificates}
         basisError={basisError}
         basisLoading={basisLoading}
-        detail={detail}
-        expectedVersion={edit.expected_version}
+        detail={visibleDraft.detail}
+        expectedVersion={visibleDraft.expectedVersion}
         mode="edit"
-        onClose={() => setEditOpen(false)}
+        saveAvailable={!detailLoading && edit?.available === true}
+        onClose={() => setEditDraft(null)}
         onEdit={onEditLatestVersion}
         onIssue={onIssue}
-        onStaleConflict={(message) => { setEditOpen(false); setEditError(message); }}
+        onStaleConflict={() => undefined}
       /> : null}
     </div>
   );

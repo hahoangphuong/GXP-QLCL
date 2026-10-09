@@ -3316,6 +3316,73 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByRole("button", { name: "Cấp chứng nhận GxP" })).toBeDisabled();
   });
 
+  it.each([
+    { kind: "GxP", tab: "Giấy chứng nhận GxP", list: "listSiteGxpCertificates", load: "getGxpCertificateDetail", id: "certificate_id", table: "Danh mục GCN GxP" },
+    { kind: "ĐĐK", tab: "Giấy chứng nhận đủ điều kiện", list: "listSiteBusinessEligibilityCertificates", load: "getBusinessEligibilityDetail", id: "business_eligibility_certificate_id", table: "Danh mục GCN đủ điều kiện" },
+  ] as const)("$kind keeps focus separate from requests and rejects a late A detail after B selection", async ({ tab, list, load, id, table }) => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
+    const item = { site_id: "site-1", certificate_number: "SAME-REFERENCE", certificate_type: "GMP", line_code: "A", production_line_id: "line-uuid-1", context_match_kind: "exact_line", latest_flag: false, issue_date: null, issued_on: null, expiry_date: null, issuance_sequence_text: "1" };
+    apiMocks[list].mockResolvedValue({ items: [{ ...item, [id]: "certificate-A" }, { ...item, [id]: "certificate-B" }], issue_readiness: null });
+    let resolveA!: (value: unknown) => void;
+    let resolveB!: (value: unknown) => void;
+    apiMocks[load].mockImplementationOnce(() => new Promise(resolve => { resolveA = resolve; })).mockImplementationOnce(() => new Promise(resolve => { resolveB = resolve; }));
+    renderApp([`/search?gxp_type=GMP&facility_tab=${encodeURIComponent(tab)}`]);
+    const rows = within(await screen.findByRole("table", { name: table })).getAllByRole("row").slice(1);
+    await waitFor(() => expect(apiMocks[load]).toHaveBeenCalledTimes(1));
+    act(() => rows[0].focus());
+    for (const key of ["ArrowDown", "Home", "End", "ArrowUp", "ArrowDown"]) fireEvent.keyDown(document.activeElement!, { key });
+    expect(rows[1]).toHaveFocus();
+    expect(rows[0]).toHaveAttribute("aria-selected", "true");
+    expect(apiMocks[load]).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(rows[1], { key: "Enter" });
+    await waitFor(() => expect(apiMocks[load]).toHaveBeenCalledTimes(2));
+    expect(apiMocks[load].mock.calls.map(call => call[0])).toEqual(["certificate-A", "certificate-B"]);
+    expect(screen.getByText(/Đang tải chi tiết/)).toBeInTheDocument();
+    const detail = { ...item, [id]: "certificate-B", row_version: 3, facility_name: "B authoritative detail", linked_gxp_certificates: [], scopes: [], action_readiness: [] };
+    await act(async () => resolveB(detail));
+    expect(await screen.findByText("B authoritative detail")).toBeInTheDocument();
+    await act(async () => resolveA({ ...detail, [id]: "certificate-A", facility_name: "A stale detail" }));
+    expect(screen.queryByText("A stale detail")).not.toBeInTheDocument();
+    expect(rows[1]).toHaveFocus();
+    fireEvent.keyDown(rows[1], { key: " " });
+    fireEvent.click(rows[1]);
+    expect(apiMocks[load]).toHaveBeenCalledTimes(2);
+    expect(apiMocks[list]).toHaveBeenCalledTimes(1);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { tab: "Giấy chứng nhận GxP", list: "listSiteGxpCertificates", load: "getGxpCertificateDetail", id: "certificate_id", table: "Danh mục GCN GxP" },
+    { tab: "Giấy chứng nhận đủ điều kiện", list: "listSiteBusinessEligibilityCertificates", load: "getBusinessEligibilityDetail", id: "business_eligibility_certificate_id", table: "Danh mục GCN đủ điều kiện" },
+  ] as const)("$tab clears A-owned error in B's first commit and shows B's own failure", async ({ tab, list, load, id, table }) => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
+    apiMocks[list].mockResolvedValue({ items: [{ [id]: "certificate-A" }, { [id]: "certificate-B" }], issue_readiness: null });
+    let rejectB!: (error: Error) => void;
+    apiMocks[load].mockRejectedValueOnce(new Error("Error owned by certificate A")).mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectB = reject; }));
+    renderApp([`/search?gxp_type=GMP&facility_tab=${encodeURIComponent(tab)}`]);
+    await screen.findByRole("table", { name: table });
+    await waitFor(() => expect(apiMocks[load]).toHaveBeenCalledTimes(1));
+    await screen.findByText("Error owned by certificate A");
+    const snapshots: boolean[] = [];
+    contextCommit.observe.mockImplementation(() => {
+      const rows = screen.queryByRole("table", { name: table })?.querySelectorAll("tbody tr");
+      if (rows?.[1]?.getAttribute("aria-selected") === "true") snapshots.push(Boolean(screen.queryByText("Error owned by certificate A")));
+    });
+    fireEvent.click(within(screen.getByRole("table", { name: table })).getAllByRole("row")[2]);
+    await waitFor(() => expect(apiMocks[load]).toHaveBeenCalledTimes(2));
+    expect(snapshots.length).toBeGreaterThan(0);
+    expect(snapshots.every(value => !value)).toBe(true);
+    expect(screen.getByText(/Đang tải chi tiết/)).toBeInTheDocument();
+    await act(async () => rejectB(new Error("B own failure")));
+    expect(await screen.findByRole("alert")).toHaveTextContent("B own failure");
+    expect(apiMocks[load]).toHaveBeenCalledTimes(2);
+  });
+
   it("refreshes only the selected certificate after an edit conflict and keeps the edit form open", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
@@ -3349,7 +3416,8 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Dữ liệu chứng nhận đã thay đổi");
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(apiMocks.listSiteGxpCertificates).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("dialog", { name: "Sửa giấy chứng nhận GxP" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Sửa giấy chứng nhận GxP" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Lưu thay đổi" })).toBeDisabled();
     expect(screen.getByText("GCN-NEW")).toBeInTheDocument();
   });
 

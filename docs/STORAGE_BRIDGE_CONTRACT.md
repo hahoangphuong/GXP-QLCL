@@ -100,3 +100,15 @@ uses `replace_if_exists=False` server-side; destination collisions returned
 as generic SMB OSErrors are mapped to `StorageTargetExistsError` (HTTP 409).
 The no-replace operation prevents implicit replacement. It does not provide
 a multi-file transaction, version ownership, or document-business locking.
+
+## Filesystem copy publication and metadata rollback
+
+Local filesystem `copy` stages the complete byte copy and metadata in a
+temporary file within the destination directory. Only after both succeed
+does it publish via the same atomic no-replace primitive as `move` and
+`rename`. An error cleans up the private temporary path only, never an
+already published destination: this preserves data written by a concurrent
+actor during a metadata failure or late target collision. Unsupported
+atomic publication fails closed; business code must not replace it with
+an overwrite/copy fallback. SMB copy retains its independent exclusive
+create (`xb`) contract; no SMB semantics change in this patch.

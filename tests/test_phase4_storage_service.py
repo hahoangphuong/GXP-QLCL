@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 import inspect
+import os
 from io import BytesIO
 from pathlib import Path
 
@@ -637,6 +638,78 @@ def test_storage_copy_metadata_failure_cleans_exclusive_target(tmp_path: Path, m
 
     assert source.read_bytes() == b"keep source"
     assert not target.exists()
+
+
+def test_storage_copy_preserves_source_modification_time(tmp_path: Path):
+    service = build_service(tmp_path)
+    source = service.inspection_root / "source.txt"
+    source.write_bytes(b"original")
+    os.utime(source, ns=(1_600_000_000_000_000_000, 1_600_000_000_000_000_000))
+
+    service.copy("source.txt", "copy.txt")
+
+    assert (service.inspection_root / "copy.txt").stat().st_mtime_ns == source.stat().st_mtime_ns
+
+
+def test_storage_copy_does_not_delete_concurrent_writer_on_metadata_failure(tmp_path: Path, monkeypatch):
+    service = build_service(tmp_path)
+    source = service.inspection_root / "source.txt"
+    target = service.inspection_root / "copy.txt"
+    source.write_bytes(b"original source")
+
+    def concurrent_writer_then_metadata_failure(source_path, staged_path):
+        assert target.exists() is False
+        assert Path(staged_path).read_bytes() == b"original source"
+        target.write_bytes(b"other writer")
+        raise OSError("metadata failed after concurrent writer published")
+
+    monkeypatch.setattr("backend.app.storage.local.shutil.copystat", concurrent_writer_then_metadata_failure)
+    with pytest.raises(OSError, match="metadata failed"):
+        service.copy("source.txt", "copy.txt")
+
+    assert source.read_bytes() == b"original source"
+    assert target.read_bytes() == b"other writer"
+    assert sorted(path.name for path in service.inspection_root.iterdir()) == ["copy.txt", "source.txt"]
+
+
+def test_storage_copy_rejects_concurrent_writer_during_atomic_publication(tmp_path: Path, monkeypatch):
+    service = build_service(tmp_path)
+    source = service.inspection_root / "source.txt"
+    target = service.inspection_root / "copy.txt"
+    source.write_bytes(b"original source")
+    real_rename = service._rename_noreplace
+
+    def concurrent_writer_at_publish(staged_path: Path, target_path: Path, relative_path: str):
+        assert Path(staged_path).read_bytes() == b"original source"
+        assert not target.exists()
+        target.write_bytes(b"other writer")
+        return real_rename(staged_path, target_path, relative_path)
+
+    monkeypatch.setattr(service, "_rename_noreplace", concurrent_writer_at_publish)
+    with pytest.raises(StorageTargetExistsError, match="will not be overwritten"):
+        service.copy("source.txt", "copy.txt")
+
+    assert target.read_bytes() == b"other writer"
+    assert source.read_bytes() == b"original source"
+    assert sorted(path.name for path in service.inspection_root.iterdir()) == ["copy.txt", "source.txt"]
+
+
+def test_storage_copy_unsupported_atomic_publish_fails_closed_and_cleans_temp(tmp_path: Path, monkeypatch):
+    service = build_service(tmp_path)
+    source = service.inspection_root / "source.txt"
+    target = service.inspection_root / "copy.txt"
+    source.write_bytes(b"original source")
+
+    def unsupported(*args):
+        raise StorageOperationError("Atomic no-replace rename is unsupported.")
+
+    monkeypatch.setattr(service, "_rename_noreplace", unsupported)
+    with pytest.raises(StorageOperationError, match="unsupported"):
+        service.copy("source.txt", "copy.txt")
+
+    assert source.read_bytes() == b"original source"
+    assert not target.exists()
+    assert [path.name for path in service.inspection_root.iterdir()] == ["source.txt"]
 
 
 def test_storage_rejects_path_traversal(tmp_path: Path):

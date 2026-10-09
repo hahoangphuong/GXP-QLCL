@@ -281,16 +281,27 @@ class LocalStorageService:
         base_root = self._select_root(root)
         source = self._path_under(base_root, source_relative_path)
         target = self._path_under(base_root, target_relative_path)
-        # write_stream(overwrite=False) creates the destination exclusively;
-        # shutil.copy2() would instead overwrite it.
-        with source.open("rb") as stream:
-            entry = self.write_stream(target_relative_path, stream, root=root, overwrite=False)
+        self._require_vacant_target(target, target_relative_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+        # Prepare a complete copy, including metadata, before it becomes
+        # visible at the destination. Never unlink a published destination on
+        # metadata failure: another writer may have replaced it meanwhile.
+        temp_path: Path | None = None
         try:
-            shutil.copystat(source, target)
-        except Exception:
-            target.unlink(missing_ok=True)
-            raise
-        return entry
+            with source.open("rb") as stream, tempfile.NamedTemporaryFile(
+                delete=False, dir=target.parent
+            ) as tmp:
+                temp_path = Path(tmp.name)
+                shutil.copyfileobj(stream, tmp, length=1024 * 1024)
+            shutil.copystat(source, temp_path)
+            # Atomic conflict detection also covers a destination created
+            # after the preflight check or while bytes are copied.
+            self._rename_noreplace(temp_path, target, target_relative_path)
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
+        return self._entry_for(base_root, target)
 
     @staticmethod
     def _rename_noreplace(source: Path, target: Path, relative_path: str) -> None:

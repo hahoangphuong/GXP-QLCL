@@ -2,19 +2,20 @@
 from __future__ import annotations
 
 from collections import Counter
-from hashlib import sha256
 from typing import Any, Mapping
 
-from backend.app.domain.production_line_population import canonical_artifact_bytes
-from backend.app.domain.production_line_population_b6j import PLAN_SCHEMA_VERSION, plan_digest
+from backend.app.domain.production_line_population_b6j import (
+    PLAN_SCHEMA_VERSION,
+    ProductionLinePopulationPlanError,
+    bind_candidate_roster,
+    plan_digest,
+)
 from backend.app.domain.production_line_population_writer_b6j import (
     ProductionLinePopulationApplyError,
     _validate_plan,
 )
 from backend.app.domain.production_line_review_workspace import (
-    REVIEW_SCHEMA_VERSION,
     ProductionLineReviewWorkspaceError,
-    candidate_set_digest,
     validate_review_decision,
 )
 
@@ -38,56 +39,34 @@ def audit_b6j_review_alignment(plan: Mapping[str, Any], roster: Mapping[str, Any
         _validate_plan(plan)
     except ProductionLinePopulationApplyError as exc:
         raise B6KReviewAlignmentError(f"B6K B6J plan structure invalid: {exc}") from exc
-    require(roster.get("schema_version") == REVIEW_SCHEMA_VERSION
-            and roster.get("artifact_kind") == "production_line_physical_identity_review_roster",
-            "B6K requires a B6I review roster")
-    seal = roster.get("content_sha256")
-    unsealed = dict(roster)
-    unsealed.pop("content_sha256", None)
-    require(isinstance(seal, str)
-            and seal == sha256(canonical_artifact_bytes(unsealed)).hexdigest(),
-            "B6K reviewed roster content SHA256 invalid")
-    # Candidate-set SHA excludes reviewer decisions; the plan must be
-    # explicitly rebuilt from this precise decision-bearing roster.
-    require(plan.get("candidate_set_roster_content_sha256") == seal,
-            "B6K reviewed roster decision content differs from plan; replan required")
-    for field in ("legacy_snapshot_sha256", "canonical_state_sha256",
-                  "planner_version", "candidate_set_sha256"):
-        require(roster.get(field) == plan.get(field), f"B6K source {field} changed")
-    items, candidates = roster.get("items"), plan.get("candidates")
-    require(isinstance(items, list) and isinstance(candidates, list)
-            and all(isinstance(x, Mapping) for x in (*items, *candidates)),
-            "B6K candidates must be mappings")
-    # B6J planner copies this provenance directly from the roster. A
-    # re-sealed plan with contradictory metadata must never pass review.
-    for plan_field, roster_field in (
-        ("candidate_set_roster_schema_version", "schema_version"),
-        ("candidate_set_roster_artifact_kind", "artifact_kind"),
-        ("candidate_set_roster_planner_version", "planner_version"),
-    ):
-        require(
-            plan.get(plan_field) == roster.get(roster_field),
-            f"B6K plan-bound reviewed roster {plan_field} differs",
-        )
+    # Candidate-set SHA omits human decisions, source membership counts and
+    # existing physical-line identity. Recheck the *entire* B6J planner
+    # roster-binding contract, rather than maintaining a partial copy.
     require(
-        plan.get("candidate_set_roster_item_count") == len(items),
-        "B6K plan-bound reviewed roster item count differs",
+        plan.get("candidate_set_roster_content_sha256") == roster.get("content_sha256"),
+        "B6K reviewed roster decision content differs from plan; replan required",
     )
-    require(candidate_set_digest(items) == plan.get("candidate_set_sha256"),
-            "B6K candidate-set evidence differs")
-    ri = {x.get("candidate_key"): x for x in items}
-    pi = {x.get("candidate_key"): x for x in candidates}
-    require(len(ri) == len(items) == len(pi) == len(candidates)
-            and None not in ri and set(ri) == set(pi), "B6K candidate roster universe changed")
-    for key, item in ri.items():
-        c = pi[key]
-        for rfield, pfield in (("source_site_legacy_id", "legacy_site_id"),
-                               ("canonical_site_id", "canonical_site_id"),
-                               ("canonical_line_text", "canonical_line_code")):
-            require(item.get(rfield) == c.get(pfield), f"B6K {key} identity drift")
-        for field in ("source_case_ids", "source_certificate_ids"):
-            require(isinstance(item.get(field), list) and isinstance(c.get(field), list)
-                    and sorted(item[field]) == sorted(c[field]), f"B6K {key} source drift")
+    try:
+        provenance = bind_candidate_roster(
+            roster,
+            roster_raw_sha256=plan.get("candidate_set_roster_sha256"),
+            candidate_set_sha256=plan.get("candidate_set_sha256"),
+            snapshot_sha256=plan.get("legacy_snapshot_sha256"),
+            canonical_state_sha256=plan.get("canonical_state_sha256"),
+            candidates=plan["candidates"],
+        )
+    except ProductionLinePopulationPlanError as exc:
+        raise B6KReviewAlignmentError(
+            f"B6K B6J reviewed roster binding invalid: {exc}"
+        ) from exc
+    for field, value in provenance.items():
+        require(
+            plan.get(field) == value,
+            f"B6K plan-bound {field} differs from reviewed roster",
+        )
+    seal = roster["content_sha256"]
+    ri = {item["candidate_key"]: item for item in roster["items"]}
+    pi = {candidate["candidate_key"]: candidate for candidate in plan["candidates"]}
     # B6I reviews are not implicitly authenticated by their "REVIEWED" flag.
     # Reuse the B6I decision contract to reject contradictory decision payloads.
     permitted_existing_line_ids = {
@@ -172,7 +151,7 @@ def audit_b6j_review_alignment(plan: Mapping[str, Any], roster: Mapping[str, Any
         "cutover_authorized": False,
         "plan_sha256": plan["plan_sha256"],
         "reviewed_roster_content_sha256": seal,
-        "candidate_count": len(candidates),
+        "candidate_count": len(pi),
         "blocked_candidate_count": len(findings),
         "blocked_source_action_count": len(source_action_findings),
         "blocker_counts": dict(sorted(counts.items())),

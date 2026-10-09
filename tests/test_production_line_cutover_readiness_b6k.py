@@ -23,6 +23,7 @@ def fixture():
         "candidate_key": key, "source_site_legacy_id": 7,
         "canonical_site_id": site, "canonical_line_text": "A",
         "source_case_ids": [10], "source_certificate_ids": [20],
+        "case_count": 1, "certificate_count": 1,
         "review_tags": [], "review_status": "REVIEWED",
         "review_decision": "APPROVE_NEW_PHYSICAL_LINE", "review_reason": "Evidence",
         "approved_display_code": "A", "existing_production_line_id": None,
@@ -533,3 +534,23 @@ def test_cli_prints_both_candidate_and_source_action_blocker_counts(tmp_path, ca
     assert "BLOCKED_CANDIDATES=0" in message
     assert "BLOCKED_SOURCE_ACTIONS=1" in message
     assert json.loads(output_path.read_text())["cutover_authorized"] is False
+
+
+@pytest.mark.parametrize(
+    ("field", "bad_value"),
+    [
+        ("case_count", 2),
+        ("certificate_count", 0),
+        ("existing_production_line_id", "88888888-8888-4888-8888-888888888888"),
+        ("source_case_ids", [1234]),
+    ],
+)
+def test_b6k_reuses_complete_planner_roster_evidence_fence(field, bad_value):
+    plan, roster = fixture()
+    roster["items"][0][field] = bad_value
+    reseal(roster)
+    replan_for_review(plan, roster)
+    # Self-consistent seals alone cannot override the B6J planner's
+    # source membership, source counts or physical identity contract.
+    with pytest.raises(B6KReviewAlignmentError, match="reviewed roster binding invalid"):
+        audit_b6j_review_alignment(plan, roster)

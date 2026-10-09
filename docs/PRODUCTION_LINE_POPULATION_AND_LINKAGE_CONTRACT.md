@@ -162,8 +162,11 @@ decisions. B6K requires the B6J plan to bind the **exact reviewed roster**:
 `candidate_set_roster_content_sha256` must match decision-bearing content
 and `candidate_set_roster_sha256` must match its exact file bytes. The
 plan-bound review schema, artifact kind, planner version and item count
-must also match that same roster; re-sealing contradictory metadata does
-not make it valid. Every subsequent review edit requires replan,
+must also match that same roster. The read-only B6K auditor reuses the
+B6J planner's full roster-binding validator for candidate membership,
+Case/Certificate evidence counts and existing physical ProductionLine
+identity, rather than duplicating only a subset. Re-sealing contradictory
+metadata or source membership does not make it valid. Every subsequent review edit requires replan,
 independent plan approval, and fresh audit; a self-recomputed SHA
 is not approval.
 

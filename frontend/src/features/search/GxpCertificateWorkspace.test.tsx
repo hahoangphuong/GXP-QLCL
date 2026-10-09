@@ -129,6 +129,39 @@ describe("GxP certificate keyboard and identity", () => {
 });
 
 describe("GxpCertificateWorkspace edit form", () => {
+  it("contains both Tab directions while saving and ignores pending Escape, then restores focus on Cancel", async () => {
+    let finish!: () => void;
+    const save = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+    renderWorkspace(save);
+    const trigger = screen.getByRole("button", { name: "Cập nhật chứng nhận" });
+    act(() => trigger.focus());
+    fireEvent.click(trigger);
+    const input = screen.getByRole("textbox", { name: "Số GCN" });
+    expect(input).toHaveFocus();
+    fireEvent.change(input, { target: { value: "pending draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveFocus();
+    for (const shiftKey of [false, true]) {
+      const event = new KeyboardEvent("keydown", { key: "Tab", shiftKey, bubbles: true, cancelable: true });
+      act(() => dialog.dispatchEvent(event));
+      expect(event.defaultPrevented).toBe(true);
+      expect(dialog).toHaveFocus();
+    }
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(dialog).toBeInTheDocument();
+    expect(input).toHaveValue("pending draft");
+    expect(save).toHaveBeenCalledTimes(1);
+    await act(async () => finish());
+    expect(trigger).toHaveFocus();
+    fireEvent.click(trigger);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "Hủy" }));
+    expect(trigger).toHaveFocus();
+  });
   it("renders no edit control without backend action and disables unavailable backend action", () => {
     render(<GxpCertificateWorkspace
       detail={{ ...detail(), action_readiness: [] }} detailError={null} detailLoading={false} items={items} listError={null} listLoading={false}

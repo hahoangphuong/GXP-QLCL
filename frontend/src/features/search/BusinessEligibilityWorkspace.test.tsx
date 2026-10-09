@@ -194,6 +194,38 @@ describe("Eligibility certificate keyboard and identity", () => {
 });
 
 describe("BusinessEligibilityWorkspace write workflow", () => {
+  it.each(["issue", "edit"])("contains focus while %s is pending, ignores Escape and restores trigger after save", async mode => {
+    const props = baseProps();
+    let finish!: () => void;
+    const save = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+    if (mode === "issue") props.onIssue = save; else props.onEditLatestVersion = save;
+    render(<BusinessEligibilityWorkspace {...props} />);
+    const trigger = screen.getByRole("button", { name: mode === "issue" ? "Cấp GCN đủ điều kiện" : "Cập nhật GCN đủ điều kiện" });
+    act(() => trigger.focus());
+    fireEvent.click(trigger);
+    const input = screen.getByRole("textbox", { name: "Số GCN ĐĐK" });
+    expect(input).toHaveFocus();
+    fireEvent.change(input, { target: { value: "pending draft" } });
+    fireEvent.click(screen.getByRole("button", { name: mode === "issue" ? "Cấp GCN" : "Lưu thay đổi" }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveFocus();
+    for (const shiftKey of [false, true]) {
+      const event = new KeyboardEvent("keydown", { key: "Tab", shiftKey, bubbles: true, cancelable: true });
+      act(() => dialog.dispatchEvent(event));
+      expect(event.defaultPrevented).toBe(true);
+      expect(dialog).toHaveFocus();
+    }
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(dialog).toBeInTheDocument();
+    expect(input).toHaveValue("pending draft");
+    expect(save).toHaveBeenCalledTimes(1);
+    await act(async () => finish());
+    expect(trigger).toHaveFocus();
+    fireEvent.click(trigger);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
   it("allows first issue when the list is empty and does not auto-promote", async () => {
     const props = baseProps();
     render(<BusinessEligibilityWorkspace {...props} detail={null} items={[]} selectedCertificateId={null} />);

@@ -11,6 +11,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from backend.app.storage.staging import StagingAudit, StagingCandidate
@@ -43,6 +44,39 @@ def _inventory(*keys: tuple[str, str]) -> StagingAudit:
         scanned_directories=1, scanned_entries=len(keys),
         truncated=False, incomplete_reason=None,
     )
+
+
+@pytest.fixture
+def disposable_reader_url():
+    # An isolated, temporary login with only the minimum three SELECT
+    # grants. Provisioning and cleanup occur exclusively in the named
+    # disposable CI database; the module-level gate forbids a VM target.
+    role = "gxp_stage_reader_" + uuid4().hex[:12]
+    password = uuid4().hex
+    admin = create_engine(DATABASE_URL, future=True, isolation_level="AUTOCOMMIT")
+    created = False
+    try:
+        with admin.connect() as conn:
+            conn.exec_driver_sql(f"CREATE ROLE {role} LOGIN PASSWORD '{password}'")
+            created = True
+            conn.exec_driver_sql(f"GRANT USAGE ON SCHEMA public TO {role}")
+            conn.exec_driver_sql(
+                f"GRANT SELECT ON TABLE public.document_version, "
+                f"public.template_definition, public.storage_binding TO {role}"
+            )
+        yield make_url(DATABASE_URL).set(username=role, password=password)
+    finally:
+        try:
+            if created:
+                with admin.connect() as conn:
+                    conn.exec_driver_sql(
+                        f"REVOKE SELECT ON TABLE public.document_version, "
+                        f"public.template_definition, public.storage_binding FROM {role}"
+                    )
+                    conn.exec_driver_sql(f"REVOKE USAGE ON SCHEMA public FROM {role}")
+                    conn.exec_driver_sql(f"DROP ROLE {role}")
+        finally:
+            admin.dispose()
 
 
 def test_postgres_exact_lineage_lookups_use_real_uuid_and_read_only_transaction():
@@ -114,11 +148,12 @@ def test_postgres_exact_lineage_lookups_use_real_uuid_and_read_only_transaction(
         engine.dispose()
 
 
-def test_postgres_read_only_cli_path_against_real_disposable_database():
+def test_postgres_read_only_cli_path_against_real_disposable_database(disposable_reader_url):
     # This queries only non-existent locators in the migrated disposable DB.
-    # A transaction-level read-only assertion occurs before the three SELECTs.
+    # A separate SELECT-only login and transaction read-only are both checked
+    # before the lineage queries execute.
     report = _read_only_reconcile(
-        DATABASE_URL,
+        disposable_reader_url,
         _inventory(
             ("inspection", "not-a-real-folder/.gxp-stage-feed1234.tmp"),
             ("dkkd", "also-not-real/.gxp-stage-cafe1234.tmp"),
@@ -127,6 +162,33 @@ def test_postgres_read_only_cli_path_against_real_disposable_database():
     assert report.status == "review_only"
     assert report.inspected_candidates == 2
     assert all(item.evidence == "no_exact_locator_evidence" for item in report.items)
+
+
+def test_postgres_lineage_cli_rejects_admin_role_on_disposable_database():
+    with pytest.raises(RuntimeError, match="dedicated metadata SELECT-only"):
+        _read_only_reconcile(DATABASE_URL, _inventory(
+            ("inspection", "nonexistent/.gxp-stage-fedcba.tmp")
+        ))
+
+
+def test_postgres_dedicated_reader_cannot_update_lineage_tables(disposable_reader_url):
+    # A server-side permission rejection, not merely a client-side promise.
+    engine = create_engine(disposable_reader_url, future=True)
+    try:
+        with engine.connect() as conn:
+            assert conn.exec_driver_sql(
+                "SELECT has_table_privilege(current_user, 'document_version', 'SELECT')"
+            ).scalar_one()
+            assert not conn.exec_driver_sql(
+                "SELECT has_table_privilege(current_user, 'document_version', 'INSERT, UPDATE, DELETE')"
+            ).scalar_one()
+            with pytest.raises(DBAPIError):
+                conn.exec_driver_sql(
+                    "UPDATE document_version SET storage_relative_path = storage_relative_path WHERE FALSE"
+                )
+            conn.rollback()
+    finally:
+        engine.dispose()
 
 
 def test_postgres_lineage_query_batches_large_inventory_without_mutation():

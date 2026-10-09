@@ -160,7 +160,9 @@ MATRIX = {
       "reviewer",
       "reviewed_at",
       "review_reason",
-      "plan_sha256"
+      "plan_sha256",
+      "candidate_set_roster_sha256",
+      "candidate_set_roster_content_sha256"
     ],
     "external_approval_fields": [
       "expected_plan_file_sha256",
@@ -169,7 +171,7 @@ MATRIX = {
     "hardcoded_constants": [],
     "current_known_sha_values": [],
     "classification": "REVIEWED_SOURCE_BOUND",
-    "cutover_action": "Run read-only alignment audit against independently pinned plan and reviewed roster; resolve all blockers and obtain separate write authorization",
+    "cutover_action": "Rebuild B6J plan from the exact reviewed B6I roster, independently pin plan and roster file SHA; run read-only alignment, resolve every candidate/source blocker, obtain separate write authorization",
     "reason": "B6J binds review candidate universe but does not enforce B6I human decisions while writing"
   }
 }

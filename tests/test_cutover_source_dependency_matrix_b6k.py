@@ -52,6 +52,12 @@ def test_b6j_matrix_retains_all_cutover_provenance_bindings() -> None:
 def test_b6k_read_only_review_alignment_gate_is_explicit_in_handoff() -> None:
     gate = MATRIX["B6K_review_alignment"]
     assert gate["classification"] == "REVIEWED_SOURCE_BOUND"
+    assert set(gate["binding_fields"]) >= {
+        "candidate_set_sha256", "candidate_set_roster_sha256",
+        "candidate_set_roster_content_sha256", "review_decision",
+        "source_case_ids", "source_certificate_ids",
+    }
+    assert "exact reviewed B6I roster" in gate["cutover_action"]
     assert set(gate["external_approval_fields"]) == {
         "expected_plan_file_sha256", "expected_reviewed_roster_file_sha256",
     }

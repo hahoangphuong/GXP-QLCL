@@ -116,9 +116,9 @@ The green completion strip is not reproduced: no equivalent per-stage backend
 completion projection has been established. Its ticks cannot be inferred from
 file availability. The screenshot's blank right-hand scope box is not filled
 with a guessed data source. Existing extra canonical fields and web navigation
-remain available. Facility tabs currently remain above the detail pane rather
-than spanning both the history and detail panes; exact owner/layout parity is
-still pending. This is a partial delivery and does not close Issue #1.
+remain available. Facility tabs now span both history and detail panes. Context is below the
+history pane; certificate tabs use their own list/detail pair across the lower
+workspace. No owner was moved or duplicated to obtain this layout. This is a partial delivery and does not close Issue #1.
 
 Updated local fixture captures: legacy-runtime-1366.png, legacy-runtime-1920.png,
 legacy-runtime-390.png. Original user screenshots and business payloads are not
@@ -153,3 +153,36 @@ remaining interaction difference, not a claim of complete FilterForm parity.
 Fixture evidence: legacy-filter-disabled-1366.png and
 legacy-filter-disabled-390.png. Both have no horizontal page overflow, all
 unsupported inputs disabled, and unchanged master height across open/close.
+
+## Full-width tab and certificate group follow-up
+
+Search layout wrappers use display:contents so the existing facility tab owner
+can span the history and detail columns. The existing summary context is below
+history. Certificate tabs hide that history/context presentation and show their
+own existing lists and details across the workspace. Hidden/inert retained
+workspaces remain hidden during canonical refresh. No fetch effect or selection
+owner was copied. Fixture tab round-trips preserve the history ID and line UUID.
+
+GPs detail groups number/date/expiry/standard first, then full-width content rows.
+DDK groups number/date/decision/sequence first, followed by canonical content.
+The existing DDK expiry field remains available lower down even though image 9
+has no equivalent header field. At 1366px the summary uses two rows so values
+remain readable; at 1920px it uses one row; narrow viewports stack the fields.
+All mutations, permissions, version tokens and modal owners are unchanged.
+
+Fixture captures: legacy-mainform-1366/1920/390.png, legacy-gps-1366/1920.png,
+legacy-ddk-1366/1920/390.png. Populated GPs/DDK fixtures use synthetic business
+names and IDs, and existing API response shapes. Detailed certificate UI was
+visually checked; no user business payload was used in fixtures.
+
+Remaining parity gaps: detailed case field placement, document actions relative
+to those fields, the certificate activity sub-tabs and source navigation commands,
+full master/General Information/RecordForm/picker runtime appearance. The green
+completion ticks still have no established backend readiness projection. This
+work does not assert pixel-perfect or complete legacy parity and keeps #1 open.
+
+Latest workspace group: targeted filter/certificate tests 38 passed, full suite
+308 tests / 23 files passed, typecheck/lint/build passed. Unsupported conditions
+mount only while the disclosure is open, keeping the closed search DOM compact;
+opening/closing still has no query or mutation effect. Native disclosure, desktop
+pane geometry and certificate tab round-trips were checked in the fixture browser.

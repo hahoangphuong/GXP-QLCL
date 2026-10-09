@@ -5,6 +5,16 @@ import { LegacySearchFilters } from "./LegacySearchFilters";
 
 const filters = { generalQuery: "", province: "", caseState: "", certificateState: "", certificateExpiringWithinDays: "" };
 describe("Legacy search filter ownership", () => {
+  it("mounts unsupported conditions only while the disclosure is open without changing filters", () => {
+    const change = vi.fn(); const { container } = render(<LegacySearchFilters filters={filters} onChange={change} />);
+    expect(screen.queryByRole("checkbox", { name: "Đăng ký mới" })).not.toBeInTheDocument();
+    const details = container.querySelector("details")!;
+    details.open = true; fireEvent(details, new Event("toggle"));
+    expect(screen.getByRole("checkbox", { name: "Đăng ký mới" })).toBeDisabled();
+    details.open = false; fireEvent(details, new Event("toggle"));
+    expect(screen.queryByRole("checkbox", { name: "Đăng ký mới" })).not.toBeInTheDocument();
+    expect(change).not.toHaveBeenCalled();
+  });
   it("closes the filter surface with Escape and restores focus without changing the query", () => {
     const change = vi.fn(); const { container } = render(<LegacySearchFilters filters={filters} onChange={change} />);
     const details = container.querySelector("details")!;

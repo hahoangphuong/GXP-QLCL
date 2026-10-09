@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { CASE_STATE_OPTIONS, formatStatusLabel } from "../../lib/presentation";
 import { LegacyUnavailableFilters } from "./LegacyUnavailableFilters";
 
@@ -15,9 +16,10 @@ export function LegacySearchFilters({ filters, onChange, multipleCaseStates = fa
   multipleCaseStates?: boolean;
   onChange: (field: keyof Filters, value: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
   return <div className="legacy-search-filters">
     <label className="legacy-quick-filter"><span>Lọc:</span><input aria-label="Tìm nhanh" value={filters.generalQuery} onChange={event => onChange("generalQuery", event.target.value)} /></label>
-    <details className="legacy-filter-form" onKeyDown={event => {
+    <details className="legacy-filter-form" onToggle={event => setOpen(event.currentTarget.open)} onKeyDown={event => {
       if (event.key !== "Escape" || !event.currentTarget.open) return;
       event.preventDefault(); event.currentTarget.open = false;
       event.currentTarget.querySelector("summary")?.focus();
@@ -30,7 +32,7 @@ export function LegacySearchFilters({ filters, onChange, multipleCaseStates = fa
           <label><span>Hiệu lực</span><select value={filters.certificateState} onChange={event => onChange("certificateState", event.target.value)}><option value="">Không lọc</option><option value="active">Còn hiệu lực</option></select></label>
           <label><span>Sắp hết hạn</span><select value={filters.certificateExpiringWithinDays} onChange={event => onChange("certificateExpiringWithinDays", event.target.value)}><option value="">Không lọc</option>{filters.certificateExpiringWithinDays && !["30", "60", "90"].includes(filters.certificateExpiringWithinDays) ? <option value={filters.certificateExpiringWithinDays}>{filters.certificateExpiringWithinDays} ngày</option> : null}{[30, 60, 90].map(days => <option key={days} value={days}>{days} ngày</option>)}</select></label>
         </fieldset>
-        <LegacyUnavailableFilters />
+        {open ? <LegacyUnavailableFilters /> : null}
       </div>
     </details>
   </div>;

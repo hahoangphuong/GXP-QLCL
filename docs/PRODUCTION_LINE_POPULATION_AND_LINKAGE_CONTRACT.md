@@ -139,7 +139,15 @@ reviewed roster's source/semantic identities, exact candidate universe,
 canonical Site/code and legacy source IDs to match the plan. It reports
 blocked/unfinished decisions, missing reviewer, reviewed date or reason,
 conflicting new-line display codes, conflicting existing-line targets, and
-planner-blocked candidates. Invoke it only with independently retained
+planner-blocked candidates. It also reports **source-action** blockers in
+`source_action_findings`: an approved physical-line candidate can still
+have a blocked Case/Certificate action, an unexpected candidate no-op, or
+an unknown source-action classification. Source actions not bound to a
+candidate are still counted when explicitly blocked. The intended
+`NOT_APPLICABLE / ALREADY_LINKED_TO_PLANNED_LINE` no-op does not block.
+The report includes separate `blocked_candidate_count` and
+`blocked_source_action_count`; either nonzero blocks the audit CLI.
+Invoke it only with independently retained
 `--expected-plan-file-sha256` and
 `--expected-reviewed-roster-file-sha256`; these must not be recomputed from
 unapproved modified files.

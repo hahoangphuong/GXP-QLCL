@@ -276,3 +276,93 @@ def test_cli_never_overwrites_approved_input_artifact(tmp_path, capsys, overwrit
     assert "must differ from both immutable input artifacts" in capsys.readouterr().err
     assert plan_path.read_bytes() == before_plan
     assert roster_path.read_bytes() == before_roster
+
+
+@pytest.mark.parametrize(
+    ("source_classification", "block_reason", "expected"),
+    [
+        ("BLOCKED_SITE_MISMATCH", "CASE_CERTIFICATE_SITE_DIFFERS", "BLOCKED_SOURCE_ACTION"),
+        ("NOT_APPLICABLE", "UNREVIEWED_NOOP", "UNEXPECTED_CANDIDATE_NOOP"),
+        ("UNCLASSIFIED", "UNKNOWN_STATE", "UNKNOWN_CANDIDATE_ACTION"),
+    ],
+)
+def test_approved_candidate_cannot_hide_blocked_source_action(
+    source_classification, block_reason, expected,
+):
+    plan, roster = fixture()
+    # Keep an eligible Case link to create the new line; the Certificate
+    # still belongs to the same reviewer-approved candidate.
+    action = plan["certificate_links"][0]
+    action.update(classification=source_classification, block_reason=block_reason)
+    plan["summary_counts"]["certificates"] = {source_classification: 1}
+    plan["plan_sha256"] = plan_digest(plan)
+    _validate_plan(plan)
+    report = audit_b6j_review_alignment(plan, roster)
+    assert report["status"] == "REVIEW_ALIGNMENT_BLOCKED"
+    assert report["blocked_candidate_count"] == 0
+    assert report["blocked_source_action_count"] == 1
+    assert report["source_action_findings"][0]["source_type"] == "CERTIFICATE"
+    assert report["source_action_findings"][0]["legacy_id"] == 20
+    assert expected in report["source_action_findings"][0]["blockers"]
+
+
+def test_already_linked_noop_is_not_falsely_reported_as_source_blocker():
+    plan, roster = fixture()
+    plan["certificate_links"][0].update(
+        classification="NOT_APPLICABLE",
+        block_reason="ALREADY_LINKED_TO_PLANNED_LINE",
+    )
+    plan["summary_counts"]["certificates"] = {"NOT_APPLICABLE": 1}
+    plan["plan_sha256"] = plan_digest(plan)
+    _validate_plan(plan)
+    report = audit_b6j_review_alignment(plan, roster)
+    assert report["status"] == "REVIEW_ALIGNMENT_PASS"
+    assert report["blocked_source_action_count"] == 0
+    assert report["source_action_findings"] == []
+
+
+def test_unbound_source_blocker_must_be_reported_without_inventing_candidate():
+    plan, roster = fixture()
+    plan["certificate_links"].append({
+        "legacy_id": 21, "candidate_key": None,
+        "classification": "BLOCKED_NO_LINE",
+        "block_reason": "LINE_BLANK",
+        "canonical_record_id": None,
+        "canonical_line_code": None,
+    })
+    plan["summary_counts"]["certificates"] = {
+        "LINK_TO_NEW_LINE": 1, "BLOCKED_NO_LINE": 1,
+    }
+    plan["plan_sha256"] = plan_digest(plan)
+    _validate_plan(plan)
+    report = audit_b6j_review_alignment(plan, roster)
+    assert report["status"] == "REVIEW_ALIGNMENT_BLOCKED"
+    assert report["source_action_findings"][0]["candidate_key"] is None
+    assert report["source_action_findings"][0]["legacy_id"] == 21
+
+
+def test_source_only_blocker_causes_cli_exit_three_with_preserved_report(tmp_path):
+    plan, roster = fixture()
+    plan["certificate_links"][0].update(
+        classification="BLOCKED_SITE_MISMATCH",
+        block_reason="CASE_CERTIFICATE_SITE_DIFFERS",
+    )
+    plan["summary_counts"]["certificates"] = {"BLOCKED_SITE_MISMATCH": 1}
+    plan["plan_sha256"] = plan_digest(plan)
+    plan_path = tmp_path / "plan.json"
+    roster_path = tmp_path / "roster.json"
+    report_path = tmp_path / "report.json"
+    plan_path.write_text(json.dumps(plan))
+    roster_path.write_text(json.dumps(roster))
+    args = [
+        "--plan", str(plan_path), "--reviewed-roster", str(roster_path),
+        "--expected-plan-file-sha256", sha256(plan_path.read_bytes()).hexdigest(),
+        "--expected-reviewed-roster-file-sha256", sha256(roster_path.read_bytes()).hexdigest(),
+        "--output", str(report_path),
+    ]
+    assert main(args) == 3
+    report = json.loads(report_path.read_text())
+    assert report["status"] == "REVIEW_ALIGNMENT_BLOCKED"
+    assert report["blocked_candidate_count"] == 0
+    assert report["blocked_source_action_count"] == 1
+    assert report["cutover_authorized"] is False

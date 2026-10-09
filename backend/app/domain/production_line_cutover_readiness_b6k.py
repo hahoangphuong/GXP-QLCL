@@ -105,16 +105,48 @@ def audit_b6j_review_alignment(plan: Mapping[str, Any], roster: Mapping[str, Any
         if reasons:
             findings.append({"candidate_key": key, "plan_classification": classification,
                              "review_decision": decision, "blockers": sorted(set(reasons))})
-    counts = Counter(reason for row in findings for reason in row["blockers"])
+    # A reviewed candidate can still have blocked Cases/Certificates.
+    # Source-level readiness is distinct from physical-identity approval.
+    # Do not reclassify planner actions or infer approvals from review text.
+    source_action_findings = []
+    accepted_links = {"LINK_TO_NEW_LINE", "LINK_TO_EXISTING_LINE"}
+    for kind, field in (("CASE", "case_links"), ("CERTIFICATE", "certificate_links")):
+        for action in plan[field]:
+            classification = action["classification"]
+            candidate_key = action.get("candidate_key")
+            reasons = []
+            if isinstance(classification, str) and classification.startswith("BLOCKED_"):
+                reasons.append("BLOCKED_SOURCE_ACTION")
+            elif candidate_key is not None and classification == "NOT_APPLICABLE":
+                if action.get("block_reason") != "ALREADY_LINKED_TO_PLANNED_LINE":
+                    reasons.append("UNEXPECTED_CANDIDATE_NOOP")
+            elif candidate_key is not None and classification not in accepted_links:
+                reasons.append("UNKNOWN_CANDIDATE_ACTION")
+            if reasons:
+                source_action_findings.append({
+                    "source_type": kind,
+                    "legacy_id": action["legacy_id"],
+                    "candidate_key": candidate_key,
+                    "classification": classification,
+                    "block_reason": action.get("block_reason"),
+                    "blockers": sorted(set(reasons)),
+                })
+    source_action_findings.sort(key=lambda item: (item["source_type"], item["legacy_id"]))
+    counts = Counter(
+        reason for row in (*findings, *source_action_findings)
+        for reason in row["blockers"]
+    )
     return {
         "artifact_kind": "b6k_production_line_review_alignment",
         "schema_version": "b6k-production-line-review-alignment/v1",
-        "status": "REVIEW_ALIGNMENT_BLOCKED" if findings else "REVIEW_ALIGNMENT_PASS",
+        "status": "REVIEW_ALIGNMENT_BLOCKED" if findings or source_action_findings else "REVIEW_ALIGNMENT_PASS",
         "cutover_authorized": False,
         "plan_sha256": plan["plan_sha256"],
         "reviewed_roster_content_sha256": seal,
         "candidate_count": len(candidates),
         "blocked_candidate_count": len(findings),
+        "blocked_source_action_count": len(source_action_findings),
         "blocker_counts": dict(sorted(counts.items())),
         "findings": findings,
+        "source_action_findings": source_action_findings,
     }

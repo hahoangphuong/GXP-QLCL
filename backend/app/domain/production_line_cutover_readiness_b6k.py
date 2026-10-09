@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from collections import Counter
+from datetime import date, datetime
+import re
 from typing import Any, Mapping
 
 from backend.app.domain.production_line_population_b6j import (
@@ -27,6 +29,28 @@ class B6KReviewAlignmentError(ValueError):
 def require(ok: bool, reason: str) -> None:
     if not ok:
         raise B6KReviewAlignmentError(reason)
+
+
+def _valid_reviewed_at(value: object) -> bool:
+    """Require a real ISO calendar date or date-time; never invent review time."""
+    if not isinstance(value, str) or value != value.strip():
+        return False
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        try:
+            date.fromisoformat(value)
+            return True
+        except ValueError:
+            return False
+    if not re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?",
+        value,
+    ):
+        return False
+    try:
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return True
+    except ValueError:
+        return False
 
 
 def audit_b6j_review_alignment(plan: Mapping[str, Any], roster: Mapping[str, Any]) -> dict[str, Any]:
@@ -88,6 +112,10 @@ def audit_b6j_review_alignment(plan: Mapping[str, Any], roster: Mapping[str, Any
         for field in ("review_reason", "reviewer", "reviewed_at"):
             if not isinstance(item.get(field), str) or not item[field].strip():
                 reasons.append("MISSING_" + field.upper())
+        if (isinstance(item.get("reviewed_at"), str)
+                and item["reviewed_at"].strip()
+                and not _valid_reviewed_at(item["reviewed_at"])):
+            reasons.append("INVALID_REVIEWED_AT")
         if classification == "CREATE_NEW_PRODUCTION_LINE":
             if decision != "APPROVE_NEW_PHYSICAL_LINE":
                 reasons.append("NEW_LINE_NOT_APPROVED")

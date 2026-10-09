@@ -245,3 +245,12 @@ exclusive creation for every file. An existing output, including a hard-link
 alias to prior evidence, is never replaced. This extends the B6I/B6J
 no-clobber policy to the earlier discovery stage; it does not freeze or
 approve the sources, authenticate review, or grant cutover authority.
+
+
+For B6K readiness, nonblank `reviewed_at` alone is insufficient evidence
+that a reviewer entered a meaningful date. The read-only audit accepts
+calendar-valid ISO `YYYY-MM-DD` or ISO date-time strings, with optional
+seconds and UTC offset, and flags an invalid or impossible value as
+`INVALID_REVIEWED_AT`. This is syntactic consistency only: it cannot
+authenticate the reviewer, prove the event occurred, or substitute for
+independent human approval.

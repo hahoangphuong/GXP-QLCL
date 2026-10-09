@@ -653,3 +653,33 @@ def test_b6k_report_pins_exact_checked_file_digests_without_authorization(tmp_pa
     assert result["reviewed_roster_file_sha256"] == expected_roster_hash
     assert result["status"] == "REVIEW_ALIGNMENT_PASS"
     assert result["cutover_authorized"] is False
+
+
+@pytest.mark.parametrize("reviewed_at", [
+    "not-a-date", "2026-02-30", "2026-10-09T25:00:00",
+    "09/10/2026", "2026-10-09T09:00:00+25:00",
+])
+def test_invalid_review_timestamp_blocks_alignment_even_when_review_is_marked_completed(reviewed_at):
+    plan, roster = fixture()
+    roster["items"][0]["reviewed_at"] = reviewed_at
+    reseal(roster)
+    replan_for_review(plan, roster)
+    result = audit_b6j_review_alignment(plan, roster)
+    assert result["status"] == "REVIEW_ALIGNMENT_BLOCKED"
+    assert result["blocked_candidate_count"] == 1
+    assert "INVALID_REVIEWED_AT" in result["findings"][0]["blockers"]
+    assert result["cutover_authorized"] is False
+
+
+@pytest.mark.parametrize("reviewed_at", [
+    "2026-10-09", "2026-10-09T09:00",
+    "2026-10-09T09:00:00+07:00", "2026-10-09T02:00:00Z",
+])
+def test_valid_iso_review_date_or_datetime_remains_aligned(reviewed_at):
+    plan, roster = fixture()
+    roster["items"][0]["reviewed_at"] = reviewed_at
+    reseal(roster)
+    replan_for_review(plan, roster)
+    result = audit_b6j_review_alignment(plan, roster)
+    assert result["status"] == "REVIEW_ALIGNMENT_PASS"
+    assert result["cutover_authorized"] is False

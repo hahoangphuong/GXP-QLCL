@@ -329,7 +329,7 @@ jobs:
                 "/api": {
                   target: "http://127.0.0.1:8000",
                   changeOrigin: false,
-                  rewrite: path => path.replace(/^\\/api(?=\\/|$)/, ""),
+                  rewrite: path => path.replace(new RegExp("^/api(?=/|$)"), ""),
                 },
               },
             },

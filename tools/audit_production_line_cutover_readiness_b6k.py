@@ -5,6 +5,13 @@ import argparse
 from hashlib import sha256
 import json
 from pathlib import Path
+import sys
+
+# Direct execution (python tools/audit_*.py) uses tools/ on sys.path,
+# not necessarily the repository root. Match the B6J planner CLI contract.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from backend.app.domain.production_line_cutover_readiness_b6k import audit_b6j_review_alignment
 

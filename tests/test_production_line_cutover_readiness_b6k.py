@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+import os
+from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -468,3 +472,15 @@ def test_cli_refuses_identical_review_content_with_different_file_bytes(tmp_path
     assert exc.value.code == 2
     assert "plan-bound roster" in capsys.readouterr().err
     assert not output_path.exists()
+
+
+def test_audit_cli_executes_from_external_working_directory_without_pythonpath(tmp_path):
+    script = Path(__file__).resolve().parents[1] / "tools" / "audit_production_line_cutover_readiness_b6k.py"
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    result = subprocess.run(
+        [sys.executable, str(script), "--help"],
+        cwd=tmp_path, env=env, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--reviewed-roster" in result.stdout

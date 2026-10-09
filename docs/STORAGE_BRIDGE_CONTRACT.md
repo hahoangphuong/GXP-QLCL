@@ -294,3 +294,16 @@ tables themselves are SELECT-only. External cross-schema privileges and
 role membership remain operator IAM responsibilities; this check does not
 certify the absence of every possible database privilege outside the
 application schema.
+
+### Pinned PostgreSQL lineage schema
+
+The app's migrated lineage tables reside in schema `public`. Before
+performing role checks or ORM SELECTs, the CLI sets a transaction-local
+search path to `pg_catalog, public, pg_temp`; temporary tables cannot
+shadow `public.document_version`, `public.template_definition` or
+`public.storage_binding`. The privilege gate also checks the explicitly
+qualified `public` tables and schema rather than whatever schema a
+connection URL may put first. An installation intentionally using a
+different application schema is not supported by this audit until a
+separately reviewed contract is introduced. The search-path change is
+transaction-local and is rolled back with the audit.

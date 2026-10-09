@@ -71,13 +71,13 @@ def _require_metadata_reader(conn) -> None:
             (r.rolsuper OR r.rolcreatedb OR r.rolcreaterole
              OR r.rolreplication OR r.rolbypassrls) AS elevated,
             has_database_privilege(current_database(), 'CREATE') AS db_create,
-            has_schema_privilege(current_schema(), 'CREATE') AS schema_create,
-            has_table_privilege('document_version', 'SELECT') AS version_read,
-            has_table_privilege('template_definition', 'SELECT') AS template_read,
-            has_table_privilege('storage_binding', 'SELECT') AS binding_read,
-            has_table_privilege('document_version', 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') AS version_write,
-            has_table_privilege('template_definition', 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') AS template_write,
-            has_table_privilege('storage_binding', 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') AS binding_write
+            has_schema_privilege('public', 'CREATE') AS schema_create,
+            has_table_privilege('public.document_version', 'SELECT') AS version_read,
+            has_table_privilege('public.template_definition', 'SELECT') AS template_read,
+            has_table_privilege('public.storage_binding', 'SELECT') AS binding_read,
+            has_table_privilege('public.document_version', 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') AS version_write,
+            has_table_privilege('public.template_definition', 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') AS template_write,
+            has_table_privilege('public.storage_binding', 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') AS binding_write
         FROM pg_roles AS r WHERE r.rolname = current_user
         """
     ).one()
@@ -95,7 +95,7 @@ def _require_metadata_reader(conn) -> None:
             SELECT 1
             FROM pg_catalog.pg_class AS c
             JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
-            WHERE n.nspname = current_schema()
+            WHERE n.nspname = 'public'
               AND c.relkind IN ('r', 'p', 'v', 'f', 'm')
               AND has_table_privilege(
                     c.oid,
@@ -128,6 +128,13 @@ def _read_only_reconcile(database_url: str, inventory: StagingAudit):
                 conn.exec_driver_sql("SET TRANSACTION READ ONLY")
                 if conn.exec_driver_sql("SHOW transaction_read_only").scalar_one() != "on":
                     raise RuntimeError("Read-only transaction was not confirmed.")
+                # Bound the unqualified ORM SELECT names to the migrated
+                # application schema, regardless of URL-provided search_path
+                # or preexisting temporary tables. Explicit pg_temp last
+                # prevents temp-table shadowing of public lineage tables.
+                conn.exec_driver_sql(
+                    "SET LOCAL search_path = pg_catalog, public, pg_temp"
+                )
                 _require_metadata_reader(conn)
                 with Session(bind=conn, autoflush=False) as session:
                     return reconcile_staging_lineage(

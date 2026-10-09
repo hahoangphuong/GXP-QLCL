@@ -153,10 +153,14 @@ def test_lineage_cli_confirms_read_only_and_always_rolls_back(tmp_path, monkeypa
     assert result == 2
     assert data["input_inventory_truncated"] is True
     assert data["status"] == "review_only"
-    assert engine.connection.statements[:2] == ["SET TRANSACTION READ ONLY", "SHOW transaction_read_only"]
-    assert len(engine.connection.statements) == 4
-    assert "has_table_privilege" in engine.connection.statements[2]
-    assert "pg_catalog.pg_class" in engine.connection.statements[3]
+    assert engine.connection.statements[:3] == [
+        "SET TRANSACTION READ ONLY",
+        "SHOW transaction_read_only",
+        "SET LOCAL search_path = pg_catalog, public, pg_temp",
+    ]
+    assert len(engine.connection.statements) == 5
+    assert "public.document_version" in engine.connection.statements[3]
+    assert "pg_catalog.pg_class" in engine.connection.statements[4]
     assert engine.connection.transaction.rollbacks == 1
     assert engine.disposed
     assert len(seen) == 1

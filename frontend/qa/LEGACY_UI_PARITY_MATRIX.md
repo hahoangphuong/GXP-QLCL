@@ -5,6 +5,19 @@ recommendations in UI_REDESIGN_VBA_REFERENCE and PHASE12. Preserve legacy UI whe
 evidenced. Baseline: `50576b0b383161e26e27b6cdc4a1a469aff1ae17`; work branch:
 `codex/legacy-ui-parity-20261010`. This delivery is partial; it does not close #1.
 
+User exception (2026-10-10, latest two screenshots): preserve the existing web
+master search table, vertical GMP/GLP/GMPbb rail, right-hand action panel and
+history table appearance. These surfaces are excluded from legacy palette,
+radius, control and selected-row overrides. The filter disclosure is a separate
+row below the master. Existing history columns, canonical state, selection and
+keyboard behavior remain unchanged. This exception supersedes earlier parity
+styling statements for these surfaces; detail/certificate parity is retained.
+Validation of this exception: typecheck, lint, all 309 tests / 23 files and build
+PASS. Browser fixture at 1366x768, 1920x1080 and 390x844 confirms original vertical
+rail, 12px panel radii, selected-row palette, right-hand actions, focus-only
+history Arrow navigation and no horizontal page overflow. Captures are stored
+outside git as preserved-master-history-1366/1920/390.png.
+
 ## Evidence inspected
 
 - Local source workbook `legacy/Danh sách Kiểm tra GPs.xlsb`, add-in

@@ -1918,8 +1918,8 @@ export function SearchPage({
   return (
     <section className="page-section search-page legacy-search-page">
       <div className="search-workspace search-workspace-split search-master-history">
-        <div className="legacy-master-pane">
         <LegacySearchFilters filters={{ generalQuery, province, caseState: caseStates.length === 1 ? caseStates[0] : "", certificateState, certificateExpiringWithinDays }} multipleCaseStates={caseStates.length > 1} onChange={updateFilter} />
+        <div className="legacy-master-pane">
         <FacilityTable
           filters={{
             facilityName,

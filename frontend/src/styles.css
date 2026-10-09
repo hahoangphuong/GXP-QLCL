@@ -2309,9 +2309,7 @@ tr:focus-visible {
   grid-template-rows: clamp(190px, 30vh, 260px) minmax(0, 1fr);
   grid-template-areas: "master master" "history detail";
   gap: 4px;
-  --radius: 2px;
-  --control-height: 28px;
-  --shadow: none;
+
 }
 .legacy-search-page .search-master-history { display: contents; }
 .legacy-master-pane { grid-area: master; display: flex; flex-direction: column; min-height: 0; min-width: 0; gap: 3px; }
@@ -2319,7 +2317,8 @@ tr:focus-visible {
 
 /* User-supplied MainForm runtime references, 2026-10-10. Presentation colors
    do not imply completion, permissions or certificate validity. */
-.legacy-search-page {
+.legacy-search-page :is(.facility-tab-body, .facility-tabs, .facility-context-bar, .legacy-search-filters) {
+  --radius: 2px; --control-height: 28px; --shadow: none;
   --bg: #f0f0f0; --surface: #f0f0f0; --surface-alt: #f0f0f0;
   --surface-muted: #eaeaea; --border: #b0b0b0; --border-strong: #808080;
   --text: #000; --text-muted: #444; --accent: #0078d7;
@@ -2335,7 +2334,7 @@ tr:focus-visible {
 .legacy-search-page :is(.workspace-tab.active, .workflow-step.active, .legacy-scope-tabs [aria-selected="true"]) {
   background: #fff; border-bottom-color: #fff;
 }
-.legacy-search-page :is(input, select, textarea, .detail-value-slot) {
+.legacy-search-page :is(.facility-tab-body, .legacy-search-filters) :is(input, select, textarea, .detail-value-slot) {
   background: #fff; color: #000; border: 1px solid #aaa;
   border-top-color: #808080; border-left-color: #808080; border-radius: 0;
 }
@@ -2367,7 +2366,7 @@ tr:focus-visible {
 .legacy-search-page .certificate-shell .master-list-pane .table-scroll-history { background: #c0ffc0; }
 .legacy-search-page .certificate-history-table td { background: #c0ffc0; }
 .legacy-search-page .master-list-pane .table-scroll-history:has(.certificate-history-table) { background: #c0ffc0; }
-.legacy-search-page :is(.facility-table, .history-table, .certificate-history-table) tr[aria-selected="true"] > td {
+.legacy-search-page .certificate-history-table tr[aria-selected="true"] > td {
   background: #0078d7; color: #fff;
 }
 .legacy-filter-form { position: relative; }
@@ -2394,10 +2393,7 @@ tr:focus-visible {
 }
 .legacy-search-page .history-panel { grid-area: history; }
 .legacy-search-page .search-detail-area { grid-area: detail; }
-.legacy-search-page .facility-table-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-.legacy-search-page .facility-gxp-rail { flex-direction: row; border-right: 0; border-bottom: 1px solid var(--border-strong); background: var(--surface-muted); padding: 2px; }
-.legacy-search-page .facility-gxp-tab { writing-mode: horizontal-tb; transform: none; height: 26px; min-height: 26px; min-width: 70px; }
-.legacy-search-page :is(.panel, .table-scroll, .workspace-section, button, input, select, textarea, .workspace-tab, .workflow-step) { border-radius: 2px; box-shadow: none; }
+.legacy-search-page :is(.facility-tab-body, .facility-tabs, .facility-context-bar, .legacy-search-filters) :is(.panel, .table-scroll, .workspace-section, button, input, select, textarea, .workspace-tab, .workflow-step) { border-radius: 2px; box-shadow: none; }
 .legacy-search-page .workflow-step-index { display: none; }
 .legacy-search-page .workflow-step { padding: 3px 8px; }
 .legacy-search-page .workflow-step-list { gap: 2px; }
@@ -2405,7 +2401,6 @@ tr:focus-visible {
 .legacy-search-page .workspace-section { padding: 5px; }
 .legacy-search-page .facility-context-bar { padding: 4px 6px; }
 .legacy-search-page .facility-context-title h2 { font-size: 0.95rem; }
-.legacy-search-page .history-table { min-width: 350px; }
 .legacy-search-filters { display: flex; align-items: start; gap: 8px; padding: 3px 5px; border: 1px solid var(--border-strong); background: var(--surface-muted); }
 .legacy-quick-filter { display: flex; align-items: center; gap: 5px; width: min(480px, 50%); flex-shrink: 0; }
 .legacy-filter-form { min-width: 0; flex: 1; }
@@ -2496,6 +2491,30 @@ tr:focus-visible {
 .legacy-search-page .case-assessment-result .detail-value-slot { min-height: 90px; }
 .legacy-search-page .case-application-extra { grid-column: 1 / -1; }
 .legacy-search-page .legacy-dossier-section > .panel-actions { grid-column: 1 / -1; }
+/* User exception: keep the existing master, GxP rail, action panel and history
+   appearance. Legacy styling applies only to the detail/filter surfaces. */
+.legacy-search-page, .legacy-search-page:has(.legacy-filter-form[open]) {
+  grid-template-columns: minmax(280px, 27%) minmax(0, 1fr) 160px;
+  grid-template-rows: clamp(190px, 30vh, 260px) auto auto minmax(120px, .64fr) minmax(100px, .36fr);
+  grid-template-areas: "master master actions" "filters filters filters" "tabs tabs tabs" "history detail detail" "context detail detail";
+  gap: .45rem;
+}
+.legacy-search-page .legacy-search-filters { grid-area: filters; }
+.legacy-search-page .search-context-actions .action-grid { display: grid; grid-template-columns: 1fr; }
+.legacy-search-page:has(.facility-tabs .workspace-tab:nth-child(n+3)[aria-selected="true"]) {
+  grid-template-areas: "master master actions" "filters filters filters" "tabs tabs tabs" "detail detail detail" "detail detail detail";
+}
+@media (max-width: 1100px) {
+  .legacy-search-page, .legacy-search-page:has(.legacy-filter-form[open]) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(230px, auto) auto auto auto 200px 160px minmax(420px, auto);
+    grid-template-areas: "master" "actions" "filters" "tabs" "history" "context" "detail";
+  }
+  .legacy-search-page:has(.facility-tabs .workspace-tab:nth-child(n+3)[aria-selected="true"]) {
+    grid-template-rows: minmax(230px, auto) auto auto auto minmax(420px, auto);
+    grid-template-areas: "master" "actions" "filters" "tabs" "detail";
+  }
+}
 @media (max-width: 600px) {
   .legacy-search-page .legacy-dossier-section { grid-template-columns: minmax(0, 1fr); }
   .legacy-search-page .case-assessment-result { grid-column: 1; grid-row: 4; }

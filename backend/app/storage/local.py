@@ -277,7 +277,7 @@ class LocalStorageService:
         temp_path: Path | None = None
         try:
             with source.open("rb") as stream, tempfile.NamedTemporaryFile(
-                delete=False, dir=target.parent
+                delete=False, dir=target.parent, prefix=".gxp-stage-", suffix=".tmp"
             ) as tmp:
                 temp_path = Path(tmp.name)
                 shutil.copyfileobj(stream, tmp, length=1024 * 1024)

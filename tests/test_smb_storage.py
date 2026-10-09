@@ -80,7 +80,7 @@ def test_smb_exclusive_write_rejects_existing_target(monkeypatch) -> None:
     modes = []
 
     def stage_file(path, mode):
-        assert ".tmp-" in path
+        assert ".gxp-stage-" in path
         modes.append(mode)
         return BytesIO()
 
@@ -96,7 +96,7 @@ def test_smb_exclusive_write_rejects_existing_target(monkeypatch) -> None:
 
     assert modes == ["xb"]
     assert len(removed) == 1
-    assert ".tmp-" in removed[0]
+    assert ".gxp-stage-" in removed[0]
     assert not removed[0].endswith("\\existing.docx")
 
 
@@ -151,7 +151,7 @@ def test_smb_copy_uses_exclusive_staging_and_never_wb(monkeypatch) -> None:
         if mode == "rb":
             return BytesIO(b"source")
         if mode == "xb":
-            assert ".tmp-" in path
+            assert ".gxp-stage-" in path
             return BytesIO()
         raise AssertionError(f"Unsafe destination mode: {mode}")
 
@@ -166,7 +166,7 @@ def test_smb_copy_uses_exclusive_staging_and_never_wb(monkeypatch) -> None:
         service.copy("2026/source.txt", "2026/existing.txt")
 
     assert modes == ["rb", "xb"]
-    assert len(removed) == 1 and ".tmp-" in removed[0]
+    assert len(removed) == 1 and ".gxp-stage-" in removed[0]
 
 
 def test_smb_exclusive_write_publishes_only_after_stream_closed(monkeypatch) -> None:
@@ -180,12 +180,12 @@ def test_smb_exclusive_write_publishes_only_after_stream_closed(monkeypatch) -> 
             super().close()
 
     def open_file(path, mode):
-        assert ".tmp-" in path and mode == "xb"
+        assert ".gxp-stage-" in path and mode == "xb"
         events.append("stage-open")
         return CaptureStream()
 
     def rename(source, target):
-        assert ".tmp-" in source
+        assert ".gxp-stage-" in source
         assert events == ["stage-open", "closed"]
         events.append("published")
 
@@ -223,7 +223,7 @@ def test_smb_exclusive_write_stream_interruption_removes_only_temp(monkeypatch) 
         service.write_stream("2026/new.txt", Interrupted(), overwrite=False)
 
     assert published == []
-    assert len(removed) == 1 and ".tmp-" in removed[0]
+    assert len(removed) == 1 and ".gxp-stage-" in removed[0]
     assert not removed[0].endswith("\\new.txt")
 
 

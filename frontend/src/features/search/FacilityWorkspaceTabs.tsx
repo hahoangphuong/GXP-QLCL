@@ -34,7 +34,6 @@ import type { ChangeRequestMutationHandlers } from "./ChangeRequestMutationWorks
 import { BusinessEligibilityWorkspace } from "./BusinessEligibilityWorkspace";
 import { FacilitySummary } from "./FacilitySummary";
 import { GxpCertificateWorkspace } from "./GxpCertificateWorkspace";
-import { HistoryTable } from "./HistoryTable";
 
 const FACILITY_TABS = [
   "Thông tin chung",
@@ -45,12 +44,9 @@ const FACILITY_TABS = [
 
 export function FacilityWorkspaceTabs({
   summary,
-  history,
   selectedFacilityTab,
   onFacilityTabChange,
   selectedHistory,
-  selectedHistoryId,
-  onHistorySelect,
   caseWorkspace,
   caseWorkspaceLoading,
   caseWorkspaceError,
@@ -114,12 +110,9 @@ export function FacilityWorkspaceTabs({
   onFinalizeInspectionOutcome,
 }: {
   summary: FacilityWorkspaceSummary;
-  history: FacilityHistoryItem[];
   selectedFacilityTab: string;
   onFacilityTabChange: (tab: string) => void;
   selectedHistory: FacilityHistoryItem | null;
-  selectedHistoryId: string | null;
-  onHistorySelect: (historyId: string) => void;
   caseWorkspace: CaseWorkspace | null;
   caseWorkspaceLoading: boolean;
   caseWorkspaceError: string | null;
@@ -227,47 +220,42 @@ export function FacilityWorkspaceTabs({
         ) : null}
 
         {selectedFacilityTab === "Các đợt kiểm tra & thay đổi" ? (
-          <div className="event-workspace-split master-detail-split master-detail-split-history">
-            <div className="event-workspace-history-pane master-list-pane">
-              <HistoryTable rows={history} selectedHistoryId={selectedHistoryId} onSelect={onHistorySelect} />
-            </div>
-            <div className="event-workspace-detail-pane detail-pane">
-              <EventWorkspace
-                activeTab={activeEventTab}
-                caseWorkspace={caseWorkspace}
-                caseWorkspaceError={caseWorkspaceError}
-                caseWorkspaceLoading={caseWorkspaceLoading}
-                changeRequestWorkspace={changeRequestWorkspace}
-                changeRequestWorkspaceError={changeRequestWorkspaceError}
-                changeRequestWorkspaceLoading={changeRequestWorkspaceLoading}
-                changeRequestMutations={changeRequestMutations}
-                onCaseApplicationSave={onCaseApplicationSave}
-                onCaseAssessmentSave={onCaseAssessmentSave}
-                onAssessCapaCycle={onAssessCapaCycle}
-                onResolveInspectionFolder={onResolveInspectionFolder}
-                onCreateCapaCycle={onCreateCapaCycle}
-                onInspectionOutcomeSave={onInspectionOutcomeSave}
-                onInspectionPeriodSegmentsSave={onInspectionPeriodSegmentsSave}
-                onCreateApprovalSubmission={onCreateApprovalSubmission}
-                onCompleteApprovalSubmission={onCompleteApprovalSubmission}
-                onTransitionCase={onTransitionCase}
-                onFinalizeInspectionOutcome={onFinalizeInspectionOutcome}
-                onInspectionTeamSave={onInspectionTeamSave}
-                onLoadInspectionTeamIdentityOptions={onLoadInspectionTeamIdentityOptions}
-                onEvaluationScopeSave={onEvaluationScopeSave}
-                onInspectionPlanSave={onInspectionPlanSave}
-                onIssueCertificate={onIssueCertificate}
-                onCreateDocument={onCreateDocument}
-                onLoadDocumentDetail={onLoadDocumentDetail}
-                onOpenDocument={onOpenDocument}
-                onSelectedRemediationCycleChange={onSelectedRemediationCycleChange}
-                onSubmitCapaCycle={onSubmitCapaCycle}
-                onTabChange={onEventTabChange}
-                onUpdateCapaCycle={onUpdateCapaCycle}
-                selectedRemediationCycleId={selectedRemediationCycleId}
-                selectedHistory={selectedHistory}
-              />
-            </div>
+          <div className="event-workspace-detail-pane detail-pane">
+            <EventWorkspace
+              activeTab={activeEventTab}
+              caseWorkspace={caseWorkspace}
+              caseWorkspaceError={caseWorkspaceError}
+              caseWorkspaceLoading={caseWorkspaceLoading}
+              changeRequestWorkspace={changeRequestWorkspace}
+              changeRequestWorkspaceError={changeRequestWorkspaceError}
+              changeRequestWorkspaceLoading={changeRequestWorkspaceLoading}
+              changeRequestMutations={changeRequestMutations}
+              onCaseApplicationSave={onCaseApplicationSave}
+              onCaseAssessmentSave={onCaseAssessmentSave}
+              onAssessCapaCycle={onAssessCapaCycle}
+              onResolveInspectionFolder={onResolveInspectionFolder}
+              onCreateCapaCycle={onCreateCapaCycle}
+              onInspectionOutcomeSave={onInspectionOutcomeSave}
+              onInspectionPeriodSegmentsSave={onInspectionPeriodSegmentsSave}
+              onCreateApprovalSubmission={onCreateApprovalSubmission}
+              onCompleteApprovalSubmission={onCompleteApprovalSubmission}
+              onTransitionCase={onTransitionCase}
+              onFinalizeInspectionOutcome={onFinalizeInspectionOutcome}
+              onInspectionTeamSave={onInspectionTeamSave}
+              onLoadInspectionTeamIdentityOptions={onLoadInspectionTeamIdentityOptions}
+              onEvaluationScopeSave={onEvaluationScopeSave}
+              onInspectionPlanSave={onInspectionPlanSave}
+              onIssueCertificate={onIssueCertificate}
+              onCreateDocument={onCreateDocument}
+              onLoadDocumentDetail={onLoadDocumentDetail}
+              onOpenDocument={onOpenDocument}
+              onSelectedRemediationCycleChange={onSelectedRemediationCycleChange}
+              onSubmitCapaCycle={onSubmitCapaCycle}
+              onTabChange={onEventTabChange}
+              onUpdateCapaCycle={onUpdateCapaCycle}
+              selectedRemediationCycleId={selectedRemediationCycleId}
+              selectedHistory={selectedHistory}
+            />
           </div>
         ) : null}
 

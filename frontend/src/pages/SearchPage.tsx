@@ -6,6 +6,7 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { ActionCard } from "../features/search/ActionCard";
 import { FacilityTable } from "../features/search/FacilityTable";
+import { FacilityHistoryPane } from "../features/search/FacilityHistoryPane";
 import { FacilityWorkspaceTabs } from "../features/search/FacilityWorkspaceTabs";
 import {
   assessCapaCycle,
@@ -1835,7 +1836,7 @@ export function SearchPage({
 
   return (
     <section className="page-section search-page">
-      <div className="search-workspace search-workspace-split search-workspace-a4">
+      <div className="search-workspace search-workspace-split search-master-history">
         <FacilityTable
           filters={{
             facilityName,
@@ -1858,25 +1859,19 @@ export function SearchPage({
           selectedResultKey={selectedResultKey}
           selectedGxpType={gxpType}
         />
-        <div className="action-stack">
-          <ActionCard
-            actions={workspace?.action_readiness}
-            onActionSelect={(actionKey) => {
-              if (actionKey !== "create_reassessment_case" && actionKey !== "create_change_request") {
-                return;
-              }
-              setSelectedActionKey((current) => (current === actionKey ? null : actionKey));
-              setCreateInspectionCaseError(null);
-              setCreateChangeRequestError(null);
-            }}
-            onActionButtonRef={(actionKey, element) => {
-              if (actionKey === "create_reassessment_case") {
-                reassessmentTriggerRef.current = element;
-              }
-            }}
-            selectedActionKey={selectedActionKey}
-          />
-        </div>
+        <FacilityHistoryPane
+          rows={workspace?.history ?? []}
+          selectedHistoryId={selectedHistoryId}
+          hasSelection={Boolean(selectedResult)}
+          loading={Boolean(selectedResult) && (workspaceLoading || !workspace)}
+          error={deepLinkError ?? (selectedResult && !workspaceLoading ? workspaceError : null)}
+          onSelect={(historyId) => {
+            setHistoryResolution("none");
+            setDeepLinkError(null);
+            setSelectedHistoryId(historyId);
+            setSelectedFacilityTab("Các đợt kiểm tra & thay đổi");
+          }}
+        />
       </div>
 
       {reassessmentDialogOpen ? (
@@ -1961,110 +1956,122 @@ export function SearchPage({
         </div>
       ) : null}
 
-      {!resultsLoading && resultsTotalCount === 0 ? (
-        <EmptyState title="Không có kết quả" description="Không tìm thấy cơ sở phù hợp với bộ lọc hiện tại." />
-      ) : null}
-
-      {deepLinkError ? <p className="form-error" role="alert">{deepLinkError}</p> : null}
-
-      {resultsTotalCount > 0 ? (
-        deepLinkError ? null : workspaceError ? (
-          <ErrorState message={workspaceError} />
-        ) : workspaceLoading || !workspace ? (
-          <section className="panel panel-tight facility-workspace-panel">
-            <EmptyState title="Đang tải workspace" description="Đang đồng bộ ngữ cảnh cơ sở, dây chuyền và chứng nhận hiện hành." />
-          </section>
-        ) : (
-          <FacilityWorkspaceTabs
-            activeEventTab={activeTab}
-            caseWorkspace={selectedCaseWorkspace}
-            caseWorkspaceError={caseWorkspaceError}
-            caseWorkspaceLoading={caseWorkspaceLoading}
-            changeRequestWorkspace={selectedChangeRequestWorkspace}
-            changeRequestWorkspaceError={changeRequestWorkspaceError}
-            changeRequestWorkspaceLoading={changeRequestWorkspaceLoading}
-            changeRequestMutations={{
-              onUpdateHeader: handleChangeRequestHeaderUpdate,
-              onCreateDetail: handleChangeRequestDetailCreate,
-              onUpdateDetail: handleChangeRequestDetailUpdate,
-              onUpsertApproval: handleChangeApprovalUpsert,
-              onTransition: handleChangeRequestTransition,
-              onIssueBusinessEligibilitySuccessor: handleChangeRequestBusinessEligibilitySuccessorIssue,
-              onIssueCertificateSuccessor: handleChangeRequestCertificateSuccessorIssue,
-              onPromoteIssuedBusinessEligibility: handleChangeRequestIssuedBusinessEligibilityPromote,
-              onPromoteIssuedCertificate: handleChangeRequestIssuedCertificatePromote,
-              onLoadIssuedCertificate: handleChangeRequestIssuedCertificateLoad,
-              onEditIssuedCertificate: handleChangeRequestIssuedCertificateEdit,
-              onLoadIssuedBusinessEligibility: handleChangeRequestIssuedBusinessEligibilityLoad,
-              onEditIssuedBusinessEligibility: handleChangeRequestIssuedBusinessEligibilityEdit,
+      <div className="search-detail-area">
+        <div className="search-context-actions">
+          <ActionCard
+            actions={workspaceLoading || workspaceError || deepLinkError || !selectedResult ? undefined : workspace?.action_readiness}
+            onActionSelect={(actionKey) => {
+              if (actionKey !== "create_reassessment_case" && actionKey !== "create_change_request") {
+                return;
+              }
+              setSelectedActionKey((current) => (current === actionKey ? null : actionKey));
+              setCreateInspectionCaseError(null);
+              setCreateChangeRequestError(null);
             }}
-            eligibilityCertificateDetail={eligibilityCertificateDetail}
-            eligibilityCertificateDetailError={eligibilityCertificateDetailError}
-            eligibilityCertificateDetailLoading={eligibilityCertificateDetailLoading}
-            eligibilityCertificates={eligibilityCertificates}
-            eligibilityCertificatesError={eligibilityCertificatesError}
-            eligibilityCertificatesLoading={eligibilityCertificatesLoading}
-            eligibilityIssueReadiness={eligibilityIssueReadiness}
-            eligibilityBasisCertificates={eligibilityBasisCertificates}
-            eligibilityBasisLoading={eligibilityBasisLoading}
-            eligibilityBasisError={eligibilityBasisError}
-            eligibilityPromotionError={eligibilityPromotionError}
-            eligibilityPromotionPending={eligibilityPromotionPending}
-            gxpCertificateDetail={gxpCertificateDetail}
-            gxpCertificateDetailError={gxpCertificateDetailError}
-            gxpCertificateDetailLoading={gxpCertificateDetailLoading}
-            gxpCertificatePromotionError={gxpCertificatePromotionError}
-            gxpCertificatePromotionPending={gxpCertificatePromotionPending}
-            gxpCertificates={gxpCertificates}
-            gxpCertificatesError={gxpCertificatesError}
-            gxpCertificatesLoading={gxpCertificatesLoading}
-            history={workspace.history}
-            onEligibilityCertificateSelect={setSelectedEligibilityCertificateId}
-            onIssueBusinessEligibility={handleIssueBusinessEligibility}
-            onEligibilityCertificateEditLatestVersion={handleBusinessEligibilityLatestVersionUpdate}
-            onEligibilityCertificatePromote={handleBusinessEligibilityPromote}
-            onEventTabChange={setActiveTab}
-            onFacilityTabChange={setSelectedFacilityTab}
-            onGxpCertificateSelect={setSelectedGxpCertificateId}
-            onGxpCertificatePromote={handleGxpCertificatePromote}
-            onGxpCertificateEditLatestVersion={handleGxpCertificateLatestVersionUpdate}
-            onIssueCertificate={handleIssueGxpCertificate}
-            onHistorySelect={(historyId) => {
-              setHistoryResolution("none");
-              setDeepLinkError(null);
-              setSelectedHistoryId(historyId);
+            onActionButtonRef={(actionKey, element) => {
+              if (actionKey === "create_reassessment_case") {
+                reassessmentTriggerRef.current = element;
+              }
             }}
-            onCaseApplicationSave={handleCaseApplicationSave}
-            onCaseAssessmentSave={handleCaseAssessmentSave}
-            onAssessCapaCycle={handleAssessCapaCycle}
-            onCreateCapaCycle={handleCreateCapaCycle}
-            onInspectionOutcomeSave={handleInspectionOutcomeSave}
-            onInspectionPeriodSegmentsSave={handleInspectionPeriodSegmentsSave}
-            onCreateApprovalSubmission={handleCreateApprovalSubmission}
-            onCompleteApprovalSubmission={handleCompleteApprovalSubmission}
-            onTransitionCase={handleCaseTransition}
-            onFinalizeInspectionOutcome={handleFinalizeInspectionOutcome}
-            onInspectionTeamSave={handleInspectionTeamSave}
-            onLoadInspectionTeamIdentityOptions={handleLoadInspectionTeamIdentityOptions}
-            onEvaluationScopeSave={handleEvaluationScopeSave}
-            onInspectionPlanSave={handleInspectionPlanSave}
-            onCreateDocument={handleCreateDocument}
-            onLoadDocumentDetail={handleLoadDocumentDetail}
-            onOpenDocument={handleOpenDocument}
-            onResolveInspectionFolder={handleResolveInspectionFolder}
-            onSelectedRemediationCycleChange={setSelectedRemediationCycleId}
-            onSubmitCapaCycle={handleSubmitCapaCycle}
-            onUpdateCapaCycle={handleUpdateCapaCycle}
-            selectedEligibilityCertificateId={selectedEligibilityCertificateId}
-            selectedFacilityTab={selectedFacilityTab}
-            selectedGxpCertificateId={selectedGxpCertificateId}
-            selectedHistory={selectedHistory}
-            selectedHistoryId={selectedHistoryId}
-            selectedRemediationCycleId={selectedRemediationCycleId}
-            summary={workspace.summary}
+            selectedActionKey={selectedActionKey}
           />
-        )
-      ) : null}
+        </div>
+        {!resultsLoading && resultsTotalCount === 0 ? (
+          <EmptyState title="Không có kết quả" description="Không tìm thấy cơ sở phù hợp với bộ lọc hiện tại." />
+        ) : null}
+
+        {resultsTotalCount > 0 ? (
+          deepLinkError ? null : workspaceError && !workspaceLoading ? (
+            <EmptyState title="Chưa tải được workspace" description="Chưa tải được chi tiết. Xem lỗi tại vùng lịch sử hoặc chọn lại ngữ cảnh cơ sở." />
+          ) : workspaceLoading || !workspace ? (
+            <section className="panel panel-tight facility-workspace-panel">
+              <EmptyState title="Đang tải workspace" description="Đang đồng bộ ngữ cảnh cơ sở, dây chuyền và chứng nhận hiện hành." />
+            </section>
+          ) : (
+            <FacilityWorkspaceTabs
+              activeEventTab={activeTab}
+              caseWorkspace={selectedCaseWorkspace}
+              caseWorkspaceError={caseWorkspaceError}
+              caseWorkspaceLoading={caseWorkspaceLoading}
+              changeRequestWorkspace={selectedChangeRequestWorkspace}
+              changeRequestWorkspaceError={changeRequestWorkspaceError}
+              changeRequestWorkspaceLoading={changeRequestWorkspaceLoading}
+              changeRequestMutations={{
+                onUpdateHeader: handleChangeRequestHeaderUpdate,
+                onCreateDetail: handleChangeRequestDetailCreate,
+                onUpdateDetail: handleChangeRequestDetailUpdate,
+                onUpsertApproval: handleChangeApprovalUpsert,
+                onTransition: handleChangeRequestTransition,
+                onIssueBusinessEligibilitySuccessor: handleChangeRequestBusinessEligibilitySuccessorIssue,
+                onIssueCertificateSuccessor: handleChangeRequestCertificateSuccessorIssue,
+                onPromoteIssuedBusinessEligibility: handleChangeRequestIssuedBusinessEligibilityPromote,
+                onPromoteIssuedCertificate: handleChangeRequestIssuedCertificatePromote,
+                onLoadIssuedCertificate: handleChangeRequestIssuedCertificateLoad,
+                onEditIssuedCertificate: handleChangeRequestIssuedCertificateEdit,
+                onLoadIssuedBusinessEligibility: handleChangeRequestIssuedBusinessEligibilityLoad,
+                onEditIssuedBusinessEligibility: handleChangeRequestIssuedBusinessEligibilityEdit,
+              }}
+              eligibilityCertificateDetail={eligibilityCertificateDetail}
+              eligibilityCertificateDetailError={eligibilityCertificateDetailError}
+              eligibilityCertificateDetailLoading={eligibilityCertificateDetailLoading}
+              eligibilityCertificates={eligibilityCertificates}
+              eligibilityCertificatesError={eligibilityCertificatesError}
+              eligibilityCertificatesLoading={eligibilityCertificatesLoading}
+              eligibilityIssueReadiness={eligibilityIssueReadiness}
+              eligibilityBasisCertificates={eligibilityBasisCertificates}
+              eligibilityBasisLoading={eligibilityBasisLoading}
+              eligibilityBasisError={eligibilityBasisError}
+              eligibilityPromotionError={eligibilityPromotionError}
+              eligibilityPromotionPending={eligibilityPromotionPending}
+              gxpCertificateDetail={gxpCertificateDetail}
+              gxpCertificateDetailError={gxpCertificateDetailError}
+              gxpCertificateDetailLoading={gxpCertificateDetailLoading}
+              gxpCertificatePromotionError={gxpCertificatePromotionError}
+              gxpCertificatePromotionPending={gxpCertificatePromotionPending}
+              gxpCertificates={gxpCertificates}
+              gxpCertificatesError={gxpCertificatesError}
+              gxpCertificatesLoading={gxpCertificatesLoading}
+              onEligibilityCertificateSelect={setSelectedEligibilityCertificateId}
+              onIssueBusinessEligibility={handleIssueBusinessEligibility}
+              onEligibilityCertificateEditLatestVersion={handleBusinessEligibilityLatestVersionUpdate}
+              onEligibilityCertificatePromote={handleBusinessEligibilityPromote}
+              onEventTabChange={setActiveTab}
+              onFacilityTabChange={setSelectedFacilityTab}
+              onGxpCertificateSelect={setSelectedGxpCertificateId}
+              onGxpCertificatePromote={handleGxpCertificatePromote}
+              onGxpCertificateEditLatestVersion={handleGxpCertificateLatestVersionUpdate}
+              onIssueCertificate={handleIssueGxpCertificate}
+              onCaseApplicationSave={handleCaseApplicationSave}
+              onCaseAssessmentSave={handleCaseAssessmentSave}
+              onAssessCapaCycle={handleAssessCapaCycle}
+              onCreateCapaCycle={handleCreateCapaCycle}
+              onInspectionOutcomeSave={handleInspectionOutcomeSave}
+              onInspectionPeriodSegmentsSave={handleInspectionPeriodSegmentsSave}
+              onCreateApprovalSubmission={handleCreateApprovalSubmission}
+              onCompleteApprovalSubmission={handleCompleteApprovalSubmission}
+              onTransitionCase={handleCaseTransition}
+              onFinalizeInspectionOutcome={handleFinalizeInspectionOutcome}
+              onInspectionTeamSave={handleInspectionTeamSave}
+              onLoadInspectionTeamIdentityOptions={handleLoadInspectionTeamIdentityOptions}
+              onEvaluationScopeSave={handleEvaluationScopeSave}
+              onInspectionPlanSave={handleInspectionPlanSave}
+              onCreateDocument={handleCreateDocument}
+              onLoadDocumentDetail={handleLoadDocumentDetail}
+              onOpenDocument={handleOpenDocument}
+              onResolveInspectionFolder={handleResolveInspectionFolder}
+              onSelectedRemediationCycleChange={setSelectedRemediationCycleId}
+              onSubmitCapaCycle={handleSubmitCapaCycle}
+              onUpdateCapaCycle={handleUpdateCapaCycle}
+              selectedEligibilityCertificateId={selectedEligibilityCertificateId}
+              selectedFacilityTab={selectedFacilityTab}
+              selectedGxpCertificateId={selectedGxpCertificateId}
+              selectedHistory={selectedHistory}
+              selectedRemediationCycleId={selectedRemediationCycleId}
+              summary={workspace.summary}
+            />
+          )
+        ) : null}
+      </div>
     </section>
   );
 }

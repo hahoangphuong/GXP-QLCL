@@ -941,8 +941,9 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.queryByText(/^Prev$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Next$/)).not.toBeInTheDocument();
     expect(container.querySelector(".search-toolbar")).toBeNull();
-    expect(container.querySelector(".search-workspace-split .history-panel")).toBeNull();
-    expect(container.querySelector(".facility-workspace-panel .history-panel")).not.toBeNull();
+    expect(container.querySelector(".search-master-history > .history-panel")).not.toBeNull();
+    expect(container.querySelector(".facility-workspace-panel .history-panel")).toBeNull();
+    expect(container.querySelectorAll(".history-table")).toHaveLength(1);
     expect(container.querySelector(".event-workspace > .panel-header")).toBeNull();
     expect(container.querySelectorAll(".facility-context-facts .status-badge")).toHaveLength(1);
     expect(container.querySelector(".facility-context-code")).not.toBeNull();
@@ -1093,7 +1094,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(within(dialog).getByRole("textbox", { name: "Tiêu chuẩn áp dụng" })).toHaveFocus();
     expect(within(dialog).getByRole("button", { name: "Tạo hồ sơ tái đánh giá" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Hủy" })).toBeInTheDocument();
-    expect(container.querySelector(".action-stack .create-inspection-case-panel")).toBeNull();
+    expect(container.querySelector(".search-context-actions .create-inspection-case-panel")).toBeNull();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Hủy" }));
     await waitFor(() => {
@@ -1401,7 +1402,7 @@ describe("App Slice A.4 search workspace", () => {
     const { container } = renderApp(["/search"]);
 
     expect(await screen.findByText("01-08-2026")).toBeInTheDocument();
-    await screen.findByText("Lịch sử kiểm tra & thay đổi");
+    await screen.findByRole("table", { name: "Lịch sử kiểm tra & thay đổi" });
     const historyTable = container.querySelector(".history-table");
     expect(screen.getByText("05-08-2026")).toBeInTheDocument();
     expect(within(historyTable as HTMLElement).getByRole("columnheader", { name: "Loại" })).toBeInTheDocument();
@@ -1563,7 +1564,7 @@ describe("App Slice A.4 search workspace", () => {
     await waitFor(() => expect(apiMocks.listSiteGxpCertificates.mock.calls.at(-1)?.[6]).toBeNull());
   });
 
-  it("renders history inside the facility tab and uses workflow-step navigation instead of nested peer tabs", async () => {
+  it("renders history beside master results and keeps event workflow inside its facility tab", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
@@ -1578,9 +1579,111 @@ describe("App Slice A.4 search workspace", () => {
     expect(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi")).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Hồ sơ" })).not.toBeInTheDocument();
     expect(container.querySelector(".workspace-context-strip")).toBeNull();
-    expect(container.querySelector(".event-workspace-split.master-detail-split.master-detail-split-history")).not.toBeNull();
-    expect(container.querySelector(".event-workspace-history-pane.master-list-pane .history-panel")).not.toBeNull();
+    expect(container.querySelector(".search-master-history > .results-panel")).not.toBeNull();
+    expect(container.querySelector(".search-master-history > .history-panel")).not.toBeNull();
+    expect(container.querySelector(".facility-workspace-panel .history-panel")).toBeNull();
+    expect(container.querySelectorAll(".history-table")).toHaveLength(1);
     expect(container.querySelector(".event-workspace-detail-pane.detail-pane .event-workspace")).not.toBeNull();
+  });
+
+  it("keeps one history pane available across facility tabs and opens event detail on explicit selection", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    apiMocks.getChangeRequestWorkspace.mockResolvedValue(buildChangeRequestWorkspace());
+    const { container } = renderApp(["/search?event_tab=Ki%E1%BB%83m+tra"]);
+    await screen.findByRole("heading", { name: "Kế hoạch kiểm tra" });
+    const history = container.querySelector(".history-table");
+    for (const tab of ["Thông tin chung", "Giấy chứng nhận GxP", "Giấy chứng nhận đủ điều kiện"]) {
+      fireEvent.click(screen.getByRole("tab", { name: tab }));
+      expect(container.querySelector(".history-table")).toBe(history);
+      expect(container.querySelectorAll(".history-table")).toHaveLength(1);
+      expect(history?.querySelector("tr.selected")).toHaveAttribute("aria-selected", "true");
+      expect(container.querySelector(".facility-table tr.selected")).not.toBeNull();
+    }
+    fireEvent.click(within(history as HTMLElement).getByText("Thay đổi"));
+    await screen.findByText("Điều chỉnh địa chỉ kho bảo quản");
+    expect(screen.getByRole("tab", { name: "Các đợt kiểm tra & thay đổi" })).toHaveAttribute("aria-selected", "true");
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getChangeRequestWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it("updates history for the exact new physical line while retaining master rows and hiding stale history during loading", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult(), buildSearchResult({ result_key: "site-1:GMP:canonical:line-2", context_code: "1.1A-2", production_line_id: "line-2" })], total_count: 2, offset: 0, limit: 100 });
+    const nextWorkspace = buildWorkspace({ summary: { ...buildWorkspace().summary, context_code: "1.1A-2", selected_production_line_id: "line-2" }, history: [{ ...buildWorkspace().history[0], id: "case-line-2", standard: "Tiêu chuẩn dây chuyền thứ hai" }] });
+    let resolveWorkspace!: (value: ReturnType<typeof buildWorkspace>) => void;
+    apiMocks.getFacilityWorkspace.mockResolvedValueOnce(buildWorkspace()).mockImplementationOnce(() => new Promise((resolve) => { resolveWorkspace = resolve; }));
+    apiMocks.getCaseWorkspace.mockImplementation((id: string) => Promise.resolve(buildCaseWorkspace({ case_summary: { ...buildCaseWorkspace().case_summary, id } })));
+    const { container } = renderApp(["/search"]);
+    const initialHistory = await screen.findByRole("table", { name: "Lịch sử kiểm tra & thay đổi" });
+    fireEvent.click(within(initialHistory).getByText("Định kỳ"));
+    await screen.findByRole("heading", { name: "Thông tin hồ sơ" });
+    const master = container.querySelector(".facility-table");
+    fireEvent.click(within(master as HTMLElement).getByText("1.1A-2"));
+    expect(await screen.findByText("Đang tải lịch sử của ngữ cảnh đang chọn...")).toBeInTheDocument();
+    expect(container.querySelector(".history-table")).toBeNull();
+    expect(container.querySelector(".facility-table")).toBe(master);
+    expect(within(master as HTMLElement).getByText("1.1A-2")).toBeInTheDocument();
+    expect(screen.queryByText("Đang tải danh sách cơ sở...")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeDisabled();
+    await act(async () => { resolveWorkspace(nextWorkspace); });
+    const nextEvent = await screen.findByText("Tiêu chuẩn dây chuyền thứ hai");
+    fireEvent.click(nextEvent);
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenLastCalledWith("case-line-2", expect.anything(), true, null));
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("line-2");
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[4]).toBe("A");
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2);
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(within(container.querySelector(".history-table") as HTMLElement).queryByText("Đổi địa chỉ")).not.toBeInTheDocument();
+  });
+
+  it("shows workspace errors in the history pane once and retains selectable master results", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockRejectedValue(new Error("Không thể tải lịch sử cơ sở"));
+    const { container } = renderApp(["/search"]);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Không thể tải lịch sử cơ sở");
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(container.querySelector(".search-master-history .history-table")).toBeNull();
+    expect(container.querySelector(".facility-table tr.selected")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Tái đánh giá" })).toBeDisabled();
+    expect(apiMocks.getCaseWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("replaces the previous context error with loading and recovers history when selecting another facility", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult(), buildSearchResult({ result_key: "site-2:GMP:canonical:line-2", site_id: "site-2", context_code: "2.1A", production_line_id: "line-2" })], total_count: 2, offset: 0, limit: 100 });
+    let resolveWorkspace!: (value: ReturnType<typeof buildWorkspace>) => void;
+    apiMocks.getFacilityWorkspace.mockRejectedValueOnce(new Error("Lỗi cơ sở trước")).mockImplementationOnce(() => new Promise((resolve) => { resolveWorkspace = resolve; }));
+    const { container } = renderApp(["/search"]);
+    await screen.findByRole("alert");
+    fireEvent.click(within(container.querySelector(".facility-table") as HTMLElement).getByText("2.1A"));
+    expect(await screen.findByText("Đang tải lịch sử của ngữ cảnh đang chọn...")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Đang tải workspace" })).toBeInTheDocument();
+    await act(async () => { resolveWorkspace(buildWorkspace({ history: [] })); });
+    expect(await screen.findByText(/Chưa có lịch sử kiểm tra hoặc thay đổi/)).toBeInTheDocument();
+    expect(screen.queryByText("Lỗi cơ sở trước")).not.toBeInTheDocument();
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[0]).toBe("site-2");
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("line-2");
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders genuine empty history beside master without requesting event detail", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
+    const { container } = renderApp(["/search"]);
+    expect(await screen.findByText(/Chưa có lịch sử kiểm tra hoặc thay đổi/)).toBeInTheDocument();
+    expect(container.querySelector(".search-master-history .history-table")).not.toBeNull();
+    expect(container.querySelector(".facility-table tr.selected")).not.toBeNull();
+    expect(apiMocks.getCaseWorkspace).not.toHaveBeenCalled();
+    expect(apiMocks.getChangeRequestWorkspace).not.toHaveBeenCalled();
   });
 
   it("selects history by keyboard without refetching master results or losing facility context across tabs", async () => {
@@ -1626,8 +1729,9 @@ describe("App Slice A.4 search workspace", () => {
     expect(actionPanel?.textContent ?? "").not.toContain("Công ty cổ phần dược phẩm Trung ương I");
 
     await waitFor(() => {
-      expect(container.querySelector(".history-panel")).not.toBeNull();
+      expect(container.querySelector(".history-table")).not.toBeNull();
     });
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
 
     await waitFor(() => expect(screen.getByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument());
@@ -1686,6 +1790,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.queryByRole("heading", { name: "KT-2026-GMP-A" })).not.toBeInTheDocument();
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
 
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
 
     expect(screen.queryByRole("heading", { name: "TD-01" })).not.toBeInTheDocument();
@@ -1716,6 +1821,7 @@ describe("App Slice A.4 search workspace", () => {
 
     await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("heading", { name: "KT-2026-GMP-A" })).not.toBeInTheDocument();
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
 
     expect(await screen.findByText("Không tải được workspace thay đổi")).toBeInTheDocument();
@@ -3169,17 +3275,26 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.getFacilityWorkspace).not.toHaveBeenCalled();
   });
 
-  it("loads the exact deep-linked history case and refuses a stale history id", async () => {
+  it("loads the exact deep-linked line and history in the shared pane without overriding facility or event tabs", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult({ result_key: "site-1:GMP:canonical:line-uuid-1" })], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [
-      { id: "case-other", source_type: "case", title: "Other", occurred_on: "2026-01-01", state: "planned" },
-      { id: "case-target", source_type: "case", title: "Target", occurred_on: "2026-01-02", state: "planned" },
+      { ...buildWorkspace().history[0], id: "case-other", occurred_on: "2026-01-01", state: "planned" },
+      { ...buildWorkspace().history[0], id: "case-target", occurred_on: "2026-01-02", state: "planned" },
     ] }));
     apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
 
-    renderApp(["/search?result_key=site-1%3AGMP%3Acanonical%3Aline-uuid-1&history_id=case-target"]);
+    const { container } = renderApp(["/search?result_key=site-1%3AGMP%3Acanonical%3Aline-uuid-1&history_id=case-target&facility_tab=Th%C3%B4ng%20tin%20chung&event_tab=Ki%E1%BB%83m%20tra"]);
     await waitFor(() => expect(apiMocks.getCaseWorkspace.mock.calls.at(-1)?.[0]).toBe("case-target"));
+    expect(container.querySelectorAll(".history-table")).toHaveLength(1);
+    expect(container.querySelector(".search-master-history .history-table tr.selected")).toHaveTextContent("02-01-2026");
+    expect(container.querySelector(".facility-table tr.selected")).not.toBeNull();
+    expect(screen.getByRole("tab", { name: "Thông tin chung" })).toHaveAttribute("aria-selected", "true");
+    expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[6]).toBe("line-uuid-1");
+    fireEvent.click(screen.getByRole("tab", { name: "Các đợt kiểm tra & thay đổi" }));
+    expect(await screen.findByRole("heading", { name: "Kế hoạch kiểm tra" })).toBeInTheDocument();
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
   });
 
   it("does not substitute the first history item for a stale deep-link history id", async () => {
@@ -3723,7 +3838,8 @@ describe("App Slice A.4 search workspace", () => {
     });
 
     const { container } = renderApp(["/search"]);
-    await waitFor(() => expect(container.querySelector(".history-panel")).not.toBeNull());
+    await waitFor(() => expect(container.querySelector(".history-table")).not.toBeNull());
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
     expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
 
@@ -3763,7 +3879,8 @@ describe("App Slice A.4 search workspace", () => {
     });
 
     const { container } = renderApp(["/search"]);
-    await waitFor(() => expect(container.querySelector(".history-panel")).not.toBeNull());
+    await waitFor(() => expect(container.querySelector(".history-table")).not.toBeNull());
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
     expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
 
@@ -3796,7 +3913,8 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.promoteBusinessEligibilityCurrent.mockResolvedValue(null);
 
     const { container } = renderApp(["/search"]);
-    await waitFor(() => expect(container.querySelector(".history-panel")).not.toBeNull());
+    await waitFor(() => expect(container.querySelector(".history-table")).not.toBeNull());
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
     expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
 
@@ -3847,7 +3965,8 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.upsertGxpCertificateLatestVersion.mockResolvedValue(null);
 
     const { container } = renderApp(["/search"]);
-    await waitFor(() => expect(container.querySelector(".history-panel")).not.toBeNull());
+    await waitFor(() => expect(container.querySelector(".history-table")).not.toBeNull());
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
     expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
 
@@ -3962,7 +4081,8 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.upsertBusinessEligibilityLatestVersion.mockResolvedValue(null);
 
     const { container } = renderApp(["/search"]);
-    await waitFor(() => expect(container.querySelector(".history-panel")).not.toBeNull());
+    await waitFor(() => expect(container.querySelector(".history-table")).not.toBeNull());
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
     expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
 
@@ -4035,7 +4155,8 @@ describe("App Slice A.4 search workspace", () => {
     );
 
     const { container } = renderApp(["/search"]);
-    await waitFor(() => expect(container.querySelector(".history-panel")).not.toBeNull());
+    await waitFor(() => expect(container.querySelector(".history-table")).not.toBeNull());
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
     expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
 
@@ -4060,7 +4181,8 @@ describe("App Slice A.4 search workspace", () => {
     apiMocks.updateChangeRequest.mockRejectedValue(Object.assign(new Error("Stale change_request update."), { status: 409 }));
 
     const { container } = renderApp(["/search"]);
-    await waitFor(() => expect(container.querySelector(".history-panel")).not.toBeNull());
+    await waitFor(() => expect(container.querySelector(".history-table")).not.toBeNull());
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1));
     fireEvent.click(within(container.querySelector(".history-panel") as HTMLElement).getByText("Thay đổi"));
     expect(await screen.findByText("Điều chỉnh địa chỉ kho bảo quản")).toBeInTheDocument();
 

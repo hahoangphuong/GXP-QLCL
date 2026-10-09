@@ -221,6 +221,14 @@ def _load_database_user(request: Request, *, email: str | None, subject: str | N
         app_user = subject_user or email_user
         if app_user is None:
             raise HTTPException(status_code=403, detail="Authenticated user is not provisioned in application RBAC.")
+        # A provisioned Google subject is the stable owner identity. An email
+        # match must never substitute for a different (or missing) subject.
+        bound_subject = (app_user.external_subject or "").strip()
+        if bound_subject and bound_subject != subject:
+            raise HTTPException(
+                status_code=403,
+                detail="Authenticated identity subject does not match the provisioned account.",
+            )
         if (
             subject_user is not None
             and email is not None

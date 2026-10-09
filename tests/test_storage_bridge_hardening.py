@@ -446,6 +446,47 @@ def test_bridge_directory_listing_does_not_expose_outside_symlink_metadata(monke
     assert outside.read_bytes() == b"sensitive-outside-file"
 
 
+@pytest.mark.parametrize(
+    ("folder_names", "expected_status", "expected_count", "expected_path"),
+    [
+        (["Site Alpha (91)"], "resolved", 1, "Site Alpha (91)"),
+        (["Site Alpha (ID-91)"], "not_found", 0, None),
+        (["Site Alpha (91)", "Site Beta (91)"], "ambiguous", 2, None),
+    ],
+)
+def test_bridge_dkkd_resolution_uses_legacy_site_token(
+    monkeypatch, tmp_path, folder_names, expected_status, expected_count, expected_path,
+):
+    headers = _authorized_headers(monkeypatch)
+    inspection_root = tmp_path / "inspection"
+    inspection_root.mkdir()
+    dkkd_root = tmp_path / "dkkd"
+    dkkd_root.mkdir()
+    for name in folder_names:
+        (dkkd_root / name).mkdir()
+
+    app = create_storage_bridge_app(
+        FilesystemStorageService(
+            StorageConfig(inspection_root=inspection_root, dkkd_root=dkkd_root)
+        )
+    )
+    messages = asyncio.run(
+        _invoke_asgi(
+            app,
+            method="POST",
+            path="/bridge/storage/dkkd-folder/resolve",
+            headers={**headers, "content-type": "application/json"},
+            body=json.dumps({"site_legacy_id": 91}).encode("utf-8"),
+        )
+    )
+
+    assert _status_from_messages(messages) == 200
+    result = json.loads(_body_from_messages(messages))
+    assert result["status"] == expected_status
+    assert result["candidate_count"] == expected_count
+    assert result["relative_path"] == expected_path
+
+
 def test_bridge_request_auth_rejects_missing_token(monkeypatch):
     monkeypatch.setenv("BRIDGE_AUTH_MODE", "hmac_jwt")
     monkeypatch.setenv("STORAGE_BRIDGE_SIGNING_KEY", "super-secret-signing-key")

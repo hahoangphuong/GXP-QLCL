@@ -201,3 +201,25 @@ Mid-stream NAS errors stop the audit with `storage_access_failed`,
 preserving metadata found earlier in the scan while making the report
 explicitly incomplete. Candidate results are sorted for reproducible
 JSON output; scan limits count entries encountered, not filesystem order.
+
+## Staging-to-lineage evidence (read only)
+
+`backend.app.storage.staging_lineage.reconcile_staging_lineage(session, inventory)`
+queries only exact `(storage_root, storage_relative_path)` pairs in
+`document_version` and `template_definition`. An inspection
+`storage_binding.relative_path` is reported separately **only as folder
+scope**, not proof of file ownership. The output always has
+`status=review_only` and has no cleanup or deletion operation. Neither
+similar basenames nor a numeric legacy ID are sufficient to infer a file
+reference.
+
+The function issues SELECTs with SQLAlchemy `no_autoflush`, does not commit,
+and requires a caller-owned **read-only** database session/role. It does
+not open a production database connection by itself. A partial staging
+inventory remains explicitly partial in the cross-check output.
+`no_exact_locator_evidence` means only that the exact registered locator
+pair was absent from the queried registry. It does not prove that a
+staging candidate is abandoned, unowned, or safe to delete; legacy paths,
+in-progress writes and unregistered source files may still be relevant.
+Any future production integration must enforce a read-only transaction
+and obtain operator authorization separately.

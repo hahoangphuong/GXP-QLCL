@@ -218,7 +218,7 @@ jobs:
   cross-head-integration:
     # Explicitly pinned two-HEAD gate. Never merges/rebases/deploys either
     # branch. Runs only on backend-owner branch push, in a disposable runner.
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/chatgpt/backend-bridge-auth-20261009' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/integration/frontend-backend-20261009' }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -238,25 +238,25 @@ jobs:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_qlcl_test
       GXP_CROSS_HEAD_DISPOSABLE_GATE: "1"
     steps:
-      - name: Checkout backend integration owner
+      - name: Checkout the combined candidate without repository credentials
         uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Checkout exact independently reviewed Codex frontend HEAD
-        uses: actions/checkout@v4
-        with:
-          ref: 50576b0b383161e26e27b6cdc4a1a469aff1ae17
-          path: cross-head-frontend
-          persist-credentials: false
-
-      - name: Assert exact frontend SHA and reviewed backend ancestor
+      - name: Prove integrated parents and byte-identical reviewed frontend subtree
         run: |
-          test "$(git -C cross-head-frontend rev-parse HEAD)" = "50576b0b383161e26e27b6cdc4a1a469aff1ae17"
-          test "$(git branch --show-current)" = "chatgpt/backend-bridge-auth-20261009"
+          set -euo pipefail
+          BACKEND="b5e0ebd7c5e047c4cdc8c7cdc206872b8b68cb14"
+          FRONTEND="50576b0b383161e26e27b6cdc4a1a469aff1ae17"
+          test "$(git branch --show-current)" = "integration/frontend-backend-20261009"
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          git merge-base --is-ancestor "${BACKEND}" HEAD
+          git merge-base --is-ancestor "${FRONTEND}" HEAD
+          test "$(git rev-parse HEAD:frontend)" = "$(git rev-parse "${FRONTEND}:frontend")"
+          git diff --exit-code "${FRONTEND}" HEAD -- frontend
+          git diff --exit-code HEAD -- frontend
           test -f frontend/src/lib/api.ts
-          test -f cross-head-frontend/frontend/src/lib/api.ts
+
 
       - uses: actions/setup-python@v5
         with:
@@ -297,13 +297,14 @@ jobs:
           fi
 
       - name: Install exact frontend commit dependencies
-        working-directory: cross-head-frontend/frontend
+        working-directory: frontend
         run: pnpm install --frozen-lockfile
 
       - name: Run actual frontend API client against actual backend HTTP
-        working-directory: cross-head-frontend/frontend
+        working-directory: frontend
         run: |
-          cp ../../tests/cross_head_frontend_api.test.ts src/lib/cross_head_api_ci.test.ts
+          cp ../tests/cross_head_frontend_api.test.ts src/lib/cross_head_api_ci.test.ts
+          trap 'rm -f src/lib/cross_head_api_ci.test.ts' EXIT
           pnpm exec vitest run src/lib/cross_head_api_ci.test.ts --reporter=verbose
 
       - name: Install pinned disposable browser driver and Chromium
@@ -314,7 +315,7 @@ jobs:
           "${RUNNER_TEMP}/gxp-browser-driver/node_modules/.bin/playwright" install --with-deps chromium
 
       - name: Start loopback-only Codex frontend staging preview
-        working-directory: cross-head-frontend/frontend
+        working-directory: frontend
         run: |
           # A runner-only reverse-proxy simulation: the real FastAPI routes
           # lack the /api prefix; do not modify the pinned Codex source.
@@ -366,10 +367,14 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Validate immutable frontend checkout after integration
+      - name: Verify integrated frontend remained byte-identical throughout
         run: |
-          test "$(git -C cross-head-frontend rev-parse HEAD)" = "50576b0b383161e26e27b6cdc4a1a469aff1ae17"
-          test -z "$(git -C cross-head-frontend diff --name-only)"
+          set -euo pipefail
+          FRONTEND="50576b0b383161e26e27b6cdc4a1a469aff1ae17"
+          test "$(git rev-parse HEAD:frontend)" = "$(git rev-parse "${FRONTEND}:frontend")"
+          git diff --exit-code "${FRONTEND}" HEAD -- frontend
+          git diff --exit-code -- frontend
+          test ! -f frontend/src/lib/cross_head_api_ci.test.ts
 
       - name: Terminate CI-only fixture process
         if: always()
@@ -380,4 +385,5 @@ jobs:
           if [ -n "${GXP_CROSS_HEAD_FRONTEND_PID:-}" ]; then
             kill "${GXP_CROSS_HEAD_FRONTEND_PID}" 2>/dev/null || true
           fi
+          rm -f frontend/cross-head.vite.config.mjs frontend/src/lib/cross_head_api_ci.test.ts
 

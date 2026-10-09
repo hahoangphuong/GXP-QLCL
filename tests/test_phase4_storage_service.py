@@ -533,6 +533,68 @@ def test_storage_write_stream_can_create_exclusively_without_overwriting(tmp_pat
     assert (service.inspection_root / "2026/demo/exclusive.txt").read_bytes() == b"first"
 
 
+def test_storage_exclusive_write_keeps_incomplete_document_private(tmp_path: Path):
+    service = build_service(tmp_path)
+    target = service.inspection_root / "document.docx"
+
+    class StreamFailingAfterChunk:
+        calls = 0
+
+        def read(self, size):
+            self.calls += 1
+            # A target file should not exist while bytes are still written.
+            assert not target.exists()
+            if self.calls == 1:
+                return b"incomplete"
+            raise OSError("stream interrupted")
+
+    with pytest.raises(OSError, match="stream interrupted"):
+        service.write_stream("document.docx", StreamFailingAfterChunk(), overwrite=False)
+
+    assert not target.exists()
+    assert list(service.inspection_root.iterdir()) == []
+
+
+def test_storage_exclusive_write_does_not_replace_concurrent_destination(tmp_path: Path, monkeypatch):
+    service = build_service(tmp_path)
+    target = service.inspection_root / "document.docx"
+    atomic = service._rename_noreplace
+
+    def concurrent_publish(temp_path: Path, destination: Path, relative_path: str):
+        assert temp_path.read_bytes() == b"completed-document"
+        assert not target.exists()
+        target.write_bytes(b"other-writer")
+        return atomic(temp_path, destination, relative_path)
+
+    monkeypatch.setattr(service, "_rename_noreplace", concurrent_publish)
+    with pytest.raises(StorageTargetExistsError, match="will not be overwritten"):
+        service.write_stream("document.docx", BytesIO(b"completed-document"), overwrite=False)
+
+    assert target.read_bytes() == b"other-writer"
+    assert [p.name for p in service.inspection_root.iterdir()] == ["document.docx"]
+
+
+def test_storage_explicit_overwrite_preserves_existing_document_when_stream_fails(tmp_path: Path):
+    service = build_service(tmp_path)
+    target = service.inspection_root / "existing.docx"
+    target.write_bytes(b"original-document")
+
+    class InterruptedStream:
+        calls = 0
+
+        def read(self, size):
+            self.calls += 1
+            if self.calls == 1:
+                return b"partial replacement"
+            raise OSError("stream interrupted")
+
+    with pytest.raises(OSError, match="stream interrupted"):
+        service.write_stream("existing.docx", InterruptedStream(), overwrite=True)
+
+    assert target.read_bytes() == b"original-document"
+    assert [p.name for p in service.inspection_root.iterdir()] == ["existing.docx"]
+
+
 def test_storage_copy_move_and_rename_work(tmp_path: Path):
     service = build_service(tmp_path)
     service.write_stream("2026/demo/test.txt", BytesIO(b"abc"))

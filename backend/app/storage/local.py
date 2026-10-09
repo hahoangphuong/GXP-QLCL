@@ -218,26 +218,9 @@ class LocalStorageService:
         base_root = self._select_root(root)
         target = self._path_under(base_root, relative_path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        if not overwrite:
-            created = False
-            try:
-                with target.open("xb") as fh:
-                    created = True
-                    while True:
-                        chunk = stream.read(1024 * 1024)
-                        if not chunk:
-                            break
-                        fh.write(chunk)
-            except FileExistsError as exc:
-                raise StorageTargetExistsError(
-                    f"Storage target already exists and will not be overwritten: {relative_path!r}."
-                ) from exc
-            except Exception:
-                if created and target.exists():
-                    target.unlink(missing_ok=True)
-                raise
-            return self._entry_for(base_root, target)
-
+        # Both modes prepare an entire private file before publication.
+        # Exclusive creates use kernel-enforced no-replace; they must not
+        # expose a partially written document or unlink a competing writer.
         temp_path: Path | None = None
         try:
             with tempfile.NamedTemporaryFile(delete=False, dir=target.parent) as tmp:
@@ -247,11 +230,13 @@ class LocalStorageService:
                     if not chunk:
                         break
                     tmp.write(chunk)
-            os.replace(temp_path, target)
-        except Exception:
-            if temp_path is not None and temp_path.exists():
+            if overwrite:
+                os.replace(temp_path, target)
+            else:
+                self._rename_noreplace(temp_path, target, relative_path)
+        finally:
+            if temp_path is not None:
                 temp_path.unlink(missing_ok=True)
-            raise
         return self._entry_for(base_root, target)
 
     def delete(self, relative_path: str, *, root: str = "inspection") -> None:

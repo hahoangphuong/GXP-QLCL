@@ -112,3 +112,14 @@ actor during a metadata failure or late target collision. Unsupported
 atomic publication fails closed; business code must not replace it with
 an overwrite/copy fallback. SMB copy retains its independent exclusive
 create (`xb`) contract; no SMB semantics change in this patch.
+
+## Exclusive write publication
+
+The filesystem adapter now stages all `write_stream` content before exposing
+the requested path. `overwrite=False` publishes by atomic no-replace and
+returns `StorageTargetExistsError` (HTTP 409) if another writer won the
+destination. A failed stream or unsupported no-replace operation cleans up
+only the private staging file. `overwrite=True` retains its intentional
+atomic `os.replace` behavior. This guarantee applies to the local/mounted
+filesystem adapter; the SMB-native adapter's exclusive stream operation
+requires separate parity review.

@@ -162,7 +162,10 @@ def test_map_existing_requires_exact_reviewed_line_uuid():
     item["existing_production_line_id"] = "33333333-3333-4333-8333-333333333333"
     reseal(roster)
     replan_for_review(plan, roster)
-    assert "MAPPED_LINE_ID_DIFFERS" in audit_b6j_review_alignment(plan, roster)["findings"][0]["blockers"]
+    # Existing physical identity is immutable roster provenance. Reject
+    # the contradiction before interpreting this as a review blocker.
+    with pytest.raises(B6KReviewAlignmentError, match="reviewed roster binding invalid"):
+        audit_b6j_review_alignment(plan, roster)
     item["existing_production_line_id"] = c["existing_production_line_id"]
     reseal(roster)
     replan_for_review(plan, roster)
@@ -247,9 +250,15 @@ def test_review_approval_with_contradictory_payload_does_not_pass(field, value):
         _validate_plan(plan)
     reseal(roster)
     replan_for_review(plan, roster)
-    report = audit_b6j_review_alignment(plan, roster)
-    assert report["status"] == "REVIEW_ALIGNMENT_BLOCKED"
-    assert "INVALID_B6I_DECISION_PAYLOAD" in report["findings"][0]["blockers"]
+    if field == "existing_production_line_id":
+        # Never reinterpret a changed source physical identity as valid
+        # review; the planner binding rejects it before the decision check.
+        with pytest.raises(B6KReviewAlignmentError, match="reviewed roster binding invalid"):
+            audit_b6j_review_alignment(plan, roster)
+    else:
+        report = audit_b6j_review_alignment(plan, roster)
+        assert report["status"] == "REVIEW_ALIGNMENT_BLOCKED"
+        assert "INVALID_B6I_DECISION_PAYLOAD" in report["findings"][0]["blockers"]
 
 
 @pytest.mark.parametrize("change", ["roster_claim", "planner", "plan_roster_count", "plan_source_omission"])

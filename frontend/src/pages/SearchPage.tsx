@@ -209,6 +209,25 @@ function resolveSelectedRemediationCycleId(
     : caseWorkspace.remediation.cycles.at(-1)?.capa_cycle_id ?? null;
 }
 
+// The request identity, status and payload are one atomic record. Display keys
+// alone cannot distinguish canonical UUIDs, legacy-unlinked and facility-wide.
+type WorkspaceRequest = {
+  context: string;
+  requestId: number;
+} & (
+  | { status: "loading"; previous?: FacilityWorkspace }
+  | { status: "ready"; data: FacilityWorkspace }
+  | { status: "error"; error: string }
+);
+
+function facilityContextIdentity(result: FacilitySearchResult): string {
+  return JSON.stringify([
+    result.result_key, result.site_id, result.gxp_type, result.result_grain,
+    result.production_line_identity_state, result.production_line_id ?? null,
+    result.line_code ?? null,
+  ]);
+}
+
 export function SearchPage({
   access,
   statusError,
@@ -249,9 +268,9 @@ export function SearchPage({
   const [resultsLoading, setResultsLoading] = useState(true);
   const [resultsError, setResultsError] = useState<string | null>(null);
   const [resultsTotalCount, setResultsTotalCount] = useState(0);
-  const [workspace, setWorkspace] = useState<FacilityWorkspace | null>(null);
-  const [workspaceLoading, setWorkspaceLoading] = useState(false);
-  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [workspaceRequest, setWorkspaceRequest] = useState<WorkspaceRequest | null>(null);
+  const workspaceRequestSequence = useRef(0);
+  const committedContextRef = useRef<string | null>(null);
   const [selectedActionKey, setSelectedActionKey] = useState<string | null>(null);
   const [applicableStandardInput, setApplicableStandardInput] = useState("");
   const [createInspectionCasePending, setCreateInspectionCasePending] = useState(false);
@@ -315,7 +334,42 @@ export function SearchPage({
   const pendingTargetGxpConstraint = targetGxpConstraint(pendingDeepLink);
   const pendingTargetGxpHintsInvalid = hasInvalidOrContradictoryTargetGxpHints(pendingDeepLink);
   const searchGxpType = explicitTargetPending ? pendingTargetGxpConstraint : gxpType;
-  const selectedHistory = workspace?.history.find((item) => item.id === selectedHistoryId) ?? null;
+  const selectedContext = selectedResult && canLoadSecureApi && !explicitTargetPending && resultResolution !== "not_found"
+    ? facilityContextIdentity(selectedResult) : null;
+  const ownedRequest = selectedContext && workspaceRequest?.context === selectedContext ? workspaceRequest : null;
+  const ownedWorkspace = ownedRequest?.status === "ready" ? ownedRequest.data : null;
+  // Every business consumer below uses this projection, including dialogs and
+  // history resolution. A context switch closes visibility in the same render.
+  const workspace = deepLinkError || historyResolution === "pending" ? null : ownedWorkspace;
+  const workspaceLoading = Boolean(selectedResult) && (!ownedRequest || ownedRequest.status === "loading");
+  const workspaceError = ownedRequest?.status === "error" ? ownedRequest.error : null;
+  useLayoutEffect(() => { committedContextRef.current = selectedContext; }, [selectedContext]);
+
+  function beginWorkspaceRequest(context: string): number | null {
+    if (committedContextRef.current !== context) return null;
+    const requestId = ++workspaceRequestSequence.current;
+    setWorkspaceRequest((current) => ({
+      context, requestId, status: "loading",
+      previous: current?.context === context
+        ? current.status === "ready" ? current.data : current.status === "loading" ? current.previous : undefined
+        : undefined,
+    }));
+    return requestId;
+  }
+
+  function isCurrentContext(): boolean {
+    return selectedContext !== null && committedContextRef.current === selectedContext;
+  }
+
+  function publishWorkspaceRequest(next: WorkspaceRequest) {
+    if (committedContextRef.current !== next.context) return;
+    setWorkspaceRequest((current) => current?.requestId === next.requestId && current.context === next.context ? next : current);
+  }
+
+  // Retain the event request identity during a same-context refresh; previous
+  // data is never exposed by the workspace projection while loading.
+  const eventContext = ownedWorkspace ?? (ownedRequest?.status === "loading" ? ownedRequest.previous : null);
+  const selectedHistory = deepLinkError ? null : eventContext?.history.find((item) => item.id === selectedHistoryId) ?? null;
   const hasMoreResults = results.length < resultsTotalCount;
   const createReassessmentAction =
     workspace?.action_readiness.find((item) => item.action_key === "create_reassessment_case") ?? null;
@@ -544,7 +598,7 @@ export function SearchPage({
       setSelectedResultKey(null);
       setSelectedHistoryId(null);
       setResolvedDeepLinkResult(null);
-      setWorkspace(null);
+      setWorkspaceRequest(null);
       resetCertificateWorkspaceState();
       setResultResolution("not_found");
       setDeepLinkError("Các ràng buộc GxP trong liên kết không hợp lệ hoặc mâu thuẫn.");
@@ -613,7 +667,7 @@ export function SearchPage({
             setSelectedResultKey(null);
             setSelectedHistoryId(null);
             setResolvedDeepLinkResult(null);
-            setWorkspace(null);
+            setWorkspaceRequest(null);
             resetCertificateWorkspaceState();
             setResultResolution("not_found");
             setDeepLinkError("Không tìm thấy ngữ cảnh được liên kết trong kết quả tra cứu hiện tại.");
@@ -625,7 +679,7 @@ export function SearchPage({
             setSelectedResultKey(null);
             setSelectedHistoryId(null);
             setResolvedDeepLinkResult(null);
-            setWorkspace(null);
+            setWorkspaceRequest(null);
             resetCertificateWorkspaceState();
             setResultResolution("not_found");
             setDeepLinkError("Không tìm thấy ngữ cảnh được liên kết trong kết quả tra cứu hiện tại.");
@@ -666,8 +720,8 @@ export function SearchPage({
   ]);
 
   useEffect(() => {
-    if (!selectedResult || !canLoadSecureApi) {
-      setWorkspace(null);
+    if (!selectedResult || !selectedContext) {
+      setWorkspaceRequest(null);
       resetCreateInspectionCaseState();
       setSelectedCaseWorkspace(null);
       setCaseWorkspaceError(null);
@@ -680,46 +734,32 @@ export function SearchPage({
       return;
     }
     let cancelled = false;
-    setWorkspaceLoading(true);
-    setCreateInspectionCaseError(null);
+    const context = selectedContext;
+    const requestId = beginWorkspaceRequest(context);
+    if (requestId === null) return;
+    resetCreateInspectionCaseState();
+    resetCreateChangeRequestState();
     resetCertificateWorkspaceState();
     void getFacilityWorkspace(
-      selectedResult.site_id,
-      auth,
-      useStubAuth,
-      selectedResult.gxp_type,
-      selectedResult.line_code,
-      bearerToken,
-      selectedResult.production_line_id,
-    )
-      .then((payload) => {
-        if (!cancelled) {
-          setWorkspace(payload);
-          setWorkspaceError(null);
-          setWorkspaceLoading(false);
-          setSelectedActionKey((current) =>
-            current &&
-            payload.action_readiness.some(
-              (item) => item.action_key === current && item.readiness_status === "available",
-            )
-              ? current
-              : null,
-          );
-        }
-      })
-      .catch((error: Error) => {
-        if (!cancelled) {
-          setWorkspaceError(error.message);
-          setWorkspaceLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [auth, bearerToken, canLoadSecureApi, selectedResult, useStubAuth]);
+      selectedResult.site_id, auth, useStubAuth, selectedResult.gxp_type,
+      selectedResult.line_code, bearerToken, selectedResult.production_line_id,
+    ).then((payload) => {
+      if (!cancelled && committedContextRef.current === context && workspaceRequestSequence.current === requestId) {
+        publishWorkspaceRequest({ context, requestId, status: "ready", data: payload });
+        setSelectedActionKey((current) => current && payload.action_readiness.some(
+          (item) => item.action_key === current && item.readiness_status === "available",
+        ) ? current : null);
+      }
+    }).catch((error: Error) => {
+      if (!cancelled) publishWorkspaceRequest({ context, requestId, status: "error", error: error.message });
+    });
+    return () => { cancelled = true; };
+    // Identity, rather than result object allocation, owns request lifecycle.
+  }, [auth, bearerToken, canLoadSecureApi, selectedContext, useStubAuth]);
 
   useEffect(() => {
-    if (!workspace) return;
+    if (!ownedWorkspace) return;
+    const workspace = ownedWorkspace;
     if (historyResolution === "pending" && pendingDeepLink.historyId) {
       if (workspace.history.some((row) => row.id === pendingDeepLink.historyId)) {
         setSelectedHistoryId(pendingDeepLink.historyId);
@@ -734,7 +774,7 @@ export function SearchPage({
     if (historyResolution === "none") {
       setSelectedHistoryId((current) => current && workspace.history.some((row) => row.id === current) ? current : workspace.history[0]?.id ?? null);
     }
-  }, [historyResolution, pendingDeepLink.historyId, workspace]);
+  }, [historyResolution, pendingDeepLink.historyId, ownedWorkspace]);
 
   useEffect(() => {
     setSelectedCaseWorkspace(null);
@@ -996,8 +1036,7 @@ export function SearchPage({
     setDeepLinkError(null);
     setSelectedFacilityTab(DEFAULT_FACILITY_TAB);
     setActiveTab(DEFAULT_EVENT_TAB);
-    setWorkspace(null);
-    setWorkspaceError(null);
+    setWorkspaceRequest(null);
     resetCreateInspectionCaseState();
     resetCreateChangeRequestState();
     setSelectedCaseWorkspace(null);
@@ -1042,60 +1081,44 @@ export function SearchPage({
     setSelectedHistoryId(null);
   }
 
-  async function refreshWorkspaceAfterCreate(createdCaseId: string) {
-    if (!selectedResult) {
-      return;
-    }
-    setWorkspaceLoading(true);
-    resetCertificateWorkspaceState();
+  async function refreshSelectedFacilityWorkspace(preferredHistoryId: string | null) {
+    if (!selectedResult || !selectedContext) return null;
+    const context = selectedContext;
+    const requestId = beginWorkspaceRequest(context);
+    // A mutation may finish after navigation. Its confirmed backend result is
+    // retained, but its follow-up must not replace the new context's request.
+    if (requestId === null) return null;
     try {
       const payload = await getFacilityWorkspace(
-        selectedResult.site_id,
-        auth,
-        useStubAuth,
-        selectedResult.gxp_type,
-        selectedResult.line_code,
-        bearerToken,
-        selectedResult.production_line_id,
+        selectedResult.site_id, auth, useStubAuth, selectedResult.gxp_type,
+        selectedResult.line_code, bearerToken, selectedResult.production_line_id,
       );
-      setWorkspace(payload);
-      setWorkspaceError(null);
-      setSelectedFacilityTab(DEFAULT_FACILITY_TAB);
-      setActiveTab(DEFAULT_EVENT_TAB);
-      setSelectedHistoryId(
-        payload.history.some((row) => row.id === createdCaseId) ? createdCaseId : payload.history[0]?.id ?? null,
-      );
-    } finally {
-      setWorkspaceLoading(false);
+      if (committedContextRef.current !== context || workspaceRequestSequence.current !== requestId) return null;
+      publishWorkspaceRequest({ context, requestId, status: "ready", data: payload });
+      setSelectedHistoryId((current) => {
+        const preferred = preferredHistoryId ?? current;
+        return preferred && payload.history.some((row) => row.id === preferred) ? preferred : payload.history[0]?.id ?? null;
+      });
+      return payload;
+    } catch (error) {
+      publishWorkspaceRequest({ context, requestId, status: "error", error: error instanceof Error ? error.message : "Không tải được workspace." });
+      throw error;
     }
   }
 
-  async function refreshSelectedFacilityWorkspace(preferredHistoryId: string | null) {
-    if (!selectedResult) {
-      return null;
+  async function refreshWorkspaceAfterCreate(createdCaseId: string) {
+    if (committedContextRef.current === selectedContext) resetCertificateWorkspaceState();
+    const payload = await refreshSelectedFacilityWorkspace(createdCaseId);
+    if (payload) {
+      setSelectedFacilityTab(DEFAULT_FACILITY_TAB);
+      setActiveTab(DEFAULT_EVENT_TAB);
     }
-    const payload = await getFacilityWorkspace(
-      selectedResult.site_id,
-      auth,
-      useStubAuth,
-      selectedResult.gxp_type,
-      selectedResult.line_code,
-      bearerToken,
-      selectedResult.production_line_id,
-    );
-    setWorkspace(payload);
-    setWorkspaceError(null);
-    setSelectedHistoryId((current) => {
-      const nextPreferredHistoryId = preferredHistoryId ?? current;
-      return nextPreferredHistoryId && payload.history.some((row) => row.id === nextPreferredHistoryId)
-        ? nextPreferredHistoryId
-        : payload.history[0]?.id ?? null;
-    });
-    return payload;
   }
 
   async function refreshSelectedChangeRequestWorkspace(changeRequestId: string) {
+    if (!isCurrentContext()) return null;
     const payload = await getChangeRequestWorkspace(changeRequestId, auth, useStubAuth, bearerToken);
+    if (!isCurrentContext()) return payload;
     setSelectedChangeRequestWorkspace(payload);
     setChangeRequestWorkspaceError(null);
     return payload;
@@ -1296,6 +1319,7 @@ export function SearchPage({
         },
       };
     });
+    if (!isCurrentContext()) return;
     setSelectedCaseWorkspace(refreshedCaseWorkspace);
     setCaseWorkspaceError(null);
     await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
@@ -1342,6 +1366,7 @@ export function SearchPage({
         },
       };
     });
+    if (!isCurrentContext()) return;
     setSelectedCaseWorkspace(refreshedCaseWorkspace);
     setCaseWorkspaceError(null);
   }
@@ -1372,6 +1397,7 @@ export function SearchPage({
         },
       };
     });
+    if (!isCurrentContext()) return;
     setSelectedCaseWorkspace(refreshedCaseWorkspace);
     setCaseWorkspaceError(null);
     await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
@@ -1480,12 +1506,15 @@ export function SearchPage({
         },
       };
     });
+    if (!isCurrentContext()) return;
     setSelectedCaseWorkspace(refreshedCaseWorkspace);
     setCaseWorkspaceError(null);
   }
 
   async function refreshSelectedCaseWorkspace(caseId: string, preferredCycleId?: string | null) {
+    if (!isCurrentContext()) return null;
     const payload = await getCaseWorkspace(caseId, auth, useStubAuth, bearerToken);
+    if (!isCurrentContext()) return payload;
     setSelectedCaseWorkspace(payload);
     setCaseWorkspaceError(null);
     setSelectedRemediationCycleId((current) => resolveSelectedRemediationCycleId(payload, preferredCycleId ?? current));
@@ -1529,11 +1558,12 @@ export function SearchPage({
   }
 
   async function refreshBusinessEligibilityAfterMutation(certificateId: string) {
-    if (!selectedResult) return;
+    if (!selectedResult || !isCurrentContext()) return;
     const [detailPayload, listPayload] = await Promise.all([
       getBusinessEligibilityDetail(certificateId, auth, useStubAuth, bearerToken),
       listSiteBusinessEligibilityCertificates(selectedResult.site_id, auth, useStubAuth, bearerToken),
     ]);
+    if (!isCurrentContext()) return;
     setSelectedEligibilityCertificateId(certificateId);
     setEligibilityCertificateDetail(detailPayload);
     setEligibilityCertificateDetailError(null);
@@ -1602,9 +1632,9 @@ export function SearchPage({
           // Keep the original promotion conflict as the actionable error.
         }
       }
-      setEligibilityPromotionError(error instanceof Error ? error.message : "Không thể cập nhật GCN đủ điều kiện hiện hành.");
+      if (isCurrentContext()) setEligibilityPromotionError(error instanceof Error ? error.message : "Không thể cập nhật GCN đủ điều kiện hiện hành.");
     } finally {
-      setEligibilityPromotionPending(false);
+      if (isCurrentContext()) setEligibilityPromotionPending(false);
     }
   }
 
@@ -1628,12 +1658,13 @@ export function SearchPage({
           selectedResult.production_line_id,
         ),
       ]);
+      if (!isCurrentContext()) return;
       setGxpCertificateDetail(detailPayload);
       setGxpCertificates(listPayload.items);
     } catch (error) {
-      setGxpCertificatePromotionError(error instanceof Error ? error.message : "Không thể cập nhật chứng nhận hiện hành.");
+      if (isCurrentContext()) setGxpCertificatePromotionError(error instanceof Error ? error.message : "Không thể cập nhật chứng nhận hiện hành.");
     } finally {
-      setGxpCertificatePromotionPending(false);
+      if (isCurrentContext()) setGxpCertificatePromotionPending(false);
     }
   }
 
@@ -1655,6 +1686,7 @@ export function SearchPage({
           selectedResult.production_line_id,
         ),
       ]);
+      if (!isCurrentContext()) return;
       setGxpCertificateDetail(detailPayload);
       setGxpCertificates(listPayload.items);
       setGxpCertificateDetailError(null);
@@ -1663,6 +1695,7 @@ export function SearchPage({
       if (apiError.status === 409) {
         try {
           const detailPayload = await getGxpCertificateDetail(selectedGxpCertificateId, auth, useStubAuth, bearerToken);
+          if (!isCurrentContext()) return;
           setGxpCertificateDetail(detailPayload);
           setGxpCertificateDetailError(null);
         } catch {
@@ -1690,6 +1723,7 @@ export function SearchPage({
         getGxpCertificateDetail(result.certificate_id, auth, useStubAuth, bearerToken),
         listSiteGxpCertificates(selectedResult.site_id, auth, useStubAuth, selectedResult.gxp_type, selectedResult.line_code, bearerToken, selectedResult.production_line_id),
       ]);
+      if (!isCurrentContext()) return;
       setSelectedGxpCertificateId(result.certificate_id);
       setGxpCertificateDetail(detailPayload);
       setGxpCertificates(listPayload.items);
@@ -1758,7 +1792,7 @@ export function SearchPage({
 
   async function handleCreateChangeRequestSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedResult) {
+    if (!selectedResult || !workspace || createChangeRequestAction?.readiness_status !== "available") {
       return;
     }
     setCreateChangeRequestPending(true);
@@ -1778,10 +1812,13 @@ export function SearchPage({
         bearerToken,
       );
       const changeRequestId = created.change_request_id;
-      const [changeWorkspace] = await Promise.all([
+      const [changeWorkspace, facilityWorkspace] = await Promise.all([
         getChangeRequestWorkspace(changeRequestId, auth, useStubAuth, bearerToken),
         refreshSelectedFacilityWorkspace(changeRequestId),
       ]);
+      if (!facilityWorkspace || committedContextRef.current !== selectedContext) {
+        return;
+      }
       setSelectedChangeRequestWorkspace(changeWorkspace);
       setChangeRequestWorkspaceError(null);
       setSelectedFacilityTab(DEFAULT_FACILITY_TAB);
@@ -1789,6 +1826,7 @@ export function SearchPage({
       setActiveTab("Đề nghị");
       resetCreateChangeRequestState();
     } catch (error) {
+      if (!isCurrentContext()) return;
       setCreateChangeRequestError(error instanceof Error ? error.message : "Không tạo được yêu cầu thay đổi.");
       setCreateChangeRequestPending(false);
     }
@@ -1796,7 +1834,7 @@ export function SearchPage({
 
   async function handleCreateInspectionCaseSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedResult) {
+    if (!selectedResult || !workspace || createReassessmentAction?.readiness_status !== "available") {
       return;
     }
     setCreateInspectionCasePending(true);
@@ -1816,8 +1854,9 @@ export function SearchPage({
         bearerToken,
       );
       await refreshWorkspaceAfterCreate(created.case_id);
-      resetCreateInspectionCaseState();
+      if (isCurrentContext()) resetCreateInspectionCaseState();
     } catch (error) {
+      if (!isCurrentContext()) return;
       const message = error instanceof Error ? error.message : "Không mở được hồ sơ tái đánh giá.";
       setCreateInspectionCaseError(message);
       setCreateInspectionCasePending(false);

@@ -26,6 +26,7 @@ from backend.app.storage.bridge_auth import (
     verify_google_oidc_token,
 )
 from backend.app.storage.external_bridge import ExternalBridgeStorageService
+from backend.app.storage.filesystem import FilesystemStorageService
 from backend.app.storage.types import (
     ExternalBridgeStorageConfig,
     StorageConfig,
@@ -413,6 +414,36 @@ def test_bridge_http_read_rejects_malformed_hmac_token_with_401(monkeypatch):
     )
     assert _status_from_messages(messages) == 401
     assert b"protected-content" not in _body_from_messages(messages)
+
+
+def test_bridge_directory_listing_does_not_expose_outside_symlink_metadata(monkeypatch, tmp_path):
+    headers = _authorized_headers(monkeypatch)
+    root = tmp_path / "inspection"
+    root.mkdir()
+    outside = tmp_path / "private-outside.txt"
+    outside.write_bytes(b"sensitive-outside-file")
+    alias = root / "alias.txt"
+    try:
+        alias.symlink_to(outside)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"Symlinks are not available: {exc}")
+
+    app = create_storage_bridge_app(
+        FilesystemStorageService(StorageConfig(inspection_root=root))
+    )
+    messages = asyncio.run(
+        _invoke_asgi(
+            app,
+            method="GET",
+            path="/bridge/storage/list?root=inspection",
+            headers=headers,
+        )
+    )
+    assert _status_from_messages(messages) == 400
+    payload = _body_from_messages(messages)
+    assert b"sensitive-outside-file" not in payload
+    assert b"private-outside.txt" not in payload
+    assert outside.read_bytes() == b"sensitive-outside-file"
 
 
 def test_bridge_request_auth_rejects_missing_token(monkeypatch):

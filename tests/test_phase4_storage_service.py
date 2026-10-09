@@ -5,6 +5,8 @@ import inspect
 from io import BytesIO
 from pathlib import Path
 
+import pytest
+
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
@@ -427,6 +429,51 @@ def test_storage_io_operations_stay_within_root_and_support_checksum(tmp_path: P
     assert service.exists("2026/demo/test.txt") is True
     assert service.stat("2026/demo/test.txt").size == 11
     assert service.checksum("2026/demo/test.txt") == sha256(b"hello world").hexdigest()
+
+
+def _create_storage_symlink_or_skip(link: Path, target: Path, *, is_dir: bool = False) -> None:
+    try:
+        link.symlink_to(target, target_is_directory=is_dir)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"Symlinks are not available in this test environment: {exc}")
+
+
+@pytest.mark.parametrize("is_dir", [False, True])
+def test_storage_list_rejects_child_symlinks_escaping_root(tmp_path: Path, is_dir: bool):
+    service = build_service(tmp_path)
+    outside = tmp_path / ("outside-directory" if is_dir else "outside-private.txt")
+    if is_dir:
+        outside.mkdir()
+        (outside / "secret.txt").write_text("private", encoding="utf-8")
+    else:
+        outside.write_text("private metadata", encoding="utf-8")
+
+    alias = service.inspection_root / "linked-external"
+    _create_storage_symlink_or_skip(alias, outside, is_dir=is_dir)
+
+    with pytest.raises(StorageOperationError, match="escapes configured storage root"):
+        service.list("")
+    with pytest.raises(StorageOperationError, match="escapes configured storage root"):
+        service.stat("linked-external")
+    assert outside.exists()
+    if is_dir:
+        assert (outside / "secret.txt").read_text(encoding="utf-8") == "private"
+    else:
+        assert outside.read_text(encoding="utf-8") == "private metadata"
+
+
+def test_storage_list_allows_symlink_to_a_target_within_root(tmp_path: Path):
+    service = build_service(tmp_path)
+    target = service.inspection_root / "2026" / "report.txt"
+    target.parent.mkdir()
+    target.write_bytes(b"within-root")
+    alias = service.inspection_root / "report-link.txt"
+    _create_storage_symlink_or_skip(alias, target)
+
+    entries = {entry.name: entry for entry in service.list()}
+    assert entries["report-link.txt"].relative_path == "report-link.txt"
+    assert entries["report-link.txt"].size == len(b"within-root")
+    assert service.checksum("report-link.txt") == sha256(b"within-root").hexdigest()
 
 
 def test_storage_write_stream_can_create_exclusively_without_overwriting(tmp_path: Path):

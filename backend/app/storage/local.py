@@ -50,6 +50,10 @@ class LocalStorageService:
         return self._ensure_within_root(root, candidate)
 
     def _entry_for(self, root: Path, path: Path) -> StorageEntry:
+        # Directory enumeration yields unresolved child paths. Unlike
+        # _path_under(), these may still be symlinks pointing outside root.
+        # Check each entry before probing its type, size or other metadata.
+        self._ensure_within_root(root, path)
         rel = path.relative_to(root).as_posix()
         return StorageEntry(
             relative_path="" if rel == "." else rel,

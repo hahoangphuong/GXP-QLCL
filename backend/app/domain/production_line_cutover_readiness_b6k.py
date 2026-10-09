@@ -70,7 +70,7 @@ def audit_b6j_review_alignment(plan: Mapping[str, Any], roster: Mapping[str, Any
     # B6I reviews are not implicitly authenticated by their "REVIEWED" flag.
     # Reuse the B6I decision contract to reject contradictory decision payloads.
     permitted_existing_line_ids = {
-        candidate["existing_production_line_id"] for candidate in candidates
+        candidate["existing_production_line_id"] for candidate in pi.values()
         if isinstance(candidate.get("existing_production_line_id"), str)
         and candidate["existing_production_line_id"]
     }

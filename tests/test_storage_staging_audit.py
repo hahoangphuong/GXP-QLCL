@@ -93,13 +93,13 @@ def test_staging_audit_marks_failed_nas_read_and_preserves_previous_findings(tmp
     (service.inspection_root / modern).write_bytes(b"private bytes")
     (service.inspection_root / "2026").mkdir()
 
-    original_list = service.list
+    original_iterator = service.iter_entries_for_audit
     def interrupted(relative_path="", *, root="inspection"):
         if relative_path == "2026":
             raise OSError("smb connection lost: private UNC hostname and secret marker")
-        return original_list(relative_path, root=root)
+        yield from original_iterator(relative_path, root=root)
 
-    service.list = interrupted
+    service.iter_entries_for_audit = interrupted
     report = audit_staging_candidates(service)
     assert report.truncated
     assert report.incomplete_reason == "storage_access_failed"
@@ -115,7 +115,7 @@ def test_staging_audit_initial_root_failure_never_reports_clean(tmp_path: Path):
     service = _storage(tmp_path)
     def offline(*args, **kwargs):
         raise OSError("NAS offline with secret connection detail")
-    service.list = offline
+    service.iter_entries_for_audit = offline
     report = audit_staging_candidates(service)
     assert report.truncated and report.incomplete_reason == "storage_access_failed"
     assert report.scanned_directories == 0
@@ -129,14 +129,14 @@ def test_staging_cli_reports_partial_inventory_and_failure_exit_status(tmp_path:
     stage = new_staging_name()
     (service.inspection_root / stage).write_bytes(b"intact")
     (service.inspection_root / "2026").mkdir()
-    original = service.list
+    original = service.iter_entries_for_audit
 
     def disconnected(relative_path="", *, root="inspection"):
         if relative_path == "2026":
             raise OSError("NAS password leaked from exception if printed")
-        return original(relative_path, root=root)
+        yield from original(relative_path, root=root)
 
-    service.list = disconnected
+    service.iter_entries_for_audit = disconnected
     monkeypatch.setattr(cli, "create_storage_service_from_env", lambda: service)
     exit_status = cli.main(["--root", "inspection"])
     output = capsys.readouterr()
@@ -161,3 +161,46 @@ def test_staging_cli_setup_failure_emits_safe_incomplete_report(monkeypatch, cap
     assert data["incomplete_reason"] == "storage_setup_failed"
     assert data["candidates"] == []
     assert "Secret SMB" not in output.out + output.err
+
+
+def test_local_staging_iterator_limits_metadata_calls_even_in_huge_folder(tmp_path: Path, monkeypatch):
+    service = _storage(tmp_path)
+    for i in range(200):
+        (service.inspection_root / f"item-{i:04d}.txt").write_bytes(b"x")
+
+    checked = 0
+    original_entry = service._entry_for
+
+    def bounded_entry(root, target):
+        nonlocal checked
+        checked += 1
+        return original_entry(root, target)
+
+    monkeypatch.setattr(service, "_entry_for", bounded_entry)
+    monkeypatch.setattr(service, "list", lambda *args, **kwargs: pytest.fail("unbounded list() called"))
+    report = audit_staging_candidates(service, max_entries=3)
+    assert report.truncated and report.incomplete_reason == "entry_budget_exceeded"
+    assert report.scanned_entries == 3
+    assert checked <= 4
+    assert len(list(service.inspection_root.iterdir())) == 200
+
+
+def test_staging_stream_error_after_partial_entries_fails_closed(tmp_path: Path, monkeypatch):
+    service = _storage(tmp_path)
+    stage_name = new_staging_name()
+    (service.inspection_root / stage_name).write_bytes(b"preserve")
+    root = service.inspection_root
+    original = service._entry_for
+
+    def partial(relative_path="", *, root="inspection"):
+        yield original(service.inspection_root, service.inspection_root / stage_name)
+        raise OSError("NAS stopped while listing")
+
+    monkeypatch.setattr(service, "iter_entries_for_audit", partial)
+    report = audit_staging_candidates(service)
+    assert report.truncated
+    assert report.incomplete_reason == "storage_access_failed"
+    assert report.scanned_directories == 0
+    assert report.scanned_entries == 1
+    assert report.candidates[0].relative_path == stage_name
+    assert (service.inspection_root / stage_name).read_bytes() == b"preserve"

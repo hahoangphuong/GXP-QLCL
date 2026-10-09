@@ -183,3 +183,21 @@ per call. Therefore, it does not guarantee bounded NAS enumeration cost or
 RAM for a single exceptionally large directory. Any future streaming
 enumeration must be implemented at the storage adapter owner, not by
 silent client-side post-filtering.
+
+## Streaming, budgeted staging inventory
+
+Direct local/mounted-filesystem and SMB adapters expose a dedicated
+`iter_entries_for_audit` generator. It reuses their path validation and
+entry-metadata ownership, but does not sort/materialize an entire directory.
+The staging scanner closes that generator on completion, error or budget
+exhaustion. At most `max_entries + 1` entry metadata records may be
+inspected for budget detection, even for a large single directory.
+Normal application `list()` behavior and API contracts are unchanged.
+Only direct storage adapters are supported by the operator CLI. Other
+protocol implementations fall back to `list()` and retain its per-folder
+enumeration/memory limitation.
+
+Mid-stream NAS errors stop the audit with `storage_access_failed`,
+preserving metadata found earlier in the scan while making the report
+explicitly incomplete. Candidate results are sorted for reproducible
+JSON output; scan limits count entries encountered, not filesystem order.

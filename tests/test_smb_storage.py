@@ -318,3 +318,27 @@ def test_smb_inspection_resolution_keeps_explicit_year_exact_identity(monkeypatc
 
     assert resolution.status is StorageResolutionStatus.RESOLVED
     assert resolution.relative_path == "2025/Exact - (ID-1) - (KT-1-GMP)"
+
+
+def test_smb_staging_audit_streams_large_directory_without_materializing(monkeypatch):
+    from backend.app.storage.staging import audit_staging_candidates
+    from backend.app.storage.types import StorageEntry
+
+    client, service = _service(monkeypatch, [])
+    yielded = []
+    def incremental(path):
+        for i in range(300):
+            yielded.append(i)
+            yield _DirectoryEntry(path, f"item-{i:03d}.txt")
+
+    monkeypatch.setattr(client, "scandir", incremental, raising=False)
+    monkeypatch.setattr(service, "_entry_for", lambda root, target: StorageEntry(
+        relative_path=target.rsplit("\\", 1)[-1],
+        name=target.rsplit("\\", 1)[-1],
+        is_dir=False, size=1,
+    ))
+    monkeypatch.setattr(service, "list", lambda *args, **kwargs: pytest.fail("materialized SMB list() called"))
+    report = audit_staging_candidates(service, max_entries=4)
+    assert report.truncated and report.incomplete_reason == "entry_budget_exceeded"
+    assert report.scanned_entries == 4
+    assert len(yielded) <= 5

@@ -79,41 +79,55 @@ def audit_staging_candidates(
             incomplete_reason = "directory_budget_exceeded"
             break
         root, folder, depth = queue.popleft()
+        iterator = None
         try:
-            entries = storage.list(folder, root=root)
+            # Direct filesystem/SMB adapters provide lazy directory
+            # enumeration. Keep list() as the compatible fallback for other
+            # protocol implementations, but never use it for the CLI's
+            # production direct-storage adapters.
+            iter_method = getattr(storage, "iter_entries_for_audit", None)
+            entries = (
+                iter_method(folder, root=root)
+                if callable(iter_method)
+                else storage.list(folder, root=root)
+            )
+            iterator = iter(entries)
+            try:
+                for entry in iterator:
+                    if scanned_entries >= max_entries:
+                        incomplete_reason = "entry_budget_exceeded"
+                        break
+                    scanned_entries += 1
+                    category = None if entry.is_dir else classify_staging_candidate(entry.name)
+                    if category is not None:
+                        findings.append(StagingCandidate(
+                            root=root,
+                            relative_path=entry.relative_path,
+                            category=category,
+                            size=entry.size,
+                        ))
+                    if entry.is_dir:
+                        if depth >= max_depth:
+                            incomplete_reason = incomplete_reason or "depth_budget_exceeded"
+                        else:
+                            queue.append((root, entry.relative_path, depth + 1))
+            finally:
+                closer = getattr(iterator, "close", None)
+                if callable(closer):
+                    closer()
+            scanned_directories += 1
         except (OSError, StorageOperationError):
-            # A lost NAS connection, unreadable path, or unsafe symlink
-            # must never be reported as a complete/clean audit. Keep earlier
-            # metadata-only findings and stop; never expose exception text
-            # that may contain UNC roots or SMB connection details.
+            # Also catch errors after a generator has yielded some entries.
+            # Preserve partial metadata, stop, and redact exception text.
             incomplete_reason = "storage_access_failed"
             failed_root = root
             failed_relative_path = folder
             break
-        scanned_directories += 1
-        for entry in entries:
-            if scanned_entries >= max_entries:
-                incomplete_reason = "entry_budget_exceeded"
-                break
-            scanned_entries += 1
-            category = None if entry.is_dir else classify_staging_candidate(entry.name)
-            if category is not None:
-                findings.append(StagingCandidate(
-                    root=root,
-                    relative_path=entry.relative_path,
-                    category=category,
-                    size=entry.size,
-                ))
-            if entry.is_dir:
-                if depth >= max_depth:
-                    incomplete_reason = incomplete_reason or "depth_budget_exceeded"
-                else:
-                    queue.append((root, entry.relative_path, depth + 1))
         if incomplete_reason == "entry_budget_exceeded":
             break
 
     return StagingAudit(
-        candidates=tuple(findings),
+        candidates=tuple(sorted(findings, key=lambda item: (item.root, item.relative_path))),
         scanned_directories=scanned_directories,
         scanned_entries=scanned_entries,
         truncated=incomplete_reason is not None,

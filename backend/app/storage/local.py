@@ -190,6 +190,22 @@ class LocalStorageService:
             raise NotADirectoryError(target)
         return [self._entry_for(base_root, child) for child in sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))]
 
+    def iter_entries_for_audit(self, relative_path: str = "", *, root: str = "inspection") -> Iterator[StorageEntry]:
+        """Stream entries without sorting/materializing a large directory.
+
+        This iterator is for bounded, read-only audits; every child retains
+        the same root-containment check used by normal listing.
+        """
+        base_root = self._select_root(root)
+        target = self._path_under(base_root, relative_path)
+        if not target.exists():
+            raise FileNotFoundError(target)
+        if not target.is_dir():
+            raise NotADirectoryError(target)
+        with os.scandir(target) as listing:
+            for entry in listing:
+                yield self._entry_for(base_root, Path(entry.path))
+
     def stat(self, relative_path: str, *, root: str = "inspection") -> StorageEntry:
         base_root = self._select_root(root)
         target = self._path_under(base_root, relative_path)

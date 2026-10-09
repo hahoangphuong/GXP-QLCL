@@ -199,6 +199,17 @@ class SmbStorageService:
             for entry in sorted(smbclient.scandir(target), key=lambda item: (not item.is_dir(), item.name.lower()))
         ]
 
+    def iter_entries_for_audit(self, relative_path: str = "", *, root: str = "inspection") -> Iterator[StorageEntry]:
+        """Use SMB scandir incrementally; do not sort/materialize the folder."""
+        base_root = self._select_root(root)
+        target = self._join_root(base_root, relative_path)
+        if not smbpath.exists(target):
+            raise FileNotFoundError(target)
+        if not smbpath.isdir(target):
+            raise NotADirectoryError(target)
+        for entry in smbclient.scandir(target):
+            yield self._entry_for(base_root, entry.path)
+
     def stat(self, relative_path: str, *, root: str = "inspection") -> StorageEntry:
         base_root = self._select_root(root)
         target = self._join_root(base_root, relative_path)

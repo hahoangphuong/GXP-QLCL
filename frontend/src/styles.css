@@ -2301,3 +2301,108 @@ tr:focus-visible {
 .document-workspace .event-document-table td { white-space: normal; overflow-wrap: anywhere; }
 .document-workspace h5:focus { outline: 2px solid #245f9d; outline-offset: 3px; }
 @media (max-width: 1000px) { .document-workspace-panes { grid-template-columns: minmax(0, 1fr); } }
+
+/* MainForm FRX: lbDsCoso above MultiPage6; lbHist left of MpgHoatdong.
+   Scope this geometry to search so public/auth pages keep their own layout. */
+.legacy-search-page {
+  grid-template-columns: minmax(280px, 27%) minmax(0, 1fr);
+  grid-template-rows: clamp(190px, 30vh, 260px) minmax(0, 1fr);
+  grid-template-areas: "master master" "history detail";
+  gap: 4px;
+  --radius: 2px;
+  --control-height: 28px;
+  --shadow: none;
+}
+.legacy-search-page .search-master-history { display: contents; }
+.legacy-master-pane { grid-area: master; display: flex; flex-direction: column; min-height: 0; min-width: 0; gap: 3px; }
+.legacy-master-pane > .results-panel { flex: 1; min-height: 0; }
+
+/* User-supplied MainForm runtime references, 2026-10-10. Presentation colors
+   do not imply completion, permissions or certificate validity. */
+.legacy-search-page {
+  --bg: #f0f0f0; --surface: #f0f0f0; --surface-alt: #f0f0f0;
+  --surface-muted: #eaeaea; --border: #b0b0b0; --border-strong: #808080;
+  --text: #000; --text-muted: #444; --accent: #0078d7;
+  --accent-strong: #005a9e; --accent-soft: #e6f2ff;
+  color: #000; background: #f0f0f0;
+}
+.legacy-search-page :is(.workspace-tab, .workflow-step, .legacy-scope-tabs button) {
+  background: #f0f0f0; border: 1px solid #808080;
+  border-top-color: #fff; border-left-color: #fff; border-radius: 0;
+}
+.legacy-search-page .facility-tabs .workspace-tab { color: #0000c0; font-weight: 700; }
+.legacy-search-page :is(.workflow-step, .legacy-scope-tabs button) { color: #006800; font-weight: 700; }
+.legacy-search-page :is(.workspace-tab.active, .workflow-step.active, .legacy-scope-tabs [aria-selected="true"]) {
+  background: #fff; border-bottom-color: #fff;
+}
+.legacy-search-page :is(input, select, textarea, .detail-value-slot) {
+  background: #fff; color: #000; border: 1px solid #aaa;
+  border-top-color: #808080; border-left-color: #808080; border-radius: 0;
+}
+.legacy-search-page .detail-value-slot { padding: 3px 5px; }
+.legacy-search-page .detail-grid :is(.detail-label, .detail-value-slot > strong) { color: #000; }
+.legacy-search-page .certificate-detail-grid .detail-value-slot { background: #c0ffff; }
+.legacy-search-page .evaluation-scope-summary { background: #fff; color: #c00000; }
+.legacy-search-page .evaluation-scope-workspace { display: flex; flex-direction: column; min-height: 0; }
+.legacy-scope-tabs { display: flex; flex-shrink: 0; overflow-x: auto; gap: 2px; }
+.legacy-scope-tabs button { white-space: nowrap; }
+.legacy-search-page .scope-information-grid { grid-template-columns: minmax(0, 1fr); min-height: 0; flex: 1; }
+.legacy-search-page .scope-information-pane { overflow: auto; }
+.legacy-search-page [hidden] { display: none !important; }
+.legacy-search-page .workflow-step-list { overflow-x: auto; }
+.legacy-search-page .workflow-step-list li { flex: 0 0 auto; }
+.legacy-search-page .workflow-step { white-space: nowrap; }
+.legacy-search-page .facility-tab-panel { height: 100%; overflow: auto; }
+.legacy-search-page .facility-tab-panel > .event-workspace { height: 100%; }
+.legacy-search-page .event-workspace-detail-pane { height: 100%; }
+.legacy-search-page .facility-workspace-panel { display: grid; grid-template-rows: auto auto minmax(0, 1fr); }
+.legacy-search-page .facility-tab-body { overflow: hidden; }
+.legacy-search-page .event-workspace-body.has-scope-context {
+  grid-template-rows: minmax(90px, 1fr) minmax(100px, .8fr);
+  gap: 4px;
+}
+.legacy-search-page .event-workspace-body.has-scope-context .event-step-content { min-block-size: 0; }
+.legacy-search-page .event-workspace-body.has-scope-context .scope-information-grid { height: auto; padding: 0; background: #fff; }
+.legacy-search-page .scope-information-pane { background: #fff; border-color: #808080; }
+.legacy-search-page .certificate-shell .master-list-pane .table-scroll-history { background: #c0ffc0; }
+.legacy-search-page .certificate-history-table td { background: #c0ffc0; }
+.legacy-search-page :is(.facility-table, .history-table, .certificate-history-table) tr[aria-selected="true"] > td {
+  background: #0078d7; color: #fff;
+}
+.legacy-search-page .history-panel { grid-area: history; }
+.legacy-search-page .search-detail-area { grid-area: detail; }
+.legacy-search-page .facility-table-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+.legacy-search-page .facility-gxp-rail { flex-direction: row; border-right: 0; border-bottom: 1px solid var(--border-strong); background: var(--surface-muted); padding: 2px; }
+.legacy-search-page .facility-gxp-tab { writing-mode: horizontal-tb; transform: none; height: 26px; min-height: 26px; min-width: 70px; }
+.legacy-search-page :is(.panel, .table-scroll, .workspace-section, button, input, select, textarea, .workspace-tab, .workflow-step) { border-radius: 2px; box-shadow: none; }
+.legacy-search-page .workflow-step-index { display: none; }
+.legacy-search-page .workflow-step { padding: 3px 8px; }
+.legacy-search-page .workflow-step-list { gap: 2px; }
+.legacy-search-page .workflow-step-list li:not(:last-child)::after { display: none; }
+.legacy-search-page .workspace-section { padding: 5px; }
+.legacy-search-page .facility-context-bar { padding: 4px 6px; }
+.legacy-search-page .facility-context-title h2 { font-size: 0.95rem; }
+.legacy-search-page .history-table { min-width: 350px; }
+.legacy-search-filters { display: flex; align-items: start; gap: 8px; padding: 3px 5px; border: 1px solid var(--border-strong); background: var(--surface-muted); }
+.legacy-quick-filter { display: flex; align-items: center; gap: 5px; width: min(480px, 50%); flex-shrink: 0; }
+.legacy-filter-form { min-width: 0; flex: 1; }
+.legacy-filter-form summary { cursor: pointer; min-height: 28px; padding: 4px; }
+.legacy-filter-form summary:focus-visible { outline: 2px solid var(--accent); }
+.legacy-filter-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.legacy-filter-groups fieldset { min-width: 0; margin: 0; padding: 5px; border: 1px solid var(--border-strong); }
+.legacy-filter-groups label { display: grid; grid-template-columns: minmax(70px, 0.7fr) minmax(0, 1fr); align-items: center; gap: 4px; margin-bottom: 3px; font-size: 0.82rem; }
+.legacy-search-page:has(.legacy-filter-form[open]) { grid-template-rows: clamp(270px, 40vh, 340px) minmax(0, 1fr); }
+@media (max-width: 1100px) {
+  .legacy-search-page, .legacy-search-page:has(.legacy-filter-form[open]) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "master" "history" "detail";
+    grid-template-rows: minmax(230px, auto) 200px minmax(420px, auto);
+    height: auto;
+  }
+  .legacy-master-pane { min-height: 230px; }
+  .legacy-master-pane > .results-panel { max-height: 300px; }
+  .legacy-search-filters { flex-direction: column; }
+  .legacy-quick-filter { width: 100%; }
+  .legacy-filter-form { width: 100%; }
+  .legacy-filter-groups { grid-template-columns: 1fr; }
+}

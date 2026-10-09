@@ -35,7 +35,7 @@ import type { ChangeRequestMutationHandlers } from "./ChangeRequestMutationWorks
 import { BusinessEligibilityWorkspace } from "./BusinessEligibilityWorkspace";
 import { FacilitySummary } from "./FacilitySummary";
 import { GxpCertificateWorkspace } from "./GxpCertificateWorkspace";
-import { FACILITY_TABS, type FacilityTab } from "./facilityTabs";
+import { FACILITY_TABS, FACILITY_TAB_LABELS, type FacilityTab } from "./facilityTabs";
 
 export function FacilityWorkspaceTabs({
   summary,
@@ -335,7 +335,7 @@ export function FacilityWorkspaceTabs({
             role="tab"
             type="button"
           >
-            {tab}
+            {FACILITY_TAB_LABELS[tab]}
           </button>
         ))}
       </div>

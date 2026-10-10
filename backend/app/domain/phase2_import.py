@@ -1696,6 +1696,27 @@ def import_snapshot(
         if site_id is None:
             skipped_rows["db.cc"].append({"legacy_id": legacy_id, "reason": "missing_site_fk", "raw_fk": row.get("site_legacy_id_ref", "")})
             continue
+        # The legacy source has independent certificate-site and inspection-case
+        # references. Foreign keys alone cannot establish their joint ownership.
+        # Reject conflicts at import rather than storing a broken Certificate
+        # that blocks read-side search after deployment.
+        if case_id is not None:
+            linked_case = session.get(Case, case_id)
+            certificate_type = str(row.get("certificate_type") or "UNKNOWN").strip()
+            if linked_case is None:
+                raise ImportCollisionError(
+                    f"db.cc legacy certificate {legacy_id!r} references an unavailable Case "
+                    f"(db.ktra legacy ID {raw_case_fk!r})."
+                )
+            if linked_case.site_id != site_id or linked_case.gxp_type != certificate_type:
+                linked_site = session.get(Site, linked_case.site_id)
+                raise ImportCollisionError(
+                    f"db.cc legacy certificate {legacy_id!r} has an invalid linked Case "
+                    f"(db.ktra legacy ID {raw_case_fk!r}): "
+                    f"certificate site legacy ID {row.get('site_legacy_id_ref')!r}, "
+                    f"Case site legacy ID {linked_site.legacy_site_id if linked_site else None!r}; "
+                    f"certificate type {certificate_type!r}, Case type {linked_case.gxp_type!r}."
+                )
         identity_key = _source_identity_key(legacy_id, row_number)
         certificate_standard = row.get("certificate_standard") or row.get("applicable_standard") or None
         expected_fields = {

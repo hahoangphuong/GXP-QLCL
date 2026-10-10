@@ -1110,3 +1110,44 @@ def test_build_schema_length_audit_for_real_snapshot_has_no_remaining_bounded_ov
 
     assert len(audit_rows) == 34
     assert [row["target"] for row in audit_rows if row["rows_exceeding_limit"] > 0] == []
+
+
+def test_import_snapshot_rejects_certificate_case_site_mismatch_at_owner():
+    snapshot = sample_snapshot()
+    snapshot["db.cso"].append({
+        "ID": "11", "ID Cty": "1", "TÊN CƠ SỞ": "Site B",
+        "SITE NAME": "Site B", "ĐỊA CHỈ CƠ SỞ": "Another address",
+    })
+    # Both source IDs resolve, and both sites belong to the same company.
+    # An ordinary FK check would accept this invalid linked Case.
+    snapshot["db.cc"][0]["ID CƠ SỞ"] = "11"
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        try:
+            import_snapshot(session, snapshot)
+        except ImportCollisionError as exc:
+            message = str(exc)
+            assert "db.cc legacy certificate 200" in message
+            assert "db.ktra legacy ID '100'" in message
+            assert "certificate site legacy ID '11'" in message
+            assert "Case site legacy ID 10" in message
+        else:
+            raise AssertionError("Expected source Certificate/Case site mismatch to fail closed")
+        assert session.scalar(select(func.count()).select_from(Certificate)) == 0
+
+
+def test_import_snapshot_rejects_certificate_case_gxp_mismatch_at_owner():
+    snapshot = sample_snapshot()
+    snapshot["db.cc"][0]["LOẠI CC"] = "GLP"
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        try:
+            import_snapshot(session, snapshot)
+        except ImportCollisionError as exc:
+            message = str(exc)
+            assert "db.cc legacy certificate 200" in message
+            assert "certificate type 'GLP'" in message
+            assert "Case type 'GMP'" in message
+        else:
+            raise AssertionError("Expected source Certificate/Case GxP mismatch to fail closed")
+        assert session.scalar(select(func.count()).select_from(Certificate)) == 0

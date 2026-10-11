@@ -54,6 +54,25 @@ def test_audit_distinguishes_all_evidence_states_without_rescuing_conflicts():
     assert report["source_modified"] is False
 
 
+def test_source_ids_must_be_literal_integers_not_truncated_floats():
+    snapshot = _snapshot()
+    snapshot["db.cc"][0]["ID ĐỢT KTRA"] = "100.5"
+    snapshot["db.cc"][2]["ID CƠ SỞ"] = "10.5"
+    report = audit_certificate_case_source_links(snapshot)
+    classifications = {
+        item["certificate_legacy_id"]: item["classification"]
+        for item in report["anomalies"]
+    }
+    assert classifications[1] == "UNPARSEABLE_CASE_REFERENCE"
+    assert classifications[3] == "SITE_CONTEXT_INCOMPLETE"
+
+    snapshot["db.cc"][0]["ID ĐỢT KTRA"] = "100.0"
+    snapshot["db.cc"][2]["ID CƠ SỞ"] = "10.0"
+    restored = audit_certificate_case_source_links(snapshot)
+    assert restored["classification_counts"]["EXACT_SOURCE_CONTEXT"] == 1
+    assert restored["classification_counts"]["SITE_MISMATCH"] == 1
+
+
 def test_real_source_snapshot_exposes_all_site_conflicts_without_inventing_remediation():
     snapshot = json.loads(Path("artifacts/phase3c/legacy_snapshot.json").read_text(encoding="utf-8"))
     report = audit_certificate_case_source_links(snapshot.get("sheets", snapshot))

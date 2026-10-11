@@ -187,3 +187,49 @@ def test_duplicate_certificate_source_identity_fails_cli_strict_even_with_valid_
     assert main(["--snapshot", str(snapshot_path), "--output", str(output_path), "--strict"]) == 2
     saved = json.loads(output_path.read_text(encoding="utf-8"))
     assert saved["source_identity_anomalies"] == report["source_identity_anomalies"]
+
+
+def test_strict_audit_detects_duplicate_parent_sheet_key_with_only_administrative_certificate(tmp_path):
+    # The importer validates all sheets, even when no certificate links to a
+    # duplicated Case. A db.cc-only check would incorrectly report a clean input.
+    snapshot = {
+        "db.ktra": [
+            {"ID": "700", "ID CƠ SỞ": "50", "LOẠI KT": "GMP"},
+            {"ID": "700", "ID CƠ SỞ": "50", "LOẠI KT": "GMP"},
+        ],
+        "db.cc": [
+            {"ID": "900", "ID ĐỢT KTRA": "", "ID CƠ SỞ": "50", "LOẠI CC": "GMP"},
+        ],
+    }
+    report = audit_certificate_case_source_links(snapshot)
+    assert report["effective_anomalies"] == []
+    assert report["classification_counts"] == {"ADMINISTRATIVE_NO_CASE_REFERENCE": 1}
+    assert report["source_identity_anomalies"] == [{
+        "classification": "DUPLICATE_SOURCE_ROW_KEY",
+        "source_sheet": "db.ktra",
+        "source_row_key": "700",
+        "occurrences": 2,
+    }]
+    path = tmp_path / "parent-duplicate.json"
+    output = tmp_path / "parent-report.json"
+    path.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+    assert main(["--snapshot", str(path), "--output", str(output), "--strict"]) == 2
+    assert json.loads(output.read_text(encoding="utf-8"))["source_identity_anomalies"] == report["source_identity_anomalies"]
+
+
+def test_source_identity_detection_matches_importer_for_all_sheets():
+    # A certificate-only audit must not suppress structural collisions in
+    # db.cty/db.cso or any other sheet known to the importer.
+    for sheet in ("db.cty", "db.cso", "db.ktra", "db.Tdoi"):
+        snapshot = {
+            sheet: [{"ID": "42"}, {"ID": "42"}],
+            "db.cc": [{"ID": "800", "ID ĐỢT KTRA": "", "ID CƠ SỞ": "50", "LOẠI CC": "GMP"}],
+        }
+        report = audit_certificate_case_source_links(snapshot)
+        assert report["source_identity_anomalies"] == [{
+            "classification": "DUPLICATE_SOURCE_ROW_KEY",
+            "source_sheet": sheet,
+            "source_row_key": "42",
+            "occurrences": 2,
+        }], sheet
+        assert report["effective_anomalies"] == [], sheet

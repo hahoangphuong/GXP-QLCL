@@ -34,9 +34,16 @@ def main(argv: list[str] | None = None) -> int:
         "effective_classification_counts": report["effective_classification_counts"],
         "effective_anomaly_count": len(report["effective_anomalies"]),
         "source_identity_anomaly_count": len(report["source_identity_anomalies"]),
+        "source_parent_check_available": report["source_parent_check_available"],
+        "source_parent_anomaly_count": len(report["source_parent_anomalies"]),
+        "effective_parent_anomaly_count": len(report["effective_parent_anomalies"]),
         "database_mutated": False,
     }, ensure_ascii=False, sort_keys=True))
-    return 2 if args.strict and (report["effective_anomalies"] or report["source_identity_anomalies"]) else 0
+    return 2 if args.strict and (
+        report["effective_anomalies"]
+        or report["source_identity_anomalies"]
+        or report["effective_parent_anomalies"]
+    ) else 0
 
 
 if __name__ == "__main__":

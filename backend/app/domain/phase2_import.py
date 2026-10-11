@@ -1364,7 +1364,7 @@ def import_snapshot(
             snapshot,
             excluded_certificate_row_keys=reviewed_blanked_certificate_keys,
         )
-        if source_link_report["effective_anomalies"]:
+        if source_link_report["effective_anomalies"] or source_link_report["effective_parent_anomalies"]:
             raise CertificateCaseSourceIntegrityError(source_link_report)
     if resolved_options.ensure_schema:
         create_schema(session)

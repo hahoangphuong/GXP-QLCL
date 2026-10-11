@@ -20,7 +20,7 @@ from backend.app.domain.phase2_import import (
 def _literal_legacy_int(value: object) -> int | None:
     """Source IDs are integers, never rounded/truncated decimal or prose IDs."""
     raw = str(value or "").strip()
-    if not re.fullmatch(r"[0-9]+(?:\\.0+)?", raw):
+    if not re.fullmatch(r"[0-9]+(?:\.0+)?", raw):
         return None
     return int(raw.split(".", 1)[0])
 

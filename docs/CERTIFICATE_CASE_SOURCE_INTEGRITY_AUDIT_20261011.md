@@ -58,6 +58,22 @@ python -m tools.audit_legacy_certificate_case_sources \
 
 Expected on current unremediated legacy source: exit code **2**, **three** effective anomalies, no database access. Avoid writing a report onto an existing approved evidence file.
 
+## Independent published GMP documentation (11 October evidence expansion)
+
+The cross-Site Domesco context is **not merely an ambiguous Excel label**:
+
+- Published 20 October 2022 domestic GMP list, document page 13, row 49: one **200/GCN-QLD** certificate issued 20/04/2022 covering **two manufacturing Site addresses**, each with its own GMP scope:
+  https://gmp.com.vn/images/upload_file/danh-sach-cac-cong-ty-trong-nuoc-dat-tieu-chuan-gmp-20_10_2022_1667265374.pdf
+- Certificate **314/GCN-QLD** (15/05/2023), published by Domesco, names Site 1 and Site 2 in Part 1:
+  https://www.domesco.com/pdf/GCN%20GMP%20-%20WHO%20%28dia%20chi%20moi%20346%20Nguyen%20Hue%29.1f1117ede5f0b54c599a0699cc7fb7f8.pdf
+- Drug Administration of Vietnam's 20 January 2025 GMP list explicitly records **314/GCN-QLD replacing 200/GCN-QLD**, which provides independent regulatory evidence for a historical certificate relationship:
+  https://dav.gov.vn/upload_images/files/Danh%20s%C3%A1ch%20c%C3%A1c%20c%C3%B4ng%20ty%20trong%20n%C6%B0%E1%BB%9Bc%20%C4%91%E1%BA%A1t%20ti%C3%AAu%20chu%E1%BA%A9n%20GMP%20%2820_01_2025%29.pdf
+- The preserved `db.cc` source agrees with the address history: Certificate 1037's Site 1 is **66 Quốc lộ 30**, while Certificate 1180's Site 1 is **346 Nguyễn Huệ**. Both retain Site 2 at **Cần Lố**. The evidence does not establish whether Site 1 premises were moved, renumbered or otherwise redescribed.
+
+**Proven:** the two certificates each encompass **two named manufacturing Site locations**, with explicit replacement lineage. **Not proven:** that inspection Case 1023 assessed both Sites, the exact canonical issuance-owner rules, or how each version's Site-specific certified scope must be stored. Certificate Site coverage and inspection Case Site coverage must remain distinct.
+
+A separately reviewed future model can distinguish `Certificate` (regulatory issuance identity), immutable `CertificateVersion` and `CertificateVersionSiteCoverage` (version-specific certified physical Sites, source address and scope), from any independently evidenced `CaseSiteCoverage` (inspection coverage). The existing `CertificateRelationship` model provides a possible `REPLACED_BY` edge after explicit approval. None of this is authorization for a database write or alteration of the current Site equality check.
+
 ## Remaining business decisions and implementation gates
 
 1. **Certificate 376:** verify original issuance provenance/case reference (candidate Case 380). An authorized remediation would need a sealed source+canonical-state plan, verified target rehearsal DB, backup, exact row assertions, transactional update, audit and rollback. Do not directly overwrite the historical `db.cc` source.

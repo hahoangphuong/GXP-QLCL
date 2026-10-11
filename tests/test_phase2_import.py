@@ -272,7 +272,10 @@ def test_strict_preflight_rejects_non_materializable_parent_before_schema_creati
             options=ImportExecutionOptions(strict_certificate_case_source_links=True),
         )
     assert exc.value.report["effective_anomalies"] == []
-    assert {item["classification"] for item in exc.value.report["effective_parent_anomalies"]} == expected
+    parent_anomalies = exc.value.report["effective_parent_anomalies"]
+    assert {item["classification"] for item in parent_anomalies} == expected
+    assert "0 unresolved Certificate-Case link(s)" in str(exc.value)
+    assert f"{len(parent_anomalies)} unimportable source-parent" in str(exc.value)
     assert inspect(engine).has_table("certificate") is False
     assert inspect(engine).has_table("site") is False
 

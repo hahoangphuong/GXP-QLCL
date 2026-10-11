@@ -1244,3 +1244,32 @@ def test_build_schema_length_audit_for_real_snapshot_has_no_remaining_bounded_ov
 
     assert len(audit_rows) == 34
     assert [row["target"] for row in audit_rows if row["rows_exceeding_limit"] > 0] == []
+
+
+@pytest.mark.parametrize("case_ref", ["100", ""])
+def test_strict_preflight_blocks_importable_confirmed_blanked_certificate_without_schema_write(
+    monkeypatch, tmp_path, case_ref
+):
+    # An approved blanked-row source identity is not permission to resurrect
+    # the row merely because its parent keys now resolve.
+    snapshot = sample_snapshot()
+    snapshot["db.cc"][0]["ID ĐỢT KTRA"] = case_ref
+    contract_path = tmp_path / "confirmed_blanked.json"
+    contract_path.write_text(
+        json.dumps({"rows": [{"source_sheet": "db.cc", "source_row_key": "200"}]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", contract_path)
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session, pytest.raises(CertificateCaseSourceIntegrityError) as exc:
+        import_snapshot(
+            session, snapshot,
+            options=ImportExecutionOptions(strict_certificate_case_source_links=True),
+        )
+    report = exc.value.report
+    assert report["effective_anomalies"] == []
+    assert report["effective_parent_anomalies"] == []
+    assert len(report["excluded_importable_certificate_rows"]) == 1
+    assert "1 importable confirmed-blanked Certificate row(s)" in str(exc.value)
+    assert inspect(engine).has_table("certificate") is False
+    assert inspect(engine).has_table("site") is False

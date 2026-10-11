@@ -166,10 +166,12 @@ class CertificateCaseSourceIntegrityError(ImportCollisionError):
         self.report = report
         link_count = len(report["effective_anomalies"])
         parent_count = len(report.get("effective_parent_anomalies", []))
+        importable_excluded_count = len(report.get("excluded_importable_certificate_rows", []))
         super().__init__(
             "Legacy Certificate-Case source integrity preflight blocked "
             f"{link_count} unresolved Certificate-Case link(s) and "
-            f"{parent_count} unimportable source-parent association(s)."
+            f"{parent_count} unimportable source-parent association(s), and "
+            f"{importable_excluded_count} importable confirmed-blanked Certificate row(s)."
         )
 
 
@@ -1367,7 +1369,11 @@ def import_snapshot(
             snapshot,
             excluded_certificate_row_keys=reviewed_blanked_certificate_keys,
         )
-        if source_link_report["effective_anomalies"] or source_link_report["effective_parent_anomalies"]:
+        if (
+            source_link_report["effective_anomalies"]
+            or source_link_report["effective_parent_anomalies"]
+            or source_link_report["excluded_importable_certificate_rows"]
+        ):
             raise CertificateCaseSourceIntegrityError(source_link_report)
     if resolved_options.ensure_schema:
         create_schema(session)

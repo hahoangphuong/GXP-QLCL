@@ -119,3 +119,25 @@ The draft relational design is in `docs/CERTIFICATE_CASE_MULTISITE_MODEL_PROPOSA
 4. Do not deploy or mutate `gxp_legacy_rehearsal`, `gxp_qlcl`, or `gmpnn_ai` as part of this audit. Existing site filtering must not be weakened to turn HTTP 409 into an apparently successful search.
 
 The current documented state remains **Search Facilities FAIL HTTP 409** until a separate, reviewed remediation release is proven in runtime.
+
+
+## Strict preflight: excluded Certificate source-row drift (11 October follow-up)
+
+A confirmed-blanked source-row key marks a business-deleted row that must not
+silently become importable simply because its FK values are later populated.
+The original import FK resolver checks materializable parents before recording
+a confirmed-blanked missing-parent anomaly. Therefore a source row whose
+Case (or administrative-null Case) and Site parents both resolve can otherwise
+materialize despite remaining in the approved exclusion contract.
+
+The read-only source auditor now reports `excluded_importable_certificate_rows`
+separately from `effective_anomalies` and `effective_parent_anomalies`.
+Standalone `--strict` and opt-in importer strict preflight reject such drift
+before DB schema creation or write. Ordinary diagnostic CLI mode is unchanged,
+and the legacy importer default is **not** modified by this opt-in safeguard.
+This is not an authorization to resurrect blanked rows: any restoration must
+follow the owner-approved resurrection/remediation process.
+
+Independent review of the captured full Phase-3C snapshot and its 27 approved
+`db.cc` confirmed-blanked keys found **0 importable excluded Certificates**.
+The three unresolved effective cross-Site source links remain unchanged.

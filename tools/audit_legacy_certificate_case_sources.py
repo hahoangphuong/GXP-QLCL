@@ -37,12 +37,14 @@ def main(argv: list[str] | None = None) -> int:
         "source_parent_check_available": report["source_parent_check_available"],
         "source_parent_anomaly_count": len(report["source_parent_anomalies"]),
         "effective_parent_anomaly_count": len(report["effective_parent_anomalies"]),
+        "excluded_importable_certificate_count": len(report["excluded_importable_certificate_rows"]),
         "database_mutated": False,
     }, ensure_ascii=False, sort_keys=True))
     return 2 if args.strict and (
         report["effective_anomalies"]
         or report["source_identity_anomalies"]
         or report["effective_parent_anomalies"]
+        or report["excluded_importable_certificate_rows"]
         or not report["source_parent_check_available"]
     ) else 0
 

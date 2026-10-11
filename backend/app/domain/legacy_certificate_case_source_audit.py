@@ -86,6 +86,7 @@ def audit_certificate_case_source_links(
     parent_check_available = {"db.cty", "db.cso", "db.ktra", "db.cc"}.issubset(snapshot)
     source_parent_anomalies: list[dict[str, Any]] = []
     effective_parent_anomalies: list[dict[str, Any]] = []
+    excluded_importable_certificate_rows: list[dict[str, Any]] = []
     if parent_check_available:
         company_ids = {
             parsed for source in snapshot["db.cty"]
@@ -122,6 +123,22 @@ def audit_certificate_case_source_links(
             certificate_site = parse_int(row.get("site_legacy_id_ref"))
             case_reference = str(row.get("inspection_case_legacy_id_ref") or "").strip()
             linked_case = parse_int(case_reference)
+            # Confirmed-blanked exclusion must not hide source drift that
+            # makes an excluded Certificate materializable by Phase 2.
+            # Compare only literal source dependencies; never select a Case.
+            if (
+                is_excluded
+                and certificate_site in importable_site_ids
+                and (not case_reference or linked_case in importable_case_ids)
+            ):
+                excluded_importable_certificate_rows.append({
+                    "classification": "CONFIRMED_BLANKED_CERTIFICATE_IMPORTABLE",
+                    "certificate_legacy_id": certificate_id,
+                    "certificate_source_row_key": row_key,
+                    "linked_case_legacy_id": linked_case,
+                    "certificate_site_legacy_id": certificate_site,
+                    "remediation_authorized": False,
+                })
             parent_problems: list[dict[str, Any]] = []
             if certificate_site not in importable_site_ids:
                 parent_problems.append({
@@ -275,6 +292,7 @@ def audit_certificate_case_source_links(
         "source_parent_check_available": parent_check_available,
         "source_parent_anomalies": source_parent_anomalies,
         "effective_parent_anomalies": effective_parent_anomalies,
+        "excluded_importable_certificate_rows": excluded_importable_certificate_rows,
         "database_mutated": False,
         "source_modified": False,
     }

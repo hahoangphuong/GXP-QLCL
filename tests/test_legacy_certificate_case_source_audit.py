@@ -6,6 +6,7 @@ from pathlib import Path
 
 from backend.app.domain.legacy_certificate_case_source_audit import audit_certificate_case_source_links
 from backend.app.domain.phase2_import import load_confirmed_blanked_row_keys
+from backend.app.domain import phase2_import as phase2_import_module
 from tools.audit_legacy_certificate_case_sources import main
 
 
@@ -351,3 +352,67 @@ def test_reverse_case_scope_evidence_is_exact_not_a_remediation_decision():
     snapshot["db.cc"][0]["PHẠM VI CHỨNG NHẬN"] = ""
     blanks = audit_certificate_case_source_links(snapshot)
     assert blanks["effective_anomalies"][0]["reverse_case_reference_evidence"][0]["same_nonblank_scope_text"] is False
+
+
+def test_confirmed_blanked_certificate_becoming_importable_is_never_a_clean_strict_source():
+    snapshot = {
+        "db.cty": [{"ID": "1"}],
+        "db.cso": [{"ID": "10", "ID Cty": "1"}, {"ID": "11", "ID Cty": "1"}],
+        "db.ktra": [{"ID": "100", "ID CƠ SỞ": "11", "LOẠI KT": "GMP"}],
+        "db.cc": [{"ID": "200", "ID CƠ SỞ": "10", "ID ĐỢT KTRA": "100", "LOẠI CC": "GMP"}],
+    }
+    # The originally excluded row is now importable, even though its Case
+    # still belongs to another Site; effective link anomalies exclude it.
+    report = audit_certificate_case_source_links(
+        snapshot, excluded_certificate_row_keys={"200"}
+    )
+    assert report["effective_anomalies"] == []
+    assert report["effective_parent_anomalies"] == []
+    assert report["excluded_importable_certificate_rows"] == [{
+        "classification": "CONFIRMED_BLANKED_CERTIFICATE_IMPORTABLE",
+        "certificate_legacy_id": 200,
+        "certificate_source_row_key": "200",
+        "linked_case_legacy_id": 100,
+        "certificate_site_legacy_id": 10,
+        "remediation_authorized": False,
+    }]
+    # An administrative Certificate with a resolvable Site is also importable.
+    snapshot["db.cc"][0]["ID ĐỢT KTRA"] = ""
+    admin = audit_certificate_case_source_links(
+        snapshot, excluded_certificate_row_keys={"200"}
+    )
+    assert len(admin["excluded_importable_certificate_rows"]) == 1
+    assert admin["excluded_importable_certificate_rows"][0]["linked_case_legacy_id"] is None
+    # An orphan Site parent means Phase 2 would skip the row; the guard must
+    # not reclassify that excluded source as a successful import.
+    snapshot["db.cc"][0]["ID CƠ SỞ"] = "999"
+    orphan = audit_certificate_case_source_links(
+        snapshot, excluded_certificate_row_keys={"200"}
+    )
+    assert orphan["excluded_importable_certificate_rows"] == []
+
+
+def test_cli_strict_refuses_importable_confirmed_blanked_source_without_changing_legacy_mode(
+    monkeypatch, tmp_path
+):
+    snapshot = {
+        "db.cty": [{"ID": "1"}],
+        "db.cso": [{"ID": "10", "ID Cty": "1"}],
+        "db.ktra": [],
+        "db.cc": [{"ID": "200", "ID CƠ SỞ": "10", "ID ĐỢT KTRA": "", "LOẠI CC": "GMP"}],
+    }
+    contract_path = tmp_path / "blanked.json"
+    contract_path.write_text(
+        json.dumps({"rows": [{"source_sheet": "db.cc", "source_row_key": "200"}]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", contract_path)
+    path = tmp_path / "snapshot.json"
+    output = tmp_path / "report.json"
+    path.write_text(json.dumps(snapshot), encoding="utf-8")
+    assert main(["--snapshot", str(path), "--output", str(output)]) == 0
+    assert main(["--snapshot", str(path), "--strict"]) == 2
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["effective_anomalies"] == []
+    assert len(report["excluded_importable_certificate_rows"]) == 1
+    assert report["database_mutated"] is False

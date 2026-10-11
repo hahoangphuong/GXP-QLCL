@@ -130,8 +130,14 @@ def test_real_source_snapshot_exposes_all_site_conflicts_without_inventing_remed
     assert evidence_by_id[1037][0]["same_certificate_site_and_type"] is False
     assert evidence_by_id[1037][0]["same_nonblank_certificate_number"] is True
     assert evidence_by_id[1037][0]["same_nonblank_scope_text"] is False
-    assert report["effective_anomalies"][0]["certificate_issued_at_source"] == "2018-03-12 00:00:00+00:00"
-    assert report["effective_anomalies"][0]["linked_case_inspection_period_source"] == "04-05/03/2008"
+    # The raw population includes a confirmed-blanked Site-incomplete row
+    # before Certificate 376. Verify the reviewed effective identity rather
+    # than assuming the first raw anomaly belongs to that Certificate.
+    effective_by_id = {
+        item["certificate_legacy_id"]: item for item in effective["effective_anomalies"]
+    }
+    assert effective_by_id[376]["certificate_issued_at_source"] == "2018-03-12 00:00:00+00:00"
+    assert effective_by_id[376]["linked_case_inspection_period_source"] == "04-05/03/2008"
     assert evidence_by_id[1180] == []
     assert all(item["remediation_authorized"] is False for item in effective["effective_anomalies"])
 

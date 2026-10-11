@@ -1,7 +1,9 @@
 import json
 from pathlib import Path
 
-from sqlalchemy import create_engine, event, func, select
+import pytest
+
+from sqlalchemy import create_engine, event, func, inspect, select
 from sqlalchemy.orm import Session
 
 from backend.app.db.models.phase1 import (
@@ -25,6 +27,7 @@ from backend.app.db.models.phase1 import (
 )
 from backend.app.domain.phase2_import import (
     CONFIRMED_BLANKED_ROWS_PATH,
+    CertificateCaseSourceIntegrityError,
     ConfirmedBlankedResurrectionError,
     ConfirmedBlankedContractError,
     ImportCollisionError,
@@ -165,6 +168,74 @@ def sample_snapshot():
             {"ID": "500", "ID Gốc": "400", "ID Phân loại": "", "PHÂN LOẠI": "Đổi tên", "TÌNH TRẠNG CHẤP NHẬN": "", "THÔNG TIN CŨ": "Old", "THÔNG TIN MỚI": "New", "GHI CHÚ": ""},
         ],
     }
+
+
+@pytest.mark.parametrize(
+    ("case_site", "case_gxp", "case_reference", "expected_classification"),
+    [
+        ("11", "GMP", "100", "SITE_MISMATCH"),
+        ("10", "GLP", "100", "GXP_MISMATCH"),
+        ("11", "GLP", "100", "SITE_AND_GXP_MISMATCH"),
+        ("10", "GMP", "999", "CASE_SOURCE_NOT_FOUND"),
+        ("10", "GMP", "ambiguous", "UNPARSEABLE_CASE_REFERENCE"),
+        ("", "GMP", "100", "SITE_CONTEXT_INCOMPLETE"),
+    ],
+)
+def test_strict_certificate_source_integrity_rejects_before_database_mutation(
+    case_site, case_gxp, case_reference, expected_classification
+):
+    snapshot = sample_snapshot()
+    snapshot["db.ktra"][0]["ID CƠ SỞ"] = case_site
+    snapshot["db.ktra"][0]["LOẠI KT"] = case_gxp
+    snapshot["db.cc"][0]["ID ĐỢT KTRA"] = case_reference
+
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session, pytest.raises(CertificateCaseSourceIntegrityError) as exc:
+        import_snapshot(
+            session, snapshot,
+            options=ImportExecutionOptions(strict_certificate_case_source_links=True),
+        )
+
+    report = exc.value.report
+    assert [item["classification"] for item in report["effective_anomalies"]] == [expected_classification]
+    assert report["database_mutated"] is False
+    assert inspect(engine).has_table("certificate") is False
+    assert inspect(engine).has_table("site") is False
+
+
+def test_strict_certificate_source_integrity_allows_valid_and_administrative_link():
+    for case_reference, expected_case_link in (("100", True), ("", False)):
+        snapshot = sample_snapshot()
+        snapshot["db.cc"][0]["ID ĐỢT KTRA"] = case_reference
+        engine = create_engine("sqlite:///:memory:", future=True)
+        with Session(engine) as session:
+            import_snapshot(
+                session, snapshot,
+                options=ImportExecutionOptions(strict_certificate_case_source_links=True),
+            )
+            certificate = session.scalars(select(Certificate)).one()
+            assert (certificate.case_id is not None) is expected_case_link
+
+
+def test_real_legacy_snapshot_strict_preflight_rejects_only_effective_conflicts():
+    snapshot = json.loads(Path("artifacts/phase3c/legacy_snapshot.json").read_text(encoding="utf-8"))
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session, pytest.raises(CertificateCaseSourceIntegrityError) as exc:
+        import_snapshot(
+            session, snapshot.get("sheets", snapshot),
+            options=ImportExecutionOptions(strict_certificate_case_source_links=True),
+        )
+    report = exc.value.report
+    assert report["effective_certificate_source_rows"] == 1601
+    assert report["effective_classification_counts"] == {
+        "ADMINISTRATIVE_NO_CASE_REFERENCE": 143,
+        "EXACT_SOURCE_CONTEXT": 1455,
+        "SITE_MISMATCH": 3,
+    }
+    assert [row["certificate_legacy_id"] for row in report["effective_anomalies"]] == [
+        376, 1037, 1180
+    ]
+    assert inspect(engine).has_table("certificate") is False
 
 
 def test_import_snapshot_loads_primary_entities():

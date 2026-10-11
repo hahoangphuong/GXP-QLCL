@@ -1348,15 +1348,16 @@ def _validate_confirmed_blanked_source_materialization(
     *,
     confirmed_blanked_row_keys: set[tuple[str, str]],
     overrides: dict[str, dict[str, dict[str, Any]]] | None,
-) -> None:
-    """Fail before DB mutation if a deleted source row would now be imported.
+    preview_for_source_audit: bool = False,
+) -> tuple[dict[str, list[dict[str, str]]], list[dict[str, Any]]]:
+    """Check the import's parent graph and build an immutable strict-audit view.
 
-    Walk the same parent-first sheet order and required source FKs as Phase 2.
-    Approved overrides are validated independently before this preflight.
-    Source rows already excluded from business import cannot become parents
-    of other source records merely by retaining their legacy ID.
+    Only an exact owner-approved resurrection can project an actually used FK
+    override. Source rows remain untouched. Non-approved generic overrides
+    retain legacy import behavior but cannot manufacture strict source evidence.
     """
-    # (field, parent sheet, missing-FK reason, optional when blank)
+    # (field, parent sheet, missing-FK reason, optional when blank).
+    # These are the same required dependencies and order used by Phase 2.
     parents_by_sheet = {
         "db.cty": (),
         "db.cso": (("company_legacy_id_ref", "db.cty", "missing_company_fk", False),),
@@ -1373,37 +1374,67 @@ def _validate_confirmed_blanked_source_materialization(
         "db.Tdoi2": (("change_request_legacy_id_ref", "db.Tdoi", "missing_change_request_fk", False),),
     }
     importable_ids: dict[str, set[int]] = {sheet: set() for sheet in parents_by_sheet}
+    effective_snapshot = {sheet: [] for sheet in snapshot}
+    applied_source_fk_overrides: list[dict[str, Any]] = []
     for source_sheet, requirements in parents_by_sheet.items():
         for raw_row in snapshot[source_sheet]:
             row = normalize_row(raw_row)
+            effective_row = dict(row)
             legacy_id = parse_int(row.get("ID"))
             row_key = source_row_key(
                 legacy_row_id=legacy_id, source_row_number_value=source_row_number(row)
             )
+            identity = (source_sheet, row_key or "")
+            is_confirmed_blanked = identity in confirmed_blanked_row_keys
+            has_approved_resurrection = (
+                is_confirmed_blanked
+                and overrides is not None
+                and row_key in overrides.get(source_sheet, {})
+            )
+            used_overrides: list[tuple[str, str, int, str]] = []
+            materializable = True
             for field, parent_sheet, reason, optional in requirements:
                 raw_parent = str(row.get(field) or "").strip()
                 if optional and not raw_parent:
                     continue
                 parent_id = parse_int(raw_parent)
                 if parent_id not in importable_ids[parent_sheet]:
-                    parent_id = _get_override(
-                        overrides, source_sheet, row_key, REMEDIATION_KEY_BY_REASON[reason]
+                    override_key = REMEDIATION_KEY_BY_REASON[reason]
+                    replacement_id = _get_override(
+                        overrides, source_sheet, row_key, override_key
                     )
+                    if replacement_id in importable_ids[parent_sheet]:
+                        parent_id = replacement_id
+                        if has_approved_resurrection:
+                            used_overrides.append((field, raw_parent, replacement_id, override_key))
                 if parent_id not in importable_ids[parent_sheet]:
+                    materializable = False
                     break
-            else:
-                identity = (source_sheet, row_key or "")
-                if identity in confirmed_blanked_row_keys and (
-                    not overrides or row_key not in overrides.get(source_sheet, {})
-                ):
-                    raise ConfirmedBlankedResurrectionError(
-                        "Confirmed blanked source row "
-                        f"{source_sheet}:{row_key} has importable source parents but "
-                        "no explicit owner-approved resurrection override. "
-                        "Refusing to import before schema creation or reset."
-                    )
-                if legacy_id is not None:
-                    importable_ids[source_sheet].add(legacy_id)
+            if materializable:
+                if is_confirmed_blanked and not has_approved_resurrection:
+                    if not preview_for_source_audit:
+                        raise ConfirmedBlankedResurrectionError(
+                            "Confirmed blanked source row "
+                            f"{source_sheet}:{row_key} has importable source parents but "
+                            "no explicit owner-approved resurrection override. "
+                            "Refusing to import before schema creation or reset."
+                        )
+                else:
+                    if has_approved_resurrection:
+                        for field, raw_parent, replacement_id, override_key in used_overrides:
+                            effective_row[field] = str(replacement_id)
+                            applied_source_fk_overrides.append({
+                                "source_sheet": source_sheet,
+                                "source_row_key": row_key,
+                                "source_field": field,
+                                "raw_fk_value": raw_parent,
+                                "effective_fk_value": replacement_id,
+                                "approved_override_key": override_key,
+                            })
+                    if legacy_id is not None:
+                        importable_ids[source_sheet].add(legacy_id)
+            effective_snapshot[source_sheet].append(effective_row)
+    return effective_snapshot, applied_source_fk_overrides
 
 
 def import_snapshot(
@@ -1442,13 +1473,32 @@ def import_snapshot(
             if source_sheet == "db.cc"
             and source_key not in approved_certificate_row_keys
         }
-        # An exactly authorized resurrection is subject to the *same*
-        # strict source Case/Site/GxP checks as ordinary imported rows.
-        # Never hide it among confirmed-blanked exclusions.
-        source_link_report = audit_certificate_case_source_links(
+        # Project only FKs actually used by an exactly owner-approved
+        # resurrection. Do not reinterpret already-resolving Case references
+        # or change the captured source. The default-mode guard still runs
+        # below with its established fail-closed exception semantics.
+        effective_source, projection_evidence = _validate_confirmed_blanked_source_materialization(
             snapshot,
+            confirmed_blanked_row_keys=confirmed_blanked_row_keys,
+            overrides=remediation_overrides,
+            preview_for_source_audit=True,
+        )
+        source_link_report = audit_certificate_case_source_links(
+            effective_source,
             excluded_certificate_row_keys=reviewed_blanked_certificate_keys,
         )
+        if projection_evidence:
+            raw_source_report = audit_certificate_case_source_links(
+                snapshot,
+                excluded_certificate_row_keys=reviewed_blanked_certificate_keys,
+            )
+            source_link_report["approved_source_fk_provenance"] = projection_evidence
+            source_link_report["original_source_classification_counts"] = raw_source_report[
+                "classification_counts"
+            ]
+            source_link_report["original_source_effective_anomalies"] = raw_source_report[
+                "effective_anomalies"
+            ]
         if (
             source_link_report["effective_anomalies"]
             or source_link_report["effective_parent_anomalies"]

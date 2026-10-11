@@ -1447,3 +1447,140 @@ def test_strict_certificate_resurrection_requires_exact_owner_approval_before_sc
         )
     assert inspect(engine).has_table("certificate") is False
     assert inspect(engine).has_table("company") is False
+
+
+
+@pytest.mark.parametrize(
+    ("raw_site", "raw_case", "approved_values", "case_site", "expected_classification"),
+    [
+        ("", "100", {"site_legacy_id": 10}, "10", None),
+        ("10", "999", {"case_legacy_id": 100}, "10", None),
+        ("", "100", {"site_legacy_id": 10}, "11", "SITE_MISMATCH"),
+        # An already-importable Case FK must not be silently remapped by an
+        # override, even when its replacement Case belongs to the Site.
+        ("10", "100", {"case_legacy_id": 101}, "11", "SITE_MISMATCH"),
+    ],
+)
+def test_strict_approved_resurrection_uses_only_effective_fk_and_keeps_raw_provenance(
+    monkeypatch, tmp_path, raw_site, raw_case, approved_values, case_site, expected_classification
+):
+    snapshot = sample_snapshot()
+    snapshot["db.cc"][0]["ID CƠ SỞ"] = raw_site
+    snapshot["db.cc"][0]["ID ĐỢT KTRA"] = raw_case
+    snapshot["db.ktra"][0]["ID CƠ SỞ"] = case_site
+    if case_site == "11":
+        second_site = dict(snapshot["db.cso"][0])
+        second_site.update({"ID": "11", "TÊN CƠ SỞ": "Site B"})
+        snapshot["db.cso"].append(second_site)
+    if "case_legacy_id" in approved_values:
+        snapshot["db.ktra"].append({
+            "ID": "101", "ID CƠ SỞ": "10", "LOẠI KT": "GMP"
+        })
+    original = json.loads(json.dumps(snapshot))
+    blanked = tmp_path / "blanked.json"
+    blanked.write_text(json.dumps({"rows": [{
+        "source_sheet": "db.cc", "source_row_key": "200"
+    }]}), encoding="utf-8")
+    approved = tmp_path / "approved.json"
+    approved.write_text(json.dumps({"rows": [{
+        "source_sheet": "db.cc", "source_row_key": "200",
+        "approved_override": approved_values,
+    }]}), encoding="utf-8")
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", blanked)
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_RESURRECTIONS_PATH", approved)
+    override = {"db.cc": {"200": approved_values}}
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        if expected_classification:
+            with pytest.raises(CertificateCaseSourceIntegrityError) as exc:
+                import_snapshot(
+                    session, snapshot, remediation_overrides=override,
+                    options=ImportExecutionOptions(strict_certificate_case_source_links=True),
+                )
+            assert [r["classification"] for r in exc.value.report["effective_anomalies"]] == [
+                expected_classification
+            ]
+            if raw_site == "":
+                assert exc.value.report["approved_source_fk_provenance"] == [{
+                    "source_sheet": "db.cc",
+                    "source_row_key": "200",
+                    "source_field": "site_legacy_id_ref",
+                    "raw_fk_value": "",
+                    "effective_fk_value": 10,
+                    "approved_override_key": "site_legacy_id",
+                }]
+            else:
+                assert "approved_source_fk_provenance" not in exc.value.report
+            assert inspect(engine).has_table("certificate") is False
+        else:
+            projected, evidence = phase2_import_module._validate_confirmed_blanked_source_materialization(
+                snapshot,
+                confirmed_blanked_row_keys={("db.cc", "200")},
+                overrides=override,
+            )
+            assert len(evidence) == 1
+            assert evidence[0]["raw_fk_value"] == ("" if raw_site == "" else "999")
+            assert evidence[0]["effective_fk_value"] in (10, 100)
+            assert projected["db.cc"][0][evidence[0]["source_field"]] == str(evidence[0]["effective_fk_value"])
+            import_snapshot(
+                session, snapshot, remediation_overrides=override,
+                options=ImportExecutionOptions(strict_certificate_case_source_links=True),
+            )
+            cert = session.scalars(select(Certificate)).one()
+            assert cert.case_id is not None
+    assert snapshot == original
+
+
+def test_strict_approved_parent_chain_fk_projection_propagates_to_certificate(
+    monkeypatch, tmp_path
+):
+    snapshot = sample_snapshot()
+    snapshot["db.ktra"][0]["ID CƠ SỞ"] = ""
+    original = json.loads(json.dumps(snapshot))
+    blanked = tmp_path / "blanked.json"
+    blanked.write_text(json.dumps({"rows": [{
+        "source_sheet": "db.ktra", "source_row_key": "100",
+    }]}), encoding="utf-8")
+    approved = tmp_path / "approved.json"
+    approved.write_text(json.dumps({"rows": [{
+        "source_sheet": "db.ktra", "source_row_key": "100",
+        "approved_override": {"site_legacy_id": 10},
+    }]}), encoding="utf-8")
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", blanked)
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_RESURRECTIONS_PATH", approved)
+    override = {"db.ktra": {"100": {"site_legacy_id": 10}}}
+    projected, evidence = phase2_import_module._validate_confirmed_blanked_source_materialization(
+        snapshot,
+        confirmed_blanked_row_keys={("db.ktra", "100")}, overrides=override,
+    )
+    assert [(e["source_sheet"], e["raw_fk_value"], e["effective_fk_value"]) for e in evidence] == [
+        ("db.ktra", "", 10)
+    ]
+    assert projected["db.ktra"][0]["site_legacy_id_ref"] == "10"
+    assert snapshot == original
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        import_snapshot(
+            session, snapshot, remediation_overrides=override,
+            options=ImportExecutionOptions(strict_certificate_case_source_links=True),
+        )
+        assert session.query(Certificate).count() == 1
+
+
+def test_strict_rejects_nonapproved_generic_fk_projection_even_if_default_import_accepts_it(
+    monkeypatch, tmp_path
+):
+    snapshot = sample_snapshot()
+    snapshot["db.ktra"][0]["ID CƠ SỞ"] = ""
+    contract = tmp_path / "blanked.json"
+    contract.write_text(json.dumps({"rows": []}), encoding="utf-8")
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", contract)
+    override = {"db.ktra": {"100": {"site_legacy_id": 10}}}
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session, pytest.raises(CertificateCaseSourceIntegrityError) as exc:
+        import_snapshot(
+            session, snapshot, remediation_overrides=override,
+            options=ImportExecutionOptions(strict_certificate_case_source_links=True),
+        )
+    assert exc.value.report["effective_parent_anomalies"]
+    assert inspect(engine).has_table("certificate") is False

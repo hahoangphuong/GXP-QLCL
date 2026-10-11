@@ -192,3 +192,33 @@ would change a missing Case/Site source FK, the literal source auditor may
 still reject incomplete raw context, as a fail-closed limitation pending an
 explicit, provenance-preserving applied-override audit contract. No approval
 file, workbook, business row, schema or runtime Certificate link was edited.
+
+
+## Read-only effective-FK projection for strictly reviewed restorations
+
+A signed `confirmed_blanked_resurrections.json` override may restore a
+previously blanked mandatory Site or Case FK. Strict import must inspect the
+**effective** relationships Phase 2 would actually import, not reject the raw
+missing FK merely because the owner supplied a validated restoration.
+
+The existing pre-schema materialization walker now also constructs a copied,
+normalized audit view and a field-level provenance trace for *actually used*
+approved resurrection overrides. It follows parent-first source materialization,
+including approved restored parent Case/Site rows, and uses the legacy import
+rule: an existing, resolvable raw FK always wins over an override. A generic
+override on an unapproved row cannot manufacture an acceptable strict source
+relationship. The original snapshot is never modified.
+
+In strict mode, a preview builds the effective audit view; the source auditor
+checks its Site/GxP/Case invariants. If any approved FK replacement is used, an
+error report retains both the original-source classifications and explicit
+per-field `raw_fk_value`, `effective_fk_value`, `source_row_key` and
+`approved_override_key`. The unchanged default-mode materialization guard
+then enforces excluded-row drift and exact contract authorization before any
+schema creation. Standalone read-only `--strict` continues to describe the
+literal source and has no approval/override input.
+
+This improvement does not repair Certificate 376 by inference: its original
+Case 378 is a resolvable FK and cannot be remapped to candidate Case 380 by
+an override. Site-mismatched or GxP-mismatched projected relationships still
+fail before import. No historical source or database rows were changed.

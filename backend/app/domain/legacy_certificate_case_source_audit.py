@@ -171,6 +171,7 @@ def audit_certificate_case_source_links(
         certificate_site = _literal_legacy_int(certificate.get("site_legacy_id_ref"))
         certificate_gxp = certificate.get("certificate_type") or "UNKNOWN"
         certificate_number = str(certificate.get("certificate_number") or "").strip()
+        certificate_scope = str(certificate.get("certificate_scope_text") or "").strip()
         case_legacy_id = _literal_legacy_int(case_ref)
         linked_case_site: int | None = None
         linked_case_gxp: str | None = None
@@ -214,10 +215,12 @@ def audit_certificate_case_source_links(
             reverse_case_gxp = normalize_inspection_gxp_type(reverse_case_gxp_raw) or reverse_case_gxp_raw or "UNKNOWN"
             reverse_site = _literal_legacy_int(row.get("site_legacy_id_ref"))
             reverse_number = str(row.get("certificate_number") or "").strip()
+            reverse_scope = str(row.get("evaluation_scope_raw") or "").strip()
             reverse_evidence.append({
                 "case_legacy_id": _literal_legacy_int(row.get("ID")),
                 "site_legacy_id": reverse_site,
                 "gxp_type": reverse_case_gxp,
+                "inspection_period_source": str(row.get("inspected_at") or "").strip() or None,
                 "same_certificate_site_and_type": (
                     certificate_site is not None
                     and reverse_site == certificate_site
@@ -226,6 +229,11 @@ def audit_certificate_case_source_links(
                 "same_nonblank_certificate_number": bool(
                     certificate_number and reverse_number and certificate_number == reverse_number
                 ),
+                # Exact lexical evidence only (after outer whitespace removal).
+                # This never assigns or recommends a replacement Case FK.
+                "same_nonblank_scope_text": bool(
+                    certificate_scope and reverse_scope and certificate_scope == reverse_scope
+                ),
             })
         item = {
             "classification": classification,
@@ -233,6 +241,12 @@ def audit_certificate_case_source_links(
             "certificate_legacy_id": certificate_legacy_id,
             "linked_case_legacy_id": case_legacy_id,
             "raw_case_reference": case_ref,
+            "certificate_issued_at_source": str(certificate.get("certificate_issue_date") or "").strip() or None,
+            "linked_case_inspection_period_source": (
+                str(case_rows[case_legacy_id][0].get("inspected_at") or "").strip() or None
+                if case_legacy_id is not None and len(case_rows.get(case_legacy_id, [])) == 1
+                else None
+            ),
             "certificate_site_legacy_id": certificate_site,
             "linked_case_site_legacy_id": linked_case_site,
             "certificate_gxp_type": certificate_gxp,

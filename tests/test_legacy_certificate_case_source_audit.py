@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from backend.app.domain.legacy_certificate_case_source_audit import audit_certificate_case_source_links
+from backend.app.domain.phase2_import import load_confirmed_blanked_row_keys
 from tools.audit_legacy_certificate_case_sources import main
 
 
@@ -69,6 +70,56 @@ def test_real_source_snapshot_exposes_all_site_conflicts_without_inventing_remed
         if item["classification"] == "SITE_MISMATCH"
     } == {(376, 378), (1037, 1023), (1180, 1023)}
     assert report["database_mutated"] is False
+
+    excluded_keys = {
+        key for sheet, key in load_confirmed_blanked_row_keys() if sheet == "db.cc"
+    }
+    effective = audit_certificate_case_source_links(
+        snapshot.get("sheets", snapshot), excluded_certificate_row_keys=excluded_keys
+    )
+    assert effective["excluded_confirmed_blanked_certificate_count"] == 27
+    assert effective["effective_certificate_source_rows"] == 1601
+    assert effective["effective_classification_counts"] == {
+        "ADMINISTRATIVE_NO_CASE_REFERENCE": 143,
+        "EXACT_SOURCE_CONTEXT": 1455,
+        "SITE_MISMATCH": 3,
+    }
+    assert [item["certificate_legacy_id"] for item in effective["effective_anomalies"]] == [
+        376, 1037, 1180
+    ]
+    evidence_by_id = {
+        item["certificate_legacy_id"]: item["reverse_case_reference_evidence"]
+        for item in effective["effective_anomalies"]
+    }
+    assert evidence_by_id[376] == [
+        {
+            "case_legacy_id": 380,
+            "site_legacy_id": 73,
+            "gxp_type": "GMP",
+            "same_certificate_site_and_type": True,
+            "same_nonblank_certificate_number": True,
+        }
+    ]
+    assert evidence_by_id[1037][0]["case_legacy_id"] == 1023
+    assert evidence_by_id[1037][0]["same_certificate_site_and_type"] is False
+    assert evidence_by_id[1037][0]["same_nonblank_certificate_number"] is True
+    assert evidence_by_id[1180] == []
+    assert all(item["remediation_authorized"] is False for item in effective["effective_anomalies"])
+
+
+def test_confirmed_blanked_filter_changes_only_effective_counts():
+    snapshot = _snapshot()
+    raw = audit_certificate_case_source_links(snapshot)
+    filtered = audit_certificate_case_source_links(
+        snapshot, excluded_certificate_row_keys={"3"}
+    )
+    assert raw["classification_counts"] == filtered["classification_counts"]
+    assert len(raw["anomalies"]) == 7
+    assert len(filtered["anomalies"]) == 7
+    assert len(filtered["effective_anomalies"]) == 6
+    assert filtered["excluded_confirmed_blanked_certificate_count"] == 1
+    assert filtered["effective_certificate_source_rows"] == 8
+    assert filtered["effective_anomalies"][0]["certificate_legacy_id"] == 4
 
 
 def test_cli_strict_is_fail_closed_but_never_writes_database(tmp_path):

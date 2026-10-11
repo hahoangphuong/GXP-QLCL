@@ -164,9 +164,12 @@ class CertificateCaseSourceIntegrityError(ImportCollisionError):
 
     def __init__(self, report: dict[str, Any]):
         self.report = report
-        count = len(report["effective_anomalies"])
+        link_count = len(report["effective_anomalies"])
+        parent_count = len(report.get("effective_parent_anomalies", []))
         super().__init__(
-            f"Legacy Certificate-Case source integrity preflight blocked {count} effective source row(s)."
+            "Legacy Certificate-Case source integrity preflight blocked "
+            f"{link_count} unresolved Certificate-Case link(s) and "
+            f"{parent_count} unimportable source-parent dependency/dependencies."
         )
 
 

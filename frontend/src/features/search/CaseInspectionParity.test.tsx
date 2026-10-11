@@ -8,9 +8,9 @@ const workspace = {
   case_summary: { id: "case-uuid", site_id: "site-uuid", production_line_id: "line-uuid", applicable_standard: "WHO-GMP" },
   inspection: { plan_row_version: 3, outcome_row_version: 6, plan_start_on: null, plan_end_on: null,
     plan_decision_reference: "QD-01", plan_decision_date: "2026-08-01", decision_document_hint: null,
-    inspected_on: "2026-08-05", executed_on: "2026-08-06", minutes_recorded_on: "2026-08-07",
+    inspected_on: "2026-07-01", executed_on: "2026-08-06", minutes_recorded_on: "2026-08-07",
     minutes_recorded_time: null, compliance_due_on: null, outcome_result: "C", team_display_text: "Inspector A",
-    team: null, inspection_period_segments: [], final_evaluation: null },
+    team: null, inspection_period_segments: [{ id: "period-uuid", ordinal: 1, started_on: "2026-08-05", ended_on: "2026-08-06" }], final_evaluation: null },
 } as unknown as CaseWorkspace;
 
 afterEach(cleanup);
@@ -27,7 +27,7 @@ describe("inspection presentation preserves canonical owners", () => {
       .toEqual(["Số/Tham chiếu QĐKT", "Ngày QĐKT"]);
     expect(container.querySelector(".inspection-team-section")).toContainElement(screen.getByText("Thanh tra viên"));
     expect(container.querySelector(".inspection-date-fields")).toContainElement(screen.getByText("Ngày kiểm tra"));
-    expect(container.querySelector(".inspection-date-fields")).toContainElement(screen.getByText("05-08-2026"));
+    expect(container.querySelector(".inspection-date-fields")).toContainElement(screen.getAllByText("Lần 1: 05-08-2026 - 06-08-2026")[0]);
     expect(container.querySelector(".inspection-date-fields")).toContainElement(screen.getByText("Ngày biên bản/report"));
     expect(container.querySelector(".inspection-result-fields")).toContainElement(screen.getByText("Tiêu chuẩn áp dụng"));
     expect(container.querySelector(".inspection-result-fields")).toContainElement(screen.getByText("Đánh giá kết quả"));
@@ -36,6 +36,12 @@ describe("inspection presentation preserves canonical owners", () => {
     expect(screen.getByRole("button", { name: "Sửa đoàn kiểm tra" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Chốt đánh giá cuối cùng" })).toBeDisabled();
     expect(screen.queryByText("Kết quả thẩm định")).not.toBeInTheDocument();
+  });
+
+  it("does not fall back to legacy scalar dates when canonical segments are absent", () => {
+    const { container } = render(inspection(vi.fn(), vi.fn(), { ...workspace, inspection: { ...workspace.inspection, inspection_period_segments: [] } }));
+    expect(container.querySelector(".inspection-date-fields")).toHaveTextContent("Chưa có");
+    expect(screen.queryByText("01-07-2026")).not.toBeInTheDocument();
   });
 
   it.each([403, 409, 422])("keeps outcome draft and version after %s without retry", async status => {

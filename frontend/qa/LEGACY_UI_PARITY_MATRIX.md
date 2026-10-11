@@ -265,7 +265,8 @@ After: split canonical decision fields lead the left column; Thanh tra viên
 labels the existing read-only team snapshot at right. Inspection dates are
 grouped at left and standard/Đánh giá kết quả at right, with white aligned
 values, normal-weight text and a neutral gray frame. Ngày kiểm tra displays
-the existing inspected_on projection, not executed_on or a parsed legacy string.
+the canonical inspection_period_segments (all ordered date ranges), not legacy
+scalar dates, executed_on or parsed source text.
 Additional plan information follows the primary groups without a second owner.
 The single unchanged ContextualDocumentSection occupies an independently
 scrolling right column, retaining workflow_step, document/version/status/actions
@@ -294,7 +295,7 @@ these existing semantics and makes no broader draft-retention claim across
 workflow/facility tabs that unmount their editors.
 
 New presentation regression fails before the fix and passes afterward. It
-checks primary hierarchy, distinct inspection/execution dates, dossier owner
+checks primary hierarchy, canonical date ranges without scalar fallback, dossier owner
 separation and blocked team/final actions. New keyboard/error regressions cover
 F2/Enter/Escape, pending controls, plan token 3 vs outcome token 6, same-context
 draft preservation, 403/409/422 and no automatic retry. Existing App, team/period
@@ -315,7 +316,22 @@ and one explicit plan save (token 3) rejected with 409; navigation adds no
 mutation or duplicate read. Fixtures have no binary content. Real-backend
 integration, screen-reader acceptance and production UAT are unverified.
 
-Validation at the final code: typecheck, lint, all 319 tests / 25 files and
+Inspection CI owner correction: the first pushed slice failed the unchanged A3
+backend architecture guard because the primary date display referenced a legacy
+scalar date projection. The component now uses only canonical period segments,
+sharing its date-range formatter with the existing period owner; no scalar
+fallback, state inference or backend test change. Multiple periods remain ranges
+rather than being collapsed to one legacy date. Missing segments show Chưa có.
+A regression proves contradictory scalar data is ignored. Browser evidence was
+recaptured with synthetic canonical period segments after this correction.
+
+After the period-owner correction: typecheck, lint, all 320 tests / 25 files
+and production build PASS. The final inspection/team-period/document files pass
+32 tests in each of two runs. The unchanged A3 frontend-owner guard also passes
+in isolated function execution; this alone is not a full backend test run.
+No timeout increase, disabled test or backend modification was used.
+
+Validation before the CI period-owner correction: typecheck, lint, all 319 tests / 25 files and
 production build PASS. Initial complete targeted run: 169 tests PASS; final
 inspection/team-period/document files repeated twice: 31 tests PASS each.
 One intermediate full run failed four assertions after the visible outcome-label

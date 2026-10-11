@@ -83,6 +83,12 @@ function buildOutcomeDraft(caseWorkspace: CaseWorkspace): InspectionOutcomeDraft
   };
 }
 
+function formatInspectionPeriods(segments: InspectionPeriodSegmentsUpsertRequest["segments"]): string | null {
+  return segments.length
+    ? segments.map((segment) => `Lần ${segment.ordinal}: ${formatCompactDate(segment.started_on)} - ${formatCompactDate(segment.ended_on)}`).join("\n")
+    : null;
+}
+
 function InspectionPeriodSection({ caseWorkspace, onSave }: { caseWorkspace: CaseWorkspace; onSave: (payload: InspectionPeriodSegmentsUpsertRequest) => Promise<void> }) {
   const [segments, setSegments] = useState<InspectionPeriodSegmentsUpsertRequest["segments"]>([]);
   const [editing, setEditing] = useState(false);
@@ -103,7 +109,7 @@ function InspectionPeriodSection({ caseWorkspace, onSave }: { caseWorkspace: Cas
   return <section className="workspace-section inspection-period-section">
     <div className="workspace-section-heading"><h4>Các đợt kiểm tra canonical</h4><button disabled={!readiness?.available || pending} onClick={() => setEditing(true)} type="button">{readiness?.label ?? "Sửa các đợt kiểm tra"}</button></div>
     {!readiness?.available && readiness?.reason_code ? <p className="workspace-note">Không thể chỉnh sửa: {readiness.reason_code}.</p> : null}
-    {!editing ? <DetailValue multiline label="Các lần kiểm tra" value={segments.length ? segments.map((segment) => `Lần ${segment.ordinal}: ${formatCompactDate(segment.started_on)} - ${formatCompactDate(segment.ended_on)}`).join("\n") : null} /> : <div className="inspection-period-editor">
+    {!editing ? <DetailValue multiline label="Các lần kiểm tra" value={formatInspectionPeriods(segments)} /> : <div className="inspection-period-editor">
       {segments.map((segment, index) => <div className="inspection-team-edit-row" key={segment.ordinal}>
         <span>Lần {index + 1}</span><input aria-label={`Từ ngày lần ${index + 1}`} disabled={pending} onChange={(event) => setSegments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, started_on: event.target.value } : item))} type="date" value={segment.started_on} />
         <input aria-label={`Đến ngày lần ${index + 1}`} disabled={pending} onChange={(event) => setSegments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ended_on: event.target.value } : item))} type="date" value={segment.ended_on} />
@@ -455,7 +461,7 @@ function InspectionOutcomeSection({
       <h4 className="sr-only">Thực hiện & kết quả</h4>
       <div className="detail-grid compact-grid detail-form-matrix">
         <div className="inspection-date-fields">
-          <DetailValue label="Ngày kiểm tra" value={formatCompactDate(caseWorkspace.inspection.inspected_on)} />
+          <DetailValue label="Ngày kiểm tra" multiline value={formatInspectionPeriods(caseWorkspace.inspection.inspection_period_segments ?? [])} />
           <EditableDetailValue editButtonLabel="Sửa Ngày biên bản" error={editingField === "minutes_recorded_on" ? errorMessage : null} isEditing={editingField === "minutes_recorded_on"} label="Ngày biên bản/report" onCancel={cancelEdit} onEdit={() => { setEditingField("minutes_recorded_on"); setErrorMessage(null); }} onSave={() => void saveField()} pending={pending} value={formatCompactDate(caseWorkspace.inspection.minutes_recorded_on)}>
             <input aria-label="Ngày biên bản/report" disabled={pending} onChange={(event) => setDraft((current) => ({ ...current, minutes_recorded_on: event.target.value }))} type="date" value={draft.minutes_recorded_on} />
           </EditableDetailValue>

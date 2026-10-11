@@ -78,6 +78,78 @@ def audit_certificate_case_source_links(
                     "occurrences": count,
                 })
 
+    # A matching Case/Site value is not proof that Phase 2 can actually
+    # materialize its parent chain. The importer creates a Site only when its
+    # Company FK resolves, and a Case only when its Site FK resolves. This is a
+    # distinct source-importability check, not a change to regulatory link
+    # classification or authority to remediate any association.
+    parent_check_available = {"db.cty", "db.cso", "db.ktra", "db.cc"}.issubset(snapshot)
+    source_parent_anomalies: list[dict[str, Any]] = []
+    effective_parent_anomalies: list[dict[str, Any]] = []
+    if parent_check_available:
+        company_ids = {
+            parsed for source in snapshot["db.cty"]
+            if (parsed := parse_int(normalize_row(source).get("ID"))) is not None
+        }
+        importable_site_ids: set[int] = set()
+        for source in snapshot["db.cso"]:
+            row = normalize_row(source)
+            site_id = parse_int(row.get("ID"))
+            company_id = parse_int(row.get("company_legacy_id_ref"))
+            if site_id is not None and company_id in company_ids:
+                importable_site_ids.add(site_id)
+
+        all_case_ids: set[int] = set()
+        importable_case_ids: set[int] = set()
+        for source in snapshot["db.ktra"]:
+            row = normalize_row(source)
+            case_id = parse_int(row.get("ID"))
+            case_site = parse_int(row.get("site_legacy_id_ref"))
+            if case_id is None:
+                continue
+            all_case_ids.add(case_id)
+            if case_site in importable_site_ids:
+                importable_case_ids.add(case_id)
+
+        for source in snapshot["db.cc"]:
+            row = normalize_row(source)
+            certificate_id = parse_int(row.get("ID"))
+            row_key = source_row_key(
+                legacy_row_id=certificate_id,
+                source_row_number_value=source_row_number(row),
+            )
+            is_excluded = row_key in excluded
+            certificate_site = parse_int(row.get("site_legacy_id_ref"))
+            case_reference = str(row.get("inspection_case_legacy_id_ref") or "").strip()
+            linked_case = parse_int(case_reference)
+            parent_problems: list[dict[str, Any]] = []
+            if certificate_site not in importable_site_ids:
+                parent_problems.append({
+                    "classification": "CERTIFICATE_SITE_PARENT_NOT_IMPORTABLE",
+                    "parent_source_sheet": "db.cso",
+                    "parent_legacy_id": certificate_site,
+                })
+            # Missing/unparseable Case references are already classified by the
+            # link audit; here we only flag a *present* Case source row whose
+            # own Site parent cannot materialize under default import mapping.
+            if case_reference and linked_case in all_case_ids and linked_case not in importable_case_ids:
+                parent_problems.append({
+                    "classification": "LINKED_CASE_PARENT_NOT_IMPORTABLE",
+                    "parent_source_sheet": "db.ktra",
+                    "parent_legacy_id": linked_case,
+                })
+            for problem in parent_problems:
+                item = {
+                    **problem,
+                    "certificate_legacy_id": certificate_id,
+                    "certificate_source_row_key": row_key,
+                    "excluded_confirmed_blanked": is_excluded,
+                    "remediation_authorized": False,
+                }
+                source_parent_anomalies.append(item)
+                if not is_excluded:
+                    effective_parent_anomalies.append(item)
+
     raw_counts: Counter[str] = Counter()
     effective_counts: Counter[str] = Counter()
     anomalies: list[dict[str, Any]] = []
@@ -186,6 +258,9 @@ def audit_certificate_case_source_links(
         "effective_classification_counts": dict(sorted(effective_counts.items())),
         "effective_anomalies": effective_anomalies,
         "source_identity_anomalies": source_identity_anomalies,
+        "source_parent_check_available": parent_check_available,
+        "source_parent_anomalies": source_parent_anomalies,
+        "effective_parent_anomalies": effective_parent_anomalies,
         "database_mutated": False,
         "source_modified": False,
     }

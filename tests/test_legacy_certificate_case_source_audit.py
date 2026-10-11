@@ -120,13 +120,18 @@ def test_real_source_snapshot_exposes_all_site_conflicts_without_inventing_remed
             "case_legacy_id": 380,
             "site_legacy_id": 73,
             "gxp_type": "GMP",
+            "inspection_period_source": "07-08/12/2017",
             "same_certificate_site_and_type": True,
             "same_nonblank_certificate_number": True,
+            "same_nonblank_scope_text": True,
         }
     ]
     assert evidence_by_id[1037][0]["case_legacy_id"] == 1023
     assert evidence_by_id[1037][0]["same_certificate_site_and_type"] is False
     assert evidence_by_id[1037][0]["same_nonblank_certificate_number"] is True
+    assert evidence_by_id[1037][0]["same_nonblank_scope_text"] is False
+    assert report["effective_anomalies"][0]["certificate_issued_at_source"] == "2018-03-12 00:00:00+00:00"
+    assert report["effective_anomalies"][0]["linked_case_inspection_period_source"] == "04-05/03/2008"
     assert evidence_by_id[1180] == []
     assert all(item["remediation_authorized"] is False for item in effective["effective_anomalies"])
 
@@ -308,3 +313,35 @@ def test_cli_strict_cannot_certify_partial_source_without_parent_sheets(tmp_path
     source.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
     assert main(["--snapshot", str(source)]) == 0
     assert main(["--snapshot", str(source), "--strict"]) == 2
+
+
+def test_reverse_case_scope_evidence_is_exact_not_a_remediation_decision():
+    snapshot = {
+        "db.ktra": [
+            {"ID": "100", "ID CƠ SỞ": "11", "LOẠI KT": "GMP", "Ngày K.tra": "01/01/2008"},
+            {"ID": "101", "ID CƠ SỞ": "10", "LOẠI KT": "GMP", "ID CC GPs": "200",
+             "Mã số CC": "CERT-200", "Ngày K.tra": "01/01/2019", "PHẠM VI KIỂM TRA": "  Scope exact  "},
+        ],
+        "db.cc": [
+            {"ID": "200", "ID ĐỢT KTRA": "100", "ID CƠ SỞ": "10", "LOẠI CC": "GMP",
+             "Mã số CC": "CERT-200", "Ngày cấp CC": "2019-03-01", "PHẠM VI CHỨNG NHẬN": "Scope exact"},
+        ],
+    }
+    report = audit_certificate_case_source_links(snapshot)
+    assert report["effective_anomalies"][0]["classification"] == "SITE_MISMATCH"
+    alternate = report["effective_anomalies"][0]["reverse_case_reference_evidence"][0]
+    assert alternate["case_legacy_id"] == 101
+    assert alternate["same_nonblank_scope_text"] is True
+    assert alternate["inspection_period_source"] == "01/01/2019"
+    assert report["effective_anomalies"][0]["certificate_issued_at_source"] == "2019-03-01"
+    assert report["effective_anomalies"][0]["linked_case_inspection_period_source"] == "01/01/2008"
+    assert report["effective_anomalies"][0]["remediation_authorized"] is False
+
+    snapshot["db.ktra"][1]["PHẠM VI KIỂM TRA"] = "Scope extra"
+    changed = audit_certificate_case_source_links(snapshot)
+    assert changed["effective_anomalies"][0]["reverse_case_reference_evidence"][0]["same_nonblank_scope_text"] is False
+
+    snapshot["db.ktra"][1]["PHẠM VI KIỂM TRA"] = ""
+    snapshot["db.cc"][0]["PHẠM VI CHỨNG NHẬN"] = ""
+    blanks = audit_certificate_case_source_links(snapshot)
+    assert blanks["effective_anomalies"][0]["reverse_case_reference_evidence"][0]["same_nonblank_scope_text"] is False

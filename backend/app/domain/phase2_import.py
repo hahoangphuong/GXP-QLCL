@@ -169,7 +169,7 @@ class CertificateCaseSourceIntegrityError(ImportCollisionError):
         super().__init__(
             "Legacy Certificate-Case source integrity preflight blocked "
             f"{link_count} unresolved Certificate-Case link(s) and "
-            f"{parent_count} unimportable source-parent dependency/dependencies."
+            f"{parent_count} unimportable source-parent association(s)."
         )
 
 

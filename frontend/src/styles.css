@@ -2531,6 +2531,29 @@ tr:focus-visible {
 }
 .legacy-search-page .history-table { min-width: 0; }
 .legacy-search-page .history-table td:nth-child(2) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.legacy-search-page:has(.facility-tabs .workspace-tab:first-child[aria-selected="true"]) {
+  grid-template-areas: "master master actions" "tabs tabs tabs" "detail detail detail";
+}
+.legacy-search-page:has(.facility-tabs .workspace-tab:first-child[aria-selected="true"]) .history-panel { display: none; }
+.legacy-search-page .general-legacy-layout { grid-template-columns: minmax(0, 55fr) minmax(0, 45fr); height: 100%; align-content: stretch; gap: 10px; padding: 6px; }
+.general-certificate-pane, .general-identity-pane { min-width: 0; min-height: 0; overflow: auto; }
+.general-legacy-layout dl { margin: 0; }
+.general-certificate-pane { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 6px; }
+.general-certificate-grid { height: 100%; display: grid; grid-template-rows: minmax(160px, 1fr) minmax(70px, auto); gap: 6px; }
+.general-field, .general-scope-field { display: grid; grid-template-columns: 115px minmax(0, 1fr); gap: 6px; align-items: start; margin-bottom: 5px; }
+.general-legacy-layout dt { text-align: right; align-self: start; padding-top: 4px; }
+.general-legacy-layout dd { margin: 0; padding: 4px 6px; border: 1px inset #aaa; background: #fff; min-height: 28px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.general-certificate-pane dd, .general-standard { background: #c0ffff; }
+.general-standard { display: block; border: 1px inset #aaa; padding: 4px; margin-top: 12px; text-align: center; }
+.general-context { display: block; font-size: .75rem; margin-top: 6px; }
+.general-scope-field dd { height: 100%; min-height: 160px; overflow: auto; }
+.general-certificate-footer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 6px; }
+.general-certificate-footer > dl:last-child dd { background: #fff; }
+.general-certificate-footer .general-field { grid-template-columns: 110px minmax(0, 1fr); }
+.general-identity-pane .general-field { grid-template-columns: 125px minmax(0, 1fr); }
+.general-address dd { min-height: 65px; }
+.general-contact dd { min-height: 50px; }
+.general-highlight dd { background: #ffff00; }
 @media (max-width: 1100px) {
   .legacy-search-page {
     grid-template-rows: minmax(230px, auto) auto auto minmax(300px, 45vh) minmax(420px, auto);
@@ -2540,4 +2563,10 @@ tr:focus-visible {
     grid-template-rows: minmax(230px, auto) auto auto minmax(420px, auto);
     grid-template-areas: "master" "actions" "tabs" "detail";
   }
+  .legacy-search-page:has(.facility-tabs .workspace-tab:first-child[aria-selected="true"]) {
+    grid-template-rows: minmax(230px, auto) auto auto minmax(420px, auto);
+    grid-template-areas: "master" "actions" "tabs" "detail";
+  }
+  .legacy-search-page .general-legacy-layout { grid-template-columns: minmax(0, 1fr); height: auto; }
+  .general-certificate-footer { grid-template-columns: minmax(0, 1fr); }
 }

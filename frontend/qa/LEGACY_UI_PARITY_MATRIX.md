@@ -5,6 +5,39 @@ recommendations in UI_REDESIGN_VBA_REFERENCE and PHASE12. Preserve legacy UI whe
 evidenced. Baseline: `50576b0b383161e26e27b6cdc4a1a469aff1ae17`; work branch:
 `codex/legacy-ui-parity-20261010`. This delivery is partial; it does not close #1.
 
+General Information runtime evidence received 2026-10-11: left certificate scope,
+standard, limits, certificate dates/status and facility status; right facility
+name/address, company/headquarters, leader, professional/QA persons, contacts,
+specialist and foreign-investment snapshot. FacilitySummary now uses this order
+and two-pane composition. General Information spans the lower workspace; history
+presentation is hidden only for this tab, without changing selection ownership.
+Master search appearance and the removal of the extra filter/context surfaces
+remain in force. Long right-hand content scrolls independently on desktop.
+
+Concrete data gap C7: FacilityWorkspaceSummary has certificate_scope_summary but
+no separate certificate limitation or current certificate ID. The Giới hạn row
+therefore shows an explicit unavailable-data message. No text parsing, inference,
+certificate-detail fetch by guessed identity or API/schema change is introduced.
+Other canonical fields are retained, including province/context indicators that
+are additional to the pictured lower form. StatusBadge uses the authoritative
+certificate status; expiry dates do not trigger new client-side business rules.
+Legacy file/link buttons are not invented without an established action contract.
+
+Fixture captures: legacy-general-1366/1920/390.png outside git. No horizontal
+page overflow, vertical GxP rail preserved, and returning to history retains its
+selected event. Supplied screenshot/business values are excluded from git.
+RecordForm/pickers and the remaining inspection/CAPA/final groups still need work.
+
+General Information validation: typecheck, lint, all 309 tests / 23 files and
+build PASS. The two complete related test files also pass (143 tests). An initial
+full run hit two unchanged 5000ms test timeouts; a name-filtered diagnostic run
+failed two App async queries. Complete-file and full-suite reruns above pass
+without changing test timeouts or business code. This does not establish the
+cause of those transient diagnostic failures. Browser evidence is fixture API
+only; real-backend integration and screen-reader verification remain pending.
+Older EVIDENCE_MISSING references to General Information below are superseded by
+the runtime screenshot and validation recorded in this section.
+
 Latest user correction (2026-10-10): remove the entire Lọc / Lọc dữ liệu row;
 retain only the existing master name/scope inputs. Remove the facility context
 summary below history and extend history to the bottom of the workspace. Restore

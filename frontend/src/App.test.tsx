@@ -1458,7 +1458,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".facility-table tbody tr.selected")).not.toBeNull();
   });
 
-  it("renders three grouped sections in Thông tin chung with imported general info values from canonical owner fields", async () => {
+  it("renders the evidenced general information layout with canonical values and no inferred certificate limits", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(
@@ -1479,8 +1479,8 @@ describe("App Slice A.4 search workspace", () => {
 
     renderApp(["/search?facility_tab=Thông%20tin%20chung"]);
 
-    expect(await screen.findByRole("heading", { name: "Thông tin về công ty" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Thông tin về cơ sở" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Thông tin về cơ sở và công ty" })).toBeInTheDocument();
+
     expect(screen.getByRole("heading", { name: "Thông tin về GxP" })).toBeInTheDocument();
     expect(screen.getByText("Công ty A")).toBeInTheDocument();
     expect(screen.getByText("456 Trụ sở công ty")).toBeInTheDocument();
@@ -1498,6 +1498,10 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByText("15-03-2027")).toBeInTheDocument();
     expect(screen.getByText("PIC/S-GMP")).toBeInTheDocument();
     expect(screen.getByText("Dây chuyền thuốc nước")).toBeInTheDocument();
+    expect(screen.getByText("Chưa có dữ liệu giới hạn.")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Thông tin về GxP" })).toContainElement(screen.getByText("GCN-789"));
+    expect(screen.getByRole("region", { name: "Thông tin về cơ sở và công ty" })).toContainElement(screen.getByText("456 Trụ sở công ty"));
+    expect(apiMocks.getGxpCertificateDetail).not.toHaveBeenCalled();
     expect(screen.getByText("Còn hiệu lực", { selector: ".status-badge" })).toBeInTheDocument();
   });
 

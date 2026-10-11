@@ -167,3 +167,28 @@ confirmed-blanked contract entries yielded **0 currently importable
 excluded source rows**. No source content, owner approval, Certificate–Case
 business association or database row was altered. The strict source audit's
 three effective cross-Site Certificate links remain unresolved.
+
+
+## Strict importer and owner-approved Certificate resurrection population
+
+A further compatibility check found that strict import previously passed **all**
+confirmed-blanked `db.cc` keys as effective exclusions to the standalone source
+auditor even when the importer had an independently owner-approved, exact
+resurrection override. The auditor then classified a legitimate importable
+restored Certificate as `excluded_importable_certificate_rows`, making strict
+import reject a source row that default import would lawfully materialize.
+
+The importer now validates the existing owner-approved resurrection contract
+**before** calculating strict effective exclusions. A Certificate with a
+matching explicit approved override is included in the strict effective
+source population, so its literal Case/Site/GxP relationship is checked
+exactly like any other Certificate; a wrong Site or GxP still fails before
+schema creation. Without an exact signed approval, the source remains
+excluded and a newly importable deleted row is still rejected. The standalone
+`--strict` CLI has no remediation authority and remains unchanged.
+
+This is not source-FK repair by inference. Where a reviewed override itself
+would change a missing Case/Site source FK, the literal source auditor may
+still reject incomplete raw context, as a fail-closed limitation pending an
+explicit, provenance-preserving applied-override audit contract. No approval
+file, workbook, business row, schema or runtime Certificate link was edited.

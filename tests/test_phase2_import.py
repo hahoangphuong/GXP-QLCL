@@ -1353,3 +1353,97 @@ def test_invalid_resurrection_override_rejected_before_schema_mutation(monkeypat
             remediation_overrides={"db.cso": {"10": {"company_legacy_id": 1}}},
         )
     assert inspect(engine).has_table("site") is False
+
+
+@pytest.mark.parametrize(
+    ("case_ref", "case_site", "case_gxp", "expected_error"),
+    [
+        ("100", "10", "GMP", None),
+        ("", "10", "GMP", None),
+        ("100", "11", "GMP", "SITE_MISMATCH"),
+        ("100", "10", "GLP", "GXP_MISMATCH"),
+    ],
+)
+def test_strict_import_reviews_approved_certificate_resurrection_as_effective_source(
+    monkeypatch, tmp_path, case_ref, case_site, case_gxp, expected_error
+):
+    # Exact owner approval restores an effective row; it does not exempt that
+    # row from the Case/Site/GxP integrity invariant.
+    blanked = tmp_path / "blanked.json"
+    blanked.write_text(
+        json.dumps({"rows": [{"source_sheet": "db.cc", "source_row_key": "200"}]}),
+        encoding="utf-8",
+    )
+    approved = tmp_path / "resurrections.json"
+    approved.write_text(
+        json.dumps({"rows": [{
+            "source_sheet": "db.cc", "source_row_key": "200",
+            "approved_override": {"site_legacy_id": 10},
+        }]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", blanked)
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_RESURRECTIONS_PATH", approved)
+
+    snapshot = sample_snapshot()
+    snapshot["db.cc"][0]["ID ĐỢT KTRA"] = case_ref
+    snapshot["db.ktra"][0]["ID CƠ SỞ"] = case_site
+    snapshot["db.ktra"][0]["LOẠI KT"] = case_gxp
+    if case_site == "11":
+        second_site = dict(snapshot["db.cso"][0])
+        second_site.update({"ID": "11", "TÊN CƠ SỞ": "Site B"})
+        snapshot["db.cso"].append(second_site)
+    overrides = {"db.cc": {"200": {"site_legacy_id": 10}}}
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        if expected_error is not None:
+            with pytest.raises(CertificateCaseSourceIntegrityError) as exc:
+                import_snapshot(
+                    session, snapshot,
+                    remediation_overrides=overrides,
+                    options=ImportExecutionOptions(strict_certificate_case_source_links=True),
+                )
+            assert [row["classification"] for row in exc.value.report["effective_anomalies"]] == [expected_error]
+            assert exc.value.report["excluded_importable_certificate_rows"] == []
+            assert inspect(engine).has_table("certificate") is False
+            assert inspect(engine).has_table("site") is False
+        else:
+            import_snapshot(
+                session, snapshot,
+                remediation_overrides=overrides,
+                options=ImportExecutionOptions(strict_certificate_case_source_links=True),
+            )
+            certificates = session.scalars(select(Certificate)).all()
+            assert len(certificates) == 1
+            assert (certificates[0].case_id is None) is (case_ref == "")
+            assert certificates[0].issuance_basis == (
+                "administrative_no_inspection" if case_ref == "" else "inspection_case"
+            )
+
+
+def test_strict_certificate_resurrection_requires_exact_owner_approval_before_schema(
+    monkeypatch, tmp_path
+):
+    blanked = tmp_path / "blanked.json"
+    blanked.write_text(
+        json.dumps({"rows": [{"source_sheet": "db.cc", "source_row_key": "200"}]}),
+        encoding="utf-8",
+    )
+    approved = tmp_path / "resurrections.json"
+    approved.write_text(json.dumps({"rows": [{
+        "source_sheet": "db.cc", "source_row_key": "200",
+        "approved_override": {"site_legacy_id": 10},
+    }]}), encoding="utf-8")
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", blanked)
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_RESURRECTIONS_PATH", approved)
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session, pytest.raises(
+        ConfirmedBlankedResurrectionError, match="does not match"
+    ):
+        import_snapshot(
+            session, sample_snapshot(),
+            remediation_overrides={"db.cc": {"200": {"site_legacy_id": 11}}},
+            options=ImportExecutionOptions(strict_certificate_case_source_links=True),
+        )
+    assert inspect(engine).has_table("certificate") is False
+    assert inspect(engine).has_table("company") is False

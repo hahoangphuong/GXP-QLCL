@@ -1416,6 +1416,16 @@ def import_snapshot(
     resolved_options = options or ImportExecutionOptions()
     _validate_snapshot_source_keys(snapshot)
     validate_snapshot_schema_lengths(snapshot)
+    # Owner authorization precedes effective-population classification.
+    # The standalone audit (without a signed override) still treats every
+    # confirmed-blanked Certificate as excluded.
+    confirmed_blanked_row_keys = load_confirmed_blanked_row_keys()
+    approved_confirmed_blanked_resurrections = load_confirmed_blanked_resurrections()
+    _validate_confirmed_blanked_override_contract(
+        remediation_overrides,
+        confirmed_blanked_row_keys=confirmed_blanked_row_keys,
+        approved_resurrections=approved_confirmed_blanked_resurrections,
+    )
     if resolved_options.strict_certificate_case_source_links:
         # Fail before schema creation, reset, or any persistent migration action.
         # Import the read-only owner locally to avoid an import-time dependency cycle.
@@ -1423,11 +1433,18 @@ def import_snapshot(
             audit_certificate_case_source_links,
         )
 
+        approved_certificate_row_keys = set(
+            (remediation_overrides or {}).get("db.cc", {})
+        )
         reviewed_blanked_certificate_keys = {
             source_key
-            for source_sheet, source_key in load_confirmed_blanked_row_keys()
+            for source_sheet, source_key in confirmed_blanked_row_keys
             if source_sheet == "db.cc"
+            and source_key not in approved_certificate_row_keys
         }
+        # An exactly authorized resurrection is subject to the *same*
+        # strict source Case/Site/GxP checks as ordinary imported rows.
+        # Never hide it among confirmed-blanked exclusions.
         source_link_report = audit_certificate_case_source_links(
             snapshot,
             excluded_certificate_row_keys=reviewed_blanked_certificate_keys,
@@ -1438,16 +1455,8 @@ def import_snapshot(
             or source_link_report["excluded_importable_certificate_rows"]
         ):
             raise CertificateCaseSourceIntegrityError(source_link_report)
-    # An approved blanked-row exclusion is an import boundary, not only a
-    # missing-FK anomaly label. Validate the owner contract and source
-    # materializability before creating or resetting any database tables.
-    confirmed_blanked_row_keys = load_confirmed_blanked_row_keys()
-    approved_confirmed_blanked_resurrections = load_confirmed_blanked_resurrections()
-    _validate_confirmed_blanked_override_contract(
-        remediation_overrides,
-        confirmed_blanked_row_keys=confirmed_blanked_row_keys,
-        approved_resurrections=approved_confirmed_blanked_resurrections,
-    )
+    # The ordinary importer and strict mode share the same validated owner
+    # authorization. Check materialization before creating/resetting tables.
     _validate_confirmed_blanked_source_materialization(
         snapshot,
         confirmed_blanked_row_keys=confirmed_blanked_row_keys,

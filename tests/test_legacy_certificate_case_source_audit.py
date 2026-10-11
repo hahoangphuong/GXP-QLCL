@@ -290,3 +290,21 @@ def test_administrative_certificate_requires_materializable_site_parent(tmp_path
     source = tmp_path / "orphan-admin.json"
     source.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
     assert main(["--snapshot", str(source), "--strict"]) == 2
+
+
+def test_cli_strict_cannot_certify_partial_source_without_parent_sheets(tmp_path):
+    # Link-only analysis is allowed, but its clean result must not be mistaken
+    # for an importer-compatible source-integrity acceptance decision.
+    snapshot = {
+        "db.ktra": [{"ID": "100", "ID CƠ SỞ": "10", "LOẠI KT": "GMP"}],
+        "db.cc": [{"ID": "200", "ID ĐỢT KTRA": "100", "ID CƠ SỞ": "10", "LOẠI CC": "GMP"}],
+    }
+    report = audit_certificate_case_source_links(snapshot)
+    assert report["effective_anomalies"] == []
+    assert report["source_identity_anomalies"] == []
+    assert report["effective_parent_anomalies"] == []
+    assert report["source_parent_check_available"] is False
+    source = tmp_path / "partial-source.json"
+    source.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+    assert main(["--snapshot", str(source)]) == 0
+    assert main(["--snapshot", str(source), "--strict"]) == 2

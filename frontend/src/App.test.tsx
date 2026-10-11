@@ -2385,7 +2385,10 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByText("Thực hiện & kết quả")).toBeInTheDocument();
     expect(screen.getByText("Đoàn kiểm tra")).toBeInTheDocument();
     expect(container.querySelectorAll(".inspection-workspace .detail-form-matrix")).toHaveLength(3);
-    for (const field of ["Từ ngày", "Đến ngày", "Số/Tham chiếu QĐKT", "Biên bản legacy (chỉ đọc)", "Tiêu chuẩn áp dụng", "Kết quả kiểm tra"]) {
+    expect(container.querySelectorAll(".inspection-workflow-layout .document-workspace")).toHaveLength(1);
+    expect(container.querySelector(".inspection-document-column")).toContainElement(screen.getByRole("table", { name: "Danh sách tài liệu liên quan" }));
+    expect(container.querySelector(".inspection-date-fields")).toContainElement(screen.getByText("Ngày kiểm tra"));
+    for (const field of ["Từ ngày", "Đến ngày", "Số/Tham chiếu QĐKT", "Biên bản legacy (chỉ đọc)", "Tiêu chuẩn áp dụng", "Đánh giá kết quả"]) {
       expect(screen.getAllByText(field).length).toBeGreaterThan(0);
     }
     expect(screen.getByRole("button", { name: "Sửa đoàn kiểm tra" })).toBeDisabled();
@@ -2910,7 +2913,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByText("Thực hiện & kết quả")).toBeInTheDocument();
     fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Kết quả kiểm tra" }));
     fireEvent.change(screen.getByLabelText("Kết quả kiểm tra"), { target: { value: "Kết quả draft mới" } });
-    fireEvent.click(screen.getByRole("button", { name: "Lưu Kết quả kiểm tra" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lưu Đánh giá kết quả" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Không thể lưu kết quả kiểm tra vì hồ sơ đã bị thay đổi hoặc đã ở trạng thái kết thúc. Tải lại workspace rồi thử lại.",

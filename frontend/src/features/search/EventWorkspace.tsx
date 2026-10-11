@@ -347,7 +347,7 @@ function renderCaseStepContent(
 
   if (activeTab === "Kiểm tra") {
     return (
-      <div className="event-step-stack">
+      <div className="inspection-workflow-layout">
         <CaseInspectionWorkspace
           caseWorkspace={caseWorkspace}
           onInspectionOutcomeSave={onInspectionOutcomeSave}
@@ -360,15 +360,17 @@ function renderCaseStepContent(
           onLoadInspectionTeamIdentityOptions={onLoadInspectionTeamIdentityOptions}
           onFinalizeInspectionOutcome={onFinalizeInspectionOutcome}
         />
-        <ContextualDocumentSection
-          contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
-          items={documentItems}
-          onCreateDocument={(item, action) =>
-            onCreateDocument(caseWorkspace.case_summary.id, item, action)
-          }
-          onLoadDocumentDetail={onLoadDocumentDetail}
-          onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
-        />
+        <div className="inspection-document-column">
+          <ContextualDocumentSection
+            contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
+            items={documentItems}
+            onCreateDocument={(item, action) =>
+              onCreateDocument(caseWorkspace.case_summary.id, item, action)
+            }
+            onLoadDocumentDetail={onLoadDocumentDetail}
+            onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
+          />
+        </div>
       </div>
     );
   }

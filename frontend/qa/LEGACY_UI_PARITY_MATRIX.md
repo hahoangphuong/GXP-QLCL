@@ -250,6 +250,80 @@ mount only while the disclosure is open, keeping the closed search DOM compact;
 opening/closing still has no query or mutation effect. Native disclosure, desktop
 pane geometry and certificate tab round-trips were checked in the fixture browser.
 
+## Actual inspection visual/interaction slice — 2026-10-11
+
+Baseline: 39e80378b71d5cf48d50ebfcc5c509ad2ef4a551. Supplied runtime image 2
+establishes decision/date and inspection/report dates at left; inspectors,
+standard and outcome at right; contextual document access at the right edge.
+MainForm DataKT(5..9) maps edKTNgay, edKTQD, edKTBienban, edKTNguoi and
+edKTKetqua. MainForm.frx contains the inspection tab, inspection date, report
+date and outcome captions; designer data does not establish runtime pixels.
+
+Before: plan start preceded decision, outcome used a single mixed grid below
+the plan/team sections, and documents followed the entire inspection workspace.
+After: split canonical decision fields lead the left column; Thanh tra viên
+labels the existing read-only team snapshot at right. Inspection dates are
+grouped at left and standard/Đánh giá kết quả at right, with white aligned
+values, normal-weight text and a neutral gray frame. Ngày kiểm tra displays
+the existing inspected_on projection, not executed_on or a parsed legacy string.
+Additional plan information follows the primary groups without a second owner.
+The single unchanged ContextualDocumentSection occupies an independently
+scrolling right column, retaining workflow_step, document/version/status/actions
+and the complete canonical context key. Narrow layout stacks and scrolls before
+the shared scope pane. Master, history, tabs, FacilitySummary and registration
+are untouched. CaseAssessment remains registration-only; InspectionOutcome and
+final_evaluation are not conflated.
+
+Contract differences retained: decision_reference and decision_date remain two
+independent editors rather than one composite legacy value. The typed
+minutes_recorded_on label remains Ngày biên bản/report: the legacy B. bản source
+includes text and multi-period values, so this slice does not assert a universal
+mapping to Ngày viết báo cáo. Structured team controls/readiness, compatibility
+references, period, approval, lifecycle and final-evaluation controls remain;
+they are not replaced with legacy free-text edits or moved between owners.
+The canonical document table/detail remains instead of four file buttons.
+No completion tick, lookup by filename/path, missing mutation or status rule
+is fabricated. Relative parity is improved; this is not pixel-perfect parity.
+
+EVIDENCE_MISSING: runtime editors/save/cancel/error states; layout for structured
+team, canonical period, approval and lifecycle controls; provenance of shared
+Ghi chú; universal report-date mapping. Existing team 409 behavior deliberately
+closes/discards its structured draft (covered by the unchanged regression),
+whereas plan/outcome 403/409/422 retain their open drafts. This slice preserves
+these existing semantics and makes no broader draft-retention claim across
+workflow/facility tabs that unmount their editors.
+
+New presentation regression fails before the fix and passes afterward. It
+checks primary hierarchy, distinct inspection/execution dates, dossier owner
+separation and blocked team/final actions. New keyboard/error regressions cover
+F2/Enter/Escape, pending controls, plan token 3 vs outcome token 6, same-context
+draft preservation, 403/409/422 and no automatic retry. Existing App, team/period
+and contextual-document tests retain selection, cancellation, identity and
+stale-response coverage. App additionally asserts a single document workspace
+in the right column. No timeout or existing test is removed.
+
+Fixture browser evidence outside git: inspection-parity-1366.png,
+inspection-parity-1920.png, inspection-parity-390.png, inspection-editor-390.png,
+inspection-conflict-1366.png, inspection-document-390.png and
+inspection-request-counts.json. Viewports confirmed 1366x768, 1920x1080,
+390x844; page width does not overflow (mobile scrollWidth 384). Scope follows
+the full narrow inspection content. Keyboard editing/cancel and document
+selection/F6 work; scope tabs retain plan/outcome drafts. Facility tab
+round-trips retain selected history and production-line UUID. Counters show
+one search, one facility and one case read, one explicit document-detail read,
+and one explicit plan save (token 3) rejected with 409; navigation adds no
+mutation or duplicate read. Fixtures have no binary content. Real-backend
+integration, screen-reader acceptance and production UAT are unverified.
+
+Validation at the final code: typecheck, lint, all 319 tests / 25 files and
+production build PASS. Initial complete targeted run: 169 tests PASS; final
+inspection/team-period/document files repeated twice: 31 tests PASS each.
+One intermediate full run failed four assertions after the visible outcome-label
+change also changed the textarea accessible name. The editor name was restored;
+the complete final run above passes. No timeout was raised or test disabled.
+Existing non-failing React act warnings remain. Diff is frontend-only; there is
+no data, storage, authorization or backend mutation-contract change.
+
 ## Dossier assessment placement follow-up
 
 ### Registration visual/interaction slice — 2026-10-11

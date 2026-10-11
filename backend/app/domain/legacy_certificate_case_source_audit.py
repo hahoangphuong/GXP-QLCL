@@ -49,28 +49,34 @@ def audit_certificate_case_source_links(
         if reverse_certificate_id is not None and legacy_case_id is not None:
             reverse_case_references[reverse_certificate_id].append(row)
 
-    # The importer rejects duplicate db.cc source identities before any schema write.
-    # Audit CLI must surface the same structural blocker, even when duplicated
-    # rows each have otherwise valid Case/Site/GxP links or are excluded later.
-    certificate_identity_counts: Counter[str] = Counter()
-    for source_row in snapshot["db.cc"]:
-        certificate = normalize_row(source_row)
-        row_key = source_row_key(
-            legacy_row_id=parse_int(certificate.get("ID")),
-            source_row_number_value=source_row_number(certificate),
-        )
-        if row_key is not None:
-            certificate_identity_counts[row_key] += 1
-    source_identity_anomalies = [
-        {
-            "classification": "DUPLICATE_CERTIFICATE_SOURCE_ROW_KEY",
-            "source_sheet": "db.cc",
-            "source_row_key": key,
-            "occurrences": count,
-        }
-        for key, count in sorted(certificate_identity_counts.items())
-        if count > 1
-    ]
+    # _validate_snapshot_source_keys rejects duplicates across *every* source
+    # sheet before schema creation, not merely db.cc. Mirror that structural
+    # preflight so a standalone --strict source audit cannot report false-clean
+    # input when an unrelated parent sheet is not importable. Keep certificate
+    # link classifications independent of source-key validity.
+    source_identity_anomalies: list[dict[str, Any]] = []
+    for source_sheet, source_rows in sorted(snapshot.items()):
+        identity_counts: Counter[str] = Counter()
+        for source_row in source_rows:
+            row = normalize_row(source_row)
+            row_key = source_row_key(
+                legacy_row_id=parse_int(row.get("ID")),
+                source_row_number_value=source_row_number(row),
+            )
+            if row_key is not None:
+                identity_counts[row_key] += 1
+        for key, count in sorted(identity_counts.items()):
+            if count > 1:
+                source_identity_anomalies.append({
+                    "classification": (
+                        "DUPLICATE_CERTIFICATE_SOURCE_ROW_KEY"
+                        if source_sheet == "db.cc"
+                        else "DUPLICATE_SOURCE_ROW_KEY"
+                    ),
+                    "source_sheet": source_sheet,
+                    "source_row_key": key,
+                    "occurrences": count,
+                })
 
     raw_counts: Counter[str] = Counter()
     effective_counts: Counter[str] = Counter()

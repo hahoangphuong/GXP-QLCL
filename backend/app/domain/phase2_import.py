@@ -1396,6 +1396,22 @@ def _validate_confirmed_blanked_source_materialization(
             for field, parent_sheet, reason, optional in requirements:
                 raw_parent = str(row.get(field) or "").strip()
                 if optional and not raw_parent:
+                    # _resolve_optional_legacy_fk returns None immediately for
+                    # an empty Case FK. Even an exactly signed resurrection
+                    # cannot make that resolver use the approved Case ID.
+                    # Reject the contradictory contract rather than silently
+                    # import an administrative Certificate in its place.
+                    if has_approved_resurrection and _get_override(
+                        overrides, source_sheet, row_key,
+                        REMEDIATION_KEY_BY_REASON[reason],
+                    ) is not None:
+                        raise ConfirmedBlankedResurrectionError(
+                            "Confirmed blanked source row "
+                            f"{source_sheet}:{row_key} has an empty optional "
+                            f"{field} but the approved override cannot be "
+                            "applied by the importer's optional FK resolver. "
+                            "Refusing to alter Certificate issuance basis implicitly."
+                        )
                     continue
                 parent_id = parse_int(raw_parent)
                 if parent_id not in importable_ids[parent_sheet]:

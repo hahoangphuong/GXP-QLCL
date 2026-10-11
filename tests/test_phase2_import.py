@@ -1584,3 +1584,72 @@ def test_strict_rejects_nonapproved_generic_fk_projection_even_if_default_import
         )
     assert exc.value.report["effective_parent_anomalies"]
     assert inspect(engine).has_table("certificate") is False
+
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_approved_case_fk_override_cannot_silently_convert_blank_administrative_source(
+    monkeypatch, tmp_path, strict
+):
+    # The existing optional-FK owner intentionally treats an empty source
+    # reference as administrative. An approved case_legacy_id would be
+    # ignored by the actual importer and must fail before any schema write.
+    snapshot = sample_snapshot()
+    snapshot["db.cc"][0]["ID ĐỢT KTRA"] = ""
+    original_snapshot = json.loads(json.dumps(snapshot))
+    blanked = tmp_path / "confirmed_blanked.json"
+    blanked.write_text(json.dumps({"rows": [
+        {"source_sheet": "db.cc", "source_row_key": "200"}
+    ]}), encoding="utf-8")
+    approved = tmp_path / "approved_resurrections.json"
+    approved.write_text(json.dumps({"rows": [{
+        "source_sheet": "db.cc", "source_row_key": "200",
+        "approved_override": {"case_legacy_id": 100},
+    }]}), encoding="utf-8")
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", blanked)
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_RESURRECTIONS_PATH", approved)
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session, pytest.raises(
+        ConfirmedBlankedResurrectionError, match="empty optional inspection_case_legacy_id_ref"
+    ) as exc:
+        import_snapshot(
+            session, snapshot,
+            remediation_overrides={"db.cc": {"200": {"case_legacy_id": 100}}},
+            options=ImportExecutionOptions(strict_certificate_case_source_links=strict),
+        )
+    assert "db.cc:200" in str(exc.value)
+    assert inspect(engine).has_table("certificate") is False
+    assert inspect(engine).has_table("company") is False
+    assert snapshot == original_snapshot
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_approved_administrative_certificate_with_site_only_remediation_keeps_null_case(
+    monkeypatch, tmp_path, strict
+):
+    # A signed Site override is independent of the optional Case. Keep the
+    # previously supported administrative Certificate behavior unchanged.
+    snapshot = sample_snapshot()
+    snapshot["db.cc"][0]["ID ĐỢT KTRA"] = ""
+    snapshot["db.cc"][0]["ID CƠ SỞ"] = ""
+    blanked = tmp_path / "confirmed_blanked.json"
+    blanked.write_text(json.dumps({"rows": [
+        {"source_sheet": "db.cc", "source_row_key": "200"}
+    ]}), encoding="utf-8")
+    approved = tmp_path / "approved_resurrections.json"
+    approved.write_text(json.dumps({"rows": [{
+        "source_sheet": "db.cc", "source_row_key": "200",
+        "approved_override": {"site_legacy_id": 10},
+    }]}), encoding="utf-8")
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", blanked)
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_RESURRECTIONS_PATH", approved)
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        import_snapshot(
+            session, snapshot,
+            remediation_overrides={"db.cc": {"200": {"site_legacy_id": 10}}},
+            options=ImportExecutionOptions(strict_certificate_case_source_links=strict),
+        )
+        certificate = session.scalars(select(Certificate)).one()
+        assert certificate.case_id is None
+        assert certificate.issuance_basis == "administrative_no_inspection"

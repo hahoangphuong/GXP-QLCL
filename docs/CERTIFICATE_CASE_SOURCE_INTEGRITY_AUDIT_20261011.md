@@ -222,3 +222,22 @@ This improvement does not repair Certificate 376 by inference: its original
 Case 378 is a resolvable FK and cannot be remapped to candidate Case 380 by
 an override. Site-mismatched or GxP-mismatched projected relationships still
 fail before import. No historical source or database rows were changed.
+
+
+## Blank administrative Certificate and signed Case resurrection mismatch
+
+The importer treats a literally empty `db.cc.inspection_case_legacy_id_ref`
+as an administrative Certificate: `_resolve_optional_legacy_fk` returns `None`
+without consulting remediation overrides. A signed resurrection contract with
+`case_legacy_id` for that same blank value could previously pass preflight
+without applying the approved link, silently materializing the Certificate with
+`case_id=NULL` instead.
+
+The import-owner parent preflight now rejects this contradictory approved
+override **before any schema creation or data reset**, in both ordinary and
+strict import modes. It does not infer, insert or reassign a Case; formally
+changing an administrative issuance basis needs a separately reviewed business
+contract. A restoration that approves only the missing Site FK continues to
+import an administrative Certificate with a null Case. Four targeted regression
+cases cover both import modes, the schema-write boundary, raw-snapshot
+immutability, and the permitted administrative Site repair.

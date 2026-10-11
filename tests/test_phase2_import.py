@@ -171,6 +171,65 @@ def sample_snapshot():
 
 
 @pytest.mark.parametrize(
+    ("raw_id", "expected"),
+    [
+        ("100", 100),
+        ("100.0", 100),
+        (" 00100.000 ", 100),
+        ("0", 0),
+        ("100.5", None),
+        ("1e2", None),
+        ("-100", None),
+        ("100abc", None),
+    ],
+)
+def test_legacy_identifier_parser_refuses_nonintegral_or_inferred_values(raw_id, expected):
+    assert phase2_import_module.parse_int(raw_id) == expected
+
+
+@pytest.mark.parametrize(
+    ("case_reference", "site_reference", "missing_fk"),
+    [
+        ("100.5", "10", "missing_case_fk"),
+        ("1e2", "10", "missing_case_fk"),
+        ("100", "10.5", "missing_site_fk"),
+    ],
+)
+def test_default_import_does_not_link_truncated_fractional_source_fk(
+    case_reference, site_reference, missing_fk
+):
+    snapshot = sample_snapshot()
+    snapshot["db.cc"][0]["ID ĐỢT KTRA"] = case_reference
+    snapshot["db.cc"][0]["ID CƠ SỞ"] = site_reference
+    source_before = json.loads(json.dumps(snapshot))
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        report = import_snapshot(session, snapshot)
+        assert session.scalar(select(func.count()).select_from(Certificate)) == 0
+        assert report["skipped_rows"]["db.cc"] == 1
+        assert report["skipped_row_samples"]["db.cc"][0]["reason"] == missing_fk
+    assert snapshot == source_before
+
+
+@pytest.mark.parametrize(
+    "source_sheet",
+    ["db.cty", "db.cso", "db.ktra", "db.cc", "db.dkkd", "db.Tdoi", "db.Tdoi2"],
+)
+def test_import_rejects_nonintegral_explicit_source_id_before_schema(source_sheet):
+    snapshot = sample_snapshot()
+    snapshot[source_sheet][0]["ID"] = "100.5"
+    source_before = json.loads(json.dumps(snapshot))
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session, pytest.raises(
+        ImportCollisionError, match="Invalid legacy ID"
+    ):
+        import_snapshot(session, snapshot)
+    assert inspect(engine).has_table("company") is False
+    assert inspect(engine).has_table("certificate") is False
+    assert snapshot == source_before
+
+
+@pytest.mark.parametrize(
     ("case_site", "case_gxp", "case_reference", "expected_classification"),
     [
         ("11", "GMP", "100", "SITE_MISMATCH"),

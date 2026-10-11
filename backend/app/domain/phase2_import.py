@@ -327,13 +327,15 @@ def _apply_company_assigned_specialist(
 
 
 def parse_int(value: str | int | None) -> int | None:
-    text = str(value or "").strip()
-    if not text:
+    """Parse literal non-negative source IDs without rounding or truncation.
+
+    Spreadsheet integer strings with a zero-only decimal suffix remain valid.
+    Source keys, parent FKs and the read-only auditor share this contract.
+    """
+    text = str(value if value is not None else "").strip()
+    if not re.fullmatch(r"[0-9]+(?:\.0+)?", text):
         return None
-    try:
-        return int(float(text))
-    except ValueError:
-        return None
+    return int(text.split(".", 1)[0])
 
 
 def normalize_inspection_gxp_type(value: str | None) -> str | None:
@@ -921,7 +923,14 @@ def _validate_snapshot_source_keys(snapshot: dict[str, list[dict[str, str]]]) ->
         seen: set[str] = set()
         for raw_row in rows:
             row = normalize_row(raw_row)
-            row_key = _source_identity_key(parse_int(row.get("ID", "")), source_row_number(row))
+            raw_legacy_id = str(row.get("ID") or "").strip()
+            legacy_id = parse_int(raw_legacy_id)
+            if raw_legacy_id and legacy_id is None:
+                raise ImportCollisionError(
+                    f"Invalid legacy ID {raw_legacy_id!r} in sheet {source_sheet}; "
+                    "nonblank source IDs must be integral literals."
+                )
+            row_key = _source_identity_key(legacy_id, source_row_number(row))
             if row_key is None:
                 continue
             if row_key in seen:

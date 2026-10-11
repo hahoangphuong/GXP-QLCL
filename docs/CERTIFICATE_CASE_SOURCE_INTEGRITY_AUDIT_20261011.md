@@ -241,3 +241,30 @@ contract. A restoration that approves only the missing Site FK continues to
 import an administrative Certificate with a null Case. Four targeted regression
 cases cover both import modes, the schema-write boundary, raw-snapshot
 immutability, and the permitted administrative Site repair.
+
+
+
+## Literal legacy ID parsing: importer and audit parity (12 October)
+
+The default Phase-2 FK resolver previously called `parse_int()` through a
+floating-point conversion. A nonintegral source reference such as `100.5`
+could consequently resolve to Case `100`, even though the standalone
+Certificate–Case auditor correctly classified that same value as an
+unparseable reference. Source identity collision checks could similarly
+truncate malformed explicit source IDs.
+
+The shared import-owner parser now accepts only non-negative integral
+literals, including spreadsheet-rendered `100.0`, and refuses fractional,
+scientific or prose values. The read-only auditor uses this same parser
+rather than maintaining a separate lexical interpretation. Explicit,
+nonblank nonintegral source IDs are rejected at the existing pre-schema
+source-key guard across all seven source sheets; standalone audit reports
+`INVALID_SOURCE_LEGACY_ID` in its existing source-identity anomaly channel,
+which also makes CLI `--strict` fail. Missing IDs still use the established
+Excel-row fallback and are not equated with malformed explicit IDs.
+
+Regression coverage distinguishes invalid Case/Site FKs, accepted integral
+literals, all seven source-ID sheets, source immutability and the no-schema
+failure boundary. This hardening does not infer a replacement Case/Site,
+change any signed business correction, or modify the three outstanding
+Certificate–Case conflicts.

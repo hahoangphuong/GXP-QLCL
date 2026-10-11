@@ -55,6 +55,19 @@ def test_audit_distinguishes_all_evidence_states_without_rescuing_conflicts():
     assert report["source_modified"] is False
 
 
+def test_standalone_audit_flags_nonintegral_explicit_source_id_without_repair():
+    snapshot = _snapshot()
+    snapshot["db.ktra"][0]["ID"] = "100.5"
+    report = audit_certificate_case_source_links(snapshot)
+    assert {
+        (item["classification"], item["source_sheet"], item.get("raw_legacy_id"))
+        for item in report["source_identity_anomalies"]
+        if item["classification"] == "INVALID_SOURCE_LEGACY_ID"
+    } == {("INVALID_SOURCE_LEGACY_ID", "db.ktra", "100.5")}
+    assert report["database_mutated"] is False
+    assert report["source_modified"] is False
+
+
 def test_source_ids_must_be_literal_integers_not_truncated_floats():
     snapshot = _snapshot()
     snapshot["db.cc"][0]["ID ĐỢT KTRA"] = "100.5"

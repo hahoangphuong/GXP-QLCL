@@ -6,7 +6,6 @@ only: they never authorize changing an originating Case or merging Sites.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-import re
 from typing import Any
 
 from backend.app.domain.phase2_import import (
@@ -16,14 +15,6 @@ from backend.app.domain.phase2_import import (
     source_row_key,
     source_row_number,
 )
-
-
-def _literal_legacy_int(value: object) -> int | None:
-    """Source IDs are integers, never rounded/truncated decimal or prose IDs."""
-    raw = str(value or "").strip()
-    if not re.fullmatch(r"[0-9]+(?:\.0+)?", raw):
-        return None
-    return int(raw.split(".", 1)[0])
 
 
 def audit_certificate_case_source_links(
@@ -42,10 +33,10 @@ def audit_certificate_case_source_links(
     reverse_case_references: dict[int, list[dict[str, str]]] = defaultdict(list)
     for source_row in snapshot["db.ktra"]:
         row = normalize_row(source_row)
-        legacy_case_id = _literal_legacy_int(row.get("ID"))
+        legacy_case_id = parse_int(row.get("ID"))
         if legacy_case_id is not None:
             case_rows.setdefault(legacy_case_id, []).append(row)
-        reverse_certificate_id = _literal_legacy_int(row.get("ID CC GPs"))
+        reverse_certificate_id = parse_int(row.get("ID CC GPs"))
         if reverse_certificate_id is not None and legacy_case_id is not None:
             reverse_case_references[reverse_certificate_id].append(row)
 
@@ -59,6 +50,13 @@ def audit_certificate_case_source_links(
         identity_counts: Counter[str] = Counter()
         for source_row in source_rows:
             row = normalize_row(source_row)
+            raw_legacy_id = str(row.get("ID") or "").strip()
+            if raw_legacy_id and parse_int(raw_legacy_id) is None:
+                source_identity_anomalies.append({
+                    "classification": "INVALID_SOURCE_LEGACY_ID",
+                    "source_sheet": source_sheet,
+                    "raw_legacy_id": raw_legacy_id,
+                })
             row_key = source_row_key(
                 legacy_row_id=parse_int(row.get("ID")),
                 source_row_number_value=source_row_number(row),
@@ -175,7 +173,7 @@ def audit_certificate_case_source_links(
 
     for source_row in snapshot["db.cc"]:
         certificate = normalize_row(source_row)
-        certificate_legacy_id = _literal_legacy_int(certificate.get("ID"))
+        certificate_legacy_id = parse_int(certificate.get("ID"))
         row_key = source_row_key(
             legacy_row_id=certificate_legacy_id,
             source_row_number_value=source_row_number(certificate),
@@ -185,11 +183,11 @@ def audit_certificate_case_source_links(
             excluded_count += 1
 
         case_ref = str(certificate.get("inspection_case_legacy_id_ref") or "").strip()
-        certificate_site = _literal_legacy_int(certificate.get("site_legacy_id_ref"))
+        certificate_site = parse_int(certificate.get("site_legacy_id_ref"))
         certificate_gxp = certificate.get("certificate_type") or "UNKNOWN"
         certificate_number = str(certificate.get("certificate_number") or "").strip()
         certificate_scope = str(certificate.get("certificate_scope_text") or "").strip()
-        case_legacy_id = _literal_legacy_int(case_ref)
+        case_legacy_id = parse_int(case_ref)
         linked_case_site: int | None = None
         linked_case_gxp: str | None = None
 
@@ -203,7 +201,7 @@ def audit_certificate_case_source_links(
             classification = "DUPLICATE_CASE_SOURCE_ID"
         else:
             linked_case = case_rows[case_legacy_id][0]
-            linked_case_site = _literal_legacy_int(linked_case.get("site_legacy_id_ref"))
+            linked_case_site = parse_int(linked_case.get("site_legacy_id_ref"))
             raw_case_gxp = str(linked_case.get("inspection_gxp_type") or "").strip()
             linked_case_gxp = normalize_inspection_gxp_type(raw_case_gxp) or raw_case_gxp or "UNKNOWN"
             if certificate_site is None or linked_case_site is None:
@@ -230,11 +228,11 @@ def audit_certificate_case_source_links(
         for row in reverse_case_references.get(certificate_legacy_id, []):
             reverse_case_gxp_raw = str(row.get("inspection_gxp_type") or "").strip()
             reverse_case_gxp = normalize_inspection_gxp_type(reverse_case_gxp_raw) or reverse_case_gxp_raw or "UNKNOWN"
-            reverse_site = _literal_legacy_int(row.get("site_legacy_id_ref"))
+            reverse_site = parse_int(row.get("site_legacy_id_ref"))
             reverse_number = str(row.get("certificate_number") or "").strip()
             reverse_scope = str(row.get("evaluation_scope_raw") or "").strip()
             reverse_evidence.append({
-                "case_legacy_id": _literal_legacy_int(row.get("ID")),
+                "case_legacy_id": parse_int(row.get("ID")),
                 "site_legacy_id": reverse_site,
                 "gxp_type": reverse_case_gxp,
                 "inspection_period_source": str(row.get("inspected_at") or "").strip() or None,

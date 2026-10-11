@@ -150,3 +150,40 @@ def test_cli_strict_is_fail_closed_but_never_writes_database(tmp_path):
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert payload["database_mutated"] is False
     assert len(payload["anomalies"]) == 7
+
+
+
+def test_duplicate_certificate_source_identity_fails_cli_strict_even_with_valid_links(tmp_path):
+    # Import rejects duplicate db.cc source row keys before schema creation.
+    # The standalone read-only audit must not report a false-clean source.
+    snapshot = {
+        "db.ktra": [{"ID": "700", "ID CƠ SỞ": "50", "LOẠI KT": "GMP"}],
+        "db.cc": [
+            {"ID": "900", "ID ĐỢT KTRA": "700", "ID CƠ SỞ": "50", "LOẠI CC": "GMP"},
+            {"ID": "900", "ID ĐỢT KTRA": "700", "ID CƠ SỞ": "50", "LOẠI CC": "GMP"},
+        ],
+    }
+    report = audit_certificate_case_source_links(snapshot)
+    assert report["effective_anomalies"] == []
+    assert report["classification_counts"] == {"EXACT_SOURCE_CONTEXT": 2}
+    assert report["source_identity_anomalies"] == [{
+        "classification": "DUPLICATE_CERTIFICATE_SOURCE_ROW_KEY",
+        "source_sheet": "db.cc",
+        "source_row_key": "900",
+        "occurrences": 2,
+    }]
+
+    # Approved exclusions must not hide a structural duplicate that would
+    # still be rejected by _validate_snapshot_source_keys in the importer.
+    excluded = audit_certificate_case_source_links(
+        snapshot, excluded_certificate_row_keys={"900"}
+    )
+    assert excluded["effective_certificate_source_rows"] == 0
+    assert excluded["source_identity_anomalies"] == report["source_identity_anomalies"]
+
+    snapshot_path = tmp_path / "duplicate-source.json"
+    output_path = tmp_path / "source-audit.json"
+    snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+    assert main(["--snapshot", str(snapshot_path), "--output", str(output_path), "--strict"]) == 2
+    saved = json.loads(output_path.read_text(encoding="utf-8"))
+    assert saved["source_identity_anomalies"] == report["source_identity_anomalies"]

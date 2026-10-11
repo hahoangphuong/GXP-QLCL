@@ -181,7 +181,9 @@ def test_historical_same_site_wrong_gxp_rejected_but_valid_case_link_remains_que
             ),
         ])
         session.commit()
-        valid_id, invalid_id, site_id = valid_certificate.id, invalid_historical.id, site.id
+        valid_id, invalid_id, site_id, correct_case_id = (
+            valid_certificate.id, invalid_historical.id, site.id, correct_case.id
+        )
 
     with Session(engine) as session:
         correct_certificate = session.get(Certificate, valid_id)
@@ -189,7 +191,7 @@ def test_historical_same_site_wrong_gxp_rejected_but_valid_case_link_remains_que
         assert correct_certificate is not None and wrong_certificate is not None
         assert CaseWorkflowService._validate_certificate_linked_case(
             session, correct_certificate
-        ).id == correct_case.id
+        ).id == correct_case_id
         with pytest.raises(HTTPException, match="invalid linked Case") as error:
             CaseWorkflowService._validate_certificate_linked_case(session, wrong_certificate)
         assert error.value.status_code == 409

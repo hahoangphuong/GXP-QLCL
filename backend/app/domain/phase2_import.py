@@ -159,12 +159,24 @@ class ImportCollisionError(RuntimeError):
     """Raised when production-safe import detects conflicting existing data."""
 
 
+class CertificateCaseSourceIntegrityError(ImportCollisionError):
+    """Strict source preflight rejected unresolved Certificate -> Case ownership."""
+
+    def __init__(self, report: dict[str, Any]):
+        self.report = report
+        count = len(report["effective_anomalies"])
+        super().__init__(
+            f"Legacy Certificate-Case source integrity preflight blocked {count} effective source row(s)."
+        )
+
+
 @dataclass(frozen=True)
 class ImportExecutionOptions:
     ensure_schema: bool = True
     reset_existing_data: bool = True
     allow_existing_records: bool = False
     persist_audit_event: bool = True
+    strict_certificate_case_source_links: bool = False
 
 
 @dataclass
@@ -1336,6 +1348,24 @@ def import_snapshot(
     resolved_options = options or ImportExecutionOptions()
     _validate_snapshot_source_keys(snapshot)
     validate_snapshot_schema_lengths(snapshot)
+    if resolved_options.strict_certificate_case_source_links:
+        # Fail before schema creation, reset, or any persistent migration action.
+        # Import the read-only owner locally to avoid an import-time dependency cycle.
+        from backend.app.domain.legacy_certificate_case_source_audit import (
+            audit_certificate_case_source_links,
+        )
+
+        reviewed_blanked_certificate_keys = {
+            source_key
+            for source_sheet, source_key in load_confirmed_blanked_row_keys()
+            if source_sheet == "db.cc"
+        }
+        source_link_report = audit_certificate_case_source_links(
+            snapshot,
+            excluded_certificate_row_keys=reviewed_blanked_certificate_keys,
+        )
+        if source_link_report["effective_anomalies"]:
+            raise CertificateCaseSourceIntegrityError(source_link_report)
     if resolved_options.ensure_schema:
         create_schema(session)
     if resolved_options.reset_existing_data:

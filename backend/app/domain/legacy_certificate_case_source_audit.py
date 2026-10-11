@@ -12,6 +12,7 @@ from typing import Any
 from backend.app.domain.phase2_import import (
     normalize_inspection_gxp_type,
     normalize_row,
+    parse_int,
     source_row_key,
     source_row_number,
 )
@@ -47,6 +48,29 @@ def audit_certificate_case_source_links(
         reverse_certificate_id = _literal_legacy_int(row.get("ID CC GPs"))
         if reverse_certificate_id is not None and legacy_case_id is not None:
             reverse_case_references[reverse_certificate_id].append(row)
+
+    # The importer rejects duplicate db.cc source identities before any schema write.
+    # Audit CLI must surface the same structural blocker, even when duplicated
+    # rows each have otherwise valid Case/Site/GxP links or are excluded later.
+    certificate_identity_counts: Counter[str] = Counter()
+    for source_row in snapshot["db.cc"]:
+        certificate = normalize_row(source_row)
+        row_key = source_row_key(
+            legacy_row_id=parse_int(certificate.get("ID")),
+            source_row_number_value=source_row_number(certificate),
+        )
+        if row_key is not None:
+            certificate_identity_counts[row_key] += 1
+    source_identity_anomalies = [
+        {
+            "classification": "DUPLICATE_CERTIFICATE_SOURCE_ROW_KEY",
+            "source_sheet": "db.cc",
+            "source_row_key": key,
+            "occurrences": count,
+        }
+        for key, count in sorted(certificate_identity_counts.items())
+        if count > 1
+    ]
 
     raw_counts: Counter[str] = Counter()
     effective_counts: Counter[str] = Counter()
@@ -155,6 +179,7 @@ def audit_certificate_case_source_links(
         "effective_certificate_source_rows": sum(effective_counts.values()),
         "effective_classification_counts": dict(sorted(effective_counts.items())),
         "effective_anomalies": effective_anomalies,
+        "source_identity_anomalies": source_identity_anomalies,
         "database_mutated": False,
         "source_modified": False,
     }

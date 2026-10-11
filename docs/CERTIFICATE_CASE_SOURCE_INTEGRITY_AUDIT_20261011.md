@@ -31,6 +31,17 @@ The one incomplete context in the raw snapshot is a previously excluded legacy p
 | 1037 | 46 (Domesco) | 1023 | 298 (Domesco production center) | Case 1023 explicitly references Certificate 1037 and number `200/GCN-QLD` | Cross-Site context remains unresolved |
 | 1180 | 46 (Domesco) | 1023 | 298 | No single reverse `ID CC GPs` reference to 1180; scope mentions both Cơ sở 1 and Cơ sở 2 | Cross-Site context remains unresolved |
 
+### Additional literal source corroboration for Certificate 376
+
+Read-only comparison of Phase-3C `db.cc`/ `db.ktra` source rows on 11 October 2026:
+
+- Certificate 376, issued **12/03/2018**, has `ID ĐỢT KTRA=378`. Linked Case 378 is for **Hasan-Dermapharm, Site 72**, with inspection period **04–05/03/2008**; its inspected scope differs from Certificate 376.
+- Case 380, for **USA-NIC, Site 73**, has inspection period **07–08/12/2017** and the reverse reference `ID CC GPs=376`, with the same certificate number `119/GCN-QLD`.
+- Crucially, after removing outer whitespace only (no rewriting or language normalization), the **entire** Certificate 376 `PHẠM VI CHỨNG NHẬN` text is exactly equal to Case 380 `PHẠM VI KIỂM TRA` text. It is **not** exactly equal to the inspection scope of Case 378.
+- This combines explicit reverse reference, Site/GxP correspondence, matching certificate number, scope-text identity, and plausible inspection-to-issuance chronology. **It is strong evidence but not sufficient authorization** to change `Certificate.case_id`; primary issuance documentation and formal sign-off remain the gate.
+
+The generic read-only source auditor now records `same_nonblank_scope_text` and raw inspection-period evidence for **all** reverse-source Case references associated with anomalous Certificates. This is exact lexical comparison, **not** a Case-selection algorithm: ambiguous or multiple matching reverse references remain review-only, with `remediation_authorized=false`.
+
 Both Domesco Sites have Company legacy ID 37 but are **distinct facilities with distinct addresses**. Shared company ownership and textual scope headings are not sufficient to reassign Site or Case. Reverse evidence is diagnostic only and never authorizes a write.
 
 ## Owner/causality

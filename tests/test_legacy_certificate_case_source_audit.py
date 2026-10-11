@@ -222,9 +222,10 @@ def test_source_identity_detection_matches_importer_for_all_sheets():
     # db.cty/db.cso or any other sheet known to the importer.
     for sheet in ("db.cty", "db.cso", "db.ktra", "db.Tdoi"):
         snapshot = {
-            sheet: [{"ID": "42"}, {"ID": "42"}],
+            "db.ktra": [],
             "db.cc": [{"ID": "800", "ID ĐỢT KTRA": "", "ID CƠ SỞ": "50", "LOẠI CC": "GMP"}],
         }
+        snapshot[sheet] = [{"ID": "42"}, {"ID": "42"}]
         report = audit_certificate_case_source_links(snapshot)
         assert report["source_identity_anomalies"] == [{
             "classification": "DUPLICATE_SOURCE_ROW_KEY",

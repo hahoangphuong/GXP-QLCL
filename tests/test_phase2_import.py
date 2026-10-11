@@ -572,7 +572,10 @@ def test_import_snapshot_rejects_generic_override_for_confirmed_blanked_row(monk
             assert "db.cso:10" in str(exc)
         else:
             raise AssertionError("Expected confirmed blanked resurrection contract failure")
-        assert session.query(Site).count() == 0
+        # Contract validation now occurs before schema creation, so even a
+        # read query against Site would be invalid. Assert the stronger guard.
+        assert inspect(engine).has_table("site") is False
+        assert inspect(engine).has_table("company") is False
 
 
 def test_confirmed_blanked_contract_missing_fails_closed(monkeypatch, tmp_path):

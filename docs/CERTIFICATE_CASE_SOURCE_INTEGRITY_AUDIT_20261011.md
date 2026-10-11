@@ -45,6 +45,7 @@ Both Domesco Sites have Company legacy ID 37 but are **distinct facilities with 
 - `backend/app/domain/legacy_certificate_case_source_audit.py`: pure, read-only classification, keeping both raw and effective populations and explicit reverse evidence; never chooses a replacement.
 - `tools/audit_legacy_certificate_case_sources.py`: CLI that reads snapshot plus the approved blanked-row contract. `--strict` returns status code 2 while effective anomalies remain.
 - `ImportExecutionOptions(strict_certificate_case_source_links=True)`: **opt-in** strict gate at `import_snapshot()` before schema creation, reset or database mutation. Fails closed with a structured `CertificateCaseSourceIntegrityError` report for all effective unresolved links. The workbook entrypoint can accept the same option.
+- Source-audit parity safeguard: standalone `--strict` also returns exit code 2 for duplicate `db.cc` source row identities (`source_identity_anomalies`), even when their Case/Site/GxP links are individually valid or the row key is in the exclusion contract. This mirrors the importer's pre-schema `_validate_snapshot_source_keys` failure without altering effective source classifications or legacy import behavior.
 - Existing import default remains compatible with historical source until there is an **approved** disposition for the three conflicts. This is **not** a remediation, release, or authorization to cut over.
 - No changes were made to runtime Certificate–Case validation or to canonical ProductionLine UUID identity.
 

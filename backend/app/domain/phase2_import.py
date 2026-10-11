@@ -2314,9 +2314,11 @@ def import_workbook_to_database(
     workbook_path: str | Path,
     report_path: str | Path,
     remediation_overrides: dict[str, dict[str, dict[str, Any]]] | None = None,
+    *,
+    options: ImportExecutionOptions | None = None,
 ) -> Phase2Result:
     snapshot = read_core_sheet_rows(workbook_path)
-    reconciliation = import_snapshot(session, snapshot, remediation_overrides=remediation_overrides)
+    reconciliation = import_snapshot(session, snapshot, remediation_overrides=remediation_overrides, options=options)
     report_path = Path(report_path)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     lines = ["# Phase 2 Reconciliation Report", "", "## Source vs target counts", ""]

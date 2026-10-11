@@ -45,6 +45,36 @@ Sources:
 
 **P5 — Review/deploy:** CI evidence, owner decision, separate deployment authorization and post-deploy smoke checks. No implicit merge into main or database cutover.
 
+## Code-owner compatibility review (11 October 2026; proposal only)
+
+Current model and service owners examined at the audit branch HEAD:
+
+- `backend/app/db/models/phase1.py`: `Case.site_id` and `Certificate.site_id` are non-null single-Site anchor FKs; `Certificate.case_id` is nullable; `CertificateVersion` is the version identity; `CertificateScope` is linked to a version but has **no Site FK**. `ProductionLine.site_id` owns canonical line identity within one Site. `CertificateRelationship` already constrains `REPLACED_BY` / `SUPERSEDED_BY`.
+- `backend/app/services/workflow.py`: `_validate_certificate_linked_case`, `_certificate_valid_linked_case_sql`, and `_certificate_effective_line_sql` all encode same-Site/same-GxP Case ownership. Changing only the Python validator would leave inconsistent SQL semantics.
+- `backend/app/services/catalog.py`: `_search_facilities_by_production_line` first validates **all** linked certificates; its projection then reads only `latest_flag=True` certificates and associates them with the single `Certificate.site_id`. An approved multi-Site model must explicitly update both search eligibility and Site-local certificate projection, including preservation of separately queryable historical versions. Skipping the global validator would not solve the missing Site coverage.
+
+### Proposed minimum relational and evidence constraints
+
+| Owner | Proposed key / integrity | Evidence and identity rule |
+| --- | --- | --- |
+| `CaseSiteCoverage` | FK to Case and Site; unique `(case_id, site_id)` for a reviewed coverage assertion | Inspecting a Site is proven by a reviewable source reference, not membership in the same Company. A review status alone is insufficient without provenance. |
+| `CertificateVersionSiteCoverage` | FK to CertificateVersion and Site; unique `(certificate_version_id, site_id)` for each reviewed Site | Retain raw source Site label/address **as printed in that version**, separately from the current Site master address. |
+| Scope-to-Site assignment | Explicit version-and-Site-bound association with `CertificateScope` or reviewed immutable Site-local scope fragments | Current `CertificateScope` contains version-wide text; do not parse headings at read time or duplicate undifferentiated scope as if applicable to every Site. |
+| Replacement lineage | Existing CertificateRelationship with approved `REPLACED_BY` direction, reference and effective date | Keep regulatory certificate identities distinct; replacement does not imply a Site merge or a change in `latest_flag` by itself. |
+
+Where a document-level `CertificateScope` includes multiple Site parts, the mapping should preserve the original text and cite the exact reviewed source passage/page. Whether to use a coverage-to-scope association table or immutable Site-local fragments is an **unresolved design choice**, not an implementation authorization. No automatic mapping from text headings is permitted.
+
+### Proposed runtime compatibility rules (subject to approval)
+
+1. Legacy single-Site records: keep the present same-Site/same-GxP linked-Case invariant.
+2. Reviewed multi-Site records: require a reviewed Site membership on the originating Case **and** the relevant CertificateVersion, consistent GxP, explicit issuance-owner semantics, and an exact source evidence trail. A mere case anchor mismatch is not enough to qualify for an exception.
+3. Unresolved cross-Site, missing Case, GxP mismatch, incomplete Site coverage, stale/unreviewed evidence: fail closed. Implement the same predicate in write validation, read validation and query builders rather than separate disagreeing rules.
+4. Certificate projections: return the Site's own scope, version and source-address evidence, and distinguish `anchor_site_id` from `covered_site_ids`. Current vs historical versions must be explicit in API contracts.
+5. ProductionLine: only link canonical UUIDs for the Site where that production line belongs. A multi-Site certificate cannot confer cross-Site UUID identity or authorize line-code synthesis.
+6. Backfill: no guessing from `company_id`, document headings, Site names or historic addresses. Produce an immutable, source-referenced, reviewable plan before any migrations or business-data mutation.
+
+The proposed migration must test both the Python linked-Case validator and SQL predicates with identical adversarial examples, including unrelated cross-company mismatch, legitimate two-Site scope, missing coverage rows and version-specific Site scopes. No coverage table or runtime change has been created by this review.
+
 ## Decision log required before code changes
 
 The owner must approve (i) interpretation of current single-Site anchor FKs for multi-Site certificates, (ii) completeness rules connecting an originating Case to covered Sites, (iii) version-specific scope ownership, and (iv) acceptable evidence for historical Site identity/address changes. Until then this document is a proposal, not a new contract.

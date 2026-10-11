@@ -74,10 +74,25 @@ The cross-Site Domesco context is **not merely an ambiguous Excel label**:
 
 A separately reviewed future model can distinguish `Certificate` (regulatory issuance identity), immutable `CertificateVersion` and `CertificateVersionSiteCoverage` (version-specific certified physical Sites, source address and scope), from any independently evidenced `CaseSiteCoverage` (inspection coverage). The existing `CertificateRelationship` model provides a possible `REPLACED_BY` edge after explicit approval. None of this is authorization for a database write or alteration of the current Site equality check.
 
+## Published inspection evidence for the originating Case
+
+The Drug Administration of Vietnam's published 20 October 2022 **GxP assessment list** independently records Domesco on **15–16 January 2022**, covering **Site 1 at 66 Quốc lộ 30** and **Site 2 at Cần Lố**, with separately defined GMP inspection scope:
+https://dav.gov.vn/upload_images/files/Danh%20s%C3%A1ch%20c%C3%A1c%20%C4%91%E1%BB%A3t%20%C4%91%C3%A1nh%20gi%C3%A1%20GxP%20%2820_10_2022%29.pdf
+
+`db.ktra` Case 1023 independently records that same assessment date and two-site `PHẠM VI KIỂM TRA`, yet its structured `site_id` is only Site 298 and `ID CƠ SỞ 2` is blank. This is strong **cross-source corroboration of multisite inspection** and confirms a one-Site representation gap, though the publicly released document does not expose the application's internal Case ID 1023.
+
+The newly corroborated domain distinction is:
+- the **Case coverage** can contain multiple physical sites;
+- a **CertificateVersion's certified coverage** can contain multiple sites, with differing per-Site activities;
+- each regulatory **Certificate identity** remains independent; the 2023 document explicitly replaces the 2022 document;
+- the stored single `site_id` for a Case/Certificate is legacy anchoring data, **not** proof that its regulatory scope excludes every other site.
+
+The draft relational design is in `docs/CERTIFICATE_CASE_MULTISITE_MODEL_PROPOSAL_20261011.md`; no schema or runtime mutation is implied.
+
 ## Remaining business decisions and implementation gates
 
 1. **Certificate 376:** verify original issuance provenance/case reference (candidate Case 380). An authorized remediation would need a sealed source+canonical-state plan, verified target rehearsal DB, backup, exact row assertions, transactional update, audit and rollback. Do not directly overwrite the historical `db.cc` source.
-2. **Domesco 1037/1180:** the certificates' two-Site coverage is independently confirmed. Now verify the *inspection coverage and originating Case ownership* for Case 1023, and design explicit per-version Certificate/Site coverage separately from any evidenced Case/Site coverage. Review the 66 Quốc lộ 30 versus 346 Nguyễn Huệ historical address relationship without synthesizing a Site-identity merge. The regulator-published replacement is a review candidate for the existing CertificateRelationship model, not an inferred automated write.
+2. **Domesco 1037/1180:** both the certifications' multi-Site scope and the 2022 inspection's multi-Site scope are now corroborated. Confirm the internal Case-to-public-inspection mapping and Site 1 address lineage before applying reviewed CaseSiteCoverage / CertificateVersionSiteCoverage rows. Review the 66 Quốc lộ 30 versus 346 Nguyễn Huệ historical address relationship without synthesizing a Site-identity merge. The regulator-published replacement is a review candidate for the existing CertificateRelationship model, not an inferred automated write.
 3. **Only after adjudication:** enforce the corrected import invariant by default for the future cutover, backfill or remediate the existing three canonical rows with approved plans, then execute integration tests and search/workspace smoke tests. Confirm canonical ProductionLine UUID preservation.
 4. Do not deploy or mutate `gxp_legacy_rehearsal`, `gxp_qlcl`, or `gmpnn_ai` as part of this audit. Existing site filtering must not be weakened to turn HTTP 409 into an apparently successful search.
 

@@ -61,6 +61,17 @@ function renderWorkspace(
 }
 
 describe("CaseRemediationWorkspace backend-owned lifecycle actions", () => {
+  it("groups the selected round's reference, receipt, assessment and assessor before canonical extras", () => {
+    const view = renderWorkspace(workspace([cycle({ submitted_on: "2026-09-05", assessed_on: "2026-09-06", assessor_name: "Người A", result: "accepted" })]));
+    const primary = view.container.querySelector(".remediation-primary-fields");
+    expect(primary).not.toBeNull();
+    expect(Array.from(primary!.querySelectorAll(".detail-label"), node => node.textContent)).toEqual([
+      "Số CV đến", "Ngày nhận", "Ngày thẩm định", "Người thẩm định",
+    ]);
+    expect(view.container.querySelector(".remediation-result-fields")).toHaveTextContent("accepted");
+    expect(view.container.querySelector(".remediation-additional-fields")).toHaveTextContent("Ngày yêu cầu");
+    expect(screen.queryByText("Ngày giám sát")).not.toBeInTheDocument();
+  });
   it("exposes create, update, submit, and assess only from matching backend readiness", async () => {
     const initial = workspace(
       [cycle()],
@@ -181,5 +192,67 @@ describe("CaseRemediationWorkspace backend-owned lifecycle actions", () => {
     expect(screen.getByLabelText("Ghi chú thao tác khắc phục")).toHaveValue("Đã được server ghi nhận");
     expect(screen.queryByRole("button", { name: "Ghi nhận tiếp nhận" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Đánh giá" })).toBeInTheDocument();
+  });
+
+  it.each([403, 409, 422])("preserves each command draft after HTTP %s without retry", async status => {
+    const actions = [action("create_capa_cycle", true, 8), action("update_capa_cycle:capa-1"), action("submit_capa_cycle:capa-1"), action("assess_capa_cycle:capa-1")];
+    for (const command of ["create", "update", "submit", "assess"] as const) {
+      const view = renderWorkspace(workspace([cycle()], actions));
+      const callback = { create: view.handlers.onCreateCycle, update: view.handlers.onUpdateCycle, submit: view.handlers.onSubmitCycle, assess: view.handlers.onAssessCycle }[command];
+      callback.mockRejectedValue(Object.assign(new Error("fixture error"), { status }));
+      if (command === "create") {
+        fireEvent.click(screen.getByRole("button", { name: "Thêm vòng khắc phục" }));
+        fireEvent.change(screen.getByLabelText("Ghi chú khắc phục"), { target: { value: "Draft create" } });
+        fireEvent.click(screen.getByRole("button", { name: "Tạo vòng khắc phục" }));
+      } else if (command === "update") {
+        fireEvent.keyDown(screen.getByRole("button", { name: "Sửa Ghi chú" }), { key: "F2" });
+        fireEvent.change(screen.getByLabelText("Ghi chú khắc phục"), { target: { value: "Draft update" } });
+        fireEvent.click(screen.getByRole("button", { name: "Lưu Ghi chú" }));
+      } else {
+        fireEvent.change(screen.getByLabelText("Ghi chú thao tác khắc phục"), { target: { value: `Draft ${command}` } });
+        fireEvent.change(screen.getByLabelText(command === "submit" ? "Ngày ghi nhận tiếp nhận" : "Ngày đánh giá khắc phục"), { target: { value: "2026-09-07" } });
+        if (command === "assess") fireEvent.change(screen.getByLabelText("Kết quả đánh giá khắc phục"), { target: { value: "accepted" } });
+        fireEvent.click(screen.getByRole("button", { name: command === "submit" ? "Ghi nhận tiếp nhận" : "Đánh giá" }));
+      }
+      await screen.findByRole("alert");
+      expect(callback).toHaveBeenCalledOnce();
+      expect(screen.getByLabelText(command === "create" || command === "update" ? "Ghi chú khắc phục" : "Ghi chú thao tác khắc phục")).toHaveValue(`Draft ${command}`);
+      expect(callback.mock.calls[0][command === "create" ? 0 : 1]).toEqual(expect.objectContaining(command === "create" ? { expected_case_version: 8 } : { expected_version: 2 }));
+      view.unmount();
+    }
+  });
+
+  it("blocks duplicate submit and cycle activation while pending, then retains the rejected draft", async () => {
+    let reject!: (error: unknown) => void;
+    const view = renderWorkspace(workspace([cycle(), cycle({ capa_cycle_id: "capa-2", round_no: 2 })], [action("submit_capa_cycle:capa-1")]));
+    view.handlers.onSubmitCycle.mockImplementation(() => new Promise((_, rejectPromise) => { reject = rejectPromise; }));
+    fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-07" } });
+    fireEvent.click(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" }));
+    expect(screen.getByRole("button", { name: "Đang ghi nhận..." })).toBeDisabled();
+    expect(screen.getByLabelText("Ngày ghi nhận tiếp nhận")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Đang ghi nhận..." }));
+    fireEvent.keyDown(view.container.querySelectorAll("tbody tr")[1], { key: "Enter" });
+    expect(view.handlers.onSelectedCycleChange).not.toHaveBeenCalled();
+    expect(view.handlers.onSubmitCycle).toHaveBeenCalledOnce();
+    reject(Object.assign(new Error("conflict"), { status: 409 }));
+    await screen.findByRole("alert");
+    expect(screen.getByLabelText("Ngày ghi nhận tiếp nhận")).toHaveValue("2026-09-07");
+    expect(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" })).toBeEnabled();
+    expect(view.handlers.onSubmitCycle).toHaveBeenCalledOnce();
+  });
+
+  it("retains every round beyond legacy's two columns and activates only the canonical keyboard target", () => {
+    const cycles = [cycle(), cycle({ capa_cycle_id: "capa-2", round_no: 2 }), cycle({ capa_cycle_id: "capa-3", round_no: 3, notes: "Third cycle" })];
+    const view = renderWorkspace(workspace(cycles));
+    const rows = view.container.querySelectorAll("tbody tr");
+    expect(rows).toHaveLength(3);
+    fireEvent.focus(rows[2]);
+    expect(view.handlers.onSelectedCycleChange).not.toHaveBeenCalled();
+    fireEvent.keyDown(rows[2], { key: " " });
+    expect(view.handlers.onSelectedCycleChange).toHaveBeenCalledWith("capa-3");
+    view.rerender(<CaseRemediationWorkspace caseWorkspace={workspace(cycles)} selectedCycleId="capa-3" {...view.handlers} />);
+    expect(screen.getByRole("heading", { name: "Chi tiết vòng khắc phục 3" })).toBeInTheDocument();
+    expect(screen.getByText("Third cycle")).toBeInTheDocument();
+    expect(view.handlers.onUpdateCycle).not.toHaveBeenCalled();
   });
 });

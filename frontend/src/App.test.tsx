@@ -2311,6 +2311,43 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByRole("button", { name: returnToA ? "Chọn Quyết định cấp CC" : "Chọn Second document" })).toHaveAttribute("aria-pressed", "true");
   });
 
+  it.each([403, 404, 409])("owns one CAPA document workspace and rejects stale cycle detail/error %s", async status => {
+    const base = buildCaseWorkspace().contextual_document_actions[1];
+    const documents = [1, 2].map(round => ({ ...base, checklist_key: `cycle-${round}:CAPA`, document_id: `document-capa-${round}`, family_code: `INSPECTION_CAPA_LAN_${round}`, label: `Đánh giá CAPA ${round}`, workflow_step: "Khắc phục", parent_scope: "capa_cycle", parent_id: `capa-${round}` }));
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ remediation: { cycles: [buildRemediationCycle(), buildRemediationCycle({ capa_cycle_id: "capa-2", round_no: 2, notes: "Cycle two" })] }, contextual_document_actions: documents }));
+    let reject!: (error: Error) => void;
+    apiMocks.getDocumentDetail.mockImplementation((id: string) => id === "document-capa-1"
+      ? new Promise((_, fail) => { reject = fail; })
+      : Promise.resolve({ document_id: id, family_code: "INSPECTION_CAPA_LAN_2", capa_cycle_id: "capa-2", case_id: "case-1", title: "Only cycle two detail", variants: [], generation_runs: [] }));
+    const { container } = renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Báo cáo khắc phục" }));
+    await screen.findByText("Chi tiết vòng khắc phục 2");
+    const rows = container.querySelectorAll(".capa-cycle-table tbody tr");
+    fireEvent.keyDown(rows[0], { key: "Enter" });
+    fireEvent.click(await screen.findByRole("button", { name: "Chọn Đánh giá CAPA 1" }));
+    await waitFor(() => expect(apiMocks.getDocumentDetail).toHaveBeenCalledTimes(1));
+    expect(apiMocks.getDocumentDetail.mock.calls[0][0]).toBe("document-capa-1");
+    fireEvent.keyDown(rows[1], { key: "Enter" });
+    fireEvent.click(await screen.findByRole("button", { name: "Chọn Đánh giá CAPA 2" }));
+    await screen.findByText("Only cycle two detail");
+    await act(async () => reject(buildApiError("late cycle one", status)));
+    expect(screen.queryByText(/late cycle one/)).not.toBeInTheDocument();
+    expect(screen.getByText("Only cycle two detail")).toBeInTheDocument();
+    expect(container.querySelectorAll(".remediation-document-column .document-workspace")).toHaveLength(1);
+    expect(apiMocks.getDocumentDetail).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    fireEvent.click(screen.getByRole("button", { name: "Báo cáo khắc phục" }));
+    expect(screen.getByText("Chi tiết vòng khắc phục 2")).toBeInTheDocument();
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    expect(apiMocks.submitCapaCycle).not.toHaveBeenCalled();
+    expect(apiMocks.assessCapaCycle).not.toHaveBeenCalled();
+  });
+
   it("opens current document binary for Mở and keeps metadata loading on Lịch sử", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });

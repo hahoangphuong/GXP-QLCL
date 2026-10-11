@@ -449,86 +449,91 @@ export function CaseRemediationWorkspace({
                 ) : null}
               </div>
             </div>
-            <div className="detail-grid compact-grid detail-form-matrix remediation-detail-grid">
-              <EditableDetailValue
-                editButtonLabel="Sửa Số tham chiếu đến"
-                error={editingField === "incoming_reference" ? errorMessage : null}
-                isEditing={editingField === "incoming_reference"}
-                label="Số tham chiếu đến"
-                onCancel={cancelEditor}
-                onEdit={updateAvailable ? () => { setEditingField("incoming_reference"); setErrorMessage(null); } : null}
-                onSave={() => void handleUpdateField()}
-                pending={isPending}
-                value={selectedCycle.incoming_reference}
-              >
-                <input
-                  aria-label="Số tham chiếu đến"
-                  disabled={isPending}
-                  onChange={(event) => setDraft((current) => ({ ...current, incoming_reference: event.target.value }))}
-                  value={draft.incoming_reference}
-                />
-              </EditableDetailValue>
-              <EditableDetailValue
-                editButtonLabel="Sửa Ngày yêu cầu"
-                error={editingField === "requested_on" ? errorMessage : null}
-                isEditing={editingField === "requested_on"}
-                label="Ngày yêu cầu"
-                onCancel={cancelEditor}
-                onEdit={
-                  updateAvailable
-                    ? () => {
-                        setEditingField("requested_on");
-                        setErrorMessage(null);
-                      }
-                    : null
-                }
-                onSave={() => void handleUpdateField()}
-                pending={isPending}
-                value={formatCompactDate(selectedCycle.requested_on)}
-              >
-                <input
-                  aria-label="Ngày yêu cầu"
-                  disabled={isPending}
-                  onChange={(event) => setDraft((current) => ({ ...current, requested_on: event.target.value }))}
-                  type="date"
-                  value={draft.requested_on}
-                />
-              </EditableDetailValue>
+            <div className="remediation-detail-layout">
+              <div className="remediation-primary-fields">
+                <EditableDetailValue
+                  editButtonLabel="Sửa Số tham chiếu đến"
+                  error={editingField === "incoming_reference" ? errorMessage : null}
+                  isEditing={editingField === "incoming_reference"}
+                  label="Số CV đến"
+                  onCancel={cancelEditor}
+                  onEdit={updateAvailable ? () => { setEditingField("incoming_reference"); setErrorMessage(null); } : null}
+                  onSave={() => void handleUpdateField()}
+                  pending={isPending}
+                  value={selectedCycle.incoming_reference}
+                >
+                  <input
+                    aria-label="Số tham chiếu đến"
+                    disabled={isPending}
+                    onChange={(event) => setDraft((current) => ({ ...current, incoming_reference: event.target.value }))}
+                    value={draft.incoming_reference}
+                  />
+                </EditableDetailValue>
+                <DetailValue label="Ngày nhận" value={formatCompactDate(selectedCycle.submitted_on)} />
+                <DetailValue label="Ngày thẩm định" value={formatCompactDate(selectedCycle.assessed_on)} />
+                <DetailValue label="Người thẩm định" value={selectedCycle.assessor_name} />
+              </div>
+              <div className="remediation-additional-fields">
+                <EditableDetailValue
+                  editButtonLabel="Sửa Ngày yêu cầu"
+                  error={editingField === "requested_on" ? errorMessage : null}
+                  isEditing={editingField === "requested_on"}
+                  label="Ngày yêu cầu"
+                  onCancel={cancelEditor}
+                  onEdit={
+                    updateAvailable
+                      ? () => {
+                          setEditingField("requested_on");
+                          setErrorMessage(null);
+                        }
+                      : null
+                  }
+                  onSave={() => void handleUpdateField()}
+                  pending={isPending}
+                  value={formatCompactDate(selectedCycle.requested_on)}
+                >
+                  <input
+                    aria-label="Ngày yêu cầu"
+                    disabled={isPending}
+                    onChange={(event) => setDraft((current) => ({ ...current, requested_on: event.target.value }))}
+                    type="date"
+                    value={draft.requested_on}
+                  />
+                </EditableDetailValue>
 
-              <DetailValue label="Ngày nhận" value={formatCompactDate(selectedCycle.submitted_on)} />
-              <DetailValue label="Ngày xử lý" value={formatCompactDate(selectedCycle.assessed_on)} />
-              <DetailValue label="Người đánh giá" value={selectedCycle.assessor_name} />
-              <DetailValue label="Kết quả" value={selectedCycle.result} />
-              <DetailValue label="Trạng thái" value={formatStatusLabel(selectedCycle.status)} />
-
-              <EditableDetailValue
-                editButtonLabel="Sửa Ghi chú"
-                error={editingField === "notes" ? errorMessage : null}
-                isEditing={editingField === "notes"}
-                label="Ghi chú"
-                multiline
-                onCancel={cancelEditor}
-                onEdit={
-                  updateAvailable
-                    ? () => {
-                        setEditingField("notes");
-                        setErrorMessage(null);
-                      }
-                    : null
-                }
-                onSave={() => void handleUpdateField()}
-                pending={isPending}
-                value={selectedCycle.notes}
-              >
-                <textarea
-                  aria-label="Ghi chú khắc phục"
-                  className="inspection-textarea"
-                  disabled={isPending}
-                  onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))}
-                  rows={4}
-                  value={draft.notes}
-                />
-              </EditableDetailValue>
+                <DetailValue label="Trạng thái" value={formatStatusLabel(selectedCycle.status)} />
+                <div className="remediation-result-fields">
+                  <DetailValue label="Kết quả" value={selectedCycle.result} />
+                </div>
+                <EditableDetailValue
+                  editButtonLabel="Sửa Ghi chú"
+                  error={editingField === "notes" ? errorMessage : null}
+                  isEditing={editingField === "notes"}
+                  label="Ghi chú"
+                  multiline
+                  onCancel={cancelEditor}
+                  onEdit={
+                    updateAvailable
+                      ? () => {
+                          setEditingField("notes");
+                          setErrorMessage(null);
+                        }
+                      : null
+                  }
+                  onSave={() => void handleUpdateField()}
+                  pending={isPending}
+                  value={selectedCycle.notes}
+                >
+                  <textarea
+                    aria-label="Ghi chú khắc phục"
+                    className="inspection-textarea"
+                    disabled={isPending}
+                    onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))}
+                    rows={4}
+                    value={draft.notes}
+                  />
+                </EditableDetailValue>
+              </div>
             </div>
           </section>
 

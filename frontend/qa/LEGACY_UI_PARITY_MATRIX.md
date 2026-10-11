@@ -250,6 +250,87 @@ mount only while the disclosure is open, keeping the closed search DOM compact;
 opening/closing still has no query or mutation effect. Native disclosure, desktop
 pane geometry and certificate tab round-trips were checked in the fixture browser.
 
+## CAPA remediation visual/interaction slice — 2026-10-12
+
+Baseline: 3a46bae5edf6788528370e7525bdfd145c012cf1. Runtime image 3 establishes
+Số CV đến, Ngày nộp, Ngày thẩm định and Người thẩm định in aligned rows at left,
+two legacy round columns, a separate supervision group and CAPA document buttons
+at right. MainForm DataKT(21/22), (10/23), (11/24) and (12) map the reference,
+submission, assessment and assessor controls. Their names also exist in the FRX
+control stream. These prove relative grouping, not runtime pixel measurements.
+
+Before: requested date interrupted the primary sequence, date/person/result
+values shared a mixed grid, and documents followed the entire workspace.
+After: the selected canonical round groups Số CV đến, Ngày nhận, Ngày thẩm định
+and Người thẩm định vertically, with aligned white values and black labels on
+the existing neutral gray form. Requested date, status, result and per-cycle
+notes remain beside the primary group. Existing command inputs/actions remain
+below. The single unchanged ContextualDocumentSection is in a scrolling right
+column; narrow screens stack it before scopes. Inline errors span their field's
+width. No other workspace, selection owner or mutation handler changes.
+
+Contract differences retained: ADR 0060 permits open-ended CAPA rounds. Keep the
+canonical history selector and one selected round rather than two hardcoded
+legacy records. No field, assessor or status is combined across rounds.
+submitted_on retains the explicit receipt label Ngày nhận; this is not a claim
+that every legacy Ngày nộp value has universal canonical date semantics.
+incoming_reference displays Số CV đến; editor input/activation names retain the
+canonical reference terminology. Assessor remains the backend-owned display
+snapshot, not a new free-text mutation. Documents retain their complete
+workflow_step, capa_cycle parent UUID, document/version/rendition/action identity.
+The backend supplies families for rounds 1/2; no third-round document is guessed.
+Additional canonical result/status/command controls retain existing renderers.
+Relative parity improves; full or pixel-perfect parity is not established.
+
+EVIDENCE_MISSING: canonical owner/contracts for legacy Ngày giám sát, Báo cáo
+g. sát and Người giám sát; runtime create/edit/save/cancel/error states; legacy
+placement of canonical requested date, per-cycle result/status and action forms;
+provenance of the shared Ghi chú. No supervision fields, completion ticks or
+document buttons are fabricated. Drafts retain existing semantics: same-version
+refresh preserves them, cycle/version identity changes rehydrate, workflow or
+facility tabs that unmount editors do not promise draft persistence.
+
+Regression: the new primary-order test fails on the baseline and passes after
+the presentation change. All four commands preserve their existing drafts on
+403/409/422 without retry and use case token 8 for create / cycle token 2 for
+other commands. Tests cover readiness, pending duplicate submit/cycle activation,
+keyboard selection of a third round, same-version refresh and version rehydration.
+App regressions verify a single right-column document workspace, exact cycle
+filtering, selection across tab changes and discarded late 403/404/409 responses.
+Existing document identity/epoch/binary/focus tests remain unchanged.
+
+Browser fixture evidence outside git: capa-parity-1920/1366/390.png,
+capa-detail-390.png, capa-draft-390.png, capa-race-1366.png,
+capa-pending-390.png, capa-conflict-1366/390.png and capa-request-counts.json.
+Verified 1920x1080, 1366x768 and 390x844, keyboard round selection, F2/Escape/Enter,
+F6 focus, independent desktop scrolling and narrow scope following the form.
+Cycle 1 detail is held pending, cycle 2 completes, then released cycle 1 cannot
+replace it. Scope changes retain the draft; workflow/facility tab round-trips
+retain selected cycle/history/production-line UUID. One explicit update with
+cycle token 3 receives 409 and retains its reference draft, without retry.
+Counters record two page initializations (including explicit reload), one read
+of each selected document and one update; navigation/focus adds no duplicate
+case/search/document reads or unintended mutation. A certificate-tab visit adds
+its expected certificate-list request. Browser date entry could not populate the
+native empty assessment date through automation; submit/assess payload and error
+behavior are verified by regression tests, not claimed as browser acceptance.
+
+Desktop page widths equal the viewport. Narrow CAPA remains within the content
+width and scope does not overlap it. A pre-existing header overflow remains:
+document clientWidth 375, scrollWidth 384 at viewport 390; the logout control
+extends approximately 9px. The same measurement occurs in untouched General
+Information. The protected header is not changed by this CAPA-only slice.
+Fixture binaries and a screen reader are unavailable; real-backend integration,
+storage verification and production UAT remain unverified.
+
+Validation: typecheck, lint, all 329 frontend tests / 25 files and production
+build PASS. CAPA/document targeted files pass 28 tests in each of two repeated
+runs; the three new App race regressions also pass. The unchanged A3 frontend
+owner guard passes in isolated function execution (not a full backend run).
+No timeout increase, disabled test, backend change or draft/mutation handler
+change. Existing non-failing React act warnings remain. Diff is frontend-only;
+there is no database, storage, RBAC or concurrency-contract impact.
+
 ## Actual inspection visual/interaction slice — 2026-10-11
 
 Baseline: 39e80378b71d5cf48d50ebfcc5c509ad2ef4a551. Supplied runtime image 2

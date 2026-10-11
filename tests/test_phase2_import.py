@@ -217,6 +217,22 @@ def test_strict_certificate_source_integrity_allows_valid_and_administrative_lin
             assert (certificate.case_id is not None) is expected_case_link
 
 
+def test_strict_preflight_duplicate_certificate_identity_is_rejected_before_schema_creation():
+    # The standalone source audit must match this existing importer invariant.
+    snapshot = sample_snapshot()
+    snapshot["db.cc"].append(dict(snapshot["db.cc"][0]))
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session, pytest.raises(
+        ImportCollisionError, match="Duplicate source row key"
+    ):
+        import_snapshot(
+            session, snapshot,
+            options=ImportExecutionOptions(strict_certificate_case_source_links=True),
+        )
+    assert inspect(engine).has_table("certificate") is False
+    assert inspect(engine).has_table("site") is False
+
+
 def test_real_legacy_snapshot_strict_preflight_rejects_only_effective_conflicts():
     snapshot = json.loads(Path("artifacts/phase3c/legacy_snapshot.json").read_text(encoding="utf-8"))
     engine = create_engine("sqlite:///:memory:", future=True)

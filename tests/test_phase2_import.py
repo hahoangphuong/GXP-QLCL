@@ -251,6 +251,32 @@ def test_import_rejects_duplicate_parent_source_identity_before_schema_creation(
     assert inspect(engine).has_table("site") is False
 
 
+@pytest.mark.parametrize("orphan_kind", ["matching_case_and_certificate_site", "administrative_certificate_site"])
+def test_strict_preflight_rejects_non_materializable_parent_before_schema_creation(orphan_kind):
+    snapshot = sample_snapshot()
+    if orphan_kind == "matching_case_and_certificate_site":
+        # Raw Certificate/Case Site values agree, but neither Site parent exists.
+        snapshot["db.ktra"][0]["ID CƠ SỞ"] = "999"
+        snapshot["db.cc"][0]["ID CƠ SỞ"] = "999"
+        expected = {"CERTIFICATE_SITE_PARENT_NOT_IMPORTABLE", "LINKED_CASE_PARENT_NOT_IMPORTABLE"}
+    else:
+        # A blank Case reference is permitted, but an orphan Site is not.
+        snapshot["db.cc"][0]["ID ĐỢT KTRA"] = ""
+        snapshot["db.cso"][0]["ID Cty"] = "999"
+        expected = {"CERTIFICATE_SITE_PARENT_NOT_IMPORTABLE"}
+
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session, pytest.raises(CertificateCaseSourceIntegrityError) as exc:
+        import_snapshot(
+            session, snapshot,
+            options=ImportExecutionOptions(strict_certificate_case_source_links=True),
+        )
+    assert exc.value.report["effective_anomalies"] == []
+    assert {item["classification"] for item in exc.value.report["effective_parent_anomalies"]} == expected
+    assert inspect(engine).has_table("certificate") is False
+    assert inspect(engine).has_table("site") is False
+
+
 def test_real_legacy_snapshot_strict_preflight_rejects_only_effective_conflicts():
     snapshot = json.loads(Path("artifacts/phase3c/legacy_snapshot.json").read_text(encoding="utf-8"))
     engine = create_engine("sqlite:///:memory:", future=True)

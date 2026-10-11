@@ -32,6 +32,26 @@ read-only workbook evidence, rather than repeating the Excel audit.
 - Write a signed decision record for each exact canonical target, including
   *rejected* candidates. No bulk inference from company name or line code.
 
+### Track A — evidence closure checkpoint for Certificate 376 (read-only)
+
+**Provisional assessment: Case 380 is strongly corroborated as the originating inspection; not formally adjudicated.**
+
+| Evidence dimension | Currently stored link, Case 378 | Review candidate, Case 380 |
+| --- | --- | --- |
+| Source Case Site | 72, Hasan-Dermapharm, unrelated Company | 73, USA-NIC, matches Certificate 376 Site |
+| Inspection period | 04–05/03/2008 | 07–08/12/2017 |
+| Source Case GxP | GMP | GMP |
+| Case's reverse `ID CC GPs` | No corresponding 376 back-reference found | Exact reference to Certificate 376 |
+| Case certificate number | Not corroborated to 119/GCN-QLD | Exact `119/GCN-QLD` |
+| Entire scope string vs Certificate 376 | Not identical | **Exactly identical** after stripping only outer whitespace |
+| Inspection-to-issuance chronology | 2008 → 12/03/2018, inconsistent with apparent renewal context | 12/2017 → 12/03/2018, plausible |
+
+The government-published 2019 WHO-GMP register independently attributes `119/GCN-QLD` (12/03/2018–12/03/2021) to USA-NIC at the Site 73 address. That registry **does not prove the internal Case-to-issuance linkage**. Its public URL, corroborating source row IDs and visual-verification limitation are documented in `CERTIFICATE_CASE_SOURCE_INTEGRITY_AUDIT_20261011.md`.
+
+**Outstanding approval evidence:** obtain the original signed issuance decision/Certificate and referenced inspection dossier or internal approval trail, bind document identifier and immutable checksum to the decision, verify Case 380 and Certificate 376 are uniquely identified in the *target* rehearsal DB, and have an accountable data owner explicitly approve or reject reassignment. The existing legacy source row must remain untouched; this document is not a source correction instruction.
+
+**Decision state:** `PENDING_PRIMARY_DOCUMENT_AND_OWNER_SIGNOFF`. Reassignment target `Case 380` is **review candidate only**. Do not create an auto-remediation rule based on matching text, company, date, certificate number, or this table.
+
 ## Gate 1 — immutable target and reversible write plan (after approval)
 
 1. Confirm instance identity, project and database before any write:

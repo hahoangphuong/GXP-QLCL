@@ -1343,6 +1343,69 @@ def _resolve_optional_legacy_fk(
     )
 
 
+def _validate_confirmed_blanked_source_materialization(
+    snapshot: dict[str, list[dict[str, str]]],
+    *,
+    confirmed_blanked_row_keys: set[tuple[str, str]],
+    overrides: dict[str, dict[str, dict[str, Any]]] | None,
+) -> None:
+    """Fail before DB mutation if a deleted source row would now be imported.
+
+    Walk the same parent-first sheet order and required source FKs as Phase 2.
+    Approved overrides are validated independently before this preflight.
+    Source rows already excluded from business import cannot become parents
+    of other source records merely by retaining their legacy ID.
+    """
+    # (field, parent sheet, missing-FK reason, optional when blank)
+    parents_by_sheet = {
+        "db.cty": (),
+        "db.cso": (("company_legacy_id_ref", "db.cty", "missing_company_fk", False),),
+        "db.ktra": (("site_legacy_id_ref", "db.cso", "missing_site_fk", False),),
+        "db.cc": (
+            ("inspection_case_legacy_id_ref", "db.ktra", "missing_case_fk", True),
+            ("site_legacy_id_ref", "db.cso", "missing_site_fk", False),
+        ),
+        "db.dkkd": (
+            ("site_legacy_id_ref", "db.cso", "missing_site_fk", False),
+            ("company_legacy_id_ref", "db.cty", "missing_company_fk", False),
+        ),
+        "db.Tdoi": (("site_legacy_id_ref", "db.cso", "missing_site_fk", False),),
+        "db.Tdoi2": (("change_request_legacy_id_ref", "db.Tdoi", "missing_change_request_fk", False),),
+    }
+    importable_ids: dict[str, set[int]] = {sheet: set() for sheet in parents_by_sheet}
+    for source_sheet, requirements in parents_by_sheet.items():
+        for raw_row in snapshot[source_sheet]:
+            row = normalize_row(raw_row)
+            legacy_id = parse_int(row.get("ID"))
+            row_key = source_row_key(
+                legacy_row_id=legacy_id, source_row_number_value=source_row_number(row)
+            )
+            for field, parent_sheet, reason, optional in requirements:
+                raw_parent = str(row.get(field) or "").strip()
+                if optional and not raw_parent:
+                    continue
+                parent_id = parse_int(raw_parent)
+                if parent_id not in importable_ids[parent_sheet]:
+                    parent_id = _get_override(
+                        overrides, source_sheet, row_key, REMEDIATION_KEY_BY_REASON[reason]
+                    )
+                if parent_id not in importable_ids[parent_sheet]:
+                    break
+            else:
+                identity = (source_sheet, row_key or "")
+                if identity in confirmed_blanked_row_keys and (
+                    not overrides or row_key not in overrides.get(source_sheet, {})
+                ):
+                    raise ConfirmedBlankedResurrectionError(
+                        "Confirmed blanked source row "
+                        f"{source_sheet}:{row_key} has importable source parents but "
+                        "no explicit owner-approved resurrection override. "
+                        "Refusing to import before schema creation or reset."
+                    )
+                if legacy_id is not None:
+                    importable_ids[source_sheet].add(legacy_id)
+
+
 def import_snapshot(
     session: Session,
     snapshot: dict[str, list[dict[str, str]]],
@@ -1375,6 +1438,22 @@ def import_snapshot(
             or source_link_report["excluded_importable_certificate_rows"]
         ):
             raise CertificateCaseSourceIntegrityError(source_link_report)
+    # An approved blanked-row exclusion is an import boundary, not only a
+    # missing-FK anomaly label. Validate the owner contract and source
+    # materializability before creating or resetting any database tables.
+    confirmed_blanked_row_keys = load_confirmed_blanked_row_keys()
+    approved_confirmed_blanked_resurrections = load_confirmed_blanked_resurrections()
+    _validate_confirmed_blanked_override_contract(
+        remediation_overrides,
+        confirmed_blanked_row_keys=confirmed_blanked_row_keys,
+        approved_resurrections=approved_confirmed_blanked_resurrections,
+    )
+    _validate_confirmed_blanked_source_materialization(
+        snapshot,
+        confirmed_blanked_row_keys=confirmed_blanked_row_keys,
+        overrides=remediation_overrides,
+    )
+    confirmed_blanked_null_key_budgets = load_confirmed_blanked_null_key_budgets()
     if resolved_options.ensure_schema:
         create_schema(session)
     if resolved_options.reset_existing_data:
@@ -1388,14 +1467,6 @@ def import_snapshot(
             )
         )
     }
-    confirmed_blanked_row_keys = load_confirmed_blanked_row_keys()
-    confirmed_blanked_null_key_budgets = load_confirmed_blanked_null_key_budgets()
-    approved_confirmed_blanked_resurrections = load_confirmed_blanked_resurrections()
-    _validate_confirmed_blanked_override_contract(
-        remediation_overrides,
-        confirmed_blanked_row_keys=confirmed_blanked_row_keys,
-        approved_resurrections=approved_confirmed_blanked_resurrections,
-    )
     anomaly_rows: list[dict[str, Any]] = []
     skipped_rows: dict[str, list[dict[str, Any]]] = {sheet: [] for sheet in snapshot}
     stats = ImportStats()

@@ -1273,3 +1273,80 @@ def test_strict_preflight_blocks_importable_confirmed_blanked_certificate_withou
     assert "1 importable confirmed-blanked Certificate row(s)" in str(exc.value)
     assert inspect(engine).has_table("certificate") is False
     assert inspect(engine).has_table("site") is False
+
+
+@pytest.mark.parametrize(
+    ("confirmed_sheet", "confirmed_key"),
+    [
+        ("db.cty", "1"),
+        ("db.cso", "10"),
+        ("db.ktra", "100"),
+        ("db.cc", "200"),
+        ("db.dkkd", "300"),
+        ("db.Tdoi", "400"),
+        ("db.Tdoi2", "500"),
+    ],
+)
+def test_default_import_cannot_resurrect_materializable_confirmed_blanked_rows(
+    monkeypatch, tmp_path, confirmed_sheet, confirmed_key
+):
+    contract_path = tmp_path / "confirmed_blanked.json"
+    contract_path.write_text(
+        json.dumps({"rows": [{
+            "source_sheet": confirmed_sheet, "source_row_key": confirmed_key
+        }]}), encoding="utf-8"
+    )
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", contract_path)
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session, pytest.raises(
+        ConfirmedBlankedResurrectionError, match="no explicit owner-approved resurrection override"
+    ) as exc:
+        import_snapshot(session, sample_snapshot())
+    assert f"{confirmed_sheet}:{confirmed_key}" in str(exc.value)
+    assert inspect(engine).has_table("company") is False
+    assert inspect(engine).has_table("certificate") is False
+
+
+def test_approved_restoration_of_materializable_blanked_row_requires_exact_override(
+    monkeypatch, tmp_path
+):
+    contract = tmp_path / "confirmed_blanked.json"
+    contract.write_text(
+        json.dumps({"rows": [{
+            "source_sheet": "db.cso", "source_row_key": "10"
+        }]}), encoding="utf-8"
+    )
+    approved = tmp_path / "approved_resurrections.json"
+    approved.write_text(
+        json.dumps({"rows": [{
+            "source_sheet": "db.cso", "source_row_key": "10",
+            "approved_override": {"company_legacy_id": 1},
+        }]}), encoding="utf-8"
+    )
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", contract)
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_RESURRECTIONS_PATH", approved)
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        import_snapshot(
+            session, sample_snapshot(),
+            remediation_overrides={"db.cso": {"10": {"company_legacy_id": 1}}},
+        )
+        assert session.query(Site).count() == 1
+
+
+def test_invalid_resurrection_override_rejected_before_schema_mutation(monkeypatch, tmp_path):
+    contract = tmp_path / "confirmed_blanked.json"
+    contract.write_text(json.dumps({"rows": [
+        {"source_sheet": "db.cso", "source_row_key": "10"}
+    ]}), encoding="utf-8")
+    approved = tmp_path / "approved_resurrections.json"
+    approved.write_text(json.dumps({"rows": []}), encoding="utf-8")
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", contract)
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_RESURRECTIONS_PATH", approved)
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session, pytest.raises(ConfirmedBlankedResurrectionError):
+        import_snapshot(
+            session, sample_snapshot(),
+            remediation_overrides={"db.cso": {"10": {"company_legacy_id": 1}}},
+        )
+    assert inspect(engine).has_table("site") is False

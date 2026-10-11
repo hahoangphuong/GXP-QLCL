@@ -141,3 +141,29 @@ follow the owner-approved resurrection/remediation process.
 Independent review of the captured full Phase-3C snapshot and its 27 approved
 `db.cc` confirmed-blanked keys found **0 importable excluded Certificates**.
 The three unresolved effective cross-Site source links remain unchanged.
+
+
+## Import-owner protection for default replay and all confirmed-blanked sheets (11 October)
+
+A second audit identified that the default Phase-2 importer previously treated
+`confirmed_blanked_rows.json` primarily as a missing-parent anomaly
+classification. If a previously deleted row acquired resolvable FKs, its
+FK resolver could return before classifying it as excluded; this was true
+outside strict Certificate–Case audit mode and across source sheets, not only
+`db.cc`.
+
+`import_snapshot` now performs a **pre-schema, pre-reset source-materialization
+check** across `db.cty`, `db.cso`, `db.ktra`, `db.cc`, `db.dkkd`,
+`db.Tdoi` and `db.Tdoi2`. It follows the importer's existing required-FK
+graph and explicit remediation overrides, without inferring missing parent
+identities. A confirmed-blanked row with importable parents and **without
+an exact, explicitly approved resurrection override** raises
+`ConfirmedBlankedResurrectionError` before database mutation, even in
+ordinary import mode. The existing approved-resurrection contract retains
+ownership; it is validated before any schema creation or data reset.
+
+A read-only comparison of the captured Phase-3C source with all 151
+confirmed-blanked contract entries yielded **0 currently importable
+excluded source rows**. No source content, owner approval, Certificate–Case
+business association or database row was altered. The strict source audit's
+three effective cross-Site Certificate links remain unresolved.

@@ -43,6 +43,7 @@ def main(argv: list[str] | None = None) -> int:
         report["effective_anomalies"]
         or report["source_identity_anomalies"]
         or report["effective_parent_anomalies"]
+        or not report["source_parent_check_available"]
     ) else 0
 
 

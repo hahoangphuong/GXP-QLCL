@@ -233,6 +233,24 @@ def test_strict_preflight_duplicate_certificate_identity_is_rejected_before_sche
     assert inspect(engine).has_table("site") is False
 
 
+@pytest.mark.parametrize("parent_sheet", ["db.cty", "db.cso", "db.ktra"])
+def test_import_rejects_duplicate_parent_source_identity_before_schema_creation(parent_sheet):
+    # Standalone --strict audit now mirrors this all-sheet importer invariant.
+    snapshot = sample_snapshot()
+    snapshot["db.cc"][0]["ID ĐỢT KTRA"] = ""  # Administrative; no Case link to audit.
+    snapshot[parent_sheet].append(dict(snapshot[parent_sheet][0]))
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session, pytest.raises(
+        ImportCollisionError, match="Duplicate source row key"
+    ):
+        import_snapshot(
+            session, snapshot,
+            options=ImportExecutionOptions(strict_certificate_case_source_links=True),
+        )
+    assert inspect(engine).has_table("certificate") is False
+    assert inspect(engine).has_table("site") is False
+
+
 def test_real_legacy_snapshot_strict_preflight_rejects_only_effective_conflicts():
     snapshot = json.loads(Path("artifacts/phase3c/legacy_snapshot.json").read_text(encoding="utf-8"))
     engine = create_engine("sqlite:///:memory:", future=True)

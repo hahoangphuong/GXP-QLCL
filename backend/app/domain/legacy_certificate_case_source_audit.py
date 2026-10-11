@@ -1,11 +1,11 @@
 """Read-only source integrity audit for legacy Certificate -> Case references.
 
-This module compares only explicit db.cc / db.ktra source keys and contexts.
-It does not infer replacements, rewrite source rows, or change runtime link rules.
+Compare literal db.cc / db.ktra ownership. Back-references provide review evidence
+only: they never authorize changing an originating Case or merging Sites.
 """
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 from typing import Any
 
 from backend.app.domain.phase2_import import (
@@ -17,27 +17,50 @@ from backend.app.domain.phase2_import import (
 )
 
 
-def audit_certificate_case_source_links(snapshot: dict[str, list[dict[str, str]]]) -> dict[str, Any]:
-    """Classify every db.cc reference using the same normalization as Phase 2.
+def audit_certificate_case_source_links(
+    snapshot: dict[str, list[dict[str, str]]],
+    *,
+    excluded_certificate_row_keys: set[str] | None = None,
+) -> dict[str, Any]:
+    """Audit full source and optionally a confirmed-blanked-excluded import population.
 
-    A nonblank Case reference to a different Site is never considered valid
-    merely because the two Sites share a company or a line code.
+    Exclusions must come from independently approved source-row contracts, not from
+    this audit's classification. A shared company, line code, or certificate
+    number never makes a cross-Site Case link valid.
     """
+    excluded = excluded_certificate_row_keys or set()
     case_rows: dict[int, list[dict[str, str]]] = {}
+    reverse_case_references: dict[int, list[dict[str, str]]] = defaultdict(list)
     for source_row in snapshot["db.ktra"]:
         row = normalize_row(source_row)
-        case_legacy_id = parse_int(row.get("ID"))
-        if case_legacy_id is not None:
-            case_rows.setdefault(case_legacy_id, []).append(row)
+        legacy_case_id = parse_int(row.get("ID"))
+        if legacy_case_id is not None:
+            case_rows.setdefault(legacy_case_id, []).append(row)
+        reverse_certificate_id = parse_int(row.get("linked_certificate_ids"))
+        if reverse_certificate_id is not None and legacy_case_id is not None:
+            reverse_case_references[reverse_certificate_id].append(row)
 
-    counts: Counter[str] = Counter()
+    raw_counts: Counter[str] = Counter()
+    effective_counts: Counter[str] = Counter()
     anomalies: list[dict[str, Any]] = []
+    effective_anomalies: list[dict[str, Any]] = []
+    excluded_count = 0
 
     for source_row in snapshot["db.cc"]:
         certificate = normalize_row(source_row)
+        certificate_legacy_id = parse_int(certificate.get("ID"))
+        row_key = source_row_key(
+            legacy_row_id=certificate_legacy_id,
+            source_row_number_value=source_row_number(certificate),
+        )
+        is_excluded = row_key in excluded
+        if is_excluded:
+            excluded_count += 1
+
         case_ref = str(certificate.get("inspection_case_legacy_id_ref") or "").strip()
         certificate_site = parse_int(certificate.get("site_legacy_id_ref"))
         certificate_gxp = certificate.get("certificate_type") or "UNKNOWN"
+        certificate_number = str(certificate.get("certificate_number") or "").strip()
         case_legacy_id = parse_int(case_ref)
         linked_case_site: int | None = None
         linked_case_gxp: str | None = None
@@ -69,30 +92,61 @@ def audit_certificate_case_source_links(snapshot: dict[str, list[dict[str, str]]
                 else:
                     classification = "EXACT_SOURCE_CONTEXT"
 
-        counts[classification] += 1
-        if classification not in {"EXACT_SOURCE_CONTEXT", "ADMINISTRATIVE_NO_CASE_REFERENCE"}:
-            certificate_legacy_id = parse_int(certificate.get("ID"))
-            anomalies.append({
-                "classification": classification,
-                "certificate_source_row_key": source_row_key(
-                    legacy_row_id=certificate_legacy_id,
-                    source_row_number_value=source_row_number(certificate),
+        raw_counts[classification] += 1
+        if not is_excluded:
+            effective_counts[classification] += 1
+        if classification in {"EXACT_SOURCE_CONTEXT", "ADMINISTRATIVE_NO_CASE_REFERENCE"}:
+            continue
+
+        reverse_evidence = []
+        for row in reverse_case_references.get(certificate_legacy_id, []):
+            reverse_case_gxp_raw = str(row.get("inspection_gxp_type") or "").strip()
+            reverse_case_gxp = normalize_inspection_gxp_type(reverse_case_gxp_raw) or reverse_case_gxp_raw or "UNKNOWN"
+            reverse_site = parse_int(row.get("site_legacy_id_ref"))
+            reverse_number = str(row.get("certificate_number") or "").strip()
+            reverse_evidence.append({
+                "case_legacy_id": parse_int(row.get("ID")),
+                "site_legacy_id": reverse_site,
+                "gxp_type": reverse_case_gxp,
+                "same_certificate_site_and_type": (
+                    certificate_site is not None
+                    and reverse_site == certificate_site
+                    and reverse_case_gxp == certificate_gxp
                 ),
-                "certificate_legacy_id": certificate_legacy_id,
-                "linked_case_legacy_id": case_legacy_id,
-                "raw_case_reference": case_ref,
-                "certificate_site_legacy_id": certificate_site,
-                "linked_case_site_legacy_id": linked_case_site,
-                "certificate_gxp_type": certificate_gxp,
-                "linked_case_gxp_type": linked_case_gxp,
+                "same_nonblank_certificate_number": bool(
+                    certificate_number and reverse_number and certificate_number == reverse_number
+                ),
             })
+        item = {
+            "classification": classification,
+            "certificate_source_row_key": row_key,
+            "certificate_legacy_id": certificate_legacy_id,
+            "linked_case_legacy_id": case_legacy_id,
+            "raw_case_reference": case_ref,
+            "certificate_site_legacy_id": certificate_site,
+            "linked_case_site_legacy_id": linked_case_site,
+            "certificate_gxp_type": certificate_gxp,
+            "linked_case_gxp_type": linked_case_gxp,
+            "excluded_confirmed_blanked": is_excluded,
+            "reverse_case_reference_evidence": sorted(
+                reverse_evidence, key=lambda item: item["case_legacy_id"]
+            ),
+            "remediation_authorized": False,
+        }
+        anomalies.append(item)
+        if not is_excluded:
+            effective_anomalies.append(item)
 
     return {
-        "schema_version": "certificate-case-source-integrity/v1",
+        "schema_version": "certificate-case-source-integrity/v2",
         "source_sheet": "db.cc",
-        "total_certificate_source_rows": sum(counts.values()),
-        "classification_counts": dict(sorted(counts.items())),
+        "total_certificate_source_rows": sum(raw_counts.values()),
+        "classification_counts": dict(sorted(raw_counts.items())),
         "anomalies": anomalies,
+        "excluded_confirmed_blanked_certificate_count": excluded_count,
+        "effective_certificate_source_rows": sum(effective_counts.values()),
+        "effective_classification_counts": dict(sorted(effective_counts.items())),
+        "effective_anomalies": effective_anomalies,
         "database_mutated": False,
         "source_modified": False,
     }

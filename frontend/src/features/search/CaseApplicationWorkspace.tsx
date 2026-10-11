@@ -126,10 +126,21 @@ export function CaseApplicationWorkspace({
   const canResolveInspectionFolder =
     caseWorkspace.case_summary.legacy_site_id !== null && caseWorkspace.case_summary.legacy_inspection_code !== null;
 
+  const additionalInformation = (
+    <div className="detail-grid compact-grid detail-form-matrix case-application-grid case-application-extra">
+      <DetailValue label="Loại kiểm tra" value={caseWorkspace.case_summary.inspection_type} />
+      <DetailValue label="GxP" value={caseWorkspace.case_summary.gxp_type} />
+      <DetailValue label="Dây chuyền" value={caseWorkspace.case_summary.scope_code} />
+      <DetailValue label="Tiêu chuẩn áp dụng" value={caseWorkspace.case_summary.applicable_standard} />
+      <DetailValue label="Năm mở hồ sơ" value={String(caseWorkspace.case_summary.opened_year ?? "")} />
+      <DetailValue label="Trạng thái hồ sơ" value={formatStatusLabel(caseWorkspace.case_summary.state)} />
+    </div>
+  );
+
   return (
     <div className="event-step-stack">
       <section className={`workspace-section case-application-section${assessment ? " legacy-dossier-section" : ""}`}>
-        <h4>Thông tin hồ sơ</h4>
+        <h4 className={assessment ? "sr-only" : undefined}>Thông tin hồ sơ</h4>
         <div className="detail-grid compact-grid detail-form-matrix case-application-grid case-application-primary">
           <EditableDetailValue
             editButtonLabel="Sửa Ngày nộp"
@@ -178,14 +189,7 @@ export function CaseApplicationWorkspace({
 
         </div>
         {assessment}
-        <div className="detail-grid compact-grid detail-form-matrix case-application-grid case-application-extra">
-          <DetailValue label="Loại kiểm tra" value={caseWorkspace.case_summary.inspection_type} />
-          <DetailValue label="GxP" value={caseWorkspace.case_summary.gxp_type} />
-          <DetailValue label="Dây chuyền" value={caseWorkspace.case_summary.scope_code} />
-          <DetailValue label="Tiêu chuẩn áp dụng" value={caseWorkspace.case_summary.applicable_standard} />
-          <DetailValue label="Năm mở hồ sơ" value={String(caseWorkspace.case_summary.opened_year ?? "")} />
-          <DetailValue label="Trạng thái hồ sơ" value={formatStatusLabel(caseWorkspace.case_summary.state)} />
-        </div>
+        {assessment ? <details className="case-application-additional"><summary>Thông tin bổ sung</summary>{additionalInformation}</details> : additionalInformation}
         <div className="panel-actions panel-actions-tight">
           <button disabled={!canResolveInspectionFolder || folderLookupPending} onClick={() => void resolveInspectionFolder()} type="button">
             {folderLookupPending ? "Đang tra cứu..." : "Tra cứu thư mục kiểm tra"}

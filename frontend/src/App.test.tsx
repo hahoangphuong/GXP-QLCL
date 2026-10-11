@@ -3163,6 +3163,13 @@ describe("App Slice A.4 search workspace", () => {
     const { container } = renderApp(["/search"]);
     await screen.findByRole("button", { name: "Sửa Người thẩm định" });
     expect(screen.getByRole("button", { name: "Sửa Kết quả thẩm định" })).toBeInTheDocument();
+    expect(container.querySelectorAll(".registration-document-column > .document-workspace")).toHaveLength(1);
+    expect(container.querySelectorAll(".registration-form-pane .case-assessment-section")).toHaveLength(1);
+    fireEvent.click(screen.getByText("Thông tin bổ sung"));
+    expect(container.querySelector(".case-application-additional")).toHaveAttribute("open");
+    fireEvent.click(screen.getByText("Thông tin bổ sung"));
+    expect(apiMocks.getDocumentDetail).not.toHaveBeenCalled();
+    expect(apiMocks.upsertCaseApplication).not.toHaveBeenCalled();
     expect(screen.queryByText("Các mốc xử lý hành chính")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Xử lý tiếp" }));
     expect(screen.getByText("Các mốc xử lý hành chính")).toBeInTheDocument();

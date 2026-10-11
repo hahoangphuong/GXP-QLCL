@@ -321,13 +321,16 @@ function renderCaseStepContent(
 
   if (activeTab === "Hồ sơ") {
     return (
-      <div className="event-step-stack">
+      <div className="registration-workspace">
+        <div className="registration-form-pane">
         <CaseApplicationWorkspace
           assessment={<CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} view="assessment" />}
           caseWorkspace={caseWorkspace}
           onResolveInspectionFolder={onResolveInspectionFolder}
           onSave={onCaseApplicationSave}
         />
+        </div>
+        <div className="registration-document-column">
         <ContextualDocumentSection
           contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
           items={documentItems}
@@ -337,6 +340,7 @@ function renderCaseStepContent(
           onLoadDocumentDetail={onLoadDocumentDetail}
           onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
         />
+        </div>
       </div>
     );
   }

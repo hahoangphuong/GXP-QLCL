@@ -252,6 +252,57 @@ pane geometry and certificate tab round-trips were checked in the fixture browse
 
 ## Dossier assessment placement follow-up
 
+### Registration visual/interaction slice — 2026-10-11
+
+Baseline: c6f9d76473072ffe9a802d8b584b212e9131a47c. Runtime image 1
+and MainForm DataKT(0..4) establish four aligned left-hand values (Ngày nộp,
+Mã hồ sơ, Ngày thẩm định, Người thẩm định), a taller white result at center,
+and assessment document access at right. The registration-only presentation
+now follows that arrangement with matching label widths, centered values,
+white field backgrounds and a neutral gray frame. The redundant visible
+heading is screen-reader-only; additional canonical metadata remains available
+in a native Thông tin bổ sung disclosure. Folder lookup is retained unchanged.
+
+EventWorkspace moves its single existing ContextualDocumentSection into a
+right-hand column; its implementation, context key, UUIDs, action availability,
+workflow_step filtering and callbacks are unchanged. Backend contextual_actions
+maps INSPECTION_BBTD_HOSO_DK / Biên bản thẩm định to Hồ sơ. No filename, NAS path
+or legacy ID is used to select a document. Desktop document content scrolls
+independently. At narrow width the form/result/documents stack before scopes;
+registration-specific sizing prevents the scope pane overlapping long content.
+Master, GxP rail, history, navigation and FacilitySummary are unchanged.
+
+Remaining differences: retain the canonical document list/detail, versions,
+status and action availability instead of reducing them to a single legacy
+file button. Retain inline save/cancel controls and the folder lookup helper.
+EVIDENCE_MISSING: legacy runtime editor/save/cancel/error states and provenance
+of the shared Ghi chú row. No field/action or completion tick is invented.
+This slice does not address other workflow steps or complete Issue #1.
+
+Browser evidence (synthetic fixture API only), outside git:
+registration-parity-1366.png, registration-parity-1920.png,
+registration-parity-390.png, registration-document-focus-390.png,
+registration-conflict-390.png and registration-conflict-1920.png.
+Viewport DOM measurements confirm 1366x768, 1920x1080, 390x844 and no horizontal
+page overflow (narrow scrollWidth 384). Scope bottom follows registration on
+narrow layout. F2/Enter editing, Escape cancel, Enter document selection and
+F6/Shift+F6 work; scope navigation retains the application draft. Facility and
+event-tab round trips retain selected history and production-line UUID.
+Fixture counters show one search/facility/case read and one explicit document
+detail read; navigation produces no mutations. Two explicit save attempts
+(application token 4; assessment token 2) each produce one 409 and keep drafts,
+without retry. Fixture omits binary content; no backend/storage integration,
+screen-reader acceptance or production UAT is claimed.
+
+Slice validation: typecheck, lint, full 314 tests / 24 files and build PASS.
+Targeted App/application/registration/document files: 166 tests PASS. The new
+presentation regression failed before implementation and passed afterward.
+The initial broad targeted run had async-query failures and two default 5000ms
+timeouts; the subsequent complete targeted and full runs pass with unchanged
+timeouts and business handlers. Existing non-failing React act warnings remain.
+Diff review confirms frontend-only changes and no modification to
+ContextualDocumentSection, SearchPage, FacilitySummary or backend contracts.
+
 Image 1 and MainForm DataKT mappings place submitted date, application code,
 assessment date/person at left and assessment result at right in registration.
 The domain contract identifies CaseAssessment as the dossier assessment owner;

@@ -36,7 +36,7 @@ def audit_certificate_case_source_links(
         legacy_case_id = parse_int(row.get("ID"))
         if legacy_case_id is not None:
             case_rows.setdefault(legacy_case_id, []).append(row)
-        reverse_certificate_id = parse_int(row.get("linked_certificate_ids"))
+        reverse_certificate_id = parse_int(row.get("ID CC GPs"))
         if reverse_certificate_id is not None and legacy_case_id is not None:
             reverse_case_references[reverse_certificate_id].append(row)
 

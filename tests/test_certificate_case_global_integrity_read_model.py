@@ -125,3 +125,99 @@ def test_historical_cross_site_certificate_blocks_global_search_and_own_site_wor
         ))
         assert administrative_id in valid_ids
         assert historical_id not in valid_ids
+
+
+
+def test_historical_same_site_wrong_gxp_rejected_but_valid_case_link_remains_queryable(tmp_path):
+    """Python/SQL/Read must agree; Site equality alone is not sufficient."""
+    engine = create_engine(
+        f"sqlite:///{(tmp_path / 'certificate-gxp-integrity.sqlite').as_posix()}",
+        future=True,
+    )
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        company = Company(legal_name="Single site company")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="Single manufacturing site")
+        session.add(site)
+        session.flush()
+
+        correct_case = Case(site_id=site.id, gxp_type="GMP", state=CaseState.CERTIFIED)
+        wrong_type_case = Case(site_id=site.id, gxp_type="GLP", state=CaseState.CERTIFIED)
+        session.add_all([correct_case, wrong_type_case])
+        session.flush()
+
+        valid_certificate = Certificate(
+            site_id=site.id,
+            case_id=correct_case.id,
+            certificate_type="GMP",
+            issuance_basis="inspection_case",
+            latest_flag=True,
+        )
+        invalid_historical = Certificate(
+            site_id=site.id,
+            case_id=wrong_type_case.id,
+            certificate_type="GMP",
+            issuance_basis="inspection_case",
+            latest_flag=False,
+        )
+        session.add_all([valid_certificate, invalid_historical])
+        session.flush()
+        session.add_all([
+            CertificateVersion(
+                certificate_id=valid_certificate.id,
+                version_no=1,
+                certificate_number="VALID-SAME-SITE-GMP",
+                issue_date=date(2025, 1, 1),
+                is_latest_version=True,
+            ),
+            CertificateVersion(
+                certificate_id=invalid_historical.id,
+                version_no=1,
+                certificate_number="INVALID-HISTORICAL-GXP",
+                issue_date=date(2022, 1, 1),
+                is_latest_version=True,
+            ),
+        ])
+        session.commit()
+        valid_id, invalid_id, site_id = valid_certificate.id, invalid_historical.id, site.id
+
+    with Session(engine) as session:
+        correct_certificate = session.get(Certificate, valid_id)
+        wrong_certificate = session.get(Certificate, invalid_id)
+        assert correct_certificate is not None and wrong_certificate is not None
+        assert CaseWorkflowService._validate_certificate_linked_case(
+            session, correct_certificate
+        ).id == correct_case.id
+        with pytest.raises(HTTPException, match="invalid linked Case") as error:
+            CaseWorkflowService._validate_certificate_linked_case(session, wrong_certificate)
+        assert error.value.status_code == 409
+
+        valid_ids = set(session.scalars(
+            select(Certificate.id).where(CaseWorkflowService._certificate_valid_linked_case_sql())
+        ))
+        assert valid_id in valid_ids
+        assert invalid_id not in valid_ids
+
+        catalog = CatalogReadService()
+        # A historical GMP anomaly must not disappear behind a GLP filter.
+        with pytest.raises(HTTPException, match="invalid linked Case") as error:
+            catalog.search_facilities(
+                session,
+                q=None,
+                gxp_type="GLP",
+                province=None,
+                case_states=None,
+                change_request_states=None,
+                certificate_state=None,
+                certificate_expiring_within_days=None,
+                offset=0,
+                limit=1,
+            )
+        assert error.value.status_code == 409
+        with pytest.raises(HTTPException, match="invalid linked Case") as error:
+            catalog.get_facility_workspace(
+                session, site_id=site_id, gxp_type="GLP", line_code=None
+            )
+        assert error.value.status_code == 409

@@ -103,6 +103,11 @@ def test_real_source_snapshot_exposes_all_site_conflicts_without_inventing_remed
         "EXACT_SOURCE_CONTEXT": 1455,
         "SITE_MISMATCH": 3,
     }
+    # All source-parent orphans are among the 27 previously approved blanked
+    # certificates, not among the 1,455 exact links or 3 unresolved conflicts.
+    assert effective["source_parent_check_available"] is True
+    assert len(effective["source_parent_anomalies"]) == 27
+    assert effective["effective_parent_anomalies"] == []
     assert [item["certificate_legacy_id"] for item in effective["effective_anomalies"]] == [
         376, 1037, 1180
     ]
@@ -234,3 +239,54 @@ def test_source_identity_detection_matches_importer_for_all_sheets():
             "occurrences": 2,
         }], sheet
         assert report["effective_anomalies"] == [], sheet
+
+
+def test_source_parent_importability_fails_closed_without_reclassifying_links(tmp_path):
+    snapshot = {
+        "db.cty": [{"ID": "1"}],
+        "db.cso": [{"ID": "10", "ID Cty": "1"}],
+        "db.ktra": [{"ID": "100", "ID CƠ SỞ": "99", "LOẠI KT": "GMP"}],
+        "db.cc": [
+            {"ID": "200", "ID ĐỢT KTRA": "100", "ID CƠ SỞ": "99", "LOẠI CC": "GMP"},
+            {"ID": "201", "ID ĐỢT KTRA": "", "ID CƠ SỞ": "10", "LOẠI CC": "GMP"},
+        ],
+    }
+    report = audit_certificate_case_source_links(snapshot)
+    assert report["source_parent_check_available"] is True
+    assert report["effective_anomalies"] == []
+    assert report["classification_counts"] == {
+        "ADMINISTRATIVE_NO_CASE_REFERENCE": 1,
+        "EXACT_SOURCE_CONTEXT": 1,
+    }
+    assert [
+        (item["certificate_legacy_id"], item["classification"], item["parent_source_sheet"])
+        for item in report["effective_parent_anomalies"]
+    ] == [
+        (200, "CERTIFICATE_SITE_PARENT_NOT_IMPORTABLE", "db.cso"),
+        (200, "LINKED_CASE_PARENT_NOT_IMPORTABLE", "db.ktra"),
+    ]
+    excluded = audit_certificate_case_source_links(
+        snapshot, excluded_certificate_row_keys={"200"}
+    )
+    assert len(excluded["source_parent_anomalies"]) == 2
+    assert excluded["effective_parent_anomalies"] == []
+    path = tmp_path / "orphan-source.json"
+    path.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+    assert main(["--snapshot", str(path), "--strict"]) == 2
+
+
+def test_administrative_certificate_requires_materializable_site_parent(tmp_path):
+    snapshot = {
+        "db.cty": [{"ID": "1"}],
+        "db.cso": [{"ID": "10", "ID Cty": "999"}],
+        "db.ktra": [],
+        "db.cc": [{"ID": "200", "ID ĐỢT KTRA": "", "ID CƠ SỞ": "10", "LOẠI CC": "GMP"}],
+    }
+    report = audit_certificate_case_source_links(snapshot)
+    assert report["effective_anomalies"] == []
+    assert report["source_parent_check_available"] is True
+    assert len(report["effective_parent_anomalies"]) == 1
+    assert report["effective_parent_anomalies"][0]["classification"] == "CERTIFICATE_SITE_PARENT_NOT_IMPORTABLE"
+    source = tmp_path / "orphan-admin.json"
+    source.write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+    assert main(["--snapshot", str(source), "--strict"]) == 2

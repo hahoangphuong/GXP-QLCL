@@ -34,6 +34,15 @@ def excel_column_letter(number: int) -> str:
     return result
 
 
+def require_literal_idcc_column(has_formula: Any, column: int) -> None:
+    """Excel Range.HasFormula is False only when no cells contain formulas."""
+    if has_formula is not False and has_formula != 0:
+        raise MissingPhysicalEvidence(
+            f"db.dkkd ID CC physical column {column} contains formula cells "
+            "or has unverifiable formula status; computed FKs are not literal evidence"
+        )
+
+
 def find_ddk_header_row(raw_rows: list[list[object]]) -> int:
     """Require the unique physical db.dkkd header; never guess column ownership."""
     matching = [
@@ -100,6 +109,16 @@ def extract_readonly_workbook(path: Path) -> tuple[dict[str, list[dict[str, str]
                 idcc_columns = [
                     index + 1 for index, label in enumerate(headers) if label == "ID CC"
                 ]
+                # Excel Value2 returns a cached number even for =formula cells.
+                # Refuse to represent such computed results as literal source FKs.
+                if last_row <= header_index + 1:
+                    raise MissingPhysicalEvidence("db.dkkd has no source data rows")
+                for column in idcc_columns:
+                    formula_state = ws.Range(
+                        ws.Cells(header_index + 2, column),
+                        ws.Cells(last_row, column),
+                    ).HasFormula
+                    require_literal_idcc_column(formula_state, column)
                 # The header band is evidence for owner review, not permission
                 # to label ordinal N as GMP, GLP, GSP or GDP.
                 sheet_evidence = {

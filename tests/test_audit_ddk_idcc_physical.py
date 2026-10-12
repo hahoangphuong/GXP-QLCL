@@ -11,7 +11,7 @@ from backend.app.domain.legacy_snapshot import _core_source_row
 from tools.audit_ddk_idcc_physical import (
     AUDIT_SOURCE_SHEETS, MissingPhysicalEvidence, audit, excel_column_letter,
     find_ddk_header_row, find_id_header_row, require_literal_idcc_column,
-    split_idcc_references,
+    split_idcc_references, discover_ddk_group_layout, project_ddk_group_source,
 )
 
 
@@ -332,3 +332,101 @@ def test_certificate_company_is_compared_independently_of_site_and_reverse_ddk()
         if c["source_row_number"] == 7 and c["certificate_legacy_id"] == 200
     )
     assert unresolved["certificate_company_vs_ddk"] == "UNRESOLVED"
+
+
+def grouped_ddk_source_fixture():
+    group_fields = [
+        "ID CC", "PHẠM VI CHỨNG NHẬN",
+        "TIÊU CHUẨN ÁP DỤNG", "HOẠT ĐỘNG KINH DOANH",
+    ]
+    headers = ["ID", "ID CƠ SỞ", "ID CTY"] + group_fields * 4
+    above = [""] * len(headers)
+    for ordinal, role in [(4, "GMP"), (8, "GLP"), (12, "GSP"), (16, "GDP")]:
+        above[ordinal - 1] = role
+    # GLP and GDP contain independently populated fields despite empty ID CC.
+    values = [
+        "400", "10", "1",
+        "200", "GMP physical scope", "WHO-GMP", "Sản xuất thuốc",
+        "", "GLP standalone scope", "GLP", "",
+        "202", "", "", "",
+        "", "", "", "Bán buôn thuốc",
+    ]
+    rows = [_core_source_row(headers, values, 7)]
+    plans = discover_ddk_group_layout(headers, above)
+    return rows, plans
+
+
+def test_grouped_source_preserves_all_four_fields_even_without_id_cc():
+    rows, plans = grouped_ddk_source_fixture()
+    projected, counts = project_ddk_group_source(rows, plans)
+    assert len(projected) == 1
+    row = projected[0]
+    assert row["source_row_number"] == 7
+    assert row["ddk_legacy_id"] == 400
+    groups = {g["source_group"]: g for g in row["groups"]}
+    assert groups["GMP"]["fields"]["certificate_scope"]["raw_value"] == "GMP physical scope"
+    assert groups["GMP"]["fields"]["applicable_standard"]["raw_value"] == "WHO-GMP"
+    assert groups["GLP"]["fields"]["id_cc"]["raw_value"] == ""
+    assert groups["GLP"]["fields"]["certificate_scope"]["raw_value"] == "GLP standalone scope"
+    assert groups["GLP"]["has_companion_without_id_cc"]
+    assert groups["GDP"]["fields"]["id_cc"]["raw_value"] == ""
+    assert groups["GDP"]["fields"]["business_activity"]["raw_value"] == "Bán buôn thuốc"
+    assert groups["GDP"]["has_companion_without_id_cc"]
+    assert groups["GDP"]["fields"]["business_activity"]["excel_column"] == 19
+    totals = {item["source_group"]: item["counts"] for item in counts}
+    assert totals["GMP"]["id_cc_populated"] == 1
+    assert totals["GDP"]["business_activity_populated"] == 1
+    assert totals["GDP"]["companion_without_id_cc"] == 1
+
+
+def test_grouped_projection_is_preserved_in_readonly_audit_without_creating_links():
+    rows, plans = grouped_ddk_source_fixture()
+    data = fixture()
+    data["db.dkkd"] = rows
+    result = audit(data, header_evidence={"id_cc_columns": plans})
+    assert result["schema"] == "GXP_DDK_IDCC_PHYSICAL_REVIEW_V3"
+    assert result["grouped_source_status"] == "COMPLETE_SOURCE_GROUP_PROJECTION"
+    assert len(result["grouped_source_rows"]) == 1
+    assert result["candidate_count"] == 2
+    assert result["approval_status"] == "NOT_APPROVED_NO_RELATIONSHIPS_CREATED"
+    assert result["grouped_source_rows"][0]["groups"][3]["fields"]["business_activity"]["raw_value"]
+    assert not any(c["excel_column"] == 16 for c in result["candidates"])
+
+
+def test_group_layout_binds_explicit_heading_not_group_position():
+    rows, plans = grouped_ddk_source_fixture()
+    headers = ["ID", "ID CƠ SỞ", "ID CTY"] + [
+        name for _ in range(4) for name in
+        ["ID CC", "PHẠM VI CHỨNG NHẬN", "TIÊU CHUẨN ÁP DỤNG", "HOẠT ĐỘNG KINH DOANH"]
+    ]
+    above = [""] * len(headers)
+    for ordinal, role in [(4, "GDP"), (8, "GSP"), (12, "GLP"), (16, "GMP")]:
+        above[ordinal - 1] = role
+    rearranged = discover_ddk_group_layout(headers, above)
+    assert [(p["ordinal"], p["observed_group_header"]) for p in rearranged] == [
+        (4, "GDP"), (8, "GSP"), (12, "GLP"), (16, "GMP")
+    ]
+
+
+def test_incomplete_group_or_missing_companion_cell_fails_closed():
+    rows, plans = grouped_ddk_source_fixture()
+    broken = copy.deepcopy(rows)
+    del broken[0]["HOẠT ĐỘNG KINH DOANH [excel_column=19]"]
+    with pytest.raises(MissingPhysicalEvidence, match="Missing preserved physical source field"):
+        project_ddk_group_source(broken, plans)
+    headers = ["ID", "ID CƠ SỞ", "ID CTY"] + [
+        name for _ in range(4) for name in
+        ["ID CC", "PHẠM VI CHỨNG NHẬN", "TIÊU CHUẨN ÁP DỤNG", "HOẠT ĐỘNG KINH DOANH"]
+    ]
+    headers[16] = "ID CC"
+    above = [""] * len(headers)
+    for c, role in [(4, "GMP"), (8, "GLP"), (12, "GSP"), (16, "GDP")]:
+        above[c-1] = role
+    with pytest.raises(MissingPhysicalEvidence, match="Incomplete db.dkkd"):
+        discover_ddk_group_layout(headers, above)
+
+
+def test_grouped_source_is_unavailable_without_proven_header_layout():
+    result = audit(fixture())
+    assert result["grouped_source_status"] == "UNAVAILABLE_REQUIRES_PHYSICAL_HEADER_BAND"
+    assert result["grouped_source_rows"] == []

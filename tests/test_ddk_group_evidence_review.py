@@ -240,6 +240,9 @@ def test_cli_never_overwrites_input_or_preexisting_review(tmp_path, monkeypatch)
     assert main() == 0
     first_bytes = out.read_bytes()
     assert first_bytes and json.loads(first_bytes)["approval_status"] == "SOURCE_REVIEW_ONLY_NOT_APPROVED"
+    fingerprints = json.loads(first_bytes)["input_artifact_sha256"]
+    assert fingerprints["v3_audit_json"] == hashlib.sha256(source.read_bytes()).hexdigest()
+    assert fingerprints["approved_exclusions_json"] is None
     with pytest.raises(SystemExit) as err:
         main()
     assert err.value.code == 2
@@ -268,3 +271,14 @@ def test_cli_cannot_overwrite_exclusion_contract(tmp_path, monkeypatch):
         main()
     assert err.value.code == 2
     assert approved.read_bytes() == original_bytes
+
+    # A separate, new manifest records both unchanged input-byte checksums.
+    fresh_output = tmp_path / "fresh_review.json"
+    monkeypatch.setattr(sys, "argv", [
+        "ddk_group_evidence_review", "--audit-json", str(source),
+        "--approved-exclusions-json", str(approved), "--output", str(fresh_output),
+    ])
+    assert main() == 0
+    digests = json.loads(fresh_output.read_text(encoding="utf-8"))["input_artifact_sha256"]
+    assert digests["v3_audit_json"] == hashlib.sha256(source.read_bytes()).hexdigest()
+    assert digests["approved_exclusions_json"] == hashlib.sha256(approved.read_bytes()).hexdigest()

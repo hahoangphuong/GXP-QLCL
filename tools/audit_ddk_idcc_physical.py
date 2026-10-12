@@ -251,6 +251,11 @@ def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | Non
         company_id = parse_int(row.get("ID"))
         if company_id is not None:
             companies[company_id].append(row)
+    source_group_headers = {
+        item.get("ordinal"): safe_text(item.get("observed_group_header"))
+        for item in (header_evidence or {}).get("id_cc_columns", [])
+        if isinstance(item, dict)
+    }
     column_counts: dict[int, Counter] = {column: Counter() for column in columns}
     column_types: dict[int, Counter] = {column: Counter() for column in columns}
     candidates: list[dict[str, Any]] = []
@@ -303,6 +308,8 @@ def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | Non
                     "source_token_count": len(tokens),
                     "classification": None,
                     "certificate_type": None,
+                    "observed_group_header": source_group_headers.get(col) or None,
+                    "certificate_type_vs_source_header": "UNVERIFIED",
                     "certificate_site_legacy_id": None,
                     "reverse_id_ddk": None,
                     "reverse_relation": "UNVERIFIED",
@@ -327,6 +334,14 @@ def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | Non
                     cert_site_status = _source_lookup_status(cert_site, sites)
                     evidence["certificate_site_lookup"] = cert_site_status
                     column_types[col][cert_type or "(blank)"] += 1
+                    observed_label = source_group_headers.get(col)
+                    if observed_label in {"GMP", "GLP", "GSP", "GDP"} and cert_type:
+                        evidence["certificate_type_vs_source_header"] = (
+                            "MATCH" if cert_type == observed_label else "MISMATCH"
+                        )
+                        column_counts[col][
+                            "source_type_" + evidence["certificate_type_vs_source_header"].lower()
+                        ] += 1
                     if cert_site is None or ddk_site is None:
                         evidence["classification"] = "SITE_UNRESOLVED"
                     elif cert_site != ddk_site:

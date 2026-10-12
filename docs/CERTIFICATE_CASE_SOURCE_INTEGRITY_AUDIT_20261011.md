@@ -378,3 +378,36 @@ no VM SQL connection is attached to this session. Actual occurrence counts
 and business ownership of any anomalies remain unverified. Do not infer
 that the cross-site association is authorized merely because display
 attribution is now truthful.
+
+
+## Independent raw-source ĐĐK↔GxP evidence audit (12 October)
+
+The source `artifacts/phase3c/legacy_snapshot.json` contains **830** ĐĐK
+rows with **zero nonblank `db.dkkd.ID CC` values**, the forward field
+currently consumed by Phase-2 for creating version-specific
+`BusinessEligibilityCertificateLink`. Conversely, among **1,628**
+`db.cc` Certificate rows, **806** have a nonempty `ID DDK`, of which
+**639** are literal valid numeric IDs and **167** are placeholder `-`.
+All 639 literal IDs point to an existing raw ĐĐK row, but **nine**
+point to entries in the independently confirmed-blanked contract, leaving
+**630 source-reference candidates** (495 distinct target ĐĐK IDs).
+Among those candidates, **628 share the same Site** and **two cross
+Sites**: Certificate **790** → ĐĐK **160**, and Certificate **1500**
+→ ĐĐK **464**. One of these also differs by Company. These are
+source-side *competing claims*, not validated canonical links and not
+automatic justification to repair or import them.
+
+New independent `backend/app/domain/legacy_ddk_gxp_source_audit.py`
+classifies both reference directions without mutating input or introducing
+a downstream rescue. CLI: `python -m scripts.audit_legacy_ddk_gxp_source_links`.
+The module reports only literal row IDs and numeric lineage; no name,
+address or personnel fields are emitted. Regression covers synthetic
+missing/blanked/cross-Site references plus the checked-in real corpus.
+This audit does not modify Phase-2 import, Certificate/Site/Case owners,
+version history, or existing canonical link counts. Current PostgreSQL
+link-population counts still require the separate read-only rehearsal
+SQL check. Any decision to translate reverse `ID DDK` into canonical
+`BusinessEligibilityCertificateLink` rows requires source-authority
+review, including the two cross-Site rows, and cannot be implemented
+as an unreviewed fallback. The former SQL audit is still necessary
+to distinguish current DB state from raw Excel evidence.

@@ -268,3 +268,24 @@ literals, all seven source-ID sheets, source immutability and the no-schema
 failure boundary. This hardening does not infer a replacement Case/Site,
 change any signed business correction, or modify the three outstanding
 Certificate–Case conflicts.
+
+
+## Orphan resurrection approvals: independent confirmed-blanked ownership (12 October)
+
+A further owner-contract audit identified a fail-open gap: an entry in
+`confirmed_blanked_resurrections.json` could name an identity absent from the
+independently reviewed `confirmed_blanked_rows.json`, yet the importer would
+silently ignore that stale/mismatched signed entry and proceed. The resurrection
+contract itself states that only previously confirmed-blanked rows can appear
+in its approval list; the existing code checked matching applied overrides but
+not the scope of *all* signed approvals when no override was supplied.
+
+The owner pre-schema authorization guard now rejects any approval whose
+`(source_sheet, source_row_key)` is not present in the independent blanked-row
+contract, even with no remediation overrides. This raises
+`ConfirmedBlankedContractError` without creating/resetting tables. Regression
+covers an unrelated row key and an unrelated source sheet, each in normal and
+strict importer modes; snapshot immutability and no-schema-write are asserted.
+The currently checked-in resurrection contract has no approval rows, so this
+change does not authorize or apply any business correction. The outstanding
+three cross-Site Certificate links are unaffected.

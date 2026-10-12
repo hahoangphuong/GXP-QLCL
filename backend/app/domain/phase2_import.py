@@ -1122,6 +1122,17 @@ def _validate_confirmed_blanked_override_contract(
     confirmed_blanked_row_keys: set[tuple[str, str]],
     approved_resurrections: dict[tuple[str, str], dict[str, int]],
 ) -> None:
+    # An approval is valid only for a row already independently classified
+    # as confirmed-blanked. Do this even when no remediation overrides are
+    # supplied: an unused, stale approval must not be silently accepted.
+    unconfirmed_approvals = sorted(set(approved_resurrections) - confirmed_blanked_row_keys)
+    if unconfirmed_approvals:
+        sheet, row_key = unconfirmed_approvals[0]
+        raise ConfirmedBlankedContractError(
+            "Owner-approved confirmed-blanked resurrection contract references "
+            f"unconfirmed row {sheet}:{row_key}; only independently confirmed-blanked "
+            "source identities may be authorized."
+        )
     if not overrides:
         return
     for source_sheet, rows in overrides.items():

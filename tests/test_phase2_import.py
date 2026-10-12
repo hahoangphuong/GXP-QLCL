@@ -675,6 +675,43 @@ def test_confirmed_blanked_contract_duplicate_identity_fails_closed(monkeypatch,
         raise AssertionError("Expected duplicate confirmed blanked identity failure")
 
 
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(
+    ("approved_sheet", "approved_row_key"),
+    [("db.cc", "999"), ("db.ktra", "200")],
+)
+def test_stale_resurrection_approval_not_in_confirmed_blanked_contract_fails_pre_schema(
+    monkeypatch, tmp_path, strict, approved_sheet, approved_row_key
+):
+    # Signed approval is not a source-of-truth designation of deleted rows.
+    # Previously this orphan authorization was ignored and import proceeded.
+    blanked = tmp_path / "blanked.json"
+    blanked.write_text(json.dumps({"rows": []}), encoding="utf-8")
+    resurrection = tmp_path / "resurrections.json"
+    resurrection.write_text(json.dumps({"rows": [{
+        "source_sheet": approved_sheet,
+        "source_row_key": approved_row_key,
+        "approved_override": {"site_legacy_id": 10},
+    }]}), encoding="utf-8")
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", blanked)
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_RESURRECTIONS_PATH", resurrection)
+    snapshot = sample_snapshot()
+    original_source = json.loads(json.dumps(snapshot))
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session, pytest.raises(
+        ConfirmedBlankedContractError, match="unconfirmed row"
+    ) as exc:
+        import_snapshot(
+            session,
+            snapshot,
+            options=ImportExecutionOptions(strict_certificate_case_source_links=strict),
+        )
+    assert f"{approved_sheet}:{approved_row_key}" in str(exc.value)
+    assert inspect(engine).has_table("company") is False
+    assert inspect(engine).has_table("certificate") is False
+    assert snapshot == original_source
+
+
 def test_import_snapshot_accepts_approved_confirmed_blanked_resurrection(monkeypatch, tmp_path):
     confirmed_blanked_path = tmp_path / "confirmed_blanked_rows.json"
     confirmed_blanked_path.write_text(

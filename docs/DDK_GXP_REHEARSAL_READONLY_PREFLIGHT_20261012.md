@@ -55,6 +55,44 @@ The tool always reports `READ_ONLY_PREFLIGHT_NO_APPLY_AUTHORIZATION`;
 even the "ready" status is **not** permission to apply schema/data
 changes. It performs zero DDL/DML and creates zero canonical links.
 
+## Fast VM-native check without moving the source payload
+
+Before arranging a complete plan/JSON upload to the VM, a simpler
+**plan-independent PostgreSQL check** is available as
+`scripts/check_ddk_gxp_provenance_rehearsal_readonly.sql`.
+Run it **on the VM**, using the file from the current PR #7 checkout:
+
+```bash
+cd /opt/gxp/src/GXP-QLCL
+sudo -u postgres psql -X -v ON_ERROR_STOP=1 \
+  -d gxp_legacy_rehearsal \
+  -f scripts/check_ddk_gxp_provenance_rehearsal_readonly.sql
+```
+
+**Prerequisite:** the exact PR #7 version of this script must already be
+available in the VM worktree. Merely having an older runtime checkout does
+not satisfy this; do not switch/deploy production branches just to execute
+the check. An operator may copy only this audited SQL file onto the VM
+and then pass its **verified local path** to `psql -f`. No DB schema changes
+or Git pulls are necessary for the SQL execution itself.
+
+This diagnostic runs within `REPEATABLE READ READ ONLY` and aborts with an
+exception if connected to a database other than `gxp_legacy_rehearsal`.
+It prints the Alembic revision when present; PostgreSQL catalog evidence
+of the two provenance tables (or their absence), columns/nullability,
+constraints, indexes, and counts if the physical tables exist. It safely
+skips counts of not-yet-created tables at Alembic `0022`; it **does not**
+print source text or user passwords. `ROLLBACK` closes the read-only
+transaction.
+
+**Important distinction:** this basic check does **not** compare table
+contents against the 3,120/861-plan payload and is not an authorization
+to migrate or load source records. If the two tables already contain
+rows, use the comprehensive `tools/preflight_ddk_gxp_rehearsal.py` with
+the sealed local plan to determine whether they are identical, partial
+or conflicting. Report the actual SQL output rather than inferring the
+database state from repository revisions or CI.
+
 ## Limits of this checkpoint
 
 No direct PostgreSQL connection from the ChatGPT GitHub connector has

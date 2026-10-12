@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
+import sys
 import pytest
 
 from backend.app.domain.legacy_snapshot import _core_source_row
 from tools.audit_ddk_idcc_physical import (
     MissingPhysicalEvidence, audit, discover_ddk_group_layout,
 )
-from tools.ddk_group_evidence_review import build_group_review_manifest
+from tools.ddk_group_evidence_review import build_group_review_manifest, main
 
 
 def fixture():
@@ -169,3 +172,99 @@ def test_source_reference_cannot_claim_another_ddk_row_or_unproven_group():
     tampered["candidates"][0]["observed_group_header"] = None
     with pytest.raises(MissingPhysicalEvidence, match="Candidate GxP heading"):
         build_group_review_manifest(tampered)
+
+
+def test_review_manifest_preserves_raw_scope_standard_activity_and_individual_hashes():
+    report = fixture()
+    group = report["grouped_source_rows"][0]["groups"][0]
+    group["fields"]["certificate_scope"]["raw_value"] = "Sterile; thuốc tiêm\nSản xuất (β-lactam)"
+    group["fields"]["applicable_standard"]["raw_value"] = "WHO-GMP 2026"
+    group["fields"]["business_activity"]["raw_value"] = "Sản xuất; đóng gói thuốc"
+    records = build_group_review_manifest(report)["records"]
+    gmp = next(r for r in records if r["source_row_number"] == 7 and r["source_group"] == "GMP")
+    for name, expected in (
+        ("id_cc", "200; 201"),
+        ("certificate_scope", "Sterile; thuốc tiêm\nSản xuất (β-lactam)"),
+        ("applicable_standard", "WHO-GMP 2026"),
+        ("business_activity", "Sản xuất; đóng gói thuốc"),
+    ):
+        field = gmp["source_fields"][name]
+        assert field["raw_value"] == expected
+        assert field["raw_value_sha256"] == hashlib.sha256(expected.encode("utf-8")).hexdigest()
+    glp = next(r for r in records if r["source_row_number"] == 7 and r["source_group"] == "GLP")
+    assert glp["source_fields"]["id_cc"]["raw_value"] == ""
+    assert glp["source_fields"]["certificate_scope"]["raw_value"] == "Independent laboratory scope"
+    assert all("source_fields" in r for r in records)
+
+
+def test_missing_reference_type_or_company_reviewed_not_claimed_resolved():
+    data = fixture()
+    data["candidates"][0]["certificate_type_vs_source_header"] = "UNVERIFIED"
+    data["candidates"][0]["certificate_company_vs_ddk"] = "UNRESOLVED"
+    manifest = build_group_review_manifest(data)
+    gmp = next(r for r in manifest["records"] if r["source_row_number"] == 7 and r["source_group"] == "GMP")
+    assert gmp["status"] == "SOURCE_REVIEW_REQUIRED"
+    assert "CERTIFICATE_TYPE_REVIEW" in gmp["review_flags"]
+    assert "COMPANY_OWNER_REVIEW" in gmp["review_flags"]
+
+    data = fixture()
+    data["candidates"][0]["classification"] = "UNSUPPORTED"
+    with pytest.raises(MissingPhysicalEvidence, match="Unknown source reference classification"):
+        build_group_review_manifest(data)
+
+
+def test_malformed_input_evidence_is_rejected_with_source_error():
+    data = fixture()
+    for bad in (None, [], "invalid"):
+        malformed = copy.deepcopy(data)
+        malformed["header_evidence"] = bad
+        with pytest.raises(MissingPhysicalEvidence, match="Missing original physical header"):
+            build_group_review_manifest(malformed)
+    malformed = copy.deepcopy(data)
+    malformed["candidates"][0] = None
+    with pytest.raises(MissingPhysicalEvidence, match="Malformed source candidate"):
+        build_group_review_manifest(malformed)
+    malformed = copy.deepcopy(data)
+    malformed["grouped_source_rows"][0] = None
+    with pytest.raises(MissingPhysicalEvidence, match="Malformed physical source row"):
+        build_group_review_manifest(malformed)
+
+
+def test_cli_never_overwrites_input_or_preexisting_review(tmp_path, monkeypatch):
+    source = tmp_path / "physical_source.json"
+    source.write_text(json.dumps(fixture()), encoding="utf-8")
+    out = tmp_path / "review.json"
+    monkeypatch.setattr(sys, "argv", [
+        "ddk_group_evidence_review", "--audit-json", str(source), "--output", str(out),
+    ])
+    assert main() == 0
+    first_bytes = out.read_bytes()
+    assert first_bytes and json.loads(first_bytes)["approval_status"] == "SOURCE_REVIEW_ONLY_NOT_APPROVED"
+    with pytest.raises(SystemExit) as err:
+        main()
+    assert err.value.code == 2
+    assert out.read_bytes() == first_bytes
+    monkeypatch.setattr(sys, "argv", [
+        "ddk_group_evidence_review", "--audit-json", str(source), "--output", str(source),
+    ])
+    original_bytes = source.read_bytes()
+    with pytest.raises(SystemExit) as err:
+        main()
+    assert err.value.code == 2
+    assert source.read_bytes() == original_bytes
+
+
+def test_cli_cannot_overwrite_exclusion_contract(tmp_path, monkeypatch):
+    source = tmp_path / "physical_source.json"
+    approved = tmp_path / "approved_exclusions.json"
+    source.write_text(json.dumps(fixture()), encoding="utf-8")
+    approved.write_text(json.dumps(contract()), encoding="utf-8")
+    original_bytes = approved.read_bytes()
+    monkeypatch.setattr(sys, "argv", [
+        "ddk_group_evidence_review", "--audit-json", str(source),
+        "--approved-exclusions-json", str(approved), "--output", str(approved),
+    ])
+    with pytest.raises(SystemExit) as err:
+        main()
+    assert err.value.code == 2
+    assert approved.read_bytes() == original_bytes

@@ -205,6 +205,13 @@ def _idcc_columns(rows: list[dict[str, str]]) -> list[int]:
     return columns
 
 
+def _source_lookup_status(identity: int | None, records: dict[int, list[dict[str, str]]]) -> str:
+    if identity is None:
+        return "UNRESOLVED"
+    count = len(records.get(identity, ()))
+    return "MISSING" if count == 0 else ("UNIQUE" if count == 1 else "AMBIGUOUS")
+
+
 def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | None = None,
           header_evidence: dict[str, Any] | None = None) -> dict[str, Any]:
     """Audit the real source link evidence without assigning semantic roles."""
@@ -219,12 +226,18 @@ def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | Non
         certificate_id = parse_int(row.get("ID"))
         if certificate_id is not None:
             certificates[certificate_id].append(row)
-    sites = {}
+    sites: dict[int, list[dict[str, str]]] = defaultdict(list)
     for record in snapshot["db.cso"]:
         row = normalize_row(record)
         site_id = parse_int(row.get("ID"))
         if site_id is not None:
-            sites[site_id] = row
+            sites[site_id].append(row)
+    companies: dict[int, list[dict[str, str]]] = defaultdict(list)
+    for record in snapshot["db.cty"]:
+        row = normalize_row(record)
+        company_id = parse_int(row.get("ID"))
+        if company_id is not None:
+            companies[company_id].append(row)
     column_counts: dict[int, Counter] = {column: Counter() for column in columns}
     column_types: dict[int, Counter] = {column: Counter() for column in columns}
     candidates: list[dict[str, Any]] = []
@@ -236,6 +249,17 @@ def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | Non
         ddk_site = parse_int(row.get("site_legacy_id_ref"))
         ddk_company = parse_int(row.get("company_legacy_id_ref"))
         row_number = parse_int(row.get("__excel_row_number"))
+        ddk_site_status = _source_lookup_status(ddk_site, sites)
+        ddk_company_status = _source_lookup_status(ddk_company, companies)
+        site_owner_company = (
+            parse_int(sites[ddk_site][0].get("company_legacy_id_ref"))
+            if ddk_site_status == "UNIQUE" else None
+        )
+        company_vs_site = (
+            "UNRESOLVED"
+            if ddk_company_status != "UNIQUE" or site_owner_company is None
+            else ("MATCH" if site_owner_company == ddk_company else "MISMATCH")
+        )
         for col in columns:
             raw_fk = safe_text(raw_row[f"ID CC [excel_column={col}]"])
             if not raw_fk:
@@ -248,6 +272,10 @@ def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | Non
                 "source_row_number": row_number,
                 "ddk_site_legacy_id": ddk_site,
                 "ddk_company_legacy_id": ddk_company,
+                "ddk_site_lookup": ddk_site_status,
+                "ddk_company_lookup": ddk_company_status,
+                "ddk_company_vs_site": company_vs_site,
+                "certificate_site_lookup": "UNVERIFIED",
                 "excel_column": col,
                 "column_letter": excel_column_letter(col),
                 "certificate_legacy_id": target_id,
@@ -259,6 +287,8 @@ def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | Non
                 "reverse_relation": "UNVERIFIED",
                 "source_role": "UNVERIFIED",
             }
+            if company_vs_site == "MISMATCH":
+                column_counts[col]["ddk_company_vs_site_mismatch"] += 1
             if target_id is None:
                 evidence["classification"] = "NONLITERAL_FK"
                 evidence["raw_value_sha256_prefix"] = sha256(raw_fk.encode("utf-8")).hexdigest()[:12]
@@ -273,11 +303,15 @@ def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | Non
                 cert_type = safe_text(cert.get("certificate_type")).strip()
                 evidence["certificate_type"] = cert_type or None
                 evidence["certificate_site_legacy_id"] = cert_site
+                cert_site_status = _source_lookup_status(cert_site, sites)
+                evidence["certificate_site_lookup"] = cert_site_status
                 column_types[col][cert_type or "(blank)"] += 1
                 if cert_site is None or ddk_site is None:
                     evidence["classification"] = "SITE_UNRESOLVED"
                 elif cert_site != ddk_site:
                     evidence["classification"] = "CROSS_SITE"
+                elif ddk_site_status != "UNIQUE" or cert_site_status != "UNIQUE":
+                    evidence["classification"] = "SITE_UNRESOLVED"
                 else:
                     evidence["classification"] = "SAME_SITE"
                 column_counts[col][evidence["classification"].lower()] += 1
@@ -293,13 +327,7 @@ def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | Non
                 else:
                     evidence["reverse_relation"] = "REVERSE_CONFLICTS"
                 column_counts[col][evidence["reverse_relation"].lower()] += 1
-                owner_site = sites.get(ddk_site)
-                if owner_site:
-                    owner_company = parse_int(owner_site.get("company_legacy_id_ref"))
-                    if owner_company != ddk_company:
-                        evidence["ddk_company_vs_site"] = "MISMATCH"
-                        column_counts[col]["ddk_company_vs_site_mismatch"] += 1
-            candidates.append(evidence)
+             candidates.append(evidence)
             if row_number is not None and target_id is not None:
                 same_row_refs[row_number][target_id] += 1
                 reference_rows[target_id].add(row_number)

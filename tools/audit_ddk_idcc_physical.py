@@ -1,6 +1,6 @@
 """Read-only source audit for repeated db.dkkd ID CC physical Excel columns.
 
-Windows: py -3 tools/audit_ddk_idcc_physical.py --workbook "D:\GXP-QLCL\legacy\Danh sách Kiểm tra GPs.xlsb" --out-dir "D:\GXP-DDK-IDCC-REVIEW"
+Windows (from repository root): py -3 -m tools.audit_ddk_idcc_physical --workbook "D:\GXP-QLCL\legacy\Danh sách Kiểm tra GPs.xlsb" --out-dir "D:\GXP-DDK-IDCC-REVIEW"
 Or use --snapshot-json with a lossless coordinate-preserving snapshot.
 Never generates/approves canonical certificate links.
 """
@@ -69,8 +69,24 @@ def extract_readonly_workbook(path: Path) -> tuple[dict[str, list[dict[str, str]
             )
             if not raw_rows:
                 raise MissingPhysicalEvidence(f"Empty source sheet: {name}")
-            header_index = detect_header_row(raw_rows[:10])
+            if name == "db.dkkd":
+                # Do not let the generic densest-row heuristic silently
+                # consume data as headers and discard physical ID CC columns.
+                matching = [
+                    i for i, raw in enumerate(raw_rows[:10])
+                    if [safe_text(cell) for cell in raw].count("ID CC") == 4
+                    and "ID" in [safe_text(cell) for cell in raw]
+                ]
+                if len(matching) != 1:
+                    raise MissingPhysicalEvidence(
+                        "Cannot uniquely identify the db.dkkd header with four ID CC columns"
+                    )
+                header_index = matching[0]
+            else:
+                header_index = detect_header_row(raw_rows[:10])
             headers = [safe_text(value) for value in raw_rows[header_index]]
+            if "ID" not in headers:
+                raise MissingPhysicalEvidence(f"Missing ID source header: {name}")
             plan = _core_header_plan(headers)
             snapshot[name] = [
                 _core_source_row(headers, row, row_num, plan=plan)
@@ -123,20 +139,32 @@ def _idcc_columns(rows: list[dict[str, str]]) -> list[int]:
             )
         try:
             groups = json.loads(raw)
-            columns = tuple(next(
-                item["column_ordinals"] for item in groups if item["header"] == "ID CC"
-            ))
-        except (ValueError, TypeError, KeyError, StopIteration) as exc:
-            raise MissingPhysicalEvidence("Invalid ID CC physical-column metadata") from exc
-        if len(columns) != len(set(columns)) or not columns:
-            raise MissingPhysicalEvidence("Invalid duplicate physical-column positions")
+            matches = [item for item in groups if item["header"] == "ID CC"]
+            if len(matches) != 1:
+                raise ValueError("Ambiguous ID CC metadata")
+            column_ordinals = matches[0]["column_ordinals"]
+            if (
+                not isinstance(column_ordinals, list)
+                or len(column_ordinals) != 4
+                or any(type(number) is not int or number < 1 for number in column_ordinals)
+                or sorted(set(column_ordinals)) != column_ordinals
+            ):
+                raise ValueError("Expected four distinct ascending physical ID CC ordinals")
+            columns = tuple(column_ordinals)
+        except (ValueError, TypeError, KeyError) as exc:
+            raise MissingPhysicalEvidence("Invalid four-column ID CC physical metadata") from exc
         observed.add(columns)
     if len(observed) != 1:
         raise MissingPhysicalEvidence("ID CC physical-column positions vary across rows")
     columns = list(next(iter(observed)))
+    seen_physical_rows: set[int] = set()
     for row in rows:
         if any(f"ID CC [excel_column={number}]" not in row for number in columns):
             raise MissingPhysicalEvidence("Missing one or more preserved ID CC cells")
+        physical_row = parse_int(row.get("__excel_row_number"))
+        if physical_row is None or physical_row < 1 or physical_row in seen_physical_rows:
+            raise MissingPhysicalEvidence("Missing or duplicated physical db.dkkd row number")
+        seen_physical_rows.add(physical_row)
     return columns
 
 
@@ -164,6 +192,7 @@ def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | Non
     column_types: dict[int, Counter] = {column: Counter() for column in columns}
     candidates: list[dict[str, Any]] = []
     same_row_refs: dict[int, Counter] = defaultdict(Counter)
+    reference_rows: dict[int, set[int]] = defaultdict(set)
     for raw_row in raw_ddk:
         row = normalize_row(raw_row)
         ddk_id = parse_int(row.get("ID"))
@@ -185,6 +214,7 @@ def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | Non
                 "excel_column": col,
                 "column_letter": excel_column_letter(col),
                 "certificate_legacy_id": target_id,
+                "raw_fk": raw_fk,
                 "classification": None,
                 "certificate_type": None,
                 "certificate_site_legacy_id": None,
@@ -233,16 +263,22 @@ def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | Non
                         evidence["ddk_company_vs_site"] = "MISMATCH"
                         column_counts[col]["ddk_company_vs_site_mismatch"] += 1
             candidates.append(evidence)
-            if ddk_id is not None and target_id is not None:
-                same_row_refs[ddk_id][target_id] += 1
+            if row_number is not None and target_id is not None:
+                same_row_refs[row_number][target_id] += 1
+                reference_rows[target_id].add(row_number)
     for evidence in candidates:
-        did = evidence["ddk_legacy_id"]
+        source_row = evidence["source_row_number"]
         cid = evidence["certificate_legacy_id"]
         evidence["duplicate_within_ddk"] = (
-            did is not None and cid is not None and same_row_refs[did][cid] > 1
+            cid is not None and same_row_refs[source_row][cid] > 1
+        )
+        evidence["duplicate_across_ddk_rows"] = (
+            cid is not None and len(reference_rows[cid]) > 1
         )
         if evidence["duplicate_within_ddk"]:
             column_counts[evidence["excel_column"]]["duplicate_within_ddk"] += 1
+        if evidence["duplicate_across_ddk_rows"]:
+            column_counts[evidence["excel_column"]]["duplicate_across_ddk_rows"] += 1
     return {
         "schema": "GXP_DDK_IDCC_PHYSICAL_REVIEW_V1",
         "approval_status": "NOT_APPROVED_NO_RELATIONSHIPS_CREATED",

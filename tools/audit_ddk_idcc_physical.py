@@ -112,6 +112,35 @@ def discover_ddk_group_layout(
     return plans
 
 
+def source_value2_text(value: object) -> str:
+    """Preserve Excel Value2 string whitespace without changing shared safe_text.
+
+    Non-string values use the existing safe_text numeric convention. This is
+    a source Value2 representation, not Excel cell display formatting.
+    """
+    return value if isinstance(value, str) else safe_text(value)
+
+
+def capture_ddk_source_row(
+    headers: list[str], values: list[object], physical_row_number: int,
+    header_plan: tuple[list[str], list[dict[str, Any]]],
+    group_plans: list[dict[str, Any]],
+) -> dict[str, str]:
+    """Overlay only the sixteen grouped fields with original Value2 text."""
+    record = _core_source_row(headers, values, physical_row_number, plan=header_plan)
+    for group_plan in group_plans:
+        for field_name, header in DDK_GROUP_FIELDS:
+            field = group_plan["group_field_columns"][field_name]
+            column = field["excel_column"]
+            if column > len(values):
+                raise MissingPhysicalEvidence("Truncated physical DDK row value array")
+            key = f"{header} [excel_column={column}]"
+            if key not in record:
+                raise MissingPhysicalEvidence("Missing physical grouped DDK cell")
+            record[key] = source_value2_text(values[column - 1])
+    return record
+
+
 def project_ddk_group_source(
     rows: list[dict[str, str]], plans: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -141,16 +170,18 @@ def project_ddk_group_source(
                     raise MissingPhysicalEvidence(
                         f"Missing preserved physical source field: {source_key}"
                     )
-                raw_value = safe_text(row[source_key])
+                raw_value = row[source_key]
+                if not isinstance(raw_value, str):
+                    raise MissingPhysicalEvidence("Source grouped Excel cell must be text")
                 fields[field_name] = {
                     "excel_column": ordinal, "source_header": source_header,
                     "raw_value": raw_value,
                 }
-                if raw_value:
+                if raw_value.strip():
                     summary[plan["ordinal"]][field_name + "_populated"] += 1
-            has_id = bool(fields["id_cc"]["raw_value"])
+            has_id = bool(fields["id_cc"]["raw_value"].strip())
             has_companion = any(
-                fields[field_name]["raw_value"]
+                fields[field_name]["raw_value"].strip()
                 for field_name, _ in DDK_GROUP_FIELDS[1:]
             )
             if not has_id and has_companion:
@@ -221,8 +252,17 @@ def extract_readonly_workbook(path: Path) -> tuple[dict[str, list[dict[str, str]
             if "ID" not in headers:
                 raise MissingPhysicalEvidence(f"Missing ID source header: {name}")
             plan = _core_header_plan(headers)
+            group_plans: list[dict[str, Any]] = []
+            if name == "db.dkkd":
+                if header_index == 0:
+                    raise MissingPhysicalEvidence("Missing grouped source header band")
+                group_plans = discover_ddk_group_layout(headers, raw_rows[header_index - 1])
             snapshot[name] = [
-                _core_source_row(headers, row, row_num, plan=plan)
+                (
+                    capture_ddk_source_row(headers, row, row_num, plan, group_plans)
+                    if name == "db.dkkd" else
+                    _core_source_row(headers, row, row_num, plan=plan)
+                )
                 for row_num, row in enumerate(raw_rows[header_index + 1:], start=header_index + 2)
                 if any(safe_text(value) for value in row)
             ]
@@ -230,9 +270,6 @@ def extract_readonly_workbook(path: Path) -> tuple[dict[str, list[dict[str, str]
                 idcc_columns = [
                     index + 1 for index, label in enumerate(headers) if label == "ID CC"
                 ]
-                if header_index == 0:
-                    raise MissingPhysicalEvidence("Missing grouped source header band")
-                group_plans = discover_ddk_group_layout(headers, raw_rows[header_index - 1])
                 # Excel Value2 returns a cached number even for =formula cells.
                 # Refuse to represent such computed results as literal source FKs.
                 if last_row <= header_index + 1:
@@ -395,8 +432,10 @@ def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | Non
             else ("MATCH" if site_owner_company == ddk_company else "MISMATCH")
         )
         for col in columns:
-            raw_fk = safe_text(raw_row[f"ID CC [excel_column={col}]"])
-            if not raw_fk:
+            raw_fk = raw_row[f"ID CC [excel_column={col}]"]
+            if not isinstance(raw_fk, str):
+                raise MissingPhysicalEvidence("Source ID CC cell must be text")
+            if not raw_fk.strip():
                 column_counts[col]["blank"] += 1
                 continue
             column_counts[col]["populated"] += 1

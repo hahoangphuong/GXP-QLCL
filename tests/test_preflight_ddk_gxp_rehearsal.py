@@ -11,6 +11,7 @@ from tools.plan_ddk_gxp_provenance_load import _digest, _source_value_digest
 from tools.preflight_ddk_gxp_rehearsal import (
     EXPECTED_DB, EXPECTED_REVISION, GROUP_TABLE, TOKEN_TABLE,
     GROUP_COLUMNS, TOKEN_COLUMNS, GROUP_UNIQUE, TOKEN_UNIQUE,
+    GROUP_NOT_NULL, TOKEN_NOT_NULL,
     assess_rehearsal_preflight, read_rehearsal_snapshot, validate_sealed_plan,
     main,
 )
@@ -83,11 +84,22 @@ def sealed_plan():
 def _structure():
     return {
         GROUP_TABLE: {
-            "columns": list(GROUP_COLUMNS), "uniques": [list(GROUP_UNIQUE)],
-            "foreign_keys": [],
+            "columns": list(GROUP_COLUMNS), "not_null": list(GROUP_NOT_NULL),
+            "check_clauses": [
+                "source_sheet_name = 'db.dkkd'",
+                "source_group IN ('GMP', 'GLP', 'GSP', 'GDP')",
+                "source_row_number > 0",
+                "certificate_scope_excel_column = id_cc_excel_column + 1",
+                "length(source_workbook_sha256) = 64",
+            ],
+            "uniques": [list(GROUP_UNIQUE)], "foreign_keys": [],
         },
         TOKEN_TABLE: {
-            "columns": list(TOKEN_COLUMNS), "uniques": [list(TOKEN_UNIQUE)],
+            "columns": list(TOKEN_COLUMNS), "not_null": list(TOKEN_NOT_NULL),
+            "check_clauses": [
+                "token_index > 0", "parsed_legacy_certificate_id IS NULL OR parsed_legacy_certificate_id > 0",
+            ],
+            "uniques": [list(TOKEN_UNIQUE)],
             "foreign_keys": [{
                 "constrained_columns": ["source_group_id"],
                 "referred_table": GROUP_TABLE, "referred_columns": ["id"],
@@ -259,3 +271,31 @@ def test_cli_source_not_overwritten_or_read_without_dsn(tmp_path, monkeypatch):
         main()
     assert err.value.code == 2
     assert planfile.read_bytes() == original
+
+
+def test_missing_source_not_null_or_check_constraint_never_marked_ready():
+    plan = sealed_plan()
+    snapshot = _snapshot()
+    snapshot["table_structure"][GROUP_TABLE]["not_null"].remove("id_cc_raw")
+    report = assess_rehearsal_preflight(plan, snapshot)
+    assert report["status"] == "SCHEMA_OR_REVISION_DRIFT_REVIEW"
+    assert "MISSING_NOT_NULL_" + GROUP_TABLE in report["schema_errors"]
+    snapshot = _snapshot()
+    snapshot["table_structure"][TOKEN_TABLE]["check_clauses"] = []
+    report = assess_rehearsal_preflight(plan, snapshot)
+    assert "MISSING_CHECK_CONSTRAINTS_" + TOKEN_TABLE in report["schema_errors"]
+
+
+def test_original_literal_leading_zero_certificate_id_keeps_raw_token():
+    plan = sealed_plan()
+    group = plan["payload"]["source_groups"][0]["values"]
+    group["id_cc_raw"] = "00200; 201"
+    group["source_values_sha256"] = _source_value_digest([
+        group["id_cc_raw"], group["certificate_scope_raw"],
+        group["applicable_standard_raw"], group["business_activity_raw"],
+    ])
+    plan["payload"]["reference_tokens"][0]["values"]["raw_token"] = "00200"
+    plan["payload_sha256"] = _digest(plan["payload"])
+    groups, tokens = validate_sealed_plan(plan)
+    assert len(groups) == 4
+    assert tokens[next(k for k in tokens if k[1] == 1)] == ("00200", 200)

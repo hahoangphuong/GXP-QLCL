@@ -125,7 +125,29 @@ source exclusion correspondence. It reports:
 - `CONFIRMED_BLANKED_SOURCE_ROW` when bound to the existing owner-approved
   exclusion contract.
 
-All records retain `approval_status=NOT_APPROVED` and source field checksums.
+All records retain `approval_status=NOT_APPROVED`. The read-only
+manifest now preserves **all four original UTF-8 source values verbatim**
+alongside original physical column ordinals, field labels and individual
+SHA-256 checksums; a single whole-group checksum also binds their order.
+This avoids forcing reviewers to reconstruct critical GMP/GLP/GSP/GDP
+scope, standard and business-activity text from a separate intermediate
+artifact. A missing ID CC is never interpreted as permission to drop a
+nonblank companion. Even a `SAME_SITE` observation stays
+`SOURCE_REVIEW_REQUIRED` if Certificate type comparison or Company owner
+evidence is not verified. No source observation becomes an approved
+canonical link.
+
+The CLI **will not overwrite** the original V3 audit JSON, the approved
+confirmed-blanked contract, or an existing prior review manifest. A new
+output path is required for each sealed review attempt. Manifest files
+can contain confidential original legacy records and are written only
+to the operator's local output path, **not committed to GitHub**.
+
+A source SHA-256 inside an input report cannot independently prove that
+an edited JSON is still identical to the binary workbook; the original
+read-only Excel extraction and Windows COM/HasFormula verification remain
+necessary provenance gates.
+
 The manifest emits no approved links, no version/UUID resolution, and no SQL.
 A mismatched/missing source field, token or approval contract fails closed.
 A V1 flattened snapshot and partial source-header evidence cannot be used.

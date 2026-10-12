@@ -1102,16 +1102,21 @@ def load_confirmed_blanked_resurrections() -> dict[tuple[str, str], dict[str, in
                 "Owner-approved confirmed-blanked resurrection contract row "
                 f"{source_sheet}:{source_row_key} is missing approved_override."
             )
-        parsed_override: dict[str, int] = {}
-        for key, value in override_payload.items():
-            parsed_value = parse_int(value)
-            if parsed_value is not None:
-                parsed_override[str(key)] = parsed_value
-        if not parsed_override:
+        if not override_payload:
             raise ConfirmedBlankedContractError(
                 "Owner-approved confirmed-blanked resurrection contract row "
                 f"{source_sheet}:{source_row_key} has no valid approved override values."
             )
+        parsed_override: dict[str, int] = {}
+        for key, value in override_payload.items():
+            parsed_value = parse_int(value)
+            if parsed_value is None:
+                raise ConfirmedBlankedContractError(
+                    "Owner-approved confirmed-blanked resurrection contract row "
+                    f"{source_sheet}:{source_row_key} has invalid approved_override "
+                    f"value for {key!s}: {value!r}. Refusing partial authorization."
+                )
+            parsed_override[str(key)] = parsed_value
         approved[(source_sheet, source_row_key)] = parsed_override
     return approved
 
@@ -1150,11 +1155,17 @@ def _validate_confirmed_blanked_override_contract(
                     f"Confirmed blanked row {source_sheet}:{source_row_key} cannot be resurrected by a generic remediation override. "
                     f"Add an explicit approval entry to {CONFIRMED_BLANKED_RESURRECTIONS_PATH} first."
                 )
-            normalized_override = {
-                str(remediation_key): parse_int(value)
-                for remediation_key, value in override_payload.items()
-                if parse_int(value) is not None
-            }
+            normalized_override: dict[str, int] = {}
+            for remediation_key, value in override_payload.items():
+                parsed_value = parse_int(value)
+                if parsed_value is None:
+                    raise ConfirmedBlankedResurrectionError(
+                        "Confirmed blanked row "
+                        f"{source_sheet}:{source_row_key} has invalid remediation "
+                        f"override value for {remediation_key!s}: {value!r}; "
+                        "the complete payload must match the signed approval."
+                    )
+                normalized_override[str(remediation_key)] = parsed_value
             if normalized_override != approved_override:
                 raise ConfirmedBlankedResurrectionError(
                     f"Confirmed blanked row {source_sheet}:{source_row_key} override does not match the approved resurrection contract."

@@ -289,3 +289,22 @@ strict importer modes; snapshot immutability and no-schema-write are asserted.
 The currently checked-in resurrection contract has no approval rows, so this
 change does not authorize or apply any business correction. The outstanding
 three cross-Site Certificate links are unaffected.
+
+
+## Fail-closed value fidelity for signed resurrection payloads (12 October)
+
+Source-contract audit found two owner-side truncation paths. The approval loader
+previously ignored malformed values when `approved_override` also contained a
+valid numeric value. Independently, remediation equality normalized by dropping
+malformed supplied fields, so a payload containing an unapproved invalid extra
+field could appear to match the signed approval. Both were silently lossy and
+were reached before any FK resolver could distinguish provenance.
+
+The signed-approval loader now rejects any invalid numeric value instead of
+authorizing a subset. The pre-schema remediation equality guard similarly
+rejects the *whole* malformed submitted payload on a confirmed-blanked source
+identity, preserving the exact signed scope. Regression uses fractional,
+scientific, prose and null values across ordinary/strict modes, checks source
+immutability and absence of schema writes, and retains valid literal decimal-zero
+IDs. Other generic remediation behavior is unchanged. No Case/Site reassignment
+or signed approval was introduced.

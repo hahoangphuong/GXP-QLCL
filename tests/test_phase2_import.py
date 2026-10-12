@@ -712,6 +712,92 @@ def test_stale_resurrection_approval_not_in_confirmed_blanked_contract_fails_pre
     assert snapshot == original_source
 
 
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("invalid_value", ["1.5", "1e2", "not-an-id", None])
+def test_signed_resurrection_with_mixed_valid_invalid_override_values_fails_pre_schema(
+    monkeypatch, tmp_path, strict, invalid_value
+):
+    # Signed authorization must not silently drop an invalid second field
+    # while retaining the first and passing import preflight.
+    blanked = tmp_path / "confirmed_blanked.json"
+    blanked.write_text(json.dumps({"rows": [{
+        "source_sheet": "db.cso", "source_row_key": "10",
+    }]}), encoding="utf-8")
+    approved = tmp_path / "approved.json"
+    approved.write_text(json.dumps({"rows": [{
+        "source_sheet": "db.cso", "source_row_key": "10",
+        "approved_override": {
+            "company_legacy_id": 1,
+            "site_legacy_id": invalid_value,
+        },
+    }]}), encoding="utf-8")
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", blanked)
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_RESURRECTIONS_PATH", approved)
+    snapshot = sample_snapshot()
+    original_source = json.loads(json.dumps(snapshot))
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session, pytest.raises(
+        ConfirmedBlankedContractError, match="invalid approved_override"
+    ) as exc:
+        import_snapshot(
+            session, snapshot,
+            options=ImportExecutionOptions(strict_certificate_case_source_links=strict),
+        )
+    assert "db.cso:10" in str(exc.value)
+    assert inspect(engine).has_table("company") is False
+    assert snapshot == original_source
+
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("invalid_value", ["1.5", "1e2", "not-an-id", None])
+def test_signed_resurrection_cannot_ignore_invalid_extra_submitted_override_pre_schema(
+    monkeypatch, tmp_path, strict, invalid_value
+):
+    # Before the fix, dropping this invalid extra key made the normalized
+    # remediation payload appear identical to the authorized one.
+    blanked = tmp_path / "confirmed_blanked.json"
+    blanked.write_text(json.dumps({"rows": [{
+        "source_sheet": "db.cso", "source_row_key": "10",
+    }]}), encoding="utf-8")
+    approved = tmp_path / "approved.json"
+    approved.write_text(json.dumps({"rows": [{
+        "source_sheet": "db.cso", "source_row_key": "10",
+        "approved_override": {"company_legacy_id": 1},
+    }]}), encoding="utf-8")
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", blanked)
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_RESURRECTIONS_PATH", approved)
+    snapshot = sample_snapshot()
+    snapshot["db.cso"][0]["ID Cty"] = ""
+    original_source = json.loads(json.dumps(snapshot))
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session, pytest.raises(
+        ConfirmedBlankedResurrectionError, match="invalid remediation override"
+    ) as exc:
+        import_snapshot(
+            session, snapshot,
+            remediation_overrides={"db.cso": {"10": {
+                "company_legacy_id": "1.0",
+                "site_legacy_id": invalid_value,
+            }}},
+            options=ImportExecutionOptions(strict_certificate_case_source_links=strict),
+        )
+    assert "db.cso:10" in str(exc.value)
+    assert inspect(engine).has_table("site") is False
+    assert snapshot == original_source
+
+
+def test_signed_resurrection_accepts_literal_integer_with_zero_decimal_suffix(monkeypatch, tmp_path):
+    approved = tmp_path / "approved.json"
+    approved.write_text(json.dumps({"rows": [{
+        "source_sheet": "db.cso", "source_row_key": "10",
+        "approved_override": {"company_legacy_id": "0001.00"},
+    }]}), encoding="utf-8")
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_RESURRECTIONS_PATH", approved)
+    assert phase2_import_module.load_confirmed_blanked_resurrections() == {
+        ("db.cso", "10"): {"company_legacy_id": 1}
+    }
+
+
 def test_import_snapshot_accepts_approved_confirmed_blanked_resurrection(monkeypatch, tmp_path):
     confirmed_blanked_path = tmp_path / "confirmed_blanked_rows.json"
     confirmed_blanked_path.write_text(

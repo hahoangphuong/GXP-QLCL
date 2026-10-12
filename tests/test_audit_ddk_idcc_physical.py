@@ -305,3 +305,30 @@ def test_source_header_group_is_recorded_without_business_role_approval():
     )
     assert mismatch["certificate_type_vs_source_header"] == "MISMATCH"
     assert result["id_cc_columns"][1]["counts"]["source_type_mismatch"] == 1
+
+
+def test_certificate_company_is_compared_independently_of_site_and_reverse_ddk():
+    data = fixture()
+    data["db.cty"].append({"ID": "2"})
+    data["db.cc"][0]["ID CTY"] = "2"
+    mismatch = next(
+        c for c in audit(data)["candidates"]
+        if c["source_row_number"] == 7 and c["certificate_legacy_id"] == 200
+    )
+    assert mismatch["classification"] == "SAME_SITE"
+    assert mismatch["certificate_company_lookup"] == "UNIQUE"
+    assert mismatch["certificate_company_vs_ddk"] == "MISMATCH"
+
+    data["db.cc"][0]["ID CTY"] = "1"
+    match = next(
+        c for c in audit(data)["candidates"]
+        if c["source_row_number"] == 7 and c["certificate_legacy_id"] == 200
+    )
+    assert match["certificate_company_vs_ddk"] == "MATCH"
+
+    del data["db.cc"][0]["ID CTY"]
+    unresolved = next(
+        c for c in audit(data)["candidates"]
+        if c["source_row_number"] == 7 and c["certificate_legacy_id"] == 200
+    )
+    assert unresolved["certificate_company_vs_ddk"] == "UNRESOLVED"

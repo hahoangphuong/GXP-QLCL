@@ -3,13 +3,13 @@ import { formatCompactDate } from "../../lib/presentation";
 import type { GxpCertificateDetail } from "../../types";
 import { DetailValue } from "./DetailValue";
 
-export function GxpCertificateDetailFields({ detail }: { detail: GxpCertificateDetail }) {
+export function GxpCertificateDetailFields({ detail, presentation = "facility" }: { detail: GxpCertificateDetail; presentation?: "case" | "facility" }) {
   return (
     <div className="detail-grid compact-grid detail-form-matrix certificate-detail-grid legacy-certificate-fields">
       <div className="legacy-certificate-heading">
-        <DetailValue label="Số GCN" value={detail.certificate_number} />
+        <DetailValue label={presentation === "case" ? "Mã số Chứng chỉ" : "Số GCN"} value={detail.certificate_number} />
         <DetailValue label="Ngày cấp" value={formatCompactDate(detail.issue_date)} />
-        <DetailValue label="Hết hạn" value={formatCompactDate(detail.expiry_date)} />
+        <DetailValue label={presentation === "case" ? "Ngày hết hạn" : "Hết hạn"} value={formatCompactDate(detail.expiry_date)} />
         <DetailValue label="Tiêu chuẩn" value={detail.applicable_standard} />
       </div>
       <div className="legacy-certificate-body">

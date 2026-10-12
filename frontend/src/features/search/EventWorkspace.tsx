@@ -38,6 +38,7 @@ import { CaseRemediationWorkspace } from "./CaseRemediationWorkspace";
 import { ChangeRequestMutationWorkspace, type ChangeRequestMutationHandlers } from "./ChangeRequestMutationWorkspace";
 import { EvaluationScopeWorkspace } from "./EvaluationScopeWorkspace";
 import { GxpCertificateDetailFields } from "./GxpCertificateDetailFields";
+import { useCertificateRows } from "./useCertificateRows";
 
 const CASE_EVENT_TABS = ["Hồ sơ", "Kiểm tra", "Khắc phục", "Xử lý", "Chứng nhận GxP", "Chứng nhận ĐĐK"] as const;
 export const CASE_EVENT_LABELS: Record<string, string> = {
@@ -125,6 +126,8 @@ function LinkedGxpCertificates({
 }) {
   const [selectedCertificateId, setSelectedCertificateId] = useState<string | null>(items[0]?.certificate_id ?? null);
 
+  const rowProps = useCertificateRows(items.map(item => item.certificate_id), selectedCertificateId, setSelectedCertificateId, false);
+
   useEffect(() => {
     setSelectedCertificateId((current) =>
       current && items.some((item) => item.certificate_id === current) ? current : items[0]?.certificate_id ?? null,
@@ -150,7 +153,7 @@ function LinkedGxpCertificates({
           <span className="panel-meta">{items.length} giấy</span>
         </div>
         <div className="table-scroll table-scroll-history">
-          <table className="dense-table certificate-history-table">
+          <table aria-label="Chứng nhận GxP liên kết" className="dense-table certificate-history-table">
             <thead>
               <tr>
                 <th className="col-gxp">GxP</th>
@@ -165,14 +168,7 @@ function LinkedGxpCertificates({
                   aria-selected={selectedCertificateId === item.certificate_id}
                   className={selectedCertificateId === item.certificate_id ? "selected" : ""}
                   key={item.certificate_id}
-                  onClick={() => setSelectedCertificateId(item.certificate_id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      setSelectedCertificateId(item.certificate_id);
-                    }
-                  }}
-                  tabIndex={0}
+                  {...rowProps(item.certificate_id)}
                 >
                   <td>{item.certificate_type}</td>
                   <td>{item.line_code ?? "Cơ sở"}</td>
@@ -191,7 +187,7 @@ function LinkedGxpCertificates({
       </section>
 
       <section className="panel panel-tight certificate-detail-panel">
-        {selectedCertificate ? <GxpCertificateDetailFields detail={selectedCertificate} /> : null}
+        {selectedCertificate ? <GxpCertificateDetailFields detail={selectedCertificate} presentation="case" /> : null}
       </section>
     </div>
   );
@@ -423,22 +419,26 @@ function renderCaseStepContent(
 
   if (activeTab === "Chứng nhận GxP") {
     return (
-      <div className="event-step-stack">
-        <LinkedGxpCertificates items={caseWorkspace.linked_gxp_certificates} />
-        <CaseCertificateIssueWorkspace
-          caseId={caseWorkspace.case_summary.id}
-          onIssue={onIssueCertificate}
-          readiness={caseWorkspace.certificate_issue_readiness}
-        />
-        <ContextualDocumentSection
-          contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
-          items={documentItems}
-          onCreateDocument={(item, action) =>
-            onCreateDocument(caseWorkspace.case_summary.id, item, action)
-          }
-          onLoadDocumentDetail={onLoadDocumentDetail}
-          onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
-        />
+      <div className="case-gxp-workflow-layout">
+        <div className="case-gxp-certificate-pane">
+          <LinkedGxpCertificates items={caseWorkspace.linked_gxp_certificates} />
+          <CaseCertificateIssueWorkspace
+            caseId={caseWorkspace.case_summary.id}
+            onIssue={onIssueCertificate}
+            readiness={caseWorkspace.certificate_issue_readiness}
+          />
+        </div>
+        <div className="case-gxp-document-column">
+          <ContextualDocumentSection
+            contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
+            items={documentItems}
+            onCreateDocument={(item, action) =>
+              onCreateDocument(caseWorkspace.case_summary.id, item, action)
+            }
+            onLoadDocumentDetail={onLoadDocumentDetail}
+            onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
+          />
+        </div>
       </div>
     );
   }

@@ -3326,6 +3326,8 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByText("HS-001")).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: /Cấp chứng nhận GPs/ }));
     expect(await screen.findByRole("heading", { name: "Chứng nhận GxP liên kết" })).toBeInTheDocument();
+    expect(document.querySelector(".case-gxp-workflow-layout .case-gxp-certificate-pane .event-linked-certificate-workspace")).not.toBeNull();
+    expect(document.querySelectorAll(".case-gxp-document-column > .document-workspace")).toHaveLength(1);
     expect(screen.getAllByText("195/GCN-QLD").length).toBeGreaterThan(0);
     expect(screen.getAllByText("533/GCN-QLD").length).toBeGreaterThan(0);
     expect(screen.queryByText("ADMIN-001")).not.toBeInTheDocument();
@@ -3336,6 +3338,32 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.queryByText("1201/ĐKKDD-BYT")).not.toBeInTheDocument();
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it("selects case-linked certificate UUIDs independently of focus, duplicate numbers and latest flags", async () => {
+    const a = buildCaseWorkspace().linked_gxp_certificates[0];
+    const b = { ...a, certificate_id: "certificate-B", certificate_number: a.certificate_number, latest_flag: false, scope_summary: "Only B certificate scope", row_version: 9 };
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ linked_gxp_certificates: [a, b] }));
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Cấp chứng nhận GPs" }));
+    const rows = within(screen.getByRole("table", { name: "Chứng nhận GxP liên kết" })).getAllByRole("row").slice(1);
+    act(() => rows[0].focus());
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(rows[1]).toHaveFocus();
+    expect(rows[0]).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByText("Only B certificate scope")).not.toBeInTheDocument();
+    fireEvent.keyDown(rows[1], { key: "Enter" });
+    expect(rows[1]).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Only B certificate scope")).toBeInTheDocument();
+    expect(Array.from(document.querySelectorAll('.case-gxp-certificate-pane .legacy-certificate-heading .detail-label'), node => node.textContent)).toEqual(["Mã số Chứng chỉ", "Ngày cấp", "Ngày hết hạn", "Tiêu chuẩn"]);
+    expect(apiMocks.getGxpCertificateDetail).not.toHaveBeenCalled();
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
+    expect(apiMocks.issueGxpCertificate).not.toHaveBeenCalled();
+    expect(apiMocks.promoteGxpCertificateCurrent).not.toHaveBeenCalled();
   });
 
   it("keeps dashboard drilldown links aligned with the accepted facility-level semantics", async () => {

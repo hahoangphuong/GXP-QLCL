@@ -250,6 +250,98 @@ mount only while the disclosure is open, keeping the closed search DOM compact;
 opening/closing still has no query or mutation effect. Native disclosure, desktop
 pane geometry and certificate tab round-trips were checked in the fixture browser.
 
+## Case GPs issuance visual/interaction slice — 2026-10-12
+
+Baseline: 26bc7065b60b5dcc48e68f9e246ff902b410f120. Evidence distinction:
+runtime image 7 is the Facility Giấy chứng nhận GPs page (four horizontal header
+fields and full certificate body). Images 5/8 show Case Cấp chứng nhận GPs:
+Mã số Chứng chỉ, Ngày cấp and Ngày hết hạn vertically aligned in cyan boxes,
+with document access at right. MainForm DataCC(0..2) maps edCCMa/edCCCap/edCCHH;
+DataCC2 maps the separate Facility controls. FRX names/captions corroborate both
+contexts; no designer-to-runtime pixel conversion is asserted.
+GetSetDataCCGPs is called by the common edit dispatcher for IDs 300..305, reads
+selected history, resolves Get_List_RngCCGPs, writes through GetSetData/DataCCCl
+and refreshes facility/history controls. That legacy editing path is not copied
+into the web; certificate workflow/version mutation owners remain authoritative.
+
+Root cause: Case used a nested certificate list/detail split and a vertical
+document stack, applying Facility's horizontal header to the Case form.
+After: preserve all directly linked certificates in a compact UUID-keyed list;
+the selected certificate's three primary fields align vertically with Case
+captions and cyan values. Canonical standard and full body remain available.
+One unchanged contextual document workspace occupies the independently scrolling
+right column. Narrow layout stacks before scopes. The shared detail renderer
+gets an optional Case caption presentation; Facility defaults, fields, owners
+and horizontal layout are unchanged. Scope/status/source data are not inferred.
+
+Case rows reuse the existing certificate keyboard helper: Arrow/Home/End change
+focus only, Enter/Space activate the exact UUID. No extra detail request or second
+selection owner. The issue modal now reuses the existing focus containment hook:
+initial input focus, inert background, 0-enabled-control fallback while pending,
+Tab/Shift+Tab containment and focus restoration; mutation handlers are unchanged.
+Readiness, error handling, draft/scope initialization, duplicate-submit guard,
+Escape/pending semantics and payload construction remain as before.
+
+Contract differences: the list and full canonical certificate body are retained
+instead of reducing Case to one legacy certificate. No edit/renewal/relink/source
+navigation action or completion strip is added. Backend maps certificate decision
+documents to Xử lý; it is not moved to Case GPs merely to match the pictured button.
+Document family/parent/UUID/context filtering remains unchanged. The list's
+latest_flag label remains a display projection, not a version/readiness selector.
+Catalog serializes scopes using each certificate's selected version row; frontend
+uses that certificate's supplied snapshot without joining scopes across records
+or copying evaluation scope into issuance. New issue scopes still start empty.
+
+EVIDENCE_MISSING: immutable CertificateVersion IDs/history/scopes per historical
+version in the current GxpCertificateDetail contract; it exposes row_version and
+the selected version's fields/scopes, not a certificate-version collection.
+row_version is a concurrency token, not a CertificateVersion ID. No history or
+replacement relation is inferred from latest_flag. CertificateIssueRequest is a
+create contract without expected_version; do not fabricate a token. Existing
+edit/promote expected_version contracts are untouched, and issue conflicts remain
+backend-owned. Runtime issue-dialog/editor/error states and shared Ghi chú
+provenance are missing; retain canonical UI/behavior rather than invent them.
+
+Regression: the Case layout assertion and initial/pending focus regression fail
+on baseline, then pass. Tests cover equal certificate numbers with distinct UUIDs
+and scope snapshots, focus-only navigation, no relink/promotion, backend readiness,
+empty issue scopes, explicit scope ordering, 403/409/422 and network draft retention,
+pending duplicate submit/Escape, and late success after dialog context unmount.
+The new mock's request type was corrected after typecheck caught its zero-argument
+tuple; production request types/handlers were not changed. Async rejection in the
+focus test is settled with act before checking idle Escape; no timeout is raised.
+
+Actual App + synthetic fixture API: 1920x1080, 1366x768 and 390x844; certificate
+Arrow/Enter selection, scope identity, document Enter/F6 with exact rendition and
+document-version IDs, workflow/facility round-trips and canonical history/line URL.
+At pending, all controls disable and Tab/Shift+Tab stay on the dialog; pending
+Escape does not close. One explicit issue gets 409 and keeps number/scope draft
+without retry. Another explicit issue is held across external URL navigation to
+a different Case; its late response cannot restore a dialog/error there, and
+that Case's unavailable issue readiness stays disabled. No binary success claimed.
+
+Desktop page width equals viewport; narrow content fits before scope, with only
+the unchanged header overflow (clientWidth 375 / scrollWidth 384 at width 390).
+Counters include three deliberate page initializations (initial, external URL,
+final visual recapture), explicit Case re-selection, one document-detail read,
+and two explicit rejected issue POSTs. Focus/tab navigation adds no duplicate read
+or unintended mutation; no real certificate is created. Evidence outside git:
+case-gps-parity-1920/1366/390.png, case-gps-pending-390.png,
+case-gps-conflict-390.png, case-gps-unavailable-390.png,
+case-gps-request-counts.json and fixture harness. Original business screenshots
+remain local. Real-backend integration, binary storage, historical certificate
+version selection, screen-reader acceptance and production UAT are unverified.
+No backend PR #7 change, merge/cherry-pick, backend/API/DB/storage/RBAC change,
+deployment or work on Case ĐĐK is performed.
+
+Validation: typecheck, lint, all 339 frontend tests / 26 files and production
+build PASS. Targeted issue/Facility certificate/document/focus files pass 45 tests
+in each of two repeated runs. New Case presentation/UUID tests also pass in their
+targeted run and the full App suite. The unchanged A3 frontend-owner guard passes
+in isolated function execution (not a full backend run). No timeout increase,
+disabled test or backend guard modification. Existing non-failing act warnings
+remain. Diff is seven frontend/QA files; no business mutation handler changes.
+
 ## Follow-up processing visual/interaction slice — 2026-10-12
 
 Baseline: 538e33ee4c6f256adf18f5c71e355230cc90791f. Runtime image 4 and MainForm

@@ -317,12 +317,26 @@ def main() -> int:
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     try:
-        audit_data = json.loads(args.audit_json.read_text(encoding="utf-8"))
-        exclusions = (
-            json.loads(args.approved_exclusions_json.read_text(encoding="utf-8"))
+        audit_bytes = args.audit_json.read_bytes()
+        audit_data = json.loads(audit_bytes.decode("utf-8"))
+        exclusion_bytes = (
+            args.approved_exclusions_json.read_bytes()
             if args.approved_exclusions_json is not None else None
         )
+        exclusions = (
+            json.loads(exclusion_bytes.decode("utf-8"))
+            if exclusion_bytes is not None else None
+        )
         result = build_group_review_manifest(audit_data, approved_exclusions=exclusions)
+        # These fingerprint the exact input JSON bytes, distinct from the
+        # independently computed original binary Excel workbook checksum.
+        result["input_artifact_sha256"] = {
+            "v3_audit_json": sha256(audit_bytes).hexdigest(),
+            "approved_exclusions_json": (
+                sha256(exclusion_bytes).hexdigest()
+                if exclusion_bytes is not None else None
+            ),
+        }
     except (MissingPhysicalEvidence, ValueError, OSError) as exc:
         parser.exit(2, f"Source review blocked: {exc}\n")
     inputs = [args.audit_json]

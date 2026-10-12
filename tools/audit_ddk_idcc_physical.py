@@ -20,6 +20,13 @@ from backend.app.domain.phase2_import import normalize_row, parse_int
 
 
 AUDIT_SOURCE_SHEETS = ("db.cty", "db.cso", "db.cc", "db.dkkd")
+DDK_GROUP_FIELDS = (
+    ("id_cc", "ID CC"),
+    ("certificate_scope", "PHẠM VI CHỨNG NHẬN"),
+    ("applicable_standard", "TIÊU CHUẨN ÁP DỤNG"),
+    ("business_activity", "HOẠT ĐỘNG KINH DOANH"),
+)
+DDK_GROUP_LABELS = frozenset({"GMP", "GLP", "GSP", "GDP"})
 
 
 class MissingPhysicalEvidence(ValueError):
@@ -70,6 +77,105 @@ def find_ddk_header_row(raw_rows: list[list[object]]) -> int:
             "Cannot uniquely identify the db.dkkd header with four ID CC columns"
         )
     return matching[0]
+
+
+def discover_ddk_group_layout(
+    headers: list[str], group_headers: list[object],
+) -> list[dict[str, Any]]:
+    """Bind group ownership to literal source heading, not ordinal order."""
+    idcc_ordinals = [i for i, value in enumerate(headers, 1) if value == "ID CC"]
+    if len(idcc_ordinals) != 4:
+        raise MissingPhysicalEvidence("Expected four physical db.dkkd ID CC columns")
+    plans: list[dict[str, Any]] = []
+    for column in idcc_ordinals:
+        label = safe_text(group_headers[column - 1]) if column <= len(group_headers) else ""
+        if label not in DDK_GROUP_LABELS:
+            raise MissingPhysicalEvidence(
+                f"Unrecognized or missing db.dkkd group heading at Excel column {column}"
+            )
+        fields: dict[str, dict[str, Any]] = {}
+        for offset, (field_name, expected_header) in enumerate(DDK_GROUP_FIELDS):
+            ordinal = column + offset
+            if ordinal > len(headers) or headers[ordinal - 1] != expected_header:
+                raise MissingPhysicalEvidence(
+                    f"Incomplete db.dkkd {label} field group at column {ordinal}"
+                )
+            fields[field_name] = {"excel_column": ordinal, "source_header": expected_header}
+        plans.append({
+            "ordinal": column,
+            "letter": excel_column_letter(column),
+            "observed_group_header": label,
+            "group_field_columns": fields,
+        })
+    if {plan["observed_group_header"] for plan in plans} != DDK_GROUP_LABELS:
+        raise MissingPhysicalEvidence("Four distinct GMP/GLP/GSP/GDP headers required")
+    return plans
+
+
+def project_ddk_group_source(
+    rows: list[dict[str, str]], plans: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Preserve all grouped source cells, including when ID CC is empty.
+
+    This is audit-only: it does not infer Case/CertificateVersion history,
+    approval, or a canonical BusinessEligibilityCertificateLink.
+    """
+    if len(plans) != 4 or {p.get("observed_group_header") for p in plans} != DDK_GROUP_LABELS:
+        raise MissingPhysicalEvidence("Missing or ambiguous grouped source evidence")
+    summary: dict[int, Counter] = {p["ordinal"]: Counter() for p in plans}
+    projected: list[dict[str, Any]] = []
+    for row in rows:
+        source_row = parse_int(row.get("__excel_row_number"))
+        group_values: list[dict[str, Any]] = []
+        for plan in plans:
+            fields: dict[str, dict[str, Any]] = {}
+            for field_name, source_header in DDK_GROUP_FIELDS:
+                field = plan["group_field_columns"].get(field_name)
+                if not isinstance(field, dict) or field.get("source_header") != source_header:
+                    raise MissingPhysicalEvidence("Incomplete or altered group field plan")
+                ordinal = field.get("excel_column")
+                if type(ordinal) is not int or ordinal < 1:
+                    raise MissingPhysicalEvidence("Invalid physical source group ordinal")
+                source_key = f"{source_header} [excel_column={ordinal}]"
+                if source_key not in row:
+                    raise MissingPhysicalEvidence(
+                        f"Missing preserved physical source field: {source_key}"
+                    )
+                raw_value = safe_text(row[source_key])
+                fields[field_name] = {
+                    "excel_column": ordinal, "source_header": source_header,
+                    "raw_value": raw_value,
+                }
+                if raw_value:
+                    summary[plan["ordinal"]][field_name + "_populated"] += 1
+            has_id = bool(fields["id_cc"]["raw_value"])
+            has_companion = any(
+                fields[field_name]["raw_value"]
+                for field_name, _ in DDK_GROUP_FIELDS[1:]
+            )
+            if not has_id and has_companion:
+                summary[plan["ordinal"]]["companion_without_id_cc"] += 1
+            group_values.append({
+                "source_group": plan["observed_group_header"],
+                "id_cc_excel_column": plan["ordinal"],
+                "has_any_group_value": has_id or has_companion,
+                "has_companion_without_id_cc": not has_id and has_companion,
+                "fields": fields,
+            })
+        projected.append({
+            "source_row_number": source_row,
+            "ddk_legacy_id": parse_int(row.get("ID")),
+            "groups": group_values,
+        })
+    counts = [
+        {
+            "source_group": plan["observed_group_header"],
+            "id_cc_excel_column": plan["ordinal"],
+            "counts": dict(sorted(summary[plan["ordinal"]].items())),
+        }
+        for plan in plans
+    ]
+    return projected, counts
 
 
 def extract_readonly_workbook(path: Path) -> tuple[dict[str, list[dict[str, str]]], dict[str, Any]]:

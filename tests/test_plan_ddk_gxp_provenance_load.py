@@ -237,6 +237,8 @@ def test_cli_does_not_overwrite_inputs_or_earlier_plan(tmp_path, monkeypatch):
 def test_duplicate_certificate_observations_keep_each_original_token_ordinal():
     g, l, c = fixture()
     g["source_rows"][0]["groups"][0]["fields"]["id_cc"]["raw_value"] = "200; 200"
+    for reference in l["candidates"]:
+        reference["raw_cell"] = "200; 200"
     l["candidates"][1]["token"] = "200"
     l["candidates"][1]["certificate_id"] = 200
     output = plan(g=g, l=l, c=c)

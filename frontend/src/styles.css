@@ -2848,3 +2848,31 @@ tr:focus-visible {
 @media (max-width: 600px) {
   .legacy-search-page .case-gxp-certificate-pane .legacy-certificate-heading > .detail-field { grid-template-columns: 110px minmax(0, 1fr); }
 }
+
+/* Case ĐĐK: image 6 places a compact linked list above the form, unlike the Facility list/detail split. */
+.legacy-search-page .case-business-eligibility-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; min-height: 0; height: auto; }
+.legacy-search-page .case-business-eligibility-workspace > .certificate-list-panel { width: min(100%, 640px); min-width: 0; }
+.legacy-search-page .case-business-eligibility-workspace .panel-header { align-items: start; flex-wrap: wrap; gap: 4px; }
+.legacy-search-page .case-business-eligibility-workspace .table-scroll-history { max-height: 150px; background: #fff; }
+.legacy-search-page .case-business-eligibility-workspace .eligibility-history-table { min-width: 0; table-layout: fixed; }
+.legacy-search-page .case-business-eligibility-workspace .eligibility-history-table th:first-child { width: 50%; }
+.legacy-search-page .case-business-eligibility-workspace .eligibility-history-table th:nth-child(2) { width: 30%; }
+.legacy-search-page .case-business-eligibility-workspace .eligibility-history-table th:nth-child(3) { width: 20%; }
+.legacy-search-page .case-business-eligibility-workspace .eligibility-history-table tr.selected td { background: #0078d7; color: #fff; }
+.legacy-search-page .case-business-eligibility-workspace :is(th, td, .detail-value-slot, .certificate-basis-section) { overflow-wrap: anywhere; }
+.legacy-search-page .case-business-eligibility-workspace .legacy-certificate-heading { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.legacy-search-page .case-business-eligibility-workspace .detail-value-slot strong { font-weight: 400; }
+@media (min-width: 1101px) {
+  .legacy-search-page .case-business-eligibility-workspace > .certificate-list-panel { width: 46%; min-width: 320px; max-width: 640px; }
+}
+@media (max-width: 1400px) {
+  .legacy-search-page .case-business-eligibility-workspace .legacy-certificate-heading { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 1100px) {
+  .legacy-search-page :is(.facility-tab-body, .facility-tab-panel):has(.case-business-eligibility-workspace) { height: auto; overflow: visible; }
+  .legacy-search-page .facility-tab-panel > .event-workspace:has(.case-business-eligibility-workspace) { height: auto; }
+  .legacy-search-page .event-workspace-body.has-scope-context:has(.case-business-eligibility-workspace) { grid-template-rows: auto auto; overflow: visible; }
+}
+@media (max-width: 600px) {
+  .legacy-search-page .case-business-eligibility-workspace .legacy-certificate-heading { grid-template-columns: minmax(0, 1fr); }
+}

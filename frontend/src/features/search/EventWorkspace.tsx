@@ -202,6 +202,8 @@ function LinkedBusinessEligibilityCertificates({
     items[0]?.business_eligibility_certificate_id ?? null,
   );
 
+  const rowProps = useCertificateRows(items.map(item => item.business_eligibility_certificate_id), selectedCertificateId, setSelectedCertificateId, false);
+
   useEffect(() => {
     setSelectedCertificateId((current) =>
       current && items.some((item) => item.business_eligibility_certificate_id === current)
@@ -223,14 +225,14 @@ function LinkedBusinessEligibilityCertificates({
   }
 
   return (
-    <div className="certificate-workspace-split event-linked-certificate-workspace">
+    <div className="certificate-workspace-split event-linked-certificate-workspace case-business-eligibility-workspace">
       <section className="panel panel-tight certificate-list-panel">
         <div className="panel-header">
-          <h3>Chứng nhận ĐĐK liên kết</h3>
+          <h3>Giấy ĐĐK đã cấp căn cứ GCN GPs này</h3>
           <span className="panel-meta">{items.length} giấy</span>
         </div>
         <div className="table-scroll table-scroll-history">
-          <table className="dense-table eligibility-history-table">
+          <table aria-label="Giấy ĐĐK đã cấp căn cứ GCN GPs này" className="dense-table eligibility-history-table">
             <thead>
               <tr>
                 <th className="col-cert-number">Số GCN</th>
@@ -244,14 +246,7 @@ function LinkedBusinessEligibilityCertificates({
                   aria-selected={selectedCertificateId === item.business_eligibility_certificate_id}
                   className={selectedCertificateId === item.business_eligibility_certificate_id ? "selected" : ""}
                   key={item.business_eligibility_certificate_id}
-                  onClick={() => setSelectedCertificateId(item.business_eligibility_certificate_id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      setSelectedCertificateId(item.business_eligibility_certificate_id);
-                    }
-                  }}
-                  tabIndex={0}
+                  {...rowProps(item.business_eligibility_certificate_id)}
                 >
                   <td title={item.certificate_number ?? ""}>
                     <div className="cell-stack">
@@ -268,7 +263,7 @@ function LinkedBusinessEligibilityCertificates({
         </div>
       </section>
 
-      <section className="panel panel-tight certificate-detail-panel">
+      <section aria-label="Chi tiết giấy ĐĐK liên kết" className="panel panel-tight certificate-detail-panel">
         {selectedCertificate ? <BusinessEligibilityDetailFields detail={selectedCertificate} /> : null}
       </section>
     </div>

@@ -250,6 +250,93 @@ mount only while the disclosure is open, keeping the closed search DOM compact;
 opening/closing still has no query or mutation effect. Native disclosure, desktop
 pane geometry and certificate tab round-trips were checked in the fixture browser.
 
+## Case ĐĐK read-only visual/interaction slice — 2026-10-12
+
+Baseline: c841098ac390d331c4f4fd62deaa8be45f651459. Runtime image 6 is the
+Case Cấp chứng nhận ĐĐK page: a compact, white, three-column list at upper left,
+caption “Giấy ĐĐK đã cấp căn cứ GCN GPs này”, blue selected row and a legacy
+issuance command. Image 9 is the separate Facility ĐĐK page: company/facility,
+professional persons, CCHN, business activities, status, replacements and basis
+certificates. Its full detail form is not runtime evidence of an expanded Case
+form. MainForm.frm's OleObjectBlob points to MainForm.frx; the original FRX
+contains lbDDKLQx and btnCapDDK control names. No twips-to-runtime pixel inference.
+
+MainForm UpdateHistoryItem calls Load_ListDDKLQ with the selected GPs certificate
+row. Load_ListDDKLQ reads db_IDCs_ddk/db_ddk, filters certificate IDs, loads/sorts
+number/date/issuance text and populates lbDDKLQ/lbDDKLQx. btnCapDDK_Click confirms,
+calls Get_List_IDCCGPs/InsertNewDDKDB, writes certificate linkage in db_CC_Gps,
+refreshes history/facility lists or calls btnDieuChinhDDK_Click, then opens the
+Facility page. Those workbook writes and implicit copy/relink semantics are not
+ported into the read-only Case component.
+
+Root cause: LinkedBusinessEligibilityCertificates reused generic certificate
+chrome with no Case layout owner, generic caption/full-width list and individually
+tabbable rows without arrow navigation. The Case owner now has an explicit grid,
+compact upper-left list (about 46% of desktop width), correct caption/column
+order and scoped blue selection. Existing canonical detail content remains below
+the list in cyan inset values; its shared renderer and Facility presentation/actions
+are unchanged. Desktop step content scrolls independently; narrow layout expands
+before the unchanged scope panel. Long/null/multiline values remain readable.
+
+Ownership: CaseWorkspace supplies read-only linked BusinessEligibilityDetail
+snapshots. Catalog resolves them via GxP Certificate links to the selected
+BusinessEligibilityVersion and returns all basis links. UUIDs and link roles are
+retained, including equal display numbers; no client deduplication/relink/version
+inference. Site issue/edit/promote readiness never becomes a Case mutation. No
+new token, API, storage locator or workflow state; no business handler change.
+One existing selected-certificate state remains, with useCertificateRows handling
+focus separately. Valid selection survives props refresh/reorder; removed IDs
+fall back to the first supplied item; empty/stale/loading/error contexts hide
+details. Workflow/Facility unmount or full page reload still initializes the
+local certificate selection from the first item, as before; history/line URL
+identity is preserved. No certificate-selection URL contract is invented.
+
+EVIDENCE_MISSING: Case-level issuance/edit/renew/promote owner/readiness (Site
+owns these actions); expanded Case detail runtime geometry; immutable version IDs
+and historical version collection in BusinessEligibilityDetail; contextual
+document actions for this workflow step. Image 6 has no document workspace and
+current case context specs define none for Chứng nhận ĐĐK. Keep no document
+workspace here; F6/Shift+F6 document navigation is not applicable. Existing raw
+issuance/replacement/status text is displayed, not parsed into history/actions.
+Legacy activity tabs/completion ticks and implicit copying are not fabricated.
+
+Regression evidence: on baseline, new presentation-owner and ArrowDown-focus
+tests fail (2 failed / 5 passed); after the owner/CSS change, all seven pass.
+Coverage includes hierarchy/labels, same-number UUID selection, focus-only arrows,
+Home/Space, props replacement/reorder/removal, multiple same-number basis entries,
+snapshot fields/null/multiline values, absence of Case mutation/document/editor
+controls even with available Site action readiness, and stale/loading/error
+context. Existing Site concurrency/draft and document identity/focus tests remain
+unchanged and pass in the related suite.
+
+Actual App with synthetic fixture API: 1920x1080, 1366x768 and 390x844. Checked
+equal-number A/B selection, arrows/Home/End/Enter/Space, inert F2/Escape in this
+read-only list, workflow/Facility round-trips, canonical history/production-line
+URL, external URL Back/Forward and refresh. Held a Case A read, selected empty
+Case B, then released A: no stale detail appeared. Focus/list/tab operations
+cause no Case detail fetch or write; the deliberate Facility visit uses its own
+list/detail/basis reads. Counters record zero mutations; full page navigations
+and explicit history changes do refetch their canonical workspace.
+
+Desktop page width equals viewport. Narrow page clientWidth 375 / scrollWidth
+384 at viewport 390 is the unchanged header overflow (~9px); Case content and
+long unbroken notes fit the pane and do not overlap the scope below. Evidence
+outside git: case-ddk-parity-1920/1366/390.png, case-ddk-late-response-390.png,
+case-ddk-request-counts.json and fixture harness. Real-backend integration,
+binary storage, historical-version selection, screen-reader acceptance and
+production UAT are unverified. No backend/DB/API/storage/RBAC changes, merge,
+cherry-pick or deployment. This is partial presentation parity, not full legacy
+business parity or closure of Issue #1.
+
+Validation: typecheck, lint, all 346 frontend tests / 27 files and production
+build PASS. Related Case/Site/document/modal tests pass 47 tests in each of three
+targeted runs, including one after final CSS changes. No timeout increase,
+disabled test or backend guard change; existing non-failing act warnings remain.
+Diff: four frontend/QA files. Data/storage/security contracts and all other
+workflow/Facility owners are unchanged. Next: audit Facility ĐĐK activity groups
+only with approved evidence/contracts, or run authorized staging integration and
+screen-reader verification against these completed Case slices.
+
 ## Case GPs issuance visual/interaction slice — 2026-10-12
 
 Baseline: 26bc7065b60b5dcc48e68f9e246ff902b410f120. Evidence distinction:

@@ -137,6 +137,14 @@ nonblank companion. Even a `SAME_SITE` observation stays
 evidence is not verified. No source observation becomes an approved
 canonical link.
 
+The CLI fingerprints the **exact bytes** of the V3 audit JSON and, when
+provided, the owner-approved confirmed-blanked exclusions JSON in
+`input_artifact_sha256`. These are separate from the **original binary
+workbook SHA-256**, which is retained in `source_workbook_sha256`. The JSON
+fingerprints permit repeatable artifact-to-artifact comparisons but do not
+assert that the upstream workbook extraction or formula results have been
+independently revalidated.
+
 The CLI **will not overwrite** the original V3 audit JSON, the approved
 confirmed-blanked contract, or an existing prior review manifest. A new
 output path is required for each sealed review attempt. Manifest files

@@ -311,6 +311,9 @@ def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | Non
                     "observed_group_header": source_group_headers.get(col) or None,
                     "certificate_type_vs_source_header": "UNVERIFIED",
                     "certificate_site_legacy_id": None,
+                    "certificate_company_legacy_id": None,
+                    "certificate_company_lookup": "UNVERIFIED",
+                    "certificate_company_vs_ddk": "UNVERIFIED",
                     "reverse_id_ddk": None,
                     "reverse_relation": "UNVERIFIED",
                     "source_role": "UNVERIFIED",
@@ -328,7 +331,19 @@ def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | Non
                 else:
                     cert = certificates[target_id][0]
                     cert_site = parse_int(cert.get("site_legacy_id_ref"))
+                    cert_company = parse_int(cert.get("company_legacy_id_ref"))
                     cert_type = safe_text(cert.get("certificate_type")).strip()
+                    evidence["certificate_company_legacy_id"] = cert_company
+                    cert_company_status = _source_lookup_status(cert_company, companies)
+                    evidence["certificate_company_lookup"] = cert_company_status
+                    if cert_company_status == "UNIQUE" and ddk_company_status == "UNIQUE":
+                        evidence["certificate_company_vs_ddk"] = (
+                            "MATCH" if cert_company == ddk_company else "MISMATCH"
+                        )
+                        if cert_company != ddk_company:
+                            column_counts[col]["certificate_company_vs_ddk_mismatch"] += 1
+                    else:
+                        evidence["certificate_company_vs_ddk"] = "UNRESOLVED"
                     evidence["certificate_type"] = cert_type or None
                     evidence["certificate_site_legacy_id"] = cert_site
                     cert_site_status = _source_lookup_status(cert_site, sites)

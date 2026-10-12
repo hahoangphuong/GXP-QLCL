@@ -898,7 +898,7 @@ class BusinessEligibilityGxpReferenceEvidence(UUIDPrimaryKeyMixin, TimestampMixi
     __tablename__ = "business_eligibility_gxp_reference_evidence"
 
     source_group_id: Mapped[str] = mapped_column(
-        ForeignKey("business_eligibility_gxp_source_group.id"),
+        ForeignKey("business_eligibility_gxp_source_group.id", name="fk_begxp_reference_group"),
         nullable=False, index=True,
     )
     token_index: Mapped[int] = mapped_column(Integer, nullable=False)

@@ -282,3 +282,31 @@ def test_cli_cannot_overwrite_exclusion_contract(tmp_path, monkeypatch):
     digests = json.loads(fresh_output.read_text(encoding="utf-8"))["input_artifact_sha256"]
     assert digests["v3_audit_json"] == hashlib.sha256(source.read_bytes()).hexdigest()
     assert digests["approved_exclusions_json"] == hashlib.sha256(approved.read_bytes()).hexdigest()
+
+
+def test_manifest_keeps_whitespace_from_original_value2_not_token_cleanup():
+    source = fixture()
+    gmp = source["grouped_source_rows"][0]["groups"][0]
+    gmp["fields"]["id_cc"]["raw_value"] = " 200 ; 201 "
+    gmp["fields"]["certificate_scope"]["raw_value"] = "  Phạm vi chứng nhận\n"
+    gmp["fields"]["business_activity"]["raw_value"] = " Sản xuất  "
+    for c in source["candidates"]:
+        if c["source_row_number"] == 7 and c["excel_column"] == 4:
+            c["raw_fk"] = " 200 ; 201 "
+    result = build_group_review_manifest(source)
+    record = next(r for r in result["records"] if r["source_group"] == "GMP" and r["source_row_number"] == 7)
+    assert record["source_fields"]["id_cc"]["raw_value"] == " 200 ; 201 "
+    assert record["source_fields"]["certificate_scope"]["raw_value"] == "  Phạm vi chứng nhận\n"
+    assert record["source_fields"]["business_activity"]["raw_value"] == " Sản xuất  "
+    assert [v["raw_token"] for v in record["reference_evidence"]] == ["200", "201"]
+
+
+def test_whitespace_only_id_cc_is_not_a_fabricated_certificate_link():
+    source = fixture()
+    source["grouped_source_rows"][0]["groups"][1]["fields"]["id_cc"]["raw_value"] = "   "
+    records = build_group_review_manifest(source)["records"]
+    glp = next(r for r in records if r["source_row_number"] == 7 and r["source_group"] == "GLP")
+    assert glp["reference_evidence"] == []
+    assert glp["source_fields"]["id_cc"]["raw_value"] == "   "
+    assert "WHITESPACE_ONLY_ID_CC" in glp["review_flags"]
+    assert glp["status"] == "SOURCE_REVIEW_REQUIRED"

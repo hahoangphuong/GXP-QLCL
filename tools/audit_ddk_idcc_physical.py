@@ -274,15 +274,20 @@ def extract_readonly_workbook(path: Path) -> tuple[dict[str, list[dict[str, str]
                 # Refuse to represent such computed results as literal source FKs.
                 if last_row <= header_index + 1:
                     raise MissingPhysicalEvidence("db.dkkd has no source data rows")
+                formula_checks = []
                 for column in idcc_columns:
                     formula_state = ws.Range(
                         ws.Cells(header_index + 2, column),
                         ws.Cells(last_row, column),
                     ).HasFormula
                     require_literal_idcc_column(formula_state, column)
+                    formula_checks.append({"excel_column": column, "has_formula": False})
                 # The header band is evidence for owner review, not permission
                 # to label ordinal N as GMP, GLP, GSP or GDP.
                 sheet_evidence = {
+                    "source_reader": "MICROSOFT_EXCEL_COM_VALUE2_READONLY",
+                    "source_read_only": True,
+                    "id_cc_literal_formula_checks": formula_checks,
                     "header_row": header_index + 1,
                     "id_cc_columns": [
                         {
@@ -598,8 +603,13 @@ def main() -> int:
     parser.add_argument("--expected-workbook-sha256",
                         help="Optional independent original binary workbook SHA-256 pin")
     args = parser.parse_args()
+    origin = args.workbook if args.workbook is not None else args.snapshot_json
+    out = args.out_dir / "ddk_idcc_physical_source_review.json"
+    if out.resolve() == origin.resolve():
+        parser.exit(2, "Source evidence blocked: output overlaps input source\n")
+    if out.exists():
+        parser.exit(2, "Source evidence blocked: output already exists; use a new out-dir\n")
     try:
-        origin = args.workbook if args.workbook is not None else args.snapshot_json
         fingerprint_before = sha256(origin.read_bytes()).hexdigest()
         if args.expected_workbook_sha256 is not None:
             if args.workbook is None:
@@ -617,9 +627,6 @@ def main() -> int:
         result = audit(snapshot, source_sha256=fingerprint_after, header_evidence=header_evidence)
     except (MissingPhysicalEvidence, ValueError, RuntimeError, OSError) as exc:
         parser.exit(2, f"Source evidence blocked: {exc}\n")
-    out = args.out_dir / "ddk_idcc_physical_source_review.json"
-    if out.resolve() == origin.resolve():
-        parser.exit(2, "Source evidence blocked: output overlaps input source\n")
     try:
         args.out_dir.mkdir(parents=True, exist_ok=True)
         # Each original extraction is an independent evidence event: never

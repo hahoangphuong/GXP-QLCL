@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import copy
 import json
+from pathlib import Path
+import subprocess
+import sys
 import pytest
 
 from backend.app.domain.legacy_snapshot import _core_source_row
-from tools.audit_ddk_idcc_physical import MissingPhysicalEvidence, audit, excel_column_letter
+from tools.audit_ddk_idcc_physical import (
+    MissingPhysicalEvidence, audit, excel_column_letter, find_ddk_header_row,
+)
 
 
 def fixture():
@@ -77,3 +82,81 @@ def test_varying_physical_header_ordinals_block_source_review():
     ])
     with pytest.raises(MissingPhysicalEvidence, match="vary across rows"):
         audit(data)
+
+
+def test_ddk_header_source_identity_wins_over_denser_data_row():
+    raw = [
+        ["Legacy source workbook"],
+        ["ID", "ID CƠ SỞ", "ID CTY", "ID CC", "ID CC", "ID CC", "ID CC", "", ""],
+        ["400", "10", "1", "200", "201", "202", "203", "a", "b"],
+    ]
+    assert find_ddk_header_row(raw) == 1
+
+
+@pytest.mark.parametrize("raw", [
+    [["ID", "ID CC", "ID CC", "ID CC"]],
+    [["ID", "ID CC", "ID CC", "ID CC", "ID CC"]] * 2,
+])
+def test_ddk_header_source_identity_ambiguous_or_incomplete_fails_closed(raw):
+    with pytest.raises(MissingPhysicalEvidence, match="Cannot uniquely identify"):
+        find_ddk_header_row(raw)
+
+
+@pytest.mark.parametrize("columns", [
+    [4, 5, 6],
+    [4, 5, 5, 7],
+    [4, 5, "6", 7],
+    [4, 5, 6, 0],
+    [4, 6, 5, 7],
+])
+def test_audit_refuses_invalid_four_column_physical_metadata(columns):
+    data = fixture()
+    for row in data["db.dkkd"]:
+        row["__excel_duplicate_headers"] = json.dumps([
+            {"header": "ID CC", "column_ordinals": columns},
+        ])
+    with pytest.raises(MissingPhysicalEvidence, match="four-column ID CC"):
+        audit(data)
+
+
+def test_duplicate_ddk_legacy_id_does_not_conflate_distinct_source_rows():
+    data = fixture()
+    data["db.dkkd"][1]["ID"] = "400"
+    data["db.dkkd"][1]["ID CC [excel_column=5]"] = "201"
+    result = audit(data)
+    candidates = [
+        c for c in result["candidates"]
+        if c["certificate_legacy_id"] == 200
+    ]
+    assert len(candidates) == 2
+    assert {c["source_row_number"] for c in candidates} == {7, 8}
+    assert all(not c["duplicate_within_ddk"] for c in candidates)
+    assert all(c["duplicate_across_ddk_rows"] for c in candidates)
+
+
+def test_each_raw_fk_including_nonliteral_is_preserved_for_source_review():
+    result = audit(fixture())
+    assert next(c for c in result["candidates"]
+                if c["classification"] == "NONLITERAL_FK")["raw_fk"] == "not-a-number"
+    assert next(c for c in result["candidates"]
+                if c["certificate_legacy_id"] == 201)["raw_fk"] == "201"
+
+
+def test_missing_or_repeated_physical_rows_rejected():
+    data = fixture()
+    data["db.dkkd"][1]["__excel_row_number"] = "7"
+    with pytest.raises(MissingPhysicalEvidence, match="physical db.dkkd row"):
+        audit(data)
+    data["db.dkkd"][1]["__excel_row_number"] = ""
+    with pytest.raises(MissingPhysicalEvidence, match="physical db.dkkd row"):
+        audit(data)
+
+
+def test_owner_tool_module_entrypoint_imports_from_repo_root():
+    result = subprocess.run(
+        [sys.executable, "-m", "tools.audit_ddk_idcc_physical", "--help"],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True, capture_output=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--workbook" in result.stdout

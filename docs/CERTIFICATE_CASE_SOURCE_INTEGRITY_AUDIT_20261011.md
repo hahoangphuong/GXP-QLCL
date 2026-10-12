@@ -411,3 +411,6 @@ SQL check. Any decision to translate reverse `ID DDK` into canonical
 review, including the two cross-Site rows, and cannot be implemented
 as an unreviewed fallback. The former SQL audit is still necessary
 to distinguish current DB state from raw Excel evidence.
+
+The source audit reports nonliteral reference counts and placeholder counts only;
+unknown free-text values are intentionally not echoed into logs or JSON output.

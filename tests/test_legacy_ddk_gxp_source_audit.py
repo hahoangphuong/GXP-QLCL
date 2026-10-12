@@ -37,6 +37,8 @@ def test_ddk_gxp_source_audit_keeps_reverse_links_separate_from_import_forward_r
         "reverse_nonblank_cert_id_ddk": 6,
         "reverse_literal": 5,
         "reverse_nonliteral": 1,
+        "reverse_placeholder": 1,
+        "reverse_other_nonliteral": 0,
         "reverse_missing_target": 1,
         "reverse_excluded_confirmed_blanked": 1,
         "reverse_effective_candidates": 3,
@@ -49,7 +51,7 @@ def test_ddk_gxp_source_audit_keeps_reverse_links_separate_from_import_forward_r
     assert [(x["legacy_certificate_id"], x["legacy_ddk_id"]) for x in report["cross_site_candidates"]] == [(2, 11)]
     assert report["excluded_confirmed_blanked"][0]["legacy_certificate_id"] == 6
     assert report["missing_targets"][0]["legacy_ddk_id"] == 999
-    assert report["nonliteral_reference_values"] == ["-"]
+    assert "nonliteral_reference_values" not in report
     assert snapshot == before
 
 
@@ -75,6 +77,8 @@ def test_ddk_gxp_source_corpus_gate_matches_immutable_excel_snapshot():
         "reverse_nonblank_cert_id_ddk": 806,
         "reverse_literal": 639,
         "reverse_nonliteral": 167,
+        "reverse_placeholder": 167,
+        "reverse_other_nonliteral": 0,
         "reverse_missing_target": 0,
         "reverse_excluded_confirmed_blanked": 9,
         "reverse_effective_candidates": 630,
@@ -90,3 +94,13 @@ def test_ddk_gxp_source_corpus_gate_matches_immutable_excel_snapshot():
     ] == [(790, 160), (1500, 464)]
     assert len(report["excluded_confirmed_blanked"]) == 9
     # These are competing source claims, not authorization to produce 630 links.
+
+
+def test_ddk_audit_does_not_echo_untrusted_free_text_reference():
+    snapshot = {
+        "db.dkkd": [{"ID": "10", "ID CƠ SỞ": "1", "ID CTY": "2"}],
+        "db.cc": [{"ID": "20", "ID CƠ SỞ": "1", "ID CTY": "2", "ID DDK": "untrusted private note"}],
+    }
+    report = audit_ddk_gxp_source_links(snapshot, confirmed_blanked_row_keys=set())
+    assert report["summary"]["reverse_other_nonliteral"] == 1
+    assert "untrusted private note" not in json.dumps(report)

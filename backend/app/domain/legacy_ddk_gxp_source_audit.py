@@ -43,7 +43,6 @@ def audit_ddk_gxp_source_links(
     missing_targets: list[dict[str, Any]] = []
     unknown_sites: list[dict[str, Any]] = []
     company_mismatch_candidates: list[dict[str, Any]] = []
-    nonliteral_ref_samples: set[str] = set()
     effective_ddk_ids: set[int] = set()
 
     for source in snapshot["db.dkkd"]:
@@ -63,7 +62,10 @@ def audit_ddk_gxp_source_links(
         target_id = parse_int(raw_ref)
         if target_id is None:
             counts["reverse_nonliteral"] += 1
-            nonliteral_ref_samples.add(raw_ref)
+            if raw_ref == "-":
+                counts["reverse_placeholder"] += 1
+            else:
+                counts["reverse_other_nonliteral"] += 1
             continue
         counts["reverse_literal"] += 1
         origin_id = parse_int(row.get("ID"))
@@ -120,6 +122,8 @@ def audit_ddk_gxp_source_links(
         "reverse_nonblank_cert_id_ddk": counts["reverse_nonblank_cert_id_ddk"],
         "reverse_literal": counts["reverse_literal"],
         "reverse_nonliteral": counts["reverse_nonliteral"],
+        "reverse_placeholder": counts["reverse_placeholder"],
+        "reverse_other_nonliteral": counts["reverse_other_nonliteral"],
         "reverse_missing_target": counts["reverse_missing_target"],
         "reverse_excluded_confirmed_blanked": counts["reverse_excluded_confirmed_blanked"],
         "reverse_effective_candidates": counts["reverse_effective_candidates"],
@@ -138,5 +142,4 @@ def audit_ddk_gxp_source_links(
         "excluded_confirmed_blanked": sorted(excluded_confirmed_blanked, key=lambda r: (r["legacy_certificate_id"] or -1, r["legacy_ddk_id"])),
         "missing_targets": sorted(missing_targets, key=lambda r: (r["legacy_certificate_id"] or -1, r["legacy_ddk_id"])),
         "unknown_sites": sorted(unknown_sites, key=lambda r: (r["legacy_certificate_id"] or -1, r["legacy_ddk_id"])),
-        "nonliteral_reference_values": sorted(nonliteral_ref_samples),
     }

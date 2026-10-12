@@ -2248,12 +2248,32 @@ class CatalogReadService:
                     }
                 )
 
+            # Case context determines which GxP certificates are relevant,
+            # not the ownership metadata of a linked ĐĐK. A legacy link can
+            # cross Sites; never label that certificate with the Case's
+            # facility/company merely because its basis GxP belongs here.
+            be_sites = {
+                item.id: item
+                for item in session.scalars(
+                    select(Site).where(Site.id.in_({
+                        certificate_row.site_id for certificate_row, _ in be_rows
+                    }))
+                )
+            }
+            be_companies = {
+                item.id: item
+                for item in session.scalars(
+                    select(Company).where(Company.id.in_({
+                        certificate_row.company_id for certificate_row, _ in be_rows
+                    }))
+                )
+            }
             linked_business_eligibility_certificates = [
                 self._serialize_business_eligibility_detail(
                     certificate=certificate_row,
                     version=version_row,
-                    site=site,
-                    company=company,
+                    site=be_sites[certificate_row.site_id],
+                    company=be_companies[certificate_row.company_id],
                     linked_gxp_certificates=linked_basis_by_version_id.get(version_row.id, []),
                     replacement_map=replacement_map,
                 )

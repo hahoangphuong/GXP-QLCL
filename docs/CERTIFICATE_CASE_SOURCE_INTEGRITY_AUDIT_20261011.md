@@ -352,3 +352,29 @@ classification remains independent. Tests cover normal/strict modes, a raw
 resolved/missing FK, orphan requested rows, unused signed approvals, no-schema
 writes and snapshot immutability. The production resurrection contract still
 has zero approved entries; no business corrections were applied.
+
+
+## Case ĐĐK attribution / independent rehearsal integrity check (12 October)
+
+Code-level last-correct / first-incorrect boundary: `get_case_workspace`
+correctly selects the related ĐĐK using its version-owned GxP basis links,
+but then passed the *Case* `Site` and `Company` into the ĐĐK detail
+serializer. The legacy importer can create a GxP–ĐĐK link by `ID CC`
+without checking the two Site IDs. A cross-Site link therefore produced a
+payload whose `site_id` and `company_id` belonged to the ĐĐK while its
+displayed company, legal address, facility name and address belonged to
+the unrelated Case. This is a read-model misattribution regardless of
+whether any such row exists in rehearsal.
+
+Case workspace now looks up each linked ĐĐK's own Site and Company for its
+displayed fields, using the same certificate-owned identity already used
+by the standalone ĐĐK detail endpoint. No source link is rewritten, filtered
+out, relinked or promoted; no HTTP 409 or hidden client fallback is introduced.
+Regression covers a deliberately cross-Site, cross-Company legacy-style link
+and a same-Site baseline. A separate **read-only** SQL audit
+(`scripts/audit_ddk_gxp_site_links_readonly.sql`) is available for
+`gxp_legacy_rehearsal`; it was *not* executed against the VM here because
+no VM SQL connection is attached to this session. Actual occurrence counts
+and business ownership of any anomalies remain unverified. Do not infer
+that the cross-site association is authorized merely because display
+attribution is now truthful.

@@ -1932,6 +1932,111 @@ def test_gxp_certificate_workspace_reads_history_and_detail_with_line_safe_filte
     assert expired_detail["source_description"] == "Cấp hành chính không gắn đợt kiểm tra"
 
 
+def test_case_workspace_linked_ddk_uses_its_own_site_and_company_when_legacy_basis_crosses_sites(
+    tmp_path,
+):
+    # Legacy import accepts the linked GxP ID without a same-Site check.
+    # That may create a bad source link, but the read model must never
+    # mislabel the foreign ĐĐK as belonging to the selected Case's Site.
+    engine = create_engine(
+        f"sqlite:///{(tmp_path / 'cross-site-ddk-attribution.sqlite').as_posix()}",
+        future=True,
+    )
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+        other_company = Company(
+            legal_name="Other legal company",
+            legal_address="Other registered office",
+        )
+        session.add(other_company)
+        session.flush()
+        other_site = Site(
+            company_id=other_company.id,
+            site_name="Other manufacturing site",
+            site_address="Other physical address",
+        )
+        session.add(other_site)
+        session.flush()
+        foreign_ddk = BusinessEligibilityCertificate(
+            site_id=other_site.id,
+            company_id=other_company.id,
+            latest_flag=False,
+        )
+        session.add(foreign_ddk)
+        session.flush()
+        foreign_version = BusinessEligibilityVersion(
+            business_eligibility_certificate_id=foreign_ddk.id,
+            version_no=1,
+            certificate_number="FOREIGN-DDK-001",
+            issued_on=date(2025, 5, 2),
+        )
+        session.add(foreign_version)
+        session.flush()
+        session.add(
+            BusinessEligibilityCertificateLink(
+                business_eligibility_version_id=foreign_version.id,
+                certificate_id=seeded["gxp_certificate_ids"]["a_new"],
+                link_role="source_certificate",
+            )
+        )
+        session.commit()
+        foreign_id = foreign_ddk.id
+        foreign_site_id = other_site.id
+        foreign_company_id = other_company.id
+
+    service = CatalogReadService()
+    with Session(engine) as session:
+        workspace = service.get_case_workspace(
+            session,
+            case_id=seeded["case_ids"]["a"],
+            user=build_authenticated_user("reviewer01", "manager"),
+        )
+        standalone = service.get_business_eligibility_detail(
+            session, business_eligibility_certificate_id=foreign_id,
+        )
+
+    linked = {
+        row["business_eligibility_certificate_id"]: row
+        for row in workspace["linked_business_eligibility_certificates"]
+    }
+    assert foreign_id in linked
+    row = linked[foreign_id]
+    assert row["site_id"] == foreign_site_id
+    assert row["company_id"] == foreign_company_id
+    for field in (
+        "company_name", "company_legal_address", "facility_name", "address"
+    ):
+        assert row[field] == standalone[field]
+    assert row["company_name"] == "Other legal company"
+    assert row["facility_name"] == "Other manufacturing site"
+    assert row["address"] == "Other physical address"
+    assert row["company_name"] != workspace["case_summary"]["company_name"]
+    assert row["facility_name"] != workspace["case_summary"]["facility_name"]
+    assert row["linked_gxp_certificates"][0]["certificate_id"] == seeded["gxp_certificate_ids"]["a_new"]
+
+
+def test_case_workspace_linked_ddk_same_site_attribution_remains_unchanged(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{(tmp_path / 'same-site-ddk-attribution.sqlite').as_posix()}",
+        future=True,
+    )
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        seeded = seed_certificate_workspace_catalog(session)
+    with Session(engine) as session:
+        workspace = CatalogReadService().get_case_workspace(
+            session,
+            case_id=seeded["case_ids"]["a"],
+            user=build_authenticated_user("reviewer01", "manager"),
+        )
+    assert workspace["linked_business_eligibility_certificates"]
+    for row in workspace["linked_business_eligibility_certificates"]:
+        assert row["site_id"] == seeded["site_id"]
+        assert row["company_name"] == workspace["case_summary"]["company_name"]
+        assert row["facility_name"] == workspace["case_summary"]["facility_name"]
+
+
 def test_business_eligibility_workspace_reads_history_detail_and_linked_gxp_basis(tmp_path):
     database_path = tmp_path / "catalog-dkkd-workspace.sqlite"
     database_url = f"sqlite:///{database_path.as_posix()}"

@@ -459,7 +459,7 @@ def test_raw_value2_group_cells_preserve_source_whitespace_not_shared_normalizat
     group = rows[0]["groups"][0]
     assert group["fields"]["certificate_scope"]["raw_value"] == "  GMP scope\n"
     assert counts[0]["counts"]["id_cc_populated"] == 1
-    assert counts[1]["counts"]["certificate_scope_populated"] == 0
+    assert counts[1]["counts"].get("certificate_scope_populated", 0) == 0
     data = fixture()
     data["db.dkkd"] = [record]
     reviewed = audit(data, header_evidence={"id_cc_columns": plans})

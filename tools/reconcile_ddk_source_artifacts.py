@@ -145,6 +145,26 @@ def compare_com_v3(audit: dict[str, Any], cells: dict, tokens: Counter,
             "V3 source fingerprint differs from original workbook")
     require(audit.get("approval_status") == "NOT_APPROVED_NO_RELATIONSHIPS_CREATED",
             "V3 has unexpected business approval state")
+    header_evidence = audit.get("header_evidence")
+    require(isinstance(header_evidence, dict)
+            and header_evidence.get("source_reader") == "MICROSOFT_EXCEL_COM_VALUE2_READONLY"
+            and header_evidence.get("source_read_only") is True,
+            "V3 lacks verified read-only Excel COM source provenance")
+    formula_checks = header_evidence.get("id_cc_literal_formula_checks")
+    require(isinstance(formula_checks, list) and len(formula_checks) == 4
+            and all(isinstance(item, dict) and type(item.get("excel_column")) is int
+                    and item.get("has_formula") is False for item in formula_checks),
+            "V3 lacks four verified literal ID CC formula checks")
+    require({item["excel_column"] for item in formula_checks}
+            == {key[1] for key in cells},
+            "V3 ID CC formula-check columns contradict physical source groups")
+    original_columns = header_evidence.get("id_cc_columns")
+    require(isinstance(original_columns, list) and len(original_columns) == 4
+            and {
+                (item.get("ordinal"), item.get("observed_group_header"))
+                for item in original_columns
+            } == {(key[1], group["source_group"]) for key, group in cells.items()},
+            "V3 group headings contradict independent physical source evidence")
     projected = audit.get("grouped_source_rows")
     require(isinstance(projected, list), "Missing V3 grouped source rows")
     require(len(projected) * 4 == len(cells), "V3 source row count disagrees")

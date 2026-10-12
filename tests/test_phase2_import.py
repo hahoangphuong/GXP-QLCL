@@ -88,6 +88,34 @@ def test_evaluation_scope_taxonomy_seed_avoids_uuid_returning_sentinel_path():
         for statement, _ in taxonomy_insert_statements
     )
 
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_lossless_duplicate_excel_headers_block_phase2_before_schema_creation(strict):
+    snapshot = sample_snapshot()
+    snapshot["db.dkkd"][0].pop("ID CC", None)
+    snapshot["db.dkkd"][0].update({
+        "ID CC [excel_column=14]": "200",
+        "ID CC [excel_column=15]": "",
+        "__excel_duplicate_headers": (
+            '[{"header":"ID CC","column_ordinals":[14,15]}]'
+        ),
+    })
+    before = json.loads(json.dumps(snapshot))
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session, pytest.raises(
+        ImportCollisionError, match="Ambiguous duplicate Excel headers"
+    ):
+        import_snapshot(
+            session, snapshot,
+            options=ImportExecutionOptions(
+                strict_certificate_case_source_links=strict
+            ),
+        )
+    assert not inspect(engine).has_table("business_eligibility_certificate")
+    assert not inspect(engine).has_table("certificate")
+    assert snapshot == before
+
+
 def sample_snapshot():
     return {
         "db.cty": [

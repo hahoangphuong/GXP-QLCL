@@ -922,6 +922,15 @@ def _validate_snapshot_source_keys(snapshot: dict[str, list[dict[str, str]]]) ->
     for source_sheet, rows in snapshot.items():
         seen: set[str] = set()
         for raw_row in rows:
+            # V1 must not interpret duplicate-heading physical columns as
+            # one scalar FK. All values are exported positionally; mapping
+            # ownership requires separately reviewed raw-header evidence.
+            if "__excel_duplicate_headers" in raw_row:
+                raise ImportCollisionError(
+                    f"Ambiguous duplicate Excel headers in {source_sheet}, "
+                    f"source row {raw_row.get('__excel_row_number', 'unknown')}; "
+                    "approve physical-column ownership before importing this snapshot."
+                )
             row = normalize_row(raw_row)
             raw_legacy_id = str(row.get("ID") or "").strip()
             legacy_id = parse_int(raw_legacy_id)

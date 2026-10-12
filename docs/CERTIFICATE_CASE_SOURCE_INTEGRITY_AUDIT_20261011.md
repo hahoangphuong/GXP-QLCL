@@ -414,3 +414,35 @@ to distinguish current DB state from raw Excel evidence.
 
 The source audit reports nonliteral reference counts and placeholder counts only;
 unknown free-text values are intentionally not echoed into logs or JSON output.
+
+
+## V1 duplicate-header source-loss audit (12 October 2026)
+
+The original Core Sheet V1 Excel reader used a dictionary comprehension
+keyed only by visible header text. If the four `db.dkkd` columns for GMP,
+GLP, GSP and GDP share the heading `ID CC`, each successive physical column
+**overwrites the previous one**, even if its value is blank. The checked-in
+V1 JSON has 830 ĐĐK rows and only one blank `ID CC` field; that is evidence
+of the **flattened artifact**, not proof that the original workbook had no
+forward GxP references. The original distinct column values cannot be
+recovered from that V1 JSON. The user's source information establishes four
+separate columns; their exact source column ordinals and corresponding header
+groups still require verification against the authoritative `.xlsb` or its
+coordinate-preserving Snapshot V2.
+
+At the source-extraction owner, `legacy_snapshot._core_header_plan` and
+`_core_source_row` now preserve *every* duplicate-heading cell in keys
+containing the physical Excel column number, e.g.
+`ID CC [excel_column=14]`, and attach `__excel_duplicate_headers`
+metadata for the whole group. Unique headers retain their legacy names.
+No positional assignment to GMP/GLP/GSP/GDP is inferred and no reverse
+`db.cc.ID DDK` value is used to fill a missing forward link.
+
+The Phase-2 pre-schema owner refuses a snapshot carrying this unresolved
+duplicate-header metadata in either normal or strict mode. This makes
+re-extraction non-lossy and import fail closed until physical-column roles
+are reviewed. The already-flattened V1 snapshot has no such metadata;
+therefore it must **not** be used to claim complete historical ĐĐK–GxP
+basis linkage or to authorize new link generation. The pre-existing
+version-specific canonical link contract is unchanged; no live import,
+database data, or source workbook was changed.

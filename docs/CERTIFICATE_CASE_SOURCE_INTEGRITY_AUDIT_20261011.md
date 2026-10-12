@@ -529,10 +529,14 @@ cell, token ordinal and raw token, including malformed/empty tokens, separately.
 Independent source analysis reports five GMP **cross-Site candidate
 occurrences**, referring to four Certificate IDs (1064 appears in two separate
 ĐĐK rows; 1180, 1308 and 1385 appear once each). There is one
-ĐĐK/owning-Site **Company mismatch** (ĐĐK legacy ID 626). Another
-50 source `db.dkkd` rows have neither Site ID nor Company ID; their
-exclusion/restoration status must be established from the independent approved
-confirmed-blanked contract, **not** guessed. Repeated GxP IDs across ĐĐK
+ĐĐK/owning-Site **Company mismatch** (ĐĐK legacy ID 626). An independent exact-ID reconciliation against the previously owner-approved
+`artifacts/phase3q/confirmed_blanked_rows.json` (14 August 2026) confirms
+**all 50** source `db.dkkd` rows with missing Site and Company are exactly
+the 50 approved `db.dkkd` exclusions, with zero omissions/extras and zero
+populated ID CC cells among them. Hence the effective owner-approved
+`db.dkkd` source population is **780 / 830 rows**; the 861 token references
+remain unchanged. This is a *read-only population reconciliation*, not a
+new exclusion inference or restoration approval. Repeated GxP IDs across ĐĐK
 rows and non-equal reverse `db.cc.ID DDK` references are **not** by themselves
 proof of invalid history or business ownership; no version/history link is
 inferred or persisted.

@@ -231,3 +231,15 @@ def test_company_reference_missing_or_inconsistent_is_visible():
     matched = next(c for c in result["candidates"] if c["certificate_legacy_id"] == 201)
     assert matched["ddk_company_vs_site"] == "MISMATCH"
     assert result["id_cc_columns"][1]["counts"]["ddk_company_vs_site_mismatch"] == 1
+
+
+def test_reverse_field_missing_cannot_be_reported_as_blank_source_fk():
+    data = fixture()
+    del data["db.cc"][0]["ID DDK"]
+    result = audit(data)
+    matched = next(
+        c for c in result["candidates"]
+        if c["source_row_number"] == 7 and c["certificate_legacy_id"] == 200
+    )
+    assert matched["reverse_relation"] == "REVERSE_FIELD_UNAVAILABLE"
+    assert result["id_cc_columns"][0]["counts"]["reverse_field_unavailable"] >= 1

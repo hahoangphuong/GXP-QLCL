@@ -190,3 +190,44 @@ def test_non_ddk_header_selected_by_literal_id_not_row_density():
 def test_non_ddk_ambiguous_header_fails_closed(raw):
     with pytest.raises(MissingPhysicalEvidence, match="source ID header"):
         find_id_header_row(raw, "db.cc")
+
+
+def test_ambiguous_source_site_id_never_counts_as_same_site():
+    data = fixture()
+    data["db.cso"].append({"ID": "10", "ID Cty": "999"})
+    result = audit(data)
+    matched = next(
+        c for c in result["candidates"]
+        if c["source_row_number"] == 7 and c["certificate_legacy_id"] == 200
+    )
+    assert matched["classification"] == "SITE_UNRESOLVED"
+    assert matched["ddk_site_lookup"] == "AMBIGUOUS"
+    assert matched["certificate_site_lookup"] == "AMBIGUOUS"
+    assert matched["ddk_company_vs_site"] == "UNRESOLVED"
+
+
+def test_absent_site_owner_identity_is_unresolved_not_same_site():
+    data = fixture()
+    data["db.cso"] = [data["db.cso"][1]]
+    matched = next(
+        c for c in audit(data)["candidates"]
+        if c["source_row_number"] == 7 and c["certificate_legacy_id"] == 200
+    )
+    assert matched["classification"] == "SITE_UNRESOLVED"
+    assert matched["ddk_site_lookup"] == "MISSING"
+
+
+def test_company_reference_missing_or_inconsistent_is_visible():
+    data = fixture()
+    data["db.cty"] = []
+    result = audit(data)
+    matched = next(c for c in result["candidates"] if c["certificate_legacy_id"] == 201)
+    assert matched["ddk_company_lookup"] == "MISSING"
+    assert matched["ddk_company_vs_site"] == "UNRESOLVED"
+
+    data = fixture()
+    data["db.cso"][0]["ID Cty"] = "2"
+    result = audit(data)
+    matched = next(c for c in result["candidates"] if c["certificate_legacy_id"] == 201)
+    assert matched["ddk_company_vs_site"] == "MISMATCH"
+    assert result["id_cc_columns"][1]["counts"]["ddk_company_vs_site_mismatch"] == 1

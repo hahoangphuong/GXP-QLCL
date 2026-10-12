@@ -211,6 +211,8 @@ def test_duplicate_group_token_or_wrong_database_blocks():
     bad = copy.deepcopy(plan)
     bad["payload"]["reference_tokens"].append(copy.deepcopy(bad["payload"]["reference_tokens"][0]))
     bad["payload_sha256"] = _digest(bad["payload"])
+    bad["counts"]["reference_tokens"] = 3
+    bad["source_baseline"]["reference_tokens"] = 3
     with pytest.raises(MissingPhysicalEvidence, match="Duplicate source token ordinal"):
         validate_sealed_plan(bad)
     bad_target = _snapshot()

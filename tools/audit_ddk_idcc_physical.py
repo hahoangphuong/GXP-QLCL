@@ -595,23 +595,41 @@ def main() -> int:
     sources.add_argument("--workbook", type=Path)
     sources.add_argument("--snapshot-json", type=Path)
     parser.add_argument("--out-dir", type=Path, required=True)
+    parser.add_argument("--expected-workbook-sha256",
+                        help="Optional independent original binary workbook SHA-256 pin")
     args = parser.parse_args()
     try:
+        origin = args.workbook if args.workbook is not None else args.snapshot_json
+        fingerprint_before = sha256(origin.read_bytes()).hexdigest()
+        if args.expected_workbook_sha256 is not None:
+            if args.workbook is None:
+                raise MissingPhysicalEvidence("Workbook hash pin requires --workbook")
+            if args.expected_workbook_sha256.lower() != fingerprint_before:
+                raise MissingPhysicalEvidence("Workbook SHA-256 differs from expected source")
         if args.workbook:
             snapshot, header_evidence = extract_readonly_workbook(args.workbook)
-            origin = args.workbook
         else:
             snapshot = json.loads(args.snapshot_json.read_text(encoding="utf-8"))
             header_evidence = None
-            origin = args.snapshot_json
-        fingerprint = sha256(origin.read_bytes()).hexdigest()
-        result = audit(snapshot, source_sha256=fingerprint, header_evidence=header_evidence)
-    except (MissingPhysicalEvidence, ValueError, RuntimeError) as exc:
+        fingerprint_after = sha256(origin.read_bytes()).hexdigest()
+        if fingerprint_before != fingerprint_after:
+            raise MissingPhysicalEvidence("Input source bytes changed while extracting")
+        result = audit(snapshot, source_sha256=fingerprint_after, header_evidence=header_evidence)
+    except (MissingPhysicalEvidence, ValueError, RuntimeError, OSError) as exc:
         parser.exit(2, f"Source evidence blocked: {exc}\n")
-    args.out_dir.mkdir(parents=True, exist_ok=True)
-    # Never export the entire workbook or synthesize a canonical import.
     out = args.out_dir / "ddk_idcc_physical_source_review.json"
-    out.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if out.resolve() == origin.resolve():
+        parser.exit(2, "Source evidence blocked: output overlaps input source\n")
+    try:
+        args.out_dir.mkdir(parents=True, exist_ok=True)
+        # Each original extraction is an independent evidence event: never
+        # overwrite an earlier report or a source JSON file.
+        with out.open("x", encoding="utf-8") as handle:
+            handle.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+    except FileExistsError:
+        parser.exit(2, "Source evidence blocked: output already exists; use a new out-dir\n")
+    except OSError as exc:
+        parser.exit(2, f"Source evidence blocked: {exc}\n")
     print(f"Wrote read-only evidence: {out}")
     print(f"Rows={result['ddk_source_rows']}; physical ID CC columns={result['id_cc_column_count']}; candidates={result['candidate_count']}")
     return 0

@@ -34,6 +34,20 @@ def excel_column_letter(number: int) -> str:
     return result
 
 
+def find_ddk_header_row(raw_rows: list[list[object]]) -> int:
+    """Require the unique physical db.dkkd header; never guess column ownership."""
+    matching = [
+        i for i, raw in enumerate(raw_rows[:10])
+        if [safe_text(cell) for cell in raw].count("ID CC") == 4
+        and "ID" in [safe_text(cell) for cell in raw]
+    ]
+    if len(matching) != 1:
+        raise MissingPhysicalEvidence(
+            "Cannot uniquely identify the db.dkkd header with four ID CC columns"
+        )
+    return matching[0]
+
+
 def extract_readonly_workbook(path: Path) -> tuple[dict[str, list[dict[str, str]]], dict[str, Any]]:
     """Open an isolated Excel process without links, macros, or workbook writes."""
     if not path.is_file() or path.suffix.lower() != ".xlsb":
@@ -70,18 +84,7 @@ def extract_readonly_workbook(path: Path) -> tuple[dict[str, list[dict[str, str]
             if not raw_rows:
                 raise MissingPhysicalEvidence(f"Empty source sheet: {name}")
             if name == "db.dkkd":
-                # Do not let the generic densest-row heuristic silently
-                # consume data as headers and discard physical ID CC columns.
-                matching = [
-                    i for i, raw in enumerate(raw_rows[:10])
-                    if [safe_text(cell) for cell in raw].count("ID CC") == 4
-                    and "ID" in [safe_text(cell) for cell in raw]
-                ]
-                if len(matching) != 1:
-                    raise MissingPhysicalEvidence(
-                        "Cannot uniquely identify the db.dkkd header with four ID CC columns"
-                    )
-                header_index = matching[0]
+                header_index = find_ddk_header_row(raw_rows)
             else:
                 header_index = detect_header_row(raw_rows[:10])
             headers = [safe_text(value) for value in raw_rows[header_index]]

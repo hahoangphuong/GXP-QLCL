@@ -1,6 +1,17 @@
 # ĐĐK source GxP group provenance — proposed domain contract
 
 **Status: REVIEW PROPOSAL / NOT APPROVED — 12 October 2026.**
+**Owner source-baseline decision (12 October 2026):** the owner expressly
+accepted the independent XLSB/JSON reconciliation as the working baseline
+and waived the previously mandatory Microsoft Excel COM replay for this
+additive development slice. See
+`DDK_GXP_SOURCE_BASELINE_OWNER_ACCEPTANCE_20261012.md` for exact scope,
+residual uncertainty and exclusions. The remaining COM details below are
+**optional provenance verification, not a blocker for drafting empty
+source-only tables**. No claim of `HasFormula=PASS` or a verified COM read
+is made. This waiver does not authorize source-based canonical linkage,
+backfill, DB writes, deployment or adjudication of cross-Site ownership.
+
 This is a design and a read-only evidence contract, **not** an approved
 database migration, canonical link assignment, production import rule,
 legacy workbook rewrite, UI action, or rollout authorization.

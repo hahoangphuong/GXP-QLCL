@@ -721,13 +721,13 @@ def test_signed_resurrection_with_mixed_valid_invalid_override_values_fails_pre_
     # while retaining the first and passing import preflight.
     blanked = tmp_path / "confirmed_blanked.json"
     blanked.write_text(json.dumps({"rows": [{
-        "source_sheet": "db.cso", "source_row_key": "10",
+        "source_sheet": "db.cc", "source_row_key": "200",
     }]}), encoding="utf-8")
     approved = tmp_path / "approved.json"
     approved.write_text(json.dumps({"rows": [{
-        "source_sheet": "db.cso", "source_row_key": "10",
+        "source_sheet": "db.cc", "source_row_key": "200",
         "approved_override": {
-            "company_legacy_id": 1,
+            "case_legacy_id": 100,
             "site_legacy_id": invalid_value,
         },
     }]}), encoding="utf-8")
@@ -743,7 +743,7 @@ def test_signed_resurrection_with_mixed_valid_invalid_override_values_fails_pre_
             session, snapshot,
             options=ImportExecutionOptions(strict_certificate_case_source_links=strict),
         )
-    assert "db.cso:10" in str(exc.value)
+    assert "db.cc:200" in str(exc.value)
     assert inspect(engine).has_table("company") is False
     assert snapshot == original_source
 

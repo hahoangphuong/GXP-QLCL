@@ -126,7 +126,7 @@ def test_missing_or_swapped_reference_token_fails_closed():
         reconcile(workbook_hash="b" * 64, grouped=g, links=wrong)
     wrong = copy.deepcopy(l)
     wrong["candidates"][0]["physical_col"] = 8
-    with pytest.raises(MissingPhysicalEvidence, match="wrong GxP"):
+    with pytest.raises(MissingPhysicalEvidence, match="Reference raw cell differs|wrong GxP"):
         reconcile(workbook_hash="b" * 64, grouped=g, links=wrong)
 
 

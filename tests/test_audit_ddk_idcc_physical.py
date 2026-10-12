@@ -12,6 +12,7 @@ from tools.audit_ddk_idcc_physical import (
     AUDIT_SOURCE_SHEETS, MissingPhysicalEvidence, audit, excel_column_letter,
     find_ddk_header_row, find_id_header_row, require_literal_idcc_column,
     split_idcc_references, discover_ddk_group_layout, project_ddk_group_source,
+    capture_ddk_source_row, source_value2_text,
 )
 
 
@@ -430,3 +431,38 @@ def test_grouped_source_is_unavailable_without_proven_header_layout():
     result = audit(fixture())
     assert result["grouped_source_status"] == "UNAVAILABLE_REQUIRES_PHYSICAL_HEADER_BAND"
     assert result["grouped_source_rows"] == []
+
+
+def test_raw_value2_group_cells_preserve_source_whitespace_not_shared_normalization():
+    assert source_value2_text("  Certificate scope\n") == "  Certificate scope\n"
+    assert source_value2_text(17.0) == "17"
+    fields = ["ID CC", "PHẠM VI CHỨNG NHẬN", "TIÊU CHUẨN ÁP DỤNG", "HOẠT ĐỘNG KINH DOANH"]
+    headers = ["ID", "ID CƠ SỞ", "ID CTY"] + fields * 4
+    band = [""] * len(headers)
+    for col, label in [(4, "GMP"), (8, "GLP"), (12, "GSP"), (16, "GDP")]:
+        band[col - 1] = label
+    plans = discover_ddk_group_layout(headers, band)
+    values = [
+        "400", "10", "1",
+        " 200 ; 201 ", "  GMP scope\n", " WHO-GMP ", " Sản xuất  ",
+        "", "   ", " GLP ", "",
+        "", "", "", "",
+        "", "", "", " Bán buôn\n",
+    ]
+    from backend.app.domain.legacy_snapshot import _core_header_plan
+    record = capture_ddk_source_row(headers, values, 7, _core_header_plan(headers), plans)
+    assert record["ID CC [excel_column=4]"] == " 200 ; 201 "
+    assert record["PHẠM VI CHỨNG NHẬN [excel_column=5]"] == "  GMP scope\n"
+    assert record["TIÊU CHUẨN ÁP DỤNG [excel_column=6]"] == " WHO-GMP "
+    assert record["HOẠT ĐỘNG KINH DOANH [excel_column=19]"] == " Bán buôn\n"
+    rows, counts = project_ddk_group_source([record], plans)
+    group = rows[0]["groups"][0]
+    assert group["fields"]["certificate_scope"]["raw_value"] == "  GMP scope\n"
+    assert counts[0]["counts"]["id_cc_populated"] == 1
+    assert counts[1]["counts"]["certificate_scope_populated"] == 0
+    data = fixture()
+    data["db.dkkd"] = [record]
+    reviewed = audit(data, header_evidence={"id_cc_columns": plans})
+    tokens = [c for c in reviewed["candidates"] if c["excel_column"] == 4]
+    assert [t["raw_fk_token"] for t in tokens] == ["200", "201"]
+    assert all(t["raw_fk"] == " 200 ; 201 " for t in tokens)

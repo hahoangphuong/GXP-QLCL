@@ -19,6 +19,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
 
+from backend.app.domain.phase2_import import parse_int
 from tools.audit_ddk_idcc_physical import DDK_GROUP_LABELS, MissingPhysicalEvidence, split_idcc_references
 from tools.plan_ddk_gxp_provenance_load import (
     GROUP_TABLE, PLAN_SCHEMA, TOKEN_TABLE, _digest, _source_value_digest,
@@ -40,6 +41,13 @@ TOKEN_COLUMNS = frozenset((
     "id", "source_group_id", "token_index", "raw_token",
     "parsed_legacy_certificate_id",
 ))
+GROUP_NOT_NULL = GROUP_COLUMNS - {"legacy_dkkd_id"}
+TOKEN_NOT_NULL = TOKEN_COLUMNS - {"parsed_legacy_certificate_id"}
+GROUP_EXPECTED_CHECK_FIELDS = (
+    "source_sheet_name", "source_group", "source_row_number",
+    "certificate_scope_excel_column", "source_workbook_sha256",
+)
+TOKEN_EXPECTED_CHECK_FIELDS = ("token_index", "parsed_legacy_certificate_id")
 
 
 def _require(condition: bool, explanation: str) -> None:
@@ -167,7 +175,7 @@ def validate_sealed_plan(plan: dict[str, Any]) -> tuple[dict, dict]:
         v = entry["values"]
         i, raw, cid = v.get("token_index"), v.get("raw_token"), v.get("parsed_legacy_certificate_id")
         _require(type(i) is int and i > 0 and isinstance(raw, str)
-                 and type(cid) is int and cid > 0 and raw.strip() == str(cid),
+                 and type(cid) is int and cid > 0 and parse_int(raw) == cid,
                  "Invalid original source ID CC token")
         _require((k, i) not in expected, "Duplicate source token ordinal")
         expected[(k, i)] = (raw, cid)
@@ -183,9 +191,9 @@ def validate_sealed_plan(plan: dict[str, Any]) -> tuple[dict, dict]:
 
 def _metadata_health(structure: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-    for table, required, unique_cols in (
-        (GROUP_TABLE, GROUP_COLUMNS, GROUP_UNIQUE),
-        (TOKEN_TABLE, TOKEN_COLUMNS, TOKEN_UNIQUE),
+    for table, required, unique_cols, not_null, expected_checks in (
+        (GROUP_TABLE, GROUP_COLUMNS, GROUP_UNIQUE, GROUP_NOT_NULL, GROUP_EXPECTED_CHECK_FIELDS),
+        (TOKEN_TABLE, TOKEN_COLUMNS, TOKEN_UNIQUE, TOKEN_NOT_NULL, TOKEN_EXPECTED_CHECK_FIELDS),
     ):
         meta = structure.get(table)
         if not isinstance(meta, dict):
@@ -195,6 +203,11 @@ def _metadata_health(structure: dict[str, Any]) -> list[str]:
             errors.append("MISSING_COLUMNS_" + table)
         if unique_cols not in {frozenset(x) for x in meta.get("uniques", [])}:
             errors.append("MISSING_UNIQUE_" + table)
+        if not not_null.issubset(set(meta.get("not_null", []))):
+            errors.append("MISSING_NOT_NULL_" + table)
+        check_clauses = " ".join(meta.get("check_clauses", [])).lower()
+        if any(name not in check_clauses for name in expected_checks):
+            errors.append("MISSING_CHECK_CONSTRAINTS_" + table)
         fks = meta.get("foreign_keys", [])
         if table == GROUP_TABLE and fks:
             errors.append("UNEXPECTED_GROUP_FOREIGN_KEYS")
@@ -328,6 +341,14 @@ def assess_rehearsal_preflight(plan: dict[str, Any], snapshot: dict[str, Any]) -
 def _table_shape(conn, inspector, table: str) -> dict[str, Any]:
     return {
         "columns": [x["name"] for x in inspector.get_columns(table, schema="public")],
+        "not_null": [
+            x["name"] for x in inspector.get_columns(table, schema="public")
+            if x.get("nullable") is False
+        ],
+        "check_clauses": [
+            str(x.get("sqltext") or "")
+            for x in inspector.get_check_constraints(table, schema="public")
+        ],
         "uniques": [list(x.get("column_names", []))
                     for x in inspector.get_unique_constraints(table, schema="public")],
         "foreign_keys": [

@@ -318,7 +318,9 @@ def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | Non
                 reverse_raw = safe_text(cert.get("ID DDK"))
                 reverse_id = parse_int(reverse_raw)
                 evidence["reverse_id_ddk"] = reverse_id
-                if not reverse_raw:
+                if "ID DDK" not in cert:
+                    evidence["reverse_relation"] = "REVERSE_FIELD_UNAVAILABLE"
+                elif not reverse_raw:
                     evidence["reverse_relation"] = "REVERSE_BLANK"
                 elif reverse_id is None:
                     evidence["reverse_relation"] = "REVERSE_NONLITERAL"

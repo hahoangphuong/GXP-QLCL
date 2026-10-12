@@ -190,7 +190,9 @@ def build_group_review_manifest(
                     or c.get("certificate_legacy_id") != parse_int(token)
                 ):
                     raise MissingPhysicalEvidence("Candidate FK token lost or reinterpreted")
-                if c.get("observed_group_header") not in (None, role):
+                if parse_int(c.get("ddk_legacy_id")) != parse_int(legacy_id):
+                    raise MissingPhysicalEvidence("Candidate DDK identity differs from physical source")
+                if c.get("observed_group_header") != role:
                     raise MissingPhysicalEvidence("Candidate GxP heading contradicts source group")
                 if c.get("classification") != "SAME_SITE":
                     flags.add("SITE_OR_REFERENCE_REVIEW")

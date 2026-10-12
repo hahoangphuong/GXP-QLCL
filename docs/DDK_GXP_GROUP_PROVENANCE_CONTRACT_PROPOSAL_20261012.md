@@ -205,3 +205,70 @@ without the signed exclusions.
 **No writes/merges/deploys on this proposal.** Green CI alone does not
 validate Excel COM formulas, skipped PostgreSQL integration or the active
 Search Facilities HTTP 409.
+
+
+## Replay gate: independent XLSB exports against original read-only Excel COM V3
+
+Added on 12 October 2026: `tools/reconcile_ddk_source_artifacts.py`.
+This tool reconciles the already-created `GXP_DDK_GROUPED_SOURCE_EVIDENCE_V1`
+and `GXP_DDK_XLSB_INDEPENDENT_SOURCE_ANALYSIS_V1` exports against the **actual
+binary workbook SHA-256**, and **optionally** against freshly extracted
+`GXP_DDK_IDCC_PHYSICAL_REVIEW_V3`. The prior exports were produced by the
+same underlying XLSB-reading library and are **not** independent proof of
+different extraction engines or Excel formula status. All comparisons are
+read-only. A mismatch raises `MissingPhysicalEvidence`, exits nonzero and
+does not create a purported PASS report.
+
+A real Excel COM replay must record, not merely assume, the following
+source checks in V3 header evidence:
+
+- `source_reader=MICROSOFT_EXCEL_COM_VALUE2_READONLY`;
+- `source_read_only=true`;
+- exactly four original physical ID CC column formula checks,
+  each `has_formula=false` using `Excel.Range.HasFormula`.
+
+An old V3 snapshot lacking these checks is **not** a COM validation PASS.
+The group field strings may contain source whitespace that the earlier XLSB
+export trimmed. The cross-reader comparison tolerates only that
+known leading/trailing normalization; mismatches in actual group contents,
+DDK row identity, GxP headings, 16 group field coordinates or token
+multiset remain **hard failures**. A complete review manifest is created
+separately only *after* this source check.
+
+For an owner-side Windows replay, use a separate evidence output directory
+for each run. From the latest backend PR #7 worktree:
+
+```powershell
+py -3 -m tools.audit_ddk_idcc_physical `
+  --workbook "D:\GXP-QLCL\legacy\Danh sách Kiểm tra GPs.xlsb" `
+  --expected-workbook-sha256 "c12537ea5a5c9f470e42fb5bdbe214f36983e310fceac7c560ad38885209fe3d" `
+  --out-dir "D:\GXP-DDK-IDCC-REPLAY-20261012"
+
+py -3 -m tools.reconcile_ddk_source_artifacts `
+  --workbook "D:\GXP-QLCL\legacy\Danh sách Kiểm tra GPs.xlsb" `
+  --groups-json "D:\GXP-DDK-IDCC-EVIDENCE\gxp_ddk_grouped_source_projection_20261012.json" `
+  --references-json "D:\GXP-DDK-IDCC-EVIDENCE\gxp_ddk_idcc_workbook_source_analysis.json" `
+  --audit-v3-json "D:\GXP-DDK-IDCC-REPLAY-20261012\ddk_idcc_physical_source_review.json" `
+  --output "D:\GXP-DDK-IDCC-REPLAY-20261012\ddk_source_reconciliation.json"
+
+py -3 -m tools.ddk_group_evidence_review `
+  --audit-json "D:\GXP-DDK-IDCC-REPLAY-20261012\ddk_idcc_physical_source_review.json" `
+  --approved-exclusions-json "artifacts\phase3q\confirmed_blanked_rows.json" `
+  --output "D:\GXP-DDK-IDCC-REPLAY-20261012\ddk_group_review_manifest.json"
+```
+
+Paths to the two earlier independent-export JSONs are examples; their bytes
+must come from the original owner-supplied evidence, not from a recomputed
+flattened V1 snapshot. The `--expected-workbook-sha256` pin is tied only
+to the exact verified original workbook; new legitimate source workbooks
+require separate independent identity evidence. Each output is created
+**exclusively** and cannot overwrite the original source or previous report.
+
+Expected result labels (not asserted until executed):
+`PARTIAL_INDEPENDENT_EXPORTS_ONLY` without V3,
+`COM_V3_AND_INDEPENDENT_EXPORTS_CONSISTENT` only after strict V3
+comparison. Passing a source comparison does **not** approve business
+linkage, history, multi-Site coverage, import, SQL migration or production
+cutover. The current environment lacks Microsoft Excel COM; the original
+Windows-specific `HasFormula` replay cannot be represented as completed
+by this repository-level proposal or by GitHub CI.

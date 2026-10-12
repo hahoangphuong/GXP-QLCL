@@ -418,7 +418,7 @@ def test_incomplete_group_or_missing_companion_cell_fails_closed():
         name for _ in range(4) for name in
         ["ID CC", "PHẠM VI CHỨNG NHẬN", "TIÊU CHUẨN ÁP DỤNG", "HOẠT ĐỘNG KINH DOANH"]
     ]
-    headers[16] = "ID CC"
+    headers[16] = "WRONG SCOPE FIELD"
     above = [""] * len(headers)
     for c, role in [(4, "GMP"), (8, "GLP"), (12, "GSP"), (16, "GDP")]:
         above[c-1] = role

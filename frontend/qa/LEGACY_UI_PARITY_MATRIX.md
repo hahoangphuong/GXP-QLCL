@@ -250,6 +250,89 @@ mount only while the disclosure is open, keeping the closed search DOM compact;
 opening/closing still has no query or mutation effect. Native disclosure, desktop
 pane geometry and certificate tab round-trips were checked in the fixture browser.
 
+## Follow-up processing visual/interaction slice — 2026-10-12
+
+Baseline: 538e33ee4c6f256adf18f5c71e355230cc90791f. Runtime image 4 and MainForm
+FRX establish Xử lý tiếp: left-hand final evaluation, compliance deadline and
+PCT/CT reference/date rows; right-hand risk/PCT/CT document access. MainForm
+DataKT(16/17/26/27) maps edDanhgiaCuoi, edLichKTTT, edPT_PCT and edPT_CT; their
+control names and captions are present in the FRX stream. The grey frame and
+white values are evidenced; the yellow deadline box is not a canonical business
+state or permission signal. Designer coordinates do not prove runtime pixels.
+
+Root cause of the presentation gap: EventWorkspace used one vertical stack for
+the timeline and documents, placing document access after the entire timeline.
+CaseWorkspace.processing combines a CaseAssessment projection and a filtered
+InspectionEvent list. Its timeline view is deliberately read-only; it cannot be
+reinterpreted as the legacy final-evaluation/approval form.
+
+After: the unchanged server milestone order, dates, payloads and labels remain
+in a left-hand timeline, with a neutral grey frame and white content cells. The
+single existing ContextualDocumentSection moves into an independently scrolling
+right column. The timeline scroll region is keyboard-focusable; PageDown scrolls
+without selecting events or issuing requests. Narrow layout stacks timeline,
+documents and scopes without overlap. All styles are scoped to processing;
+assessment rendering/editing and other tabs are unchanged.
+
+Contract differences retained: final evaluation/compliance deadline belong to
+InspectionOutcome, PCT/CT rounds to InspectionApprovalSubmission. Their existing
+inspection-workspace controls are not moved, cloned or aliased into processing.
+CaseAssessment stays in registration. No new final/date/approval field, action,
+completion tick, yellow status, shared Ghi chú or legacy file shortcut is created.
+The canonical timeline and document list/detail/versions/actions remain instead
+of reproducing the four legacy value rows and three buttons. Backend
+workflow_step="Xử lý" filtering and the full case/site/GxP/production-line/cycle
+context key are unchanged. No filename/path/legacy-ID document lookup is added.
+Relative left/right parity improves; complete field or pixel parity is not claimed.
+
+EVIDENCE_MISSING: legacy rendering for the canonical administrative event stream,
+runtime document/editor/pending/error states, provenance of the shared Ghi chú,
+and a processing-owned projection/action contract for the legacy final/deadline/
+approval rows. Retain canonical behavior rather than invent placeholder values.
+Timeline has no draft or business-save action, so F2/edit cancel/expected_version
+are not applicable there. Registration drafts/tokens remain under their original
+owner, including existing unmount/reset semantics across workflow tabs.
+
+Regression: timeline and App layout assertions fail on the baseline, then pass
+with the scoped hierarchy and one right-column document workspace. New tests
+retain unknown/repeated/null server events and empty context, prohibit accidental
+assessment/outcome edits, and keep the timeline read-only under F2/Enter/Escape.
+App document tests verify exact document/rendition/version IDs, blocked actions,
+focus-only navigation/F6, scope selection, pending duplicate-open protection,
+403/404/409 errors without retry, retained selected detail and tab round-trips
+without mutation or extra workspace reads. Existing document epoch/late-binary
+and registration draft/version tests remain unchanged.
+
+Fixture browser at 1920x1080, 1366x768 and 390x844 uses 18 canonical-shape events
+and two documents with the same filename but different IDs. Timeline PageDown,
+document Enter/F6/Shift+F6, scope changes and workflow/facility tab round-trips
+preserve the proper context. A held PCT detail response cannot replace newer CT
+detail. One explicit canonical content GET returns 409 while pending, preserves
+selection/version detail and does not retry. No binary success is asserted.
+Counters: one search/facility/case read; two explicit selection reads per document
+(including re-selection after a replaced epoch/unmounted tab); one content GET;
+zero mutations. Desktop page width equals viewport. At narrow width, clientWidth
+375 / scrollWidth 384 reproduces the existing header overflow only; processing
+right edge stays within 343px and scopes follow the full content.
+
+Local evidence outside git: processing-parity-1920/1366/390.png,
+processing-document-1920/390.png, processing-pending-1366.png,
+processing-conflict-1366.png, processing-request-counts.json and the fixture
+harness. Supplied legacy screenshots/business values remain outside git.
+Real-backend integration, successful binary storage, screen-reader acceptance
+and production UAT remain unverified. No backend PR #7 changes are incorporated;
+no backend/API/database/storage/RBAC/concurrency contract is changed.
+
+Validation: typecheck, lint, all 335 frontend tests / 26 files and production
+build PASS. Complete targeted App/timeline/registration/document files pass
+169 tests; a subsequent targeted repeat passes 25 timeline/registration/document
+tests. One intermediate name-filtered App run failed an existing async query
+before reaching the new hierarchy assertion; complete-file and full-suite runs
+above pass without changing timeout values or business code. The unchanged A3
+frontend-owner guard passes in isolated function execution, not a full backend
+test run. Existing non-failing React act warnings remain. Diff review confirms
+only processing presentation, scoped CSS, regressions and this matrix change.
+
 ## CAPA remediation visual/interaction slice — 2026-10-12
 
 Baseline: 3a46bae5edf6788528370e7525bdfd145c012cf1. Runtime image 3 establishes

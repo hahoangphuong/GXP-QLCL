@@ -404,17 +404,19 @@ function renderCaseStepContent(
 
   if (activeTab === "Xử lý") {
     return (
-      <div className="event-step-stack">
+      <div className="processing-workflow-layout">
         <CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} view="timeline" />
-        <ContextualDocumentSection
-          contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
-          items={documentItems}
-          onCreateDocument={(item, action) =>
-            onCreateDocument(caseWorkspace.case_summary.id, item, action)
-          }
-          onLoadDocumentDetail={onLoadDocumentDetail}
-          onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
-        />
+        <div className="processing-document-column">
+          <ContextualDocumentSection
+            contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
+            items={documentItems}
+            onCreateDocument={(item, action) =>
+              onCreateDocument(caseWorkspace.case_summary.id, item, action)
+            }
+            onLoadDocumentDetail={onLoadDocumentDetail}
+            onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
+          />
+        </div>
       </div>
     );
   }

@@ -119,7 +119,7 @@ export function CaseProcessingWorkspace({
   }
 
   return (
-    <div className={`event-step-stack${view === "assessment" ? " case-assessment-stack" : ""}`}>
+    <div className={`event-step-stack${view === "assessment" ? " case-assessment-stack" : view === "timeline" ? " processing-timeline" : ""}`}>
       {view !== "timeline" ? <section className="workspace-section case-assessment-section">
         <h4 className={view === "assessment" ? "sr-only" : undefined}>{view === "assessment" ? "Thẩm định hồ sơ" : "Thông tin xử lý"}</h4>
         <div className="case-assessment-grid">
@@ -202,11 +202,16 @@ export function CaseProcessingWorkspace({
         </div>
       </section> : null}
 
-      {view !== "assessment" ? <section className="workspace-section">
+      {view !== "assessment" ? <section className={`workspace-section${view === "timeline" ? " processing-timeline-section" : ""}`}>
         <h4>Các mốc xử lý hành chính</h4>
         {caseWorkspace.processing.events.length > 0 ? (
-          <div className="table-scroll table-scroll-history">
-            <table className="dense-table event-milestone-table">
+          <div
+            aria-label={view === "timeline" ? "Cuộn mốc xử lý hành chính" : undefined}
+            className="table-scroll table-scroll-history"
+            role={view === "timeline" ? "region" : undefined}
+            tabIndex={view === "timeline" ? 0 : undefined}
+          >
+            <table aria-label="Các mốc xử lý hành chính" className="dense-table event-milestone-table">
               <thead>
                 <tr>
                   <th>Mốc</th>

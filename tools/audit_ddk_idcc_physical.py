@@ -230,6 +230,9 @@ def extract_readonly_workbook(path: Path) -> tuple[dict[str, list[dict[str, str]
                 idcc_columns = [
                     index + 1 for index, label in enumerate(headers) if label == "ID CC"
                 ]
+                if header_index == 0:
+                    raise MissingPhysicalEvidence("Missing grouped source header band")
+                group_plans = discover_ddk_group_layout(headers, raw_rows[header_index - 1])
                 # Excel Value2 returns a cached number even for =formula cells.
                 # Refuse to represent such computed results as literal source FKs.
                 if last_row <= header_index + 1:
@@ -246,22 +249,17 @@ def extract_readonly_workbook(path: Path) -> tuple[dict[str, list[dict[str, str]
                     "header_row": header_index + 1,
                     "id_cc_columns": [
                         {
-                            "ordinal": column,
-                            "letter": excel_column_letter(column),
-                            "observed_group_header": (
-                                safe_text(raw_rows[header_index - 1][column - 1])
-                                if header_index > 0 else ""
-                            ),
+                            **group_plan,
                             "header_band": [
                                 {
                                     "row": row_num,
-                                    "value": safe_text(raw_rows[row_num - 1][column - 1])
+                                    "value": safe_text(raw_rows[row_num - 1][group_plan["ordinal"] - 1]),
                                 }
                                 for row_num in range(max(1, header_index - 4), header_index + 1)
-                                if safe_text(raw_rows[row_num - 1][column - 1])
+                                if safe_text(raw_rows[row_num - 1][group_plan["ordinal"] - 1])
                             ],
                         }
-                        for column in idcc_columns
+                        for group_plan in group_plans
                     ],
                     "duplicate_headers": plan[1],
                 }
@@ -362,6 +360,18 @@ def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | Non
         for item in (header_evidence or {}).get("id_cc_columns", [])
         if isinstance(item, dict)
     }
+    plans = [
+        item for item in (header_evidence or {}).get("id_cc_columns", [])
+        if isinstance(item, dict)
+    ]
+    if plans and any("group_field_columns" in item for item in plans):
+        if len(plans) != 4 or not all("group_field_columns" in item for item in plans):
+            raise MissingPhysicalEvidence("Partially supplied grouped source evidence")
+        grouped_rows, grouped_counts = project_ddk_group_source(raw_ddk, plans)
+        grouped_status = "COMPLETE_SOURCE_GROUP_PROJECTION"
+    else:
+        grouped_rows, grouped_counts = [], []
+        grouped_status = "UNAVAILABLE_REQUIRES_PHYSICAL_HEADER_BAND"
     column_counts: dict[int, Counter] = {column: Counter() for column in columns}
     column_types: dict[int, Counter] = {column: Counter() for column in columns}
     candidates: list[dict[str, Any]] = []
@@ -504,7 +514,7 @@ def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | Non
         if evidence["duplicate_across_ddk_rows"]:
             column_counts[evidence["excel_column"]]["duplicate_across_ddk_rows"] += 1
     return {
-        "schema": "GXP_DDK_IDCC_PHYSICAL_REVIEW_V2",
+        "schema": "GXP_DDK_IDCC_PHYSICAL_REVIEW_V3",
         "approval_status": "NOT_APPROVED_NO_RELATIONSHIPS_CREATED",
         "source_sha256": source_sha256,
         "ddk_source_rows": len(raw_ddk),
@@ -526,6 +536,9 @@ def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | Non
         "header_evidence": header_evidence or {},
         "candidate_count": len(candidates),
         "candidates": candidates,
+        "grouped_source_status": grouped_status,
+        "grouped_source_rows": grouped_rows,
+        "grouped_source_counts": grouped_counts,
         "restrictions": [
             "Observed source group headers are evidence, not business approval to persist links",
             "Do not infer GMP/GLP/GSP/GDP roles from physical column order or type frequency",

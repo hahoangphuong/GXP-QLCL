@@ -126,12 +126,20 @@ source exclusion correspondence. It reports:
   exclusion contract.
 
 All records retain `approval_status=NOT_APPROVED`. The read-only
-manifest now preserves **all four original UTF-8 source values verbatim**
+manifest preserves **all four original Excel Value2 string values, including\nleading/trailing whitespace and line breaks, without applying shared\n`safe_text()` trimming**
 alongside original physical column ordinals, field labels and individual
 SHA-256 checksums; a single whole-group checksum also binds their order.
 This avoids forcing reviewers to reconstruct critical GMP/GLP/GSP/GDP
 scope, standard and business-activity text from a separate intermediate
-artifact. A missing ID CC is never interpreted as permission to drop a
+artifact. The correction is made at the **original db.dkkd COM extraction
+owner**, overriding the previously trimmed grouped values in the source
+snapshot; the shared normalizer and importer are unchanged. For numeric
+Excel Value2 cells, the existing integer-text conversion is retained, so
+this is *Value2 representation preservation*, **not** proof of original
+Excel display formatting or original formula text. Token parsing may trim
+each candidate ID while retaining the unchanged whole ID CC source cell.
+Whitespace-only ID CC cells are preserved and explicitly review-flagged,
+never promoted into invented Certificate IDs. A missing ID CC is never interpreted as permission to drop a
 nonblank companion. Even a `SAME_SITE` observation stays
 `SOURCE_REVIEW_REQUIRED` if Certificate type comparison or Company owner
 evidence is not verified. No source observation becomes an approved

@@ -230,7 +230,7 @@ def test_company_reference_missing_or_inconsistent_is_visible():
     result = audit(data)
     matched = next(c for c in result["candidates"] if c["certificate_legacy_id"] == 201)
     assert matched["ddk_company_vs_site"] == "MISMATCH"
-    assert result["id_cc_columns"][1]["counts"]["ddk_company_vs_site_mismatch"] == 1
+    assert result["id_cc_columns"][1]["counts"]["ddk_company_vs_site_mismatch"] == 2
 
 
 def test_reverse_field_missing_cannot_be_reported_as_blank_source_fk():

@@ -327,7 +327,7 @@ def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | Non
                 else:
                     evidence["reverse_relation"] = "REVERSE_CONFLICTS"
                 column_counts[col][evidence["reverse_relation"].lower()] += 1
-             candidates.append(evidence)
+            candidates.append(evidence)
             if row_number is not None and target_id is not None:
                 same_row_refs[row_number][target_id] += 1
                 reference_rows[target_id].add(row_number)

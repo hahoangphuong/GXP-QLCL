@@ -481,6 +481,13 @@ reported separately from duplicates within a physical ĐĐK row. An ID CC
 column containing Excel formulas (or an indeterminate HasFormula result)
 is rejected rather than treating cached Value2 results as literal IDs.
 These guards do **not** approve any column's GMP/GLP/GSP/GDP role.
+The recapture reads only the four audit owners (db.cty, db.cso, db.cc and
+db.dkkd). Each requires a uniquely identified source ID header rather than
+choosing the densest worksheet row. Source Site and Company IDs are resolved
+with explicit UNIQUE/MISSING/AMBIGUOUS/UNRESOLVED states: a numeric equality
+of certificate and ĐĐK Site IDs is **not** called SAME_SITE when the site
+identity is absent or duplicated. Company-vs-Site ownership has its own
+MATCH/MISMATCH/UNRESOLVED evidence, not an inferred business approval.
 
 The optional --snapshot-json input must be a new lossless coordinate-preserving
 snapshot. The old V1 artifacts/phase3c/legacy_snapshot.json is rejected because

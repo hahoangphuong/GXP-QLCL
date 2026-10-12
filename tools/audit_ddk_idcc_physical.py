@@ -14,10 +14,12 @@ from pathlib import Path
 from typing import Any
 
 from backend.app.domain.legacy_snapshot import (
-    CORE_SHEETS, _core_header_plan, _core_source_row, _range_rows,
-    detect_header_row, safe_text,
+    _core_header_plan, _core_source_row, _range_rows, safe_text,
 )
 from backend.app.domain.phase2_import import normalize_row, parse_int
+
+
+AUDIT_SOURCE_SHEETS = ("db.cty", "db.cso", "db.cc", "db.dkkd")
 
 
 class MissingPhysicalEvidence(ValueError):
@@ -41,6 +43,19 @@ def require_literal_idcc_column(has_formula: Any, column: int) -> None:
             f"db.dkkd ID CC physical column {column} contains formula cells "
             "or has unverifiable formula status; computed FKs are not literal evidence"
         )
+
+
+def find_id_header_row(raw_rows: list[list[object]], sheet: str) -> int:
+    """Identify one source header row by its literal ID label."""
+    matching = [
+        i for i, raw in enumerate(raw_rows[:10])
+        if [safe_text(cell) for cell in raw].count("ID") == 1
+    ]
+    if len(matching) != 1:
+        raise MissingPhysicalEvidence(
+            f"Cannot uniquely identify the {sheet} source ID header"
+        )
+    return matching[0]
 
 
 def find_ddk_header_row(raw_rows: list[list[object]]) -> int:
@@ -80,7 +95,7 @@ def extract_readonly_workbook(path: Path) -> tuple[dict[str, list[dict[str, str]
             raise RuntimeError("Refusing non-read-only Excel workbook")
         snapshot: dict[str, list[dict[str, str]]] = {}
         sheet_evidence: dict[str, Any] = {}
-        for name in CORE_SHEETS:
+        for name in AUDIT_SOURCE_SHEETS:
             ws = workbook.Worksheets(name)
             used = ws.UsedRange
             # Read from A1 to true absolute last cell: saved source
@@ -95,7 +110,7 @@ def extract_readonly_workbook(path: Path) -> tuple[dict[str, list[dict[str, str]
             if name == "db.dkkd":
                 header_index = find_ddk_header_row(raw_rows)
             else:
-                header_index = detect_header_row(raw_rows[:10])
+                header_index = find_id_header_row(raw_rows, name)
             headers = [safe_text(value) for value in raw_rows[header_index]]
             if "ID" not in headers:
                 raise MissingPhysicalEvidence(f"Missing ID source header: {name}")
@@ -193,7 +208,7 @@ def _idcc_columns(rows: list[dict[str, str]]) -> list[int]:
 def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | None = None,
           header_evidence: dict[str, Any] | None = None) -> dict[str, Any]:
     """Audit the real source link evidence without assigning semantic roles."""
-    required = {"db.dkkd", "db.cc", "db.cso", "db.cty"}
+    required = set(AUDIT_SOURCE_SHEETS)
     if not required.issubset(snapshot):
         raise MissingPhysicalEvidence(f"Missing source sheets: {sorted(required - set(snapshot))}")
     raw_ddk = snapshot["db.dkkd"]

@@ -41,12 +41,17 @@ def _required_source_layout(report: dict[str, Any]) -> dict[int, dict[str, Any]]
         char not in "0123456789abcdef" for char in checksum.lower()
     ):
         raise MissingPhysicalEvidence("Missing SHA-256 identity of source workbook")
-    layouts = report.get("header_evidence", {}).get("id_cc_columns", [])
+    header_evidence = report.get("header_evidence")
+    if not isinstance(header_evidence, dict):
+        raise MissingPhysicalEvidence("Missing original physical header evidence")
+    layouts = header_evidence.get("id_cc_columns")
     if not isinstance(layouts, list) or len(layouts) != 4:
         raise MissingPhysicalEvidence("Expected exactly four verified GxP group headers")
     by_column: dict[int, dict[str, Any]] = {}
     labels: set[str] = set()
     for item in layouts:
+        if not isinstance(item, dict):
+            raise MissingPhysicalEvidence("Malformed source group header evidence")
         col = item.get("ordinal")
         label = item.get("observed_group_header")
         fields = item.get("group_field_columns")
@@ -58,7 +63,7 @@ def _required_source_layout(report: dict[str, Any]) -> dict[int, dict[str, Any]]
             raise MissingPhysicalEvidence("Missing or extra GxP companion source fields")
         for offset, (name, header) in enumerate(DDK_GROUP_FIELDS):
             part = fields[name]
-            if part.get("excel_column") != col + offset or part.get("source_header") != header:
+            if not isinstance(part, dict) or part.get("excel_column") != col + offset or part.get("source_header") != header:
                 raise MissingPhysicalEvidence("Group field column/header ownership mismatch")
         by_column[col] = item
         labels.add(label)
@@ -76,7 +81,12 @@ def _approved_exclusions(
     if contract.get("confirmation_source") != "user_review_of_anomaly_report":
         raise MissingPhysicalEvidence("Unapproved confirmed-blanked contract")
     excluded: dict[int, tuple[str, int]] = {}
-    for record in contract.get("rows", []):
+    contract_rows = contract.get("rows")
+    if not isinstance(contract_rows, list):
+        raise MissingPhysicalEvidence("Missing approved exclusion contract rows")
+    for record in contract_rows:
+        if not isinstance(record, dict):
+            raise MissingPhysicalEvidence("Malformed approved exclusion record")
         if record.get("source_sheet") != "db.dkkd":
             continue
         row_num = parse_int(record.get("source_row_number"))
@@ -91,7 +101,10 @@ def _approved_exclusions(
         ):
             raise MissingPhysicalEvidence("Malformed or duplicated approved DDK exclusion")
         excluded[row_num] = (str(source_key), legacy_id)
-    declared = contract.get("by_sheet", {}).get("db.dkkd", {}).get("row_count")
+    by_sheet = contract.get("by_sheet")
+    if not isinstance(by_sheet, dict) or not isinstance(by_sheet.get("db.dkkd"), dict):
+        raise MissingPhysicalEvidence("Missing approved DDK exclusion summary")
+    declared = by_sheet["db.dkkd"].get("row_count")
     if declared != len(excluded):
         raise MissingPhysicalEvidence("Exclusion count contradicts approved contract")
     return excluded
@@ -115,6 +128,8 @@ def build_group_review_manifest(
 
     token_map: dict[tuple[int, int], list[dict[str, Any]]] = defaultdict(list)
     for candidate in candidates:
+        if not isinstance(candidate, dict):
+            raise MissingPhysicalEvidence("Malformed source candidate evidence")
         row_num = candidate.get("source_row_number")
         column = candidate.get("excel_column")
         if type(row_num) is not int or type(column) is not int:
@@ -128,6 +143,8 @@ def build_group_review_manifest(
     seen_rows: set[int] = set()
     metrics: Counter = Counter()
     for row in source_rows:
+        if not isinstance(row, dict):
+            raise MissingPhysicalEvidence("Malformed physical source row")
         row_num = row.get("source_row_number")
         legacy_id = row.get("ddk_legacy_id")
         if type(row_num) is not int or row_num <= 0 or row_num in seen_rows:
@@ -142,6 +159,8 @@ def build_group_review_manifest(
             raise MissingPhysicalEvidence("Approved exclusion conflicts with original DDK row ID")
 
         for group in group_values:
+            if not isinstance(group, dict):
+                raise MissingPhysicalEvidence("Malformed physical source group")
             column = group.get("id_cc_excel_column")
             layout = layouts.get(column)
             if layout is None or group.get("source_group") != layout["observed_group_header"]:
@@ -154,15 +173,24 @@ def build_group_review_manifest(
             if not isinstance(fields, dict) or set(fields) != {name for name, _ in DDK_GROUP_FIELDS}:
                 raise MissingPhysicalEvidence("Missing source companion cells")
             source_values: list[str] = []
+            source_fields: dict[str, dict[str, Any]] = {}
             for offset, (name, header) in enumerate(DDK_GROUP_FIELDS):
                 field = fields[name]
                 if (
-                    field.get("excel_column") != column + offset
+                    not isinstance(field, dict)
+                    or field.get("excel_column") != column + offset
                     or field.get("source_header") != header
                     or not isinstance(field.get("raw_value"), str)
                 ):
                     raise MissingPhysicalEvidence("Source group cell identity mismatch")
-                source_values.append(field["raw_value"])
+                raw_value = field["raw_value"]
+                source_values.append(raw_value)
+                source_fields[name] = {
+                    "excel_column": column + offset,
+                    "source_header": header,
+                    "raw_value": raw_value,
+                    "raw_value_sha256": sha256(raw_value.encode("utf-8")).hexdigest(),
+                }
 
             if row_excluded and any(source_values):
                 raise MissingPhysicalEvidence("Approved excluded DDK row has live grouped source data")
@@ -194,13 +222,21 @@ def build_group_review_manifest(
                     raise MissingPhysicalEvidence("Candidate DDK identity differs from physical source")
                 if c.get("observed_group_header") != role:
                     raise MissingPhysicalEvidence("Candidate GxP heading contradicts source group")
+                if c.get("classification") not in {
+                    "SAME_SITE", "CROSS_SITE", "SITE_UNRESOLVED",
+                    "NONLITERAL_FK", "MISSING_CERTIFICATE", "AMBIGUOUS_CERTIFICATE_ID",
+                }:
+                    raise MissingPhysicalEvidence("Unknown source reference classification")
                 if c.get("classification") != "SAME_SITE":
                     flags.add("SITE_OR_REFERENCE_REVIEW")
-                if c.get("certificate_type_vs_source_header") == "MISMATCH":
+                source_type = c.get("certificate_type_vs_source_header")
+                if source_type not in {"MATCH", "MISMATCH", "UNVERIFIED"}:
+                    raise MissingPhysicalEvidence("Invalid source type comparison")
+                if source_type != "MATCH":
                     flags.add("CERTIFICATE_TYPE_REVIEW")
                 if (
-                    c.get("ddk_company_vs_site") == "MISMATCH"
-                    or c.get("certificate_company_vs_ddk") == "MISMATCH"
+                    c.get("ddk_company_vs_site") != "MATCH"
+                    or c.get("certificate_company_vs_ddk") != "MATCH"
                 ):
                     flags.add("COMPANY_OWNER_REVIEW")
                 if c.get("reverse_relation") in ("REVERSE_CONFLICTS", "REVERSE_NONLITERAL"):
@@ -238,6 +274,7 @@ def build_group_review_manifest(
                 "source_group": role,
                 "id_cc_excel_column": column,
                 "source_values_sha256": _fingerprint(source_values),
+                "source_fields": source_fields,
                 "source_field_excel_columns": [column + i for i in range(4)],
                 "has_companion_without_id_cc": not raw_fk and bool(any_companion),
                 "reference_evidence": reference_evidence,
@@ -247,6 +284,8 @@ def build_group_review_manifest(
             })
         if roles_this_row != DDK_GROUP_LABELS:
             raise MissingPhysicalEvidence("Source row has incomplete GxP group coverage")
+    if len(records) != len(source_rows) * len(DDK_GROUP_LABELS):
+        raise MissingPhysicalEvidence("Grouped source conservation count mismatch")
     if set(token_map) != {pair for pair in used_pairs if token_map.get(pair)}:
         raise MissingPhysicalEvidence("Orphan candidate outside group source projection")
     if excluded_rows and not set(excluded_rows).issubset(seen_rows):
@@ -286,8 +325,20 @@ def main() -> int:
         result = build_group_review_manifest(audit_data, approved_exclusions=exclusions)
     except (MissingPhysicalEvidence, ValueError, OSError) as exc:
         parser.exit(2, f"Source review blocked: {exc}\n")
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    inputs = [args.audit_json]
+    if args.approved_exclusions_json is not None:
+        inputs.append(args.approved_exclusions_json)
+    if any(args.output.resolve() == path.resolve() for path in inputs):
+        parser.exit(2, "Source review blocked: output cannot overwrite an input source\n")
+    try:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        # Exclusive create prevents clobbering an earlier sealed review or input.
+        with args.output.open("x", encoding="utf-8") as handle:
+            handle.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+    except FileExistsError:
+        parser.exit(2, "Source review blocked: output already exists; choose a new review path\n")
+    except OSError as exc:
+        parser.exit(2, f"Source review blocked: {exc}\n")
     print(json.dumps({
         "status": result["approval_status"], "source_sha256": result["source_workbook_sha256"],
         "metrics": result["metrics"],

@@ -9,8 +9,8 @@ import pytest
 
 from backend.app.domain.legacy_snapshot import _core_source_row
 from tools.audit_ddk_idcc_physical import (
-    MissingPhysicalEvidence, audit, excel_column_letter, find_ddk_header_row,
-    require_literal_idcc_column,
+    AUDIT_SOURCE_SHEETS, MissingPhysicalEvidence, audit, excel_column_letter,
+    find_ddk_header_row, find_id_header_row, require_literal_idcc_column,
 )
 
 
@@ -172,3 +172,21 @@ def test_computed_or_unknown_excel_idcc_formula_status_fails_closed(formula_stat
 @pytest.mark.parametrize("formula_state", [False, 0])
 def test_literal_excel_idcc_column_formula_status_is_accepted(formula_state):
     assert require_literal_idcc_column(formula_state, 14) is None
+
+
+def test_audit_only_reads_required_source_owner_sheets():
+    assert set(AUDIT_SOURCE_SHEETS) == {"db.cty", "db.cso", "db.cc", "db.dkkd"}
+
+
+def test_non_ddk_header_selected_by_literal_id_not_row_density():
+    raw = [["Title"], ["ID", "ID CƠ SỞ", "LOẠI CC"], ["200", "10", "GMP", "lots", "of", "values"]]
+    assert find_id_header_row(raw, "db.cc") == 1
+
+
+@pytest.mark.parametrize("raw", [
+    [["No ID header"]],
+    [["ID", "name"], ["ID", "duplicate"]],
+])
+def test_non_ddk_ambiguous_header_fails_closed(raw):
+    with pytest.raises(MissingPhysicalEvidence, match="source ID header"):
+        find_id_header_row(raw, "db.cc")

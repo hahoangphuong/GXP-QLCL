@@ -11,6 +11,7 @@ from backend.app.domain.legacy_snapshot import _core_source_row
 from tools.audit_ddk_idcc_physical import (
     AUDIT_SOURCE_SHEETS, MissingPhysicalEvidence, audit, excel_column_letter,
     find_ddk_header_row, find_id_header_row, require_literal_idcc_column,
+    split_idcc_references,
 )
 
 
@@ -243,3 +244,52 @@ def test_reverse_field_missing_cannot_be_reported_as_blank_source_fk():
     )
     assert matched["reverse_relation"] == "REVERSE_FIELD_UNAVAILABLE"
     assert result["id_cc_columns"][0]["counts"]["reverse_field_unavailable"] >= 1
+
+
+def test_source_semicolon_cells_create_independent_candidate_tokens():
+    data = fixture()
+    data["db.dkkd"][0]["ID CC [excel_column=4]"] = "200; 201; 202"
+    result = audit(data)
+    assert result["candidate_count"] == 9
+    tokens = [
+        c for c in result["candidates"]
+        if c["source_row_number"] == 7 and c["excel_column"] == 4
+    ]
+    assert [c["certificate_legacy_id"] for c in tokens] == [200, 201, 202]
+    assert [c["raw_fk_token"] for c in tokens] == ["200", "201", "202"]
+    assert [c["source_token_index"] for c in tokens] == [1, 2, 3]
+    assert all(c["source_token_count"] == 3 for c in tokens)
+    assert all(c["raw_fk"] == "200; 201; 202" for c in tokens)
+    assert result["id_cc_columns"][0]["counts"]["multi_id_cells"] == 1
+    assert result["id_cc_columns"][0]["counts"]["candidate_tokens"] == 4
+
+
+def test_audit_does_not_drop_empty_or_malformed_semicolon_components():
+    assert split_idcc_references("17; 29") == ["17", "29"]
+    assert split_idcc_references("17;; 29;") == ["17", "", "29", ""]
+    data = fixture()
+    data["db.dkkd"][0]["ID CC [excel_column=4]"] = "200;; 201"
+    result = audit(data)
+    tokens = [
+        c for c in result["candidates"]
+        if c["source_row_number"] == 7 and c["excel_column"] == 4
+    ]
+    assert len(tokens) == 3
+    assert tokens[1]["classification"] == "NONLITERAL_FK"
+    assert tokens[1]["raw_fk_token"] == ""
+    assert tokens[2]["certificate_legacy_id"] == 201
+
+
+def test_source_header_group_is_recorded_without_business_role_approval():
+    data = fixture()
+    result = audit(data, header_evidence={"id_cc_columns": [
+        {"ordinal": 4, "observed_group_header": "GMP"},
+        {"ordinal": 5, "observed_group_header": "GLP"},
+        {"ordinal": 6, "observed_group_header": "GSP"},
+        {"ordinal": 7, "observed_group_header": "GDP"},
+    ]})
+    assert [x["observed_group_header"] for x in result["id_cc_columns"]] == [
+        "GMP", "GLP", "GSP", "GDP"
+    ]
+    assert all(x["owner_role"] == "UNVERIFIED" for x in result["id_cc_columns"])
+    assert result["approval_status"] == "NOT_APPROVED_NO_RELATIONSHIPS_CREATED"

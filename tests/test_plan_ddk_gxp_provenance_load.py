@@ -232,3 +232,59 @@ def test_cli_does_not_overwrite_inputs_or_earlier_plan(tmp_path, monkeypatch):
         main()
     assert err.value.code == 2
     assert path_map["groups"].read_bytes() == original
+
+
+def test_duplicate_certificate_observations_keep_each_original_token_ordinal():
+    g, l, c = fixture()
+    g["source_rows"][0]["groups"][0]["fields"]["id_cc"]["raw_value"] = "200; 200"
+    l["candidates"][1]["token"] = "200"
+    l["candidates"][1]["certificate_id"] = 200
+    output = plan(g=g, l=l, c=c)
+    tokens = output["payload"]["reference_tokens"]
+    assert [(v["values"]["token_index"], v["values"]["parsed_legacy_certificate_id"])
+            for v in tokens] == [(1, 200), (2, 200)]
+    assert len(tokens) == 2  # Never deduplicate by target Certificate ID.
+    assert len(output["payload"]["source_groups"]) == 4
+
+
+def test_same_certificate_in_distinct_ddk_rows_is_not_a_merge_or_version_inference():
+    g, l, c = fixture()
+    # Restore the second DDK row into the accepted source population;
+    # separate reviewed exclusions are therefore empty in this fixture.
+    c["rows"] = []
+    c["by_sheet"]["db.dkkd"] = {
+        "row_count": 0, "source_row_keys": [], "legacy_row_ids": [],
+    }
+    g["source_rows"][1]["groups"][0]["fields"]["id_cc"]["raw_value"] = "200"
+    l["candidates"].append({
+        "ddk_excel_row": 6, "physical_col": 15, "ddk_id": 401,
+        "source_role": "GMP", "raw_cell": "200", "token": "200", "certificate_id": 200,
+    })
+    l["summary"]["token_references"] = 3
+    output = plan(
+        g=g, l=l, c=c, expected_excluded_ddk_rows=0,
+        expected_reference_tokens=3,
+    )
+    assert output["counts"]["group_rows"] == 8
+    assert output["counts"]["reference_tokens"] == 3
+    tokens = output["payload"]["reference_tokens"]
+    assert len({t["source_group_key"]["source_row_number"] for t in tokens}) == 2
+    assert [t["values"]["parsed_legacy_certificate_id"] for t in tokens] == [200, 201, 200]
+    assert output["target"]["canonical_link_changes"] == 0
+
+
+def test_empty_multi_id_component_or_nonliteral_value_is_not_silently_skipped():
+    g, l, c = fixture()
+    g["source_rows"][0]["groups"][0]["fields"]["id_cc"]["raw_value"] = "200; ;201"
+    l["candidates"][0]["raw_cell"] = "200; ;201"
+    l["candidates"][1]["raw_cell"] = "200; ;201"
+    with pytest.raises(MissingPhysicalEvidence, match="Malformed or empty original source ID CC token"):
+        plan(g=g, l=l, c=c)
+    g, l, c = fixture()
+    g["source_rows"][0]["groups"][0]["fields"]["id_cc"]["raw_value"] = "200; invalid"
+    l["candidates"][0]["raw_cell"] = "200; invalid"
+    l["candidates"][1]["raw_cell"] = "200; invalid"
+    l["candidates"][1]["token"] = "invalid"
+    l["candidates"][1]["certificate_id"] = None
+    with pytest.raises(MissingPhysicalEvidence, match="Non-positive or nonliteral source Certificate token"):
+        plan(g=g, l=l, c=c)

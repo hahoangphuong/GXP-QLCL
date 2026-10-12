@@ -453,7 +453,7 @@ database data, or source workbook was changed.
 Read-only Windows audit owner: tools/audit_ddk_idcc_physical.py
 (requires installed Excel, Python 3 with pywin32). Run from D:\GXP-QLCL:
 
-    py -3 tools/audit_ddk_idcc_physical.py --workbook "D:\GXP-QLCL\legacy\Danh sách Kiểm tra GPs.xlsb" --out-dir "D:\GXP-DDK-IDCC-REVIEW"
+    py -3 -m tools.audit_ddk_idcc_physical --workbook "D:\GXP-QLCL\legacy\Danh sách Kiểm tra GPs.xlsb" --out-dir "D:\GXP-DDK-IDCC-REVIEW"
 
 The tool opens the authoritative .xlsb in an isolated Excel COM process
 (DispatchEx), ReadOnly, with macros forcibly disabled and external-link
@@ -470,6 +470,17 @@ certificate-type distributions and one reference-evidence record for each
 nonblank source cell. **All source roles remain UNVERIFIED** until independent
 review of header groups. No canonical link is generated, no source value or
 PostgreSQL row modified, and no raw workbook is committed.
+
+Audit hardening (12 October): the physical dkkd header must be uniquely
+identifiable by its ID and **exactly four** ID CC headings in the first ten
+rows; preserved cell metadata must contain four distinct physical ordinals
+and unique row coordinates. Neither repeated DDK legacy IDs nor repeated GxP
+references collapse independently sourced rows. Each nonblank candidate
+records its original raw FK for local review, while cross-row duplicates are
+reported separately from duplicates within a physical ĐĐK row. An ID CC
+column containing Excel formulas (or an indeterminate HasFormula result)
+is rejected rather than treating cached Value2 results as literal IDs.
+These guards do **not** approve any column's GMP/GLP/GSP/GDP role.
 
 The optional --snapshot-json input must be a new lossless coordinate-preserving
 snapshot. The old V1 artifacts/phase3c/legacy_snapshot.json is rejected because

@@ -17,6 +17,7 @@ from typing import Any
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
 from backend.app.domain.phase2_import import parse_int
@@ -468,7 +469,7 @@ def main() -> int:
         with args.output.open("x", encoding="utf-8") as out:
             json.dump(result, out, ensure_ascii=False, indent=2)
             out.write("\n")
-    except (MissingPhysicalEvidence, OSError, ValueError, TypeError, KeyError) as exc:
+    except (MissingPhysicalEvidence, SQLAlchemyError, OSError, ValueError, TypeError, KeyError) as exc:
         # Never print DSNs, credentials or source business contents.
         parser.exit(2, f"Read-only DDK preflight blocked: {type(exc).__name__}\n")
     print(json.dumps({

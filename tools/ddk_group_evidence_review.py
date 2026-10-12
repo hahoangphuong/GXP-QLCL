@@ -197,7 +197,7 @@ def build_group_review_manifest(
             key = (row_num, column)
             used_pairs.add(key)
             raw_fk = source_values[0]
-            expected_tokens = split_idcc_references(raw_fk) if raw_fk else []
+            expected_tokens = split_idcc_references(raw_fk) if raw_fk.strip() else []
             refs = token_map.get(key, [])
             if len(refs) != len(expected_tokens):
                 raise MissingPhysicalEvidence("Candidate token count differs from physical ID CC cell")
@@ -251,9 +251,11 @@ def build_group_review_manifest(
                     "ddk_company_vs_site": c.get("ddk_company_vs_site"),
                     "certificate_company_vs_ddk": c.get("certificate_company_vs_ddk"),
                 })
-            any_companion = any(source_values[1:])
-            if not raw_fk and any_companion:
+            any_companion = any(value.strip() for value in source_values[1:])
+            if not raw_fk.strip() and any_companion:
                 flags.add("COMPANION_WITHOUT_ID_CC")
+            if raw_fk and not raw_fk.strip():
+                flags.add("WHITESPACE_ONLY_ID_CC")
             if row_excluded:
                 status = "CONFIRMED_BLANKED_SOURCE_ROW"
             elif not any(source_values):
@@ -276,7 +278,7 @@ def build_group_review_manifest(
                 "source_values_sha256": _fingerprint(source_values),
                 "source_fields": source_fields,
                 "source_field_excel_columns": [column + i for i in range(4)],
-                "has_companion_without_id_cc": not raw_fk and bool(any_companion),
+                "has_companion_without_id_cc": not raw_fk.strip() and bool(any_companion),
                 "reference_evidence": reference_evidence,
                 "review_flags": sorted(flags),
                 "status": status,

@@ -1082,6 +1082,27 @@ def load_confirmed_blanked_null_key_budgets() -> dict[str, int]:
     return budgets
 
 
+# Canonical ordered FK graph for Phase-2 source-materialization checks and
+# signed resurrection key ownership. Each tuple is
+# (normalized source field, parent source sheet, missing-FK reason, optional).
+# Do not duplicate the per-sheet owner map in authorization logic.
+SOURCE_PARENT_FK_REQUIREMENTS = {
+    "db.cty": (),
+    "db.cso": (("company_legacy_id_ref", "db.cty", "missing_company_fk", False),),
+    "db.ktra": (("site_legacy_id_ref", "db.cso", "missing_site_fk", False),),
+    "db.cc": (
+        ("inspection_case_legacy_id_ref", "db.ktra", "missing_case_fk", True),
+        ("site_legacy_id_ref", "db.cso", "missing_site_fk", False),
+    ),
+    "db.dkkd": (
+        ("site_legacy_id_ref", "db.cso", "missing_site_fk", False),
+        ("company_legacy_id_ref", "db.cty", "missing_company_fk", False),
+    ),
+    "db.Tdoi": (("site_legacy_id_ref", "db.cso", "missing_site_fk", False),),
+    "db.Tdoi2": (("change_request_legacy_id_ref", "db.Tdoi", "missing_change_request_fk", False),),
+}
+
+
 def load_confirmed_blanked_resurrections() -> dict[tuple[str, str], dict[str, int]]:
     payload = _load_json_contract(
         CONFIRMED_BLANKED_RESURRECTIONS_PATH,
@@ -1106,6 +1127,18 @@ def load_confirmed_blanked_resurrections() -> dict[tuple[str, str], dict[str, in
             raise ConfirmedBlankedContractError(
                 "Owner-approved confirmed-blanked resurrection contract row "
                 f"{source_sheet}:{source_row_key} has no valid approved override values."
+            )
+        allowed_keys = {
+            REMEDIATION_KEY_BY_REASON[reason]
+            for _, _, reason, _ in SOURCE_PARENT_FK_REQUIREMENTS.get(source_sheet, ())
+        }
+        invalid_keys = sorted(set(override_payload) - allowed_keys)
+        if invalid_keys:
+            raise ConfirmedBlankedContractError(
+                "Owner-approved confirmed-blanked resurrection contract row "
+                f"{source_sheet}:{source_row_key} contains unsupported "
+                f"approved_override key(s) for this source sheet: {invalid_keys}. "
+                "Only the sheet's actual parent FK owner(s) can authorize resurrection."
             )
         parsed_override: dict[str, int] = {}
         for key, value in override_payload.items():
@@ -1387,27 +1420,10 @@ def _validate_confirmed_blanked_source_materialization(
     override. Source rows remain untouched. Non-approved generic overrides
     retain legacy import behavior but cannot manufacture strict source evidence.
     """
-    # (field, parent sheet, missing-FK reason, optional when blank).
-    # These are the same required dependencies and order used by Phase 2.
-    parents_by_sheet = {
-        "db.cty": (),
-        "db.cso": (("company_legacy_id_ref", "db.cty", "missing_company_fk", False),),
-        "db.ktra": (("site_legacy_id_ref", "db.cso", "missing_site_fk", False),),
-        "db.cc": (
-            ("inspection_case_legacy_id_ref", "db.ktra", "missing_case_fk", True),
-            ("site_legacy_id_ref", "db.cso", "missing_site_fk", False),
-        ),
-        "db.dkkd": (
-            ("site_legacy_id_ref", "db.cso", "missing_site_fk", False),
-            ("company_legacy_id_ref", "db.cty", "missing_company_fk", False),
-        ),
-        "db.Tdoi": (("site_legacy_id_ref", "db.cso", "missing_site_fk", False),),
-        "db.Tdoi2": (("change_request_legacy_id_ref", "db.Tdoi", "missing_change_request_fk", False),),
-    }
-    importable_ids: dict[str, set[int]] = {sheet: set() for sheet in parents_by_sheet}
+    importable_ids: dict[str, set[int]] = {sheet: set() for sheet in SOURCE_PARENT_FK_REQUIREMENTS}
     effective_snapshot = {sheet: [] for sheet in snapshot}
     applied_source_fk_overrides: list[dict[str, Any]] = []
-    for source_sheet, requirements in parents_by_sheet.items():
+    for source_sheet, requirements in SOURCE_PARENT_FK_REQUIREMENTS.items():
         for raw_row in snapshot[source_sheet]:
             row = normalize_row(raw_row)
             effective_row = dict(row)

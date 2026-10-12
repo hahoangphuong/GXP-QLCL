@@ -786,6 +786,71 @@ def test_signed_resurrection_cannot_ignore_invalid_extra_submitted_override_pre_
     assert snapshot == original_source
 
 
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(
+    ("approved_sheet", "approved_row_key", "irrelevant_fk_key"),
+    [
+        ("db.cso", "10", "case_legacy_id"),
+        ("db.ktra", "100", "company_legacy_id"),
+        ("db.cc", "200", "company_legacy_id"),
+        ("db.dkkd", "300", "case_legacy_id"),
+        ("db.Tdoi", "400", "company_legacy_id"),
+        ("db.Tdoi2", "500", "site_legacy_id"),
+    ],
+)
+def test_signed_resurrection_rejects_valid_numeric_wrong_sheet_fk_owner_pre_schema(
+    monkeypatch, tmp_path, strict, approved_sheet, approved_row_key, irrelevant_fk_key
+):
+    # The old code accepted a signed, numeric but unused key. With the raw
+    # source FK already resolvable, that key could authorize resurrection
+    # without matching any parent relationship for this sheet.
+    blanked = tmp_path / "blanked.json"
+    blanked.write_text(json.dumps({"rows": [{
+        "source_sheet": approved_sheet,
+        "source_row_key": approved_row_key,
+    }]}), encoding="utf-8")
+    approved = tmp_path / "approvals.json"
+    approved.write_text(json.dumps({"rows": [{
+        "source_sheet": approved_sheet,
+        "source_row_key": approved_row_key,
+        "approved_override": {irrelevant_fk_key: 10},
+    }]}), encoding="utf-8")
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", blanked)
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_RESURRECTIONS_PATH", approved)
+    snapshot = sample_snapshot()
+    snapshot_before = json.loads(json.dumps(snapshot))
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session, pytest.raises(
+        ConfirmedBlankedContractError, match="unsupported approved_override key"
+    ) as exc:
+        import_snapshot(
+            session,
+            snapshot,
+            remediation_overrides={approved_sheet: {
+                approved_row_key: {irrelevant_fk_key: 10}
+            }},
+            options=ImportExecutionOptions(strict_certificate_case_source_links=strict),
+        )
+    assert f"{approved_sheet}:{approved_row_key}" in str(exc.value)
+    assert irrelevant_fk_key in str(exc.value)
+    assert inspect(engine).has_table("company") is False
+    assert inspect(engine).has_table("certificate") is False
+    assert snapshot == snapshot_before
+
+
+def test_signed_resurrection_accepts_both_actual_certificate_fk_owner_keys(monkeypatch, tmp_path):
+    approved = tmp_path / "approvals.json"
+    approved.write_text(json.dumps({"rows": [{
+        "source_sheet": "db.cc",
+        "source_row_key": "200",
+        "approved_override": {"case_legacy_id": "100.0", "site_legacy_id": "0010.00"},
+    }]}), encoding="utf-8")
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_RESURRECTIONS_PATH", approved)
+    assert phase2_import_module.load_confirmed_blanked_resurrections() == {
+        ("db.cc", "200"): {"case_legacy_id": 100, "site_legacy_id": 10}
+    }
+
+
 def test_signed_resurrection_accepts_literal_integer_with_zero_decimal_suffix(monkeypatch, tmp_path):
     approved = tmp_path / "approved.json"
     approved.write_text(json.dumps({"rows": [{

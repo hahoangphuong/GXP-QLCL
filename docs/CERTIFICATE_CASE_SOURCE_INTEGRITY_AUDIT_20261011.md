@@ -308,3 +308,24 @@ scientific, prose and null values across ordinary/strict modes, checks source
 immutability and absence of schema writes, and retains valid literal decimal-zero
 IDs. Other generic remediation behavior is unchanged. No Case/Site reassignment
 or signed approval was introduced.
+
+
+## Sheet-bound signed resurrection FK ownership (12 October)
+
+The signed-approval loader previously accepted syntactically valid numeric
+`approved_override` keys unrelated to the sheet's parent FK owner. This could
+authorize a confirmed-blanked source row with already-resolving parents even
+though the signed remediation did not name a relationship that the import
+would resolve (for example, `case_legacy_id` on `db.cso`).
+
+`SOURCE_PARENT_FK_REQUIREMENTS` is now the single ordered source of truth for
+the Phase-2 parent-materialization graph and allowed signed-remediation keys.
+The approval loader validates key ownership against this graph before checking
+integer literals, rejecting unsupported keys with `ConfirmedBlankedContractError`
+before schema creation. No business case, company, or document-specific
+exception is introduced. Regression exercises six source sheets, ordinary and
+strict import modes, source immutability and no-schema-write boundaries, and
+a valid two-FK Certificate approval. Existing behavior remains: an approved
+value identical to an already-resolving source FK confirms the current link,
+but never silently replaces that link with a different parent. The checked-in
+resurrection contract still contains no approved rows.

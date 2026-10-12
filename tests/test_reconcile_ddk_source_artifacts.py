@@ -49,7 +49,15 @@ def evidence(workbook_sha="b" * 64):
     }
     v3 = audit(
         snapshot, source_sha256=workbook_sha,
-        header_evidence={"id_cc_columns": plans},
+        header_evidence={
+            "source_reader": "MICROSOFT_EXCEL_COM_VALUE2_READONLY",
+            "source_read_only": True,
+            "id_cc_literal_formula_checks": [
+                {"excel_column": plan["ordinal"], "has_formula": False}
+                for plan in plans
+            ],
+            "id_cc_columns": plans,
+        },
     )
     g = {
         "schema": "GXP_DDK_GROUPED_SOURCE_EVIDENCE_V1",
@@ -188,3 +196,19 @@ def test_cli_never_overwrites_inputs_or_previous_outputs(tmp_path, monkeypatch):
         main()
     assert err.value.code == 2
     assert original == gp.read_bytes()
+
+
+def test_com_source_provenance_requires_all_literal_formula_checks():
+    g, l, v3 = evidence()
+    legacy = copy.deepcopy(v3)
+    del legacy["header_evidence"]["id_cc_literal_formula_checks"]
+    with pytest.raises(MissingPhysicalEvidence, match="formula checks"):
+        reconcile(workbook_hash="b" * 64, grouped=g, links=l, v3_audit=legacy)
+    changed = copy.deepcopy(v3)
+    changed["header_evidence"]["id_cc_literal_formula_checks"][0]["has_formula"] = True
+    with pytest.raises(MissingPhysicalEvidence, match="formula checks"):
+        reconcile(workbook_hash="b" * 64, grouped=g, links=l, v3_audit=changed)
+    untrusted = copy.deepcopy(v3)
+    untrusted["header_evidence"]["source_reader"] = "LEGACY_FLATTENED_XLSB"
+    with pytest.raises(MissingPhysicalEvidence, match="read-only Excel COM"):
+        reconcile(workbook_hash="b" * 64, grouped=g, links=l, v3_audit=untrusted)

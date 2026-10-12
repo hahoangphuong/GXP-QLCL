@@ -157,3 +157,15 @@ def test_audited_cross_site_and_company_conflict_become_flags_not_corrections():
     assert "COMPANY_OWNER_REVIEW" in record["review_flags"]
     assert "REVERSE_EVIDENCE_REVIEW" in record["review_flags"]
     assert "canonical_link" not in record
+
+
+def test_source_reference_cannot_claim_another_ddk_row_or_unproven_group():
+    data = fixture()
+    tampered = copy.deepcopy(data)
+    tampered["candidates"][0]["ddk_legacy_id"] = 777
+    with pytest.raises(MissingPhysicalEvidence, match="Candidate DDK identity"):
+        build_group_review_manifest(tampered)
+    tampered = copy.deepcopy(data)
+    tampered["candidates"][0]["observed_group_header"] = None
+    with pytest.raises(MissingPhysicalEvidence, match="Candidate GxP heading"):
+        build_group_review_manifest(tampered)

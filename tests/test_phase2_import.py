@@ -787,6 +787,98 @@ def test_signed_resurrection_cannot_ignore_invalid_extra_submitted_override_pre_
 
 
 @pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("source_fk", ["1", ""])
+def test_approved_resurrection_rejects_nonimportable_signed_parent_even_if_source_fk_resolves(
+    monkeypatch, tmp_path, strict, source_fk
+):
+    blanked = tmp_path / "blanked.json"
+    blanked.write_text(json.dumps({"rows": [{
+        "source_sheet": "db.cso", "source_row_key": "10",
+    }]}), encoding="utf-8")
+    approvals = tmp_path / "approvals.json"
+    approvals.write_text(json.dumps({"rows": [{
+        "source_sheet": "db.cso", "source_row_key": "10",
+        "approved_override": {"company_legacy_id": 999},
+    }]}), encoding="utf-8")
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", blanked)
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_RESURRECTIONS_PATH", approvals)
+    snapshot = sample_snapshot()
+    snapshot["db.cso"][0]["ID Cty"] = source_fk
+    before = json.loads(json.dumps(snapshot))
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session, pytest.raises(
+        ConfirmedBlankedResurrectionError, match="not importable"
+    ) as exc:
+        import_snapshot(
+            session, snapshot,
+            remediation_overrides={"db.cso": {"10": {"company_legacy_id": 999}}},
+            options=ImportExecutionOptions(strict_certificate_case_source_links=strict),
+        )
+    assert "db.cso:10" in str(exc.value)
+    assert inspect(engine).has_table("company") is False
+    assert inspect(engine).has_table("site") is False
+    assert snapshot == before
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_approved_resurrection_rejects_requested_row_absent_from_source_snapshot(
+    monkeypatch, tmp_path, strict
+):
+    # The signed contract belongs to the independent blanked list but cannot
+    # authorize a restoration of an identity absent from the current snapshot.
+    blanked = tmp_path / "blanked.json"
+    blanked.write_text(json.dumps({"rows": [{
+        "source_sheet": "db.cso", "source_row_key": "999",
+    }]}), encoding="utf-8")
+    approvals = tmp_path / "approvals.json"
+    approvals.write_text(json.dumps({"rows": [{
+        "source_sheet": "db.cso", "source_row_key": "999",
+        "approved_override": {"company_legacy_id": 1},
+    }]}), encoding="utf-8")
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", blanked)
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_RESURRECTIONS_PATH", approvals)
+    snapshot = sample_snapshot()
+    before = json.loads(json.dumps(snapshot))
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session, pytest.raises(
+        ConfirmedBlankedResurrectionError, match="not found in the supplied snapshot"
+    ) as exc:
+        import_snapshot(
+            session, snapshot,
+            remediation_overrides={"db.cso": {"999": {"company_legacy_id": 1}}},
+            options=ImportExecutionOptions(strict_certificate_case_source_links=strict),
+        )
+    assert "db.cso:999" in str(exc.value)
+    assert inspect(engine).has_table("company") is False
+    assert snapshot == before
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_unused_signed_approval_without_submitted_restoration_is_not_an_import_order(
+    monkeypatch, tmp_path, strict
+):
+    blanked = tmp_path / "blanked.json"
+    blanked.write_text(json.dumps({"rows": [{
+        "source_sheet": "db.cso", "source_row_key": "999",
+    }]}), encoding="utf-8")
+    approvals = tmp_path / "approvals.json"
+    approvals.write_text(json.dumps({"rows": [{
+        "source_sheet": "db.cso", "source_row_key": "999",
+        "approved_override": {"company_legacy_id": 1},
+    }]}), encoding="utf-8")
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_ROWS_PATH", blanked)
+    monkeypatch.setattr(phase2_import_module, "CONFIRMED_BLANKED_RESURRECTIONS_PATH", approvals)
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        import_snapshot(
+            session, sample_snapshot(),
+            options=ImportExecutionOptions(strict_certificate_case_source_links=strict),
+        )
+        assert session.query(Company).count() == 1
+        assert session.query(Site).count() == 1
+
+
+@pytest.mark.parametrize("strict", [False, True])
 @pytest.mark.parametrize(
     ("approved_sheet", "approved_row_key", "irrelevant_fk_key"),
     [

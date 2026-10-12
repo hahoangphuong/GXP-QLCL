@@ -329,3 +329,26 @@ a valid two-FK Certificate approval. Existing behavior remains: an approved
 value identical to an already-resolving source FK confirms the current link,
 but never silently replaces that link with a different parent. The checked-in
 resurrection contract still contains no approved rows.
+
+
+## Fail-closed execution of signed resurrection requests (12 October)
+
+Owner audit distinguished **approval presence** from an actual submitted
+restoration. The importer could previously accept a signed parent ID absent
+from the effective parent population, silently use a different, already
+resolving raw FK instead, and import the supposedly resurrected row; an
+unmaterializable approved row could also be skipped without failing. Likewise
+a requested signed restoration for a source row absent from the snapshot was
+not detected at all.
+
+At the existing pre-schema source-materialization owner, every expressly
+submitted confirmed-blanked restoration must now match an actual snapshot row
+and materialize, and each signed FK value must refer to an importable parent.
+Only submitted requests are execution orders; a signed but unused approval
+entry does not cause an import by itself. Existing already-resolving source
+FK precedence remains unchanged for **importable** alternative approved IDs:
+no Certificate/Case/Site relink or source rewrite occurs, and strict-source
+classification remains independent. Tests cover normal/strict modes, a raw
+resolved/missing FK, orphan requested rows, unused signed approvals, no-schema
+writes and snapshot immutability. The production resurrection contract still
+has zero approved entries; no business corrections were applied.

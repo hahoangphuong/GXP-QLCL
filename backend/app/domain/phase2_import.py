@@ -1423,6 +1423,15 @@ def _validate_confirmed_blanked_source_materialization(
     importable_ids: dict[str, set[int]] = {sheet: set() for sheet in SOURCE_PARENT_FK_REQUIREMENTS}
     effective_snapshot = {sheet: [] for sheet in snapshot}
     applied_source_fk_overrides: list[dict[str, Any]] = []
+    # Only expressly submitted, confirmed-blanked restoration requests must
+    # materialize. Unused signed approvals are not themselves execution orders.
+    requested_resurrections = {
+        (sheet, row_key)
+        for sheet, rows in (overrides or {}).items()
+        for row_key in rows
+        if (sheet, row_key) in confirmed_blanked_row_keys
+    }
+    matched_resurrections: set[tuple[str, str]] = set()
     for source_sheet, requirements in SOURCE_PARENT_FK_REQUIREMENTS.items():
         for raw_row in snapshot[source_sheet]:
             row = normalize_row(raw_row)
@@ -1433,15 +1442,31 @@ def _validate_confirmed_blanked_source_materialization(
             )
             identity = (source_sheet, row_key or "")
             is_confirmed_blanked = identity in confirmed_blanked_row_keys
-            has_approved_resurrection = (
-                is_confirmed_blanked
-                and overrides is not None
-                and row_key in overrides.get(source_sheet, {})
-            )
+            has_approved_resurrection = identity in requested_resurrections
+            if has_approved_resurrection:
+                matched_resurrections.add(identity)
             used_overrides: list[tuple[str, str, int, str]] = []
             materializable = True
             for field, parent_sheet, reason, optional in requirements:
                 raw_parent = str(row.get(field) or "").strip()
+                override_key = REMEDIATION_KEY_BY_REASON[reason]
+                approved_parent_id = (
+                    _get_override(overrides, source_sheet, row_key, override_key)
+                    if has_approved_resurrection else None
+                )
+                # A signed FK value must identify an importable parent, even
+                # if the original source FK is already resolvable. Otherwise
+                # the importer silently discards a contradictory authorization.
+                if (
+                    approved_parent_id is not None
+                    and approved_parent_id not in importable_ids[parent_sheet]
+                ):
+                    raise ConfirmedBlankedResurrectionError(
+                        "Confirmed blanked source row "
+                        f"{source_sheet}:{row_key} has approved {override_key}="
+                        f"{approved_parent_id} but that parent is not importable. "
+                        "Refusing an unused signed FK approval before schema creation."
+                    )
                 if optional and not raw_parent:
                     # _resolve_optional_legacy_fk returns None immediately for
                     # an empty Case FK. Even an exactly signed resurrection
@@ -1462,7 +1487,6 @@ def _validate_confirmed_blanked_source_materialization(
                     continue
                 parent_id = parse_int(raw_parent)
                 if parent_id not in importable_ids[parent_sheet]:
-                    override_key = REMEDIATION_KEY_BY_REASON[reason]
                     replacement_id = _get_override(
                         overrides, source_sheet, row_key, override_key
                     )
@@ -1473,6 +1497,13 @@ def _validate_confirmed_blanked_source_materialization(
                 if parent_id not in importable_ids[parent_sheet]:
                     materializable = False
                     break
+            if not materializable and has_approved_resurrection:
+                raise ConfirmedBlankedResurrectionError(
+                    "Confirmed blanked source row "
+                    f"{source_sheet}:{row_key} has an approved resurrection "
+                    "request but its source parents cannot be materialized. "
+                    "Refusing an unapplied restoration before schema creation."
+                )
             if materializable:
                 if is_confirmed_blanked and not has_approved_resurrection:
                     if not preview_for_source_audit:
@@ -1497,6 +1528,14 @@ def _validate_confirmed_blanked_source_materialization(
                     if legacy_id is not None:
                         importable_ids[source_sheet].add(legacy_id)
             effective_snapshot[source_sheet].append(effective_row)
+    unmatched_resurrections = sorted(requested_resurrections - matched_resurrections)
+    if unmatched_resurrections:
+        sheet, row_key = unmatched_resurrections[0]
+        raise ConfirmedBlankedResurrectionError(
+            "Approved restoration request for confirmed blanked source row "
+            f"{sheet}:{row_key} was not found in the supplied snapshot. "
+            "Refusing an unapplied resurrection before schema creation."
+        )
     return effective_snapshot, applied_source_fk_overrides
 
 

@@ -376,7 +376,9 @@ def read_rehearsal_snapshot(database_url: str, workbook_sha256: str) -> dict[str
         with engine.connect() as conn:
             # FIRST application SQL command. Server session is also read-only
             # before connect through startup options, including driver probes.
-            conn.exec_driver_sql("SET TRANSACTION READ ONLY")
+            conn.exec_driver_sql(
+                "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
+            )
             confirmed = conn.execute(text(
                 "SELECT current_database(), current_setting('transaction_read_only')"
             )).one()

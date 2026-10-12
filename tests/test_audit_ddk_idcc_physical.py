@@ -293,3 +293,15 @@ def test_source_header_group_is_recorded_without_business_role_approval():
     ]
     assert all(x["owner_role"] == "UNVERIFIED" for x in result["id_cc_columns"])
     assert result["approval_status"] == "NOT_APPROVED_NO_RELATIONSHIPS_CREATED"
+
+    matched = next(
+        c for c in result["candidates"]
+        if c["source_row_number"] == 7 and c["excel_column"] == 5
+    )
+    assert matched["certificate_type_vs_source_header"] == "MATCH"
+    mismatch = next(
+        c for c in result["candidates"]
+        if c["source_row_number"] == 8 and c["excel_column"] == 5
+    )
+    assert mismatch["certificate_type_vs_source_header"] == "MISMATCH"
+    assert result["id_cc_columns"][1]["counts"]["source_type_mismatch"] == 1

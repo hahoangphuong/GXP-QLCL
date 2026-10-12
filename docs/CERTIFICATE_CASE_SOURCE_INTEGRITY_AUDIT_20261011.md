@@ -555,3 +555,52 @@ formula confirmation gate. The `GMP/GLP/GSP/GDP` roles are **observed labels
 in source row 3**, not authorization to create
 `BusinessEligibilityCertificateLink` records. No import/schema/DB alteration,
 rehearsal reconciliation, merge, deployment, or business adjudication occurred.
+
+ 
+## Four-group source projection with independent companions (12 October 2026)
+
+Further read-only analysis of the same SHA-256-identified workbook shows that
+`db.dkkd` source row 3 explicitly anchors **four contiguous field groups**.
+Row 4 provides the same four field labels for *each* group, in this order:
+`ID CC`, `PHẠM VI CHỨNG NHẬN`, `TIÊU CHUẨN ÁP DỤNG`,
+`HOẠT ĐỘNG KINH DOANH`. The physical source blocks are:
+
+| Source group | ID CC | Scope | Standard | Business activity |
+|---|---:|---:|---:|---:|
+| GMP | O (15) | P (16) | Q (17) | R (18) |
+| GLP | S (19) | T (20) | U (21) | V (22) |
+| GSP | W (23) | X (24) | Y (25) | Z (26) |
+| GDP | AA (27) | AB (28) | AC (29) | AD (30) |
+
+The source `ID CC` is **not** a mandatory prerequisite for retaining
+the other three physical fields. Their independently observed nonblank
+counts among 830 raw rows are:
+
+| Group | ID CC | Scope | Standard | Activity | Rows with companion(s) but no ID CC |
+|---|---:|---:|---:|---:|---:|
+| GMP | 738 | 752 | 744 | 643 | 15 |
+| GLP | 9 | 11 | 11 | 10 | 2 |
+| GSP | 1 | 3 | 1 | 2 | 2 |
+| GDP | 0 | 0 | 0 | 6 | 6 |
+
+In particular, **six GDP activity cells must survive even when no GDP
+Certificate ID exists**. Dropping such cells because a join is absent
+would cause new upstream information loss.
+
+The read-only audit now provides a separate **source group projection**,
+keyed by the **physical Excel row** and original `db.dkkd` ID, with all
+16 independently preserved `raw_value` fields and column positions.
+The projection is available only when the full four-group original header
+band is present and uniquely validated; an older coordinate-only snapshot
+without source headings explicitly reports
+`UNAVAILABLE_REQUIRES_PHYSICAL_HEADER_BAND` instead of fabricating a
+group owner. A malformed/partial group fails closed.
+
+This projection is not a four-way Certificate join, a
+`BusinessEligibilityVersion`, a historical version identifier, or an
+approved `BusinessEligibilityCertificateLink`. Multi-ID cells remain
+separate candidate references within the same physical group. The source
+group content and certificate links must be adjudicated independently
+before any canonical model, schema migration, backfill or API implementation.
+No database or workbook was written to, and no production UI contract
+changed.

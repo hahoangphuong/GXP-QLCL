@@ -10,6 +10,7 @@ import pytest
 from backend.app.domain.legacy_snapshot import _core_source_row
 from tools.audit_ddk_idcc_physical import (
     MissingPhysicalEvidence, audit, excel_column_letter, find_ddk_header_row,
+    require_literal_idcc_column,
 )
 
 
@@ -160,3 +161,14 @@ def test_owner_tool_module_entrypoint_imports_from_repo_root():
     )
     assert result.returncode == 0, result.stderr
     assert "--workbook" in result.stdout
+
+
+@pytest.mark.parametrize("formula_state", [True, None, "UNVERIFIABLE"])
+def test_computed_or_unknown_excel_idcc_formula_status_fails_closed(formula_state):
+    with pytest.raises(MissingPhysicalEvidence, match="computed FKs"):
+        require_literal_idcc_column(formula_state, 14)
+
+
+@pytest.mark.parametrize("formula_state", [False, 0])
+def test_literal_excel_idcc_column_formula_status_is_accepted(formula_state):
+    assert require_literal_idcc_column(formula_state, 14) is None

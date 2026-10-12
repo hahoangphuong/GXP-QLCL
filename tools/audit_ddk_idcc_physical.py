@@ -1,0 +1,303 @@
+"""Read-only source audit for repeated db.dkkd ID CC physical Excel columns.
+
+Windows: py -3 tools/audit_ddk_idcc_physical.py --workbook "D:\GXP-QLCL\legacy\Danh sách Kiểm tra GPs.xlsb" --out-dir "D:\GXP-DDK-IDCC-REVIEW"
+Or use --snapshot-json with a lossless coordinate-preserving snapshot.
+Never generates/approves canonical certificate links.
+"""
+from __future__ import annotations
+
+import argparse
+from collections import Counter, defaultdict
+from hashlib import sha256
+import json
+from pathlib import Path
+from typing import Any
+
+from backend.app.domain.legacy_snapshot import (
+    CORE_SHEETS, _core_header_plan, _core_source_row, _range_rows,
+    detect_header_row, safe_text,
+)
+from backend.app.domain.phase2_import import normalize_row, parse_int
+
+
+class MissingPhysicalEvidence(ValueError):
+    """Flattened V1 cannot establish the original four column values."""
+
+
+def excel_column_letter(number: int) -> str:
+    if number < 1:
+        raise ValueError("Excel column ordinals start at 1")
+    result = ""
+    while number:
+        number, digit = divmod(number - 1, 26)
+        result = chr(65 + digit) + result
+    return result
+
+
+def extract_readonly_workbook(path: Path) -> tuple[dict[str, list[dict[str, str]]], dict[str, Any]]:
+    """Open an isolated Excel process without links, macros, or workbook writes."""
+    if not path.is_file() or path.suffix.lower() != ".xlsb":
+        raise ValueError("Expected an existing source .xlsb workbook")
+    try:
+        import win32com.client
+    except ImportError as exc:
+        raise RuntimeError("Reading .xlsb directly requires Windows, Excel and pywin32") from exc
+    app = win32com.client.DispatchEx("Excel.Application")
+    workbook = None
+    try:
+        app.Visible = False
+        app.DisplayAlerts = False
+        app.AskToUpdateLinks = False
+        app.AutomationSecurity = 3  # msoAutomationSecurityForceDisable
+        workbook = app.Workbooks.Open(
+            str(path.resolve()), UpdateLinks=0, ReadOnly=True,
+            IgnoreReadOnlyRecommended=True, AddToMru=False,
+        )
+        if not workbook.ReadOnly:
+            raise RuntimeError("Refusing non-read-only Excel workbook")
+        snapshot: dict[str, list[dict[str, str]]] = {}
+        sheet_evidence: dict[str, Any] = {}
+        for name in CORE_SHEETS:
+            ws = workbook.Worksheets(name)
+            used = ws.UsedRange
+            # Read from A1 to true absolute last cell: saved source
+            # ordinals always identify physical Excel columns.
+            last_row = int(used.Row + used.Rows.Count - 1)
+            last_col = int(used.Column + used.Columns.Count - 1)
+            raw_rows = _range_rows(
+                ws.Range(ws.Cells(1, 1), ws.Cells(last_row, last_col)).Value2
+            )
+            if not raw_rows:
+                raise MissingPhysicalEvidence(f"Empty source sheet: {name}")
+            header_index = detect_header_row(raw_rows[:10])
+            headers = [safe_text(value) for value in raw_rows[header_index]]
+            plan = _core_header_plan(headers)
+            snapshot[name] = [
+                _core_source_row(headers, row, row_num, plan=plan)
+                for row_num, row in enumerate(raw_rows[header_index + 1:], start=header_index + 2)
+                if any(safe_text(value) for value in row)
+            ]
+            if name == "db.dkkd":
+                idcc_columns = [
+                    index + 1 for index, label in enumerate(headers) if label == "ID CC"
+                ]
+                # The header band is evidence for owner review, not permission
+                # to label ordinal N as GMP, GLP, GSP or GDP.
+                sheet_evidence = {
+                    "header_row": header_index + 1,
+                    "id_cc_columns": [
+                        {
+                            "ordinal": column,
+                            "letter": excel_column_letter(column),
+                            "header_band": [
+                                {
+                                    "row": row_num,
+                                    "value": safe_text(raw_rows[row_num - 1][column - 1])
+                                }
+                                for row_num in range(max(1, header_index - 4), header_index + 1)
+                                if safe_text(raw_rows[row_num - 1][column - 1])
+                            ],
+                        }
+                        for column in idcc_columns
+                    ],
+                    "duplicate_headers": plan[1],
+                }
+        return snapshot, sheet_evidence
+    finally:
+        if workbook is not None:
+            workbook.Close(False)
+        app.Quit()
+
+
+def _idcc_columns(rows: list[dict[str, str]]) -> list[int]:
+    if not rows:
+        raise MissingPhysicalEvidence("No db.dkkd source rows")
+    observed: set[tuple[int, ...]] = set()
+    for row in rows:
+        raw = row.get("__excel_duplicate_headers")
+        if not raw:
+            raise MissingPhysicalEvidence(
+                "db.dkkd has no preserved duplicate-column metadata. "
+                "The flattened V1 snapshot cannot recover the four ID CC columns; "
+                "re-extract from the original .xlsb using --workbook."
+            )
+        try:
+            groups = json.loads(raw)
+            columns = tuple(next(
+                item["column_ordinals"] for item in groups if item["header"] == "ID CC"
+            ))
+        except (ValueError, TypeError, KeyError, StopIteration) as exc:
+            raise MissingPhysicalEvidence("Invalid ID CC physical-column metadata") from exc
+        if len(columns) != len(set(columns)) or not columns:
+            raise MissingPhysicalEvidence("Invalid duplicate physical-column positions")
+        observed.add(columns)
+    if len(observed) != 1:
+        raise MissingPhysicalEvidence("ID CC physical-column positions vary across rows")
+    columns = list(next(iter(observed)))
+    for row in rows:
+        if any(f"ID CC [excel_column={number}]" not in row for number in columns):
+            raise MissingPhysicalEvidence("Missing one or more preserved ID CC cells")
+    return columns
+
+
+def audit(snapshot: dict[str, list[dict[str, str]]], *, source_sha256: str | None = None,
+          header_evidence: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Audit the real source link evidence without assigning semantic roles."""
+    required = {"db.dkkd", "db.cc", "db.cso", "db.cty"}
+    if not required.issubset(snapshot):
+        raise MissingPhysicalEvidence(f"Missing source sheets: {sorted(required - set(snapshot))}")
+    raw_ddk = snapshot["db.dkkd"]
+    columns = _idcc_columns(raw_ddk)
+    certificates = defaultdict(list)
+    for record in snapshot["db.cc"]:
+        row = normalize_row(record)
+        certificate_id = parse_int(row.get("ID"))
+        if certificate_id is not None:
+            certificates[certificate_id].append(row)
+    sites = {}
+    for record in snapshot["db.cso"]:
+        row = normalize_row(record)
+        site_id = parse_int(row.get("ID"))
+        if site_id is not None:
+            sites[site_id] = row
+    column_counts: dict[int, Counter] = {column: Counter() for column in columns}
+    column_types: dict[int, Counter] = {column: Counter() for column in columns}
+    candidates: list[dict[str, Any]] = []
+    same_row_refs: dict[int, Counter] = defaultdict(Counter)
+    for raw_row in raw_ddk:
+        row = normalize_row(raw_row)
+        ddk_id = parse_int(row.get("ID"))
+        ddk_site = parse_int(row.get("site_legacy_id_ref"))
+        ddk_company = parse_int(row.get("company_legacy_id_ref"))
+        row_number = parse_int(row.get("__excel_row_number"))
+        for col in columns:
+            raw_fk = safe_text(raw_row[f"ID CC [excel_column={col}]"])
+            if not raw_fk:
+                column_counts[col]["blank"] += 1
+                continue
+            column_counts[col]["populated"] += 1
+            target_id = parse_int(raw_fk)
+            evidence: dict[str, Any] = {
+                "ddk_legacy_id": ddk_id,
+                "source_row_number": row_number,
+                "ddk_site_legacy_id": ddk_site,
+                "ddk_company_legacy_id": ddk_company,
+                "excel_column": col,
+                "column_letter": excel_column_letter(col),
+                "certificate_legacy_id": target_id,
+                "classification": None,
+                "certificate_type": None,
+                "certificate_site_legacy_id": None,
+                "reverse_id_ddk": None,
+                "reverse_relation": "UNVERIFIED",
+                "source_role": "UNVERIFIED",
+            }
+            if target_id is None:
+                evidence["classification"] = "NONLITERAL_FK"
+                evidence["raw_value_sha256_prefix"] = sha256(raw_fk.encode("utf-8")).hexdigest()[:12]
+                column_counts[col]["nonliteral_fk"] += 1
+            elif len(certificates[target_id]) != 1:
+                evidence["classification"] = ("MISSING_CERTIFICATE" if not certificates[target_id]
+                                              else "AMBIGUOUS_CERTIFICATE_ID")
+                column_counts[col][evidence["classification"].lower()] += 1
+            else:
+                cert = certificates[target_id][0]
+                cert_site = parse_int(cert.get("site_legacy_id_ref"))
+                cert_type = safe_text(cert.get("certificate_type")).strip()
+                evidence["certificate_type"] = cert_type or None
+                evidence["certificate_site_legacy_id"] = cert_site
+                column_types[col][cert_type or "(blank)"] += 1
+                if cert_site is None or ddk_site is None:
+                    evidence["classification"] = "SITE_UNRESOLVED"
+                elif cert_site != ddk_site:
+                    evidence["classification"] = "CROSS_SITE"
+                else:
+                    evidence["classification"] = "SAME_SITE"
+                column_counts[col][evidence["classification"].lower()] += 1
+                reverse_raw = safe_text(cert.get("ID DDK"))
+                reverse_id = parse_int(reverse_raw)
+                evidence["reverse_id_ddk"] = reverse_id
+                if not reverse_raw:
+                    evidence["reverse_relation"] = "REVERSE_BLANK"
+                elif reverse_id is None:
+                    evidence["reverse_relation"] = "REVERSE_NONLITERAL"
+                elif reverse_id == ddk_id:
+                    evidence["reverse_relation"] = "REVERSE_CONFIRMS"
+                else:
+                    evidence["reverse_relation"] = "REVERSE_CONFLICTS"
+                column_counts[col][evidence["reverse_relation"].lower()] += 1
+                owner_site = sites.get(ddk_site)
+                if owner_site:
+                    owner_company = parse_int(owner_site.get("company_legacy_id_ref"))
+                    if owner_company != ddk_company:
+                        evidence["ddk_company_vs_site"] = "MISMATCH"
+                        column_counts[col]["ddk_company_vs_site_mismatch"] += 1
+            candidates.append(evidence)
+            if ddk_id is not None and target_id is not None:
+                same_row_refs[ddk_id][target_id] += 1
+    for evidence in candidates:
+        did = evidence["ddk_legacy_id"]
+        cid = evidence["certificate_legacy_id"]
+        evidence["duplicate_within_ddk"] = (
+            did is not None and cid is not None and same_row_refs[did][cid] > 1
+        )
+        if evidence["duplicate_within_ddk"]:
+            column_counts[evidence["excel_column"]]["duplicate_within_ddk"] += 1
+    return {
+        "schema": "GXP_DDK_IDCC_PHYSICAL_REVIEW_V1",
+        "approval_status": "NOT_APPROVED_NO_RELATIONSHIPS_CREATED",
+        "source_sha256": source_sha256,
+        "ddk_source_rows": len(raw_ddk),
+        "id_cc_column_count": len(columns),
+        "id_cc_columns": [
+            {
+                "excel_column": col, "column_letter": excel_column_letter(col),
+                "owner_role": "UNVERIFIED",
+                "counts": dict(sorted(column_counts[col].items())),
+                "certificate_type_distribution": dict(sorted(column_types[col].items())),
+            }
+            for col in columns
+        ],
+        "header_evidence": header_evidence or {},
+        "candidate_count": len(candidates),
+        "candidates": candidates,
+        "restrictions": [
+            "Do not infer GMP/GLP/GSP/GDP roles from physical column order or type frequency",
+            "Do not create canonical BusinessEligibilityCertificateLink from this report",
+            "Do not fill forward links from db.cc.ID DDK without independent authorization",
+            "Review cross-Site, nonliteral, missing, conflicting and duplicate evidence",
+            "This is raw-source evidence, not proof of current rehearsal database state",
+        ],
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sources = parser.add_mutually_exclusive_group(required=True)
+    sources.add_argument("--workbook", type=Path)
+    sources.add_argument("--snapshot-json", type=Path)
+    parser.add_argument("--out-dir", type=Path, required=True)
+    args = parser.parse_args()
+    try:
+        if args.workbook:
+            snapshot, header_evidence = extract_readonly_workbook(args.workbook)
+            origin = args.workbook
+        else:
+            snapshot = json.loads(args.snapshot_json.read_text(encoding="utf-8"))
+            header_evidence = None
+            origin = args.snapshot_json
+        fingerprint = sha256(origin.read_bytes()).hexdigest()
+        result = audit(snapshot, source_sha256=fingerprint, header_evidence=header_evidence)
+    except (MissingPhysicalEvidence, ValueError, RuntimeError) as exc:
+        parser.exit(2, f"Source evidence blocked: {exc}\n")
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    # Never export the entire workbook or synthesize a canonical import.
+    out = args.out_dir / "ddk_idcc_physical_source_review.json"
+    out.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"Wrote read-only evidence: {out}")
+    print(f"Rows={result['ddk_source_rows']}; physical ID CC columns={result['id_cc_column_count']}; candidates={result['candidate_count']}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

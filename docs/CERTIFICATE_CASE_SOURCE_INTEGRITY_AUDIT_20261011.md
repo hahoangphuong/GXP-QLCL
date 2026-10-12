@@ -446,3 +446,34 @@ therefore it must **not** be used to claim complete historical ĐĐK–GxP
 basis linkage or to authorize new link generation. The pre-existing
 version-specific canonical link contract is unchanged; no live import,
 database data, or source workbook was changed.
+
+
+## Physical db.dkkd ID CC source recapture (12 October 2026)
+
+Read-only Windows audit owner: tools/audit_ddk_idcc_physical.py
+(requires installed Excel, Python 3 with pywin32). Run from D:\GXP-QLCL:
+
+    py -3 tools/audit_ddk_idcc_physical.py --workbook "D:\GXP-QLCL\legacy\Danh sách Kiểm tra GPs.xlsb" --out-dir "D:\GXP-DDK-IDCC-REVIEW"
+
+The tool opens the authoritative .xlsb in an isolated Excel COM process
+(DispatchEx), ReadOnly, with macros forcibly disabled and external-link
+updates disabled; the workbook is never saved. Captured evidence includes
+the true physical Excel column ordinals and the header band, instead
+of guessed GMP/GLP/GSP/GDP roles. The extraction reuses the existing
+position-preserving source parser, and independently audits each populated
+ĐĐK -> GxP FK, source Site/Company identities, target certificate types,
+and reverse db.cc.ID DDK corroboration/conflicts.
+
+Local output is D:\GXP-DDK-IDCC-REVIEW\ddk_idcc_physical_source_review.json.
+It contains source SHA-256, original row count, physical column totals,
+certificate-type distributions and one reference-evidence record for each
+nonblank source cell. **All source roles remain UNVERIFIED** until independent
+review of header groups. No canonical link is generated, no source value or
+PostgreSQL row modified, and no raw workbook is committed.
+
+The optional --snapshot-json input must be a new lossless coordinate-preserving
+snapshot. The old V1 artifacts/phase3c/legacy_snapshot.json is rejected because
+the four original column values were destroyed during flattening. Database
+rehearsal state requires the separate read-only SQL audit. Any transition from
+these candidate source references into actual BusinessEligibilityCertificateLink
+records requires reviewed business authority, never a reverse-FK fallback.

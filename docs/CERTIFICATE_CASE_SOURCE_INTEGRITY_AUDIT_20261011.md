@@ -495,3 +495,59 @@ the four original column values were destroyed during flattening. Database
 rehearsal state requires the separate read-only SQL audit. Any transition from
 these candidate source references into actual BusinessEligibilityCertificateLink
 records requires reviewed business authority, never a reverse-FK fallback.
+
+
+## Uploaded authoritative .xlsb cross-check — 12 October 2026
+
+The complete owner-supplied binary workbook was examined independently and
+**read-only**. Its SHA-256 is
+`c12537ea5a5c9f470e42fb5bdbe214f36983e310fceac7c560ad38885209fe3d`,
+exactly matching the original owner-side read-only workbook fingerprint already
+recorded in this audit. No raw workbook or customer/staff data were committed.
+
+`db.dkkd` has **830 source records** (Excel header row 4). Its row 3 contains
+**explicit physical category headings**, not inferred group order:
+
+| Source heading | Physical Excel ID CC | 1-based ordinal | Nonblank cells | Actual literal ID tokens |
+|---|---|---:|---:|---:|
+| GMP | O | 15 | 738 | 851 |
+| GLP | S | 19 | 9 | 9 |
+| GSP | W | 23 | 1 | 1 |
+| GDP | AA | 27 | 0 | 0 |
+| **Total** | | | **748** | **861** |
+
+The 738 GMP cells include 636 single-ID cells, 91 two-ID cells and 11
+three-ID cells. All 861 separately tokenized literal references resolve to a
+unique `db.cc` Certificate and match the observed source category heading:
+851 GMP, 9 GLP and 1 GSP; no GDP source references were populated. In
+contrast, the previous single-integer `parse_int(raw_fk)` silently classed
+**102 whole multi-ID cells** (215 valid source IDs) as `NONLITERAL_FK`.
+This was a **source audit interpretation bug**; it was not authority to create
+new canonical business links. Owner-level tokenization now keeps the original
+cell, token ordinal and raw token, including malformed/empty tokens, separately.
+
+Independent source analysis reports five GMP **cross-Site candidate
+occurrences**, referring to four Certificate IDs (1064 appears in two separate
+ĐĐK rows; 1180, 1308 and 1385 appear once each). There is one
+ĐĐK/owning-Site **Company mismatch** (ĐĐK legacy ID 626). Another
+50 source `db.dkkd` rows have neither Site ID nor Company ID; their
+exclusion/restoration status must be established from the independent approved
+confirmed-blanked contract, **not** guessed. Repeated GxP IDs across ĐĐK
+rows and non-equal reverse `db.cc.ID DDK` references are **not** by themselves
+proof of invalid history or business ownership; no version/history link is
+inferred or persisted.
+
+The DDK source also repeats `PHẠM VI CHỨNG NHẬN`,
+`TIÊU CHUẨN ÁP DỤNG`, and `HOẠT ĐỘNG KINH DOANH` four times under
+the same four GxP group headings. A future owner-approved mapper must
+explicitly preserve each group's companion fields as well as `ID CC`;
+a mere first/last duplicate-header selection would lose source information.
+
+**Verification boundaries:** These are independent read-only binary values
+from the uploaded workbook. This environment has not executed Microsoft Excel
+COM/HasFormula checks; cached values cannot alone prove the absence of
+formulas. The isolated Windows COM audit remains the independent literal-source
+formula confirmation gate. The `GMP/GLP/GSP/GDP` roles are **observed labels
+in source row 3**, not authorization to create
+`BusinessEligibilityCertificateLink` records. No import/schema/DB alteration,
+rehearsal reconciliation, merge, deployment, or business adjudication occurred.

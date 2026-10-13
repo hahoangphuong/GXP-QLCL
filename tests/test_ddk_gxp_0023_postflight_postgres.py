@@ -60,7 +60,10 @@ def _evaluate_postflight(conn):
     with conn.connect() as cx:
         try:
             cx.exec_driver_sql("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-            cx.exec_driver_sql(_postflight_do_block())
+            # DBAPI psycopg interprets literal % signs as interpolation
+            # placeholders even without parameters; escaping for the test
+            # transport preserves the original PL/pgSQL sent to PostgreSQL.
+            cx.exec_driver_sql(_postflight_do_block().replace("%", "%%"))
         finally:
             cx.rollback()
 

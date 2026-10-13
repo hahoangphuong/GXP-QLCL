@@ -637,6 +637,42 @@ class BusinessEligibilityListRead(BaseModel):
     issue_readiness: BusinessEligibilityIssueActionReadinessRead | None = None
 
 
+class BusinessEligibilityGxpSourceReferenceRead(BaseModel):
+    # Evidence row UUID, not a canonical Certificate UUID.
+    source_reference_id: str
+    token_index: int
+    raw_token: str
+    parsed_legacy_certificate_id: int | None
+
+
+class BusinessEligibilityGxpSourceGroupRead(BaseModel):
+    # Physical Excel source group UUID, not a canonical Certificate link.
+    source_group_id: str
+    source_group: Literal["GMP", "GLP", "GSP", "GDP"]
+    id_cc_excel_column: int
+    certificate_scope_excel_column: int
+    applicable_standard_excel_column: int
+    business_activity_excel_column: int
+    id_cc_raw: str
+    certificate_scope_raw: str
+    applicable_standard_raw: str
+    business_activity_raw: str
+    source_values_sha256: str
+    reference_tokens: list[BusinessEligibilityGxpSourceReferenceRead]
+
+
+class BusinessEligibilityGxpSourceEvidenceRead(BaseModel):
+    business_eligibility_certificate_id: str
+    legacy_dkkd_id: int | None
+    source_status: Literal["available", "legacy_identity_missing", "not_in_imported_source"]
+    evidence_kind: Literal["original_excel_cells_source_only"]
+    canonical_links_included: Literal[False]
+    source_workbook_sha256: str | None
+    source_sheet_name: str | None
+    source_row_number: int | None
+    groups: list[BusinessEligibilityGxpSourceGroupRead]
+
+
 class BusinessEligibilityDetailRead(BaseModel):
     business_eligibility_certificate_id: str
     row_version: int

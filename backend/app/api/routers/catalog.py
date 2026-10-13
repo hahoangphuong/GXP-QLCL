@@ -8,6 +8,7 @@ from backend.app.auth import ALLOWED_READ_ROLES, AuthenticatedUser, get_authenti
 from backend.app.api.session import get_session_from_request_factory
 from backend.app.read_models import (
     BusinessEligibilityDetailRead,
+    BusinessEligibilityGxpSourceEvidenceRead,
     BusinessEligibilityListRead,
     CaseDetailRead,
     CaseWorkspaceRead,
@@ -352,6 +353,19 @@ def register_catalog_routes(app, session_factory) -> None:
             )
         )
 
+    def get_business_eligibility_gxp_source_evidence(
+        business_eligibility_certificate_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        return BusinessEligibilityGxpSourceEvidenceRead(
+            **service.get_business_eligibility_gxp_source_evidence(
+                session,
+                business_eligibility_certificate_id=business_eligibility_certificate_id,
+            )
+        )
+
     app.add_api_route("/companies", list_companies, methods=["GET"], response_model=list[CompanyRead], tags=["catalog"])
     app.add_api_route("/companies/{company_id}", get_company_detail, methods=["GET"], response_model=CompanyDetailRead, tags=["catalog"])
     app.add_api_route("/sites", list_sites, methods=["GET"], response_model=list[SiteRead], tags=["catalog"])
@@ -383,5 +397,12 @@ def register_catalog_routes(app, session_factory) -> None:
         get_business_eligibility_detail,
         methods=["GET"],
         response_model=BusinessEligibilityDetailRead,
+        tags=["catalog"],
+    )
+    app.add_api_route(
+        "/business-eligibility-certificates/{business_eligibility_certificate_id}/gxp-source-evidence",
+        get_business_eligibility_gxp_source_evidence,
+        methods=["GET"],
+        response_model=BusinessEligibilityGxpSourceEvidenceRead,
         tags=["catalog"],
     )

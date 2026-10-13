@@ -27,6 +27,8 @@ from backend.app.document.inspection_ke_hoach_kt_template_asset_contract import 
 from backend.app.db.models.phase1 import (
     BusinessEligibilityCertificate,
     BusinessEligibilityCertificateLink,
+    BusinessEligibilityGxpSourceGroup,
+    BusinessEligibilityGxpReferenceEvidence,
     BusinessEligibilityVersion,
     Case,
     CaseEvaluationScope,
@@ -1786,6 +1788,117 @@ class CatalogReadService:
             )
         )
         return {"items": items, "issue_readiness": issue_readiness}
+
+    def get_business_eligibility_gxp_source_evidence(
+        self,
+        session: Session,
+        *,
+        business_eligibility_certificate_id: str,
+    ) -> dict[str, object]:
+        """Read a DDK row's original GMP/GLP/GSP/GDP cells without canonical links.
+
+        A stable canonical DDK UUID selects only its own legacy DDK row ID.
+        The source Excel worksheet is a *separate* observation: it is not
+        evidence of a Certificate link, site coverage, business grant or
+        historical version. Do not use ID CC as a canonical UUID.
+        """
+        certificate = session.get(BusinessEligibilityCertificate, business_eligibility_certificate_id)
+        if certificate is None:
+            raise HTTPException(status_code=404, detail="Business eligibility certificate not found")
+
+        identity = certificate.legacy_dkkd_id
+        result = {
+            "business_eligibility_certificate_id": certificate.id,
+            "legacy_dkkd_id": identity,
+            "source_status": "legacy_identity_missing" if identity is None else "not_in_imported_source",
+            "evidence_kind": "original_excel_cells_source_only",
+            "canonical_links_included": False,
+            "source_workbook_sha256": None,
+            "source_sheet_name": None,
+            "source_row_number": None,
+            "groups": [],
+        }
+        if identity is None:
+            return result
+
+        source_rows = list(session.scalars(
+            select(BusinessEligibilityGxpSourceGroup)
+            .where(BusinessEligibilityGxpSourceGroup.legacy_dkkd_id == identity)
+            .order_by(
+                BusinessEligibilityGxpSourceGroup.source_workbook_sha256,
+                BusinessEligibilityGxpSourceGroup.source_row_number,
+                BusinessEligibilityGxpSourceGroup.id_cc_excel_column,
+            )
+        ))
+        if not source_rows:
+            return result
+
+        # One canonical legacy DDK ID can map to exactly one original physical
+        # workbook row. Refuse multiple original row keys, rather than mixing
+        # cells from separate physical DDKs or separate workbook snapshots.
+        source_origins = {
+            (
+                group.source_workbook_sha256,
+                group.source_sheet_name,
+                group.source_row_number,
+            )
+            for group in source_rows
+        }
+        if len(source_origins) != 1:
+            raise HTTPException(
+                status_code=409,
+                detail="Multiple physical source DDK row identities match this legacy DDK ID.",
+            )
+        roles = {group.source_group for group in source_rows}
+        if (
+            len(source_rows) != 4
+            or roles != {"GMP", "GLP", "GSP", "GDP"}
+            or len({group.id_cc_excel_column for group in source_rows}) != 4
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Original DDK source row has incomplete or duplicate GxP physical groups.",
+            )
+
+        refs_by_group: dict[str, list[dict[str, object]]] = defaultdict(list)
+        for reference in session.scalars(
+            select(BusinessEligibilityGxpReferenceEvidence)
+            .where(BusinessEligibilityGxpReferenceEvidence.source_group_id.in_(
+                [group.id for group in source_rows]
+            ))
+            .order_by(
+                BusinessEligibilityGxpReferenceEvidence.source_group_id,
+                BusinessEligibilityGxpReferenceEvidence.token_index,
+            )
+        ):
+            refs_by_group[reference.source_group_id].append({
+                "source_reference_id": reference.id,
+                "token_index": reference.token_index,
+                "raw_token": reference.raw_token,
+                "parsed_legacy_certificate_id": reference.parsed_legacy_certificate_id,
+            })
+        # Preserve all four distinct original cells and token ordinal order;
+        # especially do not discard scope/activity when ID CC is empty.
+        result["source_status"] = "available"
+        first = source_rows[0]
+        result["source_workbook_sha256"] = first.source_workbook_sha256
+        result["source_sheet_name"] = first.source_sheet_name
+        result["source_row_number"] = first.source_row_number
+        result["groups"] = [{
+            "source_group_id": group.id,
+            "source_group": group.source_group,
+            "id_cc_excel_column": group.id_cc_excel_column,
+            "certificate_scope_excel_column": group.certificate_scope_excel_column,
+            "applicable_standard_excel_column": group.applicable_standard_excel_column,
+            "business_activity_excel_column": group.business_activity_excel_column,
+            "id_cc_raw": group.id_cc_raw,
+            "certificate_scope_raw": group.certificate_scope_raw,
+            "applicable_standard_raw": group.applicable_standard_raw,
+            "business_activity_raw": group.business_activity_raw,
+            "source_values_sha256": group.source_values_sha256,
+            "reference_tokens": refs_by_group[group.id],
+        } for group in source_rows]
+        return result
 
     def get_business_eligibility_detail(
         self,

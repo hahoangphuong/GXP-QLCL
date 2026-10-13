@@ -5,6 +5,60 @@ recommendations in UI_REDESIGN_VBA_REFERENCE and PHASE12. Preserve legacy UI whe
 evidenced. Baseline: `50576b0b383161e26e27b6cdc4a1a469aff1ae17`; work branch:
 `codex/legacy-ui-parity-20261010`. This delivery is partial; it does not close #1.
 
+## Evidence closure and staging-readiness audit — 2026-10-13
+
+Baseline: `c02718f54029f3fae49104629dd071c152e60502`. Local, remote and
+OPEN/DRAFT PR #3 matched before this read-only audit. The pre-existing untracked
+`Verify-GxpLegacyCertificateLinks.ps1` remains untouched.
+
+| Gap | Classification | Evidence and boundary |
+| --- | --- | --- |
+| Current Facility/Case GPs certificate identity and scope snapshot | `VERIFIED` | `GxpCertificateDetailRead` and the matching TypeScript type expose canonical certificate UUID, Site/Case/ProductionLine identity, `row_version`, `latest_flag`, scalar certificate values, `scope_summary`, ordered `scopes[]` with scope UUIDs, limitation, status and readiness. The detail service loads scopes only for the selected latest CertificateVersion. Existing Facility and Case owners consume that response without deriving IDs from certificate number, filename or text. |
+| Immutable CertificateVersion history | `BACKEND_CONTRACT_PENDING` | `CertificateVersion` and `CertificateScope.certificate_version_id` exist in persistence, but catalog routes expose only `/sites/{site_id}/gxp-certificates` and `/certificates/{certificate_id}`. Both query `is_latest_version=true`; their response models omit version UUID/history and historical scope snapshots. `row_version` is only an optimistic concurrency token and `latest_flag` identifies the current Certificate aggregate. The frontend cannot build a truthful version-history UI from the current contract. |
+| Facility ĐĐK GMP/GLP/GSP/GDP source groups | `BACKEND_CONTRACT_PENDING` | Current `BusinessEligibilityDetailRead` exposes scalar `business_activity_text` plus one flat `linked_gxp_certificates` list. It has no source-column group/provenance shape corresponding to `db.dkkd` O–R, S–V, W–Z and AA–AD. Migration `20261012_0023` remains blocked for runtime compatibility. The frontend keeps the flat canonical list and does not classify by certificate type, prose or link order. |
+| Canonical certificate actions | `VERIFIED` | GPs and ĐĐK issue/edit/promote controls are sourced from backend readiness, permissions and `expected_version`. Change-request successor actions have their own readiness identities. Existing 403/409/422 behavior and draft retention remain the owners of error handling; no legacy button is enabled from visual evidence alone. |
+| Canonical contextual document actions | `VERIFIED` | `ContextualDocumentActionRead` permits only `open`, `create` and `history`, with availability, disabled reason and required permissions from the backend. `DocumentDetail` exposes logical document UUID, rendition UUID and version UUID separately. Binary access remains through case/CAPA content endpoints and StorageService; the frontend has no path/NAS fallback. |
+| RecordForm / ExtRecordForm / picker command equivalence | `BACKEND_CONTRACT_PENDING` | VBA proves real side effects: RecordForm and ExtRecordForm generate/open documents; SelectCC/SelectDDK can delegate mutations; ChonMauCC/SelectFile browse legacy folders and templates. The current web mappings are DocumentService/StorageService, CertificationService and BusinessEligibilityService contracts. Commands outside existing readiness/action models require an approved backend owner before a web button can be added. |
+| RecordForm, SelectCC, SelectDDK, ChonMauCC and SelectFile runtime appearance/states | `LEGACY_RUNTIME_EVIDENCE_MISSING` | FRM/FRX and procedure evidence establish structure and side effects, but complete runtime captures for enabled/disabled, selection, editor, error and confirmation states are absent. Existing canonical workspaces remain in place rather than guessing those states. |
+| Current certificate scope/status display | `VERIFIED` | `scope_summary`, selected-version `scopes[]`, limitation and authoritative status are displayed without parsing prose or calculating status from dates. Multiple scope records retain API order and UUID identity. |
+| Historical scope and green completion strip / legacy status colors | `BACKEND_CONTRACT_PENDING` | Historical scope needs a version-history response. No per-stage completion projection exists for the legacy green ticks, and completion is not inferred from documents, dates or status text. Existing canonical lifecycle/readiness values remain unchanged. |
+| Exact runtime color/tick semantics | `LEGACY_RUNTIME_EVIDENCE_MISSING` | Supplied images show presentation, but no approved mapping ties the VBA colors/ticks to canonical states for every runtime condition. StatusBadge and workflow state remain authoritative. |
+| Authorized real staging | `STAGING_VALIDATION_PENDING` | Repository docs, local environment variables and QA handoff contain no approved staging URL, provisioned least-privilege test account or disposable synthetic dataset. `gxp-web-prod` is not treated as staging. No VM login, production/rehearsal data access, configuration change or mutation was attempted. |
+
+No item is classified `FRONTEND_FIX_REQUIRED`: source/type/API-owner comparison and
+the current fixture pass found no unsupported display inference, duplicate owner
+or identity defect that can be corrected solely in the frontend.
+
+Fixture validation uses the actual App and two local synthetic API fixtures. All
+nine completed surfaces (General Information, registration, inspection, CAPA,
+processing, Case GPs, Case ĐĐK, Facility GPs and Facility ĐĐK) were activated at
+1920×1080, 1366×768, 390×844 and 375×812. For every surface,
+`document.scrollWidth === document.clientWidth`: 1920/1920, 1366/1366,
+375/375 and 360/360 respectively (the narrow 15px difference is the vertical
+scrollbar). Facility/history/case tab changes retain site ID, production-line UUID
+and history ID in the URL. ArrowDown/Home/End changed history focus with unchanged
+request counters and selection URL; no mutation was issued.
+
+The document fixture selected PCT A while its metadata was pending, then CT B with
+the same filename. B displayed `processing-document-2`, `rendition-uuid-2` and
+`version-uuid-2`; releasing late A did not replace B. Counters contain one read for
+each exact document UUID and zero mutations. The disabled create/open controls
+follow backend availability. Captures, geometry and sanitized request counters are
+stored outside Git as `evidence-closure-*`.
+
+Fixture validation is `PASS`. Real backend/OIDC, actual binary storage, migration
+0023, assistive speech and production UAT remain `STAGING_VALIDATION_PENDING`; a
+DOM/accessibility-tree check is not a screen-reader PASS.
+
+Validation: the related ten-file target passes 242/242 twice. Typecheck and lint
+PASS. The final full run passes 351/351 in 27 files. Two earlier diagnostic full
+runs each produced one different pre-existing asynchronous App-test failure: the
+selected-history CSS assertion, then the known CAPA assessment-date initialization
+assertion. Each exact failed test passed twice immediately afterward, both were
+already included in the two clean targeted runs, and no related source changed;
+they are recorded as test instability rather than product fixes. Timeouts and
+assertions were not changed. Production build PASS.
+
 General Information runtime evidence received 2026-10-11: left certificate scope,
 standard, limits, certificate dates/status and facility status; right facility
 name/address, company/headquarters, leader, professional/QA persons, contacts,

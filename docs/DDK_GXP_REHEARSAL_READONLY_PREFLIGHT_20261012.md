@@ -20,7 +20,7 @@ The tool `tools/preflight_ddk_gxp_rehearsal.py` requires:
   command, PR, CI logs or screenshots.** A restricted SELECT-only database
   role is preferred; the connection also forces
   `default_transaction_read_only=on` and executes
-  `SET TRANSACTION READ ONLY`, then checks the server-reported state.
+  `SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`, then checks the server-reported state.
 - Public-schema introspection only, with a fixed allowlist of the new
   provenance tables. It reads `public.alembic_version`, table structure,
   unique constraints, source-only FK shape, counts and original-workbook
@@ -54,6 +54,51 @@ user name, password, raw group text or row-level certificate evidence.
 The tool always reports `READ_ONLY_PREFLIGHT_NO_APPLY_AUTHORIZATION`;
 even the "ready" status is **not** permission to apply schema/data
 changes. It performs zero DDL/DML and creates zero canonical links.
+
+## VM-observed baseline, 13 October 2026
+
+The owner executed the guarded read-only SQL on `gxp-web-prod`, with the
+following **actual** result (not inferred from CI):
+
+| Field | Observed |
+|---|---|
+| `current_database()` | `gxp_legacy_rehearsal` |
+| `transaction_read_only` | `on` |
+| `transaction_isolation` | `repeatable read` |
+| `public.alembic_version.version_num` | `20261008_0022` |
+| `to_regclass(public.business_eligibility_gxp_source_group)` | NULL |
+| `to_regclass(public.business_eligibility_gxp_reference_evidence)` | NULL |
+
+**Classification: `SCHEMA_0023_NOT_APPLIED`**. This closes the
+plan-independent remote state-discovery gate for the observed instant.
+The two provenance relations did **not exist** at that time. It is not
+an `EMPTY_SCHEMA_READY` result, and neither table's contents have
+been compared with the 3,120-group/861-token source-only load plan.
+
+**Next bounded preparation: offline DDL inspection, NO DB I/O.**
+In a local or isolated **PR #7 checkout** containing migration
+`20261012_0023` and backend dependencies:
+
+```bash
+python -m tools.preview_ddk_gxp_0023_offline_sql \
+  --output /tmp/gxp-ddk-gxp-0023-review.sql
+
+sha256sum /tmp/gxp-ddk-gxp-0023-review.sql
+```
+
+The preview invokes Alembic's own `upgrade 20261008_0022:20261012_0023
+--sql` in *offline* PostgreSQL mode, with a non-routable dialect URL.
+It refuses to overwrite existing output and checks the generated SQL
+only creates the two intended source-evidence tables/two indexes plus
+the one expected Alembic-version update; unrelated DDL/DML fails closed.
+
+Do **not** run `alembic upgrade head` or `alembic upgrade 20261012_0023`
+on `gxp-web-prod` merely because the offline preview is successful.
+The normal `alembic.ini` has a SQLite fallback if `DATABASE_URL` is
+not set, and a full online migration requires a separately approved,
+guarded, exact-target execution with a post-migration schema/count check.
+**No schema apply or source-data load was approved by the supplied
+read-only query output.**
 
 ## Fast VM-native check without moving the source payload
 

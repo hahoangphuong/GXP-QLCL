@@ -114,19 +114,31 @@ def assess_runtime(name: str | None, source: str, health: dict) -> dict:
 
 
 def main() -> int:
+    # Public stage identifiers, never the inspected value or exception text.
+    # The previous catch-all reported only BLOCK_RUNTIME_INSPECTION_ERROR
+    # and prevented operators from finding which read-only probe failed.
+    stage = "SYSTEMD_MAINPID"
     try:
         pid = _get_main_pid()
+        stage = "MAINPID_PROC_ENVIRONMENT"
         env = _get_service_env(pid)
+        stage = "SAFE_DB_NAME_EXTRACTION"
         name, source = _safe_database_name(env)
+        stage = "LOCALHOST_READYZ"
         health = _read_readyz()
+        stage = "ASSESS_RUNTIME"
         result = assess_runtime(name, source, health)
-    except (OSError, ValueError, subprocess.TimeoutExpired, URLError, UnicodeError):
-        # No raw exceptions or URLs; they might embed credentials.
+    except (OSError, ValueError, subprocess.TimeoutExpired, URLError, UnicodeError) as error:
+        # Only constant stage labels + exception CLASS may be emitted.
+        # Exception messages can contain URL credentials or HTTP details.
         result = {
             "schema": "GXP_DDK_0023_RUNTIME_TARGET_PREFLIGHT_V1",
             "service": SERVICE,
             "status": "BLOCK_RUNTIME_INSPECTION_ERROR",
-            "database_reads": 0,
+            "failed_stage": stage,
+            "error_category": type(error).__name__,
+            "direct_database_queries": 0,
+            "readiness_indirect_database_read": stage in ("ASSESS_RUNTIME",),
             "database_writes": 0,
         }
     print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2))

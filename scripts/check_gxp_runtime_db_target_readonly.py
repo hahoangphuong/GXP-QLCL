@@ -102,7 +102,8 @@ def assess_runtime(name: str | None, source: str, health: dict) -> dict:
         "database_name_source": source,
         **health,
         "status": state,
-        "database_reads": 0,
+        "direct_database_queries": 0,
+        "readiness_indirect_database_read": True,
         "database_writes": 0,
         "important_limitation": (
             "This observes systemd MainPID environment and local readiness; "

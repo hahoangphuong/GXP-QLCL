@@ -10,14 +10,15 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from http.client import HTTPConnection
 from pathlib import Path
-from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urlsplit
-from urllib.request import urlopen
 
 SERVICE = "gxp-web"
 TARGET = "gxp_legacy_rehearsal"
-HEALTH_URL = "http://127.0.0.1/readyz"
+BACKEND_HOST = "127.0.0.1"
+# The live systemd ExecStart has --host 127.0.0.1 --port APP_PORT.
+# Nginx on 80/443 only forwards /api/; /readyz is NOT on port 80.
 
 
 def _get_main_pid() -> int:
@@ -58,26 +59,54 @@ def _safe_database_name(env: dict[str, str]) -> tuple[str | None, str]:
     return None, "TARGET_NOT_EXPOSED_IN_MAINPID_ENV"
 
 
-def _read_readyz() -> dict:
+def _get_backend_port(pid: int) -> int:
+    """Read only numeric Uvicorn listen port from MainPID argv; never log argv."""
+    values = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\\0")
+    argv = [value.decode("utf-8", errors="replace") for value in values if value]
+    def argument(flag: str) -> str | None:
+        matches: list[str] = []
+        for index, item in enumerate(argv):
+            if item == flag and index + 1 < len(argv):
+                matches.append(argv[index + 1])
+            elif item.startswith(flag + "="):
+                matches.append(item[len(flag) + 1:])
+        if len(matches) != 1:
+            return None
+        return matches[0]
+    host = argument("--host")
+    port = argument("--port")
+    if host != BACKEND_HOST or port is None or not port.isascii() or not port.isdecimal():
+        raise ValueError("Unable to verify Uvicorn loopback listen address")
+    number = int(port)
+    if not (1 <= number <= 65535):
+        raise ValueError("Backend port out of range")
+    return number
+
+
+def _read_readyz(port: int) -> dict:
+    # Direct loopback connection bypasses nginx, proxy environment variables,
+    # TLS redirects and external hostnames. Response whitelists safe fields.
+    conn = HTTPConnection(BACKEND_HOST, port, timeout=8)
     try:
-        response = urlopen(HEALTH_URL, timeout=8)
-    except HTTPError as error:
-        response = error
-    with response:
-        raw = response.read(32768)
+        conn.request("GET", "/readyz", headers={"Accept": "application/json"})
+        response = conn.getresponse()
+        status = response.status
+        raw = response.read(32769)
+        if len(raw) > 32768:
+            raise ValueError("Readiness payload exceeds 32 KiB")
         parsed = json.loads(raw.decode("utf-8"))
         if not isinstance(parsed, dict):
             raise ValueError("Invalid readiness response")
-        # Whitelist fields; database_error may contain sensitive material.
         return {
-            "http_status": response.status,
+            "http_status": status,
             "ok": parsed.get("ok") is True,
             "database_reachable": parsed.get("database_reachable") is True,
             "schema_current": parsed.get("schema_current") is True,
             "expected_revision": parsed.get("expected_revision"),
             "actual_revision": parsed.get("actual_revision"),
         }
-
+    finally:
+        conn.close()
 
 def assess_runtime(name: str | None, source: str, health: dict) -> dict:
     if name is None:
@@ -124,10 +153,19 @@ def main() -> int:
         env = _get_service_env(pid)
         stage = "SAFE_DB_NAME_EXTRACTION"
         name, source = _safe_database_name(env)
+        # An observed rehearsal target is always unsafe to upgrade, even
+        # when readiness is unreachable; do not hide that behind a URLError.
+        if name == TARGET:
+            result = assess_runtime(name, source, {"http_status": None})
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2))
+            return 2
+        stage = "MAINPID_BACKEND_PORT"
+        port = _get_backend_port(pid)
         stage = "LOCALHOST_READYZ"
-        health = _read_readyz()
+        health = _read_readyz(port)
         stage = "ASSESS_RUNTIME"
         result = assess_runtime(name, source, health)
+        result["readyz_port"] = port
     except (OSError, ValueError, subprocess.TimeoutExpired, URLError, UnicodeError) as error:
         # Only constant stage labels + exception CLASS may be emitted.
         # Exception messages can contain URL credentials or HTTP details.
@@ -137,8 +175,14 @@ def main() -> int:
             "status": "BLOCK_RUNTIME_INSPECTION_ERROR",
             "failed_stage": stage,
             "error_category": type(error).__name__,
+            "runtime_database_name": name if stage in (
+                "MAINPID_BACKEND_PORT", "LOCALHOST_READYZ", "ASSESS_RUNTIME"
+            ) else None,
+            "database_name_source": source if stage in (
+                "MAINPID_BACKEND_PORT", "LOCALHOST_READYZ", "ASSESS_RUNTIME"
+            ) else None,
             "direct_database_queries": 0,
-            "readiness_indirect_database_read": stage in ("ASSESS_RUNTIME",),
+            "readiness_indirect_database_read": stage == "ASSESS_RUNTIME",
             "database_writes": 0,
         }
     print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2))

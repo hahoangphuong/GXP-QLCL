@@ -55,10 +55,11 @@ def test_parses_only_target_db_without_exposing_credentials(environment, expecte
 
 def test_main_no_env_logging_even_when_database_credential_present(monkeypatch, capsys):
     monkeypatch.setattr(preflight, "_get_main_pid", lambda: 2468)
+    monkeypatch.setattr(preflight, "_get_backend_port", lambda _: 8000)
     monkeypatch.setattr(preflight, "_get_service_env", lambda _: {
         "DATABASE_URL": "postgresql+psycopg://alice:super-secret@127.0.0.1/gxp_qlcl"
     })
-    monkeypatch.setattr(preflight, "_read_readyz", lambda: dict(READY))
+    monkeypatch.setattr(preflight, "_read_readyz", lambda _: dict(READY))
     assert preflight.main() == 0
     output = capsys.readouterr().out
     assert "OBSERVED_SERVICE_TARGET_DIFFERENT_FROM_REHEARSAL" in output
@@ -68,6 +69,7 @@ def test_main_no_env_logging_even_when_database_credential_present(monkeypatch, 
 
 def test_missing_proc_env_or_network_does_not_claim_clearance(monkeypatch, capsys):
     monkeypatch.setattr(preflight, "_get_main_pid", lambda: 2468)
+    monkeypatch.setattr(preflight, "_get_backend_port", lambda _: 8000)
     monkeypatch.setattr(
         preflight, "_get_service_env",
         lambda _: (_ for _ in ()).throw(PermissionError("s3cret")),
@@ -83,6 +85,7 @@ def test_missing_proc_env_or_network_does_not_claim_clearance(monkeypatch, capsy
     ("env", "MAINPID_PROC_ENVIRONMENT"),
     ("name", "SAFE_DB_NAME_EXTRACTION"),
     ("readyz", "LOCALHOST_READYZ"),
+    ("port", "MAINPID_BACKEND_PORT"),
 ])
 def test_diagnostic_identifies_only_safe_failed_stage(
     failing_stage, expected_stage, monkeypatch, capsys,
@@ -104,8 +107,12 @@ def test_diagnostic_identifies_only_safe_failed_stage(
         else lambda _: ("gxp_qlcl", "DATABASE_URL"),
     )
     monkeypatch.setattr(
+        preflight, "_get_backend_port",
+        (lambda _: fail()) if failing_stage == "port" else lambda _: 8000,
+    )
+    monkeypatch.setattr(
         preflight, "_read_readyz",
-        fail if failing_stage == "readyz" else lambda: dict(READY),
+        (lambda _: fail()) if failing_stage == "readyz" else lambda _: dict(READY),
     )
     assert preflight.main() == 2
     data = json.loads(capsys.readouterr().out)
@@ -121,9 +128,69 @@ def test_diagnostic_identifies_only_safe_failed_stage(
 
 def test_successful_probe_has_no_failed_stage(monkeypatch, capsys):
     monkeypatch.setattr(preflight, "_get_main_pid", lambda: 2468)
+    monkeypatch.setattr(preflight, "_get_backend_port", lambda _: 8000)
     monkeypatch.setattr(preflight, "_get_service_env", lambda _: {"DB_NAME": "gxp_qlcl"})
-    monkeypatch.setattr(preflight, "_read_readyz", lambda: dict(READY))
+    monkeypatch.setattr(preflight, "_read_readyz", lambda _: dict(READY))
     assert preflight.main() == 0
     data = json.loads(capsys.readouterr().out)
     assert data["status"] == "OBSERVED_SERVICE_TARGET_DIFFERENT_FROM_REHEARSAL"
     assert "failed_stage" not in data
+
+
+def test_main_pid_argv_port_discovery_never_uses_nginx_port(monkeypatch):
+    from pathlib import Path
+    class Proc:
+        def read_bytes(self):
+            return b"/opt/gxp/release/bin/uvicorn\\0backend.app.main:app\\0--host\\0127.0.0.1\\0--port\\08000\\0"
+    monkeypatch.setattr(Path, "read_bytes", lambda self: Proc().read_bytes())
+    assert preflight._get_backend_port(2468) == 8000
+
+
+def test_main_pid_wrong_host_refused_before_readyz(monkeypatch):
+    from pathlib import Path
+    monkeypatch.setattr(Path, "read_bytes", lambda self: b"uvicorn\\0--host\\00.0.0.0\\0--port\\08000\\0")
+    with pytest.raises(ValueError, match="loopback"):
+        preflight._get_backend_port(2468)
+
+
+def test_direct_loopback_readiness_ignores_proxy_and_redacts_errors(monkeypatch):
+    requested = []
+    class Response:
+        status = 200
+        def read(self, n):
+            return json.dumps(READY | {"database_error": "password=secret"}).encode()
+    class Connection:
+        def __init__(self, host, port, timeout):
+            requested.append((host, port, timeout))
+        def request(self, verb, path, headers):
+            requested.append((verb, path))
+        def getresponse(self):
+            return Response()
+        def close(self):
+            pass
+    monkeypatch.setattr(preflight, "HTTPConnection", Connection)
+    result = preflight._read_readyz(8000)
+    assert requested[:2] == [("127.0.0.1", 8000, 8), ("GET", "/readyz")]
+    assert result["http_status"] == 200
+    assert "secret" not in json.dumps(result)
+
+
+def test_main_uses_discovered_backend_port(monkeypatch, capsys):
+    monkeypatch.setattr(preflight, "_get_main_pid", lambda: 2468)
+    monkeypatch.setattr(preflight, "_get_service_env", lambda _: {"DB_NAME": "gxp_qlcl"})
+    monkeypatch.setattr(preflight, "_get_backend_port", lambda _: 8177)
+    seen = []
+    monkeypatch.setattr(preflight, "_read_readyz", lambda port: seen.append(port) or dict(READY))
+    assert preflight.main() == 0
+    assert seen == [8177]
+    assert json.loads(capsys.readouterr().out)["readyz_port"] == 8177
+
+
+def test_rehearsal_db_does_not_probe_any_network(monkeypatch, capsys):
+    monkeypatch.setattr(preflight, "_get_main_pid", lambda: 2468)
+    monkeypatch.setattr(preflight, "_get_service_env", lambda _: {"DB_NAME": "gxp_legacy_rehearsal"})
+    monkeypatch.setattr(preflight, "_get_backend_port", lambda _: (_ for _ in ()).throw(AssertionError("Do not probe")))
+    assert preflight.main() == 2
+    value = json.loads(capsys.readouterr().out)
+    assert value["status"] == "BLOCK_ACTIVE_SERVICE_TARGETS_REHEARSAL"
+    assert value["readiness_indirect_database_read"] is False

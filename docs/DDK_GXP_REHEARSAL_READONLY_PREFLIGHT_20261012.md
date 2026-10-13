@@ -142,6 +142,46 @@ the prior observed VM state is still Alembic `0022` with both tables
 absent. In that state the postflight must fail as designed; this is not
 an instruction to auto-apply schema.
 
+## Mandatory runtime-compatibility checkpoint before any 0023 database write
+
+The application's `/readyz` endpoint computes `expected_revision` from the
+**migration files available to the running backend**, then compares it to the
+database's actual `alembic_version`. If the VM's currently running backend
+still expects `20261008_0022` and uses `gxp_legacy_rehearsal`, applying
+`20261012_0023` to that database may cause the service to return 503.
+Therefore **do not use the schema-only `--apply` command until this
+readiness/connection-owner risk is classified**.
+
+`scripts/check_gxp_runtime_db_target_readonly.py` uses only Python 3
+standard library, reads the `gxp-web` systemd MainPID's `/proc` environment
+*in memory*, and calls localhost `/readyz`. It outputs only the sanitized
+database name, revision status and decision; it never outputs connection
+URLs, usernames, passwords or full process environment, and it does not
+modify the service or database. Local `/readyz` itself performs its normal
+read-only DB check.
+
+Copy only this script from the **immutable PR #7 commit** into an independent
+file outside the runtime repository; check its Git blob with
+`git hash-object /tmp/check_gxp_runtime_db_target_readonly.py` against the
+corresponding GitHub file blob SHA. No `git config --global safe.directory`
+and no global Python package installation are needed.
+
+Run in the VM:
+
+```bash
+sudo python3 /tmp/check_gxp_runtime_db_target_readonly.py
+```
+
+**Stop if the result is** `BLOCK_ACTIVE_SERVICE_TARGETS_REHEARSAL`,
+`BLOCK_UNKNOWN_RUNTIME_TARGET`,
+`BLOCK_RUNTIME_READINESS_OR_REVISION_DRIFT`, or
+`BLOCK_RUNTIME_INSPECTION_ERROR`. Only
+`OBSERVED_SERVICE_TARGET_DIFFERENT_FROM_REHEARSAL` means the observed
+MainPID target differs from rehearsal and readiness is currently green;
+it is **not** permission to migrate and is not a guarantee about child
+process overrides, later restarts or other services. Independently check
+`pg_stat_activity` and the exact migration guard before any later apply.
+
 ## Guarded schema-only migration tool — prepared, NOT executed
 
 The owner-accepted live VM preflight reports Alembic `20261008_0022`

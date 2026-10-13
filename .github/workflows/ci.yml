@@ -53,6 +53,11 @@ jobs:
           GXP_STAGING_LINEAGE_DISPOSABLE_DATABASE: gxp_qlcl_test
         run: python -m pytest tests/test_storage_staging_lineage_postgres.py -q -p no:cacheprovider
 
+      - name: Validate DDK 0023 on isolated disposable PostgreSQL
+        env:
+          GXP_DDK_CI_POSTGRES_INTEGRATION: "1"
+        run: python -m pytest tests/test_ddk_gxp_0023_postflight_postgres.py -q -p no:cacheprovider
+
       - name: Run backend tests
         run: python -m pytest -q
 

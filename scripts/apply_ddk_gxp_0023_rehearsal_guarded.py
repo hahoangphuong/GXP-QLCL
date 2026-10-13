@@ -137,7 +137,8 @@ def apply_transaction(sql: str) -> None:
     # fallback, explicit database and non-interactive privilege escalation.
     command = [
         "sudo", "-n", "-u", "postgres", "psql", "-X",
-        "-v", "ON_ERROR_STOP=1", "-d", EXPECTED_DB,
+        "-v", "ON_ERROR_STOP=1", "-h", "/var/run/postgresql",
+        "-U", "postgres", "-d", EXPECTED_DB,
     ]
     completed = subprocess.run(
         command, input=sql, text=True, capture_output=True,

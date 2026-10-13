@@ -59,6 +59,9 @@ def checked_rehearsal_url(runtime_env: dict[str, str]) -> str:
         or parsed.database != EXPECTED_DB
         or parsed.username != "gxp_app"
         or parsed.host not in {"127.0.0.1", "localhost", "::1"}
+        # Forbid libpq parameters that could silently override the URI
+        # host/database/role after SQLAlchemy's visible URL was checked.
+        or bool(parsed.query)
     ):
         raise SourceLoadBlocked("Effective database URL is not local rehearsal")
     return url

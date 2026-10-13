@@ -56,7 +56,7 @@ jobs:
       - name: Validate DDK 0023 on isolated disposable PostgreSQL
         env:
           GXP_DDK_CI_POSTGRES_INTEGRATION: "1"
-        run: python -m pytest tests/test_ddk_gxp_0023_postflight_postgres.py -q -p no:cacheprovider
+        run: python -m pytest tests/test_ddk_gxp_0023_postflight_postgres.py tests/test_ddk_gxp_source_apply_postgres.py -q -p no:cacheprovider
 
       - name: Run backend tests
         run: python -m pytest -q

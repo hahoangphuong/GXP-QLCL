@@ -207,6 +207,8 @@ def test_changed_plan_bytes_before_commit_rolls_back_inserts():
     ("gxp_legacy_rehearsal", "postgresql+psycopg://gxp_app:secret@127.0.0.1:5432/gxp_qlcl"),
     ("gxp_legacy_rehearsal", "sqlite:///tmp/test.db"),
     ("gxp_legacy_rehearsal", "postgresql+psycopg://gxp_app:secret@8.8.8.8:5432/gxp_legacy_rehearsal"),
+    ("gxp_legacy_rehearsal", "postgresql+psycopg://gxp_app:secret@127.0.0.1:5432/gxp_legacy_rehearsal?host=10.148.0.3"),
+    ("gxp_legacy_rehearsal", "postgresql+psycopg://gxp_app:secret@127.0.0.1:5432/gxp_legacy_rehearsal?service=external"),
 ])
 def test_runtime_target_guard_refuses_other_database_or_host(db_name, url):
     with pytest.raises(SourceLoadBlocked):

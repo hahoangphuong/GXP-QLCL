@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from http.client import HTTPConnection
+from http.client import HTTPConnection, HTTPException
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
@@ -168,7 +168,7 @@ def main() -> int:
         stage = "ASSESS_RUNTIME"
         result = assess_runtime(name, source, health)
         result["readyz_port"] = port
-    except (OSError, ValueError, subprocess.TimeoutExpired, URLError, UnicodeError) as error:
+    except (OSError, ValueError, HTTPException, subprocess.TimeoutExpired, UnicodeError) as error:
         # Only constant stage labels + exception CLASS may be emitted.
         # Exception messages can contain URL credentials or HTTP details.
         result = {

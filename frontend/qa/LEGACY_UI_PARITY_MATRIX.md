@@ -250,6 +250,98 @@ mount only while the disclosure is open, keeping the closed search DOM compact;
 opening/closing still has no query or mutation effect. Native disclosure, desktop
 pane geometry and certificate tab round-trips were checked in the fixture browser.
 
+## Facility ĐĐK read-layout slice — 2026-10-13
+
+Baseline: bd0f1c773f71aa3ddb6babf437d490d3680fd906; local/remote/PR agree,
+PR #3 remains OPEN/DRAFT and existing untracked script is preserved. Evidence:
+runtime image 9 is Facility Giấy chứng nhận ĐĐK, unlike Case image 6. Its left
+pane contains the list, dossier/handler and GPs basis; the right contains header,
+company/facility, professional/license, activity, status and replacement fields.
+MainForm.frm/FRX confirms lbCCDDK, edHsDC_DDK/edNgXL_DDK and DataDDK2 controls.
+UpdateListDDKCs reads the site's mapping and populates lbCCDDK;
+UpdateCCDDKItem clears controls, resolves the selected row in db_ddk and calls
+UpdateCCDDKItem_Row/Load_row2DDKCtrlsDs. DataDDK2(0..11) is four distinct legacy
+scope/activity/standard groups, not a certificate-type classification algorithm.
+Their workbook writes/add-link/edit procedures are not copied into the web.
+
+Root cause/presentation boundary: the already-correct four header fields and
+identity order were followed by generic vertical professional fields and
+dossier/basis at the bottom of the right pane. Shared Case/Facility rendering
+had no Facility grouping owner. Source 94e79af introduced the initial partial
+legacy field groups; no historically complete Facility parity is claimed.
+Baseline runtime/regressions establish the incorrect side, current layout the
+corrected side. Do not mistake this for a historical full-app browser bisect.
+
+BusinessEligibilityWorkspace now uses Facility-only fields: left dossier/handler
+and one flat basis list; right company/facility, primary PTCM/qualification/CCHN/
+license date, QA name, ungrouped business activity, status and paired replacement
+texts. Extra canonical license/issuance/notes/expiry data remains below. Cyan
+inset values and yellow issuance-sequence value follow the pictured fields.
+Both desktop panes scroll independently, the list uses remaining height and
+narrow screens stack/wrap without page clipping. Case still uses its original
+read-only field hierarchy; its pure basis renderer is extracted without DOM,
+request or state changes. No document list or new activity tab is created.
+
+One selected UUID remains owned by SearchPage; row focus is separate. Moving
+read-only metadata does not introduce a fetch/state owner. Both panes suppress
+detail/basis on mismatched UUID, loading or error. All payload fields, multiple
+basis UUID/link-role entries, row_version/readiness and issue/edit/promote
+handlers remain unchanged; no dedupe by number/name or local business rules.
+Existing commands retain backend labels/placement: legacy Tạo/Điều/Hồ copy,
+revision and folder commands are not equated to current issue/edit/promote.
+
+EVIDENCE_MISSING: current API has scalar business_activity_text and flat basis
+links, not authoritative GMP/GLP/GSP/GDP source groups/scopes/standards. Do not
+derive these from certificate_type, linked IDs or prose. Backend PR #7 remains
+separate. QA qualification/license fields pictured in legacy have no matching
+current detail fields; no second license or date ownership is inferred. Existing
+responsible-license date/issuer labels are retained as canonical extras rather
+than assigned to QA. The raw status text has no authoritative legacy color
+classification, so its cyan value is retained without inferring active/expired
+from prose or dates. Version history IDs, legacy folder/doc commands, live OIDC,
+real backend, binary storage and screen-reader acceptance remain unverified.
+
+Regression: new Facility hierarchy/owner and stale-left-metadata tests FAIL on
+baseline (2 FAIL / 17 PASS), then PASS. A third test preserves null/multiline/
+long text and two equal-number basis UUIDs without derived activity tabs.
+Existing tests cover equal certificate numbers with distinct UUIDs, focus-only
+arrows, loading/error/refresh, expected_version and 403/409/422/draft semantics.
+Case/document/modal regressions remain unchanged.
+
+Actual App + synthetic fixture at 1920x1080, 1366x768, 390x844, 375x812:
+document clientWidth/scrollWidth before AND after are 1920/1920, 1366/1366,
+375/375 and 360/360 respectively. The responsive header fix remains intact.
+Desktop basis viewport position: 1920 x558/y1106 -> x23/y968; 1366 x403/y1107 ->
+x23/y656, now visible in the left pane. Mobile coordinates depend on scroll;
+full rect/width records and screenshots are kept rather than claiming pixel
+parity. Arrow/Home/End move focus; Enter/Space activate exact UUID, Tab/Shift+Tab
+between list/editor works. F2 has no Facility editor shortcut and stays inert;
+Enter opens its existing button, Escape closes only when allowed.
+
+Held A detail, selected B, released A: B's fields/basis remain. Pending editor
+traps focus, disables controls and ignores Escape; one explicit PUT receives
+409 and retains number/notes, expected_version=7 and two exact basis UUIDs with
+no retry. Case/Facility round-trip retains selected B; hard refresh keeps canonical
+URL but initializes the local certificate selection from the first item as
+before. External URL Back/Forward preserves site/line/history context. Counters
+include explicit selections, refresh/page initializations and existing per-detail
+basis reloads; only one deliberate rejected edit, no navigation write or new
+request source. No real mutation was applied.
+
+Evidence outside Git: facility-ddk-before/after-1920/1366/390/375.png,
+facility-ddk-before/after-geometry.json, facility-ddk-conflict-1920.png,
+facility-ddk-request-counts.json and fixture harness. No backend/API/DB/storage/
+authorization/concurrency change, merge/rebase/cherry-pick or deploy. Partial
+parity only; four-group provenance awaits an approved API, not a UI fallback.
+
+Validation: typecheck, lint, production build and all 349 frontend tests / 27
+files PASS. Targeted Facility/Case/document/modal regressions pass 50 tests in
+each of two completed runs; no timeout increase or disabled test. Existing
+non-failing act warnings remain. Self-review: five frontend/QA files, presentation
+and pure rendering only; mutation handlers/dialog state/readiness untouched.
+Next: consume four-group provenance only after an approved API is available,
+then authorized staging integration and screen-reader verification.
+
 ## Mobile web-shell overflow slice — 2026-10-13
 
 Baseline: f3ddd44b233836a14b45d5d4584b18a02172ebc7 (the supplied checkpoint

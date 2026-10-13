@@ -11,7 +11,8 @@ import type {
   BusinessEligibilityListItem,
   GxpCertificateListItem,
 } from "../../types";
-import { BusinessEligibilityDetailFields } from "./BusinessEligibilityDetailFields";
+import { BusinessEligibilityBasisFields, BusinessEligibilityFacilityFields } from "./BusinessEligibilityDetailFields";
+import { DetailValue } from "./DetailValue";
 import { useCertificateRows } from "./useCertificateRows";
 import { useCertificateDialogFocus } from "./useCertificateDialogFocus";
 
@@ -225,7 +226,7 @@ export function BusinessEligibilityWorkspace({
   const promote = actions.find((action) => action.action_key === "promote_current");
 
   return (
-    <div className="eligibility-workspace-split master-detail-split master-detail-split-eligibility">
+    <div className="eligibility-workspace-split master-detail-split master-detail-split-eligibility facility-ddk-workspace">
       <section className="panel panel-tight certificate-list-panel master-list-pane">
         <div className="panel-header">
           <div><h3>Danh mục GCN đủ điều kiện</h3><span className="panel-meta">{items.length} giấy</span></div>
@@ -260,6 +261,11 @@ export function BusinessEligibilityWorkspace({
             </tbody>
           </table>
         </div> : null}
+        {detail && !detailLoading && !detailError ? <div className="facility-ddk-dossier">
+          <DetailValue label="Hồ sơ đề nghị" value={detail.application_dossier_reference} />
+          <DetailValue label="Người xử lý" value={detail.handled_by_name} />
+          <BusinessEligibilityBasisFields detail={detail} />
+        </div> : null}
       </section>
 
       <section className="panel panel-tight certificate-detail-panel detail-pane">
@@ -269,7 +275,7 @@ export function BusinessEligibilityWorkspace({
           <EmptyState title="Chưa chọn GCN đủ điều kiện" description="Chọn một giấy trong danh mục hoặc cấp giấy mới." />
         ) : (
           <>
-            <BusinessEligibilityDetailFields detail={detail} />
+            <BusinessEligibilityFacilityFields detail={detail} />
             <div className="certificate-action-bar">
               {edit ? <button disabled={!edit.available || promotionPending} onClick={() => setEditDraft({ detail, expectedVersion: edit.expected_version })} title={edit.reason_code ?? undefined} type="button">{edit.label}</button> : null}
               {!edit?.available && edit?.reason_code ? <span>{edit.reason_code}</span> : null}

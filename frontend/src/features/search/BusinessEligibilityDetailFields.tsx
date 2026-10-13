@@ -33,24 +33,67 @@ export function BusinessEligibilityDetailFields({ detail }: { detail: BusinessEl
         <DetailValue label="Lịch sử cấp" multiline value={detail.issuance_history_text} />
         <DetailValue label="Ghi chú" multiline value={detail.notes} />
         <DetailValue label="Ngày hết hạn" value={formatCompactDate(detail.expires_on)} />
-        <div className="summary-span certificate-basis-section">
-          <span>Chứng nhận GxP làm căn cứ</span>
-          {detail.linked_gxp_certificates.length > 0 ? (
-            <ul className="inline-linked-list">
-              {detail.linked_gxp_certificates.map((item) => (
-                <li key={`${item.certificate_id}:${item.link_role}`}>
-                  {item.certificate_type}
-                  {item.line_code ? ` ${item.line_code}` : ""}
-                  {item.certificate_number ? ` · ${item.certificate_number}` : ""}
-                  {item.issue_date ? ` · ${formatCompactDate(item.issue_date)}` : ""}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <strong>Chưa có</strong>
-          )}
-        </div>
+        <BusinessEligibilityBasisFields detail={detail} />
       </div>
     </div>
   );
+}
+
+export function BusinessEligibilityBasisFields({ detail }: { detail: BusinessEligibilityDetail }) {
+  return <div className="summary-span certificate-basis-section">
+    <span>Chứng nhận GxP làm căn cứ</span>
+    {detail.linked_gxp_certificates.length > 0 ? <ul className="inline-linked-list">
+      {detail.linked_gxp_certificates.map(item => <li key={`${item.certificate_id}:${item.link_role}`}>
+        {item.certificate_type}
+        {item.line_code ? ` ${item.line_code}` : ""}
+        {item.certificate_number ? ` · ${item.certificate_number}` : ""}
+        {item.issue_date ? ` · ${formatCompactDate(item.issue_date)}` : ""}
+      </li>)}
+    </ul> : <strong>Chưa có</strong>}
+  </div>;
+}
+
+// Facility presentation only. Case keeps the read-only renderer above.
+export function BusinessEligibilityFacilityFields({ detail }: { detail: BusinessEligibilityDetail }) {
+  return <div className="detail-grid compact-grid certificate-detail-grid legacy-certificate-fields facility-ddk-detail">
+    <div className="legacy-certificate-heading">
+      <DetailValue label="Số GCN" value={detail.certificate_number} />
+      <DetailValue label="Ngày cấp" value={formatCompactDate(detail.issued_on)} />
+      <DetailValue label="QĐ cấp" value={detail.decision_reference} />
+      <DetailValue label="Cấp lần" value={detail.issuance_sequence_text ? `Lần ${detail.issuance_sequence_text}` : null} />
+    </div>
+    <div className="facility-ddk-identity">
+      <DetailValue label="Tên công ty" value={detail.company_name} />
+      <DetailValue label="Trụ sở" multiline value={detail.company_legal_address} />
+      <DetailValue label="Tên cơ sở" value={detail.facility_name} />
+      <DetailValue label="Địa chỉ cơ sở" multiline value={detail.address} />
+    </div>
+    <div className="facility-ddk-professionals">
+      <div className="facility-ddk-professional-primary">
+        <DetailValue label="PT chuyên môn" value={detail.professional_responsible_person_name} />
+        <DetailValue label="Trình độ chuyên môn" value={detail.professional_qualification_text} />
+        <DetailValue label="CCHN" value={detail.professional_license_number} />
+        <DetailValue label="Ngày cấp CCHN" value={formatCompactDate(detail.professional_license_issued_on)} />
+      </div>
+      <DetailValue label="ĐBCL" value={detail.quality_assurance_person_name} />
+    </div>
+    <div className="facility-ddk-activity">
+      <DetailValue label="Hoạt động kinh doanh" multiline value={detail.business_activity_text} />
+    </div>
+    <div className="facility-ddk-status">
+      <DetailValue label="Tình trạng" value={detail.current_status_text} />
+    </div>
+    <div className="facility-ddk-replacements">
+      <DetailValue label="Thay thế" value={detail.replaces_certificate_number} />
+      <DetailValue label="Bị thay thế bởi" value={detail.replaced_by_certificate_number} />
+    </div>
+    <div className="facility-ddk-additional">
+      <DetailValue label="Nơi cấp CCHN" value={detail.professional_license_issuer} />
+      <DetailValue label="Ngày cấp CCHN - PTCM" value={formatCompactDate(detail.responsible_license_issued_on)} />
+      <DetailValue label="Nơi cấp CCHN - PTCM" value={detail.responsible_license_issuer} />
+      <DetailValue label="Lịch sử cấp" multiline value={detail.issuance_history_text} />
+      <DetailValue label="Ghi chú" multiline value={detail.notes} />
+      <DetailValue label="Ngày hết hạn" value={formatCompactDate(detail.expires_on)} />
+    </div>
+  </div>;
 }

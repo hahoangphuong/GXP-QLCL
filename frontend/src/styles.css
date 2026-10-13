@@ -2883,3 +2883,30 @@ tr:focus-visible {
 @media (max-width: 600px) {
   .legacy-search-page .case-business-eligibility-workspace .legacy-certificate-heading { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Facility ĐĐK image 9; scalar activity/basis data stays ungrouped until API provenance exists. */
+.legacy-search-page .facility-ddk-workspace .master-list-pane { overflow: auto; }
+.legacy-search-page .facility-ddk-workspace .detail-pane { overflow: auto; }
+.legacy-search-page .facility-ddk-workspace .master-list-pane > .table-scroll-history { flex: 1 0 130px; min-height: 130px; }
+.legacy-search-page .facility-ddk-dossier { margin-top: 8px; }
+.legacy-search-page .facility-ddk-dossier > .detail-field,
+.legacy-search-page .facility-ddk-detail :is(.facility-ddk-identity, .facility-ddk-professionals, .facility-ddk-activity, .facility-ddk-status, .facility-ddk-additional) > .detail-field { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 4px; margin: 4px 0; }
+.legacy-search-page .facility-ddk-dossier > .detail-field { grid-template-columns: 105px minmax(0, 1fr); }
+.legacy-search-page .facility-ddk-dossier .certificate-basis-section { background: #c0ffc0; border: 1px inset #aaa; padding: 5px; min-height: 90px; }
+.legacy-search-page .facility-ddk-professional-primary { display: grid; grid-template-columns: 1.4fr 1fr 1.2fr .8fr; gap: 5px; }
+.legacy-search-page .facility-ddk-professional-primary .detail-field { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 4px; }
+.legacy-search-page .facility-ddk-replacements { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+.legacy-search-page .facility-ddk-replacements > .detail-field { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px; }
+.legacy-search-page .facility-ddk-workspace :is(.detail-field, .detail-value-slot, .certificate-basis-section) { min-width: 0; overflow-wrap: anywhere; }
+.legacy-search-page .facility-ddk-detail .legacy-certificate-heading > .detail-field:last-child .detail-value-slot { background: #ffffc0; }
+.legacy-search-page .facility-ddk-detail .detail-value-slot > strong { font-weight: 400; }
+@media (max-width: 1400px) {
+  .legacy-search-page .facility-ddk-professional-primary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 1100px) {
+  .legacy-search-page .facility-ddk-workspace .master-list-pane > .table-scroll-history { flex: none; }
+}
+@media (max-width: 600px) {
+  .legacy-search-page .facility-ddk-professional-primary, .legacy-search-page .facility-ddk-replacements { grid-template-columns: minmax(0, 1fr); }
+  .legacy-search-page .facility-ddk-detail :is(.facility-ddk-identity, .facility-ddk-professionals, .facility-ddk-activity, .facility-ddk-status, .facility-ddk-additional) > .detail-field { grid-template-columns: 100px minmax(0, 1fr); }
+}

@@ -175,5 +175,7 @@ def test_history_does_not_rewrite_independent_current_detail(tmp_path):
         )
     assert before == after
     assert before["certificate_number"] == data["versions"][0]["certificate_number"]
-    assert before["linked_gxp_certificates"] == [] or isinstance(before["linked_gxp_certificates"], list)
+    # No CertificateVersion rows were seeded for GxP, so current legacy
+    # projection remains empty rather than deriving links from source tokens.
+    assert before["linked_gxp_certificates"] == []
     engine.dispose()

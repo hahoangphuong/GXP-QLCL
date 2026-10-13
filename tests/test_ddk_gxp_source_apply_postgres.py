@@ -16,7 +16,10 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
-from backend.app.db.models.phase1 import BusinessEligibilityCertificate, Company, Site
+from backend.app.db.models.phase1 import (
+    BusinessEligibilityCertificate, BusinessEligibilityCertificateLink,
+    BusinessEligibilityVersion, Certificate, Company, Site,
+)
 from backend.app.services.catalog import CatalogReadService
 from sqlalchemy.engine import make_url
 
@@ -189,10 +192,50 @@ def test_real_postgres_atomic_source_only_insert_retry_and_conflict():
                 assert evidence["groups"][3]["business_activity_raw"] == "Activity with no ID CC"
                 assert evidence["groups"][3]["reference_tokens"] == []
                 assert evidence["canonical_links_included"] is False
+                # Exercise historical ĐĐK records under actual PostgreSQL
+                # schema/FKs; the raw source token evidence remains separate.
+                old = BusinessEligibilityVersion(
+                    business_eligibility_certificate_id=canonical_ddk.id,
+                    version_no=1, certificate_number="OLD-DDK",
+                    issuance_history_text="Historical free text is not two versions",
+                )
+                new = BusinessEligibilityVersion(
+                    business_eligibility_certificate_id=canonical_ddk.id,
+                    version_no=2, certificate_number="NEW-DDK",
+                    business_activity_text="New DDK activity",
+                )
+                site_gmp = Certificate(site_id=site.id, certificate_type="GMP")
+                session.add_all([old, new, site_gmp])
+                session.flush()
+                session.add(BusinessEligibilityCertificateLink(
+                    business_eligibility_version_id=old.id,
+                    certificate_id=site_gmp.id,
+                    link_role="source_certificate",
+                ))
+                session.commit()
+                history = CatalogReadService().get_business_eligibility_version_history(
+                    session, business_eligibility_certificate_id=canonical_ddk.id,
+                )
+                assert history["latest_version_id"] == new.id
+                assert [v["version_no"] for v in history["versions"]] == [2, 1]
+                assert history["versions"][0]["stored_link_records"] == []
+                assert history["versions"][0]["business_activity_text"] == "New DDK activity"
+                assert history["versions"][1]["issuance_history_text"] == (
+                    "Historical free text is not two versions"
+                )
+                assert len(history["versions"][1]["stored_link_records"]) == 1
+                assert history["versions"][1]["stored_link_records"][0]["certificate_id"] == site_gmp.id
+                assert history["gxp_source_tokens_included"] is False
+                assert history["canonical_link_status"] == "stored_fk_only_not_validated"
+                assert len(history["versions"]) == 2
             with engine.connect() as conn:
+                # Canonical GxP link is an explicit test seed, not an importer result.
                 assert conn.execute(text(
                     "SELECT count(*) FROM public.business_eligibility_certificate_link"
-                )).scalar_one() == 0
+                )).scalar_one() == 1
+                assert conn.execute(text(
+                    "SELECT count(*) FROM public.business_eligibility_gxp_reference_evidence"
+                )).scalar_one() == 2
             rerun = apply_sealed_plan(engine, plan)
             assert rerun["status"] == "SOURCE_PROVENANCE_ALREADY_MATCHES_PLAN"
             assert rerun["inserted_groups"] == rerun["inserted_tokens"] == 0

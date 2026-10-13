@@ -122,7 +122,7 @@ def test_rehearsal_deploy_accepts_known_forward_0022_to_0023_without_pre_migrati
     """Rehearsal deploy owns upgrade head; its preflight must allow 0022."""
     assert expected_alembic_head_revision() == "20261012_0023"
     canonical_env = tmp_path / "runtime.env"
-    canonical_env.write_text("DB_NAME=gxp_qlcl\\n", encoding="utf-8")
+    canonical_env.write_text("DB_NAME=gxp_qlcl\n", encoding="utf-8")
     canonical_url = _prepare_target_db(tmp_path / "prod.db")
     target_url = production_import._target_database_url(
         canonical_url, rehearsal_deploy.DEFAULT_REHEARSAL_TARGET_DB

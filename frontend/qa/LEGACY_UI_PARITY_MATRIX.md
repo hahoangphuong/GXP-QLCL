@@ -250,6 +250,78 @@ mount only while the disclosure is open, keeping the closed search DOM compact;
 opening/closing still has no query or mutation effect. Native disclosure, desktop
 pane geometry and certificate tab round-trips were checked in the fixture browser.
 
+## Mobile web-shell overflow slice — 2026-10-13
+
+Baseline: f3ddd44b233836a14b45d5d4584b18a02172ebc7 (the supplied checkpoint
+has one extra trailing `c`; local/remote/PR agree on this 40-character SHA).
+This section supersedes the historical ~9px header limitation recorded below.
+The accepted desktop web shell remains outside VBA form styling (exception C6).
+
+DOM diagnosis: at viewport 390 the document clientWidth is 375 and scrollWidth
+384. Header identity flex item shrinks to 128.63px while its contents need about
+150px; logout ends at x=384.46, past the document boundary. The nowrap brand
+subtitle also paints outside its shrunken copy box into navigation. At 375 the
+document is 360px wide but scrollWidth reaches 375px. No workspace pane is the
+owner of this header overflow. Source-history audit: 9b1ef335 changed the narrow
+topbar from grid to a non-wrapping flex row; its parent used grid. This locates
+the relevant structural change, not a claim of a historical browser bisect.
+
+Fix only in styles.css, existing max-width:760px header owner: wrap the topbar's
+groups, bound their width, let brand/identity text wrap, and preserve logo/button
+widths. No body/parent overflow hiding, positioning workaround or duplicate
+header. Header order, content, route links, auth/RBAC handlers and focus order
+remain unchanged; mobile groups occupy additional rows instead of compressing
+their children. Desktop geometry is identical at 1366/1920. Master/rail/actions,
+history, six workflow tabs, General Information, certificate owners, scope tabs
+and all business/data/document/concurrency state are untouched.
+
+| Viewport | Before clientWidth / scrollWidth | After clientWidth / scrollWidth |
+| --- | --- | --- |
+| 390x844 | 375 / 384 — FAIL | 375 / 375 — PASS |
+| 375x812 | 360 / 375 — FAIL | 360 / 360 — PASS |
+| 1366x768 | 1366 / 1366 — PASS | 1366 / 1366 — PASS |
+| 1920x1080 | 1920 / 1920 — PASS | 1920 / 1920 — PASS |
+
+Regression: qa/headerOverflowRegression.js is a read-only real-browser probe;
+wrap its function source as an invoked expression in browser evaluate. It
+asserts document.scrollWidth <= document.clientWidth, checks header element
+boundaries (1px fractional geometry tolerance, no document-width tolerance),
+and rejects mobile clipping on html/body/root/shell/header. The same assertions
+fail on both mobile baselines, then pass twice at all four viewports. jsdom has
+no layout engine: these are actual fixture-browser checks, not fabricated
+jsdom widths or an automatically executed CI browser suite. Breakpoint 760/761
+also passes (745/745 and 761/761). Desktop header box measurements match exactly
+before/after, checking the unaffected side of the responsive change.
+
+Actual App + synthetic API fixture: Tab/Shift+Tab between navigation links;
+Arrow/Enter selects the exact linked certificate; F2 opens a dossier draft,
+viewport resize retains it, Escape cancels without a save. Six workflow tabs
+and General Information/Facility GPs/Facility ĐĐK/history round-trips remain
+375/375. F6 has no header behavior; the empty fixture document list cannot
+prove populated document F6 behavior, covered by existing document tests.
+Counters: one search/site/Case read for initial context; deliberate Facility
+certificate visits use their own list/detail/basis requests once; zero mutations,
+no duplicate workspace read due to resizing or focus/tab navigation.
+
+Local evidence outside Git: shell-before/after-375/390/1366/1920.png,
+shell-before/after-measurements.json, shell-regression-repeat.json and
+shell-request-counts.json. EVIDENCE_MISSING remains for live Google OIDC/GIS
+iframe rendering, real-backend integration, binary storage and screen-reader
+acceptance; no claim of production UAT or full legacy parity. Existing missing
+RecordForm/picker/expanded Case/version-history evidence is unchanged; no work
+on those independent scopes. No backend/DB/API/storage/RBAC/data change,
+merge/cherry-pick/rebase or deployment.
+
+Validation: typecheck, lint, production build and all 346 tests / 27 files PASS.
+Related tab/history/document/modal files pass 34 tests in each of two completed
+targeted runs. One overlapping diagnostic invocation was stopped before completion;
+the completed runs and full suite above have no failed tests or timeout changes.
+Browser geometry assertions: two expected mobile baseline failures, then eight
+PASS checks across two complete four-viewport runs. Existing act warnings remain
+non-failing. This probe is not loaded by the production App. Diff is three files;
+pre-existing untracked files are preserved. Next: authorized staging and live
+OIDC/screen-reader verification; independent legacy evidence gaps remain separate.
+
 ## Case ĐĐK read-only visual/interaction slice — 2026-10-12
 
 Baseline: c841098ac390d331c4f4fd62deaa8be45f651459. Runtime image 6 is the

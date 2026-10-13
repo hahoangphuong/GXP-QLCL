@@ -2232,6 +2232,13 @@ tr:focus-visible {
 }
 
 @media (max-width: 760px) {
+  /* Keep intrinsic header content inside its own flex row; never clip the page. */
+  .topbar { flex-wrap: wrap; }
+  .topbar > *, .topbar .auth-cluster-compact { max-width: 100%; }
+  .topbar .brand-copy span { white-space: normal; }
+  .topbar .auth-label { min-width: 0; overflow-wrap: anywhere; }
+  .topbar :is(.app-logo, button) { flex-shrink: 0; }
+
   body {
     overflow: auto;
   }

@@ -250,6 +250,80 @@ mount only while the disclosure is open, keeping the closed search DOM compact;
 opening/closing still has no query or mutation effect. Native disclosure, desktop
 pane geometry and certificate tab round-trips were checked in the fixture browser.
 
+## Facility GPs read-layout slice — 2026-10-13
+
+Baseline: `c7becfe71b367bea9ccdc5561d48da9015ca74ae`, matching local,
+remote and OPEN/DRAFT PR #3 before edits. The pre-existing untracked
+`Verify-GxpLegacyCertificateLinks.ps1` is preserved. This is Facility GPs;
+Case GPs, both ĐĐK owners and the other workflow tabs are unchanged.
+
+Evidence: supplied runtime image 7 (Facility GPs), not images 5/8 (Case).
+`MainForm.frm` DataCC2 maps number, issue/expiry dates, scope, facility/address,
+company/headquarters, standard, status, issuer and limitation to the corresponding
+read controls. `UpdateCCGPsItem` clears prior values before loading the selected
+list row through `UpdateCCGPsItem_Row` / `Load_row2CCCtrlsDs`. FRX control names
+in the source archive confirm edMaCCDs, edCCCapDs, edCCHHDs, edTieuchuanCC,
+edPviCC, edGioihanCC and edCoquanCap. No workbook writes are reproduced.
+
+Last-correct/first-incorrect presentation boundary: the existing canonical fields
+and order were already correct. The generic certificate breakpoint collapsed the
+four-field Facility header at 1366px, and the flat body did not provide the large
+scope/limitation areas or issuer-left/status-and-source-right footer seen in image
+7. This identifies the current owner boundary, not a historical commit bisect.
+
+The Facility-only renderer now groups those same values, retains cyan read fields,
+uses the evidenced pale-yellow standard field, and preserves multiline standards
+without splitting or classifying them. Its header stays four columns at 1366 and
+1920, with stacked narrow layouts and independent desktop list/detail scrolling.
+Case rendering and mutation/state owners are untouched. Selected snapshot scope
+records are displayed separately below the primary legacy form, in API array
+order, keyed by scope UUID; summary text remains intact. No summary-to-record,
+language, version, provenance or GxP-group inference is introduced.
+
+Browser fixture geometry (viewport width: document client/scroll width, before →
+after): 1920: 1920/1920 → 1920/1920; 1366: 1366/1366 → 1366/1366;
+390: 375/375 → 375/375; 375: 360/360 → 360/360. The 15px difference is the
+vertical scrollbar, not horizontal overflow. At 1366, header field y coordinates
+change from 359/359/390/390 to 363/363/363/363; at 1920 they remain one row.
+Case GPs header geometry at 1366 is exactly unchanged. Captures and geometry JSON
+are outside Git under `facility-gps-before-*` / `facility-gps-after-*`.
+
+Fixture interactions: same-number UUID A/B selection via Enter/Space; ArrowDown
+changes focus with identical request counters; pending A replaced by B, then late
+A released without overwriting B; production_line_id changes to line-uuid-2 with
+only its certificate/scope, then returns to line-uuid-1. Refresh and Forward
+restore the canonical line-B URL. Selection changes use the existing replace URL
+behavior: Back exits to the prior browser entry, rather than fabricating a history
+entry per row. Facility/Case tab round-trip retains canonical history context.
+The one explicit test save sends B's expected_version 9 and its scope record;
+pending Tab/Shift+Tab/Escape retain modal focus. Fixture 409 keeps the draft,
+disables retry, and Escape returns focus to the trigger. No navigation mutation
+occurs; the final counter contains exactly that one intentional PUT. The fixture
+intercepts metadata/mutations only and writes no business data.
+
+Regression: presentation test failed on baseline (1 FAIL / 13 PASS), then passed;
+an additional test preserves raw multiline standards/summary, long text, limits
+and null values without invented tabs/documents. A first run of the new multiline
+test exposed Testing Library text normalization; its assertion now checks exact
+DOM textContent so newlines are verified rather than normalized away. Both final
+targeted runs pass 54/54 across five files, including Case issuance/ĐĐK,
+document ownership and dialog focus. Typecheck, lint, full suite (351 tests / 27
+files, 0 failures) and production build PASS. No timeout/test-skip changes. The
+previous CAPA date-field CI flake did not occur in this local full run.
+
+EVIDENCE_MISSING / remaining differences: API does not expose a complete immutable
+CertificateVersion history and per-historical-version scope snapshots. row_version
+and latest_flag are not treated as version IDs. Runtime placement of structured
+scope records is not evidenced; they remain a canonical web addition below the
+form. Existing authoritative StatusBadge is retained instead of inventing legacy
+red/full-field status colors or completion ticks. Legacy document/source commands,
+all-lines controls and certificate creation/reissue/replacement controls are not
+added without contracts. Existing edit readiness/RBAC/expected_version are retained.
+No provenance groups are assumed: VM uses gxp_legacy_rehearsal and migration
+20261012_0023 is BLOCKED for runtime compatibility. Real-backend integration,
+binary storage, screen-reader UAT and production UAT remain unverified. No backend,
+API, database, migration, storage or authorization changes are part of this slice.
+
 ## Facility ĐĐK read-layout slice — 2026-10-13
 
 Baseline: bd0f1c773f71aa3ddb6babf437d490d3680fd906; local/remote/PR agree,

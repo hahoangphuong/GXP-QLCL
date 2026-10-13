@@ -37,6 +37,44 @@ function renderWorkspace(onEditLatestVersion = vi.fn().mockResolvedValue(undefin
 }
 
 describe("GxP certificate keyboard and identity", () => {
+  it("keeps the Facility horizontal header, identity/scope prominence and issuer/status/source footer distinct from Case", () => {
+    renderWorkspace();
+    const owner = document.querySelector(".facility-gxp-workspace");
+    expect(owner).not.toBeNull();
+    expect(Array.from(owner!.querySelectorAll(".legacy-certificate-heading .detail-label"), node => node.textContent))
+      .toEqual(["Số GCN", "Ngày cấp", "Hết hạn", "Tiêu chuẩn"]);
+    expect(Array.from(owner!.querySelectorAll(".facility-gxp-identity .detail-label"), node => node.textContent))
+      .toEqual(["Tên cơ sở", "Địa chỉ cơ sở", "Tên công ty", "Trụ sở"]);
+    expect(owner!.querySelector(".facility-gxp-scope")).toHaveTextContent("Display-only summary");
+    expect(owner!.querySelector(".facility-gxp-limitation")).toHaveTextContent("Giới hạn");
+    expect(owner!.querySelector(".facility-gxp-footer .facility-gxp-issuer")).toHaveTextContent("Cơ quan cấp");
+    expect(owner!.querySelector(".facility-gxp-footer .facility-gxp-status-source")).toHaveTextContent("Nguồn gốc");
+    expect(owner!.querySelectorAll(".facility-gxp-scope-records li")).toHaveLength(2);
+    expect(screen.getByText("Phạm vi Alpha")).toBeInTheDocument();
+    expect(screen.getByText("Scope Beta")).toBeInTheDocument();
+    expect(owner!.querySelectorAll('[role="tab"], .document-workspace')).toHaveLength(0);
+  });
+  it("retains raw multiline standards, long scope/limitation and null metadata without inventing version navigation", () => {
+    const current = detail();
+    current.applicable_standard = "WHO-GMP\nEU-GMP";
+    current.scope_summary = "Summary\n" + "LongScopeText".repeat(60);
+    current.limitation_text = "First limitation\nSecond limitation";
+    const select = vi.fn();
+    const save = vi.fn();
+    const { container } = render(<GxpCertificateWorkspace items={items} detail={current}
+      detailError={null} detailLoading={false} listError={null} listLoading={false}
+      selectedCertificateId="cert-1" onSelectCertificate={select} onEditLatestVersion={save}
+      onPromoteCurrent={vi.fn()} promotionError={null} promotionPending={false} />);
+    expect(container.querySelector(".legacy-certificate-heading .detail-field:last-child strong")?.textContent).toBe(current.applicable_standard);
+    const summary = container.querySelector(".facility-gxp-scope .multiline-value");
+    expect(summary).toHaveClass("multiline-value");
+    expect(summary?.textContent).toBe(current.scope_summary);
+    expect(screen.getByText("First limitation Second limitation")).toHaveClass("multiline-value");
+    expect(screen.getAllByText("Chưa có").length).toBeGreaterThan(0);
+    expect(container.querySelectorAll('[role="tab"], .document-workspace')).toHaveLength(0);
+    expect(select).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+  });
   function keyboardProps() {
     const props = { items, detail: detail(), listLoading: false, listError: null, selectedCertificateId: "cert-1", onSelectCertificate: vi.fn(), detailLoading: false, detailError: null, onPromoteCurrent: vi.fn(), promotionError: null, promotionPending: false, onEditLatestVersion: vi.fn() };
     return { ...props, items: [items[0], { ...items[0], certificate_id: "cert-1-2" }] };

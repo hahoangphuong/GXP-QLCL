@@ -2910,3 +2910,29 @@ tr:focus-visible {
   .legacy-search-page .facility-ddk-professional-primary, .legacy-search-page .facility-ddk-replacements { grid-template-columns: minmax(0, 1fr); }
   .legacy-search-page .facility-ddk-detail :is(.facility-ddk-identity, .facility-ddk-professionals, .facility-ddk-activity, .facility-ddk-status, .facility-ddk-additional) > .detail-field { grid-template-columns: 100px minmax(0, 1fr); }
 }
+
+/* Facility GPs image 7; Case GPs uses its existing vertical presentation. */
+.legacy-search-page .facility-gxp-workspace :is(.master-list-pane, .detail-pane) { overflow: auto; }
+.legacy-search-page .facility-gxp-workspace .master-list-pane > .table-scroll-history { flex: 1; min-height: 140px; }
+.legacy-search-page .facility-gxp-fields .legacy-certificate-heading { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.legacy-search-page .facility-gxp-fields .legacy-certificate-heading .detail-value-slot strong { white-space: pre-wrap; }
+.legacy-search-page .facility-gxp-fields .legacy-certificate-heading > .detail-field:last-child .detail-value-slot { background: #ffffc0; }
+.legacy-search-page .facility-gxp-fields .detail-field { display: grid; grid-template-columns: 140px minmax(0, 1fr); align-items: start; gap: 4px; margin: 4px 0; }
+.legacy-search-page .facility-gxp-fields .legacy-certificate-heading .detail-field { grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+.legacy-search-page .facility-gxp-fields .detail-value-slot > strong { font-weight: 400; }
+.legacy-search-page .facility-gxp-fields :is(.detail-value-slot, li) { min-width: 0; overflow-wrap: anywhere; }
+.legacy-search-page .facility-gxp-scope .detail-value-slot { min-height: 155px; }
+.legacy-search-page .facility-gxp-limitation .detail-value-slot { min-height: 65px; }
+.legacy-search-page .facility-gxp-footer { display: grid; grid-template-columns: 1fr 1.3fr; gap: 8px; }
+.legacy-search-page .facility-gxp-issuer .detail-value-slot { min-height: 75px; }
+.legacy-search-page .facility-gxp-scope-records { border-top: 1px solid #aaa; padding-top: 5px; }
+.legacy-search-page .facility-gxp-scope-records li { margin: 4px 0; }
+.legacy-search-page .facility-gxp-scope-records li > :is(strong, span) { display: block; margin: 2px 0; }
+@media (max-width: 1100px) {
+  .legacy-search-page .facility-gxp-workspace .master-list-pane > .table-scroll-history { flex: none; }
+  .legacy-search-page .facility-gxp-fields .legacy-certificate-heading { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .legacy-search-page .facility-gxp-fields .legacy-certificate-heading, .legacy-search-page .facility-gxp-footer { grid-template-columns: minmax(0, 1fr); }
+  .legacy-search-page .facility-gxp-fields .detail-field { grid-template-columns: 100px minmax(0, 1fr); }
+}

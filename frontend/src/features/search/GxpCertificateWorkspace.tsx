@@ -182,7 +182,7 @@ export function GxpCertificateWorkspace({
   }
 
   return (
-    <div className="certificate-workspace-split master-detail-split master-detail-split-certificate">
+    <div className="certificate-workspace-split master-detail-split master-detail-split-certificate facility-gxp-workspace">
       <section className="panel panel-tight certificate-list-panel master-list-pane">
         <div className="panel-header">
           <h3>Danh mục GCN GxP</h3>

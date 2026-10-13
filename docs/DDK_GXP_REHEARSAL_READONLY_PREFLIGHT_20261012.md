@@ -100,6 +100,52 @@ guarded, exact-target execution with a post-migration schema/count check.
 **No schema apply or source-data load was approved by the supplied
 read-only query output.**
 
+## Guarded schema-only migration tool — prepared, NOT executed
+
+The owner-accepted live VM preflight reports Alembic `20261008_0022`
+and both new tables absent. The reviewed **source-derived** offline
+migration SQL is available separately with SHA-256
+`0aafa71accd6795e7e2e89c83985b63a4490463cbd7f3ee6f4aeca358fee561a`.
+
+`scripts/apply_ddk_gxp_0023_rehearsal_guarded.py` is a Python3-standard-
+library-only **explicitly gated** schema migration executor for this exact
+reviewed artifact. It **defaults to NO WRITE** and rejects any source bytes
+not matching the pinned SHA-256. It strips only the SQL artifact's own
+`BEGIN/COMMIT`, then uses one PostgreSQL `SERIALIZABLE` transaction
+containing the original Alembic SQL. A first server-side DO guard requires
+the correct database, source revision `0022`, and *both provenance tables
+absent*. It locks `alembic_version` while applying. A final guard requires
+`0023`, both source-only tables present, and **zero rows** in both before
+COMMIT. If any SQL/guard fails, `psql -v ON_ERROR_STOP=1` returns nonzero;
+no success message is issued and the transaction is rolled back by PostgreSQL.
+The tool uses **only** the VM-local Unix socket
+`/var/run/postgresql`, PostgreSQL role `postgres`, and exact database
+`gxp_legacy_rehearsal`; it has no direct access to production `gxp_qlcl`
+via command parameters.
+
+Run in an **isolated directory**, not the VM runtime worktree. Obtain only
+the exact reviewed SQL artifact and script from the PR #7 checkpoint;
+verify their SHA-256 locally. Neither Python packages nor Alembic are
+needed on the VM for this offline-reviewed artifact.
+
+Default no-write review:
+
+```bash
+python3 /tmp/apply_ddk_gxp_0023_rehearsal_guarded.py \
+  --sql-file /tmp/GXP_DDK_0023_OFFLINE_POSTGRESQL_REVIEW.sql
+```
+
+Only after the database owner explicitly approves this **schema-only**
+write, the operator may add `--apply --confirm-target gxp_legacy_rehearsal`
+to the above command. This extra CLI confirmation is an execution guard,
+not a substitute for authorization. **No one has executed this apply step
+as part of the current PR/workflow.** Do not substitute `alembic upgrade
+head` or execute the standalone SQL unguarded. A successful command
+would still require an independent new read-only VM query confirming
+revision `0023`, both tables present and both counts **0**. Data
+population (3,120 source groups + 861 tokens) and any canonical Certificate
+linkage remain separate approvals.
+
 ## Fast VM-native check without moving the source payload
 
 Before arranging a complete plan/JSON upload to the VM, a simpler

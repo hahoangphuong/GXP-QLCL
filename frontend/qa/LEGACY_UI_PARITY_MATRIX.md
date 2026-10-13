@@ -7,6 +7,69 @@ evidenced. Baseline: `50576b0b383161e26e27b6cdc4a1a469aff1ae17`; work branch:
 
 ## Evidence closure and staging-readiness audit — 2026-10-13
 
+### Authorized rehearsal follow-up — 2026-10-13
+
+Baseline `e5a7dc764b2049b3466fbd8b59db07b12066564e`: local/remote/PR #3 agree,
+OPEN/DRAFT, pre-existing untracked script preserved. User authorization now
+covers the existing `gxp-web-prod` VM and `gxp_legacy_rehearsal` database. The
+user confirms schema `20261012_0023`, 3,120 source-only ĐĐK groups (780 per
+GMP/GLP/GSP/GDP), 861 reference tokens and no new canonical Certificate links.
+This supersedes migration-BLOCKED notes; it does not establish an API contract.
+
+`VERIFIED` live runtime boundary: Google Cloud CLI was found in Ubuntu/WSL;
+control-plane discovery verified the VM and zone. IAP with an existing SSH key
+and strict known-host validation connected without IAM/auth/config changes.
+FastAPI listens on VM loopback port 8000. `/healthz` and `/readyz` return 200,
+schema `20261012_0023` is current; `/app/status` confirms Google OIDC,
+`gxp_legacy_rehearsal` and deployment `f96d9336fde453ac50db04f6b3df2193a03e5035`.
+Tooling SHA `2ef975901592125f897767a2c920d7858d87f54d` is not assumed deployed.
+No-token `/auth/me` and `/search/facilities?limit=1` return 401. The actual PR #3 source was served through a
+loopback read-only proxy and rendered the login boundary at all four viewports:
+client/scroll widths 1920/1920, 1366/1366, 390/390 and 375/375.
+Google sign-in rejects `http://127.0.0.1:4173` with "The given origin is not
+allowed for the given client ID". The live API-client probe reports BLOCKED/401
+after two reads. Authenticated nine-workspace UI remains `REAL_BACKEND_NOT_VERIFIED`:
+it requires an approved OAuth origin and interactive sign-in with a provisioned
+account. No token/stub-auth injection or OAuth/RBAC change was used.
+
+Prepared a repeatable, development-only harness (`qa/REHEARSAL_READ_ONLY.md`,
+`qa/rehearsal.vite.config.ts`, `qa/rehearsal.html`, `src/qa/rehearsalSmoke.ts`,
+`src/qa/rehearsalProxy.ts`). It uses the existing API client/OIDC session, forces
+same-origin loopback proxying, explicitly strips /api only for direct FastAPI
+(matching VM Nginx's route mapping), rejects live header_stub, and blocks non-GET/HEAD
+API/health requests before forwarding. No auth headers are injected in live
+mode. Reports omit record values/IDs, cookies/tokens and backend error detail.
+The bounded probe uses selected Site/ProductionLine/Case/Certificate/document
+identity and distinct rendition/version IDs; repeated document UUIDs are read
+once while different UUIDs sharing numbers/filenames stay distinct. Overlapping
+probe runs are rejected. Empty/unavailable data is explicitly SKIPPED, not live
+PASS; `READ_API_PASS` never declares browser UI or binary verification.
+
+Synthetic upstream browser validation of the actual current frontend through
+this proxy: nine surfaces activated at 1920×1080, 1366×768, 390×844 and 375×812.
+Document client/scroll widths were 1920/1920, 1366/1366, 375/375 and 360/360.
+Canonical history/line URL selection remained present across workflow steps.
+The browser probe passed with 10 GETs, `FIXTURE_ONLY`, `uiVerified=false`,
+`binaryVerified=false`. The older local fixture initially lacked evaluation_scope;
+the strict owner check failed, then passed after adding its canonical empty shape
+to the temporary fixture only. No product fallback or weakened assertion was used.
+A local POST returned 405 and upstream counters stayed identical. Arrow/Home/End
+changed history focus with identical upstream counters and unchanged selection URL.
+Sanitized evidence is outside Git as `rehearsal-tooling-*`.
+
+Provenance groups and immutable CertificateVersion/historical scopes remain
+`BACKEND_CONTRACT_PENDING`; RecordForm/picker/color/tick semantics remain
+`LEGACY_RUNTIME_EVIDENCE_MISSING`. All nine live workspace checks, live
+authenticated 403/network/409 behavior, real binary storage and speech verification remain
+`STAGING_VALIDATION_PENDING`. No frontend product defect was identified; no
+business component, API contract, backend, database, storage or RBAC changed.
+
+Validation: final targeted runner/API tests pass 55/55 twice (23 new harness
+tests plus 32 existing API-client tests). Typecheck, lint and production build
+PASS; final full frontend suite passes 374/374 in 28 files. Existing React act
+warnings remain; no final test failures occurred. No timeouts, product assertions
+or concurrency behavior were relaxed.
+
 Baseline: `c02718f54029f3fae49104629dd071c152e60502`. Local, remote and
 OPEN/DRAFT PR #3 matched before this read-only audit. The pre-existing untracked
 `Verify-GxpLegacyCertificateLinks.ps1` remains untouched.
@@ -15,7 +78,7 @@ OPEN/DRAFT PR #3 matched before this read-only audit. The pre-existing untracked
 | --- | --- | --- |
 | Current Facility/Case GPs certificate identity and scope snapshot | `VERIFIED` | `GxpCertificateDetailRead` and the matching TypeScript type expose canonical certificate UUID, Site/Case/ProductionLine identity, `row_version`, `latest_flag`, scalar certificate values, `scope_summary`, ordered `scopes[]` with scope UUIDs, limitation, status and readiness. The detail service loads scopes only for the selected latest CertificateVersion. Existing Facility and Case owners consume that response without deriving IDs from certificate number, filename or text. |
 | Immutable CertificateVersion history | `BACKEND_CONTRACT_PENDING` | `CertificateVersion` and `CertificateScope.certificate_version_id` exist in persistence, but catalog routes expose only `/sites/{site_id}/gxp-certificates` and `/certificates/{certificate_id}`. Both query `is_latest_version=true`; their response models omit version UUID/history and historical scope snapshots. `row_version` is only an optimistic concurrency token and `latest_flag` identifies the current Certificate aggregate. The frontend cannot build a truthful version-history UI from the current contract. |
-| Facility ĐĐK GMP/GLP/GSP/GDP source groups | `BACKEND_CONTRACT_PENDING` | Current `BusinessEligibilityDetailRead` exposes scalar `business_activity_text` plus one flat `linked_gxp_certificates` list. It has no source-column group/provenance shape corresponding to `db.dkkd` O–R, S–V, W–Z and AA–AD. Migration `20261012_0023` remains blocked for runtime compatibility. The frontend keeps the flat canonical list and does not classify by certificate type, prose or link order. |
+| Facility ĐĐK GMP/GLP/GSP/GDP source groups | `BACKEND_CONTRACT_PENDING` | Current `BusinessEligibilityDetailRead` exposes scalar `business_activity_text` plus one flat `linked_gxp_certificates` list. It has no source-column group/provenance shape corresponding to `db.dkkd` O–R, S–V, W–Z and AA–AD. Superseded by the current user-provided VM result: source-only provenance import succeeded (3,120 groups, 780 per group; 861 reference tokens; no new canonical links). Live /readyz independently confirms current revision `20261012_0023`; source-import counts remain user-provided. The provenance API is still pending. The frontend keeps the flat canonical list and does not classify by certificate type, prose or link order. |
 | Canonical certificate actions | `VERIFIED` | GPs and ĐĐK issue/edit/promote controls are sourced from backend readiness, permissions and `expected_version`. Change-request successor actions have their own readiness identities. Existing 403/409/422 behavior and draft retention remain the owners of error handling; no legacy button is enabled from visual evidence alone. |
 | Canonical contextual document actions | `VERIFIED` | `ContextualDocumentActionRead` permits only `open`, `create` and `history`, with availability, disabled reason and required permissions from the backend. `DocumentDetail` exposes logical document UUID, rendition UUID and version UUID separately. Binary access remains through case/CAPA content endpoints and StorageService; the frontend has no path/NAS fallback. |
 | RecordForm / ExtRecordForm / picker command equivalence | `BACKEND_CONTRACT_PENDING` | VBA proves real side effects: RecordForm and ExtRecordForm generate/open documents; SelectCC/SelectDDK can delegate mutations; ChonMauCC/SelectFile browse legacy folders and templates. The current web mappings are DocumentService/StorageService, CertificationService and BusinessEligibilityService contracts. Commands outside existing readiness/action models require an approved backend owner before a web button can be added. |
@@ -23,7 +86,7 @@ OPEN/DRAFT PR #3 matched before this read-only audit. The pre-existing untracked
 | Current certificate scope/status display | `VERIFIED` | `scope_summary`, selected-version `scopes[]`, limitation and authoritative status are displayed without parsing prose or calculating status from dates. Multiple scope records retain API order and UUID identity. |
 | Historical scope and green completion strip / legacy status colors | `BACKEND_CONTRACT_PENDING` | Historical scope needs a version-history response. No per-stage completion projection exists for the legacy green ticks, and completion is not inferred from documents, dates or status text. Existing canonical lifecycle/readiness values remain unchanged. |
 | Exact runtime color/tick semantics | `LEGACY_RUNTIME_EVIDENCE_MISSING` | Supplied images show presentation, but no approved mapping ties the VBA colors/ticks to canonical states for every runtime condition. StatusBadge and workflow state remain authoritative. |
-| Authorized real staging | `STAGING_VALIDATION_PENDING` | Repository docs, local environment variables and QA handoff contain no approved staging URL, provisioned least-privilege test account or disposable synthetic dataset. `gxp-web-prod` is not treated as staging. No VM login, production/rehearsal data access, configuration change or mutation was attempted. |
+| Authorized real staging | `STAGING_VALIDATION_PENDING` | The follow-up user request authorizes `gxp-web-prod` / `gxp_legacy_rehearsal` for read-only rehearsal verification. WSL Google Cloud CLI + IAP + existing-key SSH verified healthy runtime, current schema 0023, Google OIDC and rehearsal DB identity. The local PR frontend reaches the login boundary, but Google rejects its local OAuth origin; authenticated nine-workspace UI remains unverified. No VM/OAuth configuration or mutation was performed. |
 
 No item is classified `FRONTEND_FIX_REQUIRED`: source/type/API-owner comparison and
 the current fixture pass found no unsupported display inference, duplicate owner
@@ -46,9 +109,9 @@ each exact document UUID and zero mutations. The disabled create/open controls
 follow backend availability. Captures, geometry and sanitized request counters are
 stored outside Git as `evidence-closure-*`.
 
-Fixture validation is `PASS`. Real backend/OIDC, actual binary storage, migration
-0023, assistive speech and production UAT remain `STAGING_VALIDATION_PENDING`; a
-DOM/accessibility-tree check is not a screen-reader PASS.
+Fixture validation is `PASS`. Authenticated real-backend UI/OIDC login, actual binary storage,
+assistive speech and production UAT remain `STAGING_VALIDATION_PENDING`.
+Schema 0023 is now independently confirmed by live /readyz; import counts remain user-provided. A DOM/accessibility-tree check is not a screen-reader PASS.
 
 Validation: the related ten-file target passes 242/242 twice. Typecheck and lint
 PASS. The final full run passes 351/351 in 27 files. Two earlier diagnostic full
@@ -374,7 +437,7 @@ red/full-field status colors or completion ticks. Legacy document/source command
 all-lines controls and certificate creation/reissue/replacement controls are not
 added without contracts. Existing edit readiness/RBAC/expected_version are retained.
 No provenance groups are assumed: VM uses gxp_legacy_rehearsal and migration
-20261012_0023 is BLOCKED for runtime compatibility. Real-backend integration,
+20261012_0023 is independently confirmed current by live /readyz; source-only import is user-confirmed successful and API provenance remains pending. Real-backend integration,
 binary storage, screen-reader UAT and production UAT remain unverified. No backend,
 API, database, migration, storage or authorization changes are part of this slice.
 

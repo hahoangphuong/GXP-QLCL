@@ -21,6 +21,7 @@ from backend.app.read_models import (
     FacilitySearchResultRead,
     FacilityWorkspaceRead,
     GxpCertificateDetailRead,
+    GxpCertificateVersionHistoryRead,
     GxpCertificateListRead,
     SiteDetailRead,
     SiteRead,
@@ -311,6 +312,16 @@ def register_catalog_routes(app, session_factory) -> None:
             )
         )
 
+    def get_gxp_certificate_version_history(
+        certificate_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        return GxpCertificateVersionHistoryRead(
+            **service.get_gxp_certificate_version_history(session, certificate_id=certificate_id)
+        )
+
     def get_gxp_certificate_detail(
         certificate_id: str,
         session: Session = dependency,
@@ -385,6 +396,13 @@ def register_catalog_routes(app, session_factory) -> None:
     app.add_api_route("/sites/{site_id}/workspace", get_facility_workspace, methods=["GET"], response_model=FacilityWorkspaceRead, tags=["catalog"])
     app.add_api_route("/sites/{site_id}/gxp-certificates", list_site_gxp_certificates, methods=["GET"], response_model=GxpCertificateListRead, tags=["catalog"])
     app.add_api_route("/certificates/{certificate_id}", get_gxp_certificate_detail, methods=["GET"], response_model=GxpCertificateDetailRead, tags=["catalog"])
+    app.add_api_route(
+        "/certificates/{certificate_id}/versions",
+        get_gxp_certificate_version_history,
+        methods=["GET"],
+        response_model=GxpCertificateVersionHistoryRead,
+        tags=["catalog"],
+    )
     app.add_api_route(
         "/sites/{site_id}/business-eligibility-certificates",
         list_site_business_eligibility_certificates,

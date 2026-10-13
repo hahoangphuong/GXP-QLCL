@@ -1663,6 +1663,83 @@ class CatalogReadService:
         )
         return {"items": items}
 
+    def get_gxp_certificate_version_history(
+        self,
+        session: Session,
+        *,
+        certificate_id: str,
+    ) -> dict[str, object]:
+        """Expose each stored CertificateVersion and its *own* stored scopes.
+
+        CertificateVersion.version_no and certificate_version_id identify a
+        version; Certificate.row_version and latest_flag have DIFFERENT roles.
+        Do not recompute status or copy current scopes into prior versions.
+        """
+        certificate = session.get(Certificate, certificate_id)
+        if certificate is None:
+            raise HTTPException(status_code=404, detail="Certificate not found")
+        CaseWorkflowService._validate_certificate_linked_case(session, certificate)
+        versions = list(session.scalars(
+            select(CertificateVersion)
+            .where(CertificateVersion.certificate_id == certificate.id)
+            .order_by(CertificateVersion.version_no.desc(), CertificateVersion.id.asc())
+        ))
+        latest = [v for v in versions if v.is_latest_version]
+        if len(latest) > 1:
+            raise HTTPException(
+                status_code=409,
+                detail="Certificate has ambiguous latest CertificateVersion identity.",
+            )
+        scoped: dict[str, list[CertificateScope]] = defaultdict(list)
+        if versions:
+            for scope in session.scalars(
+                select(CertificateScope)
+                .where(CertificateScope.certificate_version_id.in_([v.id for v in versions]))
+                .order_by(
+                    CertificateScope.certificate_version_id,
+                    CertificateScope.sort_order.asc(),
+                    CertificateScope.created_at.asc(),
+                    CertificateScope.id.asc(),
+                )
+            ):
+                scoped[scope.certificate_version_id].append(scope)
+        return {
+            "certificate_id": certificate.id,
+            "site_id": certificate.site_id,
+            "case_id": certificate.case_id,
+            "certificate_type": certificate.certificate_type,
+            "issuance_basis": certificate.issuance_basis,
+            "aggregate_latest_flag": certificate.latest_flag,
+            "latest_version_id": latest[0].id if latest else None,
+            "versions": [
+                {
+                    "certificate_version_id": version.id,
+                    "version_no": version.version_no,
+                    "row_version": version.row_version,
+                    "is_latest_version": version.is_latest_version,
+                    # NULL lifecycle means unproven imported legacy grant.
+                    "lifecycle_state": version.lifecycle_state,
+                    "certificate_number": version.certificate_number,
+                    "issue_date": version.issue_date,
+                    "expiry_date": version.expiry_date,
+                    "applicable_standard": version.applicable_standard,
+                    "issuing_authority": version.issuing_authority,
+                    "scope_summary": self._build_certificate_scope_summary(scoped[version.id]),
+                    "scopes": [
+                        {
+                            "id": scope.id,
+                            "scope_key": scope.scope_key,
+                            "scope_text": scope.scope_text,
+                            "language_code": scope.language_code,
+                            "sort_order": scope.sort_order,
+                        }
+                        for scope in scoped[version.id]
+                    ],
+                }
+                for version in versions
+            ],
+        }
+
     def get_gxp_certificate_detail(self, session: Session, *, certificate_id: str):
         certificate = session.get(Certificate, certificate_id)
         if certificate is None:

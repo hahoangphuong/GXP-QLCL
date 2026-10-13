@@ -566,6 +566,33 @@ class CertificateScopeDetailRead(BaseModel):
     sort_order: int
 
 
+class GxpCertificateHistoricalVersionRead(BaseModel):
+    # CertificateVersion UUID, never aggregate Certificate UUID.
+    certificate_version_id: str
+    version_no: int
+    row_version: int
+    is_latest_version: bool
+    lifecycle_state: str | None
+    certificate_number: str | None
+    issue_date: date | None
+    expiry_date: date | None
+    applicable_standard: str | None
+    issuing_authority: str | None
+    scope_summary: str | None
+    scopes: list[CertificateScopeDetailRead]
+
+
+class GxpCertificateVersionHistoryRead(BaseModel):
+    certificate_id: str
+    site_id: str
+    case_id: str | None
+    certificate_type: str
+    issuance_basis: str
+    aggregate_latest_flag: bool
+    latest_version_id: str | None
+    versions: list[GxpCertificateHistoricalVersionRead]
+
+
 class GxpCertificateDetailRead(BaseModel):
     certificate_id: str
     row_version: int

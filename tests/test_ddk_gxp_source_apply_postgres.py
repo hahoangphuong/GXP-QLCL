@@ -14,6 +14,10 @@ import sys
 
 import pytest
 from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
+
+from backend.app.db.models.phase1 import BusinessEligibilityCertificate, Company, Site
+from backend.app.services.catalog import CatalogReadService
 from sqlalchemy.engine import make_url
 
 from tools.apply_ddk_gxp_provenance_rehearsal import SourceLoadBlocked, apply_sealed_plan
@@ -158,6 +162,34 @@ def test_real_postgres_atomic_source_only_insert_retry_and_conflict():
                 assert conn.execute(text(
                     "SELECT count(*) FROM public.business_eligibility_gxp_reference_evidence"
                 )).scalar_one() == 2
+                assert conn.execute(text(
+                    "SELECT count(*) FROM public.business_eligibility_certificate_link"
+                )).scalar_one() == 0
+            # Real PostgreSQL read-model join: canonical DDK identity chooses
+            # the original physical workbook row; ID CC remains source only.
+            with Session(engine) as session:
+                company = Company(legal_name="Disposable source-only org")
+                session.add(company)
+                session.flush()
+                site = Site(company_id=company.id, site_name="Disposable source-only site")
+                session.add(site)
+                session.flush()
+                canonical_ddk = BusinessEligibilityCertificate(
+                    company_id=company.id, site_id=site.id, legacy_dkkd_id=400,
+                )
+                session.add(canonical_ddk)
+                session.commit()
+                evidence = CatalogReadService().get_business_eligibility_gxp_source_evidence(
+                    session, business_eligibility_certificate_id=canonical_ddk.id,
+                )
+                assert evidence["source_status"] == "available"
+                assert [g["source_group"] for g in evidence["groups"]] == ["GMP", "GLP", "GSP", "GDP"]
+                assert evidence["groups"][0]["certificate_scope_raw"] == " Sterile\n"
+                assert [t["token_index"] for t in evidence["groups"][0]["reference_tokens"]] == [1, 2]
+                assert evidence["groups"][3]["business_activity_raw"] == "Activity with no ID CC"
+                assert evidence["groups"][3]["reference_tokens"] == []
+                assert evidence["canonical_links_included"] is False
+            with engine.connect() as conn:
                 assert conn.execute(text(
                     "SELECT count(*) FROM public.business_eligibility_certificate_link"
                 )).scalar_one() == 0

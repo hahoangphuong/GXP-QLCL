@@ -141,14 +141,14 @@ def test_main_pid_argv_port_discovery_never_uses_nginx_port(monkeypatch):
     from pathlib import Path
     class Proc:
         def read_bytes(self):
-            return b"/opt/gxp/release/bin/uvicorn\\0backend.app.main:app\\0--host\\0127.0.0.1\\0--port\\08000\\0"
+            return b"\0".join([b"/opt/gxp/release/bin/uvicorn", b"backend.app.main:app", b"--host", b"127.0.0.1", b"--port", b"8000", b""])
     monkeypatch.setattr(Path, "read_bytes", lambda self: Proc().read_bytes())
     assert preflight._get_backend_port(2468) == 8000
 
 
 def test_main_pid_wrong_host_refused_before_readyz(monkeypatch):
     from pathlib import Path
-    monkeypatch.setattr(Path, "read_bytes", lambda self: b"uvicorn\\0--host\\00.0.0.0\\0--port\\08000\\0")
+    monkeypatch.setattr(Path, "read_bytes", lambda self: b"\0".join([b"uvicorn", b"--host", b"0.0.0.0", b"--port", b"8000", b""]))
     with pytest.raises(ValueError, match="loopback"):
         preflight._get_backend_port(2468)
 

@@ -1678,7 +1678,9 @@ class CatalogReadService:
         certificate = session.get(Certificate, certificate_id)
         if certificate is None:
             raise HTTPException(status_code=404, detail="Certificate not found")
-        CaseWorkflowService._validate_certificate_linked_case(session, certificate)
+        # Share the exact Case and canonical ProductionLine integrity gate
+        # with the existing current-certificate read model.
+        CaseWorkflowService._certificate_line_identity(session, certificate)
         versions = list(session.scalars(
             select(CertificateVersion)
             .where(CertificateVersion.certificate_id == certificate.id)

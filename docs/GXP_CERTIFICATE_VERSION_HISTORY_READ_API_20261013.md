@@ -10,7 +10,7 @@ Owner: `backend/app/api/routers/catalog.py` and
 The path requires a canonical aggregate `Certificate.id` UUID. It is not a
 legacy certificate integer or a version UUID. Access uses the existing
 catalog `ALLOWED_READ_ROLES`, the same authenticated user dependency and
-linked-Case integrity validation as `GET /certificates/{certificate_id}`.
+linked-Case / ProductionLine integrity validation as `GET /certificates/{certificate_id}`.
 
 Response: `GxpCertificateVersionHistoryRead`:
 

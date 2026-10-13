@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from backend.app.auth import build_authenticated_user, get_authenticated_user
 from backend.app.db.base import Base
 from backend.app.db.models.phase1 import (
-    Case, Certificate, CertificateScope, CertificateVersion, Company, Site,
+    Case, Certificate, CertificateScope, CertificateVersion, Company, Site, ProductionLine,
 )
 from backend.app.db.enums import CaseState
 from backend.app.main import create_app
@@ -211,6 +211,25 @@ def test_case_site_integrity_validated_before_history_exposure(tmp_path):
         foreign_site = session.scalar(select(Site).where(Site.id != cert.site_id))
         linked_case = session.get(Case, cert.case_id)
         linked_case.site_id = foreign_site.id
+        session.commit()
+        with pytest.raises(HTTPException) as invalid:
+            CatalogReadService().get_gxp_certificate_version_history(
+                session, certificate_id=cert_id,
+            )
+        assert invalid.value.status_code == 409
+    engine.dispose()
+
+def test_canonical_production_line_cross_site_rejected_like_current_detail(tmp_path):
+    engine, _, cert_id, _, _ = _seed(tmp_path)
+    with Session(engine) as session:
+        cert = session.get(Certificate, cert_id)
+        foreign_site = session.scalar(select(Site).where(Site.id != cert.site_id))
+        wrong_line = ProductionLine(
+            site_id=foreign_site.id, code="LINE-B", effective_from=date(2020, 1, 1),
+        )
+        session.add(wrong_line)
+        session.flush()
+        cert.production_line_id = wrong_line.id
         session.commit()
         with pytest.raises(HTTPException) as invalid:
             CatalogReadService().get_gxp_certificate_version_history(

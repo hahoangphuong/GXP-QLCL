@@ -100,6 +100,48 @@ guarded, exact-target execution with a post-migration schema/count check.
 **No schema apply or source-data load was approved by the supplied
 read-only query output.**
 
+## Post-migration independent read-only certification (prepared)
+
+After a **separately authorized** and successful 0022→0023 schema-only
+migration, run the exact new SQL script on the VM. It needs only psql and
+the SQL file from PR #7, not Python, SQLAlchemy or Alembic:
+
+```bash
+sudo -u postgres psql -X -v ON_ERROR_STOP=1 \
+  -h /var/run/postgresql -U postgres -d gxp_legacy_rehearsal \
+  -f /tmp/verify_ddk_gxp_0023_postflight_readonly.sql
+```
+
+The file is `scripts/verify_ddk_gxp_0023_postflight_readonly.sql`
+in the PR #7 checkout; copy **only** that reviewed SQL file to the
+specified temporary path rather than changing the runtime worktree.
+
+The independently executed `REPEATABLE READ READ ONLY` transaction
+fails closed unless ALL hold:
+
+- exact database `gxp_legacy_rehearsal`, read-only isolation verified;
+- exactly one Alembic revision row: `20261012_0023`;
+- the two source-only tables exist as ordinary PostgreSQL base tables;
+- group table has exactly 17 columns, token table exactly 7;
+- exact PostgreSQL column types and `NOT NULL` constraints, including
+  raw four-field source values, SHA-256 fingerprints and token fields;
+- group and reference primary/unique/check constraints, source natural
+  key and ordered-token unique key, exactly one token-to-group FK, no
+  foreign keys from group to Certificate/Case/Site/Version;
+- both migration-defined lookup indexes exist;
+- **0 source-group rows and 0 token-evidence rows**.
+
+Only this successful independent query may be reported as
+`PASS_SCHEMA_0023_SOURCE_ONLY_EMPTY`. A successful schema-only apply
+does not establish that 3,120 source groups or 861 token records have been
+loaded. This SQL expressly refuses any nonempty source-only tables and
+is **not** intended as a post-*data-load* check.
+
+Do not run postflight if migration has not been authorized and applied:
+the prior observed VM state is still Alembic `0022` with both tables
+absent. In that state the postflight must fail as designed; this is not
+an instruction to auto-apply schema.
+
 ## Guarded schema-only migration tool — prepared, NOT executed
 
 The owner-accepted live VM preflight reports Alembic `20261008_0022`

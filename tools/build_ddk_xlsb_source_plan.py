@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 import sys
 from typing import Any, Iterable
@@ -237,10 +238,16 @@ def main(argv: list[str] | None = None) -> int:
             expected_reference_tokens=a.expected_reference_tokens,
         )
         a.output.parent.mkdir(parents=True, exist_ok=True)
-        # Refuse to overwrite a previous sealed source plan.
-        with a.output.open("x", encoding="utf-8") as handle:
-            json.dump(plan, handle, ensure_ascii=False, indent=2)
-            handle.write("\n")
+        # Confidential original Excel cells: ensure mode 0600 regardless of
+        # operator umask, and never overwrite pre-existing evidence.
+        descriptor = os.open(a.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump(plan, handle, ensure_ascii=False, indent=2)
+                handle.write("\n")
+        except BaseException:
+            a.output.unlink(missing_ok=True)
+            raise
         print(json.dumps({
             "status": plan["status"],
             "source_workbook_sha256": plan["source_workbook_sha256"],

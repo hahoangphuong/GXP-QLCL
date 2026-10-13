@@ -105,10 +105,10 @@ directory under `/var/tmp` to keep the pinned backend runtime unchanged:
 ```bash
 # Use current checked-out PR #7 after CI success; the target file must exist.
 mkdir -p /var/tmp/gxp-ddk-tools-deps
-/opt/gxp/current-backend-venv/bin/python -m pip install \
+/opt/gxp/current-venv/bin/python -m pip install \
   --target /var/tmp/gxp-ddk-tools-deps pyxlsb==1.0.10
 PYTHONPATH=/var/tmp/gxp-ddk-tools-deps \
-  /opt/gxp/current-backend-venv/bin/python \
+  /opt/gxp/current-venv/bin/python \
   -m tools.build_ddk_xlsb_source_plan \
   --workbook "/tmp/gxp-lifecycle-input/Danh sách Kiểm tra GPs.xlsb" \
   --approved-exclusions-json artifacts/phase3q/confirmed_blanked_rows.json \
@@ -119,8 +119,8 @@ PYTHONPATH=/var/tmp/gxp-ddk-tools-deps \
   --output /var/tmp/gxp-ddk-source-only-plan.json
 ```
 
-The example `/opt/gxp/current-backend-venv` is a placeholder: resolve
-the actual VM virtual environment from existing deploy symlinks before use.
-Do not assume that path exists. Keep the output private and outside Git.
+The VM deploy contract's default current backend virtual environment link is
+`/opt/gxp/current-venv`. Check its executable on the VM before running.
+Keep the output private (created mode 0600) and outside Git.
 Once the plan is sealed and independently validated, the existing importer
 can read it by path on the same VM. No Windows PostgreSQL is involved.

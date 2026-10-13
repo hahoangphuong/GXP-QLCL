@@ -75,3 +75,52 @@ read-only database URL to confirm
 The importer never writes Certificate, CertificateVersion, Case,
 BusinessEligibilityVersion, Site or BusinessEligibilityCertificateLink.
 Physical source evidence remains separate from reviewed canonical links.
+
+## Native Linux/VM XLSB source path (when prior JSON exports are missing)
+
+The development VM may contain an earlier private copy of the original
+`Danh sách Kiểm tra GPs.xlsb` in `/tmp`. The prior private-file search
+did not cover that directory. Never assume a file survived; test existence
+and its SHA-256 against the source-owner accepted value first.
+
+The older `tools.audit_ddk_idcc_physical --workbook` path requires Windows
+Excel COM. Use `tools.build_ddk_xlsb_source_plan` on Linux instead. It reads
+the cached cells in the binary original with a VM-isolated `pyxlsb==1.0.10`
+dependency, reconstructs the four original group headings and their 16 raw
+cells by **physical** column, retains all ID CC tokens by original ordinal,
+validates the 830/50/861 accepted source baseline and the approved exclusion
+contract, and saves a sealed `DRY_RUN_ONLY_NOT_APPLIED` JSON load plan.
+The tool never opens PostgreSQL and does not modify the source workbook.
+
+The grouped and token evidence views are derived from one reader. This is
+explicitly recorded as `PYXLSB_CACHED_CELLS_SINGLE_READER`, with
+`independent_reader_verification=false` and
+`excel_com_formula_status=WAIVED_NOT_CHECKED`. It does not fabricate a
+COM/HasFormula PASS or independent-engine validation. Actual source workbook
+SHA and source population are required.
+
+If the original binary is present on VM, use a separate tool dependency
+directory under `/var/tmp` to keep the pinned backend runtime unchanged:
+
+```bash
+# Use current checked-out PR #7 after CI success; the target file must exist.
+mkdir -p /var/tmp/gxp-ddk-tools-deps
+/opt/gxp/current-backend-venv/bin/python -m pip install \
+  --target /var/tmp/gxp-ddk-tools-deps pyxlsb==1.0.10
+PYTHONPATH=/var/tmp/gxp-ddk-tools-deps \
+  /opt/gxp/current-backend-venv/bin/python \
+  -m tools.build_ddk_xlsb_source_plan \
+  --workbook "/tmp/gxp-lifecycle-input/Danh sách Kiểm tra GPs.xlsb" \
+  --approved-exclusions-json artifacts/phase3q/confirmed_blanked_rows.json \
+  --expected-workbook-sha256 c12537ea5a5c9f470e42fb5bdbe214f36983e310fceac7c560ad38885209fe3d \
+  --expected-ddk-rows 830 \
+  --expected-excluded-ddk-rows 50 \
+  --expected-reference-tokens 861 \
+  --output /var/tmp/gxp-ddk-source-only-plan.json
+```
+
+The example `/opt/gxp/current-backend-venv` is a placeholder: resolve
+the actual VM virtual environment from existing deploy symlinks before use.
+Do not assume that path exists. Keep the output private and outside Git.
+Once the plan is sealed and independently validated, the existing importer
+can read it by path on the same VM. No Windows PostgreSQL is involved.

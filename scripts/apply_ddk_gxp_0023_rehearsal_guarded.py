@@ -132,7 +132,35 @@ COMMIT;
 """
 
 
+def require_gxp_web_inactive() -> None:
+    """Block a schema-head change while the managed VM backend may use its DB.
+
+    This local systemd check is necessary but not sufficient: it cannot prove
+    that other processes or external clients are disconnected. An authorized
+    maintenance/deploy plan and independent database preflight are still required.
+    """
+    completed = subprocess.run(
+        [
+            "systemctl", "show", "gxp-web",
+            "--property=LoadState", "--property=ActiveState",
+            "--property=MainPID", "--no-pager",
+        ],
+        capture_output=True, text=True, check=False, timeout=8,
+    )
+    if completed.returncode != 0:
+        raise GuardFailure("Cannot verify gxp-web shutdown")
+    fields: dict[str, str] = {}
+    for line in completed.stdout.splitlines():
+        name, separator, value = line.partition("=")
+        if not separator or name in fields:
+            raise GuardFailure("Invalid gxp-web systemd state")
+        fields[name] = value
+    if fields != {"LoadState": "loaded", "ActiveState": "inactive", "MainPID": "0"}:
+        raise GuardFailure("gxp-web must be inactive before schema migration")
+
+
 def apply_transaction(sql: str) -> None:
+    require_gxp_web_inactive()
     # The only subprocess capable of contacting DB. No shell, no env database
     # fallback, explicit database and non-interactive privilege escalation.
     command = [

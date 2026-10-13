@@ -71,14 +71,20 @@ def test_explicit_apply_uses_only_local_socket_with_no_shell(tmp_path, monkeypat
     calls = []
     def fake_run(command, **kwargs):
         calls.append((command, kwargs))
+        if command[0] == "systemctl":
+            return SimpleNamespace(returncode=0, stdout="LoadState=loaded\nActiveState=inactive\nMainPID=0\n")
         return SimpleNamespace(returncode=0)
     monkeypatch.setattr(runner.subprocess, "run", fake_run)
     assert runner.main([
         "--sql-file", str(source), "--apply",
         "--confirm-target", "gxp_legacy_rehearsal",
     ]) == 0
-    assert len(calls) == 1
-    command, kw = calls[0]
+    assert len(calls) == 2
+    assert calls[0][0] == [
+        "systemctl", "show", "gxp-web", "--property=LoadState",
+        "--property=ActiveState", "--property=MainPID", "--no-pager",
+    ]
+    command, kw = calls[1]
     assert command == [
         "sudo", "-n", "-u", "postgres", "psql", "-X",
         "-v", "ON_ERROR_STOP=1", "-h", "/var/run/postgresql",
@@ -88,10 +94,58 @@ def test_explicit_apply_uses_only_local_socket_with_no_shell(tmp_path, monkeypat
     assert kw["input"].startswith("\\set ON_ERROR_STOP on\nBEGIN TRANSACTION")
 
 
+
+@pytest.mark.parametrize("state,main_pid,load_state,exit_code", [
+    ("active", "123", "loaded", 0),
+    ("activating", "123", "loaded", 0),
+    ("deactivating", "123", "loaded", 0),
+    ("failed", "0", "loaded", 0),
+    ("inactive", "123", "loaded", 0),
+    ("inactive", "0", "not-found", 0),
+    ("inactive", "0", "loaded", 1),
+])
+def test_apply_blocks_unsafe_or_unknown_systemd_state_before_database(
+    tmp_path, monkeypatch, capsys, state, main_pid, load_state, exit_code,
+):
+    source = _artifact(tmp_path, monkeypatch)
+    commands = []
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        if command[0] != "systemctl":
+            raise AssertionError("No PostgreSQL I/O is permitted while runtime is not quiesced")
+        return SimpleNamespace(
+            returncode=exit_code,
+            stdout=f"LoadState={load_state}\nActiveState={state}\nMainPID={main_pid}\n",
+            stderr="sensitive environment",
+        )
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    assert runner.main([
+        "--sql-file", str(source), "--apply",
+        "--confirm-target", "gxp_legacy_rehearsal",
+    ]) == 2
+    assert len(commands) == 1 and commands[0][0] == "systemctl"
+    result = capsys.readouterr()
+    assert "COMMITTED" not in result.out
+    assert "sensitive" not in result.err
+
+
+def test_apply_blocks_malformed_systemd_state_before_database(tmp_path, monkeypatch):
+    source = _artifact(tmp_path, monkeypatch)
+    def fake_run(command, **kwargs):
+        assert command[0] == "systemctl"
+        return SimpleNamespace(returncode=0, stdout="ActiveState=inactive\nMainPID=0\n")
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    assert runner.main([
+        "--sql-file", str(source), "--apply",
+        "--confirm-target", "gxp_legacy_rehearsal",
+    ]) == 2
+
+
 def test_apply_failure_does_not_claim_success_or_log_secrets(
     tmp_path, monkeypatch, capsys,
 ):
     source = _artifact(tmp_path, monkeypatch)
+    monkeypatch.setattr(runner, "require_gxp_web_inactive", lambda: None)
     monkeypatch.setattr(
         runner.subprocess, "run",
         lambda *args, **kwargs: SimpleNamespace(

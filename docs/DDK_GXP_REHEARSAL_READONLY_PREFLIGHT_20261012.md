@@ -230,6 +230,19 @@ a runtime observation, not approval for DDL/data writes.
 
 ## Guarded schema-only migration tool — prepared, NOT executed
 
+**Active-runtime shutdown safety gate (13 October):** the separate guarded
+`--apply` path now refuses to contact PostgreSQL unless `systemctl show gxp-web`
+reports exactly `LoadState=loaded`, `ActiveState=inactive`, `MainPID=0`.
+Malformed, unknown, active, activating or failed states all block. This check
+is read-only, reports no process/environment secrets, and is skipped entirely
+for default no-write review. It **does not authorize stopping the service**,
+prove other applications are disconnected, or replace a checked maintenance
+and rollback plan. The previously observed active `gxp-web` targeting rehearsal
+means migration remains BLOCKED. The normal `infra/vm/deploy_prod.sh` currently
+runs `alembic upgrade head` **before** release switching/restarting the old
+backend, so that deployment path also needs a separately reviewed schema/runtime
+coordination plan. Do not run it to work around this guard.
+
 The owner-accepted live VM preflight reports Alembic `20261008_0022`
 and both new tables absent. The reviewed **source-derived** offline
 migration SQL is available separately with SHA-256

@@ -1979,6 +1979,88 @@ class CatalogReadService:
         } for group in source_rows]
         return result
 
+    def get_business_eligibility_version_history(
+        self,
+        session: Session,
+        *,
+        business_eligibility_certificate_id: str,
+    ) -> dict[str, object]:
+        """Return saved DDK versions without manufacturing legacy history.
+
+        For ĐĐK, "latest" is max persisted version_no, not a per-version
+        is_latest flag. Version-specific FK link rows are *recorded facts*,
+        not approvals or inferred source ID CC/cross-site validity.
+        """
+        certificate = session.get(
+            BusinessEligibilityCertificate, business_eligibility_certificate_id,
+        )
+        if certificate is None:
+            raise HTTPException(status_code=404, detail="Business eligibility certificate not found")
+        versions = list(session.scalars(
+            select(BusinessEligibilityVersion)
+            .where(
+                BusinessEligibilityVersion.business_eligibility_certificate_id == certificate.id,
+            )
+            .order_by(
+                BusinessEligibilityVersion.version_no.desc(),
+                BusinessEligibilityVersion.id.asc(),
+            )
+        ))
+        links_by_version: dict[str, list[dict[str, object]]] = defaultdict(list)
+        if versions:
+            links = session.scalars(
+                select(BusinessEligibilityCertificateLink)
+                .where(
+                    BusinessEligibilityCertificateLink.business_eligibility_version_id.in_(
+                        [version.id for version in versions],
+                    )
+                )
+                .order_by(
+                    BusinessEligibilityCertificateLink.business_eligibility_version_id,
+                    BusinessEligibilityCertificateLink.certificate_id,
+                    BusinessEligibilityCertificateLink.id,
+                )
+            )
+            for link in links:
+                links_by_version[link.business_eligibility_version_id].append({
+                    "link_id": link.id,
+                    "certificate_id": link.certificate_id,
+                    "link_role": link.link_role,
+                })
+        # Every value here is stored on its own version. In particular,
+        # issuance_history_text is an original text field, NOT extra versions.
+        historical_fields = (
+            "certificate_number", "issued_on", "expires_on",
+            "professional_responsible_person_name", "quality_assurance_person_name",
+            "professional_qualification_text", "professional_license_number",
+            "professional_license_issued_on", "professional_license_issuer",
+            "responsible_license_issued_on", "responsible_license_issuer",
+            "decision_reference", "issuance_sequence_text", "issuance_history_text",
+            "business_activity_text", "current_status_text", "handled_by_name",
+            "application_dossier_reference", "notes",
+        )
+        return {
+            "business_eligibility_certificate_id": certificate.id,
+            "legacy_dkkd_id": certificate.legacy_dkkd_id,
+            "site_id": certificate.site_id,
+            "company_id": certificate.company_id,
+            "aggregate_latest_flag": certificate.latest_flag,
+            "latest_version_id": versions[0].id if versions else None,
+            "latest_selection_method": "max_persisted_version_no",
+            "gxp_source_tokens_included": False,
+            "canonical_link_status": "stored_fk_only_not_validated",
+            "versions": [
+                {
+                    "business_eligibility_version_id": version.id,
+                    "version_no": version.version_no,
+                    "row_version": version.row_version,
+                    **{key: getattr(version, key) for key in historical_fields},
+                    "stored_link_records": links_by_version[version.id],
+                }
+                for version in versions
+            ],
+        }
+
     def get_business_eligibility_detail(
         self,
         session: Session,

@@ -664,6 +664,52 @@ class BusinessEligibilityListRead(BaseModel):
     issue_readiness: BusinessEligibilityIssueActionReadinessRead | None = None
 
 
+class BusinessEligibilityHistoricalLinkRead(BaseModel):
+    # A persisted FK record at an exact DDK version. Not a validity decision.
+    link_id: str
+    certificate_id: str
+    link_role: str
+
+
+class BusinessEligibilityHistoricalVersionRead(BaseModel):
+    business_eligibility_version_id: str
+    version_no: int
+    row_version: int
+    certificate_number: str | None
+    issued_on: date | None
+    expires_on: date | None
+    professional_responsible_person_name: str | None
+    quality_assurance_person_name: str | None
+    professional_qualification_text: str | None
+    professional_license_number: str | None
+    professional_license_issued_on: date | None
+    professional_license_issuer: str | None
+    responsible_license_issued_on: date | None
+    responsible_license_issuer: str | None
+    decision_reference: str | None
+    issuance_sequence_text: str | None
+    issuance_history_text: str | None
+    business_activity_text: str | None
+    current_status_text: str | None
+    handled_by_name: str | None
+    application_dossier_reference: str | None
+    notes: str | None
+    stored_link_records: list[BusinessEligibilityHistoricalLinkRead]
+
+
+class BusinessEligibilityVersionHistoryRead(BaseModel):
+    business_eligibility_certificate_id: str
+    legacy_dkkd_id: int | None
+    site_id: str
+    company_id: str
+    aggregate_latest_flag: bool
+    latest_version_id: str | None
+    latest_selection_method: Literal["max_persisted_version_no"]
+    gxp_source_tokens_included: Literal[False]
+    canonical_link_status: Literal["stored_fk_only_not_validated"]
+    versions: list[BusinessEligibilityHistoricalVersionRead]
+
+
 class BusinessEligibilityGxpSourceReferenceRead(BaseModel):
     # Evidence row UUID, not a canonical Certificate UUID.
     source_reference_id: str

@@ -8,6 +8,7 @@ from backend.app.auth import ALLOWED_READ_ROLES, AuthenticatedUser, get_authenti
 from backend.app.api.session import get_session_from_request_factory
 from backend.app.read_models import (
     BusinessEligibilityDetailRead,
+    BusinessEligibilityVersionHistoryRead,
     BusinessEligibilityGxpSourceEvidenceRead,
     BusinessEligibilityListRead,
     CaseDetailRead,
@@ -364,6 +365,19 @@ def register_catalog_routes(app, session_factory) -> None:
             )
         )
 
+    def get_business_eligibility_version_history(
+        business_eligibility_certificate_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        return BusinessEligibilityVersionHistoryRead(
+            **service.get_business_eligibility_version_history(
+                session,
+                business_eligibility_certificate_id=business_eligibility_certificate_id,
+            )
+        )
+
     def get_business_eligibility_gxp_source_evidence(
         business_eligibility_certificate_id: str,
         session: Session = dependency,
@@ -415,6 +429,13 @@ def register_catalog_routes(app, session_factory) -> None:
         get_business_eligibility_detail,
         methods=["GET"],
         response_model=BusinessEligibilityDetailRead,
+        tags=["catalog"],
+    )
+    app.add_api_route(
+        "/business-eligibility-certificates/{business_eligibility_certificate_id}/versions",
+        get_business_eligibility_version_history,
+        methods=["GET"],
+        response_model=BusinessEligibilityVersionHistoryRead,
         tags=["catalog"],
     )
     app.add_api_route(

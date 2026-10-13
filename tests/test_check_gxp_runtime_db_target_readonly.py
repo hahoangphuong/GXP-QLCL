@@ -76,3 +76,54 @@ def test_missing_proc_env_or_network_does_not_claim_clearance(monkeypatch, capsy
     output = capsys.readouterr().out
     assert "BLOCK_RUNTIME_INSPECTION_ERROR" in output
     assert "s3cret" not in output
+
+
+@pytest.mark.parametrize("failing_stage,expected_stage", [
+    ("pid", "SYSTEMD_MAINPID"),
+    ("env", "MAINPID_PROC_ENVIRONMENT"),
+    ("name", "SAFE_DB_NAME_EXTRACTION"),
+    ("readyz", "LOCALHOST_READYZ"),
+])
+def test_diagnostic_identifies_only_safe_failed_stage(
+    failing_stage, expected_stage, monkeypatch, capsys,
+):
+    def fail():
+        raise PermissionError("secret://alice:s3cret@db.example")
+    monkeypatch.setattr(
+        preflight, "_get_main_pid",
+        fail if failing_stage == "pid" else lambda: 2468,
+    )
+    monkeypatch.setattr(
+        preflight, "_get_service_env",
+        (lambda _: fail()) if failing_stage == "env"
+        else lambda _: {"DATABASE_URL": "postgresql://alice:super-secret@localhost/gxp_qlcl"},
+    )
+    monkeypatch.setattr(
+        preflight, "_safe_database_name",
+        (lambda _: fail()) if failing_stage == "name"
+        else lambda _: ("gxp_qlcl", "DATABASE_URL"),
+    )
+    monkeypatch.setattr(
+        preflight, "_read_readyz",
+        fail if failing_stage == "readyz" else lambda: dict(READY),
+    )
+    assert preflight.main() == 2
+    data = json.loads(capsys.readouterr().out)
+    assert data["status"] == "BLOCK_RUNTIME_INSPECTION_ERROR"
+    assert data["failed_stage"] == expected_stage
+    assert data["error_category"] == "PermissionError"
+    assert data["database_writes"] == 0
+    assert "alice" not in json.dumps(data)
+    assert "s3cret" not in json.dumps(data)
+    assert "super-secret" not in json.dumps(data)
+    assert "db.example" not in json.dumps(data)
+
+
+def test_successful_probe_has_no_failed_stage(monkeypatch, capsys):
+    monkeypatch.setattr(preflight, "_get_main_pid", lambda: 2468)
+    monkeypatch.setattr(preflight, "_get_service_env", lambda _: {"DB_NAME": "gxp_qlcl"})
+    monkeypatch.setattr(preflight, "_read_readyz", lambda: dict(READY))
+    assert preflight.main() == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["status"] == "OBSERVED_SERVICE_TARGET_DIFFERENT_FROM_REHEARSAL"
+    assert "failed_stage" not in data

@@ -9,6 +9,9 @@ import stat
 import sys
 import tempfile
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+from alembic.script.revision import RevisionError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -40,6 +43,7 @@ class RehearsalDeployPlan:
     rehearsal_database_url_redacted: str
     alembic_current_revision: str | None
     alembic_head_revision: str
+    alembic_upgrade_required: bool
 
 
 def _write_env_file(path: Path, values: dict[str, str]) -> None:
@@ -76,6 +80,30 @@ def _normalize_target_database_name(target_database_name: str) -> str:
     return normalized
 
 
+def _can_upgrade_to_head(current_revision: str | None, head_revision: str) -> bool:
+    """Accept the current head or a known ancestor; reject unknown/divergent heads.
+
+    The deploy script performs the Alembic upgrade after its database backup.
+    Requiring the target to already be at head makes new releases undeployable.
+    Only inspect local migration metadata here; never apply a migration.
+    """
+    if not current_revision:
+        return False
+    config = Config(str(ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(ROOT / "migrations"))
+    script = ScriptDirectory.from_config(config)
+    try:
+        if script.get_current_head() != head_revision:
+            return False
+        if script.get_revision(current_revision) is None:
+            return False
+        if current_revision == head_revision:
+            return True
+        return bool(tuple(script.iterate_revisions(head_revision, current_revision)))
+    except RevisionError:
+        return False
+
+
 def verify_rehearsal_target_database(*, runtime_env_path: Path, target_database_name: str = DEFAULT_REHEARSAL_TARGET_DB) -> RehearsalDeployPlan:
     normalized_target_database_name = _normalize_target_database_name(target_database_name)
     contract, _env = production_import._load_runtime_database_contract(runtime_env_path)
@@ -105,10 +133,10 @@ def verify_rehearsal_target_database(*, runtime_env_path: Path, target_database_
     head_revision = expected_alembic_head_revision()
     if not head_revision:
         raise RehearsalDeployError("Could not determine the expected Alembic head revision for rehearsal deploy.")
-    if current_revision != head_revision:
+    if not _can_upgrade_to_head(current_revision, head_revision):
         raise RehearsalDeployError(
-            f"Rehearsal target database {normalized_target_database_name!r} alembic revision mismatch: "
-            f"current={current_revision!r}, head={head_revision!r}."
+            f"Rehearsal target database {normalized_target_database_name!r} alembic revision mismatch "
+            f"(not a known forward upgrade path): current={current_revision!r}, head={head_revision!r}."
         )
     return RehearsalDeployPlan(
         canonical_runtime_env_path=str(runtime_env_path),
@@ -119,6 +147,7 @@ def verify_rehearsal_target_database(*, runtime_env_path: Path, target_database_
         rehearsal_database_url_redacted=production_import._redact_database_url(target_database_url),
         alembic_current_revision=current_revision,
         alembic_head_revision=head_revision,
+        alembic_upgrade_required=current_revision != head_revision,
     )
 
 
@@ -151,6 +180,7 @@ def prepare_rehearsal_runtime_env(
         rehearsal_database_url_redacted=plan.rehearsal_database_url_redacted,
         alembic_current_revision=plan.alembic_current_revision,
         alembic_head_revision=plan.alembic_head_revision,
+        alembic_upgrade_required=plan.alembic_upgrade_required,
     )
 
 

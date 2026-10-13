@@ -104,6 +104,7 @@ def test_prepare_rehearsal_runtime_env_preserves_canonical_env_and_points_runtim
     assert plan.rehearsal_database == "gxp_legacy_rehearsal"
     assert plan.alembic_current_revision == expected_alembic_head_revision()
     assert plan.alembic_head_revision == expected_alembic_head_revision()
+    assert plan.alembic_upgrade_required is False
     written = parse_env_file(output_env)
     assert written["DB_NAME"] == "gxp_legacy_rehearsal"
     assert written["DATABASE_URL"] == target_url
@@ -112,6 +113,42 @@ def test_prepare_rehearsal_runtime_env_preserves_canonical_env_and_points_runtim
         assert stat.S_IMODE(output_env.stat().st_mode) == 0o640
         assert output_env.stat().st_mode & stat.S_IROTH == 0
         assert output_env.stat().st_mode & stat.S_IWOTH == 0
+
+
+def test_rehearsal_deploy_accepts_known_forward_0022_to_0023_without_pre_migrating(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rehearsal deploy owns upgrade head; its preflight must allow 0022."""
+    assert expected_alembic_head_revision() == "20261012_0023"
+    canonical_env = tmp_path / "runtime.env"
+    canonical_env.write_text("DB_NAME=gxp_qlcl\\n", encoding="utf-8")
+    canonical_url = _prepare_target_db(tmp_path / "prod.db")
+    target_url = production_import._target_database_url(
+        canonical_url, rehearsal_deploy.DEFAULT_REHEARSAL_TARGET_DB
+    )
+    _prepare_target_db(
+        Path(target_url.removeprefix("sqlite:///")), revision="20261008_0022"
+    )
+    _patch_runtime_contract(monkeypatch, canonical_env, canonical_url)
+
+    output_env = tmp_path / "runtime.rehearsal.env"
+    plan = rehearsal_deploy.prepare_rehearsal_runtime_env(
+        runtime_env_path=canonical_env,
+        output_runtime_env_path=output_env,
+    )
+
+    assert plan.alembic_current_revision == "20261008_0022"
+    assert plan.alembic_head_revision == "20261012_0023"
+    assert plan.alembic_upgrade_required is True
+    assert parse_env_file(output_env)["DB_NAME"] == "gxp_legacy_rehearsal"
+    # The preflight must be read-only: no schema/version upgrade happens here.
+    engine = create_engine(target_url, future=True)
+    try:
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20261008_0022"
+    finally:
+        engine.dispose()
 
 
 def test_prepare_rehearsal_runtime_env_requires_expected_alembic_head(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

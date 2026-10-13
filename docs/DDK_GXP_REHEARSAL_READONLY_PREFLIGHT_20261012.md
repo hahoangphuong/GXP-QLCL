@@ -201,6 +201,33 @@ running it. A failure at any stage is a STOP decision, not an instruction
 to install packages or change the systemd service. Do not print
 `systemctl show ... Environment` or `/proc/<pid>/environ` directly.
 
+### Runtime check v3: correct loopback health endpoint
+
+The owner's SHA-verified **v2** VM preflight reported
+`failed_stage = LOCALHOST_READYZ`, `error_category = URLError`, with no
+database writes. Owner health endpoint has **not** been proven broken.
+The v2 helper incorrectly used `http://127.0.0.1/readyz` on port **80**.
+The authoritative VM release scripts `infra/vm/verify_prod.sh` and
+`infra/vm/gxp-web.service` show the backend Uvicorn serves
+`http://127.0.0.1:APP_PORT/readyz` (normally APP_PORT 8000); nginx owns
+80/443 and forwards `/api/` only. That is the last-correct / first-
+incorrect boundary.
+
+v3 reads `/proc/<MainPID>/cmdline` **in memory**, requiring Uvicorn
+`--host 127.0.0.1` and a single numeric `--port`. It calls the
+`/readyz` endpoint directly using HTTPConnection to **loopback at the
+observed backend port**, no proxy, redirect, site domain or port guessing.
+It emits only selected readiness fields and the port number, never
+the raw command line, credentials, or arbitrary HTTP response. Unknown
+process listen configuration or an unreachable loopback endpoint
+remains BLOCKED. It also blocks early if MainPID environment actually
+targets `gxp_legacy_rehearsal` even without a network probe.
+
+Execute the exact v3 GitHub file in `/tmp` after verifying its immutable
+blob hash. Do NOT edit systemd/nginx or execute migration `0023` to
+work around failed readiness probes. Even a healthy `/readyz` is only
+a runtime observation, not approval for DDL/data writes.
+
 ## Guarded schema-only migration tool — prepared, NOT executed
 
 The owner-accepted live VM preflight reports Alembic `20261008_0022`

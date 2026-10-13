@@ -19,8 +19,8 @@ BASE_REV = "20261008_0022"
 TARGET_REV = "20261012_0023"
 GROUP = "business_eligibility_gxp_source_group"
 REFERENCE = "business_eligibility_gxp_reference_evidence"
-# A deliberately non-routable PostgreSQL URL: used ONLY by Alembic --sql to
-# choose the PostgreSQL SQL dialect, never to open a network connection.
+# A dummy loopback endpoint used ONLY by Alembic --sql to select the
+# PostgreSQL dialect; offline Alembic must never open a DB connection.
 OFFLINE_DIALECT_URL = "postgresql+psycopg://postgres@127.0.0.1:1/gxp_legacy_rehearsal"
 ALLOWED_CREATED_TABLES = frozenset({GROUP, REFERENCE})
 ALLOWED_CREATED_INDEXES = frozenset({

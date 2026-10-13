@@ -35,8 +35,10 @@ import { BusinessEligibilityWorkspace } from "./BusinessEligibilityWorkspace";
 import { FacilitySummary } from "./FacilitySummary";
 import { GxpCertificateWorkspace } from "./GxpCertificateWorkspace";
 import { FACILITY_TABS, FACILITY_TAB_LABELS, type FacilityTab } from "./facilityTabs";
+import type { EligibilitySourceState } from "./useBusinessEligibilitySourceEvidence";
 
 export function FacilityWorkspaceTabs({
+  eligibilitySourceEvidence,
   summary,
   selectedFacilityTab,
   onFacilityTabChange,
@@ -103,6 +105,7 @@ export function FacilityWorkspaceTabs({
   onResolveInspectionFolder,
   onFinalizeInspectionOutcome,
 }: {
+  eligibilitySourceEvidence?: EligibilitySourceState;
   summary: FacilityWorkspaceSummary;
   selectedFacilityTab: FacilityTab;
   onFacilityTabChange: (tab: FacilityTab) => void;
@@ -270,6 +273,7 @@ export function FacilityWorkspaceTabs({
 
     {selectedFacilityTab === "Giấy chứng nhận đủ điều kiện" ? (
       <BusinessEligibilityWorkspace
+        sourceEvidence={eligibilitySourceEvidence}
         detail={eligibilityCertificateDetail}
         detailError={eligibilityCertificateDetailError}
         detailLoading={eligibilityCertificateDetailLoading}

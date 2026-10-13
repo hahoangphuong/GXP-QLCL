@@ -2,6 +2,7 @@ import type {
   AppStatus,
   AuthenticatedIdentity,
   BusinessEligibilityDetail,
+  BusinessEligibilityGxpSourceEvidence,
   BusinessEligibilityIssueRequest,
   BusinessEligibilityLatestVersionUpsertRequest,
   BusinessEligibilityList,
@@ -68,6 +69,7 @@ import type {
 } from "../types";
 
 type RequestOptions = {
+  signal?: AbortSignal;
   method?: string;
   body?: unknown;
   auth?: StubAuthState;
@@ -151,6 +153,7 @@ async function requestJson<T>(path: string, options: RequestOptions): Promise<T>
     method: options.method ?? "GET",
     headers,
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    ...(options.signal ? { signal: options.signal } : {}),
   });
   const contentType = response.headers.get("content-type");
 
@@ -850,6 +853,19 @@ export function getBusinessEligibilityDetail(
     useStubAuth,
     bearerToken,
   });
+}
+
+export function getBusinessEligibilityGxpSourceEvidence(
+  businessEligibilityCertificateId: string,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+  signal?: AbortSignal,
+): Promise<BusinessEligibilityGxpSourceEvidence> {
+  return requestJson<BusinessEligibilityGxpSourceEvidence>(
+    `/business-eligibility-certificates/${businessEligibilityCertificateId}/gxp-source-evidence`,
+    { auth, useStubAuth, bearerToken, signal },
+  );
 }
 
 export function issueBusinessEligibility(

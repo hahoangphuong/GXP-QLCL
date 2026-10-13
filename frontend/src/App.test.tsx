@@ -55,6 +55,7 @@ const apiMocks = vi.hoisted(() => ({
   issueGxpCertificate: vi.fn(),
   listSiteBusinessEligibilityCertificates: vi.fn().mockResolvedValue({ items: [], issue_readiness: null }),
   getBusinessEligibilityDetail: vi.fn().mockResolvedValue(null),
+  getBusinessEligibilityGxpSourceEvidence: vi.fn(),
   issueBusinessEligibility: vi.fn(),
   upsertBusinessEligibilityLatestVersion: vi.fn(),
   promoteBusinessEligibilityCurrent: vi.fn(),
@@ -145,6 +146,7 @@ function resetApiMocks() {
   apiMocks.issueGxpCertificate.mockReset();
   apiMocks.listSiteBusinessEligibilityCertificates.mockReset();
   apiMocks.getBusinessEligibilityDetail.mockReset();
+  apiMocks.getBusinessEligibilityGxpSourceEvidence.mockReset();
   apiMocks.issueBusinessEligibility.mockReset();
   apiMocks.upsertBusinessEligibilityLatestVersion.mockReset();
   apiMocks.promoteBusinessEligibilityCurrent.mockReset();
@@ -209,6 +211,11 @@ function resetApiMocks() {
   apiMocks.issueGxpCertificate.mockResolvedValue(null);
   apiMocks.listSiteBusinessEligibilityCertificates.mockResolvedValue({ items: [], issue_readiness: null });
   apiMocks.getBusinessEligibilityDetail.mockResolvedValue(null);
+  apiMocks.getBusinessEligibilityGxpSourceEvidence.mockImplementation((id: string) => Promise.resolve({
+    business_eligibility_certificate_id: id, legacy_dkkd_id: null, source_status: "legacy_identity_missing",
+    evidence_kind: "original_excel_cells_source_only", canonical_links_included: false,
+    source_workbook_sha256: null, source_sheet_name: null, source_row_number: null, groups: [],
+  }));
   apiMocks.issueBusinessEligibility.mockResolvedValue(null);
   apiMocks.upsertBusinessEligibilityLatestVersion.mockResolvedValue(null);
   apiMocks.promoteBusinessEligibilityCurrent.mockResolvedValue(null);
@@ -3729,6 +3736,40 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(apiMocks.listSiteBusinessEligibilityCertificates).toHaveBeenCalledTimes(1);
     expect(apiMocks.getBusinessEligibilityDetail).toHaveBeenCalledTimes(1);
+  });
+
+  it("owns source evidence by selected ĐĐK UUID, aborts late A and leaves focus and canonical links independent", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
+    const item = { site_id: "site-1", company_id: "company-1", certificate_number: "SAME-DDK", latest_flag: true, issued_on: null };
+    apiMocks.listSiteBusinessEligibilityCertificates.mockResolvedValue({ items: ["ddk-A", "ddk-B"].map(id => ({ ...item, business_eligibility_certificate_id: id })), issue_readiness: null });
+    apiMocks.getBusinessEligibilityDetail.mockImplementation(id => Promise.resolve({
+      ...item, business_eligibility_certificate_id: id, row_version: 7, facility_name: `Detail ${id}`,
+      linked_gxp_certificates: [{ certificate_id: "canonical-basis", certificate_type: "GMP", line_code: "A", certificate_number: "CANONICAL-BASIS", issue_date: null }], action_readiness: [],
+    }));
+    let resolveA!: (value: unknown) => void;
+    apiMocks.getBusinessEligibilityGxpSourceEvidence.mockImplementationOnce(() => new Promise(resolve => { resolveA = resolve; }))
+      .mockImplementation(id => Promise.resolve({ business_eligibility_certificate_id: id, source_status: "not_in_imported_source", evidence_kind: "original_excel_cells_source_only", canonical_links_included: false, groups: [] }));
+    renderApp([`/search?facility_tab=${encodeURIComponent("Giấy chứng nhận đủ điều kiện")}`]);
+    await waitFor(() => expect(apiMocks.getBusinessEligibilityGxpSourceEvidence).toHaveBeenCalledTimes(1));
+    const rows = within(screen.getByRole("table", { name: "Danh mục GCN đủ điều kiện" })).getAllByRole("row").slice(1);
+    act(() => rows[0].focus());
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(rows[1]).toHaveFocus();
+    expect(apiMocks.getBusinessEligibilityGxpSourceEvidence).toHaveBeenCalledTimes(1);
+    const oldSignal = apiMocks.getBusinessEligibilityGxpSourceEvidence.mock.calls[0][4];
+    fireEvent.keyDown(rows[1], { key: "Enter" });
+    await screen.findByText("Detail ddk-B");
+    await screen.findByText(/không nằm trong nguồn Excel/);
+    expect(oldSignal.aborted).toBe(true);
+    await act(async () => resolveA({ business_eligibility_certificate_id: "ddk-A", source_status: "legacy_identity_missing", evidence_kind: "original_excel_cells_source_only", canonical_links_included: false, groups: [] }));
+    expect(screen.queryByText(/chưa có định danh legacy/)).not.toBeInTheDocument();
+    expect(screen.getByText(/CANONICAL-BASIS/)).toBeInTheDocument();
+    expect(apiMocks.getBusinessEligibilityGxpSourceEvidence.mock.calls.map(call => call[0])).toEqual(["ddk-A", "ddk-B"]);
+    expect(apiMocks.issueBusinessEligibility).not.toHaveBeenCalled();
+    expect(apiMocks.upsertBusinessEligibilityLatestVersion).not.toHaveBeenCalled();
+    expect(apiMocks.promoteBusinessEligibilityCurrent).not.toHaveBeenCalled();
   });
 
   it("shows certificate-tab empty states without rendering fake detail forms", async () => {

@@ -7,6 +7,65 @@ evidenced. Baseline: `50576b0b383161e26e27b6cdc4a1a469aff1ae17`; work branch:
 
 ## Evidence closure and staging-readiness audit — 2026-10-13
 
+### Facility ĐĐK original GxP source integration — 2026-10-13
+
+Baseline `e428cf0ad1965e9bdcc50f6df525e233e9a0e1e0`: local/remote/PR #3 matched;
+OPEN/DRAFT, existing untracked script preserved. Backend contract was read from
+PR #7 commit `1ee38180549c5aa6c69d577413311c81431069fc`, including its Pydantic
+read models and `docs/DDK_GXP_SOURCE_READ_API_20261013.md`. No backend commits
+were merged/cherry-picked; fetching the branch was read-only source inspection.
+
+| Evidence | State | Observed boundary |
+| --- | --- | --- |
+| Physical four-group source import | `PROVENANCE_DB_VERIFIED` | Existing-key SSH/IAP reached `gxp_legacy_rehearsal`. A `BEGIN READ ONLY` aggregate query followed by ROLLBACK confirmed 780 each GMP/GLP/GSP/GDP (3,120 groups), 861 reference tokens and revision `20261012_0023`. No record contents or credentials were published. |
+| Source-only read endpoint | `PROVENANCE_API_DEPLOYED` | Live `/readyz` is healthy; `/app/status` reports Google OIDC, rehearsal DB and runtime `1ee3818`. OpenAPI contains `/business-eligibility-certificates/{business_eligibility_certificate_id}/gxp-source-evidence` with `BusinessEligibilityGxpSourceEvidenceRead`. Types match that deployed schema, including integer column anchors, raw strings, source UUIDs and `canonical_links_included=false`. |
+| Facility source panel | `FRONTEND_FIXTURE_VERIFIED` | Existing API client adds one GET with AbortSignal. SearchPage keeps canonical selection ownership; a cancellable, context/UUID/access-owned read hook supplies the Facility-only panel. It loads only after the selected canonical detail/site matches, never all 780 records. |
+| Authenticated live source/UI response | `REAL_AUTHENTICATED_UI_PENDING` | Current local PR source reaches Google OIDC through the read-only proxy. Google again rejects `http://127.0.0.1:4173` with “The given origin is not allowed for the given client ID.” VM Nginx's verified HTTPS host is `gxp.qlcl-dav.cc`, not evidence of a development origin permitted for local PR source. No HTTPS development origin was found in available repo/runtime configuration; the Google Console allowlist is not available here. Infrastructure owner needs to approve/add exactly `http://127.0.0.1:4173` under Authorized JavaScript Origins for the existing web client reported by `/app/status`, or supply an already-approved HTTPS development origin. OAuth/CORS/IAP/RBAC remain unchanged. |
+
+The panel “Dữ liệu GxP từ hồ sơ ĐĐK gốc” explicitly separates Excel comparison
+data from confirmed canonical links. Four independently collapsible native
+groups appear GMP/GLP/GSP/GDP, each with ID CC, scope, standard and business
+activity. Raw text, whitespace/newlines, empty cells and repeated ordered tokens
+are preserved. Tokens are plain text with their token_index, not links, checkboxes,
+Certificate identity or issuance actions. Cyan source values use the existing
+legacy field pattern. The canonical left basis list and right Facility fields,
+actions/readiness, drafts/version tokens and Case ĐĐK remain unchanged.
+
+Request ownership closes old visibility before passive effects. Selection/context
+or access changes abort the old GET; late success/403/404/409 cannot publish over
+the current selection. Available source requires exactly the four independent
+groups and the source-only contract; a malformed/mismatched response fails closed
+at the read owner. Loading, missing legacy identity, not-in-import, 401/403/404/409
+and network/server error are distinct. Source presence/absence never produces
+business status or completion ticks, and no automatic retry is added.
+
+Presentation regression fails on the checkpoint BusinessEligibilityWorkspace
+(missing the named source region), then passes on the new owner. Regression
+covers distinct groups, multi-ID/repeated tokens, GDP activity without ID CC,
+multiline values, source-missing/error states, A→B and A→B→A, abort, stale errors,
+access ownership, focus-only reads and canonical basis/mutation isolation.
+
+Browser fixture at 1920×1080, 1366×768, 390×844, 375×812: client/scroll widths
+1920/1920, 1366/1366, 375/375, 360/360; all 16 source cells and four groups remain
+available. Arrow/Home/End leave request counters unchanged; Enter activates exact
+DDK UUIDs sharing the same number. A pending→B retains B after A's late response,
+and returning through the GPs tab retains selection and URL line/history context.
+No source links/checkboxes/mutations appeared. Evidence is outside Git as
+`ddk-provenance-*`. Authenticated real data, binary storage and speech remain
+unverified. CertificateVersion history/historical scope stays
+`BACKEND_CONTRACT_PENDING`; RecordForm/picker/color/tick runtime remains
+`LEGACY_RUNTIME_EVIDENCE_MISSING`.
+
+Validation: typecheck/lint/build PASS; final targeted source/Facility/API suite
+passes 78/78 twice, including 24 dedicated source regressions. Full frontend
+passes 401/401 in 29 files. One earlier final-shape full run failed only the
+pre-existing CAPA assessment-date test (400/401): it waits for the detail heading
+while CAPA draft hydration is still owned by a passive effect. That timing boundary
+is outside provenance (the source read is inactive in CAPA). The exact test passed
+twice in isolation, and the subsequent full gate passed without code/assertion/
+timeout changes to CAPA. Existing act warnings and this instability are retained
+as a separate risk, not hidden by a product fallback or skipped gate.
+
 ### Authorized rehearsal follow-up — 2026-10-13
 
 Baseline `e5a7dc764b2049b3466fbd8b59db07b12066564e`: local/remote/PR #3 agree,
@@ -57,8 +116,7 @@ A local POST returned 405 and upstream counters stayed identical. Arrow/Home/End
 changed history focus with identical upstream counters and unchanged selection URL.
 Sanitized evidence is outside Git as `rehearsal-tooling-*`.
 
-Provenance groups and immutable CertificateVersion/historical scopes remain
-`BACKEND_CONTRACT_PENDING`; RecordForm/picker/color/tick semantics remain
+At that checkpoint provenance and CertificateVersion history were pending. The provenance gap is superseded by the deployed API/current integration above; immutable CertificateVersion/historical scopes remain `BACKEND_CONTRACT_PENDING`; RecordForm/picker/color/tick semantics remain
 `LEGACY_RUNTIME_EVIDENCE_MISSING`. All nine live workspace checks, live
 authenticated 403/network/409 behavior, real binary storage and speech verification remain
 `STAGING_VALIDATION_PENDING`. No frontend product defect was identified; no
@@ -78,7 +136,7 @@ OPEN/DRAFT PR #3 matched before this read-only audit. The pre-existing untracked
 | --- | --- | --- |
 | Current Facility/Case GPs certificate identity and scope snapshot | `VERIFIED` | `GxpCertificateDetailRead` and the matching TypeScript type expose canonical certificate UUID, Site/Case/ProductionLine identity, `row_version`, `latest_flag`, scalar certificate values, `scope_summary`, ordered `scopes[]` with scope UUIDs, limitation, status and readiness. The detail service loads scopes only for the selected latest CertificateVersion. Existing Facility and Case owners consume that response without deriving IDs from certificate number, filename or text. |
 | Immutable CertificateVersion history | `BACKEND_CONTRACT_PENDING` | `CertificateVersion` and `CertificateScope.certificate_version_id` exist in persistence, but catalog routes expose only `/sites/{site_id}/gxp-certificates` and `/certificates/{certificate_id}`. Both query `is_latest_version=true`; their response models omit version UUID/history and historical scope snapshots. `row_version` is only an optimistic concurrency token and `latest_flag` identifies the current Certificate aggregate. The frontend cannot build a truthful version-history UI from the current contract. |
-| Facility ĐĐK GMP/GLP/GSP/GDP source groups | `BACKEND_CONTRACT_PENDING` | Current `BusinessEligibilityDetailRead` exposes scalar `business_activity_text` plus one flat `linked_gxp_certificates` list. It has no source-column group/provenance shape corresponding to `db.dkkd` O–R, S–V, W–Z and AA–AD. Superseded by the current user-provided VM result: source-only provenance import succeeded (3,120 groups, 780 per group; 861 reference tokens; no new canonical links). Live /readyz independently confirms current revision `20261012_0023`; source-import counts remain user-provided. The provenance API is still pending. The frontend keeps the flat canonical list and does not classify by certificate type, prose or link order. |
+| Facility ĐĐK GMP/GLP/GSP/GDP source groups | `PROVENANCE_API_DEPLOYED` / `FRONTEND_FIXTURE_VERIFIED` | The separate source-only endpoint deployed at `1ee3818` exposes the four original groups; the Facility-only panel consumes it by canonical DDK UUID with context/access ownership and AbortSignal. Independent read-only DB aggregates confirm 3,120 groups / 861 tokens. The flat `linked_gxp_certificates` list retains its canonical meaning and is not classified/merged from provenance. Authenticated live UI remains `REAL_AUTHENTICATED_UI_PENDING` because the local OAuth origin is rejected. |
 | Canonical certificate actions | `VERIFIED` | GPs and ĐĐK issue/edit/promote controls are sourced from backend readiness, permissions and `expected_version`. Change-request successor actions have their own readiness identities. Existing 403/409/422 behavior and draft retention remain the owners of error handling; no legacy button is enabled from visual evidence alone. |
 | Canonical contextual document actions | `VERIFIED` | `ContextualDocumentActionRead` permits only `open`, `create` and `history`, with availability, disabled reason and required permissions from the backend. `DocumentDetail` exposes logical document UUID, rendition UUID and version UUID separately. Binary access remains through case/CAPA content endpoints and StorageService; the frontend has no path/NAS fallback. |
 | RecordForm / ExtRecordForm / picker command equivalence | `BACKEND_CONTRACT_PENDING` | VBA proves real side effects: RecordForm and ExtRecordForm generate/open documents; SelectCC/SelectDDK can delegate mutations; ChonMauCC/SelectFile browse legacy folders and templates. The current web mappings are DocumentService/StorageService, CertificationService and BusinessEligibilityService contracts. Commands outside existing readiness/action models require an approved backend owner before a web button can be added. |
@@ -437,7 +495,7 @@ red/full-field status colors or completion ticks. Legacy document/source command
 all-lines controls and certificate creation/reissue/replacement controls are not
 added without contracts. Existing edit readiness/RBAC/expected_version are retained.
 No provenance groups are assumed: VM uses gxp_legacy_rehearsal and migration
-20261012_0023 is independently confirmed current by live /readyz; source-only import is user-confirmed successful and API provenance remains pending. Real-backend integration,
+20261012_0023 is independently confirmed current by live /readyz; source-only import counts and deployed source API are now independently verified; Facility fixture integration is complete (see current provenance slice). Real-backend integration,
 binary storage, screen-reader UAT and production UAT remain unverified. No backend,
 API, database, migration, storage or authorization changes are part of this slice.
 
@@ -481,8 +539,7 @@ handlers remain unchanged; no dedupe by number/name or local business rules.
 Existing commands retain backend labels/placement: legacy Tạo/Điều/Hồ copy,
 revision and folder commands are not equated to current issue/edit/promote.
 
-EVIDENCE_MISSING: current API has scalar business_activity_text and flat basis
-links, not authoritative GMP/GLP/GSP/GDP source groups/scopes/standards. Do not
+Superseded provenance gap: a separate source-only endpoint now provides the four groups; Facility fixture integration is verified above. The existing detail still has scalar business_activity_text and flat canonical basis links. Do not
 derive these from certificate_type, linked IDs or prose. Backend PR #7 remains
 separate. QA qualification/license fields pictured in legacy have no matching
 current detail fields; no second license or date ownership is inferred. Existing
@@ -523,14 +580,14 @@ Evidence outside Git: facility-ddk-before/after-1920/1366/390/375.png,
 facility-ddk-before/after-geometry.json, facility-ddk-conflict-1920.png,
 facility-ddk-request-counts.json and fixture harness. No backend/API/DB/storage/
 authorization/concurrency change, merge/rebase/cherry-pick or deploy. Partial
-parity only; four-group provenance awaits an approved API, not a UI fallback.
+parity only at that checkpoint; four-group source-only provenance is now integrated through the separately deployed API above.
 
 Validation: typecheck, lint, production build and all 349 frontend tests / 27
 files PASS. Targeted Facility/Case/document/modal regressions pass 50 tests in
 each of two completed runs; no timeout increase or disabled test. Existing
 non-failing act warnings remain. Self-review: five frontend/QA files, presentation
 and pure rendering only; mutation handlers/dialog state/readiness untouched.
-Next: consume four-group provenance only after an approved API is available,
+Provenance consumption is now complete for fixture validation; next obtain a permitted OAuth origin for authenticated verification,
 then authorized staging integration and screen-reader verification.
 
 ## Mobile web-shell overflow slice — 2026-10-13

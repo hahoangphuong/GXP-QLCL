@@ -106,6 +106,21 @@ function baseProps() {
 }
 
 describe("Eligibility certificate keyboard and identity", () => {
+  it("adds original source evidence separately from canonical basis without mutations", () => {
+    const props = baseProps();
+    render(<BusinessEligibilityWorkspace {...props} sourceEvidence={{ status: "ready", data: {
+      business_eligibility_certificate_id: "dkkd-1", legacy_dkkd_id: null, source_status: "legacy_identity_missing",
+      evidence_kind: "original_excel_cells_source_only", canonical_links_included: false,
+      source_workbook_sha256: null, source_sheet_name: null, source_row_number: null, groups: [],
+    } }} />);
+    const section = screen.getByRole("region", { name: "Dữ liệu GxP từ hồ sơ ĐĐK gốc" });
+    expect(section.closest(".detail-pane")).not.toBeNull();
+    expect(section.querySelector(".certificate-basis-section")).toBeNull();
+    expect(screen.getByText(/GMP A · GMP-001/)).toBeInTheDocument();
+    expect(props.onIssue).not.toHaveBeenCalled();
+    expect(props.onEditLatestVersion).not.toHaveBeenCalled();
+    expect(props.onPromoteCurrent).not.toHaveBeenCalled();
+  });
   it("places Facility dossier/basis in the left pane and groups canonical fields at right without Case or inferred activity tabs", () => {
     const props = baseProps();
     const { container } = render(<BusinessEligibilityWorkspace {...props} />);

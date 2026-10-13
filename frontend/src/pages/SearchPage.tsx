@@ -8,6 +8,7 @@ import { ActionCard } from "../features/search/ActionCard";
 import { FacilityTable } from "../features/search/FacilityTable";
 import { FacilityHistoryPane } from "../features/search/FacilityHistoryPane";
 import { FacilityWorkspaceTabs } from "../features/search/FacilityWorkspaceTabs";
+import { useBusinessEligibilitySourceEvidence } from "../features/search/useBusinessEligibilitySourceEvidence";
 import { DEFAULT_FACILITY_TAB, resolveFacilityTab } from "../features/search/facilityTabs";
 import {
   assessCapaCycle,
@@ -356,6 +357,13 @@ export function SearchPage({
   const workspace = deepLinkError || historyResolution === "pending" ? null : ownedWorkspace;
   const workspaceLoading = Boolean(selectedResult) && (!ownedRequest || ownedRequest.status === "loading");
   const workspaceError = ownedRequest?.status === "error" ? ownedRequest.error : null;
+  const eligibilitySourceEvidence = useBusinessEligibilitySourceEvidence(
+    selectedFacilityTab === "Giấy chứng nhận đủ điều kiện" && canLoadSecureApi
+      && !eligibilityCertificateDetailLoading
+      && eligibilityCertificateDetail?.business_eligibility_certificate_id === selectedEligibilityCertificateId
+      && eligibilityCertificateDetail?.site_id === selectedResult?.site_id ? selectedContext : null,
+    selectedEligibilityCertificateId, auth, useStubAuth, bearerToken,
+  );
   useLayoutEffect(() => { committedContextRef.current = selectedContext; }, [selectedContext]);
 
   function beginWorkspaceRequest(context: string): number | null {
@@ -2099,6 +2107,7 @@ export function SearchPage({
                 onEditIssuedBusinessEligibility: handleChangeRequestIssuedBusinessEligibilityEdit,
               }}
               eligibilityCertificateDetail={eligibilityCertificateDetail}
+              eligibilitySourceEvidence={eligibilitySourceEvidence}
               eligibilityCertificateDetailError={eligibilityCertificateDetailError}
               eligibilityCertificateDetailLoading={eligibilityCertificateDetailLoading}
               eligibilityCertificates={eligibilityCertificates}

@@ -2889,6 +2889,21 @@ tr:focus-visible {
 .legacy-search-page .facility-ddk-workspace .detail-pane { overflow: auto; }
 .legacy-search-page .facility-ddk-workspace .master-list-pane > .table-scroll-history { flex: 1 0 130px; min-height: 130px; }
 .legacy-search-page .facility-ddk-dossier { margin-top: 8px; }
+.ddk-source-evidence { min-width: 0; margin-top: 12px; padding-top: 8px; border-top: 1px solid #aaa; }
+.ddk-source-evidence h4 { margin: 0 0 4px; }
+.ddk-source-group { min-width: 0; margin: 5px 0; border: 1px inset #aaa; }
+.ddk-source-group summary { padding: 5px; font-weight: 700; color: #006400; background: #eee; cursor: pointer; }
+.ddk-source-group dl { margin: 0; }
+.ddk-source-group dl > div { display: grid; grid-template-columns: 145px minmax(0, 1fr); gap: 5px; padding: 4px; }
+.ddk-source-group dt { font-weight: 600; }
+.ddk-source-group dd { margin: 0; padding: 4px; min-width: 0; background: #bfffff; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ddk-source-tokens { padding: 4px; }
+.ddk-source-tokens ol { margin: 4px 0; padding-left: 30px; }
+.ddk-source-tokens li { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ddk-source-group .source-empty { color: #52616b; font-style: italic; }
+@media (max-width: 600px) {
+  .ddk-source-group dl > div { grid-template-columns: minmax(0, 1fr); }
+}
 .legacy-search-page .facility-ddk-dossier > .detail-field,
 .legacy-search-page .facility-ddk-detail :is(.facility-ddk-identity, .facility-ddk-professionals, .facility-ddk-activity, .facility-ddk-status, .facility-ddk-additional) > .detail-field { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 4px; margin: 4px 0; }
 .legacy-search-page .facility-ddk-dossier > .detail-field { grid-template-columns: 105px minmax(0, 1fr); }

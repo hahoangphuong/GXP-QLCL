@@ -15,6 +15,8 @@ import { BusinessEligibilityBasisFields, BusinessEligibilityFacilityFields } fro
 import { DetailValue } from "./DetailValue";
 import { useCertificateRows } from "./useCertificateRows";
 import { useCertificateDialogFocus } from "./useCertificateDialogFocus";
+import { BusinessEligibilitySourceEvidence } from "./BusinessEligibilitySourceEvidence";
+import type { EligibilitySourceState } from "./useBusinessEligibilitySourceEvidence";
 
 type LinkDraft = { certificate_id: string; link_role: string };
 
@@ -178,6 +180,7 @@ export function BusinessEligibilityMutationDialog({
 }
 
 export function BusinessEligibilityWorkspace({
+  sourceEvidence,
   items,
   listLoading,
   listError,
@@ -196,6 +199,7 @@ export function BusinessEligibilityWorkspace({
   promotionError,
   promotionPending,
 }: {
+  sourceEvidence?: EligibilitySourceState;
   items: BusinessEligibilityListItem[];
   listLoading: boolean;
   listError: string | null;
@@ -276,6 +280,7 @@ export function BusinessEligibilityWorkspace({
         ) : (
           <>
             <BusinessEligibilityFacilityFields detail={detail} />
+            {sourceEvidence ? <BusinessEligibilitySourceEvidence state={sourceEvidence} /> : null}
             <div className="certificate-action-bar">
               {edit ? <button disabled={!edit.available || promotionPending} onClick={() => setEditDraft({ detail, expectedVersion: edit.expected_version })} title={edit.reason_code ?? undefined} type="button">{edit.label}</button> : null}
               {!edit?.available && edit?.reason_code ? <span>{edit.reason_code}</span> : null}

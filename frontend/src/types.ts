@@ -881,6 +881,40 @@ export type BusinessEligibilityList = {
   issue_readiness: BusinessEligibilityIssueActionReadiness | null;
 };
 
+export type BusinessEligibilityGxpSourceReference = {
+  source_reference_id: string;
+  token_index: number;
+  raw_token: string;
+  parsed_legacy_certificate_id: number | null;
+};
+
+export type BusinessEligibilityGxpSourceGroup = {
+  source_group_id: string;
+  source_group: "GMP" | "GLP" | "GSP" | "GDP";
+  id_cc_excel_column: number;
+  certificate_scope_excel_column: number;
+  applicable_standard_excel_column: number;
+  business_activity_excel_column: number;
+  id_cc_raw: string;
+  certificate_scope_raw: string;
+  applicable_standard_raw: string;
+  business_activity_raw: string;
+  source_values_sha256: string;
+  reference_tokens: BusinessEligibilityGxpSourceReference[];
+};
+
+export type BusinessEligibilityGxpSourceEvidence = {
+  business_eligibility_certificate_id: string;
+  legacy_dkkd_id: number | null;
+  source_status: "available" | "legacy_identity_missing" | "not_in_imported_source";
+  evidence_kind: "original_excel_cells_source_only";
+  canonical_links_included: false;
+  source_workbook_sha256: string | null;
+  source_sheet_name: string | null;
+  source_row_number: number | null;
+  groups: BusinessEligibilityGxpSourceGroup[];
+};
+
 export type BusinessEligibilityDetail = {
   business_eligibility_certificate_id: string;
   row_version: number;

@@ -113,7 +113,7 @@ safety block, not proof of backend RBAC or concurrency.
 Live IAP/SSH/tunnel observations: `/healthz` and `/readyz` return 200;
 schema `20261012_0023` is current, and `/app/status` reports
 `google_oidc`, `gxp_legacy_rehearsal`, deployment
-`f96d9336fde453ac50db04f6b3df2193a03e5035`. No-token `/auth/me` returns 401.
+`1ee38180549c5aa6c69d577413311c81431069fc`. No-token `/auth/me` returns 401.
 The actual PR #3 frontend renders its login boundary through this proxy at all
 four viewports, without horizontal overflow. Google sign-in rejects
 `http://127.0.0.1:4173` with **The given origin is not allowed for the given client
@@ -125,8 +125,17 @@ VM or RBAC configuration was changed. Do not insert a token or stub identity to
 bypass this boundary. Real 403/409/draft/stale-response behavior, binary storage
 and screen-reader speech remain unverified.
 
-The user confirms 3,120 source groups
+Read-only aggregate queries in this slice independently confirm 3,120 source groups
 (780 each GMP/GLP/GSP/GDP), with 861 reference tokens and no new canonical links.
-These source-import counts are user-supplied, not independently read from the DB
-in this frontend session. Schema/runtime health are independently observed as
-above. Provenance API and certificate-version/history contracts remain pending.
+The transaction used BEGIN READ ONLY and ROLLBACK; no data changed. Runtime
+OpenAPI now exposes the source-evidence endpoint. Facility ĐĐK consumes it by
+canonical UUID, preserving its source-only meaning. Certificate-version/history
+contracts remain pending. The authenticated source response/UI remains unverified.
+
+The only HTTPS host observed in VM Nginx is `gxp.qlcl-dav.cc`; that does not
+establish an approved development origin for this local frontend source. No
+HTTPS development origin was found in available configuration. Infrastructure
+owner must approve/add exactly `http://127.0.0.1:4173` to **Authorized JavaScript
+Origins** of the existing web OAuth client reported by `/app/status`, or provide
+an already-approved HTTPS development origin. Do not change the client/CORS/IAP
+or inject identity headers within the frontend verification slice.

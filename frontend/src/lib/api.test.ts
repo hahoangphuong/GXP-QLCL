@@ -12,6 +12,7 @@ import {
   transitionChangeRequest,
   getAdminSystemStatus,
   getAppStatus,
+  getBusinessEligibilityGxpSourceEvidence,
   getCurrentIdentity,
   getCaseDetail,
   getChangeRequestWorkspace,
@@ -87,6 +88,15 @@ function mockJsonResponse({
 }
 
 describe("frontend API routing contract", () => {
+  it("reads ĐĐK source evidence by canonical UUID with bearer auth and AbortSignal", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+    await getBusinessEligibilityGxpSourceEvidence("ddk-uuid", { username: "reader", role: "reader" }, false, "test-token", controller.signal);
+    expect(fetchMock).toHaveBeenCalledWith("/api/business-eligibility-certificates/ddk-uuid/gxp-source-evidence", expect.objectContaining({
+      method: "GET", signal: controller.signal, headers: expect.objectContaining({ Authorization: "Bearer test-token" }),
+    }));
+  });
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();

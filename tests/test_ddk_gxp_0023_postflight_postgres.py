@@ -93,6 +93,20 @@ def test_real_pg_0023_schema_and_postflight_with_disposable_rehearsal_name():
                 assert cx.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one() == "20261012_0023"
                 assert cx.execute(text("SELECT count(*) FROM public.business_eligibility_gxp_source_group")).scalar_one() == 0
                 assert cx.execute(text("SELECT count(*) FROM public.business_eligibility_gxp_reference_evidence")).scalar_one() == 0
+            # Adversarial real-PG check: a replacement CHECK (true) preserves
+            # CHECK count and table shape, yet must fail semantic postflight.
+            with engine.begin() as cx:
+                cx.exec_driver_sql(
+                    "ALTER TABLE public.business_eligibility_gxp_source_group "
+                    "DROP CONSTRAINT ck_business_eligibility_gxp_source_group_begxp_group_so_d1cc"
+                )
+                cx.exec_driver_sql(
+                    "ALTER TABLE public.business_eligibility_gxp_source_group "
+                    "ADD CONSTRAINT ck_business_eligibility_gxp_source_group_begxp_group_so_d1cc "
+                    "CHECK (true)"
+                )
+            with pytest.raises(Exception, match="named source CHECK semantics mismatch"):
+                _evaluate_postflight(engine)
         finally:
             engine.dispose()
     finally:

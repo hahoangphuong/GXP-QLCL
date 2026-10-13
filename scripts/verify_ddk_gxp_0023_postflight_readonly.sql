@@ -74,6 +74,53 @@ BEGIN
     END IF;
   END LOOP;
 
+  -- Exact PostgreSQL owner column types, including length and timestamps.
+  SELECT count(*) INTO matched_columns
+  FROM (VALUES
+    ('id', 'uuid'),
+    ('created_at', 'timestamp with time zone'),
+    ('updated_at', 'timestamp with time zone'),
+    ('source_workbook_sha256', 'character varying(64)'),
+    ('source_sheet_name', 'character varying(32)'),
+    ('source_row_number', 'integer'),
+    ('legacy_dkkd_id', 'integer'),
+    ('source_group', 'character varying(3)'),
+    ('id_cc_excel_column', 'integer'),
+    ('certificate_scope_excel_column', 'integer'),
+    ('applicable_standard_excel_column', 'integer'),
+    ('business_activity_excel_column', 'integer'),
+    ('id_cc_raw', 'text'),
+    ('certificate_scope_raw', 'text'),
+    ('applicable_standard_raw', 'text'),
+    ('business_activity_raw', 'text'),
+    ('source_values_sha256', 'character varying(64)')
+  ) AS expected(name, data_type)
+  JOIN pg_catalog.pg_attribute AS actual
+    ON actual.attrelid = group_oid AND actual.attname = expected.name
+      AND pg_catalog.format_type(actual.atttypid, actual.atttypmod)
+        = expected.data_type;
+  IF matched_columns <> 17 THEN
+    RAISE EXCEPTION 'GxP source-group column types do not match 0023';
+  END IF;
+
+  SELECT count(*) INTO matched_columns
+  FROM (VALUES
+    ('id', 'uuid'),
+    ('created_at', 'timestamp with time zone'),
+    ('updated_at', 'timestamp with time zone'),
+    ('source_group_id', 'uuid'),
+    ('token_index', 'integer'),
+    ('raw_token', 'text'),
+    ('parsed_legacy_certificate_id', 'integer')
+  ) AS expected(name, data_type)
+  JOIN pg_catalog.pg_attribute AS actual
+    ON actual.attrelid = ref_oid AND actual.attname = expected.name
+      AND pg_catalog.format_type(actual.atttypid, actual.atttypmod)
+        = expected.data_type;
+  IF matched_columns <> 7 THEN
+    RAISE EXCEPTION 'GxP reference-token column types do not match 0023';
+  END IF;
+
   -- Every owner-required physical source value and identity field is NOT NULL.
   SELECT count(*) INTO matched_columns
   FROM pg_catalog.pg_attribute

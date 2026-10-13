@@ -87,7 +87,7 @@ sha256sum /tmp/gxp-ddk-gxp-0023-review.sql
 ```
 
 The preview invokes Alembic's own `upgrade 20261008_0022:20261012_0023
---sql` in *offline* PostgreSQL mode, with a non-routable dialect URL.
+--sql` in *offline* PostgreSQL mode, with a dummy loopback URL used only for selecting the SQL dialect (never connecting).
 It refuses to overwrite existing output and checks the generated SQL
 only creates the two intended source-evidence tables/two indexes plus
 the one expected Alembic-version update; unrelated DDL/DML fails closed.

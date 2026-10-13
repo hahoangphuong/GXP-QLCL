@@ -157,6 +157,8 @@ def main() -> int:
         # when readiness is unreachable; do not hide that behind a URLError.
         if name == TARGET:
             result = assess_runtime(name, source, {"http_status": None})
+            result["inspection"] = "READ_ONLY_MAINPID_ENV_RUNTIME_TARGET_ONLY"
+            result["readiness_indirect_database_read"] = False
             print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2))
             return 2
         stage = "MAINPID_BACKEND_PORT"

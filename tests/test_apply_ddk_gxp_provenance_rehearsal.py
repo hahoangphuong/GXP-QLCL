@@ -179,9 +179,9 @@ def test_existing_row_tampering_blocks_retry_without_partial_writes():
         with pytest.raises(SourceLoadBlocked, match="Existing schema/source data conflict"):
             apply_sealed_plan(engine, plan, allow_sqlite_for_tests=True)
         with engine.connect() as connection:
-            assert connection.execute(
+            assert len(connection.execute(
                 select(BusinessEligibilityGxpReferenceEvidence.__table__.c.id)
-            ).rowcount != 0  # rows are still present, no automatic delete/repair.
+            ).all()) == 2  # No automatic delete/repair of original evidence.
     finally:
         engine.dispose()
 

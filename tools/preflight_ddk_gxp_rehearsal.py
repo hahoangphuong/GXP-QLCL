@@ -222,13 +222,25 @@ def _metadata_health(structure: dict[str, Any]) -> list[str]:
     return errors
 
 
-def assess_rehearsal_preflight(plan: dict[str, Any], snapshot: dict[str, Any]) -> dict[str, Any]:
-    """Compare one sealed source-only plan with a read-only database snapshot."""
+def assess_rehearsal_preflight(
+    plan: dict[str, Any],
+    snapshot: dict[str, Any],
+    *,
+    require_read_only: bool = True,
+) -> dict[str, Any]:
+    """Compare source-state; require read-only unless a writer explicitly opts out.
+
+    A writer compares under its own exclusive transaction, so it must never
+    misrepresent that connection as read-only. Legacy preflight defaults to
+    strict read-only and retains its original result contract.
+    """
     expected_groups, expected_tokens = validate_sealed_plan(plan)
     _require(isinstance(snapshot, dict)
              and snapshot.get("database_name") == EXPECTED_DB
-             and snapshot.get("transaction_read_only") is True,
-             "Wrong target or database transaction not proven read-only")
+             and (snapshot.get("transaction_read_only") is True
+                  or (not require_read_only
+                      and snapshot.get("transaction_read_only") is False)),
+             "Wrong target or database transaction mode")
     revisions = snapshot.get("alembic_revisions", [])
     tables = set(snapshot.get("present_tables", []))
     present = tables & {GROUP_TABLE, TOKEN_TABLE}
@@ -311,9 +323,12 @@ def assess_rehearsal_preflight(plan: dict[str, Any], snapshot: dict[str, Any]) -
     return {
         "schema": PREFLIGHT_SCHEMA,
         "status": state,
-        "approval_status": "READ_ONLY_PREFLIGHT_NO_APPLY_AUTHORIZATION",
+        "approval_status": (
+            "READ_ONLY_PREFLIGHT_NO_APPLY_AUTHORIZATION"
+            if require_read_only else "INTERNAL_WRITER_SNAPSHOT_COMPARISON"
+        ),
         "database_name": EXPECTED_DB,
-        "database_transaction_read_only": True,
+        "database_transaction_read_only": snapshot.get("transaction_read_only"),
         "alembic_revisions": revisions,
         "required_alembic_revision": EXPECTED_REVISION,
         "present_provenance_tables": sorted(present),
@@ -326,16 +341,23 @@ def assess_rehearsal_preflight(plan: dict[str, Any], snapshot: dict[str, Any]) -
         "conflict_counts": dict(sorted(conflicts.items())),
         "source_workbook_sha256": plan["source_workbook_sha256"],
         "source_payload_sha256": plan["payload_sha256"],
-        "db_writes": 0,
+        "db_writes": 0 if require_read_only else None,
         "migration_operations": 0,
         "canonical_certificate_links_created": 0,
-        "limitations": [
-            "Current DB state observed only at read-only snapshot time",
-            "No database revision changed; no table created; no INSERT/UPDATE/DELETE",
-            "No UUIDs or canonical Certificate/BusinessEligibilityVersion FK inferred",
-            "A ready/identical source-only state is not authority to link or deploy",
-            "Excel COM waived by owner, not performed",
-        ],
+        "limitations": (
+            [
+                "Current DB state observed only at read-only snapshot time",
+                "No database revision changed; no table created; no INSERT/UPDATE/DELETE",
+                "No UUIDs or canonical Certificate/BusinessEligibilityVersion FK inferred",
+                "A ready/identical source-only state is not authority to link or deploy",
+                "Excel COM waived by owner, not performed",
+            ] if require_read_only else [
+                "This is an observation within the importer's write transaction",
+                "Actual writes, if any, are owned and verified by the importer",
+                "No canonical Certificate/BusinessEligibilityVersion FK inferred",
+                "Excel COM waived by owner, not performed",
+            ]
+        ),
     }
 
 

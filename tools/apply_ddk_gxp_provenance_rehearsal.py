@@ -119,9 +119,13 @@ def _source_snapshot(connection, workbook_sha256: str) -> dict[str, Any]:
                 JOIN {GROUP_TABLE} AS g ON t.source_group_id = g.id
                 WHERE g.source_workbook_sha256 = :fingerprint
             """), {"fingerprint": workbook_sha256}).mappings()]
+    read_only = (
+        connection.execute(text("SELECT current_setting('transaction_read_only')")).scalar_one() == "on"
+        if connection.dialect.name == "postgresql" else False
+    )
     return {
         "database_name": EXPECTED_DB if connection.dialect.name == "sqlite" else db,
-        "transaction_read_only": True,  # Snapshot is observational, not a write claim.
+        "transaction_read_only": read_only,
         "alembic_revisions": revisions,
         "present_tables": sorted(available),
         "table_structure": structure,
@@ -147,11 +151,10 @@ def apply_sealed_plan(
     dialect = engine.dialect.name
     if dialect != "postgresql" and not (dialect == "sqlite" and allow_sqlite_for_tests):
         raise SourceLoadBlocked("Only PostgreSQL rehearsal is write-authorized")
-    if not expected_groups or not expected_tokens:
-        # Corpus-independent: allow a legitimate tokenless set of groups, but
-        # never an entirely empty plan as a way to certify success.
-        if not expected_groups:
-            raise SourceLoadBlocked("Source plan contains no GxP groups")
+    # A source group can legitimately have no ID CC tokens. Refuse only an
+    # entirely empty source plan; don't invent tokens for GDP activity.
+    if not expected_groups:
+        raise SourceLoadBlocked("Source plan contains no GxP groups")
 
     group_table = BusinessEligibilityGxpSourceGroup.__table__
     token_table = BusinessEligibilityGxpReferenceEvidence.__table__
@@ -169,7 +172,8 @@ def apply_sealed_plan(
             if actual_db != EXPECTED_DB:
                 raise SourceLoadBlocked("Connected to the wrong database")
         before = assess_rehearsal_preflight(
-            plan, _source_snapshot(conn, plan["source_workbook_sha256"])
+            plan, _source_snapshot(conn, plan["source_workbook_sha256"]),
+            require_read_only=False,
         )
         if before["status"] == "SOURCE_PROVENANCE_ALREADY_MATCHES_PLAN":
             if unchanged_source is not None and not unchanged_source():
@@ -220,7 +224,8 @@ def apply_sealed_plan(
         if token_rows:
             conn.execute(insert(token_table), token_rows)
         after = assess_rehearsal_preflight(
-            plan, _source_snapshot(conn, plan["source_workbook_sha256"])
+            plan, _source_snapshot(conn, plan["source_workbook_sha256"]),
+            require_read_only=False,
         )
         if after["status"] != "SOURCE_PROVENANCE_ALREADY_MATCHES_PLAN":
             raise SourceLoadBlocked("Post-insert evidence comparison failed")

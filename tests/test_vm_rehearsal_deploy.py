@@ -101,6 +101,7 @@ def test_prepare_rehearsal_runtime_env_preserves_canonical_env_and_points_runtim
 
     assert canonical_env.read_text(encoding="utf-8") == canonical_before
     assert plan.canonical_database == "gxp_qlcl"
+    assert plan.source_database == "gxp_qlcl"
     assert plan.rehearsal_database == "gxp_legacy_rehearsal"
     assert plan.alembic_current_revision == expected_alembic_head_revision()
     assert plan.alembic_head_revision == expected_alembic_head_revision()
@@ -149,6 +150,77 @@ def test_rehearsal_deploy_accepts_known_forward_0022_to_0023_without_pre_migrati
             assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20261008_0022"
     finally:
         engine.dispose()
+
+
+def test_rehearsal_preflight_accepts_runtime_already_on_rehearsal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime_env = tmp_path / "runtime.env"
+    runtime_env.write_text(
+        "\\n".join([
+            "APP_ENV=production",
+            "DB_MODE=local_postgres",
+            "DB_NAME=gxp_legacy_rehearsal",
+            "DB_USER=gxp_app",
+            "DB_PASSWORD=secret",
+            "DB_HOST=127.0.0.1",
+            "DB_PORT=5432",
+        ]) + "\\n", encoding="utf-8"
+    )
+    before = runtime_env.read_bytes()
+    sqlite_url = _prepare_target_db(tmp_path / "mock-rehearsal.db", revision="20261008_0022")
+    actual_builder = rehearsal_deploy.build_session_factory
+    seen_urls: list[str] = []
+
+    def isolated_builder(database_url: str):
+        seen_urls.append(database_url)
+        return actual_builder(sqlite_url)
+
+    monkeypatch.setattr(rehearsal_deploy, "build_session_factory", isolated_builder)
+    derived = tmp_path / "derived.env"
+    plan = rehearsal_deploy.prepare_rehearsal_runtime_env(
+        runtime_env_path=runtime_env,
+        output_runtime_env_path=derived,
+    )
+    assert runtime_env.read_bytes() == before
+    assert plan.canonical_database == "gxp_qlcl"
+    assert plan.source_database == "gxp_legacy_rehearsal"
+    assert plan.canonical_database_url_redacted == "not_supplied"
+    assert plan.alembic_current_revision == "20261008_0022"
+    assert plan.alembic_head_revision == "20261012_0023"
+    assert plan.alembic_upgrade_required is True
+    assert len(seen_urls) == 1
+    assert seen_urls[0].endswith("/gxp_legacy_rehearsal")
+    result = parse_env_file(derived)
+    assert result["DB_NAME"] == "gxp_legacy_rehearsal"
+    assert result["DATABASE_URL"] == seen_urls[0]
+    engine = create_engine(sqlite_url, future=True)
+    try:
+        with engine.connect() as connection:
+            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20261008_0022"
+    finally:
+        engine.dispose()
+
+
+def test_rehearsal_preflight_rejects_database_url_mismatch_without_connecting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime_env = tmp_path / "runtime.env"
+    runtime_env.write_text(
+        "APP_ENV=production\\nDB_MODE=local_postgres\\n"
+        "DB_NAME=gxp_legacy_rehearsal\\nDB_USER=gxp_app\\n"
+        "DATABASE_URL=postgresql+psycopg://gxp_app:secret@127.0.0.1:5432/gxp_qlcl\\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(rehearsal_deploy, "build_session_factory", lambda _url: pytest.fail("unexpected DB connection"))
+    with pytest.raises(rehearsal_deploy.RehearsalDeployError, match="must target local"):
+        rehearsal_deploy.prepare_rehearsal_runtime_env(
+            runtime_env_path=runtime_env,
+            output_runtime_env_path=tmp_path / "derived.env",
+        )
+    assert not (tmp_path / "derived.env").exists()
 
 
 def test_prepare_rehearsal_runtime_env_requires_expected_alembic_head(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

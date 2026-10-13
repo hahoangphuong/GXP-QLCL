@@ -58,3 +58,24 @@ migration 0023 succeeded. That is a separate source-load step.
 
 This file documents a dev/test deployment; it does not authorize
 replacing a production database or merging PR #3/PR #7.
+
+## Existing VM already points at rehearsal (observed 2026-10-13)
+
+The VM operator found `/etc/gxp/runtime.env` uses `DB_NAME=gxp_legacy_rehearsal`,
+rather than the canonical `gxp_qlcl` assumed by earlier rehearsal preflight.
+The preflight now explicitly supports **both** source configurations, and
+rejects a runtime env whose declared rehearsal DB disagrees with its effective
+PostgreSQL URL. This change belongs to rehearsal deployment only; production
+import continues requiring the canonical source and retains its own checks.
+
+VM `/opt/gxp/src/GXP-QLCL` is owned by the application account, not
+the SSH operator. Run `git` under the repo owner (typically `gxp`);
+do **not** apply a global `safe.directory` exception. Use a shell with
+`set -e` so failed source fetch/switch cannot accidentally continue to
+deploy from an old checkout.
+
+CI for prior head `a1ea5e2f43547142606a9e1ed5a21e93dadc422a` failed due to
+an Alembic `CommandError` when a test supplies nonexistent `wrong-head`.
+The runtime graph check now treats this as an expected mismatch.
+Only an exact-head PASS of backend, frontend and hygiene authorizes
+invoking the next test deployment.

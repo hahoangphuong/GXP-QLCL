@@ -61,7 +61,7 @@ def _safe_database_name(env: dict[str, str]) -> tuple[str | None, str]:
 
 def _get_backend_port(pid: int) -> int:
     """Read only numeric Uvicorn listen port from MainPID argv; never log argv."""
-    values = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\\0")
+    values = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
     argv = [value.decode("utf-8", errors="replace") for value in values if value]
     def argument(flag: str) -> str | None:
         matches: list[str] = []

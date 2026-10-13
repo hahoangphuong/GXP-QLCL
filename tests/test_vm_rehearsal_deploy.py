@@ -158,7 +158,7 @@ def test_rehearsal_preflight_accepts_runtime_already_on_rehearsal(
 ) -> None:
     runtime_env = tmp_path / "runtime.env"
     runtime_env.write_text(
-        "\\n".join([
+        "\n".join([
             "APP_ENV=production",
             "DB_MODE=local_postgres",
             "DB_NAME=gxp_legacy_rehearsal",
@@ -166,7 +166,7 @@ def test_rehearsal_preflight_accepts_runtime_already_on_rehearsal(
             "DB_PASSWORD=secret",
             "DB_HOST=127.0.0.1",
             "DB_PORT=5432",
-        ]) + "\\n", encoding="utf-8"
+        ]) + "\n", encoding="utf-8"
     )
     before = runtime_env.read_bytes()
     sqlite_url = _prepare_target_db(tmp_path / "mock-rehearsal.db", revision="20261008_0022")
@@ -209,9 +209,9 @@ def test_rehearsal_preflight_rejects_database_url_mismatch_without_connecting(
 ) -> None:
     runtime_env = tmp_path / "runtime.env"
     runtime_env.write_text(
-        "APP_ENV=production\\nDB_MODE=local_postgres\\n"
-        "DB_NAME=gxp_legacy_rehearsal\\nDB_USER=gxp_app\\n"
-        "DATABASE_URL=postgresql+psycopg://gxp_app:secret@127.0.0.1:5432/gxp_qlcl\\n",
+        "APP_ENV=production\nDB_MODE=local_postgres\n"
+        "DB_NAME=gxp_legacy_rehearsal\nDB_USER=gxp_app\n"
+        "DATABASE_URL=postgresql+psycopg://gxp_app:secret@127.0.0.1:5432/gxp_qlcl\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(rehearsal_deploy, "build_session_factory", lambda _url: pytest.fail("unexpected DB connection"))

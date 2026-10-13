@@ -182,6 +182,25 @@ it is **not** permission to migrate and is not a guarantee about child
 process overrides, later restarts or other services. Independently check
 `pg_stat_activity` and the exact migration guard before any later apply.
 
+### Failed runtime preflight: stage-limited diagnostics
+
+The first verified VM read-only probe returned
+`BLOCK_RUNTIME_INSPECTION_ERROR` without any failure-stage metadata. The
+source file SHA-1 matched the GitHub blob
+`4f2810efc9b7f2421db10ea302e2f6f7b6c5fa9d`; **this proves the
+download was unmodified, but does not establish the current service DB
+target**. The migration `0023` remains BLOCKED.
+
+The revised `check_gxp_runtime_db_target_readonly.py` emits only
+`failed_stage` and `error_category` on exceptions. Possible stages are
+`SYSTEMD_MAINPID`, `MAINPID_PROC_ENVIRONMENT`,
+`SAFE_DB_NAME_EXTRACTION`, `LOCALHOST_READYZ`, and `ASSESS_RUNTIME`.
+No error message, URL, password, raw environment or process details are
+returned. The operator must verify the new exact Git blob SHA before
+running it. A failure at any stage is a STOP decision, not an instruction
+to install packages or change the systemd service. Do not print
+`systemctl show ... Environment` or `/proc/<pid>/environ` directly.
+
 ## Guarded schema-only migration tool — prepared, NOT executed
 
 The owner-accepted live VM preflight reports Alembic `20261008_0022`

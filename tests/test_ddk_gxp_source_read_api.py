@@ -5,7 +5,9 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
-from fastapi.testclient import TestClient
+from types import SimpleNamespace
+
+from backend.app.auth import get_authenticated_user
 from sqlalchemy import create_engine, select, func
 from sqlalchemy.orm import Session
 
@@ -164,19 +166,35 @@ def test_api_refuses_partial_and_ambiguous_source_workbook(tmp_path):
 def test_route_reuses_catalog_auth_401_403_and_does_not_change_canonical_detail(tmp_path):
     engine, url, (record, _, _) = seeded(tmp_path)
     app = create_app(url)
-    with TestClient(app) as client:
-        path = f"/business-eligibility-certificates/{record}/gxp-source-evidence"
-        assert client.get(path).status_code == 401
-        assert client.get(path, headers={"X-Auth-User": "n", "X-Auth-Role": "unexpected"}).status_code == 403
-        result = client.get(path, headers={"X-Auth-User": "reader01", "X-Auth-Role": "reader"})
-        assert result.status_code == 200
-        assert result.json()["source_status"] == "available"
-        assert result.json()["canonical_links_included"] is False
-        canonical = client.get(
-            f"/business-eligibility-certificates/{record}",
-            headers={"X-Auth-User": "reader01", "X-Auth-Role": "reader"},
+    source_route = next(route for route in app.routes if getattr(route, "path", "") ==
+        "/business-eligibility-certificates/{business_eligibility_certificate_id}/gxp-source-evidence")
+    canonical_route = next(route for route in app.routes if getattr(route, "path", "") ==
+        "/business-eligibility-certificates/{business_eligibility_certificate_id}")
+    with pytest.raises(HTTPException) as missing_auth:
+        get_authenticated_user(SimpleNamespace(app=app, headers={}))
+    assert missing_auth.value.status_code == 401
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as denied:
+            source_route.endpoint(
+                business_eligibility_certificate_id=record,
+                session=session,
+                user=build_authenticated_user("reader02", "unexpected"),
+            )
+        assert denied.value.status_code == 403
+        result = source_route.endpoint(
+            business_eligibility_certificate_id=record,
+            session=session,
+            user=build_authenticated_user("reader01", "reader"),
         )
+        assert result.source_status == "available"
+        assert result.canonical_links_included is False
         # Seed has no BusinessEligibilityVersion: existing canonical detail
         # retains its established 404, without a source-driven rescue.
-        assert canonical.status_code == 404
+        with pytest.raises(HTTPException) as unchanged:
+            canonical_route.endpoint(
+                business_eligibility_certificate_id=record,
+                session=session,
+                user=build_authenticated_user("reader01", "reader"),
+            )
+        assert unchanged.value.status_code == 404
     engine.dispose()

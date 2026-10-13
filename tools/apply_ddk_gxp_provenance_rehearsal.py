@@ -66,7 +66,10 @@ def checked_rehearsal_url(runtime_env: dict[str, str]) -> str:
 
 def _source_snapshot(connection, workbook_sha256: str) -> dict[str, Any]:
     """Read the entire target count and selected source rows in *this* lock."""
-    db = connection.execute(text("SELECT current_database()")).scalar_one()
+    db = (
+        connection.execute(text("SELECT current_database()")).scalar_one()
+        if connection.dialect.name == "postgresql" else EXPECTED_DB
+    )
     revisions = list(connection.execute(
         text("SELECT version_num FROM public.alembic_version ORDER BY version_num")
         if connection.dialect.name == "postgresql"

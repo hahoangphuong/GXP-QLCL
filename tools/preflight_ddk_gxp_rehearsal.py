@@ -240,7 +240,7 @@ def assess_rehearsal_preflight(
              and (snapshot.get("transaction_read_only") is True
                   or (not require_read_only
                       and snapshot.get("transaction_read_only") is False)),
-             "Wrong target or database transaction mode")
+             "Wrong target or database transaction not proven read-only (writer mode must be explicit)")
     revisions = snapshot.get("alembic_revisions", [])
     tables = set(snapshot.get("present_tables", []))
     present = tables & {GROUP_TABLE, TOKEN_TABLE}

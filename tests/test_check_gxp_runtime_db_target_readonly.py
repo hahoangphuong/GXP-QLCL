@@ -1,0 +1,78 @@
+"""Read-only VM runtime target preflight: secret-free and fail-closed."""
+from __future__ import annotations
+
+import json
+import subprocess
+from urllib.error import URLError
+
+import pytest
+
+from scripts import check_gxp_runtime_db_target_readonly as preflight
+
+
+READY = {
+    "http_status": 200, "ok": True, "database_reachable": True,
+    "schema_current": True, "expected_revision": "20261008_0022",
+    "actual_revision": "20261008_0022",
+}
+
+
+def test_service_uses_rehearsal_blocks_regardless_of_healthy_readyz():
+    result = preflight.assess_runtime(
+        "gxp_legacy_rehearsal", "DATABASE_URL", READY)
+    assert result["status"] == "BLOCK_ACTIVE_SERVICE_TARGETS_REHEARSAL"
+    assert result["database_writes"] == 0
+    assert result["readiness_indirect_database_read"] is True
+
+
+def test_independent_database_and_ready_revision_may_pass_as_observation_only():
+    result = preflight.assess_runtime("gxp_qlcl", "DB_NAME", READY)
+    assert result["status"] == "OBSERVED_SERVICE_TARGET_DIFFERENT_FROM_REHEARSAL"
+    assert "NOT permission" in result["important_limitation"]
+
+
+@pytest.mark.parametrize("name,source,ready,status", [
+    (None, "TARGET_NOT_EXPOSED_IN_MAINPID_ENV", READY, "BLOCK_UNKNOWN_RUNTIME_TARGET"),
+    ("gxp_qlcl", "DB_NAME", {**READY, "schema_current": False}, "BLOCK_RUNTIME_READINESS_OR_REVISION_DRIFT"),
+    ("gxp_qlcl", "DB_NAME", {**READY, "http_status": 503}, "BLOCK_RUNTIME_READINESS_OR_REVISION_DRIFT"),
+    ("gxp_qlcl", "DB_NAME", {**READY, "actual_revision": "20261012_0023"}, "BLOCK_RUNTIME_READINESS_OR_REVISION_DRIFT"),
+])
+def test_runtime_preflight_always_fails_closed(name, source, ready, status):
+    assert preflight.assess_runtime(name, source, ready)["status"] == status
+
+
+@pytest.mark.parametrize("environment,expected", [
+    ({"DATABASE_URL": "postgresql+psycopg://alice:s3cret@localhost/gxp_legacy_rehearsal"}, ("gxp_legacy_rehearsal", "DATABASE_URL")),
+    ({"DB_NAME": "gxp_qlcl", "DB_MODE": "local_postgres"}, ("gxp_qlcl", "DB_NAME")),
+    ({"DATABASE_URL": "sqlite:///tmp/cache.db"}, (None, "DATABASE_URL_INVALID_OR_NOT_POSTGRES")),
+    ({"DATABASE_URL": "postgresql://some_user:s3cret@localhost/gxp_qlcl", "DB_NAME": "gxp_legacy_rehearsal"}, ("gxp_qlcl", "DATABASE_URL")),
+    ({}, (None, "TARGET_NOT_EXPOSED_IN_MAINPID_ENV")),
+])
+def test_parses_only_target_db_without_exposing_credentials(environment, expected):
+    assert preflight._safe_database_name(environment) == expected
+    assert "s3cret" not in json.dumps(expected)
+
+
+def test_main_no_env_logging_even_when_database_credential_present(monkeypatch, capsys):
+    monkeypatch.setattr(preflight, "_get_main_pid", lambda: 2468)
+    monkeypatch.setattr(preflight, "_get_service_env", lambda _: {
+        "DATABASE_URL": "postgresql+psycopg://alice:super-secret@127.0.0.1/gxp_qlcl"
+    })
+    monkeypatch.setattr(preflight, "_read_readyz", lambda: dict(READY))
+    assert preflight.main() == 0
+    output = capsys.readouterr().out
+    assert "OBSERVED_SERVICE_TARGET_DIFFERENT_FROM_REHEARSAL" in output
+    assert "super-secret" not in output
+    assert "alice" not in output
+
+
+def test_missing_proc_env_or_network_does_not_claim_clearance(monkeypatch, capsys):
+    monkeypatch.setattr(preflight, "_get_main_pid", lambda: 2468)
+    monkeypatch.setattr(
+        preflight, "_get_service_env",
+        lambda _: (_ for _ in ()).throw(PermissionError("s3cret")),
+    )
+    assert preflight.main() == 2
+    output = capsys.readouterr().out
+    assert "BLOCK_RUNTIME_INSPECTION_ERROR" in output
+    assert "s3cret" not in output

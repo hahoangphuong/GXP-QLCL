@@ -51,6 +51,13 @@ def _check_sql(sql: str):
     _has(sql, "fk_count <> 1")
     _has(sql, "c.confrelid = group_oid")
     _has(sql, "group_rows <> 0 OR reference_rows <> 0")
+    _has(sql, "DDK 0023 named source CHECK semantics mismatch")
+    _has(sql, "ck_business_eligibility_gxp_source_group_begxp_group_so_d1cc")
+    _has(sql, "ck_business_eligibility_gxp_source_group_begxp_group_co_8a89")
+    _has(sql, "ck_business_eligibility_gxp_reference_evidence_begxp_re_7ca6")
+    _has(sql, "pg_catalog.pg_get_constraintdef(c.oid)")
+    _has(sql, "matched_columns <> 7 THEN")
+
     _has(sql, "PASS_SCHEMA_0023_SOURCE_ONLY_EMPTY")
     _has(sql, "source_workbook_sha256")
     _has(sql, "source_sheet_name")

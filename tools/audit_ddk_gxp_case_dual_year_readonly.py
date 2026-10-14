@@ -274,10 +274,12 @@ def classify_unresolved_case_year_roots_readonly(
         _require(bool(smbpath.isdir(year_root)),
                  "Source-year SMB entry is not a directory")
         names: list[str] = []
+        entries_this_root = 0
         for entry in smbclient.scandir(year_root):
+            entries_this_root += 1
             entries_total += 1
             _require(
-                len(names) < max_entries_per_root
+                entries_this_root <= max_entries_per_root
                 and entries_total <= max_entries_total,
                 "Bounded source-year metadata scan exceeded budget",
             )

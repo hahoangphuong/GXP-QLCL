@@ -248,6 +248,60 @@ def evaluate_canonical_projection(
     }
 
 
+
+def prepare_physical_workbook_request(
+    *,
+    target: dict[str, Any],
+    source_case: Case,
+    source_site: Site,
+    observed_site: Site,
+    source_anchor: LegacyInspectionStorageAnchor,
+    imported_company_legacy_id: int,
+    workbook_sha256: str,
+) -> dict[str, Any]:
+    """Generate a PRIVATE bounded physical Excel challenge, never print it.
+
+    The original DB must have been checked in the same READ ONLY transaction.
+    A request is an identity comparison, not permission to remap Site ownership.
+    """
+    from tools.audit_ddk_inspection_physical_source_readonly import REQUEST_SCHEMA
+
+    legacy_id = getattr(source_case, "legacy_inspection_id", None)
+    gxp_type = getattr(source_case, "gxp_type", None)
+    _require(
+        isinstance(workbook_sha256, str)
+        and len(workbook_sha256) == 64
+        and all(x in "0123456789abcdef" for x in workbook_sha256.lower())
+        and type(legacy_id) is int and legacy_id > 0
+        and gxp_type in {"GMP", "GLP", "GMPbb"}
+        and source_case.id == target["case_id"]
+        and source_case.site_id == source_site.id
+        and source_case.legacy_inspection_code == target["inspection_code"]
+        and source_case.legacy_inspection_code == f"KT-{legacy_id}-{gxp_type}"
+        and source_site.legacy_site_id == target["source_site_legacy_id"]
+        and observed_site.legacy_site_id == target["observed_site_legacy_id_unverified"]
+        and source_site.id != observed_site.id
+        and source_site.company_id == observed_site.company_id
+        and type(imported_company_legacy_id) is int
+        and imported_company_legacy_id > 0
+        and source_anchor.case_id == source_case.id
+        and source_anchor.source_sheet == "db.ktra"
+        and type(source_anchor.source_row) is int
+        and source_anchor.source_row > 0,
+        "Source workbook physical request identity contract changed",
+    )
+    return {
+        "schema": REQUEST_SCHEMA,
+        "approval_status": "NOT_APPROVED",
+        "source_workbook_sha256": workbook_sha256.lower(),
+        "source_site_legacy_id": source_site.legacy_site_id,
+        "observed_site_legacy_id_unverified": observed_site.legacy_site_id,
+        "legacy_inspection_id": legacy_id,
+        "source_case_row_number": source_anchor.source_row,
+        "source_company_legacy_id": imported_company_legacy_id,
+        "inspection_code": source_case.legacy_inspection_code,
+    }
+
 def read_imported_site_case_crosswalk(
     session: Session, queue: dict[str, Any], target: dict[str, Any],
 ) -> dict[str, Any]:

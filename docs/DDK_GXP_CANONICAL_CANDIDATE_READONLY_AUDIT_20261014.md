@@ -358,3 +358,25 @@ years is recorded AMBIGUOUS, not resolved. A private 0600 JSON is created
 with year-specific folder observations; public stdout reports aggregates.
 Previous SMB audit reports remain intact and are not reinterpreted until
 new real observations exist.
+
+## Immutable 6-Case single-vs-dual-year transition check
+
+On 14 October, protected original SMB parent report found 2/6 originating
+Cases; a read-only dual-source-year audit found 3/6 across 9 original-year
+lookups (three Cases have two distinct source years). Source-year attribution
+counters overlap when both input columns name the same calendar year.
+
+An ad hoc operator comparison incorrectly expected
+`readiness_report_sha256` in the *private* original SMB report; that
+field had been appended **only to printed aggregate stdout** after private
+JSON was persisted. This is a consumer schema mismatch, not altered evidence.
+
+`tools.audit_ddk_gxp_case_year_transitions_readonly` now compares both
+private mode-0600 reports, regenerates the review queue from the original
+source dossier, validates all six exact originating-Case identities, checks
+the dual report's persisted readiness SHA against actual protected readiness
+bytes, compares status/path/count for each initially probed year, and
+requires zero regressions in any originally RESOLVED Case. It prints only
+aggregate status transitions with no IDs or folder paths, and makes no
+SMB or database connection. It does not normalize missing folder claims,
+approve links, or rewrite any prior evidence/report.

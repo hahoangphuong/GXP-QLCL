@@ -101,6 +101,17 @@ def test_docx_exact_code_text_is_observation_only():
     assert "Report" not in str(result)
 
 
+def test_nearby_inspection_code_is_not_exact_identity():
+    result = owner.classify_document_bytes(
+        b"Unrelated KT-555-GMP2 audit record",
+        extension=".txt", inspection_code="KT-555-GMP",
+        source_site_id=101, alternate_site_id=202,
+    )
+    assert result["format_status"] == "TEXT_AVAILABLE"
+    assert result["exact_inspection_code_in_extractable_text"] is False
+    assert result["content_ownership_verified"] is False
+
+
 def test_txt_does_not_infer_ownership_from_unrelated_bytes():
     result = owner.classify_document_bytes(
         b"A report with no Case identity",

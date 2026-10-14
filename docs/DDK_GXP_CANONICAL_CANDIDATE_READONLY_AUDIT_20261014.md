@@ -522,3 +522,41 @@ were probed (six Cases, nine source-year observations, no regressions).
 Use existing protected Case reports to characterize gaps before any
 new bounded SMB lookup; do not use year+1 guesses or search arbitrary years.
 Business eligibility links remain `NOT_APPROVED`.
+
+
+## Remaining Case source-year evidence and bounded metadata discrimination (14 Oct 2026)
+
+Exact-HEAD VM local read-only comparison of protected source queue, readiness,
+original SMB report and dual-year report returned PASS:
+- 6 originating Cases total, 3 RESOLVED and 3 NOT_FOUND;
+- among NOT_FOUND: two with one usable physical source year each and
+  one with two distinct usable physical source years;
+- 4 original Case-year lookup observations across those 3 missing Cases;
+- two missing Cases have submission-year provenance, all three have
+  inspection-year provenance, and two have both kinds of provenance;
+- no inferred year, changed Case identity, new report, SQL or SMB call.
+
+A direct inspection SMB resolver returns NOT_FOUND when the source-year
+root is absent OR when none of its direct child directories contains BOTH
+the literal `(ID-<site_legacy_id>)` and
+`(<inspection_legacy_code>)` tokens. The protected per-year records
+cannot distinguish these cases. Absence of a complete token match is
+not evidence of no physical or regulatory document.
+
+The existing dual-year audit owner now exposes a **separate bounded
+metadata-only classification function**, to use only after the original
+two private reports have passed the existing transition/integrity
+comparator. It examines exactly the four missing Case-year combinations
+(no year guesses), caches each source-year root's immediate directory
+names, and enforces at most 3,000 entries per year root and 12,000 total.
+It classifies root absent, neither exact token, Site-only token,
+inspection-code-only token or split tokens in distinct folders.
+A newly complete matching pair, missing source/approval evidence,
+unexpected case/year population, SMB fault or budget overflow aborts
+rather than manufacturing a resolution. No recursive search, file
+content, new alternative root, DB writes or legal approval. Public output
+must stay aggregate-only; operator-only private data never enters GitHub.
+
+**NOT VERIFIED on live Synology** until exact-head CI and a separately
+checked bounded VM read-only run succeed. No production resolver,
+storage configuration, binding or canonical link has been changed.

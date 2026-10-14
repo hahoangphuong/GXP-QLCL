@@ -376,9 +376,9 @@ outside git as preserved-master-history-1366/1920/390.png.
 | Label/value rows, frames, dense tab controls | Scoped search CSS | Rounded cards and larger controls | Reduced corner radius/spacing; runtime grey frames, blue/green tabs and white inset values applied; cyan certificate values | Partial; no exact appearance claim |
 | Application page date then dossier code | CaseApplicationWorkspace | Same order, currently two-column grid | Order retained; runtime images establish vertical date/code and assessment grouping; implementation remains partial | Runtime evidence available |
 | FilterForm named condition groups | LegacySearchFilters | Supported filters only accessible by URL | Quick filter and grouped supported controls added; complete legacy condition set remains unsupported | Partial; controlled-state tests and browser request/URL evidence |
-| RecordForm MultiPage1, document bundle | ContextualDocumentSection / EventWorkspace | Web list/detail with canonical versions | Existing owner preserved, inherited compact frame styling; no invented tabs or filename-based keys | Partial; full interaction/race tests retained; precise placement pending capture |
+| RecordForm MultiPage1, document bundle | ContextualDocumentSection / EventWorkspace | Web list/detail with canonical versions | Existing owner preserved, inherited compact frame styling; no invented tabs or filename-based keys | `LEGACY_STATIC_VERIFIED` for structure/actions and `WEB_FIXTURE_VERIFIED` for canonical interaction; runtime geometry/states remain `EVIDENCE_MISSING` |
 | GPs / ĐĐK historical lists and details | Certificate workspaces | Existing two-pane model; different chrome | Legacy facility tab captions and scoped density applied; fields/provenance retained | Partial; existing certificate/draft/modal tests, runtime references now available; exact field grouping remains partial |
-| SelectCC, SelectDDK, ChonMauCC, SelectFile, ExtRecordForm, DCForm, TTVForm | Existing selectors/editors | Full runtime appearance unknown | Audited as related forms; no guessed replacement screens | EVIDENCE_MISSING for runtime states and visual comparison |
+| SelectCC, SelectDDK, ChonMauCC, SelectFile, ExtRecordForm, DCForm, TTVForm | Existing selectors/editors | Full runtime appearance unknown | Audited as related forms; no guessed replacement screens | SelectFile structure/double-click are `LEGACY_STATIC_VERIFIED`; runtime states and visual comparison remain `EVIDENCE_MISSING` |
 | GMP/GLP/GMPbb workbook worksheets, list/planning outputs | Search/results/report screens | UserForm and worksheet roles differ | Workbook inventory reviewed; worksheet rendering not cloned without evidence | EVIDENCE_MISSING for rendered workbook baseline |
 
 ### RecordForm document workspace interaction — 2026-10-14
@@ -415,12 +415,73 @@ colors, enabled/disabled appearance, confirmations and complete picker keyboard
 behavior. The web keeps its canonical list/detail/version model instead of
 recreating prefix/path-based selectors or raw Explorer ownership.
 
+### RecordForm / SelectFile evidence closure — 2026-10-15
+
+The available local evidence was re-inventoried without executing VBA. The
+exported FRM sources and `legacy/GXP-VBA code.zip!/xl/vbaProject.bin` FRX streams
+were parsed read-only. All 45 accessible `codex-clipboard-*.png` files were also
+visually inventoried: they contain the supplied MainForm/workflow/certificate
+captures and web fixture captures, but no RecordForm or SelectFile runtime view.
+The generated control inventory and contact sheets are stored outside Git under
+`.codex/evidence/gxp-recordform-b13095c/`.
+
+| Claim | Evidence and result | Classification | Confidence | Current web difference / decision |
+| --- | --- | --- | --- | --- |
+| RecordForm is a tabbed document surface | Root FRX contains `MultiPage1`; its two child pages are present below `RecordForm/i85` | `LEGACY_STATIC_VERIFIED` | High | Keep one contextual document workspace per owning workflow; do not introduce a global duplicate workspace |
+| First page contains 16 selector/open pairs | Static sites contain `cb1..cb16` and `btn1..btn16`; VBA routes all sixteen open buttons to `btnFile` | `LEGACY_STATIC_VERIFIED` | High | Web rows/actions are data-driven rather than sixteen permanent filename slots |
+| First page has separate create commands | Static sites contain `btnx1..btnx16`; VBA routes them to `btnFile <slot>, True` | `LEGACY_STATIC_VERIFIED` | High | Render create only when the backend action is present and available; never infer it from an empty slot |
+| Second page is another grouped file/note surface | Static sites contain eight `btny`/`cbz`/`btnz` groups plus `cbLanDC`, `btnFolder2`, `txtFolder2` and `btnAddNote` | `LEGACY_STATIC_VERIFIED` | High for structure; Low for runtime appearance | Do not add a second web document owner or a note mutation without canonical API ownership |
+| Selected file can be opened | `btnFile` opens the selected combo value; SelectFile passes the selected list value to `LoadFile` after double-click | `LEGACY_STATIC_VERIFIED` | High | Existing open action uses exact `document_id` and backend availability; raw path/Explorer ownership is intentionally excluded by C2 |
+| SelectFile is a single list picker | FRX contains one `lb` ListBox at tab index 0; VBA populates it from the supplied file list | `LEGACY_STATIC_VERIFIED` | High | Web preserves a list plus canonical detail/version pane so duplicate filenames remain distinct by full identity |
+| Double-click opens the selected item | `lb_DblClick` marks the action and `lb_MouseUp` loads the item at `ListIndex` | `LEGACY_STATIC_VERIFIED`; web behavior is `WEB_FIXTURE_VERIFIED` | High | Implemented at the existing selector and action owner; unavailable open actions remain inert |
+| Arrow/Home/End, Enter, Escape and F6/Shift+F6 behavior | No explicit RecordForm/SelectFile keyboard handlers were found; native MSForms defaults and runtime focus order cannot be proven from static files | `EVIDENCE_MISSING` for legacy; `WEB_FIXTURE_VERIFIED` for current web behavior | High that source is insufficient | Retain accessible web roving focus, Enter selection and F6 pane transfer; do not claim those keys reproduce legacy runtime |
+| Selected/available/unavailable/loading/disabled visuals | FRX supplies controls and VBA supplies some progress/status writes, but macro-driven visibility/enabled state and rendered appearance are absent | `EVIDENCE_MISSING` | High | Keep backend-owned availability, disabled reasons and live pending/error messages; no color/spacing change in this slice |
+| Exact geometry, colors, fonts and scaling | Designer structure is available; no native runtime capture or Windows scaling evidence exists for either form | `EVIDENCE_MISSING` | High | No CSS change is justified; designer twips are not converted to browser pixels |
+| Same filename on different logical documents | Legacy selection is filename/path based; static evidence cannot establish collision behavior | `EVIDENCE_MISSING` for legacy; `WEB_FIXTURE_VERIFIED` for web | High for the contract difference | Preserve `checklist_key` + `document_id` + action identity and version/rendition IDs; never merge by filename or prefix |
+| Focus and announcements during select/open/error | No runtime accessibility or screen-reader evidence exists | `EVIDENCE_MISSING` for legacy; unit/fixture verified for web | High | Preserve current focus restoration, status/alert semantics and stale-response ownership |
+
+#### Static control to canonical workspace crosswalk
+
+| Legacy control group | Proven static role | Canonical web owner / mapping | Constraint |
+| --- | --- | --- | --- |
+| `MultiPage1`, Page1, Page2 | Two-page RecordForm container | Owning `EventWorkspace` renders one `ContextualDocumentSection` for its current workflow context | Tabs are not recreated until captions, runtime visibility and owner mapping are evidenced |
+| `cb1..cb16` | File selection slots | Document selector rows keyed by `checklist_key` and exact `document_id` | Filename/prefix is display data only |
+| `btn1..btn16` | Open selected slot | Existing backend-provided `open` action | No available action means no open side effect |
+| `btnx1..btnx16` | Create from the corresponding slot/template path | Existing backend-provided `create` action | No client template/path fallback; permissions and disabled reasons stay authoritative |
+| `btny1..btny8`, `cbz1..cbz8`, `btnz1..btnz8` | Second-page grouped file actions | No additional owner introduced | Exact business mapping and runtime presentation remain `EVIDENCE_MISSING` |
+| `btnFolder`, `btnFolder2`, `cbFolder`, `cbFolder2`, `txtFolderName`, `txtFolder2`, `txtsyear` | Legacy folder/path navigation and display | No raw folder control in the frontend | Storage resolution remains behind StorageService; see C2 |
+| `lbProgress`, `lbStatus` | VBA generation progress/status text | Existing scoped pending status and action error region | Semantic relationship is grounded; visual equivalence is not claimed |
+| `SelectFile.lb` | Multiple-file picker and double-click target | Document list selection and available open action | Exact UUID, rendition and version remain canonical identities |
+| `btnRefresh`, `btnRefresh2`, `btnAddNote`, `btnHelp11`, `cbLanDC` | Legacy refresh/help/note/round controls | No new command in this slice | Requires an approved backend/domain owner and runtime evidence before mapping |
+
+#### Minimum runtime capture checklist
+
+Capture read-only, redacted images at native Excel/VBA runtime and record Windows
+display scaling. Do not expose filenames, paths, facility names or personal data.
+
+1. RecordForm Page1 and Page2 in their complete native window, including tab
+   captions, progress/status region and the full control boundaries.
+2. One empty slot, one single-file slot and one multi-file slot, with the relevant
+   create/open/select controls shown in normal, focused and disabled states.
+3. SelectFile immediately after opening, with one row focused/selected, plus the
+   state after Escape/window close and immediately before a confirmed double-click.
+4. A safe generation/open operation showing loading/progress, success and one
+   non-destructive error/confirmation state if those states can be reached without
+   mutating production data.
+5. Keyboard focus evidence for Arrow/Home/End, Enter, Escape and tab traversal;
+   record explicitly when F6/Shift+F6 have no legacy behavior.
+
+Until that set exists, RecordForm/SelectFile visual parity is `PARTIAL`: structure
+and the double-click interaction are verified, canonical web behavior is fixture
+verified, and exact runtime presentation remains `EVIDENCE_MISSING`. No visual
+micro-slice is applied at this checkpoint.
+
 ## CONFLICT_REGISTER
 
 | ID | LEGACY_EXPECTED | CURRENT_CONTRACT / WHY_CONFLICT | Minimal resolution and affected checks |
 | --- | --- | --- | --- |
 | C1 | Full FilterForm flags: registration, inspection, compliance, product classification, dosage form and date ranges; persisted workbook names | Existing search API supports q, facility/scope/province, canonical states, certificate state/expiry; no equivalent for all legacy flags or saved workbook names | User resolved: keep unsupported legacy conditions visibly disabled in their evidenced groups. Supported controls alone update server filters. No client-only filtering of a paginated subset; filter and URL tests apply. |
-| C2 | Native Explorer/Word, opening raw folders and prefix-selected files | Backend owns storage binding/access, logical document/rendition/version identity; frontend cannot resolve NAS paths | Preserve available backend open/create/history commands and IDs. Do not implement raw-path fallback or fake file actions. Document races/storage contract checks apply. |
+| C2 | Native Explorer/Word, opening raw folders and prefix-selected files; RecordForm slots and SelectFile values are populated from filesystem names | Backend owns storage binding/access, logical document/rendition/version identity; frontend cannot resolve NAS paths or use a filename/prefix as identity | Preserve available backend open/create/history commands and full IDs. Do not reproduce fixed path slots, raw-path fallback or fake file actions. Duplicate-filename, document-race and storage-contract checks apply. |
 | C3 | Legacy row editing may be directly available | RBAC, readiness and optimistic concurrency own permission/mutation availability | Preserve disabled/omitted commands and real 403/409 behavior. Caption/placement changes do not enable commands. Certificate/modal/draft tests apply. |
 | C4 | Runtime legacy pixel layout and all form states | FRX supplies structure, but runtime resizing, visibility, font/OS rendering and macro-driven states are not fully established; captures now available for case and certificate pages only | Keep verified arrangement/captions; do not invent colors, additional tabs or forms. Obtain redacted runtime captures before exact geometry/style work and screenshot comparison. Exact font metrics, main-list, RecordForm and FilterForm runtime states remain unverified. |
 | C5 | Fixed desktop windows | 390px viewport cannot fit the desktop panes | Stack the same panes and keep independent table scrolling. No cards or identity changes. Browser mobile functionality checks apply. |
@@ -452,7 +513,8 @@ Before evidence: previous baseline web captures `slice5-1366.png` and
 layout changes, not a screenshot comparison against runtime Excel.
 
 Next required evidence: redacted runtime captures of MainForm's full master list
-and general information page, RecordForm, FilterForm and related pickers; include Windows
+and general information page, RecordForm, FilterForm and related pickers; use the
+RecordForm/SelectFile minimum checklist above and include Windows
 scaling and active GxP/tab. Read-only originals remain local. With those captures,
 continue field geometry, actual colors/fonts and per-form side-by-side review.
 

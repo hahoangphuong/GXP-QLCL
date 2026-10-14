@@ -166,3 +166,39 @@ Output must not pre-exist. It cannot be placed in a different or
 public directory. Do not commit or upload private queue/dossier data to
 GitHub. Do not merge this evidence queue with actual
 BusinessEligibilityCertificateLink records.
+
+
+## Metadata-only evidence coverage for the 8 flagged ID CC tokens (14 October 2026)
+
+Owner: `tools/audit_ddk_gxp_review_document_coverage.py`. It does not
+change the import or legal adjudication. The reader reconstructs the review
+queue from its original private dossier and refuses any modified queue,
+including unapproved token/cardinality drift.
+
+It reads `Document`, `DocumentVariant`, and `DocumentVersion`
+for three **independently identified canonical parents**: the ĐĐK itself,
+the referenced GxP Certificate and its originating Case (when present).
+The link from original source token to canonical identity remains unapproved.
+Metadata classes are `NO_DOCUMENT_METADATA`,
+`DOCUMENT_METADATA_WITHOUT_STORAGE_LOCATOR` and
+`STORAGE_LOCATOR_RECORDED_UNVERIFIED`. A locator does not imply that
+the file exists or has been verified, and no metadata is proof of grant,
+legal scope, approved version, or cross-Site coverage.
+
+Use on VM after CI SUCCESS, with runtime still operating unchanged:
+
+```bash
+cd /opt/gxp/src/GXP-QLCL
+sudo -H -u gxp env PYTHONDONTWRITEBYTECODE=1 \
+  /opt/gxp/current-venv/bin/python \
+  -m tools.audit_ddk_gxp_review_document_coverage \
+  --dossier-json /var/tmp/gxp-ddk-private/ddk-idcc-exceptions-20261014.json \
+  --queue-json /var/tmp/gxp-ddk-private/ddk-idcc-manual-review-20261014.json \
+  --details-json /var/tmp/gxp-ddk-private/ddk-idcc-document-metadata-20261014.json
+```
+
+Private details are create-exclusive mode 0600. Console prints only
+aggregate classifications and an input hash. Database connections are
+validated to the local PostgreSQL rehearsal database / schema 0023 and
+enforced read-only at both connection and transaction levels. No storage
+path or actual binary is probed and no file metadata is rendered publicly.

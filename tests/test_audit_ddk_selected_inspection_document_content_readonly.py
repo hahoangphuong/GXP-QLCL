@@ -346,4 +346,11 @@ def test_pdf_only_retry_fail_closed_before_any_approval(monkeypatch, issue):
             storage, prior_metadata=meta, sample=sample,
             source_request=request(), prior_content=old,
         )
-    assert not calls if issue in {"tamper_report","change_metadata","bad_parser"} else len(calls) <= 1
+    # Metadata / parser preflight can fail before opening any file.
+    # A previously recorded digest is only verifiable against the current
+    # binary bytes AFTER opening that first selected PDF in read-only mode.
+    if issue in {"change_metadata", "bad_parser"}:
+        assert calls == []
+    else:
+        assert len(calls) == 1
+        assert calls[0].lower().endswith(".pdf")

@@ -16,7 +16,7 @@ from typing import Any
 
 from backend.app.db.enums import StorageResolutionStatus
 from backend.app.storage.factory import create_storage_service_from_env
-from backend.app.storage.smb import SmbStorageService
+from backend.app.storage.smb import SmbStorageService, smbpath
 from tools.audit_ddk_gxp_canonical_candidates_readonly import _write_private_json
 from tools.audit_ddk_gxp_storage_identity_readiness import SCHEMA as READINESS_SCHEMA
 from tools.build_ddk_gxp_manual_review_queue import _private_input, build_review_queue
@@ -151,6 +151,18 @@ def verified_lookup_targets(queue: dict[str, Any], readiness: dict[str, Any]) ->
     return ddk_targets, case_targets
 
 
+def check_configured_roots_readonly(storage: SmbStorageService) -> None:
+    """Check existing roots with SMB metadata before any folder-name lookup."""
+    _require(isinstance(storage, SmbStorageService)
+             and smbpath is not None
+             and bool(storage.dkkd_root)
+             and bool(storage.inspection_root),
+             "Expected configured SMB folder roots")
+    _require(bool(smbpath.isdir(storage.dkkd_root))
+             and bool(smbpath.isdir(storage.inspection_root)),
+             "SMB root missing or unavailable")
+
+
 def run_bounded_probes(
     storage: SmbStorageService,
     ddk: list[dict], cases: list[dict],
@@ -273,6 +285,7 @@ def main(argv: list[str] | None = None) -> int:
         # *read-only* resolver methods. No BindingLookupService or Session.
         storage = create_storage_service_from_env(env)
         _require(isinstance(storage, SmbStorageService), "Storage adapter mismatch")
+        check_configured_roots_readonly(storage)
         report = run_bounded_probes(
             storage, ddk, cases, max_ddk=args.max_ddk, max_cases=args.max_cases
         )

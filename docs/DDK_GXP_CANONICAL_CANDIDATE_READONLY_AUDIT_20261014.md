@@ -800,3 +800,35 @@ zero-token observations were not physically matched. DDK-to-GxP Certificate
 link approval is a separate source and legal-eligibility question and
 remains NOT_APPROVED. No DB/NAS write, migration, deployment, link creation
 or Production owner reassignment.
+
+## Mismatched Inspection folder: direct-child SMB metadata witness (14 Oct 2026)
+
+The physical source owner for Case KT-1023-GMP is verified as Site 298
+(db.ktra, accepted original workbook SHA-256), whereas one direct child
+of the originally sourced inspection-year root contains that inspection
+code and an alternate numeric Site token 46. Both distinct Sites belong
+to Company 37 in physical db.cso source. The accepted data import
+does not misassign this Case. No program logic may hardcode these values.
+
+A new **single-folder, direct-child metadata-only** audit owner at
+tools/audit_ddk_inspection_folder_mismatch_metadata_readonly.py
+first requires the protected original source queue, three-missing-Case
+metadata report, one code-only marker report, the private physical-source
+request and the imported projection crosswalk to match the previously
+verified SHA chain. The adapter enumerates only the ONE source-year root
+(max 3,000 entries) to re-find exactly one inspection-code folder with
+exactly one alternate Site marker. It then enumerates only its IMMEDIATE
+children (max 1,000 entries), recording file/directory names and suffixes
+in mode-0600 private JSON; public output is counts of file/dir entries and
+whether filenames contain the Case inspection code or either Site token.
+No binary streams, deeper subdirectories, other years/roots, DB connection
+or NAS write. Any drift, ambiguity or population cap breach blocks.
+
+This MAY show whether the directory contains direct artifacts or
+only subdirectories. Neither a filename nor the folder's Site token
+authenticates the contents, legal ownership or Case provenance.
+No automatic bind, Site remap, filename parser rescue, DDK link approval
+or production deployment follows from metadata. A separate source-
+attested document or storage-custody chain remains necessary to promote
+a mismatched folder to an approved Case attachment. Three originally
+unresolved Cases remain NOT_FOUND; DDK-to-GxP links are a different gate.

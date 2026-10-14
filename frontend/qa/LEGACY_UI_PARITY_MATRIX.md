@@ -381,6 +381,40 @@ outside git as preserved-master-history-1366/1920/390.png.
 | SelectCC, SelectDDK, ChonMauCC, SelectFile, ExtRecordForm, DCForm, TTVForm | Existing selectors/editors | Full runtime appearance unknown | Audited as related forms; no guessed replacement screens | EVIDENCE_MISSING for runtime states and visual comparison |
 | GMP/GLP/GMPbb workbook worksheets, list/planning outputs | Search/results/report screens | UserForm and worksheet roles differ | Workbook inventory reviewed; worksheet rendering not cloned without evidence | EVIDENCE_MISSING for rendered workbook baseline |
 
+### RecordForm document workspace interaction — 2026-10-14
+
+**LEGACY_EXPECTED →** The operator selects a concrete file in the RecordForm
+document slot and can open that selected file directly. SelectFile additionally
+opens the exact selected list item by double-click.
+
+**SOURCE_EVIDENCE →** `RecordForm.frm` defines paired `cb1..cb16` selectors and
+`btn1..btn16` commands. `btnFile` opens the selected combo value when present.
+`SelectFile.frm` handles `lb_DblClick`/`lb_MouseUp` and passes the selected list
+value to `LoadFile`. Static FRX site records corroborate the paired controls and
+tab order; they do not establish runtime pixels or colors.
+
+**CURRENT_CONTRACT →** `ContextualDocumentSection` owns one canonical workspace.
+Every row retains `parent_scope`, `parent_id`, `workflow_step`, `checklist_key`
+and `document_id`; open remains available only through the backend-provided
+action. Rendition/version identity stays in the read-only detail response.
+
+**CHANGE →** Double-clicking a document selector invokes its existing available
+`open` action through the same request-generation, full-identity deduplication,
+stale-response and focus-restoration path as the explicit Mở button. Enter still
+selects/loads detail. Missing or unavailable open actions do nothing; the client
+does not synthesize a command.
+
+**REGRESSION →** The new test fails on the baseline because double-click performs
+no open. It now proves the exact UUID is used even when two rows share one
+filename, repeated click events add no duplicate metadata request, focus remains on the selector, and an
+unavailable action cannot open. Existing A→B→A, same-slot replacement, shared-ID
+slots, 403/404/409, F6 and duplicate-request tests remain applicable.
+
+**REMAINING_GAP →** `EVIDENCE_MISSING`: RecordForm/SelectFile runtime geometry,
+colors, enabled/disabled appearance, confirmations and complete picker keyboard
+behavior. The web keeps its canonical list/detail/version model instead of
+recreating prefix/path-based selectors or raw Explorer ownership.
+
 ## CONFLICT_REGISTER
 
 | ID | LEGACY_EXPECTED | CURRENT_CONTRACT / WHY_CONFLICT | Minimal resolution and affected checks |

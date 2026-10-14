@@ -215,3 +215,135 @@ def test_tampered_sample_blocks_before_content_read(monkeypatch):
     with pytest.raises(owner.ContentSignalAuditBlocked):
         owner.inspect_selected_direct_children_readonly(
             storage,prior_metadata=r,sample=selected,source_request=request())
+
+
+def _pdf_replay_fixture(monkeypatch, *, tamper_pdf=False, tamper_report=False,
+                        change_metadata=False, bad_parser=False):
+    import hashlib
+    import sys
+    from types import ModuleType
+
+    meta = _metadata()
+    names = make_private_document_candidate_manifest(meta)[
+        "private_selected_document_names"
+    ]
+    assert len(names) == 5
+    # Five synthetic originals add up to the exact previously protected read count.
+    byte_payloads = {
+        item["filename_private"]: (
+            (b"%PDF-" + b"x" * (600_000 - 5)) if item["document_kind"] == "PDF"
+            else b"z" * 244_522
+        )
+        for item in names
+    }
+    old = []
+    for item in names:
+        is_pdf = item["document_kind"] == "PDF"
+        raw = byte_payloads[item["filename_private"]]
+        old.append({
+            "filename_private": item["filename_private"],
+            "document_kind": item["document_kind"],
+            "format_status": "PARSER_UNAVAILABLE" if is_pdf else "TEXT_AVAILABLE",
+            "document_sha256_private": hashlib.sha256(raw).hexdigest(),
+            "bytes_read_private": len(raw),
+            "exact_inspection_code_in_extractable_text": False,
+            "source_site_id_marker_in_extractable_text": False,
+            "alternate_site_id_marker_in_extractable_text": False,
+            "content_ownership_verified": False,
+        })
+    assert sum(len(raw) for raw in byte_payloads.values()) == 2_289_044
+    report = {
+        "schema": owner.SCHEMA,
+        "status": "FIVE_SELECTED_BINARY_CONTENT_SIGNALS_OBSERVED_NOT_APPROVED",
+        "approval_status": "NOT_APPROVED",
+        "source_bound_files_selected": 5,
+        "file_contents_read_count": 5,
+        "total_binary_bytes_read": 2_289_044,
+        "parse_status_counts": {"PARSER_UNAVAILABLE": 3, "TEXT_AVAILABLE": 2},
+        "case_ownership_proven": False,
+        "folder_mapping_approved": False,
+        "database_connected": False,
+        "database_writes": 0,
+        "storage_writes": 0,
+        "canonical_links_created": 0,
+        "private_selected_file_evidence": old,
+    }
+    if tamper_report:
+        report["private_selected_file_evidence"][0]["document_sha256_private"] = "0" * 64
+    fake_pypdf = ModuleType("pypdf")
+    fake_pypdf.__version__ = "0.0.0" if bad_parser else "6.20.1"
+    class Page:
+        def extract_text(self):
+            return "KT-555-GMP (ID-101) official inspection record"
+    class Reader:
+        def __init__(self, data, strict):
+            assert strict is True
+            self.is_encrypted = False
+            self.pages = [Page()]
+    fake_pypdf.PdfReader = Reader
+    monkeypatch.setitem(sys.modules, "pypdf", fake_pypdf)
+    service = object.__new__(SmbStorageService)
+    service.inspection_root = "fake"
+    service._join_root = lambda root, leaf: root + "/" + leaf
+    leaf = meta["private_folder_metadata"]["folder_leaf"]
+    parent = "fake/2024/" + leaf
+    calls = []
+    def open_file(path, mode):
+        assert mode == "rb"
+        file = path.rsplit("/", 1)[-1]
+        calls.append(file)
+        @contextmanager
+        def stream():
+            raw = byte_payloads[file]
+            if tamper_pdf:
+                raw = raw[:-1] + b"!"
+            yield BytesIO(raw)
+        return stream()
+    def stat(path):
+        return SimpleNamespace(st_size=len(byte_payloads[path.rsplit("/",1)[-1]]))
+    def classify(*a, **k):
+        fresh = deepcopy(meta)
+        if change_metadata:
+            fresh["counts"]["DIRECT_CHILD_FILES"] += 1
+        return fresh
+    monkeypatch.setattr(owner, "smbclient",
+                        SimpleNamespace(open_file=open_file, stat=stat))
+    monkeypatch.setattr(owner, "smbpath", SimpleNamespace(
+        isdir=lambda path: path == parent,
+        isfile=lambda path: path.startswith(parent+"/")
+                       and path.rsplit("/",1)[-1] in byte_payloads,
+    ))
+    monkeypatch.setattr(owner, "classify_exact_folder_metadata_readonly", classify)
+    return service, meta, make_private_document_candidate_manifest(meta), report, calls
+
+
+def test_only_3_original_pdf_bytes_replayed_other_2_reused(monkeypatch):
+    storage, meta, sample, old, calls = _pdf_replay_fixture(monkeypatch)
+    result = owner.reparse_only_previously_unavailable_pdfs_readonly(
+        storage, prior_metadata=meta, sample=sample,
+        source_request=request(), prior_content=old,
+    )
+    assert result["pdf_files_reparsed"] == 3
+    assert result["previous_text_documents_reused"] == 2
+    assert result["parse_status_counts"] == {
+        "EXACT_INSPECTION_CODE_TEXT_PRESENT": 3,
+        "TEXT_AVAILABLE": 5,
+    }
+    assert len(calls) == 3 and all(x.lower().endswith(".pdf") for x in calls)
+    assert result["total_pdf_bytes_replayed"] == 1_800_000
+    assert result["case_ownership_proven"] is False
+    assert result["folder_mapping_approved"] is False
+    assert result["database_writes"] == result["storage_writes"] == 0
+
+
+@pytest.mark.parametrize("issue", ["tamper_pdf", "tamper_report",
+                                   "change_metadata", "bad_parser"])
+def test_pdf_only_retry_fail_closed_before_any_approval(monkeypatch, issue):
+    settings = {issue: True}
+    storage, meta, sample, old, calls = _pdf_replay_fixture(monkeypatch, **settings)
+    with pytest.raises(owner.ContentSignalAuditBlocked):
+        owner.reparse_only_previously_unavailable_pdfs_readonly(
+            storage, prior_metadata=meta, sample=sample,
+            source_request=request(), prior_content=old,
+        )
+    assert not calls if issue in {"tamper_report","change_metadata","bad_parser"} else len(calls) <= 1

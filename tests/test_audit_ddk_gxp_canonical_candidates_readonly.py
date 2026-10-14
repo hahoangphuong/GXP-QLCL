@@ -123,7 +123,7 @@ def test_tampered_or_incomplete_source_fails_closed(tmp_path, alter):
             t = s.query(BusinessEligibilityGxpReferenceEvidence).first()
             s.delete(t)
         else:
-            item.source_sheet_name = "some_other_sheet"
+            item.source_workbook_sha256 = "f" * 64
         s.commit()
         with pytest.raises(CandidateAuditBlocked):
             classify_candidates(s, expected_workbook_sha256=SHA,

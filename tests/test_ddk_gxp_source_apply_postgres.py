@@ -24,6 +24,7 @@ from backend.app.services.catalog import CatalogReadService
 from sqlalchemy.engine import make_url
 
 from tools.apply_ddk_gxp_provenance_rehearsal import SourceLoadBlocked, apply_sealed_plan
+from tools.audit_ddk_gxp_canonical_candidates_readonly import audit_rehearsal_db
 from tools.plan_ddk_gxp_provenance_load import _digest, _source_value_digest
 
 
@@ -236,6 +237,22 @@ def test_real_postgres_atomic_source_only_insert_retry_and_conflict():
                 assert conn.execute(text(
                     "SELECT count(*) FROM public.business_eligibility_gxp_reference_evidence"
                 )).scalar_one() == 2
+            # Actual PostgreSQL transaction must be READ ONLY for candidate
+            # classification; none of these source tokens creates a canonical
+            # FK, even though a separate explicit test FK already exists.
+            candidate_audit = audit_rehearsal_db(
+                target_url.render_as_string(hide_password=False),
+                sha=plan["source_workbook_sha256"],
+                expected_groups=4, expected_tokens=2,
+            )
+            assert candidate_audit["transaction_read_only"] is True
+            assert candidate_audit["source_groups"] == 4
+            assert candidate_audit["source_tokens"] == 2
+            assert candidate_audit["counts"]["candidate_certificate_missing"] == 2
+            assert candidate_audit["recorded_canonical_gxp_link_rows_before"] == 1
+            assert candidate_audit["canonical_links_created"] == 0
+            assert all(x["link_approval"] == "NOT_APPROVED"
+                       for x in candidate_audit["candidate_observations"])
             rerun = apply_sealed_plan(engine, plan)
             assert rerun["status"] == "SOURCE_PROVENANCE_ALREADY_MATCHES_PLAN"
             assert rerun["inserted_groups"] == rerun["inserted_tokens"] == 0

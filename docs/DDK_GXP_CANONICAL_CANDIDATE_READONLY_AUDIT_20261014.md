@@ -560,3 +560,44 @@ must stay aggregate-only; operator-only private data never enters GitHub.
 **NOT VERIFIED on live Synology** until exact-head CI and a separately
 checked bounded VM read-only run succeed. No production resolver,
 storage configuration, binding or canonical link has been changed.
+
+## VM source-bound missing Case-year metadata classification — VERIFIED (14 Oct 2026)
+
+Operator executed the bounded, exact-HEAD read-only inspection-year
+metadata diagnostic after GitHub CI `38549849685` completed SUCCESS at
+`ea88a86ae2562eaa9ac04cdbe55cc3e8fded4e73`. The VM verified the
+protected original and dual-year Case reports and exactly three still
+unresolved Case parents (four independently sourced Case/year observations).
+The four source-year root directories all existed, and 378 bounded
+direct-child metadata entries were inspected. The new protected private
+report was created by `gxp` with mode `0600` and contains per-Case/year
+classification without publishing IDs, folder names or UNC paths.
+
+Aggregate observations:
+- `YEAR_ROOT_NOT_FOUND = 0`
+- `NO_EXACT_TOKEN = 3`
+- `SITE_TOKEN_ONLY = 0`
+- `INSPECTION_CODE_ONLY = 1`
+- `SPLIT_TOKENS_DIFFERENT_FOLDERS = 0`
+
+Interpretation: one source-year directory contains the exact inspection-code
+token without the **same directory name** also matching that Case's original
+Site token `(ID-<site_legacy_id>)`; this is a source-vs-physical-name
+identity review lead, not proof that the folder belongs to that originating
+Case or another Site. The three NO_EXACT_TOKEN observations show only that
+neither literal token was seen in immediate directory names in those source
+year roots, not that all original documents are absent.
+
+The actual full root-provenance flags previously passed separately and
+cannot establish operational `ActiveWorkbook.Path` on a legacy Windows
+machine. No guessed years, alternate roots, subfolder recursion, relaxations
+of `matches_inspection_identity`, source row corrections or canonical
+links are authorized from this metadata.
+
+**Next bounded decision:** first reconcile the inspection-code-only
+observation against independently retained source Site/Case evidence and
+the original folder naming contract in a protected manual-review context;
+treat the three zero-token observations as unresolved storage location or
+naming evidence. Avoid another general SMB scan or guessed year/alternate-root
+lookup. DDK/Certificate business eligibility remains `NOT_APPROVED` and
+PR #7 stays DRAFT; no runtime release, PostgreSQL writes or NAS mutations.

@@ -9,6 +9,7 @@ recurses, changes a folder, changes a Case or creates a canonical link.
 from __future__ import annotations
 
 from collections import Counter
+import re
 from typing import Any
 
 from backend.app.storage.smb import SmbStorageService, smbclient, smbpath
@@ -80,8 +81,11 @@ def classify_exact_folder_metadata_readonly(
              "Previous unique code-only folder missing or changed")
     folder = code_folders[0]
     name = folder.name.lower()
+    observed_ids = re.findall(r"\(ID-([0-9]+)\)", folder.name, re.IGNORECASE)
     _require(
-        source_site_token not in name
+        len(observed_ids) == 1
+        and int(observed_ids[0]) == observed_other_site_legacy_id
+        and source_site_token not in name
         and other_site_token in name
         and not matches_inspection_identity(
             folder.name, site_legacy_id=source_site_legacy_id,

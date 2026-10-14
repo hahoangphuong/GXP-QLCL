@@ -402,3 +402,32 @@ and distinct DDK parent coverage. It **does not** resolve a DDK folder
 under another root, change canonical Site ownership, recurse deeper,
 read files, create bindings, link Certificate to DDK, or infer missing
 legal source from unmatched names. No manual per-source path hardcoding.
+
+## Evidence-limited DDKD configured-root provenance (14 Oct 2026)
+
+Actual VM returned one-level and second-level DDK SMB metadata:
+- 274 immediate folders with no numeric parenthesized Site tokens;
+- 657 second-level folders also without numeric parenthesis Site tokens;
+- all 274 parents inspected, 1,317 second-level entries (660 files/other);
+- zero exact source key matches to seven distinct Site IDs across eight DDK
+  parent records. No binary content or SQL accessed.
+
+Contract check: `docs/ADR/0032-dkkd-site-folder-token-contract.md` and
+`docs/PHASE4F_DKKD_STORAGE_CONTRACT.md` require the **direct** DDKD
+site-folder token ` (<site_legacy_id>)`. `docs/FILE_STORAGE_CONTRACT.md`
+and `docs/LEGACY_SYSTEM_MAP.md` describe the DDKD document area relative
+to `ActiveWorkbook.Path\Chứng nhận ĐĐKKDD`, then `Lần n` as an
+issuance child. The active workbook's real runtime directory has **not**
+been verified on the Linux VM.
+
+`tools.audit_ddk_gxp_smb_root_provenance_readonly` reads the protected
+source/readiness/SMB root/full/second-level reports, verifies exact
+report hashes and read-only populations, then evaluates configured root
+path shape **without opening SMB, SQL or binaries**. It emits booleans
+such as whether the configured DDKD root leaf matches the documented
+`Chứng nhận ĐĐKKDD` directory, whether it equals/contains the
+inspection root, and whether they share an SMB host/share. It never
+prints, stores or uploads UNC strings, credential values or original
+per-Site keys. A match/mismatch is an observation **only**, not an
+authorized replacement location. No automatic path fallback,
+recursive NAS search, binding write, root rewrite or link creation.

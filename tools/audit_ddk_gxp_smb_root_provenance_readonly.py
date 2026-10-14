@@ -47,9 +47,13 @@ def unc_components(value: str) -> tuple[str, ...]:
              "Expected UNC storage root")
     value = value.rstrip("\\/")
     _require(not "/" in value, "Unsupported root separator")
-    parts = value[2:].split("\\")
+    # Mirror SmbStorageService._server_from_root: repeated backslashes do
+    # not create host/share identity components in the live adapter.
+    # This affects OBSERVATIONAL comparisons only. Never rewrite or
+    # reconnect to a collapsed UNC path, and still reject traversal/dots.
+    parts = [part for part in value[2:].split("\\") if part]
     _require(len(parts) >= 2
-             and all(p and p not in (".", "..") for p in parts),
+             and all(p not in (".", "..") for p in parts),
              "Expected UNC host/share and normalized relative components")
     return tuple(_fold(part) for part in parts)
 

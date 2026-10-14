@@ -8,6 +8,7 @@ from backend.app.db.enums import StorageResolutionStatus
 from backend.app.storage.smb import SmbStorageService
 from tools.audit_ddk_gxp_smb_readonly_folder_pilot import (
     SmbProbeBlocked, verified_lookup_targets, run_bounded_probes,
+    check_configured_roots_readonly,
 )
 
 
@@ -134,3 +135,24 @@ def test_bounded_probe_rejects_unbounded_limit():
         run_bounded_probes(storage,[],[],max_ddk=9,max_cases=0)
     with pytest.raises(SmbProbeBlocked):
         run_bounded_probes(storage,[],[],max_ddk=0,max_cases=7)
+
+
+def test_root_check_fails_closed_when_one_smb_root_unavailable(monkeypatch):
+    from types import SimpleNamespace
+    import tools.audit_ddk_gxp_smb_readonly_folder_pilot as module
+    storage = object.__new__(SmbStorageService)
+    storage.ddkd_root = "ddk-root"
+    storage.inspection_root = "inspection-root"
+    checks = []
+    monkeypatch.setattr(module, "smbpath", SimpleNamespace(
+        isdir=lambda root: checks.append(root) or root == "ddk-root"
+    ))
+    with pytest.raises(SmbProbeBlocked):
+        check_configured_roots_readonly(storage)
+    assert checks == ["ddk-root", "inspection-root"]
+    checks.clear()
+    monkeypatch.setattr(module, "smbpath", SimpleNamespace(
+        isdir=lambda root: checks.append(root) or True
+    ))
+    check_configured_roots_readonly(storage)
+    assert checks == ["ddk-root", "inspection-root"]

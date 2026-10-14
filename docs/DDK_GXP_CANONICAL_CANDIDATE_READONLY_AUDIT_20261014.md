@@ -302,3 +302,13 @@ Do not share raw SMB paths, UNC roots or private JSON in GitHub.
 If a transport exception occurs, report the sanitized error class
 only; identify network reachability/credentials through a separately
 authorized infrastructure procedure, not by fabricating folder results.
+
+## DDK root direct-child shape diagnostic after full SMB pilot (14 Oct 2026)
+
+VM's complete direct SMB parent lookup at source SHA `71f404490f46c4c6c243875546ea5e610bab1be7` returned `DDK_NOT_FOUND=8` out of eight unique DDK parents, `CASE_RESOLVED=2` and `CASE_NOT_FOUND=4` out of six Case parents, with zero database connection, NAS writes or binary file reads. `/readyz` remained unchanged. This is a *folder-name matching result inside the configured roots*, not evidence that physical/legal source files do not exist.
+
+The next owner-controlled read-only diagnostic `tools.audit_ddk_gxp_smb_readonly_root_shape` enumerates **only direct child metadata** of the already configured DDK SMB root, maximum 10,000 entries, and returns aggregate shape counts: root files, direct child directories, directories containing the exact VBA-derived legacy ` (<numeric site ID>)` token shape, directories with other numeric parenthesized tokens, and directories with no numeric parenthesis token. It also counts (aggregated only) how many of the 8 original legacy Site identities have zero/one/multiple exact matches, never printing private Site IDs, names, or paths.
+
+The diagnostic regenerates the private manual-review queue from the original 0600 source dossier, matches all 8 DDK source keys from the private readiness report, checks the 0600 *full* probe as the prior observation, and refuses to proceed if evidence differs. It performs **no** source recategorization, alternate-key match, NAS subdirectory recursion, year+1 inference, DB connection or writes, file content reads, filesystem changes, or link approval. A budget breach or SMB failure aborts without claiming a complete inventory. A new 0600 private JSON is created only on success.
+
+This resolves whether the configured root is empty, has folders but none in the proven legacy shape, or contains folders with the proven token shape but not those 8 Site IDs. Do not change root config, hardcode per-company paths or make canonical links from this metadata alone.

@@ -63,7 +63,8 @@ def _private_dossier():
             "site_owning_company_id": "company-b", "link_approval": "NOT_APPROVED",
         }],
         "repeated_candidate_id_details": [{
-            "parsed_legacy_certificate_id": 20, "occurrence_count": 2,
+            "parsed_legacy_certificate_id": 20, "link_approval": "NOT_APPROVED",
+            "occurrence_count": 2,
             "distinct_source_ddk_count": 2, "observed_in_multiple_ddk": True,
             "observations": [
                 {"source_reference_id": "t-1", "legacy_dkkd_id": 10,

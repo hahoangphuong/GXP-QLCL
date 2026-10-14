@@ -675,13 +675,13 @@ source rewrite or canonical link creation.
 ## Source-bound inspection code / alternate numeric Site crosswalk (14 Oct 2026)
 
 The exact-HEAD, CI-passed, live metadata-only audit of one
-\`INSPECTION_CODE_ONLY\` Case/year found one directory carrying
-\`OTHER_NUMERIC_ID_TOKEN = 1\`, on a known source year root with 130
+`INSPECTION_CODE_ONLY` Case/year found one directory carrying
+`OTHER_NUMERIC_ID_TOKEN = 1`, on a known source year root with 130
 metadata entries. The private mode-0600 report retains the numeric
 Site marker; public logs do not. This is *not* proof that the
 directory belongs to the originating Case.
 
-\`tools.audit_ddk_gxp_inspection_site_crosswalk_readonly\` now offers
+`tools.audit_ddk_gxp_inspection_site_crosswalk_readonly` now offers
 a **pure source-lineage gate** for the protected original dossier,
 queue, source-readiness report, six-Case/nine-year SMB transition,
 four-year missing-Case metadata report and one code-only marker report.
@@ -690,23 +690,23 @@ token and verifies protected report SHA links and original Case/year
 ownership before the number is ever used in a database comparison.
 
 Its second owner stage uses only a guarded REPEATABLE READ / READ ONLY
-transaction in \`gxp_legacy_rehearsal\`. It re-runs the existing
-\`profile_storage_lookup_inputs\` against the complete previously
+transaction in `gxp_legacy_rehearsal`. It re-runs the existing
+`profile_storage_lookup_inputs` against the complete previously
 protected readiness document, then checks the originating canonical
-Case, immutable \`db.ktra\` anchor row/hash and original imported Site.
+Case, immutable `db.ktra` anchor row/hash and original imported Site.
 The observed number is compared to the separately imported
-\`Site.legacy_site_id\` directory and exact \`Case.legacy_inspection_code\`
+`Site.legacy_site_id` directory and exact `Case.legacy_inspection_code`
 matches, with a bounded collision count. Optional same-Company
 metadata is **non-adjudicative**. Site/Case identities, observed
 numeric tokens, and any linked canonical UUIDs stay in private
 mode-0600 evidence; stdout may report only classes/counts.
 
-**Evidence distinction:** imported \`Site\` rows are projections of
-\`db.cso\`, and the protected \`db.ktra\` anchor is imported source
+**Evidence distinction:** imported `Site` rows are projections of
+`db.cso`, and the protected `db.ktra` anchor is imported source
 lineage; neither is a fresh, independent read of the original Excel
 workbook. Even if the observed number corresponds to a different
 imported Site or another Case using the same code, the result is
-\`NOT_APPROVED\`. Genuine physical \`db.cso\`/\`db.ktra\` provenance
+`NOT_APPROVED`. Genuine physical `db.cso`/`db.ktra` provenance
 would require separately authorized, independently verified source
 workbook evidence. No Site owner remap, folder fallback, DB/NAS write,
 certificate link or deployment is allowed.
@@ -714,3 +714,52 @@ certificate link or deployment is allowed.
 Live read-only crosswalk **NOT VERIFIED** pending exact-HEAD CI and
 VM execution. The existing Case (3/6 NOT_FOUND) and DDK source
 review populations remain unchanged.
+
+
+## Imported Site crosswalk VM result and original workbook evidence gate (14 Oct 2026)
+
+The exact-head, CI-passed, read-only VM crosswalk at
+`1ca6f6a855e9efdb25bab714b55971c0474a5ff7`
+verified the entire protected six-Case / nine-source-year lineage, one
+`OTHER_NUMERIC_ID_TOKEN` observation and the immutable imported
+`db.ktra` Case anchor under a REPEATABLE READ / READ ONLY
+`gxp_legacy_rehearsal` transaction. The new report was generated under
+`gxp`, private mode 0600. All postchecks PASS.
+
+- `OBSERVED_ID_EXISTS_AS_DIFFERENT_IMPORTED_SITE`
+- `MATCHING_INSPECTION_CODE_CASE_COUNT = 1`
+- `OTHER_CASE_WITH_SAME_CODE_COUNT = 0`
+- `OTHER_CASE_WITH_OBSERVED_SITE_AND_SAME_CODE_COUNT = 0`
+- `OBSERVED_SITE_SAME_COMPANY_AS_SOURCE = true`
+- `OBSERVED_ID_PHYSICALLY_VERIFIED_IN_DB_CSO = false`
+- `SOURCE_CASE_PHYSICALLY_REVERIFIED_IN_DB_KTRA = false`
+
+Thus the observed folder's alternate numeric Site token matches one
+*other imported Site* owned by the same imported Company. It is not a
+second canonical Case with the inspection code and not evidence that
+the Case was attached to the wrong original Site. The original physical
+workbook cells are the first missing independent source evidence.
+
+The targeted witness owner
+`tools.audit_ddk_inspection_physical_source_readonly`
+reads exactly three physical source identities from the accepted
+`Danh sách Kiểm tra GPs.xlsb` using isolated Windows Excel COM:
+both `db.cso.ID` Site rows with `ID Cty`, and the one original
+`db.ktra.ID` row with `ID CƠ SỞ` and `LOẠI KT`.
+All identity cells must be literal (not formulas), header columns
+unique, and the workbook SHA-256 must equal the approved source hash
+before and after reading. Macros disabled, links not updated, Excel
+opened ReadOnly. The request is generated separately from protected VM
+report evidence + a guarded read-only Case/Company row; it contains
+private source identity and row coordinates and must never be committed
+or pasted into chat. The generated public result gives only equality
+flags, no Case/Site ID, path, name or company identifier.
+
+This method can establish whether the **accepted physical source
+version** gives the same owning Site as the imported Case. It cannot
+alone establish why a Synology folder was named for another Site,
+whether it belongs legally to the Case, or whether a newer workbook
+version supersedes the accepted one. In all outcomes,
+`approval_status=NOT_APPROVED`; no Case mutation, directory fallback,
+renaming, DB/NAS writing, canonical link or deployment.
+

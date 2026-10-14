@@ -238,7 +238,10 @@ def classify_unresolved_case_year_roots_readonly(
         code = case.get("inspection_legacy_code")
         observations = case.get("year_specific_observations")
         _require(
-            type(sid) is int and sid > 0 and isinstance(code, str)
+            isinstance(case.get("parent_id"), str)
+            and bool(case["parent_id"])
+            and case.get("final_status") == "NOT_FOUND"
+            and type(sid) is int and sid > 0 and isinstance(code, str)
             and bool(code.strip()) and isinstance(observations, list)
             and 1 <= len(observations) <= 2,
             "Invalid Case identity or original source years",

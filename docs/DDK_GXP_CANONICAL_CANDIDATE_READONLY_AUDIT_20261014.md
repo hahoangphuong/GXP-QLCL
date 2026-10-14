@@ -860,3 +860,41 @@ to determine whether source-attested document/chain-of-custody inspection
 could be useful. Never auto-approve a Case folder, relax source Site
 matching, copy or rename files, update PostgreSQL, or change DDK↔GxP
 Certificate links. The legal/business status stays NOT_APPROVED.
+
+## Verified file-type split and bounded independent-content review manifest (14 Oct 2026)
+
+The VM operator checked the existing owner-gxp, mode-0600 direct-child
+metadata JSON and its original source-chain SHA-256. The metadata
+contains 41 direct entries: **24 PDF, 15 text documents, and 1 other
+extension** (40 files plus one directory). No child name contains the
+inspection-code token or either Site marker. The source directory,
+Site/Case ownership and downstream DDK↔Certificate link decisions
+are unchanged. No DB, NAS or binary access was performed in this
+file-type classification run.
+
+No further reclassification of these 40 filenames can independently
+prove content provenance. The next gate is *document-content evidence*
+for the exactly one mismatched folder, not another search for a
+different Site, year or root. Before any binary read, use
+tools/triage_ddk_inspection_private_document_candidates.py to select
+a maximum of three PDF and two Word-format files from the original
+**already protected** direct-child metadata report. The selection is
+deterministic with generic document-role filename hints; these hints
+are solely prioritization, never Case matching or link authorization.
+Unknown filename roles may be sampled without any positive identity
+claim. No NAS or DB connection occurs in this manifest step.
+
+Store the selected filename list privately with mode 0600. Subsequent
+content examination must be separately bounded to exactly the selected
+files, refuse changed folder identity, and report only the presence
+of independent Case/Site evidence; private document contents must
+not enter stdout, GitHub, history comments or public tests.
+Unparsed scanned PDFs or legacy binary Word files remain inconclusive,
+NOT negative evidence. An accessible file and matching free text
+still do not establish authoritative custody or legal Case ownership.
+No production resolver fallback, NAS rename, Case remap or canonical
+DDK/GxP link may result automatically.
+
+All 3 originating Cases missing an exact matching Inspection folder
+remain source-scoped NOT_FOUND. The DDK↔GxP exception review remains
+separate and NOT_APPROVED.

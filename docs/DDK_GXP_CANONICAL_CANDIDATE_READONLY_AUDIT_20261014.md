@@ -898,3 +898,39 @@ DDK/GxP link may result automatically.
 All 3 originating Cases missing an exact matching Inspection folder
 remain source-scoped NOT_FOUND. The DDK↔GxP exception review remains
 separate and NOT_APPROVED.
+
+## Bounded five-file document-content signal probe (14 Oct 2026)
+
+VM operator ran a verified metadata-only sampling manifest: source source-chain
+and request SHA PASS, 3 PDFs + 2 text-document candidates selected, all 5
+have filename-role hints. Manifest SHA is protected and verified before any
+future binary read. The selection performed NO NAS, DB or binary reads; role
+hints are not independent Case identifiers.
+
+Owner tools/audit_ddk_selected_inspection_document_content_readonly.py
+provides the next narrow read-only probe. It MUST validate the exact
+prior metadata and sample manifest before use, re-enumerate only the
+one original source-year root and the 41 immediate children, demand
+the same unique mismatched directory and entire child population,
+then open only the five explicitly selected direct files, read-only.
+Bounded budget: <=8 MiB per file, <=24 MiB total. No subdirectory
+traversal; no transfer/copy, writes, database connection, rescanned
+other years, or guessed Site identity. The parser handles only PDF
+text layer when pypdf exists; Word DOCX internal document.xml and
+UTF-8 text through bounded library readers. Binary DOC, RTF, ODT
+and unavailable/broken/textless parsers are explicitly inconclusive,
+not negative findings. No OCR, macros, Office automation or external
+network fetches are performed.
+
+Output remains mode-0600 private JSON of selected filename and digest,
+format/read status and three boolean observations: presence of exact
+inspection code, original Site '(ID-n)' token, alternate Site '(ID-n)'
+token IN TEXT. Public console may display only aggregate counters,
+not actual document contents, names, IDs, paths, or digests.
+
+Token presence by itself DOES NOT establish legal Case ownership, chain
+of custody, archive authenticity or permission to change an owner Site.
+Missing text DOES NOT disprove that the source Inspection Case is in a
+scanned or unsupported file. Source db.ktra Case->Site is verified and
+stays unchanged; the exact-match resolver stays unchanged. All DDK to
+Certificate relationships remain separately NOT_APPROVED.

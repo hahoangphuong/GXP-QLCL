@@ -42,11 +42,12 @@ def _seed(tmp_path):
             document_variant_id=variant.id, version_no=1, storage_root="legacy",
             storage_relative_path="case/fake.pdf", checksum_sha256="a" * 64,
         ))
+        result = engine, ddk.id, cert.id, cert.site_id, case.id, case.site_id, c.id
         session.commit()
-        return engine, ddk, cert, case
+        return result
 
 
-def _queue(ddk, cert, case):
+def _queue(ddk_id, cert_id, cert_site_id, case_id, case_site_id, company_id):
     return {
         "schema": "GXP_DDK_EXCEPTION_MANUAL_REVIEW_QUEUE_V1",
         "link_approval": "NOT_APPROVED",
@@ -57,25 +58,27 @@ def _queue(ddk, cert, case):
         "source_token_reviews": [{
             "review_key": "SOURCE_TOKEN:1",
             "original_exception_evidence": {
-                "legacy_dkkd_id": 50, "observed_certificate_id": cert.id,
-                "parsed_legacy_certificate_id": 80, "certificate_site_id": cert.site_id,
-                "certificate_case_id": case.id, "case_site_id": case.site_id,
+                "legacy_dkkd_id": 50, "observed_certificate_id": cert_id,
+                "parsed_legacy_certificate_id": 80, "certificate_site_id": cert_site_id,
+                "certificate_case_id": case_id, "case_site_id": case_site_id,
+                "ddk_site_id": cert_site_id, "ddk_company_id": company_id,
             },
         }],
         "ddk_company_reviews": [{
             "review_key": "DDK_COMPANY:50",
             "original_company_exception_evidence": {
                 "legacy_dkkd_id": 50,
-                "canonical_business_eligibility_certificate_id": ddk.id,
+                "canonical_business_eligibility_certificate_id": ddk_id,
+                "ddk_site_id": cert_site_id, "ddk_company_id": company_id,
             },
         }],
     }
 
 
 def test_per_parent_metadata_and_binary_uncertainty(tmp_path):
-    engine, ddk, cert, case = _seed(tmp_path)
+    engine, ddk, cert, site, case, case_site, company = _seed(tmp_path)
     with Session(engine) as session:
-        report = scan_document_metadata(session, _queue(ddk, cert, case))
+        report = scan_document_metadata(session, _queue(ddk, cert, site, case, case_site, company))
     assert report["source_token_review_records"] == 1
     assert report["ddk_company_review_records"] == 1
     assert report["unique_parent_counts"] == {
@@ -101,8 +104,8 @@ def test_per_parent_metadata_and_binary_uncertainty(tmp_path):
 
 
 def test_source_identity_drift_and_missing_queue_gate_fail_closed(tmp_path):
-    engine, ddk, cert, case = _seed(tmp_path)
-    q = _queue(ddk, cert, case)
+    engine, ddk, cert, site, case, case_site, company = _seed(tmp_path)
+    q = _queue(ddk, cert, site, case, case_site, company)
     with Session(engine) as session:
         q["link_approval"] = "APPROVED"
         try:

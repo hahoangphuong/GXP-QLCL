@@ -137,11 +137,9 @@ def scan_document_metadata(session: Session, queue: dict[str, Any]) -> dict[str,
         if token is not None:
             legacy_id = token["legacy_dkkd_id"]
             ddk = canonical_ddks.get(legacy_id)
-            if ddk is None or ddk.id != next(
-                (d.id for d in canonical_ddks.values() if d.legacy_dkkd_id == legacy_id),
-                None
-            ):
-                raise DocumentCoverageBlocked("Canonical DDK legacy identity unavailable")
+            if (ddk is None or ddk.site_id != token.get("ddk_site_id")
+                    or ddk.company_id != token.get("ddk_company_id")):
+                raise DocumentCoverageBlocked("Canonical DDK source identity changed")
             cert_id = token.get("observed_certificate_id")
             if cert_id is not None:
                 cert = certificates.get(cert_id)
@@ -156,6 +154,8 @@ def scan_document_metadata(session: Session, queue: dict[str, Any]) -> dict[str,
                     raise DocumentCoverageBlocked("Originating Case identity no longer matches")
                 if cert_id and certificates[cert_id].case_id != case_id:
                     raise DocumentCoverageBlocked("Certificate no longer points to source Case")
+            if cert_id is not None and certificates[cert_id].case_id != case_id:
+                raise DocumentCoverageBlocked("Certificate Case linkage changed")
             targets = {
                 "DDK": ddk.id,
                 "CERTIFICATE": cert_id,
@@ -166,7 +166,10 @@ def scan_document_metadata(session: Session, queue: dict[str, Any]) -> dict[str,
             if not isinstance(company, dict):
                 raise DocumentCoverageBlocked("Unknown private review kind")
             ddk = canonical_ddks.get(company["legacy_dkkd_id"])
-            if ddk is None or ddk.id != company["canonical_business_eligibility_certificate_id"]:
+            if (ddk is None
+                    or ddk.id != company["canonical_business_eligibility_certificate_id"]
+                    or ddk.company_id != company["ddk_company_id"]
+                    or ddk.site_id != company["ddk_site_id"]):
                 raise DocumentCoverageBlocked("DDK owning-company review identity changed")
             targets = {"DDK": ddk.id, "CERTIFICATE": None, "ORIGINATING_CASE": None}
 

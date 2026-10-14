@@ -53,7 +53,7 @@ def make_private_document_candidate_manifest(
     report: dict[str, Any],
     *,
     max_pdf: int = 3,
-    max_word: int = 2,
+    max_text_document: int = 2,
 ) -> dict[str, Any]:
     """Validate full 41-child evidence and select <=5 filename-only candidates.
 
@@ -81,7 +81,7 @@ def make_private_document_candidate_manifest(
     )
     _require(
         type(max_pdf) is int and 1 <= max_pdf <= 3
-        and type(max_word) is int and 1 <= max_word <= 2,
+        and type(max_text_document) is int and 1 <= max_text_document <= 2,
         "Unsafe candidate sample budget",
     )
     m = report.get("private_folder_metadata")
@@ -163,7 +163,7 @@ def make_private_document_candidate_manifest(
         row["direct_child_index_private"],
     )):
         kind = candidate["document_kind"]
-        limit = max_pdf if kind == "PDF" else max_word
+        limit = max_pdf if kind == "PDF" else max_text_document
         if counts[kind] >= limit:
             continue
         chosen.append(candidate)
@@ -177,7 +177,7 @@ def make_private_document_candidate_manifest(
         "source_direct_children": 41,
         "total_direct_files": 40,
         "total_direct_subdirectories": 1,
-        "available_pdf_or_word_candidates": len(candidates),
+        "available_pdf_or_text_document_candidates": len(candidates),
         "selected_pdf": counts["PDF"],
         "selected_text_document": counts["TEXT_DOCUMENT"],
         "selected_with_role_hint": sum(c["priority"] < len(_HINTS) for c in chosen),

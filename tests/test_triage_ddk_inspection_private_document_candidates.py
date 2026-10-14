@@ -68,10 +68,10 @@ def test_candidate_sample_balanced_and_never_claims_case_identity():
     sample = make_private_document_candidate_manifest(prior)
     assert sample["schema"] == SCHEMA
     assert sample["selected_pdf"] == 3
-    assert sample["selected_word"] == 2
+    assert sample["selected_text_document"] == 2
     assert sample["selected_with_role_hint"] >= 2
     assert sample["source_direct_children"] == 41
-    assert sample["available_pdf_or_word_candidates"] == 38
+    assert sample["available_pdf_or_word_candidates"] == 39
     assert sample["document_contents_read"] is False
     assert sample["approval_status"] == "NOT_APPROVED"
     assert sample["folder_content_ownership_verified"] is False
@@ -81,7 +81,7 @@ def test_candidate_sample_balanced_and_never_claims_case_identity():
     assert {c["filename_hint"] for c in selected} >= {
         "INSPECTION_RECORD_HINT", "REPORT_HINT",
     }
-    assert all(c["document_kind"] in {"PDF", "WORD"} for c in selected)
+    assert all(c["document_kind"] in {"PDF", "TEXT_DOCUMENT"} for c in selected)
     public = {k: v for k, v in sample.items() if not k.startswith("private_")}
     assert "Biên bản" not in str(public) and "Kiểm tra" not in str(public)
     assert "Báo cáo" not in str(public)

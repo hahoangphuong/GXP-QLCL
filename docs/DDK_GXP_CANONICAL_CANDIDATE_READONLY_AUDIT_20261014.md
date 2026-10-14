@@ -337,3 +337,22 @@ earlier SMB audit used only one selected source year per Case. A new
 independent read-only validation of both original year fields is
 required before reinterpreting its four Case NOT_FOUND results.
 No production deploy or DB write is authorized by this change.
+
+## Independent read-only dual-year Case SMB audit (14 Oct 2026)
+
+`tools/audit_ddk_gxp_case_dual_year_readonly.py` can now test the six
+distinct flagged originating Cases on the VM, using **both** original
+physical `db.ktra` years rather than the former single selected year.
+It regenerates the source queue from the protected dossier; then in a
+REPEATABLE READ / READ ONLY rehearsal DB transaction revalidates the entire
+previous source identity readiness report and reads original H/M anchor
+years. It calls the exact same `StorageBindingService._anchor_years`
+source-year policy as the application owner, closes the DB connection, and
+only then uses direct non-mutating Synology SMB folder resolvers. A year
+may be checked only when it is usable in the immutable source row. No
+guessed year+1, NAS recursion, file stream access, DB write, binding
+persistence or link approval. A Case matching folders across both
+years is recorded AMBIGUOUS, not resolved. A private 0600 JSON is created
+with year-specific folder observations; public stdout reports aggregates.
+Previous SMB audit reports remain intact and are not reinterpreted until
+new real observations exist.

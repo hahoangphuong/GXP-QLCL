@@ -391,8 +391,8 @@ def inspect_code_only_case_site_token_readonly(
     )
 
     code_token = "(" + inspection_legacy_code.strip().lower() + ")"
-    numeric_pattern = re.compile(r"\\(ID-([0-9]+)\\)", flags=re.IGNORECASE)
-    marker_pattern = re.compile(r"\\(ID-([^)]*)\\)", flags=re.IGNORECASE)
+    numeric_pattern = re.compile(r"\(ID-([0-9]+)\)", flags=re.IGNORECASE)
+    marker_pattern = re.compile(r"\(ID-([^)]*)\)", flags=re.IGNORECASE)
     counts: Counter[str] = Counter()
     private_folders: list[dict[str, Any]] = []
     root_entry_count = 0

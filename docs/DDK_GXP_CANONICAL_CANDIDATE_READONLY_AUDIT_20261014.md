@@ -484,3 +484,41 @@ matching, writes storage/database, or authorizes root correction.
 
 Pending **exact-head CI and new VM run**, configured-root leaf flags
 remain NOT VERIFIED; all DDK GxP canonical links stay NOT APPROVED.
+
+
+## VM-configured DDK root provenance VERIFIED — 14 Oct 2026
+
+Operator reran the hardened, exact-HEAD `a1b5646927ab5a8bf05317f8ce222f8cc34b3612`
+audit after GitHub run `38546477235` completed SUCCESS:
+- PR #7 OPEN/DRAFT, exact HEAD and required CI jobs: PASS;
+- VM `/readyz`, process and deployed release SHA baseline/postcheck: PASS, unchanged;
+- Git working tree clean, exact checkout and private evidence owner/mode/hash: PASS;
+- provenance report created privately with mode `0600`, all read-only guards: PASS;
+- no runtime deploy, DB/NAS write or DDK canonical link creation.
+
+The **configured-root string comparisons** produced:
+- `ddk_root_leaf_matches_legacy_ddkd_directory = true`
+- `ddk_root_contains_legacy_ddkd_directory = true`
+- `ddk_root_same_host_and_share_as_inspection = true`
+- `ddk_root_equals_inspection_root = false`
+- `ddk_root_nested_under_inspection_root = true`
+- `inspection_root_nested_under_ddk_root = false`
+- `template_root_configured = true`
+- `ddk_root_equals_template_root = false`
+- `ddk_root_has_subdirectory_after_unc_share = true`
+
+These results supersede the earlier `NOT VERIFIED` status **only for
+configuration-string provenance flags**. They do NOT demonstrate that
+this location is the operational Windows `ActiveWorkbook.Path` area
+or that its entries contain the eight unapproved DDK source parents.
+The previously complete metadata-only scans still found zero direct or
+second-level parenthesis Site tokens (274 + 657 directories inspected).
+No alternate SMB root has been verified; no root rewrite or change to the
+direct ` (<site_legacy_id>)` legacy matcher is justified.
+
+Separate follow-up: three originating Cases remain `NOT_FOUND` after
+all independently usable physical db.ktra submission/inspection years
+were probed (six Cases, nine source-year observations, no regressions).
+Use existing protected Case reports to characterize gaps before any
+new bounded SMB lookup; do not use year+1 guesses or search arbitrary years.
+Business eligibility links remain `NOT_APPROVED`.

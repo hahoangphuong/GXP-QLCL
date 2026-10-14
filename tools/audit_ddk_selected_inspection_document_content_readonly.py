@@ -9,7 +9,6 @@ from __future__ import annotations
 from collections import Counter
 from hashlib import sha256
 from io import BytesIO
-from pathlib import PurePath
 import re
 from typing import Any
 import zipfile
@@ -121,7 +120,12 @@ def classify_document_bytes(
         return bool(folded) and token.casefold() in folded
     return {
         "format_status": status,
-        "exact_inspection_code_in_extractable_text": token_seen(inspection_code.strip()),
+        "exact_inspection_code_in_extractable_text": bool(
+            folded and re.search(
+                r"(?<!\w)" + re.escape(inspection_code.strip().casefold()) + r"(?!\w)",
+                folded,
+            )
+        ),
         "source_site_id_marker_in_extractable_text": token_seen(f"(ID-{source_site_id})"),
         "alternate_site_id_marker_in_extractable_text": token_seen(f"(ID-{alternate_site_id})"),
         "document_sha256_private": sha256(data).hexdigest(),

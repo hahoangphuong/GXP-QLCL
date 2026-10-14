@@ -141,7 +141,7 @@ def test_root_check_fails_closed_when_one_smb_root_unavailable(monkeypatch):
     from types import SimpleNamespace
     import tools.audit_ddk_gxp_smb_readonly_folder_pilot as module
     storage = object.__new__(SmbStorageService)
-    storage.ddkd_root = "ddk-root"
+    storage.dkkd_root = "ddk-root"
     storage.inspection_root = "inspection-root"
     checks = []
     monkeypatch.setattr(module, "smbpath", SimpleNamespace(

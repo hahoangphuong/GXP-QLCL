@@ -22,7 +22,8 @@ from backend.app.db.enums import StorageResolutionStatus
 from backend.app.db.models.phase1 import LegacyInspectionStorageAnchor
 from backend.app.storage.binding_service import StorageBindingService
 from backend.app.storage.factory import create_storage_service_from_env
-from backend.app.storage.smb import SmbStorageService
+from backend.app.storage.smb import SmbStorageService, smbclient, smbpath
+from backend.app.storage.types import matches_inspection_identity
 from tools.apply_ddk_gxp_provenance_rehearsal import checked_rehearsal_url
 from tools.audit_ddk_gxp_canonical_candidates_readonly import _write_private_json
 from tools.audit_ddk_gxp_smb_readonly_folder_pilot import (
@@ -197,6 +198,141 @@ def probe_source_years_readonly(
             "A NOT_FOUND is scoped to configured inspection root and source years",
         ],
     }
+
+
+
+def classify_unresolved_case_year_roots_readonly(
+    storage: SmbStorageService,
+    missing_cases: list[dict[str, Any]],
+    *,
+    max_entries_per_root: int = 3000,
+    max_entries_total: int = 12000,
+) -> dict[str, Any]:
+    """Explain prior NOT_FOUND for source-bound Case/year probes, metadata only.
+
+    Requires three independently source-bound Cases and four *previously*
+    NOT_FOUND year observations. Only their physical source years are read;
+    no alternate root, year, key, deep recursion or content read is allowed.
+    Reports aggregate classes, NEVER a year, Site, Case, filename or path.
+    """
+    _require(
+        isinstance(storage, SmbStorageService)
+        and bool(storage.inspection_root)
+        and smbclient is not None and smbpath is not None,
+        "Expected the approved direct SMB adapter",
+    )
+    _require(
+        type(max_entries_per_root) is int and 1 <= max_entries_per_root <= 3000
+        and type(max_entries_total) is int and 1 <= max_entries_total <= 12000
+        and isinstance(missing_cases, list) and len(missing_cases) == 3,
+        "Unexpected source-bound diagnostic budget/population",
+    )
+    _require(
+        len({item.get("parent_id") for item in missing_cases}) == 3,
+        "Duplicate Case source identity",
+    )
+
+    validated: list[tuple[int, int, str]] = []
+    for case in missing_cases:
+        sid = case.get("site_legacy_id")
+        code = case.get("inspection_legacy_code")
+        observations = case.get("year_specific_observations")
+        _require(
+            type(sid) is int and sid > 0 and isinstance(code, str)
+            and bool(code.strip()) and isinstance(observations, list)
+            and 1 <= len(observations) <= 2,
+            "Invalid Case identity or original source years",
+        )
+        years: set[int] = set()
+        for observation in observations:
+            year = observation.get("source_year")
+            _require(
+                type(year) is int and 1900 <= year <= 2100
+                and year not in years
+                and observation.get("status") == "not_found"
+                and observation.get("candidate_count") == 0
+                and observation.get("relative_path_private_unverified") is None
+                and isinstance(observation.get("provenance"), list)
+                and bool(observation["provenance"])
+                and set(observation["provenance"]) <= {"submission", "inspection"},
+                "Not an original unresolved source-year observation",
+            )
+            years.add(year)
+            validated.append((year, sid, code))
+    _require(len(validated) == 4 and len({y for y, _, _ in validated}) <= 4,
+             "Unexpected source-year lookup count")
+
+    # Read each exact year root once, including the same root shared by Cases.
+    # A budget overrun or SMB error fails closed without a partial absence claim.
+    root_names: dict[int, list[str] | None] = {}
+    entries_total = 0
+    for year in sorted({y for y, _, _ in validated}):
+        year_root = storage._join_root(storage.inspection_root, str(year))
+        if not smbpath.exists(year_root):
+            root_names[year] = None
+            continue
+        _require(bool(smbpath.isdir(year_root)),
+                 "Source-year SMB entry is not a directory")
+        names: list[str] = []
+        for entry in smbclient.scandir(year_root):
+            entries_total += 1
+            _require(
+                len(names) < max_entries_per_root
+                and entries_total <= max_entries_total,
+                "Bounded source-year metadata scan exceeded budget",
+            )
+            if entry.is_dir():
+                names.append(entry.name)
+        root_names[year] = names
+
+    counts: Counter[str] = Counter()
+    for year, sid, code in validated:
+        names = root_names[year]
+        if names is None:
+            label = "YEAR_ROOT_NOT_FOUND"
+        else:
+            # Use the same literal matcher and token case rules as the SMB
+            # inspection resolver; partial matches are observations, not keys.
+            site_token = f"(ID-{sid})".lower()
+            code_token = f"({code.strip()})".lower()
+            site = any(site_token in name.lower() for name in names)
+            inspection = any(code_token in name.lower() for name in names)
+            _require(
+                not any(
+                    matches_inspection_identity(
+                        name, site_legacy_id=sid,
+                        inspection_legacy_code=code,
+                    ) for name in names
+                ),
+                "Previous NOT_FOUND observation no longer matches direct year folder",
+            )
+            if site and inspection:
+                label = "SPLIT_TOKENS_DIFFERENT_FOLDERS"
+            elif site:
+                label = "SITE_TOKEN_ONLY"
+            elif inspection:
+                label = "INSPECTION_CODE_ONLY"
+            else:
+                label = "NO_EXACT_TOKEN"
+        counts[label] += 1
+
+    _require(sum(counts.values()) == 4, "Incomplete year observation classification")
+    return {
+        "status": "ORIGINAL_NOT_FOUND_YEAR_ROOT_METADATA_CLASSIFIED",
+        "approval_status": "NOT_APPROVED",
+        "missing_case_parents_checked": 3,
+        "source_year_observations_checked": 4,
+        "distinct_source_year_roots_checked": len(root_names),
+        "year_root_entries_scanned": entries_total,
+        "classification_counts": dict(sorted(counts.items())),
+        "scope": "EXACT_PRIOR_SOURCE_YEARS_DIRECT_CHILD_METADATA_ONLY",
+        "database_connected": False,
+        "database_writes": 0,
+        "storage_file_contents_accessed": False,
+        "storage_writes": 0,
+        "canonical_links_created": 0,
+    }
+
 
 
 def main(argv: list[str] | None = None) -> int:

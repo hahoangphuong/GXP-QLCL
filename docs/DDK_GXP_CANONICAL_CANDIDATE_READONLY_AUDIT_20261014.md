@@ -454,3 +454,33 @@ Until exact-head CI succeeds and the operator repeats this read-only
 check, root basename matching remains **NOT VERIFIED**. Do not
 change `STORAGE_DKKD_ROOT`, guess alternate paths, weaken the
 VBA-derived ` (<site_legacy_id>)` matcher or create links.
+
+
+## VM root-provenance parser/adapter parity — 14 Oct 2026
+
+The exact-head VM operator probe on `4d8164f` reconfirmed all protected
+source queue, readiness, full-SMB, root-shape and second-level JSON
+integrity checks. Root configuration parsing itself succeeded, but
+`assess_configured_roots` stopped with `DDKD_ROOT_UNC_INVALID`.
+An independent no-network, no-DB diagnostic classified the difference:
+`SmbStorageService._normalize_root` and `_server_from_root` accepted the
+configured DDKD UNC; provenance `unc_components` rejected it because
+splitting on backslashes produced at least one *empty component*.
+This evidence does **not** identify a replacement root, nor establish
+whether the legacy Windows workbook was deployed at the configured
+location. It does not invalidate previously complete SMB metadata scans.
+
+The provenance-audit owner now uses the same nonempty-component
+tokenization as `SmbStorageService._server_from_root` strictly for
+**read-only boolean configuration comparison**. The actual configured
+root is not changed or used for an alternative SMB connection. The audit
+continues to require UNC syntax, host/share, no forward slashes, and
+no `.` or `..` traversal components. Regression covers repeated
+backslash components, negative leaf comparison and traversal/slash
+rejection. The source physical-ID-CC audit docstring was also made raw,
+removing its observed invalid-escape `SyntaxWarning` from import-time
+stderr. Neither change grants legal approval, changes Site token
+matching, writes storage/database, or authorizes root correction.
+
+Pending **exact-head CI and new VM run**, configured-root leaf flags
+remain NOT VERIFIED; all DDK GxP canonical links stay NOT APPROVED.

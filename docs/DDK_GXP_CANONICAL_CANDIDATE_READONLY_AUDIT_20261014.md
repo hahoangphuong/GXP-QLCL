@@ -1018,3 +1018,65 @@ separately authorized primary document/archival custody attestation
 directly tying the real Case and source Site to its record. The original
 three missing Case folders and eight DDK/GxP source-token exceptions
 remain distinct unresolved workstreams, never auto-approved.
+
+## Physical workbook crosswalk — entire DDK exception population (15 Oct 2026)
+
+An independent, read-only physical XLSB comparison (outside PostgreSQL,
+GitHub, NAS and importer code) ran directly against the user-supplied
+accepted legacy workbook, SHA-256
+c12537ea5a5c9f470e42fb5bdbe214f36983e310fceac7c560ad38885209fe3d.
+Source owners: db.dkkd with separate GMP/GLP/GSP/GDP ID CC groups,
+db.cc, db.ktra, db.cso, and db.cty. The audit reconstructed all **861**
+source ID CC reference tokens and confirmed their existing GxP type.
+It independently reproduced 5 DDK-versus-Certificate Site mismatches,
+3 Certificate-versus-Originating-Case Site mismatches, one DDK Company
+versus its referenced Site's owner ID mismatch, and exactly **8 unique
+flagged token positions** after overlaps. The discrepancy originated
+in the accepted physical workbook, not an importer remapping.
+
+Root-cause clarification for the previously code-only Inspection folder:
+the imported Case's Site ID matches original db.ktra, while the linked
+source Certificate's db.cc Site ID is DIFFERENT and equals the numeric
+ID appearing in that NAS folder. The Certificate's physical address
+and scope text explicitly carry Site 1 / Site 2 labels, as do some
+other cross-Site Certificate sources. Consequently, the previous
+"folder naming discrepancy" wording is incomplete: the name could
+reflect the Certificate's Site identity rather than a wrong folder.
+It is NOT acceptable to infer a Case-Site repair, nor to certify an
+Inspection folder belongs to an original Case based on that coincidence.
+The original source contains a cross-owner multi-site ambiguity; it
+is not resolved by changing any single Site ID. Original Case-to-Site
+import fidelity remains verified, but multi-site coverage and legal
+document custody remain unverified.
+
+Among 8 flagged source token positions, 5 have literal "Cơ sở 1"
+and "Cơ sở 2" labels in BOTH certificate address and scope source
+cells. This is textual STRUCTURE evidence only, not a grant or a
+determination that any specific DDK is covered.
+
+One physical db.dkkd Company/Site-owner discrepancy was also verified:
+the two different original db.cty legacy IDs have IDENTICAL source
+company names and registered-address strings. This suggests duplicated
+reference identities, but cannot establish the two legacy IDs as the
+same authorized legal person. The Certificate and DDK Site IDs still
+match in that flagged source token. Neither Company ID may be merged
+or replaced without authoritative company identity/history evidence.
+
+Private exact row/column/token positions and source IDs remain in
+the local user-supplied-workbook audit JSON, not in the GitHub tree.
+The source is read using XLSB cached cell values (not a Windows Excel
+COM HasFormula/linked-workbook execution): source formula provenance
+is not independently proven for every cell. This is source-value
+crosscheck rather than certificate coverage acceptance.
+
+**Disposition and next evidence gate:** keep the eight original review
+queue entries and one separate company review unapproved. Route
+cross-Site or cross-Case certificates with multisite source text to
+certificate-level issued-document/annex review for explicit Site,
+scope, effective-version and business-eligibility coverage. Route the
+duplicate Company IDs to an authoritative company-registration/
+historical identity reconciliation. No automated source repair,
+Company-ID merge, Case-Site switch, DDK-to-Certificate link,
+StorageBinding, NAS rename, database write or release is authorized.
+The earlier five-file NAS content sample remains inconclusive and
+is closed to further automated probing.

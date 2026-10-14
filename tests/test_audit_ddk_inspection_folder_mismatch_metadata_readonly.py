@@ -7,7 +7,7 @@ from backend.app.storage.smb import SmbStorageService
 import tools.audit_ddk_inspection_folder_mismatch_metadata_readonly as owner
 
 
-FOLDER = "Different site (ID-46) inspection (KT-1023-GMP)"
+FOLDER = "Different site (ID-142) inspection (KT-9055-GLP)"
 ROOT = "mock/year/2024"
 
 
@@ -25,8 +25,8 @@ def _fixture(monkeypatch, *, folders=None, children=None):
         entry(name, ROOT + "/" + FOLDER + "/" + name, is_dir)
         for name, is_dir in (
             children if children is not None else [
-                ("inspection note (KT-1023-GMP).pdf", False),
-                ("other (ID-46).docx", False),
+                ("inspection note (KT-9055-GLP).pdf", False),
+                ("other (ID-142).docx", False),
                 ("evidence", True),
                 ("record without token.txt", False),
             ]
@@ -55,9 +55,9 @@ def _probe(storage, **extra):
     return owner.classify_exact_folder_metadata_readonly(
         storage,
         source_year=2024,
-        source_site_legacy_id=298,
-        observed_other_site_legacy_id=46,
-        inspection_legacy_code="KT-1023-GMP",
+        source_site_legacy_id=731,
+        observed_other_site_legacy_id=142,
+        inspection_legacy_code="KT-9055-GLP",
         **extra,
     )
 
@@ -81,9 +81,9 @@ def test_direct_children_metadata_no_content_or_unapproved_link(monkeypatch):
     }
     public = {key: val for key, val in result.items()
               if not key.startswith("private_")}
-    assert "46" not in str(public)
-    assert "298" not in str(public)
-    assert "1023" not in str(public)
+    assert "142" not in str(public)
+    assert "731" not in str(public)
+    assert "9055" not in str(public)
     assert "evidence" not in str(public)
     assert result["file_binary_contents_read"] is False
     assert result["direct_child_subdirectories_entered"] is False
@@ -97,10 +97,10 @@ def test_direct_children_metadata_no_content_or_unapproved_link(monkeypatch):
 @pytest.mark.parametrize("folders", [
     [],
     ["unrelated"],
-    [FOLDER, "Second (ID-46) (KT-1023-GMP)"],
-    ["Wrong Site (ID-298) (KT-1023-GMP)"],
-    ["Two Sites (ID-46) (ID-88) (KT-1023-GMP)"],
-    ["Corrupted (ID-047) (KT-1023-GMP)"],
+    [FOLDER, "Second (ID-142) (KT-9055-GLP)"],
+    ["Wrong Site (ID-731) (KT-9055-GLP)"],
+    ["Two Sites (ID-142) (ID-88) (KT-9055-GLP)"],
+    ["Corrupted (ID-047) (KT-9055-GLP)"],
 ])
 def test_changed_source_folder_population_fails_closed(monkeypatch, folders):
     storage = _fixture(monkeypatch, folders=folders)
@@ -124,9 +124,9 @@ def test_rejects_source_site_equal_observed_site(monkeypatch):
     storage = _fixture(monkeypatch)
     with pytest.raises(owner.MismatchedFolderAuditBlocked):
         owner.classify_exact_folder_metadata_readonly(
-            storage, source_year=2024, source_site_legacy_id=46,
-            observed_other_site_legacy_id=46,
-            inspection_legacy_code="KT-1023-GMP",
+            storage, source_year=2024, source_site_legacy_id=142,
+            observed_other_site_legacy_id=142,
+            inspection_legacy_code="KT-9055-GLP",
         )
 
 

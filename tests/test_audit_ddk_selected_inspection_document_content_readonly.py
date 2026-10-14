@@ -9,7 +9,48 @@ import pytest
 
 import tools.audit_ddk_selected_inspection_document_content_readonly as owner
 from backend.app.storage.smb import SmbStorageService
-from tests.test_triage_ddk_inspection_private_document_candidates import source_report
+def source_report():
+    entries = [
+        {"name_private": f"file_{i:02}.pdf", "is_dir": False,
+         "extension_private": ".pdf"} for i in range(24)
+    ]
+    entries += [
+        {"name_private": f"text_{i:02}.docx", "is_dir": False,
+         "extension_private": ".docx"} for i in range(14)
+    ]
+    entries += [
+        {"name_private": "note.txt", "is_dir": False,
+         "extension_private": ".txt"},
+        {"name_private": "unknown.xyz", "is_dir": False,
+         "extension_private": ".xyz"},
+        {"name_private": "not-entered", "is_dir": True, "extension_private": ""},
+    ]
+    for c in entries:
+        c.update({"inspection_code_token_present": False,
+                  "source_site_token_present": False,
+                  "alternate_site_token_present": False})
+    return {
+        "schema": "GXP_DDK_SINGLE_MISMATCHED_INSPECTION_FOLDER_METADATA_READONLY_V1",
+        "status": "SINGLE_SOURCE_MISMATCHED_FOLDER_DIRECT_METADATA_ONLY",
+        "approval_status": "NOT_APPROVED",
+        "source_year_roots_checked": 1,
+        "code_matching_folders_checked": 1,
+        "source_year_root_entries_scanned": 130,
+        "direct_child_entries_checked": 41,
+        "counts": {"DIRECT_CHILD_FILES": 40, "DIRECT_CHILD_DIRS": 1},
+        "file_binary_contents_read": False,
+        "direct_child_subdirectories_entered": False,
+        "folder_content_ownership_verified": False,
+        "database_connected": False,
+        "database_writes": 0,
+        "storage_writes": 0,
+        "canonical_links_created": 0,
+        "private_folder_metadata": {
+            "folder_leaf": "source year folder with different Site marker",
+            "children": entries,
+            "extension_counts": {".pdf": 24, ".docx": 14, ".txt": 1, ".xyz": 1},
+        },
+    }
 from tools.triage_ddk_inspection_private_document_candidates import make_private_document_candidate_manifest
 
 

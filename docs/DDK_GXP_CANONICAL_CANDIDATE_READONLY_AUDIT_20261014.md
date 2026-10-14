@@ -380,3 +380,25 @@ requires zero regressions in any originally RESOLVED Case. It prints only
 aggregate status transitions with no IDs or folder paths, and makes no
 SMB or database connection. It does not normalize missing folder claims,
 approve links, or rewrite any prior evidence/report.
+
+## Bounded second-level DDK SMB root shape check
+
+VM's first-level metadata scan confirmed 287 root entries, 274 direct
+subdirectories, 13 non-directories and **no** direct numeric
+` (<site_id>)` legacy token. This root-level observation is
+compatible with an additional directory layer; it does not authorize
+altering root config or changing the production DDK resolver.
+
+`tools.audit_ddk_gxp_smb_second_level_readonly` checks whether exact
+VBA-derived source-key tokens appear **one level beneath** each of the 274
+folders. It is source-bound to immutable exception dossier, queue,
+readiness, full 8+6 SMB report and original private root-shape JSON.
+The diagnostic enumerates only the root and each immediate parent,
+with separate budgets (1,000 root entries, 500 parents and 20,000
+second-level entries). All parents must be completed or audit aborts.
+Root direct shape must still equal the observed private root report.
+Results are aggregates only, with separate distinct Site-key coverage
+and distinct DDK parent coverage. It **does not** resolve a DDK folder
+under another root, change canonical Site ownership, recurse deeper,
+read files, create bindings, link Certificate to DDK, or infer missing
+legal source from unmatched names. No manual per-source path hardcoding.

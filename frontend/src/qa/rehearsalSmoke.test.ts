@@ -20,8 +20,15 @@ function fixture(path: string) {
   };
   if (path.startsWith("/api/documents/")) return { document_id: path.split("/").pop(), variants: [{ id: "rendition-id", versions: [{ id: "version-id" }] }] };
   if (path.endsWith("/gxp-certificates")) return { items: ["gps-a", "gps-b"].map(certificate_id => ({ certificate_id, certificate_number: "same-number" })) };
+  if (/\/api\/certificates\/[^/]+\/versions$/.test(path)) return {
+    certificate_id: path.split("/").at(-2), versions: [{ certificate_version_id: "gps-version", scopes: [{ id: "scope-version" }] }],
+  };
   if (path.startsWith("/api/certificates/")) return { certificate_id: path.split("/").pop(), site_id: site };
   if (path === `/api/sites/${site}/business-eligibility-certificates`) return { items: ["ddk-a", "ddk-b"].map(business_eligibility_certificate_id => ({ business_eligibility_certificate_id, certificate_number: "same-number" })) };
+  if (/\/api\/business-eligibility-certificates\/[^/]+\/versions$/.test(path)) return {
+    business_eligibility_certificate_id: path.split("/").at(-2), gxp_source_tokens_included: false,
+    canonical_link_status: "stored_fk_only_not_validated", versions: [{ business_eligibility_version_id: "ddk-version", stored_link_records: [] }],
+  };
   if (path.startsWith("/api/business-eligibility-certificates/")) return { business_eligibility_certificate_id: path.split("/").pop(), site_id: site };
   throw new Error("Unexpected fixture path");
 }
@@ -48,10 +55,11 @@ describe("bounded rehearsal probe using the real API client", () => {
     const report = await runRehearsalSmoke({ fixture: true });
     expect(report.verification).toBe("FIXTURE_ONLY");
     expect(report.checks.every(check => check.outcome === "PASS")).toBe(true);
-    expect(report.reads).toBe(13);
+    expect(report.reads).toBe(17);
     expect(fetch.mock.calls.filter(([url]) => url === "/api/documents/doc-a")).toHaveLength(1);
     expect(fetch.mock.calls.filter(([url]) => url.startsWith(`/api/sites/${site}/workspace?`))[0][0]).toContain(`production_line_id=${line}`);
     for (const id of ["gps-a", "gps-b", "ddk-a", "ddk-b"]) expect(fetch.mock.calls.filter(([url]) => url.endsWith(`/${id}`))).toHaveLength(1);
+    for (const id of ["gps-a", "gps-b", "ddk-a", "ddk-b"]) expect(fetch.mock.calls.filter(([url]) => url.endsWith(`/${id}/versions`))).toHaveLength(1);
     expect(JSON.stringify(report)).not.toMatch(/secret-test-token|same-number|same.docx|doc-a|gps-a/);
     expect(report.uiVerified).toBe(false);
   });
@@ -91,6 +99,20 @@ describe("bounded rehearsal probe using the real API client", () => {
     const fetch = setup((path, body) => response(path.startsWith("/api/certificates/") ? { certificate_id: "wrong", site_id: site } : body));
     vi.stubGlobal("fetch", fetch);
     expect((await runRehearsalSmoke()).verification).toBe("BLOCKED");
+  });
+
+  it("rejects mismatched or semantically conflated persisted histories", async () => {
+    const fetch = setup((path, body) => response(path.endsWith("/gps-a/versions")
+      ? { certificate_id: "wrong", versions: [] }
+      : path.endsWith("/ddk-a/versions")
+        ? { business_eligibility_certificate_id: "ddk-a", gxp_source_tokens_included: true,
+          canonical_link_status: "stored_fk_only_not_validated", versions: [] }
+        : body));
+    vi.stubGlobal("fetch", fetch);
+    const report = await runRehearsalSmoke({ fixture: true });
+    expect(report.passed).toBe(false);
+    expect(report.checks.find(item => item.name === "gps-history-identity-1")?.outcome).toBe("FAIL");
+    expect(report.checks.find(item => item.name === "ddk-history-contract-1")?.outcome).toBe("FAIL");
   });
 
   it("rejects conflated document/rendition/version identities", async () => {

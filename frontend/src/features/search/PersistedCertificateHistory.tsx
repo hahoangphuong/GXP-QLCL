@@ -52,12 +52,17 @@ export function PersistedCertificateHistory({ kind, state }: Props) {
   const selectedId = state.status === "ready" && state.onSelectVersion ? state.selectedVersionId : selection?.data === data ? selection.id : undefined;
   const selected = versions.find(v => idOf(v) === selectedId) ?? versions[0];
   const error = state.status === "error" ? state.httpStatus : null;
-  return <details className="persisted-certificate-history">
+  const errorMessage = state.status !== "error" ? null : error === 401 ? "Cần đăng nhập để xem phiên bản." : error === 403 ? "Không có quyền xem phiên bản." : error === 404 ? "Không tìm thấy giấy chứng nhận theo UUID." : error === 409 ? "Xung đột toàn vẹn dữ liệu phiên bản; cần kiểm tra dữ liệu." : "Không thể tải phiên bản đã lưu.";
+  const stateAnnouncement = state.status === "idle" || state.status === "loading" ? "Đang tải phiên bản đã lưu…"
+    : errorMessage ?? (data && !selected ? "Giấy chứng nhận chưa có phiên bản được lưu." : null);
+  return <>
+    {stateAnnouncement ? <p className="sr-only" role={errorMessage ? "alert" : "status"}>{stateAnnouncement}</p> : null}
+    <details className="persisted-certificate-history">
     <summary>{kind === "gxp" ? "Các phiên bản GPs đã lưu" : "Các phiên bản ĐĐK đã lưu"}</summary>
     <section aria-labelledby={labelId}>
       <h3 id={labelId}>Snapshot phiên bản — chỉ đọc</h3>
-      {state.status === "idle" || state.status === "loading" ? <p role="status">Đang tải phiên bản đã lưu…</p> : null}
-      {state.status === "error" ? <p role="alert">{error === 401 ? "Cần đăng nhập để xem phiên bản." : error === 403 ? "Không có quyền xem phiên bản." : error === 404 ? "Không tìm thấy giấy chứng nhận theo UUID." : error === 409 ? "Xung đột toàn vẹn dữ liệu phiên bản; cần kiểm tra dữ liệu." : "Không thể tải phiên bản đã lưu."}</p> : null}
+      {state.status === "idle" || state.status === "loading" ? <p>Đang tải phiên bản đã lưu…</p> : null}
+      {errorMessage ? <p>{errorMessage}</p> : null}
       {data ? <>
         <p>{versions.length} phiên bản đã lưu</p>
         <dl className="persisted-version-fields">
@@ -70,10 +75,14 @@ export function PersistedCertificateHistory({ kind, state }: Props) {
           <label>Phiên bản đã lưu<select value={idOf(selected)} onChange={event => { if (state.status === "ready" && state.onSelectVersion) state.onSelectVersion(event.target.value); else setSelection({ data, id: event.target.value }); }}>
             {versions.map(v => <option key={idOf(v)} value={idOf(v)}>Phiên bản {v.version_no} · {v.certificate_number ?? "Chưa có số"} · {idOf(v)}</option>)}
           </select></label>
+          <p aria-atomic="true" aria-live="polite" className="sr-only" role="status">
+            Đang hiển thị phiên bản {selected.version_no} của {versions.length} phiên bản đã lưu.
+          </p>
           <dl className="persisted-version-fields"><Field label="Số thứ tự phiên bản (version_no)" value={selected.version_no} /><Field label="Concurrency token (row_version)" value={selected.row_version} /><Field label="Số GCN" value={selected.certificate_number} /></dl>
           {"certificate_version_id" in selected ? <GxpSnapshot version={selected} /> : <DdkSnapshot version={selected} />}
         </>}
       </> : null}
     </section>
-  </details>;
+  </details>
+  </>;
 }

@@ -1,7 +1,8 @@
 import {
   getAppStatus, getCurrentIdentity, searchFacilities, getFacilityWorkspace,
   getCaseWorkspace, listSiteGxpCertificates, getGxpCertificateDetail,
-  listSiteBusinessEligibilityCertificates, getBusinessEligibilityDetail, getDocumentDetail,
+  getGxpCertificateVersionHistory, listSiteBusinessEligibilityCertificates,
+  getBusinessEligibilityDetail, getBusinessEligibilityVersionHistory, getDocumentDetail,
 } from "../lib/api";
 import { loadOidcSession } from "../lib/storage";
 import { isOidcSessionValid } from "../lib/oidc";
@@ -116,14 +117,41 @@ export async function runRehearsalSmoke(options: {
     for (const [index, item] of (gps?.items ?? []).slice(0, 2).entries()) {
       const detail = await read(`facility-gps-detail-${index + 1}`, () => getGxpCertificateDetail(item.certificate_id, auth, stub, token));
       if (detail) check(`gps-identity-${index + 1}`, detail.certificate_id === item.certificate_id && detail.site_id === siteId);
+      const history = await read(`facility-gps-history-${index + 1}`, () => getGxpCertificateVersionHistory(item.certificate_id, auth, stub, token));
+      if (history) {
+        const versions = Array.isArray(history.versions) ? history.versions : [];
+        const versionIds = versions.map(version => version.certificate_version_id);
+        check(`gps-history-identity-${index + 1}`, history.certificate_id === item.certificate_id
+          && Array.isArray(history.versions)
+          && versionIds.length === new Set(versionIds).size
+          && versions.every(version => Boolean(version.certificate_version_id)
+            && Array.isArray(version.scopes) && version.scopes.every(scope => Boolean(scope.id))));
+      }
     }
-    if (gps && !gps.items.length) report.checks.push({ name: "facility-gps-detail", outcome: "SKIPPED" });
+    if (gps && !gps.items.length) {
+      report.checks.push({ name: "facility-gps-detail", outcome: "SKIPPED" });
+      report.checks.push({ name: "facility-gps-history", outcome: "SKIPPED" });
+    }
     const ddk = await read("facility-ddk-list", () => listSiteBusinessEligibilityCertificates(siteId, auth, stub, token));
     for (const [index, item] of (ddk?.items ?? []).slice(0, 2).entries()) {
       const detail = await read(`facility-ddk-detail-${index + 1}`, () => getBusinessEligibilityDetail(item.business_eligibility_certificate_id, auth, stub, token));
       if (detail) check(`ddk-identity-${index + 1}`, detail.business_eligibility_certificate_id === item.business_eligibility_certificate_id && detail.site_id === siteId);
+      const history = await read(`facility-ddk-history-${index + 1}`, () => getBusinessEligibilityVersionHistory(item.business_eligibility_certificate_id, auth, stub, token));
+      if (history) {
+        const versions = Array.isArray(history.versions) ? history.versions : [];
+        const versionIds = versions.map(version => version.business_eligibility_version_id);
+        check(`ddk-history-contract-${index + 1}`, history.business_eligibility_certificate_id === item.business_eligibility_certificate_id
+          && history.gxp_source_tokens_included === false && history.canonical_link_status === "stored_fk_only_not_validated"
+          && Array.isArray(history.versions)
+          && versionIds.length === new Set(versionIds).size
+          && versions.every(version => Boolean(version.business_eligibility_version_id)
+            && Array.isArray(version.stored_link_records)));
+      }
     }
-    if (ddk && !ddk.items.length) report.checks.push({ name: "facility-ddk-detail", outcome: "SKIPPED" });
+    if (ddk && !ddk.items.length) {
+      report.checks.push({ name: "facility-ddk-detail", outcome: "SKIPPED" });
+      report.checks.push({ name: "facility-ddk-history", outcome: "SKIPPED" });
+    }
     report.passed = report.checks.every(item => item.outcome === "PASS");
     if (options.fixture) report.verification = "FIXTURE_ONLY";
     else if (report.passed) report.verification = "READ_API_PASS";

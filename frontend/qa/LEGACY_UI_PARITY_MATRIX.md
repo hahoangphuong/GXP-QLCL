@@ -71,6 +71,24 @@ can clip the task panel; DOM measurements are the viewport evidence.
 Real authenticated UI, binary storage, screen reader and production UAT are not
 verified. RecordForm/ExtRecordForm/picker runtime/action gaps remain unchanged.
 
+Accessibility follow-up: the native disclosure retains its legacy-compatible
+compact presentation and the history region has a named heading and labelled
+native version selector. Selecting a snapshot keeps focus on that selector and a
+polite, atomic status announces the displayed ordinal/count. Loading and empty
+states use status announcements; 401/403/404/409/server failures remain alerts.
+Aggregate replacement never moves focus into history, and stale reads cannot
+publish content or focus under their former owner. The read-only rehearsal probe
+now includes both aggregate `/versions` calls, validates nested version identity
+and fails closed on malformed/conflated GxP scope or ĐĐK FK/source-token payloads
+without logging IDs or record values.
+
+`REAL_AUTHENTICATED_UI_BLOCKED`: no approved development origin or provisioned
+least-privilege interactive session is available. The exact missing condition is
+an Authorized JavaScript Origin for `http://127.0.0.1:4173`, or an already-approved
+HTTPS development origin, plus the existing provisioned test account. Fixture
+checks are `FIXTURE_VERIFIED_ONLY`; DOM/accessibility regressions are not a real
+screen-reader test, so `SCREEN_READER_PASS` is not claimed.
+
 ### Facility ĐĐK original GxP source integration — 2026-10-13
 
 Baseline `e428cf0ad1965e9bdcc50f6df525e233e9a0e1e0`: local/remote/PR #3 matched;

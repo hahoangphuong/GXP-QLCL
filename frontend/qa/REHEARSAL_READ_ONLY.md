@@ -79,11 +79,15 @@ This separate development-only page is not imported into the production bundle.
 
 It reads one bounded search page, selects one returned result (or an exact
 `resultKey` on that page), its facility/case workspace, up to two distinct document
-UUIDs and up to two GPs/ĐĐK certificates. Shared filenames/numbers do not deduplicate
-different identities. No mutation, folder lookup, binary download or automatic
-retry is performed. Overlapping runs are rejected. Only check names, counts,
-HTTP codes, auth mode and deployment SHA are reported; dossier values, IDs,
-credentials and server error details are omitted.
+UUIDs and up to two GPs/ĐĐK certificate details plus their persisted `/versions`
+histories. History checks fail closed on aggregate mismatch, duplicate/missing
+version identity, malformed scope/link collections or a ĐĐK response that includes
+source tokens as canonical history. Zero persisted versions is a valid response;
+the probe never fabricates a current snapshot. Shared filenames/numbers do not
+deduplicate different identities. No mutation, folder lookup, binary download or
+automatic retry is performed. Overlapping runs are rejected. Only check names,
+counts, HTTP codes, auth mode and deployment SHA are reported; dossier values,
+IDs, credentials and server error details are omitted.
 
 `READ_API_PASS` verifies only the bounded API checks. `uiVerified` stays false;
 it is not a real-backend browser, storage or screen-reader PASS. Empty/unavailable
@@ -108,12 +112,14 @@ Do not force a live 409 through writes: conflict/draft tests remain fixture-only
 unless a separately authorized scenario exists. The local proxy's 405 is a local
 safety block, not proof of backend RBAC or concurrency.
 
-## Current boundary (2026-10-13)
+## Current boundary (2026-10-14)
 
 Live IAP/SSH/tunnel observations: `/healthz` and `/readyz` return 200;
 schema `20261012_0023` is current, and `/app/status` reports
 `google_oidc`, `gxp_legacy_rehearsal`, deployment
-`1ee38180549c5aa6c69d577413311c81431069fc`. No-token `/auth/me` returns 401.
+`97182e58c3a673938d1b263c7eeaab41d28147b4`. Live OpenAPI contains both
+canonical aggregate history endpoints and their exact response schemas. No-token
+`/auth/me` returns 401.
 The actual PR #3 frontend renders its login boundary through this proxy at all
 four viewports, without horizontal overflow. Google sign-in rejects
 `http://127.0.0.1:4173` with **The given origin is not allowed for the given client
@@ -125,12 +131,16 @@ VM or RBAC configuration was changed. Do not insert a token or stub identity to
 bypass this boundary. Real 403/409/draft/stale-response behavior, binary storage
 and screen-reader speech remain unverified.
 
-Read-only aggregate queries in this slice independently confirm 3,120 source groups
+Read-only aggregate queries independently confirm 3,120 source groups
 (780 each GMP/GLP/GSP/GDP), with 861 reference tokens and no new canonical links.
 The transaction used BEGIN READ ONLY and ROLLBACK; no data changed. Runtime
 OpenAPI now exposes the source-evidence endpoint. Facility ĐĐK consumes it by
 canonical UUID, preserving its source-only meaning. Certificate-version/history
-contracts remain pending. The authenticated source response/UI remains unverified.
+contracts are now deployed. Their authenticated response/UI remains unverified.
+
+Persisted history remains `FIXTURE_VERIFIED_ONLY`: the read-only probe now covers
+the two history endpoints, but cannot reach them against the VM without a valid
+interactive session. This is not `REAL_BACKEND_VERIFIED`.
 
 The only HTTPS host observed in VM Nginx is `gxp.qlcl-dav.cc`; that does not
 establish an approved development origin for this local frontend source. No
@@ -139,3 +149,9 @@ owner must approve/add exactly `http://127.0.0.1:4173` to **Authorized JavaScrip
 Origins** of the existing web OAuth client reported by `/app/status`, or provide
 an already-approved HTTPS development origin. Do not change the client/CORS/IAP
 or inject identity headers within the frontend verification slice.
+
+Minimum handoff for a future authenticated run: confirm the existing OAuth web
+client, approve one exact development origin, provide one already-provisioned
+least-privilege account, and identify sanitized read-only Site aggregates that
+cover zero, one and multiple saved versions where available. Keep credentials and
+record identities outside Git. No frontend-auth fallback or new client is needed.

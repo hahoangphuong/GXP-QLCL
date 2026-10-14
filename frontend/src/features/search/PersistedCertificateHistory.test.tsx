@@ -15,6 +15,34 @@ const data: GxpCertificateVersionHistory = {
 };
 
 describe("persisted certificate snapshots", () => {
+  it("announces loading and errors while the native disclosure remains collapsed", () => {
+    const { rerender } = render(<PersistedCertificateHistory kind="gxp" state={{ status: "loading" }} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Đang tải phiên bản đã lưu");
+    expect(screen.getByText("Các phiên bản GPs đã lưu").closest("details")).not.toHaveAttribute("open");
+    rerender(<PersistedCertificateHistory kind="gxp" state={{ status: "error", httpStatus: 403 }} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Không có quyền xem phiên bản");
+  });
+  it("keeps focus on the labelled selector and announces the newly displayed snapshot", () => {
+    render(<PersistedCertificateHistory kind="gxp" state={{ status: "ready", data }} />);
+    fireEvent.click(screen.getByText("Các phiên bản GPs đã lưu"));
+    const selector = screen.getByRole("combobox", { name: "Phiên bản đã lưu" });
+    selector.focus();
+    fireEvent.change(selector, { target: { value: "version-old" } });
+    expect(selector).toHaveFocus();
+    expect(screen.getByRole("status")).toHaveTextContent("Đang hiển thị phiên bản 1");
+    expect(screen.getByRole("region", { name: "Snapshot phiên bản — chỉ đọc" })).toContainElement(selector);
+  });
+  it("does not steal aggregate focus when a replacement history snapshot arrives", () => {
+    const renderOwner = (history: GxpCertificateVersionHistory) => <><button type="button">Giấy chứng nhận đang chọn</button>
+      <PersistedCertificateHistory kind="gxp" state={{ status: "ready", data: history }} /></>;
+    const { rerender } = render(renderOwner(data));
+    const aggregateControl = screen.getByRole("button", { name: "Giấy chứng nhận đang chọn" });
+    aggregateControl.focus();
+    rerender(renderOwner({ ...data, certificate_id: "aggregate-b", latest_version_id: "version-b",
+      versions: [{ ...data.versions[0], certificate_version_id: "version-b", certificate_number: "aggregate B" }] }));
+    expect(aggregateControl).toHaveFocus();
+    expect(screen.queryByText("version-old")).not.toBeInTheDocument();
+  });
   it("keeps historical scopes separate from the latest snapshot and never infers lifecycle", () => {
     render(<PersistedCertificateHistory kind="gxp" state={{ status: "ready", data }} />);
     fireEvent.click(screen.getByText("Các phiên bản GPs đã lưu"));
@@ -30,7 +58,7 @@ describe("persisted certificate snapshots", () => {
     render(<PersistedCertificateHistory kind="gxp" state={{ status: "ready", data: { ...data, versions: data.versions.slice(0, count) } }} />);
     fireEvent.click(screen.getByText("Các phiên bản GPs đã lưu"));
     expect(screen.getByText(`${count} phiên bản đã lưu`)).toBeInTheDocument();
-    if (!count) expect(screen.getByText("Giấy chứng nhận chưa có phiên bản được lưu.")).toBeInTheDocument();
+    if (!count) expect(screen.getByRole("status")).toHaveTextContent("Giấy chứng nhận chưa có phiên bản được lưu.");
   });
   it.each([401, 403, 404, 409, 500, null])("shows an owned read error %s without current-detail fallback or retry", httpStatus => {
     render(<PersistedCertificateHistory kind="gxp" state={{ status: "error", httpStatus }} />);

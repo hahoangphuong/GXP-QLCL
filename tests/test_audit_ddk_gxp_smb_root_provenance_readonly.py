@@ -5,6 +5,7 @@ import pytest
 
 from tools.audit_ddk_gxp_smb_root_provenance_readonly import (
     RootProvenanceBlocked, assess_configured_roots, unc_components,
+    safe_failure_code,
 )
 
 
@@ -68,3 +69,55 @@ def test_distinct_storage_roots_can_share_host_and_share():
     ))
     assert report["ddk_root_leaf_matches_legacy_ddkd_directory"] is True
     assert report["ddk_root_same_host_and_share_as_inspection"] is False
+
+
+
+def test_safe_diagnostic_classifies_ddkd_invalid_root_without_leaking_data():
+    sensitive = r"\\sensitive-nas\private\secret-site"
+    data = env(STORAGE_DKKD_ROOT="invalid:" + sensitive)
+    with pytest.raises(RootProvenanceBlocked) as exc:
+        assess_configured_roots(data)
+    assert safe_failure_code(exc.value) == "DDKD_ROOT_UNC_INVALID"
+    assert sensitive not in safe_failure_code(exc.value)
+
+
+def test_safe_diagnostic_distinguishes_invalid_inspection_from_ddk_root():
+    data = env(STORAGE_INSPECTION_ROOT="/unauthorized/private/archive")
+    with pytest.raises(RootProvenanceBlocked) as exc:
+        assess_configured_roots(data)
+    assert safe_failure_code(exc.value) == "INSPECTION_ROOT_UNC_INVALID"
+
+
+def test_safe_diagnostic_optional_template_root_guard():
+    data = env(STORAGE_TEMPLATE_ROOT="not a UNC root")
+    with pytest.raises(RootProvenanceBlocked) as exc:
+        assess_configured_roots(data)
+    assert safe_failure_code(exc.value) == "TEMPLATE_ROOT_UNC_INVALID"
+
+
+def test_safe_diagnostic_known_evidence_guard_stages():
+    assert safe_failure_code(RootProvenanceBlocked(
+        "Second-level protected shape differs"
+    )) == "SECOND_LEVEL_REPORT_INTEGRITY"
+    assert safe_failure_code(RootProvenanceBlocked(
+        "Original private root report differs"
+    )) == "ROOT_SHAPE_REPORT_INTEGRITY"
+
+
+def test_safe_diagnostic_does_not_echo_unknown_exception_message():
+    private_marker = "sshpass/private/secret_nas"
+    assert safe_failure_code(RootProvenanceBlocked(private_marker)) == "OWNER_GUARD_UNCLASSIFIED"
+    assert safe_failure_code(ValueError(private_marker)) == "ValueError"
+
+
+def test_whitespace_handling_consistent_with_storage_factory():
+    data = env(STORAGE_DKKD_ROOT="  " + env()["STORAGE_DKKD_ROOT"] + "  ")
+    assert assess_configured_roots(data)["ddk_root_leaf_matches_legacy_ddkd_directory"]
+
+
+def test_literal_unc_root_comparison_does_not_approve_new_mapping():
+    result = assess_configured_roots(env(
+        STORAGE_DKKD_ROOT=r"\\my-server\private\unverified-archive"
+    ))
+    assert result["ddk_root_leaf_matches_legacy_ddkd_directory"] is False
+    assert not any(isinstance(v, str) for v in result.values())

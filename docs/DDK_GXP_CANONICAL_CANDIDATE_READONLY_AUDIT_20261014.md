@@ -431,3 +431,26 @@ prints, stores or uploads UNC strings, credential values or original
 per-Site keys. A match/mismatch is an observation **only**, not an
 authorized replacement location. No automatic path fallback,
 recursive NAS search, binding write, root rewrite or link creation.
+
+## Root-provenance diagnostic blocked at VM (14 Oct 2026)
+
+At CI-passed SHA `82caba9042e988bfd069c619f6c35cfc75cb96c8`
+the operator-only read-only root-provenance command exited 2 with only
+`DDK_ROOT_PROVENANCE_BLOCKED: RootProvenanceBlocked`. This is **not**
+proof of root mismatch: an owner guard rejected one of private report
+integrity, input identity or UNC/config syntax checks. Earlier
+fully completed root and second-level SMB scans remain valid.
+
+Owner fix in `tools.audit_ddk_gxp_smb_root_provenance_readonly`
+retains every fail-closed check but emits only allowlisted **static error
+codes** to distinguish which contract failed. UNC strings, environment
+values, credentials and private Case/Site keys remain redacted.
+The parser for configured roots also strips surrounding whitespace
+exactly as the approved `create_storage_service_from_env` factory.
+An unrecognized exception message maps only to its type or
+`OWNER_GUARD_UNCLASSIFIED`; no exception traceback or value is emitted.
+
+Until exact-head CI succeeds and the operator repeats this read-only
+check, root basename matching remains **NOT VERIFIED**. Do not
+change `STORAGE_DKKD_ROOT`, guess alternate paths, weaken the
+VBA-derived ` (<site_legacy_id>)` matcher or create links.

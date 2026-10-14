@@ -1,4 +1,4 @@
-"""Source-evidenced DDKD SMB root *configuration* identity diagnostic.
+r"""Source-evidenced DDKD SMB root *configuration* identity diagnostic.
 
 No SMB or PostgreSQL connections. Never returns configured UNC paths,
 credentials or source Site/Case identifiers. The legacy DDKD folder basename
@@ -54,17 +54,49 @@ def unc_components(value: str) -> tuple[str, ...]:
     return tuple(_fold(part) for part in parts)
 
 
+
+# Every printable reason is a fixed code, NEVER a raw exception or UNC value.
+_SAFE_FAILURE_CODES = {
+    "All protected source reports must differ from new private output": "PRIVATE_EVIDENCE_PATH_CONFLICT",
+    "Original source queue differs": "ORIGINAL_SOURCE_QUEUE_DRIFT",
+    "Expected original DDK parent identities": "ORIGINAL_PARENT_POPULATION_DRIFT",
+    "Original private root report differs": "ROOT_SHAPE_REPORT_INTEGRITY",
+    "Second-level protected shape differs": "SECOND_LEVEL_REPORT_INTEGRITY",
+    "Adapter class mismatch": "SMB_ADAPTER_CLASS_MISMATCH",
+    "Missing configured transport identity": "SMB_TRANSPORT_IDENTITY_MISSING",
+    "Invalid configured UNC root: STORAGE_DKKD_ROOT": "DDKD_ROOT_UNC_INVALID",
+    "Invalid configured UNC root: STORAGE_INSPECTION_ROOT": "INSPECTION_ROOT_UNC_INVALID",
+    "Invalid configured UNC root: STORAGE_TEMPLATE_ROOT": "TEMPLATE_ROOT_UNC_INVALID",
+}
+
+
+def safe_failure_code(exc: Exception) -> str:
+    """Allowlist owner-owned static diagnostics; unknown errors stay opaque."""
+    if isinstance(exc, RootProvenanceBlocked):
+        return _SAFE_FAILURE_CODES.get(str(exc), "OWNER_GUARD_UNCLASSIFIED")
+    return type(exc).__name__
+
+
+def configured_unc_parts(env: dict[str, str], key: str) -> tuple[str, ...]:
+    """Same leading/trailing whitespace handling as SMB storage factory."""
+    if key not in ("STORAGE_DKKD_ROOT", "STORAGE_INSPECTION_ROOT", "STORAGE_TEMPLATE_ROOT"):
+        raise RootProvenanceBlocked("Unsupported config key")
+    try:
+        return unc_components(env.get(key, "").strip())
+    except RootProvenanceBlocked:
+        raise RootProvenanceBlocked(f"Invalid configured UNC root: {key}") from None
+
 def assess_configured_roots(env: dict[str, str]) -> dict[str, Any]:
     """Return boolean shape only; never log or persist source UNC strings."""
     _require(env.get("STORAGE_CLASS", "").strip() == "synology_smb",
              "Adapter class mismatch")
-    ddk = unc_components(env.get("STORAGE_DKKD_ROOT", ""))
-    inspection = unc_components(env.get("STORAGE_INSPECTION_ROOT", ""))
+    ddk = configured_unc_parts(env, "STORAGE_DKKD_ROOT")
+    inspection = configured_unc_parts(env, "STORAGE_INSPECTION_ROOT")
     _require(bool(env.get("SMB_USERNAME", "").strip())
              and bool(env.get("SMB_PASSWORD", "").strip()),
              "Missing configured transport identity")
     template_raw = env.get("STORAGE_TEMPLATE_ROOT", "").strip()
-    template = unc_components(template_raw) if template_raw else None
+    template = configured_unc_parts(env, "STORAGE_TEMPLATE_ROOT") if template_raw else None
     expected = _fold(LEGACY_DDKD_LEAF)
     return {
         "ddk_root_leaf_matches_legacy_ddkd_directory": ddk[-1] == expected,
@@ -191,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
                          ensure_ascii=False, sort_keys=True))
         return 0
     except Exception as exc:
-        print("DDK_ROOT_PROVENANCE_BLOCKED: " + type(exc).__name__, file=sys.stderr)
+        print("DDK_ROOT_PROVENANCE_BLOCKED: " + safe_failure_code(exc), file=sys.stderr)
         return 2
 
 

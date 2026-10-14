@@ -71,3 +71,39 @@ The source baseline acceptance waived Excel COM verification for this
 development-only corpus. The tool does not claim independent COM validation.
 Any future canonical links or DDK version mappings require explicit owner
 adjudication of cross-Site/Company, version and regulatory scope.
+
+## Verified operator baseline and exception evidence (14 Oct 2026)
+
+Owner VM stdout for actual read-only candidate audit confirmed: **861/861** raw source
+IDs resolve to a canonical Certificate, **861/861** exact type, 856 same-Site,
+**five cross-Site** (all sharing DDK owning Company), 779/780 DDK Site/Company
+consistent with **one owner mismatch**, 301 repeated occurrences beyond the
+560 distinct referenced legacy Certificate IDs, **zero** recorded canonical
+BusinessEligibilityCertificateLink rows. Source 3,120 groups/861 tokens and
+backend running SHA 97182e5 were unchanged. These are observed candidate
+identities, NOT approved links or proof of CertificateVersion scope coverage.
+
+New optional `--exception-dossier-json` creates a separate mode-0600 private
+file containing only flagged token observations, distinct DDK Company ownership
+conflicts, and exact repeated-source token positions. For flagged candidate
+Certificates it also records originating Case identity/Site/GxP, observed
+issuance basis, CertificateVersion UUIDs and **per-version** scope UUID/order/
+SHA-256 fingerprints, never substituted scopes from a newer version.
+A Case Site or type discrepancy is a separate observation, not site-coverage
+adjudication; administrative certificates without a Case are not automatically
+classified as invalid. No false regulatory clearance/approval statuses.
+
+Execute, only on VM after exact-HEAD CI passes:
+
+```bash
+sudo -H -u gxp /opt/gxp/current-venv/bin/python \\
+  -m tools.audit_ddk_gxp_canonical_candidates_readonly \\
+  --expected-workbook-sha256 c12537ea5a5c9f470e42fb5bdbe214f36983e310fceac7c560ad38885209fe3d \\
+  --expected-groups 3120 --expected-tokens 861 \\
+  --exception-dossier-json /var/tmp/gxp-ddk-private/ddk-idcc-exceptions-20261014.json
+```
+
+Share only CLI aggregate JSON output in GitHub conversations. The original
+source cells, all row-level UUIDs and exception dossiers stay on the VM.
+The two files' outputs are separate: no official SourceGroup/Certificate
+canonical linkage is made, and neither source nor canonical tables are written.

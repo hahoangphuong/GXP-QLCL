@@ -11,12 +11,15 @@ from sqlalchemy.orm import Session
 from backend.app.db.base import Base
 from backend.app.db.models.phase1 import (
     BusinessEligibilityCertificate, BusinessEligibilityGxpReferenceEvidence,
-    BusinessEligibilityGxpSourceGroup, Certificate, Company, Site,
+    BusinessEligibilityGxpSourceGroup, Certificate, CertificateScope,
+    CertificateVersion, Case, Company, Site,
 )
 from tools.audit_ddk_gxp_canonical_candidates_readonly import (
     CandidateAuditBlocked, classify_candidates, ROLE_COLUMNS,
 )
 from tools.plan_ddk_gxp_provenance_load import _source_value_digest
+from tools.ddk_gxp_exception_dossier import build_exception_dossier
+from backend.app.db.enums import CaseState
 
 
 SHA = "a" * 64
@@ -140,4 +143,93 @@ def test_unavailable_canonical_ddk_is_flagged_not_inferred(tmp_path):
                                 expected_source_groups=8, expected_tokens=6)
         assert r["counts"]["source_ddk_canonical_missing"] == 1
         assert "DDK_CANONICAL_MISSING" in r["candidate_observations"][-1]["flags"]
+    engine.dispose()
+
+
+def test_exception_dossier_preserves_multi_axis_flags_and_duplicate_positions(tmp_path):
+    engine = _fixture(tmp_path)
+    with Session(engine) as s:
+        cert = s.query(Certificate).filter_by(legacy_certificate_id=200).one()
+        version = CertificateVersion(
+            certificate_id=cert.id, version_no=1, lifecycle_state=None,
+            certificate_number="TEST", is_latest_version=True,
+        )
+        s.add(version)
+        s.flush()
+        scope = CertificateScope(
+            certificate_version_id=version.id, scope_text="Sensitive scope text",
+            language_code="vi", sort_order=1,
+        )
+        s.add(scope)
+        # An unrelated Case owner may not be silently interpreted as valid
+        # coverage for this certificate. It is a further review flag only.
+        other_site = s.query(Site).filter_by(site_name="Site 2").one()
+        case = Case(site_id=other_site.id, gxp_type="GMP",
+                    state=CaseState.DRAFT)
+        s.add(case);s.flush()
+        cert.case_id = case.id
+        s.commit()
+
+        baseline = classify_candidates(
+            s, expected_workbook_sha256=SHA,
+            expected_source_groups=8, expected_tokens=6,
+        )
+        result = build_exception_dossier(s, baseline)
+        assert result["status"] == "READ_ONLY_EXCEPTION_EVIDENCE_NOT_APPROVED"
+        assert result["distinct_observed_certificate_legacy_ids"] == 4
+        assert result["candidate_repeated_id_count"] == 1
+        assert result["repeated_candidate_extra_occurrences"] == 2
+        assert result["within_one_source_cell_repeat_extras"] == 1
+        assert result["candidate_ids_observed_in_multiple_ddk"] == 1
+        assert result["cross_site_occurrences"] == 2
+        assert result["ddk_site_company_mismatches"] == 1
+        assert result["other_case_site_or_type_observations"]["CERTIFICATE_CASE_SITE_DIFFERENT"] == 3
+        assert result["database_writes"] == result["canonical_links_created"] == 0
+        assert len(result["ddk_company_exception_details"]) == 1
+        assert result["ddk_company_exception_details"][0]["legacy_dkkd_id"] == 401
+        xs = result["exception_token_details"]
+        assert any(
+            row["parsed_legacy_certificate_id"] == 201
+            and "CERTIFICATE_SITE_DIFFERENT" in row["flags"]
+            for row in xs
+        )
+        assert any(
+            row["parsed_legacy_certificate_id"] == 202
+            and "CERTIFICATE_GXP_TYPE_DIFFERENT" in row["flags"]
+            for row in xs
+        )
+        assert any(
+            row["parsed_legacy_certificate_id"] == 999
+            and "CERTIFICATE_CANONICAL_MISSING" in row["flags"]
+            for row in xs
+        )
+        ids = [x["token_index"] for x in result["repeated_candidate_id_details"][0]["observations"]
+               if x["legacy_dkkd_id"] == 400]
+        assert ids == [1, 2]
+        version_details = next(
+            x["certificate_versions"] for x in xs
+            if x["parsed_legacy_certificate_id"] == 200
+        )
+        assert version_details[0]["certificate_version_id"] == version.id
+        assert version_details[0]["lifecycle_state"] is None
+        assert version_details[0]["scope_evidence"][0]["scope_text_sha256"] == sha256(
+            b"Sensitive scope text"
+        ).hexdigest()
+        assert "Sensitive scope text" not in json.dumps(result)
+    engine.dispose()
+
+
+def test_exception_dossier_rejects_forged_or_partial_audit(tmp_path):
+    engine = _fixture(tmp_path)
+    with Session(engine) as s:
+        audit = classify_candidates(s, expected_workbook_sha256=SHA,
+                                   expected_source_groups=8, expected_tokens=6)
+        original = audit["candidate_observations"]
+        audit["candidate_observations"] = original[:-1]
+        with pytest.raises(CandidateAuditBlocked):
+            build_exception_dossier(s, audit)
+        audit["candidate_observations"] = original
+        audit["approval_status"] = "APPROVED"
+        with pytest.raises(CandidateAuditBlocked):
+            build_exception_dossier(s, audit)
     engine.dispose()

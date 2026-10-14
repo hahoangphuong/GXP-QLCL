@@ -246,6 +246,15 @@ def test_real_postgres_atomic_source_only_insert_retry_and_conflict():
                 expected_groups=4, expected_tokens=2,
             )
             assert candidate_audit["transaction_read_only"] is True
+            dossier = candidate_audit["exception_dossier"]
+            assert dossier["database_writes"] == 0
+            assert dossier["canonical_links_created"] == 0
+            assert dossier["distinct_observed_certificate_legacy_ids"] == 2
+            assert dossier["cross_site_occurrences"] == 0
+            assert dossier["ddk_site_company_mismatches"] == 0
+            assert len(dossier["exception_token_details"]) == 2
+            assert all("CERTIFICATE_CANONICAL_MISSING" in x["flags"]
+                       for x in dossier["exception_token_details"])
             assert candidate_audit["source_groups"] == 4
             assert candidate_audit["source_tokens"] == 2
             assert candidate_audit["counts"]["candidate_certificate_missing"] == 2

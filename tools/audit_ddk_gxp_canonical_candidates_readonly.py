@@ -237,6 +237,21 @@ def classify_candidates(
     }
 
 
+def _write_private_json(path: Path, report: dict[str, Any]) -> None:
+    """Create confidential output exclusively with permissions 0600."""
+    if path.exists():
+        raise CandidateAuditBlocked("Private audit output already exists")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(report, handle, ensure_ascii=False, sort_keys=True, indent=2)
+            handle.write("\n")
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+
+
 def audit_rehearsal_db(database_url: str, *, sha: str,
                        expected_groups: int, expected_tokens: int) -> dict[str, Any]:
     # Fail closed on a non-local or alternate role/DB: callers must pass
@@ -264,6 +279,18 @@ def audit_rehearsal_db(database_url: str, *, sha: str,
                         expected_source_groups=expected_groups,
                         expected_tokens=expected_tokens,
                     )
+                    # Must share the same proven read-only snapshot and the
+                    # validated original source observation identities.
+                    from tools.ddk_gxp_exception_dossier import build_exception_dossier
+                    dossier = build_exception_dossier(session, result)
+                    result["exception_dossier"] = dossier
+                    result["exception_summary"] = {
+                        key: value for key, value in dossier.items()
+                        if key not in {
+                            "exception_token_details", "ddk_company_exception_details",
+                            "repeated_candidate_id_details", "limitations",
+                        }
+                    }
                 result["database_name"] = EXPECTED_DB
                 result["alembic_revision"] = EXPECTED_REVISION
                 result["transaction_read_only"] = True
@@ -279,6 +306,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--expected-groups", type=int, required=True)
     parser.add_argument("--expected-tokens", type=int, required=True)
     parser.add_argument("--output-json", type=Path)
+    parser.add_argument("--exception-dossier-json", type=Path)
     args = parser.parse_args(argv)
     try:
         if args.expected_workbook_sha256 != EXPECTED_WORKBOOK_SHA256:
@@ -291,16 +319,16 @@ def main(argv: list[str] | None = None) -> int:
             expected_groups=args.expected_groups,
             expected_tokens=args.expected_tokens,
         )
+        if (args.output_json is not None and args.exception_dossier_json is not None
+                and args.output_json.resolve() == args.exception_dossier_json.resolve()):
+            raise CandidateAuditBlocked("Private full report and exception dossier paths must differ")
         if args.output_json is not None:
-            if args.output_json.exists():
-                raise CandidateAuditBlocked("Refuse to overwrite an existing private report")
-            args.output_json.parent.mkdir(parents=True, exist_ok=True)
-            fd = os.open(args.output_json, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(report, handle, ensure_ascii=False, sort_keys=True, indent=2)
-                handle.write("\n")
-        # Never emit raw source cells or private row-level identifiers to logs.
-        safe = {k: v for k, v in report.items() if k != "candidate_observations"}
+            _write_private_json(args.output_json, report)
+        if args.exception_dossier_json is not None:
+            _write_private_json(args.exception_dossier_json, report["exception_dossier"])
+        # Never emit raw source cells, source IDs, or row-level candidates to logs.
+        safe = {k: v for k, v in report.items()
+                if k not in {"candidate_observations", "exception_dossier"}}
         print(json.dumps(safe, ensure_ascii=False, sort_keys=True))
         return 0
     except Exception as exc:

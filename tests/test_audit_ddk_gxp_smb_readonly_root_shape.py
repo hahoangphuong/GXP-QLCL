@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import pytest
 
+from tools.audit_ddk_gxp_smb_readonly_folder_pilot import SmbProbeBlocked
+
 from tools.audit_ddk_gxp_smb_readonly_root_shape import (
     RootShapeBlocked, summarize_root_direct_children,
     validate_source_and_full_report,
@@ -69,5 +71,5 @@ def test_source_original_report_must_match_all_distinct_dkk_targets():
         "counts": {"DDK_NOT_FOUND": 8, "CASE_RESOLVED": 2, "CASE_NOT_FOUND": 4},
         "private_folder_observations": [],
     }
-    with pytest.raises((RootShapeBlocked, KeyError, TypeError)):
+    with pytest.raises((RootShapeBlocked, SmbProbeBlocked, KeyError, TypeError)):
         validate_source_and_full_report(queue, readiness, full)

@@ -10,6 +10,7 @@ import argparse
 from collections import Counter
 from hashlib import sha256
 import json
+import re
 from pathlib import Path
 import sys
 from typing import Any
@@ -339,6 +340,116 @@ def classify_unresolved_case_year_roots_readonly(
         "classification_counts": dict(sorted(counts.items())),
         "private_case_year_metadata_observations": private_observations,
         "scope": "EXACT_PRIOR_SOURCE_YEARS_DIRECT_CHILD_METADATA_ONLY",
+        "database_connected": False,
+        "database_writes": 0,
+        "storage_file_contents_accessed": False,
+        "storage_writes": 0,
+        "canonical_links_created": 0,
+    }
+
+
+
+
+def inspect_code_only_case_site_token_readonly(
+    storage: SmbStorageService,
+    *,
+    source_year: int,
+    site_legacy_id: int,
+    inspection_legacy_code: str,
+    max_year_root_entries: int = 3000,
+    max_code_matching_directories: int = 20,
+) -> dict[str, Any]:
+    """Classify Site token forms for ONE previously code-only Case/year.
+
+    The caller must prove the single code-only Case/year identity against
+    protected source, dual-year and prior metadata reports BEFORE calling.
+    Only one source year root's immediate metadata is read. A changed exact
+    Case/Site match, missing code-only observation, or a budget violation
+    fails closed. Private numeric tokens are NEVER suitable link evidence.
+    """
+    _require(
+        isinstance(storage, SmbStorageService)
+        and isinstance(storage.inspection_root, str)
+        and bool(storage.inspection_root)
+        and smbpath is not None and smbclient is not None,
+        "Not an approved read-only inspection SMB adapter",
+    )
+    _require(
+        type(source_year) is int and 1900 <= source_year <= 2100
+        and type(site_legacy_id) is int and site_legacy_id > 0
+        and isinstance(inspection_legacy_code, str)
+        and bool(inspection_legacy_code.strip())
+        and type(max_year_root_entries) is int and 1 <= max_year_root_entries <= 3000
+        and type(max_code_matching_directories) is int
+        and 1 <= max_code_matching_directories <= 20,
+        "Unverified Case identity or SMB diagnostic budget",
+    )
+    root = storage._join_root(storage.inspection_root, str(source_year))
+    _require(
+        bool(smbpath.exists(root)) and bool(smbpath.isdir(root)),
+        "Original code-only source year root missing or unavailable",
+    )
+
+    code_token = "(" + inspection_legacy_code.strip().lower() + ")"
+    numeric_pattern = re.compile(r"\\(ID-([0-9]+)\\)", flags=re.IGNORECASE)
+    marker_pattern = re.compile(r"\\(ID-([^)]*)\\)", flags=re.IGNORECASE)
+    counts: Counter[str] = Counter()
+    private_folders: list[dict[str, Any]] = []
+    root_entry_count = 0
+    for entry in smbclient.scandir(root):
+        root_entry_count += 1
+        _require(
+            root_entry_count <= max_year_root_entries,
+            "Source-year metadata scan budget exceeded",
+        )
+        if not entry.is_dir() or code_token not in entry.name.lower():
+            continue
+        _require(
+            len(private_folders) < max_code_matching_directories,
+            "Code-matching directory population exceeded budget",
+        )
+        name = entry.name
+        _require(
+            not matches_inspection_identity(
+                name,
+                site_legacy_id=site_legacy_id,
+                inspection_legacy_code=inspection_legacy_code,
+            ),
+            "Previously NOT_FOUND Case now has a complete folder identity",
+        )
+        parsed = [int(s) for s in numeric_pattern.findall(name)]
+        numeric = sorted(set(x for x in parsed if x > 0))
+        fragments = marker_pattern.findall(name)
+        if numeric:
+            if site_legacy_id in numeric:
+                classification = "SOURCE_NUMERIC_ID_NONCANONICAL_FORMAT"
+            elif len(numeric) == 1:
+                classification = "OTHER_NUMERIC_ID_TOKEN"
+            else:
+                classification = "MULTIPLE_OTHER_NUMERIC_ID_TOKENS"
+        elif fragments or "(id-" in name.lower():
+            classification = "NONNUMERIC_OR_INCOMPLETE_ID_MARKER"
+        else:
+            classification = "NO_ID_MARKER"
+        counts[classification] += 1
+        private_folders.append({
+            "classification": classification,
+            "observed_numeric_site_ids_unverified": numeric,
+            "id_marker_fragments_present": bool(fragments),
+        })
+
+    _require(bool(private_folders),
+             "Previously code-only folder evidence no longer observable")
+    return {
+        "status": "ONE_SOURCE_BOUND_CASE_YEAR_CODE_ONLY_METADATA_CLASSIFIED",
+        "approval_status": "NOT_APPROVED",
+        "source_case_year_observations_checked": 1,
+        "source_year_roots_checked": 1,
+        "year_root_entries_scanned": root_entry_count,
+        "code_matching_directories_checked": len(private_folders),
+        "classification_counts": dict(sorted(counts.items())),
+        "private_folder_token_observations": private_folders,
+        "scope": "ONE_PREVIOUS_CODE_ONLY_SOURCE_YEAR_DIRECT_CHILD_METADATA",
         "database_connected": False,
         "database_writes": 0,
         "storage_file_contents_accessed": False,

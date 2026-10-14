@@ -74,14 +74,31 @@ class StorageBindingService:
         return session.scalars(stmt).one_or_none()
 
     @staticmethod
-    def _anchor_year(anchor: LegacyInspectionStorageAnchor | None) -> int | None:
+    def _anchor_years(anchor: LegacyInspectionStorageAnchor | None) -> tuple[int, ...]:
+        """Use only source-recorded submission/inspection years, never year+1.
+
+        A conflicting or malformed original year must not be silently rescued
+        by another source column. Preserve registration-first lookup order;
+        cross-year result selection is handled separately and fail-closed.
+        """
         if anchor is None:
-            return None
-        if anchor.registration_submission_status == "usable":
-            return anchor.registration_submission_year
-        if anchor.inspection_year_status == "usable":
-            return anchor.inspection_year
-        return None
+            return ()
+        years: list[int] = []
+        for status, value in (
+            (anchor.registration_submission_status, anchor.registration_submission_year),
+            (anchor.inspection_year_status, anchor.inspection_year),
+        ):
+            if status == "conflict":
+                return ()
+            if status == "unavailable":
+                if value is not None:
+                    return ()
+                continue
+            if status != "usable" or type(value) is not int or not 1900 <= value <= 2100:
+                return ()
+            if value not in years:
+                years.append(value)
+        return tuple(years)
 
     @staticmethod
     def _invalid_anchor_resolution() -> StorageResolution:
@@ -218,22 +235,48 @@ class StorageBindingService:
 
         lookup_year = year
         if year is None:
-            lookup_year = self._anchor_year(self._load_storage_anchor(session, case_id=case_id))
-            resolution = self._invalid_anchor_resolution()
-            if lookup_year is not None:
-                resolution = self.storage.resolve_inspection_folder(
-                    case_id=case_id,
-                    year=lookup_year,
-                    site_legacy_id=site_legacy_id,
-                    inspection_legacy_code=inspection_legacy_code,
-                )
-                if resolution.status == StorageResolutionStatus.NOT_FOUND:
-                    lookup_year += 1
-                    resolution = self.storage.resolve_inspection_folder(
+            source_years = self._anchor_years(
+                self._load_storage_anchor(session, case_id=case_id)
+            )
+            lookup_year = source_years[0] if len(source_years) == 1 else None
+            if not source_years:
+                resolution = self._invalid_anchor_resolution()
+            else:
+                observed = [
+                    self.storage.resolve_inspection_folder(
                         case_id=case_id,
-                        year=lookup_year,
+                        year=source_year,
                         site_legacy_id=site_legacy_id,
                         inspection_legacy_code=inspection_legacy_code,
+                    )
+                    for source_year in source_years
+                ]
+                resolved = [
+                    item for item in observed
+                    if item.status == StorageResolutionStatus.RESOLVED
+                ]
+                if any(item.status == StorageResolutionStatus.INVALID for item in observed):
+                    resolution = self._invalid_anchor_resolution()
+                elif (
+                    any(item.status == StorageResolutionStatus.AMBIGUOUS for item in observed)
+                    or len(resolved) > 1
+                ):
+                    resolution = StorageResolution(
+                        status=StorageResolutionStatus.AMBIGUOUS,
+                        relative_path=None,
+                        absolute_path=None,
+                        candidate_count=sum(item.candidate_count for item in observed),
+                        detail="Multiple source-year inspection folder candidates.",
+                    )
+                elif len(resolved) == 1:
+                    resolution = resolved[0]
+                else:
+                    resolution = StorageResolution(
+                        status=StorageResolutionStatus.NOT_FOUND,
+                        relative_path=None,
+                        absolute_path=None,
+                        candidate_count=0,
+                        detail="No inspection folder matched either recorded source year.",
                     )
         else:
             resolution = self.storage.resolve_inspection_folder(

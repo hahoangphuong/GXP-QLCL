@@ -181,7 +181,7 @@ def test_anchor_registration_year_wins_and_resolved_uses_one_storage_call(tmp_pa
     assert resolved.resolution.status == StorageResolutionStatus.RESOLVED
     assert resolved.binding is not None
     assert bindings[0].year == 2024
-    assert service.lookup_years == [2024]
+    assert service.lookup_years == [2024, 2025]
 
 
 def test_anchor_registration_unavailable_falls_back_to_inspection_year(tmp_path: Path):
@@ -208,13 +208,13 @@ def test_storage_binding_resolver_has_no_date_or_anchor_projection_dependency():
     assert "CaseApplication" not in source
 
 
-def test_anchor_not_found_then_next_year_resolves_and_uses_two_calls(tmp_path: Path):
+def test_anchor_not_found_then_recorded_inspection_year_resolves(tmp_path: Path):
     service = build_counting_service(tmp_path)
     binding_service = StorageBindingService(service)
     (service.inspection_root / "2025" / "A - (ID-103) - (KT-1376-GMP)").mkdir(parents=True)
     with build_session() as session:
         case_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0003"
-        add_anchor(session, case_id=case_id, registration_year=2024)
+        add_anchor(session, case_id=case_id, registration_year=2024, inspection_status="usable", inspection_year=2025)
         result = binding_service.resolve_inspection_folder(session, case_id=case_id, year=None, site_legacy_id=103, inspection_legacy_code="KT-1376-GMP")
         binding = session.scalars(select(StorageBinding)).one()
 
@@ -222,6 +222,77 @@ def test_anchor_not_found_then_next_year_resolves_and_uses_two_calls(tmp_path: P
     assert result.resolution.relative_path.startswith("2025/")
     assert binding.year == 2025
     assert service.lookup_years == [2024, 2025]
+
+
+def test_two_source_years_distinct_gap_inspection_year_resolves(tmp_path: Path):
+    service = build_counting_service(tmp_path)
+    binding_service = StorageBindingService(service)
+    (service.inspection_root / "2027" / "Late - (ID-103) - (KT-1376-GMP)").mkdir(parents=True)
+    with build_session() as session:
+        case_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0100"
+        add_anchor(session, case_id=case_id, registration_year=2023,
+                   inspection_status="usable", inspection_year=2027)
+        result = binding_service.resolve_inspection_folder(
+            session, case_id=case_id, year=None,
+            site_legacy_id=103, inspection_legacy_code="KT-1376-GMP")
+        binding = session.scalars(select(StorageBinding)).one()
+
+    assert result.resolution.status == StorageResolutionStatus.RESOLVED
+    assert result.resolution.relative_path.startswith("2027/")
+    assert binding.year == 2027
+    assert service.lookup_years == [2023, 2027]
+
+
+def test_both_source_year_folders_match_fail_closed_without_binding(tmp_path: Path):
+    service = build_counting_service(tmp_path)
+    binding_service = StorageBindingService(service)
+    for year in (2023, 2027):
+        (service.inspection_root / str(year) / "Same - (ID-103) - (KT-1376-GMP)").mkdir(parents=True)
+    with build_session() as session:
+        case_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0101"
+        add_anchor(session, case_id=case_id, registration_year=2023,
+                   inspection_status="usable", inspection_year=2027)
+        result = binding_service.resolve_inspection_folder(
+            session, case_id=case_id, year=None,
+            site_legacy_id=103, inspection_legacy_code="KT-1376-GMP")
+        assert session.scalars(select(StorageBinding)).all() == []
+
+    assert result.resolution.status == StorageResolutionStatus.AMBIGUOUS
+    assert result.resolution.candidate_count == 2
+    assert result.resolution.relative_path is None
+    assert service.lookup_years == [2023, 2027]
+
+
+def test_equal_source_years_call_storage_once(tmp_path: Path):
+    service = build_counting_service(tmp_path)
+    binding_service = StorageBindingService(service)
+    (service.inspection_root / "2024" / "Equal - (ID-103) - (KT-1376-GMP)").mkdir(parents=True)
+    with build_session() as session:
+        case_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0102"
+        add_anchor(session, case_id=case_id, registration_year=2024,
+                   inspection_status="usable", inspection_year=2024)
+        result = binding_service.resolve_inspection_folder(
+            session, case_id=case_id, year=None,
+            site_legacy_id=103, inspection_legacy_code="KT-1376-GMP")
+
+    assert result.resolution.status == StorageResolutionStatus.RESOLVED
+    assert service.lookup_years == [2024]
+
+
+def test_no_inferred_next_year_when_only_submission_year_exists(tmp_path: Path):
+    service = build_counting_service(tmp_path)
+    binding_service = StorageBindingService(service)
+    (service.inspection_root / "2025" / "Next - (ID-103) - (KT-1376-GMP)").mkdir(parents=True)
+    with build_session() as session:
+        case_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0103"
+        add_anchor(session, case_id=case_id, registration_year=2024)
+        result = binding_service.resolve_inspection_folder(
+            session, case_id=case_id, year=None,
+            site_legacy_id=103, inspection_legacy_code="KT-1376-GMP")
+        assert session.scalars(select(StorageBinding)).all() == []
+
+    assert result.resolution.status == StorageResolutionStatus.NOT_FOUND
+    assert service.lookup_years == [2024]
 
 
 def test_anchor_not_found_twice_creates_no_binding(tmp_path: Path):
@@ -234,7 +305,7 @@ def test_anchor_not_found_twice_creates_no_binding(tmp_path: Path):
         assert session.scalars(select(StorageBinding)).all() == []
 
     assert result.resolution.status == StorageResolutionStatus.NOT_FOUND
-    assert service.lookup_years == [2024, 2025]
+    assert service.lookup_years == [2024]
 
 
 def test_anchor_ambiguous_stops_without_next_year_or_binding(tmp_path: Path):
@@ -277,7 +348,7 @@ def test_missing_anchor_returns_invalid_without_storage_call(tmp_path: Path):
     assert service.lookup_years == []
 
 
-def test_registration_conflict_uses_usable_inspection_fallback(tmp_path: Path):
+def test_registration_conflict_does_not_silently_use_other_year(tmp_path: Path):
     service = build_counting_service(tmp_path)
     binding_service = StorageBindingService(service)
     (service.inspection_root / "2025" / "A - (ID-103) - (KT-1376-GMP)").mkdir(parents=True)
@@ -286,8 +357,8 @@ def test_registration_conflict_uses_usable_inspection_fallback(tmp_path: Path):
         add_anchor(session, case_id=case_id, registration_status="conflict", registration_year=None, inspection_status="usable", inspection_year=2025)
         result = binding_service.resolve_inspection_folder(session, case_id=case_id, year=None, site_legacy_id=103, inspection_legacy_code="KT-1376-GMP")
 
-    assert result.resolution.status == StorageResolutionStatus.RESOLVED
-    assert service.lookup_years == [2025]
+    assert result.resolution.status == StorageResolutionStatus.INVALID
+    assert service.lookup_years == []
 
 
 def test_stale_binding_cannot_bypass_anchor_bounded_lookup(tmp_path: Path):
@@ -296,7 +367,7 @@ def test_stale_binding_cannot_bypass_anchor_bounded_lookup(tmp_path: Path):
     (service.inspection_root / "2025" / "Live - (ID-103) - (KT-1376-GMP)").mkdir(parents=True)
     with build_session() as session:
         case_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0007"
-        add_anchor(session, case_id=case_id, registration_year=2024)
+        add_anchor(session, case_id=case_id, registration_year=2024, inspection_status="usable", inspection_year=2025)
         session.add(StorageBinding(case_id=case_id, year=2024, site_legacy_id=103, inspection_legacy_code="KT-1376-GMP", relative_path="2024/Stale - (ID-103) - (KT-1376-GMP)", observed_folder_label="Stale", storage_class=service.config.storage_class))
         session.commit()
         result = binding_service.resolve_inspection_folder(session, case_id=case_id, year=None, site_legacy_id=103, inspection_legacy_code="KT-1376-GMP")

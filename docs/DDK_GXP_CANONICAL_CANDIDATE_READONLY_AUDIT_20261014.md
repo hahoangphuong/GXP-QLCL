@@ -312,3 +312,28 @@ The next owner-controlled read-only diagnostic `tools.audit_ddk_gxp_smb_readonly
 The diagnostic regenerates the private manual-review queue from the original 0600 source dossier, matches all 8 DDK source keys from the private readiness report, checks the 0600 *full* probe as the prior observation, and refuses to proceed if evidence differs. It performs **no** source recategorization, alternate-key match, NAS subdirectory recursion, year+1 inference, DB connection or writes, file content reads, filesystem changes, or link approval. A budget breach or SMB failure aborts without claiming a complete inventory. A new 0600 private JSON is created only on success.
 
 This resolves whether the configured root is empty, has folders but none in the proven legacy shape, or contains folders with the proven token shape but not those 8 Site IDs. Do not change root config, hardcode per-company paths or make canonical links from this metadata alone.
+
+## Dual source-year inspection folder identity (14 Oct 2026)
+
+The physical `db.ktra` source carries two separately qualified date columns:
+`ĐĂNG KÝ / Ngày nộp` (H) and `KIỂM TRA / Ngày K.tra` (M).
+A Case folder may legitimately reside under **either** independently
+recorded year; registration year + 1 is *not* a source year.
+
+The **application owner** `StorageBindingService.resolve_inspection_folder`
+now resolves a non-explicit-year Case against every distinct usable source
+year (registration first, inspection second), without guessing year+1.
+If both are equal, it probes only once. If just one resolves, it may
+persist a binding for the exact resolved year. If two different years
+resolve, the result is `AMBIGUOUS`, with **no new binding**. A
+conflicting/malformed source-year anchor blocks automatic selection;
+do not transform an unresolved conflict into a usable fallback.
+Explicitly supplied year continues to use binding-first validation and
+single-year lookup under the existing approved contract.
+
+This owner change must **not** be mistaken for evidence that the
+previous 6-Case read-only audit already checked both years: that
+earlier SMB audit used only one selected source year per Case. A new
+independent read-only validation of both original year fields is
+required before reinterpreting its four Case NOT_FOUND results.
+No production deploy or DB write is authorized by this change.

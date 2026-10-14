@@ -125,3 +125,44 @@ no output file or mutations. Strict checks on aggregate, flags and repeated
 reference cardinality fail closed if the private dossier is corrupted.
 Standard output is aggregate-only: no DDK/Certificate IDs, Case UUIDs, private
 source cells or dossier rows. Token overlap is not proof of grant/coverage.
+
+
+## Read-only manual review queue from existing private dossier
+
+After the operator's offline overlap (real VM, 14 Oct 2026):
+- Exactly **7 source token positions** have Certificate-vs-DDK Site and/or
+  Certificate-vs-origin Case Site conflicts: four Certificate/DDK only,
+  two Case/Certificate only, and one position bearing both flags.
+- **One further token position** has a DDK Site owning-Company mismatch,
+  separate from those Site/Case positions.
+- **One DDK Company ownership review** is recorded independently of token
+  observations. No additional fake Certificate or version is inferred.
+- All seven Site/Case token positions have saved version/scope evidence,
+  but only nullable lifecycle states; no grant/coverage may be assumed.
+- 228 referenced Certificate legacy IDs occur in multiple DDKs; repeated
+  references are NOT automatic errors or link permissions.
+
+New `tools/build_ddk_gxp_manual_review_queue.py` reads the **existing**
+mode-0600 private dossier and reuses the overlap validator. It writes
+**one new** private JSON review queue (mode 0600) in the same protected
+directory; source file is unchanged. Original token, Case, Certificate,
+Site, version and scope evidence are retained verbatim as private
+observations. Manual review check requirements are prompts, NOT legal
+decisions; each source token and Company record stays NOT_APPROVED and
+PENDING_INDEPENDENT_EVIDENCE. Only anonymous aggregate counts and input
+digest go to stdout. No database service or source importer is invoked.
+
+After exact-HEAD CI is green, on the VM with checked-out backend branch:
+
+```bash
+sudo -H -u gxp env PYTHONDONTWRITEBYTECODE=1 \
+  /opt/gxp/current-venv/bin/python \
+  -m tools.build_ddk_gxp_manual_review_queue \
+  --dossier-json /var/tmp/gxp-ddk-private/ddk-idcc-exceptions-20261014.json \
+  --queue-json /var/tmp/gxp-ddk-private/ddk-idcc-manual-review-20261014.json
+```
+
+Output must not pre-exist. It cannot be placed in a different or
+public directory. Do not commit or upload private queue/dossier data to
+GitHub. Do not merge this evidence queue with actual
+BusinessEligibilityCertificateLink records.

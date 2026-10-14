@@ -213,7 +213,8 @@ def classify_unresolved_case_year_roots_readonly(
     Requires three independently source-bound Cases and four *previously*
     NOT_FOUND year observations. Only their physical source years are read;
     no alternate root, year, key, deep recursion or content read is allowed.
-    Reports aggregate classes, NEVER a year, Site, Case, filename or path.
+    Returns aggregate classes plus PRIVATE Case/year classifications. Caller
+    must redact private observations from public stdout.
     """
     _require(
         isinstance(storage, SmbStorageService)
@@ -232,7 +233,7 @@ def classify_unresolved_case_year_roots_readonly(
         "Duplicate Case source identity",
     )
 
-    validated: list[tuple[int, int, str]] = []
+    validated: list[tuple[int, str, int, str]] = []
     for case in missing_cases:
         sid = case.get("site_legacy_id")
         code = case.get("inspection_legacy_code")
@@ -261,15 +262,15 @@ def classify_unresolved_case_year_roots_readonly(
                 "Not an original unresolved source-year observation",
             )
             years.add(year)
-            validated.append((year, sid, code))
-    _require(len(validated) == 4 and len({y for y, _, _ in validated}) <= 4,
+            validated.append((year, case["parent_id"], sid, code))
+    _require(len(validated) == 4 and len({y for y, _, _, _ in validated}) <= 4,
              "Unexpected source-year lookup count")
 
     # Read each exact year root once, including the same root shared by Cases.
     # A budget overrun or SMB error fails closed without a partial absence claim.
     root_names: dict[int, list[str] | None] = {}
     entries_total = 0
-    for year in sorted({y for y, _, _ in validated}):
+    for year in sorted({y for y, _, _, _ in validated}):
         year_root = storage._join_root(storage.inspection_root, str(year))
         if not smbpath.exists(year_root):
             root_names[year] = None
@@ -291,7 +292,8 @@ def classify_unresolved_case_year_roots_readonly(
         root_names[year] = names
 
     counts: Counter[str] = Counter()
-    for year, sid, code in validated:
+    private_observations: list[dict[str, Any]] = []
+    for year, parent_id, sid, code in validated:
         names = root_names[year]
         if names is None:
             label = "YEAR_ROOT_NOT_FOUND"
@@ -320,6 +322,11 @@ def classify_unresolved_case_year_roots_readonly(
             else:
                 label = "NO_EXACT_TOKEN"
         counts[label] += 1
+        private_observations.append({
+            "originating_case_id": parent_id,
+            "source_year": year,
+            "classification": label,
+        })
 
     _require(sum(counts.values()) == 4, "Incomplete year observation classification")
     return {
@@ -330,6 +337,7 @@ def classify_unresolved_case_year_roots_readonly(
         "distinct_source_year_roots_checked": len(root_names),
         "year_root_entries_scanned": entries_total,
         "classification_counts": dict(sorted(counts.items())),
+        "private_case_year_metadata_observations": private_observations,
         "scope": "EXACT_PRIOR_SOURCE_YEARS_DIRECT_CHILD_METADATA_ONLY",
         "database_connected": False,
         "database_writes": 0,

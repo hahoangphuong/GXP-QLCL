@@ -973,3 +973,48 @@ No wider NAS scan or other Case/year/Company lookup; no content
 promotion into a canonical Case, Storage Binding or DDK↔Certificate
 link. Any human acceptance or legal document custody decisions are
 separate from the filename/text signal diagnostic.
+
+## VM pinned three-PDF replay verdict and stop condition (14 Oct 2026)
+
+The operator completed exact-HEAD/required-CI, original-source-chain, wheel
+digest and private-report mode checks: all PASS. pypdf 6.20.1 was loaded from
+private audit isolation; NO production venv change. All three original
+previously-PARSER_UNAVAILABLE PDF bytes matched their prior per-file SHA.
+The replay re-read exactly 2,212,422 bytes across three PDF files and
+reused the two original text-document results without re-opening them.
+
+Aggregate verified replay findings:
+- PDF files reparsed: 3.
+- PDF outcomes: 2 TEXT_AVAILABLE and 1 PARSER_ERROR.
+- Combined original five-file sample: 4 TEXT_AVAILABLE and 1 PARSER_ERROR.
+- Exact inspection-code occurrence in PDF extractable text: 0.
+- Original Site token in available extractable text: 0.
+- Alternate Site token in available extractable text: 0.
+- Private mode-0600 replay report SHA-256:
+  39813fd6c9f15384a131fa814f8f396718e8a5acd61339427934ad75d6a28860.
+- Database writes: 0; NAS writes: 0; Case-to-Site reassignment: 0;
+  canonical links created: 0.
+
+The original two text-document records were NOT reparsed here; the public
+replay output's exact-inspection-code count for PDF text is NOT a claim
+about those other two records. The earlier Case/Company/Site source
+crosswalk and four source-year not-found observations are unchanged.
+
+**Final finding for this folder:** The directory has a mismatched Site ID
+marker relative to independently verified physical db.ktra Case-to-Site
+source. Its direct child population is nonempty, but filename hints
+and available content signals cannot authenticate this directory as the
+Case's legally correct record. One PDF is not parseable by the pinned
+reader, and all unselected material remains unreviewed. Absence of a
+text signal is NOT a negative statement about scanned, other-language,
+embedded or unavailable document content.
+
+**Stop condition:** No additional automated scans, parser switching,
+OCR or fallback storage resolution for this same mismatched folder.
+Case-to-Site import remains confirmed for the specific source Case;
+the NAS folder stays UNVERIFIED/NOT_APPROVED and unresolved by the
+existing exact-match resolver. Any future resolution requires a
+separately authorized primary document/archival custody attestation
+directly tying the real Case and source Site to its record. The original
+three missing Case folders and eight DDK/GxP source-token exceptions
+remain distinct unresolved workstreams, never auto-approved.

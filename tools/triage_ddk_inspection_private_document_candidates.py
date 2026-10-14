@@ -131,7 +131,7 @@ def make_private_document_candidate_manifest(
         )
         all_extensions[suffix or "(none)"] += 1
         file_kind = ("PDF" if suffix == ".pdf"
-                     else "WORD" if suffix in {".doc", ".docx", ".rtf", ".odt"}
+                     else "TEXT_DOCUMENT" if suffix in {".doc", ".docx", ".rtf", ".odt", ".txt"}
                      else "OTHER")
         if file_kind == "OTHER":
             continue
@@ -166,7 +166,7 @@ def make_private_document_candidate_manifest(
             continue
         chosen.append(candidate)
         counts[kind] += 1
-    _require(counts["PDF"] > 0 and counts["WORD"] > 0,
+    _require(counts["PDF"] > 0 and counts["TEXT_DOCUMENT"] > 0,
              "No balanced file candidates for bounded inspection")
     return {
         "schema": SCHEMA,
@@ -177,7 +177,7 @@ def make_private_document_candidate_manifest(
         "total_direct_subdirectories": 1,
         "available_pdf_or_word_candidates": len(candidates),
         "selected_pdf": counts["PDF"],
-        "selected_word": counts["WORD"],
+        "selected_word": counts["TEXT_DOCUMENT"],
         "selected_with_role_hint": sum(c["priority"] < len(_HINTS) for c in chosen),
         "document_contents_read": False,
         "folder_content_ownership_verified": False,

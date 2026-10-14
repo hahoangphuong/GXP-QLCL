@@ -77,9 +77,9 @@ class StorageBindingService:
     def _anchor_years(anchor: LegacyInspectionStorageAnchor | None) -> tuple[int, ...]:
         """Use only source-recorded submission/inspection years, never year+1.
 
-        A conflicting or malformed original year must not be silently rescued
-        by another source column. Preserve registration-first lookup order;
-        cross-year result selection is handled separately and fail-closed.
+        A conflicting source field supplies no candidate; an independently
+        usable year from the other physical column remains eligible. Preserve
+        registration-first order and fail closed on cross-year ambiguity.
         """
         if anchor is None:
             return ()

@@ -636,3 +636,38 @@ connection, SMB write, DB write or link creation.
 The diagnostic's actual result remains **NOT VERIFIED** until its
 exact-head CI succeeds and VM operator runs the bounded audit.
 DDK–GxP certificate links remain **NOT_APPROVED**.
+
+## One code-only Inspection Case/year marker classification — VM VERIFIED (14 Oct 2026)
+
+On the exact-HEAD, CI-passed read-only VM audit, the protected
+three-Case/four-year metadata report was validated; exactly one previously
+`INSPECTION_CODE_ONLY` Case/year was selected from that immutable
+source-bound population. The configured Inspection SMB root was
+metadata-accessible. The diagnostic enumerated exactly one known source-year
+root with 130 direct entries, identifying exactly one immediate directory
+containing that inspection-code token. Its site-marker category was
+`OTHER_NUMERIC_ID_TOKEN = 1`. All other marker-shape categories were zero.
+The new source-bound private JSON was created as owner `gxp`, mode `0600`.
+No database or NAS write, binary read, new linkage or resolver fallback
+was performed.
+
+Interpretation is strictly observational: a directory matching the
+inspection-code token carries one numeric `(ID-n)` marker **different
+from the Case's independently recorded source Site ID**. The observed
+number has not been shown to be the legally correct Case owner,
+and may represent a folder naming/legacy context discrepancy or a
+different Site. Never replace the source Site ID, infer a canonical
+parent, bind this directory, or repair the Case via a downstream
+fallback. All three originating Cases remain unresolved by the
+existing exact-source resolver (3/6 `NOT_FOUND`), and the business
+eligibility GxP links remain `NOT_APPROVED`.
+
+Next owner-level audit, if pursued, must be a *local, read-only
+identity crosswalk* between the observed numeric marker held only in
+the protected report and original `db.cso`/`db.ktra` source identities,
+including Case inspection code and provenance. Require immutable Case
+population / source hashes and distinct Site identity. First classify
+whether the observed ID is a valid different source Site, absent, or
+ambiguous. Keep both numbers and names private; only show aggregate
+outcomes. No broader NAS scanning, alternate years/roots, automated
+source rewrite or canonical link creation.

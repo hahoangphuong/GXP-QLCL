@@ -143,9 +143,19 @@ def test_missing_case_year_directories_are_only_aggregate_metadata(monkeypatch):
     assert report["storage_file_contents_accessed"] is False
     assert report["storage_writes"] == 0
     assert report["canonical_links_created"] == 0
-    assert "KT-1378" not in str(report)
-    assert "case-" not in str(report)
-    assert "mock-server" not in str(report)
+    protected = report["private_case_year_metadata_observations"]
+    assert len(protected) == 4
+    assert {row["originating_case_id"] for row in protected} == {
+        "case-a", "case-b", "case-c",
+    }
+    safe = {
+        key: value for key, value in report.items()
+        if key != "private_case_year_metadata_observations"
+    }
+    assert "KT-1378" not in str(safe)
+    assert "case-" not in str(safe)
+    assert "mock-server" not in str(safe)
+    assert not any(key.endswith("_id") for key in safe)
 
 
 def test_missing_case_diagnostic_blocks_changed_complete_match(monkeypatch):

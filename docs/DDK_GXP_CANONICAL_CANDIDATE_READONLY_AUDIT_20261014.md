@@ -245,3 +245,60 @@ sudo -H -u gxp env PYTHONDONTWRITEBYTECODE=1 \
   --queue-json /var/tmp/gxp-ddk-private/ddk-idcc-manual-review-20261014.json \
   --details-json /var/tmp/gxp-ddk-private/ddk-idcc-storage-readiness-20261014.json
 ```
+
+
+## Bounded direct SMB folder-name pilot (2026-10-14)
+
+Owner's VM config-only preflight reported `STORAGE_CLASS=synology_smb`,
+both storage roots configured and SMB credentials configured; **no
+network/storage access was performed by that preflight**. Prior real
+read-only source-identity preflight proved 9/9 DDK lookup input records
+available (8 distinct DDK), 8/8 Case input records available (6 distinct
+originating Cases), seven registration-year anchors and one
+inspection-date-year fallback; eight records lack StorageBinding.
+
+New `tools/audit_ddk_gxp_smb_readonly_folder_pilot.py`
+reads three protected 0600 private files (original source dossier,
+source-derived manual queue and source-bound storage-input readiness).
+It rebuilds the queue, cross-checks that every Case is the **originating
+Case** not the Certificate/DDK Site, deduplicates canonical identities,
+and allows *only* direct non-mutating adapter calls:
+
+- `SmbStorageService.resolve_dkkd_folder(site_legacy_id=...)`
+- `SmbStorageService.resolve_inspection_folder(year=..., site_legacy_id=..., inspection_legacy_code=...)`
+
+It **does not** invoke `StorageBindingService`,
+`StorageBindingLookupService` or legacy phase4 probe CLI:
+those can write `storage_binding` and
+`storage_resolution_log`. No PostgreSQL, NAS file read,
+binary checksum, SMB write, guessed Certificate-folder identity,
+year+1 rescue or folder placement. The first live pilot is bounded
+to **one DDK folder** and **one originating Case folder** by default;
+use distinct 0600 output file name for any subsequent wider run.
+
+Results `RESOLVED`, `NOT_FOUND`,
+`AMBIGUOUS`, and `INVALID` mean folder-name
+matches *within configured roots*, not approved legal or regulatory
+evidence. A network or authentication error blocks the run, never
+becomes `NOT_FOUND`. The 0600 private JSON contains
+relative folder names; public stdout contains aggregate counts only.
+No source token becomes a canonical BusinessEligibilityCertificateLink.
+
+After exact-HEAD CI SUCCESS, on gxp-web-prod:
+
+```bash
+cd /opt/gxp/src/GXP-QLCL
+sudo -H -u gxp env PYTHONDONTWRITEBYTECODE=1 \
+  /opt/gxp/current-venv/bin/python \
+  -m tools.audit_ddk_gxp_smb_readonly_folder_pilot \
+  --dossier-json /var/tmp/gxp-ddk-private/ddk-idcc-exceptions-20261014.json \
+  --queue-json /var/tmp/gxp-ddk-private/ddk-idcc-manual-review-20261014.json \
+  --readiness-json /var/tmp/gxp-ddk-private/ddk-idcc-storage-readiness-20261014.json \
+  --max-ddk 1 --max-cases 1 \
+  --details-json /var/tmp/gxp-ddk-private/ddk-idcc-smb-pilot-20261014.json
+```
+
+Do not share raw SMB paths, UNC roots or private JSON in GitHub.
+If a transport exception occurs, report the sanitized error class
+only; identify network reachability/credentials through a separately
+authorized infrastructure procedure, not by fabricating folder results.

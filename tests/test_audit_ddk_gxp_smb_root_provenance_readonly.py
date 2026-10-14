@@ -121,3 +121,38 @@ def test_literal_unc_root_comparison_does_not_approve_new_mapping():
     ))
     assert result["ddk_root_leaf_matches_legacy_ddkd_directory"] is False
     assert not any(isinstance(v, str) for v in result.values())
+
+
+def test_repeated_backslashes_use_adapter_component_boundaries_without_rewriting_root():
+    # VM evidence: live adapter accepts a UNC value whose old audit parser
+    # rejected because of empty split components. Keep the raw value intact.
+    from backend.app.storage.smb import SmbStorageService
+
+    value = "\\\\my-server\\\\private\\\\records\\\\Chứng nhận ĐĐKKDD"
+    data = env(STORAGE_DKKD_ROOT=value)
+    assert SmbStorageService._normalize_root(None, value) == value
+    assert SmbStorageService._server_from_root(None, value) == "my-server"
+    report = assess_configured_roots(data)
+    assert report["ddk_root_leaf_matches_legacy_ddkd_directory"] is True
+    assert report["ddk_root_contains_legacy_ddkd_directory"] is True
+    assert report["ddk_root_same_host_and_share_as_inspection"] is True
+    assert data["STORAGE_DKKD_ROOT"] == value
+    assert all(type(v) is bool for v in report.values())
+
+
+@pytest.mark.parametrize("bad", [
+    "\\\\host\\\\share\\\\..\\\\secret",
+    "\\\\host\\\\share\\\\.\\\\secret",
+    "\\\\host\\\\share//secret",
+])
+def test_repeated_separator_compatibility_does_not_hide_traversal_or_slashes(bad):
+    with pytest.raises(RootProvenanceBlocked):
+        unc_components(bad)
+
+
+def test_redundant_separators_do_not_create_false_legacy_leaf_match():
+    data = env(STORAGE_DKKD_ROOT="\\\\my-server\\\\private\\\\unverified-archive")
+    report = assess_configured_roots(data)
+    assert report["ddk_root_leaf_matches_legacy_ddkd_directory"] is False
+    assert report["ddk_root_contains_legacy_ddkd_directory"] is False
+    assert report["ddk_root_equals_inspection_root"] is False

@@ -143,6 +143,8 @@ def make_private_document_candidate_manifest(
             "document_kind": file_kind,
             "filename_hint": hint,
             "priority": priority,
+            "format_priority": {".pdf": 0, ".docx": 0, ".doc": 1,
+                                ".rtf": 2, ".odt": 2, ".txt": 3}.get(suffix, 4),
         })
     _require(
         file_count == 40 and dir_count == 1
@@ -157,7 +159,7 @@ def make_private_document_candidate_manifest(
     chosen = []
     counts = Counter()
     for candidate in sorted(candidates, key=lambda row: (
-        row["priority"], row["filename_private"].casefold(),
+        row["priority"], row["format_priority"], row["filename_private"].casefold(),
         row["direct_child_index_private"],
     )):
         kind = candidate["document_kind"]
@@ -177,7 +179,7 @@ def make_private_document_candidate_manifest(
         "total_direct_subdirectories": 1,
         "available_pdf_or_word_candidates": len(candidates),
         "selected_pdf": counts["PDF"],
-        "selected_word": counts["TEXT_DOCUMENT"],
+        "selected_text_document": counts["TEXT_DOCUMENT"],
         "selected_with_role_hint": sum(c["priority"] < len(_HINTS) for c in chosen),
         "document_contents_read": False,
         "folder_content_ownership_verified": False,

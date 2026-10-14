@@ -601,3 +601,38 @@ treat the three zero-token observations as unresolved storage location or
 naming evidence. Avoid another general SMB scan or guessed year/alternate-root
 lookup. DDK/Certificate business eligibility remains `NOT_APPROVED` and
 PR #7 stays DRAFT; no runtime release, PostgreSQL writes or NAS mutations.
+
+
+## Single inspection-code-only folder marker diagnostic (14 Oct 2026)
+
+The VM-protected missing-Case/year report has one code-only observation
+and three without either exact inspection naming token. The one
+code-only observation is now a **narrow inspection Site-token shape
+question**, NOT a presumed Site re-assignment.
+
+`tools.audit_ddk_gxp_case_dual_year_readonly.inspect_code_only_case_site_token_readonly`
+is a separate **read-only metadata** diagnostic. Its operator script
+must first validate the original source dossier/queue, readiness
+SHA, six Case transitions, the protected four-year metadata report and
+the unique code-only original Case/year against immutable records.
+It then enumerates immediate directories of exactly that one verified
+inspection source-year root (maximum 3,000 total entries and 20
+code-matching directories), matching the original inspection-code token
+literally. It characterizes those directory names as:
+`NO_ID_MARKER`, `NONNUMERIC_OR_INCOMPLETE_ID_MARKER`,
+`SOURCE_NUMERIC_ID_NONCANONICAL_FORMAT`, `OTHER_NUMERIC_ID_TOKEN`,
+or `MULTIPLE_OTHER_NUMERIC_ID_TOKENS`.
+
+The function does **not** relax `matches_inspection_identity`, guess
+a Site, treat a numeric token found on NAS as canonical, or change the
+Case/Site source relation. If the original complete Site+inspection
+identity appears, the operation blocks as drift rather than promoting
+to RESOLVED. Missing previously observed code-only evidence and
+budget breaches also fail closed. Per-folder numeric tokens are kept
+only in a new private mode-0600 report, never in public stdout or
+GitHub. No file streams, recursive searching, extra years/roots, SQL
+connection, SMB write, DB write or link creation.
+
+The diagnostic's actual result remains **NOT VERIFIED** until its
+exact-head CI succeeds and VM operator runs the bounded audit.
+DDK–GxP certificate links remain **NOT_APPROVED**.

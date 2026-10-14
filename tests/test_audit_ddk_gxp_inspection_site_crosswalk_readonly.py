@@ -199,3 +199,56 @@ def test_source_bound_proof_fails_closed_on_private_lineage_drift(monkeypatch, d
         marker["code_matching_directories_checked"] = 2
     with pytest.raises(owner.InspectionSiteCrosswalkBlocked):
         owner.extract_source_bound_marker(d, q, a, b, c, p, json.dumps(marker).encode())
+
+
+
+def test_source_bound_private_excel_request_uses_one_immutable_case_row():
+    src, observed, case, anchor, rows = _rows(same_company=True)
+    case.legacy_inspection_id = 345
+    case.legacy_inspection_code = "KT-345-GMP"
+    case.gxp_type = "GMP"
+    target = {**_target(), "inspection_code": "KT-345-GMP"}
+    from tools.audit_ddk_inspection_physical_source_readonly import REQUEST_SCHEMA
+    result = owner.prepare_physical_workbook_request(
+        target=target, source_case=case, source_site=src,
+        observed_site=observed, source_anchor=anchor,
+        imported_company_legacy_id=19, workbook_sha256="a" * 64,
+    )
+    assert result["schema"] == REQUEST_SCHEMA
+    assert result["legacy_inspection_id"] == 345
+    assert result["source_case_row_number"] == 20
+    assert result["source_site_legacy_id"] == 111
+    assert result["observed_site_legacy_id_unverified"] == 222
+    assert result["approval_status"] == "NOT_APPROVED"
+
+
+@pytest.mark.parametrize("fault", [
+    "wrong_site_owner", "same_site", "wrong_case_code", "wrong_gxp",
+    "missing_original_row", "missing_legacy_inspection_id", "company_divergence",
+])
+def test_private_excel_request_rejects_imported_identity_drift(fault):
+    src, observed, case, anchor, _ = _rows(same_company=True)
+    case.legacy_inspection_id = 345
+    case.legacy_inspection_code = "KT-345-GMP"
+    case.gxp_type = "GMP"
+    target = {**_target(), "inspection_code": "KT-345-GMP"}
+    if fault == "wrong_site_owner":
+        case.site_id = observed.id
+    elif fault == "same_site":
+        observed.id = src.id
+    elif fault == "wrong_case_code":
+        case.legacy_inspection_code = "KT-777-GMP"
+    elif fault == "wrong_gxp":
+        case.gxp_type = "GSP"
+    elif fault == "missing_original_row":
+        anchor.source_row = 0
+    elif fault == "missing_legacy_inspection_id":
+        case.legacy_inspection_id = None
+    else:
+        observed.company_id = "company-different"
+    with pytest.raises(owner.InspectionSiteCrosswalkBlocked):
+        owner.prepare_physical_workbook_request(
+            target=target, source_case=case, source_site=src,
+            observed_site=observed, source_anchor=anchor,
+            imported_company_legacy_id=19, workbook_sha256="a" * 64,
+        )

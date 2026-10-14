@@ -196,3 +196,102 @@ def test_missing_case_diagnostic_refuses_unverified_case_state(monkeypatch):
     cases[0]["final_status"] = "RESOLVED"
     with pytest.raises(DualYearCaseAuditBlocked):
         classify_unresolved_case_year_roots_readonly(service, cases)
+
+
+def test_code_only_site_marker_classification_is_private_and_source_bound(monkeypatch):
+    from tools.audit_ddk_gxp_case_dual_year_readonly import (
+        inspect_code_only_case_site_token_readonly,
+    )
+    service = _fake_metadata(monkeypatch, {2023: [
+        "unrelated (ID-103) (KT-OTHER)",
+        "company (ID-999) (KT-1376-GMP)",
+        "leading-zero (ID-00103) (KT-1376-GMP)",
+        "no marker (KT-1376-GMP)",
+        "malformed (ID-abc) (KT-1376-GMP)",
+        "multiplicity (ID-888) (ID-999) (KT-1376-GMP)",
+    ]})
+    report = inspect_code_only_case_site_token_readonly(
+        service,
+        source_year=2023,
+        site_legacy_id=103,
+        inspection_legacy_code="KT-1376-GMP",
+    )
+    assert report["source_case_year_observations_checked"] == 1
+    assert report["source_year_roots_checked"] == 1
+    assert report["year_root_entries_scanned"] == 6
+    assert report["code_matching_directories_checked"] == 5
+    assert report["classification_counts"] == {
+        "MULTIPLE_OTHER_NUMERIC_ID_TOKENS": 1,
+        "NONNUMERIC_OR_INCOMPLETE_ID_MARKER": 1,
+        "NO_ID_MARKER": 1,
+        "OTHER_NUMERIC_ID_TOKEN": 1,
+        "SOURCE_NUMERIC_ID_NONCANONICAL_FORMAT": 1,
+    }
+    assert len(report["private_folder_token_observations"]) == 5
+    assert report["approval_status"] == "NOT_APPROVED"
+    assert report["storage_writes"] == 0
+    safe = {k: v for k, v in report.items()
+            if k != "private_folder_token_observations"}
+    assert "999" not in str(safe)
+    assert "103" not in str(safe)
+    assert "KT-1376" not in str(safe)
+    assert "company" not in str(safe)
+
+
+def test_code_only_site_marker_blocks_new_exact_match(monkeypatch):
+    import pytest
+    from tools.audit_ddk_gxp_case_dual_year_readonly import (
+        inspect_code_only_case_site_token_readonly, DualYearCaseAuditBlocked,
+    )
+    service = _fake_metadata(monkeypatch, {
+        2023: ["now exact (ID-103) (KT-1376-GMP)"],
+    })
+    with pytest.raises(DualYearCaseAuditBlocked):
+        inspect_code_only_case_site_token_readonly(
+            service, source_year=2023, site_legacy_id=103,
+            inspection_legacy_code="KT-1376-GMP",
+        )
+
+
+def test_code_only_site_marker_blocks_disappeared_observation(monkeypatch):
+    import pytest
+    from tools.audit_ddk_gxp_case_dual_year_readonly import (
+        inspect_code_only_case_site_token_readonly, DualYearCaseAuditBlocked,
+    )
+    service = _fake_metadata(monkeypatch, {
+        2023: ["unrelated (KT-OTHER)"],
+    })
+    with pytest.raises(DualYearCaseAuditBlocked):
+        inspect_code_only_case_site_token_readonly(
+            service, source_year=2023, site_legacy_id=103,
+            inspection_legacy_code="KT-1376-GMP",
+        )
+
+
+def test_code_only_site_marker_enforces_full_root_entry_budget(monkeypatch):
+    import pytest
+    from tools.audit_ddk_gxp_case_dual_year_readonly import (
+        inspect_code_only_case_site_token_readonly, DualYearCaseAuditBlocked,
+    )
+    service = _fake_metadata(monkeypatch, {
+        2023: ["unrelated", "code only (KT-1376-GMP)"],
+    })
+    with pytest.raises(DualYearCaseAuditBlocked):
+        inspect_code_only_case_site_token_readonly(
+            service, source_year=2023, site_legacy_id=103,
+            inspection_legacy_code="KT-1376-GMP",
+            max_year_root_entries=1,
+        )
+
+
+def test_code_only_site_marker_rejects_uncorroborated_year(monkeypatch):
+    import pytest
+    from tools.audit_ddk_gxp_case_dual_year_readonly import (
+        inspect_code_only_case_site_token_readonly, DualYearCaseAuditBlocked,
+    )
+    service = _fake_metadata(monkeypatch, {2023: []})
+    with pytest.raises(DualYearCaseAuditBlocked):
+        inspect_code_only_case_site_token_readonly(
+            service, source_year=0, site_legacy_id=103,
+            inspection_legacy_code="KT-1376-GMP",
+        )

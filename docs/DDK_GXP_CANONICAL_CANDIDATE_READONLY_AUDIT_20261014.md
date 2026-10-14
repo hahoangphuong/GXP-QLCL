@@ -202,3 +202,46 @@ aggregate classifications and an input hash. Database connections are
 validated to the local PostgreSQL rehearsal database / schema 0023 and
 enforced read-only at both connection and transaction levels. No storage
 path or actual binary is probed and no file metadata is rendered publicly.
+
+
+## Proven lookup-input readiness for flagged DDK/Case identities
+
+14 Oct 2026 — `tools/audit_ddk_gxp_storage_identity_readiness.py`.
+
+Before any NAS/file probing, this guarded read-only inventory checks whether
+each private review record has the exact **legacy inputs** required by
+approved storage contracts. DDKD folder owner: stable original
+`Site.legacy_site_id` used only by the existing
+`StorageService.resolve_dkkd_folder` matcher; no display-name
+or generation-folder guessing. Inspection folder owner: **originating
+Case.site_id**, that Site's legacy site ID, exact
+`Case.legacy_inspection_code`, and separately preserved physical
+`db.ktra` year evidence in
+`LegacyInspectionStorageAnchor`.
+Do not substitute Certificate Site or DDK Site for the originating Case Site.
+Source registration-year conflicts remain unresolved even when another year
+field is usable. Missing anchor/code/site ID is explicit, not rescued.
+
+Classification `*_INPUT_AVAILABLE_UNPROBED` means a future
+authorized resolver *may* be called; it does NOT report a found folder.
+Existing `StorageBinding` rows are unverified historical metadata,
+never a filesystem assertion. No attempt is made to infer a file location
+for an individual Certificate from a Site ID.
+
+The script regenerates the private review queue from its original dossier
+and verifies exact accepted population and source-bound UUID identities
+before using strictly REPEATABLE READ / READ ONLY rehearsal PostgreSQL
+(schema 0023). No NAS access, binary read, web API, importer, schema
+migration or database write. Optional private report created exclusively
+with mode 0600; CLI prints only aggregate status flags.
+
+Run on VM from exact validated source SHA after CI succeeds:
+
+```bash
+sudo -H -u gxp env PYTHONDONTWRITEBYTECODE=1 \
+  /opt/gxp/current-venv/bin/python \
+  -m tools.audit_ddk_gxp_storage_identity_readiness \
+  --dossier-json /var/tmp/gxp-ddk-private/ddk-idcc-exceptions-20261014.json \
+  --queue-json /var/tmp/gxp-ddk-private/ddk-idcc-manual-review-20261014.json \
+  --details-json /var/tmp/gxp-ddk-private/ddk-idcc-storage-readiness-20261014.json
+```

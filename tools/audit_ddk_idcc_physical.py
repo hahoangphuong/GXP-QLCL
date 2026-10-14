@@ -1,4 +1,4 @@
-"""Read-only source audit for repeated db.dkkd ID CC physical Excel columns.
+r"""Read-only source audit for repeated db.dkkd ID CC physical Excel columns.
 
 Windows (from repository root): py -3 -m tools.audit_ddk_idcc_physical --workbook "D:\GXP-QLCL\legacy\Danh sách Kiểm tra GPs.xlsb" --out-dir "D:\GXP-DDK-IDCC-REVIEW"
 Or use --snapshot-json with a lossless coordinate-preserving snapshot.

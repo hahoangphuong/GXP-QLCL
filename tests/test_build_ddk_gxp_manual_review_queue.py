@@ -98,7 +98,7 @@ def test_queue_stays_source_only_dedups_overlapping_flags_not_token_positions():
     assert all(x["link_approval"] == "NOT_APPROVED" for x in queue["source_token_reviews"])
     assert queue["canonical_links_created"] == queue["database_writes"] == 0
     assert "Sensitive original source" in json.dumps(queue)
-    assert "APPROVED" not in queue["status"]
+    assert queue["link_approval"] == "NOT_APPROVED"
 
 
 def test_cli_writes_only_to_same_private_folder_mode_0600(tmp_path, capsys):

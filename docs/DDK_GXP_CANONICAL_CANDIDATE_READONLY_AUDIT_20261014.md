@@ -107,3 +107,21 @@ Share only CLI aggregate JSON output in GitHub conversations. The original
 source cells, all row-level UUIDs and exception dossiers stay on the VM.
 The two files' outputs are separate: no official SourceGroup/Certificate
 canonical linkage is made, and neither source nor canonical tables are written.
+
+## Offline private dossier overlap count (14 October 2026)
+
+Existing verified VM private dossier: /var/tmp/gxp-ddk-private/ddk-idcc-exceptions-20261014.json.
+To determine token-level intersections between 5 Certificate-vs-DDK Site exceptions,
+3 Certificate-vs-origin Case Site exceptions, and the 1 DDK Company owner exception,
+use the aggregate-only local file reader:
+
+```bash
+cd /opt/gxp/src/GXP-QLCL
+sudo -H -u gxp /opt/gxp/current-venv/bin/python -m tools.summarize_ddk_gxp_exception_overlap --dossier-json /var/tmp/gxp-ddk-private/ddk-idcc-exceptions-20261014.json
+```
+
+Read-only JSON parsing; no DB connection or SQL, no original XLSB read,
+no output file or mutations. Strict checks on aggregate, flags and repeated
+reference cardinality fail closed if the private dossier is corrupted.
+Standard output is aggregate-only: no DDK/Certificate IDs, Case UUIDs, private
+source cells or dossier rows. Token overlap is not proof of grant/coverage.

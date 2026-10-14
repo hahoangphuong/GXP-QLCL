@@ -258,3 +258,187 @@ def inspect_selected_direct_children_readonly(
             "No child directory was inspected and no storage mapping was changed",
         ],
     }
+
+
+def reparse_only_previously_unavailable_pdfs_readonly(
+    storage: SmbStorageService, *,
+    prior_metadata: dict[str, Any],
+    sample: dict[str, Any],
+    source_request: dict[str, Any],
+    prior_content: dict[str, Any],
+) -> dict[str, Any]:
+    """Read only the THREE prior PARSER_UNAVAILABLE PDFs with a pinned parser.
+
+    Fail closed if any sampled content byte, original Case folder metadata,
+    protected name, or previous parse status has drifted.  The two successfully
+    parsed text documents are NOT opened again.  The full five-file report is
+    preserved in the new private result, without retroactive ownership claims.
+    """
+    try:
+        from pypdf import __version__ as pypdf_version
+        from pypdf import PdfReader as _PdfReader
+    except ImportError as exc:
+        raise ContentSignalAuditBlocked(
+            "PINNED_PDF_PARSER_UNAVAILABLE"
+        ) from exc
+    _require(str(pypdf_version) == "6.20.1" and _PdfReader is not None,
+             "Unpinned PDF parser version")
+    _require(
+        isinstance(storage, SmbStorageService)
+        and smbclient is not None and smbpath is not None,
+        "Unapproved SMB reader",
+    )
+    original_sample = make_private_document_candidate_manifest(prior_metadata)
+    chosen = original_sample["private_selected_document_names"]
+    _require(
+        sample.get("schema") == original_sample["schema"]
+        and sample.get("approval_status") == "NOT_APPROVED"
+        and sample.get("private_selected_document_names") == chosen
+        and len(chosen) == 5 and sum(x["document_kind"] == "PDF" for x in chosen) == 3,
+        "Original five-file selection drifted",
+    )
+    m = prior_metadata["private_folder_metadata"]
+    _require(
+        source_request.get("schema") ==
+            "GXP_DDK_CASE_INSPECTION_PHYSICAL_SOURCE_REQUEST_V1"
+        and source_request.get("approval_status") == "NOT_APPROVED"
+        and m.get("source_site_legacy_id") == source_request.get("source_site_legacy_id")
+        and m.get("observed_other_site_legacy_id") ==
+            source_request.get("observed_site_legacy_id_unverified")
+        and m.get("inspection_legacy_code") == source_request.get("inspection_code")
+        and type(m.get("source_year")) is int,
+        "Original physical source request changed",
+    )
+    old_rows = prior_content.get("private_selected_file_evidence")
+    _require(
+        prior_content.get("schema") == SCHEMA
+        and prior_content.get("status") ==
+            "FIVE_SELECTED_BINARY_CONTENT_SIGNALS_OBSERVED_NOT_APPROVED"
+        and prior_content.get("approval_status") == "NOT_APPROVED"
+        and prior_content.get("source_bound_files_selected") == 5
+        and prior_content.get("file_contents_read_count") == 5
+        and prior_content.get("total_binary_bytes_read") == 2289044
+        and prior_content.get("parse_status_counts") ==
+            {"PARSER_UNAVAILABLE": 3, "TEXT_AVAILABLE": 2}
+        and prior_content.get("case_ownership_proven") is False
+        and prior_content.get("folder_mapping_approved") is False
+        and prior_content.get("database_connected") is False
+        and all(prior_content.get(key) == 0 for key in
+                ("database_writes", "storage_writes", "canonical_links_created"))
+        and isinstance(old_rows, list) and len(old_rows) == 5,
+        "Previous five-file report not exact source population",
+    )
+    for selected, old in zip(chosen, old_rows):
+        _require(
+            old.get("filename_private") == selected["filename_private"]
+            and old.get("document_kind") == selected["document_kind"]
+            and isinstance(old.get("document_sha256_private"), str)
+            and re.fullmatch(r"[0-9a-f]{64}", old["document_sha256_private"])
+            and type(old.get("bytes_read_private")) is int
+            and 0 < old["bytes_read_private"] <= MAX_SINGLE_BYTES
+            and old.get("content_ownership_verified") is False
+            and old.get("format_status") ==
+              ("PARSER_UNAVAILABLE" if selected["document_kind"] == "PDF"
+               else "TEXT_AVAILABLE"),
+            "Previous individual file evidence changed",
+        )
+    _require(
+        sum(x["bytes_read_private"] for x in old_rows) == 2289044,
+        "Previous read-byte accounting drifted",
+    )
+    # Force exact parent population recheck before any binary read.
+    fresh = classify_exact_folder_metadata_readonly(
+        storage, source_year=m["source_year"],
+        source_site_legacy_id=m["source_site_legacy_id"],
+        observed_other_site_legacy_id=m["observed_other_site_legacy_id"],
+        inspection_legacy_code=m["inspection_legacy_code"],
+    )
+    _require(
+        fresh["source_year_root_entries_scanned"] ==
+            prior_metadata.get("source_year_root_entries_scanned")
+        and fresh["counts"] == prior_metadata.get("counts")
+        and fresh["private_folder_metadata"] == m,
+        "Original single-folder population drifted",
+    )
+    year_path = storage._join_root(storage.inspection_root, str(m["source_year"]))
+    parent = storage._join_root(year_path, m["folder_leaf"])
+    _require(bool(smbpath.isdir(parent)), "Source folder unavailable")
+    new_rows = []
+    statuses: Counter[str] = Counter()
+    reads = 0
+    pdf_bytes = 0
+    for selected, old in zip(chosen, old_rows):
+        if selected["document_kind"] != "PDF":
+            new_rows.append(dict(old))
+            statuses[old["format_status"]] += 1
+            continue
+        name = selected["filename_private"]
+        _require(
+            selected["extension"] == ".pdf"
+            and len(name) > 0 and name not in {".", ".."}
+            and not any(x in name for x in ("/", "\\", "\x00")),
+            "Untrusted previously selected PDF name",
+        )
+        target = storage._join_root(parent, name)
+        _require(bool(smbpath.isfile(target)), "Selected PDF missing")
+        info = smbclient.stat(target)
+        expected_size = old["bytes_read_private"]
+        _require(
+            type(info.st_size) is int and info.st_size == expected_size
+            and expected_size <= MAX_SINGLE_BYTES
+            and pdf_bytes + expected_size <= MAX_TOTAL_BYTES,
+            "PDF changed or reading would exceed original budget",
+        )
+        with smbclient.open_file(target, mode="rb") as fh:
+            data = fh.read(expected_size + 1)
+        _require(
+            len(data) == expected_size
+            and sha256(data).hexdigest() == old["document_sha256_private"],
+            "Selected PDF byte SHA drifted",
+        )
+        record = classify_document_bytes(
+            data, extension=".pdf",
+            inspection_code=m["inspection_legacy_code"],
+            source_site_id=m["source_site_legacy_id"],
+            alternate_site_id=m["observed_other_site_legacy_id"],
+        )
+        _require(record["format_status"] != "PARSER_UNAVAILABLE",
+                 "Pinned PDF parser did not load")
+        new_rows.append({
+            "filename_private": name,
+            "document_kind": selected["document_kind"],
+            **record,
+        })
+        pdf_bytes += expected_size
+        reads += 1
+        statuses[record["format_status"]] += 1
+    _require(len(new_rows) == 5 and reads == 3,
+             "Incorrect PDF-only replay population")
+    for row in new_rows:
+        if row["exact_inspection_code_in_extractable_text"]:
+            statuses["EXACT_INSPECTION_CODE_TEXT_PRESENT"] += 1
+    return {
+        "schema": "GXP_DDK_THREE_PDF_PARSER_REPLAY_CONTENT_SIGNALS_READONLY_V1",
+        "status": "PINNED_PDF_REPLAY_SOURCE_BOUND_NO_OWNERSHIP_APPROVAL",
+        "approval_status": "NOT_APPROVED",
+        "source_bound_files_selected": 5,
+        "pdf_files_reparsed": 3,
+        "previous_text_documents_reused": 2,
+        "total_pdf_bytes_replayed": pdf_bytes,
+        "pypdf_version": str(pypdf_version),
+        "parse_status_counts": dict(sorted(statuses.items())),
+        "case_ownership_proven": False,
+        "folder_mapping_approved": False,
+        "database_connected": False,
+        "database_writes": 0,
+        "storage_writes": 0,
+        "canonical_links_created": 0,
+        "private_selected_file_evidence": new_rows,
+        "limitations": [
+            "Text signal and source Site marker are NOT legal content ownership evidence",
+            "Two earlier readable text-document records were not re-opened",
+            "Scanned PDFs with no text layer remain inconclusive, not negative",
+            "The unmatched Site folder continues to have NO canonical Case binding",
+            "Other PDF files, other year roots and the child directory were not accessed",
+        ],
+    }

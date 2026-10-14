@@ -123,7 +123,7 @@ def test_fails_closed_on_dossier_tamper(corruption):
     if corruption == "approved":
         dossier["approval_status"] = "APPROVED"
     elif corruption == "lost_ref":
-        dossier["exception_token_details"].pop()
+        dossier["exception_token_details"].pop(0)  # must conserve reported Site flag
     elif corruption == "changed_cross":
         dossier["cross_site_occurrences"] = 2
     elif corruption == "repeats":

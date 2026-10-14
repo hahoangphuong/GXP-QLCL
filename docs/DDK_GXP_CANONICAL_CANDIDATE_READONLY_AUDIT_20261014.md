@@ -830,3 +830,33 @@ does not authorize changing the source Site or binding that folder.
 No Case remap, identity fallback, canonical Certificate or DDK link,
 migration or runtime deployment is approved. Three source-bound Cases
 remain unresolved by the exact resolver.
+
+## Verified direct-child metadata in one mismatched Inspection folder (14 Oct 2026)
+
+VM operator executed the exact-head, CI-passed guarded read-only script
+for the previously sourced code-only Inspection folder. All source-chain,
+accepted workbook hash, alternate imported Site and permission checks PASS.
+The source year root contains 130 metadata entries, with one uniquely
+matching inspection-code directory. That directory contains exactly **41
+direct children: 40 files and one child directory**. None of these 41
+names contains the original Case inspection-code token, original Site
+token or alternate Site token. The protected detailed report was created
+by gxp, mode 0600. There were no database or NAS writes; binary contents
+and the child subdirectory were not entered.
+
+Interpretation: the exact token-based Case resolver still produces
+NOT_FOUND because the parent directory's alternate Site token conflicts
+with the physical db.ktra Case Site. The presence of 40 immediate files
+shows an actual file population at this one location; neither their names
+nor the parent directory's alternate token proves that those files are
+Case-specific evidence or that they belong to the original Case. The
+separate child directory also has unexamined contents. Do not claim
+full archival absence or legal Case ownership.
+
+**Next bounded step:** classify only the already-protected 40 direct
+file-name suffixes and 1 directory entry in the existing report;
+no renewed SMB access or recursion. Use aggregated extension categories
+to determine whether source-attested document/chain-of-custody inspection
+could be useful. Never auto-approve a Case folder, relax source Site
+matching, copy or rename files, update PostgreSQL, or change DDK↔GxP
+Certificate links. The legal/business status stays NOT_APPROVED.

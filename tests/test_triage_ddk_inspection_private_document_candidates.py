@@ -71,7 +71,7 @@ def test_candidate_sample_balanced_and_never_claims_case_identity():
     assert sample["selected_text_document"] == 2
     assert sample["selected_with_role_hint"] >= 2
     assert sample["source_direct_children"] == 41
-    assert sample["available_pdf_or_word_candidates"] == 39
+    assert sample["available_pdf_or_text_document_candidates"] == 39
     assert sample["document_contents_read"] is False
     assert sample["approval_status"] == "NOT_APPROVED"
     assert sample["folder_content_ownership_verified"] is False
@@ -133,4 +133,4 @@ def test_sampling_is_order_stable_for_identical_report():
 @pytest.mark.parametrize("caps", [(0, 2), (4, 2), (3, 0), (3, 3)])
 def test_budget_cannot_be_widened(caps):
     with pytest.raises(DocumentCandidateManifestBlocked):
-        make_private_document_candidate_manifest(source_report(), max_pdf=caps[0], max_word=caps[1])
+        make_private_document_candidate_manifest(source_report(), max_pdf=caps[0], max_text_document=caps[1])

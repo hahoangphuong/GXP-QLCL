@@ -89,7 +89,10 @@ class StorageBindingService:
             (anchor.inspection_year_status, anchor.inspection_year),
         ):
             if status == "conflict":
-                return ()
+                # This individual source field has no usable year. Preserve
+                # the conflict in the immutable anchor, but do not discard
+                # an independently usable year from the other physical column.
+                continue
             if status == "unavailable":
                 if value is not None:
                     return ()

@@ -348,7 +348,7 @@ def test_missing_anchor_returns_invalid_without_storage_call(tmp_path: Path):
     assert service.lookup_years == []
 
 
-def test_registration_conflict_does_not_silently_use_other_year(tmp_path: Path):
+def test_registration_conflict_keeps_independent_usable_inspection_year(tmp_path: Path):
     service = build_counting_service(tmp_path)
     binding_service = StorageBindingService(service)
     (service.inspection_root / "2025" / "A - (ID-103) - (KT-1376-GMP)").mkdir(parents=True)
@@ -357,8 +357,8 @@ def test_registration_conflict_does_not_silently_use_other_year(tmp_path: Path):
         add_anchor(session, case_id=case_id, registration_status="conflict", registration_year=None, inspection_status="usable", inspection_year=2025)
         result = binding_service.resolve_inspection_folder(session, case_id=case_id, year=None, site_legacy_id=103, inspection_legacy_code="KT-1376-GMP")
 
-    assert result.resolution.status == StorageResolutionStatus.INVALID
-    assert service.lookup_years == []
+    assert result.resolution.status == StorageResolutionStatus.RESOLVED
+    assert service.lookup_years == [2025]
 
 
 def test_stale_binding_cannot_bypass_anchor_bounded_lookup(tmp_path: Path):

@@ -326,8 +326,10 @@ year (registration first, inspection second), without guessing year+1.
 If both are equal, it probes only once. If just one resolves, it may
 persist a binding for the exact resolved year. If two different years
 resolve, the result is `AMBIGUOUS`, with **no new binding**. A
-conflicting/malformed source-year anchor blocks automatic selection;
-do not transform an unresolved conflict into a usable fallback.
+conflicting source-year field is not used as a lookup candidate;
+the other independent field remains eligible if usable. The original
+conflict stays recorded in the immutable anchor and is never replaced
+or inferred. A malformed usable year blocks automatic lookup.
 Explicitly supplied year continues to use binding-first validation and
 single-year lookup under the existing approved contract.
 

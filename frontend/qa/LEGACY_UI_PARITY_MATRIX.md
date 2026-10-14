@@ -7,6 +7,70 @@ evidenced. Baseline: `50576b0b383161e26e27b6cdc4a1a469aff1ae17`; work branch:
 
 ## Evidence closure and staging-readiness audit — 2026-10-13
 
+### Persisted GxP / ĐĐK version history — 2026-10-14
+
+Baseline `2f7c46eede547e8b711d782022fd5559d219a8c0`; local/remote/OPEN-DRAFT
+PR #3 matched. Existing untracked script remains untouched. Read backend PR #7
+SHA `97182e58c3a673938d1b263c7eeaab41d28147b4` docs/Pydantic and live OpenAPI:
+GxpCertificateVersionHistoryRead, BusinessEligibilityVersionHistoryRead and
+both exact aggregate `/versions` paths. Live app/status reports that SHA,
+Google OIDC and `gxp_legacy_rehearsal`; readyz confirms schema `20261012_0023`.
+No backend commits merged/cherry-picked and no runtime configuration changed.
+
+Both APIs: `BACKEND_API_DEPLOYED`. Facility UI: `FRONTEND_FIXTURE_VERIFIED`.
+Original source endpoint remains `PROVENANCE_API_DEPLOYED`, unchanged.
+Authenticated browser remains `REAL_AUTHENTICATED_UI_PENDING`: the previously
+rejected local OAuth origin has no newly verified permitted dev origin. Live
+OpenAPI/readiness is not an authenticated business-response test.
+
+Last-correct: aggregate/current detail owners and mutations. First-incorrect:
+no separate persisted snapshot presentation/client. Native collapsible read-only
+history now follows current detail, using cyan legacy fields without changing
+runtime image 7/9 current list/detail placement. MainForm DataCC2/DataDDK2 and
+those images establish current fields, not a persisted-version picker; exact
+legacy history-picker appearance remains `EVIDENCE_MISSING`. New snapshot region
+is explicitly authorized by this task, not a claimed exact legacy form clone.
+
+SearchPage keeps aggregate selection; its cancellable history read owns only
+context/UUID/access/revision and local snapshot choice. Old requests abort and
+late success/error cannot publish under a replacement owner. Settled reads and
+snapshot choice survive tab round-trips. Current detail revision changes cause
+fresh history, while focus-only navigation causes none. No bulk list history
+fetch, retry, current-detail fallback or write action is added.
+
+GxP: exact version UUID, version_no, row_version, version/latest-aggregate flags
+remain separate. Each snapshot renders its own scope UUID/text/language/order
+without copying current scopes; null lifecycle stays unconfirmed despite dates.
+DDK: maximum-persisted-version selection, stored professional/license fields,
+scalar issuance prose and exact-version FK rows stay distinct. FK presence is
+not validity/approval; source tokens are excluded and original provenance remains
+separate. Zero versions means an existing aggregate has no saved version; one
+means exactly “1 phiên bản đã lưu”; multiple versions exist in synthetic fixtures
+only. User-supplied rehearsal counts are 1,601 GxP versions, 1,564 scopes, 780 DDK
+versions, zero multiversion DDK/recorded canonical links, 3,120 source groups and
+861 tokens. This slice does not claim authenticated verification of these rows.
+
+Owner presentation regression fails against the untouched checkpoint component
+at the absent history caption, then passes. Regression covers 0/1/N, independent
+historical scopes/FKs, null lifecycle, scalar prose, 401/403/404/409/server errors,
+A→B→A ownership, abort, access/canonical identity, tab reuse, snapshot selection,
+current-detail/draft isolation and original mutation token. No timeout changed.
+
+Browser fixture: both Facility tabs at 1920×1080, 1366×768, 390×844, 375×812.
+client/scroll: 1920/1920, 1366/1366, 375/375, 360/360 respectively (mobile vertical
+scrollbar 15px). DDK A pending→B stays B after late A; identical numbers keep
+separate UUIDs. GxP old scope and DDK old empty FK snapshot remain independent.
+Enter toggles/activates, native select and Tab/Shift+Tab work; Home/End only move
+list focus. Tab round-trips retain snapshot/current selection and canonical
+line/history URL. Version counters remain unchanged across settled tab/focus
+round-trips. No browser mutation performed; read-only proxy blocks writes.
+Evidence outside Git: persisted-history-geometry.json, persisted-counts-*.json,
+persisted-gxp/ddk-*.jpg and persisted-gxp-proof.jpg. Browser screenshot capture
+can clip the task panel; DOM measurements are the viewport evidence.
+
+Real authenticated UI, binary storage, screen reader and production UAT are not
+verified. RecordForm/ExtRecordForm/picker runtime/action gaps remain unchanged.
+
 ### Facility ĐĐK original GxP source integration — 2026-10-13
 
 Baseline `e428cf0ad1965e9bdcc50f6df525e233e9a0e1e0`: local/remote/PR #3 matched;
@@ -52,8 +116,7 @@ DDK UUIDs sharing the same number. A pending→B retains B after A's late respon
 and returning through the GPs tab retains selection and URL line/history context.
 No source links/checkboxes/mutations appeared. Evidence is outside Git as
 `ddk-provenance-*`. Authenticated real data, binary storage and speech remain
-unverified. CertificateVersion history/historical scope stays
-`BACKEND_CONTRACT_PENDING`; RecordForm/picker/color/tick runtime remains
+unverified. CertificateVersion history/historical scope is superseded by the deployed history integration below; RecordForm/picker/color/tick runtime remains
 `LEGACY_RUNTIME_EVIDENCE_MISSING`.
 
 Validation: typecheck/lint/build PASS; final targeted source/Facility/API suite
@@ -116,7 +179,7 @@ A local POST returned 405 and upstream counters stayed identical. Arrow/Home/End
 changed history focus with identical upstream counters and unchanged selection URL.
 Sanitized evidence is outside Git as `rehearsal-tooling-*`.
 
-At that checkpoint provenance and CertificateVersion history were pending. The provenance gap is superseded by the deployed API/current integration above; immutable CertificateVersion/historical scopes remain `BACKEND_CONTRACT_PENDING`; RecordForm/picker/color/tick semantics remain
+At that checkpoint provenance and CertificateVersion history were pending. The provenance gap is superseded by the deployed API/current integration above; persisted CertificateVersion/historical scopes are now available through the deployed history integration below; RecordForm/picker/color/tick semantics remain
 `LEGACY_RUNTIME_EVIDENCE_MISSING`. All nine live workspace checks, live
 authenticated 403/network/409 behavior, real binary storage and speech verification remain
 `STAGING_VALIDATION_PENDING`. No frontend product defect was identified; no
@@ -135,14 +198,14 @@ OPEN/DRAFT PR #3 matched before this read-only audit. The pre-existing untracked
 | Gap | Classification | Evidence and boundary |
 | --- | --- | --- |
 | Current Facility/Case GPs certificate identity and scope snapshot | `VERIFIED` | `GxpCertificateDetailRead` and the matching TypeScript type expose canonical certificate UUID, Site/Case/ProductionLine identity, `row_version`, `latest_flag`, scalar certificate values, `scope_summary`, ordered `scopes[]` with scope UUIDs, limitation, status and readiness. The detail service loads scopes only for the selected latest CertificateVersion. Existing Facility and Case owners consume that response without deriving IDs from certificate number, filename or text. |
-| Immutable CertificateVersion history | `BACKEND_CONTRACT_PENDING` | `CertificateVersion` and `CertificateScope.certificate_version_id` exist in persistence, but catalog routes expose only `/sites/{site_id}/gxp-certificates` and `/certificates/{certificate_id}`. Both query `is_latest_version=true`; their response models omit version UUID/history and historical scope snapshots. `row_version` is only an optimistic concurrency token and `latest_flag` identifies the current Certificate aggregate. The frontend cannot build a truthful version-history UI from the current contract. |
+| Persisted GxP / ĐĐK version history | `BACKEND_API_DEPLOYED` / `FRONTEND_FIXTURE_VERIFIED` | Runtime `97182e5` provides both canonical aggregate `/versions` GETs. Separate read-only Facility snapshots retain version UUIDs, ordinals, concurrency tokens, per-version ordered scopes and per-version stored FK rows. This is persisted history, not immutable/legal attestation. Authenticated UI remains `REAL_AUTHENTICATED_UI_PENDING`. |
 | Facility ĐĐK GMP/GLP/GSP/GDP source groups | `PROVENANCE_API_DEPLOYED` / `FRONTEND_FIXTURE_VERIFIED` | The separate source-only endpoint deployed at `1ee3818` exposes the four original groups; the Facility-only panel consumes it by canonical DDK UUID with context/access ownership and AbortSignal. Independent read-only DB aggregates confirm 3,120 groups / 861 tokens. The flat `linked_gxp_certificates` list retains its canonical meaning and is not classified/merged from provenance. Authenticated live UI remains `REAL_AUTHENTICATED_UI_PENDING` because the local OAuth origin is rejected. |
 | Canonical certificate actions | `VERIFIED` | GPs and ĐĐK issue/edit/promote controls are sourced from backend readiness, permissions and `expected_version`. Change-request successor actions have their own readiness identities. Existing 403/409/422 behavior and draft retention remain the owners of error handling; no legacy button is enabled from visual evidence alone. |
 | Canonical contextual document actions | `VERIFIED` | `ContextualDocumentActionRead` permits only `open`, `create` and `history`, with availability, disabled reason and required permissions from the backend. `DocumentDetail` exposes logical document UUID, rendition UUID and version UUID separately. Binary access remains through case/CAPA content endpoints and StorageService; the frontend has no path/NAS fallback. |
 | RecordForm / ExtRecordForm / picker command equivalence | `BACKEND_CONTRACT_PENDING` | VBA proves real side effects: RecordForm and ExtRecordForm generate/open documents; SelectCC/SelectDDK can delegate mutations; ChonMauCC/SelectFile browse legacy folders and templates. The current web mappings are DocumentService/StorageService, CertificationService and BusinessEligibilityService contracts. Commands outside existing readiness/action models require an approved backend owner before a web button can be added. |
 | RecordForm, SelectCC, SelectDDK, ChonMauCC and SelectFile runtime appearance/states | `LEGACY_RUNTIME_EVIDENCE_MISSING` | FRM/FRX and procedure evidence establish structure and side effects, but complete runtime captures for enabled/disabled, selection, editor, error and confirmation states are absent. Existing canonical workspaces remain in place rather than guessing those states. |
 | Current certificate scope/status display | `VERIFIED` | `scope_summary`, selected-version `scopes[]`, limitation and authoritative status are displayed without parsing prose or calculating status from dates. Multiple scope records retain API order and UUID identity. |
-| Historical scope and green completion strip / legacy status colors | `BACKEND_CONTRACT_PENDING` | Historical scope needs a version-history response. No per-stage completion projection exists for the legacy green ticks, and completion is not inferred from documents, dates or status text. Existing canonical lifecycle/readiness values remain unchanged. |
+| Historical scope and green completion strip / legacy status colors | `BACKEND_API_DEPLOYED` for scope; `BACKEND_CONTRACT_PENDING` for completion strip | Historical scope now comes only from its exact persisted version response. No per-stage completion projection exists for the legacy green ticks, and completion is not inferred from documents, dates or status text. Existing canonical lifecycle/readiness values remain unchanged. |
 | Exact runtime color/tick semantics | `LEGACY_RUNTIME_EVIDENCE_MISSING` | Supplied images show presentation, but no approved mapping ties the VBA colors/ticks to canonical states for every runtime condition. StatusBadge and workflow state remain authoritative. |
 | Authorized real staging | `STAGING_VALIDATION_PENDING` | The follow-up user request authorizes `gxp-web-prod` / `gxp_legacy_rehearsal` for read-only rehearsal verification. WSL Google Cloud CLI + IAP + existing-key SSH verified healthy runtime, current schema 0023, Google OIDC and rehearsal DB identity. The local PR frontend reaches the login boundary, but Google rejects its local OAuth origin; authenticated nine-workspace UI remains unverified. No VM/OAuth configuration or mutation was performed. |
 
@@ -791,8 +854,8 @@ Catalog serializes scopes using each certificate's selected version row; fronten
 uses that certificate's supplied snapshot without joining scopes across records
 or copying evaluation scope into issuance. New issue scopes still start empty.
 
-EVIDENCE_MISSING: immutable CertificateVersion IDs/history/scopes per historical
-version in the current GxpCertificateDetail contract; it exposes row_version and
+Superseded history limitation: the new separate `/versions` GET supplies persisted
+version UUIDs and their scopes; current GxpCertificateDetail remains independent; it exposes row_version and
 the selected version's fields/scopes, not a certificate-version collection.
 row_version is a concurrency token, not a CertificateVersion ID. No history or
 replacement relation is inferred from latest_flag. CertificateIssueRequest is a

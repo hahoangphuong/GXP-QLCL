@@ -1,3 +1,5 @@
+import type { HistoryState } from "./usePersistedCertificateHistory";
+import type { GxpCertificateVersionHistory, BusinessEligibilityVersionHistory } from "../../types";
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import type {
   BusinessEligibilityDetail,
@@ -38,6 +40,8 @@ import { FACILITY_TABS, FACILITY_TAB_LABELS, type FacilityTab } from "./facility
 import type { EligibilitySourceState } from "./useBusinessEligibilitySourceEvidence";
 
 export function FacilityWorkspaceTabs({
+  gxpVersionHistory,
+  eligibilityVersionHistory,
   eligibilitySourceEvidence,
   summary,
   selectedFacilityTab,
@@ -105,6 +109,8 @@ export function FacilityWorkspaceTabs({
   onResolveInspectionFolder,
   onFinalizeInspectionOutcome,
 }: {
+  gxpVersionHistory?: HistoryState<GxpCertificateVersionHistory>;
+  eligibilityVersionHistory?: HistoryState<BusinessEligibilityVersionHistory>;
   eligibilitySourceEvidence?: EligibilitySourceState;
   summary: FacilityWorkspaceSummary;
   selectedFacilityTab: FacilityTab;
@@ -256,6 +262,7 @@ export function FacilityWorkspaceTabs({
 
     {selectedFacilityTab === "Giấy chứng nhận GxP" ? (
       <GxpCertificateWorkspace
+        versionHistory={gxpVersionHistory}
         detail={gxpCertificateDetail}
         detailError={gxpCertificateDetailError}
         detailLoading={gxpCertificateDetailLoading}
@@ -273,6 +280,7 @@ export function FacilityWorkspaceTabs({
 
     {selectedFacilityTab === "Giấy chứng nhận đủ điều kiện" ? (
       <BusinessEligibilityWorkspace
+        versionHistory={eligibilityVersionHistory}
         sourceEvidence={eligibilitySourceEvidence}
         detail={eligibilityCertificateDetail}
         detailError={eligibilityCertificateDetailError}

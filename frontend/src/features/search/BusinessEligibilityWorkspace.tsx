@@ -1,3 +1,6 @@
+import { PersistedCertificateHistory } from "./PersistedCertificateHistory";
+import type { HistoryState } from "./usePersistedCertificateHistory";
+import type { BusinessEligibilityVersionHistory } from "../../types";
 import { useEffect, useId, useState } from "react";
 
 import { EmptyState } from "../../components/EmptyState";
@@ -180,6 +183,7 @@ export function BusinessEligibilityMutationDialog({
 }
 
 export function BusinessEligibilityWorkspace({
+  versionHistory,
   sourceEvidence,
   items,
   listLoading,
@@ -199,6 +203,7 @@ export function BusinessEligibilityWorkspace({
   promotionError,
   promotionPending,
 }: {
+  versionHistory?: HistoryState<BusinessEligibilityVersionHistory>;
   sourceEvidence?: EligibilitySourceState;
   items: BusinessEligibilityListItem[];
   listLoading: boolean;
@@ -290,6 +295,7 @@ export function BusinessEligibilityWorkspace({
             </div>
           </>
         )}
+        {selectedCertificateId && versionHistory ? <PersistedCertificateHistory kind="ddk" state={versionHistory} /> : null}
       </section>
 
       {issueOpen ? <BusinessEligibilityMutationDialog

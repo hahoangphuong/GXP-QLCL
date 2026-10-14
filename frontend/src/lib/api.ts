@@ -1,5 +1,7 @@
 import type {
   AppStatus,
+  GxpCertificateVersionHistory,
+  BusinessEligibilityVersionHistory,
   AuthenticatedIdentity,
   BusinessEligibilityDetail,
   BusinessEligibilityGxpSourceEvidence,
@@ -866,6 +868,14 @@ export function getBusinessEligibilityGxpSourceEvidence(
     `/business-eligibility-certificates/${businessEligibilityCertificateId}/gxp-source-evidence`,
     { auth, useStubAuth, bearerToken, signal },
   );
+}
+
+export function getGxpCertificateVersionHistory(certificateId: string, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null, signal?: AbortSignal): Promise<GxpCertificateVersionHistory> {
+  return requestJson<GxpCertificateVersionHistory>(`/certificates/${encodeURIComponent(certificateId)}/versions`, { auth, useStubAuth, bearerToken, signal });
+}
+
+export function getBusinessEligibilityVersionHistory(certificateId: string, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null, signal?: AbortSignal): Promise<BusinessEligibilityVersionHistory> {
+  return requestJson<BusinessEligibilityVersionHistory>(`/business-eligibility-certificates/${encodeURIComponent(certificateId)}/versions`, { auth, useStubAuth, bearerToken, signal });
 }
 
 export function issueBusinessEligibility(

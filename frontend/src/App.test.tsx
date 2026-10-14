@@ -55,6 +55,8 @@ const apiMocks = vi.hoisted(() => ({
   issueGxpCertificate: vi.fn(),
   listSiteBusinessEligibilityCertificates: vi.fn().mockResolvedValue({ items: [], issue_readiness: null }),
   getBusinessEligibilityDetail: vi.fn().mockResolvedValue(null),
+  getGxpCertificateVersionHistory: vi.fn(),
+  getBusinessEligibilityVersionHistory: vi.fn(),
   getBusinessEligibilityGxpSourceEvidence: vi.fn(),
   issueBusinessEligibility: vi.fn(),
   upsertBusinessEligibilityLatestVersion: vi.fn(),
@@ -146,6 +148,8 @@ function resetApiMocks() {
   apiMocks.issueGxpCertificate.mockReset();
   apiMocks.listSiteBusinessEligibilityCertificates.mockReset();
   apiMocks.getBusinessEligibilityDetail.mockReset();
+  apiMocks.getGxpCertificateVersionHistory.mockReset();
+  apiMocks.getBusinessEligibilityVersionHistory.mockReset();
   apiMocks.getBusinessEligibilityGxpSourceEvidence.mockReset();
   apiMocks.issueBusinessEligibility.mockReset();
   apiMocks.upsertBusinessEligibilityLatestVersion.mockReset();
@@ -211,6 +215,8 @@ function resetApiMocks() {
   apiMocks.issueGxpCertificate.mockResolvedValue(null);
   apiMocks.listSiteBusinessEligibilityCertificates.mockResolvedValue({ items: [], issue_readiness: null });
   apiMocks.getBusinessEligibilityDetail.mockResolvedValue(null);
+  apiMocks.getGxpCertificateVersionHistory.mockImplementation((id: string) => Promise.resolve({ certificate_id: id, site_id: "site-1", case_id: null, certificate_type: "GMP", issuance_basis: "legacy_import", aggregate_latest_flag: true, latest_version_id: null, versions: [] }));
+  apiMocks.getBusinessEligibilityVersionHistory.mockImplementation((id: string) => Promise.resolve({ business_eligibility_certificate_id: id, site_id: "site-1", company_id: "company-1", legacy_dkkd_id: null, aggregate_latest_flag: true, latest_version_id: null, latest_selection_method: "max_persisted_version_no", canonical_link_status: "stored_fk_only_not_validated", gxp_source_tokens_included: false, versions: [] }));
   apiMocks.getBusinessEligibilityGxpSourceEvidence.mockImplementation((id: string) => Promise.resolve({
     business_eligibility_certificate_id: id, legacy_dkkd_id: null, source_status: "legacy_identity_missing",
     evidence_kind: "original_excel_cells_source_only", canonical_links_included: false,

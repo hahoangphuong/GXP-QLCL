@@ -1285,3 +1285,50 @@ export type OidcSession = {
   subject: string | null;
   expires_at_epoch_seconds: number;
 };
+// Persisted snapshots: ordinals, UUIDs and concurrency tokens are independent.
+export type GxpCertificateHistoricalVersion = {
+  certificate_version_id: string;
+  version_no: number;
+  row_version: number;
+  is_latest_version: boolean;
+  lifecycle_state: string | null;
+  certificate_number: string | null;
+  issue_date: string | null;
+  expiry_date: string | null;
+  applicable_standard: string | null;
+  issuing_authority: string | null;
+  scope_summary: string | null;
+  scopes: CertificateScope[];
+};
+export type GxpCertificateVersionHistory = {
+  certificate_id: string;
+  site_id: string;
+  case_id: string | null;
+  certificate_type: string;
+  issuance_basis: string;
+  aggregate_latest_flag: boolean;
+  latest_version_id: string | null;
+  versions: GxpCertificateHistoricalVersion[];
+};
+export type BusinessEligibilityHistoricalVersion = Pick<BusinessEligibilityDetail,
+  "row_version" | "certificate_number" | "issued_on" | "expires_on" | "professional_responsible_person_name"
+  | "quality_assurance_person_name" | "professional_qualification_text" | "professional_license_number"
+  | "professional_license_issued_on" | "professional_license_issuer" | "responsible_license_issued_on"
+  | "responsible_license_issuer" | "decision_reference" | "issuance_sequence_text" | "issuance_history_text"
+  | "business_activity_text" | "current_status_text" | "handled_by_name" | "application_dossier_reference" | "notes"> & {
+  business_eligibility_version_id: string;
+  version_no: number;
+  stored_link_records: { link_id: string; certificate_id: string; link_role: string }[];
+};
+export type BusinessEligibilityVersionHistory = {
+  business_eligibility_certificate_id: string;
+  legacy_dkkd_id: number | null;
+  site_id: string;
+  company_id: string;
+  aggregate_latest_flag: boolean;
+  latest_version_id: string | null;
+  latest_selection_method: "max_persisted_version_no";
+  gxp_source_tokens_included: false;
+  canonical_link_status: "stored_fk_only_not_validated";
+  versions: BusinessEligibilityHistoricalVersion[];
+};

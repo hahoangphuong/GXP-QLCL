@@ -2951,3 +2951,13 @@ tr:focus-visible {
   .legacy-search-page .facility-gxp-fields .legacy-certificate-heading, .legacy-search-page .facility-gxp-footer { grid-template-columns: minmax(0, 1fr); }
   .legacy-search-page .facility-gxp-fields .detail-field { grid-template-columns: 100px minmax(0, 1fr); }
 }
+
+.persisted-certificate-history { min-width: 0; margin-top: 12px; border: 1px inset #aaa; }
+.persisted-certificate-history > summary { padding: 6px; font-weight: 700; color: #006400; background: #eee; cursor: pointer; }
+.persisted-certificate-history section { min-width: 0; padding: 6px; overflow-wrap: anywhere; }
+.persisted-certificate-history select { display: block; width: 100%; min-width: 0; max-width: 100%; }
+.persisted-version-fields { margin: 6px 0; }
+.persisted-version-fields > div { display: grid; grid-template-columns: minmax(0, 180px) minmax(0, 1fr); gap: 6px; padding: 3px; }
+.persisted-version-fields dt { font-weight: 600; }
+.persisted-version-fields dd, .persisted-version-text { min-width: 0; margin: 0; padding: 4px; background: #bfffff; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 640px) { .persisted-version-fields > div { grid-template-columns: minmax(0, 1fr); } }

@@ -36,6 +36,34 @@ function renderWorkspace(onEditLatestVersion = vi.fn().mockResolvedValue(undefin
   return onEditLatestVersion;
 }
 
+it("mounts persisted snapshots separately without changing current detail, draft or write token", async () => {
+  const onEdit = vi.fn().mockResolvedValue(undefined);
+  const onSelect = vi.fn();
+  const onPromote = vi.fn();
+  const history = { certificate_id: "cert-1", site_id: "site-1", case_id: "case-1", certificate_type: "GMP", issuance_basis: "inspection_case",
+    aggregate_latest_flag: true, latest_version_id: "historical-v2", versions: [2, 1].map(n => ({
+      certificate_version_id: `historical-v${n}`, version_no: n, row_version: 99, is_latest_version: n === 2,
+      lifecycle_state: null, certificate_number: `Historical ${n}`, issue_date: null, expiry_date: null,
+      applicable_standard: null, issuing_authority: null, scope_summary: null, scopes: [],
+    })) };
+  const props = { detail: detail(), detailError: null, detailLoading: false, items, listError: null, listLoading: false,
+    onEditLatestVersion: onEdit, onPromoteCurrent: onPromote, onSelectCertificate: onSelect,
+    promotionError: null, promotionPending: false, selectedCertificateId: "cert-1" };
+  const { rerender } = render(<GxpCertificateWorkspace {...props} versionHistory={{ status: "ready", data: history }} />);
+  fireEvent.click(screen.getByText("Các phiên bản GPs đã lưu"));
+  fireEvent.change(screen.getByRole("combobox", { name: "Phiên bản đã lưu" }), { target: { value: "historical-v1" } });
+  expect(screen.getByText("Historical 1", { selector: "dd" })).toBeInTheDocument();
+  expect(document.querySelector(".legacy-certificate-heading")).toHaveTextContent("GCN-001");
+  expect(onSelect).not.toHaveBeenCalled(); expect(onPromote).not.toHaveBeenCalled(); expect(onEdit).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Số GCN" }), { target: { value: "retained draft" } });
+  rerender(<GxpCertificateWorkspace {...props} versionHistory={{ status: "error", httpStatus: 409 }} />);
+  expect(screen.getByRole("textbox", { name: "Số GCN" })).toHaveValue("retained draft");
+  fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+  await waitFor(() => expect(onEdit).toHaveBeenCalledTimes(1));
+  expect(onEdit.mock.calls[0][0]).toMatchObject({ expected_version: 7, certificate_number: "retained draft" });
+});
+
 describe("GxP certificate keyboard and identity", () => {
   it("keeps the Facility horizontal header, identity/scope prominence and issuer/status/source footer distinct from Case", () => {
     renderWorkspace();

@@ -1,3 +1,6 @@
+import { PersistedCertificateHistory } from "./PersistedCertificateHistory";
+import type { HistoryState } from "./usePersistedCertificateHistory";
+import type { GxpCertificateVersionHistory } from "../../types";
 import { useEffect, useId, useState } from "react";
 
 import { EmptyState } from "../../components/EmptyState";
@@ -137,6 +140,7 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
 }
 
 export function GxpCertificateWorkspace({
+  versionHistory,
   items,
   listLoading,
   listError,
@@ -150,6 +154,7 @@ export function GxpCertificateWorkspace({
   promotionPending,
   onEditLatestVersion,
 }: {
+  versionHistory?: HistoryState<GxpCertificateVersionHistory>;
   items: GxpCertificateListItem[];
   listLoading: boolean;
   listError: string | null;
@@ -261,6 +266,7 @@ export function GxpCertificateWorkspace({
             })()}
           </>
         )}
+        {selectedCertificateId && versionHistory ? <PersistedCertificateHistory kind="gxp" state={versionHistory} /> : null}
       </section>
       {visibleDraft ? <GxpCertificateEditDialog detail={visibleDraft.detail} expectedVersion={visibleDraft.expectedVersion} saveAvailable={!detailLoading && (detail?.action_readiness ?? []).some(action => action.action_key === "edit_latest_version" && action.available)} onClose={() => setEditDraft(null)} onSave={onEditLatestVersion} onStaleConflict={() => undefined} /> : null}
     </div>

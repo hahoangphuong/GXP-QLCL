@@ -1,3 +1,4 @@
+import { usePersistedCertificateHistory } from "../features/search/usePersistedCertificateHistory";
 import { startTransition, useDeferredValue, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigationType, useSearchParams } from "react-router-dom";
 
@@ -357,6 +358,16 @@ export function SearchPage({
   const workspace = deepLinkError || historyResolution === "pending" ? null : ownedWorkspace;
   const workspaceLoading = Boolean(selectedResult) && (!ownedRequest || ownedRequest.status === "loading");
   const workspaceError = ownedRequest?.status === "error" ? ownedRequest.error : null;
+  const gxpVersionHistory = usePersistedCertificateHistory("gxp", selectedContext, selectedGxpCertificateId,
+    gxpCertificateDetail?.certificate_id === selectedGxpCertificateId ? gxpCertificateDetail.row_version : undefined,
+    canLoadSecureApi && selectedFacilityTab === "Giấy chứng nhận GxP" && !gxpCertificateDetailLoading
+      && ((gxpCertificateDetail?.certificate_id === selectedGxpCertificateId && gxpCertificateDetail?.site_id === selectedResult?.site_id) || Boolean(gxpCertificateDetailError)),
+    auth, useStubAuth, bearerToken);
+  const eligibilityVersionHistory = usePersistedCertificateHistory("ddk", selectedContext, selectedEligibilityCertificateId,
+    eligibilityCertificateDetail?.business_eligibility_certificate_id === selectedEligibilityCertificateId ? eligibilityCertificateDetail.row_version : undefined,
+    canLoadSecureApi && selectedFacilityTab === "Giấy chứng nhận đủ điều kiện" && !eligibilityCertificateDetailLoading
+      && ((eligibilityCertificateDetail?.business_eligibility_certificate_id === selectedEligibilityCertificateId && eligibilityCertificateDetail?.site_id === selectedResult?.site_id) || Boolean(eligibilityCertificateDetailError)),
+    auth, useStubAuth, bearerToken);
   const eligibilitySourceEvidence = useBusinessEligibilitySourceEvidence(
     selectedFacilityTab === "Giấy chứng nhận đủ điều kiện" && canLoadSecureApi
       && !eligibilityCertificateDetailLoading
@@ -2107,6 +2118,8 @@ export function SearchPage({
                 onEditIssuedBusinessEligibility: handleChangeRequestIssuedBusinessEligibilityEdit,
               }}
               eligibilityCertificateDetail={eligibilityCertificateDetail}
+              gxpVersionHistory={gxpVersionHistory}
+              eligibilityVersionHistory={eligibilityVersionHistory}
               eligibilitySourceEvidence={eligibilitySourceEvidence}
               eligibilityCertificateDetailError={eligibilityCertificateDetailError}
               eligibilityCertificateDetailLoading={eligibilityCertificateDetailLoading}

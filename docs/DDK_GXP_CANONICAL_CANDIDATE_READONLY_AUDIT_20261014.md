@@ -934,3 +934,42 @@ Missing text DOES NOT disprove that the source Inspection Case is in a
 scanned or unsupported file. Source db.ktra Case->Site is verified and
 stays unchanged; the exact-match resolver stays unchanged. All DDK to
 Certificate relationships remain separately NOT_APPROVED.
+
+## VM five-file content result and PDF-only parser recovery (14 Oct 2026)
+
+The exact-HEAD / CI-passed VM read-only audit opened exactly 5 selected
+direct-child files (2,289,044 binary bytes) under the originally
+source-bound mismatched inspection folder. It recorded three
+PARSER_UNAVAILABLE PDF observations and two TEXT_AVAILABLE
+document observations, with no original or alternate Site ID marker
+observed in the extractable text. The VM report SHA-256 is
+4aa0707d16b2754f60ab71d59ee4f61653dd6fb910591ca4a9a5511b83d14443.
+This is NO finding about three PDFs' text contents: pypdf was absent
+from the VM's selected Python runtime. Five files were physically
+read; only two files' text was available. The original exact
+inspection-code text occurrence count was not printed publicly;
+it remains in the protected private report.
+
+Correct remedy: the read-only audit parser dependency, NOT the
+Case/Site source binding or the production resolver. New owner method
+reparse_only_previously_unavailable_pdfs_readonly requires the exact
+private original source metadata, five-file manifest, physical source
+request and the original private five-file content report, including
+its five per-file SHA-256 values. It checks that the 3 selected PDFs
+had exactly PARSER_UNAVAILABLE, 2 other documents were TEXT_AVAILABLE,
+and the total byte accounting did not change. It reloads only the
+three PDFs under their ORIGINAL names and exact folder identity and
+requires each PDF's binary SHA to equal the previous read. The two
+document records are reused without re-opening. Reader version
+is exactly pypdf 6.20.1 (built wheel SHA-256
+aa5a55ddcffdc5e5ab291d5decb23f6383f4e56f8e3263dc39af41fff03885ad).
+Install/expand this wheel only inside private audit storage
+(mode 0700); NEVER add it to the production runtime venv or
+modify production dependencies. If parser is unavailable, blocked;
+no silent alternate parser fallback. If text cannot be extracted,
+it remains inconclusive; no OCR in this stage.
+
+No wider NAS scan or other Case/year/Company lookup; no content
+promotion into a canonical Case, Storage Binding or DDK↔Certificate
+link. Any human acceptance or legal document custody decisions are
+separate from the filename/text signal diagnostic.

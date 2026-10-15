@@ -44,6 +44,45 @@ def _check(test: bool, message: str) -> None:
         raise SiteOwnerCorrectionBlocked(message)
 
 
+def classify_source_ddk_company_vs_site_owner(
+    *,
+    ddk_id: str,
+    ddk_legacy_id: int,
+    ddk_site_id: str,
+    canonical_company_id: str,
+    source_company_id: str,
+    source_site_id: str,
+    site_owner_company_id: str,
+    company_review: dict[str, Any] | None,
+) -> str:
+    """Source/company mismatch is preserved while canonical ownership transitions.
+
+    Only an independently recorded original Company exception may carry both
+    pre-correction and Site-authoritative post-correction states. All other
+    records MUST already agree with the db.cso Site -> Company relation.
+    """
+    _check(ddk_site_id == source_site_id, "DDK original Site identity changed")
+    if source_company_id == site_owner_company_id:
+        _check(canonical_company_id == site_owner_company_id,
+               "Canonical DDK Company differs from authoritative Site owner")
+        _check(company_review is None, "Unexpected Company discrepancy record")
+        return "SOURCE_AND_CANONICAL_SITE_OWNER_AGREE"
+    _check(
+        isinstance(company_review, dict)
+        and company_review.get("legacy_dkkd_id") == ddk_legacy_id
+        and company_review.get("canonical_business_eligibility_certificate_id") == ddk_id
+        and company_review.get("ddk_site_id") == ddk_site_id
+        and company_review.get("ddk_company_id") == source_company_id
+        and company_review.get("site_owning_company_id") == site_owner_company_id
+        and company_review.get("link_approval") == "NOT_APPROVED"
+        and canonical_company_id in (source_company_id, site_owner_company_id),
+        "Unattested Site/Company inconsistency or changed canonical DDK",
+    )
+    return ("SOURCE_DISCREPANCY_CANONICAL_SITE_OWNER_ALIGNED"
+            if canonical_company_id == site_owner_company_id
+            else "SOURCE_DISCREPANCY_CANONICAL_NOT_YET_ALIGNED")
+
+
 def plan_site_owner_correction(
     session: Session, dossier: dict[str, Any],
 ) -> dict[str, Any]:

@@ -1080,3 +1080,60 @@ Company-ID merge, Case-Site switch, DDK-to-Certificate link,
 StorageBinding, NAS rename, database write or release is authorized.
 The earlier five-file NAS content sample remains inconclusive and
 is closed to further automated probing.
+
+## Site ID and db.cso owner authoritative correction policy (16 Oct 2026)
+
+Owner decision: **db.cso.ID** is the authoritative identity of each Site;
+**db.cso.ID Cty** is the authoritative Company owning that Site. No
+db.dkkd, db.cc, db.ktra, Certificate, Case, filename or other cross-reference
+is allowed to replace the existing Site or its Company because the
+cross-reference has a different Site or Company. A source row's own
+original Site ID must be resolved against db.cso; it must not be silently
+made equal to a *different* source row's Site ID merely because both refer
+to one GMP Certificate.
+
+The *single* source-physical DDK Company-vs-Site owner discrepancy
+is a db.dkkd original Company reference different from the original
+db.cso owner. New Phase-2 import canonical projection derives
+BusinessEligibilityCertificate.company_id from the resolved Site.company_id
+instead of importing the conflicting db.dkkd ID CTY. The immutable
+legacy workbook ID CTY and all 4 grouped GxP/ID CC source fields remain
+as source observations. A separate explicit
+site_owner_company_conflicts report preserves the original and chosen
+Company legacy IDs; it never merges Company records by name/address.
+The import materialization graph also recognizes only db.cso Site as
+the actual DDK parent; it does not require a conflicting db.dkkd ID CTY
+to materialize a valid DDK Site.
+
+For *existing* rehearsal canonical rows, owner tool
+tools/reconcile_ddk_site_owner_company_rehearsal.py computes an
+immutable, source-dossier-hash-bound one-record correction plan.
+It rejects any extra Company mismatch outside the original review,
+an unexpected DB population/role/schema/target, modified source
+dossier, any existing canonical DDK/GxP link, or an unexpected
+Site/Company identity. Default is READ ONLY; --apply requires explicit
+gxp_legacy_rehearsal confirmation and can only change the canonical
+DDK.company_id to the authoritative Site.company_id in the rehearsal
+DB, in one transaction. It touches no Site, Company, Case, GxP
+Certificate, legal scope, source group, document, storage binding or
+production runtime.
+
+Original source-exception dossier and queue remain immutable after
+such a correction. Separate consumers of this frozen queue classify
+both pre-correction and db.cso-aligned canonical DDK ownership
+explicitly; they do NOT discard the original source discrepancy.
+Do not regenerate the original source-level Company exception dossier
+from only *corrected canonical* DDK fields: the original db.dkkd ID CTY
+would no longer be reconstructible from them. Primary source history
+continues to live in the physical workbook and privately SHA-bound
+original source evidence.
+
+The seven other physical token positions contain distinct, individually
+valid db.cso Site identities on their DDK, GMP Certificate and Case
+rows. They do NOT authorize automatically switching Sites or
+certifying cross-Site coverage. The linked GxP issue/version and
+Site-specific legal scope still require independent evidence and
+remain NOT_APPROVED. This change does not modify or approve the
+previously unresolved NAS folder identity.
+
+No production migration, deploy or direct mutation is part of this PR.

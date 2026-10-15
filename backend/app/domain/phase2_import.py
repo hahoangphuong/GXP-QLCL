@@ -1103,9 +1103,10 @@ SOURCE_PARENT_FK_REQUIREMENTS = {
         ("inspection_case_legacy_id_ref", "db.ktra", "missing_case_fk", True),
         ("site_legacy_id_ref", "db.cso", "missing_site_fk", False),
     ),
+    # db.dkkd ID CTY is legacy evidence, not a canonical parent FK.
+    # Once db.cso.ID resolves, db.cso.ID Cty owns the canonical Company.
     "db.dkkd": (
         ("site_legacy_id_ref", "db.cso", "missing_site_fk", False),
-        ("company_legacy_id_ref", "db.cty", "missing_company_fk", False),
     ),
     "db.Tdoi": (("site_legacy_id_ref", "db.cso", "missing_site_fk", False),),
     "db.Tdoi2": (("change_request_legacy_id_ref", "db.Tdoi", "missing_change_request_fk", False),),

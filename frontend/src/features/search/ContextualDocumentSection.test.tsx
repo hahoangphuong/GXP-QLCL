@@ -95,7 +95,7 @@ describe("Document workspace identity and focus", () => {
     const load = vi.fn().mockImplementation(async id => detail(id));
     render(<ContextualDocumentSection {...defaults} items={[item("A"), item("B")]} onLoadDocumentDetail={load} />);
     const a = screen.getByRole("button", { name: "Chọn A" }); const b = screen.getByRole("button", { name: "Chọn B" });
-    a.focus(); fireEvent.keyDown(a, { key: "End" }); expect(b).toHaveFocus(); expect(load).not.toHaveBeenCalled();
+    fireEvent.focus(a); fireEvent.keyDown(a, { key: "End" }); expect(b).toHaveFocus(); expect(load).not.toHaveBeenCalled();
     fireEvent.keyDown(b, { key: "Home" }); expect(a).toHaveFocus();
     fireEvent.keyDown(a, { key: "ArrowDown" }); expect(b).toHaveFocus();
     fireEvent.click(b); await screen.findByText("Detail B");

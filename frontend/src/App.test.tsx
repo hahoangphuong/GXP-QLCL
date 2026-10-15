@@ -744,6 +744,15 @@ function renderApp(initialEntries: string[] = ["/"]) {
   );
 }
 
+async function flushSearchUrlSync() {
+  // SearchPage deliberately defers state -> URL ownership by one microtask so
+  // a sibling navigation committed in the same turn wins. Keep that boundary
+  // inside React's test transaction before assertions or cleanup continue.
+  await act(async () => {
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+  });
+}
+
 function SearchRouteNavigator({ to }: { to: string }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -1043,6 +1052,7 @@ describe("App Slice A.4 search workspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
     expect(container.querySelector(".inspection-workspace .inspection-detail-grid")).not.toBeNull();
+    await flushSearchUrlSync();
   });
 
   it("keeps unavailable evaluation and certificate scopes empty instead of copying either value", async () => {
@@ -1778,6 +1788,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.getFacilityWorkspace.mock.calls.at(-1)?.[4]).toBe(identity.line_code);
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2);
+    await flushSearchUrlSync();
   });
 
   it("does not carry an old workspace error into the first committed render of B", async () => {
@@ -1790,6 +1801,7 @@ describe("App Slice A.4 search workspace", () => {
     contextCommit.observe.mockImplementation((key: string) => { if (key === "B") snapshots.push(Boolean(screen.queryByText("Error owned by A"))); });
     fireEvent.click(within(container.querySelector(".facility-table") as HTMLElement).getByText("target-B"));
     expect(snapshots[0]).toBe(false);
+    await flushSearchUrlSync();
   });
 
   it("keeps B when the cancelled request A completes after B", async () => {
@@ -2227,6 +2239,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(await screen.findByText("Tài liệu owner test")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Kiểm tra/ }));
     expect(screen.queryByText("Tài liệu owner test")).not.toBeInTheDocument();
+    await flushSearchUrlSync();
   });
 
   it("shows document action errors locally and keeps the selected workspace context", async () => {
@@ -2497,6 +2510,7 @@ describe("App Slice A.4 search workspace", () => {
 
     expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("HS-001");
     expect(screen.queryByRole("button", { name: "Chỉnh sửa" })).not.toBeInTheDocument();
+    await flushSearchUrlSync();
   });
 
   it("creates a new CAPA cycle from the Khắc phục tab, refreshes only case workspace, and selects the created round", async () => {
@@ -3206,6 +3220,7 @@ describe("App Slice A.4 search workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Xử lý tiếp" }));
     expect(screen.queryByRole("button", { name: "Sửa Người thẩm định" })).not.toBeInTheDocument();
     expect(screen.getByText("Tiếp nhận hồ sơ")).toBeInTheDocument();
+    await flushSearchUrlSync();
   });
 
   it("places dossier assessment in registration and keeps timeline navigation independent of its mutation owner", async () => {
@@ -3235,6 +3250,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelectorAll('.history-table tr[aria-selected="true"]')).toHaveLength(1);
     expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
     expect(apiMocks.upsertCaseAssessment).not.toHaveBeenCalled();
+    await flushSearchUrlSync();
   });
 
   it.each([403, 404, 409])("keeps processing document identity, pending/error %s and navigation separate from mutations", async status => {
@@ -3309,6 +3325,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.getByText("Tiếp nhận hồ sơ")).toBeInTheDocument();
     expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
+    await flushSearchUrlSync();
   });
 
   it("shows only direct case-linked certificates inside event steps and does not fabricate site-wide business eligibility", async () => {
@@ -3377,6 +3394,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
     expect(apiMocks.issueGxpCertificate).not.toHaveBeenCalled();
     expect(apiMocks.promoteGxpCertificateCurrent).not.toHaveBeenCalled();
+    await flushSearchUrlSync();
   });
 
   it("keeps dashboard drilldown links aligned with the accepted facility-level semantics", async () => {
@@ -3946,7 +3964,7 @@ describe("App Slice A.4 search workspace", () => {
     renderApp(["/search?history_id=case-missing"]);
     expect(await screen.findByRole("alert")).toHaveTextContent("Không tìm thấy hồ sơ được liên kết");
     expect(apiMocks.getCaseWorkspace).not.toHaveBeenCalled();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flushSearchUrlSync();
     expect(apiMocks.getCaseWorkspace).not.toHaveBeenCalled();
   });
 

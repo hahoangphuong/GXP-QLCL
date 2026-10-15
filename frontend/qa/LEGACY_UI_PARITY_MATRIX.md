@@ -1381,3 +1381,25 @@ assessment-placement expectations and one mistakenly changed document-step
 selector; the backend document workflow_step contract remains authoritative.
 Repeated targeted regression: 6 passed (A/B/A late binary, refresh draft/token,
 assessment placement and 409). Repository tracked-file hygiene also passed.
+
+## Deterministic React test synchronization follow-up — 2026-10-16
+
+Baseline `aa59b3858816f4e0700fa8e39378a13cd250e714` passed all tests but CI run
+`38796123840` emitted 25 React `act(...)` warnings: 24 from twelve App cases and
+one from the document keyboard/focus case. Local reproduction emitted the same
+document warning and 22 App warnings; the stale-history case was intermittent.
+These warnings supersede the historical “act warnings remain” notes above.
+
+The App warnings were test synchronization debt around SearchPage's intentional
+one-microtask state-to-URL ownership boundary. Assertions or cleanup could run
+before the queued SearchPage and MemoryRouter updates joined a React test
+transaction. A focused test helper now flushes that named boundary after the
+events under test. The document warning came from calling native `focus()`
+directly; `fireEvent.focus` now owns the same focus event and resulting
+`setFocusKey` update. No product component, routing behavior, request, mutation,
+CSS or business contract changed.
+
+The thirteen affected cases pass with zero warnings in ten independent targeted
+runs. The final complete suite passes 435/435 in 32 files with zero stderr blocks
+and zero `act(...)` warnings. No warning suppression, console mock, delay,
+timeout increase, retry or relaxed assertion was introduced.

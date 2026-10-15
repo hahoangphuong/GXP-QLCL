@@ -107,6 +107,22 @@ def test_per_parent_metadata_and_binary_uncertainty(tmp_path):
     engine.dispose()
 
 
+def test_original_company_exception_remains_visible_after_db_cso_realignment(tmp_path):
+    engine, ddk_id, cert, cert_site, case, case_site, source_company, site_owner = _seed(tmp_path)
+    with Session(engine) as session:
+        ddk = session.get(BusinessEligibilityCertificate, ddk_id)
+        ddk.company_id = site_owner
+        session.flush()
+        queue = _queue(ddk_id, cert, cert_site, case, case_site, source_company, site_owner)
+        report = scan_document_metadata(session, queue)
+        assert report["parent_review_classification_counts"][
+            "DDK_COMPANY_SOURCE_DISCREPANCY_CANONICAL_SITE_OWNER_ALIGNED"
+        ] == 2
+        assert report["approval_status"] == "NOT_APPROVED"
+        assert report["canonical_links_created"] == 0
+    engine.dispose()
+
+
 def test_source_identity_drift_and_missing_queue_gate_fail_closed(tmp_path):
     engine, ddk, cert, site, case, case_site, company, site_owner = _seed(tmp_path)
     q = _queue(ddk, cert, site, case, case_site, company, site_owner)

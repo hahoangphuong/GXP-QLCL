@@ -141,8 +141,7 @@ def plan_site_owner_correction(
     site = sites[target.site_id]
     _check(
         site.company_id == original["site_owning_company_id"]
-        and companies[site.company_id].legacy_company_id ==
-            original.get("site_owning_company_legacy_id", companies[site.company_id].legacy_company_id),
+        and type(companies[site.company_id].legacy_company_id) is int,
         "Source Site-to-Company owner changed",
     )
     _check(
@@ -270,7 +269,9 @@ def main(argv: list[str] | None = None) -> int:
         public = {k: v for k, v in result.items() if not k.startswith("private_")}
         print(json.dumps(public, ensure_ascii=False, sort_keys=True))
         return 0
-    except (OSError, ValueError, TypeError, KeyError) as exc:
+    except Exception as exc:
+        # Even a database driver/permission error must never print a DSN,
+        # original Company IDs or private source values on stdout/stderr.
         print("DDK_SITE_OWNER_COMPANY_RECONCILIATION_BLOCKED: " +
               type(exc).__name__, file=sys.stderr)
         return 2

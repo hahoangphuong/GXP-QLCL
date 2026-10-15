@@ -554,6 +554,93 @@ def test_import_snapshot_populates_business_eligibility_detail_owner_fields_from
         assert version.application_dossier_reference == "51/OTS-RA ngày 19/12/2024"
 
 
+def test_ddk_canonical_company_follows_db_cso_site_owner_not_ddk_company_fk():
+    snapshot = sample_snapshot()
+    snapshot["db.cty"].append({
+        "ID": "2", "TÊN CÔNG TY": "Distinct duplicate-number source Company",
+        "ĐỊA CHỈ": "Another retained company record",
+    })
+    snapshot["db.dkkd"][0]["ID CTY"] = "2"
+    original_source = json.loads(json.dumps(snapshot))
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        result = import_snapshot(session, snapshot)
+        session.commit()
+        ddk = session.scalars(select(BusinessEligibilityCertificate)).one()
+        site = session.scalars(select(Site)).one()
+        companies = list(session.scalars(select(Company)))
+        assert len(companies) == 2
+        assert site.legacy_site_id == 10
+        assert ddk.site_id == site.id
+        assert ddk.company_id == site.company_id
+        assert session.get(Company, ddk.company_id).legacy_company_id == 1
+        assert result["site_owner_company_conflict_count"] == 1
+        assert result["site_owner_company_conflicts"] == [{
+            "source_sheet": "db.dkkd",
+            "legacy_dkkd_id": 300,
+            "source_row_number": None,
+            "site_legacy_id": 10,
+            "original_ddk_company_legacy_id": 2,
+            "canonical_site_owner_company_legacy_id": 1,
+            "resolution": "CANONICAL_SITE_OWNER_FROM_DB_CSO",
+            "source_value_unchanged": True,
+        }]
+    assert snapshot == original_source
+
+
+def test_ddk_original_company_can_be_unresolved_while_site_owner_is_valid():
+    snapshot = sample_snapshot()
+    snapshot["db.dkkd"][0]["ID CTY"] = "999999"
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        report = import_snapshot(session, snapshot)
+        session.commit()
+        ddk = session.scalars(select(BusinessEligibilityCertificate)).one()
+        site = session.scalars(select(Site)).one()
+        assert ddk.site_id == site.id and ddk.company_id == site.company_id
+        assert report["site_owner_company_conflict_count"] == 1
+        assert report["site_owner_company_conflicts"][0][
+            "original_ddk_company_legacy_id"] == 999999
+        assert report["site_owner_company_conflicts"][0][
+            "canonical_site_owner_company_legacy_id"] == 1
+
+
+def test_ddk_existing_wrong_company_is_not_silently_updated_during_idempotent_replay():
+    snapshot = sample_snapshot()
+    snapshot["db.cty"].append({
+        "ID": "2", "TÊN CÔNG TY": "Independent Company", "ĐỊA CHỈ": "Separate address",
+    })
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        import_snapshot(session, snapshot)
+        ddk = session.scalars(select(BusinessEligibilityCertificate)).one()
+        source_site = session.scalars(select(Site)).one()
+        alternate_company = session.scalars(
+            select(Company).where(Company.legacy_company_id == 2)
+        ).one()
+        ddk.company_id = alternate_company.id
+        session.flush()
+        assert ddk.company_id != source_site.company_id
+        with pytest.raises(ImportCollisionError, match="company_id"):
+            import_snapshot(
+                session,
+                snapshot,
+                options=ImportExecutionOptions(
+                    ensure_schema=False, reset_existing_data=False,
+                    allow_existing_records=True,
+                ),
+            )
+        assert ddk.company_id == alternate_company.id
+
+
+def test_ddk_matching_original_company_does_not_report_spurious_source_conflict():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    with Session(engine) as session:
+        report = import_snapshot(session, sample_snapshot())
+        assert report["site_owner_company_conflict_count"] == 0
+        assert report["site_owner_company_conflicts"] == []
+
+
 def test_import_snapshot_keeps_ngung_hoat_dong_owned_by_site_only_not_business_eligibility():
     engine = create_engine("sqlite:///:memory:", future=True)
     with Session(engine) as session:

@@ -1238,3 +1238,47 @@ manifest is kept outside GitHub. This update is classification of
 previously existing physical source evidence only, not a fresh
 inspection of an actual issued certificate binary.
 
+## Original db.cso Site-owner classification in Certificate–Case audit (16 Oct 2026)
+
+Read-only source audit backend/app/domain/legacy_certificate_case_source_audit.py
+now records the original db.cso Site -> Company owner for each anomalous
+Certificate anchor, originally linked Case anchor, and any explicitly
+reverse-referencing Case. It classifies distinct Site IDs independently
+from the Company-owner relationship. Duplicate db.cso Site master IDs
+or missing Company IDs yield OWNER_NOT_PROVEN, never a guessed Company.
+No automatic Site or Case rebind and no change to strict source
+importability or existing certificate link classifications.
+
+An independent literal physical XLSB db.cso / db.cc / db.ktra comparison
+(source workbook SHA256
+c12537ea5a5c9f470e42fb5bdbe214f36983e310fceac7c560ad38885209fe3d)
+shows:
+
+- GMP 376 anchor db.cc.Site 73 (source Company 58, USA-NIC),
+  linked Case 378 anchored to Site 72 (Company 57,
+  Hasan-Dermapharm): DISTINCT_SITES_DIFFERENT_SOURCE_COMPANIES.
+  Reverse Case 380 is explicitly referenced to GMP 376 and belongs
+  to Site 73/Company 58 with matching original certificate number.
+  Separate earlier source audit corroborates full scope-text identity,
+  GMP type and plausible chronology. It is a **review candidate**,
+  not an approved Case correction.
+- GMP 1037 and GMP 1180 are anchored at Site 46, whereas
+  linked Case 1023 is anchored at Site 298. Original db.cso assigns
+  **both** Sites to Company 37 (Domesco): distinctly
+  **DISTINCT_SITES_SAME_SOURCE_COMPANY**. Neither Site may be
+  overwritten by the other. Two-Site Case/Certificate coverage remains
+  an explicit unapproved source-evidence workstream.
+- DDK-to-GMP source Site differences for GMP 1064,
+  1308 and 1385 likewise involve two separate db.cso Site
+  IDs, each pair sharing its Site-master Company owner. Their
+  certificate-scope applicability to the DDK's Site remains
+  unverified. Common Company ownership alone is insufficient
+  to grant coverage.
+
+The new source-owner evidence is additive to the existing
+Certificate–Case audit result. It NEVER changes the
+SITE_MISMATCH classification, authorizes remediation, relaxes
+same-Site production link checks or claims a DDK/GxP link.
+No source workbook, canonical Site/Case/Certificate, database,
+NAS, production runtime or Storage Binding was mutated.
+

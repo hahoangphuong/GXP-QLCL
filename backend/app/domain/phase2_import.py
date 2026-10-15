@@ -1638,6 +1638,9 @@ def import_snapshot(
         )
     }
     anomaly_rows: list[dict[str, Any]] = []
+    # db.cso is the canonical owner of Site -> Company, even when an
+    # independent db.dkkd Company FK was entered differently in Excel.
+    site_owner_company_conflicts: list[dict[str, Any]] = []
     skipped_rows: dict[str, list[dict[str, Any]]] = {sheet: [] for sheet in snapshot}
     stats = ImportStats()
 
@@ -2073,25 +2076,28 @@ def import_snapshot(
         if site_id is None:
             skipped_rows["db.dkkd"].append({"legacy_id": legacy_id, "reason": "missing_site_fk", "raw_fk": row.get("site_legacy_id_ref", "")})
             continue
-        company_id = _resolve_legacy_fk(
-            session,
-            stats,
-            resolved_options,
-            anomaly_rows,
-            remediation_overrides,
-            source_sheet="db.dkkd",
-            legacy_row_id=legacy_id,
-            source_row_number_value=row_number,
-            raw_value=row.get("company_legacy_id_ref", ""),
-            reason="missing_company_fk",
-            required_field="ID CTY",
-            target_map=company_ids,
-            confirmed_blanked_row_keys=confirmed_blanked_row_keys,
-            confirmed_blanked_null_key_budgets=confirmed_blanked_null_key_budgets,
-        )
-        if company_id is None:
-            skipped_rows["db.dkkd"].append({"legacy_id": legacy_id, "reason": "missing_company_fk", "raw_fk": row.get("company_legacy_id_ref", "")})
-            continue
+        # Site ID and its owning Company are sourced exclusively from db.cso.
+        # Preserve the original db.dkkd ID CTY in the imported source evidence,
+        # but never let it override canonical Site.company_id.
+        site_owner = session.get(Site, site_id)
+        if site_owner is None or site_owner.company_id is None:
+            raise ImportCollisionError("Resolved db.dkkd Site has no canonical db.cso Company owner")
+        owner_company = session.get(Company, site_owner.company_id)
+        if owner_company is None or owner_company.legacy_company_id is None:
+            raise ImportCollisionError("Canonical db.cso Site owner has no original db.cty identity")
+        company_id = site_owner.company_id
+        source_company_id = parse_int(row.get("company_legacy_id_ref", ""))
+        if source_company_id != owner_company.legacy_company_id:
+            site_owner_company_conflicts.append({
+                "source_sheet": "db.dkkd",
+                "legacy_dkkd_id": legacy_id,
+                "source_row_number": row_number,
+                "site_legacy_id": site_owner.legacy_site_id,
+                "original_ddk_company_legacy_id": source_company_id,
+                "canonical_site_owner_company_legacy_id": owner_company.legacy_company_id,
+                "resolution": "CANONICAL_SITE_OWNER_FROM_DB_CSO",
+                "source_value_unchanged": True,
+            })
         identity_key = _source_identity_key(legacy_id, row_number)
         expected_fields = {
             "legacy_dkkd_id": legacy_id,
@@ -2300,7 +2306,7 @@ def import_snapshot(
 
     _ensure_audit_event(session, stats, options=resolved_options)
     session.flush()
-    return build_reconciliation(
+    report = build_reconciliation(
         session,
         snapshot,
         skipped_rows,
@@ -2308,6 +2314,10 @@ def import_snapshot(
         remediation_overrides or {},
         stats=stats,
     )
+    # Explicit source-vs-canonical reconciliation, not hidden FK normalization.
+    report["site_owner_company_conflicts"] = site_owner_company_conflicts
+    report["site_owner_company_conflict_count"] = len(site_owner_company_conflicts)
+    return report
 
 
 def _load_evaluation_scope_taxonomy(session: Session) -> tuple[dict[str, Any], EvaluationScopeTaxonomyVersion]:

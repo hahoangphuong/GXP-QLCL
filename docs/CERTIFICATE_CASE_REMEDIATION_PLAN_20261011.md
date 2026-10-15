@@ -132,3 +132,47 @@ runtime acceptance. Separately record:
 - 409 remaining on deliberately unresolved cross-Site evidence.
 
 **No automated remediation is currently authorized by this document.**
+
+## Gate-0 rehearsal anchor witness after db.cso authority decision (16 October 2026)
+
+The separate **read-only** tool
+tools/audit_certificate_case_site_owners_rehearsal_readonly.py compares
+existing, source-classified Certificate→Case SITE_MISMATCH rows against
+their **actual** canonical rehearsal Certificate/Case/Site/Company
+identities. Its source anchor is the checked-in versioned legacy snapshot,
+with an explicit snapshot SHA256 in the PRIVATE report; this hash is not
+falsely described as the SHA256 of the physical original XLSB. The
+physical workbook has been independently reconciled in the DDK audit;
+it remains the primary Site/Company ownership authority.
+
+The rehearsal comparison is fail-closed on:
+- Unexpected effective Certificate source population (current accepted
+  mismatch set 376/1037/1180), unapproved source parents, duplicate
+  source legacy IDs and missing original source Site→Company evidence.
+- DB target, role, revision or read-only transaction changing from the
+  strict gxp_legacy_rehearsal target.
+- Certificate's current Site ID, source Case ID, Case's Site/GxP,
+  Site→Company ownership, issuance basis and certificate type drifting
+  from the original legacy source.
+- Reverse-reference Case missing or no longer belonging to the
+  original source Site and Company.
+
+Per actual CertificateVersion the private witness keeps version identity,
+dates, lifecycle state and **only cryptographic hashes** of its ordered
+stored CertificateScope rows. These rows have no Site FK in the
+present canonical model. Even a version with nonempty stored scopes is
+classified **SITE_COVERAGE_NOT_APPROVED**; neither current legal scope
+nor any DDK grant is inferred. Original legacy Case is never rewritten;
+a reverse-reference Case remains a candidate only.
+
+The tool uses one explicit database READ ONLY transaction and
+creates only an owner-private output file mode 0600. No SQL writes,
+migrations, changes to Case/Site/Company/Certificate, DDK links,
+NAS reads, StorageBinding, or runtime deployment are authorized.
+Its result is a **prerequisite for evidence review**, not an approval
+of Gate 1 remediation. For Track A, an issuance document linking the
+actual Certificate to its originating inspection and the data owner's
+signed decision are still missing. For Track B, original per-version
+signed Certificate/annex evidence and the approved multi-Site
+coverage model remain outstanding.
+

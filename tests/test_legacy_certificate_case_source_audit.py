@@ -156,6 +156,59 @@ def test_real_source_snapshot_exposes_all_site_conflicts_without_inventing_remed
     assert all(item["remediation_authorized"] is False for item in effective["effective_anomalies"])
 
 
+def test_physical_site_master_company_exposes_cross_company_vs_multisite_context():
+    snapshot = json.loads(Path("artifacts/phase3c/legacy_snapshot.json").read_text(encoding="utf-8"))
+    report = audit_certificate_case_source_links(snapshot.get("sheets", snapshot))
+    flagged = {
+        x["certificate_legacy_id"]: x["site_master_company_evidence"]
+        for x in report["effective_anomalies"] if x["classification"] == "SITE_MISMATCH"
+    }
+    assert set(flagged) == {376, 1037, 1180}
+    different = flagged[376]
+    assert different["source_owner_relationship"] == "DISTINCT_SITES_DIFFERENT_SOURCE_COMPANIES"
+    assert different["certificate_site_owner_legacy_company_id"] == 58
+    assert different["linked_case_site_owner_legacy_company_id"] == 57
+    assert different["reverse_source_cases"] == [{
+        "case_legacy_id": 380,
+        "source_site_owner_legacy_company_id": 58,
+        "source_owner_relationship_to_certificate": "SAME_SOURCE_SITE",
+    }]
+    for cid in (1037, 1180):
+        same_company = flagged[cid]
+        assert same_company["source_owner_relationship"] == "DISTINCT_SITES_SAME_SOURCE_COMPANY"
+        assert same_company["certificate_site_owner_legacy_company_id"] == 37
+        assert same_company["linked_case_site_owner_legacy_company_id"] == 37
+        assert same_company["case_rebinding_authorized"] is False
+    assert report["database_mutated"] is False
+    assert report["source_modified"] is False
+
+
+def test_source_site_owner_comparison_never_rescues_or_guesses_a_case():
+    snapshot = _snapshot()
+    snapshot["db.cso"] = [
+        {"ID": "10", "ID Cty": "1"},
+        {"ID": "11", "ID Cty": "2"},
+    ]
+    reported = audit_certificate_case_source_links(snapshot)
+    m = next(x for x in reported["effective_anomalies"] if x["certificate_legacy_id"] == 3)
+    assert m["classification"] == "SITE_MISMATCH"
+    owner = m["site_master_company_evidence"]
+    assert owner["source_owner_relationship"] == "DISTINCT_SITES_DIFFERENT_SOURCE_COMPANIES"
+    assert owner["certificate_site_owner_legacy_company_id"] == 1
+    assert owner["linked_case_site_owner_legacy_company_id"] == 2
+    assert owner["case_rebinding_authorized"] is False
+    snapshot["db.cso"][1]["ID Cty"] = "1"
+    same = audit_certificate_case_source_links(snapshot)
+    m = next(x for x in same["effective_anomalies"] if x["certificate_legacy_id"] == 3)
+    assert m["site_master_company_evidence"]["source_owner_relationship"] == "DISTINCT_SITES_SAME_SOURCE_COMPANY"
+    assert m["classification"] == "SITE_MISMATCH"
+    snapshot["db.cso"].append({"ID": "11", "ID Cty": "1"})
+    ambiguous = audit_certificate_case_source_links(snapshot)
+    m = next(x for x in ambiguous["effective_anomalies"] if x["certificate_legacy_id"] == 3)
+    assert m["site_master_company_evidence"]["source_owner_relationship"] == "DISTINCT_SITES_COMPANY_OWNER_NOT_PROVEN"
+    assert m["classification"] == "SITE_MISMATCH"
+
+
 def test_confirmed_blanked_filter_changes_only_effective_counts():
     snapshot = _snapshot()
     raw = audit_certificate_case_source_links(snapshot)

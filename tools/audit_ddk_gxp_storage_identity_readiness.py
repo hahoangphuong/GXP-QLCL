@@ -27,6 +27,9 @@ from tools.audit_ddk_gxp_canonical_candidates_readonly import _write_private_jso
 from tools.build_ddk_gxp_manual_review_queue import (
     _private_input, build_review_queue,
 )
+from tools.reconcile_ddk_site_owner_company_rehearsal import (
+    classify_source_ddk_company_vs_site_owner,
+)
 from tools.env_utils import parse_env_file
 from tools.preflight_ddk_gxp_rehearsal import EXPECTED_DB, EXPECTED_REVISION
 
@@ -95,6 +98,11 @@ def profile_storage_lookup_inputs(session: Session, queue: dict[str, Any]) -> di
              and len(tokens) == queue.get("source_exception_token_records")
              and len(companies) == queue.get("ddk_company_review_records"),
              "Private review queue cardinality changed")
+    company_source_reviews = {
+        item["original_company_exception_evidence"]["legacy_dkkd_id"]:
+            item["original_company_exception_evidence"]
+        for item in companies
+    }
     ddks = {
         x.legacy_dkkd_id: x for x in session.scalars(
             select(BusinessEligibilityCertificate)
@@ -133,14 +141,19 @@ def profile_storage_lookup_inputs(session: Session, queue: dict[str, Any]) -> di
         legacy_ddk_id = original.get("legacy_dkkd_id")
         _require(type(legacy_ddk_id) is int, "Missing original DDK ID")
         ddk = ddks.get(legacy_ddk_id)
-        _require(ddk is not None and ddk.site_id == original.get("ddk_site_id")
-                 and ddk.company_id == original.get("ddk_company_id"),
-                 "Canonical DDK Site/Company changed since private source audit")
-        if company is not None:
-            _require(ddk.id == company.get("canonical_business_eligibility_certificate_id"),
-                     "Company exception DDK canonical identity changed")
+        _require(ddk is not None, "Canonical DDK original identity missing")
         ddk_site = sites.get(ddk.site_id)
         _require(ddk_site is not None, "DDK site canonical identity missing")
+        company_state = classify_source_ddk_company_vs_site_owner(
+            ddk_id=ddk.id, ddk_legacy_id=legacy_ddk_id,
+            ddk_site_id=ddk.site_id,
+            canonical_company_id=ddk.company_id,
+            source_company_id=original.get("ddk_company_id"),
+            source_site_id=original.get("ddk_site_id"),
+            site_owner_company_id=ddk_site.company_id,
+            company_review=company_source_reviews.get(legacy_ddk_id),
+        )
+        counts["DDK_COMPANY_" + company_state] += 1
         unique_ddk.add(ddk.id)
         ddk_site_key = ddk_site.legacy_site_id
         ddk_class = (

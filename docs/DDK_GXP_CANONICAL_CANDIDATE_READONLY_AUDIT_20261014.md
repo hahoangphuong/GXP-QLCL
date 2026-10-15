@@ -1185,3 +1185,56 @@ distinct source GMP Certificates. Preserve each db.cso Site identity.
 The presence of textual two-Site headings in db.cc source alone is
 insufficient to approve site-level regulatory certification. No
 cross-site canonical link or Site reassignment is authorized.
+
+## Five-Certificate Site/Coverage evidence queue after owner correction (16 Oct 2026)
+
+Using the previously read and independently source-validated physical XLSB
+exception manifest, the seven STILL-UNAPPROVED Site/Certificate or
+Certificate/Case tokens were regrouped by source GMP Certificate ID.
+This is 7 physical db.dkkd source token positions, but only 5 distinct
+GMP Certificates. All seven source DDK Site-to-Company pairs were already
+consistent with db.cso; the single resolved Company owner correction
+(DDK 626) is separate from this seven-token queue.
+
+The five distinct GMP Certificate review classes are:
+
+- **GMP 376 / DDK 188**: Certificate anchored to Site 73, Case source
+  anchored to Site 72; DDK Site 73. No paired source "Cơ sở 1/2"
+  headings in both certificate address and scope cells.
+  Case-to-Certificate origin needs independent issued-record validation;
+  do NOT change either Site ID.
+- **GMP 1308 / DDK 597**: Certificate/Case anchored to Site 69,
+  DDK anchored to Site 70. No paired "Cơ sở 1/2" headings in
+  both source address and scope cells. Verify DDK-specific legal
+  coverage; absence of headings is NOT proof of single-Site coverage.
+- **GMP 1064 / DDK 439 and 731**: source Certificate/Case anchored to
+  Site 20, both DDKs anchored to Site 21. Both Certificate address
+  and scope contain paired Site labels. One source Certificate review,
+  TWO independent DDK coverage decisions, neither approved.
+- **GMP 1180 / DDK 511 and 512**: Certificate source anchored to
+  Site 46 and original Case 1023 anchored to Site 298. DDKs are
+  independently anchored to Site 46 and Site 298 respectively.
+  Paired Site text headings are present in source address and scope.
+  Both source Site identities remain distinct. NAS custody remains
+  unresolved and is not a shortcut for certification evidence.
+- **GMP 1385 / DDK 719**: source Certificate/Case anchored to Site 90,
+  DDK anchored to Site 369; paired Site text headings exist. Scope
+  and Site coverage require independent issued-version review.
+
+Totals: THREE of five source Certificates have the two-Site textual
+signal in BOTH address and scope source cells, TWO do not.
+The five source Certificates have NOT been proven to legally certify
+the different DDK Sites. Exact issued-version source, original signed
+certificate/annex, Site-local scope and Case-to-certificate provenance
+are required for each appropriate review. No Company-identity
+merging, Site re-key, Case rebinding, source rewrite, Site coverage
+assertion, DDK/GxP link approval or database mutation is implied.
+
+The offline source grouping was tested against deliberately altered
+source workbook SHA, approval state, Site flags, Company ownership,
+source token uniqueness, Certificate/Case consistency and multi-Site
+source text signals: all fail closed. A separate protected per-Certificate
+manifest is kept outside GitHub. This update is classification of
+previously existing physical source evidence only, not a fresh
+inspection of an actual issued certificate binary.
+

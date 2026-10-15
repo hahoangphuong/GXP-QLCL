@@ -40,6 +40,41 @@ def audit_certificate_case_source_links(
         if reverse_certificate_id is not None and legacy_case_id is not None:
             reverse_case_references[reverse_certificate_id].append(row)
 
+    # Source-of-truth for Company ownership is db.cso.ID -> db.cso.ID Cty,
+    # not the Company on db.cc, db.ktra, db.dkkd or a coincident certificate.
+    # An ambiguous or unresolvable source master Site is NOT proof of
+    # ownership. This source-only witness never changes any Case or Site.
+    source_site_company_rows: dict[int, list[int | None]] = defaultdict(list)
+    for raw_site in snapshot.get("db.cso", []):
+        row = normalize_row(raw_site)
+        site_id = parse_int(row.get("ID"))
+        if site_id is not None:
+            source_site_company_rows[site_id].append(
+                parse_int(row.get("company_legacy_id_ref"))
+            )
+    source_site_owner = {
+        site_id: companies[0] if len(companies) == 1 else None
+        for site_id, companies in source_site_company_rows.items()
+    }
+
+    def source_owner_classification(
+        certificate_site: int | None,
+        other_site: int | None,
+    ) -> str:
+        if certificate_site is None or other_site is None:
+            return "SOURCE_SITE_ID_INCOMPLETE"
+        if certificate_site == other_site:
+            return "SAME_SOURCE_SITE"
+        left, right = (
+            source_site_owner.get(certificate_site),
+            source_site_owner.get(other_site),
+        )
+        if left is None or right is None:
+            return "DISTINCT_SITES_COMPANY_OWNER_NOT_PROVEN"
+        if left == right:
+            return "DISTINCT_SITES_SAME_SOURCE_COMPANY"
+        return "DISTINCT_SITES_DIFFERENT_SOURCE_COMPANIES"
+
     # _validate_snapshot_source_keys rejects duplicates across *every* source
     # sheet before schema creation, not merely db.cc. Mirror that structural
     # preflight so a standalone --strict source audit cannot report false-clean
@@ -267,6 +302,29 @@ def audit_certificate_case_source_links(
             "certificate_gxp_type": certificate_gxp,
             "linked_case_gxp_type": linked_case_gxp,
             "excluded_confirmed_blanked": is_excluded,
+            # Classification based on the physical Site master, not on
+            # coincident certificate/company name or any downstream rescue.
+            "site_master_company_evidence": {
+                "certificate_site_owner_legacy_company_id": source_site_owner.get(certificate_site),
+                "linked_case_site_owner_legacy_company_id": source_site_owner.get(linked_case_site),
+                "source_owner_relationship": source_owner_classification(
+                    certificate_site, linked_case_site
+                ),
+                "reverse_source_cases": sorted([
+                    {
+                        "case_legacy_id": parse_int(row.get("ID")),
+                        "source_site_owner_legacy_company_id": source_site_owner.get(
+                            parse_int(row.get("site_legacy_id_ref"))
+                        ),
+                        "source_owner_relationship_to_certificate": source_owner_classification(
+                            certificate_site, parse_int(row.get("site_legacy_id_ref"))
+                        ),
+                    }
+                    for row in reverse_case_references.get(certificate_legacy_id, [])
+                ], key=lambda item: (item["case_legacy_id"] is None, item["case_legacy_id"] or 0)),
+                "site_owner_is_authoritative_source": "db.cso",
+                "case_rebinding_authorized": False,
+            },
             "reverse_case_reference_evidence": sorted(
                 reverse_evidence, key=lambda item: item["case_legacy_id"]
             ),

@@ -1137,3 +1137,51 @@ remain NOT_APPROVED. This change does not modify or approve the
 previously unresolved NAS folder identity.
 
 No production migration, deploy or direct mutation is part of this PR.
+
+## Operator-verified db.cso Company correction on rehearsal (16 Oct 2026)
+
+The operator supplied a complete terminal record of the pinned,
+exact-HEAD, required-CI-verified and protected-source-verified
+rehearsal correction. Original script SHA256 was restored after
+CRLF-to-LF-only conversion and checked against
+74547cd72f8eb56841cd165e4373042547f97d89f51f681111f2f5b27e644d0b.
+GitHub source HEAD 30b0465e201f12e8eb499a6d47afdb8e68604e69,
+required-CI run 38789920326 SUCCESS.
+
+--plan before apply: PASS, one canonical DDK Company mismatch,
+NEEDS_ONE_CANONICAL_COMPANY_CORRECTION; no database writes.
+
+--apply: PASS, one canonical Company row updated,
+REHEARSAL_CANONICAL_SITE_OWNER_COMPANY_APPLY, followed by a
+read-only ALL_DDK_COMPANY_IDS_NOW_MATCH_THEIR_SITE_OWNER postcheck.
+Only BusinessEligibilityCertificate.company_id belonging to the
+original reviewed source exception could be changed, toward the
+authoritative Site.company_id from physical db.cso. This execution
+was on gxp_legacy_rehearsal, not production.
+
+An independent second --plan: PASS, zero remaining canonical
+DDK/Site Company mismatches,
+ALREADY_ALIGNED_SOURCE_CONFLICT_RETAINED and ZERO_WRITES.
+No Company merge, Case/Site/Certificate rebinding, NAS mutation,
+source Excel rewrite, link approval or deployment is claimed.
+
+This is a **completed canonical owner correction** for the originally
+observed DDK 626 / Site 313 source exception: original db.dkkd
+Company 280 remains immutable source evidence, while the site master
+db.cso points to Company 112. The two legacy Company identities
+remain distinct.
+
+This postflight does not certify or approve the source GMP 1182
+relationship and does not resolve the other seven flagged source
+tokens. Never regenerate the frozen historical source-exception
+dossier only from a post-correction DDK canonical Company field;
+that field now intentionally differs from the physical db.dkkd ID CTY.
+Current source evidence and canonical alignment are separate truths.
+
+**Next gate:** independently review *certificate-level, version-specific*
+Site coverage and actual Case-to-Certificate link provenance for the
+seven cross-Site or Certificate-to-Case source tokens, grouped by five
+distinct source GMP Certificates. Preserve each db.cso Site identity.
+The presence of textual two-Site headings in db.cc source alone is
+insufficient to approve site-level regulatory certification. No
+cross-site canonical link or Site reassignment is authorized.

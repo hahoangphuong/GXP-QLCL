@@ -20,12 +20,15 @@ from sqlalchemy.pool import NullPool
 
 from backend.app.db.models.phase1 import (
     BusinessEligibilityCertificate, Case, Certificate,
-    Document, DocumentVariant, DocumentVersion,
+    Document, DocumentVariant, DocumentVersion, Site,
 )
 from tools.apply_ddk_gxp_provenance_rehearsal import checked_rehearsal_url
 from tools.audit_ddk_gxp_canonical_candidates_readonly import _write_private_json
 from tools.build_ddk_gxp_manual_review_queue import (
     _private_input, build_review_queue, SCHEMA as QUEUE_SCHEMA,
+)
+from tools.reconcile_ddk_site_owner_company_rehearsal import (
+    classify_source_ddk_company_vs_site_owner,
 )
 from tools.env_utils import parse_env_file
 from tools.preflight_ddk_gxp_rehearsal import EXPECTED_DB, EXPECTED_REVISION
@@ -75,6 +78,16 @@ def scan_document_metadata(session: Session, queue: dict[str, Any]) -> dict[str,
                 BusinessEligibilityCertificate.legacy_dkkd_id.in_(legacy_ddk_ids)
             )
         )
+    }
+    owner_sites = {
+        x.id: x for x in session.scalars(
+            select(Site).where(Site.id.in_({d.site_id for d in canonical_ddks.values()}))
+        )
+    }
+    company_source_reviews = {
+        x["original_company_exception_evidence"]["legacy_dkkd_id"]:
+            x["original_company_exception_evidence"]
+        for x in company_reviews
     }
     candidate_certificate_ids = {
         x["original_exception_evidence"]["observed_certificate_id"]
@@ -137,9 +150,21 @@ def scan_document_metadata(session: Session, queue: dict[str, Any]) -> dict[str,
         if token is not None:
             legacy_id = token["legacy_dkkd_id"]
             ddk = canonical_ddks.get(legacy_id)
-            if (ddk is None or ddk.site_id != token.get("ddk_site_id")
-                    or ddk.company_id != token.get("ddk_company_id")):
-                raise DocumentCoverageBlocked("Canonical DDK source identity changed")
+            if ddk is None:
+                raise DocumentCoverageBlocked("Canonical DDK source identity missing")
+            site = owner_sites.get(ddk.site_id)
+            if site is None:
+                raise DocumentCoverageBlocked("Canonical DDK Site owner missing")
+            state = classify_source_ddk_company_vs_site_owner(
+                ddk_id=ddk.id, ddk_legacy_id=legacy_id,
+                ddk_site_id=ddk.site_id,
+                canonical_company_id=ddk.company_id,
+                source_company_id=token.get("ddk_company_id"),
+                source_site_id=token.get("ddk_site_id"),
+                site_owner_company_id=site.company_id,
+                company_review=company_source_reviews.get(legacy_id),
+            )
+            counts["DDK_COMPANY_" + state] += 1
             cert_id = token.get("observed_certificate_id")
             if cert_id is not None:
                 cert = certificates.get(cert_id)
@@ -166,11 +191,21 @@ def scan_document_metadata(session: Session, queue: dict[str, Any]) -> dict[str,
             if not isinstance(company, dict):
                 raise DocumentCoverageBlocked("Unknown private review kind")
             ddk = canonical_ddks.get(company["legacy_dkkd_id"])
-            if (ddk is None
-                    or ddk.id != company["canonical_business_eligibility_certificate_id"]
-                    or ddk.company_id != company["ddk_company_id"]
-                    or ddk.site_id != company["ddk_site_id"]):
-                raise DocumentCoverageBlocked("DDK owning-company review identity changed")
+            if ddk is None:
+                raise DocumentCoverageBlocked("DDK owning-company review missing")
+            site = owner_sites.get(ddk.site_id)
+            if site is None:
+                raise DocumentCoverageBlocked("DDK owning-company Site owner missing")
+            state = classify_source_ddk_company_vs_site_owner(
+                ddk_id=ddk.id, ddk_legacy_id=company["legacy_dkkd_id"],
+                ddk_site_id=ddk.site_id,
+                canonical_company_id=ddk.company_id,
+                source_company_id=company["ddk_company_id"],
+                source_site_id=company["ddk_site_id"],
+                site_owner_company_id=site.company_id,
+                company_review=company,
+            )
+            counts["DDK_COMPANY_" + state] += 1
             targets = {"DDK": ddk.id, "CERTIFICATE": None, "ORIGINATING_CASE": None}
 
         row = {

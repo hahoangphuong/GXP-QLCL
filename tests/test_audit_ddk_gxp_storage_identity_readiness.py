@@ -76,6 +76,7 @@ def test_ready_inputs_do_not_claim_storage_was_resolved(tmp_path):
     assert report["review_records"] == 1
     assert report["lookup_input_classification_counts"] == {
         "DDK_SITE_IDENTITY_INPUT_AVAILABLE_UNPROBED":1,
+        "DDK_COMPANY_SOURCE_AND_CANONICAL_SITE_OWNER_AGREE":1,
         "CERTIFICATE_SITE_ID_AVAILABLE_REFERENCE_ONLY":1,
         "CASE_LOOKUP_INPUT_AVAILABLE_UNPROBED":1,
         "CASE_ANCHOR_REGISTRATION_SOURCE_YEAR_USABLE":1,

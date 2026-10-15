@@ -218,6 +218,7 @@ def run(database_url: str, dossier: dict[str, Any], *, apply: bool) -> dict[str,
                         BusinessEligibilityCertificate,
                         report["private_target_ddk_id"],
                         with_for_update=True,
+                        populate_existing=True,
                     )
                     _check(
                         ddk is not None

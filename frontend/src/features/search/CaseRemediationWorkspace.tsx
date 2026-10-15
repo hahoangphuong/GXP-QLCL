@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
@@ -167,6 +167,7 @@ export function CaseRemediationWorkspace({
   const [pendingAction, setPendingAction] = useState<"create" | "update" | "submit" | "assess" | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const hydratedCycleVersionKey = useRef(selectedCycleVersionKey);
+  const cycleOperationOwner = useRef({ key: selectedCycleVersionKey, generation: 0 });
 
   useEffect(() => {
     if (effectiveSelectedCycleId !== selectedCycleId) {
@@ -174,19 +175,27 @@ export function CaseRemediationWorkspace({
     }
   }, [effectiveSelectedCycleId, onSelectedCycleChange, selectedCycleId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (cycleOperationOwner.current.key !== selectedCycleVersionKey) {
+      cycleOperationOwner.current = {
+        key: selectedCycleVersionKey,
+        generation: cycleOperationOwner.current.generation + 1,
+      };
+      setPendingAction(null);
+    }
     const cycleVersionChanged = hydratedCycleVersionKey.current !== selectedCycleVersionKey;
-    if (!isCreating && (cycleVersionChanged || !editingField)) {
-      setDraft(currentDraft);
-      setErrorMessage(null);
-      if (cycleVersionChanged) {
-        setEditingField(null);
-      }
+    if (isCreating || !cycleVersionChanged) {
+      return;
     }
-    if (!isCreating) {
-      hydratedCycleVersionKey.current = selectedCycleVersionKey;
-    }
-  }, [currentDraft, editingField, isCreating, selectedCycleVersionKey]);
+    hydratedCycleVersionKey.current = selectedCycleVersionKey;
+    setDraft(currentDraft);
+    setErrorMessage(null);
+    setEditingField(null);
+  }, [currentDraft, isCreating, selectedCycleVersionKey]);
+
+  function isCurrentCycleOperation(owner: { key: string; generation: number }): boolean {
+    return cycleOperationOwner.current === owner;
+  }
 
   const createAvailable = isActionAvailable(caseWorkspace, "create_capa_cycle");
   const updateAvailable = isActionAvailable(caseWorkspace, "update_capa_cycle", selectedCycle?.capa_cycle_id);
@@ -222,6 +231,7 @@ export function CaseRemediationWorkspace({
     if (!selectedCycle || !editingField || isPending) {
       return;
     }
+    const operationOwner = cycleOperationOwner.current;
     setPendingAction("update");
     setErrorMessage(null);
     try {
@@ -231,12 +241,18 @@ export function CaseRemediationWorkspace({
         requested_on: normalizeText(draft.requested_on),
         notes: normalizeText(draft.notes),
       });
-      setEditingField(null);
+      if (isCurrentCycleOperation(operationOwner)) {
+        setEditingField(null);
+      }
     } catch (error) {
-      const nextError = error instanceof Error ? error : new Error("Không lưu được vòng khắc phục.");
-      setErrorMessage(getCycleErrorMessage(nextError));
+      if (isCurrentCycleOperation(operationOwner)) {
+        const nextError = error instanceof Error ? error : new Error("Không lưu được vòng khắc phục.");
+        setErrorMessage(getCycleErrorMessage(nextError));
+      }
     } finally {
-      setPendingAction(null);
+      if (isCurrentCycleOperation(operationOwner)) {
+        setPendingAction(null);
+      }
     }
   }
 
@@ -244,6 +260,7 @@ export function CaseRemediationWorkspace({
     if (!selectedCycle || isPending) {
       return;
     }
+    const operationOwner = cycleOperationOwner.current;
     setPendingAction("submit");
     setErrorMessage(null);
     try {
@@ -253,10 +270,14 @@ export function CaseRemediationWorkspace({
         notes: normalizeText(draft.notes),
       });
     } catch (error) {
-      const nextError = error instanceof Error ? error : new Error("Không ghi nhận được tiếp nhận khắc phục.");
-      setErrorMessage(getSubmitErrorMessage(nextError));
+      if (isCurrentCycleOperation(operationOwner)) {
+        const nextError = error instanceof Error ? error : new Error("Không ghi nhận được tiếp nhận khắc phục.");
+        setErrorMessage(getSubmitErrorMessage(nextError));
+      }
     } finally {
-      setPendingAction(null);
+      if (isCurrentCycleOperation(operationOwner)) {
+        setPendingAction(null);
+      }
     }
   }
 
@@ -264,6 +285,7 @@ export function CaseRemediationWorkspace({
     if (!selectedCycle || isPending) {
       return;
     }
+    const operationOwner = cycleOperationOwner.current;
     setPendingAction("assess");
     setErrorMessage(null);
     try {
@@ -274,10 +296,14 @@ export function CaseRemediationWorkspace({
         notes: normalizeText(draft.notes),
       });
     } catch (error) {
-      const nextError = error instanceof Error ? error : new Error("Không đánh giá được vòng khắc phục.");
-      setErrorMessage(getAssessErrorMessage(nextError));
+      if (isCurrentCycleOperation(operationOwner)) {
+        const nextError = error instanceof Error ? error : new Error("Không đánh giá được vòng khắc phục.");
+        setErrorMessage(getAssessErrorMessage(nextError));
+      }
     } finally {
-      setPendingAction(null);
+      if (isCurrentCycleOperation(operationOwner)) {
+        setPendingAction(null);
+      }
     }
   }
 

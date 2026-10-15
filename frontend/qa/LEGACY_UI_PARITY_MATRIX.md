@@ -1182,6 +1182,31 @@ No timeout increase, disabled test, backend change or draft/mutation handler
 change. Existing non-failing React act warnings remain. Diff is frontend-only;
 there is no database, storage, RBAC or concurrency-contract impact.
 
+### CAPA draft hydration stability follow-up — 2026-10-16
+
+Baseline `01416846c9d24ba476479c0d0bf5f2f7527f5bad` could overwrite command
+input after an unrelated field editor closed because the passive hydration effect
+reset the complete draft whenever no field was being edited, even when the
+canonical CAPA cycle and `row_version` were unchanged. The same effect boundary
+also allowed a superseded cycle-A mutation response to publish after an external
+A → B → A selection sequence.
+
+Hydration is now committed before paint only when the selected canonical
+`capa_cycle_id:row_version` changes. Each such transition advances an operation
+generation, so late update/submit/assess completion can no longer publish pending
+state or errors into the replacement selection. Same-version rerenders preserve
+input; a new server version intentionally rehydrates; 403/409/422 on the current
+cycle preserve the draft and remain single-attempt mutations. This is an
+interaction-stability correction only; legacy presentation and business/API
+contracts are unchanged.
+
+Regression evidence: the editor-close test failed on baseline with
+`submitted_on` reset from `2026-09-05` to empty and passes after the owner fix.
+Controlled A → B → A tests cover both late update and late submit conflicts.
+The final CAPA file passes 14/14 in three independent runs, and the exact App
+integration test from workflow `38789920326` passes 10/10 independent runs
+without sleeps, retries, timeout changes or relaxed assertions.
+
 ## Actual inspection visual/interaction slice — 2026-10-11
 
 Baseline: 39e80378b71d5cf48d50ebfcc5c509ad2ef4a551. Supplied runtime image 2

@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CaseWorkspace, CaseWorkspaceRemediationCycle, LifecycleActionReadiness } from "../../types";
@@ -31,6 +31,16 @@ function action(actionKey: string, available = true, expectedVersion: number | n
     required_permissions: ["capa.edit"],
     expected_version: expectedVersion,
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
 }
 
 function workspace(
@@ -155,6 +165,30 @@ describe("CaseRemediationWorkspace backend-owned lifecycle actions", () => {
     await waitFor(() => expect(view.handlers.onAssessCycle).toHaveBeenCalledWith("capa-1", expect.objectContaining({ expected_version: 2, assessed_on: "2026-09-06", result: "Đạt", notes: "Bản nháp của người dùng" })));
   });
 
+  it("keeps command input when an unrelated field editor closes without a new cycle version", async () => {
+    const actions = [action("update_capa_cycle:capa-1"), action("submit_capa_cycle:capa-1")];
+    const view = renderWorkspace(workspace([cycle()], actions));
+
+    fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-05" } });
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Số tham chiếu đến" }));
+    fireEvent.change(screen.getByLabelText("Số tham chiếu đến"), { target: { value: "CV-02" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu Số CV đến" }));
+
+    await waitFor(() => expect(view.handlers.onUpdateCycle).toHaveBeenCalledWith("capa-1", expect.objectContaining({
+      expected_version: 2,
+      incoming_reference: "CV-02",
+    })));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Lưu Số CV đến" })).not.toBeInTheDocument());
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByLabelText("Ngày ghi nhận tiếp nhận")).toHaveValue("2026-09-05");
+
+    fireEvent.click(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" }));
+    await waitFor(() => expect(view.handlers.onSubmitCycle).toHaveBeenCalledWith("capa-1", expect.objectContaining({
+      expected_version: 2,
+      submitted_on: "2026-09-05",
+    })));
+  });
+
   it("rehydrates on an intentional selected-cycle change and never carries cycle A input to cycle B", () => {
     const first = cycle({ capa_cycle_id: "capa-1", submitted_on: null });
     const second = cycle({ capa_cycle_id: "capa-2", row_version: 4, round_no: 2, submitted_on: "2026-09-08", notes: "Cycle B" });
@@ -173,6 +207,66 @@ describe("CaseRemediationWorkspace backend-owned lifecycle actions", () => {
     );
     expect(screen.getByRole("heading", { name: "Chi tiết vòng khắc phục 2" })).toBeInTheDocument();
     expect(screen.getByLabelText("Ngày ghi nhận tiếp nhận")).toHaveValue("2026-09-08");
+
+    view.rerender(
+      <CaseRemediationWorkspace
+        caseWorkspace={workspace([first, second], [action("submit_capa_cycle:capa-1"), action("submit_capa_cycle:capa-2", true, 4)])}
+        selectedCycleId="capa-1"
+        {...view.handlers}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Chi tiết vòng khắc phục 1" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Ngày ghi nhận tiếp nhận")).toHaveValue("");
+  });
+
+  it("ignores a late cycle-A conflict after an external A → B → A selection sequence", async () => {
+    const pending = deferred<void>();
+    const first = cycle({ capa_cycle_id: "capa-1", submitted_on: null });
+    const second = cycle({ capa_cycle_id: "capa-2", row_version: 4, round_no: 2, submitted_on: "2026-09-08", incoming_reference: "CV-B" });
+    const actions = [
+      action("update_capa_cycle:capa-1"),
+      action("submit_capa_cycle:capa-1"),
+      action("update_capa_cycle:capa-2", true, 4),
+      action("submit_capa_cycle:capa-2", true, 4),
+    ];
+    const view = renderWorkspace(workspace([first, second], actions), "capa-1");
+    view.handlers.onUpdateCycle.mockImplementation(() => pending.promise);
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Số tham chiếu đến" }));
+    fireEvent.change(screen.getByLabelText("Số tham chiếu đến"), { target: { value: "CV-A draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu Số CV đến" }));
+    expect(view.handlers.onUpdateCycle).toHaveBeenCalledOnce();
+
+    view.rerender(<CaseRemediationWorkspace caseWorkspace={workspace([first, second], actions)} selectedCycleId="capa-2" {...view.handlers} />);
+    expect(screen.getByRole("heading", { name: "Chi tiết vòng khắc phục 2" })).toBeInTheDocument();
+    view.rerender(<CaseRemediationWorkspace caseWorkspace={workspace([first, second], actions)} selectedCycleId="capa-1" {...view.handlers} />);
+    expect(screen.getByRole("heading", { name: "Chi tiết vòng khắc phục 1" })).toBeInTheDocument();
+
+    await act(async () => pending.reject(Object.assign(new Error("late A conflict"), { status: 409 })));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Ngày ghi nhận tiếp nhận")).toHaveValue("");
+    expect(view.handlers.onUpdateCycle).toHaveBeenCalledOnce();
+  });
+
+  it("does not publish a late submit conflict or old draft after A → B → A", async () => {
+    const pending = deferred<void>();
+    const first = cycle({ capa_cycle_id: "capa-1", submitted_on: null });
+    const second = cycle({ capa_cycle_id: "capa-2", row_version: 4, round_no: 2, submitted_on: null });
+    const actions = [action("submit_capa_cycle:capa-1"), action("submit_capa_cycle:capa-2", true, 4)];
+    const view = renderWorkspace(workspace([first, second], actions), "capa-1");
+    view.handlers.onSubmitCycle.mockImplementation(() => pending.promise);
+
+    fireEvent.change(screen.getByLabelText("Ngày ghi nhận tiếp nhận"), { target: { value: "2026-09-05" } });
+    fireEvent.click(screen.getByRole("button", { name: "Ghi nhận tiếp nhận" }));
+    expect(view.handlers.onSubmitCycle).toHaveBeenCalledOnce();
+
+    view.rerender(<CaseRemediationWorkspace caseWorkspace={workspace([first, second], actions)} selectedCycleId="capa-2" {...view.handlers} />);
+    view.rerender(<CaseRemediationWorkspace caseWorkspace={workspace([first, second], actions)} selectedCycleId="capa-1" {...view.handlers} />);
+    await act(async () => pending.reject(Object.assign(new Error("late submit conflict"), { status: 409 })));
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Ngày ghi nhận tiếp nhận")).toHaveValue("");
+    expect(view.handlers.onSubmitCycle).toHaveBeenCalledOnce();
   });
 
   it("rehydrates command input after a successful mutation returns a newer server version", async () => {

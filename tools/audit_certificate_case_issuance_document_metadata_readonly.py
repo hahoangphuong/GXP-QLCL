@@ -21,7 +21,7 @@ from sqlalchemy import create_engine, or_, select, text
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
-from backend.app.db.models.phase1 import Document, DocumentVariant, DocumentVersion
+from backend.app.db.models.phase1 import Case, Certificate, Document, DocumentVariant, DocumentVersion
 from backend.app.domain.legacy_certificate_case_source_audit import (
     audit_certificate_case_source_links,
 )
@@ -119,6 +119,32 @@ def scan_issuance_document_metadata(
         })
     _require(len(cert_ids) == len(target_rows),
              "Two legacy Certificates share one canonical identity")
+    _require(
+        anchor.get("reverse_case_candidate_count") ==
+            sum(len(item["reverse_case_review_candidates"]) for item in details),
+        "Reverse source Case candidate count changed",
+    )
+    # Metadata alone does not imply the target Document belongs to a current
+    # source Case. Re-bind UUIDs to the verified legacy identifiers in the
+    # SAME read-only transaction; never repair or substitute a mismatched FK.
+    for item in details:
+        canonical_cert = session.get(Certificate, item["certificate_id"])
+        canonical_case = session.get(Case, item["original_linked_case_id"])
+        _require(
+            canonical_cert is not None
+            and canonical_cert.legacy_certificate_id == item["legacy_certificate_id"]
+            and canonical_cert.case_id == item["original_linked_case_id"]
+            and canonical_case is not None
+            and canonical_case.legacy_inspection_id == item["original_case_legacy_id"],
+            "Certificate/source Case canonical identity changed",
+        )
+        for reverse in item["reverse_case_review_candidates"]:
+            candidate = session.get(Case, reverse["case_id"])
+            _require(
+                candidate is not None
+                and candidate.legacy_inspection_id == reverse["legacy_case_id"],
+                "Reverse Case candidate canonical identity changed",
+            )
 
     clauses = [Document.certificate_id.in_(cert_ids), Document.case_id.in_(case_ids)]
     documents = list(session.scalars(select(Document).where(or_(*clauses))))

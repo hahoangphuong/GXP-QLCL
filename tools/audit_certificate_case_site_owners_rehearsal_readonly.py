@@ -33,6 +33,9 @@ from tools.preflight_ddk_gxp_rehearsal import EXPECTED_DB, EXPECTED_REVISION
 
 SCHEMA = "GXP_CERTIFICATE_CASE_SOURCE_SITE_REHEARSAL_WITNESS_V1"
 EXPECTED_SOURCE_CERTIFICATES = frozenset((376, 1037, 1180))
+# Pinned snapshot bytes witnessed independently on gxp-web-prod (2026-10-16).
+# Snapshot export SHA is not the physical original XLSB SHA.
+EXPECTED_SNAPSHOT_SHA256 = "b3bde05963e4e4d14d5b244e7c62b0f810f1cbbe206750574def6a366bdf7296"
 
 
 class CertificateCaseWitnessBlocked(ValueError):
@@ -161,8 +164,28 @@ def compare_source_to_rehearsal(
         _check(owners["source_owner_relationship"] == expected_relation,
                "Source-to-canonical Site owner relationship changed")
         counters[expected_relation] += 1
+        # Both reverse-reference projections originate at db.ktra, but serve
+        # independent purposes: Site-master ownership vs literal issuance
+        # corroboration. Bind them one-to-one, not just by a common Case ID.
+        source_reverses = owners.get("reverse_source_cases")
+        original_reverses = item.get("reverse_case_reference_evidence")
+        _check(isinstance(source_reverses, list)
+               and isinstance(original_reverses, list),
+               "Missing original reverse-case evidence")
+        reverse_evidence_by_id = {
+            row.get("case_legacy_id"): row for row in original_reverses
+        }
+        _check(
+            len(reverse_evidence_by_id) == len(original_reverses)
+            and all(type(x) is int for x in reverse_evidence_by_id)
+            and {x.get("case_legacy_id") for x in source_reverses} ==
+                set(reverse_evidence_by_id)
+            and len(source_reverses) == len(reverse_evidence_by_id),
+            "Reverse Case source projections are inconsistent/duplicated",
+        )
         alt_cases = []
-        for reverse in owners.get("reverse_source_cases", []):
+        for reverse in source_reverses:
+            literal = reverse_evidence_by_id[reverse["case_legacy_id"]]
             reverse_case = by_case[reverse["case_legacy_id"]]
             reverse_site = next(
                 (s for s in sites if s.id == reverse_case.site_id), None
@@ -178,7 +201,31 @@ def compare_source_to_rehearsal(
             )
             _check(reverse["source_owner_relationship_to_certificate"] == reverse_relation,
                    "Reverse-source Case Site changed")
+            _check(
+                literal.get("site_legacy_id") == reverse_site.legacy_site_id
+                and literal.get("gxp_type") == reverse_case.gxp_type
+                and type(literal.get("same_certificate_site_and_type")) is bool
+                and type(literal.get("same_nonblank_certificate_number")) is bool
+                and type(literal.get("same_nonblank_scope_text")) is bool
+                and literal["same_certificate_site_and_type"] ==
+                    (reverse_site.id == cs.id and reverse_case.gxp_type == cert.certificate_type),
+                "Reverse Case literal GxP/Site or scope/number evidence changed",
+            )
+            source_corrob = (
+                literal["same_certificate_site_and_type"]
+                and literal["same_nonblank_certificate_number"]
+                and literal["same_nonblank_scope_text"]
+            )
+            if source_corrob:
+                counters["reverse_case_triple_literal_corroboration_only"] += 1
             alt_cases.append({
+                "source_site_gxp_correspondence": literal["same_certificate_site_and_type"],
+                "source_certificate_number_correspondence": literal["same_nonblank_certificate_number"],
+                "source_full_scope_lexical_correspondence": literal["same_nonblank_scope_text"],
+                "source_inspection_period_recorded": literal.get("inspection_period_source") is not None,
+                "all_three_source_signals": source_corrob,
+                "primary_signed_issuance_case_link_verified": False,
+                "source_literal_correspondence_is_approval": False,
                 "case_id": reverse_case.id,
                 "legacy_case_id": reverse_case.legacy_inspection_id,
                 "site_id": reverse_case.site_id,
@@ -255,6 +302,8 @@ def main(argv: list[str] | None = None) -> int:
         # digest is printed but NOT falsely claimed to equal workbook SHA256.
         raw = args.snapshot.read_bytes()
         source_sha256 = sha256(raw).hexdigest()
+        _check(source_sha256 == EXPECTED_SNAPSHOT_SHA256,
+               "Source snapshot SHA256 differs from independently witnessed bytes")
         payload = json.loads(raw)
         snapshot = payload.get("sheets", payload)
         excluded = {key for sheet, key in load_confirmed_blanked_row_keys()

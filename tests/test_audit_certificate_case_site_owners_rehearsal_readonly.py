@@ -51,7 +51,7 @@ def _fixture(tmp_path, *, shared_company=False):
         )
         session.add(version);session.flush()
         session.add(CertificateScope(
-            certificate_version_id=version.id, scope_text="  Source scope  ",
+            certificate_version_id=version.id, scope_text="Source scope",
             language_code="vi", sort_order=1,
         ))
         session.commit()
@@ -103,6 +103,8 @@ def test_anomaly_anchor_witness_retains_original_case_and_reverse_only_candidate
     assert one["decision_gate"] == "ORIGINAL_ISSUANCE_CASE_AND_OWNER_SIGNOFF_REQUIRED"
     assert len(one["certificate_versions"]) == 1
     assert len(one["certificate_versions"][0]["scope_evidence"]) == 1
+    assert one["certificate_versions"][0]["original_import_value_fidelity_verified"] is True
+    assert report["counts"]["source_certificate_version_fidelity_verified"] == 1
     assert one["certificate_versions"][0]["site_specific_scope_coverage_verified"] is False
     assert report["case_rebinding_authorized"] is False
     assert report["site_specific_scope_coverage_approved"] is False
@@ -130,6 +132,8 @@ def test_same_company_different_sites_not_equated_or_approved(tmp_path):
     "changed_reverse_case", "changed_certificate_gxp",
     "reverse_literal_site", "reverse_literal_gxp", "reverse_literal_flag",
     "reverse_literal_missing", "reverse_owner_missing", "reverse_duplicate",
+    "source_cert_number_hash", "source_cert_issue_date", "source_cert_scope_hash",
+    "changed_version_number", "changed_version_issue_date", "changed_version_scope",
 ])
 def test_any_source_or_canonical_drift_fails_closed(tmp_path, mutation):
     engine, report = _fixture(tmp_path)
@@ -175,6 +179,24 @@ def test_any_source_or_canonical_drift_fails_closed(tmp_path, mutation):
             report["effective_anomalies"][0]["reverse_case_reference_evidence"].append(
                 deepcopy(report["effective_anomalies"][0]["reverse_case_reference_evidence"][0])
             )
+        elif mutation == "source_cert_number_hash":
+            report["effective_anomalies"][0]["source_version_fidelity_evidence"][
+                "certificate_number_sha256"] = "0" * 64
+        elif mutation == "source_cert_issue_date":
+            report["effective_anomalies"][0]["source_version_fidelity_evidence"][
+                "issue_date"] = "2026-01-01"
+        elif mutation == "source_cert_scope_hash":
+            report["effective_anomalies"][0]["source_version_fidelity_evidence"][
+                "certificate_scope_sha256"] = "0" * 64
+        elif mutation == "changed_version_number":
+            session.query(CertificateVersion).one().certificate_number = "Different"
+            session.flush()
+        elif mutation == "changed_version_issue_date":
+            session.query(CertificateVersion).one().issue_date = date(2026, 1, 1)
+            session.flush()
+        elif mutation == "changed_version_scope":
+            session.query(CertificateScope).one().scope_text = "Different"
+            session.flush()
         with pytest.raises(CertificateCaseWitnessBlocked):
             compare_source_to_rehearsal(
                 session, deepcopy(report), expected_certificate_ids={376}

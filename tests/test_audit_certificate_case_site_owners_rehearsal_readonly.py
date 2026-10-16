@@ -16,6 +16,7 @@ from backend.app.domain.legacy_certificate_case_source_audit import (
 )
 from tools.audit_certificate_case_site_owners_rehearsal_readonly import (
     CertificateCaseWitnessBlocked, compare_source_to_rehearsal, SCHEMA,
+    EXPECTED_SNAPSHOT_SHA256, main,
 )
 
 
@@ -92,6 +93,13 @@ def test_anomaly_anchor_witness_retains_original_case_and_reverse_only_candidate
     assert one["original_case_legacy_id"] == 378
     assert one["reverse_case_review_candidates"][0]["legacy_case_id"] == 380
     assert one["reverse_case_review_candidates"][0]["remediation_authorized"] is False
+    assert one["reverse_case_review_candidates"][0]["all_three_source_signals"] is True
+    assert one["reverse_case_review_candidates"][0]["source_site_gxp_correspondence"] is True
+    assert one["reverse_case_review_candidates"][0]["source_certificate_number_correspondence"] is True
+    assert one["reverse_case_review_candidates"][0]["source_full_scope_lexical_correspondence"] is True
+    assert one["reverse_case_review_candidates"][0]["primary_signed_issuance_case_link_verified"] is False
+    assert one["reverse_case_review_candidates"][0]["source_literal_correspondence_is_approval"] is False
+    assert report["counts"]["reverse_case_triple_literal_corroboration_only"] == 1
     assert one["decision_gate"] == "ORIGINAL_ISSUANCE_CASE_AND_OWNER_SIGNOFF_REQUIRED"
     assert len(one["certificate_versions"]) == 1
     assert len(one["certificate_versions"][0]["scope_evidence"]) == 1
@@ -120,6 +128,8 @@ def test_same_company_different_sites_not_equated_or_approved(tmp_path):
     "source_approved", "source_missing", "source_owner_corrupted",
     "changed_cert_case", "changed_cert_site", "changed_site_owner",
     "changed_reverse_case", "changed_certificate_gxp",
+    "reverse_literal_site", "reverse_literal_gxp", "reverse_literal_flag",
+    "reverse_literal_missing", "reverse_owner_missing", "reverse_duplicate",
 ])
 def test_any_source_or_canonical_drift_fails_closed(tmp_path, mutation):
     engine, report = _fixture(tmp_path)
@@ -151,8 +161,34 @@ def test_any_source_or_canonical_drift_fails_closed(tmp_path, mutation):
         elif mutation == "changed_certificate_gxp":
             session.query(Certificate).one().certificate_type = "GLP"
             session.flush()
+        elif mutation == "reverse_literal_site":
+            report["effective_anomalies"][0]["reverse_case_reference_evidence"][0]["site_legacy_id"] = 72
+        elif mutation == "reverse_literal_gxp":
+            report["effective_anomalies"][0]["reverse_case_reference_evidence"][0]["gxp_type"] = "GLP"
+        elif mutation == "reverse_literal_flag":
+            report["effective_anomalies"][0]["reverse_case_reference_evidence"][0]["same_certificate_site_and_type"] = False
+        elif mutation == "reverse_literal_missing":
+            report["effective_anomalies"][0]["reverse_case_reference_evidence"] = []
+        elif mutation == "reverse_owner_missing":
+            report["effective_anomalies"][0]["site_master_company_evidence"]["reverse_source_cases"] = []
+        elif mutation == "reverse_duplicate":
+            report["effective_anomalies"][0]["reverse_case_reference_evidence"].append(
+                deepcopy(report["effective_anomalies"][0]["reverse_case_reference_evidence"][0])
+            )
         with pytest.raises(CertificateCaseWitnessBlocked):
             compare_source_to_rehearsal(
                 session, deepcopy(report), expected_certificate_ids={376}
             )
     engine.dispose()
+
+
+def test_cli_rejects_modified_snapshot_before_database_connection(tmp_path, capsys):
+    bad = tmp_path / "replayed-snapshot.json"
+    bad.write_text("{}", encoding="utf-8")
+    output = tmp_path / "should-not-exist.json"
+    assert len(EXPECTED_SNAPSHOT_SHA256) == 64
+    assert main(["--snapshot", str(bad), "--private-output", str(output)]) == 2
+    assert not output.exists()
+    captured = capsys.readouterr()
+    assert "CERTIFICATE_CASE_TARGET_WITNESS_BLOCKED" in captured.err
+    assert "snapshot" not in captured.err.lower()

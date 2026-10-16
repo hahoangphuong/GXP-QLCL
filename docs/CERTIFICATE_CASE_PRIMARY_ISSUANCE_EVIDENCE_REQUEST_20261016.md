@@ -97,7 +97,69 @@ Missing rows or references remain evidence gaps. A matching year or plan
 decision does not prove that a particular GMP Certificate was issued from
 that Case.
 
-A full V7 run is **not claimed** until operator terminal output confirms
-the pinned commit, required exact-head CI and the private rehearsal report.
-Prior V5/V6 reports remain immutable historical checkpoints.
+## V7 operator-completed checkpoint — 16 October 2026
+
+Operator-provided terminal output from `gxp-web-prod` confirms the read-only
+V7 procedure completed against **pinned source commit**
+`ae4592d274005493c4041fbc18f7beb29f5c4773` after validating PR #7
+OPEN/DRAFT, GitHub Actions run
+[38860123239](https://github.com/hahoangphuong/GXP-QLCL/actions/runs/38860123239),
+and the sealed legacy snapshot. Required backend/frontend/hygiene jobs were
+SUCCESS; both optional integration jobs were **SKIPPED**, not PASS.
+
+The verified operator script V7c had SHA256
+`44d8e6bbdcf7050600104ca0b6466692bb5dc709c78e18998e14869f0a683660`.
+V7c only repaired the *operator wrapper* (GitHub ref-based source verification
+without relying on a VM `origin` remote, and a separate private report
+directory); it did not modify the pinned V7 auditor or rehearsal database.
+
+The operator reported
+`PASS: V7_AGGREGATE_SAFE_INVARIANTS` and
+`PASS: V7_READONLY_METADATA_ONLY_NOT_ISSUANCE_APPROVAL`, with
+`PROCEDURAL_METADATA_ONLY_ISSUANCE_NOT_ADJUDICATED`. Aggregates are:
+
+| Reported metric | Count |
+| --- | ---: |
+| Source Certificates / distinct canonical Cases | 3 / 3 |
+| CaseApplication / InspectionPlan | 3 / 3 |
+| InspectionDecision / InspectionOutcome | 3 / 3 |
+| LegacyInspectionStorageAnchor | 3 |
+| InspectionApprovalSubmission | 0 |
+| StorageBinding | 0 |
+| CertificateRelationship | 0 |
+| Attached Document metadata (V6 rechecked) | 0 |
+| DB writes / NAS reads | 0 / 0 |
+
+The confidential V7 report remains on the VM and its operator-reported
+SHA256 is
+`67aa4b711948b676a302ca5ed440f3c70b46060233c00fd9abe24098997fadc1`.
+This document records the terminal witness; it does **not** claim the private
+report's contents were independently examined in GitHub, or that any decision
+reference is the original signed GMP issuance decision.
+
+### Next owner-controlled evidence gate (not another automated witness)
+
+- **GMP 376:** the authorized records custodian must retrieve the signed
+  `119/GCN-QLD` issuance record, full annex, and inspection/approval
+  provenance. The data owner must issue a dated, reasoned decision accepting,
+  rejecting, or leaving inconclusive Case **380** versus source-linked Case
+  **378** as originating Case; all site/company discrepancies remain visible.
+- **GMP 1037 and 1180:** retrieve original signed issued versions
+  `200/GCN-QLD` and `314/GCN-QLD`, all version-specific Site and scope
+  annexes, corresponding inspection records and decisions, and authoritative
+  evidence for any replacement/effective-date relationship. The data owner
+  must decide version-specific Site 46 versus Site 298 coverage and the
+  relationship separately; the shared Company does not resolve this.
+- **Evidence handling:** authorized custodian/reviewer retains binary
+  originals, immutable hashes, provenance chain, retrieval details and
+  dated ACCEPT/REJECT/INCONCLUSIVE findings in protected evidence custody.
+  This PR contains only the non-private audit summary. Any missing or
+  unverifiable original remains `EVIDENCE_MISSING` or `INCONCLUSIVE`.
+
+**Decision:** close V7 as a completed read-only *metadata triage* only;
+the three Certificate–Case exceptions remain **NOT APPROVED / NO REBINDING**.
+Do not produce a V8 metadata witness without a specific, new source of primary
+issuance evidence. No database mutation, NAS probe, file mapping, new coverage
+model, relationship backfill, migration, deployment or PR merge is authorized.
+Prior V5/V6 witness reports remain immutable historical checkpoints.
 

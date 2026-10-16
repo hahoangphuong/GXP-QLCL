@@ -75,3 +75,29 @@ write, validator bypass, merge or deployment is authorized.
 and owner sign-off against the already proven source/canonical V5 witness.
 Only after adjudication should a *separate* exact-row, reversible rehearsal
 change plan be proposed; missing evidence must retain the present blockers.
+
+## V7 procedural metadata triage — no archive or signature verification
+
+The additive **read-only** tool
+\`tools/audit_certificate_case_procedural_metadata_readonly.py\`
+checks the V5 source/canonical anchors and V6 document metadata in the
+**same REPEATABLE READ / READ ONLY** rehearsal DB transaction. For each
+distinct original/reverse Case (378, 380, 1023), it only inventories the
+existence and limited metadata of existing CaseApplication, InspectionPlan,
+InspectionDecision, InspectionOutcome, InspectionApprovalSubmission,
+LegacyInspectionStorageAnchor and StorageBinding rows, plus any recorded
+CertificateRelationship references for the three affected GMP identities.
+
+All inspection decision references are hashed in the private report; archive
+years are clearly labeled **not file locators**. StorageBinding is counted
+as **metadata only**. The tool never follows a path, asks the storage
+service to resolve a folder, probes NAS, accesses any document binary,
+creates a binding, changes relationships, or asserts a regulatory grant.
+Missing rows or references remain evidence gaps. A matching year or plan
+decision does not prove that a particular GMP Certificate was issued from
+that Case.
+
+A full V7 run is **not claimed** until operator terminal output confirms
+the pinned commit, required exact-head CI and the private rehearsal report.
+Prior V5/V6 reports remain immutable historical checkpoints.
+

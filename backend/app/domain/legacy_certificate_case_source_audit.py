@@ -300,8 +300,8 @@ def audit_certificate_case_source_links(
             "source_version_fidelity_evidence": {
                 "version_no": 1,
                 "certificate_number_sha256": (
-                    sha256(certificate_number.encode("utf-8")).hexdigest()
-                    if certificate_number else None
+                    sha256(str(certificate.get("certificate_number") or "").encode("utf-8")).hexdigest()
+                    if certificate.get("certificate_number") else None
                 ),
                 "certificate_scope_sha256": (
                     sha256(certificate_scope.encode("utf-8")).hexdigest()

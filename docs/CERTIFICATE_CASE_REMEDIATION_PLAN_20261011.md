@@ -237,3 +237,45 @@ issue date and scope. The first-correct owner remains the `db.cc` source
 mapping and `CertificateVersion` import, and regulatory evidence
 remains a separate gate. Neither the DDK certificate grant nor
 a Case-rebinding is approved by this code.
+
+## Gate-0 originating-document metadata inventory (read-only, 16 October 2026)
+
+After the verified V5 three-Certificate source/canonical/import-value
+witness, the additive **read-only** tool
+\`tools/audit_certificate_case_issuance_document_metadata_readonly.py\`
+can enumerate **only recorded database Document, DocumentVariant and
+DocumentVersion metadata** for the same original Certificate→Case
+discrepancies (376/1037/1180), their original linked Cases and all
+source-reverse Case candidates. The tool re-runs the sealed source/canonical
+comparison inside the **same** read-only transaction and verifies each
+target UUID against its original legacy Certificate/Case ID. Missing or
+substituted Case identity blocks the inventory; no candidate becomes approved.
+
+The private inventory distinguishes:
+- \`CERTIFICATE\` Document parents (one Certificate at a time).
+- \`ORIGINAL_CASE\` parent: the actual currently stored Certificate.case_id.
+- \`REVERSE_CASE_CANDIDATE\` parent: independent source-reverse candidate,
+  not a substitute for the current Case or proof of issuance.
+
+For each parent it records document family/type, variant and version UUIDs,
+and whether a storage locator, StorageBinding FK or checksum **metadata** is
+recorded. It does not print private target UUIDs, filenames or locators to
+stdout. Absence of Document metadata is recorded as a **review evidence
+gap**, never interpreted as missing real paper originals; presence of a
+SIGNED_PDF variant, a locator or checksum is **not** verification that a
+file exists or that a document is legally signed/authentic.
+
+The output is a protected 0600 report created only inside an existing,
+owner-controlled private directory; it is not to be committed to GitHub.
+The script requires the exact original snapshot SHA256, original import
+population, rehearsal DB name, Alembic revision and SQL READ ONLY mode.
+It performs no binary read, NAS probe, StorageBinding write, mutation or
+runtime deployment, and does not alter canonical Case, Site or Certificate.
+
+**Gate status remains PENDING_PRIMARY_DOCUMENT_AND_OWNER_SIGNOFF**.
+Only actual issuance decisions/inspection documents that have been
+independently retrieved, inspected, identified to the correct issued
+CertificateVersion/Site, cryptographically fixed and reviewed by the
+authorized owner can support a future separately approved correction.
+This metadata inventory is a discovery aid, NOT approval evidence.
+

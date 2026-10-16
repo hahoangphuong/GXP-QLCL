@@ -85,7 +85,7 @@ def test_vm_rehearsal_invokes_mandatory_gate_before_any_release_stage():
     assert 'export VM_REQUIRE_APPROVED_FRONTEND_TREE=1' in wrapper
     assert 'export VM_APPROVED_FRONTEND_SOURCE_SHA=' in wrapper
     assert 'VM_RUNTIME_ENV_FILE="${REHEARSAL_RUNTIME_ENV_FILE}" "${SCRIPT_DIR}/deploy_prod.sh"' in wrapper
-    assert 'tools/verify_rehearsal_frontend_source.py' in deployment
+    assert 'tools/verify_rehearsal_release_sources.py' in deployment
     assert 'VM_REQUIRE_APPROVED_FRONTEND_TREE' in deployment
     assert deployment.index('tools/verify_rehearsal_frontend_source.py') < deployment.index('CURRENT_STAGE="release_directories"')
     assert deployment.index('CURRENT_STAGE="release_directories"') < deployment.index('CURRENT_STAGE="database_backup"')

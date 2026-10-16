@@ -68,6 +68,8 @@ fixture_ids = {key: str(uuid4()) for key in (
     "gxp_certificate", "gxp_version_old", "gxp_version_current",
     "gxp_scope_old", "gxp_scope_current", "ddk_certificate",
     "ddk_version_old", "ddk_version_current", "ddk_link_current",
+    "gxp_document", "gxp_document_variant", "gxp_document_version",
+    "ddk_document",
 )}
 
 engine = create_engine(_database, future=True)
@@ -236,6 +238,40 @@ try:
             business_eligibility_version_id=fixture_ids["ddk_version_current"],
             certificate_id=fixture_ids["gxp_certificate"],
             link_role="source_certificate",
+        ))
+        # Canonical document metadata is registered under exact owner FKs;
+        # these records do not assert binary presence or signed originals.
+        session.add_all([
+            Document(
+                id=fixture_ids["gxp_document"],
+                certificate_id=fixture_ids["gxp_certificate"],
+                family_code="SYNTHETIC_GXP_METADATA",
+                document_type_code="REGISTERED_ONLY",
+                title="Synthetic unverified GxP metadata",
+            ),
+            Document(
+                id=fixture_ids["ddk_document"],
+                business_eligibility_certificate_id=fixture_ids["ddk_certificate"],
+                family_code="SYNTHETIC_DDK_METADATA",
+                document_type_code="REGISTERED_ONLY",
+                title="Synthetic unverified DDK metadata",
+            ),
+        ])
+        session.flush()
+        session.add(DocumentVariant(
+            id=fixture_ids["gxp_document_variant"],
+            document_id=fixture_ids["gxp_document"],
+            variant_type=DocumentVariantType.EDITABLE_DOCX,
+        ))
+        session.flush()
+        session.add(DocumentVersion(
+            id=fixture_ids["gxp_document_version"],
+            document_variant_id=fixture_ids["gxp_document_variant"],
+            version_no=1,
+            original_filename="synthetic-no-binary.docx",
+            is_current=True,
+            storage_root=None,
+            storage_relative_path=None,
         ))
         session.commit()
 finally:

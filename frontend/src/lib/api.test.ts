@@ -12,6 +12,9 @@ import {
   transitionChangeRequest,
   getAdminSystemStatus,
   getAppStatus,
+  getBusinessEligibilityGxpSourceEvidence,
+  getGxpCertificateDocumentMetadata,
+  getBusinessEligibilityDocumentMetadata,
   getCurrentIdentity,
   getCaseDetail,
   getChangeRequestWorkspace,
@@ -87,6 +90,28 @@ function mockJsonResponse({
 }
 
 describe("frontend API routing contract", () => {
+  it("reads GxP and ĐĐK metadata from their distinct canonical owner routes", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+    const auth = { username: "reader", role: "reader" as const };
+    await getGxpCertificateDocumentMetadata("gxp/id", auth, false, "token", controller.signal);
+    await getBusinessEligibilityDocumentMetadata("ddk/id", auth, false, "token", controller.signal);
+    expect(fetchMock.mock.calls.map(call => call[0])).toEqual([
+      "/api/certificates/gxp%2Fid/document-metadata",
+      "/api/business-eligibility-certificates/ddk%2Fid/document-metadata",
+    ]);
+    expect(fetchMock).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ signal: controller.signal }));
+  });
+  it("reads ĐĐK source evidence by canonical UUID with bearer auth and AbortSignal", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+    await getBusinessEligibilityGxpSourceEvidence("ddk-uuid", { username: "reader", role: "reader" }, false, "test-token", controller.signal);
+    expect(fetchMock).toHaveBeenCalledWith("/api/business-eligibility-certificates/ddk-uuid/gxp-source-evidence", expect.objectContaining({
+      method: "GET", signal: controller.signal, headers: expect.objectContaining({ Authorization: "Bearer test-token" }),
+    }));
+  });
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();

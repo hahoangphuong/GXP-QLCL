@@ -1,3 +1,5 @@
+import type { HistoryState } from "./usePersistedCertificateHistory";
+import type { GxpCertificateVersionHistory, BusinessEligibilityVersionHistory } from "../../types";
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import type {
   BusinessEligibilityDetail,
@@ -29,15 +31,22 @@ import type {
   InspectionPlanUpsertRequest,
   InspectionFolderLookup,
 } from "../../types";
-import { StatusBadge } from "../../components/StatusBadge";
 import { EventWorkspace } from "./EventWorkspace";
 import type { ChangeRequestMutationHandlers } from "./ChangeRequestMutationWorkspace";
 import { BusinessEligibilityWorkspace } from "./BusinessEligibilityWorkspace";
 import { FacilitySummary } from "./FacilitySummary";
 import { GxpCertificateWorkspace } from "./GxpCertificateWorkspace";
-import { FACILITY_TABS, type FacilityTab } from "./facilityTabs";
+import { FACILITY_TABS, FACILITY_TAB_LABELS, type FacilityTab } from "./facilityTabs";
+import type { EligibilitySourceState } from "./useBusinessEligibilitySourceEvidence";
+import type { CertificateDocumentMetadataState } from "./useCertificateDocumentMetadata";
 
 export function FacilityWorkspaceTabs({
+  accessGeneration = 0,
+  gxpVersionHistory,
+  eligibilityVersionHistory,
+  eligibilitySourceEvidence,
+  gxpDocumentMetadata,
+  eligibilityDocumentMetadata,
   summary,
   selectedFacilityTab,
   onFacilityTabChange,
@@ -104,6 +113,12 @@ export function FacilityWorkspaceTabs({
   onResolveInspectionFolder,
   onFinalizeInspectionOutcome,
 }: {
+  accessGeneration?: number | null;
+  gxpVersionHistory?: HistoryState<GxpCertificateVersionHistory>;
+  eligibilityVersionHistory?: HistoryState<BusinessEligibilityVersionHistory>;
+  eligibilitySourceEvidence?: EligibilitySourceState;
+  gxpDocumentMetadata?: CertificateDocumentMetadataState;
+  eligibilityDocumentMetadata?: CertificateDocumentMetadataState;
   summary: FacilityWorkspaceSummary;
   selectedFacilityTab: FacilityTab;
   onFacilityTabChange: (tab: FacilityTab) => void;
@@ -215,6 +230,7 @@ export function FacilityWorkspaceTabs({
     {selectedFacilityTab === "Các đợt kiểm tra & thay đổi" ? (
       <div className="event-workspace-detail-pane detail-pane">
         <EventWorkspace
+          accessGeneration={accessGeneration}
           activeTab={activeEventTab}
           caseWorkspace={caseWorkspace}
           caseWorkspaceError={caseWorkspaceError}
@@ -254,6 +270,8 @@ export function FacilityWorkspaceTabs({
 
     {selectedFacilityTab === "Giấy chứng nhận GxP" ? (
       <GxpCertificateWorkspace
+        documentMetadata={gxpDocumentMetadata}
+        versionHistory={gxpVersionHistory}
         detail={gxpCertificateDetail}
         detailError={gxpCertificateDetailError}
         detailLoading={gxpCertificateDetailLoading}
@@ -271,6 +289,9 @@ export function FacilityWorkspaceTabs({
 
     {selectedFacilityTab === "Giấy chứng nhận đủ điều kiện" ? (
       <BusinessEligibilityWorkspace
+        documentMetadata={eligibilityDocumentMetadata}
+        versionHistory={eligibilityVersionHistory}
+        sourceEvidence={eligibilitySourceEvidence}
         detail={eligibilityCertificateDetail}
         detailError={eligibilityCertificateDetailError}
         detailLoading={eligibilityCertificateDetailLoading}
@@ -295,24 +316,6 @@ export function FacilityWorkspaceTabs({
 
   return (
     <section className="panel panel-tight facility-workspace-panel">
-      <header className="facility-context-bar">
-        <div className="facility-context-identity">
-          <span className="facility-context-icon" aria-hidden="true">CS</span>
-          <div>
-            <div className="facility-context-title-line">
-              <h2>{summary.facility_name}</h2>
-              <span className="facility-context-code">{summary.context_code ?? summary.facility_code ?? "Chưa có mã"}</span>
-            </div>
-            <p>{summary.address ?? summary.company_name}</p>
-          </div>
-        </div>
-        <dl className="facility-context-facts">
-          <div><dt>GxP</dt><dd>{summary.selected_gxp_type ?? (summary.gxp_types.join(", ") || "Chưa có")}</dd></div>
-          <div><dt>Dây chuyền</dt><dd>{summary.selected_line_code ?? "Toàn cơ sở"}</dd></div>
-          <div><dt>Tỉnh/thành</dt><dd>{summary.province_name ?? "Chưa có"}</dd></div>
-          <div><dt>Trạng thái gần nhất</dt><dd><StatusBadge value={summary.current_state} /></dd></div>
-        </dl>
-      </header>
       <div
         className="workspace-tabs facility-tabs tab-strip tab-strip-primary"
         role="tablist"
@@ -335,7 +338,7 @@ export function FacilityWorkspaceTabs({
             role="tab"
             type="button"
           >
-            {tab}
+            {FACILITY_TAB_LABELS[tab]}
           </button>
         ))}
       </div>

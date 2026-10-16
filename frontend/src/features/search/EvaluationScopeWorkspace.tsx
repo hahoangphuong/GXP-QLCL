@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import type { CaseWorkspace, CaseWorkspaceEvaluationScope, EvaluationScopeUpsertRequest } from "../../types";
 
@@ -148,11 +148,31 @@ export function EvaluationScopeWorkspace({ caseWorkspace, onSave }: {
       ? linkedCertificates[0]
       : null;
   const [editorOpen, setEditorOpen] = useState(false);
+  const [activeScope, setActiveScope] = useState(0);
+  const [focusedScope, setFocusedScope] = useState(0);
+  const scopeTabsId = useId();
+  const scopeTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   useEffect(() => setEditorOpen(false), [scope.id, scope.row_version]);
   const isHistorical = scope.summary_source === "historical_prose";
   return <section className="evaluation-scope-workspace">
+    <div aria-label="Phạm vi hồ sơ" className="legacy-scope-tabs" role="tablist">
+      {["Phạm vi đánh giá", "Phạm vi chứng nhận GPs"].map((label, index) => <button
+        aria-controls={`${scopeTabsId}-panel-${index}`} aria-selected={activeScope === index}
+        id={`${scopeTabsId}-tab-${index}`} key={label} role="tab" type="button"
+        ref={(element) => { scopeTabRefs.current[index] = element; }} tabIndex={focusedScope === index ? 0 : -1}
+        onFocus={() => setFocusedScope(index)}
+        onBlur={(event) => { if (!event.currentTarget.parentElement?.contains(event.relatedTarget)) setFocusedScope(activeScope); }}
+        onClick={() => { setActiveScope(index); setFocusedScope(index); }}
+        onKeyDown={(event) => {
+          const next = event.key === "Home" ? 0 : event.key === "End" ? 1
+            : event.key === "ArrowRight" || event.key === "ArrowLeft" ? 1 - index : null;
+          if (next === null) return;
+          event.preventDefault(); setFocusedScope(next); scopeTabRefs.current[next]?.focus();
+        }}
+      >{label}</button>)}
+    </div>
     <div className="scope-information-grid">
-      <section className="workspace-section scope-information-pane">
+      <section aria-labelledby={`${scopeTabsId}-tab-0`} className="workspace-section scope-information-pane" hidden={activeScope !== 0} id={`${scopeTabsId}-panel-0`} role="tabpanel" tabIndex={0}>
         <header className="workspace-section-header">
           <h4>{isHistorical ? "Phạm vi đánh giá lịch sử" : "Phạm vi đánh giá"}</h4>
           {scope.id && scope.editable ? <button className="secondary" onClick={() => setEditorOpen(true)} type="button">Sửa phạm vi</button> : null}
@@ -161,7 +181,7 @@ export function EvaluationScopeWorkspace({ caseWorkspace, onSave }: {
         <pre className="evaluation-scope-summary">{scope.summary_text || "Chưa có nội dung phạm vi đánh giá để hiển thị."}</pre>
         {scope.summary_source === "legacy_rendered_prose" ? <p className="workspace-note">Hiển thị theo văn bản legacy đã lưu; sau khi chỉnh sửa, summary sẽ được tạo từ aggregate canonical hiện hành.</p> : null}
       </section>
-      <section className="workspace-section scope-information-pane">
+      <section aria-labelledby={`${scopeTabsId}-tab-1`} className="workspace-section scope-information-pane" hidden={activeScope !== 1} id={`${scopeTabsId}-panel-1`} role="tabpanel" tabIndex={0}>
         <header className="workspace-section-header">
           <h4>Phạm vi chứng nhận GPs</h4>
           {certificate?.certificate_number ? <span className="scope-information-source">GCN {certificate.certificate_number}</span> : null}

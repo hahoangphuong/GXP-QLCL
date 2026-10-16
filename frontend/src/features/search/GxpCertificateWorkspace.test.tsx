@@ -36,7 +36,89 @@ function renderWorkspace(onEditLatestVersion = vi.fn().mockResolvedValue(undefin
   return onEditLatestVersion;
 }
 
+it("mounts persisted snapshots separately without changing current detail, draft or write token", async () => {
+  const onEdit = vi.fn().mockResolvedValue(undefined);
+  const onSelect = vi.fn();
+  const onPromote = vi.fn();
+  const history = { certificate_id: "cert-1", site_id: "site-1", case_id: "case-1", certificate_type: "GMP", issuance_basis: "inspection_case",
+    aggregate_latest_flag: true, latest_version_id: "historical-v2", versions: [2, 1].map(n => ({
+      certificate_version_id: `historical-v${n}`, version_no: n, row_version: 99, is_latest_version: n === 2,
+      lifecycle_state: null, certificate_number: `Historical ${n}`, issue_date: null, expiry_date: null,
+      applicable_standard: null, issuing_authority: null, scope_summary: null, scopes: [],
+    })) };
+  const props = { detail: detail(), detailError: null, detailLoading: false, items, listError: null, listLoading: false,
+    onEditLatestVersion: onEdit, onPromoteCurrent: onPromote, onSelectCertificate: onSelect,
+    promotionError: null, promotionPending: false, selectedCertificateId: "cert-1" };
+  const { rerender } = render(<GxpCertificateWorkspace {...props} versionHistory={{ status: "ready", data: history }} />);
+  fireEvent.click(screen.getByText("Các phiên bản GPs đã lưu"));
+  fireEvent.change(screen.getByRole("combobox", { name: "Phiên bản đã lưu" }), { target: { value: "historical-v1" } });
+  expect(screen.getByText("Historical 1", { selector: "dd" })).toBeInTheDocument();
+  expect(document.querySelector(".legacy-certificate-heading")).toHaveTextContent("GCN-001");
+  expect(onSelect).not.toHaveBeenCalled(); expect(onPromote).not.toHaveBeenCalled(); expect(onEdit).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Số GCN" }), { target: { value: "retained draft" } });
+  rerender(<GxpCertificateWorkspace {...props} versionHistory={{ status: "error", httpStatus: 409 }} />);
+  expect(screen.getByRole("textbox", { name: "Số GCN" })).toHaveValue("retained draft");
+  fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+  await waitFor(() => expect(onEdit).toHaveBeenCalledTimes(1));
+  expect(onEdit.mock.calls[0][0]).toMatchObject({ expected_version: 7, certificate_number: "retained draft" });
+});
+
 describe("GxP certificate keyboard and identity", () => {
+  it("mounts read-only document metadata inside the selected Facility detail without mutations", () => {
+    const props = {
+      detail: detail(), detailError: null, detailLoading: false, items, listError: null, listLoading: false,
+      onEditLatestVersion: vi.fn(), onPromoteCurrent: vi.fn(), onSelectCertificate: vi.fn(),
+      promotionError: null, promotionPending: false, selectedCertificateId: "cert-1",
+    };
+    const { container } = render(<GxpCertificateWorkspace {...props} documentMetadata={{ status: "ready", data: {
+      owner_kind: "certificate", owner_id: "cert-1", metadata_status: "registered_metadata_only_unverified",
+      binary_verified: false, original_signed_document_verified: false,
+      documents: [{ document_id: "doc-gxp", family_code: "certificate", document_type_code: "signed",
+        title: "GCN đã đăng ký", registered_variant_count: 1, registered_version_count: 1, registered_current_version_count: 1 }],
+    } }} />);
+    expect(container.querySelector(".detail-pane .certificate-document-metadata")).toHaveTextContent("GCN đã đăng ký");
+    expect(props.onEditLatestVersion).not.toHaveBeenCalled();
+    expect(props.onPromoteCurrent).not.toHaveBeenCalled();
+  });
+  it("keeps the Facility horizontal header, identity/scope prominence and issuer/status/source footer distinct from Case", () => {
+    renderWorkspace();
+    const owner = document.querySelector(".facility-gxp-workspace");
+    expect(owner).not.toBeNull();
+    expect(Array.from(owner!.querySelectorAll(".legacy-certificate-heading .detail-label"), node => node.textContent))
+      .toEqual(["Số GCN", "Ngày cấp", "Hết hạn", "Tiêu chuẩn"]);
+    expect(Array.from(owner!.querySelectorAll(".facility-gxp-identity .detail-label"), node => node.textContent))
+      .toEqual(["Tên cơ sở", "Địa chỉ cơ sở", "Tên công ty", "Trụ sở"]);
+    expect(owner!.querySelector(".facility-gxp-scope")).toHaveTextContent("Display-only summary");
+    expect(owner!.querySelector(".facility-gxp-limitation")).toHaveTextContent("Giới hạn");
+    expect(owner!.querySelector(".facility-gxp-footer .facility-gxp-issuer")).toHaveTextContent("Cơ quan cấp");
+    expect(owner!.querySelector(".facility-gxp-footer .facility-gxp-status-source")).toHaveTextContent("Nguồn gốc");
+    expect(owner!.querySelectorAll(".facility-gxp-scope-records li")).toHaveLength(2);
+    expect(screen.getByText("Phạm vi Alpha")).toBeInTheDocument();
+    expect(screen.getByText("Scope Beta")).toBeInTheDocument();
+    expect(owner!.querySelectorAll('[role="tab"], .document-workspace')).toHaveLength(0);
+  });
+  it("retains raw multiline standards, long scope/limitation and null metadata without inventing version navigation", () => {
+    const current = detail();
+    current.applicable_standard = "WHO-GMP\nEU-GMP";
+    current.scope_summary = "Summary\n" + "LongScopeText".repeat(60);
+    current.limitation_text = "First limitation\nSecond limitation";
+    const select = vi.fn();
+    const save = vi.fn();
+    const { container } = render(<GxpCertificateWorkspace items={items} detail={current}
+      detailError={null} detailLoading={false} listError={null} listLoading={false}
+      selectedCertificateId="cert-1" onSelectCertificate={select} onEditLatestVersion={save}
+      onPromoteCurrent={vi.fn()} promotionError={null} promotionPending={false} />);
+    expect(container.querySelector(".legacy-certificate-heading .detail-field:last-child strong")?.textContent).toBe(current.applicable_standard);
+    const summary = container.querySelector(".facility-gxp-scope .multiline-value");
+    expect(summary).toHaveClass("multiline-value");
+    expect(summary?.textContent).toBe(current.scope_summary);
+    expect(screen.getByText("First limitation Second limitation")).toHaveClass("multiline-value");
+    expect(screen.getAllByText("Chưa có").length).toBeGreaterThan(0);
+    expect(container.querySelectorAll('[role="tab"], .document-workspace')).toHaveLength(0);
+    expect(select).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+  });
   function keyboardProps() {
     const props = { items, detail: detail(), listLoading: false, listError: null, selectedCertificateId: "cert-1", onSelectCertificate: vi.fn(), detailLoading: false, detailError: null, onPromoteCurrent: vi.fn(), promotionError: null, promotionPending: false, onEditLatestVersion: vi.fn() };
     return { ...props, items: [items[0], { ...items[0], certificate_id: "cert-1-2" }] };

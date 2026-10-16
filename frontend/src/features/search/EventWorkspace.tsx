@@ -38,8 +38,13 @@ import { CaseRemediationWorkspace } from "./CaseRemediationWorkspace";
 import { ChangeRequestMutationWorkspace, type ChangeRequestMutationHandlers } from "./ChangeRequestMutationWorkspace";
 import { EvaluationScopeWorkspace } from "./EvaluationScopeWorkspace";
 import { GxpCertificateDetailFields } from "./GxpCertificateDetailFields";
+import { useCertificateRows } from "./useCertificateRows";
 
 const CASE_EVENT_TABS = ["Hồ sơ", "Kiểm tra", "Khắc phục", "Xử lý", "Chứng nhận GxP", "Chứng nhận ĐĐK"] as const;
+export const CASE_EVENT_LABELS: Record<string, string> = {
+  "Hồ sơ": "Hồ sơ đăng ký", "Kiểm tra": "Kiểm tra thực tế", "Khắc phục": "Báo cáo khắc phục",
+  "Xử lý": "Xử lý tiếp", "Chứng nhận GxP": "Cấp chứng nhận GPs", "Chứng nhận ĐĐK": "Cấp chứng nhận ĐĐK",
+};
 const CHANGE_REQUEST_EVENT_TABS = ["Đề nghị", "Chi tiết", "Xử lý", "Tài liệu"] as const;
 
 const DOCUMENT_STATUS_LABELS: Record<string, string> = {
@@ -121,6 +126,8 @@ function LinkedGxpCertificates({
 }) {
   const [selectedCertificateId, setSelectedCertificateId] = useState<string | null>(items[0]?.certificate_id ?? null);
 
+  const rowProps = useCertificateRows(items.map(item => item.certificate_id), selectedCertificateId, setSelectedCertificateId, false);
+
   useEffect(() => {
     setSelectedCertificateId((current) =>
       current && items.some((item) => item.certificate_id === current) ? current : items[0]?.certificate_id ?? null,
@@ -146,7 +153,7 @@ function LinkedGxpCertificates({
           <span className="panel-meta">{items.length} giấy</span>
         </div>
         <div className="table-scroll table-scroll-history">
-          <table className="dense-table certificate-history-table">
+          <table aria-label="Chứng nhận GxP liên kết" className="dense-table certificate-history-table">
             <thead>
               <tr>
                 <th className="col-gxp">GxP</th>
@@ -161,14 +168,7 @@ function LinkedGxpCertificates({
                   aria-selected={selectedCertificateId === item.certificate_id}
                   className={selectedCertificateId === item.certificate_id ? "selected" : ""}
                   key={item.certificate_id}
-                  onClick={() => setSelectedCertificateId(item.certificate_id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      setSelectedCertificateId(item.certificate_id);
-                    }
-                  }}
-                  tabIndex={0}
+                  {...rowProps(item.certificate_id)}
                 >
                   <td>{item.certificate_type}</td>
                   <td>{item.line_code ?? "Cơ sở"}</td>
@@ -187,7 +187,7 @@ function LinkedGxpCertificates({
       </section>
 
       <section className="panel panel-tight certificate-detail-panel">
-        {selectedCertificate ? <GxpCertificateDetailFields detail={selectedCertificate} /> : null}
+        {selectedCertificate ? <GxpCertificateDetailFields detail={selectedCertificate} presentation="case" /> : null}
       </section>
     </div>
   );
@@ -201,6 +201,8 @@ function LinkedBusinessEligibilityCertificates({
   const [selectedCertificateId, setSelectedCertificateId] = useState<string | null>(
     items[0]?.business_eligibility_certificate_id ?? null,
   );
+
+  const rowProps = useCertificateRows(items.map(item => item.business_eligibility_certificate_id), selectedCertificateId, setSelectedCertificateId, false);
 
   useEffect(() => {
     setSelectedCertificateId((current) =>
@@ -223,14 +225,14 @@ function LinkedBusinessEligibilityCertificates({
   }
 
   return (
-    <div className="certificate-workspace-split event-linked-certificate-workspace">
+    <div className="certificate-workspace-split event-linked-certificate-workspace case-business-eligibility-workspace">
       <section className="panel panel-tight certificate-list-panel">
         <div className="panel-header">
-          <h3>Chứng nhận ĐĐK liên kết</h3>
+          <h3>Giấy ĐĐK đã cấp căn cứ GCN GPs này</h3>
           <span className="panel-meta">{items.length} giấy</span>
         </div>
         <div className="table-scroll table-scroll-history">
-          <table className="dense-table eligibility-history-table">
+          <table aria-label="Giấy ĐĐK đã cấp căn cứ GCN GPs này" className="dense-table eligibility-history-table">
             <thead>
               <tr>
                 <th className="col-cert-number">Số GCN</th>
@@ -244,14 +246,7 @@ function LinkedBusinessEligibilityCertificates({
                   aria-selected={selectedCertificateId === item.business_eligibility_certificate_id}
                   className={selectedCertificateId === item.business_eligibility_certificate_id ? "selected" : ""}
                   key={item.business_eligibility_certificate_id}
-                  onClick={() => setSelectedCertificateId(item.business_eligibility_certificate_id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      setSelectedCertificateId(item.business_eligibility_certificate_id);
-                    }
-                  }}
-                  tabIndex={0}
+                  {...rowProps(item.business_eligibility_certificate_id)}
                 >
                   <td title={item.certificate_number ?? ""}>
                     <div className="cell-stack">
@@ -268,7 +263,7 @@ function LinkedBusinessEligibilityCertificates({
         </div>
       </section>
 
-      <section className="panel panel-tight certificate-detail-panel">
+      <section aria-label="Chi tiết giấy ĐĐK liên kết" className="panel panel-tight certificate-detail-panel">
         {selectedCertificate ? <BusinessEligibilityDetailFields detail={selectedCertificate} /> : null}
       </section>
     </div>
@@ -276,6 +271,7 @@ function LinkedBusinessEligibilityCertificates({
 }
 
 function renderCaseStepContent(
+  accessGeneration: number | null,
   activeTab: string,
   caseWorkspace: CaseWorkspace,
   onCaseApplicationSave: (payload: CaseApplicationUpsertRequest) => Promise<void>,
@@ -317,12 +313,17 @@ function renderCaseStepContent(
 
   if (activeTab === "Hồ sơ") {
     return (
-      <div className="event-step-stack">
+      <div className="registration-workspace">
+        <div className="registration-form-pane">
         <CaseApplicationWorkspace
+          accessGeneration={accessGeneration}
+          assessment={<CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} view="assessment" />}
           caseWorkspace={caseWorkspace}
           onResolveInspectionFolder={onResolveInspectionFolder}
           onSave={onCaseApplicationSave}
         />
+        </div>
+        <div className="registration-document-column">
         <ContextualDocumentSection
           contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
           items={documentItems}
@@ -332,13 +333,14 @@ function renderCaseStepContent(
           onLoadDocumentDetail={onLoadDocumentDetail}
           onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
         />
+        </div>
       </div>
     );
   }
 
   if (activeTab === "Kiểm tra") {
     return (
-      <div className="event-step-stack">
+      <div className="inspection-workflow-layout">
         <CaseInspectionWorkspace
           caseWorkspace={caseWorkspace}
           onInspectionOutcomeSave={onInspectionOutcomeSave}
@@ -351,22 +353,24 @@ function renderCaseStepContent(
           onLoadInspectionTeamIdentityOptions={onLoadInspectionTeamIdentityOptions}
           onFinalizeInspectionOutcome={onFinalizeInspectionOutcome}
         />
-        <ContextualDocumentSection
-          contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
-          items={documentItems}
-          onCreateDocument={(item, action) =>
-            onCreateDocument(caseWorkspace.case_summary.id, item, action)
-          }
-          onLoadDocumentDetail={onLoadDocumentDetail}
-          onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
-        />
+        <div className="inspection-document-column">
+          <ContextualDocumentSection
+            contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
+            items={documentItems}
+            onCreateDocument={(item, action) =>
+              onCreateDocument(caseWorkspace.case_summary.id, item, action)
+            }
+            onLoadDocumentDetail={onLoadDocumentDetail}
+            onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
+          />
+        </div>
       </div>
     );
   }
 
   if (activeTab === "Khắc phục") {
     return (
-      <div className="event-step-stack">
+      <div className="remediation-workflow-layout">
         <CaseRemediationWorkspace
           caseWorkspace={caseWorkspace}
           onAssessCycle={onAssessCapaCycle}
@@ -376,54 +380,62 @@ function renderCaseStepContent(
           onUpdateCycle={onUpdateCapaCycle}
           selectedCycleId={selectedRemediationCycleId}
         />
-        <ContextualDocumentSection
-          contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
-          items={documentItems}
-          onCreateDocument={(item, action) =>
-            onCreateDocument(caseWorkspace.case_summary.id, item, action)
-          }
-          onLoadDocumentDetail={onLoadDocumentDetail}
-          onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
-        />
+        <div className="remediation-document-column">
+          <ContextualDocumentSection
+            contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
+            items={documentItems}
+            onCreateDocument={(item, action) =>
+              onCreateDocument(caseWorkspace.case_summary.id, item, action)
+            }
+            onLoadDocumentDetail={onLoadDocumentDetail}
+            onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
+          />
+        </div>
       </div>
     );
   }
 
   if (activeTab === "Xử lý") {
     return (
-      <div className="event-step-stack">
-        <CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} />
-        <ContextualDocumentSection
-          contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
-          items={documentItems}
-          onCreateDocument={(item, action) =>
-            onCreateDocument(caseWorkspace.case_summary.id, item, action)
-          }
-          onLoadDocumentDetail={onLoadDocumentDetail}
-          onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
-        />
+      <div className="processing-workflow-layout">
+        <CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} view="timeline" />
+        <div className="processing-document-column">
+          <ContextualDocumentSection
+            contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
+            items={documentItems}
+            onCreateDocument={(item, action) =>
+              onCreateDocument(caseWorkspace.case_summary.id, item, action)
+            }
+            onLoadDocumentDetail={onLoadDocumentDetail}
+            onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
+          />
+        </div>
       </div>
     );
   }
 
   if (activeTab === "Chứng nhận GxP") {
     return (
-      <div className="event-step-stack">
-        <LinkedGxpCertificates items={caseWorkspace.linked_gxp_certificates} />
-        <CaseCertificateIssueWorkspace
-          caseId={caseWorkspace.case_summary.id}
-          onIssue={onIssueCertificate}
-          readiness={caseWorkspace.certificate_issue_readiness}
-        />
-        <ContextualDocumentSection
-          contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
-          items={documentItems}
-          onCreateDocument={(item, action) =>
-            onCreateDocument(caseWorkspace.case_summary.id, item, action)
-          }
-          onLoadDocumentDetail={onLoadDocumentDetail}
-          onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
-        />
+      <div className="case-gxp-workflow-layout">
+        <div className="case-gxp-certificate-pane">
+          <LinkedGxpCertificates items={caseWorkspace.linked_gxp_certificates} />
+          <CaseCertificateIssueWorkspace
+            caseId={caseWorkspace.case_summary.id}
+            onIssue={onIssueCertificate}
+            readiness={caseWorkspace.certificate_issue_readiness}
+          />
+        </div>
+        <div className="case-gxp-document-column">
+          <ContextualDocumentSection
+            contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
+            items={documentItems}
+            onCreateDocument={(item, action) =>
+              onCreateDocument(caseWorkspace.case_summary.id, item, action)
+            }
+            onLoadDocumentDetail={onLoadDocumentDetail}
+            onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
+          />
+        </div>
       </div>
     );
   }
@@ -457,6 +469,7 @@ function renderChangeRequestStepContent(
 }
 
 export function EventWorkspace({
+  accessGeneration = 0,
   selectedHistory,
   caseWorkspace,
   caseWorkspaceLoading,
@@ -491,6 +504,7 @@ export function EventWorkspace({
   onResolveInspectionFolder,
   onFinalizeInspectionOutcome,
 }: {
+  accessGeneration?: number | null;
   selectedHistory: FacilityHistoryItem | null;
   caseWorkspace: CaseWorkspace | null;
   caseWorkspaceLoading: boolean;
@@ -552,14 +566,14 @@ export function EventWorkspace({
           {tabs.map((tab, index) => (
             <li key={tab}>
               <button
-                aria-label={tab}
+                aria-label={selectedHistory.source_type === "case" ? CASE_EVENT_LABELS[tab] ?? tab : tab}
                 aria-current={effectiveActiveTab === tab ? "step" : undefined}
                 className={effectiveActiveTab === tab ? "workflow-step active" : "workflow-step"}
                 onClick={() => onTabChange(tab)}
                 type="button"
               >
                 <span className="workflow-step-index">{index + 1}</span>
-                <span>{tab}</span>
+                <span>{selectedHistory.source_type === "case" ? CASE_EVENT_LABELS[tab] ?? tab : tab}</span>
               </button>
             </li>
           ))}
@@ -589,6 +603,7 @@ export function EventWorkspace({
           />
         ) : caseWorkspace ? (
           renderCaseStepContent(
+            accessGeneration,
             effectiveActiveTab,
             caseWorkspace,
             onCaseApplicationSave,

@@ -160,7 +160,7 @@ export function ContextualDocumentSection({ items, contextKey, onOpenDocument, o
       }
     }}>
       <h4 id={headingId}>Tài liệu liên quan</h4>
-      <p className="workspace-note">↑/↓, Home/End di chuyển; Enter chọn tài liệu; F6 chuyển giữa danh sách và chi tiết.</p>
+      <p className="workspace-note">↑/↓, Home/End di chuyển; Enter chọn tài liệu; nháy đúp để mở khi khả dụng; F6 chuyển giữa danh sách và chi tiết.</p>
       {items.length === 0 ? <p role="status">Chưa có tài liệu trong ngữ cảnh này.</p> : null}
       <div className="document-workspace-panes">
         <div className="table-scroll document-list-pane">
@@ -170,7 +170,8 @@ export function ContextualDocumentSection({ items, contextKey, onOpenDocument, o
               <td><button type="button" className="document-select" aria-label={`Chọn ${item.label}`} aria-pressed={selected?.checklist_key === item.checklist_key}
                 tabIndex={effectiveFocus === item.checklist_key ? 0 : -1}
                 ref={element => { if (element) buttons.current.set(item.checklist_key, element); else buttons.current.delete(item.checklist_key); }}
-                onFocus={() => setFocusKey(item.checklist_key)} onKeyDown={event => navigate(event, index)} onClick={() => void history(item)}>
+                onFocus={() => setFocusKey(item.checklist_key)} onKeyDown={event => navigate(event, index)} onClick={() => void history(item)}
+                onDoubleClick={() => { const action = item.actions.find(candidate => candidate.action_key === "open" && candidate.available); if (action) void act(item, action); }}>
                 <strong>{item.label}</strong><span>{item.original_filename ?? "Chưa có tệp"}</span>
               </button></td>
               <td>{item.status === "available" ? "Đã có tài liệu" : "Chưa có tài liệu"}</td>

@@ -1,129 +1,51 @@
 import type { ReactNode } from "react";
-
 import { StatusBadge } from "../../components/StatusBadge";
 import { formatCompactDate } from "../../lib/presentation";
 import type { FacilityWorkspaceSummary } from "../../types";
 
-function SummaryValue({
-  value,
-  multiline = false,
-}: {
-  value: string | null | undefined;
-  multiline?: boolean;
-}) {
-  if (!value) {
-    return <dd>Chưa có</dd>;
-  }
-  return <dd className={multiline ? "multiline-value" : undefined}>{value}</dd>;
-}
-
-function SummaryGroup({
-  title,
-  context,
-  children,
-}: {
-  title: string;
-  context?: string | null;
-  children: ReactNode;
-}) {
-  return (
-    <section className="summary-group">
-      <div className="summary-group-header">
-        <h3>{title}</h3>
-        {context ? <span className="panel-meta">{context}</span> : null}
-      </div>
-      <dl className="summary-grid summary-grid-grouped">{children}</dl>
-    </section>
-  );
+function SummaryField({ label, value, className = "" }: { label: string; value: ReactNode; className?: string }) {
+  return <div className={`general-field ${className}`}><dt>{label}</dt><dd>{value || "Chưa có"}</dd></div>;
 }
 
 export function FacilitySummary({ summary }: { summary: FacilityWorkspaceSummary }) {
-  const gxpContext = [summary.selected_gxp_type, summary.selected_line_code ? `Dây chuyền ${summary.selected_line_code}` : null]
-    .filter(Boolean)
-    .join(" · ");
-
-  return (
-    <div className="summary-panel summary-panel-grouped">
-      <SummaryGroup title="Thông tin về công ty">
-        <div>
-          <dt>Tên Công ty</dt>
-          <SummaryValue value={summary.company_name} />
+  const gxpContext = [summary.selected_gxp_type, summary.selected_line_code ? `Dây chuyền ${summary.selected_line_code}` : null].filter(Boolean).join(" · ");
+  return <div className="summary-panel general-legacy-layout">
+    <section className="general-certificate-pane" aria-label="Thông tin về GxP">
+      <h3 className="sr-only">Thông tin về GxP</h3>
+      <dl className="general-certificate-grid">
+        <div className="general-scope-field">
+          <dt>Phạm vi chứng nhận<span className="general-standard">{summary.current_certificate_standard || "Chưa có"}</span><span className="general-context">{gxpContext}</span></dt>
+          <dd>{summary.certificate_scope_summary || "Chưa có"}</dd>
         </div>
-        <div className="summary-span">
-          <dt>Địa chỉ trụ sở chính</dt>
-          <SummaryValue multiline value={summary.company_legal_address} />
+        <SummaryField label="Giới hạn" value="Chưa có dữ liệu giới hạn." className="general-limits" />
+      </dl>
+        <div className="general-certificate-footer">
+          <dl>
+            <SummaryField label="Số chứng nhận" value={summary.current_certificate_number} />
+            <SummaryField label="Ngày cấp" value={formatCompactDate(summary.current_certificate_issue_date)} />
+            <SummaryField label="Hết hạn" value={formatCompactDate(summary.current_certificate_expiry)} />
+          </dl>
+          <dl>
+            <SummaryField label="Tình trạng chứng nhận" value={summary.current_certificate_status ? <StatusBadge value={summary.current_certificate_status} /> : null} />
+            <SummaryField label="Tình trạng cơ sở" value={summary.facility_current_status} />
+          </dl>
         </div>
-        <div>
-          <dt>Lãnh đạo</dt>
-          <SummaryValue value={summary.company_leader} />
-        </div>
-        <div>
-          <dt>Công ty vốn nước ngoài</dt>
-          <SummaryValue value={summary.company_foreign_investment} />
-        </div>
-        <div>
-          <dt>Chuyên viên phụ trách</dt>
-          <SummaryValue value={summary.assigned_specialist} />
-        </div>
-      </SummaryGroup>
-
-      <SummaryGroup title="Thông tin về cơ sở">
-        <div>
-          <dt>Tên cơ sở</dt>
-          <SummaryValue value={summary.facility_name} />
-        </div>
-        <div>
-          <dt>Tỉnh/thành</dt>
-          <SummaryValue value={summary.province_name} />
-        </div>
-        <div className="summary-span">
-          <dt>Địa chỉ cơ sở</dt>
-          <SummaryValue multiline value={summary.address} />
-        </div>
-        <div className="summary-span">
-          <dt>Thông tin liên hệ</dt>
-          <SummaryValue multiline value={summary.contact_information} />
-        </div>
-        <div>
-          <dt>Người Phụ trách chuyên môn</dt>
-          <SummaryValue value={summary.professional_responsible_person} />
-        </div>
-        <div>
-          <dt>Người Đảm bảo chất lượng</dt>
-          <SummaryValue value={summary.quality_assurance_person} />
-        </div>
-        <div>
-          <dt>Tình trạng hiện tại của cơ sở</dt>
-          <SummaryValue value={summary.facility_current_status} />
-        </div>
-      </SummaryGroup>
-
-      <SummaryGroup title="Thông tin về GxP" context={gxpContext || null}>
-        <div>
-          <dt>Số giấy chứng nhận gần nhất</dt>
-          <SummaryValue value={summary.current_certificate_number} />
-        </div>
-        <div>
-          <dt>Ngày cấp</dt>
-          <SummaryValue value={formatCompactDate(summary.current_certificate_issue_date)} />
-        </div>
-        <div>
-          <dt>Ngày hết hạn</dt>
-          <SummaryValue value={formatCompactDate(summary.current_certificate_expiry)} />
-        </div>
-        <div>
-          <dt>Tiêu chuẩn GxP</dt>
-          <SummaryValue value={summary.current_certificate_standard} />
-        </div>
-        <div className="summary-span">
-          <dt>Phạm vi chứng nhận</dt>
-          <SummaryValue multiline value={summary.certificate_scope_summary} />
-        </div>
-        <div>
-          <dt>Tình trạng chứng nhận</dt>
-          <dd>{summary.current_certificate_status ? <StatusBadge value={summary.current_certificate_status} /> : "Chưa có"}</dd>
-        </div>
-      </SummaryGroup>
-    </div>
-  );
+    </section>
+    <section className="general-identity-pane" aria-label="Thông tin về cơ sở và công ty">
+      <h3 className="sr-only">Thông tin về cơ sở và công ty</h3>
+      <dl>
+        <SummaryField label="Tên cơ sở" value={summary.facility_name} />
+        <SummaryField label="Địa chỉ cơ sở" value={summary.address} className="general-address" />
+        <SummaryField label="Tên công ty" value={summary.company_name} />
+        <SummaryField label="Trụ sở" value={summary.company_legal_address} className="general-address" />
+        <SummaryField label="Lãnh đạo" value={summary.company_leader} className="general-highlight" />
+        <SummaryField label="PT chuyên môn" value={summary.professional_responsible_person} />
+        <SummaryField label="ĐBCL" value={summary.quality_assurance_person} />
+        <SummaryField label="Thông tin liên hệ" value={summary.contact_information} className="general-contact" />
+        <SummaryField label="Chuyên viên" value={summary.assigned_specialist} />
+        <SummaryField label="Nước ngoài" value={summary.company_foreign_investment} className="general-highlight" />
+        <SummaryField label="Tỉnh/thành" value={summary.province_name} />
+      </dl>
+    </section>
+  </div>;
 }

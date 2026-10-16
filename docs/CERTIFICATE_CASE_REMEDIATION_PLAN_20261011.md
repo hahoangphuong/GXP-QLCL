@@ -215,3 +215,25 @@ All source Case candidates remain \`remediation_authorized=false\`,
 and \`case_rebinding_authorized=false\`. This change adds no database write,
 NAS access, migration, legal-grant assertion, or runtime fallback.
 
+## Original CertificateVersion import-value fidelity gate (16 October 2026)
+
+The sealed read-only rehearsal witness now checks the **original**
+`db.cc` data for each of the three Certificate–Case mismatch rows against
+the actual stored imported `CertificateVersion` and `CertificateScope`:
+original certificate number, parsed source issue date, one imported version,
+and the exact (importer-trimmed) certificate scope content, represented in
+reports as SHA256 only. Original source text itself is not duplicated into
+diagnostic output.
+
+This is **import-value fidelity**, not issued-original legal document
+verification. It does **not** establish that a stored CertificateScope has
+a particular Site, or prove that a Case was the inspection leading to
+issuance. New versions or changed scope text block reuse of the historical
+witness until reviewed and independently re-pinned; the owner does not
+silently reinterpret new versions as old imported records.
+
+Regression tests reject source or canonical drift in certificate number,
+issue date and scope. The first-correct owner remains the `db.cc` source
+mapping and `CertificateVersion` import, and regulatory evidence
+remains a separate gate. Neither the DDK certificate grant nor
+a Case-rebinding is approved by this code.

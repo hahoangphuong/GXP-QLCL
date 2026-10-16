@@ -71,7 +71,7 @@ def _fixture(tmp_path, *, shared_company=False):
         ],
         "db.cc": [{
             "ID": "376", "ID CƠ SỞ": "73", "ID ĐỢT KTRA": "378",
-            "LOẠI CC": "GMP", "Mã số CC": "C376",
+            "LOẠI CC": "GMP", "Mã số CC": "C376", "Ngày cấp CC": "12/03/2018",
             "PHẠM VI CHỨNG NHẬN": "Source scope",
         }],
     }

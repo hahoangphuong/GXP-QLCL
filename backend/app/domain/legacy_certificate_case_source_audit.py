@@ -6,12 +6,14 @@ only: they never authorize changing an originating Case or merging Sites.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from hashlib import sha256
 from typing import Any
 
 from backend.app.domain.phase2_import import (
     normalize_inspection_gxp_type,
     normalize_row,
     parse_int,
+    parse_date,
     source_row_key,
     source_row_number,
 )
@@ -292,6 +294,28 @@ def audit_certificate_case_source_links(
             "linked_case_legacy_id": case_legacy_id,
             "raw_case_reference": case_ref,
             "certificate_issued_at_source": str(certificate.get("certificate_issue_date") or "").strip() or None,
+            # Source-only hashes avoid duplicating protected certificate scope
+            # text into diagnostics. These establish import-value fidelity,
+            # never legal or per-Site certification coverage.
+            "source_version_fidelity_evidence": {
+                "version_no": 1,
+                "certificate_number_sha256": (
+                    sha256(certificate_number.encode("utf-8")).hexdigest()
+                    if certificate_number else None
+                ),
+                "certificate_scope_sha256": (
+                    sha256(certificate_scope.encode("utf-8")).hexdigest()
+                    if certificate_scope else None
+                ),
+                "issue_date": (
+                    parsed_issue_date.isoformat()
+                    if (parsed_issue_date := parse_date(
+                        str(certificate.get("certificate_issue_date") or "")
+                    )) else None
+                ),
+                "certificate_scope_source_is_nonblank": bool(certificate_scope),
+                "site_specific_scope_coverage_approved": False,
+            },
             "linked_case_inspection_period_source": (
                 str(case_rows[case_legacy_id][0].get("inspected_at") or "").strip() or None
                 if case_legacy_id is not None and len(case_rows.get(case_legacy_id, [])) == 1

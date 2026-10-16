@@ -92,6 +92,7 @@ const oidcMocks = vi.hoisted(() => ({
 // Observe the committed DOM before SearchPage's passive request effects run.
 const contextCommit = vi.hoisted(() => ({ observe: vi.fn() }));
 const searchResultCommit = vi.hoisted(() => ({ observe: vi.fn() }));
+const certificateWorkspaceCommit = vi.hoisted(() => ({ observe: vi.fn() }));
 vi.mock("./features/search/FacilityTable", async (importOriginal) => {
   const original = await importOriginal<typeof import("./features/search/FacilityTable")>();
   const { useLayoutEffect, createElement } = await import("react");
@@ -107,6 +108,28 @@ vi.mock("./features/search/FacilityTable", async (importOriginal) => {
         });
       });
       return createElement(original.FacilityTable, props);
+    },
+  };
+});
+
+vi.mock("./features/search/FacilityWorkspaceTabs", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./features/search/FacilityWorkspaceTabs")>();
+  const { useLayoutEffect, createElement } = await import("react");
+  return {
+    FacilityWorkspaceTabs: (props: Parameters<typeof original.FacilityWorkspaceTabs>[0]) => {
+      useLayoutEffect(() => {
+        certificateWorkspaceCommit.observe({
+          eligibilityDetailId: props.eligibilityCertificateDetail?.business_eligibility_certificate_id ?? null,
+          eligibilityDetailFacility: props.eligibilityCertificateDetail?.facility_name ?? null,
+          eligibilityIssueAvailable: props.eligibilityIssueReadiness?.available ?? null,
+          eligibilityIssueLabel: props.eligibilityIssueReadiness?.label ?? null,
+          selectedEligibilityId: props.selectedEligibilityCertificateId,
+          gxpDetailId: props.gxpCertificateDetail?.certificate_id ?? null,
+          gxpDetailFacility: props.gxpCertificateDetail?.facility_name ?? null,
+          selectedGxpId: props.selectedGxpCertificateId,
+        });
+      });
+      return createElement(original.FacilityWorkspaceTabs, props);
     },
   };
 });
@@ -821,6 +844,7 @@ describe("App Slice A.4 search workspace", () => {
   beforeEach(() => {
     contextCommit.observe.mockReset();
     searchResultCommit.observe.mockReset();
+    certificateWorkspaceCommit.observe.mockReset();
     resetApiMocks();
     resetOidcMocks();
     window.google = {
@@ -3850,6 +3874,134 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks[list]).toHaveBeenCalledTimes(1);
     expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1);
     expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { kind: "GxP", tab: "Giấy chứng nhận GxP", list: "listSiteGxpCertificates", load: "getGxpCertificateDetail", id: "certificate_id", table: "Danh mục GCN GxP", selectedKey: "selectedGxpId", detailKey: "gxpDetailId" },
+    { kind: "ĐĐK", tab: "Giấy chứng nhận đủ điều kiện", list: "listSiteBusinessEligibilityCertificates", load: "getBusinessEligibilityDetail", id: "business_eligibility_certificate_id", table: "Danh mục GCN đủ điều kiện", selectedKey: "selectedEligibilityId", detailKey: "eligibilityDetailId" },
+  ] as const)("access-bound certificate ownership: $kind excludes A detail from B's first committed render", async ({ tab, list, load, id, table, selectedKey, detailKey }) => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
+    const item = { site_id: "site-1", certificate_number: "SAME-REFERENCE", certificate_type: "GMP", line_code: "A", production_line_id: "line-uuid-1", context_match_kind: "exact_line", latest_flag: false, issue_date: null, issued_on: null, expiry_date: null, issuance_sequence_text: "1" };
+    apiMocks[list].mockResolvedValue({ items: [{ ...item, [id]: "certificate-A" }, { ...item, [id]: "certificate-B" }], issue_readiness: null });
+    apiMocks[load].mockImplementation((certificateId: string) => Promise.resolve({
+      ...item, [id]: certificateId, row_version: 3, facility_name: `${certificateId} detail`, linked_gxp_certificates: [], scopes: [], action_readiness: [],
+    }));
+
+    renderApp([`/search?gxp_type=GMP&facility_tab=${encodeURIComponent(tab)}`]);
+    await screen.findByText("certificate-A detail");
+    const commits: Array<Record<string, unknown>> = [];
+    certificateWorkspaceCommit.observe.mockImplementation((snapshot) => {
+      if (snapshot[selectedKey] === "certificate-B") commits.push(snapshot);
+    });
+    fireEvent.click(within(screen.getByRole("table", { name: table })).getAllByRole("row")[2]);
+    await screen.findByText("certificate-B detail");
+
+    expect(commits.length).toBeGreaterThan(0);
+    expect(commits.every((snapshot) => snapshot[detailKey] !== "certificate-A")).toBe(true);
+  });
+
+  it.each([
+    { kind: "GxP", tab: "Giấy chứng nhận GxP", list: "listSiteGxpCertificates", load: "getGxpCertificateDetail", id: "certificate_id", facilityKey: "gxpDetailFacility" },
+    { kind: "ĐĐK", tab: "Giấy chứng nhận đủ điều kiện", list: "listSiteBusinessEligibilityCertificates", load: "getBusinessEligibilityDetail", id: "business_eligibility_certificate_id", facilityKey: "eligibilityDetailFacility" },
+  ] as const)("access-bound certificate ownership: $kind binds same-UUID detail and readiness to the active access generation", async ({ tab, list, load, id, facilityKey }) => {
+    const item = { site_id: "site-1", certificate_number: "SHARED-ID", certificate_type: "GMP", line_code: "A", production_line_id: "line-uuid-1", context_match_kind: "exact_line", latest_flag: true, issue_date: null, issued_on: null, expiry_date: null, issuance_sequence_text: "1" };
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
+    apiMocks[list]
+      .mockResolvedValueOnce({ items: [{ ...item, [id]: "shared-certificate" }], issue_readiness: id === "business_eligibility_certificate_id" ? { action_key: "issue_business_eligibility", label: "A readiness", available: true, reason_code: null, required_permissions: [] } : null })
+      .mockResolvedValueOnce({ items: [{ ...item, [id]: "shared-certificate" }], issue_readiness: id === "business_eligibility_certificate_id" ? { action_key: "issue_business_eligibility", label: "B readiness", available: false, reason_code: "B-only", required_permissions: [] } : null });
+    let resolveB!: (value: unknown) => void;
+    apiMocks[load]
+      .mockResolvedValueOnce({ ...item, [id]: "shared-certificate", row_version: 1, facility_name: "Access A detail", linked_gxp_certificates: [], scopes: [], action_readiness: [] })
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveB = resolve; }));
+
+    const { credentialCallback } = await renderOidcSearch(`/search?gxp_type=GMP&facility_tab=${encodeURIComponent(tab)}`);
+    await act(async () => { credentialCallback({ credential: "synthetic-A" }); });
+    await screen.findByText("Access A detail");
+    const commits: Array<Record<string, unknown>> = [];
+    certificateWorkspaceCommit.observe.mockImplementation((snapshot) => { commits.push(snapshot); });
+
+    await act(async () => { credentialCallback({ credential: "synthetic-B" }); });
+    await waitFor(() => expect(apiMocks[load]).toHaveBeenCalledTimes(2));
+    expect(commits.every((snapshot) => snapshot[facilityKey] !== "Access A detail")).toBe(true);
+    if (id === "business_eligibility_certificate_id") {
+      expect(commits.every((snapshot) => snapshot.eligibilityIssueLabel !== "A readiness")).toBe(true);
+    }
+    await act(async () => resolveB({ ...item, [id]: "shared-certificate", row_version: 2, facility_name: "Access B detail", linked_gxp_certificates: [], scopes: [], action_readiness: [] }));
+    expect(await screen.findByText("Access B detail")).toBeInTheDocument();
+    expect(apiMocks[list]).toHaveBeenCalledTimes(2);
+    expect(apiMocks[load]).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    { kind: "GxP", tab: "Giấy chứng nhận GxP", list: "listSiteGxpCertificates", load: "getGxpCertificateDetail", id: "certificate_id", staleStatus: 403 },
+    { kind: "ĐĐK", tab: "Giấy chứng nhận đủ điều kiện", list: "listSiteBusinessEligibilityCertificates", load: "getBusinessEligibilityDetail", id: "business_eligibility_certificate_id", staleStatus: 409 },
+  ] as const)("access-bound certificate ownership: $kind rejects reversed A-B-A detail success and HTTP $staleStatus", async ({ tab, list, load, id, staleStatus }) => {
+    const item = { site_id: "site-1", certificate_number: "SHARED-ID", certificate_type: "GMP", line_code: "A", production_line_id: "line-uuid-1", context_match_kind: "exact_line", latest_flag: true, issue_date: null, issued_on: null, expiry_date: null, issuance_sequence_text: "1" };
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
+    apiMocks[list].mockResolvedValue({ items: [{ ...item, [id]: "shared-certificate" }], issue_readiness: null });
+    const pending = Array.from({ length: 3 }, () => {
+      let resolve!: (value: unknown) => void;
+      let reject!: (reason: unknown) => void;
+      const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+      return { promise, resolve, reject };
+    });
+    apiMocks[load]
+      .mockImplementationOnce(() => pending[0].promise)
+      .mockImplementationOnce(() => pending[1].promise)
+      .mockImplementationOnce(() => pending[2].promise);
+
+    const { credentialCallback } = await renderOidcSearch(`/search?gxp_type=GMP&facility_tab=${encodeURIComponent(tab)}`);
+    await act(async () => { credentialCallback({ credential: "synthetic-A" }); });
+    await waitFor(() => expect(apiMocks[load]).toHaveBeenCalledTimes(1));
+    await act(async () => { credentialCallback({ credential: "synthetic-B" }); });
+    await waitFor(() => expect(apiMocks[load]).toHaveBeenCalledTimes(2));
+    await act(async () => { credentialCallback({ credential: "synthetic-A" }); });
+    await waitFor(() => expect(apiMocks[load]).toHaveBeenCalledTimes(3));
+
+    await act(async () => pending[2].resolve({ ...item, [id]: "shared-certificate", row_version: 3, facility_name: "Current A generation", linked_gxp_certificates: [], scopes: [], action_readiness: [] }));
+    expect(await screen.findByText("Current A generation")).toBeInTheDocument();
+    await act(async () => {
+      pending[1].resolve({ ...item, [id]: "shared-certificate", row_version: 2, facility_name: "Stale B generation", linked_gxp_certificates: [], scopes: [], action_readiness: [] });
+      pending[0].reject(buildApiError("Stale first A failure", staleStatus));
+    });
+
+    expect(screen.getByText("Current A generation")).toBeInTheDocument();
+    expect(screen.queryByText("Stale B generation")).not.toBeInTheDocument();
+    expect(screen.queryByText("Stale first A failure")).not.toBeInTheDocument();
+    expect(apiMocks[list]).toHaveBeenCalledTimes(3);
+    expect(apiMocks[load]).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    { kind: "GxP", tab: "Giấy chứng nhận GxP", list: "listSiteGxpCertificates", load: "getGxpCertificateDetail", id: "certificate_id" },
+    { kind: "ĐĐK", tab: "Giấy chứng nhận đủ điều kiện", list: "listSiteBusinessEligibilityCertificates", load: "getBusinessEligibilityDetail", id: "business_eligibility_certificate_id" },
+  ] as const)("access-bound certificate ownership: $kind drops a pending detail on logout before a new access owner loads", async ({ tab, list, load, id }) => {
+    const item = { site_id: "site-1", certificate_number: "SHARED-ID", certificate_type: "GMP", line_code: "A", production_line_id: "line-uuid-1", context_match_kind: "exact_line", latest_flag: true, issue_date: null, issued_on: null, expiry_date: null, issuance_sequence_text: "1" };
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
+    apiMocks[list].mockResolvedValue({ items: [{ ...item, [id]: "shared-certificate" }], issue_readiness: null });
+    let resolveOld!: (value: unknown) => void;
+    apiMocks[load]
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }))
+      .mockResolvedValueOnce({ ...item, [id]: "shared-certificate", row_version: 2, facility_name: "New owner detail", linked_gxp_certificates: [], scopes: [], action_readiness: [] });
+
+    const { credentialCallback } = await renderOidcSearch(`/search?gxp_type=GMP&facility_tab=${encodeURIComponent(tab)}`);
+    await act(async () => { credentialCallback({ credential: "synthetic-A" }); });
+    await waitFor(() => expect(apiMocks[load]).toHaveBeenCalledTimes(1));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Đăng xuất" })); });
+    expect(await screen.findByText("Cần đăng nhập")).toBeInTheDocument();
+    await act(async () => resolveOld({ ...item, [id]: "shared-certificate", row_version: 1, facility_name: "Logged-out stale detail", linked_gxp_certificates: [], scopes: [], action_readiness: [] }));
+    expect(screen.queryByText("Logged-out stale detail")).not.toBeInTheDocument();
+
+    await act(async () => { credentialCallback({ credential: "synthetic-B" }); });
+    expect(await screen.findByText("New owner detail")).toBeInTheDocument();
+    expect(screen.queryByText("Logged-out stale detail")).not.toBeInTheDocument();
+    expect(apiMocks[list]).toHaveBeenCalledTimes(2);
+    expect(apiMocks[load]).toHaveBeenCalledTimes(2);
   });
 
   it.each([

@@ -1496,3 +1496,30 @@ Logout removes the table and B text. Document client/scroll widths are
 This is synthetic fixture validation. Real OAuth refresh, live RBAC/backend,
 screen-reader acceptance, NAS/binary storage and production UAT remain
 unverified.
+
+## Access-bound certificate workspace ownership — 2026-10-16
+
+Baseline `09cca33406ed8d19e8022631a643f9d794b57d1c` kept each Facility
+certificate list, selected UUID, detail, readiness, basis list, pending state
+and error in independent component state. Passive cleanup ran after commit. A
+same-Site A → B selection therefore committed the previous certificate detail
+once, and a new access generation could retain a same-UUID selection long
+enough to start a detail read under the wrong owner.
+
+`SearchPage` now projects both the GxP and ĐĐK workspaces only when their owner
+matches the opaque access generation, canonical Site and GxP/ProductionLine
+context, active certificate tab, canonical certificate UUID and request
+operation. ĐĐK issue readiness and GxP basis data use the same boundary.
+Request generations reject reversed A → B → A completion even when the UUID is
+identical. The owner contains no token, email or principal data and is absent
+from URL, DOM and logs. Existing edit/issue/promote payloads, expected-version
+handling, draft behavior, HTTP 403/409/422 presentation and backend contracts
+remain unchanged.
+
+Baseline regressions failed for the first B commit in both workspaces and pass
+after the fix. Coverage includes same-UUID access changes, logout during a
+pending detail, late success, late HTTP 403/409, reversed A → B → A, selection
+focus/request separation and unchanged request counts. Authenticated live
+backend/RBAC, binary storage, screen-reader acceptance and production UAT are
+still `EVIDENCE_MISSING`; browser checks in this slice use controlled frontend
+fixtures only.

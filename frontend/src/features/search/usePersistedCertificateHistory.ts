@@ -11,15 +11,15 @@ export function usePersistedCertificateHistory<K extends keyof Histories>(kind: 
   const [snapshot, setSnapshot] = useState<{ key: string; id: string } | null>(null);
   const key = context && id ? JSON.stringify([kind, context, id]) : null;
   const [request, setRequest] = useState<{
-    key: string; revision: number | undefined; auth: StubAuthState; useStubAuth: boolean; bearerToken: string | null; state: HistoryState<Histories[K]>;
+    key: string; revision: number | undefined; state: HistoryState<Histories[K]>;
   } | null>(null);
-  const owned = request?.key === key && request.auth === auth && request.useStubAuth === useStubAuth && request.bearerToken === bearerToken;
+  const owned = request?.key === key;
   const settled = owned && (revision === undefined || request.revision === revision) && (request.state.status === "ready" || request.state.status === "error");
   useEffect(() => {
     if (!key || !id || !enabled || settled) return;
     const controller = new AbortController();
     let cancelled = false;
-    const owner = { key, revision, auth, useStubAuth, bearerToken };
+    const owner = { key, revision };
     setRequest({ ...owner, state: { status: "loading" } });
     const load = kind === "gxp" ? getGxpCertificateVersionHistory : getBusinessEligibilityVersionHistory;
     void load(id, auth, useStubAuth, bearerToken, controller.signal).then(data => {
@@ -37,7 +37,7 @@ export function usePersistedCertificateHistory<K extends keyof Histories>(kind: 
       setRequest({ ...owner, state: { status: "error", httpStatus: typeof status === "number" ? status : null } });
     });
     return () => { cancelled = true; controller.abort(); };
-  }, [kind, key, id, enabled, auth, useStubAuth, bearerToken, settled, revision]);
+  }, [kind, key, id, enabled, auth.role, auth.username, useStubAuth, bearerToken, settled, revision]);
   if (key && owned && request.state.status === "ready" && (revision === undefined || request.revision === revision)) {
     return { ...request.state, selectedVersionId: snapshot?.key === key ? snapshot.id : undefined,
       onSelectVersion: id => setSnapshot({ key, id }) };

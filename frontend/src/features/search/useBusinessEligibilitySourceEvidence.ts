@@ -17,13 +17,13 @@ export function useBusinessEligibilitySourceEvidence(
 ): EligibilitySourceState {
   const key = context && certificateId ? JSON.stringify([context, certificateId]) : null;
   const [request, setRequest] = useState<{
-    key: string; auth: StubAuthState; useStubAuth: boolean; bearerToken: string | null; state: EligibilitySourceState;
+    key: string; state: EligibilitySourceState;
   } | null>(null);
   useEffect(() => {
     if (!key || !certificateId) return;
     const controller = new AbortController();
     let cancelled = false;
-    const owner = { key, auth, useStubAuth, bearerToken };
+    const owner = { key };
     setRequest({ ...owner, state: { status: "loading" } });
     void getBusinessEligibilityGxpSourceEvidence(certificateId, auth, useStubAuth, bearerToken, controller.signal)
       .then(data => {
@@ -44,9 +44,8 @@ export function useBusinessEligibilitySourceEvidence(
         setRequest({ ...owner, state: { status: "error", httpStatus: typeof status === "number" ? status : null } });
       });
     return () => { cancelled = true; controller.abort(); };
-  }, [key, certificateId, auth, useStubAuth, bearerToken]);
+  }, [key, certificateId, auth.role, auth.username, useStubAuth, bearerToken]);
   // Close A's visibility in B's first render, before passive effects/cleanup.
   if (!key) return { status: "idle" };
-  return request?.key === key && request.auth === auth && request.useStubAuth === useStubAuth
-    && request.bearerToken === bearerToken ? request.state : { status: "loading" };
+  return request?.key === key ? request.state : { status: "loading" };
 }

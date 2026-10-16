@@ -176,3 +176,42 @@ signed decision are still missing. For Track B, original per-version
 signed Certificate/annex evidence and the approved multi-Site
 coverage model remain outstanding.
 
+## Gate-0 reverse-reference binding and source snapshot pin (16 October 2026)
+
+After the successful original Site/Company/Case/version SELECT-only witness,
+the **same owner** now binds its two independent source audit projections of
+reverse-referencing Cases **one-to-one**:
+
+- The db.cso-derived original Case Site/Company record.
+- The literal db.ktra reverse Case record, original GxP, certificate-number
+  match and full scope-text lexical match.
+
+The two sets must have identical unique legacy Case IDs. Every reverse
+candidate's canonical Case Site and GxP must match the literal source
+evidence, and the source's Site/GxP correspondence flag must agree with the
+current canonical Certificate Site/type. Missing/altered/duplicated Case
+evidence now **blocks** the witness; it does not silently reduce its
+candidate list. The three independent source correspondence flags remain
+separate and **never grant** a Case rebinding or a multi-Site certification.
+
+GMP 376 / Case 380 is the strongly corroborated source-only review candidate:
+original Site/GxP, original certificate number and entire source scope text
+match, but an original signed issuance trail and owner sign-off are still
+required. For GMP 1037/1180, same-company Site anchoring and surviving
+reverse signals are not substitutes for reviewed CaseSiteCoverage or
+CertificateVersionSiteCoverage.
+
+The original witness CLI now pins the **exact legacy_snapshot.json export
+bytes** to SHA256
+\`b3bde05963e4e4d14d5b244e7c62b0f810f1cbbe206750574def6a366bdf7296\`
+(verified by the operator on 16 October 2026). This is explicitly
+**not** the authoritative original physical XLSB hash; the accepted original
+physical workbook retains its different checksum recorded earlier. Swapping
+in a new export with identical row totals cannot satisfy this sealed
+historical witness without an independently reviewed new source checkpoint.
+
+All source Case candidates remain \`remediation_authorized=false\`,
+\`primary_signed_issuance_case_link_verified=false\`,
+and \`case_rebinding_authorized=false\`. This change adds no database write,
+NAS access, migration, legal-grant assertion, or runtime fallback.
+

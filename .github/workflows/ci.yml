@@ -224,7 +224,7 @@ jobs:
   cross-head-integration:
     # Explicitly pinned two-HEAD gate. Never merges/rebases/deploys either
     # branch. Runs only on backend-owner branch push, in a disposable runner.
-    if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/integration/frontend-backend-20261009' || github.ref == 'refs/heads/integration/frontend-backend-auth-20261010' || github.ref == 'refs/heads/integration/frontend-backend-authguard-20261010' || github.ref == 'refs/heads/audit/certificate-case-source-integrity-20261011') }}
+    if: ${{ (github.event_name == 'push' && (github.ref == 'refs/heads/integration/frontend-backend-20261009' || github.ref == 'refs/heads/integration/frontend-backend-auth-20261010' || github.ref == 'refs/heads/integration/frontend-backend-authguard-20261010' || github.ref == 'refs/heads/audit/certificate-case-source-integrity-20261011')) || (github.event_name == 'pull_request' && github.head_ref == 'audit/certificate-case-source-integrity-20261011') }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -243,15 +243,17 @@ jobs:
     env:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_qlcl_test
       GXP_CROSS_HEAD_DISPOSABLE_GATE: "1"
+      GXP_BACKEND_CHECKOUT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - name: Checkout combined candidate with full Git ancestry (no credentials retained)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ env.GXP_BACKEND_CHECKOUT_SHA }}
 
       - name: Checkout Codex PR source only for isolated audit-branch cross-head test
-        if: ${{ github.ref == 'refs/heads/audit/certificate-case-source-integrity-20261011' }}
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/audit/certificate-case-source-integrity-20261011') || (github.event_name == 'pull_request' && github.head_ref == 'audit/certificate-case-source-integrity-20261011') }}
         uses: actions/checkout@v4
         with:
           ref: codex/legacy-ui-parity-20261010
@@ -261,8 +263,12 @@ jobs:
       - name: Prove exact two-source boundary and prepare disposable frontend
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          case "${GITHUB_REF}" in
+          test "$(git rev-parse HEAD)" = "${GXP_BACKEND_CHECKOUT_SHA}"
+          BRANCH_REF="${GITHUB_REF}"
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            BRANCH_REF="refs/heads/${GITHUB_HEAD_REF}"
+          fi
+          case "${BRANCH_REF}" in
             refs/heads/audit/certificate-case-source-integrity-20261011)
               BACKEND_BASE="ae4592d274005493c4041fbc18f7beb29f5c4773"
               FRONTEND="09cca33406ed8d19e8022631a643f9d794b57d1c"
@@ -287,10 +293,10 @@ jobs:
               git diff --exit-code "${FRONTEND}" HEAD -- frontend
               git diff --exit-code HEAD -- frontend
               ;;
-            *) echo "Unapproved cross-head branch: ${GITHUB_REF}" >&2; exit 1 ;;
+            *) echo "Unapproved cross-head branch: ${BRANCH_REF}" >&2; exit 1 ;;
           esac
           test -f frontend/src/lib/api.ts
-          printf 'CROSS_HEAD_BACKEND_SHA=%s\nCROSS_HEAD_FRONTEND_SHA=%s\n' "${GITHUB_SHA}" "${FRONTEND}"
+          printf 'CROSS_HEAD_BACKEND_SHA=%s\nCROSS_HEAD_FRONTEND_SHA=%s\n' "${GXP_BACKEND_CHECKOUT_SHA}" "${FRONTEND}"
 
 
       - uses: actions/setup-python@v5
@@ -405,8 +411,8 @@ jobs:
       - name: Verify frontend source identity after runner-only integration
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          if [[ "${GITHUB_REF}" == "refs/heads/audit/certificate-case-source-integrity-20261011" ]]; then
+          test "$(git rev-parse HEAD)" = "${GXP_BACKEND_CHECKOUT_SHA}"
+          if [[ "${GITHUB_REF}" == "refs/heads/audit/certificate-case-source-integrity-20261011" || "${GITHUB_HEAD_REF:-}" == "audit/certificate-case-source-integrity-20261011" ]]; then
             test "$(git -C .gxp-cross-head-codex rev-parse HEAD)" = "09cca33406ed8d19e8022631a643f9d794b57d1c"
             # Check every tracked Codex frontend source byte, ignoring only
             # generated dependencies/build files in the disposable runner.

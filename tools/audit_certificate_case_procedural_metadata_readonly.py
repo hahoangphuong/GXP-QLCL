@@ -35,8 +35,9 @@ from tools.audit_certificate_case_site_owners_rehearsal_readonly import (
 )
 from tools.audit_certificate_case_issuance_document_metadata_readonly import (
     SCHEMA as DOCUMENT_SCHEMA, scan_issuance_document_metadata,
-    _validate_private_output, _write_private_json,
+    _validate_private_output,
 )
+from tools.audit_ddk_gxp_canonical_candidates_readonly import _write_private_json
 from tools.env_utils import parse_env_file
 from tools.preflight_ddk_gxp_rehearsal import EXPECTED_DB, EXPECTED_REVISION
 
@@ -299,10 +300,13 @@ def main(argv: list[str] | None = None) -> int:
         })
         try:
             with engine.connect() as connection, connection.begin():
-                connection.exec_driver_sql("SET TRANSACTION READ ONLY")
+                connection.exec_driver_sql(
+                    "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"
+                )
                 _require(
                     connection.execute(text("SELECT current_database()")).scalar_one() == EXPECTED_DB
                     and connection.execute(text("SHOW transaction_read_only")).scalar_one() == "on"
+                    and connection.execute(text("SHOW transaction_isolation")).scalar_one() == "repeatable read"
                     and list(connection.execute(text(
                         "SELECT version_num FROM public.alembic_version"
                     )).scalars()) == [EXPECTED_REVISION],
@@ -325,6 +329,7 @@ def main(argv: list[str] | None = None) -> int:
                     report["document_binary_verified"] = False
                     report["source_snapshot_sha256"] = EXPECTED_SNAPSHOT_SHA256
                     report["database_transaction_read_only"] = True
+                    report["database_transaction_isolation"] = "repeatable read"
         finally:
             engine.dispose()
         _write_private_json(args.private_output, report)

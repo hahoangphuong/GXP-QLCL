@@ -222,6 +222,27 @@ type WorkspaceRequest = {
   | { status: "error"; error: string; previous?: FacilityWorkspace }
 );
 
+type SearchResultsRequest = {
+  context: string;
+  requestId: number;
+  items: FacilitySearchResult[];
+  totalCount: number;
+} & (
+  | { status: "loading" }
+  | { status: "ready" }
+  | { status: "error"; error: string }
+);
+
+type SearchPageRequest = {
+  context: string;
+  offset: number;
+};
+
+type ResolvedDeepLinkResult = {
+  accessGeneration: number;
+  result: FacilitySearchResult;
+};
+
 function facilityContextIdentity(result: FacilitySearchResult): string {
   return JSON.stringify([
     result.result_key, result.site_id, result.gxp_type, result.result_grain,
@@ -237,6 +258,7 @@ export function SearchPage({
   access: ApiAccess;
   statusError: string | null;
 }) {
+  const { auth, useStubAuth, bearerToken, canLoadSecureApi, accessGeneration } = access;
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const navigationType = useNavigationType();
@@ -251,7 +273,7 @@ export function SearchPage({
   const [certificateState, setCertificateState] = useState(searchParams.get("certificate_state") ?? "");
   const [certificateExpiringWithinDays, setCertificateExpiringWithinDays] = useState(searchParams.get("certificate_expiring_within_days") ?? "");
   const [changeRequestStates, setChangeRequestStates] = useState<string[]>(searchParams.getAll("change_request_state"));
-  const [resultsOffset, setResultsOffset] = useState(0);
+  const [searchPageRequest, setSearchPageRequest] = useState<SearchPageRequest>({ context: "", offset: 0 });
   const [searchEpoch, setSearchEpoch] = useState(0);
   const [selectedResultKey, setSelectedResultKey] = useState<string | null>(searchParams.get("result_key"));
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(searchParams.get("history_id"));
@@ -266,13 +288,12 @@ export function SearchPage({
   const deferredFacilityName = useDeferredValue(facilityName);
   const deferredCertificateScope = useDeferredValue(certificateScope);
 
-  const [results, setResults] = useState<FacilitySearchResult[]>([]);
+  const [searchResultsRequest, setSearchResultsRequest] = useState<SearchResultsRequest | null>(null);
+  const searchRequestSequence = useRef(0);
+  const searchResultsRequestRef = useRef<SearchResultsRequest | null>(null);
   // A resolved deep link owns the workspace target while the ordinary result
   // universe is reconciled to its settled GxP filter.
-  const [resolvedDeepLinkResult, setResolvedDeepLinkResult] = useState<FacilitySearchResult | null>(null);
-  const [resultsLoading, setResultsLoading] = useState(true);
-  const [resultsError, setResultsError] = useState<string | null>(null);
-  const [resultsTotalCount, setResultsTotalCount] = useState(0);
+  const [resolvedDeepLinkResult, setResolvedDeepLinkResult] = useState<ResolvedDeepLinkResult | null>(null);
   const [workspaceRequest, setWorkspaceRequest] = useState<WorkspaceRequest | null>(null);
   const workspaceRequestSequence = useRef(0);
   const committedContextRef = useRef<string | null>(null);
@@ -321,7 +342,6 @@ export function SearchPage({
   const [eligibilityPromotionPending, setEligibilityPromotionPending] = useState(false);
   const [eligibilityPromotionFailure, setEligibilityPromotionFailure] = useState<{ id: string; message: string } | null>(null);
   const eligibilityPromotionError = eligibilityPromotionFailure?.id === selectedEligibilityCertificateId ? eligibilityPromotionFailure.message : null;
-  const { auth, useStubAuth, bearerToken, canLoadSecureApi, accessGeneration } = access;
   const committedAccessGenerationRef = useRef(accessGeneration);
   const accessTransitionPending = committedAccessGenerationRef.current !== accessGeneration;
   const reassessmentInputRef = useRef<HTMLInputElement | null>(null);
@@ -330,7 +350,6 @@ export function SearchPage({
   const didHydrateInitialUrlRef = useRef(false);
   const latestSearchSignatureRef = useRef(searchSignature);
   const latestLocationKeyRef = useRef(location.key);
-  const resultsRef = useRef<FacilitySearchResult[]>([]);
   const certificateSelectionRef = useRef({ gxp: selectedGxpCertificateId, eligibility: selectedEligibilityCertificateId });
   useLayoutEffect(() => {
     certificateSelectionRef.current = { gxp: selectedGxpCertificateId, eligibility: selectedEligibilityCertificateId };
@@ -342,19 +361,47 @@ export function SearchPage({
     committedAccessGenerationRef.current = accessGeneration;
   }, [accessGeneration]);
 
-  useEffect(() => {
-    resultsRef.current = results;
-  }, [results]);
+  useLayoutEffect(() => {
+    searchResultsRequestRef.current = searchResultsRequest;
+  }, [searchResultsRequest]);
 
-  const selectedResultFromResults = results.find((item) => item.result_key === selectedResultKey) ?? null;
-  const selectedResult = resultResolution === "resolved"
-    && resolvedDeepLinkResult?.result_key === selectedResultKey
-    ? resolvedDeepLinkResult
-    : selectedResultFromResults;
   const explicitTargetPending = resultResolution === "pending" && hasExplicitResultIdentity(pendingDeepLink);
   const pendingTargetGxpConstraint = targetGxpConstraint(pendingDeepLink);
   const pendingTargetGxpHintsInvalid = hasInvalidOrContradictoryTargetGxpHints(pendingDeepLink);
-  const searchGxpType = explicitTargetPending ? pendingTargetGxpConstraint : gxpType;
+  const searchGxpType = (explicitTargetPending || resultResolution === "not_found")
+    ? pendingTargetGxpConstraint
+    : gxpType;
+  const searchContext = JSON.stringify([
+    accessGeneration,
+    useStubAuth,
+    deferredGeneralQuery.trim(),
+    deferredFacilityName.trim(),
+    deferredCertificateScope.trim(),
+    searchGxpType,
+    province.trim(),
+    caseStates,
+    changeRequestStates,
+    certificateState,
+    certificateExpiringWithinDays,
+    searchEpoch,
+  ]);
+  const ownedSearchRequest = canLoadSecureApi && searchResultsRequest?.context === searchContext
+    ? searchResultsRequest
+    : null;
+  const results = ownedSearchRequest?.items ?? [];
+  const resultsTotalCount = ownedSearchRequest?.totalCount ?? 0;
+  const resultsLoading = canLoadSecureApi && (!ownedSearchRequest || ownedSearchRequest.status === "loading");
+  const resultsError = ownedSearchRequest?.status === "error" ? ownedSearchRequest.error : null;
+  const resultsOffset = searchPageRequest.context === searchContext ? searchPageRequest.offset : 0;
+  const selectedResultFromResults = results.find((item) => item.result_key === selectedResultKey) ?? null;
+  const ownedResolvedDeepLinkResult = resolvedDeepLinkResult?.accessGeneration === accessGeneration
+    ? resolvedDeepLinkResult.result
+    : null;
+  const selectedResult = resultResolution === "resolved"
+    && ownedResolvedDeepLinkResult?.result_key === selectedResultKey
+    ? ownedResolvedDeepLinkResult
+    : selectedResultFromResults;
+  const visibleSelectedResultKey = selectedResult?.result_key ?? null;
   const selectedContext = selectedResult && canLoadSecureApi && !accessTransitionPending
     && !explicitTargetPending && resultResolution !== "not_found"
     ? JSON.stringify([accessGeneration, useStubAuth, facilityContextIdentity(selectedResult)]) : null;
@@ -461,7 +508,7 @@ export function SearchPage({
     setSelectedHistoryId(pending.historyId);
     setSelectedFacilityTab(resolveFacilityTab(params.get("facility_tab")));
     setActiveTab(params.get("event_tab") ?? DEFAULT_EVENT_TAB);
-    setResultsOffset(0);
+    setSearchPageRequest({ context: "", offset: 0 });
     setSearchEpoch((current) => current + 1);
     setDeepLinkError(null);
   }, [location.key, location.state, navigationType, searchSignature, urlSyncOwner]);
@@ -638,15 +685,13 @@ export function SearchPage({
 
   useEffect(() => {
     if (!canLoadSecureApi) {
-      setResultsLoading(false);
-      setResults([]);
-      setResultsTotalCount(0);
+      searchRequestSequence.current += 1;
+      setSearchResultsRequest(null);
       return;
     }
     if (explicitTargetPending && pendingTargetGxpHintsInvalid) {
-      setResultsLoading(false);
-      setResults([]);
-      setResultsTotalCount(0);
+      const requestId = ++searchRequestSequence.current;
+      setSearchResultsRequest({ context: searchContext, requestId, status: "ready", items: [], totalCount: 0 });
       setSelectedResultKey(null);
       setSelectedHistoryId(null);
       setResolvedDeepLinkResult(null);
@@ -657,12 +702,18 @@ export function SearchPage({
       return;
     }
     const isFirstPage = resultsOffset === 0;
+    const requestId = ++searchRequestSequence.current;
+    const previousRequest = searchResultsRequestRef.current;
+    const baseResults = !isFirstPage && previousRequest?.context === searchContext ? previousRequest.items : [];
+    const baseTotalCount = !isFirstPage && previousRequest?.context === searchContext ? previousRequest.totalCount : 0;
     let cancelled = false;
-    setResultsLoading(true);
-    if (isFirstPage) {
-      setResults([]);
-      setResultsTotalCount(0);
-    }
+    setSearchResultsRequest({
+      context: searchContext,
+      requestId,
+      status: "loading",
+      items: baseResults,
+      totalCount: baseTotalCount,
+    });
     void searchFacilities(
       {
         q: deferredGeneralQuery.trim() || undefined,
@@ -682,14 +733,17 @@ export function SearchPage({
       bearerToken,
     )
       .then((payload) => {
-        if (cancelled) {
+        if (cancelled || searchRequestSequence.current !== requestId) {
           return;
         }
-        const nextResults = isFirstPage ? payload.items : appendUniqueResults(resultsRef.current, payload.items);
-        setResults(nextResults);
-        setResultsTotalCount(payload.total_count);
-        setResultsError(null);
-        setResultsLoading(false);
+        const nextResults = isFirstPage ? payload.items : appendUniqueResults(baseResults, payload.items);
+        setSearchResultsRequest({
+          context: searchContext,
+          requestId,
+          status: "ready",
+          items: nextResults,
+          totalCount: payload.total_count,
+        });
         const explicitTarget = explicitTargetPending;
         const compatibleRows = explicitTarget && !pendingDeepLink.resultKey
           ? nextResults.filter((item) => matchesCompatibilityHints(item, pendingDeepLink))
@@ -699,7 +753,7 @@ export function SearchPage({
           : null;
         const resolveExplicitTarget = (target: FacilitySearchResult) => {
           const resolvedGxpType = normalizeGxpSelection(target.gxp_type);
-          setResolvedDeepLinkResult(target);
+          setResolvedDeepLinkResult({ accessGeneration, result: target });
           setSelectedResultKey(target.result_key);
           setGxpType(resolvedGxpType);
           setResultResolution("resolved");
@@ -708,7 +762,7 @@ export function SearchPage({
           // A target found through an unfiltered or differently filtered
           // lookup must not leave that lookup universe in the settled table.
           if (pendingTargetGxpConstraint !== resolvedGxpType) {
-            setResultsOffset(0);
+            setSearchPageRequest({ context: "", offset: 0 });
             setSearchEpoch((current) => current + 1);
           }
         };
@@ -724,7 +778,7 @@ export function SearchPage({
             setResultResolution("not_found");
             setDeepLinkError("Không tìm thấy ngữ cảnh được liên kết trong kết quả tra cứu hiện tại.");
           } else if (nextResults.length < payload.total_count) {
-            setResultsOffset(nextResults.length);
+            setSearchPageRequest({ context: searchContext, offset: nextResults.length });
           } else if (!pendingDeepLink.resultKey && compatibleRows.length === 1) {
             resolveExplicitTarget(compatibleRows[0]);
           } else {
@@ -741,34 +795,27 @@ export function SearchPage({
         }
       })
       .catch((error: Error) => {
-        if (!cancelled) {
-          setResultsError(error.message);
-          setResultsLoading(false);
-          if (isFirstPage) {
-            setResults([]);
-            setResultsTotalCount(0);
-          }
+        if (!cancelled && searchRequestSequence.current === requestId) {
+          setSearchResultsRequest({
+            context: searchContext,
+            requestId,
+            status: "error",
+            error: error.message,
+            items: isFirstPage ? [] : baseResults,
+            totalCount: baseTotalCount,
+          });
         }
       });
     return () => {
       cancelled = true;
     };
   }, [
-    accessGeneration,
-    auth,
+    auth.role,
+    auth.username,
     bearerToken,
-    caseStates,
     canLoadSecureApi,
-    certificateExpiringWithinDays,
-    certificateState,
-    changeRequestStates,
-    deferredCertificateScope,
-    deferredFacilityName,
-    deferredGeneralQuery,
-    gxpType,
-    province,
     resultsOffset,
-    searchEpoch,
+    searchContext,
     useStubAuth,
   ]);
 
@@ -1078,7 +1125,7 @@ export function SearchPage({
   }, [createInspectionCasePending, reassessmentDialogOpen]);
 
   function resetDependentContext() {
-    setResultsOffset(0);
+    setSearchPageRequest({ context: "", offset: 0 });
     setSelectedResultKey(null);
     setSelectedHistoryId(null);
     setResolvedDeepLinkResult(null);
@@ -1128,7 +1175,7 @@ export function SearchPage({
     if (resultsLoading || !hasMoreResults) {
       return;
     }
-    setResultsOffset(results.length);
+    setSearchPageRequest({ context: searchContext, offset: results.length });
   }
 
   function selectResultFromTable(resultKey: string) {
@@ -1964,7 +2011,7 @@ export function SearchPage({
           onReachEnd={loadMoreResults}
           onSelect={selectResultFromTable}
           rows={results}
-          selectedResultKey={selectedResultKey}
+          selectedResultKey={visibleSelectedResultKey}
           selectedGxpType={gxpType}
         />
         </div>

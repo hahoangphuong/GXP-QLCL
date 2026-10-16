@@ -1462,3 +1462,37 @@ current and stale 401/403, first-render workspace projection and request counts.
 This is synthetic frontend evidence. Authenticated live backend/RBAC, token
 refresh behavior against the deployed identity provider, NAS, binary storage,
 screen-reader acceptance and production UAT remain unverified.
+
+## Access-bound search result ownership — 2026-10-16
+
+Baseline `76aa24b8053b461ceabfbd32ca89a6be129975f1` stored search rows,
+total count, loading/error metadata and selected result independently of the
+access generation that loaded them. The first committed render after credential
+A → B therefore projected A's rows and selected key; passive effect cleanup was
+the first incorrect boundary. A retained page-two offset could also start B at
+A's pagination position.
+
+`SearchPage` now owns status, rows, total count and error as one atomic request
+record keyed by the opaque access generation, complete effective search/filter
+identity and request operation. Pagination has its own query owner, so a new
+access or filter starts at offset zero while pages for the same query append by
+full `result_key`. A resolved deep-link row is additionally bound to its access
+generation. Render projection excludes mismatched owners immediately; bearer
+tokens and principal data are absent from owner keys, URLs, DOM and logs. The
+existing API, backend authorization, UUID identity and keyboard behavior are
+unchanged, and permission failures are not retried.
+
+Regression failed on the baseline at the first B commit and passes after the
+fix. Coverage includes loaded A → B, logout, late A success/error, reversed
+A → B → A, access change after page two, explicit deep links and harmless
+same-session rerenders. Synthetic actual-`SearchPage` browser evidence is stored
+outside Git under `.codex/evidence/search-result-ownership/`. At 1366×768 and
+390×844 the first B commit has zero rows and no selected row; requests are
+A offset 0, A offset 100 and B offset 0. After explicitly selecting B, a
+harmless rerender retains one row and one selection without another search.
+Logout removes the table and B text. Document client/scroll widths are
+1366/1366 and 390/390.
+
+This is synthetic fixture validation. Real OAuth refresh, live RBAC/backend,
+screen-reader acceptance, NAS/binary storage and production UAT remain
+unverified.

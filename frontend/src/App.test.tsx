@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { FACILITY_TAB_LABELS, type FacilityTab } from "./features/search/facilityTabs";
 import { CASE_EVENT_LABELS } from "./features/search/EventWorkspace";
+import type { FacilitySearchPage, FacilitySearchResult } from "./types";
 
 const apiMocks = vi.hoisted(() => ({
   assessCapaCycle: vi.fn(),
@@ -90,12 +91,21 @@ const oidcMocks = vi.hoisted(() => ({
 
 // Observe the committed DOM before SearchPage's passive request effects run.
 const contextCommit = vi.hoisted(() => ({ observe: vi.fn() }));
+const searchResultCommit = vi.hoisted(() => ({ observe: vi.fn() }));
 vi.mock("./features/search/FacilityTable", async (importOriginal) => {
   const original = await importOriginal<typeof import("./features/search/FacilityTable")>();
   const { useLayoutEffect, createElement } = await import("react");
   return {
     FacilityTable: (props: Parameters<typeof original.FacilityTable>[0]) => {
-      useLayoutEffect(() => { contextCommit.observe(props.selectedResultKey); });
+      useLayoutEffect(() => {
+        contextCommit.observe(props.selectedResultKey);
+        searchResultCommit.observe({
+          hasMore: props.hasMore,
+          loading: props.loading,
+          resultKeys: props.rows.map((row) => row.result_key),
+          selectedResultKey: props.selectedResultKey,
+        });
+      });
       return createElement(original.FacilityTable, props);
     },
   };
@@ -285,7 +295,7 @@ function buildStatus(authMode: "header_stub" | "google_oidc", oidcClientId: stri
   };
 }
 
-function buildSearchResult(overrides: Record<string, unknown> = {}) {
+function buildSearchResult(overrides: Record<string, unknown> = {}): FacilitySearchResult {
   return {
     result_key: "site-1:GMP:A",
     site_id: "site-1",
@@ -308,7 +318,17 @@ function buildSearchResult(overrides: Record<string, unknown> = {}) {
     current_certificate_number: "GCN-001",
     current_certificate_expiry: "2026-12-31",
     ...overrides,
-  };
+  } as FacilitySearchResult;
+}
+
+function deferredSearchPage() {
+  let resolve!: (value: FacilitySearchPage) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<FacilitySearchPage>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
 }
 
 function buildWorkspace(overrides: Record<string, unknown> = {}) {
@@ -744,6 +764,24 @@ function renderApp(initialEntries: string[] = ["/"]) {
   );
 }
 
+async function renderOidcSearch(route = "/search") {
+  apiMocks.getAppStatus.mockResolvedValue(buildStatus("google_oidc", "client-id.apps.googleusercontent.com"));
+  oidcMocks.isOidcSessionValid.mockReturnValue(true);
+  oidcMocks.decodeOidcCredential.mockImplementation((credential: string) => ({
+    token: credential,
+    email: `${credential}@example.test`,
+    name: credential,
+    subject: credential,
+    expires_at_epoch_seconds: 4_102_444_800,
+  }));
+  const rendered = renderApp([route]);
+  await waitFor(() => expect(window.google?.accounts?.id?.initialize).toHaveBeenCalledOnce());
+  const credentialCallback = (
+    vi.mocked(window.google!.accounts!.id!.initialize).mock.calls[0][0].callback
+  ) as (response: { credential?: string }) => void;
+  return { ...rendered, credentialCallback };
+}
+
 async function flushSearchUrlSync() {
   // SearchPage deliberately defers state -> URL ownership by one microtask so
   // a sibling navigation committed in the same turn wins. Keep that boundary
@@ -782,6 +820,7 @@ function NavigateOnInitialHistoryCommit({ to }: { to: string }) {
 describe("App Slice A.4 search workspace", () => {
   beforeEach(() => {
     contextCommit.observe.mockReset();
+    searchResultCommit.observe.mockReset();
     resetApiMocks();
     resetOidcMocks();
     window.google = {
@@ -1822,6 +1861,168 @@ describe("App Slice A.4 search workspace", () => {
     expect(screen.queryByRole("table", { name: "Lịch sử kiểm tra & thay đổi" })).not.toBeInTheDocument();
     expect(await screen.findByText("Đang tải lịch sử của ngữ cảnh đang chọn...")).toBeInTheDocument();
     expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not project A-owned search rows in the first render of credential B", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("google_oidc", "client-id.apps.googleusercontent.com"));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    oidcMocks.isOidcSessionValid.mockReturnValue(true);
+    oidcMocks.decodeOidcCredential.mockImplementation((credential: string) => ({
+      token: credential,
+      email: `${credential}@example.test`,
+      name: credential,
+      subject: credential,
+      expires_at_epoch_seconds: 4_102_444_800,
+    }));
+    renderApp(["/search"]);
+    await waitFor(() => expect(window.google?.accounts?.id?.initialize).toHaveBeenCalledOnce());
+    const credentialCallback = (
+      vi.mocked(window.google!.accounts!.id!.initialize).mock.calls[0][0].callback
+    ) as (response: { credential?: string }) => void;
+    await act(async () => { credentialCallback({ credential: "synthetic-A" }); });
+    await waitFor(() => expect(searchResultCommit.observe).toHaveBeenLastCalledWith(expect.objectContaining({
+      resultKeys: ["site-1:GMP:A"],
+    })));
+    const snapshots: Array<{ resultKeys: string[]; selectedResultKey: string | null }> = [];
+    searchResultCommit.observe.mockImplementation((snapshot) => { snapshots.push(snapshot); });
+
+    await act(async () => { credentialCallback({ credential: "synthetic-B" }); });
+
+    expect(snapshots.length).toBeGreaterThan(0);
+    expect(snapshots[0]).toMatchObject({ resultKeys: [], selectedResultKey: null });
+  });
+
+  it("removes search rows and selection in the first logout render", async () => {
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const { credentialCallback } = await renderOidcSearch();
+    await act(async () => { credentialCallback({ credential: "synthetic-A" }); });
+    await waitFor(() => expect(searchResultCommit.observe).toHaveBeenLastCalledWith(expect.objectContaining({
+      resultKeys: ["site-1:GMP:A"],
+    })));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Đăng xuất" })); });
+
+    expect(screen.queryByTestId("facility-table-scroll")).not.toBeInTheDocument();
+    expect(await screen.findByText("Cần đăng nhập")).toBeInTheDocument();
+  });
+
+  it.each(["success", "error"] as const)(
+    "rejects a late credential-A search %s after credential B is ready",
+    async (lateOutcome) => {
+      const requestA = deferredSearchPage();
+      const requestB = deferredSearchPage();
+      apiMocks.searchFacilities.mockImplementationOnce(() => requestA.promise).mockImplementationOnce(() => requestB.promise);
+      apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+      const { credentialCallback } = await renderOidcSearch();
+      await act(async () => { credentialCallback({ credential: "synthetic-A" }); });
+      await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1));
+      await act(async () => { credentialCallback({ credential: "synthetic-B" }); });
+      await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2));
+      const rowB = buildSearchResult({ result_key: "site-B:GMP:B", site_id: "site-B", context_code: "B", production_line_id: "line-B" });
+      await act(async () => requestB.resolve({ items: [rowB], total_count: 1, offset: 0, limit: 100 }));
+      await waitFor(() => expect(searchResultCommit.observe).toHaveBeenLastCalledWith(expect.objectContaining({
+        resultKeys: ["site-B:GMP:B"],
+      })));
+
+      await act(async () => {
+        if (lateOutcome === "success") {
+          requestA.resolve({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+        } else {
+          requestA.reject(new Error("credential A stale failure"));
+        }
+      });
+
+      expect(searchResultCommit.observe).toHaveBeenLastCalledWith(expect.objectContaining({
+        resultKeys: ["site-B:GMP:B"],
+        selectedResultKey: "site-B:GMP:B",
+      }));
+      expect(screen.queryByText("credential A stale failure")).not.toBeInTheDocument();
+    },
+  );
+
+  it("owns reversed A to B to A search responses by access generation and request operation", async () => {
+    const firstA = deferredSearchPage();
+    const requestB = deferredSearchPage();
+    const currentA = deferredSearchPage();
+    apiMocks.searchFacilities.mockImplementationOnce(() => firstA.promise)
+      .mockImplementationOnce(() => requestB.promise)
+      .mockImplementationOnce(() => currentA.promise);
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const { credentialCallback } = await renderOidcSearch();
+    await act(async () => { credentialCallback({ credential: "synthetic-A" }); });
+    await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(1));
+    await act(async () => { credentialCallback({ credential: "synthetic-B" }); });
+    await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2));
+    await act(async () => { credentialCallback({ credential: "synthetic-A" }); });
+    await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(3));
+    const currentRow = buildSearchResult({ result_key: "site-A:GMP:current", site_id: "site-A", context_code: "A-current", production_line_id: "line-current" });
+    await act(async () => currentA.resolve({ items: [currentRow], total_count: 1, offset: 0, limit: 100 }));
+    await waitFor(() => expect(searchResultCommit.observe).toHaveBeenLastCalledWith(expect.objectContaining({
+      resultKeys: ["site-A:GMP:current"],
+    })));
+
+    await act(async () => {
+      requestB.resolve({ items: [buildSearchResult({ result_key: "site-B:GMP:stale" })], total_count: 1, offset: 0, limit: 100 });
+      firstA.resolve({ items: [buildSearchResult({ result_key: "site-A:GMP:stale" })], total_count: 1, offset: 0, limit: 100 });
+    });
+
+    expect(searchResultCommit.observe).toHaveBeenLastCalledWith(expect.objectContaining({
+      resultKeys: ["site-A:GMP:current"],
+      selectedResultKey: "site-A:GMP:current",
+    }));
+  });
+
+  it("restarts pagination at offset zero for a new access owner and retains it on same-session rerenders", async () => {
+    const pageA = Array.from({ length: 100 }, (_, index) => buildSearchResult({
+      result_key: `site-A:GMP:${index}`,
+      context_code: `A-${index}`,
+      production_line_id: `line-A-${index}`,
+    }));
+    apiMocks.searchFacilities
+      .mockResolvedValueOnce({ items: pageA, total_count: 101, offset: 0, limit: 100 })
+      .mockResolvedValueOnce({ items: [buildSearchResult({ result_key: "site-A:GMP:100", context_code: "A-100" })], total_count: 101, offset: 100, limit: 100 })
+      .mockResolvedValueOnce({ items: [buildSearchResult({ result_key: "site-B:GMP:0", site_id: "site-B", context_code: "B-0" })], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const { credentialCallback } = await renderOidcSearch();
+    await act(async () => { credentialCallback({ credential: "synthetic-A" }); });
+    await screen.findByText("A-0");
+    const scrollRegion = screen.getByTestId("facility-table-scroll");
+    Object.defineProperty(scrollRegion, "scrollTop", { configurable: true, value: 260 });
+    Object.defineProperty(scrollRegion, "clientHeight", { configurable: true, value: 200 });
+    Object.defineProperty(scrollRegion, "scrollHeight", { configurable: true, value: 400 });
+    fireEvent.scroll(scrollRegion);
+    await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2));
+    expect(apiMocks.searchFacilities.mock.calls[1][0].offset).toBe(100);
+
+    await act(async () => { credentialCallback({ credential: "synthetic-B" }); });
+    await waitFor(() => expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(3));
+    expect(apiMocks.searchFacilities.mock.calls[2][0].offset).toBe(0);
+    await screen.findByText("B-0");
+    await act(async () => { fireEvent.click(screen.getByText("B-0")); });
+    await flushSearchUrlSync();
+    await screen.findByRole("table", { name: "Lịch sử kiểm tra & thay đổi" });
+    expect(screen.getByText("B-0")).toBeInTheDocument();
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not resolve an explicit deep link from the previous access owner's rows", async () => {
+    const requestB = deferredSearchPage();
+    const target = buildSearchResult({ result_key: "site-1:GMP:target", context_code: "target", production_line_id: "line-target" });
+    apiMocks.searchFacilities
+      .mockResolvedValueOnce({ items: [target], total_count: 1, offset: 0, limit: 100 })
+      .mockImplementationOnce(() => requestB.promise);
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const { credentialCallback } = await renderOidcSearch("/search?result_key=site-1%3AGMP%3Atarget&site_id=site-1&production_line_id=line-target&context_gxp=GMP");
+    await act(async () => { credentialCallback({ credential: "synthetic-A" }); });
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1));
+
+    await act(async () => { credentialCallback({ credential: "synthetic-B" }); });
+
+    expect(searchResultCommit.observe).toHaveBeenLastCalledWith(expect.objectContaining({ resultKeys: [], selectedResultKey: null }));
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
+    await act(async () => requestB.resolve({ items: [target], total_count: 1, offset: 0, limit: 100 }));
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2));
   });
 
   it("does not carry an old workspace error into the first committed render of B", async () => {

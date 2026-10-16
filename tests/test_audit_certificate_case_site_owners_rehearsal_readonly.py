@@ -218,3 +218,142 @@ def test_cli_rejects_modified_snapshot_before_database_connection(tmp_path, caps
     captured = capsys.readouterr()
     assert "CERTIFICATE_CASE_TARGET_WITNESS_BLOCKED" in captured.err
     assert "snapshot" not in captured.err.lower()
+
+
+def test_primary_document_metadata_inventory_preserves_each_case_owner(tmp_path):
+    from backend.app.db.enums import DocumentVariantType
+    from backend.app.db.models.phase1 import Document, DocumentVariant, DocumentVersion
+    from tools.audit_certificate_case_issuance_document_metadata_readonly import (
+        scan_issuance_document_metadata, STATUS,
+    )
+
+    engine, source = _fixture(tmp_path)
+    with Session(engine) as session:
+        certificate = session.query(Certificate).one()
+        original = session.query(Case).filter_by(legacy_inspection_id=378).one()
+        reverse = session.query(Case).filter_by(legacy_inspection_id=380).one()
+        cert_doc = Document(
+            certificate_id=certificate.id, family_code="CERT",
+            document_type_code="ISSUED_CERTIFICATE",
+        )
+        original_doc = Document(
+            case_id=original.id, family_code="INSPECTION",
+            document_type_code="INSPECTION_RECORD",
+        )
+        reverse_doc = Document(
+            case_id=reverse.id, family_code="INSPECTION",
+            document_type_code="REVERSE_SOURCE_RECORD",
+        )
+        session.add_all([cert_doc, original_doc, reverse_doc])
+        session.flush()
+        variant = DocumentVariant(
+            document_id=cert_doc.id, variant_type=DocumentVariantType.SIGNED_PDF,
+            language_code="vi",
+        )
+        session.add(variant)
+        session.flush()
+        session.add(DocumentVersion(
+            document_variant_id=variant.id, version_no=1,
+            storage_root="legacy", storage_relative_path="private/a.pdf",
+            checksum_sha256="a" * 64,
+        ))
+        session.flush()
+        verified = compare_source_to_rehearsal(
+            session, source, expected_certificate_ids={376}
+        )
+        output = scan_issuance_document_metadata(
+            session, verified, expected_certificate_ids=frozenset({376})
+        )
+    assert output["status"] == STATUS
+    assert output["source_certificate_count"] == 1
+    assert output["distinct_canonical_case_count"] == 2
+    assert output["document_rows_distinct"] == 3
+    assert output["per_role_unique_document_counts"] == {
+        "CERTIFICATE": 1, "ORIGINAL_CASE": 1, "REVERSE_CASE_CANDIDATE": 1,
+    }
+    assert output["counts"]["recorded_locator_not_verified"] == 1
+    assert output["counts"]["recorded_checksum_not_verified"] == 1
+    queue = output["private_document_evidence_queue"]
+    assert {row["role"] for row in queue} == {
+        "CERTIFICATE", "ORIGINAL_CASE", "REVERSE_CASE_CANDIDATE",
+    }
+    assert next(row for row in queue if row["role"] == "CERTIFICATE")[
+        "documents"
+    ][0]["variants"][0]["versions"][0]["binary_verified"] is False
+    assert output["original_signed_issuance_verified"] is False
+    assert output["case_rebinding_authorized"] is False
+    assert output["site_specific_scope_coverage_approved"] is False
+    assert output["nas_reads"] == output["database_writes"] == 0
+    engine.dispose()
+
+
+def test_no_document_metadata_is_an_evidence_gap_not_permission(tmp_path):
+    from tools.audit_certificate_case_issuance_document_metadata_readonly import (
+        scan_issuance_document_metadata,
+    )
+
+    engine, source = _fixture(tmp_path)
+    with Session(engine) as session:
+        verified = compare_source_to_rehearsal(
+            session, source, expected_certificate_ids={376}
+        )
+        output = scan_issuance_document_metadata(
+            session, verified, expected_certificate_ids=frozenset({376})
+        )
+    assert output["document_rows_distinct"] == 0
+    assert output["counts"]["CERTIFICATE_without_document_metadata"] == 1
+    assert output["counts"]["ORIGINAL_CASE_without_document_metadata"] == 1
+    assert output["counts"]["REVERSE_CASE_CANDIDATE_without_document_metadata"] == 1
+    assert output["primary_issuance_case_link_verified"] is False
+    engine.dispose()
+
+
+@pytest.mark.parametrize("tamper", [
+    "approved_case", "approved_scope", "missing_reverse_candidate",
+    "reverse_approved", "version_fidelity_missing",
+    "changed_source_set", "replaced_target_uuid",
+])
+def test_metadata_inventory_does_not_rescue_unverified_or_changed_anchor(tmp_path, tamper):
+    from tools.audit_certificate_case_issuance_document_metadata_readonly import (
+        IssuanceEvidenceMetadataBlocked, scan_issuance_document_metadata,
+    )
+
+    engine, source = _fixture(tmp_path)
+    with Session(engine) as session:
+        verified = compare_source_to_rehearsal(
+            session, source, expected_certificate_ids={376}
+        )
+        changed = deepcopy(verified)
+        row = changed["details_private"][0]
+        if tamper == "approved_case":
+            changed["case_rebinding_authorized"] = True
+        elif tamper == "approved_scope":
+            changed["site_specific_scope_coverage_approved"] = True
+        elif tamper == "missing_reverse_candidate":
+            row["reverse_case_review_candidates"] = []
+            changed["reverse_case_candidate_count"] = 1
+        elif tamper == "reverse_approved":
+            row["reverse_case_review_candidates"][0]["remediation_authorized"] = True
+        elif tamper == "version_fidelity_missing":
+            row["certificate_versions"][0]["original_import_value_fidelity_verified"] = False
+        elif tamper == "changed_source_set":
+            row["legacy_certificate_id"] = 377
+        elif tamper == "replaced_target_uuid":
+            row["certificate_id"] = "different-certificate-uuid"
+        with pytest.raises(IssuanceEvidenceMetadataBlocked):
+            scan_issuance_document_metadata(
+                session, changed, expected_certificate_ids=frozenset({376})
+            )
+    engine.dispose()
+
+
+def test_metadata_cli_rejects_modified_snapshot_before_connecting(tmp_path, capsys):
+    from tools.audit_certificate_case_issuance_document_metadata_readonly import main
+
+    invalid = tmp_path / "not-the-snapshot.json"
+    invalid.write_text("{}", encoding="utf-8")
+    output = tmp_path / "private-output.json"
+    assert main(["--snapshot", str(invalid), "--private-output", str(output)]) == 2
+    assert not output.exists()
+    result = capsys.readouterr()
+    assert "ISSUANCE_DOCUMENT_METADATA_WITNESS_BLOCKED" in result.err

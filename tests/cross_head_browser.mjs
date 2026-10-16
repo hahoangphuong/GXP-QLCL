@@ -56,7 +56,7 @@ try {
       await page.getByRole("tab", {name:"Các đợt kiểm tra & thay đổi"}).click();
       // A Case owns document navigation under the Hồ sơ workflow step.
       // "Tài liệu" is a different step used by Change Requests only.
-      await page.getByRole("button", {name:"Hồ sơ",exact:true}).click();
+      await page.getByRole("button", {name:"Hồ sơ đăng ký",exact:true}).click();
       await page.getByRole("table", {name:"Danh sách tài liệu liên quan"}).waitFor({state:"visible",timeout:20000});
       const selections = page.locator("button.document-select");
       assert.ok(await selections.count() > 0, "Expected synthetic document checklist");

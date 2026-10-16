@@ -49,7 +49,8 @@ def _require(value: bool, reason: str) -> None:
 
 
 def scan_issuance_document_metadata(
-    session: Session, anchor: dict[str, Any],
+    session: Session, anchor: dict[str, Any], *,
+    expected_certificate_ids: frozenset[int] = EXPECTED_SOURCE_CERTIFICATES,
 ) -> dict[str, Any]:
     """Pure read projection: source Cases are separate evidence owners, not substitute Cases."""
     _require(
@@ -64,16 +65,16 @@ def scan_issuance_document_metadata(
         "Unverified or already-approved Certificate/Case anchor",
     )
     details = anchor.get("details_private")
-    _require(isinstance(details, list) and len(details) == len(EXPECTED_SOURCE_CERTIFICATES),
+    _require(isinstance(details, list) and len(details) == len(expected_certificate_ids),
              "Incomplete private anchor set")
     ids = [x.get("legacy_certificate_id") for x in details]
-    _require(set(ids) == EXPECTED_SOURCE_CERTIFICATES and len(set(ids)) == len(ids),
+    _require(set(ids) == expected_certificate_ids and len(set(ids)) == len(ids),
              "Different source Certificate set")
     _require(
         anchor.get("counts", {}).get("source_certificate_version_fidelity_verified")
-        == len(EXPECTED_SOURCE_CERTIFICATES)
+        == len(expected_certificate_ids)
         and anchor.get("counts", {}).get("stored_certificate_versions")
-        == len(EXPECTED_SOURCE_CERTIFICATES),
+        == len(expected_certificate_ids),
         "Certificate import-value provenance not verified",
     )
 

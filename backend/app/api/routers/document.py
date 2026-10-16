@@ -12,6 +12,7 @@ from backend.app.api.session import commit_or_409, get_session_from_request_fact
 from backend.app.auth import AuthenticatedUser, get_authenticated_user, require_permissions, require_role
 from backend.app.read_models import (
     DocumentDetailRead,
+    DocumentOwnerMetadataInventoryRead,
     DocumentGenerationPrepareRequest,
     DocumentGenerationRunStatusRead,
     DocumentPreparationRead,
@@ -100,6 +101,28 @@ def register_document_routes(app, session_factory) -> None:
         require_permissions(user, {"document.read"})
         result = service.get_document(session, document_id)
         return DocumentDetailRead(**result)
+
+    def get_certificate_document_metadata(
+        certificate_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"certificate.view", "document.read"})
+        return DocumentOwnerMetadataInventoryRead(**service.get_owner_document_metadata(
+            session, owner_kind="certificate", owner_id=certificate_id
+        ))
+
+    def get_business_eligibility_document_metadata(
+        business_eligibility_certificate_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"certificate.view", "document.read"})
+        return DocumentOwnerMetadataInventoryRead(**service.get_owner_document_metadata(
+            session,
+            owner_kind="business_eligibility_certificate",
+            owner_id=business_eligibility_certificate_id,
+        ))
 
     def _open_document_current_content(
         *,
@@ -249,6 +272,20 @@ def register_document_routes(app, session_factory) -> None:
         get_document_detail,
         methods=["GET"],
         response_model=DocumentDetailRead,
+        tags=["documents"],
+    )
+    app.add_api_route(
+        "/certificates/{certificate_id}/document-metadata",
+        get_certificate_document_metadata,
+        methods=["GET"],
+        response_model=DocumentOwnerMetadataInventoryRead,
+        tags=["documents"],
+    )
+    app.add_api_route(
+        "/business-eligibility-certificates/{business_eligibility_certificate_id}/document-metadata",
+        get_business_eligibility_document_metadata,
+        methods=["GET"],
+        response_model=DocumentOwnerMetadataInventoryRead,
         tags=["documents"],
     )
     app.add_api_route(

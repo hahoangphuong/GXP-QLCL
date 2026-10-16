@@ -79,6 +79,9 @@ def test_vm_rehearsal_invokes_mandatory_gate_before_any_release_stage():
     wrapper = (root / "infra/vm/deploy_rehearsal.sh").read_text(encoding="utf-8")
     deployment = (root / "infra/vm/deploy_prod.sh").read_text(encoding="utf-8")
     assert 'REHEARSAL_APPROVED_FRONTEND_SHA' in wrapper
+    assert 'readonly REHEARSAL_FRONTEND_OPERATOR_SHA=' in wrapper
+    assert wrapper.index('readonly REHEARSAL_FRONTEND_OPERATOR_SHA=') < wrapper.index('load_runtime_env "${CANONICAL_RUNTIME_ENV_FILE}"')
+    assert 'export VM_APPROVED_FRONTEND_SOURCE_SHA="${REHEARSAL_FRONTEND_OPERATOR_SHA}"' in wrapper
     assert 'export VM_REQUIRE_APPROVED_FRONTEND_TREE=1' in wrapper
     assert 'export VM_APPROVED_FRONTEND_SOURCE_SHA=' in wrapper
     assert 'VM_RUNTIME_ENV_FILE="${REHEARSAL_RUNTIME_ENV_FILE}" "${SCRIPT_DIR}/deploy_prod.sh"' in wrapper

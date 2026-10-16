@@ -65,6 +65,22 @@ it("mounts persisted snapshots separately without changing current detail, draft
 });
 
 describe("GxP certificate keyboard and identity", () => {
+  it("mounts read-only document metadata inside the selected Facility detail without mutations", () => {
+    const props = {
+      detail: detail(), detailError: null, detailLoading: false, items, listError: null, listLoading: false,
+      onEditLatestVersion: vi.fn(), onPromoteCurrent: vi.fn(), onSelectCertificate: vi.fn(),
+      promotionError: null, promotionPending: false, selectedCertificateId: "cert-1",
+    };
+    const { container } = render(<GxpCertificateWorkspace {...props} documentMetadata={{ status: "ready", data: {
+      owner_kind: "certificate", owner_id: "cert-1", metadata_status: "registered_metadata_only_unverified",
+      binary_verified: false, original_signed_document_verified: false,
+      documents: [{ document_id: "doc-gxp", family_code: "certificate", document_type_code: "signed",
+        title: "GCN đã đăng ký", registered_variant_count: 1, registered_version_count: 1, registered_current_version_count: 1 }],
+    } }} />);
+    expect(container.querySelector(".detail-pane .certificate-document-metadata")).toHaveTextContent("GCN đã đăng ký");
+    expect(props.onEditLatestVersion).not.toHaveBeenCalled();
+    expect(props.onPromoteCurrent).not.toHaveBeenCalled();
+  });
   it("keeps the Facility horizontal header, identity/scope prominence and issuer/status/source footer distinct from Case", () => {
     renderWorkspace();
     const owner = document.querySelector(".facility-gxp-workspace");

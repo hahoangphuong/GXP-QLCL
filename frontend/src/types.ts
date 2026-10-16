@@ -915,6 +915,25 @@ export type BusinessEligibilityGxpSourceEvidence = {
   groups: BusinessEligibilityGxpSourceGroup[];
 };
 
+export type RegisteredDocumentMetadata = {
+  document_id: string;
+  family_code: string;
+  document_type_code: string;
+  title: string | null;
+  registered_variant_count: number;
+  registered_version_count: number;
+  registered_current_version_count: number;
+};
+
+export type DocumentOwnerMetadataInventory = {
+  owner_kind: "certificate" | "business_eligibility_certificate";
+  owner_id: string;
+  metadata_status: "no_registered_document_metadata" | "registered_metadata_only_unverified";
+  binary_verified: false;
+  original_signed_document_verified: false;
+  documents: RegisteredDocumentMetadata[];
+};
+
 export type BusinessEligibilityDetail = {
   business_eligibility_certificate_id: string;
   row_version: number;

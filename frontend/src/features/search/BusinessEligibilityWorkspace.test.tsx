@@ -106,6 +106,20 @@ function baseProps() {
 }
 
 describe("Eligibility certificate keyboard and identity", () => {
+  it("mounts ĐĐK document metadata separately from source evidence and canonical basis", () => {
+    const props = baseProps();
+    const { container } = render(<BusinessEligibilityWorkspace {...props} documentMetadata={{ status: "ready", data: {
+      owner_kind: "business_eligibility_certificate", owner_id: "dkkd-1",
+      metadata_status: "no_registered_document_metadata", binary_verified: false,
+      original_signed_document_verified: false, documents: [],
+    } }} />);
+    const region = screen.getByRole("region", { name: "Tài liệu đã đăng ký" });
+    expect(region.closest(".detail-pane")).not.toBeNull();
+    expect(region).toHaveTextContent("không xác nhận tài liệu gốc có hay không");
+    expect(container.querySelector(".certificate-basis-section")?.contains(region)).toBe(false);
+    expect(props.onIssue).not.toHaveBeenCalled();
+    expect(props.onEditLatestVersion).not.toHaveBeenCalled();
+  });
   it("adds original source evidence separately from canonical basis without mutations", () => {
     const props = baseProps();
     render(<BusinessEligibilityWorkspace {...props} sourceEvidence={{ status: "ready", data: {

@@ -10,6 +10,7 @@ import { FacilityTable } from "../features/search/FacilityTable";
 import { FacilityHistoryPane } from "../features/search/FacilityHistoryPane";
 import { FacilityWorkspaceTabs } from "../features/search/FacilityWorkspaceTabs";
 import { useBusinessEligibilitySourceEvidence } from "../features/search/useBusinessEligibilitySourceEvidence";
+import { useCertificateDocumentMetadata } from "../features/search/useCertificateDocumentMetadata";
 import { DEFAULT_FACILITY_TAB, resolveFacilityTab } from "../features/search/facilityTabs";
 import {
   assessCapaCycle,
@@ -500,6 +501,22 @@ export function SearchPage({
       && ((visibleEligibilityCertificateDetail?.business_eligibility_certificate_id === selectedEligibilityCertificateId && visibleEligibilityCertificateDetail?.site_id === selectedResult?.site_id) || Boolean(eligibilityCertificateDetailError)),
     auth, useStubAuth, bearerToken);
   const eligibilitySourceEvidence = useBusinessEligibilitySourceEvidence(
+    selectedFacilityTab === "Giấy chứng nhận đủ điều kiện" && canLoadSecureApi
+      && !visibleEligibilityCertificateDetailLoading
+      && visibleEligibilityCertificateDetail?.business_eligibility_certificate_id === selectedEligibilityCertificateId
+      && visibleEligibilityCertificateDetail?.site_id === selectedResult?.site_id ? selectedContext : null,
+    selectedEligibilityCertificateId, auth, useStubAuth, bearerToken,
+  );
+  const gxpDocumentMetadata = useCertificateDocumentMetadata(
+    "gxp",
+    selectedFacilityTab === "Giấy chứng nhận GxP" && canLoadSecureApi
+      && !visibleGxpCertificateDetailLoading
+      && visibleGxpCertificateDetail?.certificate_id === selectedGxpCertificateId
+      && visibleGxpCertificateDetail?.site_id === selectedResult?.site_id ? selectedContext : null,
+    selectedGxpCertificateId, auth, useStubAuth, bearerToken,
+  );
+  const eligibilityDocumentMetadata = useCertificateDocumentMetadata(
+    "ddk",
     selectedFacilityTab === "Giấy chứng nhận đủ điều kiện" && canLoadSecureApi
       && !visibleEligibilityCertificateDetailLoading
       && visibleEligibilityCertificateDetail?.business_eligibility_certificate_id === selectedEligibilityCertificateId
@@ -2327,6 +2344,8 @@ export function SearchPage({
               gxpVersionHistory={gxpVersionHistory}
               eligibilityVersionHistory={eligibilityVersionHistory}
               eligibilitySourceEvidence={eligibilitySourceEvidence}
+              gxpDocumentMetadata={gxpDocumentMetadata}
+              eligibilityDocumentMetadata={eligibilityDocumentMetadata}
               eligibilityCertificateDetailError={eligibilityCertificateDetailError}
               eligibilityCertificateDetailLoading={visibleEligibilityCertificateDetailLoading}
               eligibilityCertificates={visibleEligibilityCertificates}

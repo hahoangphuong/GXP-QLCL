@@ -59,6 +59,8 @@ const apiMocks = vi.hoisted(() => ({
   getGxpCertificateVersionHistory: vi.fn(),
   getBusinessEligibilityVersionHistory: vi.fn(),
   getBusinessEligibilityGxpSourceEvidence: vi.fn(),
+  getGxpCertificateDocumentMetadata: vi.fn(),
+  getBusinessEligibilityDocumentMetadata: vi.fn(),
   issueBusinessEligibility: vi.fn(),
   upsertBusinessEligibilityLatestVersion: vi.fn(),
   promoteBusinessEligibilityCurrent: vi.fn(),
@@ -184,6 +186,8 @@ function resetApiMocks() {
   apiMocks.getGxpCertificateVersionHistory.mockReset();
   apiMocks.getBusinessEligibilityVersionHistory.mockReset();
   apiMocks.getBusinessEligibilityGxpSourceEvidence.mockReset();
+  apiMocks.getGxpCertificateDocumentMetadata.mockReset();
+  apiMocks.getBusinessEligibilityDocumentMetadata.mockReset();
   apiMocks.issueBusinessEligibility.mockReset();
   apiMocks.upsertBusinessEligibilityLatestVersion.mockReset();
   apiMocks.promoteBusinessEligibilityCurrent.mockReset();
@@ -254,6 +258,14 @@ function resetApiMocks() {
     business_eligibility_certificate_id: id, legacy_dkkd_id: null, source_status: "legacy_identity_missing",
     evidence_kind: "original_excel_cells_source_only", canonical_links_included: false,
     source_workbook_sha256: null, source_sheet_name: null, source_row_number: null, groups: [],
+  }));
+  apiMocks.getGxpCertificateDocumentMetadata.mockImplementation((id: string) => Promise.resolve({
+    owner_kind: "certificate", owner_id: id, metadata_status: "no_registered_document_metadata",
+    binary_verified: false, original_signed_document_verified: false, documents: [],
+  }));
+  apiMocks.getBusinessEligibilityDocumentMetadata.mockImplementation((id: string) => Promise.resolve({
+    owner_kind: "business_eligibility_certificate", owner_id: id, metadata_status: "no_registered_document_metadata",
+    binary_verified: false, original_signed_document_verified: false, documents: [],
   }));
   apiMocks.issueBusinessEligibility.mockResolvedValue(null);
   apiMocks.upsertBusinessEligibilityLatestVersion.mockResolvedValue(null);

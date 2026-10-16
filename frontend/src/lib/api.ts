@@ -40,6 +40,7 @@ import type {
   Company,
   DashboardSummary,
   DocumentDetail,
+  DocumentOwnerMetadataInventory,
   DocumentGenerationPrepareRequest,
   DocumentGenerationRunStatus,
   DocumentPreparationResponse,
@@ -866,6 +867,32 @@ export function getBusinessEligibilityGxpSourceEvidence(
 ): Promise<BusinessEligibilityGxpSourceEvidence> {
   return requestJson<BusinessEligibilityGxpSourceEvidence>(
     `/business-eligibility-certificates/${businessEligibilityCertificateId}/gxp-source-evidence`,
+    { auth, useStubAuth, bearerToken, signal },
+  );
+}
+
+export function getGxpCertificateDocumentMetadata(
+  certificateId: string,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+  signal?: AbortSignal,
+): Promise<DocumentOwnerMetadataInventory> {
+  return requestJson<DocumentOwnerMetadataInventory>(
+    `/certificates/${encodeURIComponent(certificateId)}/document-metadata`,
+    { auth, useStubAuth, bearerToken, signal },
+  );
+}
+
+export function getBusinessEligibilityDocumentMetadata(
+  certificateId: string,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+  signal?: AbortSignal,
+): Promise<DocumentOwnerMetadataInventory> {
+  return requestJson<DocumentOwnerMetadataInventory>(
+    `/business-eligibility-certificates/${encodeURIComponent(certificateId)}/document-metadata`,
     { auth, useStubAuth, bearerToken, signal },
   );
 }

@@ -20,6 +20,8 @@ import { useCertificateRows } from "./useCertificateRows";
 import { useCertificateDialogFocus } from "./useCertificateDialogFocus";
 import { BusinessEligibilitySourceEvidence } from "./BusinessEligibilitySourceEvidence";
 import type { EligibilitySourceState } from "./useBusinessEligibilitySourceEvidence";
+import { CertificateDocumentMetadata } from "./CertificateDocumentMetadata";
+import type { CertificateDocumentMetadataState } from "./useCertificateDocumentMetadata";
 
 type LinkDraft = { certificate_id: string; link_role: string };
 
@@ -184,6 +186,7 @@ export function BusinessEligibilityMutationDialog({
 
 export function BusinessEligibilityWorkspace({
   versionHistory,
+  documentMetadata,
   sourceEvidence,
   items,
   listLoading,
@@ -204,6 +207,7 @@ export function BusinessEligibilityWorkspace({
   promotionPending,
 }: {
   versionHistory?: HistoryState<BusinessEligibilityVersionHistory>;
+  documentMetadata?: CertificateDocumentMetadataState;
   sourceEvidence?: EligibilitySourceState;
   items: BusinessEligibilityListItem[];
   listLoading: boolean;
@@ -286,6 +290,7 @@ export function BusinessEligibilityWorkspace({
           <>
             <BusinessEligibilityFacilityFields detail={detail} />
             {sourceEvidence ? <BusinessEligibilitySourceEvidence state={sourceEvidence} /> : null}
+            {documentMetadata ? <CertificateDocumentMetadata state={documentMetadata} /> : null}
             <div className="certificate-action-bar">
               {edit ? <button disabled={!edit.available || promotionPending} onClick={() => setEditDraft({ detail, expectedVersion: edit.expected_version })} title={edit.reason_code ?? undefined} type="button">{edit.label}</button> : null}
               {!edit?.available && edit?.reason_code ? <span>{edit.reason_code}</span> : null}

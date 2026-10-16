@@ -38,12 +38,15 @@ import { FacilitySummary } from "./FacilitySummary";
 import { GxpCertificateWorkspace } from "./GxpCertificateWorkspace";
 import { FACILITY_TABS, FACILITY_TAB_LABELS, type FacilityTab } from "./facilityTabs";
 import type { EligibilitySourceState } from "./useBusinessEligibilitySourceEvidence";
+import type { CertificateDocumentMetadataState } from "./useCertificateDocumentMetadata";
 
 export function FacilityWorkspaceTabs({
   accessGeneration = 0,
   gxpVersionHistory,
   eligibilityVersionHistory,
   eligibilitySourceEvidence,
+  gxpDocumentMetadata,
+  eligibilityDocumentMetadata,
   summary,
   selectedFacilityTab,
   onFacilityTabChange,
@@ -114,6 +117,8 @@ export function FacilityWorkspaceTabs({
   gxpVersionHistory?: HistoryState<GxpCertificateVersionHistory>;
   eligibilityVersionHistory?: HistoryState<BusinessEligibilityVersionHistory>;
   eligibilitySourceEvidence?: EligibilitySourceState;
+  gxpDocumentMetadata?: CertificateDocumentMetadataState;
+  eligibilityDocumentMetadata?: CertificateDocumentMetadataState;
   summary: FacilityWorkspaceSummary;
   selectedFacilityTab: FacilityTab;
   onFacilityTabChange: (tab: FacilityTab) => void;
@@ -265,6 +270,7 @@ export function FacilityWorkspaceTabs({
 
     {selectedFacilityTab === "Giấy chứng nhận GxP" ? (
       <GxpCertificateWorkspace
+        documentMetadata={gxpDocumentMetadata}
         versionHistory={gxpVersionHistory}
         detail={gxpCertificateDetail}
         detailError={gxpCertificateDetailError}
@@ -283,6 +289,7 @@ export function FacilityWorkspaceTabs({
 
     {selectedFacilityTab === "Giấy chứng nhận đủ điều kiện" ? (
       <BusinessEligibilityWorkspace
+        documentMetadata={eligibilityDocumentMetadata}
         versionHistory={eligibilityVersionHistory}
         sourceEvidence={eligibilitySourceEvidence}
         detail={eligibilityCertificateDetail}

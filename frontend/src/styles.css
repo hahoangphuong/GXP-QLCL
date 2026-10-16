@@ -2943,6 +2943,12 @@ tr:focus-visible {
 .legacy-search-page .facility-gxp-scope-records { border-top: 1px solid #aaa; padding-top: 5px; }
 .legacy-search-page .facility-gxp-scope-records li { margin: 4px 0; }
 .legacy-search-page .facility-gxp-scope-records li > :is(strong, span) { display: block; margin: 2px 0; }
+.legacy-search-page .certificate-document-metadata { border: 1px inset #aaa; margin: 8px 0; padding: 5px; min-width: 0; }
+.legacy-search-page .certificate-document-metadata h4 { color: #087a12; font-size: .95rem; margin: 0 0 5px; }
+.legacy-search-page .certificate-document-metadata-scroll { max-height: 180px; overflow: auto; }
+.legacy-search-page .certificate-document-metadata-table { min-width: 560px; }
+.legacy-search-page .certificate-document-metadata-table td:first-child span { display: block; color: var(--text-muted); font-size: .76rem; }
+.legacy-search-page .certificate-document-metadata-table :is(th, td):nth-child(n + 3) { text-align: center; white-space: nowrap; }
 @media (max-width: 1100px) {
   .legacy-search-page .facility-gxp-workspace .master-list-pane > .table-scroll-history { flex: none; }
   .legacy-search-page .facility-gxp-fields .legacy-certificate-heading { grid-template-columns: repeat(2, minmax(0, 1fr)); }

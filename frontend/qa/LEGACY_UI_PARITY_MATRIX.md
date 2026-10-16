@@ -7,6 +7,55 @@ evidenced. Baseline: `50576b0b383161e26e27b6cdc4a1a469aff1ae17`; work branch:
 
 ## Evidence closure and staging-readiness audit — 2026-10-13
 
+### GxP / ĐĐK document metadata ownership — 2026-10-17
+
+Baseline `1b769563d64fa007a54cc7aa8604a1af7c59bca7`; local, remote and
+OPEN/DRAFT PR #3 matched before the slice. The read contract was audited from
+backend PR #7 commit `ffbef6217bbd7dfe98a91892d1517bef96be74c6` without merging or
+cherry-picking it. The two owners remain distinct: GxP uses
+`/certificates/{certificate_id}/document-metadata`; ĐĐK uses
+`/business-eligibility-certificates/{business_eligibility_certificate_id}/document-metadata`.
+
+Last-correct was each Facility certificate's canonical selected UUID and detail.
+First-incorrect was the absence of a frontend read owner and presentation for the
+new metadata inventory. `SearchPage` now supplies one cancellable read per active
+certificate tab. Its key includes the existing access-bound Site/line context,
+certificate kind and canonical owner UUID. Selection, Site, tab or access changes
+close the old result before passive cleanup; abort and operation ownership reject
+late success and 401/403/404/409. Focus-only renders do not read again.
+
+The compact read-only group appears inside the existing Facility detail pane. It
+shows only family/type, title and registered variant/version/current counts. Empty
+metadata explicitly does not prove that an original is absent. Registered metadata
+is labelled unverified; no filename, locator, checksum, binary URL, download action,
+signature claim or linkage inferred from Case/Site/Excel is rendered. Mismatched
+owner kind/UUID, duplicate document UUID, invalid counts, impossible empty/status
+combinations or a response claiming binary/signature verification fail closed.
+Existing certificate actions, drafts, optimistic versions, source evidence and
+persisted histories remain separate owners.
+
+The runtime images establish legacy certificate details and document commands but
+do not establish an exact metadata-inventory location, table geometry or empty/error
+wording. Those presentation details remain `EVIDENCE_MISSING`; this is a minimal
+web-contract presentation rather than claimed pixel parity. The currently deployed
+VM does not expose these endpoints, so its expected 404 is not frontend evidence.
+Validation for this slice uses the exact backend contract commit or controlled
+frontend fixtures. Live authenticated integration remains blocked by the previously
+recorded unauthorized local OAuth origin (0 authenticated success / 0 denied-role
+success / 7 blocked scenarios); it is not rerun or reported as PASS.
+
+Regression first failed on the untouched checkpoint because the metadata owner and
+component did not exist. Final targeted runs pass 93/93 across the metadata, both
+Facility certificate workspaces and API routing; the full frontend suite passes
+489/489. Typecheck, lint and production build pass. The exact backend SHA passes
+its disposable SQLite metadata inventory tests 4/4. Controlled browser fixtures
+cover both owner kinds at 1920×1080, 1366×768, 390×844 and 375×812: document/client
+widths are respectively 1920/1920, 1366/1366, 390/390 and 375/375. A's pending
+read aborts before B publishes; focus/Tab causes zero extra reads; Site/access and
+GxP↔ĐĐK changes each cause one new read; logout removes the metadata. The fixtures
+contain no links or binary/download controls. Evidence is stored outside Git under
+`.codex/evidence/certificate-document-metadata/`.
+
 ### Persisted GxP / ĐĐK version history — 2026-10-14
 
 Baseline `2f7c46eede547e8b711d782022fd5559d219a8c0`; local/remote/OPEN-DRAFT

@@ -224,7 +224,7 @@ jobs:
   cross-head-integration:
     # Explicitly pinned two-HEAD gate. Never merges/rebases/deploys either
     # branch. Runs only on backend-owner branch push, in a disposable runner.
-    if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/integration/frontend-backend-20261009' || github.ref == 'refs/heads/integration/frontend-backend-auth-20261010' || github.ref == 'refs/heads/integration/frontend-backend-authguard-20261010') }}
+    if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/integration/frontend-backend-20261009' || github.ref == 'refs/heads/integration/frontend-backend-auth-20261010' || github.ref == 'refs/heads/integration/frontend-backend-authguard-20261010' || github.ref == 'refs/heads/audit/certificate-case-source-integrity-20261011') }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -250,22 +250,47 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Prove integrated parents and byte-identical reviewed frontend subtree
+      - name: Checkout Codex PR source only for isolated audit-branch cross-head test
+        if: ${{ github.ref == 'refs/heads/audit/certificate-case-source-integrity-20261011' }}
+        uses: actions/checkout@v4
+        with:
+          ref: codex/legacy-ui-parity-20261010
+          path: .gxp-cross-head-codex
+          persist-credentials: false
+
+      - name: Prove exact two-source boundary and prepare disposable frontend
         run: |
           set -euo pipefail
-          BACKEND="b5e0ebd7c5e047c4cdc8c7cdc206872b8b68cb14"
-          FRONTEND="50576b0b383161e26e27b6cdc4a1a469aff1ae17"
-          case "${GITHUB_REF}" in
-            refs/heads/integration/frontend-backend-20261009|refs/heads/integration/frontend-backend-auth-20261010|refs/heads/integration/frontend-backend-authguard-20261010) ;;
-            *) echo "Unapproved cross-head integration branch: ${GITHUB_REF}" >&2; exit 1 ;;
-          esac
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          git merge-base --is-ancestor "${BACKEND}" HEAD
-          git merge-base --is-ancestor "${FRONTEND}" HEAD
-          test "$(git rev-parse HEAD:frontend)" = "$(git rev-parse "${FRONTEND}:frontend")"
-          git diff --exit-code "${FRONTEND}" HEAD -- frontend
-          git diff --exit-code HEAD -- frontend
+          case "${GITHUB_REF}" in
+            refs/heads/audit/certificate-case-source-integrity-20261011)
+              BACKEND_BASE="ae4592d274005493c4041fbc18f7beb29f5c4773"
+              FRONTEND="09cca33406ed8d19e8022631a643f9d794b57d1c"
+              git merge-base --is-ancestor "${BACKEND_BASE}" HEAD
+              test -d .gxp-cross-head-codex/.git
+              test "$(git -C .gxp-cross-head-codex rev-parse HEAD)" = "${FRONTEND}" || {
+                echo "STOP: Codex PR branch advanced; re-pin frontend commit for reviewed cross-head gate" >&2
+                exit 1
+              }
+              test -f .gxp-cross-head-codex/frontend/src/lib/api.ts
+              # Runner-only file overlay, NOT a Git merge, PR update or deploy.
+              # Source remains at the exactly verified Codex branch HEAD.
+              rm -rf frontend
+              cp -a .gxp-cross-head-codex/frontend frontend
+              ;;
+            refs/heads/integration/frontend-backend-20261009|refs/heads/integration/frontend-backend-auth-20261010|refs/heads/integration/frontend-backend-authguard-20261010)
+              BACKEND="b5e0ebd7c5e047c4cdc8c7cdc206872b8b68cb14"
+              FRONTEND="50576b0b383161e26e27b6cdc4a1a469aff1ae17"
+              git merge-base --is-ancestor "${BACKEND}" HEAD
+              git merge-base --is-ancestor "${FRONTEND}" HEAD
+              test "$(git rev-parse HEAD:frontend)" = "$(git rev-parse "${FRONTEND}:frontend")"
+              git diff --exit-code "${FRONTEND}" HEAD -- frontend
+              git diff --exit-code HEAD -- frontend
+              ;;
+            *) echo "Unapproved cross-head branch: ${GITHUB_REF}" >&2; exit 1 ;;
+          esac
           test -f frontend/src/lib/api.ts
+          printf 'CROSS_HEAD_BACKEND_SHA=%s\nCROSS_HEAD_FRONTEND_SHA=%s\n' "${GITHUB_SHA}" "${FRONTEND}"
 
 
       - uses: actions/setup-python@v5
@@ -377,13 +402,33 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Verify integrated frontend remained byte-identical throughout
+      - name: Verify frontend source identity after runner-only integration
         run: |
           set -euo pipefail
-          FRONTEND="50576b0b383161e26e27b6cdc4a1a469aff1ae17"
-          test "$(git rev-parse HEAD:frontend)" = "$(git rev-parse "${FRONTEND}:frontend")"
-          git diff --exit-code "${FRONTEND}" HEAD -- frontend
-          git diff --exit-code -- frontend
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          if [[ "${GITHUB_REF}" == "refs/heads/audit/certificate-case-source-integrity-20261011" ]]; then
+            test "$(git -C .gxp-cross-head-codex rev-parse HEAD)" = "09cca33406ed8d19e8022631a643f9d794b57d1c"
+            # Check every tracked Codex frontend source byte, ignoring only
+            # generated dependencies/build files in the disposable runner.
+            python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          checkout = Path(".gxp-cross-head-codex")
+          entries = subprocess.check_output(
+              ["git", "-C", str(checkout), "ls-files", "-z", "--", "frontend"]
+          ).split(b"\0")
+          paths = [Path(x.decode("utf-8")) for x in entries if x]
+          assert paths and Path("frontend/src/lib/api.ts") in paths
+          for p in paths:
+              assert (checkout / p).read_bytes() == p.read_bytes(), "Codex frontend tracked source drift"
+          print(f"PASS: {len(paths)} exact pinned frontend source files")
+          PY
+          else
+            FRONTEND="50576b0b383161e26e27b6cdc4a1a469aff1ae17"
+            test "$(git rev-parse HEAD:frontend)" = "$(git rev-parse "${FRONTEND}:frontend")"
+            git diff --exit-code "${FRONTEND}" HEAD -- frontend
+            git diff --exit-code -- frontend
+          fi
           test ! -f frontend/src/lib/cross_head_api_ci.test.ts
 
       - name: Terminate CI-only fixture process

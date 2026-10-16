@@ -382,6 +382,11 @@ for item in entries:
 PY
 }
 
+# Capture the caller's rehearsal approval boundary before sourcing a derived
+# runtime env file. That file may contain overlapping environment keys; it
+# must not disable or substitute the caller-approved source integrity gate.
+readonly REHEARSAL_FRONTEND_GATE_REQUESTED="${VM_REQUIRE_APPROVED_FRONTEND_TREE:-0}"
+readonly REHEARSAL_FRONTEND_GATE_SHA="${VM_APPROVED_FRONTEND_SOURCE_SHA:-}"
 RUNTIME_ENV_FILE="${VM_RUNTIME_ENV_FILE:-/etc/gxp/runtime.env}"
 load_runtime_env "${RUNTIME_ENV_FILE}"
 
@@ -505,12 +510,12 @@ NEW_FRONTEND_RELEASE="${VM_FRONTEND_RELEASES_DIR}/${NEW_SHA}"
 # runner replaces frontend only in its disposable workspace; git archive
 # below does NOT ship that overlay. Stop before staging/backup/migrations.
 CURRENT_STAGE="approved_frontend_source_gate"
-if [[ "${VM_REQUIRE_APPROVED_FRONTEND_TREE:-0}" == "1" ]]; then
-  [[ -n "${VM_APPROVED_FRONTEND_SOURCE_SHA:-}" ]] || fail "Approved frontend SHA missing from rehearsal deploy gate."
+if [[ "${REHEARSAL_FRONTEND_GATE_REQUESTED}" == "1" ]]; then
+  [[ -n "${REHEARSAL_FRONTEND_GATE_SHA}" ]] || fail "Approved frontend SHA missing from rehearsal deploy gate."
   run_as_app_user "${VM_PYTHON_BIN}" "${REPO_ROOT}/tools/verify_rehearsal_frontend_source.py" \
     --repo "${REPO_ROOT}" \
     --target-sha "${NEW_SHA}" \
-    --approved-frontend-sha "${VM_APPROVED_FRONTEND_SOURCE_SHA}" || fail "Rehearsal frontend Git-tree release gate failed."
+    --approved-frontend-sha "${REHEARSAL_FRONTEND_GATE_SHA}" || fail "Rehearsal frontend Git-tree release gate failed."
 fi
 
 CURRENT_STAGE="release_directories"

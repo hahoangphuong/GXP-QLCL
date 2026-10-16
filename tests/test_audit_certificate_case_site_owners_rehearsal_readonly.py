@@ -52,7 +52,7 @@ def _fixture(tmp_path, *, shared_company=False):
         session.add(version);session.flush()
         session.add(CertificateScope(
             certificate_version_id=version.id, scope_text="Source scope",
-            language_code="vi", sort_order=1,
+            language_code="vi", sort_order=0,
         ))
         session.commit()
 

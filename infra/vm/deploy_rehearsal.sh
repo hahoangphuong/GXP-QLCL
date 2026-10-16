@@ -7,6 +7,9 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 
 CANONICAL_RUNTIME_ENV_FILE="${VM_RUNTIME_ENV_FILE:-/etc/gxp/runtime.env}"
+# Pin operator approval before loading runtime env; do not let any env file
+# silently replace the approved source commit or supply a missing approval.
+readonly REHEARSAL_FRONTEND_OPERATOR_SHA="${REHEARSAL_APPROVED_FRONTEND_SHA:-}"
 REHEARSAL_DEPLOY_TEMP_DIR=""
 REHEARSAL_RUNTIME_ENV_FILE=""
 REHEARSAL_PLAN_JSON=""
@@ -27,9 +30,9 @@ load_runtime_env "${CANONICAL_RUNTIME_ENV_FILE}"
 # The release tool verifies its tracked frontend/ Git tree before any staging,
 # backup, Alembic migration or symlink switch; cross-head CI overlay is not
 # part of the deployable release archive.
-[[ -n "${REHEARSAL_APPROVED_FRONTEND_SHA:-}" ]] || fail "Missing REHEARSAL_APPROVED_FRONTEND_SHA; approve and integrate frontend source before rehearsal deploy."
+[[ -n "${REHEARSAL_FRONTEND_OPERATOR_SHA}" ]] || fail "Missing REHEARSAL_APPROVED_FRONTEND_SHA; approve and integrate frontend source before rehearsal deploy."
 export VM_REQUIRE_APPROVED_FRONTEND_TREE=1
-export VM_APPROVED_FRONTEND_SOURCE_SHA="${REHEARSAL_APPROVED_FRONTEND_SHA}"
+export VM_APPROVED_FRONTEND_SOURCE_SHA="${REHEARSAL_FRONTEND_OPERATOR_SHA}"
 need_cmd mktemp
 need_cmd chmod
 need_cmd chown

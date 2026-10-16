@@ -271,7 +271,7 @@ jobs:
           case "${BRANCH_REF}" in
             refs/heads/audit/certificate-case-source-integrity-20261011)
               BACKEND_BASE="ae4592d274005493c4041fbc18f7beb29f5c4773"
-              FRONTEND="09cca33406ed8d19e8022631a643f9d794b57d1c"
+              FRONTEND="1b769563d64fa007a54cc7aa8604a1af7c59bca7"
               git merge-base --is-ancestor "${BACKEND_BASE}" HEAD
               test -d .gxp-cross-head-codex/.git
               test "$(git -C .gxp-cross-head-codex rev-parse HEAD)" = "${FRONTEND}" || {
@@ -414,7 +414,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GXP_BACKEND_CHECKOUT_SHA}"
           if [[ "${GITHUB_REF}" == "refs/heads/audit/certificate-case-source-integrity-20261011" || "${GITHUB_HEAD_REF:-}" == "audit/certificate-case-source-integrity-20261011" ]]; then
-            test "$(git -C .gxp-cross-head-codex rev-parse HEAD)" = "09cca33406ed8d19e8022631a643f9d794b57d1c"
+            test "$(git -C .gxp-cross-head-codex rev-parse HEAD)" = "1b769563d64fa007a54cc7aa8604a1af7c59bca7"
             # Check every tracked Codex frontend source byte, ignoring only
             # generated dependencies/build files in the disposable runner.
             python3 - <<'PY'

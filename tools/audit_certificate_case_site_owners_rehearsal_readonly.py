@@ -247,7 +247,7 @@ def compare_source_to_rehearsal(
         _check(len(actual_versions) == 1 and actual_versions[0].version_no == 1,
                "Historical CertificateVersion count/order changed")
         version = actual_versions[0]
-        number = str(version.certificate_number or "").strip()
+        number = str(version.certificate_number or "")
         expected_number_hash = (
             sha256(number.encode("utf-8")).hexdigest() if number else None
         )

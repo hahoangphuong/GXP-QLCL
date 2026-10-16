@@ -1455,6 +1455,28 @@ class DocumentDetailRead(BaseModel):
     generation_runs: list[DocumentGenerationRunStatusRead]
 
 
+
+class RegisteredDocumentMetadataRead(BaseModel):
+    document_id: str
+    family_code: str
+    document_type_code: str
+    title: str | None
+    registered_variant_count: int
+    registered_version_count: int
+    registered_current_version_count: int
+
+
+class DocumentOwnerMetadataInventoryRead(BaseModel):
+    owner_kind: Literal["certificate", "business_eligibility_certificate"]
+    owner_id: str
+    metadata_status: Literal[
+        "no_registered_document_metadata", "registered_metadata_only_unverified"
+    ]
+    binary_verified: Literal[False]
+    original_signed_document_verified: Literal[False]
+    documents: list[RegisteredDocumentMetadataRead]
+
+
 class StorageBindingRead(BaseModel):
     case_id: str | None
     year: int | None

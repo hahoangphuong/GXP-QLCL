@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import HTTPException, Request
+import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -4088,6 +4089,24 @@ def test_document_content_route_streams_current_binary_without_locator_leakage(t
 
             assert response.status_code == 200
             assert asyncio.run(_read_streaming_response_body(response)) == b"docx-binary"
+            assert response.headers["cache-control"] == "private, no-store"
+            # Certificate metadata access by itself is NOT document.read.
+            # Without document.read, the binary endpoint must reject the
+            # request before selecting a locator or touching storage.
+            with pytest.raises(HTTPException) as forbidden:
+                _document_content_endpoint(
+                    app, "/cases/{case_id}/documents/{document_id}/content"
+                )(
+                    case_id,
+                    document_id,
+                    _request_for_app(app),
+                    read_session,
+                    build_authenticated_user(
+                        "certificate-metadata-only.local",
+                        permissions={"certificate.view"},
+                    ),
+                )
+            assert forbidden.value.status_code == 403
             assert response.headers["content-type"].startswith(
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )

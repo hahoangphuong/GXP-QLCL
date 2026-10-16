@@ -316,3 +316,58 @@ def test_authenticated_http_routes_recompute_access_and_forbid_stale_certificate
 
     assert client.get("/auth/me", headers=header).status_code == 403
     assert client.get("/sites", headers=header).status_code == 403
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+def test_google_auth_http_ignores_spoofed_stub_and_other_provider_headers(
+    tmp_path, monkeypatch, provider,
+):
+    """Only the configured provider's verified assertion can own HTTP RBAC.
+
+    The synthetic verifier isolates the request-selection boundary; this is
+    NOT an issuer verification test or a production IAP reverse-proxy test.
+    """
+    app = _provisioned_app(tmp_path, provider, bound_subject="original-google-account")
+    verified_claims = {
+        "email": "alice@example.com",
+        "email_verified": True,
+        "sub": "original-google-account",
+    }
+    verifier_name = (
+        "_verify_google_oidc_assertion"
+        if provider == "google_oidc"
+        else "_verify_iap_jwt_assertion"
+    )
+    monkeypatch.setattr(auth_module, verifier_name, lambda *_: verified_claims)
+    spoofed = {
+        "X-Auth-User": "forged-user",
+        "X-Auth-Role": "admin",
+        "X-Goog-Authenticated-User-Email": "accounts.google.com:forged@example.com",
+        "X-Goog-Authenticated-User-Id": "accounts.google.com:forged-subject",
+    }
+    verified_header = (
+        {"Authorization": "Bearer synthetic-oidc-credential"}
+        if provider == "google_oidc"
+        else {"X-Goog-IAP-JWT-Assertion": "synthetic-iap-assertion"}
+    )
+    # Present a token for the WRONG provider together with spoofed identity.
+    # It may not substitute for the assertion required by the selected mode.
+    other_provider_header = (
+        {"X-Goog-IAP-JWT-Assertion": "synthetic-wrong-provider"}
+        if provider == "google_oidc"
+        else {"Authorization": "Bearer synthetic-wrong-provider"}
+    )
+    no_proof = {**spoofed, **other_provider_header}
+    assert _asgi_request(app, "GET", "/auth/me", headers=no_proof).status_code == 401
+
+    with_proof = {**no_proof, **verified_header}
+    identity = _asgi_request(app, "GET", "/auth/me", headers=with_proof)
+    assert identity.status_code == 200
+    assert identity.json()["role_codes"] == ["reader"]
+    assert "certificate.issue" not in identity.json()["permissions"]
+    assert _asgi_request(app, "GET", "/sites", headers=with_proof).status_code == 200
+    assert _asgi_request(
+        app, "POST",
+        "/sites/ffffffff-ffff-ffff-ffff-ffffffffffff/certificates",
+        headers=with_proof, json_body={"certificate_type": "GMP"},
+    ).status_code == 403

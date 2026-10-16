@@ -233,8 +233,49 @@ def compare_source_to_rehearsal(
                 "source_reverse_reference_only": True,
                 "remediation_authorized": False,
             })
+        # Legacy Phase-2 import creates exactly one version per source
+        # Certificate. Validate its actual number/date/scope against the
+        # original db.cc source projection BEFORE considering it evidence.
+        # This does not attest a signed regulatory grant or Site coverage.
+        expected = item.get("source_version_fidelity_evidence")
+        _check(isinstance(expected, dict)
+               and expected.get("version_no") == 1
+               and expected.get("site_specific_scope_coverage_approved") is False
+               and type(expected.get("certificate_scope_source_is_nonblank")) is bool,
+               "Original source CertificateVersion value evidence absent")
+        actual_versions = version_by_cert[cert.id]
+        _check(len(actual_versions) == 1 and actual_versions[0].version_no == 1,
+               "Historical CertificateVersion count/order changed")
+        version = actual_versions[0]
+        number = str(version.certificate_number or "").strip()
+        expected_number_hash = (
+            sha256(number.encode("utf-8")).hexdigest() if number else None
+        )
+        _check(expected_number_hash == expected.get("certificate_number_sha256"),
+               "Canonical CertificateVersion number does not match source")
+        _check(
+            (version.issue_date.isoformat() if version.issue_date else None)
+                == expected.get("issue_date"),
+            "Canonical CertificateVersion issuance date does not match source",
+        )
+        imported_scopes = scope_by_version[version.id]
+        expected_scope_hash = expected.get("certificate_scope_sha256")
+        if expected["certificate_scope_source_is_nonblank"]:
+            _check(
+                len(imported_scopes) == 1
+                and imported_scopes[0].scope_key is None
+                and imported_scopes[0].language_code == "vi"
+                and imported_scopes[0].sort_order == 0
+                and sha256(imported_scopes[0].scope_text.encode("utf-8")).hexdigest()
+                    == expected_scope_hash,
+                "Canonical CertificateVersion scope differs from source import",
+            )
+        else:
+            _check(len(imported_scopes) == 0 and expected_scope_hash is None,
+                   "Unexpected certificate scope not present in original source")
+        counters["source_certificate_version_fidelity_verified"] += 1
         versions = []
-        for version in sorted(version_by_cert[cert.id], key=lambda v: (v.version_no, v.id)):
+        for version in sorted(actual_versions, key=lambda v: (v.version_no, v.id)):
             local_scopes = sorted(scope_by_version[version.id], key=lambda x: (x.sort_order, x.id))
             versions.append({
                 "version_id": version.id,
@@ -248,6 +289,7 @@ def compare_source_to_rehearsal(
                      "scope_sha256": sha256(scope.scope_text.encode("utf-8")).hexdigest()}
                     for scope in local_scopes
                 ],
+                "original_import_value_fidelity_verified": True,
                 "site_specific_scope_coverage_verified": False,
             })
             counters["stored_certificate_versions"] += 1

@@ -500,6 +500,19 @@ NEW_BACKEND_RELEASE="${VM_BACKEND_RELEASES_DIR}/${NEW_SHA}"
 NEW_BACKEND_VENV="${VM_BACKEND_VENV_RELEASES_DIR}/${NEW_SHA}"
 NEW_FRONTEND_RELEASE="${VM_FRONTEND_RELEASES_DIR}/${NEW_SHA}"
 
+# On the rehearsal path, require the deployable commit's own frontend/ Git
+# tree to match the explicitly approved frontend commit. The cross-head CI
+# runner replaces frontend only in its disposable workspace; git archive
+# below does NOT ship that overlay. Stop before staging/backup/migrations.
+CURRENT_STAGE="approved_frontend_source_gate"
+if [[ "${VM_REQUIRE_APPROVED_FRONTEND_TREE:-0}" == "1" ]]; then
+  [[ -n "${VM_APPROVED_FRONTEND_SOURCE_SHA:-}" ]] || fail "Approved frontend SHA missing from rehearsal deploy gate."
+  run_as_app_user "${VM_PYTHON_BIN}" "${REPO_ROOT}/tools/verify_rehearsal_frontend_source.py" \
+    --repo "${REPO_ROOT}" \
+    --target-sha "${NEW_SHA}" \
+    --approved-frontend-sha "${VM_APPROVED_FRONTEND_SOURCE_SHA}" || fail "Rehearsal frontend Git-tree release gate failed."
+fi
+
 CURRENT_STAGE="release_directories"
 install -d -m 0755 -o "${VM_APP_USER}" -g "${VM_APP_GROUP}" \
   "${VM_BACKEND_RELEASES_DIR}" \

@@ -133,7 +133,8 @@ def test_same_company_different_sites_not_equated_or_approved(tmp_path):
     "reverse_literal_site", "reverse_literal_gxp", "reverse_literal_flag",
     "reverse_literal_missing", "reverse_owner_missing", "reverse_duplicate",
     "source_cert_number_hash", "source_cert_issue_date", "source_cert_scope_hash",
-    "changed_version_number", "changed_version_issue_date", "changed_version_scope",
+    "changed_version_number", "changed_version_number_whitespace",
+    "changed_version_issue_date", "changed_version_scope",
 ])
 def test_any_source_or_canonical_drift_fails_closed(tmp_path, mutation):
     engine, report = _fixture(tmp_path)
@@ -190,6 +191,9 @@ def test_any_source_or_canonical_drift_fails_closed(tmp_path, mutation):
                 "certificate_scope_sha256"] = "0" * 64
         elif mutation == "changed_version_number":
             session.query(CertificateVersion).one().certificate_number = "Different"
+            session.flush()
+        elif mutation == "changed_version_number_whitespace":
+            session.query(CertificateVersion).one().certificate_number = " C376 "
             session.flush()
         elif mutation == "changed_version_issue_date":
             session.query(CertificateVersion).one().issue_date = date(2026, 1, 1)

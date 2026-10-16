@@ -4,9 +4,11 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+import backend.app.auth as auth_module
 from backend.app.auth import authenticate_google_iap_request, authenticate_google_oidc_request, require_permissions
 from backend.app.db.base import Base
 from backend.app.db.models.phase1 import AppUser, AppUserRole, RbacRole
@@ -178,3 +180,82 @@ def test_database_role_rotation_downgrade_and_deactivation_use_each_request_snap
     with pytest.raises(HTTPException) as inactive:
         current_identity()
     assert inactive.value.status_code == 403
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+def test_authenticated_http_routes_recompute_access_and_forbid_stale_certificate_issue(
+    tmp_path, monkeypatch, provider,
+):
+    """Exercise the real FastAPI auth dependency and certificate.issue endpoint.
+
+    Google signature verification is substituted ONLY at the verifier seam;
+    requests, dependency injection, database lookup, and RBAC gates are real.
+    No Google token or live production resource is involved.
+    """
+    app = _provisioned_app(tmp_path, provider, bound_subject="original-google-account")
+    claims = {
+        "email": "alice@example.com", "email_verified": True,
+        "sub": "original-google-account",
+    }
+    verifier_name = (
+        "_verify_google_oidc_assertion"
+        if provider == "google_oidc" else "_verify_iap_jwt_assertion"
+    )
+    monkeypatch.setattr(auth_module, verifier_name, lambda *_: claims)
+    header = (
+        {"Authorization": "Bearer synthetic-verified-credential"}
+        if provider == "google_oidc" else
+        {"X-Goog-IAP-JWT-Assertion": "synthetic-verified-assertion"}
+    )
+    # A valid-shaped but nonexistent Site; readers must fail on permission
+    # before any domain mutation or Site-specific workflow is attempted.
+    post_url = "/sites/ffffffff-ffff-ffff-ffff-ffffffffffff/certificates"
+    post_body = {"certificate_type": "GMP"}
+
+    with TestClient(app) as client:
+        assert client.get("/auth/me").status_code == 401
+
+        initial = client.get("/auth/me", headers=header)
+        assert initial.status_code == 200
+        assert initial.json()["role_codes"] == ["reader"]
+        assert "certificate.issue" not in initial.json()["permissions"]
+        assert client.get("/sites", headers=header).status_code == 200
+        assert client.post(post_url, headers=header, json=post_body).status_code == 403
+
+        with app.state.session_factory() as session:
+            admin = RbacRole(role_code="admin", description="Synthetic admin role")
+            session.add(admin)
+            session.flush()
+            session.query(AppUserRole).one().rbac_role_id = admin.id
+            session.commit()
+
+        promoted = client.get("/auth/me", headers=header)
+        assert promoted.status_code == 200
+        assert promoted.json()["role_codes"] == ["admin"]
+        assert "certificate.issue" in promoted.json()["permissions"]
+
+        with app.state.session_factory() as session:
+            reader_role = session.query(RbacRole).filter_by(role_code="reader").one()
+            session.query(AppUserRole).one().rbac_role_id = reader_role.id
+            session.commit()
+
+        downgraded = client.get("/auth/me", headers=header)
+        assert downgraded.status_code == 200
+        assert downgraded.json()["role_codes"] == ["reader"]
+        assert "certificate.issue" not in downgraded.json()["permissions"]
+        # The REAL write route denies the same previously-privileged session.
+        assert client.post(post_url, headers=header, json=post_body).status_code == 403
+
+        with app.state.session_factory() as session:
+            session.delete(session.query(AppUserRole).one())
+            session.commit()
+
+        assert client.get("/auth/me", headers=header).status_code == 403
+        assert client.post(post_url, headers=header, json=post_body).status_code == 403
+
+        with app.state.session_factory() as session:
+            session.query(AppUser).one().is_active = False
+            session.commit()
+
+        assert client.get("/auth/me", headers=header).status_code == 403
+        assert client.get("/sites", headers=header).status_code == 403

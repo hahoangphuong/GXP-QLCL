@@ -9,6 +9,7 @@ No production service, external NAS, or real user account is used.
 """
 from __future__ import annotations
 
+from datetime import date
 from hashlib import sha256
 import json
 import os
@@ -40,7 +41,9 @@ if not _output or not Path(_output).is_absolute():
 
 from backend.app.db.enums import CaseState, DocumentVariantType
 from backend.app.db.models.phase1 import (
-    Case, Company, Document, DocumentVariant, DocumentVersion, Site,
+    BusinessEligibilityCertificate, BusinessEligibilityCertificateLink,
+    BusinessEligibilityVersion, Case, Certificate, CertificateScope,
+    CertificateVersion, Company, Document, DocumentVariant, DocumentVersion, Site,
 )
 from backend.app.main import create_app
 from backend.app.storage.local import LocalStorageService
@@ -62,6 +65,9 @@ fixture_ids = {key: str(uuid4()) for key in (
     "version", "conflict_document", "conflict_variant",
     "missing_file_document", "missing_file_variant", "missing_file_version",
     "wrong_checksum_document", "wrong_checksum_variant", "wrong_checksum_version",
+    "gxp_certificate", "gxp_version_old", "gxp_version_current",
+    "gxp_scope_old", "gxp_scope_current", "ddk_certificate",
+    "ddk_version_old", "ddk_version_current", "ddk_link_current",
 )}
 
 engine = create_engine(_database, future=True)
@@ -154,6 +160,83 @@ try:
                 is_current=True,
             ),
         ])
+        # Independently owned synthetic GxP / DDK historical snapshots.
+        # These are fixture-only, not inferred Site coverage or legal grants.
+        session.add(Certificate(
+            id=fixture_ids["gxp_certificate"],
+            site_id=fixture_ids["site"],
+            case_id=fixture_ids["case"],
+            certificate_type="GMP",
+            issuance_basis="inspection_case",
+            latest_flag=False,
+        ))
+        session.flush()
+        session.add_all([
+            CertificateVersion(
+                id=fixture_ids["gxp_version_old"],
+                certificate_id=fixture_ids["gxp_certificate"],
+                version_no=1,
+                certificate_number="SYNTH-GMP-OLD",
+                issue_date=date(2023, 1, 15),
+                lifecycle_state=None,
+                is_latest_version=False,
+            ),
+            CertificateVersion(
+                id=fixture_ids["gxp_version_current"],
+                certificate_id=fixture_ids["gxp_certificate"],
+                version_no=2,
+                certificate_number="SYNTH-GMP-CURRENT",
+                issue_date=date(2026, 1, 15),
+                lifecycle_state=None,
+                is_latest_version=True,
+            ),
+        ])
+        session.flush()
+        session.add_all([
+            CertificateScope(
+                id=fixture_ids["gxp_scope_old"],
+                certificate_version_id=fixture_ids["gxp_version_old"],
+                scope_key="old-scope", scope_text="Old synthetic scope only",
+                language_code="en", sort_order=2,
+            ),
+            CertificateScope(
+                id=fixture_ids["gxp_scope_current"],
+                certificate_version_id=fixture_ids["gxp_version_current"],
+                scope_key="current-scope", scope_text="Current synthetic scope only",
+                language_code="en", sort_order=1,
+            ),
+        ])
+        session.add(BusinessEligibilityCertificate(
+            id=fixture_ids["ddk_certificate"],
+            company_id=fixture_ids["company"],
+            site_id=fixture_ids["site"],
+            latest_flag=False,
+        ))
+        session.flush()
+        session.add_all([
+            BusinessEligibilityVersion(
+                id=fixture_ids["ddk_version_old"],
+                business_eligibility_certificate_id=fixture_ids["ddk_certificate"],
+                version_no=1, certificate_number="SYNTH-DDK-OLD",
+                issued_on=date(2020, 1, 15),
+                issuance_history_text="Synthetic archival prose, not extra versions",
+                business_activity_text="Historical storage",
+            ),
+            BusinessEligibilityVersion(
+                id=fixture_ids["ddk_version_current"],
+                business_eligibility_certificate_id=fixture_ids["ddk_certificate"],
+                version_no=2, certificate_number="SYNTH-DDK-CURRENT",
+                issued_on=date(2026, 1, 15),
+                business_activity_text="Current manufacturing",
+            ),
+        ])
+        session.flush()
+        session.add(BusinessEligibilityCertificateLink(
+            id=fixture_ids["ddk_link_current"],
+            business_eligibility_version_id=fixture_ids["ddk_version_current"],
+            certificate_id=fixture_ids["gxp_certificate"],
+            link_role="source_certificate",
+        ))
         session.commit()
 finally:
     engine.dispose()

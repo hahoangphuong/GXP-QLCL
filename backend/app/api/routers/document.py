@@ -173,6 +173,8 @@ def register_document_routes(app, session_factory) -> None:
             f"inline; filename*=UTF-8''{quote(locator.original_filename)}"
         )
         response.headers["X-Content-Type-Options"] = "nosniff"
+        # Per-request RBAC does not protect bytes cached after access expires.
+        response.headers["Cache-Control"] = "private, no-store"
         return response
 
     def open_case_document_current_content(

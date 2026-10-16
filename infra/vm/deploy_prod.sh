@@ -514,7 +514,7 @@ CURRENT_STAGE="approved_frontend_source_gate"
 if [[ "${REHEARSAL_FRONTEND_GATE_REQUESTED}" == "1" ]]; then
   [[ -n "${REHEARSAL_FRONTEND_GATE_SHA}" ]] || fail "Approved frontend SHA missing from rehearsal deploy gate."
   [[ -n "${REHEARSAL_BACKEND_GATE_SHA}" ]] || fail "Approved backend SHA missing from rehearsal deploy gate."
-  run_as_app_user "${VM_PYTHON_BIN}" "${REPO_ROOT}/tools/verify_rehearsal_release_sources.py" \
+  run_as_app_user env PYTHONPATH="${REPO_ROOT}" "${VM_PYTHON_BIN}" "${REPO_ROOT}/tools/verify_rehearsal_release_sources.py" \
     --repo "${REPO_ROOT}" \
     --target-sha "${NEW_SHA}" \
     --approved-backend-sha "${REHEARSAL_BACKEND_GATE_SHA}" \

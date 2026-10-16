@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
 import type { CaseApplicationUpsertRequest, CaseWorkspace, InspectionFolderLookup } from "../../types";
@@ -23,6 +23,18 @@ type FormDraft = {
   submitted_on: string;
   dossier_code: string;
   applicant_name: string;
+};
+
+type FolderLookupOwner = {
+  identity: string;
+  generation: number;
+};
+
+type FolderLookupState = {
+  owner: FolderLookupOwner;
+  pending: boolean;
+  result: InspectionFolderLookup | null;
+  error: string | null;
 };
 
 function buildDraft(caseWorkspace: CaseWorkspace): FormDraft {
@@ -73,9 +85,46 @@ export function CaseApplicationWorkspace({
   const [editingField, setEditingField] = useState<"submitted_on" | "dossier_code" | null>(null);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [folderLookup, setFolderLookup] = useState<InspectionFolderLookup | null>(null);
-  const [folderLookupError, setFolderLookupError] = useState<string | null>(null);
-  const [folderLookupPending, setFolderLookupPending] = useState(false);
+  const folderLookupIdentity = JSON.stringify([
+    caseWorkspace.case_summary.id,
+    caseWorkspace.case_summary.site_id,
+    caseWorkspace.case_summary.legacy_site_id,
+    caseWorkspace.case_summary.legacy_inspection_code,
+  ]);
+  const folderLookupOwner = useRef<FolderLookupOwner>({ identity: folderLookupIdentity, generation: 0 });
+  const [folderLookupState, setFolderLookupState] = useState<FolderLookupState>({
+    owner: folderLookupOwner.current,
+    pending: false,
+    result: null,
+    error: null,
+  });
+
+  useLayoutEffect(() => {
+    if (folderLookupOwner.current.identity === folderLookupIdentity) {
+      return;
+    }
+    const owner = {
+      identity: folderLookupIdentity,
+      generation: folderLookupOwner.current.generation + 1,
+    };
+    folderLookupOwner.current = owner;
+    setFolderLookupState({ owner, pending: false, result: null, error: null });
+  }, [folderLookupIdentity]);
+
+  useLayoutEffect(() => () => {
+    folderLookupOwner.current = {
+      identity: "unmounted",
+      generation: folderLookupOwner.current.generation + 1,
+    };
+  }, []);
+
+  const ownedFolderLookupState = folderLookupOwner.current.identity === folderLookupIdentity
+    && folderLookupState.owner === folderLookupOwner.current
+    ? folderLookupState
+    : null;
+  const folderLookup = ownedFolderLookupState?.result ?? null;
+  const folderLookupError = ownedFolderLookupState?.error ?? null;
+  const folderLookupPending = ownedFolderLookupState?.pending ?? false;
 
   useEffect(() => {
     if (!editingField) {
@@ -111,15 +160,25 @@ export function CaseApplicationWorkspace({
   }
 
   async function resolveInspectionFolder() {
-    setFolderLookupPending(true);
-    setFolderLookup(null);
-    setFolderLookupError(null);
+    if (folderLookupPending) {
+      return;
+    }
+    const owner = folderLookupOwner.current;
+    setFolderLookupState({ owner, pending: true, result: null, error: null });
     try {
-      setFolderLookup(await onResolveInspectionFolder());
+      const result = await onResolveInspectionFolder();
+      if (folderLookupOwner.current === owner) {
+        setFolderLookupState({ owner, pending: false, result, error: null });
+      }
     } catch (error) {
-      setFolderLookupError(error instanceof Error ? error.message : "Không thể tra cứu thư mục kiểm tra.");
-    } finally {
-      setFolderLookupPending(false);
+      if (folderLookupOwner.current === owner) {
+        setFolderLookupState({
+          owner,
+          pending: false,
+          result: null,
+          error: error instanceof Error ? error.message : "Không thể tra cứu thư mục kiểm tra.",
+        });
+      }
     }
   }
 

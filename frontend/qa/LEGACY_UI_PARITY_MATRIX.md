@@ -1403,3 +1403,34 @@ The thirteen affected cases pass with zero warnings in ten independent targeted
 runs. The final complete suite passes 435/435 in 32 files with zero stderr blocks
 and zero `act(...)` warnings. No warning suppression, console mock, delay,
 timeout increase, retry or relaxed assertion was introduced.
+
+## Inspection-folder lookup context ownership — 2026-10-16
+
+Baseline `aab8c7367c10357b2aa6f9dfca4a4e2d0ff660f5` kept lookup pending,
+result and error as component-wide state. `CaseApplicationWorkspace` remains
+mounted while the selected Case changes, so a late A response could publish in
+B, keep B's button disabled, or let A-generation-1 overwrite A-generation-2.
+The request callback reads the selected Case at `SearchPage`, but callback
+reference changes are not business identity and the folder endpoint has no
+AbortSignal contract.
+
+Lookup publication is now owned by one state record with the full available
+identity (canonical Case UUID, canonical Site UUID, legacy Site ID and legacy
+inspection code) plus an operation generation. A context change invalidates the
+owner before stale state can render; same-identity object refresh preserves the
+current result. Success, infrastructure error and pending completion publish
+only for the captured owner. `resolved`, `ambiguous`, `not_found` and `invalid`
+presentation remains unchanged; no client-side folder fallback or StorageBinding
+is introduced. Access/auth identity is `EVIDENCE_MISSING` at this component
+boundary because no such value is provided by its current props or endpoint.
+
+Regression evidence: seven new baseline assertions failed before the fix.
+The final file passes 15/15 in three independent runs; the controlled
+A → B → A reversed-response case passes 10/10 repeated runs. Coverage includes
+late success/error, each identity field, same-context refresh, duplicate pending
+click and focus-only navigation. Synthetic browser fixture evidence is stored
+outside Git under `.codex/evidence/inspection-folder-ownership/`: at 1366×768
+and 390×844, late A is absent, B is enabled, the second click produces request
+2, only B's resolved path appears, and document scrollWidth equals clientWidth.
+This is fixture verification only; authenticated backend, NAS, binary storage,
+screen-reader acceptance and production UAT remain unverified.

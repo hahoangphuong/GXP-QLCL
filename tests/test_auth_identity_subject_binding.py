@@ -1,10 +1,11 @@
 """Adversarial database identity matching for both supported Google auth adapters."""
 
+import asyncio
+import json
 from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
-from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -182,6 +183,55 @@ def test_database_role_rotation_downgrade_and_deactivation_use_each_request_snap
     assert inactive.value.status_code == 403
 
 
+
+def _asgi_request(app, method, path, *, headers=None, json_body=None):
+    """Exercise ASGI FastAPI routing without installing a second HTTP client."""
+    content = b"" if json_body is None else json.dumps(json_body).encode("utf-8")
+    raw_headers = [(b"host", b"localhost")]
+    raw_headers.extend(
+        (key.lower().encode("ascii"), value.encode("utf-8"))
+        for key, value in (headers or {}).items()
+    )
+    if json_body is not None:
+        raw_headers.append((b"content-type", b"application/json"))
+
+    async def exchange():
+        replies = []
+        first = True
+
+        async def receive():
+            nonlocal first
+            if first:
+                first = False
+                return {"type": "http.request", "body": content, "more_body": False}
+            # A real client waits for disconnect; middleware cancels this
+            # waiter after the response finishes.
+            await asyncio.Event().wait()
+
+        async def send(message):
+            replies.append(message)
+
+        await app(
+            {
+                "type": "http", "asgi": {"version": "3.0"},
+                "http_version": "1.1", "scheme": "http",
+                "method": method, "path": path, "raw_path": path.encode("utf-8"),
+                "root_path": "", "query_string": b"",
+                "headers": raw_headers, "client": ("127.0.0.1", 9876),
+                "server": ("localhost", 80), "app": app,
+            },
+            receive, send,
+        )
+        status = next(msg["status"] for msg in replies if msg["type"] == "http.response.start")
+        payload = b"".join(
+            msg.get("body", b"") for msg in replies
+            if msg["type"] == "http.response.body"
+        )
+        return SimpleNamespace(status_code=status, json=lambda: json.loads(payload))
+
+    return asyncio.run(exchange())
+
+
 @pytest.mark.parametrize("provider", PROVIDERS)
 def test_authenticated_http_routes_recompute_access_and_forbid_stale_certificate_issue(
     tmp_path, monkeypatch, provider,
@@ -212,50 +262,57 @@ def test_authenticated_http_routes_recompute_access_and_forbid_stale_certificate
     post_url = "/sites/ffffffff-ffff-ffff-ffff-ffffffffffff/certificates"
     post_body = {"certificate_type": "GMP"}
 
-    with TestClient(app) as client:
-        assert client.get("/auth/me").status_code == 401
+    class ASGIClient:
+        def get(self, path, *, headers=None):
+            return _asgi_request(app, "GET", path, headers=headers)
 
-        initial = client.get("/auth/me", headers=header)
-        assert initial.status_code == 200
-        assert initial.json()["role_codes"] == ["reader"]
-        assert "certificate.issue" not in initial.json()["permissions"]
-        assert client.get("/sites", headers=header).status_code == 200
-        assert client.post(post_url, headers=header, json=post_body).status_code == 403
+        def post(self, path, *, headers=None, json=None):
+            return _asgi_request(app, "POST", path, headers=headers, json_body=json)
 
-        with app.state.session_factory() as session:
-            admin = RbacRole(role_code="admin", description="Synthetic admin role")
-            session.add(admin)
-            session.flush()
-            session.query(AppUserRole).one().rbac_role_id = admin.id
-            session.commit()
+    client = ASGIClient()
+    assert client.get("/auth/me").status_code == 401
 
-        promoted = client.get("/auth/me", headers=header)
-        assert promoted.status_code == 200
-        assert promoted.json()["role_codes"] == ["admin"]
-        assert "certificate.issue" in promoted.json()["permissions"]
+    initial = client.get("/auth/me", headers=header)
+    assert initial.status_code == 200
+    assert initial.json()["role_codes"] == ["reader"]
+    assert "certificate.issue" not in initial.json()["permissions"]
+    assert client.get("/sites", headers=header).status_code == 200
+    assert client.post(post_url, headers=header, json=post_body).status_code == 403
 
-        with app.state.session_factory() as session:
-            reader_role = session.query(RbacRole).filter_by(role_code="reader").one()
-            session.query(AppUserRole).one().rbac_role_id = reader_role.id
-            session.commit()
+    with app.state.session_factory() as session:
+        admin = RbacRole(role_code="admin", description="Synthetic admin role")
+        session.add(admin)
+        session.flush()
+        session.query(AppUserRole).one().rbac_role_id = admin.id
+        session.commit()
 
-        downgraded = client.get("/auth/me", headers=header)
-        assert downgraded.status_code == 200
-        assert downgraded.json()["role_codes"] == ["reader"]
-        assert "certificate.issue" not in downgraded.json()["permissions"]
-        # The REAL write route denies the same previously-privileged session.
-        assert client.post(post_url, headers=header, json=post_body).status_code == 403
+    promoted = client.get("/auth/me", headers=header)
+    assert promoted.status_code == 200
+    assert promoted.json()["role_codes"] == ["admin"]
+    assert "certificate.issue" in promoted.json()["permissions"]
 
-        with app.state.session_factory() as session:
-            session.delete(session.query(AppUserRole).one())
-            session.commit()
+    with app.state.session_factory() as session:
+        reader_role = session.query(RbacRole).filter_by(role_code="reader").one()
+        session.query(AppUserRole).one().rbac_role_id = reader_role.id
+        session.commit()
 
-        assert client.get("/auth/me", headers=header).status_code == 403
-        assert client.post(post_url, headers=header, json=post_body).status_code == 403
+    downgraded = client.get("/auth/me", headers=header)
+    assert downgraded.status_code == 200
+    assert downgraded.json()["role_codes"] == ["reader"]
+    assert "certificate.issue" not in downgraded.json()["permissions"]
+    # The REAL write route denies the same previously-privileged session.
+    assert client.post(post_url, headers=header, json=post_body).status_code == 403
 
-        with app.state.session_factory() as session:
-            session.query(AppUser).one().is_active = False
-            session.commit()
+    with app.state.session_factory() as session:
+        session.delete(session.query(AppUserRole).one())
+        session.commit()
 
-        assert client.get("/auth/me", headers=header).status_code == 403
-        assert client.get("/sites", headers=header).status_code == 403
+    assert client.get("/auth/me", headers=header).status_code == 403
+    assert client.post(post_url, headers=header, json=post_body).status_code == 403
+
+    with app.state.session_factory() as session:
+        session.query(AppUser).one().is_active = False
+        session.commit()
+
+    assert client.get("/auth/me", headers=header).status_code == 403
+    assert client.get("/sites", headers=header).status_code == 403

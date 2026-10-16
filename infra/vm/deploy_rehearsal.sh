@@ -23,6 +23,13 @@ if [[ "${DEPLOY_REHEARSAL_UNSAFE_SKIP_ROOT_CHECK:-0}" != "1" ]]; then
   require_root
 fi
 load_runtime_env "${CANONICAL_RUNTIME_ENV_FILE}"
+# Rehearsal releases MUST explicitly name the approved frontend source commit.
+# The release tool verifies its tracked frontend/ Git tree before any staging,
+# backup, Alembic migration or symlink switch; cross-head CI overlay is not
+# part of the deployable release archive.
+[[ -n "${REHEARSAL_APPROVED_FRONTEND_SHA:-}" ]] || fail "Missing REHEARSAL_APPROVED_FRONTEND_SHA; approve and integrate frontend source before rehearsal deploy."
+export VM_REQUIRE_APPROVED_FRONTEND_TREE=1
+export VM_APPROVED_FRONTEND_SOURCE_SHA="${REHEARSAL_APPROVED_FRONTEND_SHA}"
 need_cmd mktemp
 need_cmd chmod
 need_cmd chown

@@ -357,3 +357,134 @@ def test_metadata_cli_rejects_modified_snapshot_before_connecting(tmp_path, caps
     assert not output.exists()
     result = capsys.readouterr()
     assert "ISSUANCE_DOCUMENT_METADATA_WITNESS_BLOCKED" in result.err
+
+
+def test_case_procedural_inventory_separates_original_from_reverse_case(tmp_path):
+    from backend.app.db.models.phase1 import (
+        CaseApplication, InspectionPlan, InspectionDecision, InspectionOutcome,
+        LegacyInspectionStorageAnchor, StorageBinding,
+    )
+    from tools.audit_certificate_case_procedural_metadata_readonly import (
+        scan_procedural_metadata, STATUS,
+    )
+
+    engine, source = _fixture(tmp_path)
+    with Session(engine) as session:
+        original = session.query(Case).filter_by(legacy_inspection_id=378).one()
+        reverse = session.query(Case).filter_by(legacy_inspection_id=380).one()
+        session.add(CaseApplication(case_id=original.id, dossier_reference="source-ref"))
+        plan = InspectionPlan(case_id=reverse.id, decision_reference="D-380")
+        session.add(plan)
+        session.flush()
+        session.add(InspectionDecision(
+            inspection_plan_id=plan.id, ordinal=1, reference="D-380",
+            decision_on=date(2017, 12, 7), legacy_raw="original-reference",
+        ))
+        session.add(InspectionOutcome(
+            case_id=reverse.id, inspected_on=date(2017, 12, 7),
+            inspected_to_on=date(2017, 12, 8), decision_reference="D-380",
+        ))
+        session.add(LegacyInspectionStorageAnchor(
+            case_id=reverse.id, source_sheet="db.ktra", source_row=380,
+            registration_submission_raw="2017", registration_submission_year=2017,
+            registration_submission_status="usable",
+            inspection_date_raw="2017", inspection_year=2017,
+            inspection_year_status="usable", source_hash="a"*64,
+            source_version="test-source-v1",
+        ))
+        session.add(StorageBinding(case_id=reverse.id, relative_path="PRIVATE_PATH_NOT_TO_EXPOSE"))
+        session.flush()
+        anchor = compare_source_to_rehearsal(
+            session, source, expected_certificate_ids={376}
+        )
+        output = scan_procedural_metadata(
+            session, anchor, expected_certificate_ids=frozenset({376})
+        )
+    assert output["status"] == STATUS
+    assert output["distinct_canonical_case_count"] == 2
+    assert output["counts"]["inspection_plans_recorded"] == 1
+    assert output["counts"]["inspection_decision_rows"] == 1
+    assert output["counts"]["inspection_outcomes_recorded"] == 1
+    assert output["counts"]["cases_with_storage_binding_metadata"] == 1
+    assert output["counts"]["case_applications_recorded"] == 1
+    assert output["counts"]["legacy_year_anchors_recorded"] == 1
+    assert output["archive_year_is_file_location"] is False
+    assert output["primary_issuance_document_verified"] is False
+    assert output["case_rebinding_authorized"] is False
+    private = output["private_case_procedural_metadata"]
+    assert len(private) == 2
+    a = next(x for x in private if x["source_legacy_case_id"] == 378)
+    b = next(x for x in private if x["source_legacy_case_id"] == 380)
+    assert a["source_certificate_roles"][0]["role"] == "ORIGINAL_LINKED_CASE"
+    assert b["source_certificate_roles"][0]["role"] == "REVERSE_CASE_CANDIDATE"
+    assert b["legacy_archive_year_anchor"]["inspection_year"] == 2017
+    assert b["storage_binding_metadata_count_not_validated"] == 1
+    assert "PRIVATE_PATH_NOT_TO_EXPOSE" not in repr(output)
+    engine.dispose()
+
+
+def test_procedural_inventory_with_no_related_rows_is_not_issuance_approval(tmp_path):
+    from tools.audit_certificate_case_procedural_metadata_readonly import (
+        scan_procedural_metadata,
+    )
+
+    engine, source = _fixture(tmp_path)
+    with Session(engine) as session:
+        anchor = compare_source_to_rehearsal(
+            session, source, expected_certificate_ids={376}
+        )
+        output = scan_procedural_metadata(
+            session, anchor, expected_certificate_ids=frozenset({376})
+        )
+    assert output["distinct_canonical_case_count"] == 2
+    assert output["counts"] == {}
+    assert output["primary_issuance_document_verified"] is False
+    assert output["nas_reads"] == 0
+    assert output["database_writes"] == 0
+    engine.dispose()
+
+
+@pytest.mark.parametrize("tamper", [
+    "source_set", "source_case_uuid", "source_case_legacy_id",
+    "source_approved", "reverse_approved", "source_fidelity",
+])
+def test_procedural_inventory_fails_closed_on_source_or_case_drift(tmp_path, tamper):
+    from tools.audit_certificate_case_procedural_metadata_readonly import (
+        scan_procedural_metadata, ProceduralMetadataBlocked,
+    )
+
+    engine, source = _fixture(tmp_path)
+    with Session(engine) as session:
+        anchor = compare_source_to_rehearsal(
+            session, source, expected_certificate_ids={376}
+        )
+        altered = deepcopy(anchor)
+        row = altered["details_private"][0]
+        if tamper == "source_set":
+            row["legacy_certificate_id"] = 1000
+        elif tamper == "source_case_uuid":
+            row["original_linked_case_id"] = "unknown-case"
+        elif tamper == "source_case_legacy_id":
+            row["original_case_legacy_id"] = 999
+        elif tamper == "source_approved":
+            altered["case_rebinding_authorized"] = True
+        elif tamper == "reverse_approved":
+            row["reverse_case_review_candidates"][0]["remediation_authorized"] = True
+        elif tamper == "source_fidelity":
+            altered["counts"]["source_certificate_version_fidelity_verified"] = 0
+        with pytest.raises(ProceduralMetadataBlocked):
+            scan_procedural_metadata(
+                session, altered, expected_certificate_ids=frozenset({376})
+            )
+    engine.dispose()
+
+
+def test_procedural_metadata_cli_rejects_wrong_source_before_db_access(tmp_path, capsys):
+    from tools.audit_certificate_case_procedural_metadata_readonly import main
+
+    wrong = tmp_path / "not-accepted.json"
+    wrong.write_text("{}", encoding="utf-8")
+    out = tmp_path / "report.json"
+    assert main(["--snapshot", str(wrong), "--private-output", str(out)]) == 2
+    assert not out.exists()
+    assert "PROCEDURAL_METADATA_READONLY_BLOCKED" in capsys.readouterr().err

@@ -40,6 +40,7 @@ import { FACILITY_TABS, FACILITY_TAB_LABELS, type FacilityTab } from "./facility
 import type { EligibilitySourceState } from "./useBusinessEligibilitySourceEvidence";
 
 export function FacilityWorkspaceTabs({
+  accessGeneration = 0,
   gxpVersionHistory,
   eligibilityVersionHistory,
   eligibilitySourceEvidence,
@@ -109,6 +110,7 @@ export function FacilityWorkspaceTabs({
   onResolveInspectionFolder,
   onFinalizeInspectionOutcome,
 }: {
+  accessGeneration?: number | null;
   gxpVersionHistory?: HistoryState<GxpCertificateVersionHistory>;
   eligibilityVersionHistory?: HistoryState<BusinessEligibilityVersionHistory>;
   eligibilitySourceEvidence?: EligibilitySourceState;
@@ -223,6 +225,7 @@ export function FacilityWorkspaceTabs({
     {selectedFacilityTab === "Các đợt kiểm tra & thay đổi" ? (
       <div className="event-workspace-detail-pane detail-pane">
         <EventWorkspace
+          accessGeneration={accessGeneration}
           activeTab={activeEventTab}
           caseWorkspace={caseWorkspace}
           caseWorkspaceError={caseWorkspaceError}

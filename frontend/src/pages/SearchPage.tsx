@@ -321,7 +321,9 @@ export function SearchPage({
   const [eligibilityPromotionPending, setEligibilityPromotionPending] = useState(false);
   const [eligibilityPromotionFailure, setEligibilityPromotionFailure] = useState<{ id: string; message: string } | null>(null);
   const eligibilityPromotionError = eligibilityPromotionFailure?.id === selectedEligibilityCertificateId ? eligibilityPromotionFailure.message : null;
-  const { auth, useStubAuth, bearerToken, canLoadSecureApi } = access;
+  const { auth, useStubAuth, bearerToken, canLoadSecureApi, accessGeneration } = access;
+  const committedAccessGenerationRef = useRef(accessGeneration);
+  const accessTransitionPending = committedAccessGenerationRef.current !== accessGeneration;
   const reassessmentInputRef = useRef<HTMLInputElement | null>(null);
   const reassessmentTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [hydratedSearchSignature, setHydratedSearchSignature] = useState(searchSignature);
@@ -336,6 +338,10 @@ export function SearchPage({
   latestSearchSignatureRef.current = searchSignature;
   latestLocationKeyRef.current = location.key;
 
+  useLayoutEffect(() => {
+    committedAccessGenerationRef.current = accessGeneration;
+  }, [accessGeneration]);
+
   useEffect(() => {
     resultsRef.current = results;
   }, [results]);
@@ -349,8 +355,9 @@ export function SearchPage({
   const pendingTargetGxpConstraint = targetGxpConstraint(pendingDeepLink);
   const pendingTargetGxpHintsInvalid = hasInvalidOrContradictoryTargetGxpHints(pendingDeepLink);
   const searchGxpType = explicitTargetPending ? pendingTargetGxpConstraint : gxpType;
-  const selectedContext = selectedResult && canLoadSecureApi && !explicitTargetPending && resultResolution !== "not_found"
-    ? facilityContextIdentity(selectedResult) : null;
+  const selectedContext = selectedResult && canLoadSecureApi && !accessTransitionPending
+    && !explicitTargetPending && resultResolution !== "not_found"
+    ? JSON.stringify([accessGeneration, useStubAuth, facilityContextIdentity(selectedResult)]) : null;
   const ownedRequest = selectedContext && workspaceRequest?.context === selectedContext ? workspaceRequest : null;
   const ownedWorkspace = ownedRequest?.status === "ready" ? ownedRequest.data : null;
   // Every business consumer below uses this projection, including dialogs and
@@ -747,6 +754,7 @@ export function SearchPage({
       cancelled = true;
     };
   }, [
+    accessGeneration,
     auth,
     bearerToken,
     caseStates,
@@ -2168,6 +2176,7 @@ export function SearchPage({
               onLoadDocumentDetail={handleLoadDocumentDetail}
               onOpenDocument={handleOpenDocument}
               onResolveInspectionFolder={handleResolveInspectionFolder}
+              accessGeneration={canLoadSecureApi ? accessGeneration : null}
               onSelectedRemediationCycleChange={setSelectedRemediationCycleId}
               onSubmitCapaCycle={handleSubmitCapaCycle}
               onUpdateCapaCycle={handleUpdateCapaCycle}

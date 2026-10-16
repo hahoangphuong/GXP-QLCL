@@ -1791,6 +1791,39 @@ describe("App Slice A.4 search workspace", () => {
     await flushSearchUrlSync();
   });
 
+  it("hides a same-facility workspace in the first render owned by a new access generation", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("google_oidc", "client-id.apps.googleusercontent.com"));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValueOnce(buildWorkspace()).mockImplementationOnce(() => new Promise(() => {}));
+    oidcMocks.isOidcSessionValid.mockReturnValue(true);
+    oidcMocks.decodeOidcCredential.mockImplementation((credential: string) => ({
+      token: credential,
+      email: `${credential}@example.test`,
+      name: credential,
+      subject: credential,
+      expires_at_epoch_seconds: 4_102_444_800,
+    }));
+    renderApp(["/search"]);
+    await waitFor(() => expect(window.google?.accounts?.id?.initialize).toHaveBeenCalledOnce());
+    const credentialCallback = (
+      vi.mocked(window.google!.accounts!.id!.initialize).mock.calls[0][0].callback
+    ) as (response: { credential?: string }) => void;
+    await act(async () => { credentialCallback({ credential: "synthetic-A" }); });
+    await screen.findByRole("table", { name: "Lịch sử kiểm tra & thay đổi" });
+    const snapshots: boolean[] = [];
+    contextCommit.observe.mockImplementation(() => {
+      snapshots.push(Boolean(document.querySelector(".history-table")));
+    });
+
+    await act(async () => { credentialCallback({ credential: "synthetic-B" }); });
+
+    expect(snapshots.length).toBeGreaterThan(0);
+    expect(snapshots[0]).toBe(false);
+    expect(screen.queryByRole("table", { name: "Lịch sử kiểm tra & thay đổi" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Đang tải lịch sử của ngữ cảnh đang chọn...")).toBeInTheDocument();
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2);
+  });
+
   it("does not carry an old workspace error into the first committed render of B", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult(), buildSearchResult({ result_key: "B", context_code: "target-B", production_line_id: "line-2" })], total_count: 2, offset: 0, limit: 100 });

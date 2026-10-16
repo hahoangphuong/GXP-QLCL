@@ -70,11 +70,13 @@ function getErrorMessage(error: Error): string {
 }
 
 export function CaseApplicationWorkspace({
+  accessGeneration = 0,
   caseWorkspace,
   onSave,
   onResolveInspectionFolder,
   assessment,
 }: {
+  accessGeneration?: number | null;
   caseWorkspace: CaseWorkspace;
   onSave: (payload: CaseApplicationUpsertRequest) => Promise<void>;
   onResolveInspectionFolder: () => Promise<InspectionFolderLookup>;
@@ -86,6 +88,7 @@ export function CaseApplicationWorkspace({
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const folderLookupIdentity = JSON.stringify([
+    accessGeneration,
     caseWorkspace.case_summary.id,
     caseWorkspace.case_summary.site_id,
     caseWorkspace.case_summary.legacy_site_id,
@@ -183,7 +186,9 @@ export function CaseApplicationWorkspace({
   }
 
   const canResolveInspectionFolder =
-    caseWorkspace.case_summary.legacy_site_id !== null && caseWorkspace.case_summary.legacy_inspection_code !== null;
+    accessGeneration !== null
+    && caseWorkspace.case_summary.legacy_site_id !== null
+    && caseWorkspace.case_summary.legacy_inspection_code !== null;
 
   const additionalInformation = (
     <div className="detail-grid compact-grid detail-form-matrix case-application-grid case-application-extra">

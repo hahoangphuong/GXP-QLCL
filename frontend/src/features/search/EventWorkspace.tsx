@@ -271,6 +271,7 @@ function LinkedBusinessEligibilityCertificates({
 }
 
 function renderCaseStepContent(
+  accessGeneration: number | null,
   activeTab: string,
   caseWorkspace: CaseWorkspace,
   onCaseApplicationSave: (payload: CaseApplicationUpsertRequest) => Promise<void>,
@@ -315,6 +316,7 @@ function renderCaseStepContent(
       <div className="registration-workspace">
         <div className="registration-form-pane">
         <CaseApplicationWorkspace
+          accessGeneration={accessGeneration}
           assessment={<CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} view="assessment" />}
           caseWorkspace={caseWorkspace}
           onResolveInspectionFolder={onResolveInspectionFolder}
@@ -467,6 +469,7 @@ function renderChangeRequestStepContent(
 }
 
 export function EventWorkspace({
+  accessGeneration = 0,
   selectedHistory,
   caseWorkspace,
   caseWorkspaceLoading,
@@ -501,6 +504,7 @@ export function EventWorkspace({
   onResolveInspectionFolder,
   onFinalizeInspectionOutcome,
 }: {
+  accessGeneration?: number | null;
   selectedHistory: FacilityHistoryItem | null;
   caseWorkspace: CaseWorkspace | null;
   caseWorkspaceLoading: boolean;
@@ -599,6 +603,7 @@ export function EventWorkspace({
           />
         ) : caseWorkspace ? (
           renderCaseStepContent(
+            accessGeneration,
             effectiveActiveTab,
             caseWorkspace,
             onCaseApplicationSave,

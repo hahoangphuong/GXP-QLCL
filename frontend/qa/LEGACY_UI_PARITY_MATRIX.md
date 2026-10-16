@@ -1434,3 +1434,31 @@ and 390×844, late A is absent, B is enabled, the second click produces request
 2, only B's resolved path appears, and document scrollWidth equals clientWidth.
 This is fixture verification only; authenticated backend, NAS, binary storage,
 screen-reader acceptance and production UAT remain unverified.
+
+## Authentication-bound workspace and folder lookup ownership — 2026-10-16
+
+Baseline `5c450ef843a65495bb887fdcdc474c0f09a144f5` owned the selected
+facility workspace only by facility/line identity. A credential change that
+kept the same Case could therefore expose the previous access owner's workspace
+in the first committed render, before passive cleanup ran. Inspection-folder
+lookup ownership likewise had no access boundary, so a late result from the old
+credential could publish into the same Case under the new credential.
+
+`App` now issues an opaque, monotonic access generation whenever an OIDC
+credential is accepted, removed or expires. Because the frontend has no
+authoritative session/authorization revision, credential refresh is handled
+fail-closed as a new generation. The generation contains no bearer token,
+subject, email or other identity data and is not written to URL, DOM or logs.
+`SearchPage` combines it with canonical facility identity and suppresses the
+transitioning context in the first render; the subsequent authenticated search
+produces exactly one new workspace read. `CaseApplicationWorkspace` adds that
+generation to its existing Case/Site/legacy-anchor operation owner and disables
+lookup when access is absent. Backend authorization and 401/403 semantics remain
+authoritative and there is no automatic retry.
+
+Regression coverage includes same Case A → B, logout during pending lookup,
+role/access generation change, reversed A → B → A responses, harmless rerender,
+current and stale 401/403, first-render workspace projection and request counts.
+This is synthetic frontend evidence. Authenticated live backend/RBAC, token
+refresh behavior against the deployed identity provider, NAS, binary storage,
+screen-reader acceptance and production UAT remain unverified.

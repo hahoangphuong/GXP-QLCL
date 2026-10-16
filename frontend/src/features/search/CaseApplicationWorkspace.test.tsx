@@ -262,4 +262,79 @@ describe("CaseApplicationWorkspace inspection-folder lookup", () => {
     fireEvent.keyDown(button, { key: "Tab" });
     expect(onResolveInspectionFolder).not.toHaveBeenCalled();
   });
+
+  it("rejects a late result when the same Case moves to another authenticated access generation", async () => {
+    const pendingA = deferred<InspectionFolderLookup>();
+    const onResolveInspectionFolder = vi.fn().mockReturnValueOnce(pendingA.promise).mockResolvedValueOnce(resolved("session-B"));
+    const view = render(<CaseApplicationWorkspace accessGeneration={1} caseWorkspace={workspace} onResolveInspectionFolder={onResolveInspectionFolder} onSave={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Tra cứu thư mục kiểm tra" }));
+    view.rerender(<CaseApplicationWorkspace accessGeneration={2} caseWorkspace={workspace} onResolveInspectionFolder={onResolveInspectionFolder} onSave={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Tra cứu thư mục kiểm tra" })).toBeEnabled();
+    await act(async () => pendingA.resolve(resolved("session-A")));
+    expect(screen.queryByText("Đã tìm thấy thư mục: session-A")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Tra cứu thư mục kiểm tra" }));
+    expect(await screen.findByText("Đã tìm thấy thư mục: session-B")).toBeInTheDocument();
+    expect(onResolveInspectionFolder).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails closed when access is removed while lookup is pending", async () => {
+    const pendingA = deferred<InspectionFolderLookup>();
+    const onResolveInspectionFolder = vi.fn().mockReturnValue(pendingA.promise);
+    const view = render(<CaseApplicationWorkspace accessGeneration={1} caseWorkspace={workspace} onResolveInspectionFolder={onResolveInspectionFolder} onSave={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Tra cứu thư mục kiểm tra" }));
+
+    view.rerender(<CaseApplicationWorkspace accessGeneration={null} caseWorkspace={workspace} onResolveInspectionFolder={onResolveInspectionFolder} onSave={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Tra cứu thư mục kiểm tra" })).toBeDisabled();
+    await act(async () => pendingA.reject(Object.assign(new Error("expired session"), { status: 401 })));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(onResolveInspectionFolder).toHaveBeenCalledOnce();
+  });
+
+  it("owns A → B → A access responses by generation", async () => {
+    const firstA = deferred<InspectionFolderLookup>();
+    const pendingB = deferred<InspectionFolderLookup>();
+    const secondA = deferred<InspectionFolderLookup>();
+    const onResolveInspectionFolder = vi.fn()
+      .mockReturnValueOnce(firstA.promise)
+      .mockReturnValueOnce(pendingB.promise)
+      .mockReturnValueOnce(secondA.promise);
+    const view = render(<CaseApplicationWorkspace accessGeneration={1} caseWorkspace={workspace} onResolveInspectionFolder={onResolveInspectionFolder} onSave={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Tra cứu thư mục kiểm tra" }));
+    view.rerender(<CaseApplicationWorkspace accessGeneration={2} caseWorkspace={workspace} onResolveInspectionFolder={onResolveInspectionFolder} onSave={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Tra cứu thư mục kiểm tra" }));
+    view.rerender(<CaseApplicationWorkspace accessGeneration={3} caseWorkspace={workspace} onResolveInspectionFolder={onResolveInspectionFolder} onSave={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Tra cứu thư mục kiểm tra" }));
+
+    await act(async () => secondA.resolve(resolved("session-A-generation-2")));
+    await act(async () => pendingB.reject(Object.assign(new Error("old role denied"), { status: 403 })));
+    await act(async () => firstA.resolve(resolved("session-A-generation-1")));
+    expect(screen.getByText("Đã tìm thấy thư mục: session-A-generation-2")).toBeInTheDocument();
+    expect(screen.queryByText(/session-A-generation-1|old role denied/)).not.toBeInTheDocument();
+    expect(onResolveInspectionFolder).toHaveBeenCalledTimes(3);
+  });
+
+  it("preserves an owned result for harmless rerenders in the same access generation", async () => {
+    const onResolveInspectionFolder = vi.fn().mockResolvedValue(resolved("same-session"));
+    const view = render(<CaseApplicationWorkspace accessGeneration={4} caseWorkspace={workspace} onResolveInspectionFolder={onResolveInspectionFolder} onSave={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Tra cứu thư mục kiểm tra" }));
+    expect(await screen.findByText("Đã tìm thấy thư mục: same-session")).toBeInTheDocument();
+
+    view.rerender(<CaseApplicationWorkspace accessGeneration={4} caseWorkspace={{ ...workspace, application: { ...workspace.application } }} onResolveInspectionFolder={onResolveInspectionFolder} onSave={vi.fn()} />);
+    expect(screen.getByText("Đã tìm thấy thư mục: same-session")).toBeInTheDocument();
+    expect(onResolveInspectionFolder).toHaveBeenCalledOnce();
+  });
+
+  it.each([401, 403])("shows a current access failure once without retrying: %s", async (status) => {
+    const onResolveInspectionFolder = vi.fn().mockRejectedValue(Object.assign(new Error(`access denied ${status}`), { status }));
+    render(<CaseApplicationWorkspace accessGeneration={7} caseWorkspace={workspace} onResolveInspectionFolder={onResolveInspectionFolder} onSave={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Tra cứu thư mục kiểm tra" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(`access denied ${status}`);
+    expect(onResolveInspectionFolder).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Tra cứu thư mục kiểm tra" })).toBeEnabled();
+  });
 });

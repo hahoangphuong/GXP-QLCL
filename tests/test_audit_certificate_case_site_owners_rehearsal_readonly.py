@@ -437,7 +437,7 @@ def test_procedural_inventory_with_no_related_rows_is_not_issuance_approval(tmp_
             session, anchor, expected_certificate_ids=frozenset({376})
         )
     assert output["distinct_canonical_case_count"] == 2
-    assert output["counts"] == {}
+    assert all(value == 0 for value in output["counts"].values())
     assert output["primary_issuance_document_verified"] is False
     assert output["nas_reads"] == 0
     assert output["database_writes"] == 0

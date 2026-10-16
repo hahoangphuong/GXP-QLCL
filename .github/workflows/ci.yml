@@ -409,6 +409,7 @@ jobs:
           retention-days: 7
 
       - name: Verify frontend source identity after runner-only integration
+        if: ${{ always() }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GXP_BACKEND_CHECKOUT_SHA}"

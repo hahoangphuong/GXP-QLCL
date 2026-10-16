@@ -64,7 +64,7 @@ def test_gate_rejects_stale_or_different_target_frontend(tmp_path: Path):
         )
 
 
-@pytest.mark.parametrize("bad_sha", ["", "main", "deadbeef", "../approved", "z" * 40])
+@pytest.mark.parametrize("bad_sha", ["", "main", "deadbeef", "../approved", "z" * 40, "0" * 40])
 def test_gate_fails_closed_without_exact_approved_commit(tmp_path: Path, bad_sha: str):
     repo, approved, matching, _ = _three_commits(tmp_path)
     for target, source in ((matching, bad_sha), (bad_sha, approved)):
@@ -86,3 +86,12 @@ def test_vm_rehearsal_invokes_mandatory_gate_before_any_release_stage():
     assert 'VM_REQUIRE_APPROVED_FRONTEND_TREE' in deployment
     assert deployment.index('tools/verify_rehearsal_frontend_source.py') < deployment.index('CURRENT_STAGE="release_directories"')
     assert deployment.index('CURRENT_STAGE="release_directories"') < deployment.index('CURRENT_STAGE="database_backup"')
+    # Capture source approval before reloading the runtime env (which can
+    # otherwise override inherited gate inputs).
+    assert 'readonly REHEARSAL_FRONTEND_GATE_REQUESTED=' in deployment
+    assert 'readonly REHEARSAL_FRONTEND_GATE_SHA=' in deployment
+    assert deployment.index('readonly REHEARSAL_FRONTEND_GATE_REQUESTED=') < deployment.index('load_runtime_env "${RUNTIME_ENV_FILE}"')
+    assert deployment.index('readonly REHEARSAL_FRONTEND_GATE_SHA=') < deployment.index('load_runtime_env "${RUNTIME_ENV_FILE}"')
+    assert 'if [[ "${REHEARSAL_FRONTEND_GATE_REQUESTED}" == "1" ]]; then' in deployment
+    assert '--approved-frontend-sha "${REHEARSAL_FRONTEND_GATE_SHA}"' in deployment
+    assert '--approved-frontend-sha "${VM_APPROVED_FRONTEND_SOURCE_SHA}"' not in deployment

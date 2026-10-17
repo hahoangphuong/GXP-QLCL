@@ -243,3 +243,56 @@ def test_restore_fail_closed_when_disposable_db_exists_in_remote_mode(tmp_path: 
     assert result.returncode != 0, (result.stdout, result.stderr)
     records = log.read_text(encoding="utf-8") if log.exists() else ""
     assert "pg_restore " not in records
+
+
+@pytest.mark.parametrize("nonlocal_host", ["192.0.2.44", "10.148.0.3", "db.internal.test"])
+def test_restore_rejects_nonlocal_database_host_before_db_commands(
+    tmp_path: Path, nonlocal_host: str,
+) -> None:
+    vm, env, log = _fixture(tmp_path)
+    dump = _dump(tmp_path)
+    _sidecar(dump)
+    env["FAKE_TARGET_DB_EXISTS"] = "0"
+    env["DB_HOST"] = nonlocal_host
+    result = _run(vm / "restore_postgres.sh", env, str(dump))
+    assert result.returncode != 0, (result.stdout, result.stderr)
+    assert not log.exists(), "A remote DB_HOST must block before admin query"
+
+
+@pytest.mark.parametrize("bad_port", ["0", "65536", "5432x", "-1", "1 2"])
+def test_restore_rejects_unsafe_port_before_db_commands(
+    tmp_path: Path, bad_port: str,
+) -> None:
+    vm, env, log = _fixture(tmp_path)
+    dump = _dump(tmp_path)
+    _sidecar(dump)
+    env["FAKE_TARGET_DB_EXISTS"] = "0"
+    env["DB_PORT"] = bad_port
+    result = _run(vm / "restore_postgres.sh", env, str(dump))
+    assert result.returncode != 0, (result.stdout, result.stderr)
+    assert not log.exists(), "Invalid port must block before any DB command"
+
+
+def test_restore_admin_check_create_and_restore_use_same_configured_port(
+    tmp_path: Path,
+) -> None:
+    vm, env, log = _fixture(tmp_path)
+    dump = _dump(tmp_path)
+    _sidecar(dump)
+    env["FAKE_TARGET_DB_EXISTS"] = "0"
+    env["DB_PORT"] = "5544"
+    # Ambient PGHOST/PGPORT are not trusted sources for the admin instance.
+    env["PGHOST"] = "untrusted.example.invalid"
+    env["PGPORT"] = "5999"
+    result = _run(vm / "restore_postgres.sh", env, str(dump))
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    records = log.read_text(encoding="utf-8").splitlines()
+    check = next(line for line in records if line.startswith("postgres-admin psql"))
+    creation = next(line for line in records if line.startswith("postgres-admin createdb"))
+    restore = next(line for line in records if line.startswith("pg_restore"))
+    assert "--host /var/run/postgresql" in check
+    assert "--port 5544" in check
+    assert "--host /var/run/postgresql" in creation
+    assert "--port 5544" in creation
+    assert "--host 127.0.0.1" in restore
+    assert "--port 5544" in restore

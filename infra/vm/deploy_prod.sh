@@ -17,6 +17,7 @@ PREVIOUS_SERVICE_FILE=""
 PREVIOUS_NGINX_FILE=""
 PREVIOUS_SYSTEMD_ENV_FILE=""
 PREVIOUS_RELEASE_METADATA_FILE=""
+PREVIOUS_NGINX_DEFAULT_FILE=""
 SUCCESS=0
 SWITCHED_RELEASES=0
 SWITCHED_CONFIG=0
@@ -35,8 +36,13 @@ SYSTEMD_SERVICE_FILE_EXISTED_BEFORE=0
 NGINX_SITE_FILE_EXISTED_BEFORE=0
 NGINX_SITE_ENABLED_LINK_EXISTED_BEFORE=0
 NGINX_SITE_ENABLED_LINK_TARGET_BEFORE=""
+NGINX_DEFAULT_SITE_EXISTED_BEFORE=0
+NGINX_DEFAULT_SITE_WAS_LINK_BEFORE=0
+NGINX_DEFAULT_SITE_LINK_TARGET_BEFORE=""
 SYSTEMD_ENV_FILE_EXISTED_BEFORE=0
 RELEASE_METADATA_FILE_EXISTED_BEFORE=0
+SYSTEMD_SERVICE_ENABLED_BEFORE=0
+NGINX_SERVICE_ENABLED_BEFORE=0
 
 restore_managed_symlink() {
   local path="$1"
@@ -244,12 +250,12 @@ PY
 
 cleanup() {
   if [[ "${SUCCESS}" != "1" && "${SWITCHED_CONFIG}" == "1" ]]; then
-    if [[ "${SYSTEMD_SERVICE_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_SERVICE_FILE}" ]]; then
+    if [[ "${SYSTEMD_SERVICE_FILE_EXISTED_BEFORE}" == "1" && -f "${PREVIOUS_SERVICE_FILE}" ]]; then
       cp "${PREVIOUS_SERVICE_FILE}" "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service" || true
     else
       rm -f "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service" || true
     fi
-    if [[ "${NGINX_SITE_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_NGINX_FILE}" ]]; then
+    if [[ "${NGINX_SITE_FILE_EXISTED_BEFORE}" == "1" && -f "${PREVIOUS_NGINX_FILE}" ]]; then
       cp "${PREVIOUS_NGINX_FILE}" "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf" || true
     else
       rm -f "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf" || true
@@ -259,19 +265,34 @@ cleanup() {
     else
       rm -f "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}.conf" || true
     fi
-    if [[ "${SYSTEMD_ENV_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_SYSTEMD_ENV_FILE}" ]]; then
+    if [[ "${NGINX_DEFAULT_SITE_EXISTED_BEFORE}" == "1" ]]; then
+      if [[ "${NGINX_DEFAULT_SITE_WAS_LINK_BEFORE}" == "1" ]]; then
+        ln -sfn "${NGINX_DEFAULT_SITE_LINK_TARGET_BEFORE}" "/etc/nginx/sites-enabled/default" || true
+      elif [[ -f "${PREVIOUS_NGINX_DEFAULT_FILE}" ]]; then
+        cp "${PREVIOUS_NGINX_DEFAULT_FILE}" "/etc/nginx/sites-enabled/default" || true
+      fi
+    else
+      rm -f "/etc/nginx/sites-enabled/default" || true
+    fi
+    if [[ "${SYSTEMD_ENV_FILE_EXISTED_BEFORE}" == "1" && -f "${PREVIOUS_SYSTEMD_ENV_FILE}" ]]; then
       cp "${PREVIOUS_SYSTEMD_ENV_FILE}" "${VM_SYSTEMD_ENV_FILE}" || true
       chown "root:${VM_APP_GROUP}" "${VM_SYSTEMD_ENV_FILE}" || true
       chmod 0640 "${VM_SYSTEMD_ENV_FILE}" || true
     else
       rm -f "${VM_SYSTEMD_ENV_FILE}" || true
     fi
-    if [[ "${RELEASE_METADATA_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_RELEASE_METADATA_FILE}" ]]; then
+    if [[ "${RELEASE_METADATA_FILE_EXISTED_BEFORE}" == "1" && -f "${PREVIOUS_RELEASE_METADATA_FILE}" ]]; then
       cp "${PREVIOUS_RELEASE_METADATA_FILE}" "${VM_RELEASE_METADATA_FILE}" || true
     else
       rm -f "${VM_RELEASE_METADATA_FILE}" || true
     fi
     systemctl daemon-reload >/dev/null 2>&1 || true
+    if [[ "${SYSTEMD_SERVICE_ENABLED_BEFORE}" != "1" ]]; then
+      systemctl disable "${SYSTEMD_SERVICE_NAME}" >/dev/null 2>&1 || true
+    fi
+    if [[ "${NGINX_SERVICE_ENABLED_BEFORE}" != "1" ]]; then
+      systemctl disable nginx >/dev/null 2>&1 || true
+    fi
   fi
   if [[ "${SUCCESS}" != "1" && "${SWITCHED_RELEASES}" == "1" ]]; then
     restore_managed_symlink "${VM_FRONTEND_DIST_DIR}" "${FRONTEND_DIST_EXISTED_BEFORE}" "${ORIGINAL_FRONTEND_TARGET}" "${VM_APP_USER}" "${VM_APP_GROUP}"
@@ -444,6 +465,7 @@ PREVIOUS_SERVICE_FILE="${RUNTIME_ASSET_STAGING_DIR}/${SYSTEMD_SERVICE_NAME}.prev
 PREVIOUS_NGINX_FILE="${RUNTIME_ASSET_STAGING_DIR}/${NGINX_SITE_NAME}.previous.conf"
 PREVIOUS_SYSTEMD_ENV_FILE="${RUNTIME_ASSET_STAGING_DIR}/$(basename "${VM_SYSTEMD_ENV_FILE}").previous"
 PREVIOUS_RELEASE_METADATA_FILE="${RUNTIME_ASSET_STAGING_DIR}/$(basename "${VM_RELEASE_METADATA_FILE}").previous.json"
+PREVIOUS_NGINX_DEFAULT_FILE="${RUNTIME_ASSET_STAGING_DIR}/nginx-default.previous"
 
 REPO_ROOT_NORMALIZED="$(normalize_repo_path "${REPO_ROOT}")"
 VM_SRC_DIR_NORMALIZED="$(normalize_repo_path "${VM_SRC_DIR}")"
@@ -481,11 +503,24 @@ if [[ -L "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}.conf" ]]; then
   NGINX_SITE_ENABLED_LINK_EXISTED_BEFORE=1
   NGINX_SITE_ENABLED_LINK_TARGET_BEFORE="$(readlink_safe "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}.conf" || true)"
 fi
+if [[ -e "/etc/nginx/sites-enabled/default" || -L "/etc/nginx/sites-enabled/default" ]]; then
+  NGINX_DEFAULT_SITE_EXISTED_BEFORE=1
+  if [[ -L "/etc/nginx/sites-enabled/default" ]]; then
+    NGINX_DEFAULT_SITE_WAS_LINK_BEFORE=1
+    NGINX_DEFAULT_SITE_LINK_TARGET_BEFORE="$(readlink_safe "/etc/nginx/sites-enabled/default" || true)"
+  fi
+fi
 if [[ -f "${VM_SYSTEMD_ENV_FILE}" ]]; then
   SYSTEMD_ENV_FILE_EXISTED_BEFORE=1
 fi
 if [[ -f "${VM_RELEASE_METADATA_FILE}" ]]; then
   RELEASE_METADATA_FILE_EXISTED_BEFORE=1
+fi
+if systemctl is-enabled "${SYSTEMD_SERVICE_NAME}" >/dev/null 2>&1; then
+  SYSTEMD_SERVICE_ENABLED_BEFORE=1
+fi
+if systemctl is-enabled nginx >/dev/null 2>&1; then
+  NGINX_SERVICE_ENABLED_BEFORE=1
 fi
 
 TARGET_SHA="${DEPLOY_GIT_SHA:-}"
@@ -705,6 +740,10 @@ fi
 if [[ -f "${VM_RELEASE_METADATA_FILE}" ]]; then
   cp "${VM_RELEASE_METADATA_FILE}" "${PREVIOUS_RELEASE_METADATA_FILE}"
 fi
+if [[ "${NGINX_DEFAULT_SITE_EXISTED_BEFORE}" == "1" && "${NGINX_DEFAULT_SITE_WAS_LINK_BEFORE}" != "1" ]]; then
+  cp "/etc/nginx/sites-enabled/default" "${PREVIOUS_NGINX_DEFAULT_FILE}"
+fi
+SWITCHED_CONFIG=1
 cp "${STAGED_SERVICE_FILE}" "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service"
 cp "${STAGED_NGINX_FILE}" "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf"
 install -d -m 0755 "$(dirname "${VM_SYSTEMD_ENV_FILE}")"
@@ -716,12 +755,11 @@ systemctl daemon-reload
 systemctl enable "${SYSTEMD_SERVICE_NAME}" >/dev/null
 systemctl enable nginx >/dev/null
 nginx -t
-SWITCHED_CONFIG=1
+SWITCHED_RELEASES=1
 ln -sfn "${NEW_FRONTEND_RELEASE}" "${VM_FRONTEND_DIST_DIR}"
 ln -sfn "${NEW_BACKEND_RELEASE}" "${VM_CURRENT_BACKEND_RELEASE_LINK}"
 ln -sfn "${NEW_BACKEND_VENV}" "${VM_CURRENT_BACKEND_VENV_LINK}"
 chown -h "${VM_APP_USER}:${VM_APP_GROUP}" "${VM_FRONTEND_DIST_DIR}" "${VM_CURRENT_BACKEND_RELEASE_LINK}" "${VM_CURRENT_BACKEND_VENV_LINK}"
-SWITCHED_RELEASES=1
 
 CURRENT_STAGE="restart_services"
 systemctl restart "${SYSTEMD_SERVICE_NAME}"

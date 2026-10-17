@@ -128,9 +128,9 @@ def test_vm_deploy_script_preserves_pre_switch_atomicity_and_post_switch_rollbac
     assert 'VM_SERVICE_ENVIRONMENT_FILE="${STAGED_SYSTEMD_ENV_FILE}"' in text
     assert 'render_runtime_asset nginx "${STAGED_NGINX_FILE}"' in text
     assert 'if [[ "${SUCCESS}" != "1" && "${SWITCHED_CONFIG}" == "1" ]]; then' in text
-    assert 'if [[ "${SYSTEMD_SERVICE_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_SERVICE_FILE}" ]]; then' in text
-    assert 'if [[ "${NGINX_SITE_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_NGINX_FILE}" ]]; then' in text
-    assert 'if [[ "${SYSTEMD_ENV_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_SYSTEMD_ENV_FILE}" ]]; then' in text
+    assert 'if [[ "${SYSTEMD_SERVICE_FILE_EXISTED_BEFORE}" == "1" && -f "${PREVIOUS_SERVICE_FILE}" ]]; then' in text
+    assert 'if [[ "${NGINX_SITE_FILE_EXISTED_BEFORE}" == "1" && -f "${PREVIOUS_NGINX_FILE}" ]]; then' in text
+    assert 'if [[ "${SYSTEMD_ENV_FILE_EXISTED_BEFORE}" == "1" && -f "${PREVIOUS_SYSTEMD_ENV_FILE}" ]]; then' in text
     assert 'if [[ "${SUCCESS}" != "1" && "${SWITCHED_RELEASES}" == "1" ]]; then' in text
     assert 'restore_managed_symlink "${VM_CURRENT_BACKEND_RELEASE_LINK}" "${BACKEND_RELEASE_LINK_EXISTED_BEFORE}" "${ORIGINAL_BACKEND_RELEASE_TARGET}" "${VM_APP_USER}" "${VM_APP_GROUP}"' in text
     assert 'restore_managed_symlink "${VM_CURRENT_BACKEND_VENV_LINK}" "${BACKEND_VENV_LINK_EXISTED_BEFORE}" "${ORIGINAL_BACKEND_VENV_TARGET}" "${VM_APP_USER}" "${VM_APP_GROUP}"' in text
@@ -147,11 +147,274 @@ def test_vm_deploy_script_preserves_pre_switch_atomicity_and_post_switch_rollbac
     assert 'PREVIOUS_NGINX_FILE="${RUNTIME_ASSET_STAGING_DIR}/${NGINX_SITE_NAME}.previous.conf"' in text
     assert 'PREVIOUS_SYSTEMD_ENV_FILE="${RUNTIME_ASSET_STAGING_DIR}/$(basename "${VM_SYSTEMD_ENV_FILE}").previous"' in text
     assert 'PREVIOUS_RELEASE_METADATA_FILE="${RUNTIME_ASSET_STAGING_DIR}/$(basename "${VM_RELEASE_METADATA_FILE}").previous.json"' in text
-    assert 'if [[ "${RELEASE_METADATA_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_RELEASE_METADATA_FILE}" ]]; then' in text
+    assert 'if [[ "${RELEASE_METADATA_FILE_EXISTED_BEFORE}" == "1" && -f "${PREVIOUS_RELEASE_METADATA_FILE}" ]]; then' in text
+    switch_block = text[text.index('CURRENT_STAGE="switch_release_symlinks"') : text.index('CURRENT_STAGE="restart_services"')]
+    assert switch_block.index("SWITCHED_CONFIG=1") < switch_block.index(
+        'cp "${STAGED_SERVICE_FILE}" "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service"'
+    )
+    assert switch_block.index("SWITCHED_RELEASES=1") < switch_block.index(
+        'ln -sfn "${NEW_FRONTEND_RELEASE}" "${VM_FRONTEND_DIST_DIR}"'
+    )
+    assert 'NGINX_DEFAULT_SITE_LINK_TARGET_BEFORE="$(readlink_safe "/etc/nginx/sites-enabled/default" || true)"' in text
+    assert 'systemctl disable "${SYSTEMD_SERVICE_NAME}"' in text
+    assert "systemctl disable nginx" in text
     assert 'validate_current_release_state' in text
     assert 'STAGED_SERVICE_FILE="$(mktemp)"' not in text
     assert 'STAGED_NGINX_FILE="$(mktemp)"' not in text
     assert 'alembic downgrade' not in text
+
+
+def _run_deploy_switch_failure_case(tmp_path: Path, fail_point: str) -> tuple[subprocess.CompletedProcess[str], dict[str, str]]:
+    """Execute the real deploy switch and cleanup blocks against a sandbox.
+
+    Only the three hard-coded /etc roots are redirected.  The mutation order,
+    state flags, cleanup branches, and release metadata write are copied
+    verbatim from deploy_prod.sh so this exercises its actual control flow.
+    """
+
+    deploy_source = (ROOT / "infra" / "vm" / "deploy_prod.sh").read_text(encoding="utf-8")
+    restore_source = deploy_source[
+        deploy_source.index("restore_managed_symlink() {") : deploy_source.index("wait_for_http_endpoint() {")
+    ]
+    cleanup_source = deploy_source[
+        deploy_source.index("cleanup() {") : deploy_source.index("trap cleanup EXIT")
+    ]
+    switch_source = deploy_source[
+        deploy_source.index('CURRENT_STAGE="switch_release_symlinks"') : deploy_source.index(
+            'CURRENT_STAGE="cleanup_transient_build_artifacts"'
+        )
+    ]
+    extracted = restore_source + "\n" + cleanup_source + "\n" + switch_source + "\nSUCCESS=1\n"
+    sandbox_root = _bash_style(tmp_path / "sandbox")
+    extracted = extracted.replace("/etc/systemd/system", "${SANDBOX_ROOT}/etc/systemd/system")
+    extracted = extracted.replace("/etc/nginx/sites-available", "${SANDBOX_ROOT}/etc/nginx/sites-available")
+    extracted = extracted.replace("/etc/nginx/sites-enabled", "${SANDBOX_ROOT}/etc/nginx/sites-enabled")
+
+    harness = tmp_path / "deploy-switch-harness.sh"
+    state_file = _bash_style(tmp_path / "state.txt")
+    harness.write_text(
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            SANDBOX_ROOT="{sandbox_root}"
+            STATE_FILE="{state_file}"
+            FAIL_POINT="{fail_point}"
+            FAIL_MARKER="${{SANDBOX_ROOT}}/failure-injected"
+            mkdir -p "${{SANDBOX_ROOT}}/etc/systemd/system" \
+              "${{SANDBOX_ROOT}}/etc/nginx/sites-available" \
+              "${{SANDBOX_ROOT}}/etc/nginx/sites-enabled" \
+              "${{SANDBOX_ROOT}}/runtime" "${{SANDBOX_ROOT}}/staging" \
+              "${{SANDBOX_ROOT}}/old/backend" "${{SANDBOX_ROOT}}/old/venv" "${{SANDBOX_ROOT}}/old/frontend" \
+              "${{SANDBOX_ROOT}}/new/backend" "${{SANDBOX_ROOT}}/new/venv" "${{SANDBOX_ROOT}}/new/frontend"
+
+            printf 'old-service\n' > "${{SANDBOX_ROOT}}/etc/systemd/system/gxp-web.service"
+            printf 'old-nginx\n' > "${{SANDBOX_ROOT}}/etc/nginx/sites-available/gxp-web.conf"
+            printf 'old-default\n' > "${{SANDBOX_ROOT}}/etc/nginx/sites-available/default"
+            printf '%s\n' "${{SANDBOX_ROOT}}/etc/nginx/sites-available/gxp-web.conf" > "${{SANDBOX_ROOT}}/etc/nginx/sites-enabled/gxp-web.conf"
+            printf '%s\n' "${{SANDBOX_ROOT}}/etc/nginx/sites-available/default" > "${{SANDBOX_ROOT}}/etc/nginx/sites-enabled/default"
+            printf 'old-env\n' > "${{SANDBOX_ROOT}}/runtime/runtime.env"
+            printf '{{"current_sha":"old"}}\n' > "${{SANDBOX_ROOT}}/runtime/current-release.json"
+            printf '%s\n' "${{SANDBOX_ROOT}}/old/frontend" > "${{SANDBOX_ROOT}}/runtime/frontend"
+            printf '%s\n' "${{SANDBOX_ROOT}}/old/backend" > "${{SANDBOX_ROOT}}/runtime/backend"
+            printf '%s\n' "${{SANDBOX_ROOT}}/old/venv" > "${{SANDBOX_ROOT}}/runtime/venv"
+            printf 'new-service\n' > "${{SANDBOX_ROOT}}/staging/gxp-web.service"
+            printf 'new-nginx\n' > "${{SANDBOX_ROOT}}/staging/gxp-web.conf"
+            printf 'new-env\n' > "${{SANDBOX_ROOT}}/staging/runtime.env"
+
+            SYSTEMD_SERVICE_NAME=gxp-web
+            NGINX_SITE_NAME=gxp-web
+            VM_APP_USER=test-user
+            VM_APP_GROUP=test-group
+            VM_SYSTEMD_ENV_FILE="${{SANDBOX_ROOT}}/runtime/runtime.env"
+            VM_RELEASE_METADATA_FILE="${{SANDBOX_ROOT}}/runtime/current-release.json"
+            VM_FRONTEND_DIST_DIR="${{SANDBOX_ROOT}}/runtime/frontend"
+            VM_CURRENT_BACKEND_RELEASE_LINK="${{SANDBOX_ROOT}}/runtime/backend"
+            VM_CURRENT_BACKEND_VENV_LINK="${{SANDBOX_ROOT}}/runtime/venv"
+            NEW_FRONTEND_RELEASE="${{SANDBOX_ROOT}}/new/frontend"
+            NEW_BACKEND_RELEASE="${{SANDBOX_ROOT}}/new/backend"
+            NEW_BACKEND_VENV="${{SANDBOX_ROOT}}/new/venv"
+            STAGED_SERVICE_FILE="${{SANDBOX_ROOT}}/staging/gxp-web.service"
+            STAGED_NGINX_FILE="${{SANDBOX_ROOT}}/staging/gxp-web.conf"
+            STAGED_SYSTEMD_ENV_FILE="${{SANDBOX_ROOT}}/staging/runtime.env"
+            PREVIOUS_SERVICE_FILE="${{SANDBOX_ROOT}}/staging/previous.service"
+            PREVIOUS_NGINX_FILE="${{SANDBOX_ROOT}}/staging/previous.conf"
+            PREVIOUS_SYSTEMD_ENV_FILE="${{SANDBOX_ROOT}}/staging/previous.env"
+            PREVIOUS_RELEASE_METADATA_FILE="${{SANDBOX_ROOT}}/staging/previous-release.json"
+            RUNTIME_ASSET_STAGING_DIR=""
+            FRONTEND_BUILD_DIR=""
+            PLAN_JSON="${{SANDBOX_ROOT}}/plan.json"
+            : > "${{PLAN_JSON}}"
+            SUCCESS=0
+            SWITCHED_CONFIG=0
+            SWITCHED_RELEASES=0
+            CURRENT_STAGE=bootstrap
+            SYSTEMD_SERVICE_FILE_EXISTED_BEFORE=1
+            NGINX_SITE_FILE_EXISTED_BEFORE=1
+            NGINX_SITE_ENABLED_LINK_EXISTED_BEFORE=1
+            NGINX_SITE_ENABLED_LINK_TARGET_BEFORE="${{SANDBOX_ROOT}}/etc/nginx/sites-available/gxp-web.conf"
+            NGINX_DEFAULT_SITE_EXISTED_BEFORE=1
+            NGINX_DEFAULT_SITE_WAS_LINK_BEFORE=1
+            NGINX_DEFAULT_SITE_LINK_TARGET_BEFORE="${{SANDBOX_ROOT}}/etc/nginx/sites-available/default"
+            PREVIOUS_NGINX_DEFAULT_FILE="${{SANDBOX_ROOT}}/staging/previous-default"
+            SYSTEMD_ENV_FILE_EXISTED_BEFORE=1
+            RELEASE_METADATA_FILE_EXISTED_BEFORE=1
+            FRONTEND_DIST_EXISTED_BEFORE=1
+            BACKEND_RELEASE_LINK_EXISTED_BEFORE=1
+            BACKEND_VENV_LINK_EXISTED_BEFORE=1
+            ORIGINAL_FRONTEND_TARGET="${{SANDBOX_ROOT}}/old/frontend"
+            ORIGINAL_BACKEND_RELEASE_TARGET="${{SANDBOX_ROOT}}/old/backend"
+            ORIGINAL_BACKEND_VENV_TARGET="${{SANDBOX_ROOT}}/old/venv"
+            SYSTEMD_SERVICE_ENABLED_BEFORE=0
+            NGINX_SERVICE_ENABLED_BEFORE=0
+            NEW_SHA=00112233445566778899aabbccddeeff00112233
+            DEPLOYMENT_GIT_SHORT_SHA=0011223
+            DEPLOYMENT_BRANCH=audit-test
+
+            inject_before() {{
+              local point="$1"
+              if [[ "${{FAIL_POINT}}" == "${{point}}" && ! -e "${{FAIL_MARKER}}" ]]; then
+                : > "${{FAIL_MARKER}}"
+                printf 'injected failure: %s\n' "${{point}}" >&2
+                return 97
+              fi
+            }}
+            cp() {{
+              local src="${{@: -2:1}}" dest="${{@: -1}}"
+              if [[ "${{dest}}" == "${{SANDBOX_ROOT}}/etc/systemd/system/gxp-web.service" && "${{src}}" == "${{STAGED_SERVICE_FILE}}" ]]; then inject_before systemd_write; fi
+              if [[ "${{dest}}" == "${{SANDBOX_ROOT}}/etc/nginx/sites-available/gxp-web.conf" && "${{src}}" == "${{STAGED_NGINX_FILE}}" ]]; then inject_before nginx_write; fi
+              command cp "$@"
+            }}
+            install() {{
+              if [[ " $* " == *" -d "* ]]; then
+                local dest="${{@: -1}}"
+                [[ "${{dest}}" == "$(dirname "${{VM_SYSTEMD_ENV_FILE}}")" ]] && inject_before runtime_dir
+                mkdir -p "${{dest}}"
+              else
+                local src="${{@: -2:1}}" dest="${{@: -1}}"
+                command cp "${{src}}" "${{dest}}"
+              fi
+            }}
+            mv() {{ command mv "$@"; }}
+            ln() {{
+              local target="${{@: -2:1}}" dest="${{@: -1}}"
+              [[ "${{dest}}" == "${{VM_CURRENT_BACKEND_RELEASE_LINK}}" ]] && inject_before backend_link
+              [[ "${{dest}}" == "${{VM_CURRENT_BACKEND_VENV_LINK}}" ]] && inject_before venv_link
+              printf '%s\n' "${{target}}" > "${{dest}}"
+            }}
+            readlink() {{ cat "$1"; }}
+            rm() {{ command rm "$@"; }}
+            chown() {{ :; }}
+            python3() {{ "{_bash_style(Path(sys.executable))}" "$@"; }}
+            systemctl() {{
+              local action="${{1:-}}" unit="${{2:-}}"
+              case "${{action}}" in
+                is-enabled) [[ -e "${{SANDBOX_ROOT}}/runtime/${{unit}}.enabled" ]] ;;
+                enable) : > "${{SANDBOX_ROOT}}/runtime/${{unit}}.enabled" ;;
+                disable) command rm -f "${{SANDBOX_ROOT}}/runtime/${{unit}}.enabled" ;;
+                daemon-reload) : ;;
+                restart) inject_before restart ;;
+                *) : ;;
+              esac
+            }}
+            nginx() {{
+              if [[ "${{1:-}}" == "-t" ]]; then
+                inject_before nginx_test
+              fi
+            }}
+            wait_for_http_endpoint() {{ inject_before health; }}
+            validate_current_release_state() {{ :; }}
+
+            snapshot() {{
+              {{
+                printf 'service=%s\n' "$(cat "${{SANDBOX_ROOT}}/etc/systemd/system/gxp-web.service" 2>/dev/null || printf MISSING)"
+                printf 'nginx=%s\n' "$(cat "${{SANDBOX_ROOT}}/etc/nginx/sites-available/gxp-web.conf" 2>/dev/null || printf MISSING)"
+                printf 'env=%s\n' "$(cat "${{VM_SYSTEMD_ENV_FILE}}" 2>/dev/null || printf MISSING)"
+                printf 'metadata_sha=%s\n' "$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["current_sha"])' "${{VM_RELEASE_METADATA_FILE}}" 2>/dev/null || printf MISSING)"
+                printf 'site_link=%s\n' "$(readlink "${{SANDBOX_ROOT}}/etc/nginx/sites-enabled/gxp-web.conf" 2>/dev/null || printf MISSING)"
+                printf 'default_link=%s\n' "$(readlink "${{SANDBOX_ROOT}}/etc/nginx/sites-enabled/default" 2>/dev/null || printf MISSING)"
+                printf 'frontend=%s\n' "$(readlink "${{VM_FRONTEND_DIST_DIR}}" 2>/dev/null || printf MISSING)"
+                printf 'backend=%s\n' "$(readlink "${{VM_CURRENT_BACKEND_RELEASE_LINK}}" 2>/dev/null || printf MISSING)"
+                printf 'venv=%s\n' "$(readlink "${{VM_CURRENT_BACKEND_VENV_LINK}}" 2>/dev/null || printf MISSING)"
+                [[ -e "${{SANDBOX_ROOT}}/runtime/gxp-web.enabled" ]] && printf 'gxp_enabled=1\n' || printf 'gxp_enabled=0\n'
+                [[ -e "${{SANDBOX_ROOT}}/runtime/nginx.enabled" ]] && printf 'nginx_enabled=1\n' || printf 'nginx_enabled=0\n'
+              }} > "${{STATE_FILE}}"
+            }}
+            finish() {{
+              local rc=$?
+              trap - EXIT
+              cleanup
+              snapshot
+              exit "${{rc}}"
+            }}
+
+            trap finish EXIT
+            {extracted}
+            """
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    harness.chmod(0o755)
+    completed = _run_bash(f'bash "{_bash_style(harness)}"', env=os.environ.copy(), cwd=ROOT)
+    state = {}
+    for line in (tmp_path / "state.txt").read_text(encoding="utf-8").splitlines():
+        key, value = line.split("=", 1)
+        state[key] = value
+    return completed, state
+
+
+def _assert_pre_deploy_switch_state(state: dict[str, str], tmp_path: Path) -> None:
+    root = _bash_style(tmp_path / "sandbox")
+    assert state == {
+        "service": "old-service",
+        "nginx": "old-nginx",
+        "env": "old-env",
+        "metadata_sha": "old",
+        "site_link": f"{root}/etc/nginx/sites-available/gxp-web.conf",
+        "default_link": f"{root}/etc/nginx/sites-available/default",
+        "frontend": f"{root}/old/frontend",
+        "backend": f"{root}/old/backend",
+        "venv": f"{root}/old/venv",
+        "gxp_enabled": "0",
+        "nginx_enabled": "0",
+    }
+
+
+def test_vm_deploy_switch_failure_injection_restores_pre_deploy_state(tmp_path: Path):
+    failure_points = [
+        "systemd_write",
+        "nginx_write",
+        "runtime_dir",
+        "nginx_test",
+        "backend_link",
+        "venv_link",
+        "restart",
+        "health",
+    ]
+    for failure_point in failure_points:
+        case_path = tmp_path / failure_point
+        case_path.mkdir()
+        completed, state = _run_deploy_switch_failure_case(case_path, failure_point)
+        assert completed.returncode != 0, failure_point
+        assert f"injected failure: {failure_point}" in completed.stderr
+        _assert_pre_deploy_switch_state(state, case_path)
+
+
+def test_vm_deploy_switch_success_keeps_new_state(tmp_path: Path):
+    completed, state = _run_deploy_switch_failure_case(tmp_path, "none")
+    root = _bash_style(tmp_path / "sandbox")
+    assert completed.returncode == 0, completed.stderr
+    assert state["service"] == "new-service"
+    assert state["nginx"] == "new-nginx"
+    assert state["env"] == "new-env"
+    assert state["metadata_sha"] == "00112233445566778899aabbccddeeff00112233"
+    assert state["frontend"] == f"{root}/new/frontend"
+    assert state["backend"] == f"{root}/new/backend"
+    assert state["venv"] == f"{root}/new/venv"
+    assert state["default_link"] == "MISSING"
+    assert state["gxp_enabled"] == "1"
+    assert state["nginx_enabled"] == "1"
 
 
 def test_vm_service_template_points_to_generated_systemd_env_file():

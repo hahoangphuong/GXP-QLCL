@@ -1,7 +1,10 @@
 import type {
   AppStatus,
+  GxpCertificateVersionHistory,
+  BusinessEligibilityVersionHistory,
   AuthenticatedIdentity,
   BusinessEligibilityDetail,
+  BusinessEligibilityGxpSourceEvidence,
   BusinessEligibilityIssueRequest,
   BusinessEligibilityLatestVersionUpsertRequest,
   BusinessEligibilityList,
@@ -37,6 +40,7 @@ import type {
   Company,
   DashboardSummary,
   DocumentDetail,
+  DocumentOwnerMetadataInventory,
   DocumentGenerationPrepareRequest,
   DocumentGenerationRunStatus,
   DocumentPreparationResponse,
@@ -68,6 +72,7 @@ import type {
 } from "../types";
 
 type RequestOptions = {
+  signal?: AbortSignal;
   method?: string;
   body?: unknown;
   auth?: StubAuthState;
@@ -151,6 +156,7 @@ async function requestJson<T>(path: string, options: RequestOptions): Promise<T>
     method: options.method ?? "GET",
     headers,
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    ...(options.signal ? { signal: options.signal } : {}),
   });
   const contentType = response.headers.get("content-type");
 
@@ -850,6 +856,53 @@ export function getBusinessEligibilityDetail(
     useStubAuth,
     bearerToken,
   });
+}
+
+export function getBusinessEligibilityGxpSourceEvidence(
+  businessEligibilityCertificateId: string,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+  signal?: AbortSignal,
+): Promise<BusinessEligibilityGxpSourceEvidence> {
+  return requestJson<BusinessEligibilityGxpSourceEvidence>(
+    `/business-eligibility-certificates/${businessEligibilityCertificateId}/gxp-source-evidence`,
+    { auth, useStubAuth, bearerToken, signal },
+  );
+}
+
+export function getGxpCertificateDocumentMetadata(
+  certificateId: string,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+  signal?: AbortSignal,
+): Promise<DocumentOwnerMetadataInventory> {
+  return requestJson<DocumentOwnerMetadataInventory>(
+    `/certificates/${encodeURIComponent(certificateId)}/document-metadata`,
+    { auth, useStubAuth, bearerToken, signal },
+  );
+}
+
+export function getBusinessEligibilityDocumentMetadata(
+  certificateId: string,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+  signal?: AbortSignal,
+): Promise<DocumentOwnerMetadataInventory> {
+  return requestJson<DocumentOwnerMetadataInventory>(
+    `/business-eligibility-certificates/${encodeURIComponent(certificateId)}/document-metadata`,
+    { auth, useStubAuth, bearerToken, signal },
+  );
+}
+
+export function getGxpCertificateVersionHistory(certificateId: string, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null, signal?: AbortSignal): Promise<GxpCertificateVersionHistory> {
+  return requestJson<GxpCertificateVersionHistory>(`/certificates/${encodeURIComponent(certificateId)}/versions`, { auth, useStubAuth, bearerToken, signal });
+}
+
+export function getBusinessEligibilityVersionHistory(certificateId: string, auth: StubAuthState, useStubAuth: boolean, bearerToken?: string | null, signal?: AbortSignal): Promise<BusinessEligibilityVersionHistory> {
+  return requestJson<BusinessEligibilityVersionHistory>(`/business-eligibility-certificates/${encodeURIComponent(certificateId)}/versions`, { auth, useStubAuth, bearerToken, signal });
 }
 
 export function issueBusinessEligibility(

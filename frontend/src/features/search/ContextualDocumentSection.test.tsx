@@ -95,7 +95,7 @@ describe("Document workspace identity and focus", () => {
     const load = vi.fn().mockImplementation(async id => detail(id));
     render(<ContextualDocumentSection {...defaults} items={[item("A"), item("B")]} onLoadDocumentDetail={load} />);
     const a = screen.getByRole("button", { name: "Chọn A" }); const b = screen.getByRole("button", { name: "Chọn B" });
-    a.focus(); fireEvent.keyDown(a, { key: "End" }); expect(b).toHaveFocus(); expect(load).not.toHaveBeenCalled();
+    fireEvent.focus(a); fireEvent.keyDown(a, { key: "End" }); expect(b).toHaveFocus(); expect(load).not.toHaveBeenCalled();
     fireEvent.keyDown(b, { key: "Home" }); expect(a).toHaveFocus();
     fireEvent.keyDown(a, { key: "ArrowDown" }); expect(b).toHaveFocus();
     fireEvent.click(b); await screen.findByText("Detail B");
@@ -104,6 +104,25 @@ describe("Document workspace identity and focus", () => {
     fireEvent.keyDown(b, { key: "ArrowUp" }); expect(a).toHaveFocus(); expect(b).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(b); expect(load).toHaveBeenCalledTimes(1);
     expect(screen.getByText("version-B")).toBeInTheDocument(); expect(screen.getByText("rendition-B")).toBeInTheDocument();
+  });
+  it("opens the exact UUID on legacy-style double-click without conflating duplicate filenames", async () => {
+    const open = vi.fn().mockResolvedValue(undefined); const load = vi.fn().mockImplementation(async id => detail(id));
+    const a = item("A"); const b = item("B");
+    a.actions.push({ action_key: "open", label: "Mở", available: true, disabled_reason: null, required_permissions: [] });
+    b.actions.push({ action_key: "open", label: "Mở", available: true, disabled_reason: null, required_permissions: [] });
+    render(<ContextualDocumentSection {...defaults} contextKey="event" items={[a, b]} onLoadDocumentDetail={load} onOpenDocument={open} />);
+    const selected = screen.getByRole("button", { name: "Chọn B" });
+    await act(async () => { selected.focus(); fireEvent.click(selected); fireEvent.click(selected); fireEvent.doubleClick(selected); });
+    expect(open).toHaveBeenCalledTimes(1); expect(open.mock.calls[0][0].document_id).toBe("B");
+    expect(open.mock.calls[0][0].original_filename).toBe(a.original_filename);
+    expect(load).toHaveBeenCalledTimes(1); expect(load).toHaveBeenCalledWith("B"); expect(selected).toHaveFocus();
+  });
+  it("does not synthesize a double-click open action when the backend marks it unavailable", () => {
+    const open = vi.fn(); const row = item("A");
+    row.actions.push({ action_key: "open", label: "Mở", available: false, disabled_reason: "Chưa sẵn sàng", required_permissions: [] });
+    render(<ContextualDocumentSection {...defaults} items={[row]} onLoadDocumentDetail={vi.fn()} onOpenDocument={open} />);
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Chọn A" }));
+    expect(open).not.toHaveBeenCalled();
   });
   it("ignores late A after B and retains exact selection across a same-context refresh", async () => {
     const a = deferred<DocumentDetail>(); const b = deferred<DocumentDetail>();

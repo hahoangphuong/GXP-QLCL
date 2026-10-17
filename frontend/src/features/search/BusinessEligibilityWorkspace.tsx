@@ -1,3 +1,6 @@
+import { PersistedCertificateHistory } from "./PersistedCertificateHistory";
+import type { HistoryState } from "./usePersistedCertificateHistory";
+import type { BusinessEligibilityVersionHistory } from "../../types";
 import { useEffect, useId, useState } from "react";
 
 import { EmptyState } from "../../components/EmptyState";
@@ -11,9 +14,14 @@ import type {
   BusinessEligibilityListItem,
   GxpCertificateListItem,
 } from "../../types";
-import { BusinessEligibilityDetailFields } from "./BusinessEligibilityDetailFields";
+import { BusinessEligibilityBasisFields, BusinessEligibilityFacilityFields } from "./BusinessEligibilityDetailFields";
+import { DetailValue } from "./DetailValue";
 import { useCertificateRows } from "./useCertificateRows";
 import { useCertificateDialogFocus } from "./useCertificateDialogFocus";
+import { BusinessEligibilitySourceEvidence } from "./BusinessEligibilitySourceEvidence";
+import type { EligibilitySourceState } from "./useBusinessEligibilitySourceEvidence";
+import { CertificateDocumentMetadata } from "./CertificateDocumentMetadata";
+import type { CertificateDocumentMetadataState } from "./useCertificateDocumentMetadata";
 
 type LinkDraft = { certificate_id: string; link_role: string };
 
@@ -177,6 +185,9 @@ export function BusinessEligibilityMutationDialog({
 }
 
 export function BusinessEligibilityWorkspace({
+  versionHistory,
+  documentMetadata,
+  sourceEvidence,
   items,
   listLoading,
   listError,
@@ -195,6 +206,9 @@ export function BusinessEligibilityWorkspace({
   promotionError,
   promotionPending,
 }: {
+  versionHistory?: HistoryState<BusinessEligibilityVersionHistory>;
+  documentMetadata?: CertificateDocumentMetadataState;
+  sourceEvidence?: EligibilitySourceState;
   items: BusinessEligibilityListItem[];
   listLoading: boolean;
   listError: string | null;
@@ -225,7 +239,7 @@ export function BusinessEligibilityWorkspace({
   const promote = actions.find((action) => action.action_key === "promote_current");
 
   return (
-    <div className="eligibility-workspace-split master-detail-split master-detail-split-eligibility">
+    <div className="eligibility-workspace-split master-detail-split master-detail-split-eligibility facility-ddk-workspace">
       <section className="panel panel-tight certificate-list-panel master-list-pane">
         <div className="panel-header">
           <div><h3>Danh mục GCN đủ điều kiện</h3><span className="panel-meta">{items.length} giấy</span></div>
@@ -260,6 +274,11 @@ export function BusinessEligibilityWorkspace({
             </tbody>
           </table>
         </div> : null}
+        {detail && !detailLoading && !detailError ? <div className="facility-ddk-dossier">
+          <DetailValue label="Hồ sơ đề nghị" value={detail.application_dossier_reference} />
+          <DetailValue label="Người xử lý" value={detail.handled_by_name} />
+          <BusinessEligibilityBasisFields detail={detail} />
+        </div> : null}
       </section>
 
       <section className="panel panel-tight certificate-detail-panel detail-pane">
@@ -269,7 +288,9 @@ export function BusinessEligibilityWorkspace({
           <EmptyState title="Chưa chọn GCN đủ điều kiện" description="Chọn một giấy trong danh mục hoặc cấp giấy mới." />
         ) : (
           <>
-            <BusinessEligibilityDetailFields detail={detail} />
+            <BusinessEligibilityFacilityFields detail={detail} />
+            {sourceEvidence ? <BusinessEligibilitySourceEvidence state={sourceEvidence} /> : null}
+            {documentMetadata ? <CertificateDocumentMetadata state={documentMetadata} /> : null}
             <div className="certificate-action-bar">
               {edit ? <button disabled={!edit.available || promotionPending} onClick={() => setEditDraft({ detail, expectedVersion: edit.expected_version })} title={edit.reason_code ?? undefined} type="button">{edit.label}</button> : null}
               {!edit?.available && edit?.reason_code ? <span>{edit.reason_code}</span> : null}
@@ -279,6 +300,7 @@ export function BusinessEligibilityWorkspace({
             </div>
           </>
         )}
+        {selectedCertificateId && versionHistory ? <PersistedCertificateHistory kind="ddk" state={versionHistory} /> : null}
       </section>
 
       {issueOpen ? <BusinessEligibilityMutationDialog

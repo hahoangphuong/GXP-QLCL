@@ -3,7 +3,7 @@ import { useState, type ComponentProps } from "react";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FacilityWorkspaceTabs } from "./FacilityWorkspaceTabs";
-import { FACILITY_TABS as labels, type FacilityTab } from "./facilityTabs";
+import { FACILITY_TABS as labels, FACILITY_TAB_LABELS, resolveFacilityTab, type FacilityTab } from "./facilityTabs";
 
 // Isolate the tab owner. Each stub marks a mounted business workspace; hidden
 // ARIA shells must never mount these children.
@@ -28,6 +28,13 @@ function ControlledTabs() {
 function tabs() { return within(screen.getByRole("tablist", { name: "Tab nghiệp vụ cơ sở" })).getAllByRole("tab"); }
 
 describe("FacilityWorkspaceTabs keyboard and ARIA", () => {
+  it("uses legacy captions without changing deep-link or activation keys", () => {
+    const values = props(); render(<FacilityWorkspaceTabs {...values} />);
+    expect(tabs().map(tab => tab.textContent)).toEqual(labels.map(tab => FACILITY_TAB_LABELS[tab]));
+    fireEvent.click(screen.getByRole("tab", { name: "Giấy chứng nhận GPs" }));
+    expect(values.onFacilityTabChange).toHaveBeenCalledWith("Giấy chứng nhận GxP");
+    expect(resolveFacilityTab("Giấy chứng nhận đủ điều kiện")).toBe("Giấy chứng nhận đủ điều kiện");
+  });
   it("moves focus with arrows, wraps at either end and handles Home/End without activation", () => {
     const values = props();
     render(<FacilityWorkspaceTabs {...values} />);
@@ -77,7 +84,7 @@ describe("FacilityWorkspaceTabs keyboard and ARIA", () => {
     expect(screen.getByRole("tabpanel", { name: labels[0] })).toHaveAttribute("tabindex", "0");
     rerender(<FacilityWorkspaceTabs {...values} selectedFacilityTab={labels[1]} />);
     expect(tabs().map((tab) => tab.id)).toEqual(ids);
-    expect(screen.getByRole("tabpanel", { name: labels[1] })).toBeInTheDocument();
+    expect(screen.getByRole("tabpanel", { name: FACILITY_TAB_LABELS[labels[1]] })).toBeInTheDocument();
   });
 
   it("resets the roving entry on exit and follows external selection within the tablist", () => {

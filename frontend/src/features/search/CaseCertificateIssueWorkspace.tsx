@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import type { CertificateIssueActionReadiness, CertificateIssueRequest } from "../../types";
+import { useCertificateDialogFocus } from "./useCertificateDialogFocus";
 
 type ScopeDraft = CertificateIssueRequest["scopes"][number];
 
@@ -10,6 +11,7 @@ function CertificateIssueDialog({ caseId, readiness, onClose, onIssue }: {
   onClose: () => void;
   onIssue: (payload: CertificateIssueRequest) => Promise<void>;
 }) {
+  const dialogRef = useCertificateDialogFocus();
   const [certificateNumber, setCertificateNumber] = useState("");
   const [issueDate, setIssueDate] = useState("");
   const [expiryDate, setExpiryDate] = useState("");
@@ -78,7 +80,7 @@ function CertificateIssueDialog({ caseId, readiness, onClose, onIssue }: {
   }
 
   return <div className="dialog-backdrop" role="presentation">
-    <section aria-labelledby="gxp-certificate-issue-title" aria-modal="true" className="panel certificate-edit-dialog" role="dialog">
+    <section ref={dialogRef} tabIndex={-1} aria-labelledby="gxp-certificate-issue-title" aria-modal="true" className="panel certificate-edit-dialog" role="dialog">
       <header className="panel-header certificate-edit-dialog-header">
         <div><h2 id="gxp-certificate-issue-title">Cấp giấy chứng nhận GxP</h2><p>Loại GxP và điều kiện cấp do backend xác định theo hồ sơ kiểm tra đang chọn.</p></div>
       </header>

@@ -106,6 +106,80 @@ function baseProps() {
 }
 
 describe("Eligibility certificate keyboard and identity", () => {
+  it("mounts ĐĐK document metadata separately from source evidence and canonical basis", () => {
+    const props = baseProps();
+    const { container } = render(<BusinessEligibilityWorkspace {...props} documentMetadata={{ status: "ready", data: {
+      owner_kind: "business_eligibility_certificate", owner_id: "dkkd-1",
+      metadata_status: "no_registered_document_metadata", binary_verified: false,
+      original_signed_document_verified: false, documents: [],
+    } }} />);
+    const region = screen.getByRole("region", { name: "Tài liệu đã đăng ký" });
+    expect(region.closest(".detail-pane")).not.toBeNull();
+    expect(region).toHaveTextContent("không xác nhận tài liệu gốc có hay không");
+    expect(container.querySelector(".certificate-basis-section")?.contains(region)).toBe(false);
+    expect(props.onIssue).not.toHaveBeenCalled();
+    expect(props.onEditLatestVersion).not.toHaveBeenCalled();
+  });
+  it("adds original source evidence separately from canonical basis without mutations", () => {
+    const props = baseProps();
+    render(<BusinessEligibilityWorkspace {...props} sourceEvidence={{ status: "ready", data: {
+      business_eligibility_certificate_id: "dkkd-1", legacy_dkkd_id: null, source_status: "legacy_identity_missing",
+      evidence_kind: "original_excel_cells_source_only", canonical_links_included: false,
+      source_workbook_sha256: null, source_sheet_name: null, source_row_number: null, groups: [],
+    } }} />);
+    const section = screen.getByRole("region", { name: "Dữ liệu GxP từ hồ sơ ĐĐK gốc" });
+    expect(section.closest(".detail-pane")).not.toBeNull();
+    expect(section.querySelector(".certificate-basis-section")).toBeNull();
+    expect(screen.getByText(/GMP A · GMP-001/)).toBeInTheDocument();
+    expect(props.onIssue).not.toHaveBeenCalled();
+    expect(props.onEditLatestVersion).not.toHaveBeenCalled();
+    expect(props.onPromoteCurrent).not.toHaveBeenCalled();
+  });
+  it("places Facility dossier/basis in the left pane and groups canonical fields at right without Case or inferred activity tabs", () => {
+    const props = baseProps();
+    const { container } = render(<BusinessEligibilityWorkspace {...props} />);
+    expect(container.querySelector(".facility-ddk-workspace")).not.toBeNull();
+    const left = container.querySelector(".master-list-pane")!;
+    const right = container.querySelector(".detail-pane")!;
+    expect(left.querySelector(".facility-ddk-dossier .detail-label")).toHaveTextContent("Hồ sơ đề nghị");
+    expect(left.querySelector(".certificate-basis-section")).not.toBeNull();
+    expect(right.querySelector(".certificate-basis-section")).toBeNull();
+    expect(Array.from(right.querySelectorAll(".facility-ddk-identity .detail-label"), node => node.textContent))
+      .toEqual(["Tên công ty", "Trụ sở", "Tên cơ sở", "Địa chỉ cơ sở"]);
+    expect(Array.from(right.querySelectorAll(".facility-ddk-professional-primary .detail-label"), node => node.textContent))
+      .toEqual(["PT chuyên môn", "Trình độ chuyên môn", "CCHN", "Ngày cấp CCHN"]);
+    expect(right.querySelector(".facility-ddk-activity")).toHaveTextContent("Hoạt động kinh doanh");
+    expect(right.querySelector(".facility-ddk-replacements")).toHaveTextContent("Bị thay thế bởi");
+    expect(container.querySelectorAll('[role="tab"]')).toHaveLength(0);
+    expect(props.onIssue).not.toHaveBeenCalled();
+    expect(props.onEditLatestVersion).not.toHaveBeenCalled();
+  });
+
+  it("hides left metadata and basis with stale, pending or errored detail just as the right pane does", () => {
+    const props = baseProps();
+    const { container, rerender } = render(<BusinessEligibilityWorkspace {...props} />);
+    expect(container.querySelector(".facility-ddk-dossier")).not.toBeNull();
+    for (const overrides of [{ selectedCertificateId: "another-uuid" }, { detailLoading: true }, { detailError: "403 fixture" }]) {
+      rerender(<BusinessEligibilityWorkspace {...props} {...overrides} />);
+      expect(container.querySelector(".facility-ddk-dossier")).toBeNull();
+      expect(container.querySelector(".certificate-basis-section")).toBeNull();
+    }
+  });
+  it("retains multiple basis UUID entries and raw null/multiline/long snapshots without deriving four activity groups", () => {
+    const props = baseProps();
+    const current = detail();
+    current.linked_gxp_certificates.push({ ...current.linked_gxp_certificates[0], certificate_id: "basis-another-uuid" });
+    current.business_activity_text = "GMP raw snapshot\nGLP raw snapshot";
+    current.notes = "LongUnbrokenNote".repeat(60);
+    const { container } = render(<BusinessEligibilityWorkspace {...props} detail={current} />);
+    expect(container.querySelectorAll(".master-list-pane .certificate-basis-section li")).toHaveLength(2);
+    expect(screen.getByText("GMP raw snapshot GLP raw snapshot")).toHaveClass("multiline-value");
+    expect(screen.getByText(current.notes)).toHaveClass("multiline-value");
+    expect(screen.getAllByText("Chưa có").length).toBeGreaterThan(0);
+    expect(container.querySelectorAll('[role="tab"], [role="tablist"]')).toHaveLength(0);
+    expect(props.onIssue).not.toHaveBeenCalled();
+    expect(props.onEditLatestVersion).not.toHaveBeenCalled();
+  });
   function keyboardProps() {
     const props = baseProps();
     return { ...props, items: [items[0], { ...items[0], business_eligibility_certificate_id: "dkkd-1-2" }] };

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { formatCompactDate, formatStatusLabel } from "../../lib/presentation";
 import type { CaseApplicationUpsertRequest, CaseWorkspace, InspectionFolderLookup } from "../../types";
@@ -23,6 +23,18 @@ type FormDraft = {
   submitted_on: string;
   dossier_code: string;
   applicant_name: string;
+};
+
+type FolderLookupOwner = {
+  identity: string;
+  generation: number;
+};
+
+type FolderLookupState = {
+  owner: FolderLookupOwner;
+  pending: boolean;
+  result: InspectionFolderLookup | null;
+  error: string | null;
 };
 
 function buildDraft(caseWorkspace: CaseWorkspace): FormDraft {
@@ -58,22 +70,64 @@ function getErrorMessage(error: Error): string {
 }
 
 export function CaseApplicationWorkspace({
+  accessGeneration = 0,
   caseWorkspace,
   onSave,
   onResolveInspectionFolder,
+  assessment,
 }: {
+  accessGeneration?: number | null;
   caseWorkspace: CaseWorkspace;
   onSave: (payload: CaseApplicationUpsertRequest) => Promise<void>;
   onResolveInspectionFolder: () => Promise<InspectionFolderLookup>;
+  assessment?: ReactNode;
 }) {
   const currentDraft = useMemo(() => buildDraft(caseWorkspace), [caseWorkspace]);
   const [draft, setDraft] = useState<FormDraft>(currentDraft);
   const [editingField, setEditingField] = useState<"submitted_on" | "dossier_code" | null>(null);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [folderLookup, setFolderLookup] = useState<InspectionFolderLookup | null>(null);
-  const [folderLookupError, setFolderLookupError] = useState<string | null>(null);
-  const [folderLookupPending, setFolderLookupPending] = useState(false);
+  const folderLookupIdentity = JSON.stringify([
+    accessGeneration,
+    caseWorkspace.case_summary.id,
+    caseWorkspace.case_summary.site_id,
+    caseWorkspace.case_summary.legacy_site_id,
+    caseWorkspace.case_summary.legacy_inspection_code,
+  ]);
+  const folderLookupOwner = useRef<FolderLookupOwner>({ identity: folderLookupIdentity, generation: 0 });
+  const [folderLookupState, setFolderLookupState] = useState<FolderLookupState>({
+    owner: folderLookupOwner.current,
+    pending: false,
+    result: null,
+    error: null,
+  });
+
+  useLayoutEffect(() => {
+    if (folderLookupOwner.current.identity === folderLookupIdentity) {
+      return;
+    }
+    const owner = {
+      identity: folderLookupIdentity,
+      generation: folderLookupOwner.current.generation + 1,
+    };
+    folderLookupOwner.current = owner;
+    setFolderLookupState({ owner, pending: false, result: null, error: null });
+  }, [folderLookupIdentity]);
+
+  useLayoutEffect(() => () => {
+    folderLookupOwner.current = {
+      identity: "unmounted",
+      generation: folderLookupOwner.current.generation + 1,
+    };
+  }, []);
+
+  const ownedFolderLookupState = folderLookupOwner.current.identity === folderLookupIdentity
+    && folderLookupState.owner === folderLookupOwner.current
+    ? folderLookupState
+    : null;
+  const folderLookup = ownedFolderLookupState?.result ?? null;
+  const folderLookupError = ownedFolderLookupState?.error ?? null;
+  const folderLookupPending = ownedFolderLookupState?.pending ?? false;
 
   useEffect(() => {
     if (!editingField) {
@@ -109,26 +163,49 @@ export function CaseApplicationWorkspace({
   }
 
   async function resolveInspectionFolder() {
-    setFolderLookupPending(true);
-    setFolderLookup(null);
-    setFolderLookupError(null);
+    if (folderLookupPending) {
+      return;
+    }
+    const owner = folderLookupOwner.current;
+    setFolderLookupState({ owner, pending: true, result: null, error: null });
     try {
-      setFolderLookup(await onResolveInspectionFolder());
+      const result = await onResolveInspectionFolder();
+      if (folderLookupOwner.current === owner) {
+        setFolderLookupState({ owner, pending: false, result, error: null });
+      }
     } catch (error) {
-      setFolderLookupError(error instanceof Error ? error.message : "Không thể tra cứu thư mục kiểm tra.");
-    } finally {
-      setFolderLookupPending(false);
+      if (folderLookupOwner.current === owner) {
+        setFolderLookupState({
+          owner,
+          pending: false,
+          result: null,
+          error: error instanceof Error ? error.message : "Không thể tra cứu thư mục kiểm tra.",
+        });
+      }
     }
   }
 
   const canResolveInspectionFolder =
-    caseWorkspace.case_summary.legacy_site_id !== null && caseWorkspace.case_summary.legacy_inspection_code !== null;
+    accessGeneration !== null
+    && caseWorkspace.case_summary.legacy_site_id !== null
+    && caseWorkspace.case_summary.legacy_inspection_code !== null;
+
+  const additionalInformation = (
+    <div className="detail-grid compact-grid detail-form-matrix case-application-grid case-application-extra">
+      <DetailValue label="Loại kiểm tra" value={caseWorkspace.case_summary.inspection_type} />
+      <DetailValue label="GxP" value={caseWorkspace.case_summary.gxp_type} />
+      <DetailValue label="Dây chuyền" value={caseWorkspace.case_summary.scope_code} />
+      <DetailValue label="Tiêu chuẩn áp dụng" value={caseWorkspace.case_summary.applicable_standard} />
+      <DetailValue label="Năm mở hồ sơ" value={String(caseWorkspace.case_summary.opened_year ?? "")} />
+      <DetailValue label="Trạng thái hồ sơ" value={formatStatusLabel(caseWorkspace.case_summary.state)} />
+    </div>
+  );
 
   return (
     <div className="event-step-stack">
-      <section className="workspace-section case-application-section">
-        <h4>Thông tin hồ sơ</h4>
-        <div className="detail-grid compact-grid detail-form-matrix case-application-grid">
+      <section className={`workspace-section case-application-section${assessment ? " legacy-dossier-section" : ""}`}>
+        <h4 className={assessment ? "sr-only" : undefined}>Thông tin hồ sơ</h4>
+        <div className="detail-grid compact-grid detail-form-matrix case-application-grid case-application-primary">
           <EditableDetailValue
             editButtonLabel="Sửa Ngày nộp"
             error={editingField === "submitted_on" ? errorMessage : null}
@@ -174,13 +251,9 @@ export function CaseApplicationWorkspace({
             />
           </EditableDetailValue>
 
-          <DetailValue label="Loại kiểm tra" value={caseWorkspace.case_summary.inspection_type} />
-          <DetailValue label="GxP" value={caseWorkspace.case_summary.gxp_type} />
-          <DetailValue label="Dây chuyền" value={caseWorkspace.case_summary.scope_code} />
-          <DetailValue label="Tiêu chuẩn áp dụng" value={caseWorkspace.case_summary.applicable_standard} />
-          <DetailValue label="Năm mở hồ sơ" value={String(caseWorkspace.case_summary.opened_year ?? "")} />
-          <DetailValue label="Trạng thái hồ sơ" value={formatStatusLabel(caseWorkspace.case_summary.state)} />
         </div>
+        {assessment}
+        {assessment ? <details className="case-application-additional"><summary>Thông tin bổ sung</summary>{additionalInformation}</details> : additionalInformation}
         <div className="panel-actions panel-actions-tight">
           <button disabled={!canResolveInspectionFolder || folderLookupPending} onClick={() => void resolveInspectionFolder()} type="button">
             {folderLookupPending ? "Đang tra cứu..." : "Tra cứu thư mục kiểm tra"}

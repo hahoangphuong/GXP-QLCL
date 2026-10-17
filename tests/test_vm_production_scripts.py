@@ -4912,7 +4912,8 @@ def test_restore_script_creates_missing_restore_db_via_privileged_admin_path(tmp
     )
 
     assert completed.returncode == 0, completed.stderr or completed.stdout
-    assert "createdb --owner gxp_app gxp_qlcl_restore" in admin_log.read_text(encoding="utf-8")
+    assert "createdb --host /var/run/postgresql --port 5432 --owner gxp_app gxp_qlcl_restore" in admin_log.read_text(encoding="utf-8")
+    assert "--host /var/run/postgresql --port 5432" in createdb_log.read_text(encoding="utf-8")
     assert "--owner gxp_app gxp_qlcl_restore" in createdb_log.read_text(encoding="utf-8")
     assert "--username gxp_app" not in createdb_log.read_text(encoding="utf-8")
     assert "--dbname gxp_qlcl_restore" in restore_log.read_text(encoding="utf-8")

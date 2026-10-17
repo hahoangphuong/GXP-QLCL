@@ -295,7 +295,7 @@ def test_authenticate_google_oidc_request_uses_database_role_source():
 
     user = authenticate_google_oidc_request(
         request,
-        verifier=lambda token, client_id: {"email": "operator@example.com", "sub": "sub-1"},
+        verifier=lambda token, client_id: {"email": "operator@example.com", "email_verified": True, "sub": "sub-1"},
     )
 
     assert user.auth_mode == "google_oidc"

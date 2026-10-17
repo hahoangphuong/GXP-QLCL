@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import HTTPException, Request
+import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -4088,11 +4089,117 @@ def test_document_content_route_streams_current_binary_without_locator_leakage(t
 
             assert response.status_code == 200
             assert asyncio.run(_read_streaming_response_body(response)) == b"docx-binary"
+            assert response.headers["cache-control"] == "private, no-store"
+            # Certificate metadata access by itself is NOT document.read.
+            # Without document.read, the binary endpoint must reject the
+            # request before selecting a locator or touching storage.
+            with pytest.raises(HTTPException) as forbidden:
+                _document_content_endpoint(
+                    app, "/cases/{case_id}/documents/{document_id}/content"
+                )(
+                    case_id,
+                    document_id,
+                    _request_for_app(app),
+                    read_session,
+                    build_authenticated_user(
+                        "certificate-metadata-only.local",
+                        permissions={"certificate.view"},
+                    ),
+                )
+            assert forbidden.value.status_code == 403
             assert response.headers["content-type"].startswith(
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
             assert "filename*=UTF-8''decision.docx" in response.headers["content-disposition"]
             assert "2026/decision.docx" not in str(response.headers)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected_disposition"),
+    (
+        ("safe.pdf", "inline"),
+        ("safe.docx", "inline"),
+        ("safe.png", "inline"),
+        ("untrusted.html", "attachment"),
+        ("untrusted.svg", "attachment"),
+        ("untrusted.xhtml", "attachment"),
+        ("untrusted.xml", "attachment"),
+        ("untrusted.js", "attachment"),
+        ("unknown.unmapped_extension_qlcl", "attachment"),
+    ),
+)
+def test_document_content_route_does_not_render_active_or_unknown_formats_inline(
+    filename: str, expected_disposition: str
+):
+    """Genuine document owner/locator and SHA-256 access path; local files only.
+
+    Cached/verified bytes with an HTML/SVG/etc filename must never become
+    same-origin active browser content. PDF/DOCX/image inline parity is kept.
+    """
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    storage, root = _build_storage()
+    try:
+        content = b"synthetic bytes -- source format does not affect binding"
+        with Session(engine) as session:
+            case_id, _ = _seed_case(session)
+            target_dir = root / "inspection" / "2026"
+            target_dir.mkdir(parents=True, exist_ok=True)
+            (target_dir / filename).write_bytes(content)
+            document = Document(
+                family_code="CERTIFICATE_DECISION",
+                document_type_code="CERTIFICATE_DECISION",
+                title="Synthetic decision file",
+                case_id=case_id,
+            )
+            session.add(document)
+            session.flush()
+            variant = DocumentVariant(
+                document_id=document.id,
+                variant_type=DocumentVariantType.EDITABLE_DOCX,
+                language_code="vi",
+                is_active=True,
+            )
+            session.add(variant)
+            session.flush()
+            session.add(
+                DocumentVersion(
+                    document_variant_id=variant.id,
+                    version_no=1,
+                    storage_binding_id=None,
+                    storage_root="inspection",
+                    storage_relative_path=f"2026/{filename}",
+                    original_filename=filename,
+                    checksum_sha256=sha256(content).hexdigest(),
+                    is_current=True,
+                    issued_on=None,
+                )
+            )
+            session.commit()
+            document_id = document.id
+
+        app = create_app(str(engine.url), storage_service=storage)
+        with Session(engine) as session:
+            response = _document_content_endpoint(
+                app, "/cases/{case_id}/documents/{document_id}/content"
+            )(
+                case_id,
+                document_id,
+                _request_for_app(app),
+                session,
+                build_authenticated_user(
+                    "document-reader.local", permissions={"document.read"}
+                ),
+            )
+            assert response.status_code == 200
+            assert response.headers["content-disposition"].startswith(
+                f"{expected_disposition}; "
+            )
+            assert response.headers["x-content-type-options"] == "nosniff"
+            assert response.headers["cache-control"] == "private, no-store"
+            assert asyncio.run(_read_streaming_response_body(response)) == content
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

@@ -114,3 +114,45 @@ def test_named_range_reader_exports_real_required_ranges_without_fake_gdp(monkey
 
     assert set(artifact["named_ranges"]) == {"PVCN_GMP", "PVCN_GLP", "PVCN_GSP"}
     assert artifact["taxonomy_availability"]["GDP"]["status"] == "unavailable"
+
+
+def test_repeated_excel_headers_preserve_every_physical_column_without_guessing_gxp():
+    headers = ["ID", "ID CC", "ID CC", "ID CC", "ID CC", "Mã số CC"]
+    plan = legacy_snapshot._core_header_plan(headers)
+    assert plan[1] == [{"header": "ID CC", "column_ordinals": [2, 3, 4, 5]}]
+    result = legacy_snapshot._core_source_row(
+        headers, ["400", "101", "", "303", "404", "DDK-400"], 91, plan=plan,
+    )
+    assert result == {
+        "ID": "400",
+        "ID CC [excel_column=2]": "101",
+        "ID CC [excel_column=3]": "",
+        "ID CC [excel_column=4]": "303",
+        "ID CC [excel_column=5]": "404",
+        "Mã số CC": "DDK-400",
+        "__excel_row_number": "91",
+        "__excel_duplicate_headers": '[{"header":"ID CC","column_ordinals":[2,3,4,5]}]',
+    }
+    assert "ID CC" not in result
+    assert "linked_certificate_ids" not in result
+
+
+def test_distinct_excel_headers_preserve_existing_v1_source_shape():
+    headers = ["ID", "ID CC", "Mã số CC"]
+    plan = legacy_snapshot._core_header_plan(headers)
+    assert plan[1] == []
+    assert legacy_snapshot._core_source_row(
+        headers, ["400", "101", "DDK-400"], 91, plan=plan,
+    ) == {
+        "ID": "400", "ID CC": "101", "Mã số CC": "DDK-400",
+        "__excel_row_number": "91",
+    }
+
+
+def test_repeated_source_header_with_blank_cells_does_not_drop_other_values():
+    headers = ["ID", "ID CC", "ID CC", "ID CC", "ID CC"]
+    value = legacy_snapshot._core_source_row(
+        headers, ["400", "", "202", "", ""], 55
+    )
+    assert value["ID CC [excel_column=3]"] == "202"
+    assert len([key for key in value if key.startswith("ID CC [excel_column=")]) == 4

@@ -32,12 +32,14 @@ def readyz(request: Request):
             database_reachable = True
             try:
                 actual_revision = session.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            except Exception as exc:
-                database_error = f"alembic_version unavailable: {exc}"
+            except Exception:
+                # Public readiness must never serialize driver/SQL exceptions.
+                database_error = "schema_revision_unavailable"
             else:
                 schema_current = expected_revision is not None and actual_revision == expected_revision
-    except Exception as exc:
-        database_error = str(exc)
+    except Exception:
+        # Keep 503 and reachability semantics without exposing DB credentials.
+        database_error = "database_unavailable"
 
     payload = {
         "ok": database_reachable and schema_current,

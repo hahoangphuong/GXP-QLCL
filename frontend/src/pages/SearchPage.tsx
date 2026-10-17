@@ -1,12 +1,17 @@
-import { startTransition, useDeferredValue, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
-import { useSearchParams } from "react-router-dom";
+import { usePersistedCertificateHistory } from "../features/search/usePersistedCertificateHistory";
+import { startTransition, useDeferredValue, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useLocation, useNavigationType, useSearchParams } from "react-router-dom";
 
 import type { ApiAccess } from "../App";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { ActionCard } from "../features/search/ActionCard";
 import { FacilityTable } from "../features/search/FacilityTable";
+import { FacilityHistoryPane } from "../features/search/FacilityHistoryPane";
 import { FacilityWorkspaceTabs } from "../features/search/FacilityWorkspaceTabs";
+import { useBusinessEligibilitySourceEvidence } from "../features/search/useBusinessEligibilitySourceEvidence";
+import { useCertificateDocumentMetadata } from "../features/search/useCertificateDocumentMetadata";
+import { DEFAULT_FACILITY_TAB, resolveFacilityTab } from "../features/search/facilityTabs";
 import {
   assessCapaCycle,
   createCapaCycle,
@@ -92,7 +97,6 @@ import type {
 } from "../types";
 
 const DEFAULT_EVENT_TAB = "Hồ sơ";
-const DEFAULT_FACILITY_TAB = "Các đợt kiểm tra & thay đổi";
 const RESULT_PAGE_SIZE = 100;
 const GXP_FILTER_OPTIONS = new Set(["GMP", "GLP", "GMPbb"]);
 
@@ -154,15 +158,20 @@ function initialResolutionState(pending: PendingDeepLink): ResolutionState {
   return hasExplicitResultIdentity(pending) ? "pending" : "none";
 }
 
+function matchesDeclaredTargetHints(row: FacilitySearchResult, pending: PendingDeepLink): boolean {
+  // All supplied identity hints must agree with the explicit result, not just result_key.
+  if (pending.siteId !== null && row.site_id !== pending.siteId) return false;
+  const targetGxp = targetGxpConstraint(pending);
+  if (targetGxp && row.gxp_type !== targetGxp) return false;
+  if (pending.productionLineId !== null && row.production_line_id !== pending.productionLineId) return false;
+  if (pending.lineCode !== null && normalizeLineHint(row.line_code) !== pending.lineCode) return false;
+  return true;
+}
+
 function matchesCompatibilityHints(row: FacilitySearchResult, pending: PendingDeepLink): boolean {
-  if (pending.siteId && row.site_id !== pending.siteId) return false;
-  const contextGxp = normalizeExplicitGxpHint(pending.contextGxp);
-  if (contextGxp && row.gxp_type !== contextGxp) return false;
-  if (pending.productionLineId) return row.production_line_id === pending.productionLineId;
-  if (pending.lineCode) {
-    return row.production_line_identity_state === "legacy_unlinked"
-      && normalizeLineHint(row.line_code) === pending.lineCode;
-  }
+  if (!matchesDeclaredTargetHints(row, pending)) return false;
+  if (pending.productionLineId !== null) return true;
+  if (pending.lineCode !== null) return row.production_line_identity_state === "legacy_unlinked";
   return Boolean(pending.siteId && pending.contextGxp && row.production_line_identity_state === "facility_wide");
 }
 
@@ -203,6 +212,46 @@ function resolveSelectedRemediationCycleId(
     : caseWorkspace.remediation.cycles.at(-1)?.capa_cycle_id ?? null;
 }
 
+// The request identity, status and payload are one atomic record. Display keys
+// alone cannot distinguish canonical UUIDs, legacy-unlinked and facility-wide.
+type WorkspaceRequest = {
+  context: string;
+  requestId: number;
+} & (
+  | { status: "loading"; previous?: FacilityWorkspace }
+  | { status: "ready"; data: FacilityWorkspace }
+  | { status: "error"; error: string; previous?: FacilityWorkspace }
+);
+
+type SearchResultsRequest = {
+  context: string;
+  requestId: number;
+  items: FacilitySearchResult[];
+  totalCount: number;
+} & (
+  | { status: "loading" }
+  | { status: "ready" }
+  | { status: "error"; error: string }
+);
+
+type SearchPageRequest = {
+  context: string;
+  offset: number;
+};
+
+type ResolvedDeepLinkResult = {
+  accessGeneration: number;
+  result: FacilitySearchResult;
+};
+
+function facilityContextIdentity(result: FacilitySearchResult): string {
+  return JSON.stringify([
+    result.result_key, result.site_id, result.gxp_type, result.result_grain,
+    result.production_line_identity_state, result.production_line_id ?? null,
+    result.line_code ?? null,
+  ]);
+}
+
 export function SearchPage({
   access,
   statusError,
@@ -210,7 +259,11 @@ export function SearchPage({
   access: ApiAccess;
   statusError: string | null;
 }) {
+  const { auth, useStubAuth, bearerToken, canLoadSecureApi, accessGeneration } = access;
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  const urlSyncOwner = useId();
   const searchSignature = searchParams.toString();
   const [generalQuery, setGeneralQuery] = useState(searchParams.get("q") ?? "");
   const [facilityName, setFacilityName] = useState(searchParams.get("facility_name") ?? "");
@@ -221,7 +274,7 @@ export function SearchPage({
   const [certificateState, setCertificateState] = useState(searchParams.get("certificate_state") ?? "");
   const [certificateExpiringWithinDays, setCertificateExpiringWithinDays] = useState(searchParams.get("certificate_expiring_within_days") ?? "");
   const [changeRequestStates, setChangeRequestStates] = useState<string[]>(searchParams.getAll("change_request_state"));
-  const [resultsOffset, setResultsOffset] = useState(0);
+  const [searchPageRequest, setSearchPageRequest] = useState<SearchPageRequest>({ context: "", offset: 0 });
   const [searchEpoch, setSearchEpoch] = useState(0);
   const [selectedResultKey, setSelectedResultKey] = useState<string | null>(searchParams.get("result_key"));
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(searchParams.get("history_id"));
@@ -229,23 +282,22 @@ export function SearchPage({
   const [resultResolution, setResultResolution] = useState<ResolutionState>(() => initialResolutionState(readPendingDeepLink(searchParams)));
   const [historyResolution, setHistoryResolution] = useState<ResolutionState>(() => searchParams.get("history_id") ? "pending" : "none");
   const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
-  const [selectedFacilityTab, setSelectedFacilityTab] = useState(searchParams.get("facility_tab") ?? DEFAULT_FACILITY_TAB);
+  const [selectedFacilityTab, setSelectedFacilityTab] = useState(() => resolveFacilityTab(searchParams.get("facility_tab")));
   const [activeTab, setActiveTab] = useState(searchParams.get("event_tab") ?? DEFAULT_EVENT_TAB);
   const [selectedRemediationCycleId, setSelectedRemediationCycleId] = useState<string | null>(null);
   const deferredGeneralQuery = useDeferredValue(generalQuery);
   const deferredFacilityName = useDeferredValue(facilityName);
   const deferredCertificateScope = useDeferredValue(certificateScope);
 
-  const [results, setResults] = useState<FacilitySearchResult[]>([]);
+  const [searchResultsRequest, setSearchResultsRequest] = useState<SearchResultsRequest | null>(null);
+  const searchRequestSequence = useRef(0);
+  const searchResultsRequestRef = useRef<SearchResultsRequest | null>(null);
   // A resolved deep link owns the workspace target while the ordinary result
   // universe is reconciled to its settled GxP filter.
-  const [resolvedDeepLinkResult, setResolvedDeepLinkResult] = useState<FacilitySearchResult | null>(null);
-  const [resultsLoading, setResultsLoading] = useState(true);
-  const [resultsError, setResultsError] = useState<string | null>(null);
-  const [resultsTotalCount, setResultsTotalCount] = useState(0);
-  const [workspace, setWorkspace] = useState<FacilityWorkspace | null>(null);
-  const [workspaceLoading, setWorkspaceLoading] = useState(false);
-  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [resolvedDeepLinkResult, setResolvedDeepLinkResult] = useState<ResolvedDeepLinkResult | null>(null);
+  const [workspaceRequest, setWorkspaceRequest] = useState<WorkspaceRequest | null>(null);
+  const workspaceRequestSequence = useRef(0);
+  const committedContextRef = useRef<string | null>(null);
   const [selectedActionKey, setSelectedActionKey] = useState<string | null>(null);
   const [applicableStandardInput, setApplicableStandardInput] = useState("");
   const [createInspectionCasePending, setCreateInspectionCasePending] = useState(false);
@@ -260,56 +312,251 @@ export function SearchPage({
   });
   const [selectedCaseWorkspace, setSelectedCaseWorkspace] = useState<CaseWorkspace | null>(null);
   const [caseWorkspaceLoading, setCaseWorkspaceLoading] = useState(false);
-  const [caseWorkspaceError, setCaseWorkspaceError] = useState<string | null>(null);
+  const [caseWorkspaceError, setCaseWorkspaceError] = useState<{ historyId: string; message: string } | null>(null);
+  const caseRequestSequence = useRef(0);
   const [selectedChangeRequestWorkspace, setSelectedChangeRequestWorkspace] = useState<ChangeRequestWorkspace | null>(null);
   const [changeRequestWorkspaceLoading, setChangeRequestWorkspaceLoading] = useState(false);
-  const [changeRequestWorkspaceError, setChangeRequestWorkspaceError] = useState<string | null>(null);
+  const [changeRequestWorkspaceError, setChangeRequestWorkspaceError] = useState<{ historyId: string; message: string } | null>(null);
   const [gxpCertificates, setGxpCertificates] = useState<GxpCertificateListItem[]>([]);
+  const [gxpCertificatesOwner, setGxpCertificatesOwner] = useState<string | null>(null);
   const [gxpCertificatesLoading, setGxpCertificatesLoading] = useState(false);
   const [gxpCertificatesError, setGxpCertificatesError] = useState<string | null>(null);
-  const [selectedGxpCertificateId, setSelectedGxpCertificateId] = useState<string | null>(null);
+  const [selectedGxpCertificateIdState, setSelectedGxpCertificateId] = useState<string | null>(null);
+  const [selectedGxpCertificateOwner, setSelectedGxpCertificateOwner] = useState<string | null>(null);
   const [gxpCertificateDetail, setGxpCertificateDetail] = useState<GxpCertificateDetail | null>(null);
+  const [gxpCertificateDetailOwner, setGxpCertificateDetailOwner] = useState<string | null>(null);
   const [gxpCertificateDetailLoading, setGxpCertificateDetailLoading] = useState(false);
-  const [gxpCertificateDetailError, setGxpCertificateDetailError] = useState<string | null>(null);
+  const [gxpCertificateDetailFailure, setGxpCertificateDetailFailure] = useState<{ owner: string; message: string } | null>(null);
   const [gxpCertificatePromotionPending, setGxpCertificatePromotionPending] = useState(false);
-  const [gxpCertificatePromotionError, setGxpCertificatePromotionError] = useState<string | null>(null);
+  const [gxpPromotionOwner, setGxpPromotionOwner] = useState<string | null>(null);
+  const [gxpPromotionFailure, setGxpPromotionFailure] = useState<{ owner: string; message: string } | null>(null);
   const [eligibilityCertificates, setEligibilityCertificates] = useState<BusinessEligibilityListItem[]>([]);
+  const [eligibilityCertificatesOwner, setEligibilityCertificatesOwner] = useState<string | null>(null);
   const [eligibilityCertificatesLoading, setEligibilityCertificatesLoading] = useState(false);
   const [eligibilityCertificatesError, setEligibilityCertificatesError] = useState<string | null>(null);
-  const [selectedEligibilityCertificateId, setSelectedEligibilityCertificateId] = useState<string | null>(null);
+  const [selectedEligibilityCertificateIdState, setSelectedEligibilityCertificateId] = useState<string | null>(null);
+  const [selectedEligibilityCertificateOwner, setSelectedEligibilityCertificateOwner] = useState<string | null>(null);
   const [eligibilityCertificateDetail, setEligibilityCertificateDetail] = useState<BusinessEligibilityDetail | null>(null);
+  const [eligibilityCertificateDetailOwner, setEligibilityCertificateDetailOwner] = useState<string | null>(null);
   const [eligibilityCertificateDetailLoading, setEligibilityCertificateDetailLoading] = useState(false);
-  const [eligibilityCertificateDetailError, setEligibilityCertificateDetailError] = useState<string | null>(null);
+  const [eligibilityCertificateDetailFailure, setEligibilityCertificateDetailFailure] = useState<{ owner: string; message: string } | null>(null);
   const [eligibilityIssueReadiness, setEligibilityIssueReadiness] = useState<BusinessEligibilityIssueActionReadiness | null>(null);
   const [eligibilityBasisCertificates, setEligibilityBasisCertificates] = useState<GxpCertificateListItem[]>([]);
+  const [eligibilityBasisOwner, setEligibilityBasisOwner] = useState<string | null>(null);
   const [eligibilityBasisLoading, setEligibilityBasisLoading] = useState(false);
   const [eligibilityBasisError, setEligibilityBasisError] = useState<string | null>(null);
   const [eligibilityPromotionPending, setEligibilityPromotionPending] = useState(false);
-  const [eligibilityPromotionError, setEligibilityPromotionError] = useState<string | null>(null);
-  const { auth, useStubAuth, bearerToken, canLoadSecureApi } = access;
+  const [eligibilityPromotionOwner, setEligibilityPromotionOwner] = useState<string | null>(null);
+  const [eligibilityPromotionFailure, setEligibilityPromotionFailure] = useState<{ owner: string; message: string } | null>(null);
+  const gxpListRequestSequence = useRef(0);
+  const gxpDetailRequestSequence = useRef(0);
+  const eligibilityListRequestSequence = useRef(0);
+  const eligibilityDetailRequestSequence = useRef(0);
+  const eligibilityBasisRequestSequence = useRef(0);
+  const certificateOwnerRef = useRef<{ gxpList: string | null; eligibilityList: string | null }>({ gxpList: null, eligibilityList: null });
+  const committedAccessGenerationRef = useRef(accessGeneration);
+  const accessTransitionPending = committedAccessGenerationRef.current !== accessGeneration;
   const reassessmentInputRef = useRef<HTMLInputElement | null>(null);
   const reassessmentTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const internalUrlWriteRef = useRef<string | null>(null);
-  const suppressUrlSyncRef = useRef(false);
+  const [hydratedSearchSignature, setHydratedSearchSignature] = useState(searchSignature);
   const didHydrateInitialUrlRef = useRef(false);
   const latestSearchSignatureRef = useRef(searchSignature);
-  const resultsRef = useRef<FacilitySearchResult[]>([]);
+  const latestLocationKeyRef = useRef(location.key);
+  const certificateSelectionRef = useRef({
+    gxp: selectedGxpCertificateIdState,
+    gxpOwner: selectedGxpCertificateOwner,
+    eligibility: selectedEligibilityCertificateIdState,
+    eligibilityOwner: selectedEligibilityCertificateOwner,
+  });
+  useLayoutEffect(() => {
+    certificateSelectionRef.current = {
+      gxp: selectedGxpCertificateIdState,
+      gxpOwner: selectedGxpCertificateOwner,
+      eligibility: selectedEligibilityCertificateIdState,
+      eligibilityOwner: selectedEligibilityCertificateOwner,
+    };
+  }, [selectedEligibilityCertificateIdState, selectedEligibilityCertificateOwner, selectedGxpCertificateIdState, selectedGxpCertificateOwner]);
   latestSearchSignatureRef.current = searchSignature;
+  latestLocationKeyRef.current = location.key;
 
-  useEffect(() => {
-    resultsRef.current = results;
-  }, [results]);
+  useLayoutEffect(() => {
+    committedAccessGenerationRef.current = accessGeneration;
+  }, [accessGeneration]);
 
-  const selectedResultFromResults = results.find((item) => item.result_key === selectedResultKey) ?? null;
-  const selectedResult = resultResolution === "resolved"
-    && resolvedDeepLinkResult?.result_key === selectedResultKey
-    ? resolvedDeepLinkResult
-    : selectedResultFromResults;
+  useLayoutEffect(() => {
+    searchResultsRequestRef.current = searchResultsRequest;
+  }, [searchResultsRequest]);
+
   const explicitTargetPending = resultResolution === "pending" && hasExplicitResultIdentity(pendingDeepLink);
   const pendingTargetGxpConstraint = targetGxpConstraint(pendingDeepLink);
   const pendingTargetGxpHintsInvalid = hasInvalidOrContradictoryTargetGxpHints(pendingDeepLink);
-  const searchGxpType = explicitTargetPending ? pendingTargetGxpConstraint : gxpType;
-  const selectedHistory = workspace?.history.find((item) => item.id === selectedHistoryId) ?? null;
+  const searchGxpType = (explicitTargetPending || resultResolution === "not_found")
+    ? pendingTargetGxpConstraint
+    : gxpType;
+  const searchContext = JSON.stringify([
+    accessGeneration,
+    useStubAuth,
+    deferredGeneralQuery.trim(),
+    deferredFacilityName.trim(),
+    deferredCertificateScope.trim(),
+    searchGxpType,
+    province.trim(),
+    caseStates,
+    changeRequestStates,
+    certificateState,
+    certificateExpiringWithinDays,
+    searchEpoch,
+  ]);
+  const ownedSearchRequest = canLoadSecureApi && searchResultsRequest?.context === searchContext
+    ? searchResultsRequest
+    : null;
+  const results = ownedSearchRequest?.items ?? [];
+  const resultsTotalCount = ownedSearchRequest?.totalCount ?? 0;
+  const resultsLoading = canLoadSecureApi && (!ownedSearchRequest || ownedSearchRequest.status === "loading");
+  const resultsError = ownedSearchRequest?.status === "error" ? ownedSearchRequest.error : null;
+  const resultsOffset = searchPageRequest.context === searchContext ? searchPageRequest.offset : 0;
+  const selectedResultFromResults = results.find((item) => item.result_key === selectedResultKey) ?? null;
+  const ownedResolvedDeepLinkResult = resolvedDeepLinkResult?.accessGeneration === accessGeneration
+    ? resolvedDeepLinkResult.result
+    : null;
+  const selectedResult = resultResolution === "resolved"
+    && ownedResolvedDeepLinkResult?.result_key === selectedResultKey
+    ? ownedResolvedDeepLinkResult
+    : selectedResultFromResults;
+  const visibleSelectedResultKey = selectedResult?.result_key ?? null;
+  const selectedContext = selectedResult && canLoadSecureApi && !accessTransitionPending
+    && !explicitTargetPending && resultResolution !== "not_found"
+    ? JSON.stringify([accessGeneration, useStubAuth, facilityContextIdentity(selectedResult)]) : null;
+  const gxpListOwner = selectedContext && selectedFacilityTab === "Giấy chứng nhận GxP"
+    ? JSON.stringify(["gxp-list", selectedContext]) : null;
+  const eligibilityListOwner = selectedContext && selectedFacilityTab === "Giấy chứng nhận đủ điều kiện"
+    ? JSON.stringify(["eligibility-list", selectedContext]) : null;
+  const selectedGxpCertificateId = gxpListOwner && selectedGxpCertificateOwner === gxpListOwner
+    ? selectedGxpCertificateIdState : null;
+  const selectedEligibilityCertificateId = eligibilityListOwner && selectedEligibilityCertificateOwner === eligibilityListOwner
+    ? selectedEligibilityCertificateIdState : null;
+  const expectedGxpDetailOwner = gxpListOwner && selectedGxpCertificateId
+    ? JSON.stringify(["gxp-detail", gxpListOwner, selectedGxpCertificateId]) : null;
+  const expectedEligibilityDetailOwner = eligibilityListOwner && selectedEligibilityCertificateId
+    ? JSON.stringify(["eligibility-detail", eligibilityListOwner, selectedEligibilityCertificateId]) : null;
+  const visibleGxpCertificates = gxpListOwner && gxpCertificatesOwner === gxpListOwner ? gxpCertificates : [];
+  const visibleGxpCertificatesLoading = Boolean(gxpListOwner) && (gxpCertificatesOwner !== gxpListOwner || gxpCertificatesLoading);
+  const visibleGxpCertificatesError = gxpListOwner && gxpCertificatesOwner === gxpListOwner ? gxpCertificatesError : null;
+  const visibleGxpCertificateDetail = expectedGxpDetailOwner && gxpCertificateDetailOwner === expectedGxpDetailOwner ? gxpCertificateDetail : null;
+  const visibleGxpCertificateDetailLoading = Boolean(expectedGxpDetailOwner)
+    && (gxpCertificateDetailOwner !== expectedGxpDetailOwner || gxpCertificateDetailLoading);
+  const gxpCertificateDetailError = expectedGxpDetailOwner && gxpCertificateDetailFailure?.owner === expectedGxpDetailOwner
+    ? gxpCertificateDetailFailure.message : null;
+  const gxpCertificatePromotionError = expectedGxpDetailOwner && gxpPromotionFailure?.owner === expectedGxpDetailOwner
+    ? gxpPromotionFailure.message : null;
+  const visibleGxpCertificatePromotionPending = gxpPromotionOwner === expectedGxpDetailOwner && gxpCertificatePromotionPending;
+  const visibleEligibilityCertificates = eligibilityListOwner && eligibilityCertificatesOwner === eligibilityListOwner ? eligibilityCertificates : [];
+  const visibleEligibilityCertificatesLoading = Boolean(eligibilityListOwner)
+    && (eligibilityCertificatesOwner !== eligibilityListOwner || eligibilityCertificatesLoading);
+  const visibleEligibilityCertificatesError = eligibilityListOwner && eligibilityCertificatesOwner === eligibilityListOwner ? eligibilityCertificatesError : null;
+  const visibleEligibilityIssueReadiness = eligibilityListOwner && eligibilityCertificatesOwner === eligibilityListOwner ? eligibilityIssueReadiness : null;
+  const visibleEligibilityCertificateDetail = expectedEligibilityDetailOwner && eligibilityCertificateDetailOwner === expectedEligibilityDetailOwner
+    ? eligibilityCertificateDetail : null;
+  const visibleEligibilityCertificateDetailLoading = Boolean(expectedEligibilityDetailOwner)
+    && (eligibilityCertificateDetailOwner !== expectedEligibilityDetailOwner || eligibilityCertificateDetailLoading);
+  const eligibilityCertificateDetailError = expectedEligibilityDetailOwner && eligibilityCertificateDetailFailure?.owner === expectedEligibilityDetailOwner
+    ? eligibilityCertificateDetailFailure.message : null;
+  const eligibilityPromotionError = expectedEligibilityDetailOwner && eligibilityPromotionFailure?.owner === expectedEligibilityDetailOwner
+    ? eligibilityPromotionFailure.message : null;
+  const visibleEligibilityPromotionPending = eligibilityPromotionOwner === expectedEligibilityDetailOwner && eligibilityPromotionPending;
+  const eligibilityEditAvailable = (visibleEligibilityCertificateDetail?.action_readiness ?? [])
+    .some((action) => action.action_key === "edit_latest_version" && action.available);
+  const eligibilityNeedsBasis = visibleEligibilityIssueReadiness?.available === true || eligibilityEditAvailable;
+  const expectedEligibilityBasisOwner = eligibilityListOwner && eligibilityNeedsBasis
+    ? JSON.stringify([
+        "eligibility-basis", eligibilityListOwner, selectedEligibilityCertificateId,
+        visibleEligibilityCertificateDetail?.row_version ?? null,
+        visibleEligibilityIssueReadiness?.available ?? null,
+        visibleEligibilityIssueReadiness?.reason_code ?? null,
+      ])
+    : null;
+  const visibleEligibilityBasisCertificates = expectedEligibilityBasisOwner && eligibilityBasisOwner === expectedEligibilityBasisOwner
+    ? eligibilityBasisCertificates : [];
+  const visibleEligibilityBasisLoading = Boolean(expectedEligibilityBasisOwner)
+    && (eligibilityBasisOwner !== expectedEligibilityBasisOwner || eligibilityBasisLoading);
+  const visibleEligibilityBasisError = expectedEligibilityBasisOwner && eligibilityBasisOwner === expectedEligibilityBasisOwner ? eligibilityBasisError : null;
+  useLayoutEffect(() => {
+    certificateOwnerRef.current = { gxpList: gxpListOwner, eligibilityList: eligibilityListOwner };
+  }, [eligibilityListOwner, gxpListOwner]);
+  const ownedRequest = selectedContext && workspaceRequest?.context === selectedContext ? workspaceRequest : null;
+  const ownedWorkspace = ownedRequest?.status === "ready" ? ownedRequest.data : null;
+  // Every business consumer below uses this projection, including dialogs and
+  // history resolution. A context switch closes visibility in the same render.
+  const workspace = deepLinkError || historyResolution === "pending" ? null : ownedWorkspace;
+  const workspaceLoading = Boolean(selectedResult) && (!ownedRequest || ownedRequest.status === "loading");
+  const workspaceError = ownedRequest?.status === "error" ? ownedRequest.error : null;
+  const gxpVersionHistory = usePersistedCertificateHistory("gxp", selectedContext, selectedGxpCertificateId,
+    visibleGxpCertificateDetail?.certificate_id === selectedGxpCertificateId ? visibleGxpCertificateDetail.row_version : undefined,
+    canLoadSecureApi && selectedFacilityTab === "Giấy chứng nhận GxP" && !visibleGxpCertificateDetailLoading
+      && ((visibleGxpCertificateDetail?.certificate_id === selectedGxpCertificateId && visibleGxpCertificateDetail?.site_id === selectedResult?.site_id) || Boolean(gxpCertificateDetailError)),
+    auth, useStubAuth, bearerToken);
+  const eligibilityVersionHistory = usePersistedCertificateHistory("ddk", selectedContext, selectedEligibilityCertificateId,
+    visibleEligibilityCertificateDetail?.business_eligibility_certificate_id === selectedEligibilityCertificateId ? visibleEligibilityCertificateDetail.row_version : undefined,
+    canLoadSecureApi && selectedFacilityTab === "Giấy chứng nhận đủ điều kiện" && !visibleEligibilityCertificateDetailLoading
+      && ((visibleEligibilityCertificateDetail?.business_eligibility_certificate_id === selectedEligibilityCertificateId && visibleEligibilityCertificateDetail?.site_id === selectedResult?.site_id) || Boolean(eligibilityCertificateDetailError)),
+    auth, useStubAuth, bearerToken);
+  const eligibilitySourceEvidence = useBusinessEligibilitySourceEvidence(
+    selectedFacilityTab === "Giấy chứng nhận đủ điều kiện" && canLoadSecureApi
+      && !visibleEligibilityCertificateDetailLoading
+      && visibleEligibilityCertificateDetail?.business_eligibility_certificate_id === selectedEligibilityCertificateId
+      && visibleEligibilityCertificateDetail?.site_id === selectedResult?.site_id ? selectedContext : null,
+    selectedEligibilityCertificateId, auth, useStubAuth, bearerToken,
+  );
+  const gxpDocumentMetadata = useCertificateDocumentMetadata(
+    "gxp",
+    selectedFacilityTab === "Giấy chứng nhận GxP" && canLoadSecureApi
+      && !visibleGxpCertificateDetailLoading
+      && visibleGxpCertificateDetail?.certificate_id === selectedGxpCertificateId
+      && visibleGxpCertificateDetail?.site_id === selectedResult?.site_id ? selectedContext : null,
+    selectedGxpCertificateId, auth, useStubAuth, bearerToken,
+  );
+  const eligibilityDocumentMetadata = useCertificateDocumentMetadata(
+    "ddk",
+    selectedFacilityTab === "Giấy chứng nhận đủ điều kiện" && canLoadSecureApi
+      && !visibleEligibilityCertificateDetailLoading
+      && visibleEligibilityCertificateDetail?.business_eligibility_certificate_id === selectedEligibilityCertificateId
+      && visibleEligibilityCertificateDetail?.site_id === selectedResult?.site_id ? selectedContext : null,
+    selectedEligibilityCertificateId, auth, useStubAuth, bearerToken,
+  );
+  useLayoutEffect(() => { committedContextRef.current = selectedContext; }, [selectedContext]);
+
+  function beginWorkspaceRequest(context: string): number | null {
+    if (committedContextRef.current !== context) return null;
+    const requestId = ++workspaceRequestSequence.current;
+    setWorkspaceRequest((current) => ({
+      context, requestId, status: "loading",
+      previous: current?.context === context
+        ? current.status === "ready" ? current.data : current.previous
+        : undefined,
+    }));
+    return requestId;
+  }
+
+  function isCurrentContext(): boolean {
+    return selectedContext !== null && committedContextRef.current === selectedContext;
+  }
+
+  function publishWorkspaceRequest(next: WorkspaceRequest) {
+    if (committedContextRef.current !== next.context) return;
+    setWorkspaceRequest((current) => current?.requestId === next.requestId && current.context === next.context
+      ? next.status === "error" ? { ...next, previous: current.status === "ready" ? current.data : current.previous } : next
+      : current);
+  }
+
+  // Retain the event request identity during a same-context refresh; previous
+  // data is never exposed by the workspace projection while loading.
+  const eventContext = ownedWorkspace ?? (ownedRequest && ownedRequest.status !== "ready" ? ownedRequest.previous : null);
+  const selectedHistory = deepLinkError ? null : eventContext?.history.find((item) => item.id === selectedHistoryId) ?? null;
+  const documentContextRef = useRef({ context: selectedContext, historyId: selectedHistoryId, cycleId: selectedRemediationCycleId });
+  useLayoutEffect(() => {
+    documentContextRef.current = { context: selectedContext, historyId: selectedHistoryId, cycleId: selectedRemediationCycleId };
+  }, [selectedContext, selectedHistoryId, selectedRemediationCycleId]);
+  const retainedWorkspace = !deepLinkError && historyResolution !== "pending" ? eventContext : null;
   const hasMoreResults = results.length < resultsTotalCount;
   const createReassessmentAction =
     workspace?.action_readiness.find((item) => item.action_key === "create_reassessment_case") ?? null;
@@ -325,20 +572,18 @@ export function SearchPage({
   useLayoutEffect(() => {
     const signature = searchSignature;
     const params = new URLSearchParams(signature);
-    // Initial state is derived from the initial URL. Mark it before consuming a
-    // possible normalization write so the next external navigation is hydrated.
+    // Initial state is derived from the URL. Internal REPLACE writes carry
+    // their origin on that navigation, rather than in a single mutable marker
+    // that another write can overwrite. POP always rehydrates Back/Forward.
     if (!didHydrateInitialUrlRef.current) {
       didHydrateInitialUrlRef.current = true;
-      if (internalUrlWriteRef.current === signature) {
-        internalUrlWriteRef.current = null;
-      }
       return;
     }
-    if (internalUrlWriteRef.current === signature) {
-      internalUrlWriteRef.current = null;
+    if (navigationType === "REPLACE" && location.state?.gxpSearchUrlSyncOwner === urlSyncOwner) {
+      setHydratedSearchSignature(signature);
       return;
     }
-    suppressUrlSyncRef.current = true;
+    setHydratedSearchSignature(signature);
     setGeneralQuery(params.get("q") ?? "");
     setFacilityName(params.get("facility_name") ?? "");
     setCertificateScope(params.get("certificate_scope") ?? "");
@@ -355,34 +600,50 @@ export function SearchPage({
     setHistoryResolution(pending.historyId ? "pending" : "none");
     setSelectedResultKey(pending.resultKey);
     setSelectedHistoryId(pending.historyId);
-    setSelectedFacilityTab(params.get("facility_tab") ?? DEFAULT_FACILITY_TAB);
+    setSelectedFacilityTab(resolveFacilityTab(params.get("facility_tab")));
     setActiveTab(params.get("event_tab") ?? DEFAULT_EVENT_TAB);
-    setResultsOffset(0);
+    setSearchPageRequest({ context: "", offset: 0 });
     setSearchEpoch((current) => current + 1);
     setDeepLinkError(null);
-  }, [searchSignature]);
+  }, [location.key, location.state, navigationType, searchSignature, urlSyncOwner]);
 
   function resetCertificateWorkspaceState() {
+    gxpListRequestSequence.current += 1;
+    gxpDetailRequestSequence.current += 1;
+    eligibilityListRequestSequence.current += 1;
+    eligibilityDetailRequestSequence.current += 1;
+    eligibilityBasisRequestSequence.current += 1;
     setGxpCertificates([]);
+    setGxpCertificatesOwner(null);
     setGxpCertificatesLoading(false);
     setGxpCertificatesError(null);
     setSelectedGxpCertificateId(null);
+    setSelectedGxpCertificateOwner(null);
     setGxpCertificateDetail(null);
+    setGxpCertificateDetailOwner(null);
     setGxpCertificateDetailLoading(false);
-    setGxpCertificateDetailError(null);
+    setGxpCertificateDetailFailure(null);
     setEligibilityCertificates([]);
+    setEligibilityCertificatesOwner(null);
     setEligibilityCertificatesLoading(false);
     setEligibilityCertificatesError(null);
     setSelectedEligibilityCertificateId(null);
+    setSelectedEligibilityCertificateOwner(null);
     setEligibilityCertificateDetail(null);
+    setEligibilityCertificateDetailOwner(null);
     setEligibilityCertificateDetailLoading(false);
-    setEligibilityCertificateDetailError(null);
+    setEligibilityCertificateDetailFailure(null);
     setEligibilityIssueReadiness(null);
     setEligibilityBasisCertificates([]);
+    setEligibilityBasisOwner(null);
     setEligibilityBasisLoading(false);
     setEligibilityBasisError(null);
     setEligibilityPromotionPending(false);
-    setEligibilityPromotionError(null);
+    setEligibilityPromotionOwner(null);
+    setEligibilityPromotionFailure(null);
+    setGxpCertificatePromotionPending(false);
+    setGxpPromotionOwner(null);
+    setGxpPromotionFailure(null);
   }
 
   function resetCreateInspectionCaseState() {
@@ -419,10 +680,7 @@ export function SearchPage({
   }
 
   useLayoutEffect(() => {
-    if (suppressUrlSyncRef.current) {
-      suppressUrlSyncRef.current = false;
-      return;
-    }
+    if (hydratedSearchSignature !== searchSignature) return;
     // Do not let an effect from a previous render overwrite a newer external navigation.
     if (latestSearchSignatureRef.current !== searchSignature) {
       return;
@@ -500,8 +758,15 @@ export function SearchPage({
     }
     const nextSignature = nextParams.toString();
     if (nextSignature !== searchSignature) {
-      internalUrlWriteRef.current = nextSignature;
-      setSearchParams(nextParams, { replace: true });
+      let cancelled = false;
+      // A sibling may navigate during this commit before this layout effect
+      // sees the new route. Give that navigation its render/hydration first.
+      queueMicrotask(() => {
+        if (cancelled || latestSearchSignatureRef.current !== searchSignature || latestLocationKeyRef.current !== location.key) return;
+        setHydratedSearchSignature(nextSignature);
+        setSearchParams(nextParams, { replace: true, state: { ...location.state, gxpSearchUrlSyncOwner: urlSyncOwner } });
+      });
+      return () => { cancelled = true; };
     }
   }, [
     activeTab,
@@ -519,6 +784,10 @@ export function SearchPage({
     selectedResult,
     pendingDeepLink,
     historyResolution,
+    hydratedSearchSignature,
+    location.key,
+    location.state,
+    urlSyncOwner,
     resultResolution,
     searchSignature,
     setSearchParams,
@@ -526,31 +795,35 @@ export function SearchPage({
 
   useEffect(() => {
     if (!canLoadSecureApi) {
-      setResultsLoading(false);
-      setResults([]);
-      setResultsTotalCount(0);
+      searchRequestSequence.current += 1;
+      setSearchResultsRequest(null);
       return;
     }
     if (explicitTargetPending && pendingTargetGxpHintsInvalid) {
-      setResultsLoading(false);
-      setResults([]);
-      setResultsTotalCount(0);
+      const requestId = ++searchRequestSequence.current;
+      setSearchResultsRequest({ context: searchContext, requestId, status: "ready", items: [], totalCount: 0 });
       setSelectedResultKey(null);
       setSelectedHistoryId(null);
       setResolvedDeepLinkResult(null);
-      setWorkspace(null);
+      setWorkspaceRequest(null);
       resetCertificateWorkspaceState();
       setResultResolution("not_found");
       setDeepLinkError("Các ràng buộc GxP trong liên kết không hợp lệ hoặc mâu thuẫn.");
       return;
     }
     const isFirstPage = resultsOffset === 0;
+    const requestId = ++searchRequestSequence.current;
+    const previousRequest = searchResultsRequestRef.current;
+    const baseResults = !isFirstPage && previousRequest?.context === searchContext ? previousRequest.items : [];
+    const baseTotalCount = !isFirstPage && previousRequest?.context === searchContext ? previousRequest.totalCount : 0;
     let cancelled = false;
-    setResultsLoading(true);
-    if (isFirstPage) {
-      setResults([]);
-      setResultsTotalCount(0);
-    }
+    setSearchResultsRequest({
+      context: searchContext,
+      requestId,
+      status: "loading",
+      items: baseResults,
+      totalCount: baseTotalCount,
+    });
     void searchFacilities(
       {
         q: deferredGeneralQuery.trim() || undefined,
@@ -570,24 +843,27 @@ export function SearchPage({
       bearerToken,
     )
       .then((payload) => {
-        if (cancelled) {
+        if (cancelled || searchRequestSequence.current !== requestId) {
           return;
         }
-        const nextResults = isFirstPage ? payload.items : appendUniqueResults(resultsRef.current, payload.items);
-        setResults(nextResults);
-        setResultsTotalCount(payload.total_count);
-        setResultsError(null);
-        setResultsLoading(false);
+        const nextResults = isFirstPage ? payload.items : appendUniqueResults(baseResults, payload.items);
+        setSearchResultsRequest({
+          context: searchContext,
+          requestId,
+          status: "ready",
+          items: nextResults,
+          totalCount: payload.total_count,
+        });
         const explicitTarget = explicitTargetPending;
         const compatibleRows = explicitTarget && !pendingDeepLink.resultKey
           ? nextResults.filter((item) => matchesCompatibilityHints(item, pendingDeepLink))
           : [];
         const pendingMatch = explicitTarget && pendingDeepLink.resultKey
-          ? nextResults.find((item) => item.result_key === pendingDeepLink.resultKey) ?? null
+          ? nextResults.find((item) => item.result_key === pendingDeepLink.resultKey && matchesDeclaredTargetHints(item, pendingDeepLink)) ?? null
           : null;
         const resolveExplicitTarget = (target: FacilitySearchResult) => {
           const resolvedGxpType = normalizeGxpSelection(target.gxp_type);
-          setResolvedDeepLinkResult(target);
+          setResolvedDeepLinkResult({ accessGeneration, result: target });
           setSelectedResultKey(target.result_key);
           setGxpType(resolvedGxpType);
           setResultResolution("resolved");
@@ -596,7 +872,7 @@ export function SearchPage({
           // A target found through an unfiltered or differently filtered
           // lookup must not leave that lookup universe in the settled table.
           if (pendingTargetGxpConstraint !== resolvedGxpType) {
-            setResultsOffset(0);
+            setSearchPageRequest({ context: "", offset: 0 });
             setSearchEpoch((current) => current + 1);
           }
         };
@@ -607,19 +883,19 @@ export function SearchPage({
             setSelectedResultKey(null);
             setSelectedHistoryId(null);
             setResolvedDeepLinkResult(null);
-            setWorkspace(null);
+            setWorkspaceRequest(null);
             resetCertificateWorkspaceState();
             setResultResolution("not_found");
             setDeepLinkError("Không tìm thấy ngữ cảnh được liên kết trong kết quả tra cứu hiện tại.");
           } else if (nextResults.length < payload.total_count) {
-            setResultsOffset(nextResults.length);
+            setSearchPageRequest({ context: searchContext, offset: nextResults.length });
           } else if (!pendingDeepLink.resultKey && compatibleRows.length === 1) {
             resolveExplicitTarget(compatibleRows[0]);
           } else {
             setSelectedResultKey(null);
             setSelectedHistoryId(null);
             setResolvedDeepLinkResult(null);
-            setWorkspace(null);
+            setWorkspaceRequest(null);
             resetCertificateWorkspaceState();
             setResultResolution("not_found");
             setDeepLinkError("Không tìm thấy ngữ cảnh được liên kết trong kết quả tra cứu hiện tại.");
@@ -629,39 +905,33 @@ export function SearchPage({
         }
       })
       .catch((error: Error) => {
-        if (!cancelled) {
-          setResultsError(error.message);
-          setResultsLoading(false);
-          if (isFirstPage) {
-            setResults([]);
-            setResultsTotalCount(0);
-          }
+        if (!cancelled && searchRequestSequence.current === requestId) {
+          setSearchResultsRequest({
+            context: searchContext,
+            requestId,
+            status: "error",
+            error: error.message,
+            items: isFirstPage ? [] : baseResults,
+            totalCount: baseTotalCount,
+          });
         }
       });
     return () => {
       cancelled = true;
     };
   }, [
-    auth,
+    auth.role,
+    auth.username,
     bearerToken,
-    caseStates,
     canLoadSecureApi,
-    certificateExpiringWithinDays,
-    certificateState,
-    changeRequestStates,
-    deferredCertificateScope,
-    deferredFacilityName,
-    deferredGeneralQuery,
-    gxpType,
-    province,
     resultsOffset,
-    searchEpoch,
+    searchContext,
     useStubAuth,
   ]);
 
   useEffect(() => {
-    if (!selectedResult || !canLoadSecureApi) {
-      setWorkspace(null);
+    if (!selectedResult || !selectedContext) {
+      setWorkspaceRequest(null);
       resetCreateInspectionCaseState();
       setSelectedCaseWorkspace(null);
       setCaseWorkspaceError(null);
@@ -674,46 +944,32 @@ export function SearchPage({
       return;
     }
     let cancelled = false;
-    setWorkspaceLoading(true);
-    setCreateInspectionCaseError(null);
+    const context = selectedContext;
+    const requestId = beginWorkspaceRequest(context);
+    if (requestId === null) return;
+    resetCreateInspectionCaseState();
+    resetCreateChangeRequestState();
     resetCertificateWorkspaceState();
     void getFacilityWorkspace(
-      selectedResult.site_id,
-      auth,
-      useStubAuth,
-      selectedResult.gxp_type,
-      selectedResult.line_code,
-      bearerToken,
-      selectedResult.production_line_id,
-    )
-      .then((payload) => {
-        if (!cancelled) {
-          setWorkspace(payload);
-          setWorkspaceError(null);
-          setWorkspaceLoading(false);
-          setSelectedActionKey((current) =>
-            current &&
-            payload.action_readiness.some(
-              (item) => item.action_key === current && item.readiness_status === "available",
-            )
-              ? current
-              : null,
-          );
-        }
-      })
-      .catch((error: Error) => {
-        if (!cancelled) {
-          setWorkspaceError(error.message);
-          setWorkspaceLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [auth, bearerToken, canLoadSecureApi, selectedResult, useStubAuth]);
+      selectedResult.site_id, auth, useStubAuth, selectedResult.gxp_type,
+      selectedResult.line_code, bearerToken, selectedResult.production_line_id,
+    ).then((payload) => {
+      if (!cancelled && committedContextRef.current === context && workspaceRequestSequence.current === requestId) {
+        publishWorkspaceRequest({ context, requestId, status: "ready", data: payload });
+        setSelectedActionKey((current) => current && payload.action_readiness.some(
+          (item) => item.action_key === current && item.readiness_status === "available",
+        ) ? current : null);
+      }
+    }).catch((error: Error) => {
+      if (!cancelled) publishWorkspaceRequest({ context, requestId, status: "error", error: error.message });
+    });
+    return () => { cancelled = true; };
+    // Identity, rather than result object allocation, owns request lifecycle.
+  }, [auth.role, auth.username, bearerToken, canLoadSecureApi, selectedContext, useStubAuth]);
 
   useEffect(() => {
-    if (!workspace) return;
+    if (!ownedWorkspace) return;
+    const workspace = ownedWorkspace;
     if (historyResolution === "pending" && pendingDeepLink.historyId) {
       if (workspace.history.some((row) => row.id === pendingDeepLink.historyId)) {
         setSelectedHistoryId(pendingDeepLink.historyId);
@@ -728,9 +984,10 @@ export function SearchPage({
     if (historyResolution === "none") {
       setSelectedHistoryId((current) => current && workspace.history.some((row) => row.id === current) ? current : workspace.history[0]?.id ?? null);
     }
-  }, [historyResolution, pendingDeepLink.historyId, workspace]);
+  }, [historyResolution, pendingDeepLink.historyId, ownedWorkspace]);
 
   useEffect(() => {
+    const requestId = ++caseRequestSequence.current;
     setSelectedCaseWorkspace(null);
     setCaseWorkspaceError(null);
     setCaseWorkspaceLoading(false);
@@ -742,7 +999,7 @@ export function SearchPage({
     setCaseWorkspaceLoading(true);
     void getCaseWorkspace(selectedHistoryId, auth, useStubAuth, bearerToken)
       .then((payload) => {
-        if (!cancelled) {
+        if (!cancelled && caseRequestSequence.current === requestId) {
           setSelectedCaseWorkspace(payload);
           setSelectedRemediationCycleId((current) => resolveSelectedRemediationCycleId(payload, current));
           setCaseWorkspaceError(null);
@@ -750,10 +1007,10 @@ export function SearchPage({
         }
       })
       .catch((error: Error) => {
-        if (!cancelled) {
+        if (!cancelled && caseRequestSequence.current === requestId) {
           setSelectedCaseWorkspace(null);
           setSelectedRemediationCycleId(null);
-          setCaseWorkspaceError(error.message);
+          setCaseWorkspaceError({ historyId: selectedHistoryId, message: error.message });
           setCaseWorkspaceLoading(false);
         }
       });
@@ -782,7 +1039,7 @@ export function SearchPage({
       .catch((error: Error) => {
         if (!cancelled) {
           setSelectedChangeRequestWorkspace(null);
-          setChangeRequestWorkspaceError(error.message);
+          setChangeRequestWorkspaceError({ historyId: selectedHistoryId, message: error.message });
           setChangeRequestWorkspaceLoading(false);
         }
       });
@@ -792,10 +1049,16 @@ export function SearchPage({
   }, [auth, bearerToken, canLoadSecureApi, selectedHistoryId, selectedHistory?.source_type, useStubAuth]);
 
   useEffect(() => {
-    if (!selectedResult || !canLoadSecureApi || selectedFacilityTab !== "Giấy chứng nhận GxP") {
+    if (!selectedResult || !gxpListOwner) {
       return;
     }
+    const owner = gxpListOwner;
+    const requestId = ++gxpListRequestSequence.current;
+    const retainsCurrentOwner = gxpCertificatesOwner === owner;
     let cancelled = false;
+    setGxpCertificatesOwner(owner);
+    if (!retainsCurrentOwner) setGxpCertificates([]);
+    setGxpCertificatesError(null);
     setGxpCertificatesLoading(true);
     void listSiteGxpCertificates(
       selectedResult.site_id,
@@ -807,62 +1070,79 @@ export function SearchPage({
       selectedResult.production_line_id,
     )
       .then((payload) => {
-        if (cancelled) {
+        if (cancelled || gxpListRequestSequence.current !== requestId) {
           return;
         }
         setGxpCertificates(payload.items);
         setGxpCertificatesError(null);
         setGxpCertificatesLoading(false);
-        setSelectedGxpCertificateId((current) =>
-          current && payload.items.some((item) => item.certificate_id === current) ? current : payload.items[0]?.certificate_id ?? null,
-        );
+        const current = certificateSelectionRef.current;
+        const next = current.gxpOwner === owner && current.gxp
+          && payload.items.some((item) => item.certificate_id === current.gxp)
+          ? current.gxp : payload.items[0]?.certificate_id ?? null;
+        setSelectedGxpCertificateOwner(owner);
+        setSelectedGxpCertificateId(next);
       })
       .catch((error: Error) => {
-        if (!cancelled) {
-          setGxpCertificates([]);
+        if (!cancelled && gxpListRequestSequence.current === requestId) {
           setGxpCertificatesError(error.message);
           setGxpCertificatesLoading(false);
+          if (!retainsCurrentOwner) {
+            setSelectedGxpCertificateOwner(owner);
+            setSelectedGxpCertificateId(null);
+          }
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [auth, bearerToken, canLoadSecureApi, selectedFacilityTab, selectedResult, useStubAuth]);
+  }, [auth.role, auth.username, bearerToken, gxpListOwner, selectedResult, useStubAuth]);
 
   useEffect(() => {
-    setGxpCertificateDetail(null);
-    setGxpCertificateDetailError(null);
-    setGxpCertificateDetailLoading(false);
-    if (!selectedGxpCertificateId || !canLoadSecureApi || selectedFacilityTab !== "Giấy chứng nhận GxP") {
+    if (!selectedGxpCertificateId || !expectedGxpDetailOwner) {
       return;
     }
+    const owner = expectedGxpDetailOwner;
+    const requestId = ++gxpDetailRequestSequence.current;
     let cancelled = false;
+    setGxpCertificateDetailOwner(owner);
+    setGxpCertificateDetail(null);
+    setGxpCertificateDetailFailure(null);
     setGxpCertificateDetailLoading(true);
     void getGxpCertificateDetail(selectedGxpCertificateId, auth, useStubAuth, bearerToken)
       .then((payload) => {
-        if (!cancelled) {
+        if (!cancelled && gxpDetailRequestSequence.current === requestId) {
           setGxpCertificateDetail(payload);
-          setGxpCertificateDetailError(null);
+          setGxpCertificateDetailFailure(null);
           setGxpCertificateDetailLoading(false);
         }
       })
       .catch((error: Error) => {
-        if (!cancelled) {
+        if (!cancelled && gxpDetailRequestSequence.current === requestId) {
           setGxpCertificateDetail(null);
-          setGxpCertificateDetailError(error.message);
+          setGxpCertificateDetailFailure({ owner, message: error.message });
           setGxpCertificateDetailLoading(false);
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [auth, bearerToken, canLoadSecureApi, selectedFacilityTab, selectedGxpCertificateId, useStubAuth]);
+  }, [auth.role, auth.username, bearerToken, expectedGxpDetailOwner, selectedGxpCertificateId, useStubAuth]);
 
   useEffect(() => {
-    if (!selectedResult || !canLoadSecureApi || selectedFacilityTab !== "Giấy chứng nhận đủ điều kiện") {
+    if (!selectedResult || !eligibilityListOwner) {
       return;
     }
+    const owner = eligibilityListOwner;
+    const requestId = ++eligibilityListRequestSequence.current;
+    const retainsCurrentOwner = eligibilityCertificatesOwner === owner;
     let cancelled = false;
+    setEligibilityCertificatesOwner(owner);
+    if (!retainsCurrentOwner) {
+      setEligibilityCertificates([]);
+      setEligibilityIssueReadiness(null);
+    }
+    setEligibilityCertificatesError(null);
     setEligibilityCertificatesLoading(true);
     void listSiteBusinessEligibilityCertificates(
       selectedResult.site_id,
@@ -871,83 +1151,92 @@ export function SearchPage({
       bearerToken,
     )
       .then((payload) => {
-        if (cancelled) {
+        if (cancelled || eligibilityListRequestSequence.current !== requestId) {
           return;
         }
         setEligibilityCertificates(payload.items);
         setEligibilityIssueReadiness(payload.issue_readiness);
         setEligibilityCertificatesError(null);
         setEligibilityCertificatesLoading(false);
-        setSelectedEligibilityCertificateId((current) =>
-          current && payload.items.some((item) => item.business_eligibility_certificate_id === current)
-            ? current
-            : payload.items[0]?.business_eligibility_certificate_id ?? null,
-        );
+        const current = certificateSelectionRef.current;
+        const next = current.eligibilityOwner === owner && current.eligibility
+          && payload.items.some((item) => item.business_eligibility_certificate_id === current.eligibility)
+          ? current.eligibility : payload.items[0]?.business_eligibility_certificate_id ?? null;
+        setSelectedEligibilityCertificateOwner(owner);
+        setSelectedEligibilityCertificateId(next);
       })
       .catch((error: Error) => {
-        if (!cancelled) {
-          setEligibilityCertificates([]);
+        if (!cancelled && eligibilityListRequestSequence.current === requestId) {
           setEligibilityIssueReadiness(null);
           setEligibilityCertificatesError(error.message);
           setEligibilityCertificatesLoading(false);
+          if (!retainsCurrentOwner) {
+            setSelectedEligibilityCertificateOwner(owner);
+            setSelectedEligibilityCertificateId(null);
+          }
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [auth, bearerToken, canLoadSecureApi, selectedFacilityTab, selectedResult, useStubAuth]);
+  }, [auth.role, auth.username, bearerToken, eligibilityListOwner, selectedResult, useStubAuth]);
 
   useEffect(() => {
-    setEligibilityCertificateDetail(null);
-    setEligibilityCertificateDetailError(null);
-    setEligibilityCertificateDetailLoading(false);
-    if (!selectedEligibilityCertificateId || !canLoadSecureApi || selectedFacilityTab !== "Giấy chứng nhận đủ điều kiện") {
+    if (!selectedEligibilityCertificateId || !expectedEligibilityDetailOwner) {
       return;
     }
+    const owner = expectedEligibilityDetailOwner;
+    const requestId = ++eligibilityDetailRequestSequence.current;
     let cancelled = false;
+    setEligibilityCertificateDetailOwner(owner);
+    setEligibilityCertificateDetail(null);
+    setEligibilityCertificateDetailFailure(null);
     setEligibilityCertificateDetailLoading(true);
     void getBusinessEligibilityDetail(selectedEligibilityCertificateId, auth, useStubAuth, bearerToken)
       .then((payload) => {
-        if (!cancelled) {
+        if (!cancelled && eligibilityDetailRequestSequence.current === requestId) {
           setEligibilityCertificateDetail(payload);
-          setEligibilityCertificateDetailError(null);
+          setEligibilityCertificateDetailFailure(null);
           setEligibilityCertificateDetailLoading(false);
         }
       })
       .catch((error: Error) => {
-        if (!cancelled) {
+        if (!cancelled && eligibilityDetailRequestSequence.current === requestId) {
           setEligibilityCertificateDetail(null);
-          setEligibilityCertificateDetailError(error.message);
+          setEligibilityCertificateDetailFailure({ owner, message: error.message });
           setEligibilityCertificateDetailLoading(false);
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [auth, bearerToken, canLoadSecureApi, selectedEligibilityCertificateId, selectedFacilityTab, useStubAuth]);
+  }, [auth.role, auth.username, bearerToken, expectedEligibilityDetailOwner, selectedEligibilityCertificateId, useStubAuth]);
 
   useEffect(() => {
-    const editAvailable = (eligibilityCertificateDetail?.action_readiness ?? [])
-      .some((action) => action.action_key === "edit_latest_version" && action.available);
-    const needsBasis = eligibilityIssueReadiness?.available === true || editAvailable;
-    if (!selectedResult || !canLoadSecureApi || selectedFacilityTab !== "Giấy chứng nhận đủ điều kiện" || !needsBasis) {
+    if (!selectedResult || !expectedEligibilityBasisOwner) {
       setEligibilityBasisCertificates([]);
+      setEligibilityBasisOwner(null);
       setEligibilityBasisLoading(false);
       setEligibilityBasisError(null);
       return;
     }
+    const owner = expectedEligibilityBasisOwner;
+    const requestId = ++eligibilityBasisRequestSequence.current;
     let cancelled = false;
+    setEligibilityBasisOwner(owner);
+    setEligibilityBasisCertificates([]);
+    setEligibilityBasisError(null);
     setEligibilityBasisLoading(true);
     void listSiteGxpCertificates(selectedResult.site_id, auth, useStubAuth, null, null, bearerToken, null)
       .then((payload) => {
-        if (!cancelled) {
+        if (!cancelled && eligibilityBasisRequestSequence.current === requestId) {
           setEligibilityBasisCertificates(payload.items);
           setEligibilityBasisLoading(false);
           setEligibilityBasisError(null);
         }
       })
       .catch((error: Error) => {
-        if (!cancelled) {
+        if (!cancelled && eligibilityBasisRequestSequence.current === requestId) {
           setEligibilityBasisCertificates([]);
           setEligibilityBasisLoading(false);
           setEligibilityBasisError(error.message);
@@ -956,7 +1245,7 @@ export function SearchPage({
     return () => {
       cancelled = true;
     };
-  }, [auth, bearerToken, canLoadSecureApi, eligibilityCertificateDetail, eligibilityIssueReadiness, selectedFacilityTab, selectedResult, useStubAuth]);
+  }, [auth.role, auth.username, bearerToken, expectedEligibilityBasisOwner, selectedResult, useStubAuth]);
 
   useEffect(() => {
     if (!reassessmentDialogOpen) {
@@ -980,7 +1269,7 @@ export function SearchPage({
   }, [createInspectionCasePending, reassessmentDialogOpen]);
 
   function resetDependentContext() {
-    setResultsOffset(0);
+    setSearchPageRequest({ context: "", offset: 0 });
     setSelectedResultKey(null);
     setSelectedHistoryId(null);
     setResolvedDeepLinkResult(null);
@@ -990,8 +1279,7 @@ export function SearchPage({
     setDeepLinkError(null);
     setSelectedFacilityTab(DEFAULT_FACILITY_TAB);
     setActiveTab(DEFAULT_EVENT_TAB);
-    setWorkspace(null);
-    setWorkspaceError(null);
+    setWorkspaceRequest(null);
     resetCreateInspectionCaseState();
     resetCreateChangeRequestState();
     setSelectedCaseWorkspace(null);
@@ -1004,7 +1292,7 @@ export function SearchPage({
     resetCertificateWorkspaceState();
   }
 
-  function updateFilter(field: "facilityName" | "certificateScope" | "caseState" | "gxpType", value: string) {
+  function updateFilter(field: "facilityName" | "certificateScope" | "caseState" | "gxpType" | "generalQuery" | "province" | "certificateState" | "certificateExpiringWithinDays", value: string) {
     startTransition(() => {
       resetDependentContext();
       if (field === "facilityName") {
@@ -1015,6 +1303,14 @@ export function SearchPage({
         setGxpType(value);
       } else if (field === "caseState") {
         setCaseStates(value ? [value] : []);
+      } else if (field === "generalQuery") {
+        setGeneralQuery(value);
+      } else if (field === "province") {
+        setProvince(value);
+      } else if (field === "certificateState") {
+        setCertificateState(value);
+      } else if (field === "certificateExpiringWithinDays") {
+        setCertificateExpiringWithinDays(value);
       }
     });
   }
@@ -1023,7 +1319,7 @@ export function SearchPage({
     if (resultsLoading || !hasMoreResults) {
       return;
     }
-    setResultsOffset(results.length);
+    setSearchPageRequest({ context: searchContext, offset: results.length });
   }
 
   function selectResultFromTable(resultKey: string) {
@@ -1036,60 +1332,44 @@ export function SearchPage({
     setSelectedHistoryId(null);
   }
 
-  async function refreshWorkspaceAfterCreate(createdCaseId: string) {
-    if (!selectedResult) {
-      return;
-    }
-    setWorkspaceLoading(true);
-    resetCertificateWorkspaceState();
+  async function refreshSelectedFacilityWorkspace(preferredHistoryId: string | null) {
+    if (!selectedResult || !selectedContext) return null;
+    const context = selectedContext;
+    const requestId = beginWorkspaceRequest(context);
+    // A mutation may finish after navigation. Its confirmed backend result is
+    // retained, but its follow-up must not replace the new context's request.
+    if (requestId === null) return null;
     try {
       const payload = await getFacilityWorkspace(
-        selectedResult.site_id,
-        auth,
-        useStubAuth,
-        selectedResult.gxp_type,
-        selectedResult.line_code,
-        bearerToken,
-        selectedResult.production_line_id,
+        selectedResult.site_id, auth, useStubAuth, selectedResult.gxp_type,
+        selectedResult.line_code, bearerToken, selectedResult.production_line_id,
       );
-      setWorkspace(payload);
-      setWorkspaceError(null);
-      setSelectedFacilityTab(DEFAULT_FACILITY_TAB);
-      setActiveTab(DEFAULT_EVENT_TAB);
-      setSelectedHistoryId(
-        payload.history.some((row) => row.id === createdCaseId) ? createdCaseId : payload.history[0]?.id ?? null,
-      );
-    } finally {
-      setWorkspaceLoading(false);
+      if (committedContextRef.current !== context || workspaceRequestSequence.current !== requestId) return null;
+      publishWorkspaceRequest({ context, requestId, status: "ready", data: payload });
+      setSelectedHistoryId((current) => {
+        const preferred = preferredHistoryId ?? current;
+        return preferred && payload.history.some((row) => row.id === preferred) ? preferred : payload.history[0]?.id ?? null;
+      });
+      return payload;
+    } catch (error) {
+      publishWorkspaceRequest({ context, requestId, status: "error", error: error instanceof Error ? error.message : "Không tải được workspace." });
+      throw error;
     }
   }
 
-  async function refreshSelectedFacilityWorkspace(preferredHistoryId: string | null) {
-    if (!selectedResult) {
-      return null;
+  async function refreshWorkspaceAfterCreate(createdCaseId: string) {
+    if (committedContextRef.current === selectedContext) resetCertificateWorkspaceState();
+    const payload = await refreshSelectedFacilityWorkspace(createdCaseId);
+    if (payload) {
+      setSelectedFacilityTab(DEFAULT_FACILITY_TAB);
+      setActiveTab(DEFAULT_EVENT_TAB);
     }
-    const payload = await getFacilityWorkspace(
-      selectedResult.site_id,
-      auth,
-      useStubAuth,
-      selectedResult.gxp_type,
-      selectedResult.line_code,
-      bearerToken,
-      selectedResult.production_line_id,
-    );
-    setWorkspace(payload);
-    setWorkspaceError(null);
-    setSelectedHistoryId((current) => {
-      const nextPreferredHistoryId = preferredHistoryId ?? current;
-      return nextPreferredHistoryId && payload.history.some((row) => row.id === nextPreferredHistoryId)
-        ? nextPreferredHistoryId
-        : payload.history[0]?.id ?? null;
-    });
-    return payload;
   }
 
   async function refreshSelectedChangeRequestWorkspace(changeRequestId: string) {
+    if (!isCurrentContext()) return null;
     const payload = await getChangeRequestWorkspace(changeRequestId, auth, useStubAuth, bearerToken);
+    if (!isCurrentContext()) return payload;
     setSelectedChangeRequestWorkspace(payload);
     setChangeRequestWorkspaceError(null);
     return payload;
@@ -1290,6 +1570,7 @@ export function SearchPage({
         },
       };
     });
+    if (!isCurrentContext()) return;
     setSelectedCaseWorkspace(refreshedCaseWorkspace);
     setCaseWorkspaceError(null);
     await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
@@ -1336,6 +1617,7 @@ export function SearchPage({
         },
       };
     });
+    if (!isCurrentContext()) return;
     setSelectedCaseWorkspace(refreshedCaseWorkspace);
     setCaseWorkspaceError(null);
   }
@@ -1366,6 +1648,7 @@ export function SearchPage({
         },
       };
     });
+    if (!isCurrentContext()) return;
     setSelectedCaseWorkspace(refreshedCaseWorkspace);
     setCaseWorkspaceError(null);
     await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
@@ -1474,12 +1757,16 @@ export function SearchPage({
         },
       };
     });
+    if (!isCurrentContext()) return;
     setSelectedCaseWorkspace(refreshedCaseWorkspace);
     setCaseWorkspaceError(null);
   }
 
   async function refreshSelectedCaseWorkspace(caseId: string, preferredCycleId?: string | null) {
+    if (!isCurrentContext() || documentContextRef.current.historyId !== caseId) return null;
+    const requestId = ++caseRequestSequence.current;
     const payload = await getCaseWorkspace(caseId, auth, useStubAuth, bearerToken);
+    if (!isCurrentContext() || documentContextRef.current.historyId !== caseId || caseRequestSequence.current !== requestId) return payload;
     setSelectedCaseWorkspace(payload);
     setCaseWorkspaceError(null);
     setSelectedRemediationCycleId((current) => resolveSelectedRemediationCycleId(payload, preferredCycleId ?? current));
@@ -1522,15 +1809,22 @@ export function SearchPage({
     await refreshSelectedCaseWorkspace(caseId, cycleId);
   }
 
-  async function refreshBusinessEligibilityAfterMutation(certificateId: string) {
-    if (!selectedResult) return;
+  async function refreshBusinessEligibilityAfterMutation(certificateId: string, selectIssued = false) {
+    if (!selectedResult || !isCurrentContext() || !eligibilityListOwner) return;
+    const listOwner = eligibilityListOwner;
+    const detailOwner = JSON.stringify(["eligibility-detail", listOwner, certificateId]);
     const [detailPayload, listPayload] = await Promise.all([
       getBusinessEligibilityDetail(certificateId, auth, useStubAuth, bearerToken),
       listSiteBusinessEligibilityCertificates(selectedResult.site_id, auth, useStubAuth, bearerToken),
     ]);
+    if (!isCurrentContext() || certificateOwnerRef.current.eligibilityList !== listOwner) return;
+    if (!selectIssued && (certificateSelectionRef.current.eligibilityOwner !== listOwner || certificateSelectionRef.current.eligibility !== certificateId)) return;
+    setSelectedEligibilityCertificateOwner(listOwner);
     setSelectedEligibilityCertificateId(certificateId);
+    setEligibilityCertificateDetailOwner(detailOwner);
     setEligibilityCertificateDetail(detailPayload);
-    setEligibilityCertificateDetailError(null);
+    setEligibilityCertificateDetailFailure(null);
+    setEligibilityCertificatesOwner(listOwner);
     setEligibilityCertificates(listPayload.items);
     setEligibilityIssueReadiness(listPayload.issue_readiness);
   }
@@ -1540,7 +1834,7 @@ export function SearchPage({
       throw new Error("Chưa chọn cơ sở để cấp GCN đủ điều kiện.");
     }
     const result = await issueBusinessEligibility(selectedResult.site_id, payload, auth, useStubAuth, bearerToken);
-    await refreshBusinessEligibilityAfterMutation(result.business_eligibility_certificate_id);
+    await refreshBusinessEligibilityAfterMutation(result.business_eligibility_certificate_id, true);
   }
 
   async function handleBusinessEligibilityLatestVersionUpdate(payload: BusinessEligibilityLatestVersionUpsertRequest) {
@@ -1573,11 +1867,14 @@ export function SearchPage({
   }
 
   async function handleBusinessEligibilityPromote(expectedVersion: number) {
-    if (!selectedEligibilityCertificateId) {
+    if (!selectedEligibilityCertificateId || !expectedEligibilityDetailOwner || !eligibilityListOwner) {
       throw new Error("Chưa chọn GCN đủ điều kiện để cập nhật.");
     }
+    const detailOwner = expectedEligibilityDetailOwner;
+    const listOwner = eligibilityListOwner;
+    setEligibilityPromotionOwner(detailOwner);
     setEligibilityPromotionPending(true);
-    setEligibilityPromotionError(null);
+    setEligibilityPromotionFailure(null);
     try {
       await promoteBusinessEligibilityCurrent(
         selectedEligibilityCertificateId,
@@ -1596,18 +1893,21 @@ export function SearchPage({
           // Keep the original promotion conflict as the actionable error.
         }
       }
-      setEligibilityPromotionError(error instanceof Error ? error.message : "Không thể cập nhật GCN đủ điều kiện hiện hành.");
+      if (isCurrentContext() && certificateOwnerRef.current.eligibilityList === listOwner) setEligibilityPromotionFailure({ owner: detailOwner, message: error instanceof Error ? error.message : "Không thể cập nhật GCN đủ điều kiện hiện hành." });
     } finally {
-      setEligibilityPromotionPending(false);
+      if (isCurrentContext() && certificateOwnerRef.current.eligibilityList === listOwner) setEligibilityPromotionPending(false);
     }
   }
 
   async function handleGxpCertificatePromote(expectedVersion: number) {
-    if (!selectedGxpCertificateId || !selectedResult) {
+    if (!selectedGxpCertificateId || !selectedResult || !gxpListOwner || !expectedGxpDetailOwner) {
       throw new Error("Chưa chọn giấy chứng nhận để cập nhật.");
     }
+    const listOwner = gxpListOwner;
+    const detailOwner = expectedGxpDetailOwner;
+    setGxpPromotionOwner(detailOwner);
     setGxpCertificatePromotionPending(true);
-    setGxpCertificatePromotionError(null);
+    setGxpPromotionFailure(null);
     try {
       await promoteGxpCertificateCurrent(selectedGxpCertificateId, expectedVersion, auth, useStubAuth, bearerToken);
       const [detailPayload, listPayload] = await Promise.all([
@@ -1622,19 +1922,24 @@ export function SearchPage({
           selectedResult.production_line_id,
         ),
       ]);
+      if (!isCurrentContext() || certificateSelectionRef.current.gxpOwner !== listOwner || certificateSelectionRef.current.gxp !== selectedGxpCertificateId) return;
+      setGxpCertificateDetailOwner(detailOwner);
       setGxpCertificateDetail(detailPayload);
+      setGxpCertificatesOwner(listOwner);
       setGxpCertificates(listPayload.items);
     } catch (error) {
-      setGxpCertificatePromotionError(error instanceof Error ? error.message : "Không thể cập nhật chứng nhận hiện hành.");
+      if (isCurrentContext() && certificateOwnerRef.current.gxpList === listOwner) setGxpPromotionFailure({ owner: detailOwner, message: error instanceof Error ? error.message : "Không thể cập nhật chứng nhận hiện hành." });
     } finally {
-      setGxpCertificatePromotionPending(false);
+      if (isCurrentContext() && certificateOwnerRef.current.gxpList === listOwner) setGxpCertificatePromotionPending(false);
     }
   }
 
   async function handleGxpCertificateLatestVersionUpdate(payload: CertificateLatestVersionUpsertRequest) {
-    if (!selectedGxpCertificateId || !selectedResult) {
+    if (!selectedGxpCertificateId || !selectedResult || !gxpListOwner || !expectedGxpDetailOwner) {
       throw new Error("Chưa chọn giấy chứng nhận để cập nhật.");
     }
+    const listOwner = gxpListOwner;
+    const detailOwner = expectedGxpDetailOwner;
     try {
       await upsertGxpCertificateLatestVersion(selectedGxpCertificateId, payload, auth, useStubAuth, bearerToken);
       const [detailPayload, listPayload] = await Promise.all([
@@ -1649,16 +1954,21 @@ export function SearchPage({
           selectedResult.production_line_id,
         ),
       ]);
+      if (!isCurrentContext() || certificateSelectionRef.current.gxpOwner !== listOwner || certificateSelectionRef.current.gxp !== selectedGxpCertificateId) return;
+      setGxpCertificateDetailOwner(detailOwner);
       setGxpCertificateDetail(detailPayload);
+      setGxpCertificatesOwner(listOwner);
       setGxpCertificates(listPayload.items);
-      setGxpCertificateDetailError(null);
+      setGxpCertificateDetailFailure(null);
     } catch (error) {
       const apiError = error as Error & { status?: number };
       if (apiError.status === 409) {
         try {
           const detailPayload = await getGxpCertificateDetail(selectedGxpCertificateId, auth, useStubAuth, bearerToken);
+          if (!isCurrentContext() || certificateSelectionRef.current.gxpOwner !== listOwner || certificateSelectionRef.current.gxp !== selectedGxpCertificateId) return;
+          setGxpCertificateDetailOwner(detailOwner);
           setGxpCertificateDetail(detailPayload);
-          setGxpCertificateDetailError(null);
+          setGxpCertificateDetailFailure(null);
         } catch {
           // Preserve the mutation conflict as the actionable error when refresh also fails.
         }
@@ -1680,14 +1990,21 @@ export function SearchPage({
     const result = await issueGxpCertificate(selectedCaseWorkspace.case_summary.site_id, payload, auth, useStubAuth, bearerToken);
     await refreshSelectedCaseWorkspace(payload.case_id);
     if (selectedFacilityTab === "Giấy chứng nhận GxP") {
+      if (!gxpListOwner) return;
+      const listOwner = gxpListOwner;
+      const detailOwner = JSON.stringify(["gxp-detail", listOwner, result.certificate_id]);
       const [detailPayload, listPayload] = await Promise.all([
         getGxpCertificateDetail(result.certificate_id, auth, useStubAuth, bearerToken),
         listSiteGxpCertificates(selectedResult.site_id, auth, useStubAuth, selectedResult.gxp_type, selectedResult.line_code, bearerToken, selectedResult.production_line_id),
       ]);
+      if (!isCurrentContext() || certificateOwnerRef.current.gxpList !== listOwner) return;
+      setSelectedGxpCertificateOwner(listOwner);
       setSelectedGxpCertificateId(result.certificate_id);
+      setGxpCertificateDetailOwner(detailOwner);
       setGxpCertificateDetail(detailPayload);
+      setGxpCertificatesOwner(listOwner);
       setGxpCertificates(listPayload.items);
-      setGxpCertificateDetailError(null);
+      setGxpCertificateDetailFailure(null);
     }
   }
 
@@ -1732,9 +2049,14 @@ export function SearchPage({
     await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
   }
 
-  async function handleOpenDocument(caseId: string, item: ContextualDocumentAction): Promise<void> {
+  async function handleOpenDocument(caseId: string, item: ContextualDocumentAction, isCurrentDocument?: () => boolean): Promise<void> {
     if (!item.document_id) {
       throw new Error("Tài liệu chưa có binary hiện hành để mở.");
+    }
+    const openingContext = documentContextRef.current;
+    if (openingContext.context !== selectedContext || openingContext.historyId !== caseId
+      || (item.parent_scope === "case" ? item.parent_id !== caseId : item.parent_id !== openingContext.cycleId)) {
+      throw new Error("Ngữ cảnh tài liệu đã thay đổi.");
     }
     let response: Awaited<ReturnType<typeof openCaseDocumentCurrentContent>>;
     if (item.parent_scope === "case") {
@@ -1744,6 +2066,7 @@ export function SearchPage({
     } else {
       throw new Error("Phạm vi sở hữu tài liệu chưa được hỗ trợ để mở.");
     }
+    if (documentContextRef.current !== openingContext || (isCurrentDocument && !isCurrentDocument())) return;
     const { blob } = response;
     const objectUrl = URL.createObjectURL(blob);
     window.open(objectUrl, "_blank", "noopener");
@@ -1752,7 +2075,7 @@ export function SearchPage({
 
   async function handleCreateChangeRequestSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedResult) {
+    if (!selectedResult || !workspace || createChangeRequestAction?.readiness_status !== "available") {
       return;
     }
     setCreateChangeRequestPending(true);
@@ -1772,10 +2095,13 @@ export function SearchPage({
         bearerToken,
       );
       const changeRequestId = created.change_request_id;
-      const [changeWorkspace] = await Promise.all([
+      const [changeWorkspace, facilityWorkspace] = await Promise.all([
         getChangeRequestWorkspace(changeRequestId, auth, useStubAuth, bearerToken),
         refreshSelectedFacilityWorkspace(changeRequestId),
       ]);
+      if (!facilityWorkspace || committedContextRef.current !== selectedContext) {
+        return;
+      }
       setSelectedChangeRequestWorkspace(changeWorkspace);
       setChangeRequestWorkspaceError(null);
       setSelectedFacilityTab(DEFAULT_FACILITY_TAB);
@@ -1783,6 +2109,7 @@ export function SearchPage({
       setActiveTab("Đề nghị");
       resetCreateChangeRequestState();
     } catch (error) {
+      if (!isCurrentContext()) return;
       setCreateChangeRequestError(error instanceof Error ? error.message : "Không tạo được yêu cầu thay đổi.");
       setCreateChangeRequestPending(false);
     }
@@ -1790,7 +2117,7 @@ export function SearchPage({
 
   async function handleCreateInspectionCaseSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedResult) {
+    if (!selectedResult || !workspace || createReassessmentAction?.readiness_status !== "available") {
       return;
     }
     setCreateInspectionCasePending(true);
@@ -1810,8 +2137,9 @@ export function SearchPage({
         bearerToken,
       );
       await refreshWorkspaceAfterCreate(created.case_id);
-      resetCreateInspectionCaseState();
+      if (isCurrentContext()) resetCreateInspectionCaseState();
     } catch (error) {
+      if (!isCurrentContext()) return;
       const message = error instanceof Error ? error.message : "Không mở được hồ sơ tái đánh giá.";
       setCreateInspectionCaseError(message);
       setCreateInspectionCasePending(false);
@@ -1829,8 +2157,9 @@ export function SearchPage({
   }
 
   return (
-    <section className="page-section search-page">
-      <div className="search-workspace search-workspace-split search-workspace-a4">
+    <section className="page-section search-page legacy-search-page">
+      <div className="search-workspace search-workspace-split search-master-history">
+        <div className="legacy-master-pane">
         <FacilityTable
           filters={{
             facilityName,
@@ -1850,28 +2179,23 @@ export function SearchPage({
           onReachEnd={loadMoreResults}
           onSelect={selectResultFromTable}
           rows={results}
-          selectedResultKey={selectedResultKey}
+          selectedResultKey={visibleSelectedResultKey}
           selectedGxpType={gxpType}
         />
-        <div className="action-stack">
-          <ActionCard
-            actions={workspace?.action_readiness}
-            onActionSelect={(actionKey) => {
-              if (actionKey !== "create_reassessment_case" && actionKey !== "create_change_request") {
-                return;
-              }
-              setSelectedActionKey((current) => (current === actionKey ? null : actionKey));
-              setCreateInspectionCaseError(null);
-              setCreateChangeRequestError(null);
-            }}
-            onActionButtonRef={(actionKey, element) => {
-              if (actionKey === "create_reassessment_case") {
-                reassessmentTriggerRef.current = element;
-              }
-            }}
-            selectedActionKey={selectedActionKey}
-          />
         </div>
+        <FacilityHistoryPane
+          rows={workspace?.history ?? []}
+          selectedHistoryId={selectedHistoryId}
+          hasSelection={Boolean(selectedResult)}
+          loading={Boolean(selectedResult) && (workspaceLoading || !workspace)}
+          error={deepLinkError ?? (selectedResult && !workspaceLoading ? workspaceError : null)}
+          onSelect={(historyId) => {
+            setHistoryResolution("none");
+            setDeepLinkError(null);
+            setSelectedHistoryId(historyId);
+            setSelectedFacilityTab("Các đợt kiểm tra & thay đổi");
+          }}
+        />
       </div>
 
       {reassessmentDialogOpen ? (
@@ -1956,110 +2280,141 @@ export function SearchPage({
         </div>
       ) : null}
 
-      {!resultsLoading && resultsTotalCount === 0 ? (
-        <EmptyState title="Không có kết quả" description="Không tìm thấy cơ sở phù hợp với bộ lọc hiện tại." />
-      ) : null}
+      <div className="search-detail-area">
+        <div className="search-context-actions">
+          <ActionCard
+            actions={workspaceLoading || workspaceError || deepLinkError || !selectedResult ? undefined : workspace?.action_readiness}
+            onActionSelect={(actionKey) => {
+              if (actionKey !== "create_reassessment_case" && actionKey !== "create_change_request") {
+                return;
+              }
+              setSelectedActionKey((current) => (current === actionKey ? null : actionKey));
+              setCreateInspectionCaseError(null);
+              setCreateChangeRequestError(null);
+            }}
+            onActionButtonRef={(actionKey, element) => {
+              if (actionKey === "create_reassessment_case") {
+                reassessmentTriggerRef.current = element;
+              }
+            }}
+            selectedActionKey={selectedActionKey}
+          />
+        </div>
+        {!resultsLoading && resultsTotalCount === 0 ? (
+          <EmptyState title="Không có kết quả" description="Không tìm thấy cơ sở phù hợp với bộ lọc hiện tại." />
+        ) : null}
 
-      {deepLinkError ? <p className="form-error" role="alert">{deepLinkError}</p> : null}
-
-      {resultsTotalCount > 0 ? (
-        deepLinkError ? null : workspaceError ? (
-          <ErrorState message={workspaceError} />
-        ) : workspaceLoading || !workspace ? (
+        {resultsTotalCount > 0 && !deepLinkError && workspaceError && !workspaceLoading ? (
+          <section className="panel panel-tight">
+            <EmptyState title="Chưa tải được workspace" description="Chưa tải được chi tiết. Bản nháp cùng ngữ cảnh được giữ trong khi workspace bị ẩn." />
+            <button type="button" onClick={() => { void refreshSelectedFacilityWorkspace(selectedHistoryId).catch(() => undefined); }}>Tải lại workspace</button>
+          </section>
+        ) : null}
+        {resultsTotalCount > 0 && !deepLinkError && (workspaceLoading || (!workspace && !workspaceError)) ? (
           <section className="panel panel-tight facility-workspace-panel">
             <EmptyState title="Đang tải workspace" description="Đang đồng bộ ngữ cảnh cơ sở, dây chuyền và chứng nhận hiện hành." />
           </section>
-        ) : (
-          <FacilityWorkspaceTabs
-            activeEventTab={activeTab}
-            caseWorkspace={selectedCaseWorkspace}
-            caseWorkspaceError={caseWorkspaceError}
-            caseWorkspaceLoading={caseWorkspaceLoading}
-            changeRequestWorkspace={selectedChangeRequestWorkspace}
-            changeRequestWorkspaceError={changeRequestWorkspaceError}
-            changeRequestWorkspaceLoading={changeRequestWorkspaceLoading}
-            changeRequestMutations={{
-              onUpdateHeader: handleChangeRequestHeaderUpdate,
-              onCreateDetail: handleChangeRequestDetailCreate,
-              onUpdateDetail: handleChangeRequestDetailUpdate,
-              onUpsertApproval: handleChangeApprovalUpsert,
-              onTransition: handleChangeRequestTransition,
-              onIssueBusinessEligibilitySuccessor: handleChangeRequestBusinessEligibilitySuccessorIssue,
-              onIssueCertificateSuccessor: handleChangeRequestCertificateSuccessorIssue,
-              onPromoteIssuedBusinessEligibility: handleChangeRequestIssuedBusinessEligibilityPromote,
-              onPromoteIssuedCertificate: handleChangeRequestIssuedCertificatePromote,
-              onLoadIssuedCertificate: handleChangeRequestIssuedCertificateLoad,
-              onEditIssuedCertificate: handleChangeRequestIssuedCertificateEdit,
-              onLoadIssuedBusinessEligibility: handleChangeRequestIssuedBusinessEligibilityLoad,
-              onEditIssuedBusinessEligibility: handleChangeRequestIssuedBusinessEligibilityEdit,
-            }}
-            eligibilityCertificateDetail={eligibilityCertificateDetail}
-            eligibilityCertificateDetailError={eligibilityCertificateDetailError}
-            eligibilityCertificateDetailLoading={eligibilityCertificateDetailLoading}
-            eligibilityCertificates={eligibilityCertificates}
-            eligibilityCertificatesError={eligibilityCertificatesError}
-            eligibilityCertificatesLoading={eligibilityCertificatesLoading}
-            eligibilityIssueReadiness={eligibilityIssueReadiness}
-            eligibilityBasisCertificates={eligibilityBasisCertificates}
-            eligibilityBasisLoading={eligibilityBasisLoading}
-            eligibilityBasisError={eligibilityBasisError}
-            eligibilityPromotionError={eligibilityPromotionError}
-            eligibilityPromotionPending={eligibilityPromotionPending}
-            gxpCertificateDetail={gxpCertificateDetail}
-            gxpCertificateDetailError={gxpCertificateDetailError}
-            gxpCertificateDetailLoading={gxpCertificateDetailLoading}
-            gxpCertificatePromotionError={gxpCertificatePromotionError}
-            gxpCertificatePromotionPending={gxpCertificatePromotionPending}
-            gxpCertificates={gxpCertificates}
-            gxpCertificatesError={gxpCertificatesError}
-            gxpCertificatesLoading={gxpCertificatesLoading}
-            history={workspace.history}
-            onEligibilityCertificateSelect={setSelectedEligibilityCertificateId}
-            onIssueBusinessEligibility={handleIssueBusinessEligibility}
-            onEligibilityCertificateEditLatestVersion={handleBusinessEligibilityLatestVersionUpdate}
-            onEligibilityCertificatePromote={handleBusinessEligibilityPromote}
-            onEventTabChange={setActiveTab}
-            onFacilityTabChange={setSelectedFacilityTab}
-            onGxpCertificateSelect={setSelectedGxpCertificateId}
-            onGxpCertificatePromote={handleGxpCertificatePromote}
-            onGxpCertificateEditLatestVersion={handleGxpCertificateLatestVersionUpdate}
-            onIssueCertificate={handleIssueGxpCertificate}
-            onHistorySelect={(historyId) => {
-              setHistoryResolution("none");
-              setDeepLinkError(null);
-              setSelectedHistoryId(historyId);
-            }}
-            onCaseApplicationSave={handleCaseApplicationSave}
-            onCaseAssessmentSave={handleCaseAssessmentSave}
-            onAssessCapaCycle={handleAssessCapaCycle}
-            onCreateCapaCycle={handleCreateCapaCycle}
-            onInspectionOutcomeSave={handleInspectionOutcomeSave}
-            onInspectionPeriodSegmentsSave={handleInspectionPeriodSegmentsSave}
-            onCreateApprovalSubmission={handleCreateApprovalSubmission}
-            onCompleteApprovalSubmission={handleCompleteApprovalSubmission}
-            onTransitionCase={handleCaseTransition}
-            onFinalizeInspectionOutcome={handleFinalizeInspectionOutcome}
-            onInspectionTeamSave={handleInspectionTeamSave}
-            onLoadInspectionTeamIdentityOptions={handleLoadInspectionTeamIdentityOptions}
-            onEvaluationScopeSave={handleEvaluationScopeSave}
-            onInspectionPlanSave={handleInspectionPlanSave}
-            onCreateDocument={handleCreateDocument}
-            onLoadDocumentDetail={handleLoadDocumentDetail}
-            onOpenDocument={handleOpenDocument}
-            onResolveInspectionFolder={handleResolveInspectionFolder}
-            onSelectedRemediationCycleChange={setSelectedRemediationCycleId}
-            onSubmitCapaCycle={handleSubmitCapaCycle}
-            onUpdateCapaCycle={handleUpdateCapaCycle}
-            selectedEligibilityCertificateId={selectedEligibilityCertificateId}
-            selectedFacilityTab={selectedFacilityTab}
-            selectedGxpCertificateId={selectedGxpCertificateId}
-            selectedHistory={selectedHistory}
-            selectedHistoryId={selectedHistoryId}
-            selectedRemediationCycleId={selectedRemediationCycleId}
-            summary={workspace.summary}
-          />
-        )
-      ) : null}
+        ) : null}
+        {resultsTotalCount > 0 && retainedWorkspace ? (
+          <div className="retained-facility-workspace" hidden={!workspace} inert={!workspace}>
+            <FacilityWorkspaceTabs
+              activeEventTab={activeTab}
+              caseWorkspace={selectedCaseWorkspace}
+              caseWorkspaceError={caseWorkspaceError?.historyId === selectedHistoryId ? caseWorkspaceError.message : null}
+              caseWorkspaceLoading={caseWorkspaceLoading}
+              changeRequestWorkspace={selectedChangeRequestWorkspace}
+              changeRequestWorkspaceError={changeRequestWorkspaceError?.historyId === selectedHistoryId ? changeRequestWorkspaceError.message : null}
+              changeRequestWorkspaceLoading={changeRequestWorkspaceLoading}
+              changeRequestMutations={{
+                onUpdateHeader: handleChangeRequestHeaderUpdate,
+                onCreateDetail: handleChangeRequestDetailCreate,
+                onUpdateDetail: handleChangeRequestDetailUpdate,
+                onUpsertApproval: handleChangeApprovalUpsert,
+                onTransition: handleChangeRequestTransition,
+                onIssueBusinessEligibilitySuccessor: handleChangeRequestBusinessEligibilitySuccessorIssue,
+                onIssueCertificateSuccessor: handleChangeRequestCertificateSuccessorIssue,
+                onPromoteIssuedBusinessEligibility: handleChangeRequestIssuedBusinessEligibilityPromote,
+                onPromoteIssuedCertificate: handleChangeRequestIssuedCertificatePromote,
+                onLoadIssuedCertificate: handleChangeRequestIssuedCertificateLoad,
+                onEditIssuedCertificate: handleChangeRequestIssuedCertificateEdit,
+                onLoadIssuedBusinessEligibility: handleChangeRequestIssuedBusinessEligibilityLoad,
+                onEditIssuedBusinessEligibility: handleChangeRequestIssuedBusinessEligibilityEdit,
+              }}
+              eligibilityCertificateDetail={visibleEligibilityCertificateDetail}
+              gxpVersionHistory={gxpVersionHistory}
+              eligibilityVersionHistory={eligibilityVersionHistory}
+              eligibilitySourceEvidence={eligibilitySourceEvidence}
+              gxpDocumentMetadata={gxpDocumentMetadata}
+              eligibilityDocumentMetadata={eligibilityDocumentMetadata}
+              eligibilityCertificateDetailError={eligibilityCertificateDetailError}
+              eligibilityCertificateDetailLoading={visibleEligibilityCertificateDetailLoading}
+              eligibilityCertificates={visibleEligibilityCertificates}
+              eligibilityCertificatesError={visibleEligibilityCertificatesError}
+              eligibilityCertificatesLoading={visibleEligibilityCertificatesLoading}
+              eligibilityIssueReadiness={visibleEligibilityIssueReadiness}
+              eligibilityBasisCertificates={visibleEligibilityBasisCertificates}
+              eligibilityBasisLoading={visibleEligibilityBasisLoading}
+              eligibilityBasisError={visibleEligibilityBasisError}
+              eligibilityPromotionError={eligibilityPromotionError}
+              eligibilityPromotionPending={visibleEligibilityPromotionPending}
+              gxpCertificateDetail={visibleGxpCertificateDetail}
+              gxpCertificateDetailError={gxpCertificateDetailError}
+              gxpCertificateDetailLoading={visibleGxpCertificateDetailLoading}
+              gxpCertificatePromotionError={gxpCertificatePromotionError}
+              gxpCertificatePromotionPending={visibleGxpCertificatePromotionPending}
+              gxpCertificates={visibleGxpCertificates}
+              gxpCertificatesError={visibleGxpCertificatesError}
+              gxpCertificatesLoading={visibleGxpCertificatesLoading}
+              onEligibilityCertificateSelect={(certificateId) => {
+                if (!eligibilityListOwner) return;
+                setSelectedEligibilityCertificateOwner(eligibilityListOwner);
+                setSelectedEligibilityCertificateId(certificateId);
+              }}
+              onIssueBusinessEligibility={handleIssueBusinessEligibility}
+              onEligibilityCertificateEditLatestVersion={handleBusinessEligibilityLatestVersionUpdate}
+              onEligibilityCertificatePromote={handleBusinessEligibilityPromote}
+              onEventTabChange={setActiveTab}
+              onFacilityTabChange={setSelectedFacilityTab}
+              onGxpCertificateSelect={(certificateId) => {
+                if (!gxpListOwner) return;
+                setSelectedGxpCertificateOwner(gxpListOwner);
+                setSelectedGxpCertificateId(certificateId);
+              }}
+              onGxpCertificatePromote={handleGxpCertificatePromote}
+              onGxpCertificateEditLatestVersion={handleGxpCertificateLatestVersionUpdate}
+              onIssueCertificate={handleIssueGxpCertificate}
+              onCaseApplicationSave={handleCaseApplicationSave}
+              onCaseAssessmentSave={handleCaseAssessmentSave}
+              onAssessCapaCycle={handleAssessCapaCycle}
+              onCreateCapaCycle={handleCreateCapaCycle}
+              onInspectionOutcomeSave={handleInspectionOutcomeSave}
+              onInspectionPeriodSegmentsSave={handleInspectionPeriodSegmentsSave}
+              onCreateApprovalSubmission={handleCreateApprovalSubmission}
+              onCompleteApprovalSubmission={handleCompleteApprovalSubmission}
+              onTransitionCase={handleCaseTransition}
+              onFinalizeInspectionOutcome={handleFinalizeInspectionOutcome}
+              onInspectionTeamSave={handleInspectionTeamSave}
+              onLoadInspectionTeamIdentityOptions={handleLoadInspectionTeamIdentityOptions}
+              onEvaluationScopeSave={handleEvaluationScopeSave}
+              onInspectionPlanSave={handleInspectionPlanSave}
+              onCreateDocument={handleCreateDocument}
+              onLoadDocumentDetail={handleLoadDocumentDetail}
+              onOpenDocument={handleOpenDocument}
+              onResolveInspectionFolder={handleResolveInspectionFolder}
+              accessGeneration={canLoadSecureApi ? accessGeneration : null}
+              onSelectedRemediationCycleChange={setSelectedRemediationCycleId}
+              onSubmitCapaCycle={handleSubmitCapaCycle}
+              onUpdateCapaCycle={handleUpdateCapaCycle}
+              selectedEligibilityCertificateId={selectedEligibilityCertificateId}
+              selectedFacilityTab={selectedFacilityTab}
+              selectedGxpCertificateId={selectedGxpCertificateId}
+              selectedHistory={selectedHistory}
+              selectedRemediationCycleId={selectedRemediationCycleId}
+              summary={retainedWorkspace.summary}
+            />
+          </div>
+        ) : null}
+      </div>
     </section>
   );
 }

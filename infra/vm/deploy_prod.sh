@@ -17,6 +17,7 @@ PREVIOUS_SERVICE_FILE=""
 PREVIOUS_NGINX_FILE=""
 PREVIOUS_SYSTEMD_ENV_FILE=""
 PREVIOUS_RELEASE_METADATA_FILE=""
+PREVIOUS_NGINX_DEFAULT_FILE=""
 SUCCESS=0
 SWITCHED_RELEASES=0
 SWITCHED_CONFIG=0
@@ -35,8 +36,55 @@ SYSTEMD_SERVICE_FILE_EXISTED_BEFORE=0
 NGINX_SITE_FILE_EXISTED_BEFORE=0
 NGINX_SITE_ENABLED_LINK_EXISTED_BEFORE=0
 NGINX_SITE_ENABLED_LINK_TARGET_BEFORE=""
+NGINX_DEFAULT_SITE_EXISTED_BEFORE=0
+NGINX_DEFAULT_SITE_WAS_LINK_BEFORE=0
+NGINX_DEFAULT_SITE_LINK_TARGET_BEFORE=""
 SYSTEMD_ENV_FILE_EXISTED_BEFORE=0
 RELEASE_METADATA_FILE_EXISTED_BEFORE=0
+SYSTEMD_SERVICE_ENABLEMENT_BEFORE=""
+NGINX_SERVICE_ENABLEMENT_BEFORE=""
+
+capture_systemd_enablement_state() {
+  local unit_name="$1"
+  local reported_state=""
+  local query_exit=0
+
+  if reported_state="$(systemctl is-enabled "${unit_name}" 2>/dev/null)"; then
+    query_exit=0
+  else
+    query_exit=$?
+  fi
+
+  case "${query_exit}:${reported_state}" in
+    0:enabled)
+      printf 'enabled\n'
+      ;;
+    1:disabled)
+      printf 'disabled\n'
+      ;;
+    *)
+      fail "Unable to determine pre-deploy systemd enablement for ${unit_name}: systemctl is-enabled returned exit ${query_exit} and state '${reported_state}'."
+      return 1
+      ;;
+  esac
+}
+
+restore_systemd_enablement_state() {
+  local unit_name="$1"
+  local enablement_before="$2"
+
+  case "${enablement_before}" in
+    enabled)
+      systemctl enable "${unit_name}" >/dev/null 2>&1 || true
+      ;;
+    disabled)
+      systemctl disable "${unit_name}" >/dev/null 2>&1 || true
+      ;;
+    *)
+      printf 'Rollback skipped unknown systemd enablement state for %s: %s\n' "${unit_name}" "${enablement_before}" >&2
+      ;;
+  esac
+}
 
 restore_managed_symlink() {
   local path="$1"
@@ -244,12 +292,12 @@ PY
 
 cleanup() {
   if [[ "${SUCCESS}" != "1" && "${SWITCHED_CONFIG}" == "1" ]]; then
-    if [[ "${SYSTEMD_SERVICE_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_SERVICE_FILE}" ]]; then
+    if [[ "${SYSTEMD_SERVICE_FILE_EXISTED_BEFORE}" == "1" && -f "${PREVIOUS_SERVICE_FILE}" ]]; then
       cp "${PREVIOUS_SERVICE_FILE}" "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service" || true
     else
       rm -f "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service" || true
     fi
-    if [[ "${NGINX_SITE_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_NGINX_FILE}" ]]; then
+    if [[ "${NGINX_SITE_FILE_EXISTED_BEFORE}" == "1" && -f "${PREVIOUS_NGINX_FILE}" ]]; then
       cp "${PREVIOUS_NGINX_FILE}" "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf" || true
     else
       rm -f "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf" || true
@@ -259,19 +307,30 @@ cleanup() {
     else
       rm -f "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}.conf" || true
     fi
-    if [[ "${SYSTEMD_ENV_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_SYSTEMD_ENV_FILE}" ]]; then
+    if [[ "${NGINX_DEFAULT_SITE_EXISTED_BEFORE}" == "1" ]]; then
+      if [[ "${NGINX_DEFAULT_SITE_WAS_LINK_BEFORE}" == "1" ]]; then
+        ln -sfn "${NGINX_DEFAULT_SITE_LINK_TARGET_BEFORE}" "/etc/nginx/sites-enabled/default" || true
+      elif [[ -f "${PREVIOUS_NGINX_DEFAULT_FILE}" ]]; then
+        cp "${PREVIOUS_NGINX_DEFAULT_FILE}" "/etc/nginx/sites-enabled/default" || true
+      fi
+    else
+      rm -f "/etc/nginx/sites-enabled/default" || true
+    fi
+    if [[ "${SYSTEMD_ENV_FILE_EXISTED_BEFORE}" == "1" && -f "${PREVIOUS_SYSTEMD_ENV_FILE}" ]]; then
       cp "${PREVIOUS_SYSTEMD_ENV_FILE}" "${VM_SYSTEMD_ENV_FILE}" || true
       chown "root:${VM_APP_GROUP}" "${VM_SYSTEMD_ENV_FILE}" || true
       chmod 0640 "${VM_SYSTEMD_ENV_FILE}" || true
     else
       rm -f "${VM_SYSTEMD_ENV_FILE}" || true
     fi
-    if [[ "${RELEASE_METADATA_FILE_EXISTED_BEFORE}" == "1" && -s "${PREVIOUS_RELEASE_METADATA_FILE}" ]]; then
+    if [[ "${RELEASE_METADATA_FILE_EXISTED_BEFORE}" == "1" && -f "${PREVIOUS_RELEASE_METADATA_FILE}" ]]; then
       cp "${PREVIOUS_RELEASE_METADATA_FILE}" "${VM_RELEASE_METADATA_FILE}" || true
     else
       rm -f "${VM_RELEASE_METADATA_FILE}" || true
     fi
     systemctl daemon-reload >/dev/null 2>&1 || true
+    restore_systemd_enablement_state "${SYSTEMD_SERVICE_NAME}" "${SYSTEMD_SERVICE_ENABLEMENT_BEFORE}"
+    restore_systemd_enablement_state nginx "${NGINX_SERVICE_ENABLEMENT_BEFORE}"
   fi
   if [[ "${SUCCESS}" != "1" && "${SWITCHED_RELEASES}" == "1" ]]; then
     restore_managed_symlink "${VM_FRONTEND_DIST_DIR}" "${FRONTEND_DIST_EXISTED_BEFORE}" "${ORIGINAL_FRONTEND_TARGET}" "${VM_APP_USER}" "${VM_APP_GROUP}"
@@ -382,6 +441,12 @@ for item in entries:
 PY
 }
 
+# Capture the caller's rehearsal approval boundary before sourcing a derived
+# runtime env file. That file may contain overlapping environment keys; it
+# must not disable or substitute the caller-approved source integrity gate.
+readonly REHEARSAL_FRONTEND_GATE_REQUESTED="${VM_REQUIRE_APPROVED_FRONTEND_TREE:-0}"
+readonly REHEARSAL_FRONTEND_GATE_SHA="${VM_APPROVED_FRONTEND_SOURCE_SHA:-}"
+readonly REHEARSAL_BACKEND_GATE_SHA="${VM_APPROVED_BACKEND_SOURCE_SHA:-}"
 RUNTIME_ENV_FILE="${VM_RUNTIME_ENV_FILE:-/etc/gxp/runtime.env}"
 load_runtime_env "${RUNTIME_ENV_FILE}"
 
@@ -438,6 +503,7 @@ PREVIOUS_SERVICE_FILE="${RUNTIME_ASSET_STAGING_DIR}/${SYSTEMD_SERVICE_NAME}.prev
 PREVIOUS_NGINX_FILE="${RUNTIME_ASSET_STAGING_DIR}/${NGINX_SITE_NAME}.previous.conf"
 PREVIOUS_SYSTEMD_ENV_FILE="${RUNTIME_ASSET_STAGING_DIR}/$(basename "${VM_SYSTEMD_ENV_FILE}").previous"
 PREVIOUS_RELEASE_METADATA_FILE="${RUNTIME_ASSET_STAGING_DIR}/$(basename "${VM_RELEASE_METADATA_FILE}").previous.json"
+PREVIOUS_NGINX_DEFAULT_FILE="${RUNTIME_ASSET_STAGING_DIR}/nginx-default.previous"
 
 REPO_ROOT_NORMALIZED="$(normalize_repo_path "${REPO_ROOT}")"
 VM_SRC_DIR_NORMALIZED="$(normalize_repo_path "${VM_SRC_DIR}")"
@@ -475,12 +541,21 @@ if [[ -L "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}.conf" ]]; then
   NGINX_SITE_ENABLED_LINK_EXISTED_BEFORE=1
   NGINX_SITE_ENABLED_LINK_TARGET_BEFORE="$(readlink_safe "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}.conf" || true)"
 fi
+if [[ -e "/etc/nginx/sites-enabled/default" || -L "/etc/nginx/sites-enabled/default" ]]; then
+  NGINX_DEFAULT_SITE_EXISTED_BEFORE=1
+  if [[ -L "/etc/nginx/sites-enabled/default" ]]; then
+    NGINX_DEFAULT_SITE_WAS_LINK_BEFORE=1
+    NGINX_DEFAULT_SITE_LINK_TARGET_BEFORE="$(readlink_safe "/etc/nginx/sites-enabled/default" || true)"
+  fi
+fi
 if [[ -f "${VM_SYSTEMD_ENV_FILE}" ]]; then
   SYSTEMD_ENV_FILE_EXISTED_BEFORE=1
 fi
 if [[ -f "${VM_RELEASE_METADATA_FILE}" ]]; then
   RELEASE_METADATA_FILE_EXISTED_BEFORE=1
 fi
+SYSTEMD_SERVICE_ENABLEMENT_BEFORE="$(capture_systemd_enablement_state "${SYSTEMD_SERVICE_NAME}")"
+NGINX_SERVICE_ENABLEMENT_BEFORE="$(capture_systemd_enablement_state nginx)"
 
 TARGET_SHA="${DEPLOY_GIT_SHA:-}"
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-$(json_query deploy_branch)}"
@@ -499,6 +574,21 @@ DEPLOYMENT_BRANCH="${DEPLOY_BRANCH}"
 NEW_BACKEND_RELEASE="${VM_BACKEND_RELEASES_DIR}/${NEW_SHA}"
 NEW_BACKEND_VENV="${VM_BACKEND_VENV_RELEASES_DIR}/${NEW_SHA}"
 NEW_FRONTEND_RELEASE="${VM_FRONTEND_RELEASES_DIR}/${NEW_SHA}"
+
+# On the rehearsal path, require the deployable commit's own frontend/ Git
+# tree to match the explicitly approved frontend commit. The cross-head CI
+# runner replaces frontend only in its disposable workspace; git archive
+# below does NOT ship that overlay. Stop before staging/backup/migrations.
+CURRENT_STAGE="approved_frontend_source_gate"
+if [[ "${REHEARSAL_FRONTEND_GATE_REQUESTED}" == "1" ]]; then
+  [[ -n "${REHEARSAL_FRONTEND_GATE_SHA}" ]] || fail "Approved frontend SHA missing from rehearsal deploy gate."
+  [[ -n "${REHEARSAL_BACKEND_GATE_SHA}" ]] || fail "Approved backend SHA missing from rehearsal deploy gate."
+  run_as_app_user env PYTHONPATH="${REPO_ROOT}" "${VM_PYTHON_BIN}" "${REPO_ROOT}/tools/verify_rehearsal_release_sources.py" \
+    --repo "${REPO_ROOT}" \
+    --target-sha "${NEW_SHA}" \
+    --approved-backend-sha "${REHEARSAL_BACKEND_GATE_SHA}" \
+    --approved-frontend-sha "${REHEARSAL_FRONTEND_GATE_SHA}" || fail "Rehearsal combined Git-tree release gate failed."
+fi
 
 CURRENT_STAGE="release_directories"
 install -d -m 0755 -o "${VM_APP_USER}" -g "${VM_APP_GROUP}" \
@@ -684,6 +774,10 @@ fi
 if [[ -f "${VM_RELEASE_METADATA_FILE}" ]]; then
   cp "${VM_RELEASE_METADATA_FILE}" "${PREVIOUS_RELEASE_METADATA_FILE}"
 fi
+if [[ "${NGINX_DEFAULT_SITE_EXISTED_BEFORE}" == "1" && "${NGINX_DEFAULT_SITE_WAS_LINK_BEFORE}" != "1" ]]; then
+  cp "/etc/nginx/sites-enabled/default" "${PREVIOUS_NGINX_DEFAULT_FILE}"
+fi
+SWITCHED_CONFIG=1
 cp "${STAGED_SERVICE_FILE}" "/etc/systemd/system/${SYSTEMD_SERVICE_NAME}.service"
 cp "${STAGED_NGINX_FILE}" "/etc/nginx/sites-available/${NGINX_SITE_NAME}.conf"
 install -d -m 0755 "$(dirname "${VM_SYSTEMD_ENV_FILE}")"
@@ -695,12 +789,11 @@ systemctl daemon-reload
 systemctl enable "${SYSTEMD_SERVICE_NAME}" >/dev/null
 systemctl enable nginx >/dev/null
 nginx -t
-SWITCHED_CONFIG=1
+SWITCHED_RELEASES=1
 ln -sfn "${NEW_FRONTEND_RELEASE}" "${VM_FRONTEND_DIST_DIR}"
 ln -sfn "${NEW_BACKEND_RELEASE}" "${VM_CURRENT_BACKEND_RELEASE_LINK}"
 ln -sfn "${NEW_BACKEND_VENV}" "${VM_CURRENT_BACKEND_VENV_LINK}"
 chown -h "${VM_APP_USER}:${VM_APP_GROUP}" "${VM_FRONTEND_DIST_DIR}" "${VM_CURRENT_BACKEND_RELEASE_LINK}" "${VM_CURRENT_BACKEND_VENV_LINK}"
-SWITCHED_RELEASES=1
 
 CURRENT_STAGE="restart_services"
 systemctl restart "${SYSTEMD_SERVICE_NAME}"

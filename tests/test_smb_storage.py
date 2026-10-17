@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from io import BytesIO
 
+import pytest
+
 from backend.app.db.enums import StorageResolutionStatus
 from backend.app.storage import smb as smb_storage
 from backend.app.storage.types import SmbStorageConfig, StorageTargetExistsError
@@ -74,26 +76,159 @@ def _service(monkeypatch, directory_names: list[str]) -> tuple[_FakeSmbClient, s
 
 def test_smb_exclusive_write_rejects_existing_target(monkeypatch) -> None:
     fake_client, service = _service(monkeypatch, [])
+    removed = []
+    modes = []
 
-    def existing_target(*args, **kwargs):
-        raise OSError("target exists")
+    def stage_file(path, mode):
+        assert ".gxp-stage-" in path
+        modes.append(mode)
+        return BytesIO()
 
-    monkeypatch.setattr(fake_client, "open_file", existing_target, raising=False)
+    def collision(*args):
+        raise OSError("STATUS_OBJECT_NAME_COLLISION")
 
-    try:
-        service.write_stream(
-            "2026/existing.docx",
-            BytesIO(b"new"),
-            overwrite=False,
-        )
-    except StorageTargetExistsError as exc:
-        assert "will not be overwritten" in str(exc)
-    else:
-        raise AssertionError("Expected SMB exclusive write to reject the existing target")
+    monkeypatch.setattr(fake_client, "open_file", stage_file, raising=False)
+    monkeypatch.setattr(fake_client, "rename", collision, raising=False)
+    monkeypatch.setattr(fake_client, "remove", removed.append, raising=False)
+
+    with pytest.raises(StorageTargetExistsError, match="will not be overwritten"):
+        service.write_stream("2026/existing.docx", BytesIO(b"new"), overwrite=False)
+
+    assert modes == ["xb"]
+    assert len(removed) == 1
+    assert ".gxp-stage-" in removed[0]
+    assert not removed[0].endswith("\\existing.docx")
+
+
+@pytest.mark.parametrize("operation", ["move", "rename"])
+def test_smb_file_operations_reject_existing_destination_before_rename(monkeypatch, operation: str) -> None:
+    client, service = _service(monkeypatch, [])
+    calls = []
+    monkeypatch.setattr(client, "rename", lambda *args: calls.append(args), raising=False)
+
+    with pytest.raises(StorageTargetExistsError, match="will not be overwritten"):
+        if operation == "move":
+            service.move("2026/source.txt", "2026/existing.txt")
+        else:
+            service.rename("2026/source.txt", "existing.txt")
+
+    assert calls == []
+
+
+@pytest.mark.parametrize("operation", ["move", "rename"])
+def test_smb_rename_server_collision_after_preflight_returns_conflict(monkeypatch, operation: str):
+    client, service = _service(monkeypatch, [])
+    checks = []
+    def fake_exists(path):
+        checks.append(path)
+        # Destination is initially absent; the concurrent writer creates it
+        # before the server processes the no-replace SMB rename.
+        return len(checks) > 1
+
+    monkeypatch.setattr(smb_storage.smbpath, "exists", fake_exists)
+    calls = []
+    def reject_server_replace(source, target):
+        calls.append((source, target))
+        raise OSError("STATUS_OBJECT_NAME_COLLISION")
+
+    monkeypatch.setattr(client, "rename", reject_server_replace, raising=False)
+    with pytest.raises(StorageTargetExistsError, match="will not be overwritten"):
+        if operation == "move":
+            service.move("2026/source.txt", "2026/target.txt")
+        else:
+            service.rename("2026/source.txt", "target.txt")
+    assert len(calls) == 1
+    assert len(checks) == 2
+
+
+def test_smb_copy_uses_exclusive_staging_and_never_wb(monkeypatch) -> None:
+    client, service = _service(monkeypatch, [])
+    modes = []
+    removed = []
+
+    def open_file(path, mode):
+        modes.append(mode)
+        if mode == "rb":
+            return BytesIO(b"source")
+        if mode == "xb":
+            assert ".gxp-stage-" in path
+            return BytesIO()
+        raise AssertionError(f"Unsafe destination mode: {mode}")
+
+    def collision(*args):
+        raise OSError("STATUS_OBJECT_NAME_COLLISION")
+
+    monkeypatch.setattr(client, "open_file", open_file, raising=False)
+    monkeypatch.setattr(client, "rename", collision, raising=False)
+    monkeypatch.setattr(client, "remove", removed.append, raising=False)
+
+    with pytest.raises(StorageTargetExistsError, match="will not be overwritten"):
+        service.copy("2026/source.txt", "2026/existing.txt")
+
+    assert modes == ["rb", "xb"]
+    assert len(removed) == 1 and ".gxp-stage-" in removed[0]
+
+
+def test_smb_exclusive_write_publishes_only_after_stream_closed(monkeypatch) -> None:
+    client, service = _service(monkeypatch, [])
+    events = []
+    removed = []
+
+    class CaptureStream(BytesIO):
+        def close(self):
+            events.append("closed")
+            super().close()
+
+    def open_file(path, mode):
+        assert ".gxp-stage-" in path and mode == "xb"
+        events.append("stage-open")
+        return CaptureStream()
+
+    def rename(source, target):
+        assert ".gxp-stage-" in source
+        assert events == ["stage-open", "closed"]
+        events.append("published")
+
+    monkeypatch.setattr(client, "open_file", open_file, raising=False)
+    monkeypatch.setattr(client, "rename", rename, raising=False)
+    monkeypatch.setattr(client, "remove", removed.append, raising=False)
+    monkeypatch.setattr(client, "stat", lambda path: type("Stat", (), {"st_size": 8})(), raising=False)
+    monkeypatch.setattr(smb_storage.smbpath, "isdir", lambda path: False)
+
+    entry = service.write_stream("2026/new.txt", BytesIO(b"complete"), overwrite=False)
+    assert entry.relative_path == "2026/new.txt"
+    assert events == ["stage-open", "closed", "published"]
+    assert removed == []
+
+
+def test_smb_exclusive_write_stream_interruption_removes_only_temp(monkeypatch) -> None:
+    client, service = _service(monkeypatch, [])
+    removed = []
+    published = []
+
+    class Interrupted:
+        calls = 0
+
+        def read(self, size):
+            self.calls += 1
+            if self.calls == 1:
+                return b"partial"
+            raise OSError("SMB stream interrupted")
+
+    monkeypatch.setattr(client, "open_file", lambda path, mode: BytesIO(), raising=False)
+    monkeypatch.setattr(client, "rename", lambda src, dst: published.append((src, dst)), raising=False)
+    monkeypatch.setattr(client, "remove", removed.append, raising=False)
+
+    with pytest.raises(OSError, match="SMB stream interrupted"):
+        service.write_stream("2026/new.txt", Interrupted(), overwrite=False)
+
+    assert published == []
+    assert len(removed) == 1 and ".gxp-stage-" in removed[0]
+    assert not removed[0].endswith("\\new.txt")
 
 
 def test_smb_service_configures_default_credentials_for_resolution_after_cache_loss(monkeypatch) -> None:
-    folder_name = "IMEXPHARM - Đồng Tháp (ID-1)"
+    folder_name = "IMEXPHARM - Đồng Tháp (1)"
     fake_client, service = _service(monkeypatch, [folder_name])
 
     initial = service.resolve_dkkd_folder(site_legacy_id=1)
@@ -116,23 +251,36 @@ def test_smb_service_configures_default_credentials_for_resolution_after_cache_l
     }
 
 
-def test_smb_dkkd_resolution_rejects_obsolete_unkeyed_and_duplicate_identity_forms(monkeypatch) -> None:
-    fake_client, service = _service(monkeypatch, ["Legacy sample (1)"])
-    obsolete = service.resolve_dkkd_folder(site_legacy_id=1)
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("Factory (1)", True),
+        ("Factory (1) - Lần 2", True),
+        ("Factory (ID-1)", False),
+        ("Factory (10)", False),
+        ("Factory (01)", False),
+        ("Factory(1)", False),
+        ("Factory (2)", False),
+        ("Unkeyed facility", False),
+    ],
+)
+def test_smb_dkkd_matches_exact_legacy_site_token(monkeypatch, name: str, expected: bool) -> None:
+    _, service = _service(monkeypatch, [name])
 
-    assert obsolete.status is StorageResolutionStatus.NOT_FOUND
-    assert obsolete.candidate_count == 0
+    result = service.resolve_dkkd_folder(site_legacy_id=1)
 
-    fake_client.directory_names = ["Phương Đông TNHH"]
-    unkeyed = service.resolve_dkkd_folder(site_legacy_id=1)
+    assert result.status is (
+        StorageResolutionStatus.RESOLVED if expected else StorageResolutionStatus.NOT_FOUND
+    )
+    assert result.candidate_count == (1 if expected else 0)
 
-    assert unkeyed.status is StorageResolutionStatus.NOT_FOUND
-    assert unkeyed.candidate_count == 0
 
-    fake_client.directory_names = [
-        "TNHH BV Pharma - TP Hồ Chí Minh (ID-284)",
-        "BV Pharma - TP Hồ Chí Minh (ID-284)",
-    ]
+def test_smb_dkkd_legacy_duplicate_identity_fails_closed(monkeypatch) -> None:
+    _, service = _service(monkeypatch, [
+        "TNHH BV Pharma - TP Hồ Chí Minh (284)",
+        "BV Pharma - TP Hồ Chí Minh (284)",
+    ])
+
     duplicate = service.resolve_dkkd_folder(site_legacy_id=284)
 
     assert duplicate.status is StorageResolutionStatus.AMBIGUOUS
@@ -170,3 +318,27 @@ def test_smb_inspection_resolution_keeps_explicit_year_exact_identity(monkeypatc
 
     assert resolution.status is StorageResolutionStatus.RESOLVED
     assert resolution.relative_path == "2025/Exact - (ID-1) - (KT-1-GMP)"
+
+
+def test_smb_staging_audit_streams_large_directory_without_materializing(monkeypatch):
+    from backend.app.storage.staging import audit_staging_candidates
+    from backend.app.storage.types import StorageEntry
+
+    client, service = _service(monkeypatch, [])
+    yielded = []
+    def incremental(path):
+        for i in range(300):
+            yielded.append(i)
+            yield _DirectoryEntry(path, f"item-{i:03d}.txt")
+
+    monkeypatch.setattr(client, "scandir", incremental, raising=False)
+    monkeypatch.setattr(service, "_entry_for", lambda root, target: StorageEntry(
+        relative_path=target.rsplit("\\", 1)[-1],
+        name=target.rsplit("\\", 1)[-1],
+        is_dir=False, size=1,
+    ))
+    monkeypatch.setattr(service, "list", lambda *args, **kwargs: pytest.fail("materialized SMB list() called"))
+    report = audit_staging_candidates(service, max_entries=4)
+    assert report.truncated and report.incomplete_reason == "entry_budget_exceeded"
+    assert report.scanned_entries == 4
+    assert len(yielded) <= 5

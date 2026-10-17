@@ -9,13 +9,19 @@ import stat
 import sys
 import tempfile
 
+from alembic.config import Config
+from alembic.util import CommandError
+from alembic.script import ScriptDirectory
+from alembic.script.revision import RevisionError
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from backend.app.config import load_app_config, resolve_database_url
 from backend.app.db.session import build_session_factory
 from backend.app.runtime_schema import expected_alembic_head_revision
 from tools import import_legacy_production as production_import
@@ -35,11 +41,13 @@ class RehearsalDeployPlan:
     canonical_runtime_env_path: str
     output_runtime_env_path: str
     canonical_database: str
+    source_database: str
     rehearsal_database: str
     canonical_database_url_redacted: str
     rehearsal_database_url_redacted: str
     alembic_current_revision: str | None
     alembic_head_revision: str
+    alembic_upgrade_required: bool
 
 
 def _write_env_file(path: Path, values: dict[str, str]) -> None:
@@ -76,13 +84,79 @@ def _normalize_target_database_name(target_database_name: str) -> str:
     return normalized
 
 
+def _can_upgrade_to_head(current_revision: str | None, head_revision: str) -> bool:
+    """Accept the current head or a known ancestor; reject unknown/divergent heads.
+
+    The deploy script performs the Alembic upgrade after its database backup.
+    Requiring the target to already be at head makes new releases undeployable.
+    Only inspect local migration metadata here; never apply a migration.
+    """
+    if not current_revision:
+        return False
+    config = Config(str(ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(ROOT / "migrations"))
+    script = ScriptDirectory.from_config(config)
+    try:
+        if script.get_current_head() != head_revision:
+            return False
+        if script.get_revision(current_revision) is None:
+            return False
+        if current_revision == head_revision:
+            return True
+        return bool(tuple(script.iterate_revisions(head_revision, current_revision)))
+    except (RevisionError, CommandError):
+        return False
+
+
+def _load_rehearsal_source_contract(
+    runtime_env_path: Path,
+) -> tuple[production_import.RuntimeDatabaseContract, dict[str, str]]:
+    """Accept canonical input or the already-rehearsal runtime on the test VM.
+
+    The production import contract intentionally rejects non-canonical databases;
+    rehearsal deployment must not weaken that separate import contract.
+    """
+    if not runtime_env_path.is_file():
+        raise RehearsalDeployError("Rehearsal source runtime env file is missing")
+    env = parse_env_file(runtime_env_path)
+    db_name = env.get("DB_NAME", "").strip()
+    if db_name != DEFAULT_REHEARSAL_TARGET_DB:
+        return production_import._load_runtime_database_contract(runtime_env_path)
+
+    config = load_app_config(env)
+    if config.app_env.strip().lower() not in production_import.PRODUCTION_ENV_NAMES:
+        raise RehearsalDeployError("Rehearsal VM requires production-mode app settings")
+    if config.db_mode != "local_postgres" or env.get("DB_USER", "").strip() != "gxp_app":
+        raise RehearsalDeployError("Rehearsal VM requires local_postgres with gxp_app")
+    database_url = resolve_database_url(env).strip()
+    try:
+        parsed = make_url(database_url)
+    except (ValueError, TypeError) as exc:
+        raise RehearsalDeployError("Malformed rehearsal database URL") from exc
+    if (not parsed.drivername.startswith("postgresql")
+            or parsed.database != DEFAULT_REHEARSAL_TARGET_DB
+            or parsed.username != "gxp_app"
+            or parsed.host not in {"127.0.0.1", "localhost", "::1"}):
+        raise RehearsalDeployError(
+            "Rehearsal runtime database URL must target local gxp_legacy_rehearsal with gxp_app"
+        )
+    return (
+        production_import.RuntimeDatabaseContract(
+            runtime_env_path=runtime_env_path,
+            app_env=config.app_env,
+            db_mode=config.db_mode,
+            db_name=db_name,
+            db_user="gxp_app",
+            database_url=database_url,
+            database_url_redacted=production_import._redact_database_url(database_url),
+        ),
+        env,
+    )
+
+
 def verify_rehearsal_target_database(*, runtime_env_path: Path, target_database_name: str = DEFAULT_REHEARSAL_TARGET_DB) -> RehearsalDeployPlan:
     normalized_target_database_name = _normalize_target_database_name(target_database_name)
-    contract, _env = production_import._load_runtime_database_contract(runtime_env_path)
-    if contract.db_name == normalized_target_database_name:
-        raise RehearsalDeployError(
-            f"Rehearsal target database {normalized_target_database_name!r} must differ from canonical database {contract.db_name!r}."
-        )
+    contract, _env = _load_rehearsal_source_contract(runtime_env_path)
     target_database_url = production_import._target_database_url(contract.database_url, normalized_target_database_name)
     factory = build_session_factory(target_database_url)
     bind = factory.kw.get("bind")
@@ -105,20 +179,24 @@ def verify_rehearsal_target_database(*, runtime_env_path: Path, target_database_
     head_revision = expected_alembic_head_revision()
     if not head_revision:
         raise RehearsalDeployError("Could not determine the expected Alembic head revision for rehearsal deploy.")
-    if current_revision != head_revision:
+    if not _can_upgrade_to_head(current_revision, head_revision):
         raise RehearsalDeployError(
-            f"Rehearsal target database {normalized_target_database_name!r} alembic revision mismatch: "
-            f"current={current_revision!r}, head={head_revision!r}."
+            f"Rehearsal target database {normalized_target_database_name!r} alembic revision mismatch "
+            f"(not a known forward upgrade path): current={current_revision!r}, head={head_revision!r}."
         )
     return RehearsalDeployPlan(
         canonical_runtime_env_path=str(runtime_env_path),
         output_runtime_env_path="",
-        canonical_database=contract.db_name,
+        canonical_database="gxp_qlcl",
+        source_database=contract.db_name,
         rehearsal_database=normalized_target_database_name,
-        canonical_database_url_redacted=contract.database_url_redacted,
+        canonical_database_url_redacted=(
+            contract.database_url_redacted if contract.db_name == "gxp_qlcl" else "not_supplied"
+        ),
         rehearsal_database_url_redacted=production_import._redact_database_url(target_database_url),
         alembic_current_revision=current_revision,
         alembic_head_revision=head_revision,
+        alembic_upgrade_required=current_revision != head_revision,
     )
 
 
@@ -129,11 +207,7 @@ def prepare_rehearsal_runtime_env(
     target_database_name: str = DEFAULT_REHEARSAL_TARGET_DB,
 ) -> RehearsalDeployPlan:
     normalized_target_database_name = _normalize_target_database_name(target_database_name)
-    contract, env = production_import._load_runtime_database_contract(runtime_env_path)
-    if contract.db_name == normalized_target_database_name:
-        raise RehearsalDeployError(
-            f"Rehearsal target database {normalized_target_database_name!r} must differ from canonical database {contract.db_name!r}."
-        )
+    contract, env = _load_rehearsal_source_contract(runtime_env_path)
     plan = verify_rehearsal_target_database(
         runtime_env_path=runtime_env_path,
         target_database_name=normalized_target_database_name,
@@ -146,11 +220,13 @@ def prepare_rehearsal_runtime_env(
         canonical_runtime_env_path=plan.canonical_runtime_env_path,
         output_runtime_env_path=str(output_runtime_env_path),
         canonical_database=plan.canonical_database,
+        source_database=plan.source_database,
         rehearsal_database=plan.rehearsal_database,
         canonical_database_url_redacted=plan.canonical_database_url_redacted,
         rehearsal_database_url_redacted=plan.rehearsal_database_url_redacted,
         alembic_current_revision=plan.alembic_current_revision,
         alembic_head_revision=plan.alembic_head_revision,
+        alembic_upgrade_required=plan.alembic_upgrade_required,
     )
 
 

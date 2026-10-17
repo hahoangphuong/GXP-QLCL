@@ -159,12 +159,29 @@ class ImportCollisionError(RuntimeError):
     """Raised when production-safe import detects conflicting existing data."""
 
 
+class CertificateCaseSourceIntegrityError(ImportCollisionError):
+    """Strict source preflight rejected unresolved Certificate -> Case ownership."""
+
+    def __init__(self, report: dict[str, Any]):
+        self.report = report
+        link_count = len(report["effective_anomalies"])
+        parent_count = len(report.get("effective_parent_anomalies", []))
+        importable_excluded_count = len(report.get("excluded_importable_certificate_rows", []))
+        super().__init__(
+            "Legacy Certificate-Case source integrity preflight blocked "
+            f"{link_count} unresolved Certificate-Case link(s) and "
+            f"{parent_count} unimportable source-parent association(s), and "
+            f"{importable_excluded_count} importable confirmed-blanked Certificate row(s)."
+        )
+
+
 @dataclass(frozen=True)
 class ImportExecutionOptions:
     ensure_schema: bool = True
     reset_existing_data: bool = True
     allow_existing_records: bool = False
     persist_audit_event: bool = True
+    strict_certificate_case_source_links: bool = False
 
 
 @dataclass
@@ -310,13 +327,15 @@ def _apply_company_assigned_specialist(
 
 
 def parse_int(value: str | int | None) -> int | None:
-    text = str(value or "").strip()
-    if not text:
+    """Parse literal non-negative source IDs without rounding or truncation.
+
+    Spreadsheet integer strings with a zero-only decimal suffix remain valid.
+    Source keys, parent FKs and the read-only auditor share this contract.
+    """
+    text = str(value if value is not None else "").strip()
+    if not re.fullmatch(r"[0-9]+(?:\.0+)?", text):
         return None
-    try:
-        return int(float(text))
-    except ValueError:
-        return None
+    return int(text.split(".", 1)[0])
 
 
 def normalize_inspection_gxp_type(value: str | None) -> str | None:
@@ -903,8 +922,24 @@ def _validate_snapshot_source_keys(snapshot: dict[str, list[dict[str, str]]]) ->
     for source_sheet, rows in snapshot.items():
         seen: set[str] = set()
         for raw_row in rows:
+            # V1 must not interpret duplicate-heading physical columns as
+            # one scalar FK. All values are exported positionally; mapping
+            # ownership requires separately reviewed raw-header evidence.
+            if "__excel_duplicate_headers" in raw_row:
+                raise ImportCollisionError(
+                    f"Ambiguous duplicate Excel headers in {source_sheet}, "
+                    f"source row {raw_row.get('__excel_row_number', 'unknown')}; "
+                    "approve physical-column ownership before importing this snapshot."
+                )
             row = normalize_row(raw_row)
-            row_key = _source_identity_key(parse_int(row.get("ID", "")), source_row_number(row))
+            raw_legacy_id = str(row.get("ID") or "").strip()
+            legacy_id = parse_int(raw_legacy_id)
+            if raw_legacy_id and legacy_id is None:
+                raise ImportCollisionError(
+                    f"Invalid legacy ID {raw_legacy_id!r} in sheet {source_sheet}; "
+                    "nonblank source IDs must be integral literals."
+                )
+            row_key = _source_identity_key(legacy_id, source_row_number(row))
             if row_key is None:
                 continue
             if row_key in seen:
@@ -1056,6 +1091,28 @@ def load_confirmed_blanked_null_key_budgets() -> dict[str, int]:
     return budgets
 
 
+# Canonical ordered FK graph for Phase-2 source-materialization checks and
+# signed resurrection key ownership. Each tuple is
+# (normalized source field, parent source sheet, missing-FK reason, optional).
+# Do not duplicate the per-sheet owner map in authorization logic.
+SOURCE_PARENT_FK_REQUIREMENTS = {
+    "db.cty": (),
+    "db.cso": (("company_legacy_id_ref", "db.cty", "missing_company_fk", False),),
+    "db.ktra": (("site_legacy_id_ref", "db.cso", "missing_site_fk", False),),
+    "db.cc": (
+        ("inspection_case_legacy_id_ref", "db.ktra", "missing_case_fk", True),
+        ("site_legacy_id_ref", "db.cso", "missing_site_fk", False),
+    ),
+    # db.dkkd ID CTY is legacy evidence, not a canonical parent FK.
+    # Once db.cso.ID resolves, db.cso.ID Cty owns the canonical Company.
+    "db.dkkd": (
+        ("site_legacy_id_ref", "db.cso", "missing_site_fk", False),
+    ),
+    "db.Tdoi": (("site_legacy_id_ref", "db.cso", "missing_site_fk", False),),
+    "db.Tdoi2": (("change_request_legacy_id_ref", "db.Tdoi", "missing_change_request_fk", False),),
+}
+
+
 def load_confirmed_blanked_resurrections() -> dict[tuple[str, str], dict[str, int]]:
     payload = _load_json_contract(
         CONFIRMED_BLANKED_RESURRECTIONS_PATH,
@@ -1076,16 +1133,33 @@ def load_confirmed_blanked_resurrections() -> dict[tuple[str, str], dict[str, in
                 "Owner-approved confirmed-blanked resurrection contract row "
                 f"{source_sheet}:{source_row_key} is missing approved_override."
             )
-        parsed_override: dict[str, int] = {}
-        for key, value in override_payload.items():
-            parsed_value = parse_int(value)
-            if parsed_value is not None:
-                parsed_override[str(key)] = parsed_value
-        if not parsed_override:
+        if not override_payload:
             raise ConfirmedBlankedContractError(
                 "Owner-approved confirmed-blanked resurrection contract row "
                 f"{source_sheet}:{source_row_key} has no valid approved override values."
             )
+        allowed_keys = {
+            REMEDIATION_KEY_BY_REASON[reason]
+            for _, _, reason, _ in SOURCE_PARENT_FK_REQUIREMENTS.get(source_sheet, ())
+        }
+        invalid_keys = sorted(set(override_payload) - allowed_keys)
+        if invalid_keys:
+            raise ConfirmedBlankedContractError(
+                "Owner-approved confirmed-blanked resurrection contract row "
+                f"{source_sheet}:{source_row_key} contains unsupported "
+                f"approved_override key(s) for this source sheet: {invalid_keys}. "
+                "Only the sheet's actual parent FK owner(s) can authorize resurrection."
+            )
+        parsed_override: dict[str, int] = {}
+        for key, value in override_payload.items():
+            parsed_value = parse_int(value)
+            if parsed_value is None:
+                raise ConfirmedBlankedContractError(
+                    "Owner-approved confirmed-blanked resurrection contract row "
+                    f"{source_sheet}:{source_row_key} has invalid approved_override "
+                    f"value for {key!s}: {value!r}. Refusing partial authorization."
+                )
+            parsed_override[str(key)] = parsed_value
         approved[(source_sheet, source_row_key)] = parsed_override
     return approved
 
@@ -1096,6 +1170,17 @@ def _validate_confirmed_blanked_override_contract(
     confirmed_blanked_row_keys: set[tuple[str, str]],
     approved_resurrections: dict[tuple[str, str], dict[str, int]],
 ) -> None:
+    # An approval is valid only for a row already independently classified
+    # as confirmed-blanked. Do this even when no remediation overrides are
+    # supplied: an unused, stale approval must not be silently accepted.
+    unconfirmed_approvals = sorted(set(approved_resurrections) - confirmed_blanked_row_keys)
+    if unconfirmed_approvals:
+        sheet, row_key = unconfirmed_approvals[0]
+        raise ConfirmedBlankedContractError(
+            "Owner-approved confirmed-blanked resurrection contract references "
+            f"unconfirmed row {sheet}:{row_key}; only independently confirmed-blanked "
+            "source identities may be authorized."
+        )
     if not overrides:
         return
     for source_sheet, rows in overrides.items():
@@ -1113,11 +1198,17 @@ def _validate_confirmed_blanked_override_contract(
                     f"Confirmed blanked row {source_sheet}:{source_row_key} cannot be resurrected by a generic remediation override. "
                     f"Add an explicit approval entry to {CONFIRMED_BLANKED_RESURRECTIONS_PATH} first."
                 )
-            normalized_override = {
-                str(remediation_key): parse_int(value)
-                for remediation_key, value in override_payload.items()
-                if parse_int(value) is not None
-            }
+            normalized_override: dict[str, int] = {}
+            for remediation_key, value in override_payload.items():
+                parsed_value = parse_int(value)
+                if parsed_value is None:
+                    raise ConfirmedBlankedResurrectionError(
+                        "Confirmed blanked row "
+                        f"{source_sheet}:{source_row_key} has invalid remediation "
+                        f"override value for {remediation_key!s}: {value!r}; "
+                        "the complete payload must match the signed approval."
+                    )
+                normalized_override[str(remediation_key)] = parsed_value
             if normalized_override != approved_override:
                 raise ConfirmedBlankedResurrectionError(
                     f"Confirmed blanked row {source_sheet}:{source_row_key} override does not match the approved resurrection contract."
@@ -1326,6 +1417,138 @@ def _resolve_optional_legacy_fk(
     )
 
 
+def _validate_confirmed_blanked_source_materialization(
+    snapshot: dict[str, list[dict[str, str]]],
+    *,
+    confirmed_blanked_row_keys: set[tuple[str, str]],
+    overrides: dict[str, dict[str, dict[str, Any]]] | None,
+    preview_for_source_audit: bool = False,
+) -> tuple[dict[str, list[dict[str, str]]], list[dict[str, Any]]]:
+    """Check the import's parent graph and build an immutable strict-audit view.
+
+    Only an exact owner-approved resurrection can project an actually used FK
+    override. Source rows remain untouched. Non-approved generic overrides
+    retain legacy import behavior but cannot manufacture strict source evidence.
+    """
+    importable_ids: dict[str, set[int]] = {sheet: set() for sheet in SOURCE_PARENT_FK_REQUIREMENTS}
+    effective_snapshot = {sheet: [] for sheet in snapshot}
+    applied_source_fk_overrides: list[dict[str, Any]] = []
+    # Only expressly submitted, confirmed-blanked restoration requests must
+    # materialize. Unused signed approvals are not themselves execution orders.
+    requested_resurrections = {
+        (sheet, row_key)
+        for sheet, rows in (overrides or {}).items()
+        for row_key in rows
+        if (sheet, row_key) in confirmed_blanked_row_keys
+    }
+    matched_resurrections: set[tuple[str, str]] = set()
+    for source_sheet, requirements in SOURCE_PARENT_FK_REQUIREMENTS.items():
+        for raw_row in snapshot[source_sheet]:
+            row = normalize_row(raw_row)
+            effective_row = dict(row)
+            legacy_id = parse_int(row.get("ID"))
+            row_key = source_row_key(
+                legacy_row_id=legacy_id, source_row_number_value=source_row_number(row)
+            )
+            identity = (source_sheet, row_key or "")
+            is_confirmed_blanked = identity in confirmed_blanked_row_keys
+            has_approved_resurrection = identity in requested_resurrections
+            if has_approved_resurrection:
+                matched_resurrections.add(identity)
+            used_overrides: list[tuple[str, str, int, str]] = []
+            materializable = True
+            for field, parent_sheet, reason, optional in requirements:
+                raw_parent = str(row.get(field) or "").strip()
+                override_key = REMEDIATION_KEY_BY_REASON[reason]
+                approved_parent_id = (
+                    _get_override(overrides, source_sheet, row_key, override_key)
+                    if has_approved_resurrection else None
+                )
+                # A signed FK value must identify an importable parent, even
+                # if the original source FK is already resolvable. Otherwise
+                # the importer silently discards a contradictory authorization.
+                if (
+                    approved_parent_id is not None
+                    and approved_parent_id not in importable_ids[parent_sheet]
+                ):
+                    raise ConfirmedBlankedResurrectionError(
+                        "Confirmed blanked source row "
+                        f"{source_sheet}:{row_key} has approved {override_key}="
+                        f"{approved_parent_id} but that parent is not importable. "
+                        "Refusing an unused signed FK approval before schema creation."
+                    )
+                if optional and not raw_parent:
+                    # _resolve_optional_legacy_fk returns None immediately for
+                    # an empty Case FK. Even an exactly signed resurrection
+                    # cannot make that resolver use the approved Case ID.
+                    # Reject the contradictory contract rather than silently
+                    # import an administrative Certificate in its place.
+                    if has_approved_resurrection and _get_override(
+                        overrides, source_sheet, row_key,
+                        REMEDIATION_KEY_BY_REASON[reason],
+                    ) is not None:
+                        raise ConfirmedBlankedResurrectionError(
+                            "Confirmed blanked source row "
+                            f"{source_sheet}:{row_key} has an empty optional "
+                            f"{field} but the approved override cannot be "
+                            "applied by the importer's optional FK resolver. "
+                            "Refusing to alter Certificate issuance basis implicitly."
+                        )
+                    continue
+                parent_id = parse_int(raw_parent)
+                if parent_id not in importable_ids[parent_sheet]:
+                    replacement_id = _get_override(
+                        overrides, source_sheet, row_key, override_key
+                    )
+                    if replacement_id in importable_ids[parent_sheet]:
+                        parent_id = replacement_id
+                        if has_approved_resurrection:
+                            used_overrides.append((field, raw_parent, replacement_id, override_key))
+                if parent_id not in importable_ids[parent_sheet]:
+                    materializable = False
+                    break
+            if not materializable and has_approved_resurrection:
+                raise ConfirmedBlankedResurrectionError(
+                    "Confirmed blanked source row "
+                    f"{source_sheet}:{row_key} has an approved resurrection "
+                    "request but its source parents cannot be materialized. "
+                    "Refusing an unapplied restoration before schema creation."
+                )
+            if materializable:
+                if is_confirmed_blanked and not has_approved_resurrection:
+                    if not preview_for_source_audit:
+                        raise ConfirmedBlankedResurrectionError(
+                            "Confirmed blanked source row "
+                            f"{source_sheet}:{row_key} has importable source parents but "
+                            "no explicit owner-approved resurrection override. "
+                            "Refusing to import before schema creation or reset."
+                        )
+                else:
+                    if has_approved_resurrection:
+                        for field, raw_parent, replacement_id, override_key in used_overrides:
+                            effective_row[field] = str(replacement_id)
+                            applied_source_fk_overrides.append({
+                                "source_sheet": source_sheet,
+                                "source_row_key": row_key,
+                                "source_field": field,
+                                "raw_fk_value": raw_parent,
+                                "effective_fk_value": replacement_id,
+                                "approved_override_key": override_key,
+                            })
+                    if legacy_id is not None:
+                        importable_ids[source_sheet].add(legacy_id)
+            effective_snapshot[source_sheet].append(effective_row)
+    unmatched_resurrections = sorted(requested_resurrections - matched_resurrections)
+    if unmatched_resurrections:
+        sheet, row_key = unmatched_resurrections[0]
+        raise ConfirmedBlankedResurrectionError(
+            "Approved restoration request for confirmed blanked source row "
+            f"{sheet}:{row_key} was not found in the supplied snapshot. "
+            "Refusing an unapplied resurrection before schema creation."
+        )
+    return effective_snapshot, applied_source_fk_overrides
+
+
 def import_snapshot(
     session: Session,
     snapshot: dict[str, list[dict[str, str]]],
@@ -1336,6 +1559,72 @@ def import_snapshot(
     resolved_options = options or ImportExecutionOptions()
     _validate_snapshot_source_keys(snapshot)
     validate_snapshot_schema_lengths(snapshot)
+    # Owner authorization precedes effective-population classification.
+    # The standalone audit (without a signed override) still treats every
+    # confirmed-blanked Certificate as excluded.
+    confirmed_blanked_row_keys = load_confirmed_blanked_row_keys()
+    approved_confirmed_blanked_resurrections = load_confirmed_blanked_resurrections()
+    _validate_confirmed_blanked_override_contract(
+        remediation_overrides,
+        confirmed_blanked_row_keys=confirmed_blanked_row_keys,
+        approved_resurrections=approved_confirmed_blanked_resurrections,
+    )
+    if resolved_options.strict_certificate_case_source_links:
+        # Fail before schema creation, reset, or any persistent migration action.
+        # Import the read-only owner locally to avoid an import-time dependency cycle.
+        from backend.app.domain.legacy_certificate_case_source_audit import (
+            audit_certificate_case_source_links,
+        )
+
+        approved_certificate_row_keys = set(
+            (remediation_overrides or {}).get("db.cc", {})
+        )
+        reviewed_blanked_certificate_keys = {
+            source_key
+            for source_sheet, source_key in confirmed_blanked_row_keys
+            if source_sheet == "db.cc"
+            and source_key not in approved_certificate_row_keys
+        }
+        # Project only FKs actually used by an exactly owner-approved
+        # resurrection. Do not reinterpret already-resolving Case references
+        # or change the captured source. The default-mode guard still runs
+        # below with its established fail-closed exception semantics.
+        effective_source, projection_evidence = _validate_confirmed_blanked_source_materialization(
+            snapshot,
+            confirmed_blanked_row_keys=confirmed_blanked_row_keys,
+            overrides=remediation_overrides,
+            preview_for_source_audit=True,
+        )
+        source_link_report = audit_certificate_case_source_links(
+            effective_source,
+            excluded_certificate_row_keys=reviewed_blanked_certificate_keys,
+        )
+        if projection_evidence:
+            raw_source_report = audit_certificate_case_source_links(
+                snapshot,
+                excluded_certificate_row_keys=reviewed_blanked_certificate_keys,
+            )
+            source_link_report["approved_source_fk_provenance"] = projection_evidence
+            source_link_report["original_source_classification_counts"] = raw_source_report[
+                "classification_counts"
+            ]
+            source_link_report["original_source_effective_anomalies"] = raw_source_report[
+                "effective_anomalies"
+            ]
+        if (
+            source_link_report["effective_anomalies"]
+            or source_link_report["effective_parent_anomalies"]
+            or source_link_report["excluded_importable_certificate_rows"]
+        ):
+            raise CertificateCaseSourceIntegrityError(source_link_report)
+    # The ordinary importer and strict mode share the same validated owner
+    # authorization. Check materialization before creating/resetting tables.
+    _validate_confirmed_blanked_source_materialization(
+        snapshot,
+        confirmed_blanked_row_keys=confirmed_blanked_row_keys,
+        overrides=remediation_overrides,
+    )
+    confirmed_blanked_null_key_budgets = load_confirmed_blanked_null_key_budgets()
     if resolved_options.ensure_schema:
         create_schema(session)
     if resolved_options.reset_existing_data:
@@ -1349,15 +1638,10 @@ def import_snapshot(
             )
         )
     }
-    confirmed_blanked_row_keys = load_confirmed_blanked_row_keys()
-    confirmed_blanked_null_key_budgets = load_confirmed_blanked_null_key_budgets()
-    approved_confirmed_blanked_resurrections = load_confirmed_blanked_resurrections()
-    _validate_confirmed_blanked_override_contract(
-        remediation_overrides,
-        confirmed_blanked_row_keys=confirmed_blanked_row_keys,
-        approved_resurrections=approved_confirmed_blanked_resurrections,
-    )
     anomaly_rows: list[dict[str, Any]] = []
+    # db.cso is the canonical owner of Site -> Company, even when an
+    # independent db.dkkd Company FK was entered differently in Excel.
+    site_owner_company_conflicts: list[dict[str, Any]] = []
     skipped_rows: dict[str, list[dict[str, Any]]] = {sheet: [] for sheet in snapshot}
     stats = ImportStats()
 
@@ -1793,25 +2077,28 @@ def import_snapshot(
         if site_id is None:
             skipped_rows["db.dkkd"].append({"legacy_id": legacy_id, "reason": "missing_site_fk", "raw_fk": row.get("site_legacy_id_ref", "")})
             continue
-        company_id = _resolve_legacy_fk(
-            session,
-            stats,
-            resolved_options,
-            anomaly_rows,
-            remediation_overrides,
-            source_sheet="db.dkkd",
-            legacy_row_id=legacy_id,
-            source_row_number_value=row_number,
-            raw_value=row.get("company_legacy_id_ref", ""),
-            reason="missing_company_fk",
-            required_field="ID CTY",
-            target_map=company_ids,
-            confirmed_blanked_row_keys=confirmed_blanked_row_keys,
-            confirmed_blanked_null_key_budgets=confirmed_blanked_null_key_budgets,
-        )
-        if company_id is None:
-            skipped_rows["db.dkkd"].append({"legacy_id": legacy_id, "reason": "missing_company_fk", "raw_fk": row.get("company_legacy_id_ref", "")})
-            continue
+        # Site ID and its owning Company are sourced exclusively from db.cso.
+        # Preserve the original db.dkkd ID CTY in the imported source evidence,
+        # but never let it override canonical Site.company_id.
+        site_owner = session.get(Site, site_id)
+        if site_owner is None or site_owner.company_id is None:
+            raise ImportCollisionError("Resolved db.dkkd Site has no canonical db.cso Company owner")
+        owner_company = session.get(Company, site_owner.company_id)
+        if owner_company is None or owner_company.legacy_company_id is None:
+            raise ImportCollisionError("Canonical db.cso Site owner has no original db.cty identity")
+        company_id = site_owner.company_id
+        source_company_id = parse_int(row.get("company_legacy_id_ref", ""))
+        if source_company_id != owner_company.legacy_company_id:
+            site_owner_company_conflicts.append({
+                "source_sheet": "db.dkkd",
+                "legacy_dkkd_id": legacy_id,
+                "source_row_number": row_number,
+                "site_legacy_id": site_owner.legacy_site_id,
+                "original_ddk_company_legacy_id": source_company_id,
+                "canonical_site_owner_company_legacy_id": owner_company.legacy_company_id,
+                "resolution": "CANONICAL_SITE_OWNER_FROM_DB_CSO",
+                "source_value_unchanged": True,
+            })
         identity_key = _source_identity_key(legacy_id, row_number)
         expected_fields = {
             "legacy_dkkd_id": legacy_id,
@@ -2020,7 +2307,7 @@ def import_snapshot(
 
     _ensure_audit_event(session, stats, options=resolved_options)
     session.flush()
-    return build_reconciliation(
+    report = build_reconciliation(
         session,
         snapshot,
         skipped_rows,
@@ -2028,6 +2315,10 @@ def import_snapshot(
         remediation_overrides or {},
         stats=stats,
     )
+    # Explicit source-vs-canonical reconciliation, not hidden FK normalization.
+    report["site_owner_company_conflicts"] = site_owner_company_conflicts
+    report["site_owner_company_conflict_count"] = len(site_owner_company_conflicts)
+    return report
 
 
 def _load_evaluation_scope_taxonomy(session: Session) -> tuple[dict[str, Any], EvaluationScopeTaxonomyVersion]:
@@ -2284,9 +2575,11 @@ def import_workbook_to_database(
     workbook_path: str | Path,
     report_path: str | Path,
     remediation_overrides: dict[str, dict[str, dict[str, Any]]] | None = None,
+    *,
+    options: ImportExecutionOptions | None = None,
 ) -> Phase2Result:
     snapshot = read_core_sheet_rows(workbook_path)
-    reconciliation = import_snapshot(session, snapshot, remediation_overrides=remediation_overrides)
+    reconciliation = import_snapshot(session, snapshot, remediation_overrides=remediation_overrides, options=options)
     report_path = Path(report_path)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     lines = ["# Phase 2 Reconciliation Report", "", "## Source vs target counts", ""]

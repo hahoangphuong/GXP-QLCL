@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import ctypes
+import errno
 from hashlib import sha256
 from pathlib import Path
 import os
 import shutil
+import sys
 import tempfile
 from typing import BinaryIO, Iterator
+
+from backend.app.storage.staging import new_staging_name
 
 from backend.app.db.enums import StorageResolutionStatus
 from backend.app.storage.types import (
@@ -16,6 +21,7 @@ from backend.app.storage.types import (
     StorageTargetExistsError,
     StorageResolution,
     matches_inspection_identity,
+    matches_dkkd_identity,
 )
 
 
@@ -50,6 +56,10 @@ class LocalStorageService:
         return self._ensure_within_root(root, candidate)
 
     def _entry_for(self, root: Path, path: Path) -> StorageEntry:
+        # Directory enumeration yields unresolved child paths. Unlike
+        # _path_under(), these may still be symlinks pointing outside root.
+        # Check each entry before probing its type, size or other metadata.
+        self._ensure_within_root(root, path)
         rel = path.relative_to(root).as_posix()
         return StorageEntry(
             relative_path="" if rel == "." else rel,
@@ -75,7 +85,9 @@ class LocalStorageService:
                 detail="Missing or invalid inspection folder identity input.",
             )
 
-        year_roots = [self.inspection_root / str(year)]
+        # Do not enumerate a year directory that resolves outside the
+        # inspection root (for example, a year-named symlink).
+        year_roots = [self._path_under(self.inspection_root, str(year))]
         matches = [
             path
             for year_root in year_roots
@@ -119,11 +131,10 @@ class LocalStorageService:
                 detail="Missing or invalid site legacy ID for DDKD folder resolution.",
             )
 
-        site_token = f"({site_legacy_id})".lower()
         matches = [
             path
             for path in self.dkkd_root.iterdir()
-            if path.is_dir() and site_token in path.name.lower()
+            if path.is_dir() and matches_dkkd_identity(path.name, site_legacy_id=site_legacy_id)
         ]
         return self._resolution_from_matches(
             root=self.dkkd_root,
@@ -140,6 +151,11 @@ class LocalStorageService:
         not_found_detail: str,
         ambiguous_detail: str,
     ) -> StorageResolution:
+        # Check all matching paths before reporting a count. Without this,
+        # multiple outside-root symlinks are reported as AMBIGUOUS and leak
+        # information about paths the adapter must never examine.
+        for path in matches:
+            self._ensure_within_root(root, path)
         if not matches:
             return StorageResolution(
                 status=StorageResolutionStatus.NOT_FOUND,
@@ -174,6 +190,22 @@ class LocalStorageService:
             raise NotADirectoryError(target)
         return [self._entry_for(base_root, child) for child in sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))]
 
+    def iter_entries_for_audit(self, relative_path: str = "", *, root: str = "inspection") -> Iterator[StorageEntry]:
+        """Stream entries without sorting/materializing a large directory.
+
+        This iterator is for bounded, read-only audits; every child retains
+        the same root-containment check used by normal listing.
+        """
+        base_root = self._select_root(root)
+        target = self._path_under(base_root, relative_path)
+        if not target.exists():
+            raise FileNotFoundError(target)
+        if not target.is_dir():
+            raise NotADirectoryError(target)
+        with os.scandir(target) as listing:
+            for entry in listing:
+                yield self._entry_for(base_root, Path(entry.path))
+
     def stat(self, relative_path: str, *, root: str = "inspection") -> StorageEntry:
         base_root = self._select_root(root)
         target = self._path_under(base_root, relative_path)
@@ -204,40 +236,25 @@ class LocalStorageService:
         base_root = self._select_root(root)
         target = self._path_under(base_root, relative_path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        if not overwrite:
-            created = False
-            try:
-                with target.open("xb") as fh:
-                    created = True
-                    while True:
-                        chunk = stream.read(1024 * 1024)
-                        if not chunk:
-                            break
-                        fh.write(chunk)
-            except FileExistsError as exc:
-                raise StorageTargetExistsError(
-                    f"Storage target already exists and will not be overwritten: {relative_path!r}."
-                ) from exc
-            except Exception:
-                if created and target.exists():
-                    target.unlink(missing_ok=True)
-                raise
-            return self._entry_for(base_root, target)
-
+        # Both modes prepare an entire private file before publication.
+        # Exclusive creates use kernel-enforced no-replace; they must not
+        # expose a partially written document or unlink a competing writer.
         temp_path: Path | None = None
         try:
-            with tempfile.NamedTemporaryFile(delete=False, dir=target.parent) as tmp:
+            with tempfile.NamedTemporaryFile(delete=False, dir=target.parent, prefix=".gxp-stage-", suffix=".tmp") as tmp:
                 temp_path = Path(tmp.name)
                 while True:
                     chunk = stream.read(1024 * 1024)
                     if not chunk:
                         break
                     tmp.write(chunk)
-            os.replace(temp_path, target)
-        except Exception:
-            if temp_path is not None and temp_path.exists():
+            if overwrite:
+                os.replace(temp_path, target)
+            else:
+                self._rename_noreplace(temp_path, target, relative_path)
+        finally:
+            if temp_path is not None:
                 temp_path.unlink(missing_ok=True)
-            raise
         return self._entry_for(base_root, target)
 
     def delete(self, relative_path: str, *, root: str = "inspection") -> None:
@@ -255,20 +272,93 @@ class LocalStorageService:
         target.mkdir(parents=True, exist_ok=True)
         return self._entry_for(base_root, target)
 
+    @staticmethod
+    def _require_vacant_target(target: Path, relative_path: str) -> None:
+        # lexists also rejects dangling links, which Path.exists() misses.
+        if os.path.lexists(target):
+            raise StorageTargetExistsError(
+                f"Storage target already exists and will not be overwritten: {relative_path!r}."
+            )
+
     def copy(self, source_relative_path: str, target_relative_path: str, *, root: str = "inspection") -> StorageEntry:
         base_root = self._select_root(root)
         source = self._path_under(base_root, source_relative_path)
         target = self._path_under(base_root, target_relative_path)
+        self._require_vacant_target(target, target_relative_path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
+
+        # Prepare a complete copy, including metadata, before it becomes
+        # visible at the destination. Never unlink a published destination on
+        # metadata failure: another writer may have replaced it meanwhile.
+        temp_path: Path | None = None
+        try:
+            with source.open("rb") as stream, tempfile.NamedTemporaryFile(
+                delete=False, dir=target.parent, prefix=".gxp-stage-", suffix=".tmp"
+            ) as tmp:
+                temp_path = Path(tmp.name)
+                shutil.copyfileobj(stream, tmp, length=1024 * 1024)
+            shutil.copystat(source, temp_path)
+            # Atomic conflict detection also covers a destination created
+            # after the preflight check or while bytes are copied.
+            self._rename_noreplace(temp_path, target, target_relative_path)
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
         return self._entry_for(base_root, target)
+
+    @staticmethod
+    def _rename_noreplace(source: Path, target: Path, relative_path: str) -> None:
+        """Use an OS-enforced no-replace move; never trust a prior exists check.
+
+        Production Linux requires renameat2(RENAME_NOREPLACE), including on
+        mounted CIFS shares. Unsupported filesystems fail closed rather than
+        falling back to shutil.move/os.rename, which can overwrite on POSIX.
+        """
+        if sys.platform.startswith("linux"):
+            libc = ctypes.CDLL(None, use_errno=True)
+            renameat2 = getattr(libc, "renameat2", None)
+            if renameat2 is None:
+                raise StorageOperationError("Atomic no-replace rename is unavailable on this runtime.")
+            renameat2.argtypes = (
+                ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint,
+            )
+            renameat2.restype = ctypes.c_int
+            # AT_FDCWD=-100, RENAME_NOREPLACE=1, Linux renameat2(2).
+            result = renameat2(-100, os.fsencode(source), -100, os.fsencode(target), 1)
+            if result == 0:
+                return
+            error_code = ctypes.get_errno()
+            if error_code in {errno.EEXIST, errno.ENOTEMPTY}:
+                raise StorageTargetExistsError(
+                    f"Storage target already exists and will not be overwritten: {relative_path!r}."
+                )
+            if error_code in {errno.ENOSYS, errno.EINVAL, errno.EOPNOTSUPP, errno.EXDEV}:
+                raise StorageOperationError(
+                    "Atomic no-replace rename is unsupported for this storage location."
+                )
+            raise OSError(error_code, os.strerror(error_code), str(source))
+
+        if os.name == "nt":
+            # Windows os.rename does not replace an existing destination.
+            try:
+                os.rename(source, target)
+            except OSError as exc:
+                if os.path.lexists(target):
+                    raise StorageTargetExistsError(
+                        f"Storage target already exists and will not be overwritten: {relative_path!r}."
+                    ) from exc
+                raise
+            return
+
+        raise StorageOperationError("Atomic no-replace rename is unsupported on this platform.")
 
     def move(self, source_relative_path: str, target_relative_path: str, *, root: str = "inspection") -> StorageEntry:
         base_root = self._select_root(root)
         source = self._path_under(base_root, source_relative_path)
         target = self._path_under(base_root, target_relative_path)
+        self._require_vacant_target(target, target_relative_path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(source), str(target))
+        self._rename_noreplace(source, target, target_relative_path)
         return self._entry_for(base_root, target)
 
     def rename(self, source_relative_path: str, new_name: str, *, root: str = "inspection") -> StorageEntry:
@@ -278,7 +368,8 @@ class LocalStorageService:
         source = self._path_under(base_root, source_relative_path)
         target = source.with_name(new_name)
         self._ensure_within_root(base_root, target)
-        source.rename(target)
+        self._require_vacant_target(target, target.relative_to(base_root).as_posix())
+        self._rename_noreplace(source, target, target.relative_to(base_root).as_posix())
         return self._entry_for(base_root, target)
 
     def checksum(self, relative_path: str, *, root: str = "inspection") -> str:

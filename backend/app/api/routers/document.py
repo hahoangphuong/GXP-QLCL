@@ -12,6 +12,7 @@ from backend.app.api.session import commit_or_409, get_session_from_request_fact
 from backend.app.auth import AuthenticatedUser, get_authenticated_user, require_permissions, require_role
 from backend.app.read_models import (
     DocumentDetailRead,
+    DocumentOwnerMetadataInventoryRead,
     DocumentGenerationPrepareRequest,
     DocumentGenerationRunStatusRead,
     DocumentPreparationRead,
@@ -101,6 +102,28 @@ def register_document_routes(app, session_factory) -> None:
         result = service.get_document(session, document_id)
         return DocumentDetailRead(**result)
 
+    def get_certificate_document_metadata(
+        certificate_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"certificate.view", "document.read"})
+        return DocumentOwnerMetadataInventoryRead(**service.get_owner_document_metadata(
+            session, owner_kind="certificate", owner_id=certificate_id
+        ))
+
+    def get_business_eligibility_document_metadata(
+        business_eligibility_certificate_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"certificate.view", "document.read"})
+        return DocumentOwnerMetadataInventoryRead(**service.get_owner_document_metadata(
+            session,
+            owner_kind="business_eligibility_certificate",
+            owner_id=business_eligibility_certificate_id,
+        ))
+
     def _open_document_current_content(
         *,
         locator,
@@ -169,10 +192,24 @@ def register_document_routes(app, session_factory) -> None:
                 verified_stream.close()
 
         response = StreamingResponse(iter_chunks(), media_type=locator.media_type)
+        # Active document types (HTML/SVG/XML/scripts) and unknown filenames
+        # must not render as script-capable content in this application's origin.
+        # Retain existing inline behavior for PDF, raster images and DOCX.
+        safe_inline_types = {
+            "application/pdf",
+            "image/png",
+            "image/jpeg",
+            "image/gif",
+            "image/webp",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }
+        disposition = "inline" if locator.media_type in safe_inline_types else "attachment"
         response.headers["Content-Disposition"] = (
-            f"inline; filename*=UTF-8''{quote(locator.original_filename)}"
+            f"{disposition}; filename*=UTF-8''{quote(locator.original_filename)}"
         )
         response.headers["X-Content-Type-Options"] = "nosniff"
+        # Per-request RBAC does not protect bytes cached after access expires.
+        response.headers["Cache-Control"] = "private, no-store"
         return response
 
     def open_case_document_current_content(
@@ -235,6 +272,20 @@ def register_document_routes(app, session_factory) -> None:
         get_document_detail,
         methods=["GET"],
         response_model=DocumentDetailRead,
+        tags=["documents"],
+    )
+    app.add_api_route(
+        "/certificates/{certificate_id}/document-metadata",
+        get_certificate_document_metadata,
+        methods=["GET"],
+        response_model=DocumentOwnerMetadataInventoryRead,
+        tags=["documents"],
+    )
+    app.add_api_route(
+        "/business-eligibility-certificates/{business_eligibility_certificate_id}/document-metadata",
+        get_business_eligibility_document_metadata,
+        methods=["GET"],
+        response_model=DocumentOwnerMetadataInventoryRead,
         tags=["documents"],
     )
     app.add_api_route(

@@ -18,10 +18,9 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from backend.app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from backend.app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, UUID_TEXT_SAFE
 from backend.app.db.enums import (
     AuditActorType,
     CaseState,
@@ -258,7 +257,7 @@ class EvaluationScopeTaxonomyNode(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "evaluation_scope_taxonomy_node"
 
     taxonomy_version_id: Mapped[str] = mapped_column(ForeignKey("evaluation_scope_taxonomy_version.id"), nullable=False, index=True)
-    parent_node_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), index=True)
+    parent_node_id: Mapped[str | None] = mapped_column(UUID_TEXT_SAFE, index=True)
     gxp_type: Mapped[str] = mapped_column(String(32), nullable=False)
     source_name: Mapped[str] = mapped_column(String(64), nullable=False)
     node_key: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -354,7 +353,7 @@ class CaseScopeRevision(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Bas
     is_current_established: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
-    supersedes_revision_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
+    supersedes_revision_id: Mapped[str | None] = mapped_column(UUID_TEXT_SAFE)
     created_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"), index=True)
     established_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     established_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("app_user.id"), index=True)
@@ -833,6 +832,90 @@ class BusinessEligibilityCertificateLink(UUIDPrimaryKeyMixin, TimestampMixin, Ba
     certificate_id: Mapped[str] = mapped_column(ForeignKey("certificate.id"), nullable=False, index=True)
     link_role: Mapped[str] = mapped_column(String(64), nullable=False, default="source_certificate", server_default="source_certificate")
     __table_args__ = (UniqueConstraint("business_eligibility_version_id", "certificate_id"),)
+
+
+
+class BusinessEligibilityGxpSourceGroup(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Physical original DDK GxP cell group; evidence, never an approved link."""
+
+    __tablename__ = "business_eligibility_gxp_source_group"
+
+    source_workbook_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_sheet_name: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_row_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    legacy_dkkd_id: Mapped[int | None] = mapped_column(Integer)
+    source_group: Mapped[str] = mapped_column(String(3), nullable=False)
+    id_cc_excel_column: Mapped[int] = mapped_column(Integer, nullable=False)
+    certificate_scope_excel_column: Mapped[int] = mapped_column(Integer, nullable=False)
+    applicable_standard_excel_column: Mapped[int] = mapped_column(Integer, nullable=False)
+    business_activity_excel_column: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Original Excel Value2 source text, including empty cells and whitespace.
+    id_cc_raw: Mapped[str] = mapped_column(Text, nullable=False)
+    certificate_scope_raw: Mapped[str] = mapped_column(Text, nullable=False)
+    applicable_standard_raw: Mapped[str] = mapped_column(Text, nullable=False)
+    business_activity_raw: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Owner-generated source fingerprints; persisted evidence does not certify
+    # formula status or create CertificateVersion / Site-coverage ownership.
+    source_values_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "source_workbook_sha256", "source_sheet_name",
+            "source_row_number", "source_group",
+            name="uq_begxp_group_workbook_row_role",
+        ),
+        CheckConstraint(
+            "source_sheet_name = 'db.dkkd'",
+            name="begxp_group_source_sheet",
+        ),
+        CheckConstraint(
+            "source_group IN ('GMP', 'GLP', 'GSP', 'GDP')",
+            name="begxp_group_role",
+        ),
+        CheckConstraint(
+            "source_row_number > 0 AND id_cc_excel_column > 0",
+            name="begxp_group_positive_source_position",
+        ),
+        CheckConstraint(
+            "certificate_scope_excel_column = id_cc_excel_column + 1 "
+            "AND applicable_standard_excel_column = id_cc_excel_column + 2 "
+            "AND business_activity_excel_column = id_cc_excel_column + 3",
+            name="begxp_group_contiguous_source_columns",
+        ),
+        CheckConstraint(
+            "length(source_workbook_sha256) = 64 AND length(source_values_sha256) = 64",
+            name="begxp_group_sha256_length",
+        ),
+        Index("ix_begxp_group_source_workbook", "source_workbook_sha256"),
+    )
+
+
+class BusinessEligibilityGxpReferenceEvidence(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """ID CC token provenance only; no FK to any canonical Certificate."""
+
+    __tablename__ = "business_eligibility_gxp_reference_evidence"
+
+    source_group_id: Mapped[str] = mapped_column(
+        ForeignKey("business_eligibility_gxp_source_group.id", name="fk_begxp_reference_group"),
+        nullable=False, index=True,
+    )
+    token_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    raw_token: Mapped[str] = mapped_column(Text, nullable=False)
+    parsed_legacy_certificate_id: Mapped[int | None] = mapped_column(Integer)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "source_group_id", "token_index",
+            name="uq_begxp_reference_group_token",
+        ),
+        CheckConstraint("token_index > 0", name="begxp_reference_positive_index"),
+        CheckConstraint(
+            "parsed_legacy_certificate_id IS NULL OR parsed_legacy_certificate_id > 0",
+            name="begxp_reference_positive_legacy_id",
+        ),
+    )
 
 
 class ChangeRequest(UUIDPrimaryKeyMixin, TimestampMixin, VersionedMixin, Base):

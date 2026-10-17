@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 import sys
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -151,6 +151,43 @@ def _redact_database_url(url: str) -> str:
     return f"{scheme}://{user}:***@{suffix}"
 
 
+def _validate_explicit_database_target(source: dict[str, str], errors: list[str]) -> None:
+    """Keep backup (DB_*) and migration (DATABASE_URL) on the same DB.
+
+    An explicit DATABASE_URL overrides the runtime DB_* connection details,
+    whereas backup_postgres.sh uses DB_*. A mismatch is unsafe on the shared VM.
+    Only the explicit override needs checking: the generated URL already uses DB_*.
+    """
+    raw_url = _get(source, "DATABASE_URL")
+    if not raw_url:
+        return
+
+    try:
+        parsed = urlparse(raw_url)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        errors.append("DATABASE_URL has invalid connection syntax.")
+        return
+
+    if parsed.scheme not in {"postgresql", "postgresql+psycopg", "postgresql+psycopg2"}:
+        errors.append("DATABASE_URL must use a supported PostgreSQL scheme.")
+        return
+
+    expected_db = _get(source, "DB_NAME", "gxp_qlcl")
+    actual_db = unquote(parsed.path.removeprefix("/"))
+    if actual_db != expected_db:
+        errors.append("DATABASE_URL database must match DB_NAME used by the backup.")
+
+    if _get(source, "DB_MODE", "local_postgres").lower() == "local_postgres":
+        if hostname not in {"127.0.0.1", "localhost"}:
+            errors.append("DATABASE_URL must use a loopback host in local_postgres mode.")
+        if str(port or 5432) != _get(source, "DB_PORT", "5432"):
+            errors.append("DATABASE_URL port must match DB_PORT used by the backup.")
+        if unquote(parsed.username or "") != _get(source, "DB_USER", "gxp_app"):
+            errors.append("DATABASE_URL user must match DB_USER used by the backup.")
+
+
 def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> ValidationReport:
     source = os.environ if env is None else env
     errors: list[str] = []
@@ -198,6 +235,7 @@ def validate_vm_prod_deploy_env(env: dict[str, str] | None = None) -> Validation
     postgres_config, postgres_errors = validate_vm_postgres_config(source)
     errors.extend(postgres_errors)
     database_url = _resolve_database_url(source, errors)
+    _validate_explicit_database_target(source, errors)
 
     storage_class = _get(source, "STORAGE_CLASS", "synology_smb").lower()
     if storage_class not in ALLOWED_STORAGE_CLASSES:

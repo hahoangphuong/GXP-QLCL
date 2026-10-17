@@ -47,8 +47,98 @@ jobs:
           A3_DISPOSABLE_POSTGRES_DATABASE: gxp_qlcl_test
         run: python -m pytest tests/test_a3_capa_incoming_reference_postgres.py tests/test_a5_change_request_postgres.py -q
 
+      - name: Validate staging lineage with disposable PostgreSQL
+        env:
+          GXP_STAGING_LINEAGE_POSTGRES_INTEGRATION: "1"
+          GXP_STAGING_LINEAGE_DISPOSABLE_DATABASE: gxp_qlcl_test
+        run: python -m pytest tests/test_storage_staging_lineage_postgres.py -q -p no:cacheprovider
+
+      - name: Validate DDK 0023 on isolated disposable PostgreSQL
+        env:
+          GXP_DDK_CI_POSTGRES_INTEGRATION: "1"
+        run: python -m pytest tests/test_ddk_gxp_0023_postflight_postgres.py tests/test_ddk_gxp_source_apply_postgres.py -q -p no:cacheprovider
+
       - name: Run backend tests
         run: python -m pytest -q
+
+  b6-postgres-integration:
+    # Recovery and reviewed integration branches only; four disposable DBs.
+    # Never connects to the production VM or NAS.
+    if: ${{ github.event_name == 'push' && (startsWith(github.ref, 'refs/heads/recovery/b6-') || (github.ref == 'refs/heads/integration/frontend-backend-20261009' || github.ref == 'refs/heads/integration/frontend-backend-auth-20261010' || github.ref == 'refs/heads/integration/frontend-backend-authguard-20261010' || (github.ref == 'refs/heads/integration/rehearsal-source-20261017' || (github.ref == 'refs/heads/integration/rehearsal-safety-source-20261017' || (github.ref == 'refs/heads/integration/rehearsal-restore-safe-20261017' || github.ref == 'refs/heads/integration/rehearsal-local-restore-20261017'))))) }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: gxp_b6_ci_admin
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d gxp_b6_ci_admin"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements.dev.lock.txt
+
+      - name: Create disposable B6 PostgreSQL databases
+        env:
+          B6_CI_ADMIN_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_b6_ci_admin
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine
+
+          engine = create_engine(os.environ["B6_CI_ADMIN_URL"], isolation_level="AUTOCOMMIT")
+          try:
+              with engine.connect() as connection:
+                  for name in ("gxp_b6g_test_ci", "gxp_b6h_test_ci", "gxp_b6j_test_ci", "gxp_b6c_test_ci"):
+                      assert name.startswith(("gxp_b6g_test_", "gxp_b6h_test_", "gxp_b6j_test_", "gxp_b6c_test_"))
+                      connection.exec_driver_sql(f'CREATE DATABASE "{name}"')
+          finally:
+              engine.dispose()
+          PY
+
+      - name: B6G isolated schema expand and downgrade regression
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_b6g_test_ci
+          B6G_POSTGRES_INTEGRATION: "1"
+        run: |
+          python -m alembic upgrade 20260915_0016
+          python -m pytest tests/test_b6g_schema_expand_foundation_postgres.py -q -p no:cacheprovider
+
+      - name: B6H isolated canonical-state exporter regression
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_b6h_test_ci
+          B6H_POSTGRES_INTEGRATION: "1"
+        run: |
+          python -m alembic upgrade 20260929_0017
+          python -m pytest tests/test_production_line_population_b6h_postgres.py -q -p no:cacheprovider
+
+      - name: B6J isolated planner and guarded-writer regression
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_b6j_test_ci
+          B6J_POSTGRES_INTEGRATION: "1"
+        run: |
+          python -m alembic upgrade 20260929_0017
+          python -m pytest tests/test_production_line_population_b6j_postgres.py -q -p no:cacheprovider
+
+      - name: B6 revision 0022 exact-provenance export, plan, rollback and disposable apply
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_b6c_test_ci
+          B6_0022_COMPAT_INTEGRATION: "1"
+        run: |
+          python -m alembic upgrade 20260929_0017
+          python -m pytest tests/test_b6_0022_schema_compat_postgres.py -q -p no:cacheprovider
 
   frontend:
     runs-on: ubuntu-latest
@@ -130,3 +220,374 @@ jobs:
           assert GoogleAuthRequest is not None
           assert id_token is not None
           PY
+
+  cross-head-integration:
+    # Explicitly pinned two-HEAD gate. Never merges/rebases/deploys either
+    # branch. Runs only on backend-owner branch push, in a disposable runner.
+    if: ${{ (github.event_name == 'push' && (github.ref == 'refs/heads/integration/frontend-backend-20261009' || github.ref == 'refs/heads/integration/frontend-backend-auth-20261010' || github.ref == 'refs/heads/integration/frontend-backend-authguard-20261010' || (github.ref == 'refs/heads/integration/rehearsal-source-20261017' || (github.ref == 'refs/heads/integration/rehearsal-safety-source-20261017' || (github.ref == 'refs/heads/integration/rehearsal-restore-safe-20261017' || github.ref == 'refs/heads/integration/rehearsal-local-restore-20261017'))) || github.ref == 'refs/heads/audit/certificate-case-source-integrity-20261011')) || (github.event_name == 'pull_request' && (github.head_ref == 'audit/certificate-case-source-integrity-20261011' || (github.head_ref == 'integration/rehearsal-source-20261017' || (github.head_ref == 'integration/rehearsal-safety-source-20261017' || (github.head_ref == 'integration/rehearsal-restore-safe-20261017' || github.head_ref == 'integration/rehearsal-local-restore-20261017'))))) }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: gxp_qlcl_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d gxp_qlcl_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_qlcl_test
+      GXP_CROSS_HEAD_DISPOSABLE_GATE: "1"
+      GXP_BACKEND_CHECKOUT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Checkout combined candidate with full Git ancestry (no credentials retained)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.GXP_BACKEND_CHECKOUT_SHA }}
+
+      - name: Checkout Codex PR source only for isolated audit-branch cross-head test
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/audit/certificate-case-source-integrity-20261011') || (github.event_name == 'pull_request' && github.head_ref == 'audit/certificate-case-source-integrity-20261011') }}
+        uses: actions/checkout@v4
+        with:
+          ref: codex/legacy-ui-parity-20261010
+          path: .gxp-cross-head-codex
+          persist-credentials: false
+
+      - name: Prove exact two-source boundary and prepare disposable frontend
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GXP_BACKEND_CHECKOUT_SHA}"
+          BRANCH_REF="${GITHUB_REF}"
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            BRANCH_REF="refs/heads/${GITHUB_HEAD_REF}"
+          fi
+          case "${BRANCH_REF}" in
+            refs/heads/audit/certificate-case-source-integrity-20261011)
+              BACKEND_BASE="ae4592d274005493c4041fbc18f7beb29f5c4773"
+              FRONTEND="23864ac0ff3cf3fb920bf70d46fdf9a06ada5dd6"
+              git merge-base --is-ancestor "${BACKEND_BASE}" HEAD
+              test -d .gxp-cross-head-codex/.git
+              test "$(git -C .gxp-cross-head-codex rev-parse HEAD)" = "${FRONTEND}" || {
+                echo "STOP: Codex PR branch advanced; re-pin frontend commit for reviewed cross-head gate" >&2
+                exit 1
+              }
+              test -f .gxp-cross-head-codex/frontend/src/lib/api.ts
+              # Runner-only file overlay, NOT a Git merge, PR update or deploy.
+              # Source remains at the exactly verified Codex branch HEAD.
+              rm -rf frontend
+              cp -a .gxp-cross-head-codex/frontend frontend
+              ;;
+            refs/heads/integration/rehearsal-local-restore-20261017)
+              # Exact approved backend with same-instance disposable restore safety.
+              FRONTEND="23864ac0ff3cf3fb920bf70d46fdf9a06ada5dd6"
+              REVIEWED_BACKEND_REF="refs/remotes/origin/audit/backend-restore-local-binding-gate-20261017"
+              git show-ref --verify --quiet "${REVIEWED_BACKEND_REF}" || {
+                echo "STOP: reviewed local-restore backend ref unavailable" >&2
+                exit 1
+              }
+              REVIEWED_BACKEND_SHA="$(git rev-parse "${REVIEWED_BACKEND_REF}")"
+              python3 -m tools.verify_rehearsal_release_sources \
+                --repo . \
+                --target-sha "${GXP_BACKEND_CHECKOUT_SHA}" \
+                --approved-backend-sha "${REVIEWED_BACKEND_SHA}" \
+                --approved-frontend-sha "${FRONTEND}"
+              git diff --exit-code -- frontend
+              ;;
+            refs/heads/integration/rehearsal-restore-safe-20261017)
+              # Exact reviewed rollback, checksum and disposable-restore source.
+              # Frontend tree must match the frozen Codex PR #3 SHA.
+              FRONTEND="23864ac0ff3cf3fb920bf70d46fdf9a06ada5dd6"
+              REVIEWED_BACKEND_REF="refs/remotes/origin/audit/backend-restore-safety-gate-20261017"
+              git show-ref --verify --quiet "${REVIEWED_BACKEND_REF}" || {
+                echo "STOP: reviewed restore-safe backend ref unavailable" >&2
+                exit 1
+              }
+              REVIEWED_BACKEND_SHA="$(git rev-parse "${REVIEWED_BACKEND_REF}")"
+              python3 -m tools.verify_rehearsal_release_sources \
+                --repo . \
+                --target-sha "${GXP_BACKEND_CHECKOUT_SHA}" \
+                --approved-backend-sha "${REVIEWED_BACKEND_SHA}" \
+                --approved-frontend-sha "${FRONTEND}"
+              git diff --exit-code -- frontend
+              ;;
+            refs/heads/integration/rehearsal-safety-source-20261017)
+              # New combined release has the exact reviewed backend gate
+              # as its parent; frontend remains the frozen Codex tree.
+              FRONTEND="23864ac0ff3cf3fb920bf70d46fdf9a06ada5dd6"
+              REVIEWED_BACKEND_REF="refs/remotes/origin/audit/backend-rehearsal-gate-20261017"
+              git show-ref --verify --quiet "${REVIEWED_BACKEND_REF}" || {
+                echo "STOP: reviewed safety backend ref unavailable" >&2
+                exit 1
+              }
+              REVIEWED_BACKEND_SHA="$(git rev-parse "${REVIEWED_BACKEND_REF}")"
+              python3 -m tools.verify_rehearsal_release_sources \
+                --repo . \
+                --target-sha "${GXP_BACKEND_CHECKOUT_SHA}" \
+                --approved-backend-sha "${REVIEWED_BACKEND_SHA}" \
+                --approved-frontend-sha "${FRONTEND}"
+              git diff --exit-code -- frontend
+              ;;
+            refs/heads/integration/rehearsal-source-20261017)
+              # A genuine integrated Git commit is tested as-is: NO overlay.
+              # Pin frontend independently; use the current reviewed backend
+              # PR head as the ephemeral CI acceptance boundary, not deploy
+              # authorization. A stale integrated branch must fail closed.
+              FRONTEND="23864ac0ff3cf3fb920bf70d46fdf9a06ada5dd6"
+              REVIEWED_BACKEND_REF="refs/remotes/origin/audit/certificate-case-source-integrity-20261011"
+              git show-ref --verify --quiet "${REVIEWED_BACKEND_REF}" || {
+                echo "STOP: reviewed backend remote ref unavailable in the full checkout" >&2
+                exit 1
+              }
+              REVIEWED_BACKEND_SHA="$(git rev-parse "${REVIEWED_BACKEND_REF}")"
+              python3 -m tools.verify_rehearsal_release_sources \
+                --repo . \
+                --target-sha "${GXP_BACKEND_CHECKOUT_SHA}" \
+                --approved-backend-sha "${REVIEWED_BACKEND_SHA}" \
+                --approved-frontend-sha "${FRONTEND}"
+              git diff --exit-code -- frontend
+              ;;
+            refs/heads/integration/frontend-backend-20261009|refs/heads/integration/frontend-backend-auth-20261010|refs/heads/integration/frontend-backend-authguard-20261010)
+              BACKEND="b5e0ebd7c5e047c4cdc8c7cdc206872b8b68cb14"
+              FRONTEND="50576b0b383161e26e27b6cdc4a1a469aff1ae17"
+              git merge-base --is-ancestor "${BACKEND}" HEAD
+              git merge-base --is-ancestor "${FRONTEND}" HEAD
+              test "$(git rev-parse HEAD:frontend)" = "$(git rev-parse "${FRONTEND}:frontend")"
+              git diff --exit-code "${FRONTEND}" HEAD -- frontend
+              git diff --exit-code HEAD -- frontend
+              ;;
+            *) echo "Unapproved cross-head branch: ${BRANCH_REF}" >&2; exit 1 ;;
+          esac
+          test -f frontend/src/lib/api.ts
+          printf 'CROSS_HEAD_BACKEND_SHA=%s\nCROSS_HEAD_FRONTEND_SHA=%s\n' "${GXP_BACKEND_CHECKOUT_SHA}" "${FRONTEND}"
+
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements.dev.lock.txt
+
+      - name: Migrate disposable local PostgreSQL
+        run: python -m alembic upgrade head
+
+      - name: Declare runner-local synthetic fixture path
+        run: echo "GXP_CROSS_HEAD_FIXTURE_JSON=${RUNNER_TEMP}/gxp-cross-head-fixture.json" >> "${GITHUB_ENV}"
+
+      - name: Start isolated synthetic backend fixture
+        run: |
+          python -m uvicorn tools.cross_head_fixture_app:app --host 127.0.0.1 --port 8000 \
+            > "${RUNNER_TEMP}/gxp-cross-head-server.log" 2>&1 &
+          echo "GXP_CROSS_HEAD_SERVER_PID=$!" >> "${GITHUB_ENV}"
+          READY=0
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:8000/healthz >/dev/null; then
+              READY=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "${READY}" != "1" ] || [ ! -f "${GXP_CROSS_HEAD_FIXTURE_JSON}" ]; then
+            echo "Disposable cross-head backend fixture failed to start."
+            exit 1
+          fi
+
+      - name: Install exact frontend commit dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Run actual frontend API client against actual backend HTTP
+        working-directory: frontend
+        run: |
+          cp ../tests/cross_head_frontend_api.test.ts src/lib/cross_head_api_ci.test.ts
+          trap 'rm -f src/lib/cross_head_api_ci.test.ts' EXIT
+          pnpm exec vitest run src/lib/cross_head_api_ci.test.ts --reporter=verbose
+
+      - name: Install pinned disposable browser driver and Chromium
+        run: |
+          echo "GXP_CROSS_HEAD_PW_DIR=${RUNNER_TEMP}/gxp-browser-driver" >> "${GITHUB_ENV}"
+          echo "GXP_CROSS_HEAD_SCREENSHOTS=${GITHUB_WORKSPACE}/cross-head-screenshots" >> "${GITHUB_ENV}"
+          npm install --no-save --prefix "${RUNNER_TEMP}/gxp-browser-driver" playwright@1.56.1
+          "${RUNNER_TEMP}/gxp-browser-driver/node_modules/.bin/playwright" install --with-deps chromium
+
+      - name: Start loopback-only Codex frontend staging preview
+        working-directory: frontend
+        run: |
+          # A runner-only reverse-proxy simulation: the real FastAPI routes
+          # lack the /api prefix; do not modify the pinned Codex source.
+          cat > cross-head.vite.config.mjs <<'EOF'
+          import { defineConfig } from "vite";
+          import react from "@vitejs/plugin-react";
+          export default defineConfig({
+            plugins: [react()],
+            server: {
+              host: "127.0.0.1", port: 4173, strictPort: true,
+              proxy: {
+                "/api": {
+                  target: "http://127.0.0.1:8000",
+                  changeOrigin: false,
+                  rewrite: path => path.replace(new RegExp("^/api(?=/|$)"), ""),
+                },
+              },
+            },
+          });
+          EOF
+          pnpm exec vite --config cross-head.vite.config.mjs --host 127.0.0.1 --port 4173 --strictPort \
+            > "${RUNNER_TEMP}/gxp-cross-head-frontend.log" 2>&1 &
+          echo "GXP_CROSS_HEAD_FRONTEND_PID=$!" >> "${GITHUB_ENV}"
+          READY=0
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:4173/search >/dev/null; then
+              READY=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "${READY}" != "1" ]; then
+            echo "Disposable loopback UI failed to boot."
+            exit 1
+          fi
+          # Verify frontend-to-backend proxy before launching Chromium.
+          curl --fail --silent http://127.0.0.1:4173/api/app/status \
+            | python -c 'import json,sys; assert json.load(sys.stdin)["auth_mode"] == "header_stub"'
+
+      - name: Run real Chromium navigation on three screen sizes
+        run: node tests/cross_head_browser.mjs
+
+      - name: Archive synthetic-only browser QA screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cross-head-browser-evidence
+          path: cross-head-screenshots/*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Verify frontend source identity after runner-only integration
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GXP_BACKEND_CHECKOUT_SHA}"
+          if [[ "${GITHUB_REF}" == "refs/heads/audit/certificate-case-source-integrity-20261011" || "${GITHUB_HEAD_REF:-}" == "audit/certificate-case-source-integrity-20261011" ]]; then
+            test "$(git -C .gxp-cross-head-codex rev-parse HEAD)" = "23864ac0ff3cf3fb920bf70d46fdf9a06ada5dd6"
+            # Check every tracked Codex frontend source byte, ignoring only
+            # generated dependencies/build files in the disposable runner.
+            python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          checkout = Path(".gxp-cross-head-codex")
+          entries = subprocess.check_output(
+              ["git", "-C", str(checkout), "ls-files", "-z", "--", "frontend"]
+          ).split(b"\0")
+          paths = [Path(x.decode("utf-8")) for x in entries if x]
+          assert paths and Path("frontend/src/lib/api.ts") in paths
+          for p in paths:
+              assert (checkout / p).read_bytes() == p.read_bytes(), "Codex frontend tracked source drift"
+          print(f"PASS: {len(paths)} exact pinned frontend source files")
+          PY
+          elif [[ "${GITHUB_REF}" == "refs/heads/integration/rehearsal-local-restore-20261017" || "${GITHUB_HEAD_REF:-}" == "integration/rehearsal-local-restore-20261017" ]]; then
+            FRONTEND="23864ac0ff3cf3fb920bf70d46fdf9a06ada5dd6"
+            REVIEWED_BACKEND_REF="refs/remotes/origin/audit/backend-restore-local-binding-gate-20261017"
+            git show-ref --verify --quiet "${REVIEWED_BACKEND_REF}"
+            REVIEWED_BACKEND_SHA="$(git rev-parse "${REVIEWED_BACKEND_REF}")"
+            python3 -m tools.verify_rehearsal_release_sources \
+              --repo . \
+              --target-sha "${GXP_BACKEND_CHECKOUT_SHA}" \
+              --approved-backend-sha "${REVIEWED_BACKEND_SHA}" \
+              --approved-frontend-sha "${FRONTEND}"
+            git diff --exit-code -- frontend
+          elif [[ "${GITHUB_REF}" == "refs/heads/integration/rehearsal-restore-safe-20261017" || "${GITHUB_HEAD_REF:-}" == "integration/rehearsal-restore-safe-20261017" ]]; then
+            FRONTEND="23864ac0ff3cf3fb920bf70d46fdf9a06ada5dd6"
+            REVIEWED_BACKEND_REF="refs/remotes/origin/audit/backend-restore-safety-gate-20261017"
+            git show-ref --verify --quiet "${REVIEWED_BACKEND_REF}"
+            REVIEWED_BACKEND_SHA="$(git rev-parse "${REVIEWED_BACKEND_REF}")"
+            python3 -m tools.verify_rehearsal_release_sources \
+              --repo . \
+              --target-sha "${GXP_BACKEND_CHECKOUT_SHA}" \
+              --approved-backend-sha "${REVIEWED_BACKEND_SHA}" \
+              --approved-frontend-sha "${FRONTEND}"
+            git diff --exit-code -- frontend
+          elif [[ "${GITHUB_REF}" == "refs/heads/integration/rehearsal-safety-source-20261017" || "${GITHUB_HEAD_REF:-}" == "integration/rehearsal-safety-source-20261017" ]]; then
+            FRONTEND="23864ac0ff3cf3fb920bf70d46fdf9a06ada5dd6"
+            REVIEWED_BACKEND_REF="refs/remotes/origin/audit/backend-rehearsal-gate-20261017"
+            git show-ref --verify --quiet "${REVIEWED_BACKEND_REF}"
+            REVIEWED_BACKEND_SHA="$(git rev-parse "${REVIEWED_BACKEND_REF}")"
+            python3 -m tools.verify_rehearsal_release_sources \
+              --repo . \
+              --target-sha "${GXP_BACKEND_CHECKOUT_SHA}" \
+              --approved-backend-sha "${REVIEWED_BACKEND_SHA}" \
+              --approved-frontend-sha "${FRONTEND}"
+            git diff --exit-code -- frontend
+          elif [[ "${GITHUB_REF}" == "refs/heads/integration/rehearsal-source-20261017" || "${GITHUB_HEAD_REF:-}" == "integration/rehearsal-source-20261017" ]]; then
+            FRONTEND="23864ac0ff3cf3fb920bf70d46fdf9a06ada5dd6"
+            REVIEWED_BACKEND_REF="refs/remotes/origin/audit/certificate-case-source-integrity-20261011"
+            git show-ref --verify --quiet "${REVIEWED_BACKEND_REF}"
+            REVIEWED_BACKEND_SHA="$(git rev-parse "${REVIEWED_BACKEND_REF}")"
+            python3 -m tools.verify_rehearsal_release_sources \
+              --repo . \
+              --target-sha "${GXP_BACKEND_CHECKOUT_SHA}" \
+              --approved-backend-sha "${REVIEWED_BACKEND_SHA}" \
+              --approved-frontend-sha "${FRONTEND}"
+            git diff --exit-code -- frontend
+          else
+            FRONTEND="50576b0b383161e26e27b6cdc4a1a469aff1ae17"
+            test "$(git rev-parse HEAD:frontend)" = "$(git rev-parse "${FRONTEND}:frontend")"
+            git diff --exit-code "${FRONTEND}" HEAD -- frontend
+            git diff --exit-code -- frontend
+          fi
+          test ! -f frontend/src/lib/cross_head_api_ci.test.ts
+
+      - name: Terminate CI-only fixture process
+        if: always()
+        run: |
+          if [ -n "${GXP_CROSS_HEAD_SERVER_PID:-}" ]; then
+            kill "${GXP_CROSS_HEAD_SERVER_PID}" 2>/dev/null || true
+          fi
+          if [ -n "${GXP_CROSS_HEAD_FRONTEND_PID:-}" ]; then
+            kill "${GXP_CROSS_HEAD_FRONTEND_PID}" 2>/dev/null || true
+          fi
+          rm -f frontend/cross-head.vite.config.mjs frontend/src/lib/cross_head_api_ci.test.ts
+
+  rehearsal-candidate-required-ci:
+    # The workflow may show SUCCESS when conditional jobs were SKIPPED.
+    # Candidate push cannot be accepted unless ALL five gates really ran.
+    if: ${{ always() && github.event_name == 'push' && (github.ref == 'refs/heads/integration/rehearsal-source-20261017' || (github.ref == 'refs/heads/integration/rehearsal-safety-source-20261017' || (github.ref == 'refs/heads/integration/rehearsal-restore-safe-20261017' || github.ref == 'refs/heads/integration/rehearsal-local-restore-20261017'))) }}
+    needs: [backend, frontend, hygiene, cross-head-integration, b6-postgres-integration]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout pinned candidate with no retained credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Reject skipped, failed or cancelled candidate jobs
+        env:
+          CI_BACKEND_RESULT: ${{ needs.backend.result }}
+          CI_FRONTEND_RESULT: ${{ needs.frontend.result }}
+          CI_HYGIENE_RESULT: ${{ needs.hygiene.result }}
+          CI_CROSS_HEAD_RESULT: ${{ needs['cross-head-integration'].result }}
+          CI_B6_RESULT: ${{ needs['b6-postgres-integration'].result }}
+        run: |
+          set -euo pipefail
+          python3 -m tools.check_rehearsal_ci_results \
+            --backend "${CI_BACKEND_RESULT}" \
+            --frontend "${CI_FRONTEND_RESULT}" \
+            --hygiene "${CI_HYGIENE_RESULT}" \
+            --cross-head "${CI_CROSS_HEAD_RESULT}" \
+            --b6 "${CI_B6_RESULT}"

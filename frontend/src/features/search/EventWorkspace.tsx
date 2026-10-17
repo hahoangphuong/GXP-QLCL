@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+
+import { ContextualDocumentSection } from "./ContextualDocumentSection";
+export { ContextualDocumentSection } from "./ContextualDocumentSection";
 
 import { EmptyState } from "../../components/EmptyState";
 import { formatCompactDate } from "../../lib/presentation";
@@ -33,11 +36,15 @@ import { CaseProcessingWorkspace } from "./CaseProcessingWorkspace";
 import { CaseCertificateIssueWorkspace } from "./CaseCertificateIssueWorkspace";
 import { CaseRemediationWorkspace } from "./CaseRemediationWorkspace";
 import { ChangeRequestMutationWorkspace, type ChangeRequestMutationHandlers } from "./ChangeRequestMutationWorkspace";
-import { DetailValue } from "./DetailValue";
 import { EvaluationScopeWorkspace } from "./EvaluationScopeWorkspace";
 import { GxpCertificateDetailFields } from "./GxpCertificateDetailFields";
+import { useCertificateRows } from "./useCertificateRows";
 
 const CASE_EVENT_TABS = ["Hồ sơ", "Kiểm tra", "Khắc phục", "Xử lý", "Chứng nhận GxP", "Chứng nhận ĐĐK"] as const;
+export const CASE_EVENT_LABELS: Record<string, string> = {
+  "Hồ sơ": "Hồ sơ đăng ký", "Kiểm tra": "Kiểm tra thực tế", "Khắc phục": "Báo cáo khắc phục",
+  "Xử lý": "Xử lý tiếp", "Chứng nhận GxP": "Cấp chứng nhận GPs", "Chứng nhận ĐĐK": "Cấp chứng nhận ĐĐK",
+};
 const CHANGE_REQUEST_EVENT_TABS = ["Đề nghị", "Chi tiết", "Xử lý", "Tài liệu"] as const;
 
 const DOCUMENT_STATUS_LABELS: Record<string, string> = {
@@ -79,7 +86,7 @@ function DocumentChecklistSection({
 
   return (
     <div className="table-scroll table-scroll-history">
-      <table className="dense-table event-document-table">
+      <table className="dense-table event-document-table" aria-label="Checklist tài liệu thay đổi">
         <thead>
           <tr>
             <th>Loại tài liệu</th>
@@ -112,200 +119,14 @@ function DocumentChecklistSection({
   );
 }
 
-export function ContextualDocumentSection({
-  items,
-  onOpenDocument,
-  onLoadDocumentDetail,
-  onCreateDocument,
-}: {
-  items: ContextualDocumentAction[];
-  onOpenDocument: (item: ContextualDocumentAction) => Promise<void>;
-  onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
-  onCreateDocument: (
-    item: ContextualDocumentAction,
-    action: ContextualDocumentAction["actions"][number],
-  ) => Promise<void>;
-}) {
-  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<DocumentDetail | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [detailMode, setDetailMode] = useState<"open" | "history">("open");
-
-  const currentItem = useMemo(
-    () => items.find((item) => item.document_id === selectedDocumentId) ?? null,
-    [items, selectedDocumentId],
-  );
-
-  useEffect(() => {
-    if (!currentItem) {
-      setDetail(null);
-      setLoading(false);
-      setLoadingMessage(null);
-      setError(null);
-    }
-  }, [currentItem]);
-
-  async function handleLoadHistory(item: ContextualDocumentAction) {
-    if (!item.document_id) {
-      return;
-    }
-    setSelectedDocumentId(item.document_id);
-    setDetailMode("history");
-    setDetail(null);
-    setLoading(true);
-    setLoadingMessage("Đang tải lịch sử tài liệu...");
-    setError(null);
-    try {
-      const payload = await onLoadDocumentDetail(item.document_id);
-      setDetail(payload);
-    } catch (nextError) {
-      setDetail(null);
-      setError(nextError instanceof Error ? nextError.message : "Không mở được chi tiết tài liệu.");
-    } finally {
-      setLoading(false);
-      setLoadingMessage(null);
-    }
-  }
-
-  async function handleCreate(
-    item: ContextualDocumentAction,
-    action: ContextualDocumentAction["actions"][number],
-  ) {
-    setLoading(true);
-    setLoadingMessage("Đang tạo tài liệu...");
-    setError(null);
-    try {
-      await onCreateDocument(item, action);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Không tạo được tài liệu.");
-    } finally {
-      setLoading(false);
-      setLoadingMessage(null);
-    }
-  }
-
-  async function handleOpen(item: ContextualDocumentAction) {
-    if (!item.document_id) {
-      return;
-    }
-    setSelectedDocumentId(item.document_id);
-    setLoading(true);
-    setLoadingMessage("Đang mở tài liệu...");
-    setError(null);
-    try {
-      await onOpenDocument(item);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Không mở được tài liệu.");
-    } finally {
-      setLoading(false);
-      setLoadingMessage(null);
-    }
-  }
-
-  if (items.length === 0) {
-    return null;
-  }
-
-  return (
-    <WorkspaceSection title="Tài liệu liên quan">
-      <div className="contextual-document-list">
-        {items.map((item) => (
-          <div className="contextual-document-row" key={item.checklist_key}>
-            <div className="contextual-document-main">
-              <strong>{item.label}</strong>
-              <span>{item.original_filename ?? DOCUMENT_STATUS_LABELS[item.status] ?? item.status}</span>
-            </div>
-            <div className="contextual-document-actions">
-              <span className={`document-status-pill document-status-${item.status}`}>{DOCUMENT_STATUS_LABELS[item.status] ?? item.status}</span>
-              {item.actions
-                .filter((action) => action.action_key !== "create" || action.available)
-                .map((action) => (
-                  <button
-                    aria-label={`${action.label} ${item.label}`}
-                    disabled={!action.available}
-                    key={action.action_key}
-                    onClick={() => {
-                      if (action.action_key === "open") {
-                        void handleOpen(item);
-                      }
-                      if (action.action_key === "history") {
-                        void handleLoadHistory(item);
-                      }
-                      if (action.action_key === "create") {
-                        void handleCreate(item, action);
-                      }
-                    }}
-                    title={action.disabled_reason ?? `${action.label} ${item.label}`}
-                    type="button"
-                  >
-                    {action.label}
-                  </button>
-                ))}
-            </div>
-            {item.actions
-              .filter((action) => action.action_key === "create" && !action.available)
-              .map((action) => (
-                <p className="workspace-note contextual-document-blocked" key={action.action_key}>
-                  {action.disabled_reason}
-                </p>
-              ))}
-          </div>
-        ))}
-      </div>
-      {loading && loadingMessage ? <p className="workspace-note">{loadingMessage}</p> : null}
-      {error ? (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      ) : null}
-      {detail ? (
-        <div className="document-detail-shell">
-          <div className="detail-grid compact-grid">
-            <DetailValue label="Tài liệu" value={currentItem?.label ?? detail.title ?? detail.family_code} />
-            <DetailValue label="Tiêu đề" value={detail.title} />
-            <DetailValue label="Loại" value={detail.family_code} />
-            <DetailValue label="Chế độ" value={detailMode === "history" ? "Lịch sử tài liệu" : "Chi tiết tài liệu"} />
-          </div>
-          <div className="table-scroll table-scroll-history">
-            <table className="dense-table event-document-table">
-              <thead>
-                <tr>
-                  <th>Biến thể</th>
-                  <th>Ngôn ngữ</th>
-                  <th>Phiên bản hiện có</th>
-                </tr>
-              </thead>
-              <tbody>
-                {detail.variants.map((variant) => (
-                  <tr key={variant.id}>
-                    <td>{variant.variant_type}</td>
-                    <td>{variant.language_code}</td>
-                    <td>
-                      {variant.versions.length > 0
-                        ? variant.versions
-                            .map((version) => `${version.original_filename ?? `v${version.version_no}`}${version.is_current ? " (hiện hành)" : ""}`)
-                            .join(", ")
-                        : "Chưa có"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : null}
-    </WorkspaceSection>
-  );
-}
-
 function LinkedGxpCertificates({
   items,
 }: {
   items: GxpCertificateDetail[];
 }) {
   const [selectedCertificateId, setSelectedCertificateId] = useState<string | null>(items[0]?.certificate_id ?? null);
+
+  const rowProps = useCertificateRows(items.map(item => item.certificate_id), selectedCertificateId, setSelectedCertificateId, false);
 
   useEffect(() => {
     setSelectedCertificateId((current) =>
@@ -332,7 +153,7 @@ function LinkedGxpCertificates({
           <span className="panel-meta">{items.length} giấy</span>
         </div>
         <div className="table-scroll table-scroll-history">
-          <table className="dense-table certificate-history-table">
+          <table aria-label="Chứng nhận GxP liên kết" className="dense-table certificate-history-table">
             <thead>
               <tr>
                 <th className="col-gxp">GxP</th>
@@ -347,14 +168,7 @@ function LinkedGxpCertificates({
                   aria-selected={selectedCertificateId === item.certificate_id}
                   className={selectedCertificateId === item.certificate_id ? "selected" : ""}
                   key={item.certificate_id}
-                  onClick={() => setSelectedCertificateId(item.certificate_id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      setSelectedCertificateId(item.certificate_id);
-                    }
-                  }}
-                  tabIndex={0}
+                  {...rowProps(item.certificate_id)}
                 >
                   <td>{item.certificate_type}</td>
                   <td>{item.line_code ?? "Cơ sở"}</td>
@@ -373,7 +187,7 @@ function LinkedGxpCertificates({
       </section>
 
       <section className="panel panel-tight certificate-detail-panel">
-        {selectedCertificate ? <GxpCertificateDetailFields detail={selectedCertificate} /> : null}
+        {selectedCertificate ? <GxpCertificateDetailFields detail={selectedCertificate} presentation="case" /> : null}
       </section>
     </div>
   );
@@ -387,6 +201,8 @@ function LinkedBusinessEligibilityCertificates({
   const [selectedCertificateId, setSelectedCertificateId] = useState<string | null>(
     items[0]?.business_eligibility_certificate_id ?? null,
   );
+
+  const rowProps = useCertificateRows(items.map(item => item.business_eligibility_certificate_id), selectedCertificateId, setSelectedCertificateId, false);
 
   useEffect(() => {
     setSelectedCertificateId((current) =>
@@ -409,14 +225,14 @@ function LinkedBusinessEligibilityCertificates({
   }
 
   return (
-    <div className="certificate-workspace-split event-linked-certificate-workspace">
+    <div className="certificate-workspace-split event-linked-certificate-workspace case-business-eligibility-workspace">
       <section className="panel panel-tight certificate-list-panel">
         <div className="panel-header">
-          <h3>Chứng nhận ĐĐK liên kết</h3>
+          <h3>Giấy ĐĐK đã cấp căn cứ GCN GPs này</h3>
           <span className="panel-meta">{items.length} giấy</span>
         </div>
         <div className="table-scroll table-scroll-history">
-          <table className="dense-table eligibility-history-table">
+          <table aria-label="Giấy ĐĐK đã cấp căn cứ GCN GPs này" className="dense-table eligibility-history-table">
             <thead>
               <tr>
                 <th className="col-cert-number">Số GCN</th>
@@ -430,14 +246,7 @@ function LinkedBusinessEligibilityCertificates({
                   aria-selected={selectedCertificateId === item.business_eligibility_certificate_id}
                   className={selectedCertificateId === item.business_eligibility_certificate_id ? "selected" : ""}
                   key={item.business_eligibility_certificate_id}
-                  onClick={() => setSelectedCertificateId(item.business_eligibility_certificate_id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      setSelectedCertificateId(item.business_eligibility_certificate_id);
-                    }
-                  }}
-                  tabIndex={0}
+                  {...rowProps(item.business_eligibility_certificate_id)}
                 >
                   <td title={item.certificate_number ?? ""}>
                     <div className="cell-stack">
@@ -454,7 +263,7 @@ function LinkedBusinessEligibilityCertificates({
         </div>
       </section>
 
-      <section className="panel panel-tight certificate-detail-panel">
+      <section aria-label="Chi tiết giấy ĐĐK liên kết" className="panel panel-tight certificate-detail-panel">
         {selectedCertificate ? <BusinessEligibilityDetailFields detail={selectedCertificate} /> : null}
       </section>
     </div>
@@ -462,6 +271,7 @@ function LinkedBusinessEligibilityCertificates({
 }
 
 function renderCaseStepContent(
+  accessGeneration: number | null,
   activeTab: string,
   caseWorkspace: CaseWorkspace,
   onCaseApplicationSave: (payload: CaseApplicationUpsertRequest) => Promise<void>,
@@ -481,7 +291,7 @@ function renderCaseStepContent(
   onSubmitCapaCycle: (cycleId: string, payload: CapaCycleSubmitRequest) => Promise<void>,
   onAssessCapaCycle: (cycleId: string, payload: CapaCycleAssessRequest) => Promise<void>,
   onResolveInspectionFolder: () => Promise<InspectionFolderLookup>,
-  onOpenDocument: (caseId: string, item: ContextualDocumentAction) => Promise<void>,
+  onOpenDocument: (caseId: string, item: ContextualDocumentAction, isCurrentDocument?: () => boolean) => Promise<void>,
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>,
   onCreateDocument: (
     caseId: string,
@@ -503,27 +313,34 @@ function renderCaseStepContent(
 
   if (activeTab === "Hồ sơ") {
     return (
-      <div className="event-step-stack">
+      <div className="registration-workspace">
+        <div className="registration-form-pane">
         <CaseApplicationWorkspace
+          accessGeneration={accessGeneration}
+          assessment={<CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} view="assessment" />}
           caseWorkspace={caseWorkspace}
           onResolveInspectionFolder={onResolveInspectionFolder}
           onSave={onCaseApplicationSave}
         />
+        </div>
+        <div className="registration-document-column">
         <ContextualDocumentSection
+          contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
           items={documentItems}
           onCreateDocument={(item, action) =>
             onCreateDocument(caseWorkspace.case_summary.id, item, action)
           }
           onLoadDocumentDetail={onLoadDocumentDetail}
-          onOpenDocument={(item) => onOpenDocument(caseWorkspace.case_summary.id, item)}
+          onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
         />
+        </div>
       </div>
     );
   }
 
   if (activeTab === "Kiểm tra") {
     return (
-      <div className="event-step-stack">
+      <div className="inspection-workflow-layout">
         <CaseInspectionWorkspace
           caseWorkspace={caseWorkspace}
           onInspectionOutcomeSave={onInspectionOutcomeSave}
@@ -536,21 +353,24 @@ function renderCaseStepContent(
           onLoadInspectionTeamIdentityOptions={onLoadInspectionTeamIdentityOptions}
           onFinalizeInspectionOutcome={onFinalizeInspectionOutcome}
         />
-        <ContextualDocumentSection
-          items={documentItems}
-          onCreateDocument={(item, action) =>
-            onCreateDocument(caseWorkspace.case_summary.id, item, action)
-          }
-          onLoadDocumentDetail={onLoadDocumentDetail}
-          onOpenDocument={(item) => onOpenDocument(caseWorkspace.case_summary.id, item)}
-        />
+        <div className="inspection-document-column">
+          <ContextualDocumentSection
+            contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
+            items={documentItems}
+            onCreateDocument={(item, action) =>
+              onCreateDocument(caseWorkspace.case_summary.id, item, action)
+            }
+            onLoadDocumentDetail={onLoadDocumentDetail}
+            onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
+          />
+        </div>
       </div>
     );
   }
 
   if (activeTab === "Khắc phục") {
     return (
-      <div className="event-step-stack">
+      <div className="remediation-workflow-layout">
         <CaseRemediationWorkspace
           caseWorkspace={caseWorkspace}
           onAssessCycle={onAssessCapaCycle}
@@ -560,51 +380,62 @@ function renderCaseStepContent(
           onUpdateCycle={onUpdateCapaCycle}
           selectedCycleId={selectedRemediationCycleId}
         />
-        <ContextualDocumentSection
-          items={documentItems}
-          onCreateDocument={(item, action) =>
-            onCreateDocument(caseWorkspace.case_summary.id, item, action)
-          }
-          onLoadDocumentDetail={onLoadDocumentDetail}
-          onOpenDocument={(item) => onOpenDocument(caseWorkspace.case_summary.id, item)}
-        />
+        <div className="remediation-document-column">
+          <ContextualDocumentSection
+            contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
+            items={documentItems}
+            onCreateDocument={(item, action) =>
+              onCreateDocument(caseWorkspace.case_summary.id, item, action)
+            }
+            onLoadDocumentDetail={onLoadDocumentDetail}
+            onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
+          />
+        </div>
       </div>
     );
   }
 
   if (activeTab === "Xử lý") {
     return (
-      <div className="event-step-stack">
-        <CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} />
-        <ContextualDocumentSection
-          items={documentItems}
-          onCreateDocument={(item, action) =>
-            onCreateDocument(caseWorkspace.case_summary.id, item, action)
-          }
-          onLoadDocumentDetail={onLoadDocumentDetail}
-          onOpenDocument={(item) => onOpenDocument(caseWorkspace.case_summary.id, item)}
-        />
+      <div className="processing-workflow-layout">
+        <CaseProcessingWorkspace caseWorkspace={caseWorkspace} onSave={onCaseAssessmentSave} view="timeline" />
+        <div className="processing-document-column">
+          <ContextualDocumentSection
+            contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
+            items={documentItems}
+            onCreateDocument={(item, action) =>
+              onCreateDocument(caseWorkspace.case_summary.id, item, action)
+            }
+            onLoadDocumentDetail={onLoadDocumentDetail}
+            onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
+          />
+        </div>
       </div>
     );
   }
 
   if (activeTab === "Chứng nhận GxP") {
     return (
-      <div className="event-step-stack">
-        <LinkedGxpCertificates items={caseWorkspace.linked_gxp_certificates} />
-        <CaseCertificateIssueWorkspace
-          caseId={caseWorkspace.case_summary.id}
-          onIssue={onIssueCertificate}
-          readiness={caseWorkspace.certificate_issue_readiness}
-        />
-        <ContextualDocumentSection
-          items={documentItems}
-          onCreateDocument={(item, action) =>
-            onCreateDocument(caseWorkspace.case_summary.id, item, action)
-          }
-          onLoadDocumentDetail={onLoadDocumentDetail}
-          onOpenDocument={(item) => onOpenDocument(caseWorkspace.case_summary.id, item)}
-        />
+      <div className="case-gxp-workflow-layout">
+        <div className="case-gxp-certificate-pane">
+          <LinkedGxpCertificates items={caseWorkspace.linked_gxp_certificates} />
+          <CaseCertificateIssueWorkspace
+            caseId={caseWorkspace.case_summary.id}
+            onIssue={onIssueCertificate}
+            readiness={caseWorkspace.certificate_issue_readiness}
+          />
+        </div>
+        <div className="case-gxp-document-column">
+          <ContextualDocumentSection
+            contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
+            items={documentItems}
+            onCreateDocument={(item, action) =>
+              onCreateDocument(caseWorkspace.case_summary.id, item, action)
+            }
+            onLoadDocumentDetail={onLoadDocumentDetail}
+            onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
+          />
+        </div>
       </div>
     );
   }
@@ -638,6 +469,7 @@ function renderChangeRequestStepContent(
 }
 
 export function EventWorkspace({
+  accessGeneration = 0,
   selectedHistory,
   caseWorkspace,
   caseWorkspaceLoading,
@@ -672,6 +504,7 @@ export function EventWorkspace({
   onResolveInspectionFolder,
   onFinalizeInspectionOutcome,
 }: {
+  accessGeneration?: number | null;
   selectedHistory: FacilityHistoryItem | null;
   caseWorkspace: CaseWorkspace | null;
   caseWorkspaceLoading: boolean;
@@ -693,7 +526,7 @@ export function EventWorkspace({
   onInspectionTeamSave: (payload: InspectionTeamUpsertRequest) => Promise<void>;
   onLoadInspectionTeamIdentityOptions: () => Promise<InspectionTeamIdentityOption[]>;
   onEvaluationScopeSave: (payload: EvaluationScopeUpsertRequest) => Promise<void>;
-  onOpenDocument: (caseId: string, item: ContextualDocumentAction) => Promise<void>;
+  onOpenDocument: (caseId: string, item: ContextualDocumentAction, isCurrentDocument?: () => boolean) => Promise<void>;
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
   onCreateDocument: (
     caseId: string,
@@ -719,6 +552,10 @@ export function EventWorkspace({
     );
   }
 
+  // The old payload can survive until its owner's effect runs; fail closed in this render.
+  if (caseWorkspace?.case_summary.id !== selectedHistory.id) caseWorkspace = null;
+  if (changeRequestWorkspace?.id !== selectedHistory.id) changeRequestWorkspace = null;
+
   const tabs = selectedHistory.source_type === "change_request" ? CHANGE_REQUEST_EVENT_TABS : CASE_EVENT_TABS;
   const effectiveActiveTab = tabs.some((tab) => tab === activeTab) ? activeTab : tabs[0];
 
@@ -729,14 +566,14 @@ export function EventWorkspace({
           {tabs.map((tab, index) => (
             <li key={tab}>
               <button
-                aria-label={tab}
+                aria-label={selectedHistory.source_type === "case" ? CASE_EVENT_LABELS[tab] ?? tab : tab}
                 aria-current={effectiveActiveTab === tab ? "step" : undefined}
                 className={effectiveActiveTab === tab ? "workflow-step active" : "workflow-step"}
                 onClick={() => onTabChange(tab)}
                 type="button"
               >
                 <span className="workflow-step-index">{index + 1}</span>
-                <span>{tab}</span>
+                <span>{selectedHistory.source_type === "case" ? CASE_EVENT_LABELS[tab] ?? tab : tab}</span>
               </button>
             </li>
           ))}
@@ -766,6 +603,7 @@ export function EventWorkspace({
           />
         ) : caseWorkspace ? (
           renderCaseStepContent(
+            accessGeneration,
             effectiveActiveTab,
             caseWorkspace,
             onCaseApplicationSave,

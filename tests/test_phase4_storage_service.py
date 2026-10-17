@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from hashlib import sha256
 import inspect
+import os
 from io import BytesIO
 from pathlib import Path
+
+import pytest
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
@@ -178,7 +181,7 @@ def test_anchor_registration_year_wins_and_resolved_uses_one_storage_call(tmp_pa
     assert resolved.resolution.status == StorageResolutionStatus.RESOLVED
     assert resolved.binding is not None
     assert bindings[0].year == 2024
-    assert service.lookup_years == [2024]
+    assert service.lookup_years == [2024, 2025]
 
 
 def test_anchor_registration_unavailable_falls_back_to_inspection_year(tmp_path: Path):
@@ -205,13 +208,13 @@ def test_storage_binding_resolver_has_no_date_or_anchor_projection_dependency():
     assert "CaseApplication" not in source
 
 
-def test_anchor_not_found_then_next_year_resolves_and_uses_two_calls(tmp_path: Path):
+def test_anchor_not_found_then_recorded_inspection_year_resolves(tmp_path: Path):
     service = build_counting_service(tmp_path)
     binding_service = StorageBindingService(service)
     (service.inspection_root / "2025" / "A - (ID-103) - (KT-1376-GMP)").mkdir(parents=True)
     with build_session() as session:
         case_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0003"
-        add_anchor(session, case_id=case_id, registration_year=2024)
+        add_anchor(session, case_id=case_id, registration_year=2024, inspection_status="usable", inspection_year=2025)
         result = binding_service.resolve_inspection_folder(session, case_id=case_id, year=None, site_legacy_id=103, inspection_legacy_code="KT-1376-GMP")
         binding = session.scalars(select(StorageBinding)).one()
 
@@ -219,6 +222,77 @@ def test_anchor_not_found_then_next_year_resolves_and_uses_two_calls(tmp_path: P
     assert result.resolution.relative_path.startswith("2025/")
     assert binding.year == 2025
     assert service.lookup_years == [2024, 2025]
+
+
+def test_two_source_years_distinct_gap_inspection_year_resolves(tmp_path: Path):
+    service = build_counting_service(tmp_path)
+    binding_service = StorageBindingService(service)
+    (service.inspection_root / "2027" / "Late - (ID-103) - (KT-1376-GMP)").mkdir(parents=True)
+    with build_session() as session:
+        case_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0100"
+        add_anchor(session, case_id=case_id, registration_year=2023,
+                   inspection_status="usable", inspection_year=2027)
+        result = binding_service.resolve_inspection_folder(
+            session, case_id=case_id, year=None,
+            site_legacy_id=103, inspection_legacy_code="KT-1376-GMP")
+        binding = session.scalars(select(StorageBinding)).one()
+
+    assert result.resolution.status == StorageResolutionStatus.RESOLVED
+    assert result.resolution.relative_path.startswith("2027/")
+    assert binding.year == 2027
+    assert service.lookup_years == [2023, 2027]
+
+
+def test_both_source_year_folders_match_fail_closed_without_binding(tmp_path: Path):
+    service = build_counting_service(tmp_path)
+    binding_service = StorageBindingService(service)
+    for year in (2023, 2027):
+        (service.inspection_root / str(year) / "Same - (ID-103) - (KT-1376-GMP)").mkdir(parents=True)
+    with build_session() as session:
+        case_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0101"
+        add_anchor(session, case_id=case_id, registration_year=2023,
+                   inspection_status="usable", inspection_year=2027)
+        result = binding_service.resolve_inspection_folder(
+            session, case_id=case_id, year=None,
+            site_legacy_id=103, inspection_legacy_code="KT-1376-GMP")
+        assert session.scalars(select(StorageBinding)).all() == []
+
+    assert result.resolution.status == StorageResolutionStatus.AMBIGUOUS
+    assert result.resolution.candidate_count == 2
+    assert result.resolution.relative_path is None
+    assert service.lookup_years == [2023, 2027]
+
+
+def test_equal_source_years_call_storage_once(tmp_path: Path):
+    service = build_counting_service(tmp_path)
+    binding_service = StorageBindingService(service)
+    (service.inspection_root / "2024" / "Equal - (ID-103) - (KT-1376-GMP)").mkdir(parents=True)
+    with build_session() as session:
+        case_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0102"
+        add_anchor(session, case_id=case_id, registration_year=2024,
+                   inspection_status="usable", inspection_year=2024)
+        result = binding_service.resolve_inspection_folder(
+            session, case_id=case_id, year=None,
+            site_legacy_id=103, inspection_legacy_code="KT-1376-GMP")
+
+    assert result.resolution.status == StorageResolutionStatus.RESOLVED
+    assert service.lookup_years == [2024]
+
+
+def test_no_inferred_next_year_when_only_submission_year_exists(tmp_path: Path):
+    service = build_counting_service(tmp_path)
+    binding_service = StorageBindingService(service)
+    (service.inspection_root / "2025" / "Next - (ID-103) - (KT-1376-GMP)").mkdir(parents=True)
+    with build_session() as session:
+        case_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0103"
+        add_anchor(session, case_id=case_id, registration_year=2024)
+        result = binding_service.resolve_inspection_folder(
+            session, case_id=case_id, year=None,
+            site_legacy_id=103, inspection_legacy_code="KT-1376-GMP")
+        assert session.scalars(select(StorageBinding)).all() == []
+
+    assert result.resolution.status == StorageResolutionStatus.NOT_FOUND
+    assert service.lookup_years == [2024]
 
 
 def test_anchor_not_found_twice_creates_no_binding(tmp_path: Path):
@@ -231,7 +305,7 @@ def test_anchor_not_found_twice_creates_no_binding(tmp_path: Path):
         assert session.scalars(select(StorageBinding)).all() == []
 
     assert result.resolution.status == StorageResolutionStatus.NOT_FOUND
-    assert service.lookup_years == [2024, 2025]
+    assert service.lookup_years == [2024]
 
 
 def test_anchor_ambiguous_stops_without_next_year_or_binding(tmp_path: Path):
@@ -274,7 +348,7 @@ def test_missing_anchor_returns_invalid_without_storage_call(tmp_path: Path):
     assert service.lookup_years == []
 
 
-def test_registration_conflict_uses_usable_inspection_fallback(tmp_path: Path):
+def test_registration_conflict_keeps_independent_usable_inspection_year(tmp_path: Path):
     service = build_counting_service(tmp_path)
     binding_service = StorageBindingService(service)
     (service.inspection_root / "2025" / "A - (ID-103) - (KT-1376-GMP)").mkdir(parents=True)
@@ -293,7 +367,7 @@ def test_stale_binding_cannot_bypass_anchor_bounded_lookup(tmp_path: Path):
     (service.inspection_root / "2025" / "Live - (ID-103) - (KT-1376-GMP)").mkdir(parents=True)
     with build_session() as session:
         case_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0007"
-        add_anchor(session, case_id=case_id, registration_year=2024)
+        add_anchor(session, case_id=case_id, registration_year=2024, inspection_status="usable", inspection_year=2025)
         session.add(StorageBinding(case_id=case_id, year=2024, site_legacy_id=103, inspection_legacy_code="KT-1376-GMP", relative_path="2024/Stale - (ID-103) - (KT-1376-GMP)", observed_folder_label="Stale", storage_class=service.config.storage_class))
         session.commit()
         result = binding_service.resolve_inspection_folder(session, case_id=case_id, year=None, site_legacy_id=103, inspection_legacy_code="KT-1376-GMP")
@@ -417,6 +491,42 @@ def test_resolve_dkkd_folder_uses_site_token_match(tmp_path: Path):
     assert resolution.relative_path == "US Pharma - 12 Street (91)"
 
 
+@pytest.mark.parametrize(
+    ("folder_name", "expected"),
+    [
+        ("US Pharma - 12 Street (91)", True),
+        ("US Pharma - 12 Street (91) - Lần 2", True),
+        ("US Pharma - 12 Street (ID-91)", False),
+        ("US Pharma - 12 Street (910)", False),
+        ("US Pharma - 12 Street (091)", False),
+        ("US Pharma - 12 Street(91)", False),
+        ("US Pharma - 12 Street (92)", False),
+    ],
+)
+def test_local_dkkd_exact_legacy_site_token(tmp_path: Path, folder_name: str, expected: bool):
+    service = build_service(tmp_path)
+    (service.dkkd_root / folder_name).mkdir()
+
+    resolution = service.resolve_dkkd_folder(site_legacy_id=91)
+
+    assert resolution.status is (
+        StorageResolutionStatus.RESOLVED if expected else StorageResolutionStatus.NOT_FOUND
+    )
+    assert resolution.candidate_count == (1 if expected else 0)
+
+
+def test_local_dkkd_multiple_exact_site_tokens_fail_ambiguous(tmp_path: Path):
+    service = build_service(tmp_path)
+    for name in ("Factory A (91)", "Factory B (91)"):
+        (service.dkkd_root / name).mkdir()
+
+    result = service.resolve_dkkd_folder(site_legacy_id=91)
+
+    assert result.status is StorageResolutionStatus.AMBIGUOUS
+    assert result.candidate_count == 2
+    assert result.relative_path is None
+
+
 def test_storage_io_operations_stay_within_root_and_support_checksum(tmp_path: Path):
     service = build_service(tmp_path)
 
@@ -427,6 +537,82 @@ def test_storage_io_operations_stay_within_root_and_support_checksum(tmp_path: P
     assert service.exists("2026/demo/test.txt") is True
     assert service.stat("2026/demo/test.txt").size == 11
     assert service.checksum("2026/demo/test.txt") == sha256(b"hello world").hexdigest()
+
+
+def _create_storage_symlink_or_skip(link: Path, target: Path, *, is_dir: bool = False) -> None:
+    try:
+        link.symlink_to(target, target_is_directory=is_dir)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"Symlinks are not available in this test environment: {exc}")
+
+
+@pytest.mark.parametrize("is_dir", [False, True])
+def test_storage_list_rejects_child_symlinks_escaping_root(tmp_path: Path, is_dir: bool):
+    service = build_service(tmp_path)
+    outside = tmp_path / ("outside-directory" if is_dir else "outside-private.txt")
+    if is_dir:
+        outside.mkdir()
+        (outside / "secret.txt").write_text("private", encoding="utf-8")
+    else:
+        outside.write_text("private metadata", encoding="utf-8")
+
+    alias = service.inspection_root / "linked-external"
+    _create_storage_symlink_or_skip(alias, outside, is_dir=is_dir)
+
+    with pytest.raises(StorageOperationError, match="escapes configured storage root"):
+        service.list("")
+    with pytest.raises(StorageOperationError, match="escapes configured storage root"):
+        service.stat("linked-external")
+    assert outside.exists()
+    if is_dir:
+        assert (outside / "secret.txt").read_text(encoding="utf-8") == "private"
+    else:
+        assert outside.read_text(encoding="utf-8") == "private metadata"
+
+
+def test_inspection_resolution_rejects_year_symlink_outside_root(tmp_path: Path):
+    service = build_service(tmp_path)
+    outside_year = tmp_path / "external-year"
+    outside_year.mkdir()
+    (outside_year / "A (ID-103) (KT-1376-GMP)").mkdir()
+    (outside_year / "B (ID-103) (KT-1376-GMP)").mkdir()
+    _create_storage_symlink_or_skip(
+        service.inspection_root / "2026", outside_year, is_dir=True
+    )
+
+    with pytest.raises(StorageOperationError, match="escapes configured storage root"):
+        service.resolve_inspection_folder(
+            year=2026, site_legacy_id=103, inspection_legacy_code="KT-1376-GMP"
+        )
+
+
+def test_dkkd_resolution_rejects_multiple_matching_symlinks_outside_root(tmp_path: Path):
+    service = build_service(tmp_path)
+    external_parent = tmp_path / "other-sites"
+    external_parent.mkdir()
+    for name in ["Facility A (91)", "Facility B (91)"]:
+        destination = external_parent / name
+        destination.mkdir()
+        _create_storage_symlink_or_skip(
+            service.dkkd_root / name, destination, is_dir=True
+        )
+
+    with pytest.raises(StorageOperationError, match="escapes configured storage root"):
+        service.resolve_dkkd_folder(site_legacy_id=91)
+
+
+def test_storage_list_allows_symlink_to_a_target_within_root(tmp_path: Path):
+    service = build_service(tmp_path)
+    target = service.inspection_root / "2026" / "report.txt"
+    target.parent.mkdir()
+    target.write_bytes(b"within-root")
+    alias = service.inspection_root / "report-link.txt"
+    _create_storage_symlink_or_skip(alias, target)
+
+    entries = {entry.name: entry for entry in service.list()}
+    assert entries["report-link.txt"].relative_path == "report-link.txt"
+    assert entries["report-link.txt"].size == len(b"within-root")
+    assert service.checksum("report-link.txt") == sha256(b"within-root").hexdigest()
 
 
 def test_storage_write_stream_can_create_exclusively_without_overwriting(tmp_path: Path):
@@ -454,6 +640,68 @@ def test_storage_write_stream_can_create_exclusively_without_overwriting(tmp_pat
     assert (service.inspection_root / "2026/demo/exclusive.txt").read_bytes() == b"first"
 
 
+def test_storage_exclusive_write_keeps_incomplete_document_private(tmp_path: Path):
+    service = build_service(tmp_path)
+    target = service.inspection_root / "document.docx"
+
+    class StreamFailingAfterChunk:
+        calls = 0
+
+        def read(self, size):
+            self.calls += 1
+            # A target file should not exist while bytes are still written.
+            assert not target.exists()
+            if self.calls == 1:
+                return b"incomplete"
+            raise OSError("stream interrupted")
+
+    with pytest.raises(OSError, match="stream interrupted"):
+        service.write_stream("document.docx", StreamFailingAfterChunk(), overwrite=False)
+
+    assert not target.exists()
+    assert list(service.inspection_root.iterdir()) == []
+
+
+def test_storage_exclusive_write_does_not_replace_concurrent_destination(tmp_path: Path, monkeypatch):
+    service = build_service(tmp_path)
+    target = service.inspection_root / "document.docx"
+    atomic = service._rename_noreplace
+
+    def concurrent_publish(temp_path: Path, destination: Path, relative_path: str):
+        assert temp_path.read_bytes() == b"completed-document"
+        assert not target.exists()
+        target.write_bytes(b"other-writer")
+        return atomic(temp_path, destination, relative_path)
+
+    monkeypatch.setattr(service, "_rename_noreplace", concurrent_publish)
+    with pytest.raises(StorageTargetExistsError, match="will not be overwritten"):
+        service.write_stream("document.docx", BytesIO(b"completed-document"), overwrite=False)
+
+    assert target.read_bytes() == b"other-writer"
+    assert [p.name for p in service.inspection_root.iterdir()] == ["document.docx"]
+
+
+def test_storage_explicit_overwrite_preserves_existing_document_when_stream_fails(tmp_path: Path):
+    service = build_service(tmp_path)
+    target = service.inspection_root / "existing.docx"
+    target.write_bytes(b"original-document")
+
+    class InterruptedStream:
+        calls = 0
+
+        def read(self, size):
+            self.calls += 1
+            if self.calls == 1:
+                return b"partial replacement"
+            raise OSError("stream interrupted")
+
+    with pytest.raises(OSError, match="stream interrupted"):
+        service.write_stream("existing.docx", InterruptedStream(), overwrite=True)
+
+    assert target.read_bytes() == b"original-document"
+    assert [p.name for p in service.inspection_root.iterdir()] == ["existing.docx"]
+
+
 def test_storage_copy_move_and_rename_work(tmp_path: Path):
     service = build_service(tmp_path)
     service.write_stream("2026/demo/test.txt", BytesIO(b"abc"))
@@ -465,6 +713,172 @@ def test_storage_copy_move_and_rename_work(tmp_path: Path):
     assert copied.relative_path == "2026/demo/test-copy.txt"
     assert moved.relative_path == "2026/archive/test-copy.txt"
     assert renamed.relative_path == "2026/archive/final.txt"
+
+
+@pytest.mark.parametrize("operation", ["copy", "move", "rename"])
+def test_storage_file_operations_reject_existing_target_without_data_loss(tmp_path: Path, operation: str):
+    service = build_service(tmp_path)
+    source = service.inspection_root / "2026" / "source.txt"
+    target = service.inspection_root / "2026" / "target.txt"
+    source.parent.mkdir()
+    source.write_bytes(b"original-source")
+    target.write_bytes(b"preserve-existing")
+
+    with pytest.raises(StorageTargetExistsError, match="will not be overwritten"):
+        if operation == "copy":
+            service.copy("2026/source.txt", "2026/target.txt")
+        elif operation == "move":
+            service.move("2026/source.txt", "2026/target.txt")
+        else:
+            service.rename("2026/source.txt", "target.txt")
+
+    assert source.read_bytes() == b"original-source"
+    assert target.read_bytes() == b"preserve-existing"
+
+
+@pytest.mark.parametrize("operation", ["move", "rename"])
+def test_storage_no_replace_blocks_destination_created_after_preflight(tmp_path: Path, monkeypatch, operation: str):
+    service = build_service(tmp_path)
+    source = service.inspection_root / "source.txt"
+    target = service.inspection_root / "target.txt"
+    source.write_bytes(b"original-source")
+
+    # Simulate another writer racing with this operation after the
+    # optimistic fast-path vacancy check but before the atomic OS rename.
+    original_check = service._require_vacant_target
+    def race_after_check(target_path: Path, relative_path: str):
+        original_check(target_path, relative_path)
+        target.write_bytes(b"other-writer-data")
+
+    monkeypatch.setattr(service, "_require_vacant_target", race_after_check)
+    with pytest.raises(StorageTargetExistsError, match="will not be overwritten"):
+        if operation == "move":
+            service.move("source.txt", "target.txt")
+        else:
+            service.rename("source.txt", "target.txt")
+
+    assert target.read_bytes() == b"other-writer-data"
+    assert source.read_bytes() == b"original-source"
+
+
+@pytest.mark.parametrize("operation", ["move", "rename"])
+def test_storage_atomic_no_replace_unsupported_storage_fails_closed(tmp_path: Path, monkeypatch, operation: str):
+    service = build_service(tmp_path)
+    source = service.inspection_root / "source.txt"
+    target = service.inspection_root / "target.txt"
+    source.write_bytes(b"source-unchanged")
+
+    def unavailable(*args):
+        raise StorageOperationError("Atomic no-replace rename is unsupported.")
+
+    monkeypatch.setattr(service, "_rename_noreplace", unavailable)
+    with pytest.raises(StorageOperationError, match="unsupported"):
+        if operation == "move":
+            service.move("source.txt", "target.txt")
+        else:
+            service.rename("source.txt", "target.txt")
+    assert source.read_bytes() == b"source-unchanged"
+    assert not target.exists()
+
+
+def test_storage_copy_preserves_bytes_and_reports_relative_path(tmp_path: Path):
+    service = build_service(tmp_path)
+    source = service.inspection_root / "source.txt"
+    source.write_bytes(b"hello")
+    target = service.inspection_root / "copied.txt"
+    copied = service.copy("source.txt", "copied.txt")
+    assert copied.relative_path == "copied.txt"
+    assert target.read_bytes() == b"hello"
+    assert service.checksum("copied.txt") == sha256(b"hello").hexdigest()
+
+
+def test_storage_copy_metadata_failure_cleans_exclusive_target(tmp_path: Path, monkeypatch):
+    service = build_service(tmp_path)
+    source = service.inspection_root / "source.txt"
+    target = service.inspection_root / "copied.txt"
+    source.write_bytes(b"keep source")
+
+    def fail_metadata_copy(*args, **kwargs):
+        raise OSError("simulated metadata error")
+
+    monkeypatch.setattr("backend.app.storage.local.shutil.copystat", fail_metadata_copy)
+    with pytest.raises(OSError, match="simulated metadata error"):
+        service.copy("source.txt", "copied.txt")
+
+    assert source.read_bytes() == b"keep source"
+    assert not target.exists()
+
+
+def test_storage_copy_preserves_source_modification_time(tmp_path: Path):
+    service = build_service(tmp_path)
+    source = service.inspection_root / "source.txt"
+    source.write_bytes(b"original")
+    os.utime(source, ns=(1_600_000_000_000_000_000, 1_600_000_000_000_000_000))
+
+    service.copy("source.txt", "copy.txt")
+
+    assert (service.inspection_root / "copy.txt").stat().st_mtime_ns == source.stat().st_mtime_ns
+
+
+def test_storage_copy_does_not_delete_concurrent_writer_on_metadata_failure(tmp_path: Path, monkeypatch):
+    service = build_service(tmp_path)
+    source = service.inspection_root / "source.txt"
+    target = service.inspection_root / "copy.txt"
+    source.write_bytes(b"original source")
+
+    def concurrent_writer_then_metadata_failure(source_path, staged_path):
+        assert target.exists() is False
+        assert Path(staged_path).read_bytes() == b"original source"
+        target.write_bytes(b"other writer")
+        raise OSError("metadata failed after concurrent writer published")
+
+    monkeypatch.setattr("backend.app.storage.local.shutil.copystat", concurrent_writer_then_metadata_failure)
+    with pytest.raises(OSError, match="metadata failed"):
+        service.copy("source.txt", "copy.txt")
+
+    assert source.read_bytes() == b"original source"
+    assert target.read_bytes() == b"other writer"
+    assert sorted(path.name for path in service.inspection_root.iterdir()) == ["copy.txt", "source.txt"]
+
+
+def test_storage_copy_rejects_concurrent_writer_during_atomic_publication(tmp_path: Path, monkeypatch):
+    service = build_service(tmp_path)
+    source = service.inspection_root / "source.txt"
+    target = service.inspection_root / "copy.txt"
+    source.write_bytes(b"original source")
+    real_rename = service._rename_noreplace
+
+    def concurrent_writer_at_publish(staged_path: Path, target_path: Path, relative_path: str):
+        assert Path(staged_path).read_bytes() == b"original source"
+        assert not target.exists()
+        target.write_bytes(b"other writer")
+        return real_rename(staged_path, target_path, relative_path)
+
+    monkeypatch.setattr(service, "_rename_noreplace", concurrent_writer_at_publish)
+    with pytest.raises(StorageTargetExistsError, match="will not be overwritten"):
+        service.copy("source.txt", "copy.txt")
+
+    assert target.read_bytes() == b"other writer"
+    assert source.read_bytes() == b"original source"
+    assert sorted(path.name for path in service.inspection_root.iterdir()) == ["copy.txt", "source.txt"]
+
+
+def test_storage_copy_unsupported_atomic_publish_fails_closed_and_cleans_temp(tmp_path: Path, monkeypatch):
+    service = build_service(tmp_path)
+    source = service.inspection_root / "source.txt"
+    target = service.inspection_root / "copy.txt"
+    source.write_bytes(b"original source")
+
+    def unsupported(*args):
+        raise StorageOperationError("Atomic no-replace rename is unsupported.")
+
+    monkeypatch.setattr(service, "_rename_noreplace", unsupported)
+    with pytest.raises(StorageOperationError, match="unsupported"):
+        service.copy("source.txt", "copy.txt")
+
+    assert source.read_bytes() == b"original source"
+    assert not target.exists()
+    assert [path.name for path in service.inspection_root.iterdir()] == ["source.txt"]
 
 
 def test_storage_rejects_path_traversal(tmp_path: Path):

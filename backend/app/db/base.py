@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import DateTime, MetaData, func
+from sqlalchemy import DateTime, MetaData, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -35,9 +35,16 @@ class TimestampMixin:
     )
 
 
+# SQLite gives a column declared UUID NUMERIC affinity. Bare UUID hex values
+# such as 12345678e999... can be coerced into float('inf') on INSERT and
+# become unreadable as UUIDs. Use text affinity only for SQLite while keeping
+# the native PostgreSQL UUID type and its existing API unchanged.
+UUID_TEXT_SAFE = UUID(as_uuid=False).with_variant(String(36), "sqlite")
+
+
 class UUIDPrimaryKeyMixin:
     id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False),
+        UUID_TEXT_SAFE,
         primary_key=True,
         default=lambda: str(uuid4()),
     )

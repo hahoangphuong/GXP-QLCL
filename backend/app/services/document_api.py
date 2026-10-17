@@ -17,8 +17,10 @@ from backend.app.db.enums import AuditActorType, DocumentGenerationStatus
 from backend.app.db.models.phase1 import (
     AppUser,
     AuditEvent,
+    BusinessEligibilityCertificate,
     CapaCycle,
     Case,
+    Certificate,
     Document,
     DocumentGenerationRun,
     DocumentSourceDependency,
@@ -400,6 +402,99 @@ class DocumentWorkflowService:
     def _source_dependency_family_code(self, session: Session, source_document_id: str) -> str:
         row = session.get(Document, source_document_id)
         return "unknown" if row is None else row.family_code
+
+    def get_owner_document_metadata(
+        self,
+        session: Session,
+        *,
+        owner_kind: Literal["certificate", "business_eligibility_certificate"],
+        owner_id: str,
+    ) -> dict[str, Any]:
+        """Inventory only canonical Document/Variant/Version ROWS, not binary evidence.
+
+        Exact owner FK is the only selector. Neither Case adjacency nor DDK
+        GxP source-cell hints are a substitute for explicit Document ownership.
+        An ambiguous multi-owner document is an integrity error, not a match.
+        """
+        if owner_kind == "certificate":
+            owner_type, owner_column = Certificate, Document.certificate_id
+        elif owner_kind == "business_eligibility_certificate":
+            owner_type, owner_column = (
+                BusinessEligibilityCertificate, Document.business_eligibility_certificate_id
+            )
+        else:
+            raise ValueError("Unknown canonical document owner kind.")
+
+        if session.get(owner_type, owner_id) is None:
+            raise HTTPException(status_code=404, detail="Document business owner not found.")
+
+        documents = list(session.scalars(
+            select(Document).where(owner_column == owner_id).order_by(Document.id)
+        ))
+        for row in documents:
+            owners = {
+                key: value
+                for key, value in (
+                    ("case", row.case_id),
+                    ("capa_cycle", row.capa_cycle_id),
+                    ("certificate", row.certificate_id),
+                    ("business_eligibility_certificate", row.business_eligibility_certificate_id),
+                    ("change_request", row.change_request_id),
+                )
+                if value is not None
+            }
+            if owners != {owner_kind: owner_id}:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Document has ambiguous canonical business ownership.",
+                )
+
+        document_ids = [doc.id for doc in documents]
+        variants = (
+            list(session.scalars(select(DocumentVariant).where(
+                DocumentVariant.document_id.in_(document_ids)
+            )))
+            if document_ids else []
+        )
+        variant_document_id = {variant.id: variant.document_id for variant in variants}
+        versions = (
+            list(session.scalars(select(DocumentVersion).where(
+                DocumentVersion.document_variant_id.in_(variant_document_id)
+            )))
+            if variant_document_id else []
+        )
+        counts = {doc_id: [0, 0, 0] for doc_id in document_ids}
+        for variant in variants:
+            counts[variant.document_id][0] += 1
+        for version in versions:
+            document_id = variant_document_id[version.document_variant_id]
+            counts[document_id][1] += 1
+            if version.is_current:
+                counts[document_id][2] += 1
+
+        return {
+            "owner_kind": owner_kind,
+            "owner_id": owner_id,
+            "metadata_status": (
+                "registered_metadata_only_unverified"
+                if documents else "no_registered_document_metadata"
+            ),
+            # No file is opened, streamed, trusted, signed or storage-verified.
+            "binary_verified": False,
+            "original_signed_document_verified": False,
+            "documents": [
+                {
+                    "document_id": doc.id,
+                    "family_code": doc.family_code,
+                    "document_type_code": doc.document_type_code,
+                    "title": doc.title,
+                    "registered_variant_count": counts[doc.id][0],
+                    "registered_version_count": counts[doc.id][1],
+                    "registered_current_version_count": counts[doc.id][2],
+                }
+                for doc in documents
+            ],
+        }
 
     def _serialize_document_detail(self, session: Session, document_id: str) -> dict[str, Any]:
         row = session.get(Document, document_id)

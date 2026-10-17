@@ -459,3 +459,51 @@ def test_validate_vm_prod_deploy_rejects_incomplete_or_invalid_postgres_tls_over
     assert any("PG_SSL_CERT_FILE must be an absolute Unix path." in item for item in relative.errors)
     assert any("must point to different files" in item for item in same_path.errors)
     assert any("not a URL" in item for item in url_path.errors)
+
+
+def test_explicit_database_url_matches_backup_target_on_shared_vm():
+    baseline = {
+        "AUTH_PROVIDER": "google_oidc",
+        "AUTH_OIDC_CLIENT_ID": "client-id.apps.googleusercontent.com",
+        "AUTH_ROLE_SOURCE": "database",
+        "DB_MODE": "local_postgres",
+        "DB_NAME": "gxp_qlcl",
+        "DB_USER": "gxp_app",
+        "DB_PASSWORD": "secret",
+        "DB_HOST": "127.0.0.1",
+        "DB_PORT": "5432",
+        "STORAGE_CLASS": "synology_smb",
+        "STORAGE_INSPECTION_ROOT": r"\\\\100.95.45.127\\Hồ sơ nội bộ\\01 - Kiểm tra GPs",
+        "STORAGE_DKKD_ROOT": r"\\\\100.95.45.127\\Hồ sơ nội bộ\\01 - Kiểm tra GPs\\Chứng nhận ĐĐKKDD",
+        "STORAGE_TEMPLATE_ROOT": r"\\\\100.95.45.127\\Hồ sơ nội bộ\\01 - Kiểm tra GPs\\Templates",
+        "SMB_USERNAME": "gxp-smb",
+        "SMB_PASSWORD": "secret",
+        "PUBLIC_BASE_URL": "https://gxp.example.com",
+        "BACKUP_GCS_BUCKET": "gs://gxp-backups",
+    }
+    matching = validate_vm_prod_deploy_env({
+        **baseline,
+        "DATABASE_URL": "postgresql+psycopg://gxp_app:secret@127.0.0.1:5432/gxp_qlcl",
+    })
+    assert matching.ok, matching.errors
+
+    mismatch_cases = (
+        ("postgresql+psycopg://gxp_app:secret@127.0.0.1:5432/gmpnn_ai", "database must match DB_NAME"),
+        ("postgresql+psycopg://gmpnn_ai_app:secret@127.0.0.1:5432/gxp_qlcl", "user must match DB_USER"),
+        ("postgresql+psycopg://gxp_app:secret@10.148.0.3:5432/gxp_qlcl", "loopback host"),
+        ("postgresql+psycopg://gxp_app:secret@127.0.0.1:5442/gxp_qlcl", "port must match DB_PORT"),
+        ("postgresql+psycopg://gxp_app:secret@127.0.0.1:not-a-port/gxp_qlcl", "invalid connection syntax"),
+    )
+    for database_url, expected_error in mismatch_cases:
+        result = validate_vm_prod_deploy_env({**baseline, "DATABASE_URL": database_url})
+        assert not result.ok, database_url
+        assert any(expected_error in err for err in result.errors), result.errors
+        assert all("secret" not in err for err in result.errors)
+
+    cloud_sql = validate_vm_prod_deploy_env({
+        **baseline,
+        "DB_MODE": "cloud_sql",
+        "STORAGE_CLASS": "external_bridge_http",
+        "DATABASE_URL": "postgresql+psycopg://gxp_app:secret@/gxp_qlcl?host=%2Fcloudsql%2Fmy-project%3Aasia-southeast1%3Adb",
+    })
+    assert cloud_sql.ok, cloud_sql.errors

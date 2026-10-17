@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from hashlib import sha256
 import shutil
 from typing import BinaryIO, Iterator
-from uuid import uuid4
+from backend.app.storage.staging import new_staging_name
 
 from backend.app.db.enums import StorageResolutionStatus
 from backend.app.storage.local import _normalize_relative
@@ -15,6 +15,7 @@ from backend.app.storage.types import (
     StorageTargetExistsError,
     StorageResolution,
     matches_inspection_identity,
+    matches_dkkd_identity,
 )
 
 try:
@@ -174,11 +175,10 @@ class SmbStorageService:
                 candidate_count=0,
                 detail="Missing or invalid site legacy ID for DDKD folder resolution.",
             )
-        site_token = f"(ID-{site_legacy_id})".lower()
         matches = [
             entry.path
             for entry in smbclient.scandir(self.dkkd_root)
-            if entry.is_dir() and site_token in entry.name.lower()
+            if entry.is_dir() and matches_dkkd_identity(entry.name, site_legacy_id=site_legacy_id)
         ]
         return self._resolution_from_matches(
             root=self.dkkd_root,
@@ -198,6 +198,17 @@ class SmbStorageService:
             self._entry_for(base_root, entry.path)
             for entry in sorted(smbclient.scandir(target), key=lambda item: (not item.is_dir(), item.name.lower()))
         ]
+
+    def iter_entries_for_audit(self, relative_path: str = "", *, root: str = "inspection") -> Iterator[StorageEntry]:
+        """Use SMB scandir incrementally; do not sort/materialize the folder."""
+        base_root = self._select_root(root)
+        target = self._join_root(base_root, relative_path)
+        if not smbpath.exists(target):
+            raise FileNotFoundError(target)
+        if not smbpath.isdir(target):
+            raise NotADirectoryError(target)
+        for entry in smbclient.scandir(target):
+            yield self._entry_for(base_root, entry.path)
 
     def stat(self, relative_path: str, *, root: str = "inspection") -> StorageEntry:
         base_root = self._select_root(root)
@@ -228,32 +239,35 @@ class SmbStorageService:
         parent = target.rsplit("\\", 1)[0]
         smbclient.makedirs(parent, exist_ok=True)
         if not overwrite:
-            created = False
+            # Stage the complete file on the same SMB share. Server-side
+            # smbclient.rename() uses replace_if_exists=False, so publication
+            # is atomic and cannot expose partially streamed document bytes.
+            temp_target = parent + "\\" + new_staging_name()
+            staged = False
             try:
-                with smbclient.open_file(target, mode="xb") as fh:
-                    created = True
+                with smbclient.open_file(temp_target, mode="xb") as fh:
+                    staged = True
                     while True:
                         chunk = stream.read(1024 * 1024)
                         if not chunk:
                             break
                         fh.write(chunk)
-            except OSError as exc:
-                if created:
+                try:
+                    smbclient.rename(temp_target, target)
+                except OSError as exc:
                     if smbpath.exists(target):
-                        smbclient.remove(target)
+                        raise StorageTargetExistsError(
+                            f"Storage target already exists and will not be overwritten: {relative_path!r}."
+                        ) from exc
                     raise
-                if smbpath.exists(target):
-                    raise StorageTargetExistsError(
-                        f"Storage target already exists and will not be overwritten: {relative_path!r}."
-                    ) from exc
-                raise
-            except Exception:
-                if created and smbpath.exists(target):
-                    smbclient.remove(target)
-                raise
+                staged = False
+            finally:
+                # Only our private temporary file is eligible for cleanup.
+                if staged and smbpath.exists(temp_target):
+                    smbclient.remove(temp_target)
             return self._entry_for(base_root, target)
 
-        temp_target = target + f".tmp-{uuid4().hex}"
+        temp_target = parent + "\\" + new_staging_name()
         try:
             with smbclient.open_file(temp_target, mode="wb") as fh:
                 while True:
@@ -282,23 +296,38 @@ class SmbStorageService:
         smbclient.makedirs(target, exist_ok=True)
         return self._entry_for(base_root, target)
 
+    @staticmethod
+    def _require_vacant_target(target: str, relative_path: str) -> None:
+        if smbpath.exists(target):
+            raise StorageTargetExistsError(
+                f"Storage target already exists and will not be overwritten: {relative_path!r}."
+            )
+
     def copy(self, source_relative_path: str, target_relative_path: str, *, root: str = "inspection") -> StorageEntry:
-        base_root = self._select_root(root)
-        source = self._join_root(base_root, source_relative_path)
-        target = self._join_root(base_root, target_relative_path)
-        parent = target.rsplit("\\", 1)[0]
-        smbclient.makedirs(parent, exist_ok=True)
-        with smbclient.open_file(source, mode="rb") as src, smbclient.open_file(target, mode="wb") as dst:
-            shutil.copyfileobj(src, dst, length=1024 * 1024)
-        return self._entry_for(base_root, target)
+        source = self._join_root(self._select_root(root), source_relative_path)
+        # Reuse the exclusive-create and partial-write cleanup owner.
+        with smbclient.open_file(source, mode="rb") as stream:
+            return self.write_stream(target_relative_path, stream, root=root, overwrite=False)
 
     def move(self, source_relative_path: str, target_relative_path: str, *, root: str = "inspection") -> StorageEntry:
         base_root = self._select_root(root)
         source = self._join_root(base_root, source_relative_path)
         target = self._join_root(base_root, target_relative_path)
+        self._require_vacant_target(target, target_relative_path)
         parent = target.rsplit("\\", 1)[0]
         smbclient.makedirs(parent, exist_ok=True)
-        smbclient.rename(source, target)
+        try:
+            # smbclient.rename sends replace_if_exists=False to the server.
+            smbclient.rename(source, target)
+        except OSError as exc:
+            # SMB may surface STATUS_OBJECT_NAME_COLLISION as a generic
+            # SMBOSError instead of FileExistsError. Inspect the destination
+            # only after server-side no-replace failed, never retry/replace.
+            if smbpath.exists(target):
+                raise StorageTargetExistsError(
+                    f"Storage target already exists and will not be overwritten: {target_relative_path!r}."
+                ) from exc
+            raise
         return self._entry_for(base_root, target)
 
     def rename(self, source_relative_path: str, new_name: str, *, root: str = "inspection") -> StorageEntry:
@@ -307,7 +336,15 @@ class SmbStorageService:
         base_root = self._select_root(root)
         source = self._join_root(base_root, source_relative_path)
         target = source.rsplit("\\", 1)[0] + "\\" + new_name
-        smbclient.rename(source, target)
+        self._require_vacant_target(target, new_name)
+        try:
+            smbclient.rename(source, target)
+        except OSError as exc:
+            if smbpath.exists(target):
+                raise StorageTargetExistsError(
+                    f"Storage target already exists and will not be overwritten: {new_name!r}."
+                ) from exc
+            raise
         return self._entry_for(base_root, target)
 
     def checksum(self, relative_path: str, *, root: str = "inspection") -> str:

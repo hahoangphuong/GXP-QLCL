@@ -1,0 +1,14 @@
+[Unit]
+Description=GXP PostgreSQL nightly backup schedule (NOT ENABLED BY DEPLOY)
+
+[Timer]
+# UTC avoids host timezone ambiguity.
+OnCalendar=*-*-* 01:30:00 UTC
+Unit=gxp-postgres-nightly-backup.service
+AccuracySec=1min
+RandomizedDelaySec=0
+# No missed-run catch-up at boot/activation during rehearsal.
+Persistent=false
+
+[Install]
+WantedBy=timers.target

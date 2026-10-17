@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { AppShell } from "./components/AppShell";
@@ -19,6 +19,7 @@ export type ApiAccess = {
   useStubAuth: boolean;
   bearerToken: string | null;
   canLoadSecureApi: boolean;
+  accessGeneration: number;
 };
 
 function GoogleOidcButton({
@@ -139,6 +140,9 @@ export function App() {
     const stored = loadOidcSession();
     return isOidcSessionValid(stored) ? stored : null;
   });
+  // This opaque generation binds client state to the credential that loaded it
+  // without exposing token or principal data in URLs, DOM attributes or logs.
+  const [accessGeneration, setAccessGeneration] = useState(0);
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [identity, setIdentity] = useState<AuthenticatedIdentity | null>(null);
@@ -157,6 +161,7 @@ export function App() {
 
   useEffect(() => {
     if (oidcSession && !isOidcSessionValid(oidcSession)) {
+      setAccessGeneration((current) => current + 1);
       setOidcSession(null);
       clearOidcSession();
       return;
@@ -212,11 +217,25 @@ export function App() {
     };
   }, [auth, canLoadSecureApi, oidcSession?.token, useStubAuth]);
 
+  const acceptOidcSession = useCallback((session: OidcSession) => {
+    // There is no authoritative browser-visible authorization revision. Treat
+    // every accepted credential, including refresh, as a new access owner.
+    setAccessGeneration((current) => current + 1);
+    setOidcSession(session);
+  }, []);
+
+  const clearActiveOidcSession = useCallback(() => {
+    window.google?.accounts?.id?.disableAutoSelect?.();
+    setAccessGeneration((current) => current + 1);
+    setOidcSession(null);
+  }, []);
+
   const apiAccess: ApiAccess = {
     auth,
     useStubAuth,
     bearerToken: oidcSession?.token ?? null,
     canLoadSecureApi,
+    accessGeneration,
   };
   const isAuthenticated = useStubAuth || Boolean(oidcSession);
 
@@ -230,11 +249,8 @@ export function App() {
           canAccessAdmin={identity?.permissions.includes("admin.users") ?? false}
           oidcClientId={status?.auth.oidc_client_id ?? null}
           oidcSession={oidcSession}
-          onOidcSession={setOidcSession}
-          onOidcLogout={() => {
-            window.google?.accounts?.id?.disableAutoSelect?.();
-            setOidcSession(null);
-          }}
+          onOidcSession={acceptOidcSession}
+          onOidcLogout={clearActiveOidcSession}
         />
       }
     >

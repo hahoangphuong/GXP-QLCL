@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="vi">
+  <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Rehearsal read-only API probe</title></head>
+  <body>
+    <h1>Rehearsal: probe API chỉ đọc</h1>
+    <p>Đăng nhập qua App trong cùng tab trước khi chạy trên VM. Kết quả API không xác nhận UI, binary storage hoặc screen reader.</p>
+    <p><a href="/search">Mở frontend hiện tại</a></p>
+    <p><label><input id="fixture" type="checkbox"> Fixture tổng hợp local (không chọn khi kết nối VM)</label></p>
+    <button id="run" type="button">Chạy probe chỉ đọc</button>
+    <pre id="report" role="status" aria-live="polite">Chưa chạy.</pre>
+    <script type="module">
+      import { runRehearsalSmoke } from '/src/qa/rehearsalSmoke.ts';
+      const button = document.getElementById('run');
+      const report = document.getElementById('report');
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        report.textContent = 'Đang kiểm tra...';
+        try {
+          report.textContent = JSON.stringify(await runRehearsalSmoke({ fixture: document.getElementById('fixture').checked }), null, 2);
+        } catch {
+          report.textContent = 'Probe chưa hoàn tất. Không xuất chi tiết lỗi nhạy cảm.';
+        } finally {
+          button.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

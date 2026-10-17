@@ -6,7 +6,8 @@ from backend.app.auth import AuthenticatedUser, get_authenticated_user, require_
 from backend.app.status import build_application_status
 
 
-def app_status(request: Request):
+def _build_status_payload(request: Request, *, include_internal: bool):
+    """Expose internal deployment identifiers only after admin.users authorization."""
     return {
         "app_name": request.app.state.config.app_name,
         "app_mode": request.app.state.config.app_mode,
@@ -22,14 +23,18 @@ def app_status(request: Request):
             "git_sha": request.app.state.config.deployment_git_sha or None,
             "git_short_sha": request.app.state.config.deployment_git_short_sha or None,
             "branch": request.app.state.config.deployment_branch or None,
-            "image_uri": request.app.state.config.deployment_image_uri or None,
+            "image_uri": (request.app.state.config.deployment_image_uri or None) if include_internal else None,
             "deployed_at_utc": request.app.state.config.deployment_timestamp_utc or None,
-            "cloud_run_service_name": request.app.state.config.cloud_run_service_name or None,
-            "db_name": request.app.state.config.db_name or None,
-            "db_user": request.app.state.config.db_user or None,
+            "cloud_run_service_name": (request.app.state.config.cloud_run_service_name or None) if include_internal else None,
+            "db_name": (request.app.state.config.db_name or None) if include_internal else None,
+            "db_user": (request.app.state.config.db_user or None) if include_internal else None,
         },
         "phases": build_application_status(),
     }
+
+
+def app_status(request: Request):
+    return _build_status_payload(request, include_internal=False)
 
 
 def admin_system_status(
@@ -37,7 +42,7 @@ def admin_system_status(
     user: AuthenticatedUser = Depends(get_authenticated_user),
 ):
     require_permissions(user, {"admin.users"})
-    return app_status(request)
+    return _build_status_payload(request, include_internal=True)
 
 
 def register_status_routes(app) -> None:

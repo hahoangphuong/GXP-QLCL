@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { GxpCertificateWorkspace } from "./GxpCertificateWorkspace";
@@ -35,7 +36,214 @@ function renderWorkspace(onEditLatestVersion = vi.fn().mockResolvedValue(undefin
   return onEditLatestVersion;
 }
 
+it("mounts persisted snapshots separately without changing current detail, draft or write token", async () => {
+  const onEdit = vi.fn().mockResolvedValue(undefined);
+  const onSelect = vi.fn();
+  const onPromote = vi.fn();
+  const history = { certificate_id: "cert-1", site_id: "site-1", case_id: "case-1", certificate_type: "GMP", issuance_basis: "inspection_case",
+    aggregate_latest_flag: true, latest_version_id: "historical-v2", versions: [2, 1].map(n => ({
+      certificate_version_id: `historical-v${n}`, version_no: n, row_version: 99, is_latest_version: n === 2,
+      lifecycle_state: null, certificate_number: `Historical ${n}`, issue_date: null, expiry_date: null,
+      applicable_standard: null, issuing_authority: null, scope_summary: null, scopes: [],
+    })) };
+  const props = { detail: detail(), detailError: null, detailLoading: false, items, listError: null, listLoading: false,
+    onEditLatestVersion: onEdit, onPromoteCurrent: onPromote, onSelectCertificate: onSelect,
+    promotionError: null, promotionPending: false, selectedCertificateId: "cert-1" };
+  const { rerender } = render(<GxpCertificateWorkspace {...props} versionHistory={{ status: "ready", data: history }} />);
+  fireEvent.click(screen.getByText("Các phiên bản GPs đã lưu"));
+  fireEvent.change(screen.getByRole("combobox", { name: "Phiên bản đã lưu" }), { target: { value: "historical-v1" } });
+  expect(screen.getByText("Historical 1", { selector: "dd" })).toBeInTheDocument();
+  expect(document.querySelector(".legacy-certificate-heading")).toHaveTextContent("GCN-001");
+  expect(onSelect).not.toHaveBeenCalled(); expect(onPromote).not.toHaveBeenCalled(); expect(onEdit).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Số GCN" }), { target: { value: "retained draft" } });
+  rerender(<GxpCertificateWorkspace {...props} versionHistory={{ status: "error", httpStatus: 409 }} />);
+  expect(screen.getByRole("textbox", { name: "Số GCN" })).toHaveValue("retained draft");
+  fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+  await waitFor(() => expect(onEdit).toHaveBeenCalledTimes(1));
+  expect(onEdit.mock.calls[0][0]).toMatchObject({ expected_version: 7, certificate_number: "retained draft" });
+});
+
+describe("GxP certificate keyboard and identity", () => {
+  it("mounts read-only document metadata inside the selected Facility detail without mutations", () => {
+    const props = {
+      detail: detail(), detailError: null, detailLoading: false, items, listError: null, listLoading: false,
+      onEditLatestVersion: vi.fn(), onPromoteCurrent: vi.fn(), onSelectCertificate: vi.fn(),
+      promotionError: null, promotionPending: false, selectedCertificateId: "cert-1",
+    };
+    const { container } = render(<GxpCertificateWorkspace {...props} documentMetadata={{ status: "ready", data: {
+      owner_kind: "certificate", owner_id: "cert-1", metadata_status: "registered_metadata_only_unverified",
+      binary_verified: false, original_signed_document_verified: false,
+      documents: [{ document_id: "doc-gxp", family_code: "certificate", document_type_code: "signed",
+        title: "GCN đã đăng ký", registered_variant_count: 1, registered_version_count: 1, registered_current_version_count: 1 }],
+    } }} />);
+    expect(container.querySelector(".detail-pane .certificate-document-metadata")).toHaveTextContent("GCN đã đăng ký");
+    expect(props.onEditLatestVersion).not.toHaveBeenCalled();
+    expect(props.onPromoteCurrent).not.toHaveBeenCalled();
+  });
+  it("keeps the Facility horizontal header, identity/scope prominence and issuer/status/source footer distinct from Case", () => {
+    renderWorkspace();
+    const owner = document.querySelector(".facility-gxp-workspace");
+    expect(owner).not.toBeNull();
+    expect(Array.from(owner!.querySelectorAll(".legacy-certificate-heading .detail-label"), node => node.textContent))
+      .toEqual(["Số GCN", "Ngày cấp", "Hết hạn", "Tiêu chuẩn"]);
+    expect(Array.from(owner!.querySelectorAll(".facility-gxp-identity .detail-label"), node => node.textContent))
+      .toEqual(["Tên cơ sở", "Địa chỉ cơ sở", "Tên công ty", "Trụ sở"]);
+    expect(owner!.querySelector(".facility-gxp-scope")).toHaveTextContent("Display-only summary");
+    expect(owner!.querySelector(".facility-gxp-limitation")).toHaveTextContent("Giới hạn");
+    expect(owner!.querySelector(".facility-gxp-footer .facility-gxp-issuer")).toHaveTextContent("Cơ quan cấp");
+    expect(owner!.querySelector(".facility-gxp-footer .facility-gxp-status-source")).toHaveTextContent("Nguồn gốc");
+    expect(owner!.querySelectorAll(".facility-gxp-scope-records li")).toHaveLength(2);
+    expect(screen.getByText("Phạm vi Alpha")).toBeInTheDocument();
+    expect(screen.getByText("Scope Beta")).toBeInTheDocument();
+    expect(owner!.querySelectorAll('[role="tab"], .document-workspace')).toHaveLength(0);
+  });
+  it("retains raw multiline standards, long scope/limitation and null metadata without inventing version navigation", () => {
+    const current = detail();
+    current.applicable_standard = "WHO-GMP\nEU-GMP";
+    current.scope_summary = "Summary\n" + "LongScopeText".repeat(60);
+    current.limitation_text = "First limitation\nSecond limitation";
+    const select = vi.fn();
+    const save = vi.fn();
+    const { container } = render(<GxpCertificateWorkspace items={items} detail={current}
+      detailError={null} detailLoading={false} listError={null} listLoading={false}
+      selectedCertificateId="cert-1" onSelectCertificate={select} onEditLatestVersion={save}
+      onPromoteCurrent={vi.fn()} promotionError={null} promotionPending={false} />);
+    expect(container.querySelector(".legacy-certificate-heading .detail-field:last-child strong")?.textContent).toBe(current.applicable_standard);
+    const summary = container.querySelector(".facility-gxp-scope .multiline-value");
+    expect(summary).toHaveClass("multiline-value");
+    expect(summary?.textContent).toBe(current.scope_summary);
+    expect(screen.getByText("First limitation Second limitation")).toHaveClass("multiline-value");
+    expect(screen.getAllByText("Chưa có").length).toBeGreaterThan(0);
+    expect(container.querySelectorAll('[role="tab"], .document-workspace')).toHaveLength(0);
+    expect(select).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+  });
+  function keyboardProps() {
+    const props = { items, detail: detail(), listLoading: false, listError: null, selectedCertificateId: "cert-1", onSelectCertificate: vi.fn(), detailLoading: false, detailError: null, onPromoteCurrent: vi.fn(), promotionError: null, promotionPending: false, onEditLatestVersion: vi.fn() };
+    return { ...props, items: [items[0], { ...items[0], certificate_id: "cert-1-2" }] };
+  }
+  it("moves focus independently and activates exact IDs even with identical reference numbers", () => {
+    const props = keyboardProps();
+    render(<GxpCertificateWorkspace {...props} />);
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(rows.filter(row => row.tabIndex === 0)).toHaveLength(1);
+    act(() => rows[0].focus());
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(rows[1]).toHaveFocus();
+    expect(rows[0]).toHaveAttribute("aria-selected", "true");
+    expect(rows[1]).toHaveAttribute("aria-selected", "false");
+    expect(props.onSelectCertificate).not.toHaveBeenCalled();
+    fireEvent.keyDown(rows[1], { key: "Enter" });
+    expect(props.onSelectCertificate).toHaveBeenLastCalledWith("cert-1-2");
+    fireEvent.keyDown(rows[1], { key: "Home" });
+    expect(rows[0]).toHaveFocus();
+    fireEvent.keyDown(rows[0], { key: "End" });
+    expect(rows[1]).toHaveFocus();
+    fireEvent.keyDown(rows[1], { key: " " });
+    fireEvent.click(rows[1]);
+    expect(props.onSelectCertificate.mock.calls).toEqual([["cert-1-2"], ["cert-1-2"], ["cert-1-2"]]);
+    expect(screen.queryByRole("grid")).not.toBeInTheDocument();
+  });
+  it.each(["loading", "error", "empty"])("renders initial %s without exposing stale detail", (state) => {
+    const props = keyboardProps();
+    const { container } = render(<GxpCertificateWorkspace {...props} items={[]} selectedCertificateId={null} detail={null} listLoading={state === "loading"} listError={state === "error" ? "list unavailable" : null} />);
+    if (state === "error") expect(screen.getByRole("alert")).toHaveTextContent("list unavailable");
+    else expect(screen.getByText(state === "loading" ? "Đang tải giấy chứng nhận GxP" : "Chưa có giấy chứng nhận GxP")).toBeInTheDocument();
+    expect(container.querySelector(".certificate-detail-grid")).not.toBeInTheDocument();
+    expect(props.onSelectCertificate).not.toHaveBeenCalled();
+  });
+  it("retains the focused row across refresh, loading and error without activation", () => {
+    const props = keyboardProps();
+    const { rerender } = render(<GxpCertificateWorkspace {...props} />);
+    const row = screen.getAllByRole("row")[2];
+    act(() => row.focus());
+    rerender(<GxpCertificateWorkspace {...props} listLoading={true} detailLoading={true} detail={null} />);
+    expect(row).toHaveFocus();
+    expect(screen.getByRole("table")).toHaveAttribute("aria-busy", "true");
+    rerender(<GxpCertificateWorkspace {...props} items={props.items.map(item => ({ ...item }))} listError="refresh failed" />);
+    expect(row).toHaveFocus();
+    expect(screen.getByRole("alert")).toHaveTextContent("refresh failed");
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(props.onSelectCertificate).not.toHaveBeenCalled();
+    rerender(<GxpCertificateWorkspace {...props} />);
+    expect(row).toHaveFocus();
+  });
+  it("hides mismatched detail and actions in the very first selected-ID render", () => {
+    const props = keyboardProps();
+    const { container, rerender } = render(<GxpCertificateWorkspace {...props} />);
+    expect(container.querySelector(".certificate-detail-grid")).toBeInTheDocument();
+    rerender(<GxpCertificateWorkspace {...props} selectedCertificateId="cert-1-2" />);
+    expect(container.querySelector(".certificate-detail-grid")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Cập nhật/ })).not.toBeInTheDocument();
+    rerender(<GxpCertificateWorkspace {...props} selectedCertificateId="cert-1-2" detail={{ ...props.detail!, certificate_id: "cert-1-2", facility_name: "Certificate B detail" }} />);
+    expect(screen.getByText("Certificate B detail")).toBeInTheDocument();
+  });
+  it("keeps draft, focus and original concurrency token when the same certificate refreshes", async () => {
+    const props = keyboardProps();
+    props.onEditLatestVersion.mockResolvedValue(undefined);
+    const { rerender } = render(<GxpCertificateWorkspace {...props} />);
+    const trigger = screen.getByRole("button", { name: "Cập nhật chứng nhận" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const input = screen.getByRole("textbox", { name: "Số GCN" });
+    expect(input).toHaveFocus();
+    fireEvent.change(input, { target: { value: "draft survives" } });
+    rerender(<GxpCertificateWorkspace {...props} detail={null} detailLoading={true} />);
+    expect(screen.getByRole("button", { name: "Lưu thay đổi" })).toBeDisabled();
+    expect(input).toHaveValue("draft survives");
+    expect(input).toHaveFocus();
+    rerender(<GxpCertificateWorkspace {...props} detail={{ ...detail(), row_version: 8, action_readiness: [{ ...detail().action_readiness![0], expected_version: 8 }] }} />);
+    rerender(<GxpCertificateWorkspace {...props} detail={detail(false)} />);
+    expect(screen.getByRole("button", { name: "Lưu thay đổi" })).toBeDisabled();
+    expect(input).toHaveValue("draft survives");
+    rerender(<GxpCertificateWorkspace {...props} detail={{ ...detail(), row_version: 8 }} />);
+    expect(input).toHaveValue("draft survives");
+    const cancel = screen.getByRole("button", { name: "Hủy" });
+    cancel.focus();
+    fireEvent.keyDown(cancel, { key: "Tab" });
+    expect(input).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+    await waitFor(() => expect(props.onEditLatestVersion).toHaveBeenCalledWith(expect.objectContaining({ expected_version: 7, certificate_number: "draft survives" })));
+    // During loading the original trigger was removed; avoid stealing focus.
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
+
 describe("GxpCertificateWorkspace edit form", () => {
+  it("contains both Tab directions while saving and ignores pending Escape, then restores focus on Cancel", async () => {
+    let finish!: () => void;
+    const save = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+    renderWorkspace(save);
+    const trigger = screen.getByRole("button", { name: "Cập nhật chứng nhận" });
+    act(() => trigger.focus());
+    fireEvent.click(trigger);
+    const input = screen.getByRole("textbox", { name: "Số GCN" });
+    expect(input).toHaveFocus();
+    fireEvent.change(input, { target: { value: "pending draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveFocus();
+    for (const shiftKey of [false, true]) {
+      const event = new KeyboardEvent("keydown", { key: "Tab", shiftKey, bubbles: true, cancelable: true });
+      act(() => dialog.dispatchEvent(event));
+      expect(event.defaultPrevented).toBe(true);
+      expect(dialog).toHaveFocus();
+    }
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(dialog).toBeInTheDocument();
+    expect(input).toHaveValue("pending draft");
+    expect(save).toHaveBeenCalledTimes(1);
+    await act(async () => finish());
+    expect(trigger).toHaveFocus();
+    fireEvent.click(trigger);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "Hủy" }));
+    expect(trigger).toHaveFocus();
+  });
   it("renders no edit control without backend action and disables unavailable backend action", () => {
     render(<GxpCertificateWorkspace
       detail={{ ...detail(), action_readiness: [] }} detailError={null} detailLoading={false} items={items} listError={null} listLoading={false}
@@ -87,14 +295,17 @@ describe("GxpCertificateWorkspace edit form", () => {
     expect(screen.getByRole("dialog", { name: "Sửa giấy chứng nhận GxP" })).toBeInTheDocument();
   });
 
-  it("closes a stale draft and displays the conflict in the action area", async () => {
+  it("preserves a stale draft, displays 409 and prevents a blind retry", async () => {
     const error = Object.assign(new Error("Dữ liệu chứng nhận đã thay đổi."), { status: 409 });
     const onEditLatestVersion = renderWorkspace(vi.fn().mockRejectedValue(error));
     fireEvent.click(screen.getByRole("button", { name: "Cập nhật chứng nhận" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Số GCN" }), { target: { value: "unsaved draft" } });
     fireEvent.click(within(screen.getByRole("dialog", { name: "Sửa giấy chứng nhận GxP" })).getByRole("button", { name: "Lưu thay đổi" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Dữ liệu chứng nhận đã thay đổi.");
     expect(onEditLatestVersion).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("dialog", { name: "Sửa giấy chứng nhận GxP" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Số GCN" })).toHaveValue("unsaved draft");
+    expect(screen.getByRole("textbox", { name: "Số GCN" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Lưu thay đổi" })).toBeDisabled();
   });
 });

@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { BusinessEligibilityWorkspace } from "./BusinessEligibilityWorkspace";
@@ -104,7 +105,201 @@ function baseProps() {
   };
 }
 
+describe("Eligibility certificate keyboard and identity", () => {
+  it("mounts ĐĐK document metadata separately from source evidence and canonical basis", () => {
+    const props = baseProps();
+    const { container } = render(<BusinessEligibilityWorkspace {...props} documentMetadata={{ status: "ready", data: {
+      owner_kind: "business_eligibility_certificate", owner_id: "dkkd-1",
+      metadata_status: "no_registered_document_metadata", binary_verified: false,
+      original_signed_document_verified: false, documents: [],
+    } }} />);
+    const region = screen.getByRole("region", { name: "Tài liệu đã đăng ký" });
+    expect(region.closest(".detail-pane")).not.toBeNull();
+    expect(region).toHaveTextContent("không xác nhận tài liệu gốc có hay không");
+    expect(container.querySelector(".certificate-basis-section")?.contains(region)).toBe(false);
+    expect(props.onIssue).not.toHaveBeenCalled();
+    expect(props.onEditLatestVersion).not.toHaveBeenCalled();
+  });
+  it("adds original source evidence separately from canonical basis without mutations", () => {
+    const props = baseProps();
+    render(<BusinessEligibilityWorkspace {...props} sourceEvidence={{ status: "ready", data: {
+      business_eligibility_certificate_id: "dkkd-1", legacy_dkkd_id: null, source_status: "legacy_identity_missing",
+      evidence_kind: "original_excel_cells_source_only", canonical_links_included: false,
+      source_workbook_sha256: null, source_sheet_name: null, source_row_number: null, groups: [],
+    } }} />);
+    const section = screen.getByRole("region", { name: "Dữ liệu GxP từ hồ sơ ĐĐK gốc" });
+    expect(section.closest(".detail-pane")).not.toBeNull();
+    expect(section.querySelector(".certificate-basis-section")).toBeNull();
+    expect(screen.getByText(/GMP A · GMP-001/)).toBeInTheDocument();
+    expect(props.onIssue).not.toHaveBeenCalled();
+    expect(props.onEditLatestVersion).not.toHaveBeenCalled();
+    expect(props.onPromoteCurrent).not.toHaveBeenCalled();
+  });
+  it("places Facility dossier/basis in the left pane and groups canonical fields at right without Case or inferred activity tabs", () => {
+    const props = baseProps();
+    const { container } = render(<BusinessEligibilityWorkspace {...props} />);
+    expect(container.querySelector(".facility-ddk-workspace")).not.toBeNull();
+    const left = container.querySelector(".master-list-pane")!;
+    const right = container.querySelector(".detail-pane")!;
+    expect(left.querySelector(".facility-ddk-dossier .detail-label")).toHaveTextContent("Hồ sơ đề nghị");
+    expect(left.querySelector(".certificate-basis-section")).not.toBeNull();
+    expect(right.querySelector(".certificate-basis-section")).toBeNull();
+    expect(Array.from(right.querySelectorAll(".facility-ddk-identity .detail-label"), node => node.textContent))
+      .toEqual(["Tên công ty", "Trụ sở", "Tên cơ sở", "Địa chỉ cơ sở"]);
+    expect(Array.from(right.querySelectorAll(".facility-ddk-professional-primary .detail-label"), node => node.textContent))
+      .toEqual(["PT chuyên môn", "Trình độ chuyên môn", "CCHN", "Ngày cấp CCHN"]);
+    expect(right.querySelector(".facility-ddk-activity")).toHaveTextContent("Hoạt động kinh doanh");
+    expect(right.querySelector(".facility-ddk-replacements")).toHaveTextContent("Bị thay thế bởi");
+    expect(container.querySelectorAll('[role="tab"]')).toHaveLength(0);
+    expect(props.onIssue).not.toHaveBeenCalled();
+    expect(props.onEditLatestVersion).not.toHaveBeenCalled();
+  });
+
+  it("hides left metadata and basis with stale, pending or errored detail just as the right pane does", () => {
+    const props = baseProps();
+    const { container, rerender } = render(<BusinessEligibilityWorkspace {...props} />);
+    expect(container.querySelector(".facility-ddk-dossier")).not.toBeNull();
+    for (const overrides of [{ selectedCertificateId: "another-uuid" }, { detailLoading: true }, { detailError: "403 fixture" }]) {
+      rerender(<BusinessEligibilityWorkspace {...props} {...overrides} />);
+      expect(container.querySelector(".facility-ddk-dossier")).toBeNull();
+      expect(container.querySelector(".certificate-basis-section")).toBeNull();
+    }
+  });
+  it("retains multiple basis UUID entries and raw null/multiline/long snapshots without deriving four activity groups", () => {
+    const props = baseProps();
+    const current = detail();
+    current.linked_gxp_certificates.push({ ...current.linked_gxp_certificates[0], certificate_id: "basis-another-uuid" });
+    current.business_activity_text = "GMP raw snapshot\nGLP raw snapshot";
+    current.notes = "LongUnbrokenNote".repeat(60);
+    const { container } = render(<BusinessEligibilityWorkspace {...props} detail={current} />);
+    expect(container.querySelectorAll(".master-list-pane .certificate-basis-section li")).toHaveLength(2);
+    expect(screen.getByText("GMP raw snapshot GLP raw snapshot")).toHaveClass("multiline-value");
+    expect(screen.getByText(current.notes)).toHaveClass("multiline-value");
+    expect(screen.getAllByText("Chưa có").length).toBeGreaterThan(0);
+    expect(container.querySelectorAll('[role="tab"], [role="tablist"]')).toHaveLength(0);
+    expect(props.onIssue).not.toHaveBeenCalled();
+    expect(props.onEditLatestVersion).not.toHaveBeenCalled();
+  });
+  function keyboardProps() {
+    const props = baseProps();
+    return { ...props, items: [items[0], { ...items[0], business_eligibility_certificate_id: "dkkd-1-2" }] };
+  }
+  it("moves focus independently and activates exact IDs even with identical reference numbers", () => {
+    const props = keyboardProps();
+    render(<BusinessEligibilityWorkspace {...props} />);
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(rows.filter(row => row.tabIndex === 0)).toHaveLength(1);
+    act(() => rows[0].focus());
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(rows[1]).toHaveFocus();
+    expect(rows[0]).toHaveAttribute("aria-selected", "true");
+    expect(rows[1]).toHaveAttribute("aria-selected", "false");
+    expect(props.onSelectCertificate).not.toHaveBeenCalled();
+    fireEvent.keyDown(rows[1], { key: "Enter" });
+    expect(props.onSelectCertificate).toHaveBeenLastCalledWith("dkkd-1-2");
+    fireEvent.keyDown(rows[1], { key: "Home" });
+    expect(rows[0]).toHaveFocus();
+    fireEvent.keyDown(rows[0], { key: "End" });
+    expect(rows[1]).toHaveFocus();
+    fireEvent.keyDown(rows[1], { key: " " });
+    fireEvent.click(rows[1]);
+    expect(props.onSelectCertificate.mock.calls).toEqual([["dkkd-1-2"], ["dkkd-1-2"], ["dkkd-1-2"]]);
+    expect(screen.queryByRole("grid")).not.toBeInTheDocument();
+  });
+  it.each(["loading", "error", "empty"])("renders initial %s without exposing stale detail", (state) => {
+    const props = keyboardProps();
+    const { container } = render(<BusinessEligibilityWorkspace {...props} issueReadiness={null} items={[]} selectedCertificateId={null} detail={null} listLoading={state === "loading"} listError={state === "error" ? "list unavailable" : null} />);
+    if (state === "error") expect(screen.getByRole("alert")).toHaveTextContent("list unavailable");
+    else expect(screen.getByText(state === "loading" ? "Đang tải GCN đủ điều kiện" : "Chưa có GCN đủ điều kiện")).toBeInTheDocument();
+    expect(container.querySelector(".certificate-detail-grid")).not.toBeInTheDocument();
+    expect(props.onSelectCertificate).not.toHaveBeenCalled();
+  });
+  it("retains the focused row across refresh, loading and error without activation", () => {
+    const props = keyboardProps();
+    const { rerender } = render(<BusinessEligibilityWorkspace {...props} />);
+    const row = screen.getAllByRole("row")[2];
+    act(() => row.focus());
+    rerender(<BusinessEligibilityWorkspace {...props} listLoading={true} detailLoading={true} detail={null} />);
+    expect(row).toHaveFocus();
+    expect(screen.getByRole("table")).toHaveAttribute("aria-busy", "true");
+    rerender(<BusinessEligibilityWorkspace {...props} items={props.items.map(item => ({ ...item }))} listError="refresh failed" />);
+    expect(row).toHaveFocus();
+    expect(screen.getByRole("alert")).toHaveTextContent("refresh failed");
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(props.onSelectCertificate).not.toHaveBeenCalled();
+    rerender(<BusinessEligibilityWorkspace {...props} />);
+    expect(row).toHaveFocus();
+  });
+  it("hides mismatched detail and actions in the very first selected-ID render", () => {
+    const props = keyboardProps();
+    const { container, rerender } = render(<BusinessEligibilityWorkspace {...props} />);
+    expect(container.querySelector(".certificate-detail-grid")).toBeInTheDocument();
+    rerender(<BusinessEligibilityWorkspace {...props} selectedCertificateId="dkkd-1-2" />);
+    expect(container.querySelector(".certificate-detail-grid")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Cập nhật/ })).not.toBeInTheDocument();
+    rerender(<BusinessEligibilityWorkspace {...props} selectedCertificateId="dkkd-1-2" detail={{ ...props.detail!, business_eligibility_certificate_id: "dkkd-1-2", facility_name: "Certificate B detail" }} />);
+    expect(screen.getByText("Certificate B detail")).toBeInTheDocument();
+  });
+  it("retains draft and version token across same-certificate refresh and restores dialog focus", async () => {
+    const props = keyboardProps();
+    const { rerender } = render(<BusinessEligibilityWorkspace {...props} />);
+    const trigger = screen.getByRole("button", { name: "Cập nhật GCN đủ điều kiện" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const input = screen.getByRole("textbox", { name: "Số GCN ĐĐK" });
+    expect(input).toHaveFocus();
+    fireEvent.change(input, { target: { value: "draft survives" } });
+    rerender(<BusinessEligibilityWorkspace {...props} detail={{ ...detail(), row_version: 5, replaces_certificate_number: "predecessor", replaced_by_certificate_number: "successor" }} />);
+    expect(input).toHaveValue("draft survives");
+    expect(screen.getByText("predecessor")).toBeInTheDocument();
+    expect(screen.getByText("successor")).toBeInTheDocument();
+    rerender(<BusinessEligibilityWorkspace {...props} detail={{ ...detail(), action_readiness: detail().action_readiness!.map(action => ({ ...action, available: false, reason_code: "missing_permission" })) }} />);
+    expect(screen.getByRole("button", { name: "Lưu thay đổi" })).toBeDisabled();
+    expect(input).toHaveValue("draft survives");
+    rerender(<BusinessEligibilityWorkspace {...props} />);
+    const cancel = screen.getByRole("button", { name: "Hủy" });
+    cancel.focus();
+    fireEvent.keyDown(cancel, { key: "Tab" });
+    expect(input).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+    await waitFor(() => expect(props.onEditLatestVersion).toHaveBeenCalledWith(expect.objectContaining({ expected_version: 4, certificate_number: "draft survives" })));
+    expect(trigger).toHaveFocus();
+  });
+});
+
 describe("BusinessEligibilityWorkspace write workflow", () => {
+  it.each(["issue", "edit"])("contains focus while %s is pending, ignores Escape and restores trigger after save", async mode => {
+    const props = baseProps();
+    let finish!: () => void;
+    const save = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+    if (mode === "issue") props.onIssue = save; else props.onEditLatestVersion = save;
+    render(<BusinessEligibilityWorkspace {...props} />);
+    const trigger = screen.getByRole("button", { name: mode === "issue" ? "Cấp GCN đủ điều kiện" : "Cập nhật GCN đủ điều kiện" });
+    act(() => trigger.focus());
+    fireEvent.click(trigger);
+    const input = screen.getByRole("textbox", { name: "Số GCN ĐĐK" });
+    expect(input).toHaveFocus();
+    fireEvent.change(input, { target: { value: "pending draft" } });
+    fireEvent.click(screen.getByRole("button", { name: mode === "issue" ? "Cấp GCN" : "Lưu thay đổi" }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveFocus();
+    for (const shiftKey of [false, true]) {
+      const event = new KeyboardEvent("keydown", { key: "Tab", shiftKey, bubbles: true, cancelable: true });
+      act(() => dialog.dispatchEvent(event));
+      expect(event.defaultPrevented).toBe(true);
+      expect(dialog).toHaveFocus();
+    }
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(dialog).toBeInTheDocument();
+    expect(input).toHaveValue("pending draft");
+    expect(save).toHaveBeenCalledTimes(1);
+    await act(async () => finish());
+    expect(trigger).toHaveFocus();
+    fireEvent.click(trigger);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
   it("allows first issue when the list is empty and does not auto-promote", async () => {
     const props = baseProps();
     render(<BusinessEligibilityWorkspace {...props} detail={null} items={[]} selectedCertificateId={null} />);
@@ -159,18 +354,21 @@ describe("BusinessEligibilityWorkspace write workflow", () => {
     expect(screen.getByRole("dialog", { name: "Cập nhật GCN đủ điều kiện" })).toBeInTheDocument();
   });
 
-  it("closes a stale edit and surfaces the conflict in the action area without retry", async () => {
+  it("preserves a stale edit and surfaces 409 without retry", async () => {
     const props = baseProps();
     props.onEditLatestVersion.mockRejectedValue(Object.assign(new Error("Dữ liệu GCN đủ điều kiện đã thay đổi."), { status: 409 }));
     render(<BusinessEligibilityWorkspace {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "Cập nhật GCN đủ điều kiện" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Số GCN ĐĐK" }), { target: { value: "unsaved draft" } });
     fireEvent.click(within(screen.getByRole("dialog", { name: "Cập nhật GCN đủ điều kiện" })).getByRole("button", { name: "Lưu thay đổi" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Dữ liệu GCN đủ điều kiện đã thay đổi.");
     expect(props.onEditLatestVersion).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("dialog", { name: "Cập nhật GCN đủ điều kiện" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Số GCN ĐĐK" })).toHaveValue("unsaved draft");
+    expect(screen.getByRole("textbox", { name: "Số GCN ĐĐK" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Lưu thay đổi" })).toBeDisabled();
   });
 
-  it("keeps an immediately opened edit dialog stable until the authoritative detail context actually changes", () => {
+  it("keeps an immediately opened edit dialog stable while the same certificate version refreshes", () => {
     const props = baseProps();
     const { rerender } = render(<BusinessEligibilityWorkspace {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "Cập nhật GCN đủ điều kiện" }));
@@ -180,7 +378,7 @@ describe("BusinessEligibilityWorkspace write workflow", () => {
     expect(screen.getByRole("dialog", { name: "Cập nhật GCN đủ điều kiện" })).toBeInTheDocument();
 
     rerender(<BusinessEligibilityWorkspace {...props} detail={{ ...detail(), row_version: 5 }} />);
-    expect(screen.queryByRole("dialog", { name: "Cập nhật GCN đủ điều kiện" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Cập nhật GCN đủ điều kiện" })).toBeInTheDocument();
   });
 
   it("does not expose write controls when backend readiness is absent", () => {

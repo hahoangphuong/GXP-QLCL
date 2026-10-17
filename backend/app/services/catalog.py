@@ -27,6 +27,8 @@ from backend.app.document.inspection_ke_hoach_kt_template_asset_contract import 
 from backend.app.db.models.phase1 import (
     BusinessEligibilityCertificate,
     BusinessEligibilityCertificateLink,
+    BusinessEligibilityGxpSourceGroup,
+    BusinessEligibilityGxpReferenceEvidence,
     BusinessEligibilityVersion,
     Case,
     CaseEvaluationScope,
@@ -1661,6 +1663,85 @@ class CatalogReadService:
         )
         return {"items": items}
 
+    def get_gxp_certificate_version_history(
+        self,
+        session: Session,
+        *,
+        certificate_id: str,
+    ) -> dict[str, object]:
+        """Expose each stored CertificateVersion and its *own* stored scopes.
+
+        CertificateVersion.version_no and certificate_version_id identify a
+        version; Certificate.row_version and latest_flag have DIFFERENT roles.
+        Do not recompute status or copy current scopes into prior versions.
+        """
+        certificate = session.get(Certificate, certificate_id)
+        if certificate is None:
+            raise HTTPException(status_code=404, detail="Certificate not found")
+        # Share the exact Case and canonical ProductionLine integrity gate
+        # with the existing current-certificate read model.
+        CaseWorkflowService._certificate_line_identity(session, certificate)
+        versions = list(session.scalars(
+            select(CertificateVersion)
+            .where(CertificateVersion.certificate_id == certificate.id)
+            .order_by(CertificateVersion.version_no.desc(), CertificateVersion.id.asc())
+        ))
+        latest = [v for v in versions if v.is_latest_version]
+        if len(latest) > 1:
+            raise HTTPException(
+                status_code=409,
+                detail="Certificate has ambiguous latest CertificateVersion identity.",
+            )
+        scoped: dict[str, list[CertificateScope]] = defaultdict(list)
+        if versions:
+            for scope in session.scalars(
+                select(CertificateScope)
+                .where(CertificateScope.certificate_version_id.in_([v.id for v in versions]))
+                .order_by(
+                    CertificateScope.certificate_version_id,
+                    CertificateScope.sort_order.asc(),
+                    CertificateScope.created_at.asc(),
+                    CertificateScope.id.asc(),
+                )
+            ):
+                scoped[scope.certificate_version_id].append(scope)
+        return {
+            "certificate_id": certificate.id,
+            "site_id": certificate.site_id,
+            "case_id": certificate.case_id,
+            "certificate_type": certificate.certificate_type,
+            "issuance_basis": certificate.issuance_basis,
+            "aggregate_latest_flag": certificate.latest_flag,
+            "latest_version_id": latest[0].id if latest else None,
+            "versions": [
+                {
+                    "certificate_version_id": version.id,
+                    "version_no": version.version_no,
+                    "row_version": version.row_version,
+                    "is_latest_version": version.is_latest_version,
+                    # NULL lifecycle means unproven imported legacy grant.
+                    "lifecycle_state": version.lifecycle_state,
+                    "certificate_number": version.certificate_number,
+                    "issue_date": version.issue_date,
+                    "expiry_date": version.expiry_date,
+                    "applicable_standard": version.applicable_standard,
+                    "issuing_authority": version.issuing_authority,
+                    "scope_summary": self._build_certificate_scope_summary(scoped[version.id]),
+                    "scopes": [
+                        {
+                            "id": scope.id,
+                            "scope_key": scope.scope_key,
+                            "scope_text": scope.scope_text,
+                            "language_code": scope.language_code,
+                            "sort_order": scope.sort_order,
+                        }
+                        for scope in scoped[version.id]
+                    ],
+                }
+                for version in versions
+            ],
+        }
+
     def get_gxp_certificate_detail(self, session: Session, *, certificate_id: str):
         certificate = session.get(Certificate, certificate_id)
         if certificate is None:
@@ -1786,6 +1867,199 @@ class CatalogReadService:
             )
         )
         return {"items": items, "issue_readiness": issue_readiness}
+
+    def get_business_eligibility_gxp_source_evidence(
+        self,
+        session: Session,
+        *,
+        business_eligibility_certificate_id: str,
+    ) -> dict[str, object]:
+        """Read a DDK row's original GMP/GLP/GSP/GDP cells without canonical links.
+
+        A stable canonical DDK UUID selects only its own legacy DDK row ID.
+        The source Excel worksheet is a *separate* observation: it is not
+        evidence of a Certificate link, site coverage, business grant or
+        historical version. Do not use ID CC as a canonical UUID.
+        """
+        certificate = session.get(BusinessEligibilityCertificate, business_eligibility_certificate_id)
+        if certificate is None:
+            raise HTTPException(status_code=404, detail="Business eligibility certificate not found")
+
+        identity = certificate.legacy_dkkd_id
+        result = {
+            "business_eligibility_certificate_id": certificate.id,
+            "legacy_dkkd_id": identity,
+            "source_status": "legacy_identity_missing" if identity is None else "not_in_imported_source",
+            "evidence_kind": "original_excel_cells_source_only",
+            "canonical_links_included": False,
+            "source_workbook_sha256": None,
+            "source_sheet_name": None,
+            "source_row_number": None,
+            "groups": [],
+        }
+        if identity is None:
+            return result
+
+        source_rows = list(session.scalars(
+            select(BusinessEligibilityGxpSourceGroup)
+            .where(BusinessEligibilityGxpSourceGroup.legacy_dkkd_id == identity)
+            .order_by(
+                BusinessEligibilityGxpSourceGroup.source_workbook_sha256,
+                BusinessEligibilityGxpSourceGroup.source_row_number,
+                BusinessEligibilityGxpSourceGroup.id_cc_excel_column,
+            )
+        ))
+        if not source_rows:
+            return result
+
+        # One canonical legacy DDK ID can map to exactly one original physical
+        # workbook row. Refuse multiple original row keys, rather than mixing
+        # cells from separate physical DDKs or separate workbook snapshots.
+        source_origins = {
+            (
+                group.source_workbook_sha256,
+                group.source_sheet_name,
+                group.source_row_number,
+            )
+            for group in source_rows
+        }
+        if len(source_origins) != 1:
+            raise HTTPException(
+                status_code=409,
+                detail="Multiple physical source DDK row identities match this legacy DDK ID.",
+            )
+        roles = {group.source_group for group in source_rows}
+        if (
+            len(source_rows) != 4
+            or roles != {"GMP", "GLP", "GSP", "GDP"}
+            or len({group.id_cc_excel_column for group in source_rows}) != 4
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Original DDK source row has incomplete or duplicate GxP physical groups.",
+            )
+
+        refs_by_group: dict[str, list[dict[str, object]]] = defaultdict(list)
+        for reference in session.scalars(
+            select(BusinessEligibilityGxpReferenceEvidence)
+            .where(BusinessEligibilityGxpReferenceEvidence.source_group_id.in_(
+                [group.id for group in source_rows]
+            ))
+            .order_by(
+                BusinessEligibilityGxpReferenceEvidence.source_group_id,
+                BusinessEligibilityGxpReferenceEvidence.token_index,
+            )
+        ):
+            refs_by_group[reference.source_group_id].append({
+                "source_reference_id": reference.id,
+                "token_index": reference.token_index,
+                "raw_token": reference.raw_token,
+                "parsed_legacy_certificate_id": reference.parsed_legacy_certificate_id,
+            })
+        # Preserve all four distinct original cells and token ordinal order;
+        # especially do not discard scope/activity when ID CC is empty.
+        result["source_status"] = "available"
+        first = source_rows[0]
+        result["source_workbook_sha256"] = first.source_workbook_sha256
+        result["source_sheet_name"] = first.source_sheet_name
+        result["source_row_number"] = first.source_row_number
+        result["groups"] = [{
+            "source_group_id": group.id,
+            "source_group": group.source_group,
+            "id_cc_excel_column": group.id_cc_excel_column,
+            "certificate_scope_excel_column": group.certificate_scope_excel_column,
+            "applicable_standard_excel_column": group.applicable_standard_excel_column,
+            "business_activity_excel_column": group.business_activity_excel_column,
+            "id_cc_raw": group.id_cc_raw,
+            "certificate_scope_raw": group.certificate_scope_raw,
+            "applicable_standard_raw": group.applicable_standard_raw,
+            "business_activity_raw": group.business_activity_raw,
+            "source_values_sha256": group.source_values_sha256,
+            "reference_tokens": refs_by_group[group.id],
+        } for group in source_rows]
+        return result
+
+    def get_business_eligibility_version_history(
+        self,
+        session: Session,
+        *,
+        business_eligibility_certificate_id: str,
+    ) -> dict[str, object]:
+        """Return saved DDK versions without manufacturing legacy history.
+
+        For ĐĐK, "latest" is max persisted version_no, not a per-version
+        is_latest flag. Version-specific FK link rows are *recorded facts*,
+        not approvals or inferred source ID CC/cross-site validity.
+        """
+        certificate = session.get(
+            BusinessEligibilityCertificate, business_eligibility_certificate_id,
+        )
+        if certificate is None:
+            raise HTTPException(status_code=404, detail="Business eligibility certificate not found")
+        versions = list(session.scalars(
+            select(BusinessEligibilityVersion)
+            .where(
+                BusinessEligibilityVersion.business_eligibility_certificate_id == certificate.id,
+            )
+            .order_by(
+                BusinessEligibilityVersion.version_no.desc(),
+                BusinessEligibilityVersion.id.asc(),
+            )
+        ))
+        links_by_version: dict[str, list[dict[str, object]]] = defaultdict(list)
+        if versions:
+            links = session.scalars(
+                select(BusinessEligibilityCertificateLink)
+                .where(
+                    BusinessEligibilityCertificateLink.business_eligibility_version_id.in_(
+                        [version.id for version in versions],
+                    )
+                )
+                .order_by(
+                    BusinessEligibilityCertificateLink.business_eligibility_version_id,
+                    BusinessEligibilityCertificateLink.certificate_id,
+                    BusinessEligibilityCertificateLink.id,
+                )
+            )
+            for link in links:
+                links_by_version[link.business_eligibility_version_id].append({
+                    "link_id": link.id,
+                    "certificate_id": link.certificate_id,
+                    "link_role": link.link_role,
+                })
+        # Every value here is stored on its own version. In particular,
+        # issuance_history_text is an original text field, NOT extra versions.
+        historical_fields = (
+            "certificate_number", "issued_on", "expires_on",
+            "professional_responsible_person_name", "quality_assurance_person_name",
+            "professional_qualification_text", "professional_license_number",
+            "professional_license_issued_on", "professional_license_issuer",
+            "responsible_license_issued_on", "responsible_license_issuer",
+            "decision_reference", "issuance_sequence_text", "issuance_history_text",
+            "business_activity_text", "current_status_text", "handled_by_name",
+            "application_dossier_reference", "notes",
+        )
+        return {
+            "business_eligibility_certificate_id": certificate.id,
+            "legacy_dkkd_id": certificate.legacy_dkkd_id,
+            "site_id": certificate.site_id,
+            "company_id": certificate.company_id,
+            "aggregate_latest_flag": certificate.latest_flag,
+            "latest_version_id": versions[0].id if versions else None,
+            "latest_selection_method": "max_persisted_version_no",
+            "gxp_source_tokens_included": False,
+            "canonical_link_status": "stored_fk_only_not_validated",
+            "versions": [
+                {
+                    "business_eligibility_version_id": version.id,
+                    "version_no": version.version_no,
+                    "row_version": version.row_version,
+                    **{key: getattr(version, key) for key in historical_fields},
+                    "stored_link_records": links_by_version[version.id],
+                }
+                for version in versions
+            ],
+        }
 
     def get_business_eligibility_detail(
         self,
@@ -2248,12 +2522,32 @@ class CatalogReadService:
                     }
                 )
 
+            # Case context determines which GxP certificates are relevant,
+            # not the ownership metadata of a linked ĐĐK. A legacy link can
+            # cross Sites; never label that certificate with the Case's
+            # facility/company merely because its basis GxP belongs here.
+            be_sites = {
+                item.id: item
+                for item in session.scalars(
+                    select(Site).where(Site.id.in_({
+                        certificate_row.site_id for certificate_row, _ in be_rows
+                    }))
+                )
+            }
+            be_companies = {
+                item.id: item
+                for item in session.scalars(
+                    select(Company).where(Company.id.in_({
+                        certificate_row.company_id for certificate_row, _ in be_rows
+                    }))
+                )
+            }
             linked_business_eligibility_certificates = [
                 self._serialize_business_eligibility_detail(
                     certificate=certificate_row,
                     version=version_row,
-                    site=site,
-                    company=company,
+                    site=be_sites[certificate_row.site_id],
+                    company=be_companies[certificate_row.company_id],
                     linked_gxp_certificates=linked_basis_by_version_id.get(version_row.id, []),
                     replacement_map=replacement_map,
                 )

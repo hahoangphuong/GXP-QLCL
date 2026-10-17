@@ -8,6 +8,8 @@ from backend.app.auth import ALLOWED_READ_ROLES, AuthenticatedUser, get_authenti
 from backend.app.api.session import get_session_from_request_factory
 from backend.app.read_models import (
     BusinessEligibilityDetailRead,
+    BusinessEligibilityVersionHistoryRead,
+    BusinessEligibilityGxpSourceEvidenceRead,
     BusinessEligibilityListRead,
     CaseDetailRead,
     CaseWorkspaceRead,
@@ -20,6 +22,7 @@ from backend.app.read_models import (
     FacilitySearchResultRead,
     FacilityWorkspaceRead,
     GxpCertificateDetailRead,
+    GxpCertificateVersionHistoryRead,
     GxpCertificateListRead,
     SiteDetailRead,
     SiteRead,
@@ -310,6 +313,16 @@ def register_catalog_routes(app, session_factory) -> None:
             )
         )
 
+    def get_gxp_certificate_version_history(
+        certificate_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        return GxpCertificateVersionHistoryRead(
+            **service.get_gxp_certificate_version_history(session, certificate_id=certificate_id)
+        )
+
     def get_gxp_certificate_detail(
         certificate_id: str,
         session: Session = dependency,
@@ -352,6 +365,32 @@ def register_catalog_routes(app, session_factory) -> None:
             )
         )
 
+    def get_business_eligibility_version_history(
+        business_eligibility_certificate_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        return BusinessEligibilityVersionHistoryRead(
+            **service.get_business_eligibility_version_history(
+                session,
+                business_eligibility_certificate_id=business_eligibility_certificate_id,
+            )
+        )
+
+    def get_business_eligibility_gxp_source_evidence(
+        business_eligibility_certificate_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_role(user, ALLOWED_READ_ROLES)
+        return BusinessEligibilityGxpSourceEvidenceRead(
+            **service.get_business_eligibility_gxp_source_evidence(
+                session,
+                business_eligibility_certificate_id=business_eligibility_certificate_id,
+            )
+        )
+
     app.add_api_route("/companies", list_companies, methods=["GET"], response_model=list[CompanyRead], tags=["catalog"])
     app.add_api_route("/companies/{company_id}", get_company_detail, methods=["GET"], response_model=CompanyDetailRead, tags=["catalog"])
     app.add_api_route("/sites", list_sites, methods=["GET"], response_model=list[SiteRead], tags=["catalog"])
@@ -372,6 +411,13 @@ def register_catalog_routes(app, session_factory) -> None:
     app.add_api_route("/sites/{site_id}/gxp-certificates", list_site_gxp_certificates, methods=["GET"], response_model=GxpCertificateListRead, tags=["catalog"])
     app.add_api_route("/certificates/{certificate_id}", get_gxp_certificate_detail, methods=["GET"], response_model=GxpCertificateDetailRead, tags=["catalog"])
     app.add_api_route(
+        "/certificates/{certificate_id}/versions",
+        get_gxp_certificate_version_history,
+        methods=["GET"],
+        response_model=GxpCertificateVersionHistoryRead,
+        tags=["catalog"],
+    )
+    app.add_api_route(
         "/sites/{site_id}/business-eligibility-certificates",
         list_site_business_eligibility_certificates,
         methods=["GET"],
@@ -383,5 +429,19 @@ def register_catalog_routes(app, session_factory) -> None:
         get_business_eligibility_detail,
         methods=["GET"],
         response_model=BusinessEligibilityDetailRead,
+        tags=["catalog"],
+    )
+    app.add_api_route(
+        "/business-eligibility-certificates/{business_eligibility_certificate_id}/versions",
+        get_business_eligibility_version_history,
+        methods=["GET"],
+        response_model=BusinessEligibilityVersionHistoryRead,
+        tags=["catalog"],
+    )
+    app.add_api_route(
+        "/business-eligibility-certificates/{business_eligibility_certificate_id}/gxp-source-evidence",
+        get_business_eligibility_gxp_source_evidence,
+        methods=["GET"],
+        response_model=BusinessEligibilityGxpSourceEvidenceRead,
         tags=["catalog"],
     )

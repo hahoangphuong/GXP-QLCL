@@ -59,6 +59,8 @@ def test_disabled_early_exits_without_any_io(monkeypatch, capsys):
 
 @pytest.fixture
 def prepared(tmp_path: Path, monkeypatch):
+    if os.name == "nt":
+        pytest.skip("POSIX release symlinks required")
     real = tmp_path / "release"
     (real / "infra" / "vm").mkdir(parents=True)
     (real / "infra" / "vm" / "backup_postgres.sh").write_text("# only synthetic", encoding="utf-8")
@@ -146,7 +148,8 @@ def test_parser_error_does_not_leak_secrets(prepared, capsys):
     _, _, _, _, invoked, _, _ = prepared
     guard.CANONICAL_ENV.write_text("SECRET_PASSWORD=dont_leak_me\nmalformed line", encoding="utf-8")
     assert guard.run() == 4
-    output = capsys.readouterr().out + capsys.readouterr().err
+    capture = capsys.readouterr()
+    output = capture.out + capture.err
     assert "dont_leak_me" not in output
     assert invoked == []
 
@@ -168,3 +171,27 @@ def test_disabled_even_when_opt_in_variable_blank(prepared, monkeypatch):
     assert guard.run() == 3
     assert checked == []
     assert invoked == []
+
+def test_systemd_environment_file_binding_is_exact(monkeypatch):
+    from types import SimpleNamespace
+
+    calls = []
+    def fake_run(args, **_kwargs):
+        calls.append(args)
+        if "show" in args:
+            return SimpleNamespace(stdout="/etc/gxp/runtime.systemd.env (ignore_errors=no)\\n")
+        return SimpleNamespace(stdout="")
+
+    monkeypatch.setattr(guard.subprocess, "run", fake_run)
+    guard.verify_live_unit(Path("/etc/gxp/runtime.systemd.env"))
+    assert len(calls) == 2
+    with pytest.raises(guard.BackupBlocked, match="expected live environment"):
+        guard.verify_live_unit(Path("/etc/gxp/not-active.env"))
+
+
+def test_systemd_environment_probe_failure_is_fail_closed(monkeypatch):
+    def fail(_args, **_kwargs):
+        raise OSError("synthetic systemd failure")
+    monkeypatch.setattr(guard.subprocess, "run", fail)
+    with pytest.raises(guard.BackupBlocked, match="cannot verify"):
+        guard.verify_live_unit(Path("/etc/gxp/runtime.systemd.env"))

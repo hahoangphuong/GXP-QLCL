@@ -1,0 +1,20 @@
+[Unit]
+Description=GXP PostgreSQL nightly backup (explicit opt-in required)
+Wants=network-online.target
+After=network-online.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+User=gxp
+Group=gxp
+WorkingDirectory=/opt/gxp/current-backend
+# INERT BY DESIGN. Do not change to 1 or start the timer during development.
+Environment=GXP_NIGHTLY_BACKUP_ENABLED=0
+Environment=VM_RUNTIME_ENV_FILE=/etc/gxp/runtime.env
+ExecStart=/usr/bin/python3 /opt/gxp/current-backend/tools/run_vm_nightly_backup.py
+TimeoutStartSec=45min
+UMask=0077
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal

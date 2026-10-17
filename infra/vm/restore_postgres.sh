@@ -43,6 +43,17 @@ POSTGRES_ADMIN_CMD="${POSTGRES_ADMIN_CMD:-}"
   exit 1
 }
 
+# Only the local disposable-drill PostgreSQL instance is supported. A
+# privileged psql using an implicit socket/port and pg_restore using a
+# different DB_HOST/DB_PORT could otherwise inspect instance A, then
+# overwrite a same-named database on instance B.
+case "${DB_HOST}" in
+  127.0.0.1|localhost|::1) ;;
+  *) fail "Disposable restore DB_HOST must be an explicit local loopback address." ;;
+esac
+[[ "${DB_PORT}" =~ ^[1-9][0-9]{0,4}$ ]] && (( DB_PORT <= 65535 )) ||
+  fail "Disposable restore DB_PORT must be in 1..65535."
+
 need_cmd pg_restore
 need_cmd psql
 need_cmd createdb
@@ -99,7 +110,7 @@ PY_CHECKSUM
 [[ "${DB_MODE}" == "local_postgres" ]] ||
   fail "Disposable restore only supports DB_MODE=local_postgres."
 TARGET_DB_EXISTS="$(
-  postgres_admin_exec psql -v ON_ERROR_STOP=1 --dbname=postgres --set=target_db="${TARGET_DB}" -At <<'SQL'
+  postgres_admin_exec psql --host /var/run/postgresql --port "${DB_PORT}" -v ON_ERROR_STOP=1 --dbname=postgres --set=target_db="${TARGET_DB}" -At <<'SQL'
 SELECT 1 FROM pg_database WHERE datname = :'target_db';
 SQL
 )"
@@ -109,7 +120,7 @@ SQL
   fi
   fail "Cannot establish that disposable restore target is absent."
 }
-postgres_admin_exec createdb --owner "${DB_USER}" "${TARGET_DB}"
+postgres_admin_exec createdb --host /var/run/postgresql --port "${DB_PORT}" --owner "${DB_USER}" "${TARGET_DB}"
 PGPASSWORD="${DB_PASSWORD}" pg_restore --clean --if-exists --exit-on-error --no-owner --host "${DB_HOST}" --port "${DB_PORT}" --username "${DB_USER}" --dbname "${TARGET_DB}" "${BACKUP_FILE}"
 PGPASSWORD="${DB_PASSWORD}" psql -v ON_ERROR_STOP=1 --host "${DB_HOST}" --port "${DB_PORT}" --username "${DB_USER}" --dbname "${TARGET_DB}" -tc "SELECT version_num FROM alembic_version" >/dev/null
 PGPASSWORD="${DB_PASSWORD}" psql -v ON_ERROR_STOP=1 --host "${DB_HOST}" --port "${DB_PORT}" --username "${DB_USER}" --dbname "${TARGET_DB}" -c "SELECT current_database(), current_user;"

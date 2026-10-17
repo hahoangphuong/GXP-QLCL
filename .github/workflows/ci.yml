@@ -582,7 +582,7 @@ jobs:
   rehearsal-candidate-required-ci:
     # The workflow may show SUCCESS when conditional jobs were SKIPPED.
     # Candidate push cannot be accepted unless ALL five gates really ran.
-    if: ${{ always() && (((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.base_ref == 'main')) || (github.event_name == 'push' && (github.ref == 'refs/heads/integration/rehearsal-source-20261017' || (github.ref == 'refs/heads/integration/rehearsal-safety-source-20261017' || (github.ref == 'refs/heads/integration/rehearsal-restore-safe-20261017' || github.ref == 'refs/heads/integration/rehearsal-local-restore-20261017'))) ) }}
+    if: ${{ always() && (((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.base_ref == 'main')) || (github.event_name == 'push' && (github.ref == 'refs/heads/integration/rehearsal-source-20261017' || (github.ref == 'refs/heads/integration/rehearsal-safety-source-20261017' || (github.ref == 'refs/heads/integration/rehearsal-restore-safe-20261017' || github.ref == 'refs/heads/integration/rehearsal-local-restore-20261017'))) )) }}
     needs: [backend, frontend, hygiene, cross-head-integration, b6-postgres-integration]
     runs-on: ubuntu-latest
     permissions:

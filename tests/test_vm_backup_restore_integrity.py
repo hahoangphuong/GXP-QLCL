@@ -47,7 +47,13 @@ fail() { printf 'ERROR: %s\\n' "$*" >&2; exit 1; }
     command_log = work / "database-command-log.txt"
     _exe(fake / "postgres-admin", """
         printf 'postgres-admin %s\\n' "$*" >> "$FAKE_COMMAND_LOG"
-        case "$1" in psql) printf '1\\n';; *) exit 99;; esac
+        case "$1" in
+          psql)
+            if [[ "${FAKE_TARGET_DB_EXISTS:-1}" == "1" ]]; then printf '1\\n'; fi
+            ;;
+          createdb) : ;;
+          *) exit 99 ;;
+        esac
     """)
     _exe(fake / "pg_restore", """
         printf 'pg_restore %s\\n' "$*" >> "$FAKE_COMMAND_LOG"
@@ -181,3 +187,56 @@ def test_backup_writes_relocatable_manifest_and_uploads_matching_pair(tmp_path: 
     dump = remote / checksums[0].name.removesuffix(".sha256")
     assert dump.is_file()
     assert manifest.split()[0] == hashlib.sha256(dump.read_bytes()).hexdigest()
+
+
+@pytest.mark.parametrize("target_db", [
+    "gxp_qlcl", "gxp_legacy_rehearsal", "unrelated_database",
+])
+def test_restore_rejects_non_disposable_db_before_any_database_command(
+    tmp_path: Path, target_db: str,
+) -> None:
+    vm, env, log = _fixture(tmp_path)
+    dump = _dump(tmp_path)
+    _sidecar(dump)
+    env["TARGET_DB"] = target_db
+    env["CONFIRM_RESTORE"] = "RESTORE_" + target_db
+    result = _run(vm / "restore_postgres.sh", env, str(dump))
+    assert result.returncode != 0, (result.stdout, result.stderr)
+    assert not log.exists(), "Non-disposable restore attempted a DB query or write"
+
+
+def test_restore_rejects_existing_disposable_db_before_pg_restore(tmp_path: Path) -> None:
+    vm, env, log = _fixture(tmp_path)
+    dump = _dump(tmp_path)
+    _sidecar(dump)
+    env["FAKE_TARGET_DB_EXISTS"] = "1"
+    result = _run(vm / "restore_postgres.sh", env, str(dump))
+    assert result.returncode != 0, (result.stdout, result.stderr)
+    records = log.read_text(encoding="utf-8") if log.exists() else ""
+    assert "postgres-admin psql" in records, "Must distinguish existing from missing DB"
+    assert "pg_restore " not in records, "A valid checksum must not authorize wiping an existing DB"
+    assert "createdb " not in records
+
+
+def test_restore_creates_only_missing_disposable_db(tmp_path: Path) -> None:
+    vm, env, log = _fixture(tmp_path)
+    dump = _dump(tmp_path)
+    _sidecar(dump)
+    env["FAKE_TARGET_DB_EXISTS"] = "0"
+    result = _run(vm / "restore_postgres.sh", env, str(dump))
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    records = log.read_text(encoding="utf-8")
+    assert "postgres-admin psql" in records
+    assert "postgres-admin createdb" in records
+    assert "pg_restore " in records
+
+
+def test_restore_fail_closed_when_disposable_db_exists_in_remote_mode(tmp_path: Path) -> None:
+    vm, env, log = _fixture(tmp_path)
+    dump = _dump(tmp_path)
+    _sidecar(dump)
+    env["DB_MODE"] = "remote_postgres"
+    result = _run(vm / "restore_postgres.sh", env, str(dump))
+    assert result.returncode != 0, (result.stdout, result.stderr)
+    records = log.read_text(encoding="utf-8") if log.exists() else ""
+    assert "pg_restore " not in records

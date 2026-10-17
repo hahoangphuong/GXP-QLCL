@@ -479,3 +479,32 @@ jobs:
           fi
           rm -f frontend/cross-head.vite.config.mjs frontend/src/lib/cross_head_api_ci.test.ts
 
+  rehearsal-candidate-required-ci:
+    # The workflow may show SUCCESS when conditional jobs were SKIPPED.
+    # Candidate push cannot be accepted unless ALL five gates really ran.
+    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/integration/rehearsal-source-20261017' }}
+    needs: [backend, frontend, hygiene, cross-head-integration, b6-postgres-integration]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout pinned candidate with no retained credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Reject skipped, failed or cancelled candidate jobs
+        env:
+          CI_BACKEND_RESULT: ${{ needs.backend.result }}
+          CI_FRONTEND_RESULT: ${{ needs.frontend.result }}
+          CI_HYGIENE_RESULT: ${{ needs.hygiene.result }}
+          CI_CROSS_HEAD_RESULT: ${{ needs['cross-head-integration'].result }}
+          CI_B6_RESULT: ${{ needs['b6-postgres-integration'].result }}
+        run: |
+          set -euo pipefail
+          python3 -m tools.check_rehearsal_ci_results \
+            --backend "${CI_BACKEND_RESULT}" \
+            --frontend "${CI_FRONTEND_RESULT}" \
+            --hygiene "${CI_HYGIENE_RESULT}" \
+            --cross-head "${CI_CROSS_HEAD_RESULT}" \
+            --b6 "${CI_B6_RESULT}"

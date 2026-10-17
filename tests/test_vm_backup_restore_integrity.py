@@ -120,10 +120,13 @@ def test_restore_checks_selected_relocated_dump_and_then_proceeds(tmp_path: Path
     dump = _dump(tmp_path)
     recorded = dump.name if manifest_style == "relative" else "/old-vm/tmp/staging/" + dump.name
     _sidecar(dump, recorded_path=recorded)
+    # Positive restore path requires a newly created, dedicated disposable DB.
+    env["FAKE_TARGET_DB_EXISTS"] = "0"
     result = _run(vm / "restore_postgres.sh", env, str(dump))
     assert result.returncode == 0, (result.stdout, result.stderr)
     records = log.read_text(encoding="utf-8")
     assert "postgres-admin psql" in records
+    assert "postgres-admin createdb" in records
     assert f"pg_restore --clean --if-exists --exit-on-error --no-owner" in records
     assert str(dump) in records
 

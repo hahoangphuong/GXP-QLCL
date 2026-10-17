@@ -54,7 +54,11 @@ PGPASSWORD="${DB_PASSWORD}" \
   --username "${DB_USER}" \
   --dbname "${DB_NAME}" \
   --file "${OUTPUT_FILE}"
-sha256sum "${OUTPUT_FILE}" > "${CHECKSUM_FILE}"
+# Emit a relocatable sidecar so the uploaded pair can be verified in any directory.
+(
+  cd "${BACKUP_LOCAL_STAGING_DIR}"
+  sha256sum "$(basename "${OUTPUT_FILE}")" > "$(basename "${CHECKSUM_FILE}")"
+)
 if gcloud storage cp "${OUTPUT_FILE}" "${CHECKSUM_FILE}" "${BACKUP_GCS_BUCKET}/"; then
   gcloud storage ls "${BACKUP_GCS_BUCKET}/$(basename "${OUTPUT_FILE}")" >/dev/null
   gcloud storage ls "${BACKUP_GCS_BUCKET}/$(basename "${CHECKSUM_FILE}")" >/dev/null

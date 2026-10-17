@@ -54,9 +54,40 @@ postgres_admin_exec() {
   runuser -u postgres -- "$@"
 }
 
-if [[ -f "${CHECKSUM_FILE}" ]]; then
-  (cd "$(dirname "${CHECKSUM_FILE}")" && sha256sum -c "$(basename "${CHECKSUM_FILE}")")
-fi
+# The sidecar is mandatory: no database query or creation may precede verification.
+[[ -f "${CHECKSUM_FILE}" ]] || fail "SHA-256 sidecar missing for selected backup: ${CHECKSUM_FILE}"
+
+# Bind a single manifest entry to the selected backup, never to the original
+# machine's absolute pathname. Existing backups used absolute manifest paths;
+# accept those only when their basename matches the selected file.
+EXPECTED_BACKUP_SHA256="$(
+  python3 - "${BACKUP_FILE}" "${CHECKSUM_FILE}" <<'PY_CHECKSUM'
+from pathlib import Path
+import re
+import sys
+
+backup = Path(sys.argv[1])
+manifest = Path(sys.argv[2])
+try:
+    entries = manifest.read_text(encoding="utf-8").splitlines()
+except (OSError, UnicodeError) as exc:
+    raise SystemExit(f"Cannot read SHA-256 sidecar: {exc}") from exc
+if len(entries) != 1:
+    raise SystemExit("SHA-256 sidecar must contain exactly one checksum entry")
+match = re.fullmatch(r"([0-9a-fA-F]{64}) ([ *])(.+)", entries[0])
+if not match:
+    raise SystemExit("Malformed SHA-256 sidecar entry")
+recorded_name = match.group(3)
+if (any(ord(ch) < 32 or ord(ch) == 127 for ch in recorded_name)
+        or Path(recorded_name).name != backup.name):
+    raise SystemExit("SHA-256 sidecar filename does not match selected backup")
+print(match.group(1).lower())
+PY_CHECKSUM
+)" || fail "Invalid SHA-256 sidecar for selected backup: ${CHECKSUM_FILE}"
+(
+  cd "$(dirname "${BACKUP_FILE}")"
+  printf '%s  %s\n' "${EXPECTED_BACKUP_SHA256}" "$(basename "${BACKUP_FILE}")" | sha256sum -c -
+) || fail "Selected backup failed SHA-256 verification: ${BACKUP_FILE}"
 
 if [[ "${DB_MODE}" == "local_postgres" ]]; then
   TARGET_DB_EXISTS="$(

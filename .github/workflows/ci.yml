@@ -64,7 +64,7 @@ jobs:
   b6-postgres-integration:
     # Recovery and reviewed integration branches only; four disposable DBs.
     # Never connects to the production VM or NAS.
-    if: ${{ github.event_name == 'push' && (startsWith(github.ref, 'refs/heads/recovery/b6-') || (github.ref == 'refs/heads/integration/frontend-backend-20261009' || github.ref == 'refs/heads/integration/frontend-backend-auth-20261010' || github.ref == 'refs/heads/integration/frontend-backend-authguard-20261010' || github.ref == 'refs/heads/integration/rehearsal-source-20261017')) }}
+    if: ${{ github.event_name == 'push' && (startsWith(github.ref, 'refs/heads/recovery/b6-') || (github.ref == 'refs/heads/integration/frontend-backend-20261009' || github.ref == 'refs/heads/integration/frontend-backend-auth-20261010' || github.ref == 'refs/heads/integration/frontend-backend-authguard-20261010' || (github.ref == 'refs/heads/integration/rehearsal-source-20261017' || github.ref == 'refs/heads/integration/rehearsal-safety-source-20261017'))) }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -224,7 +224,7 @@ jobs:
   cross-head-integration:
     # Explicitly pinned two-HEAD gate. Never merges/rebases/deploys either
     # branch. Runs only on backend-owner branch push, in a disposable runner.
-    if: ${{ (github.event_name == 'push' && (github.ref == 'refs/heads/integration/frontend-backend-20261009' || github.ref == 'refs/heads/integration/frontend-backend-auth-20261010' || github.ref == 'refs/heads/integration/frontend-backend-authguard-20261010' || github.ref == 'refs/heads/integration/rehearsal-source-20261017' || github.ref == 'refs/heads/audit/certificate-case-source-integrity-20261011')) || (github.event_name == 'pull_request' && (github.head_ref == 'audit/certificate-case-source-integrity-20261011' || github.head_ref == 'integration/rehearsal-source-20261017')) }}
+    if: ${{ (github.event_name == 'push' && (github.ref == 'refs/heads/integration/frontend-backend-20261009' || github.ref == 'refs/heads/integration/frontend-backend-auth-20261010' || github.ref == 'refs/heads/integration/frontend-backend-authguard-20261010' || (github.ref == 'refs/heads/integration/rehearsal-source-20261017' || github.ref == 'refs/heads/integration/rehearsal-safety-source-20261017') || github.ref == 'refs/heads/audit/certificate-case-source-integrity-20261011')) || (github.event_name == 'pull_request' && (github.head_ref == 'audit/certificate-case-source-integrity-20261011' || (github.head_ref == 'integration/rehearsal-source-20261017' || github.head_ref == 'integration/rehearsal-safety-source-20261017'))) }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -283,6 +283,23 @@ jobs:
               # Source remains at the exactly verified Codex branch HEAD.
               rm -rf frontend
               cp -a .gxp-cross-head-codex/frontend frontend
+              ;;
+            refs/heads/integration/rehearsal-safety-source-20261017)
+              # New combined release has the exact reviewed backend gate
+              # as its parent; frontend remains the frozen Codex tree.
+              FRONTEND="23864ac0ff3cf3fb920bf70d46fdf9a06ada5dd6"
+              REVIEWED_BACKEND_REF="refs/remotes/origin/audit/backend-rehearsal-gate-20261017"
+              git show-ref --verify --quiet "${REVIEWED_BACKEND_REF}" || {
+                echo "STOP: reviewed safety backend ref unavailable" >&2
+                exit 1
+              }
+              REVIEWED_BACKEND_SHA="$(git rev-parse "${REVIEWED_BACKEND_REF}")"
+              python3 -m tools.verify_rehearsal_release_sources \
+                --repo . \
+                --target-sha "${GXP_BACKEND_CHECKOUT_SHA}" \
+                --approved-backend-sha "${REVIEWED_BACKEND_SHA}" \
+                --approved-frontend-sha "${FRONTEND}"
+              git diff --exit-code -- frontend
               ;;
             refs/heads/integration/rehearsal-source-20261017)
               # A genuine integrated Git commit is tested as-is: NO overlay.
@@ -449,6 +466,17 @@ jobs:
               assert (checkout / p).read_bytes() == p.read_bytes(), "Codex frontend tracked source drift"
           print(f"PASS: {len(paths)} exact pinned frontend source files")
           PY
+          elif [[ "${GITHUB_REF}" == "refs/heads/integration/rehearsal-safety-source-20261017" || "${GITHUB_HEAD_REF:-}" == "integration/rehearsal-safety-source-20261017" ]]; then
+            FRONTEND="23864ac0ff3cf3fb920bf70d46fdf9a06ada5dd6"
+            REVIEWED_BACKEND_REF="refs/remotes/origin/audit/backend-rehearsal-gate-20261017"
+            git show-ref --verify --quiet "${REVIEWED_BACKEND_REF}"
+            REVIEWED_BACKEND_SHA="$(git rev-parse "${REVIEWED_BACKEND_REF}")"
+            python3 -m tools.verify_rehearsal_release_sources \
+              --repo . \
+              --target-sha "${GXP_BACKEND_CHECKOUT_SHA}" \
+              --approved-backend-sha "${REVIEWED_BACKEND_SHA}" \
+              --approved-frontend-sha "${FRONTEND}"
+            git diff --exit-code -- frontend
           elif [[ "${GITHUB_REF}" == "refs/heads/integration/rehearsal-source-20261017" || "${GITHUB_HEAD_REF:-}" == "integration/rehearsal-source-20261017" ]]; then
             FRONTEND="23864ac0ff3cf3fb920bf70d46fdf9a06ada5dd6"
             REVIEWED_BACKEND_REF="refs/remotes/origin/audit/certificate-case-source-integrity-20261011"
@@ -482,7 +510,7 @@ jobs:
   rehearsal-candidate-required-ci:
     # The workflow may show SUCCESS when conditional jobs were SKIPPED.
     # Candidate push cannot be accepted unless ALL five gates really ran.
-    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/integration/rehearsal-source-20261017' }}
+    if: ${{ always() && github.event_name == 'push' && (github.ref == 'refs/heads/integration/rehearsal-source-20261017' || github.ref == 'refs/heads/integration/rehearsal-safety-source-20261017') }}
     needs: [backend, frontend, hygiene, cross-head-integration, b6-postgres-integration]
     runs-on: ubuntu-latest
     permissions:

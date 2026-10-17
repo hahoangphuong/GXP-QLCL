@@ -103,7 +103,7 @@ def verify_live_unit(active_env: Path) -> None:
     except (OSError, subprocess.SubprocessError) as exc:
         raise BackupBlocked("cannot verify the running backend systemd unit") from exc
     require(
-        re.search(r"(?<!\\S)" + re.escape(str(active_env)) + r"(?=\\s|$)", response.stdout) is not None,
+        re.search(r"(?<!\S)" + re.escape(str(active_env)) + r"(?=\s|$)", response.stdout) is not None,
         "running backend does not use the expected live environment file",
     )
 

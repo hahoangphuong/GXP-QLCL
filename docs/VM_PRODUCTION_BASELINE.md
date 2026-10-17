@@ -251,17 +251,18 @@ Deployment privilege model:
 - post-switch health failures trigger a safe rollback of backend/frontend symlinks and service restart
 - the deploy script never auto-downgrades Alembic migrations
 
-14. Enable backup
+14. Prepare nightly PostgreSQL backup **without activation during development/rehearsal**.
 
-```bash
-sudo crontab -e
-```
+The source-controlled service and timer templates are described in
+[VM_NIGHTLY_BACKUP_DISABLED_SETUP.md](VM_NIGHTLY_BACKUP_DISABLED_SETUP.md).
+They have not been installed or enabled. Their service has an explicit
+`GXP_NIGHTLY_BACKUP_ENABLED=0` safeguard. Do not add the old manual root
+crontab entry during development, since that could duplicate scheduling
+or back up a database other than the current rehearsal runtime target.
 
-Suggested nightly entry:
-
-```text
-30 1 * * * /opt/gxp/src/GXP-QLCL/infra/vm/backup_postgres.sh >> /var/log/gxp-backup.log 2>&1
-```
+Future activation requires an operator-approved release, matching canonical
+and live database targets, backup permissions, checksum and restore-drill
+qualification, plus a separate explicit activation authorization.
 
 15. Stop Cloud SQL only after VM verification succeeds
 

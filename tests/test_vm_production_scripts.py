@@ -790,7 +790,12 @@ def test_configure_and_restore_postgres_avoid_literal_psql_variable_regressions(
     assert """-Atqc "SELECT 1 FROM pg_database WHERE datname = :'db_name'""" not in configure
     assert """-Atqc "SELECT 1 FROM pg_database WHERE datname = :'target_db'""" not in restore
     assert configure.count("-v ON_ERROR_STOP=1") >= 4
-    assert restore.count("-v ON_ERROR_STOP=1") >= 4
+    # The isolated restore owner intentionally has no remote/existing-DB
+    # query path; check the three required guarded psql invocations by
+    # their purpose rather than counting removed unsafe branches.
+    assert 'postgres_admin_exec psql -v ON_ERROR_STOP=1 --dbname=postgres --set=target_db="${TARGET_DB}" -At' in restore
+    assert 'PGPASSWORD="${DB_PASSWORD}" psql -v ON_ERROR_STOP=1 --host "${DB_HOST}" --port "${DB_PORT}" --username "${DB_USER}" --dbname "${TARGET_DB}" -tc' in restore
+    assert 'PGPASSWORD="${DB_PASSWORD}" psql -v ON_ERROR_STOP=1 --host "${DB_HOST}" --port "${DB_PORT}" --username "${DB_USER}" --dbname "${TARGET_DB}" -c' in restore
     assert "SELECT format(" in configure
     assert "\\gexec" in configure
     assert """SELECT 1 FROM pg_database WHERE datname = :'db_name';""" in configure

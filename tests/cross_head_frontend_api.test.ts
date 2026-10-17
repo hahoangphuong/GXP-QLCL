@@ -14,6 +14,8 @@ import {
   getGxpCertificateVersionHistory,
   getBusinessEligibilityDetail,
   getBusinessEligibilityVersionHistory,
+  getGxpCertificateDocumentMetadata,
+  getBusinessEligibilityDocumentMetadata,
   listSiteGxpCertificates,
   listSiteBusinessEligibilityCertificates,
   openCaseDocumentCurrentContent,
@@ -25,7 +27,8 @@ type Fixture = Record<
   "missing_file_document" | "wrong_checksum_document" | "version" | "binary_text" |
   "gxp_certificate" | "gxp_version_old" | "gxp_version_current" |
   "gxp_scope_old" | "gxp_scope_current" | "ddk_certificate" |
-  "ddk_version_old" | "ddk_version_current" | "ddk_link_current",
+  "ddk_version_old" | "ddk_version_current" | "ddk_link_current" |
+  "gxp_document" | "gxp_document_variant" | "gxp_document_version" | "ddk_document",
   string
 >;
 const fixturePath = process.env.GXP_CROSS_HEAD_FIXTURE_JSON;
@@ -129,6 +132,70 @@ it("fails closed on unknown GxP/DDK history identity without retry or fallback",
   expect(routeCalls.slice(before)).toEqual([
     { path: `/certificates/${missing}/versions`, method: "GET" },
     { path: `/business-eligibility-certificates/${missing}/versions`, method: "GET" },
+  ]);
+});
+
+it("uses the new Codex frontend clients with real GxP and ĐĐK metadata-only owner routes", async () => {
+  const before = routeCalls.length;
+  const gxp = await getGxpCertificateDocumentMetadata(fixture.gxp_certificate, auth, true);
+  const ddk = await getBusinessEligibilityDocumentMetadata(fixture.ddk_certificate, auth, true);
+
+  expect(routeCalls.slice(before)).toEqual([
+    { path: `/certificates/${fixture.gxp_certificate}/document-metadata`, method: "GET" },
+    { path: `/business-eligibility-certificates/${fixture.ddk_certificate}/document-metadata`, method: "GET" },
+  ]);
+  expect(gxp).toMatchObject({
+    owner_kind: "certificate",
+    owner_id: fixture.gxp_certificate,
+    metadata_status: "registered_metadata_only_unverified",
+    binary_verified: false,
+    original_signed_document_verified: false,
+  });
+  expect(ddk).toMatchObject({
+    owner_kind: "business_eligibility_certificate",
+    owner_id: fixture.ddk_certificate,
+    metadata_status: "registered_metadata_only_unverified",
+    binary_verified: false,
+    original_signed_document_verified: false,
+  });
+  expect(gxp.documents).toEqual([{
+    document_id: fixture.gxp_document,
+    family_code: "SYNTHETIC_GXP_METADATA",
+    document_type_code: "REGISTERED_ONLY",
+    title: "Synthetic unverified GxP metadata",
+    registered_variant_count: 1,
+    registered_version_count: 1,
+    registered_current_version_count: 1,
+  }]);
+  expect(ddk.documents).toEqual([{
+    document_id: fixture.ddk_document,
+    family_code: "SYNTHETIC_DDK_METADATA",
+    document_type_code: "REGISTERED_ONLY",
+    title: "Synthetic unverified DDK metadata",
+    registered_variant_count: 0,
+    registered_version_count: 0,
+    registered_current_version_count: 0,
+  }]);
+  // A registered version is NOT authority to claim file or signed-original proof.
+  for (const result of [gxp, ddk]) {
+    const serialized = JSON.stringify(result);
+    for (const forbidden of ["storage_root", "storage_relative_path", "checksum_sha256",
+      "original_filename", "binary_url", "download_url", "synthetic-no-binary.docx"]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  }
+});
+
+it("does not substitute linked GxP / ĐĐK owners for missing canonical metadata owners", async () => {
+  const missing = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+  const before = routeCalls.length;
+  await expect(getGxpCertificateDocumentMetadata(missing, auth, true))
+    .rejects.toMatchObject({ status: 404 });
+  await expect(getBusinessEligibilityDocumentMetadata(missing, auth, true))
+    .rejects.toMatchObject({ status: 404 });
+  expect(routeCalls.slice(before)).toEqual([
+    { path: `/certificates/${missing}/document-metadata`, method: "GET" },
+    { path: `/business-eligibility-certificates/${missing}/document-metadata`, method: "GET" },
   ]);
 });
 

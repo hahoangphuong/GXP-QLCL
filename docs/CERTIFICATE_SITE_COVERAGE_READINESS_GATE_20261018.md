@@ -2,6 +2,14 @@
 
 **Status:** DRAFT evidence-shape contract only; no schema, runtime, migration or data remediation authorization. Issue #6.
 
+## Effective owner decision — future GMP is strictly one Case / one Site / one Certificate
+
+**Approved by the business owner (18 October 2026):** for **new GMP issuance**, each originating Case is tied to exactly one Site and may issue **zero or one GMP Certificate**. The Certificate must carry that same Site. A second GMP Certificate may not be created from the same Case. A replacement for the same `MÃ DC` is a new Certificate identity, requiring its **own originating Case and single Site**, while retaining both historic certificates; a previous CertificateVersion is not overwritten to represent a replacement.
+
+**This proposed multi-site evidence audit is HISTORICAL EXCEPTIONS ONLY.** It exists to preserve/reconcile imported 376, 1037 and 1180 (and other proven legacy anomalies). The multi-Site review structures **must never become an allowed prospective GMP issuance workflow**. The historical exception is evidence-bound; do not issue new multi-site certificates through those tables, and do not skip global integrity checks. The source-only readiness report does not grant any historical remediation or deployment authorization.
+
+A Case may remain without any GMP Certificate if no certificate is issued. New-issuance guard is owned by the service issuance workflow; a legacy import must not retroactively be declared valid/invalid merely by its creation timestamp. Backdating an issue date cannot enable multi-Site or duplicate new issuance.
+
 ## Verified boundaries
 
 - `Case.site_id` and `Certificate.site_id` remain source/import-era anchor FKs. They cannot substitute for complete physical-site inspection and certification coverage.
@@ -26,9 +34,9 @@ The report intentionally contains only error codes and aggregate Site counts. It
 
 Even when the shape is `COMPLETE_FOR_DOMAIN_OWNER_REVIEW`, the returned `source_document_authenticity_verified`, `physical_site_identity_verified`, `site_scope_allocation_approved`, `case_rebinding_authorized` and `runtime_validator_change_authorized` remain **false**. Do not equate syntactic evidence with adjudication.
 
-## Outstanding decisions before schema/runtime implementation
+## Outstanding decisions before historical-only schema/runtime implementation
 
-1. **Originating Case rule:** define how a Case with one anchor Site proves inspection of several Sites, which original inspection documents verify each one, and whether a granted certificate may ever cover a Site absent from the same originating Case.
+1. **Historical originating Case evidence only:** define how an imported historical Case with one anchor Site was proved to have evaluated several Sites; what original documents support each historical coverage assertion; and how unproven Site memberships fail closed. **No future multi-Site issuance is permitted.**
 2. **Site historical identity:** independently reconcile Site 46's source address labels across 2022/2023. Do not collapse two Sites or infer relocation/renumbering from the same Company.
 3. **Scope ownership:** approve normalized `CertificateVersionSiteCoverage` plus explicit `CertificateScope` fragment binding versus immutable reviewed Site-local scope fragments. Each solution must permit independent historical version and Site queries.
 4. **GMP 376 remediation:** approve the exact row Case 380, preserving the conflicting original `db.cc.ID ĐỢT KTRA=378` literal and full audit/rollback provenance.

@@ -2446,7 +2446,8 @@ def test_certificate_action_readiness_uses_the_same_promotion_blockers_as_mutati
             case_id=case_id,
             user=admin,
         )
-        assert issue_action["available"] is True
+        assert issue_action["available"] is False
+        assert issue_action["reason_code"] == "gmp_case_already_issued"
         assert issue_action["certificate_type"] == "GMP"
         actions = {item["action_key"]: item for item in service.get_certificate_action_readiness(
             session,
@@ -2473,7 +2474,7 @@ def test_certificate_action_readiness_uses_the_same_promotion_blockers_as_mutati
             case_id=case_id,
             user=admin,
         )
-        assert issue_action["reason_code"] == "latest_capa_not_accepted"
+        assert issue_action["reason_code"] == "gmp_case_already_issued"
         actions = {item["action_key"]: item for item in service.get_certificate_action_readiness(
             session,
             certificate_id=issued["certificate_id"],
@@ -2855,10 +2856,18 @@ def test_promote_certificate_current_rejects_older_candidate_than_current():
     assert promoted["latest_flag"] is True
 
     with Session(engine) as session:
+        # A new GMP certificate must originate from its own Case, even when
+        # comparing promotion chronology for the same Site.
+        successor_case = Case(
+            site_id=site_id, gxp_type="GMP",
+            state=CaseState.AWAITING_CERTIFICATE_DECISION,
+        )
+        session.add(successor_case)
+        session.flush()
         older_candidate = service.issue_certificate(
             session,
             site_id=site_id,
-            case_id=case_id,
+            case_id=successor_case.id,
             certificate_type="GMP",
             issuance_basis="inspection_case",
             certificate_number="CERT-099",
@@ -3269,10 +3278,16 @@ def test_upsert_business_eligibility_latest_version_replaces_links():
     assert len(dkkd["linked_certificates"]) == 1
 
     with Session(engine) as session:
+        successor_case = Case(
+            site_id=site_id, gxp_type="GMP",
+            state=CaseState.AWAITING_CERTIFICATE_DECISION,
+        )
+        session.add(successor_case)
+        session.flush()
         replacement_certificate = service.issue_certificate(
             session,
             site_id=site_id,
-            case_id=case_id,
+            case_id=successor_case.id,
             certificate_type="GMP",
             issuance_basis="inspection_case",
             certificate_number="CERT-LINK-2",

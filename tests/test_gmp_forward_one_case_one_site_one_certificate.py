@@ -57,7 +57,7 @@ def test_case_with_no_issued_gmp_is_eligible_until_first_issue():
     with Session(engine) as session:
         site, case = _init_context(session)
         readiness = CaseWorkflowService().get_case_certificate_issue_readiness(
-            session, case_id=case.id, user=build_authenticated_user("issuer", "admin")
+            session, case_id=case.id, user=build_authenticated_user("issuer", "admin", permissions={"certificate.issue"})
         )
         assert readiness["available"] is True
         first = _issue(session, site.id, case.id)
@@ -81,7 +81,7 @@ def test_second_gmp_issue_from_same_case_is_refused_before_writes_and_readiness_
             session.query(AuditEvent).count(),
         )
         readiness = CaseWorkflowService().get_case_certificate_issue_readiness(
-            session, case_id=case.id, user=build_authenticated_user("issuer", "admin")
+            session, case_id=case.id, user=build_authenticated_user("issuer", "admin", permissions={"certificate.issue"})
         )
         assert readiness["available"] is False
         assert readiness["reason_code"] == "gmp_case_already_issued"

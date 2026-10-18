@@ -78,7 +78,11 @@ def plan_historical_gmp_case_rebind_readonly(
         detail.get("original_case_legacy_id") == prior_case_id
         and detail.get("original_linked_case_id")
         and detail.get("source_site_company_relation") ==
-            "DISTINCT_SITES_DIFFERENT_SOURCE_COMPANIES"
+            decision.get("expected_source_site_company_relation")
+        and decision.get("expected_source_site_company_relation") in {
+            "DISTINCT_SITES_DIFFERENT_SOURCE_COMPANIES",
+            "DISTINCT_SITES_SAME_SOURCE_COMPANY",
+        }
         and detail.get("case_rebinding_authorized") is False
         and detail.get("legal_coverage_approved") is False
         and detail.get("decision_gate") ==

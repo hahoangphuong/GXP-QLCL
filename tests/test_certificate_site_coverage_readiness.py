@@ -167,3 +167,11 @@ def test_no_evidence_shape_can_authorize_data_or_runtime_mutation():
         assert result["runtime_validator_change_authorized"] is False
         assert result["case_rebinding_authorized"] is False
         assert result["database_mutated"] is False
+
+
+def test_multisite_shape_audit_is_historical_only_and_cannot_approve_new_gmp_issuance():
+    result = _run(_fixture())
+    assert result["historical_exception_review_only"] is True
+    assert result["prospective_multisite_gmp_issuance_allowed"] is False
+    assert result["case_rebinding_authorized"] is False
+    assert result["runtime_validator_change_authorized"] is False

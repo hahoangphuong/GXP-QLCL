@@ -9,5 +9,6 @@
   "database_write_authorized": false,
   "document_binary_verified": false,
   "original_db_cc_case_ref_must_be_preserved": true,
-  "scope": "SOURCE_ORIGIN_DECISION_ONLY_NOT_A_DATABASE_CHANGE"
+  "scope": "SOURCE_ORIGIN_DECISION_ONLY_NOT_A_DATABASE_CHANGE",
+  "expected_source_site_company_relation": "DISTINCT_SITES_DIFFERENT_SOURCE_COMPANIES"
 }

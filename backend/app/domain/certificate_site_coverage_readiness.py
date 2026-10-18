@@ -1,7 +1,10 @@
 """Read-only shape audit of HISTORICAL Case/CertificateVersion multi-site evidence.
 
 A shape-complete proposal is NOT an adjudicated Site, scope, or Case link.
-The business owner requires new GMP issuance to be strictly one Case, one Site,\nand at most one Certificate per Case. This helper is for historical source\nexceptions ONLY and is NOT an alternative forward GMP issuance pathway.\nIt does not alter the strict single-Site validator, SQL or database.
+The business owner requires new GMP issuance to be strictly one Case, one Site,
+and at most one Certificate per Case. This helper is for historical source
+exceptions ONLY and is NOT an alternative forward GMP issuance pathway.
+It does not alter the strict single-Site validator, SQL or database.
 """
 from __future__ import annotations
 

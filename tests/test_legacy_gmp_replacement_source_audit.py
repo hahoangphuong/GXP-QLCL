@@ -120,3 +120,22 @@ def test_real_snapshot_is_read_only_and_all_source_groups_remain_unapproved():
         for group in report["groups"]
         for edge in group["chronological_adjacent_pairs_for_review"]
     )
+
+
+def test_cli_emits_sanitized_read_only_report(monkeypatch, tmp_path, capsys):
+    from tools.audit_gmp_replacement_sources import main
+    from backend.app.domain import phase2_import
+
+    source = tmp_path / "snapshot.json"
+    source.write_text(json.dumps(_snapshot(), ensure_ascii=False), encoding="utf-8")
+    output = tmp_path / "result.json"
+    monkeypatch.setattr(phase2_import, "CONFIRMED_BLANKED_ROWS_PATH", tmp_path / "none.json")
+    # The source contract loader expects its approved file to exist.
+    (tmp_path / "none.json").write_text('{"rows": []}', encoding="utf-8")
+    assert main(["--snapshot", str(source), "--output", str(output)]) == 0
+    summary = json.loads(capsys.readouterr().out)
+    detail = json.loads(output.read_text(encoding="utf-8"))
+    assert summary["replacement_authorized"] is False
+    assert summary["database_mutated"] is False
+    assert detail["group_count"] == 1
+    assert "LINE-A" not in output.read_text(encoding="utf-8")

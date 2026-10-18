@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useId, useRef } from "react";
 
 import { StatusBadge } from "../../components/StatusBadge";
 import { formatCompactDate, formatFacilityNameForGrid, formatStatusLabel } from "../../lib/presentation";
@@ -11,6 +11,8 @@ type HiddenFilters = {
   certificateState: string;
   certificateExpiringWithinDays: string;
 };
+
+const GXP_OPTIONS = ["GMP", "GLP", "GMPbb"] as const;
 
 function buildHiddenFilterChips(filters: HiddenFilters): string[] {
   const chips: string[] = [];
@@ -61,7 +63,16 @@ export function FacilityTable({
   selectedGxpType: string;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
+  const gxpTabRefs = useRef(new Map<string, HTMLButtonElement>());
+  const instructionsId = useId();
   const chips = buildHiddenFilterChips(hiddenFilters);
+  const rowEntryKey = rows.some((row) => row.result_key === selectedResultKey)
+    ? selectedResultKey
+    : rows[0]?.result_key;
+  const gxpEntry = GXP_OPTIONS.includes(selectedGxpType as (typeof GXP_OPTIONS)[number])
+    ? selectedGxpType
+    : GXP_OPTIONS[0];
 
   function maybeLoadMore() {
     if (!hasMore || loading || !scrollRef.current) {
@@ -77,13 +88,31 @@ export function FacilityTable({
     <section className="panel panel-tight results-panel">
       <div className="facility-table-layout">
         <nav aria-label="Bộ lọc GxP" className="facility-gxp-rail" role="tablist">
-          {(["GMP", "GLP", "GMPbb"] as const).map((option) => (
+          {GXP_OPTIONS.map((option, index) => (
             <button
               aria-selected={selectedGxpType === option}
               className={selectedGxpType === option ? "facility-gxp-tab active" : "facility-gxp-tab"}
               key={option}
               onClick={() => onGxpTypeChange(option)}
+              onKeyDown={(event) => {
+                const targetIndex = event.key === "ArrowDown" || event.key === "ArrowRight"
+                  ? (index + 1) % GXP_OPTIONS.length
+                  : event.key === "ArrowUp" || event.key === "ArrowLeft"
+                    ? (index - 1 + GXP_OPTIONS.length) % GXP_OPTIONS.length
+                    : event.key === "Home" ? 0
+                    : event.key === "End" ? GXP_OPTIONS.length - 1
+                    : null;
+                if (targetIndex !== null) {
+                  event.preventDefault();
+                  gxpTabRefs.current.get(GXP_OPTIONS[targetIndex])?.focus();
+                }
+              }}
+              ref={(element) => {
+                if (element) gxpTabRefs.current.set(option, element);
+                else gxpTabRefs.current.delete(option);
+              }}
               role="tab"
+              tabIndex={gxpEntry === option ? 0 : -1}
               type="button"
             >
               {option}
@@ -96,8 +125,11 @@ export function FacilityTable({
               <span className="panel-subtle-loading">Đang tải danh sách cơ sở...</span>
             </div>
           ) : null}
+          <p className="sr-only" id={instructionsId}>
+            Dùng phím mũi tên lên hoặc xuống, Home hoặc End để di chuyển. Nhấn Enter hoặc phím cách để chọn cơ sở.
+          </p>
           <div className="table-scroll table-scroll-fill" data-testid="facility-table-scroll" onScroll={maybeLoadMore} ref={scrollRef}>
-            <table className="dense-table facility-table">
+            <table aria-describedby={instructionsId} className="dense-table facility-table">
           {chips.length > 0 ? (
             <caption>
               <div className="active-filter-strip" aria-label="Bộ lọc đang áp dụng">
@@ -138,7 +170,7 @@ export function FacilityTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {rows.map((row, index) => (
               <tr
                 aria-selected={selectedResultKey === row.result_key}
                 className={selectedResultKey === row.result_key ? "selected" : ""}
@@ -148,9 +180,23 @@ export function FacilityTable({
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
                     onSelect(row.result_key);
+                    return;
+                  }
+                  const targetIndex = event.key === "ArrowDown" ? Math.min(index + 1, rows.length - 1)
+                    : event.key === "ArrowUp" ? Math.max(index - 1, 0)
+                    : event.key === "Home" ? 0
+                    : event.key === "End" ? rows.length - 1
+                    : null;
+                  if (targetIndex !== null) {
+                    event.preventDefault();
+                    rowRefs.current.get(rows[targetIndex].result_key)?.focus();
                   }
                 }}
-                tabIndex={0}
+                ref={(element) => {
+                  if (element) rowRefs.current.set(row.result_key, element);
+                  else rowRefs.current.delete(row.result_key);
+                }}
+                tabIndex={rowEntryKey === row.result_key ? 0 : -1}
               >
                 <td title={row.context_code ?? row.facility_code ?? ""}>{row.context_code ?? row.facility_code ?? "Chưa có"}</td>
                 <td title={row.facility_name}>{formatFacilityNameForGrid(row.facility_name)}</td>

@@ -418,13 +418,13 @@ outside git as preserved-master-history-1366/1920/390.png.
 | Legacy surface / evidence | React owner | Baseline divergence | Implemented / remaining | Confidence / verification |
 | --- | --- | --- | --- | --- |
 | MainForm master over workspace, coordinates above | SearchPage / CSS | History beside master in top row | Master now full-width above history-left/detail-right; one mounted workspace and one selection owner | High for relative arrangement; browser geometry at 1366/1920 |
-| tbGMP, tbGLP, tbGMPbb top row | FacilityTable / CSS | Vertical rotated buttons | Horizontal selector; canonical GMPbb retained | High for placement; browser checks transform and selection |
-| edSearch, Label29 “Lọc:” | LegacySearchFilters / SearchPage | No visible quick search input | Controlled quick filter uses existing q search contract | High for control/intent, not exact dimensions |
+| tbGMP, tbGLP, tbGMPbb top row | FacilityTable / CSS | Legacy horizontal selector differs from the preserved vertical web rail | User-approved web exception retains the vertical rail and canonical GMPbb; roving focus now gives the group one Tab stop without changing selection | High for current placement/interaction; exact legacy keyboard behavior EVIDENCE_MISSING |
+| edSearch, Label29 “Lọc:” | SearchPage URL ownership; no mounted filter surface | Legacy quick-filter row differs from the preserved web master | Latest user correction removes the entire Lọc / Lọc dữ liệu row and retains only the two master-table inputs; URL-owned filters remain supported without restoring the removed surface | User-approved web exception; no exact FilterForm parity claim |
 | MainForm facility page captions | FacilityWorkspaceTabs / facilityTabs | GxP / expanded eligibility label | Displays “Các đợt kiểm tra & Thay đổi”, “Giấy chứng nhận GPs”, “Giấy chứng nhận ĐĐK”; existing URL keys unchanged | High; caption/key regression and existing tab keyboard tests |
 | Nested case tabs: Hồ sơ đăng ký, Kiểm tra thực tế, Báo cáo khắc phục, Xử lý tiếp, Cấp chứng nhận GPs | EventWorkspace | Shortened labels and numbered stepper | Verified captions restored; numbered connector presentation removed in search | High for all six case captions, including image 6 for ĐĐK |
 | Label/value rows, frames, dense tab controls | Scoped search CSS | Rounded cards and larger controls | Reduced corner radius/spacing; runtime grey frames, blue/green tabs and white inset values applied; cyan certificate values | Partial; no exact appearance claim |
 | Application page date then dossier code | CaseApplicationWorkspace | Same order, currently two-column grid | Order retained; runtime images establish vertical date/code and assessment grouping; implementation remains partial | Runtime evidence available |
-| FilterForm named condition groups | LegacySearchFilters | Supported filters only accessible by URL | Quick filter and grouped supported controls added; complete legacy condition set remains unsupported | Partial; controlled-state tests and browser request/URL evidence |
+| FilterForm named condition groups | Unmounted legacy filter components / SearchPage URL ownership | API cannot represent the complete legacy condition set | Latest user correction keeps FilterForm absent from the search layout; no client-only filtering or invented backend semantics | EVIDENCE_MISSING for runtime FilterForm; user-approved web exception |
 | RecordForm MultiPage1, document bundle | ContextualDocumentSection / EventWorkspace | Web list/detail with canonical versions | Existing owner preserved, inherited compact frame styling; no invented tabs or filename-based keys | `LEGACY_STATIC_VERIFIED` for structure/actions and `WEB_FIXTURE_VERIFIED` for canonical interaction; runtime geometry/states remain `EVIDENCE_MISSING` |
 | GPs / ĐĐK historical lists and details | Certificate workspaces | Existing two-pane model; different chrome | Legacy facility tab captions and scoped density applied; fields/provenance retained | Partial; existing certificate/draft/modal tests, runtime references now available; exact field grouping remains partial |
 | SelectCC, SelectDDK, ChonMauCC, SelectFile, ExtRecordForm, DCForm, TTVForm | Existing selectors/editors | Full runtime appearance unknown | Audited as related forms; no guessed replacement screens | SelectFile structure/double-click are `LEGACY_STATIC_VERIFIED`; runtime states and visual comparison remain `EVIDENCE_MISSING` |
@@ -529,7 +529,7 @@ micro-slice is applied at this checkpoint.
 
 | ID | LEGACY_EXPECTED | CURRENT_CONTRACT / WHY_CONFLICT | Minimal resolution and affected checks |
 | --- | --- | --- | --- |
-| C1 | Full FilterForm flags: registration, inspection, compliance, product classification, dosage form and date ranges; persisted workbook names | Existing search API supports q, facility/scope/province, canonical states, certificate state/expiry; no equivalent for all legacy flags or saved workbook names | User resolved: keep unsupported legacy conditions visibly disabled in their evidenced groups. Supported controls alone update server filters. No client-only filtering of a paginated subset; filter and URL tests apply. |
+| C1 | Full FilterForm flags: registration, inspection, compliance, product classification, dosage form and date ranges; persisted workbook names | Existing search API supports q, facility/scope/province, canonical states, certificate state/expiry; no equivalent for all legacy flags or saved workbook names | Superseded by the later user correction at lines 346–354: do not mount Lọc / Lọc dữ liệu; retain only the two master-table inputs. URL-owned filters remain supported, with no client-only filtering of a paginated subset. |
 | C2 | Native Explorer/Word, opening raw folders and prefix-selected files; RecordForm slots and SelectFile values are populated from filesystem names | Backend owns storage binding/access, logical document/rendition/version identity; frontend cannot resolve NAS paths or use a filename/prefix as identity | Preserve available backend open/create/history commands and full IDs. Do not reproduce fixed path slots, raw-path fallback or fake file actions. Duplicate-filename, document-race and storage-contract checks apply. |
 | C3 | Legacy row editing may be directly available | RBAC, readiness and optimistic concurrency own permission/mutation availability | Preserve disabled/omitted commands and real 403/409 behavior. Caption/placement changes do not enable commands. Certificate/modal/draft tests apply. |
 | C4 | Runtime legacy pixel layout and all form states | FRX supplies structure, but runtime resizing, visibility, font/OS rendering and macro-driven states are not fully established; captures now available for case and certificate pages only | Keep verified arrangement/captions; do not invent colors, additional tabs or forms. Obtain redacted runtime captures before exact geometry/style work and screenshot comparison. Exact font metrics, main-list, RecordForm and FilterForm runtime states remain unverified. |
@@ -1545,6 +1545,42 @@ Logout removes the table and B text. Document client/scroll widths are
 This is synthetic fixture validation. Real OAuth refresh, live RBAC/backend,
 screen-reader acceptance, NAS/binary storage and production UAT remain
 unverified.
+
+## Master selection keyboard parity — 2026-10-18
+
+Baseline `ec696ec21f9d72f3f5591a05566a857ad83de0c6`. MainForm FRX evidence
+places `lbDsCoso` as the master list and `tbGMP` / `tbGLP` / `tbGMPbb` as its
+GxP selector; the approved web exception preserves the current table, vertical
+rail, action panel and palette. The latest user correction also keeps the
+separate Lọc / Lọc dữ liệu surface removed, so this slice does not remount
+`LegacySearchFilters` or invent unsupported FilterForm semantics.
+
+The first incorrect web behavior was in `FacilityTable`: every facility row and
+every `role="tab"` GxP control was a separate Tab stop, while Arrow/Home/End did
+nothing. The owner now exposes one entry Tab stop for each group. ArrowUp/
+ArrowDown and Home/End move facility-row focus; the vertical GxP rail additionally
+accepts Left/Right and wraps at its ends. Focus movement does not change the
+selected canonical result or GxP filter, so it cannot issue a request. Existing
+click and native Enter/Space activation remain the only selection boundary.
+The selected identity is the entry point when present; otherwise the first item
+is used. An off-screen instruction describes the facility-row keys.
+
+Regression evidence was RED on the baseline: all three tests observed tabIndex
+`0` for every row/tab and no roving behavior. The same focused file passes 3/3
+twice after the owner fix, covering exact result-key activation, focus-only
+navigation, the active/selected entry points and missing-selection fallback.
+Actual component + synthetic browser fixture at 1366×768, 1920×1080 and
+390×844 records document client/scroll widths of 1366/1366, 1920/1920 and
+390/390. Arrow navigation produced zero selection/filter callbacks; Enter issued
+one exact result-key selection, then one explicit GxP activation. Browser network
+traffic contained no mutation methods. The preserved desktop rail/table and the
+existing narrow stacked presentation were visually checked. Screenshots,
+measurements and the temporary harness are outside Git under
+`.codex/evidence/master-keyboard/`; this is `FIXTURE_VERIFIED`, not live backend
+validation.
+Exact native MSForms key handling and screen-reader speech remain
+`EVIDENCE_MISSING`; the web behavior follows the already-established History and
+certificate workspace focus/selection contract.
 
 ## Access-bound certificate workspace ownership — 2026-10-16
 

@@ -1,7 +1,7 @@
-"""Read-only shape audit of proposed Case/CertificateVersion site coverage.
+"""Read-only shape audit of HISTORICAL Case/CertificateVersion multi-site evidence.
 
 A shape-complete proposal is NOT an adjudicated Site, scope, or Case link.
-This does not alter the legacy single-Site validator, SQL, or database.
+The business owner requires new GMP issuance to be strictly one Case, one Site,\nand at most one Certificate per Case. This helper is for historical source\nexceptions ONLY and is NOT an alternative forward GMP issuance pathway.\nIt does not alter the strict single-Site validator, SQL or database.
 """
 from __future__ import annotations
 
@@ -113,7 +113,9 @@ def audit_site_coverage_proposal(
         errors.add("CERTIFIED_SITE_NOT_EVIDENCED_IN_CASE")
 
     return {
-        "schema_version": "proposed-case-certificate-version-site-coverage-shape/v1",
+        "schema_version": "historical-case-certificate-version-site-coverage-shape/v1",
+        "historical_exception_review_only": True,
+        "prospective_multisite_gmp_issuance_allowed": False,
         "shape_status": (
             "COMPLETE_FOR_DOMAIN_OWNER_REVIEW" if not errors
             else "BLOCKED_INCOMPLETE_SOURCE_PROPOSAL"

@@ -131,6 +131,7 @@ def test_verified_owner_case_source_generates_one_private_non_executable_inverse
     ("wrong_old_case", "SOURCE_IDENTITIES_MISSING_OR_EQUAL"),
     ("fake_decision_approval", "OWNER_OR_SOURCE_DECISION_INCOMPLETE"),
     ("other_snapshot", "OWNER_OR_SOURCE_DECISION_INCOMPLETE"),
+    ("wrong_owner_relation", "UNEXPECTED_ORIGINAL_LINK_OR_SOURCE_CONTEXT"),
     ("no_read_only", "UNTRUSTED_SOURCE_OR_NON_READ_ONLY_WITNESS"),
     ("no_private_witness", "WITNESS_DETAILS_ABSENT"),
     ("wrong_reverse_case", "ORIGINATING_CASE_REVERSE_EVIDENCE_NOT_UNIQUE"),
@@ -148,6 +149,8 @@ def test_wrong_or_partial_source_decision_is_fail_closed(tmp_path, mutation, exp
         decision["database_write_authorized"] = True
     elif mutation == "other_snapshot":
         decision["source_snapshot_sha256"] = "f" * 64
+    elif mutation == "wrong_owner_relation":
+        decision["expected_source_site_company_relation"] = "DISTINCT_SITES_SAME_SOURCE_COMPANY"
     elif mutation == "no_read_only":
         witness["database_transaction_read_only"] = False
     elif mutation == "no_private_witness":

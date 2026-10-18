@@ -368,6 +368,23 @@ class CaseWorkflowService:
             },
         ]
 
+    @staticmethod
+    def _gmp_case_already_issued(session: Session, case_id: str) -> bool:
+        """Read-only check for a GMP identity already issued from this Case.
+
+        This guards *future issuance*, not legacy Certificate repair. A
+        non-current or historically imported certificate still consumes the
+        one-GMP-per-Case issuance slot; neither flag is a bypass.
+        """
+        return session.scalar(
+            select(Certificate.id)
+            .where(
+                Certificate.case_id == case_id,
+                Certificate.certificate_type == "GMP",
+            )
+            .limit(1)
+        ) is not None
+
     def get_case_certificate_issue_readiness(
         self,
         session: Session,
@@ -378,6 +395,8 @@ class CaseWorkflowService:
         case = self._get_case(session, case_id)
         permission = "certificate.issue"
         reason = None if permission in user.permissions else "missing_permission"
+        if reason is None and case.gxp_type == "GMP" and self._gmp_case_already_issued(session, case.id):
+            reason = "gmp_case_already_issued"
         if reason is None:
             if case.state not in {CaseState.AWAITING_CERTIFICATE_DECISION, CaseState.CERTIFIED}:
                 reason = "case_state_not_eligible"
@@ -3789,6 +3808,17 @@ class CaseWorkflowService:
     ) -> dict[str, Any]:
         site = self._get_site(session, site_id)
         case = None if case_id is None else self._get_case(session, case_id)
+        if case is not None and certificate_type == "GMP" and issuance_basis == "inspection_case":
+            # Serialize prospective issuance on the originating Case itself.
+            # Legacy duplicate records remain untouched; no blanket unique
+            # index may be imposed retroactively on imported history.
+            case = session.scalar(
+                select(Case).where(Case.id == case.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if case is None:
+                raise HTTPException(status_code=404, detail="Case not found.")
         self._validate_certificate_case_link(
             site_id=site.id,
             case=case,
@@ -3796,6 +3826,12 @@ class CaseWorkflowService:
             issuance_basis=issuance_basis,
         )
         if case is not None:
+            if certificate_type == "GMP" and issuance_basis == "inspection_case":
+                if self._gmp_case_already_issued(session, case.id):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="GMP certificate already issued from this Case.",
+                    )
             self._assert_case_certificate_eligibility(
                 session,
                 case=case,

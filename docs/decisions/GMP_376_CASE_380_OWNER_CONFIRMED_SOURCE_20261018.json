@@ -1,0 +1,13 @@
+{
+  "schema": "gmp-owner-confirmed-issuing-case/v1",
+  "certificate_legacy_id": 376,
+  "incorrect_imported_case_legacy_id": 378,
+  "confirmed_issuing_case_legacy_id": 380,
+  "owner_confirmed_issuing_case": true,
+  "owner_decision_reference": "GXP-QLCL Issue #6 / owner-confirmed GMP-specific db.ktra.ID CC GPs Case 380 -> Certificate 376, 18 October 2026",
+  "source_snapshot_sha256": "b3bde05963e4e4d14d5b244e7c62b0f810f1cbbe206750574def6a366bdf7296",
+  "database_write_authorized": false,
+  "document_binary_verified": false,
+  "original_db_cc_case_ref_must_be_preserved": true,
+  "scope": "SOURCE_ORIGIN_DECISION_ONLY_NOT_A_DATABASE_CHANGE"
+}

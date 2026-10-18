@@ -198,3 +198,40 @@ def test_canonical_drift_or_occupied_target_case_fails_closed(tmp_path, mutation
     with pytest.raises(HistoricalGmpRebindBlocked):
         _plan(engine, witness, decision)
     engine.dispose()
+
+
+def test_bad_snapshot_aborts_cli_before_runtime_env_or_database_connection(tmp_path, capsys):
+    from tools.plan_historical_gmp_case_rebind_readonly import main
+
+    spoofed = tmp_path / "unexpected_snapshot.json"
+    spoofed.write_text("{}", encoding="utf-8")
+    destination = tmp_path / "private_plan_should_not_exist.json"
+    result = main([
+        "--snapshot", str(spoofed),
+        "--runtime-env", str(tmp_path / "missing_sensitive_env"),
+        "--private-output", str(destination),
+    ])
+    assert result == 2
+    assert not destination.exists()
+    out = capsys.readouterr()
+    assert out.out == ""
+    assert out.err.startswith("HISTORICAL_GMP_CASE_PLAN_BLOCKED:")
+    assert "missing_sensitive_env" not in out.err
+    assert "certificate" not in out.err.lower()
+
+
+def test_unrelated_decision_is_never_interpreted_as_owner_approved_case_rebinding(tmp_path):
+    engine, witness, decision = _test_context(tmp_path)
+    decision["owner_confirmed_issuing_case"] = False
+    with pytest.raises(HistoricalGmpRebindBlocked, match="OWNER_OR_SOURCE_DECISION_INCOMPLETE"):
+        _plan(engine, witness, decision)
+    engine.dispose()
+
+
+def test_second_case_source_candidate_ambiguity_is_blocked(tmp_path):
+    engine, witness, decision = _test_context(tmp_path)
+    extra = deepcopy(witness["details_private"][0]["reverse_case_review_candidates"][0])
+    witness["details_private"][0]["reverse_case_review_candidates"].append(extra)
+    with pytest.raises(HistoricalGmpRebindBlocked, match="ORIGINATING_CASE_REVERSE_EVIDENCE_NOT_UNIQUE"):
+        _plan(engine, witness, decision)
+    engine.dispose()

@@ -10,6 +10,11 @@ from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from backend.app.db.models.phase1 import TemplateBinding, TemplateDefinition
+from backend.app.document.c5e_certificate_destination_asset_contract import (
+    CERTIFICATE_DETAIL_FAMILY,
+    CertificateDestinationAssetContractError,
+    get_certificate_destination_asset,
+)
 from backend.app.document.inspection_ke_hoach_kt_template_asset_contract import (
     INSPECTION_KE_HOACH_KT_FAMILY,
     InspectionKeHoachKtTemplateAssetContractError,
@@ -35,7 +40,11 @@ class TemplateBinaryError(RuntimeError):
     pass
 
 
-_EXACT_INSPECTION_GXP_ASSET_LOADERS = {
+_EXACT_GXP_ASSET_LOADERS = {
+    CERTIFICATE_DETAIL_FAMILY: (
+        get_certificate_destination_asset,
+        CertificateDestinationAssetContractError,
+    ),
     INSPECTION_QD_KT_FAMILY: (
         get_inspection_qd_kt_template_asset,
         InspectionQdKtTemplateAssetContractError,
@@ -158,7 +167,38 @@ def build_prepared_template_binary_requirement(
         "gxp_type",
         None,
     )
-    exact_asset_loader = _EXACT_INSPECTION_GXP_ASSET_LOADERS.get(template_definition.family_code)
+    if template_definition.family_code == CERTIFICATE_DETAIL_FAMILY:
+        # C.5e source of truth is the originating Case-backed semantic
+        # projection, not optional browser/request GxP or a generic
+        # TemplateDefinition path. Never silently select a GSP destination.
+        canonical_projection = getattr(
+            prepared, "certificate_detail_projection", None
+        )
+        canonical_gxp_type = getattr(canonical_projection, "gxp_type", None)
+        if (
+            not isinstance(canonical_gxp_type, str)
+            or not canonical_gxp_type
+            or (
+                requested_gxp_type is not None
+                and requested_gxp_type != canonical_gxp_type
+            )
+        ):
+            return TemplateBinaryRequirement(
+                template_definition_id=template_definition.id,
+                family_code=template_definition.family_code,
+                template_name=template_definition.template_name,
+                storage_root=None,
+                storage_relative_path=None,
+                original_filename=None,
+                checksum_sha256=None,
+                readiness_status="invalid_template_binding",
+                detail=(
+                    "C.5e destination template requires a canonical Case "
+                    "GxP projection matching any explicit request GxP."
+                ),
+            )
+        requested_gxp_type = canonical_gxp_type
+    exact_asset_loader = _EXACT_GXP_ASSET_LOADERS.get(template_definition.family_code)
     if exact_asset_loader is not None and requested_gxp_type is not None:
         asset_loader, asset_error = exact_asset_loader
         try:

@@ -39,6 +39,23 @@ def _check(condition: bool, reason: str) -> None:
         raise HistoricalGmpRebindBlocked(reason)
 
 
+def _enforce_consistent_read_only_snapshot(conn) -> None:
+    """Pin one consistent PostgreSQL source/target witness across all SELECTs.
+
+    READ ONLY alone is insufficient under the default READ COMMITTED isolation:
+    a concurrent writer can change target rows between witness and plan reads.
+    """
+    conn.exec_driver_sql(
+        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
+    )
+    _check(
+        conn.execute(text("SHOW transaction_read_only")).scalar_one() == "on"
+        and conn.execute(text("SHOW transaction_isolation")).scalar_one()
+        == "repeatable read",
+        "REHEARSAL_CONSISTENT_READ_ONLY_SNAPSHOT_NOT_VERIFIED",
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime-env", type=Path, default=Path("/etc/gxp/runtime.env"))
@@ -86,10 +103,9 @@ def main(argv: list[str] | None = None) -> int:
         try:
             with engine.connect() as conn:
                 with conn.begin():
-                    conn.exec_driver_sql("SET TRANSACTION READ ONLY")
+                    _enforce_consistent_read_only_snapshot(conn)
                     _check(
-                        conn.execute(text("SELECT current_database()")).scalar_one() == EXPECTED_DB
-                        and conn.execute(text("SHOW transaction_read_only")).scalar_one() == "on",
+                        conn.execute(text("SELECT current_database()")).scalar_one() == EXPECTED_DB,
                         "REHEARSAL_READ_ONLY_TARGET_NOT_VERIFIED",
                     )
                     revisions = list(conn.execute(

@@ -39,8 +39,11 @@ from backend.app.document.c5e_certificate_detail_source_asset_contract import (
 from backend.app.document.c5e_certificate_detail_fragment_extractor import (
     extract_bookmark_table_fragment_from_docx_bytes,
 )
-from backend.app.document.seed_runtime import seed_default_template_metadata
 from backend.app.document.template_binary_binding import assign_template_binary_binding
+from tools.seed_c5e_certificate_template_metadata import (
+    _load_registry_seed,
+    _ensure_definition,
+)
 from backend.app.services import document_api as document_api_module
 from backend.app.services.document_api import DocumentWorkflowService
 from backend.app.storage.filesystem import FilesystemStorageService
@@ -172,11 +175,12 @@ def _install_fixture_contracts(
     monkeypatch, session: Session, template_root: Path,
     gxp_type: str, destination: bytes, source: bytes,
 ) -> None:
-    seed_default_template_metadata(session)
-    definition = session.scalar(select(TemplateDefinition).where(
-        TemplateDefinition.family_code == "CERTIFICATE_ISSUANCE_WORD"
-    ))
-    assert definition is not None
+    # C.5e deliberately owns its dedicated metadata seed. The generic
+    # Phase-5 batch seed is not proof that exact GMP/GLP C.5e templates exist.
+    _, definition_seed = _load_registry_seed()
+    definition, definition_created = _ensure_definition(session, definition_seed)
+    assert definition_created is True
+    assert definition.family_code == "CERTIFICATE_ISSUANCE_WORD"
     binding = TemplateBinding(
         family_code="CERTIFICATE_ISSUANCE_WORD",
         template_definition_id=definition.id,

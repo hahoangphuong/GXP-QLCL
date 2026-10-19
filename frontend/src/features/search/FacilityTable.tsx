@@ -1,4 +1,4 @@
-import { useId, useRef } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 
 import { StatusBadge } from "../../components/StatusBadge";
 import { formatCompactDate, formatFacilityNameForGrid, formatStatusLabel } from "../../lib/presentation";
@@ -38,6 +38,7 @@ export function FacilityTable({
   rows,
   selectedResultKey,
   loading,
+  error,
   hasMore,
   filters,
   hiddenFilters,
@@ -50,6 +51,7 @@ export function FacilityTable({
   rows: FacilitySearchResult[];
   selectedResultKey: string | null;
   loading: boolean;
+  error?: string | null;
   hasMore: boolean;
   filters: {
     facilityName: string;
@@ -65,14 +67,47 @@ export function FacilityTable({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
   const gxpTabRefs = useRef(new Map<string, HTMLButtonElement>());
+  const previousRowKeysRef = useRef(rows.map((row) => row.result_key));
+  const rowFocusOwnedRef = useRef(false);
+  const [focusedRowKey, setFocusedRowKey] = useState<string | null>(null);
+  const [focusedGxpType, setFocusedGxpType] = useState<string | null>(null);
   const instructionsId = useId();
   const chips = buildHiddenFilterChips(hiddenFilters);
-  const rowEntryKey = rows.some((row) => row.result_key === selectedResultKey)
+  const rowEntryKey = rows.some((row) => row.result_key === focusedRowKey)
+    ? focusedRowKey
+    : rows.some((row) => row.result_key === selectedResultKey)
     ? selectedResultKey
     : rows[0]?.result_key;
-  const gxpEntry = GXP_OPTIONS.includes(selectedGxpType as (typeof GXP_OPTIONS)[number])
+  const gxpEntry = GXP_OPTIONS.includes(focusedGxpType as (typeof GXP_OPTIONS)[number])
+    ? focusedGxpType
+    : GXP_OPTIONS.includes(selectedGxpType as (typeof GXP_OPTIONS)[number])
     ? selectedGxpType
     : GXP_OPTIONS[0];
+
+  useLayoutEffect(() => {
+    const previousKeys = previousRowKeysRef.current;
+    previousRowKeysRef.current = rows.map((row) => row.result_key);
+    if (!focusedRowKey || rows.some((row) => row.result_key === focusedRowKey)) {
+      return;
+    }
+
+    const activeElement = document.activeElement;
+    const shouldRestoreFocus = rowFocusOwnedRef.current
+      && (activeElement === document.body || activeElement === scrollRef.current);
+    if (!shouldRestoreFocus) {
+      setFocusedRowKey(null);
+      return;
+    }
+
+    const previousIndex = Math.max(previousKeys.indexOf(focusedRowKey), 0);
+    const nextRow = rows[Math.min(previousIndex, rows.length - 1)];
+    if (nextRow) {
+      rowRefs.current.get(nextRow.result_key)?.focus();
+    } else {
+      setFocusedRowKey(null);
+      scrollRef.current?.focus();
+    }
+  }, [focusedRowKey, rows]);
 
   function maybeLoadMore() {
     if (!hasMore || loading || !scrollRef.current) {
@@ -94,6 +129,7 @@ export function FacilityTable({
               className={selectedGxpType === option ? "facility-gxp-tab active" : "facility-gxp-tab"}
               key={option}
               onClick={() => onGxpTypeChange(option)}
+              onFocus={() => setFocusedGxpType(option)}
               onKeyDown={(event) => {
                 const targetIndex = event.key === "ArrowDown" || event.key === "ArrowRight"
                   ? (index + 1) % GXP_OPTIONS.length
@@ -120,7 +156,11 @@ export function FacilityTable({
           ))}
         </nav>
         <div className="facility-table-frame">
-          {loading && rows.length === 0 ? (
+          {error && rows.length === 0 ? (
+            <div className="panel-inline-loading">
+              <span className="form-error" role="alert">{error}</span>
+            </div>
+          ) : loading && rows.length === 0 ? (
             <div className="panel-inline-loading">
               <span className="panel-subtle-loading">Đang tải danh sách cơ sở...</span>
             </div>
@@ -128,7 +168,15 @@ export function FacilityTable({
           <p className="sr-only" id={instructionsId}>
             Dùng phím mũi tên lên hoặc xuống, Home hoặc End để di chuyển. Nhấn Enter hoặc phím cách để chọn cơ sở.
           </p>
-          <div className="table-scroll table-scroll-fill" data-testid="facility-table-scroll" onScroll={maybeLoadMore} ref={scrollRef}>
+          <div
+            aria-label="Danh sách cơ sở"
+            className="table-scroll table-scroll-fill"
+            data-testid="facility-table-scroll"
+            onScroll={maybeLoadMore}
+            ref={scrollRef}
+            role="region"
+            tabIndex={-1}
+          >
             <table aria-describedby={instructionsId} className="dense-table facility-table">
           {chips.length > 0 ? (
             <caption>
@@ -176,6 +224,16 @@ export function FacilityTable({
                 className={selectedResultKey === row.result_key ? "selected" : ""}
                 key={row.result_key}
                 onClick={() => onSelect(row.result_key)}
+                onBlur={(event) => {
+                  const nextTarget = event.relatedTarget;
+                  if (nextTarget && !Array.from(rowRefs.current.values()).some((element) => element.contains(nextTarget))) {
+                    rowFocusOwnedRef.current = false;
+                  }
+                }}
+                onFocus={() => {
+                  rowFocusOwnedRef.current = true;
+                  setFocusedRowKey(row.result_key);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();

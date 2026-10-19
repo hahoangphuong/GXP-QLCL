@@ -1,6 +1,11 @@
 {
-  "schema_version": "c5e-certificate-detail-readiness/v2",
-  "status": "BLOCKED_PENDING_EXACT_VBA_AND_TEMPLATE_EVIDENCE",
+  "schema_version": "c5e-certificate-detail-readiness/v3",
+  "status": "SOURCE_CONTRACT_IMPLEMENTED_LIVE_NOT_VERIFIED",
+  "runtime_storage_source_assets_verified": false,
+  "runtime_storage_destination_assets_verified": false,
+  "authenticated_real_case_docx_render_verified": false,
+  "gsp_destination_supported": false,
+  "deployment_authorized": false,
   "semantic_target": "active VBA Input_DC_to_CC certificate-detail structured taxonomy/bookmark path",
   "compact_summary_substitution_authorized": false,
   "scalar_projection_substitution_authorized": false,
@@ -10,20 +15,23 @@
   "checks": [
     {
       "code": "DURABLE_VBA_EVIDENCE",
-      "pass": false,
+      "pass": true,
       "evidence": {
         "function_map": "docs/VBA_FUNCTION_MAP.md",
+        "captured_active_body": "tests/fixtures/c5e_certificate_detail/Input_DC_to_CC.active.bas",
+        "captured_key2bookmark_helper": "tests/fixtures/c5e_certificate_detail/helpers/Key2Bookmark.bas",
         "commented_variant_recorded": true,
-        "exact_active_Input_DC_to_CC_body_retained": false
+        "exact_active_Input_DC_to_CC_body_retained": true,
+        "original_vba_binary_authenticity_verified": false
       }
     },
     {
       "code": "CERTIFICATE_DETAIL_TEMPLATE_CONTRACT",
-      "pass": false,
+      "pass": true,
       "evidence": {
         "family_code": "CERTIFICATE_ISSUANCE_WORD",
         "entry_count": 1,
-        "registered_bookmarks": [
+        "registered_general_bookmarks": [
           "Chuthich",
           "ChuthichE",
           "DiachiCoso",
@@ -42,7 +50,15 @@
           "TenCtyE",
           "WHO_Del"
         ],
-        "candidate_detail_bookmarks_beyond_general_fields": []
+        "legacy_curated_registry_detail_bookmarks": [],
+        "dedicated_captured_destinations": [
+          "GLP",
+          "GMP"
+        ],
+        "dedicated_destination_asset_contract": "backend/app/document/c5e_certificate_destination_assets.json",
+        "source_asset_registry_complete": true,
+        "gsp_destination_supported": false,
+        "destination_binary_loaded_from_runtime_storage": false
       }
     },
     {
@@ -65,23 +81,11 @@
       }
     }
   ],
-  "blockers": [
-    {
-      "code": "ACTIVE_INPUT_DC_TO_CC_BODY_NOT_DURABLY_CAPTURED",
-      "message": "The repository does not retain the exact active Input_DC_to_CC VBA body. Do not reconstruct certificate-detail row semantics from procedure names, compact summary behavior, or the commented Input_DC_to_CC2 variant.",
-      "evidence": "docs/VBA_FUNCTION_MAP.md records Input_DC_to_CC2 as a commented legacy variant only."
-    },
-    {
-      "code": "CERTIFICATE_DETAIL_TEMPLATE_REGIONS_NOT_PROVEN",
-      "message": "The curated CERTIFICATE_ISSUANCE_WORD template contract contains only the known general-information bookmarks; no taxonomy-detail row/region contract is durably proven for Input_DC_to_CC.",
-      "evidence": "artifacts/phase5/template_registry.curated.json"
-    }
-  ],
+  "blockers": [],
   "required_evidence_to_unblock": [
-    "exact active Input_DC_to_CC VBA procedure body and directly called helpers",
-    "exact certificate template row/bookmark structure used by that procedure",
-    "row-level mapping from selected taxonomy node/custom description to destination bookmark/row behavior",
-    "proof of formatting/copy rules that must survive server-side DOCX rendering"
+    "checksum-verified source and destination Word binaries in authorized runtime template storage",
+    "authenticated real-Case certificate generation and resulting DOCX artifact verification",
+    "separately source and hash-verify GSP destination template before enabling GSP"
   ],
-  "next_safe_slice": "durably capture the remaining exact legacy/template evidence needed by this historical audit; do not alter the implemented certificate-detail runtime merely to satisfy stale readiness assumptions"
+  "next_safe_slice": "verify runtime storage and authenticated certificate output only after authorized environment access; never infer successful rendering from source fixtures or CI"
 }

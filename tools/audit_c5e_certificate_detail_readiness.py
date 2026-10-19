@@ -15,6 +15,12 @@ SCALAR_PROJECTION = ROOT / "backend" / "app" / "domain" / "evaluation_scope_docu
 SCALAR_INTEGRATION = ROOT / "backend" / "app" / "document" / "evaluation_scope_payload.py"
 
 CERT_FAMILY = "CERTIFICATE_ISSUANCE_WORD"
+ACTIVE_VBA = ROOT / "tests/fixtures/c5e_certificate_detail/Input_DC_to_CC.active.bas"
+KEY_TO_BOOKMARK_VBA = ROOT / "tests/fixtures/c5e_certificate_detail/helpers/Key2Bookmark.bas"
+DESTINATION_ASSETS = ROOT / "backend/app/document/c5e_certificate_destination_assets.json"
+SOURCE_ASSETS = ROOT / "backend/app/document/c5e_certificate_detail_source_assets.json"
+CAPTURED_DESTINATION_STRUCTURE_ROOT = ROOT / "tests/fixtures/c5e_certificate_detail"
+
 
 
 def _read(path: Path) -> str:
@@ -30,9 +36,17 @@ def audit() -> dict[str, object]:
         "`Input_DC_to_CC2`" in function_map_text
         and "commented legacy variant" in function_map_text
     )
+    active_body = _read(ACTIVE_VBA) if ACTIVE_VBA.is_file() else ""
+    bookmark_helper = (
+        _read(KEY_TO_BOOKMARK_VBA)
+        if KEY_TO_BOOKMARK_VBA.is_file() else ""
+    )
     exact_active_body_retained = (
-        "Sub Input_DC_to_CC(" in function_map_text
-        or "Function Input_DC_to_CC(" in function_map_text
+        active_body.lstrip().startswith("Private Function Input_DC_to_CC(")
+        and "wdDoc2.Bookmarks(Key2Bookmark(" in active_body
+        and "Range.FormattedText" in active_body
+        and "Private Function Key2Bookmark(" in bookmark_helper
+        and 'Key2Bookmark = "L" & Replace(' in bookmark_helper
     )
     checks.append(
         {
@@ -40,8 +54,11 @@ def audit() -> dict[str, object]:
             "pass": function_map_has_commented_variant and exact_active_body_retained,
             "evidence": {
                 "function_map": "docs/VBA_FUNCTION_MAP.md",
+                "captured_active_body": "tests/fixtures/c5e_certificate_detail/Input_DC_to_CC.active.bas",
+                "captured_key2bookmark_helper": "tests/fixtures/c5e_certificate_detail/helpers/Key2Bookmark.bas",
                 "commented_variant_recorded": function_map_has_commented_variant,
                 "exact_active_Input_DC_to_CC_body_retained": exact_active_body_retained,
+                "original_vba_binary_authenticity_verified": False,
             },
         }
     )
@@ -50,11 +67,10 @@ def audit() -> dict[str, object]:
             {
                 "code": "ACTIVE_INPUT_DC_TO_CC_BODY_NOT_DURABLY_CAPTURED",
                 "message": (
-                    "The repository does not retain the exact active Input_DC_to_CC VBA body. "
-                    "Do not reconstruct certificate-detail row semantics from procedure names, "
-                    "compact summary behavior, or the commented Input_DC_to_CC2 variant."
+                    "The captured active Input_DC_to_CC body/helper is missing or inconsistent. "
+                    "Do not reconstruct from compact summary or commented VBA variants."
                 ),
-                "evidence": "docs/VBA_FUNCTION_MAP.md records Input_DC_to_CC2 as a commented legacy variant only.",
+                "evidence": "tests/fixtures/c5e_certificate_detail/Input_DC_to_CC.active.bas",
             }
         )
 
@@ -72,7 +88,69 @@ def audit() -> dict[str, object]:
         "TenCoso", "TenCosoE", "TenCty", "TenCtyE", "WHO_Del",
     }
     detail_bookmarks = sorted(set(cert_bookmarks) - known_general_bookmarks)
-    registry_detail_ready = len(cert_entries) == 1 and bool(detail_bookmarks)
+
+    # The Phase-5 general-information registry is NOT the active owner of Pvi.
+    # Dedicated destination assets and their captured bookmark structures are.
+    destination_payload = (
+        json.loads(_read(DESTINATION_ASSETS)) if DESTINATION_ASSETS.is_file() else {}
+    )
+    destination_assets = destination_payload.get("assets", [])
+    captured_destinations: list[str] = []
+    for asset in destination_assets:
+        if not isinstance(asset, dict):
+            continue
+        gxp_type = asset.get("gxp_type")
+        filename = asset.get("filename")
+        if gxp_type not in {"GMP", "GLP"} or not isinstance(filename, str):
+            continue
+        structure_path = CAPTURED_DESTINATION_STRUCTURE_ROOT / (
+            filename.replace(".dotx", ".structure.json")
+        )
+        if not structure_path.is_file():
+            continue
+        structure = json.loads(_read(structure_path))
+        pvi_matches = [
+            bookmark
+            for part in structure.get("parts", [])
+            if part.get("part") == "word/document.xml"
+            for bookmark in part.get("bookmarks", [])
+            if bookmark.get("name") == "Pvi"
+        ]
+        if (
+            structure.get("template_filename") == filename
+            and structure.get("template_sha256") == asset.get("checksum_sha256")
+            and len(pvi_matches) == 1
+        ):
+            captured_destinations.append(gxp_type)
+
+    source_payload = (
+        json.loads(_read(SOURCE_ASSETS)) if SOURCE_ASSETS.is_file() else {}
+    )
+    source_pairs = {
+        (asset.get("source_variant"), asset.get("gxp_type"))
+        for asset in source_payload.get("assets", [])
+        if isinstance(asset, dict) and isinstance(asset.get("sha256"), str)
+        and len(asset["sha256"]) == 64
+    }
+    complete_source_asset_contract = (
+        source_payload.get("schema_version")
+        == "c5e-certificate-detail-source-assets/v1"
+        and source_pairs == {
+            (variant, gxp)
+            for variant in ("certificate_9", "appendix_z3")
+            for gxp in ("GMP", "GLP", "GSP")
+        }
+        and len(source_payload.get("assets", [])) == 6
+    )
+    registry_detail_ready = (
+        len(cert_entries) == 1
+        and destination_payload.get("schema_version")
+        == "c5e-certificate-destination-assets-v1"
+        and {asset.get("gxp_type") for asset in destination_assets} == {"GMP", "GLP"}
+        and sorted(captured_destinations) == ["GLP", "GMP"]
+        and "GSP" in destination_payload.get("unsupported_gxp_types", {})
+        and complete_source_asset_contract
+    )
     checks.append(
         {
             "code": "CERTIFICATE_DETAIL_TEMPLATE_CONTRACT",
@@ -80,8 +158,13 @@ def audit() -> dict[str, object]:
             "evidence": {
                 "family_code": CERT_FAMILY,
                 "entry_count": len(cert_entries),
-                "registered_bookmarks": cert_bookmarks,
-                "candidate_detail_bookmarks_beyond_general_fields": detail_bookmarks,
+                "registered_general_bookmarks": cert_bookmarks,
+                "legacy_curated_registry_detail_bookmarks": detail_bookmarks,
+                "dedicated_captured_destinations": sorted(captured_destinations),
+                "dedicated_destination_asset_contract": "backend/app/document/c5e_certificate_destination_assets.json",
+                "source_asset_registry_complete": complete_source_asset_contract,
+                "gsp_destination_supported": False,
+                "destination_binary_loaded_from_runtime_storage": False,
             },
         }
     )
@@ -90,11 +173,10 @@ def audit() -> dict[str, object]:
             {
                 "code": "CERTIFICATE_DETAIL_TEMPLATE_REGIONS_NOT_PROVEN",
                 "message": (
-                    "The curated CERTIFICATE_ISSUANCE_WORD template contract contains only the "
-                    "known general-information bookmarks; no taxonomy-detail row/region contract "
-                    "is durably proven for Input_DC_to_CC."
+                    "Dedicated GMP/GLP destination Pvi geometry or six-source asset registry "
+                    "is missing/inconsistent; general-information bookmarks cannot substitute."
                 ),
-                "evidence": "artifacts/phase5/template_registry.curated.json",
+                "evidence": "backend/app/document/c5e_certificate_destination_assets.json",
             }
         )
 
@@ -179,12 +261,17 @@ def audit() -> dict[str, object]:
         )
 
     report = {
-        "schema_version": "c5e-certificate-detail-readiness/v2",
+        "schema_version": "c5e-certificate-detail-readiness/v3",
         "status": (
-            "READY_FOR_CERTIFICATE_DETAIL_IMPLEMENTATION"
+            "SOURCE_CONTRACT_IMPLEMENTED_LIVE_NOT_VERIFIED"
             if not blockers
-            else "BLOCKED_PENDING_EXACT_VBA_AND_TEMPLATE_EVIDENCE"
+            else "SOURCE_CONTRACT_EVIDENCE_INCOMPLETE"
         ),
+        "runtime_storage_source_assets_verified": False,
+        "runtime_storage_destination_assets_verified": False,
+        "authenticated_real_case_docx_render_verified": False,
+        "gsp_destination_supported": False,
+        "deployment_authorized": False,
         "semantic_target": "active VBA Input_DC_to_CC certificate-detail structured taxonomy/bookmark path",
         "compact_summary_substitution_authorized": False,
         "scalar_projection_substitution_authorized": False,
@@ -194,14 +281,13 @@ def audit() -> dict[str, object]:
         "checks": checks,
         "blockers": blockers,
         "required_evidence_to_unblock": [
-            "exact active Input_DC_to_CC VBA procedure body and directly called helpers",
-            "exact certificate template row/bookmark structure used by that procedure",
-            "row-level mapping from selected taxonomy node/custom description to destination bookmark/row behavior",
-            "proof of formatting/copy rules that must survive server-side DOCX rendering",
+            "checksum-verified source and destination Word binaries in authorized runtime template storage",
+            "authenticated real-Case certificate generation and resulting DOCX artifact verification",
+            "separately source and hash-verify GSP destination template before enabling GSP",
         ],
         "next_safe_slice": (
-            "durably capture the remaining exact legacy/template evidence needed by this historical audit; "
-            "do not alter the implemented certificate-detail runtime merely to satisfy stale readiness assumptions"
+            "verify runtime storage and authenticated certificate output only after authorized "
+            "environment access; never infer successful rendering from source fixtures or CI"
         ),
     }
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)

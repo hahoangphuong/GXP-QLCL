@@ -19,7 +19,7 @@ def _pair(tmp_path: Path) -> Path:
     backup.write_bytes(b"synthetic archive for checksum testing only")
     digest = hashlib.sha256(backup.read_bytes()).hexdigest()
     Path(str(backup) + ".sha256").write_text(
-        f"{digest}  {backup.name}\\n", encoding="utf-8"
+        f"{digest}  {backup.name}\n", encoding="utf-8"
     )
     return backup
 
@@ -74,7 +74,7 @@ def test_invalid_existing_pair_fails_before_any_external_command(
     elif mutation == "bad_checksum":
         backup.write_bytes(b"mismatched bytes")
     elif mutation == "sidecar_wrong_filename":
-        sidecar.write_text("0" * 64 + "  other.dump\\n")
+        sidecar.write_text("0" * 64 + "  other.dump\n")
     elif mutation == "multi_entry":
         sidecar.write_text(sidecar.read_text() * 2)
     elif mutation == "sidecar_symlink":
@@ -137,6 +137,6 @@ def test_portable_legacy_absolute_sidecar_entry(tmp_path, monkeypatch):
     backup = _pair(tmp_path)
     sidecar = Path(str(backup) + ".sha256")
     digest = hashlib.sha256(backup.read_bytes()).hexdigest()
-    sidecar.write_text(f"{digest}  /old-vm/stage/{backup.name}\\n")
+    sidecar.write_text(f"{digest}  /old-vm/stage/{backup.name}\n")
     _safe_restore_probe(monkeypatch)
     assert inspect_existing_backup_pair(backup)["backup_pair_sha256_verified"] is True

@@ -8,6 +8,8 @@ import pytest
 
 from backend.app.document.c5e_certificate_detail_fragment_extractor import (
     CertificateDetailExtractedFragment,
+    CertificateDetailFragmentExtractionError,
+    extract_bookmark_table_fragment_from_docx_bytes,
 )
 from backend.app.document.c5e_certificate_detail_semantic_projection import (
     project_certificate_detail_semantic_operations,
@@ -592,3 +594,24 @@ def test_duplicate_destination_document_xml_rejected_before_source_extraction(
             dictionary=_dictionary(),
         )
     assert extract_attempted is False
+
+
+@pytest.mark.parametrize("duplicated_part", ("word/document.xml", "word/styles.xml"))
+def test_c5e_source_fragment_rejects_duplicate_opc_part_name(duplicated_part):
+    """Verified source bytes must still have unambiguous OOXML part identity."""
+    package = BytesIO()
+    with ZipFile(package, "w", compression=ZIP_DEFLATED) as archive:
+        archive.writestr("word/document.xml", _destination_document_xml())
+        if duplicated_part != "word/document.xml":
+            archive.writestr(duplicated_part, b"<styles/>")
+        with pytest.warns(UserWarning, match="Duplicate name"):
+            archive.writestr(duplicated_part, b"<conflicting-part/>")
+
+    with pytest.raises(
+        CertificateDetailFragmentExtractionError,
+        match="Duplicate source DOCX package part",
+    ):
+        extract_bookmark_table_fragment_from_docx_bytes(
+            package.getvalue(),
+            bookmark_name="L1",
+        )

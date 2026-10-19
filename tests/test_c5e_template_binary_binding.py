@@ -32,7 +32,13 @@ from tools.seed_c5e_certificate_template_metadata import (
 )
 
 
-def _allocated(*, definition_id="td1", binding_id="tb1"):
+def _allocated(
+    *,
+    definition_id="td1",
+    binding_id="tb1",
+    request_gxp_type=None,
+    canonical_gxp_type="GMP",
+):
     return SimpleNamespace(
         prepared=SimpleNamespace(
             persisted_state=SimpleNamespace(
@@ -40,10 +46,16 @@ def _allocated(*, definition_id="td1", binding_id="tb1"):
                 template_binding_id=binding_id,
             ),
             generation_plan=SimpleNamespace(
+                request=SimpleNamespace(gxp_type=request_gxp_type),
                 template=SimpleNamespace(
                     family_code="CERTIFICATE_ISSUANCE_WORD",
                     template_pattern="9. Chung chi {GP} (moi).dotx",
-                )
+                ),
+            ),
+            certificate_detail_projection=(
+                None
+                if canonical_gxp_type is None
+                else SimpleNamespace(gxp_type=canonical_gxp_type)
             ),
         )
     )
@@ -92,56 +104,156 @@ def test_template_binary_binding_normalization_contract():
         normalize_template_binary_checksum("not-a-sha")
 
 
-def test_binding_locator_precedes_definition_locator(monkeypatch):
+def _install_template_lookup(monkeypatch, *, definition, binding=None, locator=None):
+    from backend.app.db.models.phase1 import TemplateBinding
+
+    class FakeSession:
+        def get(self, model, identity):
+            assert model is TemplateBinding
+            assert identity == "tb1"
+            return binding
+
+    monkeypatch.setattr(
+        template_binary,
+        "_load_template_definition",
+        lambda session, definition_id: definition,
+    )
+    monkeypatch.setattr(
+        template_binary,
+        "get_template_binary_binding_locator",
+        lambda session, binding_id: locator,
+    )
+    return FakeSession()
+
+
+@pytest.mark.parametrize("gxp_type", ["GMP", "GLP"])
+def test_c5e_exact_case_gxp_binding_takes_precedence_over_definition(monkeypatch, gxp_type):
+    asset = get_certificate_destination_asset(gxp_type)
     definition = _definition(
         template_storage_root="template",
         template_storage_relative_path="wrong-definition.dotx",
         template_checksum_sha256="0" * 64,
     )
-    monkeypatch.setattr(
-        template_binary,
-        "_load_template_definition",
-        lambda session, definition_id: definition,
+    binding = SimpleNamespace(gxp_type=gxp_type)
+    locator = SimpleNamespace(
+        storage_root=asset.storage_root,
+        storage_relative_path=asset.storage_relative_path,
+        original_filename=asset.filename,
+        checksum_sha256=asset.checksum_sha256,
     )
-    monkeypatch.setattr(
-        template_binary,
-        "get_template_binary_binding_locator",
-        lambda session, binding_id: SimpleNamespace(
-            storage_root="template",
-            storage_relative_path="9. Chung chi GMP (moi).dotx",
-            original_filename="9. Chung chi GMP (moi).dotx",
-            checksum_sha256="1" * 64,
+    session = _install_template_lookup(
+        monkeypatch, definition=definition, binding=binding, locator=locator,
+    )
+
+    requirement = build_template_binary_requirement(
+        session, _allocated(canonical_gxp_type=gxp_type),
+    )
+
+    assert requirement.readiness_status == "direct_stream_ready"
+    assert requirement.storage_relative_path == asset.storage_relative_path
+    assert requirement.checksum_sha256 == asset.checksum_sha256
+    assert "exact GxP" in requirement.detail
+
+
+def test_c5e_generic_template_definition_never_replaces_exact_binding(monkeypatch):
+    asset = get_certificate_destination_asset("GMP")
+    definition = _definition(
+        template_storage_root="template",
+        template_storage_relative_path=asset.storage_relative_path,
+        template_original_filename=asset.filename,
+        template_checksum_sha256=asset.checksum_sha256,
+    )
+    session = _install_template_lookup(
+        monkeypatch, definition=definition, binding=None, locator=None,
+    )
+
+    requirement = build_template_binary_requirement(session, _allocated())
+
+    assert requirement.readiness_status == "missing_exact_template_binding"
+    assert requirement.storage_relative_path is None
+
+
+@pytest.mark.parametrize("field", [
+    "storage_root", "storage_relative_path", "original_filename", "checksum_sha256",
+])
+def test_c5e_mismatched_destination_binding_fails_closed(monkeypatch, field):
+    asset = get_certificate_destination_asset("GMP")
+    values = {
+        "storage_root": asset.storage_root,
+        "storage_relative_path": asset.storage_relative_path,
+        "original_filename": asset.filename,
+        "checksum_sha256": asset.checksum_sha256,
+    }
+    values[field] = "0" * 64 if field == "checksum_sha256" else "untrusted.dotx"
+    session = _install_template_lookup(
+        monkeypatch,
+        definition=_definition(),
+        binding=SimpleNamespace(gxp_type="GMP"),
+        locator=SimpleNamespace(**values),
+    )
+
+    requirement = build_template_binary_requirement(session, _allocated())
+
+    assert requirement.readiness_status == "invalid_template_binding"
+    assert requirement.storage_relative_path is None
+
+
+@pytest.mark.parametrize("gxp_type", ["GSP", "GDP", "GMPbb"])
+def test_c5e_unapproved_destination_types_cannot_use_generic_fallback(
+    monkeypatch, gxp_type,
+):
+    session = _install_template_lookup(
+        monkeypatch,
+        definition=_definition(
+            template_storage_root="template",
+            template_storage_relative_path="arbitrary.dotx",
+            template_checksum_sha256="f" * 64,
         ),
     )
 
-    requirement = build_template_binary_requirement(object(), _allocated())
+    requirement = build_template_binary_requirement(
+        session, _allocated(canonical_gxp_type=gxp_type),
+    )
 
-    assert requirement.readiness_status == "direct_stream_ready"
-    assert requirement.storage_relative_path == "9. Chung chi GMP (moi).dotx"
-    assert requirement.checksum_sha256 == "1" * 64
-    assert "TemplateBinding" in requirement.detail
+    assert requirement.readiness_status == "invalid_template_binding"
+    assert requirement.storage_relative_path is None
 
 
-def test_definition_locator_remains_backward_compatible(monkeypatch):
+def test_c5e_absent_canonical_projection_cannot_use_explicit_request_fallback(monkeypatch):
+    session = _install_template_lookup(
+        monkeypatch, definition=_definition(),
+    )
+    requirement = build_template_binary_requirement(
+        session,
+        _allocated(request_gxp_type="GMP", canonical_gxp_type=None),
+    )
+    assert requirement.readiness_status == "invalid_template_binding"
+
+
+def test_c5e_request_gxp_must_not_disagree_with_case_projection(monkeypatch):
+    session = _install_template_lookup(
+        monkeypatch, definition=_definition(),
+    )
+    requirement = build_template_binary_requirement(
+        session,
+        _allocated(request_gxp_type="GLP", canonical_gxp_type="GMP"),
+    )
+    assert requirement.readiness_status == "invalid_template_binding"
+
+
+def test_non_c5e_generic_definition_locator_remains_backward_compatible(monkeypatch):
     definition = _definition(
+        family_code="OTHER_WORD_FAMILY",
         template_storage_root="template",
         template_storage_relative_path="generic.dotx",
         template_original_filename="generic.dotx",
         template_checksum_sha256="2" * 64,
     )
-    monkeypatch.setattr(
-        template_binary,
-        "_load_template_definition",
-        lambda session, definition_id: definition,
-    )
-    monkeypatch.setattr(
-        template_binary,
-        "get_template_binary_binding_locator",
-        lambda session, binding_id: None,
+    session = _install_template_lookup(
+        monkeypatch, definition=definition, binding=None, locator=None,
     )
 
-    requirement = build_template_binary_requirement(object(), _allocated())
-
+    requirement = build_template_binary_requirement(session, _allocated())
     assert requirement.readiness_status == "direct_stream_ready"
     assert requirement.storage_relative_path == "generic.dotx"
     assert requirement.checksum_sha256 == "2" * 64

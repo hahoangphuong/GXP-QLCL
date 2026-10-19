@@ -57,12 +57,13 @@ def _allocated(
     *,
     projection: CertificateDetailSemanticProjection | None,
     table_regions: tuple[object, ...] = (),
+    family_code: str = "CERTIFICATE_ISSUANCE_WORD",
 ):
     prepared = SimpleNamespace(
         source_binary_requirements=(),
         generation_plan=SimpleNamespace(
             template=SimpleNamespace(
-                family_code="CERTIFICATE_ISSUANCE_WORD",
+                family_code=family_code,
             )
         ),
         payload_result=SimpleNamespace(
@@ -352,3 +353,56 @@ def test_service_projection_builder_uses_canonical_scope_and_eng_part_true(monke
         "gxp_type": "GSP",
         "eng_part": True,
     }
+
+
+@pytest.mark.parametrize(
+    "part_name", ("word/document.xml", "word/header1.xml", "docProps/core.xml")
+)
+@pytest.mark.parametrize("certificate_projection", (False, True))
+def test_template_renderer_refuses_duplicate_zip_part_names_before_render(
+    monkeypatch, part_name, certificate_projection,
+):
+    """One ambiguous ZIP part can cause a different document to be rendered."""
+    original = _docx_bytes(bookmark_name="GenericTitle", text="ORIGINAL")
+    source = BytesIO()
+    with ZipFile(BytesIO(original), "r") as archive:
+        original_parts = [(i, archive.read(i)) for i in archive.infolist()]
+    with ZipFile(source, "w", compression=ZIP_DEFLATED) as archive:
+        for info, payload in original_parts:
+            archive.writestr(info, payload)
+        if part_name == "word/header1.xml":
+            archive.writestr(part_name, f'<w:hdr xmlns:w="{WORD_NS}"/>')
+        if part_name == "docProps/core.xml":
+            archive.writestr(part_name, b"<CoreProperties/>")
+        with pytest.warns(UserWarning, match="Duplicate name"):
+            archive.writestr(part_name, b"<conflicting-part/>")
+
+    _install_template_mocks(
+        monkeypatch,
+        template_bytes=source.getvalue(),
+        replacements={"GenericTitle": "REPLACED"},
+    )
+    runtime_called = False
+
+    def forbid_source_runtime(*args, **kwargs):
+        nonlocal runtime_called
+        runtime_called = True
+        raise AssertionError("Malformed package must fail before C.5e source IO")
+
+    monkeypatch.setattr(
+        docx_template_render,
+        "build_certificate_detail_runtime_docx",
+        forbid_source_runtime,
+    )
+    with pytest.raises(DocxTemplateRenderError, match="Duplicate DOCX package part"):
+        build_template_aware_docx_bytes(
+            object(),
+            _allocated(
+                projection=_projection() if certificate_projection else None,
+                family_code=(
+                    "CERTIFICATE_ISSUANCE_WORD"
+                    if certificate_projection else "INSPECTION_BBTD_HOSO_DK"
+                ),
+            ),
+        )
+    assert runtime_called is False

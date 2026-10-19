@@ -1594,16 +1594,19 @@ URL and request ownership were already correct; no `SearchPage` change was neede
 selection. A surviving canonical `result_key` remains focused and is the sole row
 Tab stop through append/reorder. If that identity disappears while the row group
 still owns focus, focus moves to the nearest surviving row by its previous index;
-an empty/loading list uses the named master-list region as a non-Tab fallback. If
-focus already moved to a filter or workspace control, result replacement does not
-move it back. None of these transitions select a replacement result or invoke a
-request callback. Existing `SearchPage` access/request sequence guards continue
-to reject late A → B → A responses.
+an empty/loading list uses the named master-list region as a non-Tab fallback.
+Search failures remain alerts inside that stable region, so a filter retains focus
+instead of being unmounted. If focus already moved to another filter or workspace
+control, result replacement does not move it back. None of these transitions
+select a replacement result or invoke a request callback. Existing `SearchPage`
+access/request sequence guards continue to reject late A → B → A responses.
 
 The regression was RED on the baseline in four cases: focused row and GxP controls
 were not the sole Tab stop, removed-row focus fell to `body`, and empty/loading had
-no focus fallback. It is GREEN 9/9 twice, including append, reorder, removal,
-missing selected identity, filter ownership, empty/loading recovery, exact
+no focus fallback. The focused component file is GREEN 9/9 twice; a separate
+RED→GREEN `SearchPage` regression covers asynchronous search failure without
+unmounting the focused filter. Coverage includes append, reorder, removal, missing
+selected identity, filter ownership, empty/loading/error recovery, exact
 `aria-selected` separation and GxP activation. Actual-component Edge fixture runs
 at 1366×768, 1920×1080 and 390×844 record client/scroll widths of 1366/1366,
 1920/1920 and 390/390. Reorder retains the focused key; removal uses the nearest

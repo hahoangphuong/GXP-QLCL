@@ -38,6 +38,7 @@ export function FacilityTable({
   rows,
   selectedResultKey,
   loading,
+  error,
   hasMore,
   filters,
   hiddenFilters,
@@ -50,6 +51,7 @@ export function FacilityTable({
   rows: FacilitySearchResult[];
   selectedResultKey: string | null;
   loading: boolean;
+  error?: string | null;
   hasMore: boolean;
   filters: {
     facilityName: string;
@@ -154,7 +156,11 @@ export function FacilityTable({
           ))}
         </nav>
         <div className="facility-table-frame">
-          {loading && rows.length === 0 ? (
+          {error && rows.length === 0 ? (
+            <div className="panel-inline-loading">
+              <span className="form-error" role="alert">{error}</span>
+            </div>
+          ) : loading && rows.length === 0 ? (
             <div className="panel-inline-loading">
               <span className="panel-subtle-loading">Đang tải danh sách cơ sở...</span>
             </div>

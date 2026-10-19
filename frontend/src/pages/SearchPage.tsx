@@ -2152,10 +2152,6 @@ export function SearchPage({
   if (!canLoadSecureApi) {
     return <EmptyState title="Cần đăng nhập" description="Đăng nhập để dùng Tra cứu trên authenticated API thật." />;
   }
-  if (resultsError && results.length === 0) {
-    return <ErrorState message={resultsError} />;
-  }
-
   return (
     <section className="page-section search-page legacy-search-page">
       <div className="search-workspace search-workspace-split search-master-history">
@@ -2166,6 +2162,7 @@ export function SearchPage({
             certificateScope,
           }}
           hasMore={hasMoreResults}
+          error={resultsError}
           hiddenFilters={{
             generalQuery,
             province,

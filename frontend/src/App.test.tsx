@@ -1082,6 +1082,26 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".facility-context-code")).toBeNull();
   }, 10000);
 
+  it("keeps filter focus and the master region when an async result replacement fails", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities
+      .mockResolvedValueOnce({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 })
+      .mockRejectedValueOnce(new Error("Không tải được kết quả thay thế."));
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+
+    renderApp(["/search"]);
+
+    await screen.findByText("1.1A");
+    const nameFilter = screen.getByRole("textbox", { name: "Tên cơ sở" });
+    act(() => nameFilter.focus());
+    fireEvent.change(nameFilter, { target: { value: "không có" } });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Không tải được kết quả thay thế.");
+    expect(nameFilter).toHaveFocus();
+    expect(screen.getByRole("region", { name: "Danh sách cơ sở" })).toBeInTheDocument();
+    expect(apiMocks.searchFacilities).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps the inspection and certificate scopes as one permanent sibling context for every case step", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });

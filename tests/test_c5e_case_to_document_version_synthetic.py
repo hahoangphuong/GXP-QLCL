@@ -73,10 +73,9 @@ def _source_word() -> bytes:
           <w:tc><w:p/></w:tc>
           <w:tc><w:p>
             <w:r><w:t>EN SOURCE</w:t></w:r>
-            <w:bookmarkEnd w:id="1"/>
           </w:p></w:tc>
         </w:tr>
-        <w:tr><w:tc><w:p/></w:tc></w:tr>
+        <w:tr><w:tc><w:p><w:bookmarkEnd w:id="1"/></w:p></w:tc></w:tr>
       </w:tbl></w:body>
     </w:document>""")
 

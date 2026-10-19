@@ -263,6 +263,10 @@ def _build_certificate_detail_projection(
         raise DocumentPayloadBuildError(
             f"C.5e certificate-detail projection requires a nonblank case_id for family_code={CERTIFICATE_DETAIL_FAMILY!r}."
         )
+    if request.case_id != case_id:
+        raise DocumentPayloadBuildError(
+            "C.5e certificate-detail requires exact canonical case_id identity."
+        )
 
     # The legacy certificate issuance Word artifact is a Case-owned document.
     # Refuse cross-parent attribution before loading Case scope or persisting

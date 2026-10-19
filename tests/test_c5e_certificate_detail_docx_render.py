@@ -550,3 +550,45 @@ def test_renderer_rejects_gdp_even_if_upstream_boundary_is_bypassed():
             projection=projection,
             dictionary=_dictionary(),
         )
+
+def test_duplicate_destination_document_xml_rejected_before_source_extraction(
+    monkeypatch,
+):
+    """ZIP name ambiguity must not permit two conflicting document bodies."""
+    package = BytesIO()
+    with pytest.warns(UserWarning, match="Duplicate name"):
+        with ZipFile(package, "w", compression=ZIP_DEFLATED) as archive:
+            archive.writestr("[Content_Types].xml", "<Types/>")
+            archive.writestr("word/document.xml", _destination_document_xml())
+            archive.writestr(
+                "word/document.xml",
+                _destination_document_xml().replace(
+                    b"STATIC SUFFIX", b"OTHER DOCUMENT BODY"
+                ),
+            )
+
+    extract_attempted = False
+
+    def should_not_extract(_source_docx_bytes, *, bookmark_name):
+        nonlocal extract_attempted
+        extract_attempted = True
+        raise AssertionError(
+            "Ambiguous destination package must fail before source extraction"
+        )
+
+    monkeypatch.setattr(
+        "backend.app.document.c5e_certificate_detail_docx_render."
+        "extract_bookmark_table_fragment_from_docx_bytes",
+        should_not_extract,
+    )
+    with pytest.raises(
+        CertificateDetailDocxRenderError,
+        match="Duplicate destination word/document.xml",
+    ):
+        build_certificate_detail_docx_bytes(
+            package.getvalue(),
+            source_docx_bytes=b"SOURCE",
+            projection=_projection(),
+            dictionary=_dictionary(),
+        )
+    assert extract_attempted is False

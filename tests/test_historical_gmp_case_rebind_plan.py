@@ -203,6 +203,61 @@ def test_canonical_drift_or_occupied_target_case_fails_closed(tmp_path, mutation
     engine.dispose()
 
 
+class _SnapshotSettingResult:
+    def __init__(self, value):
+        self.value = value
+
+    def scalar_one(self):
+        return self.value
+
+
+class _SnapshotConnectionProbe:
+    def __init__(self, *, readonly="on", isolation="repeatable read"):
+        self.readonly = readonly
+        self.isolation = isolation
+        self.commands = []
+
+    def exec_driver_sql(self, statement):
+        self.commands.append(statement)
+
+    def execute(self, statement):
+        values = {
+            "SHOW transaction_read_only": self.readonly,
+            "SHOW transaction_isolation": self.isolation,
+        }
+        return _SnapshotSettingResult(values[str(statement)])
+
+
+def test_rebind_readonly_cli_pins_repeatable_read_snapshot():
+    from tools.plan_historical_gmp_case_rebind_readonly import (
+        _enforce_consistent_read_only_snapshot,
+    )
+
+    probe = _SnapshotConnectionProbe()
+    _enforce_consistent_read_only_snapshot(probe)
+    assert probe.commands == [
+        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
+    ]
+
+
+@pytest.mark.parametrize(("readonly", "isolation"), [
+    ("off", "repeatable read"),
+    ("on", "read committed"),
+    ("off", "read committed"),
+])
+def test_rebind_snapshot_rejects_read_write_or_moving_snapshot(readonly, isolation):
+    from tools.plan_historical_gmp_case_rebind_readonly import (
+        _enforce_consistent_read_only_snapshot,
+    )
+
+    probe = _SnapshotConnectionProbe(readonly=readonly, isolation=isolation)
+    with pytest.raises(
+        HistoricalGmpRebindBlocked,
+        match="REHEARSAL_CONSISTENT_READ_ONLY_SNAPSHOT_NOT_VERIFIED",
+    ):
+        _enforce_consistent_read_only_snapshot(probe)
+
+
 def test_bad_snapshot_aborts_cli_before_runtime_env_or_database_connection(tmp_path, capsys):
     from tools.plan_historical_gmp_case_rebind_readonly import main
 

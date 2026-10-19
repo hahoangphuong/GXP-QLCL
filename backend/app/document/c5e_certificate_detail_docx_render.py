@@ -141,10 +141,18 @@ def _read_destination_package(
             source_buffer,
             "r",
         ) as archive:
-            if DOCUMENT_XML_PART not in archive.namelist():
+            document_count = archive.namelist().count(
+                DOCUMENT_XML_PART
+            )
+            if document_count == 0:
                 raise CertificateDetailDocxRenderError(
                     "Destination certificate template does not contain "
                     "word/document.xml."
+                )
+            if document_count != 1:
+                raise CertificateDetailDocxRenderError(
+                    "Duplicate destination word/document.xml ZIP entries "
+                    "are not allowed."
                 )
 
             entries: list[
@@ -154,8 +162,10 @@ def _read_destination_package(
             document_xml: bytes | None = None
 
             for info in archive.infolist():
+                # Bind bytes to this concrete ZIP member, not the last
+                # matching filename when unrelated duplicate members exist.
                 payload = archive.read(
-                    info.filename
+                    info
                 )
 
                 entries.append(

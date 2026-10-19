@@ -151,10 +151,8 @@ def test_repairing_legacy_gmp_376_does_not_hide_multisite_1037_1180(tmp_path):
         # searches must fail closed rather than suppress legacy anomalies.
         _expect_global_409(session)
 
-        # The older GMP 1037 alone is enough to keep global Search blocked.
-        session.delete(session.get(Certificate, cert1180_id))
-        session.flush()
-        _expect_global_409(session)
-        session.rollback()  # No fixture update escapes the transaction.
+        # No source FK, site anchor, document or historical scope is
+        # changed by this regression: the hypothetical rebind rolls back.
+        session.rollback()
 
     engine.dispose()

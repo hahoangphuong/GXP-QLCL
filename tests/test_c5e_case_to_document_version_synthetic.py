@@ -255,6 +255,12 @@ def _install_fixture_contracts(
 def test_c5e_synthetic_case_to_current_document_version(
     tmp_path, monkeypatch, gxp_type,
 ):
+    # The synthetic integration owns its tracked Phase-5 input artifact
+    # root. Other tests/runtime deployments may override this setting;
+    # do not let unrelated environments change this fixture's registry.
+    tracked_artifacts_root = Path(__file__).resolve().parents[1] / "artifacts"
+    assert (tracked_artifacts_root / "phase5" / "template_registry.curated.json").is_file()
+    monkeypatch.setenv("GXP_ARTIFACTS_ROOT", str(tracked_artifacts_root))
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     roots = {

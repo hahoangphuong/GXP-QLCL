@@ -134,7 +134,7 @@ def test_c5e_exact_case_gxp_binding_takes_precedence_over_definition(monkeypatch
         template_storage_relative_path="wrong-definition.dotx",
         template_checksum_sha256="0" * 64,
     )
-    binding = SimpleNamespace(gxp_type=gxp_type)
+    binding = SimpleNamespace(id="tb1", gxp_type=gxp_type)
     locator = SimpleNamespace(
         storage_root=asset.storage_root,
         storage_relative_path=asset.storage_relative_path,
@@ -188,7 +188,7 @@ def test_c5e_mismatched_destination_binding_fails_closed(monkeypatch, field):
     session = _install_template_lookup(
         monkeypatch,
         definition=_definition(),
-        binding=SimpleNamespace(gxp_type="GMP"),
+        binding=SimpleNamespace(id="tb1", gxp_type="GMP"),
         locator=SimpleNamespace(**values),
     )
 

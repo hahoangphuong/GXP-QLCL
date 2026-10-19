@@ -49,9 +49,13 @@ or backfill a `source_document_sha256`, Site-local scope digest,
 the above URL, page position or public register wording.
 
 **No source-safe inference:** The two snapshots establish that different
-historic addresses were *printed* for Site 1; they do **not** demonstrate
-a physical move, renumbering, persistent canonical Site UUID or the
-relationship of internal Site 46 to all physical premises. Site 2's
+historic addresses were *printed* for Site 1; **those two register
+rows alone** cannot determine why the address changed, whether the
+physical GMP premises stayed the same, or whether Site 46 has a persistent
+canonical identity. The distinct 04/04/2023 company disclosure below
+specifically attributes the *registered headquarters* address change to
+street renaming and house-number reassignment, but does not automatically
+prove GMP manufacturing-site or Case coverage identity. Site 2's
 repeated label does not by itself authorize canonical identity binding.
 Neither register provides the internal application's Case 1023 UUID, its
 exact signed inspection decision or the scope applied by that Case.
@@ -61,6 +65,51 @@ specific owner-approved plan. Source decision, site-identity and
 signed-document provenance gates are **still open**. This addendum authorizes
 no schema, migration, FK/relationship write, validator relaxation,
 storage operation, VM deployment or prospective multi-Site issuance.
+
+## Corporate address-renaming disclosure — 04/04/2023 (new corroboration)
+
+**New evidence distinct from GMP registers:** Domesco itself published
+[disclosure No. 15/HĐQT-DMC dated 04/04/2023, with the 35th amended
+enterprise-registration certificate attached](https://www.domesco.com/pdf/20230404---dmc---giay-chung-nhan-dkdn-thay-doi-lan-thu-35--thay-doi-dia-chi-tru-so-cty--signed_vi_1680579756.pdf).
+The disclosure identifies the registered company headquarters at
+`Số 66 - Quốc lộ 30 - P. Mỹ Phú - TP. Cao Lãnh - Đồng Tháp` and
+states it was changed to
+`Số 346 - đường Nguyễn Huệ - P. Mỹ Phú - TP. Cao Lãnh - Đồng Tháp`
+**because Đồng Tháp provincial authorities renamed the street and reassigned
+house numbers**. The described enterprise registration amendment is dated
+01/04/2023, received 03/04/2023. In the publicly readable **four-page PDF**,
+the disclosure is on PDF pages 0–1 and the attached amended enterprise
+registration identifies the new headquarters address on PDF page 2.
+
+**Source verification ceiling:** Full text of the remotely indexed PDF was
+retrieved and reviewed, including the attached business-registration
+certificate; **page image retrieval timed out**, and the binary has not
+been retrieved into protected evidence custody, SHA256-verified or
+cryptographically validated for signature authenticity. This is
+*company-authored public documentary corroboration*, not an
+original authenticated GMP certificate, manufacturing-premises decision
+or inspection report.
+
+**Narrow conclusion:** The specific **change of the registered
+headquarters address and its stated administrative cause are
+documented**, so the earlier question "why were the address strings
+different?" now has a plausible official explanation grounded in
+a dated company disclosure. This reduces, but does **not close**, the
+separate GMP *physical manufacturing Site identity* gate. The two GMP
+lists independently print the two addresses at Site 1 in different years;
+neither that correspondence nor the headquarters' enterprise registration
+is proof that a particular production line, inspection Case 1023, GMP
+site authorization or historical `site.id` persisted unchanged.
+An authorized owner must inspect the signed GMP/inspection primary
+evidence, compare facility identity and address chronology, and record
+an explicit reviewed Site 46 disposition before any DB Site mapping.
+
+**No automatic mutation or approval:** Do not update either printed
+CertificateVersion address, merge canonical Sites, use this disclosure
+to synthesize a CaseSiteCoverage row, alter `Certificate.case_id`,
+infer `REPLACED_BY`, change read/write validation, or enable
+new multi-Site GMP issuance. No real database, storage or VM
+operation was performed in this review.
 
 ## Proposed additive relational owners (not implemented)
 

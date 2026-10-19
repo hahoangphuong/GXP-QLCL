@@ -201,9 +201,10 @@ def test_cli_does_not_echo_subprocess_exception_secret(monkeypatch, capsys):
 
 
 def test_unprivileged_cron_probe_cannot_claim_missing_trigger(monkeypatch):
-    def fake_call(args):
+    def fake_call(args, *, capture_stderr=False):
         if args[0] == "crontab":
-            return subprocess.CompletedProcess(args, 1, stdout="")
+            assert capture_stderr is True
+            return subprocess.CompletedProcess(args, 1, stdout="", stderr="permission denied")
         raise AssertionError("only crontab probe expected")
     monkeypatch.setattr(auditor, "_call", fake_call)
     monkeypatch.setattr(auditor, "_safe_read", lambda path: "")
@@ -213,3 +214,98 @@ def test_unprivileged_cron_probe_cannot_claim_missing_trigger(monkeypatch):
     cron = auditor._cron_snapshot()
     assert cron["per_user_crontab"]["root"] == "UNVERIFIED"
     assert cron["per_user_crontab"]["gxp"] == "UNVERIFIED"
+
+
+
+def test_absent_service_must_never_report_success_even_if_systemctl_result_success(monkeypatch):
+    _configured(monkeypatch)
+    old_properties = auditor._properties
+    def no_service(unit, keys):
+        if unit == auditor.SERVICE:
+            return {"LoadState": "not-found", "ActiveState": "inactive", "Result": "success"}
+        return old_properties(unit, keys)
+    monkeypatch.setattr(auditor, "_properties", no_service)
+    report = auditor.audit_local_backup_trigger()
+    assert report["service"]["load_state"] == "not-found"
+    assert report["service"]["unit_result_known_success"] is False
+    assert report["actual_backup_run_verified"] is False
+
+
+@pytest.mark.parametrize("user", ["root", "gxp"])
+def test_empty_user_crontabs_are_distinguished_from_privilege_errors(monkeypatch, user):
+    def call(args, *, capture_stderr=False):
+        assert args[0] == "crontab"
+        assert capture_stderr is True
+        if args[2] == user:
+            return subprocess.CompletedProcess(
+                args, 1, stdout="", stderr=f"no crontab for {user}\\n"
+            )
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+    monkeypatch.setattr(auditor, "_call", call)
+    monkeypatch.setattr(auditor, "_safe_read", lambda _path: "")
+    monkeypatch.setattr(auditor.Path, "iterdir", lambda self: iter([]))
+    report = auditor._cron_snapshot()
+    assert report["per_user_crontab"][user] == "NO_CRONTAB"
+    assert report["system_cron_files_matching_known_entrypoint"] == 0
+
+
+@pytest.mark.parametrize("message", [
+    "permission denied",
+    "no crontab for other_user",
+    "no crontab for root\\npassword=SECRET",
+    "",
+])
+def test_untrusted_crontab_errors_remain_unverified(monkeypatch, message):
+    def call(args, *, capture_stderr=False):
+        assert capture_stderr is True
+        return subprocess.CompletedProcess(args, 1, stdout="", stderr=message)
+    monkeypatch.setattr(auditor, "_call", call)
+    monkeypatch.setattr(auditor, "_safe_read", lambda _path: "")
+    monkeypatch.setattr(auditor.Path, "iterdir", lambda self: iter([]))
+    report = auditor._cron_snapshot()
+    assert report["per_user_crontab"]["root"] == "UNVERIFIED"
+    assert report["per_user_crontab"]["gxp"] == "UNVERIFIED"
+    assert "SECRET" not in json.dumps(report)
+
+
+def test_unreadable_cron_file_reason_is_aggregated_without_filename(tmp_path, monkeypatch):
+    config = tmp_path / "sensitive-cron-file"
+    config.write_text("* * * * * /opt/private/secret-command\\n")
+    shortcut = tmp_path / "untrusted-link"
+    shortcut.symlink_to(config)
+    oversized = tmp_path / "oversized"
+    oversized.write_bytes(b"x" * 131073)
+    folder = tmp_path / "directory"
+    folder.mkdir()
+    assert auditor._unreadable_reason(shortcut) == "symlink"
+    assert auditor._unreadable_reason(oversized) == "oversized"
+    assert auditor._unreadable_reason(folder) == "nonregular"
+    assert auditor._unreadable_reason(tmp_path / "missing") == "read_error"
+
+    def call(args, *, capture_stderr=False):
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+    monkeypatch.setattr(auditor, "_call", call)
+    monkeypatch.setattr(auditor.Path, "iterdir", lambda self: iter([shortcut, oversized, folder]))
+    monkeypatch.setattr(auditor, "_safe_read", lambda path: None if path != Path("/etc/crontab") else "")
+    report = auditor._cron_snapshot()
+    assert report["system_cron_files_unverified"] == 3
+    assert report["system_cron_unverified_reasons"] == {
+        "symlink": 1, "oversized": 1, "nonregular": 1, "read_error": 0,
+    }
+    printed = json.dumps(report)
+    assert "sensitive-cron-file" not in printed
+    assert "secret-command" not in printed
+
+
+def test_stderr_is_only_captured_for_explicit_cron_classification(monkeypatch):
+    observed = []
+    def fake_run(args, **kw):
+        observed.append((args, kw))
+        return subprocess.CompletedProcess(args, 1, stdout="", stderr="no crontab for root")
+    monkeypatch.setattr(auditor.subprocess, "run", fake_run)
+    auditor._call(["systemctl", "show", auditor.TIMER])
+    auditor._call(["crontab", "-u", "root", "-l"], capture_stderr=True)
+    assert observed[0][1]["stderr"] == subprocess.DEVNULL
+    assert observed[1][1]["stderr"] == subprocess.PIPE
+    assert observed[0][1]["check"] is False
+    assert observed[1][1]["check"] is False

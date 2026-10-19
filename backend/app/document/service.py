@@ -258,14 +258,39 @@ def _build_certificate_detail_projection(
     if request.family_code != CERTIFICATE_DETAIL_FAMILY:
         return None
 
-    if request.case_id is None:
+    case_id = str(request.case_id or "").strip()
+    if not case_id:
         raise DocumentPayloadBuildError(
-            f"C.5e certificate-detail projection requires case_id for family_code={CERTIFICATE_DETAIL_FAMILY!r}."
+            f"C.5e certificate-detail projection requires a nonblank case_id for family_code={CERTIFICATE_DETAIL_FAMILY!r}."
+        )
+    if request.case_id != case_id:
+        raise DocumentPayloadBuildError(
+            "C.5e certificate-detail requires exact canonical case_id identity."
+        )
+
+    # The legacy certificate issuance Word artifact is a Case-owned document.
+    # Refuse cross-parent attribution before loading Case scope or persisting
+    # a document attached to a potentially unrelated Certificate/other owner.
+    unexpected_parent_links = tuple(
+        field
+        for field, value in (
+            ("capa_cycle_id", request.capa_cycle_id),
+            ("certificate_id", request.certificate_id),
+            ("business_eligibility_certificate_id", request.business_eligibility_certificate_id),
+            ("change_request_id", request.change_request_id),
+        )
+        if value is not None
+    )
+    if unexpected_parent_links:
+        raise DocumentPayloadBuildError(
+            "C.5e certificate-detail is case-owned and rejects additional parent links: "
+            + ", ".join(unexpected_parent_links)
+            + "."
         )
 
     projection_input = load_c5e_evaluation_scope_projection_input(
         session,
-        case_id=request.case_id,
+        case_id=case_id,
     )
 
     if request.gxp_type is not None and request.gxp_type != projection_input.gxp_type:

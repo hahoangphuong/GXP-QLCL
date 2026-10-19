@@ -284,7 +284,7 @@ def test_service_projection_builder_requires_case_id():
         requested_by_user_id=None,
         gxp_type="GMP",
     )
-    with pytest.raises(DocumentPayloadBuildError, match="requires case_id"):
+    with pytest.raises(DocumentPayloadBuildError, match="requires a nonblank case_id"):
         service._build_certificate_detail_projection(object(), request=request)
 
 
@@ -406,3 +406,82 @@ def test_template_renderer_refuses_duplicate_zip_part_names_before_render(
             ),
         )
     assert runtime_called is False
+
+
+
+@pytest.mark.parametrize("case_id", ("", " ", "\t"))
+def test_c5e_projection_rejects_blank_case_identity_before_db_lookup(
+    monkeypatch, case_id,
+):
+    calls = []
+    monkeypatch.setattr(
+        service,
+        "load_c5e_evaluation_scope_projection_input",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+    request = DocumentGenerationRequest(
+        family_code="CERTIFICATE_ISSUANCE_WORD",
+        requested_by_user_id=None,
+        case_id=case_id,
+        gxp_type="GMP",
+    )
+    with pytest.raises(DocumentPayloadBuildError, match="requires a nonblank case_id"):
+        service._build_certificate_detail_projection(object(), request=request)
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "parent_field",
+    (
+        "capa_cycle_id",
+        "certificate_id",
+        "business_eligibility_certificate_id",
+        "change_request_id",
+    ),
+)
+def test_c5e_projection_rejects_additional_parent_link_before_case_lookup(
+    monkeypatch, parent_field,
+):
+    """C.5e is Case-owned; never render Case A scope into a different parent."""
+    calls = []
+    monkeypatch.setattr(
+        service,
+        "load_c5e_evaluation_scope_projection_input",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+    request_data = {
+        "family_code": "CERTIFICATE_ISSUANCE_WORD",
+        "requested_by_user_id": None,
+        "case_id": "case-1",
+        "gxp_type": "GMP",
+        parent_field: "foreign-parent",
+    }
+    request = DocumentGenerationRequest(**request_data)
+    with pytest.raises(
+        DocumentPayloadBuildError,
+        match=rf"case-owned and rejects additional parent links: {parent_field}",
+    ):
+        service._build_certificate_detail_projection(object(), request=request)
+    assert calls == []
+
+
+
+@pytest.mark.parametrize("case_id", (" case-1", "case-1 ", " case-1 "))
+def test_c5e_projection_rejects_noncanonical_case_identity_before_db_lookup(
+    monkeypatch, case_id,
+):
+    calls = []
+    monkeypatch.setattr(
+        service,
+        "load_c5e_evaluation_scope_projection_input",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+    request = DocumentGenerationRequest(
+        family_code="CERTIFICATE_ISSUANCE_WORD",
+        requested_by_user_id=None,
+        case_id=case_id,
+        gxp_type="GMP",
+    )
+    with pytest.raises(DocumentPayloadBuildError, match="canonical case_id"):
+        service._build_certificate_detail_projection(object(), request=request)
+    assert calls == []

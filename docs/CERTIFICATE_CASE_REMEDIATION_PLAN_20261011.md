@@ -5,6 +5,16 @@ This is a proposed operational decision gate, not a migration, SQL patch, runtim
 relaxation, or authorization to change business data. The active Search Facilities
 HTTP 409 remains **unresolved**.
 
+## Superseding business-owner decision — 18 October 2026
+
+The data owner has **confirmed Case 380 as the originating Case for historical GMP Certificate 376**, and that Case 378 did **not** issue Certificate 376. This updates the earlier 11 October description of Case 380 as merely a candidate. The source literal `db.cc.ID ĐỢT KTRA=378` remains original historical provenance and must never be overwritten. The GMP-specific source reverse reference `db.ktra.ID CC GPs` for Case 380 corroborates the owner's authoritative domain clarification. **Do not ask the owner to repeat this already-settled business identification.**
+
+The decision is recorded in `docs/decisions/GMP_376_CASE_380_OWNER_CONFIRMED_SOURCE_20261018.json`. It confirms the *intended Case-origin identity*, **not** documentary binary authenticity, authorization for a PostgreSQL FK update, or legal proof for multi-Site certificates. Before any change, use the fail-closed source-pinned, read-only exact-row plan in Draft PR #34 to check current database UUIDs, originating/issuing Cases, Site/GxP, conflicting GMP linkage, version/scope fidelity, rollback inverse and fresh backup readiness. The exact data correction remains separately controlled. Historic GMP 1037/1180 remain a distinct, unapproved multi-Site evidence matter.
+
+The prospective GMP workflow has **one Case / one Site / at most one Case-backed GMP Certificate**, merged via PR #33. The owner explicitly retains the distinct `administrative_no_inspection` path with `case_id=NULL`; no legacy Case 378/380 mismatch can be reclassified as administrative to hide it.
+
+**The October 11 source audit tables below remain intact as an audit trail; any wording there saying owner identification is pending is superseded by this dated decision, whereas the separate mutation/evidence gates remain unfulfilled.**
+
 ## Separation of defects and ownership
 
 | Track | Current evidence | Required owner/action | Forbidden shortcut |

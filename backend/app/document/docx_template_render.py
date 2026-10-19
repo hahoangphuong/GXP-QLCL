@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from typing import TYPE_CHECKING
 from xml.etree import ElementTree as ET
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile
 
 from backend.app.document.c5e_certificate_detail_runtime import (
     CertificateDetailRuntimeError,
@@ -235,6 +235,25 @@ def _apply_certificate_detail_before_generic_render(
     return result.render_result.binary_payload
 
 
+def _assert_unambiguous_template_package(template_bytes: bytes) -> None:
+    """Validate OPC part identity before any scalar or C.5e mutation."""
+    try:
+        with ZipFile(BytesIO(template_bytes), "r") as archive:
+            names = [member.filename for member in archive.infolist()]
+    except BadZipFile as exc:
+        raise DocxTemplateRenderError(
+            "Template binary is not a valid Word ZIP package."
+        ) from exc
+    if len(names) != len(set(names)):
+        raise DocxTemplateRenderError(
+            "Duplicate DOCX package part names are not allowed."
+        )
+    if "word/document.xml" not in names:
+        raise DocxTemplateRenderError(
+            "Template binary does not contain word/document.xml."
+        )
+
+
 def build_template_aware_docx_bytes(
     storage: "StorageServiceProtocol",
     allocated: "TemplateAwareAllocatedDocumentGeneration",
@@ -252,6 +271,7 @@ def build_template_aware_docx_bytes(
         )
     with open_template_binary_stream(storage, allocated.template_binary_requirement) as stream:
         template_bytes = stream.read()
+    _assert_unambiguous_template_package(template_bytes)
     khkt_render_plan = None
     if prepared.generation_plan.template.family_code == KHKT_FAMILY_CODE:
         if session is None:
@@ -313,8 +333,9 @@ def build_template_aware_docx_bytes(
         replaced_bookmarks: list[str] = []
         replaced_regions: tuple[str, ...] = ()
         replaced_parts: list[str] = []
-        for name in source_archive.namelist():
-            payload = source_archive.read(name)
+        for member in source_archive.infolist():
+            name = member.filename
+            payload = source_archive.read(member)
             if name == "word/document.xml":
                 root = ET.fromstring(payload)
                 if khkt_render_plan is not None:
@@ -336,7 +357,7 @@ def build_template_aware_docx_bytes(
                     replaced_bookmarks.extend(matched_names)
                     replaced_parts.append(name)
                     payload = ET.tostring(root, encoding="utf-8", xml_declaration=True)
-            target_archive.writestr(name, payload)
+            target_archive.writestr(member, payload)
     unique_bookmarks = tuple(dict.fromkeys(replaced_bookmarks))
     unique_parts = tuple(dict.fromkeys(replaced_parts))
     missing_bookmarks = sorted(set(replacements) - set(unique_bookmarks))

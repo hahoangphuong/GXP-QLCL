@@ -48,6 +48,42 @@ or remote object integrity; a non-visible local trigger does not rule out
 other hosts/external schedulers. All outputs explicitly set DB/storage writes
 to zero and all backup/restore verified flags to false.
 
+## Rehearsal VM V1 observation and precise clarification (19/10/2026)
+
+The operator ran exact source SHA
+`1c828e4e0d7a845aae1e8fd400953aec3867e289`
+and blob `ffcca64610fdb172b6040903b6660e8b5614401b`
+on `gxp-web-prod` in read-only mode. Sanitized V1 result:
+
+- Named GXP backup timer and service both `LoadState=not-found`,
+  `ActiveState=inactive`, with zero unit journal entries.
+- The system-cron probe read two entries with no **direct** recognized backup
+  reference, and skipped one entry for an **unknown reason**.
+- The root and gxp `crontab -l` calls both returned `UNVERIFIED`,
+  because V1 could not distinguish a missing user crontab from a
+  permission/command error. The tool did not examine external schedulers.
+- V1 misleadingly reported `unit_result_known_success=true` for
+  a unit with `LoadState=not-found`; **this is a generic systemctl property,
+  not evidence of a backup run**. The owner fix ensures this flag is false
+  unless the service is actually loaded.
+- V1 correctly reported zero DB/storage writes and no backup/restore proof.
+
+The narrowed V2 owner repair classifies **only** the exact standard
+`no crontab for root` / `no crontab for gxp` errors as `NO_CRONTAB`;
+other stderr messages, localization, permission errors and command failures
+stay `UNVERIFIED`, and stderr content is never output. It also emits
+*aggregate counts only* for skipped system-cron files
+(`symlink`, `oversized`, `nonregular`, `read_error`),
+never private filenames, paths or commands. A skipped symlink remains
+unverified, not proof of a missing trigger. Neither the new classifications
+nor a successfully loaded service are proof of successful `pg_dump`,
+GCS upload or restore.
+
+This is a tool-output root-cause fix, **not** a backup scheduling change.
+Re-running the trusted read-only audit on the same VM may sharpen the
+local findings, but cannot exclude crontabs belonging to other users,
+indirect cron wrappers or Cloud Scheduler in another project.
+
 ## Further gates before any remediation or activation
 
 1. Review the sanitized local result and clarify the operator's expected

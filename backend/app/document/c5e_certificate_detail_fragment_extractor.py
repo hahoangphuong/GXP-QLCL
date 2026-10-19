@@ -266,6 +266,11 @@ def extract_bookmark_table_fragment_from_docx_bytes(
             BytesIO(source_docx_bytes),
             "r",
         ) as archive:
+            member_names = [member.filename for member in archive.infolist()]
+            if len(member_names) != len(set(member_names)):
+                raise CertificateDetailFragmentExtractionError(
+                    "Duplicate source DOCX package part names are not allowed."
+                )
             document_xml = archive.read(
                 "word/document.xml"
             )

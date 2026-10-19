@@ -17,6 +17,51 @@ Sources:
 - https://www.domesco.com/pdf/GCN%20GMP%20-%20WHO%20%28dia%20chi%20moi%20346%20Nguyen%20Hue%29.1f1117ede5f0b54c599a0699cc7fb7f8.pdf
 - https://dav.gov.vn/upload_images/files/Danh%20s%C3%A1ch%20c%C3%A1c%20c%C3%B4ng%20ty%20trong%20n%C6%B0%E1%BB%9Bc%20%C4%91%E1%BA%A1t%20ti%C3%AAu%20chu%E1%BA%A9n%20GMP%20%2820_01_2025%29.pdf
 
+## Public GMP register cross-check — 19 October 2026 (source-only addendum)
+
+Two independently dated **published GMP register snapshots** have been inspected
+at their original PDF page positions; their table text and visible layout were
+checked, rather than relying only on an indexed search excerpt:
+
+| Publication | Exact location | Certificate and date | Site 1 as printed | Site 2 as printed |
+| --- | --- | --- | --- | --- |
+| [Domestic GMP list, updated 20/10/2022](https://gmp.com.vn/images/upload_file/danh-sach-cac-cong-ty-trong-nuoc-dat-tieu-chuan-gmp-20_10_2022_1667265374.pdf) | printed p. 13/62, PDF page index 12, row **49**, code VN-046 | `200/GCN-QLD`, issued 20/04/2022 | `Số 66, quốc lộ 30`, phường Mỹ Phú, Cao Lãnh, Đồng Tháp | Cụm công nghiệp Cần Lố, ấp An Định, xã An Bình, Cao Lãnh, Đồng Tháp |
+| [Domestic GMP list, updated 04/07/2023](https://gmp.com.vn/images/upload_file/danh-sach-cac-cong-ty-trong-nuoc-dat-tieu-chuan-gmp-04_07_2023_1689564629.pdf) | printed p. 7/31, PDF page index 6, row **48**, code VN-046 | `314/GCN-QLD`, issued 15/05/2023 | `Số 346 đường Nguyễn Huệ`, phường Mỹ Phú, Cao Lãnh, Đồng Tháp | Cụm công nghiệp Cần Lố, ấp An Định, xã An Bình, Cao Lãnh, Đồng Tháp |
+
+In **each** cited table row, the grant activities are separated by the
+headings `Cơ sở 1` and `Cơ sở 2`. The first site's scope is principally
+nonsterile medicinal products with release, packaging and QC activities.
+The second site's scope is predominantly herbal/traditional medicines and
+herbal-origin materials with its own release and packaging activities.
+These are **distinct site-local scope descriptions**, not a single scope
+which may safely be copied to both sites. Any detailed scope comparison
+must preserve the exact year, row, section and wording, including qualifiers.
+
+**Evidence classification (strict):** These are third-party-hosted public
+register PDF pages, inspected through a PDF reader. Their PDF bytes were
+**not retrieved into protected evidence custody and not hashed** in this
+audit; the published lists are not authenticated original signed issuance
+certificates. Search-indexed text for a separate Domesco-hosted five-page
+`314/GCN-QLD` certificate exists, but that signed document's full binary
+and annexes could not be directly fetched/verified here. Do **not** invent
+or backfill a `source_document_sha256`, Site-local scope digest,
+`CertificateVersionSiteCoverage` row or signed-document approval from
+the above URL, page position or public register wording.
+
+**No source-safe inference:** The two snapshots establish that different
+historic addresses were *printed* for Site 1; they do **not** demonstrate
+a physical move, renumbering, persistent canonical Site UUID or the
+relationship of internal Site 46 to all physical premises. Site 2's
+repeated label does not by itself authorize canonical identity binding.
+Neither register provides the internal application's Case 1023 UUID, its
+exact signed inspection decision or the scope applied by that Case.
+The public notice that 314 replaces 200 is separate regulatory
+corroboration; recording an actual `REPLACED_BY` link still requires a
+specific owner-approved plan. Source decision, site-identity and
+signed-document provenance gates are **still open**. This addendum authorizes
+no schema, migration, FK/relationship write, validator relaxation,
+storage operation, VM deployment or prospective multi-Site issuance.
+
 ## Proposed additive relational owners (not implemented)
 
 1. **CaseSiteCoverage**: `case_id`, `site_id`, coverage provenance (source sheet/row or published assessment reference), explicit review disposition, optional Site-local evaluation scope reference. A Case can have more than one evaluated Site. No implication from company ID or a shared line code.

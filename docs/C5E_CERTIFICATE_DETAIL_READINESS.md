@@ -44,6 +44,16 @@ dedicated destination registry explicitly marks the GSP Word template
 unavailable/unverified; six source assets do not grant GSP destination
 readiness. GDP is excluded by contract.
 
+The shared `template_binary.build_prepared_template_binary_requirement`
+now treats C.5e issuance as an **exact destination template contract**:
+the originating Case's C.5e semantic projection supplies canonical GxP,
+the selected GxP `TemplateBinding` and binary locator must match the
+audited GMP/GLP path, filename and SHA-256, and any missing binding,
+conflicting request GxP, unsupported destination or generic
+`TemplateDefinition` fallback is blocked **before reading template bytes**.
+This is a source-level fail-closed rule, not evidence of runtime template
+presence or a verified real-Case output.
+
 ## Still missing for LIVE readiness
 
 1. Check the actual **source and destination template bytes** present in

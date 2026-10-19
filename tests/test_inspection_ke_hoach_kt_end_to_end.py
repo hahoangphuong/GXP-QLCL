@@ -490,11 +490,11 @@ def test_khkt_binary_end_to_end_renders_canonical_db_payload_and_writes_output(m
             storage_relative_path=template_relative,
             checksum_sha256=checksum,
         )
-        original_loader = template_binary_module._EXACT_INSPECTION_GXP_ASSET_LOADERS[
+        original_loader = template_binary_module._EXACT_GXP_ASSET_LOADERS[
             "INSPECTION_KE_HOACH_KT"
         ]
         monkeypatch.setitem(
-            template_binary_module._EXACT_INSPECTION_GXP_ASSET_LOADERS,
+            template_binary_module._EXACT_GXP_ASSET_LOADERS,
             "INSPECTION_KE_HOACH_KT",
             (
                 lambda gxp_type: expected_asset
@@ -604,7 +604,7 @@ def test_khkt_binary_end_to_end_renders_canonical_db_payload_and_writes_output(m
         assert "SOURCE-TenCoSo1" not in xml
 
         monkeypatch.setitem(
-            template_binary_module._EXACT_INSPECTION_GXP_ASSET_LOADERS,
+            template_binary_module._EXACT_GXP_ASSET_LOADERS,
             "INSPECTION_KE_HOACH_KT",
             original_loader,
         )
@@ -632,7 +632,7 @@ def test_khkt_gmp_end_to_end_applies_structural_team_and_scope_deletions(monkeyp
             checksum_sha256=checksum,
         )
         monkeypatch.setitem(
-            template_binary_module._EXACT_INSPECTION_GXP_ASSET_LOADERS,
+            template_binary_module._EXACT_GXP_ASSET_LOADERS,
             "INSPECTION_KE_HOACH_KT",
             (
                 lambda gxp_type: expected_asset
@@ -828,7 +828,7 @@ def test_khkt_gmpbb_and_gsp_end_to_end_render_exact_variant_contract(
             checksum_sha256=checksum,
         )
         monkeypatch.setitem(
-            template_binary_module._EXACT_INSPECTION_GXP_ASSET_LOADERS,
+            template_binary_module._EXACT_GXP_ASSET_LOADERS,
             "INSPECTION_KE_HOACH_KT",
             (
                 lambda requested_gxp: expected_asset

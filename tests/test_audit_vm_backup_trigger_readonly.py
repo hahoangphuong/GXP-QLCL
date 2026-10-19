@@ -238,7 +238,7 @@ def test_empty_user_crontabs_are_distinguished_from_privilege_errors(monkeypatch
         assert capture_stderr is True
         if args[2] == user:
             return subprocess.CompletedProcess(
-                args, 1, stdout="", stderr=f"no crontab for {user}\\n"
+                args, 1, stdout="", stderr=f"no crontab for {user}\n"
             )
         return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
     monkeypatch.setattr(auditor, "_call", call)
@@ -252,7 +252,7 @@ def test_empty_user_crontabs_are_distinguished_from_privilege_errors(monkeypatch
 @pytest.mark.parametrize("message", [
     "permission denied",
     "no crontab for other_user",
-    "no crontab for root\\npassword=SECRET",
+    "no crontab for root\npassword=SECRET",
     "",
 ])
 def test_untrusted_crontab_errors_remain_unverified(monkeypatch, message):
@@ -270,7 +270,7 @@ def test_untrusted_crontab_errors_remain_unverified(monkeypatch, message):
 
 def test_unreadable_cron_file_reason_is_aggregated_without_filename(tmp_path, monkeypatch):
     config = tmp_path / "sensitive-cron-file"
-    config.write_text("* * * * * /opt/private/secret-command\\n")
+    config.write_text("* * * * * /opt/private/secret-command\n")
     shortcut = tmp_path / "untrusted-link"
     shortcut.symlink_to(config)
     oversized = tmp_path / "oversized"

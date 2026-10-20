@@ -30,6 +30,7 @@ class _Session:
     def __init__(self, case):
         self.case = case
         self.commits = 0
+        self.current_version = None
 
     def get(self, model, identity):
         from backend.app.db.models.phase1 import Case
@@ -44,9 +45,8 @@ class _Session:
             assert statement._for_update_arg is not None
             return self.case
         if entity is DocumentVersion:
-            # These endpoint tests have no persisted KHKT document; the real
-            # current-version query is tested against SQLite separately.
-            return None
+            # The canonical document query is checked against SQLite separately.
+            return self.current_version
         raise AssertionError(f"unexpected scalar lookup: {entity!r}")
 
     def commit(self):
@@ -59,9 +59,11 @@ class _Session:
         pass
 
 
-def _app(monkeypatch, *, gxp_type="GMP", can_write=True):
+def _app(monkeypatch, *, gxp_type="GMP", can_write=True, has_current_document=False):
     case = None if gxp_type is None else SimpleNamespace(id="case-typed", gxp_type=gxp_type)
     session = _Session(case)
+    if has_current_document:
+        session.current_version = "current-version"
     app = FastAPI()
     app.state.storage_service = object()
     register_document_routes(app, lambda: session)
@@ -189,3 +191,14 @@ def test_typed_khkt_endpoint_checks_write_permission_before_case_lookup(monkeypa
     assert failure.value.status_code == 403
     assert session.commits == 0
     assert rendered == []
+
+
+def test_typed_khkt_endpoint_rejects_new_create_if_current_document_exists(monkeypatch):
+    app, session, user, rendered = _app(
+        monkeypatch, gxp_type="GLP", has_current_document=True,
+    )
+    with pytest.raises(HTTPException, match="already exists") as failure:
+        _invoke(app, session, user, body={"idempotency_key": "new-key"})
+    assert failure.value.status_code == 409
+    assert rendered == []
+    assert session.commits == 0

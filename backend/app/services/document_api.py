@@ -132,6 +132,33 @@ class DocumentWorkflowService:
         session.flush()
         return audit_event
 
+    @staticmethod
+    def build_case_inspection_plan_render_payload(
+        session: Session,
+        *,
+        case_id: str,
+        idempotency_key: str | None,
+    ) -> dict[str, Any]:
+        """Build KHKT render input from the canonical Case, never caller metadata."""
+        case = session.get(Case, case_id)
+        if case is None:
+            raise HTTPException(status_code=404, detail="Case was not found.")
+        try:
+            filename = get_inspection_ke_hoach_kt_output_filename(case.gxp_type)
+        except InspectionKeHoachKtTemplateAssetContractError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {
+            "family_code": INSPECTION_KE_HOACH_KT_FAMILY,
+            "case_id": case.id,
+            "gxp_type": case.gxp_type,
+            "storage_scope": "inspection_folder",
+            "language_code": "vi",
+            "idempotency_key": idempotency_key,
+            "output_filename": filename,
+            "payload": {},
+            "strict_payload": True,
+        }
+
     def _build_generation_request(self, payload: dict[str, Any], user_id: str) -> DocumentGenerationRequest:
         return DocumentGenerationRequest(
             family_code=payload["family_code"],

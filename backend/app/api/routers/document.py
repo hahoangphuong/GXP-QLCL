@@ -14,6 +14,7 @@ from backend.app.read_models import (
     DocumentDetailRead,
     DocumentOwnerMetadataInventoryRead,
     DocumentGenerationPrepareRequest,
+    CaseInspectionPlanRenderRequest,
     DocumentGenerationRunStatusRead,
     DocumentPreparationRead,
     DocumentRenderRead,
@@ -83,6 +84,29 @@ def register_document_routes(app, session_factory) -> None:
             raise
         result.pop("_rollback_cleanup_required", None)
         return DocumentRenderRead(**result)
+
+    def render_case_inspection_plan(
+        case_id: str,
+        payload: CaseInspectionPlanRenderRequest,
+        request: Request,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"document.write"})
+        # Reuse the existing render route's commit, failure persistence and
+        # storage cleanup owner. The client cannot select a different Case,
+        # GxP type, document family, output path, or template variant.
+        canonical_payload = service.build_case_inspection_plan_render_payload(
+            session,
+            case_id=case_id,
+            idempotency_key=payload.idempotency_key,
+        )
+        return render_template_docx(
+            DocumentTemplateRenderRequest(**canonical_payload),
+            request=request,
+            session=session,
+            user=user,
+        )
 
     def get_document_generation_run(
         generation_run_id: str,
@@ -256,6 +280,13 @@ def register_document_routes(app, session_factory) -> None:
     app.add_api_route(
         "/documents/render-template-docx",
         render_template_docx,
+        methods=["POST"],
+        response_model=DocumentRenderRead,
+        tags=["documents"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/documents/inspection-ke-hoach-kt/render",
+        render_case_inspection_plan,
         methods=["POST"],
         response_model=DocumentRenderRead,
         tags=["documents"],

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
 
 
@@ -1320,6 +1320,13 @@ class DocumentGenerationPrepareRequest(BaseModel):
 
 class DocumentTemplateRenderRequest(DocumentGenerationPrepareRequest):
     output_filename: str
+
+
+class CaseInspectionPlanRenderRequest(BaseModel):
+    """Typed KHKT create: only idempotency may be supplied by the client."""
+
+    model_config = ConfigDict(extra="forbid")
+    idempotency_key: str | None = None
 
 
 class DocumentTemplateSelectionRead(BaseModel):

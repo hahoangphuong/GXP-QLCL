@@ -439,6 +439,8 @@ class ContextualDocumentActionAvailabilityRead(BaseModel):
     create_gxp_type: str | None = None
     create_storage_scope: str | None = None
     create_output_filename: str | None = None
+    create_endpoint: str | None = None
+    create_http_method: Literal["POST"] | None = None
 
 
 class ContextualDocumentActionRead(BaseModel):

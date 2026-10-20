@@ -489,10 +489,17 @@ def test_c5e_case_to_document_version_postgres_transaction(
         # test-private schema; never write into the CI database's public tables.
         engine = create_engine(
             database_url,
-            connect_args={"options": f"-csearch_path={schema},public"},
+            # Do not include public: SQLAlchemy has_table() would see the
+            # migrated public tables and create_all() would reuse them.
+            connect_args={"options": f"-csearch_path={schema}"},
             future=True,
         )
         Base.metadata.create_all(engine)
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT current_schema()")) == schema
+            assert connection.scalar(text(
+                "SELECT count(*) FROM pg_tables WHERE schemaname = :schema AND tablename = 'company'"
+            ), {"schema": schema}) == 1
         roots = {
             "inspection_root": tmp_path / "inspection",
             "dkkd_root": tmp_path / "dkkd",

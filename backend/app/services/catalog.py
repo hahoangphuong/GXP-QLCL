@@ -823,7 +823,7 @@ class CatalogReadService:
                     }
                     if bool(item["open_available"]):
                         effective_create_readiness = "READY_OPEN_HISTORY"
-                    elif "document.write" in permissions:
+                    elif effective_create_readiness == "READY_CREATE_OPEN_HISTORY" and "document.write" in permissions:
                         # Advertise only the Case-scoped typed endpoint when
                         # the create action is enabled for this user. Caller
                         # metadata cannot redirect the backend to another

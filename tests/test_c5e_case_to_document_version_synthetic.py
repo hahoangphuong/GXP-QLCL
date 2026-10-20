@@ -304,8 +304,11 @@ def test_c5e_synthetic_case_to_current_document_version(
                 "language_code": "vi",
                 "idempotency_key": f"synthetic-c5e-{gxp_type}",
                 "output_filename": f"synthetic-{gxp_type}.docx",
-                "payload": {},
-                "strict_payload": False,
+                # At least one registry-owned scalar field is required by the
+                # genuine family payload contract. Only generic bookmark
+                # composition is stubbed; payload validation stays real.
+                "payload": {"TenCoso": "Synthetic C5e site"},
+                "strict_payload": True,
             }
             user = build_authenticated_user(
                 "c5e-fixture-inspector", "inspector",

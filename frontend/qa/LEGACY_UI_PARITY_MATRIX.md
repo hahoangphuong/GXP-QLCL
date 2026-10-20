@@ -1617,6 +1617,42 @@ callback. Evidence is outside Git under `.codex/evidence/master-focus-continuity
 This is `FIXTURE_VERIFIED`; authenticated real-backend behavior and screen-reader
 speech remain `EVIDENCE_MISSING`.
 
+### Master / history accessibility verification — 2026-10-19
+
+Baseline `82885ac43105fb383ca926b966a4dedd2b00fa3a`. Browser accessibility-tree
+inspection exposes the GxP rail as the named `Bộ lọc GxP` tablist with one
+selected tab, the master as the named `Danh sách cơ sở` region and table, and
+history as a named panel/table whose event-row name includes type, standard,
+date and authoritative state. DOM verification confirms that `aria-selected`
+continues to describe business selection while Arrow/Home/End only move focus.
+
+Two defects were reproduced RED at their component owners. `HistoryTable`
+derived its only Tab stop solely from selected history identity, so a focused
+event that survived reorder ceased to be the Tab entry; removal dropped focus
+to `body`. `FacilityTable` exposed visible loading/error text but no polite live
+status or busy state for loading, completion and empty results. History now owns
+focused event identity separately from selected identity, retains a surviving
+canonical event UUID through reorder/append, moves removal focus to the nearest
+survivor, and uses a named non-Tab history region when the list becomes empty.
+It does not restore focus after the user has moved to another control. Master
+search now has one atomic polite status for loading/ready/empty, `aria-busy` on
+the stable master region and one assertive error alert, including a failed
+pagination request while retained rows remain visible; the visible loading copy
+is hidden from the accessibility tree to prevent duplicate output.
+
+The RED run failed 4/18 assertions and the focused GREEN suite passes 18/18
+twice. Actual-component Edge fixture at 1366×768, 1920×1080 and 390×844 records
+client/scroll widths of 1366/1366, 1920/1920 and 390/390, one Tab stop per
+roving group, stable focus across reorder/removal/empty, zero selection callbacks
+and zero HTTP requests for focus-only navigation, followed by exactly one GLP
+activation callback on Enter. Evidence is outside Git under
+`.codex/evidence/master-history-a11y/`. This is `ACCESSIBILITY_TREE_VERIFIED`
+and `FIXTURE_VERIFIED`. The available automation surface did not expose native
+Microsoft Edge, Windows Narrator or NVDA, so actual speech remains
+`EVIDENCE_MISSING` and must not be classified as `SCREEN_READER_VERIFIED`.
+Authenticated real-backend behavior is `REAL_BACKEND_NOT_VERIFIED`; no Google
+token or `header_stub` bypass was used.
+
 ## Access-bound certificate workspace ownership — 2026-10-16
 
 Baseline `09cca33406ed8d19e8022631a643f9d794b57d1c` kept each Facility

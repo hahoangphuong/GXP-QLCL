@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { FacilityHistoryItem } from "../../types";
@@ -15,6 +15,10 @@ const rows: FacilityHistoryItem[] = [
 
 function bodyRows() {
   return screen.getAllByRole("row").slice(1);
+}
+
+function focus(element: HTMLElement) {
+  act(() => element.focus());
 }
 
 describe("HistoryTable", () => {
@@ -36,7 +40,7 @@ describe("HistoryTable", () => {
     const onSelect = vi.fn();
     render(<HistoryTable rows={rows} selectedHistoryId="case-uuid" onSelect={onSelect} />);
     const [first, second, last] = bodyRows();
-    first.focus();
+    focus(first);
     fireEvent.keyDown(first, { key: "ArrowUp" });
     expect(first).toHaveFocus();
     fireEvent.keyDown(first, { key: "ArrowDown" });
@@ -62,7 +66,7 @@ describe("HistoryTable", () => {
     rerender(<HistoryTable rows={[rows[2], rows[0]]} selectedHistoryId="stale-id" onSelect={onSelect} />);
     expect(bodyRows().map((row) => row.tabIndex)).toEqual([0, -1]);
     expect(bodyRows().every((row) => row.getAttribute("aria-selected") === "false")).toBe(true);
-    bodyRows()[0].focus();
+    focus(bodyRows()[0]);
     fireEvent.keyDown(bodyRows()[0], { key: "ArrowDown" });
     expect(bodyRows()[1]).toHaveFocus();
     fireEvent.keyDown(bodyRows()[1], { key: "Escape" });
@@ -79,5 +83,58 @@ describe("HistoryTable", () => {
     fireEvent.click(emptyCell);
     expect(onSelect).not.toHaveBeenCalled();
     expect(bodyRows()[0]).not.toHaveAttribute("tabindex");
+  });
+
+  it("keeps a surviving focused event as the sole Tab stop through append and reorder", () => {
+    const onSelect = vi.fn();
+    const { rerender } = render(<HistoryTable rows={rows} selectedHistoryId="case-uuid" onSelect={onSelect} />);
+    let renderedRows = bodyRows();
+    focus(renderedRows[0]);
+    fireEvent.keyDown(renderedRows[0], { key: "ArrowDown" });
+    expect(renderedRows[1]).toHaveFocus();
+
+    rerender(<HistoryTable rows={[rows[2], rows[1], rows[0], { ...rows[0], id: "appended-uuid" }]} selectedHistoryId="case-uuid" onSelect={onSelect} />);
+    renderedRows = bodyRows();
+    expect(renderedRows[1]).toHaveFocus();
+    expect(renderedRows.map((row) => row.tabIndex)).toEqual([-1, 0, -1, -1]);
+    expect(renderedRows[2]).toHaveAttribute("aria-selected", "true");
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("moves focus to the nearest surviving event without selecting it when the focused event disappears", () => {
+    const onSelect = vi.fn();
+    const { rerender } = render(<HistoryTable rows={rows} selectedHistoryId="case-uuid" onSelect={onSelect} />);
+    let renderedRows = bodyRows();
+    focus(renderedRows[1]);
+
+    rerender(<HistoryTable rows={[rows[0], rows[2]]} selectedHistoryId="case-uuid" onSelect={onSelect} />);
+    renderedRows = bodyRows();
+    expect(renderedRows[1]).toHaveFocus();
+    expect(renderedRows.map((row) => row.tabIndex)).toEqual([-1, 0]);
+    expect(renderedRows[0]).toHaveAttribute("aria-selected", "true");
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("does not steal focus from another control when an earlier focused event disappears", () => {
+    const onSelect = vi.fn();
+    const { rerender } = render(<div><button type="button">Ngoài lịch sử</button><HistoryTable rows={rows} selectedHistoryId="case-uuid" onSelect={onSelect} /></div>);
+    focus(bodyRows()[1]);
+    const outside = screen.getByRole("button", { name: "Ngoài lịch sử" });
+    focus(outside);
+
+    rerender(<div><button type="button">Ngoài lịch sử</button><HistoryTable rows={[rows[0], rows[2]]} selectedHistoryId="case-uuid" onSelect={onSelect} /></div>);
+    expect(outside).toHaveFocus();
+    expect(bodyRows().map((row) => row.tabIndex)).toEqual([0, -1]);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("keeps focus in the named history region when focused data becomes empty", () => {
+    const onSelect = vi.fn();
+    const { rerender } = render(<HistoryTable rows={rows} selectedHistoryId="case-uuid" onSelect={onSelect} />);
+    focus(bodyRows()[1]);
+
+    rerender(<HistoryTable rows={[]} selectedHistoryId={null} onSelect={onSelect} />);
+    expect(screen.getByRole("region", { name: "Danh sách lịch sử kiểm tra và thay đổi" })).toHaveFocus();
+    expect(onSelect).not.toHaveBeenCalled();
   });
 });

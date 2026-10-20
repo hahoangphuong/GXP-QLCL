@@ -83,6 +83,9 @@ export function FacilityTable({
     : GXP_OPTIONS.includes(selectedGxpType as (typeof GXP_OPTIONS)[number])
     ? selectedGxpType
     : GXP_OPTIONS[0];
+  const searchStatus = loading
+    ? rows.length > 0 ? "Đang tải thêm cơ sở..." : "Đang tải danh sách cơ sở..."
+    : rows.length > 0 ? `Đã tải ${rows.length} kết quả cơ sở.` : "Không tìm thấy cơ sở phù hợp.";
 
   useLayoutEffect(() => {
     const previousKeys = previousRowKeysRef.current;
@@ -156,13 +159,16 @@ export function FacilityTable({
           ))}
         </nav>
         <div className="facility-table-frame">
-          {error && rows.length === 0 ? (
+          {!error ? (
+            <p aria-atomic="true" aria-live="polite" className="sr-only" role="status">{searchStatus}</p>
+          ) : null}
+          {error ? (
             <div className="panel-inline-loading">
               <span className="form-error" role="alert">{error}</span>
             </div>
           ) : loading && rows.length === 0 ? (
             <div className="panel-inline-loading">
-              <span className="panel-subtle-loading">Đang tải danh sách cơ sở...</span>
+              <span aria-hidden="true" className="panel-subtle-loading">Đang tải danh sách cơ sở...</span>
             </div>
           ) : null}
           <p className="sr-only" id={instructionsId}>
@@ -170,6 +176,7 @@ export function FacilityTable({
           </p>
           <div
             aria-label="Danh sách cơ sở"
+            aria-busy={loading}
             className="table-scroll table-scroll-fill"
             data-testid="facility-table-scroll"
             onScroll={maybeLoadMore}

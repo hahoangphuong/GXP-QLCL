@@ -223,4 +223,29 @@ describe("FacilityTable master selection keyboard", () => {
     expect(tabs.map((tab) => tab.tabIndex)).toEqual([-1, 0, -1]);
     expect(onGxpTypeChange).toHaveBeenCalledTimes(1);
   });
+
+  it("exposes one polite search status and busy state across loading, ready, empty and error", () => {
+    const { rerenderTable } = renderTable({ rows: [], loading: true, selectedResultKey: null });
+    const region = screen.getByRole("region", { name: "Danh sách cơ sở" });
+    expect(region).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
+    expect(screen.getByRole("status")).toHaveAttribute("aria-atomic", "true");
+    expect(screen.getByRole("status")).toHaveTextContent("Đang tải danh sách cơ sở");
+
+    rerenderTable({ rows, loading: false, selectedResultKey: "1.A" });
+    expect(region).toHaveAttribute("aria-busy", "false");
+    expect(screen.getByRole("status")).toHaveTextContent("3 kết quả cơ sở");
+
+    rerenderTable({ rows: [], loading: false, selectedResultKey: null });
+    expect(screen.getByRole("status")).toHaveTextContent("Không tìm thấy cơ sở phù hợp");
+
+    rerenderTable({ rows: [], loading: false, error: "Không tải được danh sách", selectedResultKey: null });
+    expect(screen.getByRole("alert")).toHaveTextContent("Không tải được danh sách");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    rerenderTable({ rows, loading: false, error: "Không tải thêm được danh sách", selectedResultKey: "1.A" });
+    expect(screen.getByRole("alert")).toHaveTextContent("Không tải thêm được danh sách");
+    expect(screen.getAllByRole("row")).toHaveLength(4);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
 });

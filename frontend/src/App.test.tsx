@@ -2313,7 +2313,7 @@ describe("App Slice A.4 search workspace", () => {
     await screen.findByRole("heading", { name: "Thông tin hồ sơ" });
     const historyRows = within(container.querySelector(".history-table") as HTMLElement).getAllByRole("row").slice(1);
     const facilityRow = container.querySelector(".facility-table tbody tr.selected");
-    historyRows[0].focus();
+    act(() => historyRows[0].focus());
     fireEvent.keyDown(historyRows[0], { key: "ArrowDown" });
     expect(historyRows[1]).toHaveFocus();
     expect(historyRows[0]).toHaveAttribute("aria-selected", "true");

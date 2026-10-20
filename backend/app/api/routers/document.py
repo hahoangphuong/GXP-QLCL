@@ -20,6 +20,7 @@ from backend.app.read_models import (
     DocumentRenderRead,
     DocumentTemplateRenderRequest,
 )
+from backend.app.document.contextual_actions import KHKT_CASE_TYPED_RENDER_ROUTE
 from backend.app.services.document_api import DocumentWorkflowService
 from backend.app.storage.types import StorageOperationError
 
@@ -285,7 +286,7 @@ def register_document_routes(app, session_factory) -> None:
         tags=["documents"],
     )
     app.add_api_route(
-        "/cases/{case_id}/documents/inspection-ke-hoach-kt/render",
+        KHKT_CASE_TYPED_RENDER_ROUTE,
         render_case_inspection_plan,
         methods=["POST"],
         response_model=DocumentRenderRead,

@@ -22,6 +22,9 @@ TypedCreateReadiness = Literal[
 ]
 ParentScope = Literal["case", "capa_cycle", "change_request"]
 
+# Exact typed KHKT create URL shared by the Case action read model and router.
+KHKT_CASE_TYPED_RENDER_ROUTE = "/cases/{case_id}/documents/inspection-ke-hoach-kt/render"
+
 
 @dataclass(frozen=True)
 class CaseDocumentContextSpec:

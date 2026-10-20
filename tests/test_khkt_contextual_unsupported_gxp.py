@@ -9,6 +9,10 @@ from backend.app.auth import build_authenticated_user
 from backend.app.db.base import Base
 from backend.app.db.enums import CaseState
 from backend.app.db.models.phase1 import Case, Company, Site
+from backend.app.document.contextual_actions import KHKT_CASE_TYPED_RENDER_ROUTE
+from backend.app.api.routers.document import register_document_routes
+from backend.app.read_models import ContextualDocumentActionAvailabilityRead
+from fastapi import FastAPI
 from backend.app.document.inspection_ke_hoach_kt_template_asset_contract import (
     InspectionKeHoachKtTemplateAssetContractError,
     get_inspection_ke_hoach_kt_output_filename,
@@ -91,6 +95,8 @@ def test_unsupported_gxp_case_workspace_remains_readable_and_khkt_create_blocked
     assert create["parent_id"] == case_id
     assert "create_output_filename" not in create
     assert "create_storage_scope" not in create
+    assert "create_endpoint" not in create
+    assert "create_http_method" not in create
 
 
 @pytest.mark.parametrize("gxp_type", ("GMP", "GLP", "GMPbb", "GSP"))
@@ -113,6 +119,13 @@ def test_supported_gxp_keeps_existing_exact_khkt_create_contract(
     assert create["create_gxp_type"] == gxp_type
     assert create["create_storage_scope"] == "inspection_folder"
     assert create["create_output_filename"] == get_inspection_ke_hoach_kt_output_filename(gxp_type)
+    assert create["create_endpoint"] == (
+        f"/cases/{case_id}/documents/inspection-ke-hoach-kt/render"
+    )
+    assert create["create_http_method"] == "POST"
+    typed = ContextualDocumentActionAvailabilityRead(**create)
+    assert typed.create_endpoint == create["create_endpoint"]
+    assert typed.create_http_method == "POST"
 
 
 def test_supported_gxp_corrupt_template_contract_still_fails_closed(tmp_path, monkeypatch):
@@ -138,3 +151,72 @@ def test_supported_gxp_corrupt_template_contract_still_fails_closed(tmp_path, mo
             CatalogReadService()._build_case_contextual_document_actions(
                 session, case_id=case_id, capa_cycles=[], user=user,
             )
+
+
+def test_khkt_typed_action_url_stays_identical_to_registered_router(tmp_path):
+    app = FastAPI()
+    register_document_routes(app, lambda: None)
+    routes = [
+        route for route in app.routes
+        if getattr(route, "path", None) == KHKT_CASE_TYPED_RENDER_ROUTE
+    ]
+    assert len(routes) == 1
+    assert routes[0].methods == {"POST"}
+    engine, case_id = _seed_case(tmp_path, gxp_type="GLP")
+    user = build_authenticated_user(
+        "manager", permissions={"document.read", "document.write"},
+    )
+    with Session(engine) as session:
+        _, action = _create_action(
+            CatalogReadService()._build_case_contextual_document_actions(
+                session, case_id=case_id, capa_cycles=[], user=user,
+            )
+        )
+    assert action["create_endpoint"] == KHKT_CASE_TYPED_RENDER_ROUTE.format(case_id=case_id)
+
+
+def test_khkt_typed_target_not_advertised_without_document_write(tmp_path):
+    engine, case_id = _seed_case(tmp_path, gxp_type="GMP")
+    user = build_authenticated_user("reader", permissions={"document.read"})
+    with Session(engine) as session:
+        _, create = _create_action(
+            CatalogReadService()._build_case_contextual_document_actions(
+                session, case_id=case_id, capa_cycles=[], user=user,
+            )
+        )
+    assert create["available"] is False
+    assert create["reason_code"] == "permission_denied"
+    assert "create_endpoint" not in create
+    assert "create_http_method" not in create
+
+
+def test_khkt_typed_target_not_advertised_when_document_already_available(
+    tmp_path, monkeypatch,
+):
+    engine, case_id = _seed_case(tmp_path, gxp_type="GSP")
+    user = build_authenticated_user(
+        "manager", permissions={"document.read", "document.write"}
+    )
+    service = CatalogReadService()
+    original = service._serialize_document_checklist_items
+
+    def document_already_present(*args, **kwargs):
+        items = original(*args, **kwargs)
+        for item in items:
+            if item["family_code"] == "INSPECTION_KE_HOACH_KT":
+                item["open_available"] = True
+                item["detail_available"] = True
+        return items
+
+    monkeypatch.setattr(service, "_serialize_document_checklist_items", document_already_present)
+    with Session(engine) as session:
+        _, create = _create_action(
+            service._build_case_contextual_document_actions(
+                session, case_id=case_id, capa_cycles=[], user=user,
+            )
+        )
+    assert create["available"] is False
+    assert create["create_readiness"] == "READY_OPEN_HISTORY"
+    assert create["reason_code"] == "ready_open_history"
+    assert "create_endpoint" not in create
+    assert "create_http_method" not in create

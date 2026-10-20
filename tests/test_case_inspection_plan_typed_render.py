@@ -1,23 +1,27 @@
-"""Typed KHKT Case create boundary: no caller-owned business/template fields.
+"""Typed KHKT Case create boundary without an HTTP client dependency.
 
 The generation/commit owner is exercised by the existing KHKT end-to-end
-suite. These tests prove that the contextual HTTP route supplies only
-canonical Case-derived inputs to that same owner.
+suite. These tests invoke the registered FastAPI endpoint and validate the
+actual Pydantic input schema, without Starlette's optional TestClient package.
 """
 from __future__ import annotations
 
 from types import SimpleNamespace
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
+from fastapi import FastAPI, HTTPException, Request
+from pydantic import ValidationError
 
 from backend.app.api.routers.document import register_document_routes
-from backend.app.auth import build_authenticated_user, get_authenticated_user
+from backend.app.auth import build_authenticated_user
 from backend.app.document.inspection_ke_hoach_kt_template_asset_contract import (
     get_inspection_ke_hoach_kt_output_filename,
 )
+from backend.app.read_models import CaseInspectionPlanRenderRequest
 from backend.app.services.document_api import DocumentWorkflowService
+
+
+ROUTE = "/cases/{case_id}/documents/inspection-ke-hoach-kt/render"
 
 
 class _Session:
@@ -52,7 +56,6 @@ def _app(monkeypatch, *, gxp_type="GMP", can_write=True):
         "typed-khkt-inspector",
         permissions={"document.write", "document.read"} if can_write else {"document.read"},
     )
-    app.dependency_overrides[get_authenticated_user] = lambda: user
     rendered = []
 
     def _fake_render(self, actual_session, *, storage, payload, user):
@@ -80,20 +83,40 @@ def _app(monkeypatch, *, gxp_type="GMP", can_write=True):
         }
 
     monkeypatch.setattr(DocumentWorkflowService, "render_template_docx", _fake_render)
-    return app, session, rendered
+    return app, session, user, rendered
+
+
+def _invoke(app, session, user, *, case_id="case-typed", body=None):
+    endpoint = next(
+        route.endpoint for route in app.routes
+        if getattr(route, "path", None) == ROUTE and "POST" in route.methods
+    )
+    # The router, pydantic model and existing commit path are real;
+    # the SQLAlchemy session and storage result are controlled fixtures.
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": ROUTE.replace("{case_id}", case_id),
+        "headers": [],
+        "app": app,
+    }
+    return endpoint(
+        case_id=case_id,
+        payload=CaseInspectionPlanRenderRequest.model_validate(body or {}),
+        request=Request(scope),
+        session=session,
+        user=user,
+    )
 
 
 @pytest.mark.parametrize("gxp_type", ("GMP", "GLP", "GMPbb", "GSP"))
-def test_typed_case_khkt_http_route_derives_all_business_fields(monkeypatch, gxp_type):
-    app, session, rendered = _app(monkeypatch, gxp_type=gxp_type)
-    with TestClient(app) as client:
-        response = client.post(
-            "/cases/case-typed/documents/inspection-ke-hoach-kt/render",
-            json={"idempotency_key": "user-request-1"},
-        )
-
-    assert response.status_code == 200, response.text
-    assert response.json()["generation_status"] == "succeeded"
+def test_typed_case_khkt_endpoint_derives_all_business_fields(monkeypatch, gxp_type):
+    app, session, user, rendered = _app(monkeypatch, gxp_type=gxp_type)
+    response = _invoke(
+        app, session, user, body={"idempotency_key": "user-request-1"},
+    )
+    assert response.generation_status == "succeeded"
+    assert response.output_original_filename == get_inspection_ke_hoach_kt_output_filename(gxp_type)
     assert session.commits == 1
     assert rendered == [{
         "family_code": "INSPECTION_KE_HOACH_KT",
@@ -119,14 +142,14 @@ def test_typed_case_khkt_http_route_derives_all_business_fields(monkeypatch, gxp
     "family_code", "case_id", "gxp_type", "storage_scope",
     "output_filename", "payload", "certificate_id",
 ))
-def test_typed_khkt_route_rejects_client_owned_business_fields(monkeypatch, untrusted_field):
-    app, session, rendered = _app(monkeypatch)
-    with TestClient(app) as client:
-        response = client.post(
-            "/cases/case-typed/documents/inspection-ke-hoach-kt/render",
-            json={"idempotency_key": "x", untrusted_field: "untrusted"},
-        )
-    assert response.status_code == 422
+def test_typed_khkt_request_schema_rejects_client_owned_business_fields(
+    monkeypatch, untrusted_field,
+):
+    app, session, user, rendered = _app(monkeypatch)
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        _invoke(app, session, user, body={
+            "idempotency_key": "x", untrusted_field: "untrusted",
+        })
     assert session.commits == 0
     assert rendered == []
 
@@ -135,27 +158,21 @@ def test_typed_khkt_route_rejects_client_owned_business_fields(monkeypatch, untr
     (None, "not-found", 404),
     ("UNSUPPORTED", "case-typed", 409),
 ))
-def test_typed_khkt_route_fails_closed_before_render(
+def test_typed_khkt_endpoint_fails_closed_before_render(
     monkeypatch, gxp_type, case_id, status,
 ):
-    app, session, rendered = _app(monkeypatch, gxp_type=gxp_type)
-    with TestClient(app) as client:
-        response = client.post(
-            f"/cases/{case_id}/documents/inspection-ke-hoach-kt/render",
-            json={},
-        )
-    assert response.status_code == status
+    app, session, user, rendered = _app(monkeypatch, gxp_type=gxp_type)
+    with pytest.raises(HTTPException) as failure:
+        _invoke(app, session, user, case_id=case_id)
+    assert failure.value.status_code == status
     assert session.commits == 0
     assert rendered == []
 
 
-def test_typed_khkt_route_checks_write_permission_before_case_lookup(monkeypatch):
-    app, session, rendered = _app(monkeypatch, can_write=False)
-    with TestClient(app) as client:
-        response = client.post(
-            "/cases/case-typed/documents/inspection-ke-hoach-kt/render",
-            json={},
-        )
-    assert response.status_code == 403
+def test_typed_khkt_endpoint_checks_write_permission_before_case_lookup(monkeypatch):
+    app, session, user, rendered = _app(monkeypatch, can_write=False)
+    with pytest.raises(HTTPException) as failure:
+        _invoke(app, session, user)
+    assert failure.value.status_code == 403
     assert session.commits == 0
     assert rendered == []

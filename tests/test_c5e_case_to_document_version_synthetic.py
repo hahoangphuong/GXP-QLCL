@@ -431,14 +431,22 @@ def test_c5e_tampered_word_binary_never_finalizes_current_document_version(
                     ),
                 )
             assert exc.value.status_code == 409
-            assert "checksum mismatch" in str(exc.value.detail).lower()
+            # Template readiness intentionally redacts checksum-specific
+            # details from the public 409; post-allocation source checksum
+            # errors retain their distinct C.5e runtime failure boundary.
+            expected_failure = (
+                "template:runtime_contract_failed"
+                if tampered_asset == "destination"
+                else "checksum mismatch"
+            )
+            assert expected_failure in str(exc.value.detail).lower()
             session.commit()
 
         with Session(engine) as session:
             runs = list(session.scalars(select(DocumentGenerationRun)))
             assert len(runs) == 1
             assert runs[0].status == DocumentGenerationStatus.FAILED
-            assert "checksum mismatch" in (runs[0].error_summary or "").lower()
+            assert expected_failure in (runs[0].error_summary or "").lower()
             documents = list(session.scalars(select(Document)))
             assert len(documents) == 1
             assert documents[0].case_id == case_id

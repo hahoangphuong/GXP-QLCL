@@ -145,7 +145,7 @@ def test_khkt_typed_create_rejects_existing_current_document_before_render(
             )
         assert err.value.status_code == 409
         assert list(session.scalars(select(DocumentVersion.id))) == before
-        assert session.new == set()
+        assert len(session.new) == 0
 
 
 def test_khkt_typed_create_rejects_unknown_case_before_document_query(tmp_path):

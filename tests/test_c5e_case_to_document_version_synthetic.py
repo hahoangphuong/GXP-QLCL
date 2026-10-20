@@ -8,6 +8,8 @@ local StorageService and output finalization execute through real owners.
 from __future__ import annotations
 
 from hashlib import sha256
+import os
+from uuid import uuid4
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,14 +18,14 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session
 
 from backend.app.auth import build_authenticated_user
 from backend.app.db.base import Base
 from backend.app.db.enums import CaseState, DocumentGenerationStatus
 from backend.app.db.models.phase1 import (
-    Case, CaseEvaluationScope, CaseEvaluationScopeBlock,
+    AuditEvent, Case, CaseEvaluationScope, CaseEvaluationScopeBlock,
     CaseEvaluationScopeSelection, Company, Document, DocumentGenerationRun,
     DocumentVersion, EvaluationScopeTaxonomyNode, EvaluationScopeTaxonomyVersion,
     Site, TemplateBinding, TemplateDefinition,
@@ -456,3 +458,143 @@ def test_c5e_tampered_word_binary_never_finalizes_current_document_version(
         assert list(roots["inspection_root"].rglob("*.docx")) == []
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize("gxp_type", ("GMP", "GLP"))
+@pytest.mark.parametrize("tampered_source", (False, True))
+def test_c5e_case_to_document_version_postgres_transaction(
+    tmp_path, monkeypatch, gxp_type, tampered_source,
+):
+    """Exercise the real C.5e workflow across a PostgreSQL commit boundary.
+
+    Each scenario owns a disposable *schema* in the CI PostgreSQL database,
+    not a live/rehearsal schema. Binary assets remain synthetic. A fresh
+    session must observe committed Case/DocumentVersion/run/audit lineage.
+    """
+    database_url = os.environ.get("DATABASE_URL", "")
+    if not database_url.startswith("postgresql"):
+        pytest.skip("requires isolated PostgreSQL schema for C.5e transaction integration")
+
+    artifacts_root = Path(__file__).resolve().parents[1] / "artifacts"
+    monkeypatch.setenv("GXP_ARTIFACTS_ROOT", str(artifacts_root))
+    schema = "c5e_ci_" + uuid4().hex
+    admin_engine = create_engine(database_url, future=True)
+    engine = None
+    schema_created = False
+    try:
+        with admin_engine.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        schema_created = True
+        # Unqualified ORM tables and their FK targets resolve in this
+        # test-private schema; never write into the CI database's public tables.
+        engine = create_engine(
+            database_url,
+            connect_args={"options": f"-csearch_path={schema},public"},
+            future=True,
+        )
+        Base.metadata.create_all(engine)
+        roots = {
+            "inspection_root": tmp_path / "inspection",
+            "dkkd_root": tmp_path / "dkkd",
+            "template_root": tmp_path / "templates",
+        }
+        for root in roots.values():
+            root.mkdir(parents=True, exist_ok=True)
+        storage = FilesystemStorageService(StorageConfig(**roots))
+        workflow = DocumentWorkflowService()
+        with Session(engine) as session:
+            case_id = _seed_canonical_case(session, gxp_type)
+            _install_fixture_contracts(
+                monkeypatch, session, roots["template_root"], gxp_type,
+                _destination_word(), _source_word(),
+            )
+            parent_folder = (
+                roots["inspection_root"] / "2024" /
+                "Synthetic C5e Folder - (ID-41002) - (CI-C5E-41003)"
+            )
+            parent_folder.mkdir(parents=True, exist_ok=True)
+            if tampered_source:
+                source_path = (
+                    roots["template_root"] / "c5e_certificate_detail" /
+                    f"9. Phamvi{gxp_type}.docx"
+                )
+                source_path.write_bytes(source_path.read_bytes() + b"TAMPERED")
+            session.commit()
+
+        payload = {
+            "family_code": "CERTIFICATE_ISSUANCE_WORD",
+            "case_id": case_id,
+            "gxp_type": gxp_type,
+            "legacy_mode": "moi",
+            "storage_scope": "inspection_folder",
+            "language_code": "vi",
+            "idempotency_key": f"c5e-pg-{gxp_type}-{schema}",
+            "output_filename": f"c5e-pg-{gxp_type}.docx",
+            "payload": {"TenCoso": "Synthetic C5e site"},
+            "strict_payload": True,
+        }
+        with Session(engine) as session:
+            if tampered_source:
+                with pytest.raises(HTTPException) as failure:
+                    workflow.render_template_docx(
+                        session, storage=storage, payload=payload,
+                        user=build_authenticated_user("c5e-pg-inspector", "inspector"),
+                    )
+                assert failure.value.status_code == 409
+                assert "checksum mismatch" in str(failure.value.detail).lower()
+            else:
+                result = workflow.render_template_docx(
+                    session, storage=storage, payload=payload,
+                    user=build_authenticated_user("c5e-pg-inspector", "inspector"),
+                )
+                assert result["generation_status"] == "succeeded"
+            session.commit()
+
+        # Post-commit verification uses a genuinely independent DB session.
+        with Session(engine) as verify:
+            documents = list(verify.scalars(select(Document)))
+            versions = list(verify.scalars(select(DocumentVersion)))
+            runs = list(verify.scalars(select(DocumentGenerationRun)))
+            assert len(documents) == len(runs) == 1
+            assert documents[0].family_code == "CERTIFICATE_ISSUANCE_WORD"
+            assert documents[0].case_id == case_id
+            assert documents[0].certificate_id is None
+            assert documents[0].capa_cycle_id is None
+            assert documents[0].change_request_id is None
+            assert runs[0].document_id == documents[0].id
+            if tampered_source:
+                assert runs[0].status == DocumentGenerationStatus.FAILED
+                assert all(not v.is_current and not v.checksum_sha256 for v in versions)
+                assert not list(roots["inspection_root"].rglob("*.docx"))
+            else:
+                assert runs[0].status == DocumentGenerationStatus.SUCCEEDED
+                assert len(versions) == 1
+                version = versions[0]
+                assert version.is_current is True
+                assert version.id == runs[0].output_document_version_id
+                assert version.checksum_sha256 == result["checksum_sha256"]
+                audit = verify.get(AuditEvent, result["audit_event_id"])
+                assert audit is not None
+                assert audit.action == "document.render_template_docx"
+                with storage.read_stream(
+                    version.storage_relative_path, root=version.storage_root,
+                ) as stream:
+                    binary = stream.read()
+                assert sha256(binary).hexdigest() == version.checksum_sha256
+                with ZipFile(BytesIO(binary), "r") as archive:
+                    xml = archive.read("word/document.xml")
+                doc_root = ET.fromstring(xml)
+                joined = " ".join(
+                    node.text for node in doc_root.findall(f".//{{{W}}}t")
+                    if node.text
+                )
+                assert "VI SOURCE" in joined
+                assert "EN SOURCE" in joined
+                assert "WRONG_LEGACY" not in joined
+    finally:
+        if engine is not None:
+            engine.dispose()
+        if schema_created:
+            with admin_engine.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin_engine.dispose()

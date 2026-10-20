@@ -36,6 +36,19 @@ class _Session:
         assert model is Case
         return self.case if self.case is not None and identity == self.case.id else None
 
+    def scalar(self, statement):
+        from backend.app.db.models.phase1 import Case, DocumentVersion
+        entity = statement.column_descriptions[0]["entity"]
+        if entity is Case:
+            # Typed create takes the Case lock before inspecting current versions.
+            assert statement._for_update_arg is not None
+            return self.case
+        if entity is DocumentVersion:
+            # These endpoint tests have no persisted KHKT document; the real
+            # current-version query is tested against SQLite separately.
+            return None
+        raise AssertionError(f"unexpected scalar lookup: {entity!r}")
+
     def commit(self):
         self.commits += 1
 

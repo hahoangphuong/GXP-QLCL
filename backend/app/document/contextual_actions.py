@@ -18,6 +18,7 @@ TypedCreateReadiness = Literal[
     "FRONTEND_CREATE_ACTION_MISSING",
     "LEGACY_ONLY_UNRESOLVED",
     "OTHER_BLOCKED",
+    "UNSUPPORTED_GXP_TYPE",
 ]
 ParentScope = Literal["case", "capa_cycle", "change_request"]
 
@@ -269,6 +270,7 @@ def build_document_action_states(
             "Family legacy chưa có owner mapping/workflow đủ chắc chắn để tạo tài liệu."
         ),
         "OTHER_BLOCKED": "Tạo tài liệu đang bị chặn bởi contract backend chưa hoàn tất.",
+        "UNSUPPORTED_GXP_TYPE": "Loại GxP của Case không có mẫu Kế hoạch kiểm tra được hỗ trợ.",
         "READY_OPEN_HISTORY": "Loại tài liệu này hiện chỉ hỗ trợ mở và xem lịch sử tài liệu đã có.",
         "READY_READ_ONLY": "Loại tài liệu này chỉ hỗ trợ theo dõi hiện trạng trong slice hiện tại.",
     }

@@ -22,6 +22,7 @@ from backend.app.rbac import ROLE_PERMISSIONS
 from backend.app.document.service_contract import load_default_registry
 from backend.app.document.inspection_ke_hoach_kt_template_asset_contract import (
     INSPECTION_KE_HOACH_KT_FAMILY,
+    SUPPORTED_GXP_TYPES as KHKT_SUPPORTED_GXP_TYPES,
     get_inspection_ke_hoach_kt_output_filename,
 )
 from backend.app.db.models.phase1 import (
@@ -806,13 +807,21 @@ class CatalogReadService:
             create_contract = None
             effective_create_readiness = spec["create_readiness"]
             if family_code == INSPECTION_KE_HOACH_KT_FAMILY:
-                create_contract = {
-                    "create_gxp_type": case.gxp_type,
-                    "create_storage_scope": "inspection_folder",
-                    "create_output_filename": get_inspection_ke_hoach_kt_output_filename(case.gxp_type),
-                }
-                if bool(item["open_available"]):
-                    effective_create_readiness = "READY_OPEN_HISTORY"
+                if case.gxp_type not in KHKT_SUPPORTED_GXP_TYPES:
+                    # The Case remains readable even if this document family
+                    # has no template for its canonical GxP. Do not invent a
+                    # filename or expose a generic create action.
+                    effective_create_readiness = "UNSUPPORTED_GXP_TYPE"
+                else:
+                    # A supported variant must still pass the exact template
+                    # asset contract; do not hide a malformed/missing manifest.
+                    create_contract = {
+                        "create_gxp_type": case.gxp_type,
+                        "create_storage_scope": "inspection_folder",
+                        "create_output_filename": get_inspection_ke_hoach_kt_output_filename(case.gxp_type),
+                    }
+                    if bool(item["open_available"]):
+                        effective_create_readiness = "READY_OPEN_HISTORY"
             contextual_items.append(
                 {
                     **item,

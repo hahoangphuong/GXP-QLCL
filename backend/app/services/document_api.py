@@ -8,7 +8,7 @@ from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from backend.app.audit_payload import normalize_and_redact_audit_payload
@@ -139,14 +139,54 @@ class DocumentWorkflowService:
         case_id: str,
         idempotency_key: str | None,
     ) -> dict[str, Any]:
-        """Build KHKT render input from the canonical Case, never caller metadata."""
-        case = session.get(Case, case_id)
+        """Build KHKT typed create input from the canonical Case.
+
+        The Case row lock serializes two typed creates for the same Case until
+        the route commits. An already-openable current KHKT version means the
+        contextual action is OPEN/HISTORY, not CREATE; a second fresh create
+        must not bypass that state by calling this endpoint directly.
+        """
+        case = session.scalar(
+            select(Case).where(Case.id == case_id).with_for_update()
+        )
         if case is None:
             raise HTTPException(status_code=404, detail="Case was not found.")
         try:
             filename = get_inspection_ke_hoach_kt_output_filename(case.gxp_type)
         except InspectionKeHoachKtTemplateAssetContractError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+        current_version_id = session.scalar(
+            select(DocumentVersion.id)
+            .join(
+                DocumentVariant,
+                DocumentVariant.id == DocumentVersion.document_variant_id,
+            )
+            .join(Document, Document.id == DocumentVariant.document_id)
+            .where(
+                Document.case_id == case.id,
+                Document.family_code == INSPECTION_KE_HOACH_KT_FAMILY,
+                DocumentVersion.is_current.is_(True),
+                *(
+                    func.length(func.trim(field)) > 0
+                    for field in (
+                        DocumentVersion.storage_root,
+                        DocumentVersion.storage_relative_path,
+                        DocumentVersion.original_filename,
+                        DocumentVersion.checksum_sha256,
+                    )
+                ),
+            )
+            .limit(1)
+        )
+        if current_version_id is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Current inspection plan document already exists for this Case; "
+                    "open its current version or history instead of creating another."
+                ),
+            )
         return {
             "family_code": INSPECTION_KE_HOACH_KT_FAMILY,
             "case_id": case.id,

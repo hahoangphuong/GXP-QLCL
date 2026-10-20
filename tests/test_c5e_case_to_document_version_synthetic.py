@@ -15,6 +15,7 @@ from xml.etree import ElementTree as ET
 from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
@@ -355,5 +356,103 @@ def test_c5e_synthetic_case_to_current_document_version(
             assert "STATIC SUFFIX" in joined
             assert "WRONG_LEGACY" not in joined
             assert not doc_root.findall(f".//{{{W}}}bookmarkStart[@{{{W}}}name='Pvi']")
+    finally:
+        engine.dispose()
+
+
+
+@pytest.mark.parametrize("gxp_type", ("GMP", "GLP"))
+@pytest.mark.parametrize("tampered_asset", ("destination", "source"))
+def test_c5e_tampered_word_binary_never_finalizes_current_document_version(
+    tmp_path, monkeypatch, gxp_type, tampered_asset,
+):
+    """Synthetic full workflow must leave no successful lineage or output."""
+    tracked_artifacts_root = Path(__file__).resolve().parents[1] / "artifacts"
+    monkeypatch.setenv("GXP_ARTIFACTS_ROOT", str(tracked_artifacts_root))
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    roots = {
+        "inspection_root": tmp_path / "inspection",
+        "dkkd_root": tmp_path / "dkkd",
+        "template_root": tmp_path / "templates",
+    }
+    for root in roots.values():
+        root.mkdir(parents=True, exist_ok=True)
+    storage = FilesystemStorageService(StorageConfig(**roots))
+    workflow = DocumentWorkflowService()
+    try:
+        with Session(engine) as session:
+            case_id = _seed_canonical_case(session, gxp_type)
+            _install_fixture_contracts(
+                monkeypatch, session, roots["template_root"],
+                gxp_type, _destination_word(), _source_word(),
+            )
+            parent_folder = (
+                roots["inspection_root"] / "2024" /
+                "Synthetic C5e Folder - (ID-41002) - (CI-C5E-41003)"
+            )
+            parent_folder.mkdir(parents=True, exist_ok=True)
+            if tampered_asset == "destination":
+                selected = (
+                    roots["template_root"] / "c5e-synthetic" /
+                    f"9. Chung chi {gxp_type} (moi).dotx"
+                )
+            else:
+                selected = (
+                    roots["template_root"] / "c5e_certificate_detail" /
+                    f"9. Phamvi{gxp_type}.docx"
+                )
+            # The immutable registry and binding still hold SHA256 for the
+            # original fixture bytes. Only the *stored* binary is tampered.
+            selected.write_bytes(selected.read_bytes() + b"TAMPERED")
+            session.commit()
+
+            payload = {
+                "family_code": "CERTIFICATE_ISSUANCE_WORD",
+                "case_id": case_id,
+                "gxp_type": gxp_type,
+                "legacy_mode": "moi",
+                "storage_scope": "inspection_folder",
+                "language_code": "vi",
+                "idempotency_key": (
+                    f"synthetic-c5e-tampered-{tampered_asset}-{gxp_type}"
+                ),
+                "output_filename": f"tampered-{gxp_type}.docx",
+                "payload": {"TenCoso": "Synthetic C5e site"},
+                "strict_payload": True,
+            }
+            with pytest.raises(HTTPException) as exc:
+                workflow.render_template_docx(
+                    session,
+                    storage=storage,
+                    payload=payload,
+                    user=build_authenticated_user(
+                        "c5e-fixture-inspector", "inspector",
+                    ),
+                )
+            assert exc.value.status_code == 409
+            # Template readiness intentionally redacts checksum-specific
+            # details from the public 409; post-allocation source checksum
+            # errors retain their distinct C.5e runtime failure boundary.
+            expected_failure = (
+                "template:runtime_contract_failed"
+                if tampered_asset == "destination"
+                else "checksum mismatch"
+            )
+            assert expected_failure in str(exc.value.detail).lower()
+            session.commit()
+
+        with Session(engine) as session:
+            runs = list(session.scalars(select(DocumentGenerationRun)))
+            assert len(runs) == 1
+            assert runs[0].status == DocumentGenerationStatus.FAILED
+            assert expected_failure in (runs[0].error_summary or "").lower()
+            documents = list(session.scalars(select(Document)))
+            assert len(documents) == 1
+            assert documents[0].case_id == case_id
+            versions = list(session.scalars(select(DocumentVersion)))
+            assert all(not version.is_current for version in versions)
+            assert all(not version.checksum_sha256 for version in versions)
+        assert list(roots["inspection_root"].rglob("*.docx")) == []
     finally:
         engine.dispose()

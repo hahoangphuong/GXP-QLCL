@@ -15,6 +15,7 @@ from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
+from backend.app.auth import build_authenticated_user
 from backend.app.db.base import Base
 from backend.app.db.enums import CaseState, DocumentVariantType
 from backend.app.db.models.phase1 import (
@@ -33,11 +34,11 @@ if not DATABASE_URL.startswith("postgresql"):
     pytest.skip("requires isolated PostgreSQL transaction locks", allow_module_level=True)
 
 
-def test_typed_khkt_two_transactions_serialize_on_case_and_observe_committed_version():
-    """A competing CREATE blocks before any mutation, then sees HTTP 409.
+def test_typed_and_generic_khkt_render_serialize_on_case_and_observe_committed_version():
+    """A competing generic render blocks before any mutation, then sees HTTP 409.
 
     First transaction holds Case row FOR UPDATE while the second attempts the
-    typed preflight with a bounded lock timeout. The winner then commits a
+    generic render entrypoint with a bounded lock timeout. The winner then commits a
     fully locatable KHKT document version. The retry must see that committed
     version and reject creation instead of issuing another render payload.
     """
@@ -102,6 +103,20 @@ def test_typed_khkt_two_transactions_serialize_on_case_and_observe_committed_ver
         assert first["gxp_type"] == "GMP"
         assert first["family_code"] == "INSPECTION_KE_HOACH_KT"
 
+        generic_payload = {
+            "family_code": "INSPECTION_KE_HOACH_KT",
+            "case_id": case_id,
+            "gxp_type": "GMP",
+            "storage_scope": "inspection_folder",
+            "idempotency_key": "generic-competing-create",
+            "output_filename": "3. Kế hoạch kiểm tra GMP.docx",
+            "payload": {},
+            "strict_payload": True,
+        }
+        generic_user = build_authenticated_user(
+            "unpersisted-khkt-generic", permissions={"document.write"},
+        )
+
         contender = factory()
         contender.execute(text("SET LOCAL lock_timeout = '250ms'"))
         contender_connection = contender.connection()
@@ -116,8 +131,11 @@ def test_typed_khkt_two_transactions_serialize_on_case_and_observe_committed_ver
         event.listen(engine, "before_cursor_execute", capture_mutations)
         try:
             with pytest.raises(OperationalError, match="lock timeout"):
-                service.build_case_inspection_plan_render_payload(
-                    contender, case_id=case_id, idempotency_key="khkt-second",
+                service.render_template_docx(
+                    contender,
+                    storage=object(),
+                    payload=generic_payload,
+                    user=generic_user,
                 )
         finally:
             event.remove(engine, "before_cursor_execute", capture_mutations)
@@ -162,8 +180,11 @@ def test_typed_khkt_two_transactions_serialize_on_case_and_observe_committed_ver
         blocker.commit()
 
         with pytest.raises(HTTPException, match="already exists") as conflict:
-            service.build_case_inspection_plan_render_payload(
-                contender, case_id=case_id, idempotency_key="khkt-second",
+            service.render_template_docx(
+                contender,
+                storage=object(),
+                payload=generic_payload,
+                user=generic_user,
             )
         assert conflict.value.status_code == 409
         contender.rollback()

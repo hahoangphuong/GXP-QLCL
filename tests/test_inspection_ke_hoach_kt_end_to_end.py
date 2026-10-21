@@ -700,6 +700,36 @@ def test_khkt_binary_end_to_end_renders_canonical_db_payload_and_writes_output(m
                 assert missing_folder["template_binary_status"] == "ready"
                 assert missing_folder["inspection_folder_status"] == "blocked"
                 assert missing_folder["ready_to_attempt_render"] is False
+
+                # The earlier READY preview is not permission to write into
+                # a folder that disappeared before the actual render request.
+                from fastapi import HTTPException
+                from backend.app.db.models.phase1 import Document, DocumentGenerationRun, AuditEvent
+                with pytest.raises(HTTPException) as missing_folder_failure:
+                    service.render_template_docx(
+                        session,
+                        storage=storage,
+                        payload={
+                            "family_code": "INSPECTION_KE_HOACH_KT",
+                            "case_id": case_id,
+                            "gxp_type": "GLP",
+                            "storage_scope": "inspection_folder",
+                            "idempotency_key": "khkt-missing-folder-attempt",
+                            "output_filename": "3. Kế hoạch kiểm tra GLP.docx",
+                            "payload": {},
+                            "strict_payload": True,
+                        },
+                        user=build_authenticated_user(
+                            "khkt-missing-folder",
+                            permissions={"document.read", "document.write"},
+                        ),
+                    )
+                assert missing_folder_failure.value.status_code == 409
+                session.rollback()
+                assert list(session.scalars(select(Document))) == []
+                assert list(session.scalars(select(DocumentGenerationRun))) == []
+                assert list(session.scalars(select(AuditEvent))) == []
+                assert not physical_folder.exists()
             finally:
                 physical_folder.mkdir(parents=True)
 

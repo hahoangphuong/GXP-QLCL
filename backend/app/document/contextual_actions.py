@@ -15,6 +15,7 @@ TypedCreateReadiness = Literal[
     "TEMPLATE_READY_BUT_BACKEND_ACTION_MISSING",
     "STORAGE_WRITE_CONTRACT_MISSING",
     "BUSINESS_INPUT_CONTRACT_MISSING",
+    "BUSINESS_INPUT_NOT_READY",
     "FRONTEND_CREATE_ACTION_MISSING",
     "LEGACY_ONLY_UNRESOLVED",
     "OTHER_BLOCKED",
@@ -264,6 +265,9 @@ def build_document_action_states(
         ),
         "BUSINESS_INPUT_CONTRACT_MISSING": (
             "Thiếu contract input nghiệp vụ typed theo ngữ cảnh; không hiển thị thao tác tạo generic."
+        ),
+        "BUSINESS_INPUT_NOT_READY": (
+            "Dữ liệu nghiệp vụ của Case chưa đủ để tạo Kế hoạch kiểm tra."
         ),
         "FRONTEND_CREATE_ACTION_MISSING": (
             "Backend KHKT đã có canonical create/render contract nhưng frontend contextual action "

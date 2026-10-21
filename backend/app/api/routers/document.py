@@ -110,6 +110,22 @@ def register_document_routes(app, session_factory) -> None:
             user=user,
         )
 
+    def get_case_inspection_plan_runtime_readiness(
+        case_id: str,
+        request: Request,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"document.write"})
+        # Deliberately no commit or mutation: inspection folder lookup only
+        # reads persisted identity and performs physical read-only resolution.
+        result = service.get_case_inspection_plan_runtime_readiness(
+            session,
+            case_id=case_id,
+            storage=request.app.state.storage_service,
+        )
+        return CaseInspectionPlanRuntimeReadinessRead(**result)
+
     def get_document_generation_run(
         generation_run_id: str,
         session: Session = dependency,
@@ -291,6 +307,13 @@ def register_document_routes(app, session_factory) -> None:
         render_case_inspection_plan,
         methods=["POST"],
         response_model=DocumentRenderRead,
+        tags=["documents"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/documents/inspection-ke-hoach-kt/readiness",
+        get_case_inspection_plan_runtime_readiness,
+        methods=["GET"],
+        response_model=CaseInspectionPlanRuntimeReadinessRead,
         tags=["documents"],
     )
     app.add_api_route(

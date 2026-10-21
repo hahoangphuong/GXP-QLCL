@@ -101,9 +101,15 @@ def test_unsupported_gxp_case_workspace_remains_readable_and_khkt_create_blocked
 
 @pytest.mark.parametrize("gxp_type", ("GMP", "GLP", "GMPbb", "GSP"))
 def test_supported_gxp_keeps_existing_exact_khkt_create_contract(
-    tmp_path, gxp_type,
+    tmp_path, gxp_type, monkeypatch,
 ):
     engine, case_id = _seed_case(tmp_path, gxp_type=gxp_type)
+    # This test isolates the advertised typed route and exact asset metadata;
+    # canonical business data availability is covered by dedicated tests.
+    monkeypatch.setattr(
+        "backend.app.services.catalog.load_inspection_ke_hoach_kt_payload_input",
+        lambda *_args, **_kwargs: object(),
+    )
     user = build_authenticated_user(
         "manager", permissions={"document.read", "document.write"}
     )
@@ -114,6 +120,8 @@ def test_supported_gxp_keeps_existing_exact_khkt_create_contract(
             )
         )
     assert create["available"] is True
+    assert create["create_input_readiness"] == "CANONICAL_INPUT_READY"
+    assert create["create_input_blocked_reason"] is None
     assert create["reason_code"] is None
     assert create["create_readiness"] == "READY_CREATE_OPEN_HISTORY"
     assert create["create_gxp_type"] == gxp_type
@@ -153,7 +161,7 @@ def test_supported_gxp_corrupt_template_contract_still_fails_closed(tmp_path, mo
             )
 
 
-def test_khkt_typed_action_url_stays_identical_to_registered_router(tmp_path):
+def test_khkt_typed_action_url_stays_identical_to_registered_router(tmp_path, monkeypatch):
     app = FastAPI()
     register_document_routes(app, lambda: None)
     routes = [
@@ -163,6 +171,10 @@ def test_khkt_typed_action_url_stays_identical_to_registered_router(tmp_path):
     assert len(routes) == 1
     assert routes[0].methods == {"POST"}
     engine, case_id = _seed_case(tmp_path, gxp_type="GLP")
+    monkeypatch.setattr(
+        "backend.app.services.catalog.load_inspection_ke_hoach_kt_payload_input",
+        lambda *_args, **_kwargs: object(),
+    )
     user = build_authenticated_user(
         "manager", permissions={"document.read", "document.write"},
     )
@@ -220,3 +232,81 @@ def test_khkt_typed_target_not_advertised_when_document_already_available(
     assert create["reason_code"] == "ready_open_history"
     assert "create_endpoint" not in create
     assert "create_http_method" not in create
+
+
+@pytest.mark.parametrize("gxp_type", ("GMP", "GLP", "GMPbb", "GSP"))
+def test_supported_case_with_missing_business_input_remains_readable_but_create_blocked(
+    tmp_path, gxp_type,
+):
+    engine, case_id = _seed_case(tmp_path, gxp_type=gxp_type)
+    user = build_authenticated_user(
+        "manager", permissions={"document.read", "document.write"},
+    )
+    with Session(engine) as session:
+        workspace = CatalogReadService().get_case_workspace(
+            session, case_id=case_id, user=user,
+        )
+    action = _create_action(workspace["contextual_document_actions"])[1]
+    assert action["available"] is False
+    assert action["reason_code"] == "business_input_not_ready"
+    assert action["create_readiness"] == "BUSINESS_INPUT_NOT_READY"
+    assert action["create_input_readiness"] == "CANONICAL_INPUT_BLOCKED"
+    assert "inspection plan is missing" in action["create_input_blocked_reason"]
+    assert "Dữ liệu nghiệp vụ" in action["disabled_reason"]
+    assert "create_endpoint" not in action
+    assert "create_http_method" not in action
+    typed = ContextualDocumentActionAvailabilityRead(**action)
+    assert typed.create_input_readiness == "CANONICAL_INPUT_BLOCKED"
+    assert typed.create_input_blocked_reason == action["create_input_blocked_reason"]
+
+
+def test_supported_case_scope_projection_error_is_not_misadvertised_as_render_ready(
+    tmp_path, monkeypatch,
+):
+    from backend.app.document.payload_builders import DocumentPayloadBuildError
+    engine, case_id = _seed_case(tmp_path, gxp_type="GMP")
+
+    def fail_scope(*_args, **_kwargs):
+        raise DocumentPayloadBuildError("canonical structured evaluation scope is unavailable")
+
+    monkeypatch.setattr(
+        "backend.app.services.catalog.load_inspection_ke_hoach_kt_payload_input",
+        fail_scope,
+    )
+    user = build_authenticated_user(
+        "manager", permissions={"document.read", "document.write"},
+    )
+    with Session(engine) as session:
+        _, action = _create_action(
+            CatalogReadService()._build_case_contextual_document_actions(
+                session, case_id=case_id, capa_cycles=[], user=user,
+            )
+        )
+    assert action["available"] is False
+    assert action["create_readiness"] == "BUSINESS_INPUT_NOT_READY"
+    assert "structured evaluation scope" in action["create_input_blocked_reason"]
+    assert "create_endpoint" not in action
+
+
+def test_case_input_preflight_does_not_run_for_read_only_user(tmp_path, monkeypatch):
+    engine, case_id = _seed_case(tmp_path, gxp_type="GLP")
+
+    def unexpected(*_args, **_kwargs):
+        raise AssertionError("read-only user must not trigger document business input preflight")
+
+    monkeypatch.setattr(
+        "backend.app.services.catalog.load_inspection_ke_hoach_kt_payload_input",
+        unexpected,
+    )
+    with Session(engine) as session:
+        _, action = _create_action(
+            CatalogReadService()._build_case_contextual_document_actions(
+                session,
+                case_id=case_id,
+                capa_cycles=[],
+                user=build_authenticated_user("reader", permissions={"document.read"}),
+            )
+        )
+    assert action["available"] is False
+    assert action["reason_code"] == "permission_denied"
+    assert "create_endpoint" not in action

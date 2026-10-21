@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 
 from fastapi import HTTPException
@@ -21,6 +21,11 @@ from backend.app.document.contextual_actions import (
 )
 from backend.app.rbac import ROLE_PERMISSIONS
 from backend.app.document.service_contract import load_default_registry
+from backend.app.document.inspection_ke_hoach_kt_payload_input import (
+    InspectionKeHoachKtPayloadInputError,
+    load_inspection_ke_hoach_kt_payload_input,
+)
+from backend.app.document.payload_builders import DocumentPayloadBuildError
 from backend.app.document.inspection_ke_hoach_kt_template_asset_contract import (
     INSPECTION_KE_HOACH_KT_FAMILY,
     SUPPORTED_GXP_TYPES as KHKT_SUPPORTED_GXP_TYPES,
@@ -824,14 +829,31 @@ class CatalogReadService:
                     if bool(item["open_available"]):
                         effective_create_readiness = "READY_OPEN_HISTORY"
                     elif effective_create_readiness == "READY_CREATE_OPEN_HISTORY" and "document.write" in permissions:
-                        # Advertise only the Case-scoped typed endpoint when
-                        # the create action is enabled for this user. Caller
-                        # metadata cannot redirect the backend to another
-                        # Case/GxP/template or generic document renderer.
-                        create_contract["create_endpoint"] = (
-                            KHKT_CASE_TYPED_RENDER_ROUTE.format(case_id=case.id)
-                        )
-                        create_contract["create_http_method"] = "POST"
+                        # Read-only canonical input preview. This is the same
+                        # source aggregate consumed by the KHKT renderer, not
+                        # an independently maintained set of required fields.
+                        # Binary/template/storage checks still belong to the
+                        # rendering owner; input readiness alone never claims
+                        # the final Word output is guaranteed to succeed.
+                        try:
+                            load_inspection_ke_hoach_kt_payload_input(
+                                session,
+                                case_id=case.id,
+                                generated_at=datetime.now(timezone.utc),
+                            )
+                        except (InspectionKeHoachKtPayloadInputError, DocumentPayloadBuildError) as exc:
+                            effective_create_readiness = "BUSINESS_INPUT_NOT_READY"
+                            create_contract["create_input_readiness"] = "CANONICAL_INPUT_BLOCKED"
+                            create_contract["create_input_blocked_reason"] = str(exc)
+                        else:
+                            create_contract["create_input_readiness"] = "CANONICAL_INPUT_READY"
+                            create_contract["create_input_blocked_reason"] = None
+                            # Caller metadata cannot redirect to another Case,
+                            # GxP type, template or generic document renderer.
+                            create_contract["create_endpoint"] = (
+                                KHKT_CASE_TYPED_RENDER_ROUTE.format(case_id=case.id)
+                            )
+                            create_contract["create_http_method"] = "POST"
             contextual_items.append(
                 {
                     **item,

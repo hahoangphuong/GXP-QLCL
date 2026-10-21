@@ -111,9 +111,14 @@ def _create_action(session, case_id):
     "other_family",
 ))
 def test_khkt_typed_create_preflight_matches_enabled_case_action(
-    tmp_path, document_state,
+    tmp_path, document_state, monkeypatch,
 ):
     engine, case_id = _case_and_document(tmp_path, document_state=document_state)
+    # This is the current-version parity test, not a source-readiness fixture.
+    monkeypatch.setattr(
+        "backend.app.services.catalog.load_inspection_ke_hoach_kt_payload_input",
+        lambda *_args, **_kwargs: object(),
+    )
     with Session(engine) as session:
         action = _create_action(session, case_id)
         payload = DocumentWorkflowService.build_case_inspection_plan_render_payload(
@@ -121,6 +126,7 @@ def test_khkt_typed_create_preflight_matches_enabled_case_action(
         )
         assert action["available"] is True
         assert action["create_readiness"] == "READY_CREATE_OPEN_HISTORY"
+        assert action["create_input_readiness"] == "CANONICAL_INPUT_READY"
         assert payload["case_id"] == case_id
         assert payload["family_code"] == FAMILY
         assert payload["idempotency_key"] == "new-create"

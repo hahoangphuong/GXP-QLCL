@@ -3548,7 +3548,13 @@ def test_khkt_contextual_create_is_only_available_while_document_is_missing():
     assert "chỉ hỗ trợ mở và xem lịch sử" in existing_create["disabled_reason"]
 
 
-def test_khkt_contextual_create_retries_until_current_binary_integrity_is_complete():
+def test_khkt_contextual_create_retries_until_current_binary_integrity_is_complete(monkeypatch):
+    # This test isolates the version/locator state machine. Canonical input
+    # readiness is tested separately using the real Case input owner.
+    monkeypatch.setattr(
+        "backend.app.services.catalog.load_inspection_ke_hoach_kt_payload_input",
+        lambda *_args, **_kwargs: object(),
+    )
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
     service = CatalogReadService()

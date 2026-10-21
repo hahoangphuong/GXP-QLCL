@@ -47,6 +47,7 @@ from backend.app.document.inspection_ke_hoach_kt_template_asset_contract import 
 )
 from backend.app.document.template_binary_binding import assign_template_binary_binding
 from backend.app.project_paths import repo_root
+from backend.app.services.catalog import CatalogReadService
 from backend.app.services.document_api import DocumentWorkflowService
 from backend.app.storage.filesystem import FilesystemStorageService
 from backend.app.storage.types import StorageConfig
@@ -556,6 +557,33 @@ def test_khkt_binary_end_to_end_renders_canonical_db_payload_and_writes_output(m
                 )
             )
             session.commit()
+
+            # Real canonical site, plan, structured scope, roster, and decision
+            # inputs are already installed. The Case workspace should expose
+            # the typed create action before this genuine DOCX render.
+            contextual = CatalogReadService()._build_case_contextual_document_actions(
+                session,
+                case_id=case_id,
+                capa_cycles=[],
+                user=build_authenticated_user(
+                    "khkt-ready-preview",
+                    permissions={"document.read", "document.write"},
+                ),
+            )
+            khkt_row = next(
+                row for row in contextual
+                if row["family_code"] == "INSPECTION_KE_HOACH_KT"
+            )
+            create = next(
+                action for action in khkt_row["actions"]
+                if action["action_key"] == "create"
+            )
+            assert create["available"] is True
+            assert create["create_input_readiness"] == "CANONICAL_INPUT_READY"
+            assert create["create_input_blocked_reason"] is None
+            assert create["create_endpoint"].endswith(
+                "/documents/inspection-ke-hoach-kt/render"
+            )
 
             result = service.render_template_docx(
                 session,

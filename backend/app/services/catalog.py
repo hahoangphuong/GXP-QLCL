@@ -847,6 +847,7 @@ class CatalogReadService:
                             create_contract["create_input_blocked_reason"] = str(exc)
                         else:
                             create_contract["create_input_readiness"] = "CANONICAL_INPUT_READY"
+                            create_contract["create_input_blocked_reason"] = None
                             # Caller metadata cannot redirect to another Case,
                             # GxP type, template or generic document renderer.
                             create_contract["create_endpoint"] = (

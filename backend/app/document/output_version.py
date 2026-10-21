@@ -20,7 +20,7 @@ from backend.app.db.models.phase1 import (
 )
 from backend.app.storage.binding_service import StorageBindingService
 from backend.app.db.models.phase1 import StorageBinding
-from backend.app.storage.types import StorageServiceProtocol
+from backend.app.storage.types import StorageServiceProtocol, StorageTargetExistsError
 
 if TYPE_CHECKING:
     from backend.app.document.service import PreparedDocumentGeneration
@@ -636,13 +636,13 @@ def finalize_output_document_version_write(
         document_version,
     )
     expected_checksum = sha256(binary_payload).hexdigest()
-    storage.write_stream(
-        allocation.storage_relative_path,
-        BytesIO(binary_payload),
-        root=allocation.storage_root,
-        overwrite=False,
-    )
     try:
+        storage.write_stream(
+            allocation.storage_relative_path,
+            BytesIO(binary_payload),
+            root=allocation.storage_root,
+            overwrite=False,
+        )
         checksum = storage.checksum(
             allocation.storage_relative_path,
             root=allocation.storage_root,
@@ -668,6 +668,10 @@ def finalize_output_document_version_write(
         session.flush()
         return checksum
     except Exception as exc:
+        # Exclusive-create refusal proves we do not own this existing target.
+        # Never attempt checksum-based cleanup of another writer's file.
+        if isinstance(exc, StorageTargetExistsError):
+            raise
         cleanup_error = cleanup_output_target_if_owned(
             storage,
             storage_root=allocation.storage_root,

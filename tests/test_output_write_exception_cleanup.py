@@ -11,7 +11,7 @@ from backend.app.document import output_version as owner
 
 class _Session:
     def execute(self, _stmt):
-        return SimpleNamespace(scalar_one_or_none=lambda: SimpleNamespace(id="version"))
+        return SimpleNamespace(scalar_one_or_none=lambda: SimpleNamespace(id="version", document_variant_id="variant"))
 
 
 class _WriteThenRaiseStorage:

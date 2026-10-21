@@ -677,6 +677,52 @@ def test_khkt_binary_end_to_end_renders_canonical_db_payload_and_writes_output(m
             assert len(session.new) == 0
             assert len(session.dirty) == 0
 
+            # A READY GET is a point-in-time observation, not a token
+            # authorizing later CREATE. Remove a required canonical input
+            # after the successful preview and before the render request.
+            plan_row = session.scalar(select(InspectionPlan).where(InspectionPlan.case_id == case_id))
+            assert plan_row is not None
+            original_decision_reference = plan_row.decision_reference
+            plan_row.decision_reference = ""
+            session.commit()
+            stale = service.get_case_inspection_plan_runtime_readiness(
+                session, case_id=case_id, storage=storage,
+            )
+            assert stale["canonical_input_status"] == "blocked"
+            assert stale["ready_to_attempt_render"] is False
+            assert "canonical_input_unavailable" in stale["blocked_reasons"]
+
+            from fastapi import HTTPException
+            from backend.app.db.models.phase1 import Document, DocumentGenerationRun, AuditEvent
+            with pytest.raises(HTTPException) as failed:
+                service.render_template_docx(
+                    session,
+                    storage=storage,
+                    payload={
+                        "family_code": "INSPECTION_KE_HOACH_KT",
+                        "case_id": case_id,
+                        "gxp_type": "GLP",
+                        "storage_scope": "inspection_folder",
+                        "idempotency_key": "khkt-stale-readiness-attempt",
+                        "output_filename": "3. Kế hoạch kiểm tra GLP.docx",
+                        "payload": {},
+                        "strict_payload": True,
+                    },
+                    user=build_authenticated_user(
+                        "khkt-stale-preview", permissions={"document.read", "document.write"},
+                    ),
+                )
+            assert failed.value.status_code == 409
+            session.rollback()  # Real route dependency rolls back unsuccessful requests.
+            assert list(session.scalars(select(Document))) == []
+            assert list(session.scalars(select(DocumentGenerationRun))) == []
+            assert list(session.scalars(select(AuditEvent))) == []
+            assert not (root / "inspection" / output_folder / "3. Kế hoạch kiểm tra GLP.docx").exists()
+
+            plan_row = session.scalar(select(InspectionPlan).where(InspectionPlan.case_id == case_id))
+            plan_row.decision_reference = original_decision_reference
+            session.commit()
+
             result = service.render_template_docx(
                 session,
                 storage=storage,

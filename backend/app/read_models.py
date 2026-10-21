@@ -441,6 +441,8 @@ class ContextualDocumentActionAvailabilityRead(BaseModel):
     create_output_filename: str | None = None
     create_endpoint: str | None = None
     create_http_method: Literal["POST"] | None = None
+    create_input_readiness: Literal["CANONICAL_INPUT_READY", "CANONICAL_INPUT_BLOCKED"] | None = None
+    create_input_blocked_reason: str | None = None
 
 
 class ContextualDocumentActionRead(BaseModel):

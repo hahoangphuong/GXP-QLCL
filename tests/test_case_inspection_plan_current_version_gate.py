@@ -217,3 +217,64 @@ def test_generic_khkt_render_requires_canonical_case_before_any_mutation(tmp_pat
         assert err.value.status_code == 409
         assert list(session.scalars(select(AppUser))) == []
         assert list(session.scalars(select(DocumentGenerationRun))) == []
+
+
+@pytest.mark.parametrize("gxp_type", ("GMP", "GLP", "GMPbb", "GSP"))
+def test_generic_prepare_cannot_create_run_for_current_khkt(tmp_path, gxp_type):
+    engine, case_id = _case_and_document(
+        tmp_path, gxp_type=gxp_type, document_state="current",
+    )
+    with Session(engine) as session:
+        action = _create_action(session, case_id)
+        assert action["available"] is False
+        version_ids = list(session.scalars(select(DocumentVersion.id)))
+        with pytest.raises(HTTPException, match="already exists") as err:
+            DocumentWorkflowService().prepare_generation(
+                session,
+                storage=object(),
+                payload={
+                    "family_code": FAMILY,
+                    "case_id": case_id,
+                    "gxp_type": gxp_type,
+                    "storage_scope": "inspection_folder",
+                    "idempotency_key": "prepare-bypass-attempt",
+                    "payload": {},
+                    "strict_payload": True,
+                },
+                user=build_authenticated_user(
+                    "unpersisted-khkt-prepare", permissions={"document.write"},
+                ),
+            )
+        assert err.value.status_code == 409
+        assert list(session.scalars(select(AppUser))) == []
+        assert list(session.scalars(select(DocumentGenerationRun))) == []
+        assert list(session.scalars(select(AuditEvent))) == []
+        assert list(session.scalars(select(DocumentVersion.id))) == version_ids
+        assert len(session.new) == 0
+
+
+@pytest.mark.parametrize("case_id", (None, "", "   "))
+def test_generic_khkt_prepare_without_case_rejects_before_mutation(
+    tmp_path, case_id,
+):
+    engine, _ = _case_and_document(tmp_path)
+    with Session(engine) as session:
+        with pytest.raises(HTTPException, match="requires canonical case_id") as err:
+            DocumentWorkflowService().prepare_generation(
+                session,
+                storage=object(),
+                payload={
+                    "family_code": FAMILY,
+                    "case_id": case_id,
+                    "gxp_type": "GMP",
+                    "storage_scope": "inspection_folder",
+                    "payload": {},
+                },
+                user=build_authenticated_user(
+                    "unpersisted-no-case-prepare",
+                    permissions={"document.write"},
+                ),
+            )
+        assert err.value.status_code == 409
+        assert list(session.scalars(select(AppUser))) == []
+        assert list(session.scalars(select(DocumentGenerationRun))) == []

@@ -190,7 +190,12 @@ def _resolve_reused_output_identity(
             StorageBinding.inspection_legacy_code == inspection_legacy_code,
         )
         binding = session.execute(stmt).scalar_one_or_none()
-        if binding is not None and storage.exists(binding.relative_path):
+        if binding is not None and StorageBindingService(storage)._persisted_binding_folder_is_eligible(
+            binding,
+            year=year,
+            site_legacy_id=site_legacy_id,
+            inspection_legacy_code=inspection_legacy_code,
+        ):
             return "inspection", binding.relative_path, binding.id
         resolution = storage.resolve_inspection_folder(
             case_id=request.case_id,

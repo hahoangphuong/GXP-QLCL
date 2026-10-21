@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from backend.app.api.session import commit_or_409, get_session_from_request_factory
 from backend.app.auth import AuthenticatedUser, get_authenticated_user, require_permissions, require_role
 from backend.app.read_models import (
+    CaseInspectionPlanRuntimeReadinessRead,
     DocumentDetailRead,
     DocumentOwnerMetadataInventoryRead,
     DocumentGenerationPrepareRequest,

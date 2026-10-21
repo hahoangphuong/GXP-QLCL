@@ -824,8 +824,24 @@ class DocumentWorkflowService:
     ) -> dict[str, Any]:
         if storage is None:
             raise HTTPException(status_code=503, detail="StorageService is unavailable for document rendering.")
-        actor = self._get_or_create_app_user(session, user)
         render_payload = dict(payload)
+        if render_payload.get("family_code") == INSPECTION_KE_HOACH_KT_FAMILY:
+            # The generic Word renderer is also a KHKT writer. Apply exactly
+            # the typed Case CREATE guard before creating an actor, generation
+            # run, output allocation or storage write. The Case lock remains
+            # held by this transaction through the route's render commit.
+            case_id = render_payload.get("case_id")
+            if not isinstance(case_id, str) or not case_id.strip():
+                raise HTTPException(
+                    status_code=409,
+                    detail="INSPECTION_KE_HOACH_KT render requires canonical case_id.",
+                )
+            self.build_case_inspection_plan_render_payload(
+                session,
+                case_id=case_id,
+                idempotency_key=render_payload.get("idempotency_key"),
+            )
+        actor = self._get_or_create_app_user(session, user)
         if not render_payload.get("idempotency_key"):
             render_payload["idempotency_key"] = f"render-{uuid4()}"
         prepared = None

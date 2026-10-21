@@ -8,6 +8,7 @@ from fastapi import HTTPException
 
 import backend.app.document.service as service_module
 import backend.app.services.document_api as document_api_module
+from backend.app.db.models.phase1 import Case, DocumentVersion
 from backend.app.document.payload_builders import DocumentPayloadBuildError
 from backend.app.document.service import (
     DocumentPreparationInput,
@@ -290,6 +291,21 @@ def test_khkt_render_rejects_output_filename_drift_before_readiness_and_allocati
     failures: list[tuple[str, str]] = []
     allocation_calls: list[object] = []
 
+    class CanonicalCaseSession:
+        # The render owner now performs its Case row-lock and current-version
+        # guard before checking filename drift. Keep this test isolated from
+        # the DB while exercising those exact session operations.
+        is_active = True
+
+        def scalar(self, statement):
+            entity = statement.column_descriptions[0]["entity"]
+            if entity is Case:
+                assert statement._for_update_arg is not None
+                return SimpleNamespace(id="case-1", gxp_type="GMP")
+            if entity is DocumentVersion:
+                return None
+            raise AssertionError(f"Unexpected preflight query: {statement}")
+
     monkeypatch.setattr(
         service,
         "_get_or_create_app_user",
@@ -327,7 +343,7 @@ def test_khkt_render_rejects_output_filename_drift_before_readiness_and_allocati
 
     with pytest.raises(HTTPException) as exc_info:
         service.render_template_docx(
-            SimpleNamespace(is_active=True),
+            CanonicalCaseSession(),
             storage=object(),
             payload={
                 "family_code": "INSPECTION_KE_HOACH_KT",

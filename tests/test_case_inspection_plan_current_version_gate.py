@@ -14,7 +14,8 @@ from backend.app.auth import build_authenticated_user
 from backend.app.db.base import Base
 from backend.app.db.enums import CaseState, DocumentVariantType
 from backend.app.db.models.phase1 import (
-    Case, Company, Document, DocumentVariant, DocumentVersion, Site,
+    AppUser, AuditEvent, Case, Company, Document, DocumentGenerationRun,
+    DocumentVariant, DocumentVersion, Site,
 )
 from backend.app.services.catalog import CatalogReadService
 from backend.app.services.document_api import DocumentWorkflowService
@@ -156,3 +157,63 @@ def test_khkt_typed_create_rejects_unknown_case_before_document_query(tmp_path):
                 session, case_id="not-a-case", idempotency_key=None,
             )
         assert err.value.status_code == 404
+
+
+@pytest.mark.parametrize("gxp_type", ("GMP", "GLP", "GMPbb", "GSP"))
+def test_generic_render_cannot_bypass_current_khkt_create_guard(
+    tmp_path, gxp_type,
+):
+    engine, case_id = _case_and_document(
+        tmp_path, gxp_type=gxp_type, document_state="current",
+    )
+    user = build_authenticated_user(
+        "unpersisted-khkt-generic", permissions={"document.write"},
+    )
+    with Session(engine) as session:
+        version_ids = list(session.scalars(select(DocumentVersion.id)))
+        with pytest.raises(HTTPException, match="already exists") as err:
+            DocumentWorkflowService().render_template_docx(
+                session,
+                storage=object(),
+                payload={
+                    "family_code": FAMILY,
+                    "case_id": case_id,
+                    "gxp_type": gxp_type,
+                    "storage_scope": "inspection_folder",
+                    "idempotency_key": "generic-bypass-attempt",
+                    "output_filename": "untrusted-output.docx",
+                    "payload": {},
+                    "strict_payload": True,
+                },
+                user=user,
+            )
+        assert err.value.status_code == 409
+        # Conflict must happen before actor, run, audit or output allocation.
+        assert list(session.scalars(select(AppUser))) == []
+        assert list(session.scalars(select(DocumentGenerationRun))) == []
+        assert list(session.scalars(select(AuditEvent))) == []
+        assert list(session.scalars(select(DocumentVersion.id))) == version_ids
+        assert len(session.new) == 0
+
+
+def test_generic_khkt_render_requires_canonical_case_before_any_mutation(tmp_path):
+    engine, _ = _case_and_document(tmp_path)
+    with Session(engine) as session:
+        with pytest.raises(HTTPException, match="requires canonical case_id") as err:
+            DocumentWorkflowService().render_template_docx(
+                session,
+                storage=object(),
+                payload={
+                    "family_code": FAMILY,
+                    "case_id": None,
+                    "gxp_type": "GMP",
+                    "output_filename": "khkt.docx",
+                    "payload": {},
+                },
+                user=build_authenticated_user(
+                    "unpersisted-no-case", permissions={"document.write"},
+                ),
+            )
+        assert err.value.status_code == 409
+        assert list(session.scalars(select(AppUser))) == []
+        assert list(session.scalars(select(DocumentGenerationRun))) == []

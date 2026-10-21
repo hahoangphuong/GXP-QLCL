@@ -34,11 +34,14 @@ if not DATABASE_URL.startswith("postgresql"):
     pytest.skip("requires isolated PostgreSQL transaction locks", allow_module_level=True)
 
 
-def test_typed_and_generic_khkt_render_serialize_on_case_and_observe_committed_version():
-    """A competing generic render blocks before any mutation, then sees HTTP 409.
+@pytest.mark.parametrize("contender_operation", ("render", "prepare"))
+def test_typed_and_generic_khkt_create_serialize_on_case_and_observe_committed_version(
+    contender_operation,
+):
+    """A competing generic PREPARE or RENDER blocks before mutation, then sees 409.
 
     First transaction holds Case row FOR UPDATE while the second attempts the
-    generic render entrypoint with a bounded lock timeout. The winner then commits a
+    generic preparation or render entrypoint with a bounded lock timeout. The winner then commits a
     fully locatable KHKT document version. The retry must see that committed
     version and reject creation instead of issuing another render payload.
     """
@@ -117,6 +120,19 @@ def test_typed_and_generic_khkt_render_serialize_on_case_and_observe_committed_v
             "unpersisted-khkt-generic", permissions={"document.write"},
         )
 
+        def try_generic_khkt_create(session):
+            action = (
+                service.prepare_generation
+                if contender_operation == "prepare"
+                else service.render_template_docx
+            )
+            return action(
+                session,
+                storage=object(),
+                payload=generic_payload,
+                user=generic_user,
+            )
+
         contender = factory()
         contender.execute(text("SET LOCAL lock_timeout = '250ms'"))
         contender_connection = contender.connection()
@@ -131,12 +147,7 @@ def test_typed_and_generic_khkt_render_serialize_on_case_and_observe_committed_v
         event.listen(engine, "before_cursor_execute", capture_mutations)
         try:
             with pytest.raises(OperationalError, match="lock timeout"):
-                service.render_template_docx(
-                    contender,
-                    storage=object(),
-                    payload=generic_payload,
-                    user=generic_user,
-                )
+                try_generic_khkt_create(contender)
         finally:
             event.remove(engine, "before_cursor_execute", capture_mutations)
             contender.rollback()
@@ -180,12 +191,7 @@ def test_typed_and_generic_khkt_render_serialize_on_case_and_observe_committed_v
         blocker.commit()
 
         with pytest.raises(HTTPException, match="already exists") as conflict:
-            service.render_template_docx(
-                contender,
-                storage=object(),
-                payload=generic_payload,
-                user=generic_user,
-            )
+            try_generic_khkt_create(contender)
         assert conflict.value.status_code == 409
         contender.rollback()
 

@@ -614,6 +614,22 @@ class DocumentWorkflowService:
         payload: dict[str, Any],
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        if payload.get("family_code") == INSPECTION_KE_HOACH_KT_FAMILY:
+            # Generic PREPARE is also a KHKT create entrypoint: it persists a
+            # document shell and generation run even without rendering Word.
+            # Reuse the exact typed/render Case lock and current-version owner
+            # before creating an AppUser, run or audit event.
+            case_id = payload.get("case_id")
+            if not isinstance(case_id, str) or not case_id.strip():
+                raise HTTPException(
+                    status_code=409,
+                    detail="INSPECTION_KE_HOACH_KT prepare requires canonical case_id.",
+                )
+            self.build_case_inspection_plan_render_payload(
+                session,
+                case_id=case_id,
+                idempotency_key=payload.get("idempotency_key"),
+            )
         actor = self._get_or_create_app_user(session, user)
         try:
             prepared = prepare_document_generation_job(

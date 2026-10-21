@@ -643,6 +643,40 @@ def test_khkt_binary_end_to_end_renders_canonical_db_payload_and_writes_output(m
             assert len(session.new) == 0
             assert len(session.dirty) == 0
 
+            # A persisted locator is not sufficient: the read-only preview
+            # must actually reopen and checksum the template's bytes.
+            template_path = root / "templates" / template_relative
+            original_bytes = template_path.read_bytes()
+            template_path.write_bytes(b"synthetic checksum drift")
+            try:
+                drift = service.get_case_inspection_plan_runtime_readiness(
+                    session, case_id=case_id, storage=storage,
+                )
+                assert drift["canonical_input_status"] == "ready"
+                assert drift["template_binary_status"] == "blocked"
+                assert drift["inspection_folder_status"] == "ready"
+                assert drift["ready_to_attempt_render"] is False
+            finally:
+                template_path.write_bytes(original_bytes)
+
+            # The previously persisted inspection binding also ceases to be
+            # proof when its physical directory disappears.
+            physical_folder = root / "inspection" / output_folder
+            physical_folder.rmdir()
+            try:
+                missing_folder = service.get_case_inspection_plan_runtime_readiness(
+                    session, case_id=case_id, storage=storage,
+                )
+                assert missing_folder["template_binary_status"] == "ready"
+                assert missing_folder["inspection_folder_status"] == "blocked"
+                assert missing_folder["ready_to_attempt_render"] is False
+            finally:
+                physical_folder.mkdir(parents=True)
+
+            assert len(list(session.scalars(select(StorageBinding)))) == binding_count_before
+            assert len(session.new) == 0
+            assert len(session.dirty) == 0
+
             result = service.render_template_docx(
                 session,
                 storage=storage,

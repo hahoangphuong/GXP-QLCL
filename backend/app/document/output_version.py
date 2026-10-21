@@ -636,13 +636,13 @@ def finalize_output_document_version_write(
         document_version,
     )
     expected_checksum = sha256(binary_payload).hexdigest()
-    storage.write_stream(
-        allocation.storage_relative_path,
-        BytesIO(binary_payload),
-        root=allocation.storage_root,
-        overwrite=False,
-    )
     try:
+        storage.write_stream(
+            allocation.storage_relative_path,
+            BytesIO(binary_payload),
+            root=allocation.storage_root,
+            overwrite=False,
+        )
         checksum = storage.checksum(
             allocation.storage_relative_path,
             root=allocation.storage_root,

@@ -696,6 +696,18 @@ def test_khkt_binary_end_to_end_renders_canonical_db_payload_and_writes_output(m
                 ),
             )
             session.commit()
+            # The diagnostic must not claim CREATE can be attempted again
+            # when this Case already has a committed current KHKT version.
+            after_success = service.get_case_inspection_plan_runtime_readiness(
+                session, case_id=case_id, storage=storage,
+            )
+            assert after_success["canonical_input_status"] == "ready"
+            assert after_success["template_binary_status"] == "ready"
+            assert after_success["inspection_folder_status"] == "ready"
+            assert after_success["ready_to_attempt_render"] is False
+            assert "current_khkt_document_already_exists" in after_success["blocked_reasons"]
+            assert len(session.new) == 0
+            assert len(session.dirty) == 0
 
         assert result["generation_status"] == "succeeded"
         assert result["scalar_replacement_mode"] == "khkt_contract_exact"

@@ -471,6 +471,49 @@ def _seed_canonical_khkt(session: Session) -> tuple[str, str]:
     return case.id, site.id
 
 
+def test_khkt_readonly_runtime_prerequisites_do_not_prepare_or_resolve_persistently():
+    from backend.app.db.models.phase1 import (
+        AppUser, AuditEvent, Document, DocumentGenerationRun,
+        StorageResolutionLog,
+    )
+    from backend.app.read_models import CaseInspectionPlanRuntimeReadinessRead
+
+    storage, root = _storage()
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = DocumentWorkflowService()
+    try:
+        with Session(engine) as session:
+            case_id, _ = _seed_canonical_khkt(session)
+            session.commit()
+
+            # Canonical business input exists, but this session has no exact
+            # template binding or inspection folder. The diagnostic must be
+            # read-only, unlike prepare_generation/resolve_inspection_folder.
+            preview = service.get_case_inspection_plan_runtime_readiness(
+                session, case_id=case_id, storage=storage,
+            )
+            typed = CaseInspectionPlanRuntimeReadinessRead(**preview)
+            assert typed.canonical_input_status == "ready"
+            assert typed.template_binary_status == "blocked"
+            assert typed.inspection_folder_status == "blocked"
+            assert typed.ready_to_attempt_render is False
+            assert "template_binary_or_contract_unavailable" in typed.blocked_reasons
+            assert "inspection_folder_unavailable" in typed.blocked_reasons
+            assert len(session.new) == 0
+            assert len(session.dirty) == 0
+            for model in (
+                AppUser, AuditEvent, Document, DocumentGenerationRun,
+                StorageBinding, StorageResolutionLog,
+            ):
+                assert list(session.scalars(select(model))) == []
+            session.commit()
+            assert list(session.scalars(select(StorageResolutionLog))) == []
+    finally:
+        engine.dispose()
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_khkt_binary_end_to_end_renders_canonical_db_payload_and_writes_output(monkeypatch):
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
@@ -584,6 +627,21 @@ def test_khkt_binary_end_to_end_renders_canonical_db_payload_and_writes_output(m
             assert create["create_endpoint"].endswith(
                 "/documents/inspection-ke-hoach-kt/render"
             )
+
+            binding_count_before = len(list(session.scalars(select(StorageBinding))))
+            assert len(session.new) == 0
+            assert len(session.dirty) == 0
+            runtime = service.get_case_inspection_plan_runtime_readiness(
+                session, case_id=case_id, storage=storage,
+            )
+            assert runtime["canonical_input_status"] == "ready"
+            assert runtime["template_binary_status"] == "ready"
+            assert runtime["inspection_folder_status"] == "ready"
+            assert runtime["ready_to_attempt_render"] is True
+            assert runtime["blocked_reasons"] == []
+            assert len(list(session.scalars(select(StorageBinding)))) == binding_count_before
+            assert len(session.new) == 0
+            assert len(session.dirty) == 0
 
             result = service.render_template_docx(
                 session,

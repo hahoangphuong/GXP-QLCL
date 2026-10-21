@@ -147,6 +147,35 @@ class DocumentWorkflowService:
         return audit_event
 
     @staticmethod
+    def _current_openable_khkt_version_id(
+        session: Session, *, case_id: str,
+    ) -> str | None:
+        """Shared read-only current KHKT predicate for CREATE and diagnostic."""
+        return session.scalar(
+            select(DocumentVersion.id)
+            .join(
+                DocumentVariant,
+                DocumentVariant.id == DocumentVersion.document_variant_id,
+            )
+            .join(Document, Document.id == DocumentVariant.document_id)
+            .where(
+                Document.case_id == case_id,
+                Document.family_code == INSPECTION_KE_HOACH_KT_FAMILY,
+                DocumentVersion.is_current.is_(True),
+                *(
+                    func.length(func.trim(field)) > 0
+                    for field in (
+                        DocumentVersion.storage_root,
+                        DocumentVersion.storage_relative_path,
+                        DocumentVersion.original_filename,
+                        DocumentVersion.checksum_sha256,
+                    )
+                ),
+            )
+            .limit(1)
+        )
+
+    @staticmethod
     def build_case_inspection_plan_render_payload(
         session: Session,
         *,
@@ -170,28 +199,8 @@ class DocumentWorkflowService:
         except InspectionKeHoachKtTemplateAssetContractError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-        current_version_id = session.scalar(
-            select(DocumentVersion.id)
-            .join(
-                DocumentVariant,
-                DocumentVariant.id == DocumentVersion.document_variant_id,
-            )
-            .join(Document, Document.id == DocumentVariant.document_id)
-            .where(
-                Document.case_id == case.id,
-                Document.family_code == INSPECTION_KE_HOACH_KT_FAMILY,
-                DocumentVersion.is_current.is_(True),
-                *(
-                    func.length(func.trim(field)) > 0
-                    for field in (
-                        DocumentVersion.storage_root,
-                        DocumentVersion.storage_relative_path,
-                        DocumentVersion.original_filename,
-                        DocumentVersion.checksum_sha256,
-                    )
-                ),
-            )
-            .limit(1)
+        current_version_id = DocumentWorkflowService._current_openable_khkt_version_id(
+            session, case_id=case.id,
         )
         if current_version_id is not None:
             raise HTTPException(
@@ -242,6 +251,10 @@ class DocumentWorkflowService:
         folder_status = "not_checked"
         blockers: list[str] = []
         with session.no_autoflush:
+            # Identical current-version predicate as typed and generic KHKT
+            # CREATE, but without taking a FOR UPDATE lock in this GET probe.
+            if self._current_openable_khkt_version_id(session, case_id=case.id):
+                blockers.append("current_khkt_document_already_exists")
             try:
                 canonical = load_inspection_ke_hoach_kt_payload_input(
                     session,
@@ -333,6 +346,7 @@ class DocumentWorkflowService:
                 input_status == "ready"
                 and template_status == "ready"
                 and folder_status == "ready"
+                and "current_khkt_document_already_exists" not in blockers
             ),
             "blocked_reasons": blockers,
         }

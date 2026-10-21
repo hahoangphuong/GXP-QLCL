@@ -423,6 +423,17 @@ class AuthenticatedIdentityRead(BaseModel):
     permissions: list[str]
 
 
+class CaseInspectionPlanRuntimeReadinessRead(BaseModel):
+    case_id: str
+    family_code: Literal["INSPECTION_KE_HOACH_KT"]
+    gxp_type: str
+    canonical_input_status: Literal["ready", "blocked"]
+    template_binary_status: Literal["ready", "blocked", "not_checked"]
+    inspection_folder_status: Literal["ready", "blocked", "unavailable"]
+    ready_to_attempt_render: bool
+    blocked_reasons: list[str]
+
+
 class ContextualDocumentActionAvailabilityRead(BaseModel):
     action_key: Literal["open", "create", "history"]
     label: str

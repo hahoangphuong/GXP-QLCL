@@ -5,6 +5,7 @@ from backend.app.document.inspection_ke_hoach_kt_province_projection import (
 )
 from backend.app.document.inspection_qd_kt_legacy_province_band import (
     qdkt_vkn_from_source_province,
+    classify_qdkt_legacy_province_zone,
 )
 from backend.app.document.inspection_qd_kt_vkn_authority import QdKtAuthorityBlocked
 
@@ -42,3 +43,15 @@ def test_unsupported_classification_or_legacy_location_fails_closed(
         qdkt_vkn_from_source_province(
             manufacture_kind=manufacture_kind, registered_province=province
         )
+
+
+def test_geography_classification_independent_of_manufacturing_type():
+    ref = load_inspection_ke_hoach_kt_province_reference()
+    assert classify_qdkt_legacy_province_zone(
+        registered_province=ref.entries[31].province_name, reference=ref
+    ) == "DA_NANG_AND_NORTH"
+    assert classify_qdkt_legacy_province_zone(
+        registered_province=ref.entries[32].province_name, reference=ref
+    ) == "SOUTH_OF_DA_NANG"
+    with pytest.raises(QdKtAuthorityBlocked, match="LEGACY_PROVINCE_MAPPING_UNPROVEN"):
+        classify_qdkt_legacy_province_zone(registered_province="Unknown province", reference=ref)

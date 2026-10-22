@@ -63,3 +63,61 @@ def test_incomplete_ambiguous_or_replacement_source_fails_closed(decisions):
 def test_missing_or_stale_scalar_projection_never_silently_falls_back(override):
     with pytest.raises(QdKtDecisionSourceBlocked, match="DECISION_PROJECTION_MISMATCH"):
         select(**override)
+
+
+def test_db_adapter_reads_existing_inspection_decisions_without_writing(tmp_path):
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import Session
+    from backend.app.db.base import Base
+    from backend.app.db.enums import CaseState
+    from backend.app.db.models.phase1 import (
+        Case, Company, Site, InspectionPlan, InspectionDecision,
+    )
+    from backend.app.document.inspection_qd_kt_decision_source import (
+        read_unique_qdkt_source_for_plan,
+    )
+
+    engine = create_engine(f"sqlite:///{(tmp_path / 'qdkt-source.sqlite').as_posix()}")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        company = Company(legal_name="Synthetic company")
+        db.add(company)
+        db.flush()
+        site = Site(company_id=company.id, site_name="Synthetic site")
+        db.add(site)
+        db.flush()
+        case = Case(site_id=site.id, gxp_type="GMP", state=CaseState.DRAFT)
+        db.add(case)
+        db.flush()
+        plan = InspectionPlan(
+            case_id=case.id,
+            decision_reference=SOURCE.reference,
+            decision_date=SOURCE.decision_on,
+            decision_legacy_raw=SOURCE.legacy_raw,
+        )
+        db.add(plan)
+        db.flush()
+        plan_id = plan.id
+        assert not db.scalars(
+            select(InspectionDecision).where(InspectionDecision.inspection_plan_id == plan_id)
+        ).all()
+        with pytest.raises(QdKtDecisionSourceBlocked, match="SOURCE_DECISION_CARDINALITY_UNPROVEN"):
+            read_unique_qdkt_source_for_plan(db, plan)
+
+        row = InspectionDecision(
+            inspection_plan_id=plan_id,
+            ordinal=1,
+            reference=SOURCE.reference,
+            decision_on=SOURCE.decision_on,
+            legacy_raw=SOURCE.legacy_raw,
+        )
+        db.add(row)
+        db.flush()
+        assert read_unique_qdkt_source_for_plan(db, plan).source_decision_id == row.id
+
+        plan.decision_reference = "stale projection"
+        with pytest.raises(QdKtDecisionSourceBlocked, match="DECISION_PROJECTION_MISMATCH"):
+            read_unique_qdkt_source_for_plan(db, plan)
+        db.rollback()
+
+    engine.dispose()

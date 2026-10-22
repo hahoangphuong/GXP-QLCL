@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 from backend.app.document.inspection_qd_kt_decision_source import (
     QdKtDecisionSourceBlocked, read_latest_qdkt_reference_for_case,
 )
+from backend.app.document.inspection_qd_kt_legacy_province_band import qdkt_vkn_from_source_province
+from backend.app.document.inspection_qd_kt_vkn_authority import QdKtAuthorityBlocked
 from backend.app.document.inspection_qd_kt_registered_site import (
     QdKtRegisteredSiteBlocked, read_qdkt_registered_site,
 )
@@ -54,6 +56,15 @@ def inspect_qdkt_case_readiness(session: Session, *, case_id: str) -> QdKtCaseRe
         registered_site_id = site.site_id
         if not site.province_name:
             blockers.append("REGISTERED_PROVINCE_MISSING")
+        else:
+            # Check source province mapping without inferring manufacturing kind.
+            try:
+                qdkt_vkn_from_source_province(
+                    manufacture_kind="MEDICINE",
+                    registered_province=site.province_name,
+                )
+            except QdKtAuthorityBlocked as exc:
+                blockers.append(str(exc))
     except QdKtRegisteredSiteBlocked as exc:
         blockers.append(str(exc))
     blockers.extend(_PENDING_CONTRACTS)

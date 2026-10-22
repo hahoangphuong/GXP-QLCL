@@ -34,7 +34,7 @@ import {
   getDocumentDetail,
   openCapaCycleDocumentCurrentContent,
   openCaseDocumentCurrentContent,
-  renderTemplateDocx,
+  renderCaseInspectionPlan,
   getFacilityWorkspace,
   getGxpCertificateDetail,
   issueGxpCertificate,
@@ -2025,22 +2025,15 @@ export function SearchPage({
       action.family_code !== item.family_code ||
       action.parent_scope !== "case" ||
       action.parent_id !== caseId ||
-      !action.create_gxp_type ||
-      !action.create_storage_scope ||
-      !action.create_output_filename
+      action.create_http_method !== "POST" ||
+      action.create_input_readiness !== "CANONICAL_INPUT_READY" ||
+      action.create_endpoint !== `/cases/${caseId}/documents/inspection-ke-hoach-kt/render`
     ) {
       throw new Error("Backend chưa trả create contract KHKT đầy đủ hoặc ngữ cảnh đã thay đổi.");
     }
-    await renderTemplateDocx(
-      {
-        family_code: action.family_code,
-        case_id: action.parent_id,
-        gxp_type: action.create_gxp_type,
-        storage_scope: action.create_storage_scope,
-        payload: {},
-        strict_payload: true,
-        output_filename: action.create_output_filename,
-      },
+    await renderCaseInspectionPlan(
+      action.create_endpoint,
+      {},
       auth,
       useStubAuth,
       bearerToken,

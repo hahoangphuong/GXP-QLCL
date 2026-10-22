@@ -701,6 +701,10 @@ export type ContextualDocumentActionAvailability = {
   create_gxp_type?: string | null;
   create_storage_scope?: string | null;
   create_output_filename?: string | null;
+  create_endpoint?: string | null;
+  create_http_method?: "POST" | null;
+  create_input_readiness?: "CANONICAL_INPUT_READY" | "CANONICAL_INPUT_BLOCKED" | null;
+  create_input_blocked_reason?: string | null;
 };
 
 export type ContextualDocumentAction = {
@@ -1243,6 +1247,21 @@ export type DocumentRenderResponse = {
   replaced_table_regions: string[];
   replaced_parts: string[];
   audit_event_id: string;
+};
+
+export type CaseInspectionPlanRenderRequest = {
+  idempotency_key?: string | null;
+};
+
+export type CaseInspectionPlanRuntimeReadiness = {
+  case_id: string;
+  family_code: "INSPECTION_KE_HOACH_KT";
+  gxp_type: string;
+  canonical_input_status: "ready" | "blocked";
+  template_binary_status: "ready" | "blocked" | "not_checked";
+  inspection_folder_status: "ready" | "blocked" | "unavailable";
+  ready_to_attempt_render: boolean;
+  blocked_reasons: string[];
 };
 
 export type DocumentGenerationRunStatus = {

@@ -6,7 +6,6 @@ does not use current administrative codes or infer manufacturing status.
 from __future__ import annotations
 
 from backend.app.document.inspection_ke_hoach_kt_province_projection import (
-    InspectionKeHoachKtProvinceProjectionError,
     InspectionKeHoachKtProvinceReference,
     load_inspection_ke_hoach_kt_province_reference,
 )

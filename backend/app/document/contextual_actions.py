@@ -301,13 +301,10 @@ def build_document_action_states(
         # Only an enabled authorized action may disclose an invocable target.
         **(
             {}
-            if create_contract is None
+            if create_contract is None or create_permission_missing
             else (
                 create_contract
-                if (
-                    create_readiness == "READY_CREATE_OPEN_HISTORY"
-                    and not create_permission_missing
-                )
+                if create_readiness == "READY_CREATE_OPEN_HISTORY"
                 else {
                     key: value
                     for key, value in create_contract.items()

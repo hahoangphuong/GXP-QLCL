@@ -77,3 +77,40 @@ def require_unique_qdkt_source(
         decision_on=item.decision_on,
         legacy_raw=item.legacy_raw,
     )
+
+
+def read_unique_qdkt_source_for_plan(session, plan) -> QdKtDecisionAtoms:
+    """Read the existing source rows for one persisted InspectionPlan.
+
+    The query is read-only and prevents a pending unrelated ORM change from
+    being flushed implicitly by this preflight. Callers still need separate
+    evidence gates for template, place, authority and inspector bookmarks.
+    """
+    from sqlalchemy import select
+    from backend.app.db.models.phase1 import InspectionDecision
+
+    if not getattr(plan, "id", None):
+        raise QdKtDecisionSourceBlocked("INSPECTION_PLAN_ID_MISSING")
+    with session.no_autoflush:
+        source_rows = session.scalars(
+            select(InspectionDecision)
+            .where(InspectionDecision.inspection_plan_id == plan.id)
+            .order_by(InspectionDecision.ordinal, InspectionDecision.id)
+        ).all()
+    return require_unique_qdkt_source(
+        (
+            QdKtSourceDecision(
+                id=row.id,
+                ordinal=row.ordinal,
+                reference=row.reference,
+                decision_on=row.decision_on,
+                legacy_raw=row.legacy_raw,
+                relation_type=row.relation_type,
+                related_decision_id=row.related_decision_id,
+            )
+            for row in source_rows
+        ),
+        plan_decision_reference=plan.decision_reference,
+        plan_decision_date=plan.decision_date,
+        plan_decision_legacy_raw=plan.decision_legacy_raw,
+    )

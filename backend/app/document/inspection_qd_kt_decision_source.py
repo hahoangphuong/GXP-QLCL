@@ -184,3 +184,38 @@ def require_latest_qdkt_reference(
         decision_on=latest.decision_on,
         legacy_raw=latest.legacy_raw,
     )
+
+
+def read_latest_qdkt_reference_for_case(session, *, case_id: str) -> QdKtDecisionAtoms:
+    """Read an explicit decision-replacement chain owned by one Case.
+
+    Only the ordered source collection is authoritative for this selection.
+    The plan's scalar projection is not substituted for a missing row.
+    """
+    from sqlalchemy import select
+    from backend.app.db.models.phase1 import Case, InspectionPlan, InspectionDecision
+
+    if not isinstance(case_id, str) or not case_id.strip():
+        raise QdKtDecisionSourceBlocked("CASE_ID_MISSING")
+    with session.no_autoflush:
+        if session.get(Case, case_id) is None:
+            raise QdKtDecisionSourceBlocked("CASE_NOT_FOUND")
+        plans = session.scalars(
+            select(InspectionPlan).where(InspectionPlan.case_id == case_id)
+        ).all()
+        if len(plans) != 1:
+            raise QdKtDecisionSourceBlocked("CASE_INSPECTION_PLAN_NOT_UNIQUE")
+        rows = session.scalars(
+            select(InspectionDecision)
+            .where(InspectionDecision.inspection_plan_id == plans[0].id)
+            .order_by(InspectionDecision.ordinal, InspectionDecision.id)
+        ).all()
+    return require_latest_qdkt_reference(
+        QdKtSourceDecision(
+            id=row.id, ordinal=row.ordinal, reference=row.reference,
+            decision_on=row.decision_on, legacy_raw=row.legacy_raw,
+            relation_type=row.relation_type,
+            related_decision_id=row.related_decision_id,
+        )
+        for row in rows
+    )

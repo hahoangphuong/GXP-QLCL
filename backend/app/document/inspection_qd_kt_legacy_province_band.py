@@ -21,20 +21,20 @@ def classify_qdkt_legacy_province_zone(
     reference: InspectionKeHoachKtProvinceReference | None = None,
 ) -> str:
     """Classify registered geography without assigning manufacturing type."""
-        if not isinstance(registered_province, str) or not registered_province.strip():
-            raise QdKtAuthorityBlocked("REGISTERED_PROVINCE_MISSING")
-        source = reference or load_inspection_ke_hoach_kt_province_reference()
-        matches = [
-            entry for entry in source.entries
-            if entry.province_name.casefold() == registered_province.strip().casefold()
-        ]
-        if len(matches) != 1:
-            raise QdKtAuthorityBlocked("LEGACY_PROVINCE_MAPPING_UNPROVEN")
-        zone = (
-            "DA_NANG_AND_NORTH"
-            if matches[0].legacy_index <= source.vkn_central_institute_max_legacy_index
-            else "SOUTH_OF_DA_NANG"
-        )
+    if not isinstance(registered_province, str) or not registered_province.strip():
+        raise QdKtAuthorityBlocked("REGISTERED_PROVINCE_MISSING")
+    source = reference or load_inspection_ke_hoach_kt_province_reference()
+    matches = [
+        entry for entry in source.entries
+        if entry.province_name.casefold() == registered_province.strip().casefold()
+    ]
+    if len(matches) != 1:
+        raise QdKtAuthorityBlocked("LEGACY_PROVINCE_MAPPING_UNPROVEN")
+    zone = (
+        "DA_NANG_AND_NORTH"
+        if matches[0].legacy_index <= source.vkn_central_institute_max_legacy_index
+        else "SOUTH_OF_DA_NANG"
+    )
     return zone
 
 

@@ -297,15 +297,23 @@ def build_document_action_states(
         "parent_scope": parent_scope,
         "parent_id": parent_id,
         "document_type_code": document_type_code,
-        # Disabled actions must not advertise stale typed create targets.
+        # Preserve non-actionable readiness diagnostics for blocked creates.
+        # Only an enabled authorized action may disclose an invocable target.
         **(
-            create_contract
-            if (
-                create_contract is not None
-                and create_readiness == "READY_CREATE_OPEN_HISTORY"
-                and not create_permission_missing
+            {}
+            if create_contract is None
+            else (
+                create_contract
+                if (
+                    create_readiness == "READY_CREATE_OPEN_HISTORY"
+                    and not create_permission_missing
+                )
+                else {
+                    key: value
+                    for key, value in create_contract.items()
+                    if key not in {"create_endpoint", "create_http_method"}
+                }
             )
-            else {}
         ),
     }
 

@@ -35,7 +35,7 @@ def test_blocked_create_never_advertises_endpoint_even_if_caller_passes_one(read
     assert action["available"] is False
     assert "create_endpoint" not in action
     assert "create_http_method" not in action
-    assert "create_input_readiness" not in action
+    assert action["create_input_readiness"] == "CANONICAL_INPUT_READY"
 
 
 def test_permission_denied_never_advertises_unduly_computed_endpoint():

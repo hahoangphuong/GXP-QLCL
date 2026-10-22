@@ -53,8 +53,8 @@ def test_qdkt_case_binding_blocks_cross_case_and_missing_plan(tmp_path):
         with pytest.raises(QdKtDecisionSourceBlocked, match="CASE_ID_MISSING"):
             read_unique_qdkt_source_for_case(db, case_id="")
 
-        assert db.dirty == set()
-        assert db.new == set()
+        assert len(db.dirty) == 0
+        assert len(db.new) == 0
         db.rollback()
     engine.dispose()
 

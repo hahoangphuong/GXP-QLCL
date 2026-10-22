@@ -8,7 +8,7 @@ lifecycle rule before QĐKT can be rendered.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Iterable
 
 
@@ -58,7 +58,7 @@ def require_unique_qdkt_source(
         or not item.reference
         or item.reference != item.reference.strip()
         or not isinstance(item.decision_on, date)
-        or isinstance(item.decision_on, __import__("datetime").datetime)
+        or isinstance(item.decision_on, datetime)
         or not item.legacy_raw
         or not item.legacy_raw.strip()
     ):

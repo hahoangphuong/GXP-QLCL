@@ -52,3 +52,51 @@ def test_explicit_replacement_chain_uses_latest_and_not_input_order():
 def test_missing_or_ambiguous_replacement_history_blocks(items):
     with pytest.raises(QdKtDecisionSourceBlocked):
         require_latest_qdkt_reference(items)
+
+
+def test_case_owned_latest_replacement_reads_real_sqlalchemy_rows(tmp_path):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from backend.app.db.base import Base
+    from backend.app.db.enums import CaseState
+    from backend.app.db.models.phase1 import (
+        Case, Company, Site, InspectionPlan, InspectionDecision,
+    )
+    from backend.app.document.inspection_qd_kt_decision_source import (
+        read_latest_qdkt_reference_for_case,
+    )
+
+    engine = create_engine(f"sqlite:///{(tmp_path / 'latest-qdkt.sqlite').as_posix()}")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        company = Company(legal_name="Reference fixture")
+        db.add(company)
+        db.flush()
+        site = Site(company_id=company.id, site_name="Reference site")
+        db.add(site)
+        db.flush()
+        first = Case(site_id=site.id, gxp_type="GMP", state=CaseState.DRAFT)
+        other = Case(site_id=site.id, gxp_type="GMP", state=CaseState.DRAFT)
+        db.add_all([first, other])
+        db.flush()
+        plan = InspectionPlan(case_id=first.id)
+        db.add(plan)
+        db.flush()
+        root = InspectionDecision(
+            inspection_plan_id=plan.id, ordinal=1,
+            reference=D1.reference, decision_on=D1.decision_on, legacy_raw=D1.legacy_raw,
+        )
+        db.add(root)
+        db.flush()
+        successor = InspectionDecision(
+            inspection_plan_id=plan.id, ordinal=2, reference=D2.reference,
+            decision_on=D2.decision_on, legacy_raw=D2.legacy_raw,
+            relation_type="REPLACES", related_decision_id=root.id,
+        )
+        db.add(successor)
+        db.flush()
+        assert read_latest_qdkt_reference_for_case(db, case_id=first.id).source_decision_id == successor.id
+        with pytest.raises(QdKtDecisionSourceBlocked, match="CASE_INSPECTION_PLAN_NOT_UNIQUE"):
+            read_latest_qdkt_reference_for_case(db, case_id=other.id)
+        db.rollback()
+    engine.dispose()

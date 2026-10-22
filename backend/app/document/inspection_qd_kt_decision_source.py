@@ -114,3 +114,27 @@ def read_unique_qdkt_source_for_plan(session, plan) -> QdKtDecisionAtoms:
         plan_decision_date=plan.decision_date,
         plan_decision_legacy_raw=plan.decision_legacy_raw,
     )
+
+
+def read_unique_qdkt_source_for_case(session, *, case_id: str) -> QdKtDecisionAtoms:
+    """Bind the read-only decision gate to one persisted Case identity.
+
+    This is intentionally an internal owner boundary, not a write/render API.
+    It cannot borrow another Case's InspectionPlan or fabricate a missing plan.
+    """
+    from sqlalchemy import select
+    from backend.app.db.models.phase1 import Case, InspectionPlan
+
+    if not isinstance(case_id, str) or not case_id.strip():
+        raise QdKtDecisionSourceBlocked("CASE_ID_MISSING")
+    with session.no_autoflush:
+        case = session.get(Case, case_id)
+        if case is None:
+            raise QdKtDecisionSourceBlocked("CASE_NOT_FOUND")
+        plans = session.scalars(
+            select(InspectionPlan)
+            .where(InspectionPlan.case_id == case.id)
+        ).all()
+        if len(plans) != 1:
+            raise QdKtDecisionSourceBlocked("CASE_INSPECTION_PLAN_NOT_UNIQUE")
+        return read_unique_qdkt_source_for_plan(session, plans[0])

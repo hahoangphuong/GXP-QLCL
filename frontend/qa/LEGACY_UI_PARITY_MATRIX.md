@@ -39,10 +39,28 @@ request. Pending deduplication and 403/409/422/no-retry behavior remain in the
 existing contextual-document owner; successful creation refreshes the selected
 Case and Facility workspaces exactly as before.
 
-The read-only runtime readiness GET is represented in the frontend API contract
-for integration/diagnostics. It is not treated as a guarantee and is not used to
-bypass the typed POST's render-time checks. Real Synology binary generation and
-authenticated staging remain unverified in this frontend slice.
+### KHKT runtime readiness consistency — 2026-10-22
+
+Current-main integration baseline `97ba11265751441c661a8e1085ec61a237696880`
+retains the Case-owned KHKT GET and POST contracts. Before this extension the
+read-only runtime readiness GET was represented by the API client but unused by
+the UI, so a create button could remain enabled while the template binary,
+inspection folder or an already-current KHKT made the attempted render known to
+be blocked.
+
+`SearchPage` now owns one cancellable readiness probe for the exact selected
+Case and advertised KHKT contract. The document row distinguishes loading,
+ready, blocked and transport/error states, keeps create disabled until the
+matching response is ready, explains backend blocker codes and retries only on
+an explicit user action. Request sequence plus AbortSignal reject Case A → B → A
+and reversed completions. Case/family/GxP response identity and the advertised
+Case endpoint/method are checked before enabling create. The typed POST with `{}`
+remains authoritative at render time and is never retried or replaced by the
+generic renderer. QĐKT and all other families without an advertised typed create
+contract remain blocked.
+
+Real Synology binary generation, authenticated staging and production UAT remain
+unverified in this frontend slice.
 
 ## Evidence closure and staging-readiness audit — 2026-10-13
 

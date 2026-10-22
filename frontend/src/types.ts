@@ -1264,6 +1264,16 @@ export type CaseInspectionPlanRuntimeReadiness = {
   blocked_reasons: string[];
 };
 
+export type CaseInspectionPlanReadinessState = {
+  case_id: string;
+  family_code: "INSPECTION_KE_HOACH_KT";
+} & (
+  | { status: "loading" }
+  | { status: "ready"; readiness: CaseInspectionPlanRuntimeReadiness }
+  | { status: "blocked"; readiness: CaseInspectionPlanRuntimeReadiness }
+  | { status: "error"; message: string }
+);
+
 export type DocumentGenerationRunStatus = {
   generation_run_id: string;
   document_id: string;

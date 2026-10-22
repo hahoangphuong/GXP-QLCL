@@ -80,6 +80,7 @@ const apiMocks = vi.hoisted(() => ({
   listCompanies: vi.fn().mockResolvedValue([]),
   listSites: vi.fn().mockResolvedValue([]),
   prepareDocument: vi.fn(),
+  getCaseInspectionPlanRuntimeReadiness: vi.fn(),
   renderCaseInspectionPlan: vi.fn(),
   renderTemplateDocx: vi.fn(),
   submitCapaCycle: vi.fn(),
@@ -200,6 +201,7 @@ function resetApiMocks() {
   apiMocks.listCompanies.mockReset();
   apiMocks.listSites.mockReset();
   apiMocks.prepareDocument.mockReset();
+  apiMocks.getCaseInspectionPlanRuntimeReadiness.mockReset();
   apiMocks.renderCaseInspectionPlan.mockReset();
   apiMocks.renderTemplateDocx.mockReset();
   apiMocks.submitCapaCycle.mockReset();
@@ -228,6 +230,16 @@ function resetApiMocks() {
   apiMocks.assessCapaCycle.mockResolvedValue(null);
   apiMocks.createCapaCycle.mockResolvedValue(null);
   apiMocks.createInspectionCase.mockResolvedValue(null);
+  apiMocks.getCaseInspectionPlanRuntimeReadiness.mockResolvedValue({
+    case_id: "case-1",
+    family_code: "INSPECTION_KE_HOACH_KT",
+    gxp_type: "GMP",
+    canonical_input_status: "ready",
+    template_binary_status: "ready",
+    inspection_folder_status: "ready",
+    ready_to_attempt_render: true,
+    blocked_reasons: [],
+  });
   apiMocks.createChangeRequest.mockResolvedValue(null);
   apiMocks.createChangeRequestDetail.mockResolvedValue(null);
   apiMocks.updateChangeRequest.mockResolvedValue(null);
@@ -638,6 +650,54 @@ function buildCaseWorkspace(overrides: Record<string, unknown> = {}) {
       },
     ],
     linked_business_eligibility_certificates: [],
+    ...overrides,
+  };
+}
+
+function buildKhktDocument(caseId = "case-1", actionOverrides: Record<string, unknown> = {}) {
+  return {
+    checklist_key: `case:${caseId}:INSPECTION_KE_HOACH_KT`,
+    label: "Kế hoạch kiểm tra",
+    family_code: "INSPECTION_KE_HOACH_KT",
+    workflow_step: "Kiểm tra",
+    parent_scope: "case",
+    parent_id: caseId,
+    status: "missing",
+    document_id: null,
+    document_type_code: null,
+    title: null,
+    original_filename: null,
+    issued_on: null,
+    available_variant_types: [],
+    detail_available: false,
+    actions: [{
+      action_key: "create",
+      label: "Tạo",
+      available: true,
+      disabled_reason: null,
+      required_permissions: ["document.write"],
+      family_code: "INSPECTION_KE_HOACH_KT",
+      parent_scope: "case",
+      parent_id: caseId,
+      create_endpoint: `/cases/${caseId}/documents/inspection-ke-hoach-kt/render`,
+      create_http_method: "POST",
+      create_input_readiness: "CANONICAL_INPUT_READY",
+      create_input_blocked_reason: null,
+      ...actionOverrides,
+    }],
+  };
+}
+
+function buildKhktReadiness(caseId = "case-1", overrides: Record<string, unknown> = {}) {
+  return {
+    case_id: caseId,
+    family_code: "INSPECTION_KE_HOACH_KT",
+    gxp_type: "GMP",
+    canonical_input_status: "ready",
+    template_binary_status: "ready",
+    inspection_folder_status: "ready",
+    ready_to_attempt_render: true,
+    blocked_reasons: [],
     ...overrides,
   };
 }
@@ -2641,6 +2701,235 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.renderTemplateDocx).not.toHaveBeenCalled();
     expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(1);
     expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps KHKT create disabled until the matching runtime readiness GET is ready", async () => {
+    const base = buildCaseWorkspace();
+    const document = {
+      ...base.contextual_document_actions[0],
+      checklist_key: "case:case-1:INSPECTION_KE_HOACH_KT",
+      label: "Kế hoạch kiểm tra",
+      family_code: "INSPECTION_KE_HOACH_KT",
+      workflow_step: "Kiểm tra",
+      parent_scope: "case" as const,
+      parent_id: "case-1",
+      document_id: null,
+      actions: [{
+        action_key: "create" as const,
+        label: "Tạo",
+        available: true,
+        disabled_reason: null,
+        required_permissions: ["document.write"],
+        family_code: "INSPECTION_KE_HOACH_KT",
+        parent_scope: "case" as const,
+        parent_id: "case-1",
+        create_endpoint: "/cases/case-1/documents/inspection-ke-hoach-kt/render",
+        create_http_method: "POST" as const,
+        create_input_readiness: "CANONICAL_INPUT_READY" as const,
+        create_input_blocked_reason: null,
+      }],
+    };
+    let resolveReadiness!: (value: {
+      case_id: string; family_code: "INSPECTION_KE_HOACH_KT"; gxp_type: string;
+      canonical_input_status: "ready"; template_binary_status: "ready";
+      inspection_folder_status: "ready"; ready_to_attempt_render: boolean; blocked_reasons: string[];
+    }) => void;
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ contextual_document_actions: [document] }));
+    apiMocks.getCaseInspectionPlanRuntimeReadiness.mockImplementation(() => new Promise(resolve => { resolveReadiness = resolve; }));
+
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    const create = await screen.findByRole("button", { name: "Tạo Kế hoạch kiểm tra" });
+    expect(create).toBeDisabled();
+    expect(screen.getByText("Đang kiểm tra khả năng tạo tài liệu...")).toBeInTheDocument();
+    fireEvent.click(create);
+    expect(apiMocks.renderCaseInspectionPlan).not.toHaveBeenCalled();
+    expect(apiMocks.getCaseInspectionPlanRuntimeReadiness).toHaveBeenCalledTimes(1);
+
+    await act(async () => resolveReadiness({
+      case_id: "case-1",
+      family_code: "INSPECTION_KE_HOACH_KT",
+      gxp_type: "GMP",
+      canonical_input_status: "ready",
+      template_binary_status: "ready",
+      inspection_folder_status: "ready",
+      ready_to_attempt_render: true,
+      blocked_reasons: [],
+    }));
+    expect(create).toBeEnabled();
+  });
+
+  it("keeps KHKT create blocked and explains runtime prerequisites returned by the backend", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ contextual_document_actions: [buildKhktDocument()] }));
+    apiMocks.getCaseInspectionPlanRuntimeReadiness.mockResolvedValue(buildKhktReadiness("case-1", {
+      template_binary_status: "blocked",
+      ready_to_attempt_render: false,
+      blocked_reasons: ["template_binary_or_contract_unavailable"],
+    }));
+
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    expect(await screen.findByText(/Mẫu Kế hoạch kiểm tra chưa sẵn sàng/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tạo Kế hoạch kiểm tra" })).toBeDisabled();
+    expect(apiMocks.renderCaseInspectionPlan).not.toHaveBeenCalled();
+  });
+
+  it.each([401, 403, 404, 409, 422])("fails closed on KHKT readiness GET %s without retry or generic fallback", async status => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ contextual_document_actions: [buildKhktDocument()] }));
+    apiMocks.getCaseInspectionPlanRuntimeReadiness.mockRejectedValue(buildApiError(`readiness ${status}`, status));
+
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(`readiness ${status}`);
+    expect(screen.getByRole("button", { name: "Tạo Kế hoạch kiểm tra" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Thử kiểm tra lại" })).toBeEnabled();
+    expect(apiMocks.getCaseInspectionPlanRuntimeReadiness).toHaveBeenCalledTimes(1);
+    expect(apiMocks.renderCaseInspectionPlan).not.toHaveBeenCalled();
+    expect(apiMocks.renderTemplateDocx).not.toHaveBeenCalled();
+  });
+
+  it("retries only after an explicit readiness retry and then enables the typed create", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ contextual_document_actions: [buildKhktDocument()] }));
+    apiMocks.getCaseInspectionPlanRuntimeReadiness
+      .mockRejectedValueOnce(new Error("network unavailable"))
+      .mockResolvedValueOnce(buildKhktReadiness());
+
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    const retry = await screen.findByRole("button", { name: "Thử kiểm tra lại" });
+    expect(apiMocks.getCaseInspectionPlanRuntimeReadiness).toHaveBeenCalledTimes(1);
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Tạo Kế hoạch kiểm tra" })).toBeEnabled());
+    expect(apiMocks.getCaseInspectionPlanRuntimeReadiness).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    { create_endpoint: "/cases/other/documents/inspection-ke-hoach-kt/render" },
+    { create_http_method: "GET" },
+  ])("rejects mismatched KHKT create metadata before readiness or POST: $create_endpoint $create_http_method", async actionOverrides => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ contextual_document_actions: [buildKhktDocument("case-1", actionOverrides)] }));
+
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("create contract KHKT");
+    expect(screen.getByRole("button", { name: "Tạo Kế hoạch kiểm tra" })).toBeDisabled();
+    expect(apiMocks.getCaseInspectionPlanRuntimeReadiness).not.toHaveBeenCalled();
+    expect(apiMocks.renderCaseInspectionPlan).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { case_id: "other-case" },
+    { family_code: "INSPECTION_QD_KT" },
+    { gxp_type: "GLP" },
+  ])("rejects a KHKT readiness response owned by another identity: $case_id $family_code $gxp_type", async readinessOverrides => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ contextual_document_actions: [buildKhktDocument()] }));
+    apiMocks.getCaseInspectionPlanRuntimeReadiness.mockResolvedValue(buildKhktReadiness("case-1", readinessOverrides));
+
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("không khớp hồ sơ");
+    expect(screen.getByRole("button", { name: "Tạo Kế hoạch kiểm tra" })).toBeDisabled();
+    expect(apiMocks.renderCaseInspectionPlan).not.toHaveBeenCalled();
+  });
+
+  it("does not probe KHKT readiness without a selected Case", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [], total_count: 0, offset: 0, limit: 100 });
+    renderApp(["/search"]);
+    await screen.findByText("Không có kết quả");
+    expect(apiMocks.getCaseInspectionPlanRuntimeReadiness).not.toHaveBeenCalled();
+    expect(apiMocks.renderCaseInspectionPlan).not.toHaveBeenCalled();
+    await flushSearchUrlSync();
+  });
+
+  it("owns KHKT readiness across Case A → B → A and ignores every superseded response", async () => {
+    const history = ["A", "B"].map(suffix => ({
+      id: `case-${suffix}`,
+      source_type: "case",
+      reference_code: `KT-${suffix}`,
+      event_type: `Case ${suffix}`,
+      gxp_type: "GMP",
+      standard: "WHO-GMP",
+      occurred_on: `2026-08-0${suffix === "A" ? 1 : 2}`,
+      state: "inspection_scheduled",
+    }));
+    let resolveOldA!: (value: ReturnType<typeof buildKhktReadiness>) => void;
+    let resolveB!: (value: ReturnType<typeof buildKhktReadiness>) => void;
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history }));
+    apiMocks.getCaseWorkspace.mockImplementation(async (caseId: string) => buildCaseWorkspace({
+      case_summary: { ...buildCaseWorkspace().case_summary, id: caseId },
+      contextual_document_actions: [buildKhktDocument(caseId)],
+    }));
+    apiMocks.getCaseInspectionPlanRuntimeReadiness.mockImplementation((caseId: string) => {
+      const call = apiMocks.getCaseInspectionPlanRuntimeReadiness.mock.calls.length;
+      if (call === 1) return new Promise(resolve => { resolveOldA = resolve; });
+      if (caseId === "case-B") return new Promise(resolve => { resolveB = resolve; });
+      return Promise.resolve(buildKhktReadiness("case-A"));
+    });
+
+    renderApp(["/search"]);
+    await waitFor(() => expect(apiMocks.getCaseInspectionPlanRuntimeReadiness).toHaveBeenCalledWith("case-A", expect.any(Object), true, null, expect.any(AbortSignal)));
+    fireEvent.click(screen.getByRole("row", { name: /Case B/ }));
+    await waitFor(() => expect(apiMocks.getCaseInspectionPlanRuntimeReadiness).toHaveBeenCalledWith("case-B", expect.any(Object), true, null, expect.any(AbortSignal)));
+    fireEvent.click(screen.getByRole("row", { name: /Case A/ }));
+    await waitFor(() => expect(apiMocks.getCaseInspectionPlanRuntimeReadiness).toHaveBeenCalledTimes(3));
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Tạo Kế hoạch kiểm tra" })).toBeEnabled());
+    await act(async () => {
+      resolveB(buildKhktReadiness("case-B", { ready_to_attempt_render: false, blocked_reasons: ["inspection_folder_unavailable"] }));
+      resolveOldA(buildKhktReadiness("case-A", { ready_to_attempt_render: false, blocked_reasons: ["template_binary_or_contract_unavailable"] }));
+    });
+    expect(screen.getByRole("button", { name: "Tạo Kế hoạch kiểm tra" })).toBeEnabled();
+    expect(screen.queryByText(/Chưa thể tạo/)).not.toBeInTheDocument();
+    expect(apiMocks.renderCaseInspectionPlan).not.toHaveBeenCalled();
+  });
+
+  it("keeps QĐKT blocked when the backend does not advertise a typed create contract", async () => {
+    const qdkt = {
+      ...buildKhktDocument(),
+      checklist_key: "case:case-1:INSPECTION_QD_KT",
+      label: "Quyết định kiểm tra",
+      family_code: "INSPECTION_QD_KT",
+      actions: [{ action_key: "create", label: "Tạo", available: false, disabled_reason: "Backend chưa mở typed create contract.", required_permissions: ["document.write"] }],
+    };
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ contextual_document_actions: [qdkt] }));
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    expect(screen.queryByRole("button", { name: "Tạo Quyết định kiểm tra" })).not.toBeInTheDocument();
+    expect(screen.getByText("Backend chưa mở typed create contract.")).toBeInTheDocument();
+    expect(apiMocks.getCaseInspectionPlanRuntimeReadiness).not.toHaveBeenCalled();
+    expect(apiMocks.renderTemplateDocx).not.toHaveBeenCalled();
+    await flushSearchUrlSync();
   });
 
   it("does not open a late document binary after history navigation", async () => {

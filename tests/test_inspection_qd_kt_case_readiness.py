@@ -37,6 +37,7 @@ def test_case_readiness_is_blocked_even_with_valid_decision_and_site(tmp_path):
         assert result.decision_source_id == decision.id
         assert result.registered_site_id == site.id
         assert result.ready_to_render is False
+        assert "LEGACY_PROVINCE_MAPPING_UNPROVEN" not in result.blockers
         assert "BLANK_ISSUANCE_DATE_BOOKMARK_UNVERIFIED" in result.blockers
         assert "QDKT_TYPED_RENDER_CONTRACT_MISSING" in result.blockers
         assert len(session.new) == 0 and len(session.dirty) == 0
@@ -55,4 +56,27 @@ def test_case_readiness_missing_sources_returns_blockers_not_render_permission(t
         assert "CASE_NOT_FOUND" in result.blockers
         assert "CASE_REGISTERED_SITE_NOT_FOUND" in result.blockers
         assert len(result.blockers) == len(set(result.blockers))
+    engine.dispose()
+
+
+def test_legacy_province_mismatch_is_reported_without_authorizing_render(tmp_path):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'unknown-province.sqlite').as_posix()}")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        company = Company(legal_name="Synthetic")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="Test",
+                    site_address="Registered location", province_name="Unmapped new province")
+        session.add(site)
+        session.flush()
+        case = Case(site_id=site.id, gxp_type="GMP", state=CaseState.DRAFT)
+        session.add(case)
+        session.flush()
+        result = inspect_qdkt_case_readiness(session, case_id=case.id)
+        assert "LEGACY_PROVINCE_MAPPING_UNPROVEN" in result.blockers
+        assert "MANUFACTURING_CLASSIFICATION_SOURCE_UNPROVEN" in result.blockers
+        assert result.ready_to_render is False
+        assert result.registered_site_id == site.id
+        session.rollback()
     engine.dispose()

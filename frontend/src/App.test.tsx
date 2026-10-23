@@ -2693,7 +2693,9 @@ describe("App Slice A.4 search workspace", () => {
     renderApp(["/search"]);
     await screen.findByText("HS-001");
     fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
-    fireEvent.click(screen.getByRole("button", { name: "Tạo Kế hoạch kiểm tra" }));
+    const create = screen.getByRole("button", { name: "Tạo Kế hoạch kiểm tra" });
+    await waitFor(() => expect(create).toBeEnabled());
+    fireEvent.click(create);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Tài liệu đã thay đổi");
     expect(screen.getByRole("alert")).toHaveTextContent("Kế hoạch đã được tạo bởi phiên khác.");

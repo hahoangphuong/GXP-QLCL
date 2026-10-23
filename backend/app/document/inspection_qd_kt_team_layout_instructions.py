@@ -36,7 +36,7 @@ def plan_qdkt_team_layout(*, legacy_display: str, source_attested: bool,
     members = tuple(part.strip() for part in legacy_display.split("|"))
     if len(members) < 2 or any(not part for part in members):
         raise QdKtTeamLayoutBlocked("LEGACY_TEAM_MEMBER_CARDINALITY_OR_EMPTY_TOKEN")
-    if len(members) > 2 and (not isinstance(template_extension, str) or not template_extension.strip()):
+    if len(members) > 3 and (not isinstance(template_extension, str) or not template_extension.strip()):
         raise QdKtTeamLayoutBlocked("TEAM_EXTENSION_FRAGMENT_MISSING")
     return QdKtTeamLayoutInstructions(
         first=members[0], second=members[1], third_and_later=members[2:],

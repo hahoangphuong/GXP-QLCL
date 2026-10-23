@@ -39,6 +39,7 @@ def test_export_requires_explicit_env_identifier(tmp_path):
 
 def test_rehearsal_export_enforces_read_only_before_any_select(monkeypatch):
     from contextlib import nullcontext
+    from uuid import UUID
     from tools import export_qdkt_case_cohort_readonly as owner
 
     actions = []
@@ -56,7 +57,7 @@ def test_rehearsal_export_enforces_read_only_before_any_select(monkeypatch):
             sql = str(statement).lower()
             assert "legacy_inspection_id" in sql
             assert "site_address" not in sql
-            return [("case-one", 101), ("case-two", None)]
+            return [(UUID("11111111-1111-4111-8111-111111111111"), 101), ("case-two", None)]
 
     class Engine:
         def connect(self):
@@ -71,7 +72,7 @@ def test_rehearsal_export_enforces_read_only_before_any_select(monkeypatch):
         database_url=f"postgresql+psycopg://reader:secret@localhost/{EXPECTED_DATABASE}",
     )
     assert result == [
-        {"case_id": "case-one", "legacy_inspection_id": 101},
+        {"case_id": "11111111-1111-4111-8111-111111111111", "legacy_inspection_id": 101},
         {"case_id": "case-two", "legacy_inspection_id": None},
     ]
     assert actions == [

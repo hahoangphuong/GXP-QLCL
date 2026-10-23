@@ -6,7 +6,6 @@ The operator supplies a PostgreSQL DSN through an environment variable.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 from pathlib import Path
 
@@ -70,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
             raise QdKtRehearsalExportBlocked("CASE_COHORT_EMPTY")
         # The writer creates mode 0600 exactly once. Do not echo DSN or Cases.
         write_private_report(output=args.output, report=cohort, inputs=())
-    except (QdKtRehearsalExportBlocked, QdKtCohortAuditBlocked, OSError, Exception):
+    except Exception:
         parser.error("QDKT_REHEARSAL_EXPORT_BLOCKED: database or output validation failed")
     return 0
 

@@ -102,3 +102,60 @@ def audit_qdkt_case_dbktra_links(
                 case.case_id, matches[0] if len(matches) == 1 else None, status,
             ))
     return tuple(result)
+
+
+def verify_dbktra_id_header_coordinate(
+    *, snapshot: Mapping[str, Any], header_row_number: int,
+    source_header_row_attested: bool,
+) -> int:
+    """Return the exact db.ktra ID column only after proving its header cell.
+
+    The header-row *identity* must come from separately attested workbook
+    layout evidence; an arbitrary caller-supplied row number cannot confer
+    semantic authority. A duplicate ID header or malformed row fails closed.
+    """
+    if source_header_row_attested is not True:
+        raise QdKtSnapshotLinkBlocked("DBKTRA_HEADER_ROW_PROVENANCE_UNVERIFIED")
+    if type(header_row_number) is not int or header_row_number < 1:
+        raise QdKtSnapshotLinkBlocked("DBKTRA_HEADER_ROW_NUMBER_INVALID")
+    if snapshot.get("schema_version") != SCHEMA_VERSION:
+        raise QdKtSnapshotLinkBlocked("SNAPSHOT_SCHEMA_UNPROVEN")
+    wb = snapshot.get("workbook")
+    if not isinstance(wb, Mapping) or wb.get("sha256") != AUTHORITATIVE_WORKBOOK_SHA256:
+        raise QdKtSnapshotLinkBlocked("SNAPSHOT_WORKBOOK_DIGEST_MISMATCH")
+    sheets = snapshot.get("sheets")
+    if not isinstance(sheets, list):
+        raise QdKtSnapshotLinkBlocked("SNAPSHOT_SHEETS_MISSING")
+    matched = [s for s in sheets if isinstance(s, Mapping) and s.get("sheet_name") == "db.ktra"]
+    if len(matched) != 1 or not isinstance(matched[0].get("raw_rows"), list):
+        raise QdKtSnapshotLinkBlocked("DBKTRA_SOURCE_SHEET_AMBIGUOUS")
+    rows = [r for r in matched[0]["raw_rows"] if isinstance(r, Mapping)
+            and r.get("source_row_number") == header_row_number]
+    if len(rows) != 1 or not isinstance(rows[0].get("cells"), list):
+        raise QdKtSnapshotLinkBlocked("DBKTRA_HEADER_ROW_NOT_UNIQUE")
+    headers = rows[0]["cells"]
+    if any(not isinstance(c, Mapping) or type(c.get("column_ordinal")) is not int
+           or c["column_ordinal"] < 1 for c in headers):
+        raise QdKtSnapshotLinkBlocked("DBKTRA_HEADER_CELLS_INVALID")
+    ordinals = [c["column_ordinal"] for c in headers]
+    if len(ordinals) != len(set(ordinals)):
+        raise QdKtSnapshotLinkBlocked("DBKTRA_HEADER_COLUMN_DUPLICATE")
+    ids = [c["column_ordinal"] for c in headers if c.get("raw_value") == "ID"]
+    if len(ids) != 1:
+        raise QdKtSnapshotLinkBlocked("DBKTRA_ID_HEADER_NOT_UNIQUE")
+    return ids[0]
+
+
+def audit_qdkt_case_dbktra_links_with_header_proof(
+    *, snapshot: Mapping[str, Any], cases: Iterable[QdKtCaseLegacyId],
+    header_row_number: int, source_header_row_attested: bool,
+) -> tuple[QdKtLegacyLinkResult, ...]:
+    """Validate the workbook header before permitting the existing ID audit."""
+    ordinal = verify_dbktra_id_header_coordinate(
+        snapshot=snapshot, header_row_number=header_row_number,
+        source_header_row_attested=source_header_row_attested,
+    )
+    return audit_qdkt_case_dbktra_links(
+        snapshot=snapshot, cases=cases, dbktra_id_column_ordinal=ordinal,
+        column_registry_verified=True,
+    )

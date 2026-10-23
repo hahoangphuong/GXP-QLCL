@@ -69,3 +69,57 @@ def test_forged_workbook_digest_rejected():
 def test_missing_column_must_not_fallback_to_other_cell():
     with pytest.raises(QdKtSnapshotLinkBlocked, match="DBKTRA_ID_CELL_MISSING_OR_DUPLICATE"):
         _audit(column=4)
+
+
+def _with_header(snapshot, *, header="ID", second_id=False):
+    sheet = snapshot["sheets"][0]
+    cells = [{"column_ordinal": 1, "raw_value": "CƠ SỞ"},
+             {"column_ordinal": 3, "raw_value": header}]
+    if second_id:
+        cells.append({"column_ordinal": 4, "raw_value": "ID"})
+    sheet["raw_rows"].insert(0, {"source_row_number": 1, "cells": cells})
+    return snapshot
+
+
+def test_attested_exact_header_derives_column_and_keeps_planning_unproven():
+    from backend.app.document.inspection_qd_kt_snapshot_case_link_audit import (
+        audit_qdkt_case_dbktra_links_with_header_proof,
+    )
+    source = _with_header(_snapshot())
+    out = audit_qdkt_case_dbktra_links_with_header_proof(
+        snapshot=source, cases=[QdKtCaseLegacyId("c", 101)],
+        header_row_number=1, source_header_row_attested=True,
+    )
+    assert (out[0].status, out[0].source_row_number) == ("SOURCE_ROW_UNIQUE", 2)
+    assert out[0].planning_row_proven is False
+    assert out[0].qdkt_business_atoms_proven is False
+
+
+@pytest.mark.parametrize("header,duplicate,error", [
+    ("ID CƠ SỞ", False, "DBKTRA_ID_HEADER_NOT_UNIQUE"),
+    ("ID", True, "DBKTRA_ID_HEADER_NOT_UNIQUE"),
+])
+def test_header_mismatch_or_duplicate_fails_closed(header, duplicate, error):
+    from backend.app.document.inspection_qd_kt_snapshot_case_link_audit import (
+        verify_dbktra_id_header_coordinate,
+    )
+    with pytest.raises(QdKtSnapshotLinkBlocked, match=error):
+        verify_dbktra_id_header_coordinate(
+            snapshot=_with_header(_snapshot(), header=header, second_id=duplicate),
+            header_row_number=1, source_header_row_attested=True,
+        )
+
+
+def test_header_attestation_and_coordinate_are_not_optional():
+    from backend.app.document.inspection_qd_kt_snapshot_case_link_audit import (
+        verify_dbktra_id_header_coordinate,
+    )
+    snap = _with_header(_snapshot())
+    with pytest.raises(QdKtSnapshotLinkBlocked, match="DBKTRA_HEADER_ROW_PROVENANCE_UNVERIFIED"):
+        verify_dbktra_id_header_coordinate(
+            snapshot=snap, header_row_number=1, source_header_row_attested=False,
+        )
+    with pytest.raises(QdKtSnapshotLinkBlocked, match="DBKTRA_HEADER_ROW_NOT_UNIQUE"):
+        verify_dbktra_id_header_coordinate(
+            snapshot=snap, header_row_number=9, source_header_row_attested=True,
+        )

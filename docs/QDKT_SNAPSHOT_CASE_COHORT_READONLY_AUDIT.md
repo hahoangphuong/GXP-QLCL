@@ -67,3 +67,24 @@ resolves to either input. It does **not overwrite** a previous report. Use a
 new path per verified run in a private directory; do not commit cohort inputs
 or their report without a separate disclosure review. CLI validation errors
 are intentionally generic and do not echo source cells or Case IDs.
+
+## Optional automated read-only rehearsal Case export
+
+When an authorized rehearsal-only database account is available, the minimal
+Case cohort may be exported without manual SQL copying:
+
+```bash
+# Supply the PostgreSQL URL securely through the named environment variable.
+# It must target database gxp_legacy_rehearsal, NOT gxp_qlcl.
+python -m tools.export_qdkt_case_cohort_readonly \
+  --database-url-env QDKT_REHEARSAL_DATABASE_URL \
+  --output /protected/case-ids-rehearsal.json
+```
+
+The exporter allows only a PostgreSQL connection whose database is named
+`gxp_legacy_rehearsal`. It starts an explicit `SET TRANSACTION READ ONLY`
+transaction and reads only `Case.id` and `Case.legacy_inspection_id`,
+then writes a private mode-0600 JSON array with exclusive file creation.
+Do not publish the input JSON or database URL. Use a credential restricted
+to SELECT as an additional independent protection, and only on the authorized
+rehearsal environment. The export does not prove source-lineage equivalence.

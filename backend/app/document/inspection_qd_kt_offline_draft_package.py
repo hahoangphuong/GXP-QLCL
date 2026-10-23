@@ -8,7 +8,7 @@ from __future__ import annotations
 from hashlib import sha256
 from io import BytesIO
 from zipfile import ZipFile, BadZipFile, ZIP_DEFLATED
-from xml.etree import ElementTree as ET
+from lxml import etree as ET
 
 from backend.app.document.inspection_qd_kt_draft_issuance_xml import (
     QdKtIssuanceDateBlocked, blank_issuance_year_xml,

@@ -1631,7 +1631,18 @@ describe("App Slice A.4 search workspace", () => {
     ]);
     expect(historyTable?.querySelector("tbody tr")).toHaveAttribute("title", "Đã hoàn tất kiểm tra");
     expect(historyTable?.querySelector("tbody tr")?.querySelectorAll("td")).toHaveLength(3);
-    expect(container.querySelector(".history-table tbody tr.selected")).not.toBeNull();
+    await waitFor(() => {
+      expect(
+        within(historyTable as HTMLElement)
+          .getAllByRole("row")
+          .some((row) => row.getAttribute("aria-selected") === "true"),
+      ).toBe(true);
+    });
+    expect(
+      within(historyTable as HTMLElement)
+        .getAllByRole("row")
+        .find((row) => row.getAttribute("aria-selected") === "true"),
+    ).toHaveClass("selected");
     fireEvent.click(screen.getByRole("tab", { name: "Thông tin chung" }));
     expect(await screen.findByText("01-06-2026")).toBeInTheDocument();
     expect(screen.getByText("31-12-2026")).toBeInTheDocument();
@@ -2375,7 +2386,7 @@ describe("App Slice A.4 search workspace", () => {
     await screen.findByRole("heading", { name: "Thông tin hồ sơ" });
     const historyRows = within(container.querySelector(".history-table") as HTMLElement).getAllByRole("row").slice(1);
     const facilityRow = container.querySelector(".facility-table tbody tr.selected");
-    historyRows[0].focus();
+    act(() => historyRows[0].focus());
     fireEvent.keyDown(historyRows[0], { key: "ArrowDown" });
     expect(historyRows[1]).toHaveFocus();
     expect(historyRows[0]).toHaveAttribute("aria-selected", "true");

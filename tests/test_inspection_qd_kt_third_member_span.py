@@ -45,3 +45,14 @@ def test_deletes_complete_span_and_preserves_siblings():
 def test_rejects_unproven_shapes(xml, error):
     with pytest.raises(QdKtThirdMemberSpanBlocked, match=error):
         remove_third_member_span_xml(xml)
+
+
+def test_unrelated_bookmark_survives_third_member_removal():
+    xml = _xml().replace(
+        b'<w:p><w:r><w:t>TT2</w:t></w:r></w:p>',
+        b'<w:p><w:bookmarkStart w:id="19" w:name="Preceding"/><w:r><w:t>TT2</w:t></w:r><w:bookmarkEnd w:id="19"/></w:p>',
+    )
+    result = remove_third_member_span_xml(xml)
+    root = ET.fromstring(result)
+    assert [b.get(W + 'name') for b in root.iter(W + 'bookmarkStart')] == ['Preceding']
+    assert [b.get(W + 'id') for b in root.iter(W + 'bookmarkEnd')] == ['19']

@@ -35,3 +35,45 @@ def test_export_with_missing_db_url_never_creates_output(monkeypatch, tmp_path):
 def test_export_requires_explicit_env_identifier(tmp_path):
     with pytest.raises(SystemExit):
         main(["--database-url-env", "../secret", "--output", str(tmp_path / "out.json")])
+
+
+def test_rehearsal_export_enforces_read_only_before_any_select(monkeypatch):
+    from contextlib import nullcontext
+    from tools import export_qdkt_case_cohort_readonly as owner
+
+    actions = []
+
+    class Connection:
+        def begin(self):
+            actions.append("begin")
+            return nullcontext()
+
+        def exec_driver_sql(self, statement):
+            actions.append(statement)
+
+        def execute(self, statement):
+            actions.append("select")
+            sql = str(statement).lower()
+            assert "legacy_inspection_id" in sql
+            assert "site_address" not in sql
+            return [("case-one", 101), ("case-two", None)]
+
+    class Engine:
+        def connect(self):
+            actions.append("connect")
+            return nullcontext(Connection())
+
+        def dispose(self):
+            actions.append("dispose")
+
+    monkeypatch.setattr(owner, "create_engine", lambda dsn, **kwargs: Engine())
+    result = owner.read_case_cohort_readonly(
+        database_url=f"postgresql+psycopg://reader:secret@localhost/{EXPECTED_DATABASE}",
+    )
+    assert result == [
+        {"case_id": "case-one", "legacy_inspection_id": 101},
+        {"case_id": "case-two", "legacy_inspection_id": None},
+    ]
+    assert actions == [
+        "connect", "begin", "SET TRANSACTION READ ONLY", "select", "dispose",
+    ]

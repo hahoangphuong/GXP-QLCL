@@ -46,7 +46,7 @@ def inspect_qdkt_physical_template(path: Path, *, gxp_type: str) -> dict:
             raise QdKtPhysicalEvidenceError("BOOKMARK_START_AMBIGUOUS")
         bookmarks[identifier] = name
     end_ids = Counter(node.get(W + "id") for node in document.iter(W + "bookmarkEnd"))
-    if Counter(bookmarks) != end_ids:
+    if Counter({identifier: 1 for identifier in bookmarks}) != end_ids:
         raise QdKtPhysicalEvidenceError("BOOKMARK_END_MISMATCH")
     names = sorted(name for name in bookmarks.values() if not name.startswith("_"))
     if len(names) != len(set(names)):

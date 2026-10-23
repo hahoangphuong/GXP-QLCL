@@ -66,3 +66,24 @@ def test_duplicate_part_fails_closed():
     original = _source(duplicate=True)
     with pytest.raises(QdKtDraftPackageBlocked, match="QDKT_PACKAGE_DUPLICATE_PART"):
         build_offline_date_only_docx(template=original, expected_sha256=sha256(original).hexdigest())
+
+
+def test_preserves_word_namespace_prefixes_and_ignorable_declarations():
+    original = _source()
+    with ZipFile(BytesIO(original)) as source:
+        text = source.read('word/document.xml').replace(
+            b'<w:document ',
+            b'<w:document xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" mc:Ignorable="w14" ',
+        )
+        target = BytesIO()
+        with ZipFile(target, 'w') as out:
+            for item in source.infolist():
+                out.writestr(item, text if item.filename == 'word/document.xml' else source.read(item.filename))
+    package = target.getvalue()
+    result = build_offline_date_only_docx(template=package, expected_sha256=sha256(package).hexdigest())
+    with ZipFile(BytesIO(result)) as output:
+        doc = output.read('word/document.xml')
+    assert b'<w:document' in doc
+    assert b'xmlns:w14=' in doc
+    assert b'mc:Ignorable="w14"' in doc
+    assert b'<ns0:document' not in doc

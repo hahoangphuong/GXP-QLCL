@@ -57,3 +57,13 @@ embedded workbook checksum independently proves the original XLSB identity.
   each Case. No free-text heuristic or joins by displayed name.
 * No production QĐKT POST, schema change, document storage, VM/NAS writes,
   or alteration of historical exceptions.
+
+## Private report output safety
+
+The CLI now creates the aggregate JSON only after all source and cohort
+validation gates pass. It uses exclusive file creation (`O_EXCL`) with POSIX
+permissions `0600`, and fails if the output already exists, is a symlink, or
+resolves to either input. It does **not overwrite** a previous report. Use a
+new path per verified run in a private directory; do not commit cohort inputs
+or their report without a separate disclosure review. CLI validation errors
+are intentionally generic and do not echo source cells or Case IDs.

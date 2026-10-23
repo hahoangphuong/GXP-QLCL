@@ -73,7 +73,7 @@ def build_qdkt_cohort_report(
     }
 
 
-def write_private_report(*, output: Path, report: dict[str, Any],
+def write_private_report(*, output: Path, report: Any,
                          inputs: tuple[Path, Path]) -> None:
     """Create private output once; refuse existing targets and input aliases."""
     if any(output.resolve() == source.resolve() for source in inputs):

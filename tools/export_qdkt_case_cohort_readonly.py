@@ -47,7 +47,7 @@ def read_case_cohort_readonly(*, database_url: str) -> list[dict[str, object]]:
                     select(Case.id, Case.legacy_inspection_id).order_by(Case.id)
                 ).all()
         return [
-            {"case_id": case_id, "legacy_inspection_id": legacy_id}
+            {"case_id": str(case_id), "legacy_inspection_id": legacy_id}
             for case_id, legacy_id in rows
         ]
     finally:

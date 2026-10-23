@@ -5,6 +5,63 @@ recommendations in UI_REDESIGN_VBA_REFERENCE and PHASE12. Preserve legacy UI whe
 evidenced. Baseline: `50576b0b383161e26e27b6cdc4a1a469aff1ae17`; work branch:
 `codex/legacy-ui-parity-20261010`. This delivery is partial; it does not close #1.
 
+## Frontend business-function audit and typed KHKT integration — 2026-10-22
+
+Baseline: `af4abf6df7e3f11ddeb0c120924f082f22645096`. The audit compares the
+active MainForm/RecordForm/ExtRecordForm sources, the workbook/add-in maps,
+approved domain/storage decisions, current React owners and the API schema on
+that exact `main`. `NATIVE_SPEECH_EVIDENCE_MISSING` is **DEFERRED — NOT REQUIRED
+FOR CURRENT DEVELOPMENT** by the user's decision; it is not a PASS claim and is
+not an acceptance blocker for this business slice.
+
+| Priority / business capability | Classification before this slice | Evidence and exact remaining boundary |
+| --- | --- | --- |
+| 1. Case Kế hoạch kiểm tra: create from the typed document row | `PARTIAL` | RecordForm case 3 and the document registry prove the command. Backend now advertises an authorized Case-owned POST target and canonical-input readiness, but the frontend still called the generic renderer with client-selected family/GxP/storage/output values. This slice changes it to `IMPLEMENTED` through the advertised typed target. |
+| 2. Hồ sơ registration and dossier assessment editing | `IMPLEMENTED` | CaseApplication and CaseAssessment have distinct owners, optimistic versions, readiness/RBAC error handling and legacy-supported layout. Folder lookup remains fail-closed. |
+| 3. Inspection plan, periods, team, outcome, final evaluation and approval chain | `IMPLEMENTED` | Canonical editors/actions exist with Case/team/outcome tokens. Legacy composite strings remain projections rather than mutation identities. |
+| 4. Quyết định kiểm tra, biên bản thẩm định/kiểm tra creation | `BLOCKED_BY_BACKEND` | Legacy families and placement are proven; contextual rows exist, but typed input/render contracts remain `BUSINESS_INPUT_CONTRACT_MISSING`. |
+| 5. CAPA cycles and assessment | `PARTIAL` | Multi-cycle create/update/submit/assess is implemented. CAPA 1/2 document creation remains `BLOCKED_BY_BACKEND`; no typed create contract is advertised. |
+| 6. Xử lý tiếp and approval documents | `PARTIAL` | Canonical timeline plus PCT/CT submission workflows are implemented. Legacy risk/PCT/CT/certificate-decision document generation remains `BLOCKED_BY_BACKEND`. |
+| 7. GxP certificate issue/edit/promote, scope and persisted history | `IMPLEMENTED` | Case and Facility owners, version UUIDs, scopes, readiness and concurrency are present. Binary/legal attestation remains separate from metadata. |
+| 8. ĐĐK issue/edit/promote, basis links, source provenance and persisted history | `PARTIAL` | Canonical Facility/Case views and mutations are implemented. The five legacy DDKD generated-document slots and preparatory forms remain `BLOCKED_BY_BACKEND`. |
+| 9. Facility search, exact line identity, history and change workflow | `IMPLEMENTED` | Search/history/deep-link and ChangeRequest create/detail/approval/successor flows are canonical. Full persisted FilterForm queries are omitted by explicit user decision and unsupported API semantics. |
+| 10. RecordForm/ExtRecordForm auxiliary generation and direct Explorer/Word editing | `BLOCKED_BY_BACKEND` | Static VBA proves the commands, but most typed payload/render contracts and a frontend-safe desktop-open contract do not exist. Runtime picker geometry/states are also `EVIDENCE_MISSING`. |
+
+Last-correct for priority 1 was the contextual row's canonical Case/family and
+server-owned availability. First-incorrect was `SearchPage.handleCreateDocument`:
+it discarded `create_endpoint`/`create_http_method` and posted client-composed
+business/storage parameters to `/documents/render-template-docx`. The frontend
+now accepts only the exact Case endpoint advertised for the selected Case, POST,
+`CANONICAL_INPUT_READY`, matching family and parent identity. It sends the typed
+empty request body, so Case, GxP, template, output name and storage destination
+remain backend-owned. Mismatched or incomplete action metadata fails before a
+request. Pending deduplication and 403/409/422/no-retry behavior remain in the
+existing contextual-document owner; successful creation refreshes the selected
+Case and Facility workspaces exactly as before.
+
+### KHKT runtime readiness consistency — 2026-10-22
+
+Current-main integration baseline `97ba11265751441c661a8e1085ec61a237696880`
+retains the Case-owned KHKT GET and POST contracts. Before this extension the
+read-only runtime readiness GET was represented by the API client but unused by
+the UI, so a create button could remain enabled while the template binary,
+inspection folder or an already-current KHKT made the attempted render known to
+be blocked.
+
+`SearchPage` now owns one cancellable readiness probe for the exact selected
+Case and advertised KHKT contract. The document row distinguishes loading,
+ready, blocked and transport/error states, keeps create disabled until the
+matching response is ready, explains backend blocker codes and retries only on
+an explicit user action. Request sequence plus AbortSignal reject Case A → B → A
+and reversed completions. Case/family/GxP response identity and the advertised
+Case endpoint/method are checked before enabling create. The typed POST with `{}`
+remains authoritative at render time and is never retried or replaced by the
+generic renderer. QĐKT and all other families without an advertised typed create
+contract remain blocked.
+
+Real Synology binary generation, authenticated staging and production UAT remain
+unverified in this frontend slice.
+
 ## Evidence closure and staging-readiness audit — 2026-10-13
 
 ### GxP / ĐĐK document metadata ownership — 2026-10-17

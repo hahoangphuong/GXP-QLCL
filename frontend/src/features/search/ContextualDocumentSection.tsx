@@ -1,6 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 
-import type { ContextualDocumentAction, DocumentDetail } from "../../types";
+import type { CaseInspectionPlanReadinessState, ContextualDocumentAction, DocumentDetail } from "../../types";
 import { formatCompactDate } from "../../lib/presentation";
 
 type Selection = { context: string; key: string; id: string | null };
@@ -18,9 +18,24 @@ function message(error: unknown): string {
   return `${explanation}${error instanceof Error ? ` ${error.message}` : ""}`;
 }
 
-export function ContextualDocumentSection({ items, contextKey, onOpenDocument, onLoadDocumentDetail, onCreateDocument }: {
+const KHKT_BLOCKED_REASON_LABELS: Record<string, string> = {
+  canonical_input_unavailable: "Dữ liệu hồ sơ bắt buộc chưa đầy đủ.",
+  current_khkt_document_already_exists: "Đã có Kế hoạch kiểm tra hiện hành.",
+  inspection_folder_unavailable: "Chưa xác định được thư mục kiểm tra.",
+  storage_service_unavailable: "Dịch vụ lưu trữ hiện không khả dụng.",
+  template_binary_or_contract_unavailable: "Mẫu Kế hoạch kiểm tra chưa sẵn sàng.",
+};
+
+function blockedReadinessMessage(reasons: string[]): string {
+  if (reasons.length === 0) return "Backend chưa xác nhận đủ điều kiện tạo Kế hoạch kiểm tra.";
+  return reasons.map(reason => KHKT_BLOCKED_REASON_LABELS[reason] ?? reason).join(" ");
+}
+
+export function ContextualDocumentSection({ items, contextKey, createReadiness, onRetryCreateReadiness, onOpenDocument, onLoadDocumentDetail, onCreateDocument }: {
   items: ContextualDocumentAction[];
   contextKey?: string;
+  createReadiness?: CaseInspectionPlanReadinessState | null;
+  onRetryCreateReadiness?: () => void;
   onOpenDocument: (item: ContextualDocumentAction, isCurrentDocument?: () => boolean) => Promise<void>;
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
   onCreateDocument: (item: ContextualDocumentAction, action: ContextualDocumentAction["actions"][number]) => Promise<void>;
@@ -151,6 +166,12 @@ export function ContextualDocumentSection({ items, contextKey, onOpenDocument, o
   }
   function returnToList() { buttons.current.get(selected?.checklist_key ?? effectiveFocus ?? "")?.focus(); }
 
+  function runtimeReadiness(item: ContextualDocumentAction, action: ContextualDocumentAction["actions"][number]) {
+    if (action.action_key !== "create" || item.family_code !== "INSPECTION_KE_HOACH_KT" || createReadiness === undefined) return undefined;
+    if (createReadiness?.case_id === item.parent_id && createReadiness.family_code === item.family_code) return createReadiness;
+    return null;
+  }
+
   return (
     <section className="workspace-section document-workspace" aria-labelledby={headingId} onKeyDown={event => {
       if (event.key === "F6") {
@@ -175,11 +196,21 @@ export function ContextualDocumentSection({ items, contextKey, onOpenDocument, o
                 <strong>{item.label}</strong><span>{item.original_filename ?? "Chưa có tệp"}</span>
               </button></td>
               <td>{item.status === "available" ? "Đã có tài liệu" : "Chưa có tài liệu"}</td>
-              <td><div className="contextual-document-actions">{item.actions.filter(action => action.action_key !== "create" || action.available).map(action => <button
-                key={action.action_key} type="button" aria-label={`${action.label} ${item.label}`} title={action.disabled_reason ?? undefined}
-                disabled={!action.available || (ownedOperation?.pending && ownedOperation.key === item.checklist_key) || (action.action_key === "history" && owned?.pending && owned.key === item.checklist_key)}
-                onClick={() => void act(item, action)}>{action.label}</button>)}</div>
+              <td><div className="contextual-document-actions">{item.actions.filter(action => action.action_key !== "create" || action.available).map(action => {
+                const readiness = runtimeReadiness(item, action);
+                return <button
+                  key={action.action_key} type="button" aria-label={`${action.label} ${item.label}`} title={action.disabled_reason ?? undefined}
+                  disabled={!action.available || (readiness !== undefined && readiness?.status !== "ready") || (ownedOperation?.pending && ownedOperation.key === item.checklist_key) || (action.action_key === "history" && owned?.pending && owned.key === item.checklist_key)}
+                  onClick={() => { if (readiness === undefined || readiness?.status === "ready") void act(item, action); }}>{action.label}</button>;
+              })}</div>
                 {item.actions.filter(action => !action.available && action.disabled_reason).map(action => <p key={action.action_key} className="workspace-note">{action.disabled_reason}</p>)}
+                {item.family_code === "INSPECTION_KE_HOACH_KT" && item.actions.some(action => action.action_key === "create" && action.available) && createReadiness !== undefined ? (
+                  createReadiness === null || createReadiness.case_id !== item.parent_id ? <p className="workspace-note" role="status">Đang kiểm tra khả năng tạo tài liệu...</p>
+                    : createReadiness.status === "loading" ? <p className="workspace-note" role="status">Đang kiểm tra khả năng tạo tài liệu...</p>
+                      : createReadiness.status === "blocked" ? <p className="workspace-note" role="status">Chưa thể tạo: {blockedReadinessMessage(createReadiness.readiness.blocked_reasons)}</p>
+                        : createReadiness.status === "error" ? <div><p className="form-error" role="alert">{createReadiness.message}</p>{onRetryCreateReadiness ? <button type="button" onClick={onRetryCreateReadiness}>Thử kiểm tra lại</button> : null}</div>
+                          : null
+                ) : null}
               </td>
             </tr>)}</tbody>
           </table>

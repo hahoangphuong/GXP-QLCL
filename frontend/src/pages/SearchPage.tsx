@@ -32,9 +32,10 @@ import {
   getInspectionFolder,
   getChangeRequestWorkspace,
   getDocumentDetail,
+  getCaseInspectionPlanRuntimeReadiness,
   openCapaCycleDocumentCurrentContent,
   openCaseDocumentCurrentContent,
-  renderTemplateDocx,
+  renderCaseInspectionPlan,
   getFacilityWorkspace,
   getGxpCertificateDetail,
   issueGxpCertificate,
@@ -70,6 +71,7 @@ import type {
   CapaCycleUpdateRequest,
   CaseApplicationUpsertRequest,
   CaseAssessmentUpsertRequest,
+  CaseInspectionPlanReadinessState,
   CaseWorkspace,
   ChangeRequestWorkspace,
   ChangeApprovalUpsertRequest,
@@ -111,6 +113,17 @@ type PendingDeepLink = {
 };
 
 type ResolutionState = "none" | "pending" | "resolved" | "not_found";
+
+function inspectionPlanReadinessError(error: unknown): string {
+  const status = (error as { status?: number } | null)?.status;
+  const prefix = status === 401 ? "Phiên đăng nhập không còn hợp lệ."
+    : status === 403 ? "Bạn không có quyền kiểm tra khả năng tạo Kế hoạch kiểm tra."
+      : status === 404 ? "Hồ sơ không còn tồn tại trong ngữ cảnh hiện tại."
+        : status === 409 ? "Dữ liệu Kế hoạch kiểm tra đang xung đột."
+          : status === 422 ? "Ngữ cảnh Kế hoạch kiểm tra chưa hợp lệ."
+            : "Không kiểm tra được khả năng tạo Kế hoạch kiểm tra.";
+  return `${prefix}${error instanceof Error ? ` ${error.message}` : ""}`;
+}
 
 function normalizeLineHint(value: string | null): string | null {
   const normalized = value?.trim() ?? "";
@@ -314,6 +327,9 @@ export function SearchPage({
   const [caseWorkspaceLoading, setCaseWorkspaceLoading] = useState(false);
   const [caseWorkspaceError, setCaseWorkspaceError] = useState<{ historyId: string; message: string } | null>(null);
   const caseRequestSequence = useRef(0);
+  const [inspectionPlanReadiness, setInspectionPlanReadiness] = useState<CaseInspectionPlanReadinessState | null>(null);
+  const [inspectionPlanReadinessRetry, setInspectionPlanReadinessRetry] = useState(0);
+  const inspectionPlanReadinessSequence = useRef(0);
   const [selectedChangeRequestWorkspace, setSelectedChangeRequestWorkspace] = useState<ChangeRequestWorkspace | null>(null);
   const [changeRequestWorkspaceLoading, setChangeRequestWorkspaceLoading] = useState(false);
   const [changeRequestWorkspaceError, setChangeRequestWorkspaceError] = useState<{ historyId: string; message: string } | null>(null);
@@ -1018,6 +1034,87 @@ export function SearchPage({
       cancelled = true;
     };
   }, [auth, bearerToken, canLoadSecureApi, selectedHistoryId, selectedHistory?.source_type, useStubAuth]);
+
+  useEffect(() => {
+    const requestId = ++inspectionPlanReadinessSequence.current;
+    const workspace = selectedCaseWorkspace;
+    const caseId = workspace?.case_summary.id;
+    const item = workspace?.contextual_document_actions.find(candidate =>
+      candidate.family_code === "INSPECTION_KE_HOACH_KT"
+      && candidate.parent_scope === "case"
+      && candidate.parent_id === caseId,
+    );
+    const action = item?.actions.find(candidate => candidate.action_key === "create" && candidate.available);
+    if (!canLoadSecureApi || !workspace || !caseId || !item || !action) {
+      setInspectionPlanReadiness(null);
+      return;
+    }
+    const expectedEndpoint = `/cases/${caseId}/documents/inspection-ke-hoach-kt/render`;
+    if (
+      action.family_code !== item.family_code
+      || action.parent_scope !== "case"
+      || action.parent_id !== caseId
+      || action.create_http_method !== "POST"
+      || action.create_input_readiness !== "CANONICAL_INPUT_READY"
+      || action.create_endpoint !== expectedEndpoint
+    ) {
+      setInspectionPlanReadiness({
+        case_id: caseId,
+        family_code: "INSPECTION_KE_HOACH_KT",
+        status: "error",
+        message: "Backend chưa trả create contract KHKT đầy đủ hoặc ngữ cảnh đã thay đổi.",
+      });
+      return;
+    }
+
+    const controller = new AbortController();
+    setInspectionPlanReadiness({ case_id: caseId, family_code: "INSPECTION_KE_HOACH_KT", status: "loading" });
+    void getCaseInspectionPlanRuntimeReadiness(caseId, auth, useStubAuth, bearerToken, controller.signal)
+      .then(readiness => {
+        if (controller.signal.aborted || inspectionPlanReadinessSequence.current !== requestId) return;
+        if (
+          readiness.case_id !== caseId
+          || readiness.family_code !== "INSPECTION_KE_HOACH_KT"
+          || readiness.gxp_type !== workspace.case_summary.gxp_type
+          || (readiness.ready_to_attempt_render && (
+            readiness.canonical_input_status !== "ready"
+            || readiness.template_binary_status !== "ready"
+            || readiness.inspection_folder_status !== "ready"
+          ))
+        ) {
+          setInspectionPlanReadiness({
+            case_id: caseId,
+            family_code: "INSPECTION_KE_HOACH_KT",
+            status: "error",
+            message: "Readiness KHKT không khớp hồ sơ hoặc contract hiện tại.",
+          });
+          return;
+        }
+        setInspectionPlanReadiness({
+          case_id: caseId,
+          family_code: "INSPECTION_KE_HOACH_KT",
+          status: readiness.ready_to_attempt_render ? "ready" : "blocked",
+          readiness,
+        });
+      })
+      .catch(error => {
+        if (controller.signal.aborted || inspectionPlanReadinessSequence.current !== requestId) return;
+        setInspectionPlanReadiness({
+          case_id: caseId,
+          family_code: "INSPECTION_KE_HOACH_KT",
+          status: "error",
+          message: inspectionPlanReadinessError(error),
+        });
+      });
+    return () => controller.abort();
+  }, [
+    auth,
+    bearerToken,
+    canLoadSecureApi,
+    inspectionPlanReadinessRetry,
+    selectedCaseWorkspace,
+    useStubAuth,
+  ]);
 
   useEffect(() => {
     setSelectedChangeRequestWorkspace(null);
@@ -2025,22 +2122,22 @@ export function SearchPage({
       action.family_code !== item.family_code ||
       action.parent_scope !== "case" ||
       action.parent_id !== caseId ||
-      !action.create_gxp_type ||
-      !action.create_storage_scope ||
-      !action.create_output_filename
+      action.create_http_method !== "POST" ||
+      action.create_input_readiness !== "CANONICAL_INPUT_READY" ||
+      action.create_endpoint !== `/cases/${caseId}/documents/inspection-ke-hoach-kt/render`
     ) {
       throw new Error("Backend chưa trả create contract KHKT đầy đủ hoặc ngữ cảnh đã thay đổi.");
     }
-    await renderTemplateDocx(
-      {
-        family_code: action.family_code,
-        case_id: action.parent_id,
-        gxp_type: action.create_gxp_type,
-        storage_scope: action.create_storage_scope,
-        payload: {},
-        strict_payload: true,
-        output_filename: action.create_output_filename,
-      },
+    if (
+      inspectionPlanReadiness?.case_id !== caseId
+      || inspectionPlanReadiness.family_code !== item.family_code
+      || inspectionPlanReadiness.status !== "ready"
+    ) {
+      throw new Error("Backend chưa xác nhận runtime readiness cho Kế hoạch kiểm tra hiện tại.");
+    }
+    await renderCaseInspectionPlan(
+      action.create_endpoint,
+      {},
       auth,
       useStubAuth,
       bearerToken,
@@ -2394,6 +2491,8 @@ export function SearchPage({
               onLoadInspectionTeamIdentityOptions={handleLoadInspectionTeamIdentityOptions}
               onEvaluationScopeSave={handleEvaluationScopeSave}
               onInspectionPlanSave={handleInspectionPlanSave}
+              inspectionPlanReadiness={inspectionPlanReadiness}
+              onRetryInspectionPlanReadiness={() => setInspectionPlanReadinessRetry(current => current + 1)}
               onCreateDocument={handleCreateDocument}
               onLoadDocumentDetail={handleLoadDocumentDetail}
               onOpenDocument={handleOpenDocument}

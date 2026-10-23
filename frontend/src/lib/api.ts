@@ -45,6 +45,8 @@ import type {
   DocumentGenerationRunStatus,
   DocumentPreparationResponse,
   DocumentRenderResponse,
+  CaseInspectionPlanRenderRequest,
+  CaseInspectionPlanRuntimeReadiness,
   EvaluationScopeUpsertRequest,
   FacilitySearchPage,
   FacilityWorkspace,
@@ -975,6 +977,35 @@ export function renderTemplateDocx(
   bearerToken?: string | null,
 ): Promise<DocumentRenderResponse> {
   return requestJson<DocumentRenderResponse>("/documents/render-template-docx", {
+    method: "POST",
+    body: payload,
+    auth,
+    useStubAuth,
+    bearerToken,
+  });
+}
+
+export function getCaseInspectionPlanRuntimeReadiness(
+  caseId: string,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+  signal?: AbortSignal,
+): Promise<CaseInspectionPlanRuntimeReadiness> {
+  return requestJson<CaseInspectionPlanRuntimeReadiness>(
+    `/cases/${encodeURIComponent(caseId)}/documents/inspection-ke-hoach-kt/readiness`,
+    { auth, useStubAuth, bearerToken, signal },
+  );
+}
+
+export function renderCaseInspectionPlan(
+  createEndpoint: string,
+  payload: CaseInspectionPlanRenderRequest,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+): Promise<DocumentRenderResponse> {
+  return requestJson<DocumentRenderResponse>(createEndpoint, {
     method: "POST",
     body: payload,
     auth,

@@ -5,7 +5,7 @@ numbering approval, rendering authorization, or document storage.
 """
 from __future__ import annotations
 
-from xml.etree import ElementTree as ET
+from lxml import etree as ET
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 

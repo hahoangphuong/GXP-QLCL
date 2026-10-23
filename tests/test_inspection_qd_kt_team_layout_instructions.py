@@ -28,8 +28,14 @@ def test_source_attested_layout_is_never_renderer_authorization(names, third, de
     ("A", True, "-", "LEGACY_TEAM_MEMBER_CARDINALITY_OR_EMPTY_TOKEN"),
     ("A|", True, "-", "LEGACY_TEAM_MEMBER_CARDINALITY_OR_EMPTY_TOKEN"),
     ("A||C", True, "-", "LEGACY_TEAM_MEMBER_CARDINALITY_OR_EMPTY_TOKEN"),
-    ("A|B|C", True, None, "TEAM_EXTENSION_FRAGMENT_MISSING"),
+    ("A|B|C|D", True, None, "TEAM_EXTENSION_FRAGMENT_MISSING"),
 ])
+def test_three_members_need_no_overflow_fragment():
+    result = plan_qdkt_team_layout(legacy_display="A|B|C", source_attested=True, template_extension=None)
+    assert result.third_and_later == ("C",)
+    assert result.template_extension_required is False
+
+
 def test_unproven_source_refused(display, attested, fragment, error):
     with pytest.raises(QdKtTeamLayoutBlocked, match=error):
         plan_qdkt_team_layout(

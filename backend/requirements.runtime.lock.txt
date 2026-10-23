@@ -41,6 +41,8 @@ idna==3.19
     # via
     #   anyio
     #   requests
+lxml==6.0.1
+    # via -r backend/requirements.runtime.txt
 mako==1.4.1
     # via alembic
 markupsafe==3.0.3

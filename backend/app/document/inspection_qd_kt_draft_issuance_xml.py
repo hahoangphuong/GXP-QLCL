@@ -5,7 +5,7 @@ Never called by runtime document generation. Operates on bytes in memory only.
 from __future__ import annotations
 
 import re
-from xml.etree import ElementTree as ET
+from lxml import etree as ET
 
 W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 ISSUE = re.compile(r'\bnăm\s+((?:19|20)\d{2})\b')

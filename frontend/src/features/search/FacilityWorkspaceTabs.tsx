@@ -13,6 +13,7 @@ import type {
   BusinessEligibilityListItem,
   CaseApplicationUpsertRequest,
   CaseAssessmentUpsertRequest,
+  CaseInspectionPlanReadinessState,
   CaseWorkspace,
   ChangeRequestWorkspace,
   ContextualDocumentAction,
@@ -93,6 +94,8 @@ export function FacilityWorkspaceTabs({
   onCaseApplicationSave,
   onCaseAssessmentSave,
   onInspectionPlanSave,
+  inspectionPlanReadiness,
+  onRetryInspectionPlanReadiness,
   onInspectionOutcomeSave,
   onInspectionPeriodSegmentsSave,
   onCreateApprovalSubmission,
@@ -165,6 +168,8 @@ export function FacilityWorkspaceTabs({
   onCaseApplicationSave: (payload: CaseApplicationUpsertRequest) => Promise<void>;
   onCaseAssessmentSave: (payload: CaseAssessmentUpsertRequest) => Promise<void>;
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
+  inspectionPlanReadiness: CaseInspectionPlanReadinessState | null;
+  onRetryInspectionPlanReadiness: () => void;
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
   onInspectionPeriodSegmentsSave: (payload: import("../../types").InspectionPeriodSegmentsUpsertRequest) => Promise<void>;
   onCreateApprovalSubmission: (stage: "PCT" | "CT", payload: import("../../types").InspectionApprovalSubmissionCreateRequest) => Promise<import("../../types").InspectionApprovalSubmissionMutationResponse>;
@@ -254,6 +259,8 @@ export function FacilityWorkspaceTabs({
           onLoadInspectionTeamIdentityOptions={onLoadInspectionTeamIdentityOptions}
           onEvaluationScopeSave={onEvaluationScopeSave}
           onInspectionPlanSave={onInspectionPlanSave}
+          inspectionPlanReadiness={inspectionPlanReadiness}
+          onRetryInspectionPlanReadiness={onRetryInspectionPlanReadiness}
           onIssueCertificate={onIssueCertificate}
           onCreateDocument={onCreateDocument}
           onLoadDocumentDetail={onLoadDocumentDetail}

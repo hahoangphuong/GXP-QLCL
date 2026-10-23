@@ -214,6 +214,17 @@ def _lookup_template_binding(
     return matches[0] if matches else None
 
 
+def resolve_generation_template_metadata(
+    session: Session, plan: DocumentGenerationPlan,
+) -> tuple[TemplateDefinition | None, TemplateBinding | None]:
+    """Read-only selection shared by PREPARE and runtime diagnostic.
+
+    No document, generation run, template locator or audit records are created.
+    """
+    definition = _lookup_template_definition(session, plan)
+    return definition, _lookup_template_binding(session, plan, definition)
+
+
 def _lock_preparation_identity(session: Session, identity: str) -> None:
     if session.get_bind().dialect.name != "postgresql":
         return
@@ -494,8 +505,7 @@ def prepare_generation_persistence(
     )
     document = ensure_document(session, plan)
     variant = ensure_document_variant(session, document, plan)
-    template_definition = _lookup_template_definition(session, plan)
-    template_binding = _lookup_template_binding(session, plan, template_definition)
+    template_definition, template_binding = resolve_generation_template_metadata(session, plan)
     generation_run, reused = create_document_generation_run(
         session,
         plan,

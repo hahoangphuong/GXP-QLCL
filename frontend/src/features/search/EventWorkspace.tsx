@@ -13,6 +13,7 @@ import type {
   CapaCycleUpdateRequest,
   CaseApplicationUpsertRequest,
   CaseAssessmentUpsertRequest,
+  CaseInspectionPlanReadinessState,
   CaseWorkspace,
   ChangeRequestWorkspace,
   ContextualDocumentAction,
@@ -298,6 +299,8 @@ function renderCaseStepContent(
     item: ContextualDocumentAction,
     action: ContextualDocumentAction["actions"][number],
   ) => Promise<void>,
+  inspectionPlanReadiness: CaseInspectionPlanReadinessState | null,
+  onRetryInspectionPlanReadiness: () => void,
   onIssueCertificate: (payload: CertificateIssueRequest) => Promise<void>,
   onFinalizeInspectionOutcome?: (payload: InspectionFinalEvaluationRequest) => Promise<void>,
 ) {
@@ -356,12 +359,14 @@ function renderCaseStepContent(
         <div className="inspection-document-column">
           <ContextualDocumentSection
             contextKey={JSON.stringify([caseWorkspace.case_summary.site_id, caseWorkspace.case_summary.gxp_type, caseWorkspace.case_summary.production_line_id, caseWorkspace.case_summary.id, activeTab, selectedRemediationCycleId])}
+            createReadiness={inspectionPlanReadiness}
             items={documentItems}
             onCreateDocument={(item, action) =>
               onCreateDocument(caseWorkspace.case_summary.id, item, action)
             }
             onLoadDocumentDetail={onLoadDocumentDetail}
             onOpenDocument={(item, isCurrentDocument) => onOpenDocument(caseWorkspace.case_summary.id, item, isCurrentDocument)}
+            onRetryCreateReadiness={onRetryInspectionPlanReadiness}
           />
         </div>
       </div>
@@ -494,6 +499,8 @@ export function EventWorkspace({
   onOpenDocument,
   onLoadDocumentDetail,
   onCreateDocument,
+  inspectionPlanReadiness,
+  onRetryInspectionPlanReadiness,
   onIssueCertificate,
   selectedRemediationCycleId,
   onSelectedRemediationCycleChange,
@@ -533,6 +540,8 @@ export function EventWorkspace({
     item: ContextualDocumentAction,
     action: ContextualDocumentAction["actions"][number],
   ) => Promise<void>;
+  inspectionPlanReadiness: CaseInspectionPlanReadinessState | null;
+  onRetryInspectionPlanReadiness: () => void;
   onIssueCertificate: (payload: CertificateIssueRequest) => Promise<void>;
   selectedRemediationCycleId: string | null;
   onSelectedRemediationCycleChange: (cycleId: string | null) => void;
@@ -626,6 +635,8 @@ export function EventWorkspace({
             onOpenDocument,
             onLoadDocumentDetail,
             onCreateDocument,
+            inspectionPlanReadiness,
+            onRetryInspectionPlanReadiness,
             onIssueCertificate,
             onFinalizeInspectionOutcome,
           )

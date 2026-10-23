@@ -31,6 +31,7 @@ const callbacks = {
   onLoadDocumentDetail: vi.fn(), onCreateDocument: vi.fn(), onIssueCertificate: vi.fn(),
   onSelectedRemediationCycleChange: vi.fn(), onCreateCapaCycle: vi.fn(), onUpdateCapaCycle: vi.fn(),
   onSubmitCapaCycle: vi.fn(), onAssessCapaCycle: vi.fn(), onResolveInspectionFolder: vi.fn(),
+  onRetryInspectionPlanReadiness: vi.fn(),
 };
 function props(items = [certificate("eligibility-uuid-A"), certificate("eligibility-uuid-B")]): ComponentProps<typeof EventWorkspace> {
   return {
@@ -40,7 +41,7 @@ function props(items = [certificate("eligibility-uuid-A"), certificate("eligibil
     caseWorkspaceLoading: false, caseWorkspaceError: null, changeRequestWorkspace: null,
     changeRequestWorkspaceLoading: false, changeRequestWorkspaceError: null,
     changeRequestMutations: {} as ComponentProps<typeof EventWorkspace>["changeRequestMutations"],
-    activeTab: "Chứng nhận ĐĐK", selectedRemediationCycleId: null,
+    activeTab: "Chứng nhận ĐĐK", selectedRemediationCycleId: null, inspectionPlanReadiness: null,
   };
 }
 afterEach(() => { cleanup(); vi.clearAllMocks(); });

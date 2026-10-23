@@ -15,11 +15,16 @@ TypedCreateReadiness = Literal[
     "TEMPLATE_READY_BUT_BACKEND_ACTION_MISSING",
     "STORAGE_WRITE_CONTRACT_MISSING",
     "BUSINESS_INPUT_CONTRACT_MISSING",
+    "BUSINESS_INPUT_NOT_READY",
     "FRONTEND_CREATE_ACTION_MISSING",
     "LEGACY_ONLY_UNRESOLVED",
     "OTHER_BLOCKED",
+    "UNSUPPORTED_GXP_TYPE",
 ]
 ParentScope = Literal["case", "capa_cycle", "change_request"]
+
+# Exact typed KHKT create URL shared by the Case action read model and router.
+KHKT_CASE_TYPED_RENDER_ROUTE = "/cases/{case_id}/documents/inspection-ke-hoach-kt/render"
 
 
 @dataclass(frozen=True)
@@ -261,6 +266,9 @@ def build_document_action_states(
         "BUSINESS_INPUT_CONTRACT_MISSING": (
             "Thiếu contract input nghiệp vụ typed theo ngữ cảnh; không hiển thị thao tác tạo generic."
         ),
+        "BUSINESS_INPUT_NOT_READY": (
+            "Dữ liệu nghiệp vụ của Case chưa đủ để tạo Kế hoạch kiểm tra."
+        ),
         "FRONTEND_CREATE_ACTION_MISSING": (
             "Backend KHKT đã có canonical create/render contract nhưng frontend contextual action "
             "chưa có typed handler để gọi thao tác tạo tài liệu."
@@ -269,6 +277,7 @@ def build_document_action_states(
             "Family legacy chưa có owner mapping/workflow đủ chắc chắn để tạo tài liệu."
         ),
         "OTHER_BLOCKED": "Tạo tài liệu đang bị chặn bởi contract backend chưa hoàn tất.",
+        "UNSUPPORTED_GXP_TYPE": "Loại GxP của Case không có mẫu Kế hoạch kiểm tra được hỗ trợ.",
         "READY_OPEN_HISTORY": "Loại tài liệu này hiện chỉ hỗ trợ mở và xem lịch sử tài liệu đã có.",
         "READY_READ_ONLY": "Loại tài liệu này chỉ hỗ trợ theo dõi hiện trạng trong slice hiện tại.",
     }
@@ -288,7 +297,21 @@ def build_document_action_states(
         "parent_scope": parent_scope,
         "parent_id": parent_id,
         "document_type_code": document_type_code,
-        **({} if create_contract is None else create_contract),
+        # Preserve non-actionable readiness diagnostics for blocked creates.
+        # Only an enabled authorized action may disclose an invocable target.
+        **(
+            {}
+            if create_contract is None or create_permission_missing
+            else (
+                create_contract
+                if create_readiness == "READY_CREATE_OPEN_HISTORY"
+                else {
+                    key: value
+                    for key, value in create_contract.items()
+                    if key not in {"create_endpoint", "create_http_method"}
+                }
+            )
+        ),
     }
 
     return [

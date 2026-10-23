@@ -28,11 +28,13 @@ import {
   openCapaCycleDocumentCurrentContent,
   openCaseDocumentCurrentContent,
   getGenerationRun,
+  getCaseInspectionPlanRuntimeReadiness,
   listCases,
   listSiteGxpCertificates,
   listCompanies,
   listSites,
   prepareDocument,
+  renderCaseInspectionPlan,
   renderTemplateDocx,
   searchFacilities,
   submitCapaCycle,
@@ -90,6 +92,38 @@ function mockJsonResponse({
 }
 
 describe("frontend API routing contract", () => {
+  it("uses the owner-safe Case KHKT readiness and typed create routes", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+    const auth = { username: "operator.local", role: "manager" as const };
+    const controller = new AbortController();
+
+    await getCaseInspectionPlanRuntimeReadiness("case/unsafe", auth, false, "oidc-token", controller.signal);
+    await renderCaseInspectionPlan(
+      "/cases/case-123/documents/inspection-ke-hoach-kt/render",
+      {},
+      auth,
+      false,
+      "oidc-token",
+    );
+
+    expect(fetchMock.mock.calls[0]).toEqual([
+      "/api/cases/case%2Funsafe/documents/inspection-ke-hoach-kt/readiness",
+      expect.objectContaining({
+        method: "GET",
+        signal: controller.signal,
+        headers: expect.objectContaining({ Authorization: "Bearer oidc-token" }),
+      }),
+    ]);
+    expect(fetchMock.mock.calls[1]).toEqual([
+      "/api/cases/case-123/documents/inspection-ke-hoach-kt/render",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({}),
+        headers: expect.objectContaining({ Authorization: "Bearer oidc-token" }),
+      }),
+    ]);
+  });
   it("reads GxP and ĐĐK metadata from their distinct canonical owner routes", async () => {
     const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: {} }));
     vi.stubGlobal("fetch", fetchMock);

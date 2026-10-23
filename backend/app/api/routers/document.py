@@ -11,14 +11,19 @@ from sqlalchemy.orm import Session
 from backend.app.api.session import commit_or_409, get_session_from_request_factory
 from backend.app.auth import AuthenticatedUser, get_authenticated_user, require_permissions, require_role
 from backend.app.read_models import (
+    CaseInspectionPlanRuntimeReadinessRead,
+    CaseQdKtRuntimeReadinessRead,
     DocumentDetailRead,
     DocumentOwnerMetadataInventoryRead,
     DocumentGenerationPrepareRequest,
+    CaseInspectionPlanRenderRequest,
     DocumentGenerationRunStatusRead,
     DocumentPreparationRead,
     DocumentRenderRead,
     DocumentTemplateRenderRequest,
 )
+from backend.app.document.contextual_actions import KHKT_CASE_TYPED_RENDER_ROUTE
+from backend.app.document.inspection_qd_kt_case_readiness import inspect_qdkt_case_readiness
 from backend.app.services.document_api import DocumentWorkflowService
 from backend.app.storage.types import StorageOperationError
 
@@ -83,6 +88,63 @@ def register_document_routes(app, session_factory) -> None:
             raise
         result.pop("_rollback_cleanup_required", None)
         return DocumentRenderRead(**result)
+
+    def render_case_inspection_plan(
+        case_id: str,
+        payload: CaseInspectionPlanRenderRequest,
+        request: Request,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"document.write"})
+        # Reuse the existing render route's commit, failure persistence and
+        # storage cleanup owner. The client cannot select a different Case,
+        # GxP type, document family, output path, or template variant.
+        canonical_payload = service.build_case_inspection_plan_render_payload(
+            session,
+            case_id=case_id,
+            idempotency_key=payload.idempotency_key,
+        )
+        return render_template_docx(
+            DocumentTemplateRenderRequest(**canonical_payload),
+            request=request,
+            session=session,
+            user=user,
+        )
+
+    def get_case_inspection_plan_runtime_readiness(
+        case_id: str,
+        request: Request,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"document.write"})
+        # Deliberately no commit or mutation: inspection folder lookup only
+        # reads persisted identity and performs physical read-only resolution.
+        result = service.get_case_inspection_plan_runtime_readiness(
+            session,
+            case_id=case_id,
+            storage=request.app.state.storage_service,
+        )
+        return CaseInspectionPlanRuntimeReadinessRead(**result)
+
+    def get_case_qdkt_readiness(
+        case_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        # Mirror the document.write permission of the KHKT readiness route;
+        # no output filename, template path, or document contents are exposed.
+        require_permissions(user, {"document.write"})
+        result = inspect_qdkt_case_readiness(session, case_id=case_id)
+        return CaseQdKtRuntimeReadinessRead(
+            case_id=result.case_id,
+            family_code="INSPECTION_QD_KT",
+            ready_to_render=False,
+            decision_source_id=result.decision_source_id,
+            registered_site_id=result.registered_site_id,
+            blocked_reasons=list(result.blockers),
+        )
 
     def get_document_generation_run(
         generation_run_id: str,
@@ -258,6 +320,27 @@ def register_document_routes(app, session_factory) -> None:
         render_template_docx,
         methods=["POST"],
         response_model=DocumentRenderRead,
+        tags=["documents"],
+    )
+    app.add_api_route(
+        KHKT_CASE_TYPED_RENDER_ROUTE,
+        render_case_inspection_plan,
+        methods=["POST"],
+        response_model=DocumentRenderRead,
+        tags=["documents"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/documents/inspection-ke-hoach-kt/readiness",
+        get_case_inspection_plan_runtime_readiness,
+        methods=["GET"],
+        response_model=CaseInspectionPlanRuntimeReadinessRead,
+        tags=["documents"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/documents/inspection-qd-kt/readiness",
+        get_case_qdkt_readiness,
+        methods=["GET"],
+        response_model=CaseQdKtRuntimeReadinessRead,
         tags=["documents"],
     )
     app.add_api_route(

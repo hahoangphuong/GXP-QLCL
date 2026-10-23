@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from types import SimpleNamespace
 import mimetypes
 from dataclasses import dataclass
 from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from backend.app.audit_payload import normalize_and_redact_audit_payload
@@ -34,10 +35,18 @@ from backend.app.document.docx_template_render import (
 )
 from backend.app.document.output_version import (
     OutputVersionAllocationError,
+    _load_case_storage_identity,
     cleanup_output_target_if_owned,
 )
-from backend.app.document.persistence import DocumentPersistenceError
+from backend.app.document.persistence import (
+    DocumentPersistenceError,
+    resolve_generation_template_metadata,
+)
 from backend.app.document.payload_builders import DocumentPayloadBuildError
+from backend.app.document.inspection_ke_hoach_kt_payload_input import (
+    InspectionKeHoachKtPayloadInputError,
+    load_inspection_ke_hoach_kt_payload_input,
+)
 from backend.app.document.inspection_ke_hoach_kt_template_asset_contract import (
     INSPECTION_KE_HOACH_KT_FAMILY,
     InspectionKeHoachKtTemplateAssetContractError,
@@ -50,7 +59,10 @@ from backend.app.document.service import (
 )
 from backend.app.document.service_contract import (
     DocumentGenerationRequest,
+    DocumentPayloadEnvelope,
     DocumentTemplateSelectionError,
+    load_default_registry,
+    plan_document_generation,
 )
 from backend.app.document.source_binary_contract import SourceBinaryContractError
 from backend.app.document.template_binary import (
@@ -63,6 +75,8 @@ from backend.app.document.template_contract_runtime import (
     build_scalar_replacement_plan_for_template,
     load_default_template_contract_reconciliation,
 )
+from backend.app.db.enums import StorageResolutionStatus
+from backend.app.storage.binding_service import StorageBindingService
 from backend.app.storage.types import (
     StorageOperationError,
     StorageServiceProtocol,
@@ -131,6 +145,211 @@ class DocumentWorkflowService:
         session.add(audit_event)
         session.flush()
         return audit_event
+
+    @staticmethod
+    def _current_openable_khkt_version_id(
+        session: Session, *, case_id: str,
+    ) -> str | None:
+        """Shared read-only current KHKT predicate for CREATE and diagnostic."""
+        return session.scalar(
+            select(DocumentVersion.id)
+            .join(
+                DocumentVariant,
+                DocumentVariant.id == DocumentVersion.document_variant_id,
+            )
+            .join(Document, Document.id == DocumentVariant.document_id)
+            .where(
+                Document.case_id == case_id,
+                Document.family_code == INSPECTION_KE_HOACH_KT_FAMILY,
+                DocumentVersion.is_current.is_(True),
+                *(
+                    func.length(func.trim(field)) > 0
+                    for field in (
+                        DocumentVersion.storage_root,
+                        DocumentVersion.storage_relative_path,
+                        DocumentVersion.original_filename,
+                        DocumentVersion.checksum_sha256,
+                    )
+                ),
+            )
+            .limit(1)
+        )
+
+    @staticmethod
+    def build_case_inspection_plan_render_payload(
+        session: Session,
+        *,
+        case_id: str,
+        idempotency_key: str | None,
+    ) -> dict[str, Any]:
+        """Build KHKT typed create input from the canonical Case.
+
+        The Case row lock serializes two typed creates for the same Case until
+        the route commits. An already-openable current KHKT version means the
+        contextual action is OPEN/HISTORY, not CREATE; a second fresh create
+        must not bypass that state by calling this endpoint directly.
+        """
+        case = session.scalar(
+            select(Case).where(Case.id == case_id).with_for_update()
+        )
+        if case is None:
+            raise HTTPException(status_code=404, detail="Case was not found.")
+        try:
+            filename = get_inspection_ke_hoach_kt_output_filename(case.gxp_type)
+        except InspectionKeHoachKtTemplateAssetContractError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+        current_version_id = DocumentWorkflowService._current_openable_khkt_version_id(
+            session, case_id=case.id,
+        )
+        if current_version_id is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Current inspection plan document already exists for this Case; "
+                    "open its current version or history instead of creating another."
+                ),
+            )
+        return {
+            "family_code": INSPECTION_KE_HOACH_KT_FAMILY,
+            "case_id": case.id,
+            "gxp_type": case.gxp_type,
+            "storage_scope": "inspection_folder",
+            "language_code": "vi",
+            "idempotency_key": idempotency_key,
+            "output_filename": filename,
+            "payload": {},
+            "strict_payload": True,
+        }
+
+    def get_case_inspection_plan_runtime_readiness(
+        self,
+        session: Session,
+        *,
+        case_id: str,
+        storage: StorageServiceProtocol | None,
+    ) -> dict[str, Any]:
+        """On-demand read-only KHKT diagnostic, not a render or allocation.
+
+        A ready outcome means prerequisites were *observed* at request time,
+        not that a later output write will succeed or remain race-free. No
+        actor, document shell, generation run, binding, resolution log or
+        storage output is created by this method.
+        """
+        case = session.get(Case, case_id)
+        if case is None:
+            raise HTTPException(status_code=404, detail="Case was not found.")
+        try:
+            # Manifest validation remains authoritative: do not fall back to
+            # a different template or generic GxP if an asset is unsupported.
+            get_inspection_ke_hoach_kt_output_filename(case.gxp_type)
+        except InspectionKeHoachKtTemplateAssetContractError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+        input_status = "blocked"
+        template_status = "not_checked"
+        folder_status = "not_checked"
+        blockers: list[str] = []
+        with session.no_autoflush:
+            # Identical current-version predicate as typed and generic KHKT
+            # CREATE, but without taking a FOR UPDATE lock in this GET probe.
+            if self._current_openable_khkt_version_id(session, case_id=case.id):
+                blockers.append("current_khkt_document_already_exists")
+            try:
+                canonical = load_inspection_ke_hoach_kt_payload_input(
+                    session,
+                    case_id=case.id,
+                    generated_at=datetime.now(timezone.utc),
+                )
+            except (InspectionKeHoachKtPayloadInputError, DocumentPayloadBuildError):
+                blockers.append("canonical_input_unavailable")
+            else:
+                input_status = "ready"
+                request = DocumentGenerationRequest(
+                    family_code=INSPECTION_KE_HOACH_KT_FAMILY,
+                    requested_by_user_id=None,
+                    case_id=case.id,
+                    gxp_type=case.gxp_type,
+                    language_code="vi",
+                    storage_scope="inspection_folder",
+                )
+                try:
+                    plan = plan_document_generation(
+                        load_default_registry(),
+                        request,
+                        DocumentPayloadEnvelope(
+                            family_code=INSPECTION_KE_HOACH_KT_FAMILY,
+                            fields=(),
+                            source_procedures=(),
+                        ),
+                    )
+                    definition, binding = resolve_generation_template_metadata(
+                        session, plan,
+                    )
+                    # Only these three properties are consumed by the exact
+                    # template-readiness owner. No persistence state/run exists.
+                    preview = SimpleNamespace(
+                        generation_plan=plan,
+                        persisted_state=SimpleNamespace(
+                            template_definition_id=None if definition is None else definition.id,
+                            template_binding_id=None if binding is None else binding.id,
+                        ),
+                        khkt_payload_input=canonical,
+                    )
+                    template = self._inspect_template_readiness(
+                        session, storage, preview,
+                    )
+                    template_status = (
+                        "ready" if template.readiness_status == "direct_stream_ready"
+                        and template.scalar_replacement_mode == "khkt_contract_exact"
+                        else "blocked"
+                    )
+                except (DocumentPersistenceError, DocumentTemplateSelectionError):
+                    template_status = "blocked"
+                if template_status != "ready":
+                    blockers.append("template_binary_or_contract_unavailable")
+
+            if storage is None:
+                folder_status = "unavailable"
+                blockers.append("storage_service_unavailable")
+            else:
+                try:
+                    year, site_legacy_id, inspection_code = _load_case_storage_identity(
+                        session, case.id,
+                    )
+                    folder = StorageBindingService(storage).preview_inspection_folder(
+                        session,
+                        case_id=case.id,
+                        year=year,
+                        site_legacy_id=site_legacy_id,
+                        inspection_legacy_code=inspection_code,
+                    )
+                except (OutputVersionAllocationError, StorageOperationError, FileNotFoundError):
+                    folder_status = "blocked"
+                else:
+                    folder_status = (
+                        "ready"
+                        if folder.resolution.status == StorageResolutionStatus.RESOLVED
+                        else "blocked"
+                    )
+                if folder_status != "ready":
+                    blockers.append("inspection_folder_unavailable")
+
+        return {
+            "case_id": case.id,
+            "family_code": INSPECTION_KE_HOACH_KT_FAMILY,
+            "gxp_type": case.gxp_type,
+            "canonical_input_status": input_status,
+            "template_binary_status": template_status,
+            "inspection_folder_status": folder_status,
+            "ready_to_attempt_render": (
+                input_status == "ready"
+                and template_status == "ready"
+                and folder_status == "ready"
+                and "current_khkt_document_already_exists" not in blockers
+            ),
+            "blocked_reasons": blockers,
+        }
 
     def _build_generation_request(self, payload: dict[str, Any], user_id: str) -> DocumentGenerationRequest:
         return DocumentGenerationRequest(
@@ -547,6 +766,22 @@ class DocumentWorkflowService:
         payload: dict[str, Any],
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
+        if payload.get("family_code") == INSPECTION_KE_HOACH_KT_FAMILY:
+            # Generic PREPARE is also a KHKT create entrypoint: it persists a
+            # document shell and generation run even without rendering Word.
+            # Reuse the exact typed/render Case lock and current-version owner
+            # before creating an AppUser, run or audit event.
+            case_id = payload.get("case_id")
+            if not isinstance(case_id, str) or not case_id.strip():
+                raise HTTPException(
+                    status_code=409,
+                    detail="INSPECTION_KE_HOACH_KT prepare requires canonical case_id.",
+                )
+            self.build_case_inspection_plan_render_payload(
+                session,
+                case_id=case_id,
+                idempotency_key=payload.get("idempotency_key"),
+            )
         actor = self._get_or_create_app_user(session, user)
         try:
             prepared = prepare_document_generation_job(
@@ -757,8 +992,24 @@ class DocumentWorkflowService:
     ) -> dict[str, Any]:
         if storage is None:
             raise HTTPException(status_code=503, detail="StorageService is unavailable for document rendering.")
-        actor = self._get_or_create_app_user(session, user)
         render_payload = dict(payload)
+        if render_payload.get("family_code") == INSPECTION_KE_HOACH_KT_FAMILY:
+            # The generic Word renderer is also a KHKT writer. Apply exactly
+            # the typed Case CREATE guard before creating an actor, generation
+            # run, output allocation or storage write. The Case lock remains
+            # held by this transaction through the route's render commit.
+            case_id = render_payload.get("case_id")
+            if not isinstance(case_id, str) or not case_id.strip():
+                raise HTTPException(
+                    status_code=409,
+                    detail="INSPECTION_KE_HOACH_KT render requires canonical case_id.",
+                )
+            self.build_case_inspection_plan_render_payload(
+                session,
+                case_id=case_id,
+                idempotency_key=render_payload.get("idempotency_key"),
+            )
+        actor = self._get_or_create_app_user(session, user)
         if not render_payload.get("idempotency_key"):
             render_payload["idempotency_key"] = f"render-{uuid4()}"
         prepared = None

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
 
 
@@ -423,6 +423,26 @@ class AuthenticatedIdentityRead(BaseModel):
     permissions: list[str]
 
 
+class CaseInspectionPlanRuntimeReadinessRead(BaseModel):
+    case_id: str
+    family_code: Literal["INSPECTION_KE_HOACH_KT"]
+    gxp_type: str
+    canonical_input_status: Literal["ready", "blocked"]
+    template_binary_status: Literal["ready", "blocked", "not_checked"]
+    inspection_folder_status: Literal["ready", "blocked", "unavailable"]
+    ready_to_attempt_render: bool
+    blocked_reasons: list[str]
+
+
+class CaseQdKtRuntimeReadinessRead(BaseModel):
+    case_id: str
+    family_code: Literal["INSPECTION_QD_KT"]
+    ready_to_render: Literal[False]
+    decision_source_id: str | None
+    registered_site_id: str | None
+    blocked_reasons: list[str]
+
+
 class ContextualDocumentActionAvailabilityRead(BaseModel):
     action_key: Literal["open", "create", "history"]
     label: str
@@ -439,6 +459,10 @@ class ContextualDocumentActionAvailabilityRead(BaseModel):
     create_gxp_type: str | None = None
     create_storage_scope: str | None = None
     create_output_filename: str | None = None
+    create_endpoint: str | None = None
+    create_http_method: Literal["POST"] | None = None
+    create_input_readiness: Literal["CANONICAL_INPUT_READY", "CANONICAL_INPUT_BLOCKED"] | None = None
+    create_input_blocked_reason: str | None = None
 
 
 class ContextualDocumentActionRead(BaseModel):
@@ -1320,6 +1344,13 @@ class DocumentGenerationPrepareRequest(BaseModel):
 
 class DocumentTemplateRenderRequest(DocumentGenerationPrepareRequest):
     output_filename: str
+
+
+class CaseInspectionPlanRenderRequest(BaseModel):
+    """Typed KHKT create: only idempotency may be supplied by the client."""
+
+    model_config = ConfigDict(extra="forbid")
+    idempotency_key: str | None = None
 
 
 class DocumentTemplateSelectionRead(BaseModel):

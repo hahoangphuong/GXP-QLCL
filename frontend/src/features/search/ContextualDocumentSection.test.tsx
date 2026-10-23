@@ -151,7 +151,7 @@ describe("Document workspace identity and focus", () => {
     view.rerender(<ContextualDocumentSection {...props} items={[]} contextKey="event-A" />);
     expect(screen.getByText("Chưa có tài liệu trong ngữ cảnh này.")).toBeInTheDocument(); expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
-  it.each([403, 404, 409])("presents %s without retrying the supported create action", async status => {
+  it.each([401, 403, 404, 409, 422])("presents %s without retrying the supported create action", async status => {
     const pending = deferred<void>(); const create = vi.fn().mockReturnValue(pending.promise);
     const row = item("A"); row.actions = [{ action_key: "create", label: "Tạo", available: true, disabled_reason: null, required_permissions: [] }];
     const view = render(<ContextualDocumentSection {...defaults} items={[row]} onLoadDocumentDetail={vi.fn()} onCreateDocument={create} />);

@@ -188,6 +188,56 @@ class StorageBindingService:
             return False
         return entry.is_dir
 
+    def preview_inspection_folder(
+        self,
+        session: Session,
+        *,
+        case_id: str,
+        year: int,
+        site_legacy_id: int,
+        inspection_legacy_code: str,
+    ) -> InspectionFolderBindingResult:
+        """Read-only exact-folder lookup; never upsert a binding or resolution log.
+
+        Reuse the same persisted-binding eligibility and live resolver as the
+        write owner. A persisted binding alone is not physical proof of a
+        still-existing folder. Do not grant output write capability here.
+        """
+        binding = self._load_binding(
+            session,
+            year=year,
+            site_legacy_id=site_legacy_id,
+            inspection_legacy_code=inspection_legacy_code,
+        )
+        if binding is not None and self._persisted_binding_folder_is_eligible(
+            binding,
+            year=year,
+            site_legacy_id=site_legacy_id,
+            inspection_legacy_code=inspection_legacy_code,
+        ):
+            return InspectionFolderBindingResult(
+                resolution=StorageResolution(
+                    status=StorageResolutionStatus.RESOLVED,
+                    relative_path=binding.relative_path,
+                    absolute_path=None,
+                    candidate_count=1,
+                    detail="Existing inspected storage binding resolves to a directory.",
+                ),
+                binding=binding,
+                source="binding",
+            )
+        resolution = self.storage.resolve_inspection_folder(
+            case_id=case_id,
+            year=year,
+            site_legacy_id=site_legacy_id,
+            inspection_legacy_code=inspection_legacy_code,
+        )
+        return InspectionFolderBindingResult(
+            resolution=resolution,
+            binding=None,
+            source="live_resolution",
+        )
+
     def resolve_inspection_folder(
         self,
         session: Session,

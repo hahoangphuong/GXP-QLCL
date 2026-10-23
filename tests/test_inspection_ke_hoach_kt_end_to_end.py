@@ -47,6 +47,7 @@ from backend.app.document.inspection_ke_hoach_kt_template_asset_contract import 
 )
 from backend.app.document.template_binary_binding import assign_template_binary_binding
 from backend.app.project_paths import repo_root
+from backend.app.services.catalog import CatalogReadService
 from backend.app.services.document_api import DocumentWorkflowService
 from backend.app.storage.filesystem import FilesystemStorageService
 from backend.app.storage.types import StorageConfig
@@ -470,6 +471,49 @@ def _seed_canonical_khkt(session: Session) -> tuple[str, str]:
     return case.id, site.id
 
 
+def test_khkt_readonly_runtime_prerequisites_do_not_prepare_or_resolve_persistently():
+    from backend.app.db.models.phase1 import (
+        AppUser, AuditEvent, Document, DocumentGenerationRun,
+        StorageResolutionLog,
+    )
+    from backend.app.read_models import CaseInspectionPlanRuntimeReadinessRead
+
+    storage, root = _storage()
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = DocumentWorkflowService()
+    try:
+        with Session(engine) as session:
+            case_id, _ = _seed_canonical_khkt(session)
+            session.commit()
+
+            # Canonical business input exists, but this session has no exact
+            # template binding or inspection folder. The diagnostic must be
+            # read-only, unlike prepare_generation/resolve_inspection_folder.
+            preview = service.get_case_inspection_plan_runtime_readiness(
+                session, case_id=case_id, storage=storage,
+            )
+            typed = CaseInspectionPlanRuntimeReadinessRead(**preview)
+            assert typed.canonical_input_status == "ready"
+            assert typed.template_binary_status == "blocked"
+            assert typed.inspection_folder_status == "blocked"
+            assert typed.ready_to_attempt_render is False
+            assert "template_binary_or_contract_unavailable" in typed.blocked_reasons
+            assert "inspection_folder_unavailable" in typed.blocked_reasons
+            assert len(session.new) == 0
+            assert len(session.dirty) == 0
+            for model in (
+                AppUser, AuditEvent, Document, DocumentGenerationRun,
+                StorageBinding, StorageResolutionLog,
+            ):
+                assert list(session.scalars(select(model))) == []
+            session.commit()
+            assert list(session.scalars(select(StorageResolutionLog))) == []
+    finally:
+        engine.dispose()
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_khkt_binary_end_to_end_renders_canonical_db_payload_and_writes_output(monkeypatch):
     engine = create_engine("sqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
@@ -557,6 +601,188 @@ def test_khkt_binary_end_to_end_renders_canonical_db_payload_and_writes_output(m
             )
             session.commit()
 
+            # Real canonical site, plan, structured scope, roster, and decision
+            # inputs are already installed. The Case workspace should expose
+            # the typed create action before this genuine DOCX render.
+            contextual = CatalogReadService()._build_case_contextual_document_actions(
+                session,
+                case_id=case_id,
+                capa_cycles=[],
+                user=build_authenticated_user(
+                    "khkt-ready-preview",
+                    permissions={"document.read", "document.write"},
+                ),
+            )
+            khkt_row = next(
+                row for row in contextual
+                if row["family_code"] == "INSPECTION_KE_HOACH_KT"
+            )
+            create = next(
+                action for action in khkt_row["actions"]
+                if action["action_key"] == "create"
+            )
+            assert create["available"] is True
+            assert create["create_input_readiness"] == "CANONICAL_INPUT_READY"
+            assert create["create_input_blocked_reason"] is None
+            assert create["create_endpoint"].endswith(
+                "/documents/inspection-ke-hoach-kt/render"
+            )
+
+            binding_count_before = len(list(session.scalars(select(StorageBinding))))
+            assert len(session.new) == 0
+            assert len(session.dirty) == 0
+            runtime = service.get_case_inspection_plan_runtime_readiness(
+                session, case_id=case_id, storage=storage,
+            )
+            assert runtime["canonical_input_status"] == "ready"
+            assert runtime["template_binary_status"] == "ready"
+            assert runtime["inspection_folder_status"] == "ready"
+            assert runtime["ready_to_attempt_render"] is True
+            assert runtime["blocked_reasons"] == []
+            assert len(list(session.scalars(select(StorageBinding)))) == binding_count_before
+            assert len(session.new) == 0
+            assert len(session.dirty) == 0
+
+            # A persisted locator is not sufficient: the read-only preview
+            # must actually reopen and checksum the template's bytes.
+            template_path = root / "templates" / template_relative
+            original_bytes = template_path.read_bytes()
+            template_path.write_bytes(b"synthetic checksum drift")
+            try:
+                drift = service.get_case_inspection_plan_runtime_readiness(
+                    session, case_id=case_id, storage=storage,
+                )
+                assert drift["canonical_input_status"] == "ready"
+                assert drift["template_binary_status"] == "blocked"
+                assert drift["inspection_folder_status"] == "ready"
+                assert drift["ready_to_attempt_render"] is False
+
+                # Even though the previous GET was READY, the public render
+                # owner must reopen the binary at render time and fail closed.
+                from fastapi import HTTPException
+                from backend.app.db.models.phase1 import Document, DocumentGenerationRun, AuditEvent
+                with pytest.raises(HTTPException) as template_failure:
+                    service.render_template_docx(
+                        session,
+                        storage=storage,
+                        payload={
+                            "family_code": "INSPECTION_KE_HOACH_KT",
+                            "case_id": case_id,
+                            "gxp_type": "GLP",
+                            "storage_scope": "inspection_folder",
+                            "idempotency_key": "khkt-stale-template-attempt",
+                            "output_filename": "3. Kế hoạch kiểm tra GLP.docx",
+                            "payload": {},
+                            "strict_payload": True,
+                        },
+                        user=build_authenticated_user(
+                            "khkt-template-drift",
+                            permissions={"document.read", "document.write"},
+                        ),
+                    )
+                assert template_failure.value.status_code == 409
+                session.rollback()  # Match error-response transaction handling.
+                assert list(session.scalars(select(Document))) == []
+                assert list(session.scalars(select(DocumentGenerationRun))) == []
+                assert list(session.scalars(select(AuditEvent))) == []
+                assert not (root / "inspection" / output_folder / "3. Kế hoạch kiểm tra GLP.docx").exists()
+            finally:
+                template_path.write_bytes(original_bytes)
+
+            # The previously persisted inspection binding also ceases to be
+            # proof when its physical directory disappears.
+            physical_folder = root / "inspection" / output_folder
+            physical_folder.rmdir()
+            try:
+                missing_folder = service.get_case_inspection_plan_runtime_readiness(
+                    session, case_id=case_id, storage=storage,
+                )
+                assert missing_folder["template_binary_status"] == "ready"
+                assert missing_folder["inspection_folder_status"] == "blocked"
+                assert missing_folder["ready_to_attempt_render"] is False
+
+                # The earlier READY preview is not permission to write into
+                # a folder that disappeared before the actual render request.
+                from fastapi import HTTPException
+                from backend.app.db.models.phase1 import Document, DocumentGenerationRun, AuditEvent
+                with pytest.raises(HTTPException) as missing_folder_failure:
+                    service.render_template_docx(
+                        session,
+                        storage=storage,
+                        payload={
+                            "family_code": "INSPECTION_KE_HOACH_KT",
+                            "case_id": case_id,
+                            "gxp_type": "GLP",
+                            "storage_scope": "inspection_folder",
+                            "idempotency_key": "khkt-missing-folder-attempt",
+                            "output_filename": "3. Kế hoạch kiểm tra GLP.docx",
+                            "payload": {},
+                            "strict_payload": True,
+                        },
+                        user=build_authenticated_user(
+                            "khkt-missing-folder",
+                            permissions={"document.read", "document.write"},
+                        ),
+                    )
+                assert missing_folder_failure.value.status_code == 409
+                session.rollback()
+                assert list(session.scalars(select(Document))) == []
+                assert list(session.scalars(select(DocumentGenerationRun))) == []
+                assert list(session.scalars(select(AuditEvent))) == []
+                assert not physical_folder.exists()
+            finally:
+                physical_folder.mkdir(parents=True)
+
+            assert len(list(session.scalars(select(StorageBinding)))) == binding_count_before
+            assert len(session.new) == 0
+            assert len(session.dirty) == 0
+
+            # A READY GET is a point-in-time observation, not a token
+            # authorizing later CREATE. Remove a required canonical input
+            # after the successful preview and before the render request.
+            plan_row = session.scalar(select(InspectionPlan).where(InspectionPlan.case_id == case_id))
+            assert plan_row is not None
+            original_decision_reference = plan_row.decision_reference
+            plan_row.decision_reference = ""
+            session.commit()
+            stale = service.get_case_inspection_plan_runtime_readiness(
+                session, case_id=case_id, storage=storage,
+            )
+            assert stale["canonical_input_status"] == "blocked"
+            assert stale["ready_to_attempt_render"] is False
+            assert "canonical_input_unavailable" in stale["blocked_reasons"]
+
+            from fastapi import HTTPException
+            from backend.app.db.models.phase1 import Document, DocumentGenerationRun, AuditEvent
+            with pytest.raises(HTTPException) as failed:
+                service.render_template_docx(
+                    session,
+                    storage=storage,
+                    payload={
+                        "family_code": "INSPECTION_KE_HOACH_KT",
+                        "case_id": case_id,
+                        "gxp_type": "GLP",
+                        "storage_scope": "inspection_folder",
+                        "idempotency_key": "khkt-stale-readiness-attempt",
+                        "output_filename": "3. Kế hoạch kiểm tra GLP.docx",
+                        "payload": {},
+                        "strict_payload": True,
+                    },
+                    user=build_authenticated_user(
+                        "khkt-stale-preview", permissions={"document.read", "document.write"},
+                    ),
+                )
+            assert failed.value.status_code == 409
+            session.rollback()  # Real route dependency rolls back unsuccessful requests.
+            assert list(session.scalars(select(Document))) == []
+            assert list(session.scalars(select(DocumentGenerationRun))) == []
+            assert list(session.scalars(select(AuditEvent))) == []
+            assert not (root / "inspection" / output_folder / "3. Kế hoạch kiểm tra GLP.docx").exists()
+
+            plan_row = session.scalar(select(InspectionPlan).where(InspectionPlan.case_id == case_id))
+            plan_row.decision_reference = original_decision_reference
+            session.commit()
+
             result = service.render_template_docx(
                 session,
                 storage=storage,
@@ -576,6 +802,18 @@ def test_khkt_binary_end_to_end_renders_canonical_db_payload_and_writes_output(m
                 ),
             )
             session.commit()
+            # The diagnostic must not claim CREATE can be attempted again
+            # when this Case already has a committed current KHKT version.
+            after_success = service.get_case_inspection_plan_runtime_readiness(
+                session, case_id=case_id, storage=storage,
+            )
+            assert after_success["canonical_input_status"] == "ready"
+            assert after_success["template_binary_status"] == "ready"
+            assert after_success["inspection_folder_status"] == "ready"
+            assert after_success["ready_to_attempt_render"] is False
+            assert "current_khkt_document_already_exists" in after_success["blocked_reasons"]
+            assert len(session.new) == 0
+            assert len(session.dirty) == 0
 
         assert result["generation_status"] == "succeeded"
         assert result["scalar_replacement_mode"] == "khkt_contract_exact"

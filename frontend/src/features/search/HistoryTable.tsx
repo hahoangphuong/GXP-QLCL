@@ -1,4 +1,4 @@
-import { useId, useRef } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 
 import { formatCompactDate, formatHistoryEventType, formatStatusLabel } from "../../lib/presentation";
 import type { FacilityHistoryItem } from "../../types";
@@ -14,8 +14,41 @@ export function HistoryTable({
 }) {
   const headingId = useId();
   const instructionsId = useId();
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
-  const entryId = rows.some((row) => row.id === selectedHistoryId) ? selectedHistoryId : rows[0]?.id;
+  const previousRowIdsRef = useRef(rows.map((row) => row.id));
+  const rowFocusOwnedRef = useRef(false);
+  const [focusedHistoryId, setFocusedHistoryId] = useState<string | null>(null);
+  const entryId = rows.some((row) => row.id === focusedHistoryId)
+    ? focusedHistoryId
+    : rows.some((row) => row.id === selectedHistoryId)
+      ? selectedHistoryId
+      : rows[0]?.id;
+
+  useLayoutEffect(() => {
+    const previousIds = previousRowIdsRef.current;
+    previousRowIdsRef.current = rows.map((row) => row.id);
+    if (!focusedHistoryId || rows.some((row) => row.id === focusedHistoryId)) {
+      return;
+    }
+
+    const activeElement = document.activeElement;
+    const shouldRestoreFocus = rowFocusOwnedRef.current
+      && (activeElement === document.body || activeElement === scrollRef.current);
+    if (!shouldRestoreFocus) {
+      setFocusedHistoryId(null);
+      return;
+    }
+
+    const previousIndex = Math.max(previousIds.indexOf(focusedHistoryId), 0);
+    const nextRow = rows[Math.min(previousIndex, rows.length - 1)];
+    if (nextRow) {
+      rowRefs.current.get(nextRow.id)?.focus();
+    } else {
+      setFocusedHistoryId(null);
+      scrollRef.current?.focus();
+    }
+  }, [focusedHistoryId, rows]);
 
   return (
     <section className="panel panel-tight history-panel" aria-labelledby={headingId}>
@@ -26,7 +59,13 @@ export function HistoryTable({
       <p className="sr-only" id={instructionsId}>
         Dùng phím mũi tên lên hoặc xuống, Home hoặc End để di chuyển. Nhấn Enter hoặc phím cách để chọn sự kiện.
       </p>
-      <div className="table-scroll table-scroll-history">
+      <div
+        aria-label="Danh sách lịch sử kiểm tra và thay đổi"
+        className="table-scroll table-scroll-history"
+        ref={scrollRef}
+        role="region"
+        tabIndex={-1}
+      >
         <table className="dense-table history-table" aria-labelledby={headingId} aria-describedby={instructionsId}>
           <colgroup>
             <col className="col-event-type" />
@@ -56,6 +95,16 @@ export function HistoryTable({
                   else rowRefs.current.delete(row.id);
                 }}
                 onClick={() => onSelect(row.id)}
+                onBlur={(event) => {
+                  const nextTarget = event.relatedTarget;
+                  if (nextTarget && !Array.from(rowRefs.current.values()).some((element) => element.contains(nextTarget))) {
+                    rowFocusOwnedRef.current = false;
+                  }
+                }}
+                onFocus={() => {
+                  rowFocusOwnedRef.current = true;
+                  setFocusedHistoryId(row.id);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();

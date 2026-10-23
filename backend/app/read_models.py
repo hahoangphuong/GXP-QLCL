@@ -434,6 +434,15 @@ class CaseInspectionPlanRuntimeReadinessRead(BaseModel):
     blocked_reasons: list[str]
 
 
+class CaseQdKtRuntimeReadinessRead(BaseModel):
+    case_id: str
+    family_code: Literal["INSPECTION_QD_KT"]
+    ready_to_render: Literal[False]
+    decision_source_id: str | None
+    registered_site_id: str | None
+    blocked_reasons: list[str]
+
+
 class ContextualDocumentActionAvailabilityRead(BaseModel):
     action_key: Literal["open", "create", "history"]
     label: str

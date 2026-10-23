@@ -67,7 +67,7 @@ def test_forged_workbook_digest_rejected():
 
 
 def test_missing_column_must_not_fallback_to_other_cell():
-    with pytest.raises(QdKtSnapshotLinkBlocked, match="DBKTRA_ID_CELL_MISSING_OR_DUPLICATE"):
+    with pytest.raises(QdKtSnapshotLinkBlocked, match="DBKTRA_ID_COLUMN_NEVER_OBSERVED"):
         _audit(column=4)
 
 
@@ -123,3 +123,25 @@ def test_header_attestation_and_coordinate_are_not_optional():
         verify_dbktra_id_header_coordinate(
             snapshot=snap, header_row_number=9, source_header_row_attested=True,
         )
+
+
+def test_sparse_blank_id_rows_preserve_valid_links_without_inventing_identity():
+    source = _snapshot()
+    source["sheets"][0]["raw_rows"].append({
+        "source_row_number": 9,
+        "cells": [{"column_ordinal": 8, "raw_value": "unrelated legacy data"}],
+    })
+    result = _audit(source)
+    assert result[0].status == "SOURCE_ROW_UNIQUE"
+    assert result[0].source_row_number == 2
+    assert result[1].status == "SOURCE_ROW_MISSING"
+    assert all(not row.planning_row_proven for row in result)
+
+
+def test_duplicate_id_cell_remains_blocked():
+    source = _snapshot()
+    source["sheets"][0]["raw_rows"][0]["cells"].append(
+        {"column_ordinal": 3, "raw_value": 999}
+    )
+    with pytest.raises(QdKtSnapshotLinkBlocked, match="DBKTRA_ID_CELL_DUPLICATE"):
+        _audit(source)

@@ -61,6 +61,7 @@ def audit_qdkt_case_dbktra_links(
     if len(rows) != 1 or not isinstance(rows[0].get("raw_rows"), list):
         raise QdKtSnapshotLinkBlocked("DBKTRA_SOURCE_SHEET_AMBIGUOUS")
     source: dict[int, list[int]] = {}
+    observed_id_cells = 0
     positions: set[int] = set()
     for row in rows[0]["raw_rows"]:
         if not isinstance(row, Mapping) or type(row.get("source_row_number")) is not int:
@@ -74,8 +75,14 @@ def audit_qdkt_case_dbktra_links(
             raise QdKtSnapshotLinkBlocked("DBKTRA_CELLS_INVALID")
         selected = [c for c in cells if isinstance(c, Mapping)
                     and c.get("column_ordinal") == dbktra_id_column_ordinal]
-        if len(selected) != 1:
-            raise QdKtSnapshotLinkBlocked("DBKTRA_ID_CELL_MISSING_OR_DUPLICATE")
+        if len(selected) > 1:
+            raise QdKtSnapshotLinkBlocked("DBKTRA_ID_CELL_DUPLICATE")
+        if not selected:
+            # Snapshot V2 records observed coordinates only: a genuinely blank
+            # spreadsheet cell can be absent rather than represented by null.
+            # Preserve its source row identity without manufacturing an ID.
+            continue
+        observed_id_cells += 1
         raw = selected[0].get("raw_value")
         parsed = snapshot_legacy_int(raw)
         if parsed is None or parsed <= 0:
@@ -83,6 +90,8 @@ def audit_qdkt_case_dbktra_links(
             # Do not silently associate them with Case records.
             continue
         source.setdefault(parsed, []).append(number)
+    if observed_id_cells == 0:
+        raise QdKtSnapshotLinkBlocked("DBKTRA_ID_COLUMN_NEVER_OBSERVED")
     result: list[QdKtLegacyLinkResult] = []
     seen_case: set[str] = set()
     for case in cases:

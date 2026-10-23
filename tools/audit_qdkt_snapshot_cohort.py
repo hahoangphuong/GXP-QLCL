@@ -9,6 +9,7 @@ import argparse
 from collections import Counter
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -72,6 +73,26 @@ def build_qdkt_cohort_report(
     }
 
 
+def write_private_report(*, output: Path, report: dict[str, Any],
+                         inputs: tuple[Path, Path]) -> None:
+    """Create private output once; refuse existing targets and input aliases."""
+    if any(output.resolve() == source.resolve() for source in inputs):
+        raise QdKtCohortAuditBlocked("OUTPUT_COLLIDES_WITH_SOURCE_INPUT")
+    content = (json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    try:
+        descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError as exc:
+        raise QdKtCohortAuditBlocked("OUTPUT_ALREADY_EXISTS") from exc
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        output.unlink(missing_ok=True)
+        raise
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--snapshot", type=Path, required=True)
@@ -98,11 +119,13 @@ def main(argv: list[str] | None = None) -> int:
             snapshot_sha256=sha256(snapshot_bytes).hexdigest(),
             cohort_sha256=sha256(cases_bytes).hexdigest(),
         )
-    except (OSError, ValueError, TypeError, KeyError, QdKtSnapshotLinkBlocked) as exc:
-        parser.error(f"QDKT_SOURCE_AUDIT_BLOCKED: {exc}")
-    # Only publish after every source and cohort guard passes.
-    args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-                           encoding="utf-8")
+    except (OSError, ValueError, TypeError, KeyError, QdKtSnapshotLinkBlocked):
+        parser.error("QDKT_SOURCE_AUDIT_BLOCKED: source or cohort validation failed")
+    try:
+        write_private_report(output=args.output, report=report,
+                             inputs=(args.snapshot, args.cases_json))
+    except (OSError, QdKtCohortAuditBlocked):
+        parser.error("QDKT_REPORT_WRITE_BLOCKED: output file is unsafe or exists")
     return 0
 
 

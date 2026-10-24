@@ -158,7 +158,8 @@ def main(argv: list[str] | None = None) -> int:
             snapshot_sha256=sha256(snapshot_bytes).hexdigest(),
             cohort_sha256=sha256(cases_bytes).hexdigest(),
         )
-        report.update(source_integrity)\n        exceptions = (build_qdkt_exception_manifest(
+        report.update(source_integrity)
+        exceptions = (build_qdkt_exception_manifest(
             snapshot=snapshot, cohort=cohort,
             header_row_number=args.attested_header_row,
             source_header_row_attested=True,

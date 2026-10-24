@@ -57,7 +57,7 @@ def test_rehearsal_export_enforces_read_only_before_any_select(monkeypatch):
             sql = str(statement).lower()
             assert "legacy_inspection_id" in sql
             assert "site_address" not in sql
-            return [(UUID("11111111-1111-4111-8111-111111111111"), 101), ("case-two", None)]
+            class Result:\n                def all(self):\n                    return [(UUID("11111111-1111-4111-8111-111111111111"), 101), ("case-two", None)]\n            return Result()
 
     class Engine:
         def connect(self):

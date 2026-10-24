@@ -88,3 +88,28 @@ then writes a private mode-0600 JSON array with exclusive file creation.
 Do not publish the input JSON or database URL. Use a credential restricted
 to SELECT as an additional independent protection, and only on the authorized
 rehearsal environment. The export does not prove source-lineage equivalence.
+
+## Optional private exception investigation
+
+When aggregate counts show missing or duplicated links, request a **separate**
+private exception manifest. The ordinary aggregate output remains free of Case
+identifiers. The exception manifest contains only Case IDs and unresolved
+classification statuses, not inspectors, facility names, source cells, or
+arbitrarily selected source row numbers.
+
+```bash
+python -m tools.audit_qdkt_snapshot_cohort \
+  --snapshot /protected/legacy-workbook-snapshot-v2.json \
+  --cases-json /protected/case-ids-rehearsal.json \
+  --attested-header-row <SOURCE_ROW_NUMBER> \
+  --confirm-header-provenance \
+  --output /protected/qdkt-aggregate-new.json \
+  --exceptions-output /protected/qdkt-exceptions-private-new.json
+```
+
+Exception output is **opt-in**, mode `0600`, exclusive-create only. Never
+upload it into GitHub, CI artifacts, issue comments, or public documentation.
+The manifest includes the SHA digests of its snapshot/cohort inputs so it
+cannot be mistaken for another source run. A Case with `SOURCE_ROW_UNIQUE`
+is intentionally omitted; that result still does not prove the VBA-selected
+KHKT planning row or permit document rendering.

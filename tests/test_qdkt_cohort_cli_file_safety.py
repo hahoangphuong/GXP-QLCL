@@ -74,3 +74,28 @@ def test_bad_source_fails_without_publishing_output(tmp_path):
     with pytest.raises(SystemExit):
         main(_argv(snap, cohort, output))
     assert not output.exists()
+
+
+def test_opt_in_exception_file_private_and_aggregate_kept_identifer_free(tmp_path):
+    snap, cohort = _fixtures(tmp_path)
+    # Existing fixture has one unique source ID and a sparse empty ID row.
+    report = tmp_path / "aggregate.json"
+    private = tmp_path / "exceptions.json"
+    assert main(_argv(snap, cohort, report) + ["--exceptions-output", str(private)]) == 0
+    assert json.loads(report.read_text())["status_counts"] == {"SOURCE_ROW_UNIQUE": 1}
+    result = json.loads(private.read_text())
+    assert result["exception_count"] == 0
+    assert "secret-case-id" not in report.read_text()
+    if os.name == "posix":
+        assert stat.S_IMODE(private.stat().st_mode) == 0o600
+
+
+def test_exception_output_cannot_alias_aggregate_or_input(tmp_path):
+    snap, cohort = _fixtures(tmp_path)
+    report = tmp_path / "aggregate.json"
+    with pytest.raises(SystemExit):
+        main(_argv(snap, cohort, report) + ["--exceptions-output", str(report)])
+    assert not report.exists()
+    with pytest.raises(SystemExit):
+        main(_argv(snap, cohort, report) + ["--exceptions-output", str(cohort)])
+    assert not report.exists()

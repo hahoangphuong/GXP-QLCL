@@ -73,6 +73,38 @@ def build_qdkt_cohort_report(
     }
 
 
+def build_qdkt_exception_manifest(
+    *, snapshot: dict[str, Any], cohort: Any,
+    header_row_number: int, source_header_row_attested: bool,
+    snapshot_sha256: str, cohort_sha256: str,
+) -> dict[str, Any]:
+    """Private, opt-in, unresolved Case identifiers; no business source cells.
+
+    Source match is strictly an ID link, never proof of selected KHKT row.
+    """
+    cases = _checked_cohort(cohort)
+    results = audit_qdkt_case_dbktra_links_with_header_proof(
+        snapshot=snapshot, cases=cases, header_row_number=header_row_number,
+        source_header_row_attested=source_header_row_attested,
+    )
+    exceptions = [
+        {"case_id": row.case_id, "status": row.status}
+        for row in results if row.status != "SOURCE_ROW_UNIQUE"
+    ]
+    exceptions.sort(key=lambda row: (row["status"], row["case_id"]))
+    return {
+        "schema_version": "qdkt-case-db-ktra-exceptions/v1",
+        "source_snapshot_sha256": snapshot_sha256,
+        "case_cohort_sha256": cohort_sha256,
+        "exception_count": len(exceptions),
+        "exceptions": exceptions,
+        "planning_row_proven": False,
+        "qdkt_business_atoms_proven": False,
+        "ready_to_render": False,
+        "private_case_identifiers_present": True,
+    }
+
+
 def write_private_report(*, output: Path, report: Any,
                          inputs: tuple[Path, Path]) -> None:
     """Create private output once; refuse existing targets and input aliases."""
@@ -102,6 +134,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--confirm-header-provenance", action="store_true",
                         help="Operator independently verified header-row coordinate in original workbook")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--exceptions-output", type=Path,
+                        help="Opt-in private Case-ID exception manifest; never commit")
     args = parser.parse_args(argv)
     # Explicit flag is not an attestation record; report describes the asserted
     # provenance only, never declares the underlying historical mapping proven.
@@ -119,11 +153,31 @@ def main(argv: list[str] | None = None) -> int:
             snapshot_sha256=sha256(snapshot_bytes).hexdigest(),
             cohort_sha256=sha256(cases_bytes).hexdigest(),
         )
+        exceptions = (build_qdkt_exception_manifest(
+            snapshot=snapshot, cohort=cohort,
+            header_row_number=args.attested_header_row,
+            source_header_row_attested=True,
+            snapshot_sha256=sha256(snapshot_bytes).hexdigest(),
+            cohort_sha256=sha256(cases_bytes).hexdigest(),
+        ) if args.exceptions_output is not None else None)
     except (OSError, ValueError, TypeError, KeyError, QdKtSnapshotLinkBlocked):
         parser.error("QDKT_SOURCE_AUDIT_BLOCKED: source or cohort validation failed")
+    if args.exceptions_output is not None:
+        # Preflight both destinations before publishing either file.
+        if (args.output.resolve() == args.exceptions_output.resolve()
+                or args.output.exists() or args.output.is_symlink()
+                or args.exceptions_output.exists() or args.exceptions_output.is_symlink()):
+            parser.error("QDKT_REPORT_WRITE_BLOCKED: report destinations collide or exist")
     try:
         write_private_report(output=args.output, report=report,
-                             inputs=(args.snapshot, args.cases_json))
+                             inputs=((args.snapshot, args.cases_json, args.exceptions_output)
+                                     if args.exceptions_output is not None
+                                     else (args.snapshot, args.cases_json)))
+        if args.exceptions_output is not None:
+            write_private_report(
+                output=args.exceptions_output, report=exceptions,
+                inputs=(args.snapshot, args.cases_json, args.output),
+            )
     except (OSError, QdKtCohortAuditBlocked):
         parser.error("QDKT_REPORT_WRITE_BLOCKED: output file is unsafe or exists")
     return 0

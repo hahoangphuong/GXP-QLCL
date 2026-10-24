@@ -113,3 +113,18 @@ The manifest includes the SHA digests of its snapshot/cohort inputs so it
 cannot be mistaken for another source run. A Case with `SOURCE_ROW_UNIQUE`
 is intentionally omitted; that result still does not prove the VBA-selected
 KHKT planning row or permit document rendering.
+
+## Snapshot content-integrity gate
+
+Before matching Case IDs, the offline CLI verifies the `db.ktra` sheet's
+`content_sha256` using the same deterministic `raw_rows` JSON canonicalization
+as `legacy_snapshot_v2._sheet_payload`. It checks the row and cell-coordinate
+counts and sheet width against the extractor's recorded inventory. A JSON file
+with a legitimate-looking workbook SHA but edited source IDs is rejected.
+
+This **does not cryptographically prove workbook authorship**: an adversary
+with control of the whole JSON file could recompute its digest. Keep original
+XLSB checksum verification, independently attested header-row provenance,
+and trusted acquisition of the snapshot as separate mandatory gates.
+Older partial/synthetic Snapshot V2-shaped JSON without extractor integrity
+fields must not be substituted for a complete extractor output.

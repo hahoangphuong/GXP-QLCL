@@ -13,6 +13,10 @@ import os
 from pathlib import Path
 from typing import Any
 
+from backend.app.document.inspection_qd_kt_snapshot_content_integrity import (
+    verify_dbktra_snapshot_content, QdKtSnapshotContentBlocked,
+)
+
 from backend.app.document.inspection_qd_kt_snapshot_case_link_audit import (
     QdKtCaseLegacyId, audit_qdkt_case_dbktra_links_with_header_proof,
     QdKtSnapshotLinkBlocked,
@@ -146,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
         cases_bytes = args.cases_json.read_bytes()
         snapshot = json.loads(snapshot_bytes)
         cohort = json.loads(cases_bytes)
+        source_integrity = verify_dbktra_snapshot_content(snapshot)
         report = build_qdkt_cohort_report(
             snapshot=snapshot, cohort=cohort,
             header_row_number=args.attested_header_row,
@@ -153,6 +158,7 @@ def main(argv: list[str] | None = None) -> int:
             snapshot_sha256=sha256(snapshot_bytes).hexdigest(),
             cohort_sha256=sha256(cases_bytes).hexdigest(),
         )
+        report.update(source_integrity)
         exceptions = (build_qdkt_exception_manifest(
             snapshot=snapshot, cohort=cohort,
             header_row_number=args.attested_header_row,
@@ -160,7 +166,7 @@ def main(argv: list[str] | None = None) -> int:
             snapshot_sha256=sha256(snapshot_bytes).hexdigest(),
             cohort_sha256=sha256(cases_bytes).hexdigest(),
         ) if args.exceptions_output is not None else None)
-    except (OSError, ValueError, TypeError, KeyError, QdKtSnapshotLinkBlocked):
+    except (OSError, ValueError, TypeError, KeyError, QdKtSnapshotLinkBlocked, QdKtSnapshotContentBlocked):
         parser.error("QDKT_SOURCE_AUDIT_BLOCKED: source or cohort validation failed")
     if args.exceptions_output is not None:
         # Preflight both destinations before publishing either file.

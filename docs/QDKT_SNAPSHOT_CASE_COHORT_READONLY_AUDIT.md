@@ -1,8 +1,6 @@
 # QĐKT — offline Case↔db.ktra cohort audit
 
-This workflow is **read-only evidence collection**. It does not certify that a
-`db.ktra` ID identifies the VBA-selected KHKT row, and it does not enable
-QĐKT document creation.
+This workflow is **read-only evidence collection for historical import identity**, not a prerequisite for creating or rendering a modern Case. **Business-confirmed rule:** on creation, Case data is entered by the user, or inherited from the originating Case for eligible repeat/reinspection workflows. No Case-creation field is sourced from KẾ HOẠCH KIỂM TRA (KHKT). An ID join to `db.ktra` cannot authorize QĐKT creation.
 
 ## Input provenance and execution
 
@@ -51,10 +49,8 @@ embedded workbook checksum independently proves the original XLSB identity.
   duplicate coordinate cells, an entirely unobserved ID column, a false
   header, or wrong workbook SHA fail closed.
 * `planning_row_proven=False`, `qdkt_business_atoms_proven=False`,
-  `ready_to_render=False` regardless of cohort coverage.
-* **Separate business lineage work:** prove precisely which VBA-selected
-  planning row supplied `DaychuyenDD`, `Tinhthanh`, and `TTVdd` for
-  each Case. No free-text heuristic or joins by displayed name.
+  `ready_to_render=False` here reflect the **historical audit's limited scope**, not an unsatisfied KHKT prerequisite for modern Case workflows.
+* **Separate modern QĐKT contract:** derive document atoms from persisted Case-owned inputs (user-provided or inherited from the original Case), including the Case's inspection team and associated registered site. Validate the selected fields against QĐKT template bookmarks. Do not fetch, infer, or backfill them from KHKT. If a necessary Case field is missing, require a Case-owned input rather than a planning-sheet join.
 * No production QĐKT POST, schema change, document storage, VM/NAS writes,
   or alteration of historical exceptions.
 
@@ -110,9 +106,7 @@ python -m tools.audit_qdkt_snapshot_cohort \
 Exception output is **opt-in**, mode `0600`, exclusive-create only. Never
 upload it into GitHub, CI artifacts, issue comments, or public documentation.
 The manifest includes the SHA digests of its snapshot/cohort inputs so it
-cannot be mistaken for another source run. A Case with `SOURCE_ROW_UNIQUE`
-is intentionally omitted; that result still does not prove the VBA-selected
-KHKT planning row or permit document rendering.
+cannot be mistaken for another source run. A Case with `SOURCE_ROW_UNIQUE` is intentionally omitted; that result is only a historical `db.ktra` identity match and neither establishes nor replaces modern Case-owned QĐKT input validation.
 
 ## Snapshot content-integrity gate
 

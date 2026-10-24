@@ -54,12 +54,15 @@ def validate_approved_qdkt_input(
     approved_members: Iterable[QdKtTeamMemberSource],
     user_confirmed: bool, draft: QdKtDraftTeamProposal | None = None,
     reuse_draft_team: bool = False,
+    edited_from_draft: bool = False,
 ) -> QdKtApprovedDecisionInput:
     """Require explicit approved decision data even when reusing draft members.
 
     A saved draft cannot silently become an issued decision. When reuse is
     requested, the caller must present the exact proposed ordered identities,
     in addition to explicit user confirmation of the issued decision.
+    If a user edits the proposed team, edited_from_draft explicitly keeps
+    draft lineage without pretending the draft team was adopted unchanged.
     """
     from backend.app.document.inspection_qd_kt_team_source import require_qdkt_team_source
     if not isinstance(case_id, str) or not case_id.strip():
@@ -70,7 +73,9 @@ def validate_approved_qdkt_input(
         raise QdKtHandoffBlocked("DECISION_DATE_REQUIRED")
     if user_confirmed is not True:
         raise QdKtHandoffBlocked("USER_APPROVAL_CONFIRMATION_REQUIRED")
-    if reuse_draft_team and (
+    if reuse_draft_team and edited_from_draft:
+        raise QdKtHandoffBlocked("DRAFT_TEAM_SOURCE_MODE_CONFLICT")
+    if (reuse_draft_team or edited_from_draft) and (
         draft is None or draft.case_id != case_id or not draft.draft_id
     ):
         raise QdKtHandoffBlocked("DRAFT_TEAM_CASE_MISMATCH")
@@ -81,9 +86,10 @@ def validate_approved_qdkt_input(
     if reuse_draft_team and approved.members != draft.members:
         raise QdKtHandoffBlocked("DRAFT_TEAM_CHANGED_REQUIRES_EXPLICIT_ENTRY")
     return QdKtApprovedDecisionInput(
-        case_id=case_id, draft_id=draft.draft_id if reuse_draft_team else None,
+        case_id=case_id, draft_id=draft.draft_id if (reuse_draft_team or edited_from_draft) else None,
         decision_reference=decision_reference, decision_on=decision_on,
         members=approved.members,
-        team_source="CONFIRMED_DRAFT_PROPOSAL" if reuse_draft_team else "USER_ENTERED",
+        team_source=("CONFIRMED_DRAFT_PROPOSAL" if reuse_draft_team else
+                     "USER_EDITED_DRAFT_PROPOSAL" if edited_from_draft else "USER_ENTERED"),
         user_confirmed=True,
     )

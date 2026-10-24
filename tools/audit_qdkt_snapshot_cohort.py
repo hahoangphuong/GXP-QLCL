@@ -170,8 +170,9 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("QDKT_REPORT_WRITE_BLOCKED: report destinations collide or exist")
     try:
         write_private_report(output=args.output, report=report,
-                             inputs=(args.snapshot, args.cases_json,
-                                     args.exceptions_output or args.output))
+                             inputs=((args.snapshot, args.cases_json, args.exceptions_output)
+                                     if args.exceptions_output is not None
+                                     else (args.snapshot, args.cases_json)))
         if args.exceptions_output is not None:
             write_private_report(
                 output=args.exceptions_output, report=exceptions,

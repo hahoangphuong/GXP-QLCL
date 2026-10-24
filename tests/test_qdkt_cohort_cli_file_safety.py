@@ -1,5 +1,6 @@
 """Confidential offline report must never clobber input or follow symlinks."""
 import json
+from hashlib import sha256
 import os
 import stat
 
@@ -16,7 +17,7 @@ from backend.app.domain.legacy_snapshot_v2 import (
 def _fixtures(tmp_path):
     snap = tmp_path / "source.json"
     cohort = tmp_path / "cohort.json"
-    snap.write_text(json.dumps({
+    snapshot = {
         "schema_version": SCHEMA_VERSION,
         "workbook": {"sha256": AUTHORITATIVE_WORKBOOK_SHA256},
         "sheets": [{"sheet_name": "db.ktra", "raw_rows": [
@@ -24,7 +25,14 @@ def _fixtures(tmp_path):
             {"source_row_number": 2, "cells": [{"column_ordinal": 1, "raw_value": 77}]},
             {"source_row_number": 3, "cells": [{"column_ordinal": 3, "raw_value": "private"}]},
         ]}],
-    }), encoding="utf-8")
+    }
+    sheet = snapshot["sheets"][0]
+    rows = sheet["raw_rows"]
+    sheet["content_sha256"] = sha256(json.dumps(rows, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    sheet["raw_row_count"] = sheet["used_row_count"] = len(rows)
+    sheet["used_column_count"] = 3
+    sheet["raw_coordinate_inventory"] = {"row_count": len(rows), "column_count": 3, "cell_coordinate_count": 3}
+    snap.write_text(json.dumps(snapshot), encoding="utf-8")
     cohort.write_text(json.dumps([{"case_id": "secret-case-id", "legacy_inspection_id": 77}]))
     return snap, cohort
 

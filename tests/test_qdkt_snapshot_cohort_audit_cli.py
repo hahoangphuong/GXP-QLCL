@@ -95,3 +95,22 @@ def test_wrong_source_header_rejected():
             source_header_row_attested=True,
             snapshot_sha256="a" * 64, cohort_sha256="b" * 64,
         )
+
+
+def test_private_exception_manifest_excludes_unique_case_and_source_text():
+    from tools.audit_qdkt_snapshot_cohort import build_qdkt_exception_manifest
+    result = build_qdkt_exception_manifest(
+        snapshot=_snapshot(), cohort=_cohort(), header_row_number=1,
+        source_header_row_attested=True, snapshot_sha256="a" * 64,
+        cohort_sha256="b" * 64,
+    )
+    assert result["exception_count"] == 3
+    assert result["exceptions"] == [
+        {"case_id": "d", "status": "CASE_LEGACY_ID_MISSING"},
+        {"case_id": "a", "status": "SOURCE_ID_DUPLICATE"},
+        {"case_id": "c", "status": "SOURCE_ROW_MISSING"},
+    ]
+    assert "b" not in [e["case_id"] for e in result["exceptions"]]
+    assert "no inspection ID" not in str(result)
+    assert result["ready_to_render"] is False
+    assert result["private_case_identifiers_present"] is True

@@ -2,7 +2,9 @@
 
 This preflight is *not* a document creation endpoint and never authorizes a
 renderer. Closed business contracts remain explicit hard blockers regardless of
-whether individual source atoms are available.
+whether individual source atoms are available. Case creation uses user-entered
+facts or approved inheritance from an originating Case, never KHKT values.
+KHKT lineage is not a renderer readiness gate.
 """
 from __future__ import annotations
 

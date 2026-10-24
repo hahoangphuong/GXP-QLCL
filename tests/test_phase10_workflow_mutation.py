@@ -3924,3 +3924,83 @@ def test_a4_business_eligibility_duplicate_basis_rejected_before_replace_all():
             (certificate_id, "source_certificate")
         ]
 
+
+
+def test_reassessment_uses_explicit_user_fields_and_copies_only_approved_origin_scope():
+    """Modern Tái Case creation must not depend on KHKT or a legacy inspection ID."""
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    with Session(engine) as session:
+        seeded = seed_create_inspection_case_context(
+            session, line_code="A", case_state=CaseState.CLOSED,
+            site_name="Reassessment source owner",
+        )
+        source = session.get(Case, seeded["seeded_case_id"])
+        assert source is not None
+        source.legacy_inspection_id = 617
+        session.add(CaseEvaluationScope(
+            case_id=source.id, source_classification="LEGACY_IMPORTED",
+            raw_legacy_value="Original scope", rendered_prose="Original scope",
+        ))
+        session.commit()
+
+    with Session(engine) as session:
+        result = service.create_inspection_case(
+            session, site_id=seeded["site_id"], gxp_type="GMP",
+            line_code="A", production_line_id=seeded["production_line_id"],
+            applicable_standard="PIC/S GMP", source_case_id=seeded["seeded_case_id"],
+            reason="User requests reassessment with origin-scope inheritance",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+        created = session.get(Case, result["case_id"])
+        copied = session.scalar(select(CaseEvaluationScope).where(
+            CaseEvaluationScope.case_id == result["case_id"]))
+        origin = session.get(Case, seeded["seeded_case_id"])
+        assert created is not None and origin is not None
+        assert copied is not None
+        assert created.site_id == origin.site_id
+        assert created.production_line_id == origin.production_line_id
+        assert created.applicable_standard == "PIC/S GMP"
+        assert origin.applicable_standard == "WHO-GMP"
+        assert created.inspection_type == "Tái"
+        assert created.state == CaseState.DRAFT
+        assert created.legacy_inspection_id is None
+        assert origin.legacy_inspection_id == 617
+        assert copied.rendered_prose == "Original scope"
+        assert copied.id != session.scalar(select(CaseEvaluationScope.id).where(
+            CaseEvaluationScope.case_id == origin.id))
+        assert session.scalar(select(InspectionPlan).where(
+            InspectionPlan.case_id == created.id)) is None
+        assert session.scalar(select(InspectionTeam).where(
+            InspectionTeam.case_id == created.id)) is None
+
+
+def test_reassessment_without_origin_keeps_user_owned_context_and_no_invented_scope():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    with Session(engine) as session:
+        seeded = seed_create_inspection_case_context(
+            session, line_code="A", case_state=CaseState.CLOSED,
+            site_name="Manual reassessment context",
+        )
+    with Session(engine) as session:
+        created = service.create_inspection_case(
+            session, site_id=seeded["site_id"], gxp_type="GMP",
+            line_code="A", production_line_id=seeded["production_line_id"],
+            applicable_standard="USER-ENTERED-STANDARD", source_case_id=None,
+            reason="Manual input without originating Case",
+            user=build_authenticated_user("manager01", "manager"),
+        )
+        session.commit()
+        actual = session.get(Case, created["case_id"])
+        assert actual is not None
+        assert actual.applicable_standard == "USER-ENTERED-STANDARD"
+        assert actual.legacy_inspection_id is None
+        assert actual.state == CaseState.DRAFT
+        assert session.scalar(select(CaseEvaluationScope).where(
+            CaseEvaluationScope.case_id == actual.id)) is None
+        assert session.scalar(select(InspectionPlan).where(
+            InspectionPlan.case_id == actual.id)) is None

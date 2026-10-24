@@ -70,3 +70,38 @@ def test_changed_team_requires_explicit_entry_not_silent_reuse():
         _approve(approved_members=changed)
     out = _approve(approved_members=changed, reuse_draft_team=False)
     assert out.team_source == "USER_ENTERED"
+
+
+def test_explicitly_edited_draft_retains_lineage_without_claiming_exact_reuse():
+    changed = (QdKtTeamMemberSource(
+        id="new-member", sort_order=0, role_code="LEADER", display_name="Approved Member",
+        identity_kind="LEGACY_PERSON", inspector_profile_id=None,
+        person_id=None, participant_catalog_id=None,
+    ),)
+    result = _approve(approved_members=changed, reuse_draft_team=False,
+                      edited_from_draft=True)
+    assert result.team_source == "USER_EDITED_DRAFT_PROPOSAL"
+    assert result.draft_id == "draft-1"
+    assert result.members == changed
+    assert result.user_confirmed is True
+
+
+@pytest.mark.parametrize("changes,error", [
+    ({"edited_from_draft": True, "reuse_draft_team": True},
+     "DRAFT_TEAM_SOURCE_MODE_CONFLICT"),
+    ({"edited_from_draft": True, "reuse_draft_team": False, "draft": None},
+     "DRAFT_TEAM_CASE_MISMATCH"),
+    ({"edited_from_draft": True, "reuse_draft_team": False, "case_id": "case-b"},
+     "DRAFT_TEAM_CASE_MISMATCH"),
+    ({"edited_from_draft": True, "reuse_draft_team": False, "user_confirmed": False},
+     "USER_APPROVAL_CONFIRMATION_REQUIRED"),
+])
+def test_edited_draft_requires_explicit_authoritative_confirmation(changes, error):
+    with pytest.raises(QdKtHandoffBlocked, match=error):
+        _approve(**changes)
+
+
+def test_user_entered_team_is_not_implicitly_bound_to_available_draft():
+    result = _approve(reuse_draft_team=False, edited_from_draft=False)
+    assert result.team_source == "USER_ENTERED"
+    assert result.draft_id is None

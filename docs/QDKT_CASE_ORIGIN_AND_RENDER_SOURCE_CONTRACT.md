@@ -21,6 +21,18 @@ not an input source for creating any Case field.**
    expressions `DaychuyenDD`, `Tinhthanh`, `TTVdd` describe old UI
    representations, not a requirement to join the KHKT planning worksheet.
 
+## Verified current backend implementation
+
+In `backend/app/services/workflow.py::create_inspection_case`, the
+reassessment Case is created as `DRAFT` from explicitly passed site,
+GxP, line and standard context. `legacy_inspection_id` is null for this
+new Case. When `source_case_id` is supplied, the function checks the
+canonical ProductionLine identity and calls
+`_copy_evaluation_scope_for_reassessment`. **The verified code only
+authorizes this specific copying path; it is not proof that every Case
+field is inherited.** Other data remain owned by the explicit Case and
+related workflow inputs. No KHKT lookup occurs in this creation path.
+
 ## Ownership and non-inference rules
 
 | Document input concern | Correct starting owner | Still to validate |

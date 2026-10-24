@@ -163,9 +163,11 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError, TypeError, KeyError, QdKtSnapshotLinkBlocked):
         parser.error("QDKT_SOURCE_AUDIT_BLOCKED: source or cohort validation failed")
     if args.exceptions_output is not None:
-        # Prevent same-destination output before publishing either report.
-        if args.output.resolve() == args.exceptions_output.resolve():
-            parser.error("QDKT_REPORT_WRITE_BLOCKED: report destinations collide")
+        # Preflight both destinations before publishing either file.
+        if (args.output.resolve() == args.exceptions_output.resolve()
+                or args.output.exists() or args.output.is_symlink()
+                or args.exceptions_output.exists() or args.exceptions_output.is_symlink()):
+            parser.error("QDKT_REPORT_WRITE_BLOCKED: report destinations collide or exist")
     try:
         write_private_report(output=args.output, report=report,
                              inputs=(args.snapshot, args.cases_json,

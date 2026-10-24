@@ -25,3 +25,23 @@ Thông tin khởi tạo Case do người dùng nhập hoặc kế thừa hợp l
 Đây **không** phải API ghi dữ liệu hay trạng thái phê duyệt; chưa tích hợp UI, transaction/database, storage hoặc DOCX renderer. Phần ghi nhận thật sau này phải có quyền hạn, idempotency, kiểm soát thay đổi, provenance và audit event ở owner bước phê duyệt; cần ngăn nhập thông tin quyết định đã ban hành bằng một hành động tạo dự thảo.
 
 Giữ nguyên các blocker template bookmark/renderer hiện có và không thay đổi dữ liệu lịch sử.
+
+## 5. Đoàn chính thức đã được chỉnh sửa từ dự thảo
+
+Khi quyết định đã phê duyệt có thay đổi so với danh sách dự kiến, người dùng
+có thể chọn **chỉnh sửa từ dự thảo** (không phải tái sử dụng nguyên trạng).
+Hợp đồng nhập liệu gọi `validate_approved_qdkt_input` với
+`edited_from_draft=True`, `reuse_draft_team=False`, danh sách đoàn chính thức
+đã được người dùng rà soát, và `user_confirmed=True`.
+
+Ba nguồn thành phần đoàn chính thức được phân biệt:
+- `CONFIRMED_DRAFT_PROPOSAL`: xác nhận giữ nguyên đề xuất từ đúng dự thảo/Case;
+- `USER_EDITED_DRAFT_PROPOSAL`: người dùng sửa danh sách đề xuất và chủ động giữ
+  dấu vết `draft_id`, không coi đề xuất được chấp nhận nguyên trạng;
+- `USER_ENTERED`: nhập độc lập, không tự nhận liên kết với dự thảo dù dự thảo
+  hiện diện.
+
+Không được chọn đồng thời chế độ tái sử dụng nguyên trạng và chỉnh sửa từ
+dự thảo. Cả hai chế độ dựa trên dự thảo đều phải chứng minh cùng Case.
+Hợp đồng thuần này vẫn không thực hiện phê duyệt hay ghi database; về sau
+transaction chính thức phải lưu provenance, audit event và kiểm tra quyền.

@@ -150,7 +150,8 @@ def main(argv: list[str] | None = None) -> int:
         cases_bytes = args.cases_json.read_bytes()
         snapshot = json.loads(snapshot_bytes)
         cohort = json.loads(cases_bytes)
-        source_integrity = verify_dbktra_snapshot_content(snapshot)\n        report = build_qdkt_cohort_report(
+        source_integrity = verify_dbktra_snapshot_content(snapshot)
+        report = build_qdkt_cohort_report(
             snapshot=snapshot, cohort=cohort,
             header_row_number=args.attested_header_row,
             source_header_row_attested=True,

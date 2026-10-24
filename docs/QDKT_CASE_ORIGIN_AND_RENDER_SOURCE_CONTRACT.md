@@ -61,3 +61,20 @@ because KHKT is no longer a prerequisite.
   modern persisted Case-owned records; leave unproven template fields blocked.
 - No data migration, mutation, route enablement or document issuance is
   authorized by this clarification alone.
+
+## Reassessment ownership regression (24/10/2026)
+
+The Case workflow integration tests now exercise two creation paths rather
+than depending on workbook inference:
+
+- **Explicit originating Case:** copy only the evaluation-scope data through
+  `_copy_evaluation_scope_for_reassessment`, while keeping the current
+  user's selected standard on the new Case. The legacy inspection ID remains
+  null for the new Case even if it is present on the origin.
+- **No originating Case:** retain the supplied Case context and leave the
+  evaluation scope absent rather than deriving one from KHKT or a historical
+  inspection row.
+
+Neither path creates an InspectionPlan or InspectionTeam implicitly. Those
+are separate Case-owned workflow inputs. These tests protect **current code
+behavior**, not a promise that all repeat-Case fields should be inherited.

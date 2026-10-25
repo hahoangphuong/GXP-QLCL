@@ -71,7 +71,13 @@ def inspect_qdkt_case_readiness(session: Session, *, case_id: str) -> QdKtCaseRe
                 blockers.append(str(exc))
     except QdKtRegisteredSiteBlocked as exc:
         blockers.append(str(exc))
-    # A Case-owned team source is a separate prerequisite, not proof that the\n    # Word TT* bookmark formatting is equivalent to legacy VBA.\n    try:\n        read_qdkt_team_source(session, case_id=case_id)\n    except QdKtTeamSourceBlocked as exc:\n        blockers.append(str(exc))\n    blockers.extend(_PENDING_CONTRACTS)
+    # A Case-owned team source is a separate prerequisite, not proof that the
+    # Word TT* bookmark formatting is equivalent to legacy VBA.
+    try:
+        read_qdkt_team_source(session, case_id=case_id)
+    except QdKtTeamSourceBlocked as exc:
+        blockers.append(str(exc))
+    blockers.extend(_PENDING_CONTRACTS)
     return QdKtCaseReadiness(
         case_id=case_id,
         decision_source_id=decision_source_id,

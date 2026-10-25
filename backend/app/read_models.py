@@ -434,6 +434,28 @@ class CaseInspectionPlanRuntimeReadinessRead(BaseModel):
     blocked_reasons: list[str]
 
 
+class CaseQdKtTeamMemberRead(BaseModel):
+    member_id: str
+    sort_order: int
+    role_code: Literal["LEADER", "SECRETARY", "MEMBER"]
+    display_name: str
+    identity_kind: Literal["INSPECTOR_PROFILE", "LEGACY_PERSON", "ORGANIZATION_REPRESENTATIVE"]
+    inspector_profile_id: str | None
+    person_id: str | None
+    participant_catalog_id: str | None
+
+
+class CaseQdKtCurrentTeamRead(BaseModel):
+    """Current Case team only; not a historical draft or issued roster."""
+    case_id: str
+    team_id: str
+    team_revision: int
+    source_kind: Literal["CURRENT_CASE_TEAM"]
+    draft_snapshot_available: Literal[False]
+    issued_team_confirmed: Literal[False]
+    members: list[CaseQdKtTeamMemberRead]
+
+
 class CaseQdKtRuntimeReadinessRead(BaseModel):
     case_id: str
     family_code: Literal["INSPECTION_QD_KT"]

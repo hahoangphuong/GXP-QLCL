@@ -2412,16 +2412,6 @@ export function SearchPage({
         ) : null}
         {resultsTotalCount > 0 && retainedWorkspace ? (
           <div className="retained-facility-workspace" hidden={!workspace} inert={!workspace}>
-            {selectedHistory?.source_type === "case" && canLoadSecureApi ? (
-              <QdKtCaseReadinessPanel
-                key={`${selectedHistory.id}:${accessGeneration}`}
-                caseId={selectedHistory.id}
-                auth={auth}
-                useStubAuth={useStubAuth}
-                bearerToken={bearerToken ?? null}
-                accessGeneration={accessGeneration}
-              />
-            ) : null}
             <FacilityWorkspaceTabs
               activeEventTab={activeTab}
               caseWorkspace={selectedCaseWorkspace}
@@ -2519,6 +2509,16 @@ export function SearchPage({
               selectedRemediationCycleId={selectedRemediationCycleId}
               summary={retainedWorkspace.summary}
             />
+            {selectedHistory?.source_type === "case" && canLoadSecureApi ? (
+              <QdKtCaseReadinessPanel
+                key={`${selectedHistory.id}:${accessGeneration}`}
+                caseId={selectedHistory.id}
+                auth={auth}
+                useStubAuth={useStubAuth}
+                bearerToken={bearerToken ?? null}
+                accessGeneration={accessGeneration}
+              />
+            ) : null}
           </div>
         ) : null}
       </div>

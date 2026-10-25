@@ -52,6 +52,6 @@ def downgrade():
         for table in (MEMBER, SNAPSHOT):
             op.execute(sa.text(f"DROP TRIGGER trg_{table}_append_only ON {table}"))
         op.execute(sa.text("DROP FUNCTION qdkt_snapshot_reject_mutation()"))
-    op.drop_constraint("ck_qdkt_draft_roster_snapshot_qdkt_draft_identity_not_blank", SNAPSHOT, type_="check")
+    op.drop_constraint(op.f("ck_qdkt_draft_roster_snapshot_qdkt_draft_identity_not_blank"), SNAPSHOT, type_="check")
     op.drop_constraint("uq_qdkt_snapshot_case_draft_identity", SNAPSHOT, type_="unique")
     op.drop_column(SNAPSHOT, "draft_id")

@@ -541,8 +541,11 @@ class QdKtDraftRosterSnapshot(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("inspection_team.id"), nullable=False
     )
     source_team_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    draft_id: Mapped[str] = mapped_column(String(128), nullable=False)
     roster_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     __table_args__ = (
+        UniqueConstraint("case_id", "draft_id", name="uq_qdkt_snapshot_case_draft_identity"),
+        CheckConstraint("length(trim(draft_id)) > 0", name="qdkt_draft_identity_not_blank"),
         CheckConstraint("source_team_revision >= 1", name="qdkt_draft_team_revision_positive"),
         CheckConstraint("length(roster_sha256) = 64", name="qdkt_draft_roster_hash_length"),
     )

@@ -133,3 +133,28 @@ không tạo snapshot persistence, không xác nhận bản ký hoặc liên k�
 Chưa nên mở API create/issue dựa vào bước kiểm chứng read-only này.
 Cần owner transaction lưu snapshot bất biến và liên kết quyết định,
 kiểm tra quyền, optimistic locking, idempotency và audit trail riêng.
+
+
+## Additive draft roster persistence schema (0024)
+
+Hai bảng rỗng `qdkt_draft_roster_snapshot` và
+`qdkt_draft_roster_member` cung cấp ownership theo phiên bản:
+
+- `snapshot.case_id` liên kết Case;
+- `snapshot.document_version_id` unique tới đúng DocumentVersion;
+- `snapshot.source_team_id` và `source_team_revision` pin nguồn;
+- `snapshot.roster_sha256` là digest dự kiến của payload, **không** phải
+  checksum DOCX;
+- các member có `source_team_member_id`, `position`, tên, vai trò,
+  chức danh chụp tại thời điểm dự thảo.
+
+Migration 0024 chỉ tạo schema, không chuyển dữ liệu, không có endpoint
+ghi snapshot và chưa đảm bảo bất biến tại tầng DB cho UPDATE/DELETE.
+Rollback từ chối nếu có record, không âm thầm xóa dữ liệu lịch sử.
+
+Trước khi bật writer cần: (1) transaction chụp từ nguồn được kiểm tra;
+(2) checksum nhị phân DOCX + snapshot nội dung đã render; (3) quyền,
+idempotency, concurrency, audit; (4) chính sách lưu không sửa/xóa;
+(5) hợp đồng riêng official team theo từng InspectionDecision.
+
+Không suy luận người dùng đã phê duyệt từ việc snapshot tồn tại.

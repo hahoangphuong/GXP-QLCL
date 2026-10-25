@@ -525,6 +525,52 @@ class InspectionDecision(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
 
+class QdKtDraftRosterSnapshot(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """One immutable roster projection for an exact QĐKT draft DOCX version.
+
+    A draft is not an approved decision. No issuance metadata belongs here.
+    """
+
+    __tablename__ = "qdkt_draft_roster_snapshot"
+
+    case_id: Mapped[str] = mapped_column(ForeignKey("case.id"), nullable=False, index=True)
+    document_version_id: Mapped[str] = mapped_column(
+        ForeignKey("document_version.id"), nullable=False, unique=True
+    )
+    source_team_id: Mapped[str] = mapped_column(
+        ForeignKey("inspection_team.id"), nullable=False
+    )
+    source_team_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    roster_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    __table_args__ = (
+        CheckConstraint("source_team_revision >= 1", name="qdkt_draft_team_revision_positive"),
+        CheckConstraint("length(roster_sha256) = 64", name="qdkt_draft_roster_hash_length"),
+    )
+
+
+class QdKtDraftRosterMember(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "qdkt_draft_roster_member"
+
+    snapshot_id: Mapped[str] = mapped_column(
+        ForeignKey("qdkt_draft_roster_snapshot.id"), nullable=False, index=True
+    )
+    source_team_member_id: Mapped[str] = mapped_column(
+        ForeignKey("inspection_team_member.id"), nullable=False
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    role_code: Mapped[str] = mapped_column(String(16), nullable=False)
+    job_title: Mapped[str] = mapped_column(String(255), nullable=False)
+    __table_args__ = (
+        UniqueConstraint("snapshot_id", "position", name="uq_qdkt_draft_member_snapshot_position"),
+        UniqueConstraint("snapshot_id", "source_team_member_id", name="uq_qdkt_draft_member_snapshot_source"),
+        CheckConstraint("position >= 1", name="qdkt_draft_member_position_positive"),
+        CheckConstraint("role_code IN ('LEADER', 'SECRETARY', 'MEMBER')", name="qdkt_draft_member_role_known"),
+        CheckConstraint("length(trim(display_name)) > 0", name="qdkt_draft_member_name_not_blank"),
+        CheckConstraint("length(trim(job_title)) > 0", name="qdkt_draft_member_job_not_blank"),
+    )
+
+
 class InspectionEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "inspection_event"
 

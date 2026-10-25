@@ -15,6 +15,9 @@ from backend.app.document.inspection_qd_kt_decision_source import (
     QdKtDecisionSourceBlocked, read_latest_qdkt_reference_for_case,
 )
 from backend.app.document.inspection_qd_kt_legacy_province_band import classify_qdkt_legacy_province_zone
+from backend.app.document.inspection_qd_kt_team_source import (
+    QdKtTeamSourceBlocked, read_qdkt_team_source,
+)
 from backend.app.document.inspection_qd_kt_vkn_authority import QdKtAuthorityBlocked
 from backend.app.document.inspection_qd_kt_registered_site import (
     QdKtRegisteredSiteBlocked, read_qdkt_registered_site,
@@ -67,6 +70,12 @@ def inspect_qdkt_case_readiness(session: Session, *, case_id: str) -> QdKtCaseRe
             except QdKtAuthorityBlocked as exc:
                 blockers.append(str(exc))
     except QdKtRegisteredSiteBlocked as exc:
+        blockers.append(str(exc))
+    # A Case-owned team source is a separate prerequisite, not proof that the
+    # Word TT* bookmark formatting is equivalent to legacy VBA.
+    try:
+        read_qdkt_team_source(session, case_id=case_id)
+    except QdKtTeamSourceBlocked as exc:
         blockers.append(str(exc))
     blockers.extend(_PENDING_CONTRACTS)
     return QdKtCaseReadiness(

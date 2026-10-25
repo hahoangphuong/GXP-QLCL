@@ -39,3 +39,30 @@ Cả ba trường hợp đều yêu cầu số quyết định, ngày ban hành 
 dùng. Đây vẫn là validation thuần dữ liệu, chưa phải API/service ghi nhận quyết
 định đã ban hành. Khi triển khai persistence phải có kiểm tra quyền, audit
 event, optimistic locking và provenance, không suy ra phê duyệt từ DOCX.
+
+
+## Bản chụp dữ liệu hiển thị của đoàn dự thảo (bước tiếp theo)
+
+`inspection_qd_kt_team_snapshot_review.py` cung cấp hợp đồng read-only cho
+`DraftTeamSnapshot`: `case_id`, `draft_id`, `document_version_id`,
+`team_id`, `team_revision`, và danh sách thành viên có thứ tự với
+`inspector_id`, `display_name`, `role`, `job_title` theo đúng dữ liệu
+dự định hiển thị tại thời điểm tạo tài liệu. Đây là cấu trúc bất biến ở tầng
+Python, **không phải** bằng chứng snapshot đã được lưu bất biến vào CSDL
+hoặc đã gắn với DOCX binary trên storage.
+
+`review_issued_team` so sánh danh sách sau phê duyệt với snapshot: thêm,
+bỏ, đổi vị trí, tên, vai trò, chức danh đều được nhận biết. Khi chỉ đổi
+chức danh mà IDs vẫn giữ nguyên, lựa chọn `DRAFT_UNCHANGED` bị chặn;
+`DRAFT_EDITED` phải có `acknowledged_changes=True`. `USER_ENTERED`
+không được gắn giả nguồn dự thảo. Không có thao tác ghi vào draft.
+
+Lưu ý: `require_issued_team_choice(display_changed=False)` giữ tương thích
+với các caller cũ chỉ có ID. Caller có snapshot đầy đủ phải dùng
+`review_issued_team` để phát hiện thay đổi hiển thị; không nên cho phép
+một đường ghi issued bypass so sánh này.
+
+**Chưa triển khai:** ownership thực tế trong ORM; snapshot persistence bất
+biến và digest DOCX; mapping kiểu hiển thị cho cả bốn template; authorization,
+idempotency, optimistic locking, audit event, issued-decision transaction.
+Không dùng hợp đồng này để mở `ready_to_render` hoặc xác nhận ban hành.

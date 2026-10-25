@@ -29,6 +29,7 @@ class IssuedTeamChoice:
 
 def require_issued_team_choice(
     *, choice: IssuedTeamChoice, draft: DraftTeamHandoff | None = None,
+    display_changed: bool = False,
 ) -> IssuedTeamChoice:
     """Validate provenance + explicit user approval of the *final* roster.
 
@@ -36,6 +37,8 @@ def require_issued_team_choice(
     Case/draft/team revision. Edited drafts require an extra acknowledgement;
     entirely independent manual entry must not fake a draft association.
     """
+    if type(display_changed) is not bool:
+        raise QdKtHandoffBlocked("QDKT_DISPLAY_CHANGE_FLAG_INVALID")
     if not isinstance(choice, IssuedTeamChoice):
         raise QdKtHandoffBlocked("QDKT_ISSUANCE_CHOICE_TYPE_INVALID")
     if (not isinstance(choice.case_id, str) or not choice.case_id.strip()
@@ -73,8 +76,8 @@ def require_issued_team_choice(
         raise QdKtHandoffBlocked("QDKT_DRAFT_ROSTER_INVALID")
     changed = choice.member_ids != draft.member_ids
     if choice.roster_source == "DRAFT_UNCHANGED":
-        if changed or choice.acknowledged_changes is not False:
+        if changed or display_changed or choice.acknowledged_changes is not False:
             raise QdKtHandoffBlocked("QDKT_DRAFT_ROSTER_CHANGED")
-    elif not changed or choice.acknowledged_changes is not True:
+    elif not (changed or display_changed) or choice.acknowledged_changes is not True:
         raise QdKtHandoffBlocked("QDKT_EDITED_ROSTER_REVIEW_REQUIRED")
     return choice

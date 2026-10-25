@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-10-25",
+  "evidence_main_sha": "9e48206e75508143017f77c9094f77ec5a0405bd",
+  "meaning": "Source-level coverage and future acceptance inventory only. Not evidence of completed UAT or runtime availability.",
+  "steps": [
+    {
+      "id": "facility_search",
+      "legacy_step": "Tra cứu cơ sở / chọn đúng Site",
+      "frontend_path": "frontend/src/pages/SearchPage.tsx",
+      "frontend_symbol": "searchFacilities",
+      "backend_path": "backend/app/api/routers/catalog.py",
+      "code_state": "supported_in_code",
+      "release_blocker": "live_auth_uat_missing",
+      "uat_state": "not_verified",
+      "production_parity": false
+    },
+    {
+      "id": "case_workspace",
+      "legacy_step": "Mở hồ sơ và giữ ngữ cảnh Case",
+      "frontend_path": "frontend/src/pages/SearchPage.tsx",
+      "frontend_symbol": "getCaseWorkspace",
+      "backend_path": "backend/app/api/routers/catalog.py",
+      "code_state": "supported_in_code",
+      "release_blocker": "live_auth_uat_missing",
+      "uat_state": "not_verified",
+      "production_parity": false
+    },
+    {
+      "id": "case_create",
+      "legacy_step": "Khởi tạo đợt kiểm tra",
+      "frontend_path": "frontend/src/pages/SearchPage.tsx",
+      "frontend_symbol": "createInspectionCase",
+      "backend_path": "backend/app/api/routers/workflow.py",
+      "code_state": "supported_in_code",
+      "release_blocker": "live_auth_uat_missing",
+      "uat_state": "not_verified",
+      "production_parity": false
+    },
+    {
+      "id": "plan_edit",
+      "legacy_step": "Nhập và lưu KHKT",
+      "frontend_path": "frontend/src/pages/SearchPage.tsx",
+      "frontend_symbol": "upsertInspectionPlan",
+      "backend_path": "backend/app/api/routers/workflow.py",
+      "code_state": "supported_in_code",
+      "release_blocker": "live_auth_uat_missing",
+      "uat_state": "not_verified",
+      "production_parity": false
+    },
+    {
+      "id": "team_edit",
+      "legacy_step": "Chọn và lưu đoàn kiểm tra",
+      "frontend_path": "frontend/src/pages/SearchPage.tsx",
+      "frontend_symbol": "upsertInspectionTeam",
+      "backend_path": "backend/app/api/routers/workflow.py",
+      "code_state": "supported_in_code",
+      "release_blocker": "live_auth_uat_missing",
+      "uat_state": "not_verified",
+      "production_parity": false
+    },
+    {
+      "id": "khkt_docx",
+      "legacy_step": "Kiểm readiness và tạo DOCX KHKT",
+      "frontend_path": "frontend/src/pages/SearchPage.tsx",
+      "frontend_symbol": "renderCaseInspectionPlan",
+      "backend_path": "backend/app/api/routers/document.py",
+      "code_state": "supported_in_code",
+      "release_blocker": "real_binary_uat_missing",
+      "uat_state": "not_verified",
+      "production_parity": false
+    },
+    {
+      "id": "qdkt_draft",
+      "legacy_step": "Tạo dự thảo DOCX QĐKT từ KHKT",
+      "frontend_path": null,
+      "frontend_symbol": null,
+      "backend_path": "backend/app/document/inspection_qd_kt_case_readiness.py",
+      "code_state": "blocked",
+      "release_blocker": "issue_74_bookmark_owners",
+      "uat_state": "not_verified",
+      "production_parity": false
+    },
+    {
+      "id": "qdkt_approved",
+      "legacy_step": "Nhập số/ngày QĐKT và xác nhận đoàn chính thức",
+      "frontend_path": null,
+      "frontend_symbol": null,
+      "backend_path": "backend/app/document/inspection_qd_kt_issued_roster_persistence.py",
+      "code_state": "internal_only",
+      "release_blocker": "authorized_approval_api_missing",
+      "uat_state": "not_verified",
+      "production_parity": false
+    },
+    {
+      "id": "inspection_outcome",
+      "legacy_step": "Lưu kết quả kiểm tra",
+      "frontend_path": "frontend/src/pages/SearchPage.tsx",
+      "frontend_symbol": "upsertInspectionOutcome",
+      "backend_path": "backend/app/api/routers/workflow.py",
+      "code_state": "supported_in_code",
+      "release_blocker": "live_auth_uat_missing",
+      "uat_state": "not_verified",
+      "production_parity": false
+    },
+    {
+      "id": "capa",
+      "legacy_step": "Tạo/nộp/đánh giá CAPA",
+      "frontend_path": "frontend/src/pages/SearchPage.tsx",
+      "frontend_symbol": "createCapaCycle",
+      "backend_path": "backend/app/api/routers/workflow.py",
+      "code_state": "supported_in_code",
+      "release_blocker": "live_auth_uat_missing",
+      "uat_state": "not_verified",
+      "production_parity": false
+    },
+    {
+      "id": "document_storage",
+      "legacy_step": "Mở nội dung tài liệu gắn đúng Case",
+      "frontend_path": "frontend/src/pages/SearchPage.tsx",
+      "frontend_symbol": "openCaseDocumentCurrentContent",
+      "backend_path": "backend/app/api/routers/document.py",
+      "code_state": "supported_in_code",
+      "release_blocker": "private_share_word_uat_missing",
+      "uat_state": "not_verified",
+      "production_parity": false
+    },
+    {
+      "id": "report_export",
+      "legacy_step": "Thống kê / xuất danh sách theo FilterForm VBA",
+      "frontend_path": "frontend/src/App.tsx",
+      "frontend_symbol": "/reports",
+      "backend_path": "docs/LEGACY_SYSTEM_MAP.md",
+      "code_state": "placeholder",
+      "release_blocker": "legacy_filter_export_parity_missing",
+      "uat_state": "not_verified",
+      "production_parity": false
+    }
+  ]
+}

@@ -6,6 +6,7 @@ import type { ApiAccess } from "../App";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { ActionCard } from "../features/search/ActionCard";
+import { QdKtCaseReadinessPanel } from "../features/search/QdKtCaseReadinessPanel";
 import { FacilityTable } from "../features/search/FacilityTable";
 import { FacilityHistoryPane } from "../features/search/FacilityHistoryPane";
 import { FacilityWorkspaceTabs } from "../features/search/FacilityWorkspaceTabs";
@@ -2411,6 +2412,16 @@ export function SearchPage({
         ) : null}
         {resultsTotalCount > 0 && retainedWorkspace ? (
           <div className="retained-facility-workspace" hidden={!workspace} inert={!workspace}>
+            {selectedHistory?.source_type === "case" && canLoadSecureApi ? (
+              <QdKtCaseReadinessPanel
+                key={`${selectedHistory.id}:${accessGeneration}`}
+                caseId={selectedHistory.id}
+                auth={auth}
+                useStubAuth={useStubAuth}
+                bearerToken={bearerToken ?? null}
+                accessGeneration={accessGeneration}
+              />
+            ) : null}
             <FacilityWorkspaceTabs
               activeEventTab={activeTab}
               caseWorkspace={selectedCaseWorkspace}

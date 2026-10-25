@@ -222,3 +222,21 @@ document renderer. Business validation must still verify decision→plan→Case
 ownership, replacement lineage, draft→Case identity, authorization,
 confirmation, idempotency, concurrency and audited transaction boundaries.
 Do not populate real data or activate issuance until those contracts exist.
+
+
+## Internal decision-owned roster staging (post-0026)
+
+`stage_qdkt_issued_roster` is an internal-only SQLAlchemy helper, not
+a public issuance endpoint. It locks the persisted `InspectionDecision`
+and `InspectionPlan`, matches decision reference/date and Case, resolves
+a persisted draft snapshot for draft-derived modes, checks display-faithful
+roster differences with `review_issued_team`, and stages approved-roster
+projection plus audit rows in the caller's transaction. Retries must
+match the existing roster and members exactly; conflicting writes fail.
+
+**Not an external approval verifier.** The caller must independently
+establish that the signed QĐKT and authority-approved team are genuine,
+perform RBAC, manage transaction commit/rollback and idempotency. This
+helper does not render or verify Word binaries and does not issue new
+InspectionDecision rows. No HTTP write route is registered and
+`ready_to_render=False` remains in force.

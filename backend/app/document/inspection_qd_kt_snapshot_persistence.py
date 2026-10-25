@@ -94,6 +94,7 @@ def stage_qdkt_draft_snapshot(
         ).all()
         same = (
             existing.case_id == snapshot.case_id
+            and existing.draft_id == snapshot.draft_id
             and existing.source_team_id == snapshot.team_id
             and existing.source_team_revision == snapshot.team_revision
             and existing.roster_sha256 == digest
@@ -108,7 +109,8 @@ def stage_qdkt_draft_snapshot(
             raise QdKtSnapshotWriteBlocked("QDKT_DRAFT_SNAPSHOT_ALREADY_BOUND")
         return existing
     record = QdKtDraftRosterSnapshot(
-        case_id=snapshot.case_id, document_version_id=snapshot.document_version_id,
+        case_id=snapshot.case_id, draft_id=snapshot.draft_id,
+        document_version_id=snapshot.document_version_id,
         source_team_id=snapshot.team_id, source_team_revision=snapshot.team_revision,
         roster_sha256=digest,
     )
@@ -126,6 +128,7 @@ def stage_qdkt_draft_snapshot(
         entity_type="qdkt_draft_roster_snapshot", entity_id=record.id,
         new_values_json=json.dumps({
             "case_id":snapshot.case_id,
+            "draft_id":snapshot.draft_id,
             "document_version_id":snapshot.document_version_id,
             "roster_sha256":digest,
         },sort_keys=True),

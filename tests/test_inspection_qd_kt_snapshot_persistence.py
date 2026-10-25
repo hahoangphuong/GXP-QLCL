@@ -119,7 +119,7 @@ def test_changed_roster_blocks_without_staging(bound):
 def test_duplicate_draft_version_rejects_mismatched_snapshot(bound):
     snap = snapshot()
     existing = SimpleNamespace(
-        id="previous", case_id="case-1", source_team_id="team-1",
+        id="previous", case_id="case-1", draft_id="draft-1", source_team_id="team-1",
         source_team_revision=2, roster_sha256="0" * 64,
     )
     session = FakeSession(snap, existing=existing)

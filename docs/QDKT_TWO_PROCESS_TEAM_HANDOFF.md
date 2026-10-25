@@ -183,3 +183,20 @@ immutability of UPDATE/DELETE, verify binary DOCX roster contents by
 itself, or persist the draft_id (0024 has no draft_id column).
 Consequently this is **not production-ready snapshot creation** and does
 not unblock QĐKT issue #74 or issuance APIs.
+
+
+## 0025 — persistent draft identity + PostgreSQL append-only guards
+
+Migration `20261025_0025` adds non-null `draft_id` to
+`qdkt_draft_roster_snapshot` with unique `(case_id, draft_id)`.
+It refuses to upgrade when snapshot rows exist without this key:
+**there is no automatic inference or historical backfill**.
+
+On PostgreSQL the migration installs UPDATE/DELETE rejection triggers on
+both snapshot and member tables. Rollback refuses nonempty tables, preserving
+evidence. This does **not** protect against privileged DDL that removes the
+trigger, nor does it establish a role-grant model.
+
+`stage_qdkt_draft_snapshot` now saves `draft_id` and compares it on exact
+replay. Still not wired to renderer/API/storage transaction; no official
+decision is issued. QĐKT render readiness and Issue #74 remain blocked.

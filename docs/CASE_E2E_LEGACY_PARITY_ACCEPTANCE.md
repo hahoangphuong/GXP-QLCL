@@ -1,6 +1,6 @@
 # Case end-to-end acceptance baseline vs. legacy Excel/VBA (2026-10-25)
 
-Pinned repository source: `9e48206e75508143017f77c9094f77ec5a0405bd`. Machine-readable source-level checklist: `artifacts/legacy_audit/case_e2e_parity_acceptance_v1.json`.
+Pinned repository source: `9e48206e75508143017f77c9094f77ec5a0405bd`. Machine-readable source-level checklist: `docs/CASE_E2E_LEGACY_PARITY_ACCEPTANCE.json`.
 
 ## What this proves (and does not)
 

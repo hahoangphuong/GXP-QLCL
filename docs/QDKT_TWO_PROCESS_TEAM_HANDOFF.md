@@ -66,3 +66,25 @@ một đường ghi issued bypass so sánh này.
 biến và digest DOCX; mapping kiểu hiển thị cho cả bốn template; authorization,
 idempotency, optimistic locking, audit event, issued-decision transaction.
 Không dùng hợp đồng này để mở `ready_to_render` hoặc xác nhận ban hành.
+
+
+## Read-only current Case team endpoint
+
+`GET /cases/{case_id}/documents/inspection-qd-kt/current-team`
+yêu cầu `document.write` và trả đoàn đang lưu ở Case, không phải snapshot
+DOCX hay danh sách chính thức theo từng InspectionDecision.
+
+Response có `source_kind=CURRENT_CASE_TEAM`, `team_revision`,
+danh sách `member_id`, `sort_order`, `role_code`, `display_name`,
+`identity_kind`, các khóa identity; cùng hai cờ bắt buộc
+`draft_snapshot_available=false` và `issued_team_confirmed=false`.
+
+Nếu Case/team/member không rõ ownership, danh tính/vai trò/thứ tự không hợp lệ,
+endpoint trả HTTP 409 theo source gate hiện có. Không tự đối chiếu profile
+bên ngoài Case và không tự tạo bản chụp lịch sử từ team hiện tại.
+
+**Giới hạn:** backend chưa có snapshot lưu bền vững theo
+DocumentVersion, chưa có team chính thức riêng theo InspectionDecision.
+Không dùng endpoint đọc này để xác nhận QĐKT, dựng DOCX, hay suy luận legal
+approval. Frontend có thể hiển thị đoàn hiện tại cho người có quyền và phải
+giữ riêng thông tin chính thức/snapshot trong UI cho đến khi có API hợp lệ.

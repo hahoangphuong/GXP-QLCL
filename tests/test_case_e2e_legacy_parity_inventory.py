@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-INVENTORY = ROOT / "artifacts/legacy_audit/case_e2e_parity_acceptance_v1.json"
+INVENTORY = ROOT / "docs/CASE_E2E_LEGACY_PARITY_ACCEPTANCE.json"
 
 
 def test_parity_inventory_has_no_fabricated_uat_or_production_claims():

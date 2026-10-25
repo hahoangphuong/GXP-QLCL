@@ -20,3 +20,22 @@ Xác nhận nghiệp vụ ngày 24/10/2026:
 `inspection_qd_kt_team_handoff.py` là hợp đồng **thuần dữ liệu, không ghi DB** cho chuyển giao team từ draft sang thông tin ban hành: kiểm tra Case, draft, team, revision, roster, số và ngày quyết định và xác nhận người dùng. Nó **chưa** thay thế transaction service, API, RBAC, event/audit log hay trạng thái phê duyệt; những phần này phải tích hợp vào owner nghiệp vụ hiện hữu sau khi xác minh schema/workflow. `ready_to_render=False` vẫn là gate độc lập của renderer chưa hoàn thành.
 
 Do not auto-copy team from KHKT directly into an issued decision, do not bypass user confirmation, and do not make the legacy workbook audit a modern Case workflow prerequisite.
+
+
+## Lựa chọn đoàn kiểm tra ở bước ghi nhận ban hành
+
+Hợp đồng `inspection_qd_kt_issued_team_choice.py` phân biệt ba con đường
+dựa trên lựa chọn rõ ràng của người dùng:
+
+- `DRAFT_UNCHANGED`: giữ nguyên đoàn dự kiến từ đúng draft, đúng Case,
+  đúng phiên bản và xác nhận đoàn.
+- `DRAFT_EDITED`: lấy đoàn dự kiến làm gợi ý, người dùng sửa danh sách hoặc
+  thứ tự, xác nhận đoàn cuối **và** xác nhận riêng rằng thay đổi đã được rà soát.
+  Việc sửa không ghi ngược vào draft.
+- `USER_ENTERED`: nhập đoàn chính thức độc lập, không buộc có draft và
+  không được gắn nhầm provenance của draft.
+
+Cả ba trường hợp đều yêu cầu số quyết định, ngày ban hành và xác nhận người
+dùng. Đây vẫn là validation thuần dữ liệu, chưa phải API/service ghi nhận quyết
+định đã ban hành. Khi triển khai persistence phải có kiểm tra quyền, audit
+event, optimistic locking và provenance, không suy ra phê duyệt từ DOCX.

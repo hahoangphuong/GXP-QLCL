@@ -88,3 +88,30 @@ DocumentVersion, chưa có team chính thức riêng theo InspectionDecision.
 Không dùng endpoint đọc này để xác nhận QĐKT, dựng DOCX, hay suy luận legal
 approval. Frontend có thể hiển thị đoàn hiện tại cho người có quyền và phải
 giữ riêng thông tin chính thức/snapshot trong UI cho đến khi có API hợp lệ.
+
+
+## Read-only ownership audit for multiple QĐKT
+
+`inspection_qd_kt_ownership_audit.inspect_case_qdkt_ownership` đọc
+`InspectionPlan`, `InspectionDecision`, `InspectionTeam`, và các
+`Document/DocumentVariant/DocumentVersion` được gắn vào Case.
+
+Kết quả chỉ gồm định danh, số phiên bản và blocker kiến trúc, không trả
+tên thành viên. Đây là **kiểm kê read-only**, không phải chứng cứ rằng
+một version DOCX thuộc một InspectionDecision hoặc roster nào.
+
+Kết quả luôn giữ ba blocker chưa được model chứng minh:
+
+- `DECISION_SPECIFIC_TEAM_LINK_NOT_MODELED`
+- `DRAFT_TEAM_SNAPSHOT_PERSISTENCE_NOT_MODELED`
+- `DOCUMENT_VERSION_DECISION_LINK_NOT_MODELED`
+
+`InspectionTeam.case_id` unique nhưng `InspectionDecision` có thể có
+nhiều record theo `InspectionPlan`. Một `DocumentVersion` chỉ tham
+chiếu `DocumentVariant`, do đó không được coi số lượng tài liệu/phiên
+bản như bằng chứng đã gắn QĐKT ban hành với snapshot đoàn tương ứng.
+
+Không chuyển audit này thành endpoint ban hành, migration hoặc mở
+renderer khi chưa xác nhận nghiệp vụ về bản ký, điều chỉnh, thay thế,
+idempotency và sự kiện audit. Không dùng audit thay cho kiểm chứng trên
+dữ liệu thật.

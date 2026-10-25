@@ -4,7 +4,7 @@ import type { StubAuthState } from "../../types";
 
 type View = { status: "loading" } | { status: "ready"; readiness: QdKtReadiness; team: QdKtCurrentTeam | null; teamError: string | null } | { status: "error"; message: string };
 
-export function QdKtCaseReadinessPanel({
+function QdKtCaseReadinessContent({
   caseId, auth, useStubAuth, bearerToken, accessGeneration,
 }: {
   caseId: string;
@@ -72,5 +72,28 @@ export function QdKtCaseReadinessPanel({
         </>
       ) : null}
     </section>
+  );
+}
+
+export function QdKtCaseReadinessPanel(props: {
+  caseId: string;
+  auth: StubAuthState;
+  useStubAuth: boolean;
+  bearerToken: string | null;
+  accessGeneration: number;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="qdkt-readiness-disclosure">
+      <button
+        type="button"
+        className="secondary"
+        aria-expanded={expanded}
+        onClick={() => setExpanded(value => !value)}
+      >
+        {expanded ? "Ẩn trạng thái QĐKT" : "Xem trạng thái QĐKT"}
+      </button>
+      {expanded ? <QdKtCaseReadinessContent {...props} /> : null}
+    </div>
   );
 }

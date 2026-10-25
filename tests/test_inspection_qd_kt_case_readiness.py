@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.db.base import Base
 from backend.app.db.enums import CaseState
-from backend.app.db.models.phase1 import Case, Company, Site, InspectionPlan, InspectionDecision
+from backend.app.db.models.phase1 import Case, Company, Site, InspectionPlan, InspectionDecision, InspectionTeam
 from backend.app.document.inspection_qd_kt_case_readiness import inspect_qdkt_case_readiness
 
 
@@ -38,6 +38,7 @@ def test_case_readiness_is_blocked_even_with_valid_decision_and_site(tmp_path):
         assert result.registered_site_id == site.id
         assert result.ready_to_render is False
         assert "LEGACY_PROVINCE_MAPPING_UNPROVEN" not in result.blockers
+        assert "CASE_INSPECTION_TEAM_NOT_UNIQUE" in result.blockers
         assert "BLANK_ISSUANCE_DATE_BOOKMARK_UNVERIFIED" in result.blockers
         assert "QDKT_TYPED_RENDER_CONTRACT_MISSING" in result.blockers
         assert len(session.new) == 0 and len(session.dirty) == 0
@@ -78,5 +79,31 @@ def test_legacy_province_mismatch_is_reported_without_authorizing_render(tmp_pat
         assert "MANUFACTURING_CLASSIFICATION_SOURCE_UNPROVEN" in result.blockers
         assert result.ready_to_render is False
         assert result.registered_site_id == site.id
+        session.rollback()
+    engine.dispose()
+
+
+def test_readiness_reports_empty_team_without_confusing_it_with_word_mapping(tmp_path):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'team-empty.sqlite').as_posix()}")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        company = Company(legal_name="Synthetic")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="Test",
+                    site_address="Registered address", province_name="Đà Nẵng")
+        session.add(site)
+        session.flush()
+        case = Case(site_id=site.id, gxp_type="GMP", state=CaseState.DRAFT)
+        session.add(case)
+        session.flush()
+        session.add(InspectionTeam(case_id=case.id))
+        session.flush()
+        result = inspect_qdkt_case_readiness(session, case_id=case.id)
+        assert "INSPECTION_TEAM_EMPTY" in result.blockers
+        assert "CASE_INSPECTION_TEAM_NOT_UNIQUE" not in result.blockers
+        assert "INSPECTION_TEAM_BOOKMARK_CONTRACT_UNRESOLVED" in result.blockers
+        assert result.ready_to_render is False
+        assert len(session.new) == 0 and len(session.dirty) == 0
         session.rollback()
     engine.dispose()

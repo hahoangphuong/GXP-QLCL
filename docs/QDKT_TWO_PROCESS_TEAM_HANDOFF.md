@@ -200,3 +200,25 @@ trigger, nor does it establish a role-grant model.
 `stage_qdkt_draft_snapshot` now saves `draft_id` and compares it on exact
 replay. Still not wired to renderer/API/storage transaction; no official
 decision is issued. QĐKT render readiness and Issue #74 remain blocked.
+
+
+## 0026 — decision-specific official team storage foundation
+
+Schema `qdkt_issued_roster` (one row per `InspectionDecision`) and
+`qdkt_issued_roster_member` are additive and initially empty.
+The roster stores `roster_source` as `DRAFT_UNCHANGED`,
+`DRAFT_EDITED`, or `USER_ENTERED`. Draft-derived sources require
+`source_draft_snapshot_id`, while manual sources forbid it.
+An explicit `confirmed_by_user_id` and ordered frozen member display
+projection are required; this is **not** the mutable team owned by Case.
+
+PostgreSQL rejects UPDATE/DELETE on both issued-roster tables using the
+existing append-only rejection function installed by migration 0025.
+Downgrade refuses nonempty tables. A row cannot be automatically created
+from a draft or inferred from the latest Case team.
+
+This schema is **not** an issuance writer, approval integration, or
+document renderer. Business validation must still verify decision→plan→Case
+ownership, replacement lineage, draft→Case identity, authorization,
+confirmation, idempotency, concurrency and audited transaction boundaries.
+Do not populate real data or activate issuance until those contracts exist.

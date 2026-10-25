@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { describeQdKtBlocker } from "./qdktBlockerDescriptions";
 import { getCaseQdKtCurrentTeam, getCaseQdKtReadiness, type QdKtCurrentTeam, type QdKtReadiness } from "../../lib/api";
 import type { StubAuthState } from "../../types";
 
@@ -60,7 +61,10 @@ function QdKtCaseReadinessContent({
           <p>Trạng thái tạo dự thảo: Chưa sẵn sàng.</p>
           <p>Lý do từ backend:</p>
           {view.readiness.blocked_reasons.length
-            ? <ul>{view.readiness.blocked_reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>
+            ? <ul>{view.readiness.blocked_reasons.map(reason => {
+                const blocker = describeQdKtBlocker(reason);
+                return <li key={reason}><strong>{blocker.title}</strong> {blocker.next} <code>{blocker.code}</code></li>;
+              })}</ul>
             : <p>Chưa có đủ bằng chứng cho phép tạo tài liệu.</p>}
           {view.team ? (
             <>

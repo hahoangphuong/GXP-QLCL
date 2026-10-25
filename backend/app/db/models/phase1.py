@@ -562,8 +562,8 @@ class QdKtDraftRosterMember(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     role_code: Mapped[str] = mapped_column(String(16), nullable=False)
     job_title: Mapped[str] = mapped_column(String(255), nullable=False)
     __table_args__ = (
-        UniqueConstraint("snapshot_id", "position"),
-        UniqueConstraint("snapshot_id", "source_team_member_id"),
+        UniqueConstraint("snapshot_id", "position", name="uq_qdkt_draft_member_snapshot_position"),
+        UniqueConstraint("snapshot_id", "source_team_member_id", name="uq_qdkt_draft_member_snapshot_source"),
         CheckConstraint("position >= 1", name="qdkt_draft_member_position_positive"),
         CheckConstraint("role_code IN ('LEADER', 'SECRETARY', 'MEMBER')", name="qdkt_draft_member_role_known"),
         CheckConstraint("length(trim(display_name)) > 0", name="qdkt_draft_member_name_not_blank"),

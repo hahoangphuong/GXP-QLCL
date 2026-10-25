@@ -96,9 +96,8 @@ def review_issued_team(
     if tuple(m.inspector_id for m in final_members) != choice.member_ids:
         raise QdKtHandoffBlocked("QDKT_ISSUED_DISPLAY_ROSTER_MISMATCH")
     draft = validate_draft_snapshot(draft_snapshot) if draft_snapshot is not None else None
-    require_issued_team_choice(choice=choice, draft=draft)
-
     if draft_snapshot is None:
+        require_issued_team_choice(choice=choice, draft=draft)
         return TeamReview(choice.case_id, None, (), final_members)
 
     before = {m.inspector_id: (pos, m) for pos, m in enumerate(draft_snapshot.members, 1)}
@@ -114,6 +113,8 @@ def review_issued_team(
         for mid in dict.fromkeys((*before, *after))
         if before.get(mid) != after.get(mid)
     )
+    display_changed = any(c.before is not None and c.after is not None and c.before != c.after for c in changes)
+    require_issued_team_choice(choice=choice, draft=draft, display_changed=display_changed)
     if choice.roster_source == "DRAFT_UNCHANGED" and changes:
         raise QdKtHandoffBlocked("QDKT_DRAFT_DISPLAY_CHANGED")
     if choice.roster_source == "DRAFT_EDITED" and not changes:

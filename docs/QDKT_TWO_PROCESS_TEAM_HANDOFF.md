@@ -115,3 +115,21 @@ Không chuyển audit này thành endpoint ban hành, migration hoặc mở
 renderer khi chưa xác nhận nghiệp vụ về bản ký, điều chỉnh, thay thế,
 idempotency và sự kiện audit. Không dùng audit thay cho kiểm chứng trên
 dữ liệu thật.
+
+
+## Xác minh nguồn DocumentVersion cho snapshot dự thảo
+
+`require_qdkt_draft_version_binding` kiểm tra read-only đúng
+`DocumentVersion → DocumentVariant → Document`, `Document.case_id`,
+`family_code=INSPECTION_QD_KT`, storage locator và stored SHA-256.
+
+Đây là bước xác minh rằng khóa version trong snapshot dự kiến trỏ đúng
+tài liệu của Case. Không chứng minh roster đã render trong binary,
+không tạo snapshot persistence, không xác nhận bản ký hoặc liên kết
+`InspectionDecision` với phiên bản này. Các cờ
+`confirmed_binary_roster_match=false` và
+`approved_decision_link=false` cố định để tránh frontend suy luận sai.
+
+Chưa nên mở API create/issue dựa vào bước kiểm chứng read-only này.
+Cần owner transaction lưu snapshot bất biến và liên kết quyết định,
+kiểm tra quyền, optimistic locking, idempotency và audit trail riêng.

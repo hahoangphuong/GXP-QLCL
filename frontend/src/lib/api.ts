@@ -985,6 +985,50 @@ export function renderTemplateDocx(
   });
 }
 
+export type QdKtReadiness = {
+  case_id: string;
+  family_code: "INSPECTION_QD_KT";
+  ready_to_render: false;
+  decision_source_id: string | null;
+  registered_site_id: string | null;
+  blocked_reasons: string[];
+};
+
+export type QdKtCurrentTeam = {
+  case_id: string;
+  team_id: string;
+  team_revision: number;
+  source_kind: "CURRENT_CASE_TEAM";
+  draft_snapshot_available: false;
+  issued_team_confirmed: false;
+  members: Array<{
+    member_id: string;
+    sort_order: number;
+    role_code: "LEADER" | "SECRETARY" | "MEMBER";
+    display_name: string;
+  }>;
+};
+
+export function getCaseQdKtReadiness(
+  caseId: string, auth: StubAuthState, useStubAuth: boolean,
+  bearerToken?: string | null, signal?: AbortSignal,
+): Promise<QdKtReadiness> {
+  return requestJson<QdKtReadiness>(
+    `/cases/${encodeURIComponent(caseId)}/documents/inspection-qd-kt/readiness`,
+    { auth, useStubAuth, bearerToken, signal },
+  );
+}
+
+export function getCaseQdKtCurrentTeam(
+  caseId: string, auth: StubAuthState, useStubAuth: boolean,
+  bearerToken?: string | null, signal?: AbortSignal,
+): Promise<QdKtCurrentTeam> {
+  return requestJson<QdKtCurrentTeam>(
+    `/cases/${encodeURIComponent(caseId)}/documents/inspection-qd-kt/current-team`,
+    { auth, useStubAuth, bearerToken, signal },
+  );
+}
+
 export function getCaseInspectionPlanRuntimeReadiness(
   caseId: string,
   auth: StubAuthState,

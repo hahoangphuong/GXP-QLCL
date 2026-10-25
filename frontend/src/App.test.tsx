@@ -81,6 +81,8 @@ const apiMocks = vi.hoisted(() => ({
   listSites: vi.fn().mockResolvedValue([]),
   prepareDocument: vi.fn(),
   getCaseInspectionPlanRuntimeReadiness: vi.fn(),
+  getCaseQdKtReadiness: vi.fn(),
+  getCaseQdKtCurrentTeam: vi.fn(),
   renderCaseInspectionPlan: vi.fn(),
   renderTemplateDocx: vi.fn(),
   submitCapaCycle: vi.fn(),
@@ -202,6 +204,18 @@ function resetApiMocks() {
   apiMocks.listSites.mockReset();
   apiMocks.prepareDocument.mockReset();
   apiMocks.getCaseInspectionPlanRuntimeReadiness.mockReset();
+  apiMocks.getCaseQdKtReadiness.mockReset();
+  apiMocks.getCaseQdKtReadiness.mockImplementation((caseId: string) => Promise.resolve({
+    case_id: caseId, family_code: "INSPECTION_QD_KT", ready_to_render: false,
+    decision_source_id: null, registered_site_id: null,
+    blocked_reasons: ["QDKT_TYPED_RENDER_NOT_ENABLED"],
+  }));
+  apiMocks.getCaseQdKtCurrentTeam.mockReset();
+  apiMocks.getCaseQdKtCurrentTeam.mockImplementation((caseId: string) => Promise.resolve({
+    case_id: caseId, team_id: "current-team", team_revision: 1,
+    source_kind: "CURRENT_CASE_TEAM", draft_snapshot_available: false,
+    issued_team_confirmed: false, members: [],
+  }));
   apiMocks.renderCaseInspectionPlan.mockReset();
   apiMocks.renderTemplateDocx.mockReset();
   apiMocks.submitCapaCycle.mockReset();

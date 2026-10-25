@@ -121,7 +121,7 @@ def test_rehearsal_deploy_accepts_known_forward_0022_to_0023_without_pre_migrati
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Rehearsal deploy owns upgrade head; its preflight must allow 0022."""
-    assert expected_alembic_head_revision() == "20261012_0023"
+    assert expected_alembic_head_revision() == "20261025_0024"
     canonical_env = tmp_path / "runtime.env"
     canonical_env.write_text("DB_NAME=gxp_qlcl\n", encoding="utf-8")
     canonical_url = _prepare_target_db(tmp_path / "prod.db")
@@ -140,7 +140,7 @@ def test_rehearsal_deploy_accepts_known_forward_0022_to_0023_without_pre_migrati
     )
 
     assert plan.alembic_current_revision == "20261008_0022"
-    assert plan.alembic_head_revision == "20261012_0023"
+    assert plan.alembic_head_revision == "20261025_0024"
     assert plan.alembic_upgrade_required is True
     assert parse_env_file(output_env)["DB_NAME"] == "gxp_legacy_rehearsal"
     # The preflight must be read-only: no schema/version upgrade happens here.
@@ -188,7 +188,7 @@ def test_rehearsal_preflight_accepts_runtime_already_on_rehearsal(
     assert plan.source_database == "gxp_legacy_rehearsal"
     assert plan.canonical_database_url_redacted == "not_supplied"
     assert plan.alembic_current_revision == "20261008_0022"
-    assert plan.alembic_head_revision == "20261012_0023"
+    assert plan.alembic_head_revision == "20261025_0024"
     assert plan.alembic_upgrade_required is True
     assert len(seen_urls) == 1
     assert seen_urls[0].endswith("/gxp_legacy_rehearsal")

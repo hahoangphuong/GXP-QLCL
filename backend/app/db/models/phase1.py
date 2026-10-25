@@ -574,6 +574,58 @@ class QdKtDraftRosterMember(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
 
+class QdKtIssuedRoster(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Confirmed roster evidence for one specific InspectionDecision."""
+
+    __tablename__ = "qdkt_issued_roster"
+
+    inspection_decision_id: Mapped[str] = mapped_column(
+        ForeignKey("inspection_decision.id"), nullable=False, unique=True
+    )
+    roster_source: Mapped[str] = mapped_column(String(20), nullable=False)
+    source_draft_snapshot_id: Mapped[str | None] = mapped_column(
+        ForeignKey("qdkt_draft_roster_snapshot.id")
+    )
+    confirmed_by_user_id: Mapped[str] = mapped_column(
+        ForeignKey("app_user.id"), nullable=False
+    )
+    roster_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    __table_args__ = (
+        CheckConstraint(
+            "roster_source IN ('DRAFT_UNCHANGED', 'DRAFT_EDITED', 'USER_ENTERED')",
+            name="qdkt_issued_roster_source_known",
+        ),
+        CheckConstraint(
+            "(roster_source = 'USER_ENTERED' AND source_draft_snapshot_id IS NULL) "
+            "OR (roster_source IN ('DRAFT_UNCHANGED', 'DRAFT_EDITED') AND source_draft_snapshot_id IS NOT NULL)",
+            name="qdkt_issued_roster_draft_link_shape",
+        ),
+        CheckConstraint("length(roster_sha256) = 64", name="qdkt_issued_roster_digest_length"),
+    )
+
+
+class QdKtIssuedRosterMember(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Frozen approved display content; not an editable Case team."""
+
+    __tablename__ = "qdkt_issued_roster_member"
+
+    issued_roster_id: Mapped[str] = mapped_column(
+        ForeignKey("qdkt_issued_roster.id"), nullable=False, index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_member_id: Mapped[str | None] = mapped_column(String(64))
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    role_code: Mapped[str] = mapped_column(String(16), nullable=False)
+    job_title: Mapped[str] = mapped_column(String(255), nullable=False)
+    __table_args__ = (
+        UniqueConstraint("issued_roster_id", "position", name="uq_qdkt_issued_member_position"),
+        CheckConstraint("position >= 1", name="qdkt_issued_member_position_positive"),
+        CheckConstraint("role_code IN ('LEADER', 'SECRETARY', 'MEMBER')", name="qdkt_issued_member_role_known"),
+        CheckConstraint("length(trim(display_name)) > 0", name="qdkt_issued_member_name_nonblank"),
+        CheckConstraint("length(trim(job_title)) > 0", name="qdkt_issued_member_title_nonblank"),
+    )
+
+
 class InspectionEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "inspection_event"
 

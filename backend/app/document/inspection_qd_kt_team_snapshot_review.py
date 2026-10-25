@@ -92,6 +92,8 @@ def review_issued_team(
     same. A caller cannot label those edits DRAFT_UNCHANGED. The final roster
     remains pending until an authorized persistence workflow records it.
     """
+    if not isinstance(choice, IssuedTeamChoice):
+        raise QdKtHandoffBlocked("QDKT_ISSUANCE_CHOICE_TYPE_INVALID")
     validate_members(final_members)
     if tuple(m.inspector_id for m in final_members) != choice.member_ids:
         raise QdKtHandoffBlocked("QDKT_ISSUED_DISPLAY_ROSTER_MISMATCH")

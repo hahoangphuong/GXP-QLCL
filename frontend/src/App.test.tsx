@@ -81,6 +81,8 @@ const apiMocks = vi.hoisted(() => ({
   listSites: vi.fn().mockResolvedValue([]),
   prepareDocument: vi.fn(),
   getCaseInspectionPlanRuntimeReadiness: vi.fn(),
+  getCaseQdKtReadiness: vi.fn(),
+  getCaseQdKtCurrentTeam: vi.fn(),
   renderCaseInspectionPlan: vi.fn(),
   renderTemplateDocx: vi.fn(),
   submitCapaCycle: vi.fn(),
@@ -202,6 +204,8 @@ function resetApiMocks() {
   apiMocks.listSites.mockReset();
   apiMocks.prepareDocument.mockReset();
   apiMocks.getCaseInspectionPlanRuntimeReadiness.mockReset();
+  apiMocks.getCaseQdKtReadiness.mockReset();
+  apiMocks.getCaseQdKtCurrentTeam.mockReset();
   apiMocks.renderCaseInspectionPlan.mockReset();
   apiMocks.renderTemplateDocx.mockReset();
   apiMocks.submitCapaCycle.mockReset();

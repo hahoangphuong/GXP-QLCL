@@ -158,3 +158,28 @@ idempotency, concurrency, audit; (4) chính sách lưu không sửa/xóa;
 (5) hợp đồng riêng official team theo từng InspectionDecision.
 
 Không suy luận người dùng đã phê duyệt từ việc snapshot tồn tại.
+
+
+## Internal snapshot transaction staging (post-0024)
+
+`stage_qdkt_draft_snapshot` is an internal, **non-HTTP** boundary. It
+stages snapshot parent, display-faithful member rows and an `AuditEvent`
+inside a **caller-owned transaction**; it does not commit, write DOCX,
+assign decision reference/date or alter `InspectionDecision`. It locks
+the Case-owned source team, validates revision and members, pins the
+DocumentVersion checksum and compares canonical rendered-roster digest.
+
+The caller must **independently** enforce authorization, ensure DOCX
+storage has been finalized and checksum verified, supply the digest from
+the trusted renderer rather than client input, and commit atomically.
+A matching existing snapshot is returned only after exact persisted member
+comparison; a conflicting snapshot is rejected. The unique version
+constraint handles concurrent insert races; any IntegrityError must abort
+the transaction, not be hidden as success.
+
+Important limitations: this is not yet integrated into a renderer or a
+runtime service transaction. It does not guarantee database-level
+immutability of UPDATE/DELETE, verify binary DOCX roster contents by
+itself, or persist the draft_id (0024 has no draft_id column).
+Consequently this is **not production-ready snapshot creation** and does
+not unblock QĐKT issue #74 or issuance APIs.

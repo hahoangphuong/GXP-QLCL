@@ -13,6 +13,7 @@ from backend.app.auth import AuthenticatedUser, get_authenticated_user, require_
 from backend.app.read_models import (
     CaseInspectionPlanRuntimeReadinessRead,
     CaseQdKtRuntimeReadinessRead,
+    CaseQdKtCurrentTeamRead,
     DocumentDetailRead,
     DocumentOwnerMetadataInventoryRead,
     DocumentGenerationPrepareRequest,
@@ -24,6 +25,8 @@ from backend.app.read_models import (
 )
 from backend.app.document.contextual_actions import KHKT_CASE_TYPED_RENDER_ROUTE
 from backend.app.document.inspection_qd_kt_case_readiness import inspect_qdkt_case_readiness
+from backend.app.document.inspection_qd_kt_current_case_team import read_qdkt_current_case_team
+from backend.app.document.inspection_qd_kt_team_source import QdKtTeamSourceBlocked
 from backend.app.services.document_api import DocumentWorkflowService
 from backend.app.storage.types import StorageOperationError
 
@@ -127,6 +130,20 @@ def register_document_routes(app, session_factory) -> None:
             storage=request.app.state.storage_service,
         )
         return CaseInspectionPlanRuntimeReadinessRead(**result)
+
+    def get_case_qdkt_current_team(
+        case_id: str,
+        session: Session = dependency,
+        user: AuthenticatedUser = Depends(get_authenticated_user),
+    ):
+        require_permissions(user, {"document.write"})
+        try:
+            projection = read_qdkt_current_case_team(session, case_id=case_id)
+        except QdKtTeamSourceBlocked as exc:
+            # Fail closed on ambiguous or absent membership; never fill gaps
+            # from another Case, profile, historic plan, or issued decision.
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return CaseQdKtCurrentTeamRead(**projection)
 
     def get_case_qdkt_readiness(
         case_id: str,
@@ -334,6 +351,13 @@ def register_document_routes(app, session_factory) -> None:
         get_case_inspection_plan_runtime_readiness,
         methods=["GET"],
         response_model=CaseInspectionPlanRuntimeReadinessRead,
+        tags=["documents"],
+    )
+    app.add_api_route(
+        "/cases/{case_id}/documents/inspection-qd-kt/current-team",
+        get_case_qdkt_current_team,
+        methods=["GET"],
+        response_model=CaseQdKtCurrentTeamRead,
         tags=["documents"],
     )
     app.add_api_route(

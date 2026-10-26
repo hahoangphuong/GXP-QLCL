@@ -20,7 +20,6 @@ _ROOT = Path(__file__).resolve().parents[3]
 _SOURCE = _ROOT / "artifacts/legacy_audit/inspection_qd_kt_input_provenance.json"
 _RG3_CONTRACT = _ROOT / "artifacts/legacy_audit/inspection_qd_kt_rg3_crosswalk_contract.json"
 _SNAPSHOT = _ROOT / "artifacts/phase3c/legacy_snapshot.json"
-_ANCHORS = _ROOT / "artifacts/legacy_audit/legacy_inspection_storage_anchor_projection.json"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _EXPECTED = {
     "HsDK": ("CaseApplication.dossier_code", "db.ktra row, ColDB_HSDK_Ktra + 1"),
@@ -253,52 +252,44 @@ def assess_qdkt_rg3_crosswalk(
     return _result("IDENTITY_PROVEN_SEMANTICS_PARTIAL", **base)
 
 
-def _snapshot_rows(data: object) -> list[dict[str, object]]:
+def _snapshot_rows(data: object, table_name: str = "db.ktra") -> list[dict[str, object]]:
     if not isinstance(data, dict):
         raise ValueError("QDKT_RG3_SNAPSHOT_INVALID")
-    for key in ("db_ktra", "db.ktra"):
+    for key in (table_name.replace(".", "_"), table_name):
         value = data.get(key)
         if isinstance(value, list):
             return [row for row in value if isinstance(row, dict)]
     tables = data.get("tables")
     if isinstance(tables, dict):
-        for key in ("db_ktra", "db.ktra"):
+        for key in (table_name.replace(".", "_"), table_name):
             value = tables.get(key)
             if isinstance(value, list):
                 return [row for row in value if isinstance(row, dict)]
-    raise ValueError("QDKT_RG3_SNAPSHOT_DB_KTRA_MISSING")
+    raise ValueError("QDKT_RG3_SNAPSHOT_TABLE_MISSING")
 
 
 def inspect_qdkt_rg3_baseline(
     *,
     contract_path: Path = _RG3_CONTRACT,
     snapshot_path: Path = _SNAPSHOT,
-    anchor_path: Path = _ANCHORS,
+    anchor_path: Path | None = None,
 ) -> QdKtRg3BaselineEvidence:
     """Recompute privacy-safe aggregate claims from committed source evidence."""
     try:
         contract = json.loads(Path(contract_path).read_text(encoding="utf-8"))
         snapshot = json.loads(Path(snapshot_path).read_text(encoding="utf-8"))
-        anchors_data = json.loads(Path(anchor_path).read_text(encoding="utf-8"))
         rows = _snapshot_rows(snapshot)
+        site_rows = _snapshot_rows(snapshot, "db.cso")
         aliases = contract["snapshot_columns"]
         first_row = int(contract["named_range"]["physical_first_row"])
         workbook_sha = contract["sources"]["workbook_sha256"]
         if not _SHA256.fullmatch(workbook_sha):
             raise ValueError("QDKT_RG3_SOURCE_VERSION_INVALID")
 
-        anchors = anchors_data["rows"] if isinstance(anchors_data, dict) else anchors_data
-        if not isinstance(anchors, list):
-            raise ValueError("QDKT_RG3_ANCHOR_PROJECTION_INVALID")
-        if any(
-            anchor.get("source_sheet") != "db.ktra"
-            or anchor.get("source_version") != workbook_sha
-            for anchor in anchors
-        ):
-            raise ValueError("QDKT_RG3_ANCHOR_SOURCE_DRIFT")
-        projected_rows = {
-            (int(anchor["legacy_inspection_id"]), int(anchor["source_row"]))
-            for anchor in anchors
+        valid_site_ids = {
+            parsed
+            for raw in site_rows
+            if (parsed := parse_int(normalize_row(raw).get("ID"))) is not None
         }
         effective: list[tuple[int, int, int | None, str | None]] = []
         for raw in rows:
@@ -312,16 +303,37 @@ def inspect_qdkt_rg3_baseline(
             source_row = parse_int(normalized.get("__excel_row_number"))
             if source_row is None:
                 raise ValueError("QDKT_RG3_SOURCE_ROW_MISSING")
-            if (legacy_id, source_row) not in projected_rows:
+            if site_id not in valid_site_ids:
                 continue
             if dossier == "-":
                 dossier = None
             effective.append((legacy_id, source_row, site_id, dossier))
 
-        anchor_pairs = {
-            (int(anchor["legacy_inspection_id"]), int(anchor["source_row"]))
-            for anchor in anchors
-        }
+        anchor_audit = contract["anchor_projection_audit"]
+        anchor_count = int(anchor_audit["effective_case_count"])
+        exact_projection_count = int(anchor_audit["exact_id_source_row_match_count"])
+        if not anchor_audit["parity_passed"]:
+            raise ValueError("QDKT_RG3_ANCHOR_AUDIT_NOT_PASSED")
+        if anchor_path is not None:
+            anchors_data = json.loads(Path(anchor_path).read_text(encoding="utf-8"))
+            anchors = anchors_data["rows"] if isinstance(anchors_data, dict) else anchors_data
+            if not isinstance(anchors, list):
+                raise ValueError("QDKT_RG3_ANCHOR_PROJECTION_INVALID")
+            if any(
+                anchor.get("source_sheet") != "db.ktra"
+                or anchor.get("source_version") != workbook_sha
+                for anchor in anchors
+            ):
+                raise ValueError("QDKT_RG3_ANCHOR_SOURCE_DRIFT")
+            anchor_pairs = {
+                (int(anchor["legacy_inspection_id"]), int(anchor["source_row"]))
+                for anchor in anchors
+            }
+            anchor_count = len(anchors)
+            exact_projection_count = sum(
+                (legacy_id, source_row) in anchor_pairs
+                for legacy_id, source_row, _, _ in effective
+            )
         site_counts = Counter(site for _, _, site, _ in effective if site is not None)
         dossier_counts = Counter(dossier for _, _, _, dossier in effective if dossier is not None)
         evidence = QdKtRg3BaselineEvidence(
@@ -330,8 +342,8 @@ def inspect_qdkt_rg3_baseline(
             snapshot_row_count=len(rows),
             effective_row_count=len(effective),
             unique_legacy_inspection_id_count=len({row[0] for row in effective}),
-            anchor_projection_row_count=len(anchors),
-            projection_exact_id_row_count=sum((legacy_id, source_row) in anchor_pairs for legacy_id, source_row, _, _ in effective),
+            anchor_projection_row_count=anchor_count,
+            projection_exact_id_row_count=exact_projection_count,
             legacy_id_differs_from_named_range_index_count=sum(legacy_id != source_row - first_row + 1 for legacy_id, source_row, _, _ in effective),
             sites_with_multiple_cases=sum(count > 1 for count in site_counts.values()),
             max_cases_per_site=max(site_counts.values(), default=0),

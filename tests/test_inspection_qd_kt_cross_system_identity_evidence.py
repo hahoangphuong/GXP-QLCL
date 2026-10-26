@@ -247,6 +247,18 @@ def test_committed_baseline_proves_row_index_bridge_and_real_world_ambiguity_wit
     assert baseline.contains_raw_business_values is False
 
 
+def test_direct_anchor_projection_matches_contract_when_local_evidence_is_available():
+    anchor = (
+        Path(__file__).resolve().parents[1]
+        / "artifacts/legacy_audit/legacy_inspection_storage_anchor_projection.json"
+    )
+    if not anchor.exists():
+        pytest.skip("raw local anchor projection is intentionally excluded from Git")
+    baseline = inspect_qdkt_rg3_baseline(anchor_path=anchor)
+    assert baseline.anchor_projection_row_count == 1496
+    assert baseline.projection_exact_id_row_count == 1496
+
+
 def test_direct_vba_rg3_selection_trace_when_pinned_archive_is_available():
     """The public legacy archive is excluded from CI; verify it directly when present."""
     archive = Path(__file__).resolve().parents[1] / "legacy/GXP-VBA code.zip"

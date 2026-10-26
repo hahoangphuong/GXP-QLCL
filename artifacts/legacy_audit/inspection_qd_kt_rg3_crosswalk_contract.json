@@ -64,6 +64,18 @@
     "legacy_site_id": "site_legacy_id_ref",
     "dossier_code": "dossier_code"
   },
+  "anchor_projection_audit": {
+    "source": "local read-only legacy_inspection_storage_anchor_projection.json plus its audit summary; raw projection is intentionally excluded from Git",
+    "source_version": "c12537ea5a5c9f470e42fb5bdbe214f36983e310fceac7c560ad38885209fe3d",
+    "effective_case_count": 1496,
+    "exact_id_source_row_match_count": 1496,
+    "duplicate_projection_case_id_count": 0,
+    "duplicate_source_case_id_count": 0,
+    "missing_case_id_count": 0,
+    "extra_case_id_count": 0,
+    "field_mismatch_count": 0,
+    "parity_passed": true
+  },
   "privacy_safe_aggregates": {
     "snapshot_row_count": 1543,
     "effective_row_count": 1496,

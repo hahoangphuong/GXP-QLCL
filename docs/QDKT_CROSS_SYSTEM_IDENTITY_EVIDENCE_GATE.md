@@ -43,7 +43,9 @@ The accepted identity chain is:
 
 The anchor's source row/version/hash must agree. Site, display name, dossier value or date alone are never join keys.
 
-Privacy-safe recomputation from committed artifacts establishes:
+Privacy-safe recomputation from the committed snapshot applies the importer's exact Site-FK eligibility rule. A local read-only check of the excluded raw anchor projection pins its aggregate parity result into the tracked contract; when that local projection is present, tests recompute all 1,496 inspection-ID/source-row pairs directly.
+
+The combined evidence establishes:
 
 | Check | Result |
 |---|---:|
@@ -55,7 +57,7 @@ Privacy-safe recomputation from committed artifacts establishes:
 | Non-placeholder dossier rows | 1,012 |
 | Duplicate dossier values / rows carrying one | 138 / 486 |
 
-These aggregates prove why neither Site nor dossier text is a safe record key. The machine-readable contract contains no raw business values.
+These aggregates prove why neither Site nor dossier text is a safe record key. The machine-readable contract contains no raw business values; the raw anchor projection remains excluded from Git by repository hygiene policy.
 
 ## What is and is not proven
 

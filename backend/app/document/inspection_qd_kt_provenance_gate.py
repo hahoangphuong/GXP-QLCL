@@ -50,6 +50,8 @@ def inspect_qdkt_source_provenance(path: Path = SOURCE) -> QdKtProvenanceGate:
     digest = evidence.get("source_zip_sha256")
     if not isinstance(digest, str) or len(digest) != 64:
         raise QdKtProvenanceGateBlocked("QDKT_SOURCE_ZIP_PIN_MISSING")
+    if any(not isinstance(row, dict) for row in fields.values()):
+        raise QdKtProvenanceGateBlocked("QDKT_SOURCE_PROVENANCE_INCOMPLETE")
     status = {name: row.get("owner_classification") for name, row in fields.items()}
     if any(
         not isinstance(fields[name], dict)

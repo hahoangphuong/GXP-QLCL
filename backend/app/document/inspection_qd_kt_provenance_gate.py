@@ -65,7 +65,7 @@ def _require_i2_trace(name: str, row: dict) -> None:
         (op.get("line"), op.get("operation_type"), op.get("reachability_i2"))
         != EXPECTED_I2_OPERATIONS[name]
         or not isinstance(op.get("expression"), str)
-        or not op["expression"].strip()
+        or (op["operation_type"] == "WRITE" and not op["expression"].strip())
         or not isinstance(op.get("branch_predicates"), str)
         or not op["branch_predicates"].strip()
     ):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from hashlib import sha256
+from typing import Literal
 import tempfile
 from urllib.parse import quote
 
@@ -147,13 +148,14 @@ def register_document_routes(app, session_factory) -> None:
 
     def get_case_qdkt_readiness(
         case_id: str,
+        purpose: Literal["DRAFT_QDKT", "EXISTING_APPROVED_DECISION_REFERENCE"] = "EXISTING_APPROVED_DECISION_REFERENCE",
         session: Session = dependency,
         user: AuthenticatedUser = Depends(get_authenticated_user),
     ):
         # Mirror the document.write permission of the KHKT readiness route;
         # no output filename, template path, or document contents are exposed.
         require_permissions(user, {"document.write"})
-        result = inspect_qdkt_case_readiness(session, case_id=case_id)
+        result = inspect_qdkt_case_readiness(session, case_id=case_id, purpose=purpose)
         return CaseQdKtRuntimeReadinessRead(
             case_id=result.case_id,
             family_code="INSPECTION_QD_KT",

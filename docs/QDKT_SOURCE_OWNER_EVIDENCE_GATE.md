@@ -49,3 +49,17 @@ This detects an inventory edit that retained an OWNER_BLOCKED classification
 while silently changing the claimed VBA mapping. Both JSON artifacts remain
 derived audit evidence of the same ZIP, not independent physical-source
 verification; no DOTX binaries are validated here and no owner is promoted.
+
+
+## Case GxP-to-template manifest preflight
+
+The read-only Case QĐKT readiness now checks the Case's persisted
+`gxp_type` against the four declared QĐKT template asset records
+(`GMP`, `GLP`, `GMPbb`, `GSP`) through the existing locator and
+checksum-format contract. Unsupported GxP or an invalid manifest yields
+`QDKT_CASE_GXP_TEMPLATE_CONTRACT_UNVERIFIED`; no guessed template fallback
+is allowed. Missing Case identity retains its existing Case blocker.
+
+This verifies **manifest metadata only**. It does not read, hash or prove
+the underlying four DOTX binaries. It does not establish a typed bookmark
+mapping, permit document generation, or modify persisted business data.

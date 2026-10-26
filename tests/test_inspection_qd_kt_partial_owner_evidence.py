@@ -22,7 +22,8 @@ def test_all_six_partial_owners_remain_blocked_from_rendering(gxp):
     assert rows["TTx"].target_names == ("TT1x", "TT2x")
     for name in ("HsDK", "NgaynopHsDK"):
         assert rows[name].target_names == ()
-        assert rows[name].target_resolution_proven is False
+        assert rows[name].target_resolution_proven is True
+        assert rows[name].candidate_target_names == (name,)
     for row in rows.values():
         assert row.owner_classification == "OWNER_PARTIAL"
         assert row.source_owner_verified is False
@@ -43,3 +44,21 @@ def test_source_owner_promotions_are_refused(tmp_path):
 def test_invalid_gxp_fails_closed():
     with pytest.raises(ValueError):
         inspect_qdkt_partial_owner_evidence("GMPNN")
+
+
+def test_exact_hsdk_source_expression_drift_fails_closed(tmp_path):
+    source = json.loads(PROVENANCE.read_text(encoding="utf-8"))
+    source["fields"]["NgaynopHsDK"]["vba_rendered_operations"][0]["expression"] = "Trim(s_NgaynopHsDk)"
+    file = tmp_path / "modified.json"
+    file.write_text(json.dumps(source), encoding="utf-8")
+    with pytest.raises(ValueError, match="QDKT_PARTIAL_EXACT_SOURCE_DRIFT"):
+        inspect_qdkt_partial_owner_evidence("GLP", provenance_path=file)
+
+
+def test_hsdk_exact_target_is_not_rewritten_to_a_numbered_family():
+    for gxp in ("GLP", "GMP", "GMPbb", "GSP"):
+        items = {row.logical_name: row for row in inspect_qdkt_partial_owner_evidence(gxp)}
+        assert items["HsDK"].candidate_target_names == ("HsDK",)
+        assert items["NgaynopHsDK"].candidate_target_names == ("NgaynopHsDK",)
+        assert items["HsDK"].target_names == ()
+        assert items["NgaynopHsDK"].target_names == ()

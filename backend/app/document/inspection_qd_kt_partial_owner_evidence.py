@@ -55,7 +55,7 @@ def inspect_qdkt_partial_owner_evidence(
             field = fields[name]
             if field["owner_classification"] != "OWNER_PARTIAL" or not field["blocker"] or not field["source_semantic_endpoint"]:
                 raise ValueError("QDKT_PARTIAL_OWNER_PREMATURELY_PROMOTED")
-            if not any(op["reachability_i2"] == "REACHABLE_I2" for op in field["vba_rendered_operations"]):
+            if not any(op["reachability_i2"] in {"REACHABLE_I2", "CONDITIONAL_I2"} for op in field["vba_rendered_operations"]):
                 raise ValueError("QDKT_PARTIAL_I2_PROVENANCE_UNVERIFIED")
             resolution = targets.get(name)
             # HsDK and NgaynopHsDK were never covered by the earlier

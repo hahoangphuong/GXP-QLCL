@@ -25,7 +25,8 @@ function QdKtCaseReadinessContent({
         if (controller.signal.aborted) return;
         // Fail closed: a read-only panel must not imply that creating a QĐKT is allowed.
         if (readiness.case_id !== caseId || readiness.family_code !== "INSPECTION_QD_KT"
-            || readiness.ready_to_render !== false || readiness.decision_source_id !== null\n            || !Array.isArray(readiness.blocked_reasons)) {
+            || readiness.ready_to_render !== false || readiness.decision_source_id !== null
+            || !Array.isArray(readiness.blocked_reasons)) {
           throw new Error("Dữ liệu readiness QĐKT không hợp lệ hoặc sai hồ sơ.");
         }
         let team: QdKtCurrentTeam | null = null;

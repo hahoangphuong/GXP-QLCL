@@ -1,4 +1,4 @@
-"""Offline source-provenance gate for the 14 physical QĐKT i=2 bookmarks.
+"""Offline source-provenance gate for 14 logical QĐKT i=2 operations.
 
 This module neither substitutes modern ORM columns nor enables Word rendering.
 An OWNER_PARTIAL candidate is evidence to investigate, not a payload owner.
@@ -12,6 +12,9 @@ import json
 
 SOURCE = Path(__file__).resolve().parents[3] / "artifacts/legacy_audit/inspection_qd_kt_input_provenance.json"
 TRACE = SOURCE.with_name("inspection_qd_kt_vba_trace.json")
+# The legacy JSON calls these keys "physical_bookmark", but the values are
+# logical VBA operation symbols. Some resolve to numbered Word bookmarks,
+# others have no physical target in the four observed DOTX packages.
 EXPECTED_FIELDS = frozenset({
     "Fulldate", "Tencoso", "Diadiem", "Diadiemx", "Diachicoso",
     "HsDK", "NgaynopHsDK", "QDKT", "NgayQDKT", "VKNx", "VKN",
@@ -146,6 +149,8 @@ def inspect_qdkt_source_provenance(path: Path = SOURCE) -> QdKtProvenanceGate:
     if evidence.get("schema_version") != "inspection-qd-kt-input-provenance/v1":
         raise QdKtProvenanceGateBlocked("QDKT_SOURCE_SCHEMA_UNEXPECTED")
     if not isinstance(fields, dict) or set(fields) != EXPECTED_FIELDS:
+        # Preserve the historical machine-readable blocker code for clients,
+        # despite the legacy operation-symbol naming convention.
         raise QdKtProvenanceGateBlocked("QDKT_PHYSICAL_BOOKMARK_SET_CHANGED")
     digest = evidence.get("source_zip_sha256")
     if not isinstance(digest, str) or len(digest) != 64:

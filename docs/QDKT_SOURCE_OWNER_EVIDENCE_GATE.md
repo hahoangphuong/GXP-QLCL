@@ -10,3 +10,10 @@ This guard reads the pinned `artifacts/legacy_audit/inspection_qd_kt_input_prove
 `inspect_qdkt_source_provenance()` checks the exact 14 physical names, active source trace metadata, source ZIP pin, and status assignments. Any attempt to silently reclassify an owner, drop a bookmark, or clear source semantics fails closed. Test fixtures mutate the artifact to prove these guards.
 
 A later source adjudication must update the verified legacy trace, document exact modern owner, transformation, template-specific and Word-visual acceptance evidence, and replace this intentionally conservative gate through review. A status change alone cannot enable creation. In particular `ready_to_render=False` and Issue #74 remain unchanged; there is no typed QĐKT POST, no storage mutation, and no approval assertion.
+
+
+## Guard cho thao tác VBA thực tế ở nhánh i=2
+
+Bộ kiểm tra còn pin vị trí lệnh, loại thao tác và khả năng tiếp cận trong nhánh `i=2` cho cả 14 bookmark. Phân biệt `WRITE` với `DELETE` (`TT3Del`), `REACHABLE_I2` với `CONDITIONAL_I2`; các thao tác của nhánh `i=3/4` không thể thay thế thao tác đang hoạt động. Chuỗi biến nguồn phải có bước truy vết cho từng biến được khai báo. Các fixture cố tình thay đổi nhánh, dòng lệnh, thao tác, biểu thức và chuỗi nguồn để chứng minh fail-closed.
+
+**Giới hạn chứng cứ:** gate chưa so sánh từng biểu thức với binary VBA gốc, chưa kiểm tra từng bookmark trong bốn file DOCX và chưa chứng minh dữ liệu ORM hiện đại tương đương. Vì vậy chỉ là tính nhất quán của inventory đã kiểm kê; mọi trạng thái owner vẫn blocked/partial, không tạo payload hoặc mở renderer.

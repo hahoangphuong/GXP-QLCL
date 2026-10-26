@@ -19,7 +19,7 @@ function readiness(caseId = "case-a") {
     case_id: caseId,
     family_code: "INSPECTION_QD_KT" as const,
     ready_to_render: false as const,
-    decision_source_id: `decision-${caseId}`,
+    decision_source_id: null,
     registered_site_id: `site-${caseId}`,
     blocked_reasons: ["QDKT_TYPED_RENDER_CONTRACT_MISSING"],
   };
@@ -44,7 +44,7 @@ function panel(caseId = "case-a") {
 afterEach(() => vi.resetAllMocks());
 
 describe("Case QĐKT readiness ownership", () => {
-  it("shows canonical decision and registered-Site provenance without implying issuance", async () => {
+  it("shows draft Site provenance without borrowing an issued decision", async () => {
     loadReadiness.mockResolvedValue(readiness());
     loadCurrentTeam.mockResolvedValue(currentTeam());
     render(panel());
@@ -52,10 +52,19 @@ describe("Case QĐKT readiness ownership", () => {
     expect(loadReadiness).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Xem trạng thái QĐKT" }));
 
-    expect(await screen.findByText(/decision-case-a/)).toBeInTheDocument();
-    expect(screen.getByText(/site-case-a/)).toBeInTheDocument();
+    expect(await screen.findByText(/site-case-a/)).toBeInTheDocument();
+    expect(screen.queryByText(/Nguồn quyết định:/)).not.toBeInTheDocument();\n    expect(loadReadiness).toHaveBeenCalledWith("case-a", auth, false, "oidc", expect.any(AbortSignal), "DRAFT_QDKT");
     expect(screen.getByText(/không phải QĐKT đã ban hành/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Tạo.*QĐKT/i })).not.toBeInTheDocument();
+  });
+
+  it("rejects a response contaminated with an issued-decision reference", async () => {
+    loadReadiness.mockResolvedValue({ ...readiness(), decision_source_id: "old-approved-id" });
+    render(panel());
+    fireEvent.click(screen.getByRole("button", { name: "Xem trạng thái QĐKT" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/readiness QĐKT không hợp lệ/);
+    expect(screen.queryByText(/old-approved-id/)).not.toBeInTheDocument();
+    expect(loadCurrentTeam).not.toHaveBeenCalled();
   });
 
   it("fails closed and retries readiness only after explicit activation", async () => {
@@ -70,7 +79,7 @@ describe("Case QĐKT readiness ownership", () => {
     expect(loadReadiness).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Thử kiểm tra lại QĐKT" }));
-    await waitFor(() => expect(screen.getByText(/decision-case-a/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/site-case-a/)).toBeInTheDocument());
     expect(loadReadiness).toHaveBeenCalledTimes(2);
   });
 
@@ -87,6 +96,7 @@ describe("Case QĐKT readiness ownership", () => {
     rerender(panel("case-b"));
     expect(await screen.findByText(/decision-case-b/)).toBeInTheDocument();
     await act(async () => { resolveA(readiness("case-a")); });
-    expect(screen.queryByText(/decision-case-a/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/site-case-a/)).not.toBeInTheDocument();
   });
 });
+

@@ -14,6 +14,7 @@ from backend.app.db.models.phase1 import (
     AuditEvent, InspectionDecision, InspectionPlan, QdKtDraftRosterSnapshot,
     QdKtDraftRosterMember, QdKtIssuedRoster, QdKtIssuedRosterMember,
 )
+from backend.app.document.inspection_qd_kt_snapshot_persistence import canonical_roster_sha256
 from backend.app.document.inspection_qd_kt_issued_team_choice import IssuedTeamChoice
 from backend.app.document.inspection_qd_kt_team_snapshot_review import (
     DraftTeamSnapshot, TeamMemberAtDraft, review_issued_team, validate_members,
@@ -81,6 +82,11 @@ def stage_qdkt_issued_roster(session, *, decision_id: str, choice: IssuedTeamCho
                 row.source_team_member_id, row.display_name, row.role_code,
                 row.job_title) for row in draft_rows),
         )
+        # Check the persisted immutable draft evidence before using it to
+        # confirm an issued roster. Row ordering alone cannot detect tampering
+        # with display, role, identity or title after the draft was recorded.
+        if canonical_roster_sha256(draft) != snapshot_row.roster_sha256:
+            raise QdKtIssuedRosterWriteBlocked("QDKT_DRAFT_SNAPSHOT_DIGEST_MISMATCH")
     review_issued_team(choice=choice, final_members=final_members, draft_snapshot=draft)
     digest = _digest(final_members)
     existing = session.scalar(select(QdKtIssuedRoster).where(

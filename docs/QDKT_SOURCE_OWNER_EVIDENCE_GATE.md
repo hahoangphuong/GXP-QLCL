@@ -63,3 +63,21 @@ is allowed. Missing Case identity retains its existing Case blocker.
 This verifies **manifest metadata only**. It does not read, hash or prove
 the underlying four DOTX binaries. It does not establish a typed bookmark
 mapping, permit document generation, or modify persisted business data.
+
+
+## Offline DOTX binary evidence collector
+
+`backend.app.document.inspection_qd_kt_dotx_binary_audit` inspects **supplied
+local bytes**, not a template manifest alone. It streams SHA-256, checks the
+declared per-GxP digest, opens `word/document.xml`, inventories Word bookmark
+start/end pairs and rejects malformed or missing ZIP/XML. The four-GxP entry
+point requires all four declared files and fails if any is missing or altered.
+
+No legacy binary was provided or read in this code change; tests use explicitly
+synthetic DOTX-shaped ZIP fixtures. A passing fixture does not establish actual
+template parity. `binary_checksum_verified` can only be true for an individual
+supplied file with an exact declared digest; `bookmark_owner_parity_verified`
+and `ready_to_render` remain **false**. The observed bookmark names are
+evidence for manual/source-backed adjudication, not assumed mappings to typed
+payload or an authorization to issue a decision. No backend route, write, NAS,
+migration or production action invokes this collector.

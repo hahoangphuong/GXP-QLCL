@@ -99,3 +99,74 @@ def test_invalid_confirmation_does_not_stage():
     with pytest.raises(ValueError, match="CONFIRMATION_REQUIRED"):
         stage(session, confirmed_by_user=False)
     assert not session.items
+
+
+def test_modified_persisted_draft_snapshot_digest_blocks_issuance():
+    """A stored draft roster cannot be silently altered before confirmation."""
+    from backend.app.document.inspection_qd_kt_snapshot_persistence import canonical_roster_sha256
+    from backend.app.document.inspection_qd_kt_team_snapshot_review import DraftTeamSnapshot
+
+    original = DraftTeamSnapshot(
+        case_id="case", draft_id="draft", document_version_id="version",
+        team_id="team", team_revision=2, members=MEMBERS,
+    )
+    stored_digest = canonical_roster_sha256(original)
+    snapshot_row = SimpleNamespace(
+        id="snapshot", case_id="case", draft_id="draft",
+        document_version_id="version", source_team_id="team",
+        source_team_revision=2, roster_sha256=stored_digest,
+    )
+    # The member role has changed after the signed draft snapshot was stored.
+    modified_row = SimpleNamespace(
+        source_team_member_id="m-1", position=1, display_name="Member One",
+        role_code="MEMBER", job_title="Inspector",
+    )
+
+    class DraftSession(Session):
+        def __init__(self):
+            super().__init__()
+            self.rows.insert(2, snapshot_row)
+
+        def scalars(self, _query):
+            return SimpleNamespace(all=lambda: [modified_row])
+
+    session = DraftSession()
+    with pytest.raises(QdKtIssuedRosterWriteBlocked, match="DRAFT_SNAPSHOT_DIGEST_MISMATCH"):
+        stage(session, roster_source="DRAFT_UNCHANGED", draft_id="draft",
+              draft_team_id="team", draft_team_revision=2)
+    assert not session.items
+    assert session.flushed == 0
+
+
+def test_intact_persisted_draft_snapshot_can_stage_without_mutating_draft():
+    from backend.app.document.inspection_qd_kt_snapshot_persistence import canonical_roster_sha256
+    from backend.app.document.inspection_qd_kt_team_snapshot_review import DraftTeamSnapshot
+
+    original = DraftTeamSnapshot(
+        case_id="case", draft_id="draft", document_version_id="version",
+        team_id="team", team_revision=2, members=MEMBERS,
+    )
+    snapshot_row = SimpleNamespace(
+        id="snapshot", case_id="case", draft_id="draft",
+        document_version_id="version", source_team_id="team",
+        source_team_revision=2, roster_sha256=canonical_roster_sha256(original),
+    )
+    persisted_row = SimpleNamespace(
+        source_team_member_id="m-1", position=1, display_name="Member One",
+        role_code="LEADER", job_title="Inspector",
+    )
+
+    class DraftSession(Session):
+        def __init__(self):
+            super().__init__()
+            self.rows.insert(2, snapshot_row)
+
+        def scalars(self, _query):
+            return SimpleNamespace(all=lambda: [persisted_row])
+
+    session = DraftSession()
+    issued = stage(session, roster_source="DRAFT_UNCHANGED", draft_id="draft",
+                   draft_team_id="team", draft_team_revision=2)
+    assert issued.source_draft_snapshot_id == "snapshot"
+    assert session.flushed == 1
+    assert snapshot_row.roster_sha256 == canonical_roster_sha256(original)

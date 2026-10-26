@@ -92,3 +92,58 @@ def read_qdkt_case_source_bundle(session, *, case_id: str) -> QdKtCaseSourceBund
     return require_qdkt_case_source_bundle(
         case_id=case_id, decision=decision, site=site, team=team,
     )
+
+
+@dataclass(frozen=True)
+class QdKtPreapprovalCaseSource:
+    """Process A only: registered Site and proposed team, never an issued decision."""
+    case_id: str
+    site: QdKtRegisteredSite
+    proposed_team: QdKtTeamSource
+    process: str = "DRAFT_QDKT"
+    # No issued reference/date belongs in this contract.
+    ready_to_render: bool = False
+
+
+def require_qdkt_preapproval_case_source(
+    *, case_id: str, site: QdKtRegisteredSite, proposed_team: QdKtTeamSource,
+) -> QdKtPreapprovalCaseSource:
+    """Validate the two independent Case-owned atoms for a *draft*.
+
+    This does not assert KHKT-to-legacy dossier-row identity or permit Word
+    generation. An issued-decision source is intentionally not accepted.
+    """
+    if not isinstance(case_id, str) or not case_id.strip() or case_id != case_id.strip():
+        raise QdKtCaseSourceBlocked("QDKT_DRAFT_CASE_ID_INVALID")
+    if not isinstance(site, QdKtRegisteredSite) or not isinstance(proposed_team, QdKtTeamSource):
+        raise QdKtCaseSourceBlocked("QDKT_DRAFT_SOURCE_TYPE_INVALID")
+    if site.case_id != case_id or proposed_team.case_id != case_id:
+        raise QdKtCaseSourceBlocked("QDKT_DRAFT_CASE_SOURCE_MISMATCH")
+    try:
+        require_registered_site_address(
+            case_id=site.case_id, site_id=site.site_id,
+            address=site.registered_address, province_name=site.province_name,
+        )
+        checked_team = require_qdkt_team_source(
+            case_id=proposed_team.case_id, team_id=proposed_team.team_id,
+            members=proposed_team.members,
+        )
+    except (QdKtRegisteredSiteBlocked, QdKtTeamSourceBlocked) as exc:
+        raise QdKtCaseSourceBlocked(str(exc)) from exc
+    if proposed_team.bookmark_mapping_verified:
+        raise QdKtCaseSourceBlocked("QDKT_DRAFT_BOOKMARK_EQUIVALENCE_UNPROVEN")
+    return QdKtPreapprovalCaseSource(case_id=case_id, site=site, proposed_team=checked_team)
+
+
+def read_qdkt_preapproval_case_source(session, *, case_id: str) -> QdKtPreapprovalCaseSource:
+    """Read Site and proposed team without querying any InspectionDecision.
+
+    Process B uses read_qdkt_case_source_bundle separately. Nothing here
+    creates or infers an issued decision or a renderer permission.
+    """
+    with session.no_autoflush:
+        site = read_qdkt_registered_site(session, case_id=case_id)
+        proposed_team = read_qdkt_team_source(session, case_id=case_id)
+    return require_qdkt_preapproval_case_source(
+        case_id=case_id, site=site, proposed_team=proposed_team,
+    )

@@ -33,6 +33,12 @@ def load_inspection_qd_kt_template_assets(
     path: Path = CONTRACT_PATH,
 ) -> tuple[InspectionQdKtTemplateAsset, ...]:
     payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise InspectionQdKtTemplateAssetContractError("QĐKT template manifest must be a JSON object.")
+    if payload.get("schema_version") != "inspection-qd-kt-template-assets-v1":
+        raise InspectionQdKtTemplateAssetContractError("QĐKT template manifest schema_version mismatch.")
+    if payload.get("source_variant") != "recordform_get_tpl_case_2":
+        raise InspectionQdKtTemplateAssetContractError("QĐKT template manifest source_variant mismatch.")
     if payload.get("family_code") != INSPECTION_QD_KT_FAMILY:
         raise InspectionQdKtTemplateAssetContractError(
             "Inspection QD KT template asset contract family_code mismatch."

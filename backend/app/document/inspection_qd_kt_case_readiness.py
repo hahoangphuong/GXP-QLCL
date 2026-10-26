@@ -51,12 +51,17 @@ class QdKtCaseReadiness:
     blockers: tuple[str, ...]
 
 
-def inspect_qdkt_case_readiness(session: Session, *, case_id: str) -> QdKtCaseReadiness:
+def inspect_qdkt_case_readiness(
+    session: Session, *, case_id: str,
+    purpose: str = "EXISTING_APPROVED_DECISION_REFERENCE",
+) -> QdKtCaseReadiness:
     """Return guarded readiness diagnostics without exposing source values.
 
     The reference gate only supports explicit replacement lineage. Unknown
     amendments cannot silently fall back to an older original decision.
     """
+    if purpose not in ("DRAFT_QDKT", "EXISTING_APPROVED_DECISION_REFERENCE"):
+        raise ValueError("QDKT_READINESS_PURPOSE_INVALID")
     blockers: list[str] = []
     decision_source_id: str | None = None
     registered_site_id: str | None = None
@@ -69,11 +74,14 @@ def inspect_qdkt_case_readiness(session: Session, *, case_id: str) -> QdKtCaseRe
             get_inspection_qd_kt_template_asset(case.gxp_type)
         except (InspectionQdKtTemplateAssetContractError, ValueError, OSError):
             blockers.append("QDKT_CASE_GXP_TEMPLATE_CONTRACT_UNVERIFIED")
-    try:
-        decision = read_latest_qdkt_reference_for_case(session, case_id=case_id)
-        decision_source_id = decision.source_decision_id
-    except QdKtDecisionSourceBlocked as exc:
-        blockers.append(str(exc))
+    # Draft creation must never depend on an already issued decision.
+    # The default retains the established approved-reference behavior.
+    if purpose == "EXISTING_APPROVED_DECISION_REFERENCE":
+        try:
+            decision = read_latest_qdkt_reference_for_case(session, case_id=case_id)
+            decision_source_id = decision.source_decision_id
+        except QdKtDecisionSourceBlocked as exc:
+            blockers.append(str(exc))
     try:
         site = read_qdkt_registered_site(session, case_id=case_id)
         registered_site_id = site.site_id

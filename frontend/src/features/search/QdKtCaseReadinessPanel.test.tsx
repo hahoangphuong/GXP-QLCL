@@ -95,7 +95,7 @@ describe("Case QĐKT readiness ownership", () => {
     fireEvent.click(screen.getByRole("button", { name: "Xem trạng thái QĐKT" }));
     await waitFor(() => expect(loadReadiness).toHaveBeenCalledTimes(1));
     rerender(panel("case-b"));
-    expect(await screen.findByText(/decision-case-b/)).toBeInTheDocument();
+    expect(await screen.findByText(/site-case-b/)).toBeInTheDocument();
     await act(async () => { resolveA(readiness("case-a")); });
     expect(screen.queryByText(/site-case-a/)).not.toBeInTheDocument();
   });

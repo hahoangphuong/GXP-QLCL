@@ -11,6 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
+from backend.app.document.inspection_qd_kt_provenance_gate import (
+    QdKtProvenanceGateBlocked, inspect_qdkt_source_provenance,
+)
 from backend.app.document.inspection_qd_kt_decision_source import (
     QdKtDecisionSourceBlocked, read_latest_qdkt_reference_for_case,
 )
@@ -77,6 +80,21 @@ def inspect_qdkt_case_readiness(session: Session, *, case_id: str) -> QdKtCaseRe
         read_qdkt_team_source(session, case_id=case_id)
     except QdKtTeamSourceBlocked as exc:
         blockers.append(str(exc))
+    # Surface exact unresolved bookmark owners to Case users; this inventory is
+    # evidence of a blocker, never an input for draft or issued rendering.
+    try:
+        provenance = inspect_qdkt_source_provenance()
+    except (QdKtProvenanceGateBlocked, ValueError, OSError) as exc:
+        blockers.append("QDKT_BOOKMARK_PROVENANCE_UNVERIFIED")
+    else:
+        blockers.extend(
+            f"QDKT_BOOKMARK_OWNER_BLOCKED_{name.upper()}"
+            for name in provenance.blocked_fields
+        )
+        blockers.extend(
+            f"QDKT_BOOKMARK_OWNER_PARTIAL_{name.upper()}"
+            for name in provenance.partial_fields
+        )
     blockers.extend(_PENDING_CONTRACTS)
     return QdKtCaseReadiness(
         case_id=case_id,

@@ -1,0 +1,12 @@
+# QĐKT i=2 source owner evidence gate
+
+This guard reads the pinned `artifacts/legacy_audit/inspection_qd_kt_input_provenance.json` from the traced `RecordForm.CreateFile(i=2)` path. It is an **offline evidence consistency check**, not renderer readiness.
+
+| Source bookmark group | Classification | Safety rule |
+| --- | --- | --- |
+| Fulldate, Diadiem, Diadiemx, Diachicoso, QDKT, NgayQDKT, VKNx, VKN | 8 OWNER_BLOCKED | Modern Date, Site, InspectionDecision and team columns must not silently substitute VBA input sources |
+| Tencoso, HsDK, NgaynopHsDK, TT3x, TT3Del, TTx | 6 OWNER_PARTIAL | Source path identified, but exact owner/value/display contract remains unresolved |
+
+`inspect_qdkt_source_provenance()` checks the exact 14 physical names, active source trace metadata, source ZIP pin, and status assignments. Any attempt to silently reclassify an owner, drop a bookmark, or clear source semantics fails closed. Test fixtures mutate the artifact to prove these guards.
+
+A later source adjudication must update the verified legacy trace, document exact modern owner, transformation, template-specific and Word-visual acceptance evidence, and replace this intentionally conservative gate through review. A status change alone cannot enable creation. In particular `ready_to_render=False` and Issue #74 remain unchanged; there is no typed QĐKT POST, no storage mutation, and no approval assertion.

@@ -144,3 +144,53 @@ def test_readiness_stays_closed_when_provenance_inventory_is_corrupt(tmp_path, m
         assert not any(x.startswith("QDKT_BOOKMARK_OWNER_BLOCKED_") for x in result.blockers)
         assert result.ready_to_render is False
     engine.dispose()
+
+
+def test_readiness_rejects_case_gxp_without_declared_qdkt_template(tmp_path):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'bad-template-gxp.sqlite').as_posix()}")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        company = Company(legal_name="Synthetic")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="Synthetic",
+                    site_address="Registered address", province_name="Đà Nẵng")
+        session.add(site)
+        session.flush()
+        case = Case(site_id=site.id, gxp_type="GDP", state=CaseState.DRAFT)
+        session.add(case)
+        session.flush()
+        result = inspect_qdkt_case_readiness(session, case_id=case.id)
+        assert "QDKT_CASE_GXP_TEMPLATE_CONTRACT_UNVERIFIED" in result.blockers
+        assert result.ready_to_render is False
+        assert len(session.new) == len(session.dirty) == 0
+        session.rollback()
+    engine.dispose()
+
+
+def test_readiness_fails_closed_on_corrupt_template_metadata(tmp_path, monkeypatch):
+    import backend.app.document.inspection_qd_kt_case_readiness as readiness
+    from backend.app.document.inspection_qd_kt_template_asset_contract import (
+        InspectionQdKtTemplateAssetContractError,
+    )
+    def invalid_contract(gxp_type):
+        raise InspectionQdKtTemplateAssetContractError("untrusted asset manifest")
+    monkeypatch.setattr(readiness, "get_inspection_qd_kt_template_asset", invalid_contract)
+    engine = create_engine(f"sqlite:///{(tmp_path / 'bad-template-contract.sqlite').as_posix()}")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        company = Company(legal_name="Synthetic")
+        session.add(company)
+        session.flush()
+        site = Site(company_id=company.id, site_name="Synthetic",
+                    site_address="Registered address", province_name="Đà Nẵng")
+        session.add(site)
+        session.flush()
+        case = Case(site_id=site.id, gxp_type="GMP", state=CaseState.DRAFT)
+        session.add(case)
+        session.flush()
+        result = inspect_qdkt_case_readiness(session, case_id=case.id)
+        assert "QDKT_CASE_GXP_TEMPLATE_CONTRACT_UNVERIFIED" in result.blockers
+        assert result.ready_to_render is False
+        session.rollback()
+    engine.dispose()

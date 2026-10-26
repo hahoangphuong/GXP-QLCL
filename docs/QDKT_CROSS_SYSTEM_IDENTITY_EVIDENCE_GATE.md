@@ -13,6 +13,8 @@ The runtime route is selection-driven, not a lookup by facility name, dossier co
 5. `PrepareRecordFormData` assigns it to `Idx_Ktr` (`RecordForm.frm:441-465`).
 6. `GetTT_Ktra` executes `Set Rg3 = Names("db_ktra").RefersToRange.Rows(Idx_Ktr)` and reads both dossier fields from that same row (`RecordForm.frm:326-405`).
 
+Within that route, `Rg3` is procedure-local: it is declared at `RecordForm.frm:327`, assigned once at line 334 and released at line 411. The other local declarations at lines 417 and 431 belong to separate procedures (`db.Tdoi` and another `db_ktra` read) and never assign the dossier variables. No reassignment of the dossier-row `Rg3` occurs before `s_MaHsDk`/`s_NgaynopHsDk` are captured at line 343.
+
 The workbook-pinned name is `db_ktra = db.ktra!$A$5:$CV$1549`; named-range index `n` therefore maps to physical worksheet row `n + 4`. The named-range index is not the inspection ID: 917 of 1,496 effective rows have different values.
 
 ### Cardinality and tie-break behavior
@@ -72,6 +74,6 @@ These aggregates prove why neither Site nor dossier text is a safe record key. T
 | Physical `HsDK` / `NgaynopHsDK` bookmarks | `OWNER_BLOCKED` | All four verified templates lack the physical bookmarks; this is separate from record identity. |
 | Modern render owner / renderer readiness | `OWNER_BLOCKED` | Identity proof is necessary but not sufficient for legal output ownership. |
 
-`assess_qdkt_rg3_crosswalk` fails closed for zero/multiple rows, missing or duplicate canonical Cases, changed source coordinates/version/hash, Site conflicts, missing/wrong application ownership, value drift and ambiguous date parsing. `inspect_qdkt_rg3_baseline` recomputes the aggregate contract from committed snapshot and anchor artifacts.
+`assess_qdkt_rg3_crosswalk` fails closed for zero/multiple rows, missing or duplicate canonical Cases, zero/multiple/wrong-owner CaseApplications, changed source coordinates/version/hash, Site conflicts, value drift and ambiguous date parsing. `inspect_qdkt_rg3_baseline` recomputes the aggregate contract from committed snapshot and anchor artifacts.
 
 The global gate remains **8 `OWNER_BLOCKED`, 6 `OWNER_PARTIAL`, `ready_to_render=False`**. No renderer, owner promotion, API, database, storage or authorization behavior is enabled by this evidence.

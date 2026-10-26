@@ -206,6 +206,7 @@ def test_duplicate_canonical_case_for_one_inspection_id_fails_closed():
         ({"anchor_source_hash": "b" * 64}, "SOURCE_HASH_MISMATCH"),
         ({"site_legacy_id": 72}, "SITE_IDENTITY_CONFLICT"),
         ({"application_case_id": None}, "MISSING_CANONICAL_APPLICATION"),
+        ({"matching_application_count": 2}, "AMBIGUOUS_CANONICAL_APPLICATION"),
         ({"application_case_id": "case-other"}, "APPLICATION_CASE_IDENTITY_CONFLICT"),
         ({"application_dossier_code": "HS-OTHER"}, "DOSSIER_VALUE_CONFLICT"),
         ({"application_submitted_on": datetime(2024, 1, 3)}, "SUBMISSION_VALUE_CONFLICT"),

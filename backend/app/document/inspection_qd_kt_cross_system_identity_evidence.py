@@ -81,6 +81,7 @@ class CanonicalQdKtCaseEvidence:
     anchor_source_row: int | None
     anchor_source_version: str | None
     anchor_source_hash: str | None
+    matching_application_count: int = 1
 
 
 @dataclass(frozen=True)
@@ -225,8 +226,10 @@ def assess_qdkt_rg3_crosswalk(
         return _result("SITE_IDENTITY_CONFLICT", **base)
     base["same_registered_site"] = True
 
-    if case.application_case_id is None:
+    if case.matching_application_count == 0 or case.application_case_id is None:
         return _result("MISSING_CANONICAL_APPLICATION", **base)
+    if case.matching_application_count != 1:
+        return _result("AMBIGUOUS_CANONICAL_APPLICATION", **base)
     if case.application_case_id != case.case_id:
         return _result("APPLICATION_CASE_IDENTITY_CONFLICT", **base)
     base["same_application"] = True

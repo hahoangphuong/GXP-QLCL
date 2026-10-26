@@ -39,6 +39,10 @@
     {
       "source": "RecordForm.frm:326-405",
       "fact": "GetTT_Ktra assigns Rg3 = Names(\"db_ktra\").RefersToRange.Rows(Idx_Ktr), then reads NgaynopHsDK and HsDK from that exact row."
+    },
+    {
+      "source": "RecordForm.frm:327,334,343,411,417,431",
+      "fact": "The dossier-row Rg3 is procedure-local, assigned once and released; other Rg3 locals belong to separate procedures and never assign the dossier variables."
     }
   ],
   "khkt_independent_path": {

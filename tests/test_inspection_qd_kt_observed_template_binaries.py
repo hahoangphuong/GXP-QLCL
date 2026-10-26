@@ -9,8 +9,8 @@ from backend.app.document.inspection_qd_kt_provenance_gate import EXPECTED_FIELD
 
 
 OBSERVATIONS = (
-    Path(__file__).resolve().parents[1]
-    / "artifacts/legacy_audit/inspection_qd_kt_observed_template_binaries.json"
+    Path(__file__).resolve().parent
+    / "fixtures/inspection_qd_kt_observed_template_binaries.json"
 )
 
 

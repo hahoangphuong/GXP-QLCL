@@ -6,13 +6,15 @@ import type { StubAuthState } from "../../types";
 type View = { status: "loading" } | { status: "ready"; readiness: QdKtReadiness; team: QdKtCurrentTeam | null; teamError: string | null } | { status: "error"; message: string };
 
 function QdKtCaseReadinessContent({
-  caseId, auth, useStubAuth, bearerToken, accessGeneration,
+  caseId, auth, useStubAuth, bearerToken, accessGeneration, retryGeneration, onRetry,
 }: {
   caseId: string;
   auth: StubAuthState;
   useStubAuth: boolean;
   bearerToken: string | null;
   accessGeneration: number;
+  retryGeneration: number;
+  onRetry: () => void;
 }) {
   const [view, setView] = useState<View>({ status: "loading" });
   useEffect(() => {
@@ -48,14 +50,19 @@ function QdKtCaseReadinessContent({
         });
       });
     return () => controller.abort();
-  }, [caseId, auth, useStubAuth, bearerToken, accessGeneration]);
+  }, [caseId, auth, useStubAuth, bearerToken, accessGeneration, retryGeneration]);
 
   return (
     <section aria-label="Trạng thái dự thảo QĐKT" className="facility-detail-section">
       <h3>Quyết định kiểm tra (QĐKT)</h3>
       <p>Chưa cho phép tạo dự thảo QĐKT từ hồ sơ này. Việc ghi nhận QĐKT đã phê duyệt là bước nghiệp vụ riêng.</p>
       {view.status === "loading" ? <p role="status">Đang kiểm tra điều kiện QĐKT…</p> : null}
-      {view.status === "error" ? <p role="alert">{view.message}</p> : null}
+      {view.status === "error" ? (
+        <div>
+          <p role="alert">{view.message}</p>
+          <button type="button" className="secondary" onClick={onRetry}>Thử kiểm tra lại QĐKT</button>
+        </div>
+      ) : null}
       {view.status === "ready" ? (
         <>
           <p>Trạng thái tạo dự thảo: Chưa sẵn sàng.</p>
@@ -66,6 +73,9 @@ function QdKtCaseReadinessContent({
                 return <li key={reason}><strong>{blocker.title}</strong> {blocker.next} <code>{blocker.code}</code></li>;
               })}</ul>
             : <p>Chưa có đủ bằng chứng cho phép tạo tài liệu.</p>}
+          {view.readiness.decision_source_id ? <p>Nguồn quyết định: <code>{view.readiness.decision_source_id}</code></p> : null}
+          {view.readiness.registered_site_id ? <p>Cơ sở đăng ký: <code>{view.readiness.registered_site_id}</code></p> : null}
+          <p>Đây là kiểm tra điều kiện chuẩn bị dự thảo; không phải QĐKT đã ban hành.</p>
           {view.team ? (
             <>
               <p>Đoàn hiện tại của Case (revision {view.team.team_revision}) — <strong>chưa phải đoàn trong dự thảo hoặc đoàn đã ban hành</strong>.</p>
@@ -87,6 +97,7 @@ export function QdKtCaseReadinessPanel(props: {
   accessGeneration: number;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [retryGeneration, setRetryGeneration] = useState(0);
   return (
     <div className="qdkt-readiness-disclosure">
       <button
@@ -97,7 +108,13 @@ export function QdKtCaseReadinessPanel(props: {
       >
         {expanded ? "Ẩn trạng thái QĐKT" : "Xem trạng thái QĐKT"}
       </button>
-      {expanded ? <QdKtCaseReadinessContent {...props} /> : null}
+      {expanded ? (
+        <QdKtCaseReadinessContent
+          {...props}
+          retryGeneration={retryGeneration}
+          onRetry={() => setRetryGeneration(value => value + 1)}
+        />
+      ) : null}
     </div>
   );
 }

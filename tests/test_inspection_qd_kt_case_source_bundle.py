@@ -58,3 +58,61 @@ def test_unreviewed_mapping_flag_never_authorizes_rendering():
     decision, site, team = _sources(mapped=True)
     with pytest.raises(QdKtCaseSourceBlocked, match="QDKT_TEAM_CONTRACT_UNSUPPORTED"):
         require_qdkt_case_source_bundle(case_id="c1", decision=decision, site=site, team=team)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("reference", " QD-123"),
+    ("reference", ""),
+    ("decision_on", None),
+    ("decision_on", "2026-10-01"),
+    ("legacy_raw", "   "),
+])
+def test_forged_decision_atoms_cannot_bypass_bundle_validation(field, value):
+    from dataclasses import replace
+    decision, site, team = _sources()
+    with pytest.raises(QdKtCaseSourceBlocked, match="QDKT_DECISION_SOURCE_INCOMPLETE"):
+        require_qdkt_case_source_bundle(
+            case_id="c1", decision=replace(decision, **{field: value}),
+            site=site, team=team,
+        )
+
+
+@pytest.mark.parametrize("field,value,code", [
+    ("registered_address", " 123 Street", "REGISTERED_SITE_ADDRESS_UNNORMALIZED"),
+    ("registered_address", "", "REGISTERED_SITE_ADDRESS_MISSING"),
+    ("site_id", "", "QDKT_SOURCE_IDENTITY_MISSING"),
+])
+def test_forged_site_atoms_cannot_bypass_bundle_validation(field, value, code):
+    from dataclasses import replace
+    decision, site, team = _sources()
+    with pytest.raises(QdKtCaseSourceBlocked, match=code):
+        require_qdkt_case_source_bundle(
+            case_id="c1", decision=decision, site=replace(site, **{field: value}),
+            team=team,
+        )
+
+
+@pytest.mark.parametrize("field,value,code", [
+    ("role_code", "DIRECTOR", "INSPECTION_TEAM_ROLE_UNPROVEN"),
+    ("sort_order", -1, "INSPECTION_TEAM_ORDER_AMBIGUOUS"),
+    ("display_name", "  A", "INSPECTION_TEAM_DISPLAY_NAME_UNPROVEN"),
+    ("identity_kind", "UNKNOWN", "INSPECTION_TEAM_IDENTITY_UNPROVEN"),
+])
+def test_forged_team_atoms_cannot_bypass_bundle_validation(field, value, code):
+    from dataclasses import replace
+    decision, site, team = _sources()
+    team = replace(team, members=(replace(team.members[0], **{field: value}),))
+    with pytest.raises(QdKtCaseSourceBlocked, match=code):
+        require_qdkt_case_source_bundle(
+            case_id="c1", decision=decision, site=site, team=team,
+        )
+
+
+def test_missing_decision_identity_is_rejected_before_value_contract():
+    from dataclasses import replace
+    decision, site, team = _sources()
+    with pytest.raises(QdKtCaseSourceBlocked, match="QDKT_SOURCE_IDENTITY_MISSING"):
+        require_qdkt_case_source_bundle(
+            case_id="c1", decision=replace(decision, source_decision_id=""),
+            site=site, team=team,
+        )

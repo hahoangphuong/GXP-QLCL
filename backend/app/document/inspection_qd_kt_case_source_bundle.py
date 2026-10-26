@@ -6,15 +6,18 @@ not claim modern team rows reproduce legacy formatted TTVdd strings.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, datetime
 
 from backend.app.document.inspection_qd_kt_decision_source import (
     QdKtDecisionAtoms, read_latest_qdkt_reference_for_case,
 )
 from backend.app.document.inspection_qd_kt_registered_site import (
     QdKtRegisteredSite, read_qdkt_registered_site,
+    QdKtRegisteredSiteBlocked, require_registered_site_address,
 )
 from backend.app.document.inspection_qd_kt_team_source import (
     QdKtTeamSource, read_qdkt_team_source,
+    QdKtTeamSourceBlocked, require_qdkt_team_source,
 )
 
 
@@ -44,6 +47,34 @@ def require_qdkt_case_source_bundle(
         raise QdKtCaseSourceBlocked("QDKT_CASE_SOURCE_IDENTITY_MISMATCH")
     if not decision.source_decision_id or not site.site_id or not team.team_id:
         raise QdKtCaseSourceBlocked("QDKT_SOURCE_IDENTITY_MISSING")
+    # These objects are assembled from separate owner gates. Validate their
+    # value contracts again: synthetic or stale caller-supplied dataclasses
+    # must not bypass the Case-owned source invariants.
+    if (
+        not isinstance(decision.source_decision_id, str)
+        or not decision.source_decision_id.strip()
+        or not isinstance(decision.reference, str)
+        or not decision.reference.strip()
+        or decision.reference != decision.reference.strip()
+        or not isinstance(decision.decision_on, date)
+        or isinstance(decision.decision_on, datetime)
+        or not isinstance(decision.legacy_raw, str)
+        or not decision.legacy_raw.strip()
+    ):
+        raise QdKtCaseSourceBlocked("QDKT_DECISION_SOURCE_INCOMPLETE")
+    try:
+        require_registered_site_address(
+            case_id=site.case_id, site_id=site.site_id,
+            address=site.registered_address, province_name=site.province_name,
+        )
+    except QdKtRegisteredSiteBlocked as exc:
+        raise QdKtCaseSourceBlocked(str(exc)) from exc
+    try:
+        require_qdkt_team_source(
+            case_id=team.case_id, team_id=team.team_id, members=team.members,
+        )
+    except QdKtTeamSourceBlocked as exc:
+        raise QdKtCaseSourceBlocked(str(exc)) from exc
     if not team.members or team.bookmark_mapping_verified:
         # A true flag in an unreviewed source cannot authorize rendering.
         raise QdKtCaseSourceBlocked("QDKT_TEAM_CONTRACT_UNSUPPORTED")

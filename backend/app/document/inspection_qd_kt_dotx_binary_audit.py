@@ -19,6 +19,9 @@ from backend.app.document.inspection_qd_kt_template_asset_contract import (
 
 _WORD_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _MAX_DOCUMENT_XML_BYTES = 16 * 1024 * 1024
+_MAX_CONTENT_TYPES_BYTES = 1024 * 1024
+_OPC_NS = "{http://schemas.openxmlformats.org/package/2006/content-types}"
+_DOTX_MAIN_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml"
 
 
 class QdKtDotxAuditBlocked(ValueError):
@@ -54,6 +57,24 @@ def inspect_qdkt_dotx_binary(
         raise QdKtDotxAuditBlocked("QDKT_DOTX_CHECKSUM_MISMATCH")
     try:
         with ZipFile(path) as archive:
+            types_info = archive.getinfo("[Content_Types].xml")
+            if types_info.file_size > _MAX_CONTENT_TYPES_BYTES:
+                raise QdKtDotxAuditBlocked("QDKT_DOTX_PACKAGE_TYPE_UNVERIFIED")
+            with archive.open(types_info) as types_stream:
+                types_bytes = types_stream.read(_MAX_CONTENT_TYPES_BYTES + 1)
+            if len(types_bytes) > _MAX_CONTENT_TYPES_BYTES:
+                raise QdKtDotxAuditBlocked("QDKT_DOTX_PACKAGE_TYPE_UNVERIFIED")
+            types_root = ElementTree.fromstring(types_bytes)
+            package_main_types = [
+                entry.get("ContentType")
+                for entry in types_root.findall(f"{_OPC_NS}Override")
+                if entry.get("PartName") == "/word/document.xml"
+            ]
+            if (
+                types_root.tag != f"{_OPC_NS}Types"
+                or package_main_types != [_DOTX_MAIN_TYPE]
+            ):
+                raise QdKtDotxAuditBlocked("QDKT_DOTX_PACKAGE_TYPE_UNVERIFIED")
             info = archive.getinfo("word/document.xml")
             if info.file_size > _MAX_DOCUMENT_XML_BYTES:
                 raise QdKtDotxAuditBlocked("QDKT_DOTX_DOCUMENT_XML_UNSUPPORTED")
@@ -72,6 +93,8 @@ def inspect_qdkt_dotx_binary(
         if not ident or not name or ident in bookmarks:
             raise QdKtDotxAuditBlocked("QDKT_DOTX_BOOKMARK_STRUCTURE_UNVERIFIED")
         bookmarks[ident] = name
+    if len(set(bookmarks.values())) != len(bookmarks):
+        raise QdKtDotxAuditBlocked("QDKT_DOTX_BOOKMARK_STRUCTURE_UNVERIFIED")
     ends = [end.get(f"{_WORD_NS}id") for end in root.iter(f"{_WORD_NS}bookmarkEnd")]
     if len(ends) != len(bookmarks) or set(ends) != set(bookmarks) or len(ends) != len(set(ends)):
         raise QdKtDotxAuditBlocked("QDKT_DOTX_BOOKMARK_STRUCTURE_UNVERIFIED")

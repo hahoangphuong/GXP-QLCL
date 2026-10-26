@@ -5,6 +5,30 @@ recommendations in UI_REDESIGN_VBA_REFERENCE and PHASE12. Preserve legacy UI whe
 evidenced. Baseline: `50576b0b383161e26e27b6cdc4a1a469aff1ae17`; work branch:
 `codex/legacy-ui-parity-20261010`. This delivery is partial; it does not close #1.
 
+## QĐKT readiness provenance closure — 2026-10-26
+
+Baseline: `dc935f0d8a0ebbd770055796d54fb684f97ceba0`. The Case QĐKT panel
+continues to use the backend-owned, read-only readiness and current-team routes.
+It now exposes the returned opaque `decision_source_id` and
+`registered_site_id` when present, labels the response as draft preparation
+rather than an issued decision, and provides an explicit retry only after a
+readiness failure. Case changes abort the superseded request; a late Case A
+response cannot replace Case B. No create/issue action, draft snapshot,
+official number/date, or confirmed issued-team state is inferred.
+
+| Capability | Evidence/status |
+| --- | --- |
+| Readiness blockers and current Case team | `BACKEND_CONTRACT_VERIFIED`, read-only; merged baseline behavior retained. |
+| Decision-source and registered-Site provenance | `UNIT_VERIFIED`; opaque canonical identifiers are displayed without relinking or latest-record inference. |
+| Explicit retry after readiness failure | `UNIT_VERIFIED`; no automatic retry, mutation, or generic renderer fallback. |
+| Late response after Case change | `UNIT_VERIFIED`; superseded AbortSignal ownership remains fail-closed. |
+| Responsive disclosure | `FIXTURE_VERIFIED` at 1366×768, 1920×1080 and 390×844; document scroll width equaled client width at each viewport, and mobile Enter activation issued only the two read-only GETs. |
+| QĐKT draft DOCX creation | `BLOCKED_BY_BACKEND`; typed render contract remains unavailable. |
+| Immutable proposed-team snapshot and issued QĐKT transaction | `BLOCKED_BY_BACKEND`; persistence components are not treated as public APIs. |
+| Legacy runtime geometry for a QĐKT-specific panel | `EVIDENCE_MISSING`; the canonical web presentation is retained rather than guessed. |
+| Authenticated real-backend browser verification | `UAT_PENDING`; fixture/unit evidence is not reported as integration evidence. |
+| Narrator/NVDA speech verification | `DEFERRED_BY_USER_PRIORITY`. |
+
 ## Frontend business-function audit and typed KHKT integration — 2026-10-22
 
 Baseline: `af4abf6df7e3f11ddeb0c120924f082f22645096`. The audit compares the

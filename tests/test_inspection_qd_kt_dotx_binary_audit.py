@@ -20,10 +20,18 @@ BOOKMARK_XML = (b'<w:document xmlns:w="http://schemas.openxmlformats.org/wordpro
                 b'<w:bookmarkEnd w:id="1"/></w:body></w:document>')
 
 
-def dotx_bytes(xml=BOOKMARK_XML):
+TYPES_XML = (b'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+             b'<Override PartName="/word/document.xml" '
+             b'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml"/>'
+             b'</Types>')
+
+
+def dotx_bytes(xml=BOOKMARK_XML, *, content_types=TYPES_XML):
     stream = BytesIO()
     with ZipFile(stream, "w") as archive:
         archive.writestr("word/document.xml", xml)
+        if content_types is not None:
+            archive.writestr("[Content_Types].xml", content_types)
     return stream.getvalue()
 
 
@@ -102,3 +110,31 @@ def test_unknown_gxp_set_is_rejected(tmp_path):
     assets = tuple(asset(data, gxp) for gxp in ("GLP", "GMP", "GSP"))
     with pytest.raises(QdKtDotxAuditBlocked, match="QDKT_DOTX_GXP_SET_UNVERIFIED"):
         inspect_supplied_qdkt_dotx_set(tmp_path, assets=assets)
+
+
+@pytest.mark.parametrize("content_types", [
+    None,
+    b"<invalid",
+    b'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+    b'<Override PartName="/word/document.xml" '
+    b'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+    b'</Types>',
+])
+def test_non_dotx_or_missing_content_types_is_rejected(tmp_path, content_types):
+    data = dotx_bytes(content_types=content_types)
+    path = tmp_path / "source.dotx"
+    path.write_bytes(data)
+    with pytest.raises(QdKtDotxAuditBlocked):
+        inspect_qdkt_dotx_binary(path, asset=asset(data))
+
+
+def test_duplicate_bookmark_names_across_ids_fail_closed(tmp_path):
+    xml = (b'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+           b'<w:bookmarkStart w:id="1" w:name="QDKT"/><w:bookmarkEnd w:id="1"/>'
+           b'<w:bookmarkStart w:id="2" w:name="QDKT"/><w:bookmarkEnd w:id="2"/>'
+           b'</w:document>')
+    data = dotx_bytes(xml)
+    path = tmp_path / "source.dotx"
+    path.write_bytes(data)
+    with pytest.raises(QdKtDotxAuditBlocked, match="QDKT_DOTX_BOOKMARK_STRUCTURE_UNVERIFIED"):
+        inspect_qdkt_dotx_binary(path, asset=asset(data))

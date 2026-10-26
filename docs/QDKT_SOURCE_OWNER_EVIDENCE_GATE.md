@@ -81,3 +81,14 @@ and `ready_to_render` remain **false**. The observed bookmark names are
 evidence for manual/source-backed adjudication, not assumed mappings to typed
 payload or an authorization to issue a decision. No backend route, write, NAS,
 migration or production action invokes this collector.
+
+
+## DOTX package-integrity refinement
+
+The offline binary collector now also validates the Open Packaging Conventions
+`[Content_Types].xml` declaration for `/word/document.xml`: it must be the
+Word **template** content type (not an ordinary DOCX document). Duplicate
+bookmark names with different identifiers are rejected, not collapsed into a
+misleading inventory. These checks run only after the exact binary checksum
+matches; tests use synthetic packages. They do not establish that a source
+legacy template or bookmark payload matches Case-owned business data.

@@ -33,3 +33,19 @@ If the pinned evidence inventory cannot be verified, readiness reports
 owner classifications. This does **not** populate any bookmark and cannot
 enable the renderer or issued-decision API. The gap requires source/Word
 adjudication and four-template parity tests before changing owner status.
+
+
+## Independent captured VBA trace reconciliation
+
+The owner inventory is now reconciled against the separately captured
+`inspection_qd_kt_vba_trace.json`: the pinned source ZIP checksum, exact
+`i=2` call chain, and every recorded operation of all 14 physical bookmarks
+(including unreachable i=3/i=4 operations) must agree in order and in
+expression, branch predicate, operation kind, line number, and reachability.
+A mismatched or missing trace blocks Case readiness with
+`QDKT_BOOKMARK_PROVENANCE_UNVERIFIED` through the existing gate.
+
+This detects an inventory edit that retained an OWNER_BLOCKED classification
+while silently changing the claimed VBA mapping. Both JSON artifacts remain
+derived audit evidence of the same ZIP, not independent physical-source
+verification; no DOTX binaries are validated here and no owner is promoted.

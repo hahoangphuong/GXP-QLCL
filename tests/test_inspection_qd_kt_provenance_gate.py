@@ -96,3 +96,45 @@ def test_delete_bookmark_may_have_no_value_expression(tmp_path):
     def mutate(data):
         data["fields"]["TT3Del"]["vba_rendered_operations"][0]["expression"] = ""
     assert inspect_qdkt_source_provenance(_mutated(tmp_path, mutate)).ready_for_typed_payload is False
+
+
+def test_inventory_expression_cannot_diverge_from_separate_vba_trace(tmp_path):
+    def mutate(data):
+        data["fields"]["Diachicoso"]["vba_rendered_operations"][0]["expression"] = "Site.site_address"
+    with pytest.raises(QdKtProvenanceGateBlocked, match="QDKT_VBA_TRACE_MISMATCH"):
+        inspect_qdkt_source_provenance(_mutated(tmp_path, mutate))
+
+
+def test_inventory_branch_predicate_cannot_diverge_from_vba_trace(tmp_path):
+    def mutate(data):
+        data["fields"]["VKN"]["vba_rendered_operations"][0]["branch_predicates"] = "COMMON"
+    with pytest.raises(QdKtProvenanceGateBlocked, match="QDKT_VBA_TRACE_MISMATCH"):
+        inspect_qdkt_source_provenance(_mutated(tmp_path, mutate))
+
+
+def test_inventory_call_chain_cannot_diverge_from_vba_trace(tmp_path):
+    with pytest.raises(QdKtProvenanceGateBlocked, match="QDKT_VBA_TRACE_MISMATCH"):
+        inspect_qdkt_source_provenance(
+            _mutated(tmp_path, lambda data: data["call_chain"].reverse())
+        )
+
+
+def test_replaced_vba_trace_is_rejected_without_promoting_owner(tmp_path, monkeypatch):
+    import backend.app.document.inspection_qd_kt_provenance_gate as gate
+    trace = json.loads(gate.TRACE.read_text(encoding="utf-8"))
+    trace["physical_bookmark_operations"] = [
+        op for op in trace["physical_bookmark_operations"] if
+        not (op["physical_bookmark"] == "QDKT" and op["reachability_i2"] == "REACHABLE_I2")
+    ]
+    trace_path = tmp_path / "modified-trace.json"
+    trace_path.write_text(json.dumps(trace, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(gate, "TRACE", trace_path)
+    with pytest.raises(QdKtProvenanceGateBlocked, match="QDKT_VBA_TRACE_MISMATCH"):
+        inspect_qdkt_source_provenance()
+
+
+def test_missing_vba_trace_fails_closed(tmp_path, monkeypatch):
+    import backend.app.document.inspection_qd_kt_provenance_gate as gate
+    monkeypatch.setattr(gate, "TRACE", tmp_path / "missing-trace.json")
+    with pytest.raises(QdKtProvenanceGateBlocked, match="QDKT_VBA_TRACE_UNVERIFIED"):
+        inspect_qdkt_source_provenance()

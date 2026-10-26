@@ -11,6 +11,7 @@ from pathlib import Path
 import json
 
 SOURCE = Path(__file__).resolve().parents[3] / "artifacts/legacy_audit/inspection_qd_kt_input_provenance.json"
+TRACE = SOURCE.with_name("inspection_qd_kt_vba_trace.json")
 EXPECTED_FIELDS = frozenset({
     "Fulldate", "Tencoso", "Diadiem", "Diadiemx", "Diachicoso",
     "HsDK", "NgaynopHsDK", "QDKT", "NgayQDKT", "VKNx", "VKN",
@@ -98,6 +99,42 @@ class QdKtProvenanceGate:
     ready_for_typed_payload: bool = False
 
 
+_TRACE_OPERATION_KEYS = (
+    "physical_bookmark", "physical_bookmark_expression", "operation_type",
+    "line", "expression", "branch_predicates", "reachability_i2",
+)
+
+
+def _require_independent_trace_match(evidence: dict, fields: dict, trace_path: Path) -> None:
+    """Reconcile the owner inventory with the separately captured VBA operation trace."""
+    try:
+        trace = json.loads(trace_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError) as exc:
+        raise QdKtProvenanceGateBlocked("QDKT_VBA_TRACE_UNVERIFIED") from exc
+    if (
+        not isinstance(trace, dict)
+        or trace.get("schema_version") != "inspection-qd-kt-vba-trace/v2"
+        or trace.get("source_zip_sha256") != evidence.get("source_zip_sha256")
+        or trace.get("call_chain") != evidence.get("call_chain")
+        or evidence.get("trace_artifact") != "artifacts/legacy_audit/inspection_qd_kt_vba_trace.json"
+    ):
+        raise QdKtProvenanceGateBlocked("QDKT_VBA_TRACE_MISMATCH")
+    ops = trace.get("physical_bookmark_operations")
+    if not isinstance(ops, list) or any(not isinstance(item, dict) for item in ops):
+        raise QdKtProvenanceGateBlocked("QDKT_VBA_TRACE_MISMATCH")
+    for name, row in fields.items():
+        expected = [
+            tuple(operation.get(key) for key in _TRACE_OPERATION_KEYS)
+            for operation in ops if operation.get("physical_bookmark") == name
+        ]
+        actual = [
+            tuple(operation.get(key) for key in _TRACE_OPERATION_KEYS)
+            for operation in row["vba_rendered_operations"]
+        ]
+        if not expected or actual != expected:
+            raise QdKtProvenanceGateBlocked("QDKT_VBA_TRACE_MISMATCH")
+
+
 def inspect_qdkt_source_provenance(path: Path = SOURCE) -> QdKtProvenanceGate:
     """Check a pinned source-trace inventory, never infer owner equivalence.
 
@@ -117,6 +154,7 @@ def inspect_qdkt_source_provenance(path: Path = SOURCE) -> QdKtProvenanceGate:
         raise QdKtProvenanceGateBlocked("QDKT_SOURCE_PROVENANCE_INCOMPLETE")
     for name, row in fields.items():
         _require_i2_trace(name, row)
+    _require_independent_trace_match(evidence, fields, TRACE)
     status = {name: row.get("owner_classification") for name, row in fields.items()}
     if any(
         not isinstance(fields[name], dict)

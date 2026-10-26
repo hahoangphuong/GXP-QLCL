@@ -107,3 +107,40 @@ def test_readiness_reports_empty_team_without_confusing_it_with_word_mapping(tmp
         assert len(session.new) == 0 and len(session.dirty) == 0
         session.rollback()
     engine.dispose()
+
+
+
+def test_readiness_exposes_all_14_specific_unresolved_bookmark_owners(tmp_path):
+    engine = create_engine(f"sqlite:///{(tmp_path / 'bookmark-owner.sqlite').as_posix()}")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        result = inspect_qdkt_case_readiness(session, case_id="nonexistent")
+        blocked = {x.removeprefix("QDKT_BOOKMARK_OWNER_BLOCKED_") for x in result.blockers
+                   if x.startswith("QDKT_BOOKMARK_OWNER_BLOCKED_")}
+        partial = {x.removeprefix("QDKT_BOOKMARK_OWNER_PARTIAL_") for x in result.blockers
+                   if x.startswith("QDKT_BOOKMARK_OWNER_PARTIAL_")}
+        assert blocked == {
+            "FULLDATE", "DIADIEM", "DIADIEMX", "DIACHICOSO",
+            "QDKT", "NGAYQDKT", "VKNX", "VKN",
+        }
+        assert partial == {"TENCOSO", "HSDK", "NGAYNOPHSDK", "TT3X", "TT3DEL", "TTX"}
+        assert result.ready_to_render is False
+        assert "QDKT_BOOKMARK_PROVENANCE_UNVERIFIED" not in result.blockers
+        assert len(session.new) == 0 and len(session.dirty) == 0
+    engine.dispose()
+
+
+def test_readiness_stays_closed_when_provenance_inventory_is_corrupt(tmp_path, monkeypatch):
+    import backend.app.document.inspection_qd_kt_case_readiness as readiness
+    from backend.app.document.inspection_qd_kt_provenance_gate import QdKtProvenanceGateBlocked
+    def fail_inventory():
+        raise QdKtProvenanceGateBlocked("QDKT_OWNER_STATUS_REQUIRES_REVIEW")
+    monkeypatch.setattr(readiness, "inspect_qdkt_source_provenance", fail_inventory)
+    engine = create_engine(f"sqlite:///{(tmp_path / 'bad-inventory.sqlite').as_posix()}")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        result = inspect_qdkt_case_readiness(session, case_id="nonexistent")
+        assert "QDKT_BOOKMARK_PROVENANCE_UNVERIFIED" in result.blockers
+        assert not any(x.startswith("QDKT_BOOKMARK_OWNER_BLOCKED_") for x in result.blockers)
+        assert result.ready_to_render is False
+    engine.dispose()

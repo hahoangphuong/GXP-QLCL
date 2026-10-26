@@ -53,7 +53,8 @@ describe("Case QĐKT readiness ownership", () => {
     fireEvent.click(screen.getByRole("button", { name: "Xem trạng thái QĐKT" }));
 
     expect(await screen.findByText(/site-case-a/)).toBeInTheDocument();
-    expect(screen.queryByText(/Nguồn quyết định:/)).not.toBeInTheDocument();\n    expect(loadReadiness).toHaveBeenCalledWith("case-a", auth, false, "oidc", expect.any(AbortSignal), "DRAFT_QDKT");
+    expect(screen.queryByText(/Nguồn quyết định:/)).not.toBeInTheDocument();
+    expect(loadReadiness).toHaveBeenCalledWith("case-a", auth, false, "oidc", expect.any(AbortSignal), "DRAFT_QDKT");
     expect(screen.getByText(/không phải QĐKT đã ban hành/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Tạo.*QĐKT/i })).not.toBeInTheDocument();
   });

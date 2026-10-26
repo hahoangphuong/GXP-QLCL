@@ -47,6 +47,7 @@ import type {
   DocumentRenderResponse,
   CaseInspectionPlanRenderRequest,
   CaseInspectionPlanRuntimeReadiness,
+  CaseQdKtRuntimeReadiness,
   EvaluationScopeUpsertRequest,
   FacilitySearchPage,
   FacilityWorkspace,
@@ -994,6 +995,19 @@ export function getCaseInspectionPlanRuntimeReadiness(
 ): Promise<CaseInspectionPlanRuntimeReadiness> {
   return requestJson<CaseInspectionPlanRuntimeReadiness>(
     `/cases/${encodeURIComponent(caseId)}/documents/inspection-ke-hoach-kt/readiness`,
+    { auth, useStubAuth, bearerToken, signal },
+  );
+}
+
+export function getCaseQdKtRuntimeReadiness(
+  caseId: string,
+  auth: StubAuthState,
+  useStubAuth: boolean,
+  bearerToken?: string | null,
+  signal?: AbortSignal,
+): Promise<CaseQdKtRuntimeReadiness> {
+  return requestJson<CaseQdKtRuntimeReadiness>(
+    `/cases/${encodeURIComponent(caseId)}/documents/inspection-qd-kt/readiness`,
     { auth, useStubAuth, bearerToken, signal },
   );
 }

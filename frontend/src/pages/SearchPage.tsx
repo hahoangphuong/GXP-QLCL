@@ -33,6 +33,7 @@ import {
   getChangeRequestWorkspace,
   getDocumentDetail,
   getCaseInspectionPlanRuntimeReadiness,
+  getCaseQdKtRuntimeReadiness,
   openCapaCycleDocumentCurrentContent,
   openCaseDocumentCurrentContent,
   renderCaseInspectionPlan,
@@ -72,6 +73,7 @@ import type {
   CaseApplicationUpsertRequest,
   CaseAssessmentUpsertRequest,
   CaseInspectionPlanReadinessState,
+  CaseQdKtReadinessState,
   CaseWorkspace,
   ChangeRequestWorkspace,
   ChangeApprovalUpsertRequest,
@@ -122,6 +124,17 @@ function inspectionPlanReadinessError(error: unknown): string {
         : status === 409 ? "Dữ liệu Kế hoạch kiểm tra đang xung đột."
           : status === 422 ? "Ngữ cảnh Kế hoạch kiểm tra chưa hợp lệ."
             : "Không kiểm tra được khả năng tạo Kế hoạch kiểm tra.";
+  return `${prefix}${error instanceof Error ? ` ${error.message}` : ""}`;
+}
+
+function qdktReadinessError(error: unknown): string {
+  const status = (error as { status?: number } | null)?.status;
+  const prefix = status === 401 ? "Phiên đăng nhập không còn hợp lệ."
+    : status === 403 ? "Bạn không có quyền kiểm tra điều kiện chuẩn bị dự thảo QĐKT."
+      : status === 404 ? "Hồ sơ không còn tồn tại trong ngữ cảnh hiện tại."
+        : status === 409 ? "Dữ liệu nguồn QĐKT đang xung đột."
+          : status === 422 ? "Ngữ cảnh QĐKT chưa hợp lệ."
+            : "Không kiểm tra được điều kiện chuẩn bị dự thảo QĐKT.";
   return `${prefix}${error instanceof Error ? ` ${error.message}` : ""}`;
 }
 
@@ -330,6 +343,9 @@ export function SearchPage({
   const [inspectionPlanReadiness, setInspectionPlanReadiness] = useState<CaseInspectionPlanReadinessState | null>(null);
   const [inspectionPlanReadinessRetry, setInspectionPlanReadinessRetry] = useState(0);
   const inspectionPlanReadinessSequence = useRef(0);
+  const [qdktReadiness, setQdKtReadiness] = useState<CaseQdKtReadinessState | null>(null);
+  const [qdktReadinessRetry, setQdKtReadinessRetry] = useState(0);
+  const qdktReadinessSequence = useRef(0);
   const [selectedChangeRequestWorkspace, setSelectedChangeRequestWorkspace] = useState<ChangeRequestWorkspace | null>(null);
   const [changeRequestWorkspaceLoading, setChangeRequestWorkspaceLoading] = useState(false);
   const [changeRequestWorkspaceError, setChangeRequestWorkspaceError] = useState<{ historyId: string; message: string } | null>(null);
@@ -942,6 +958,65 @@ export function SearchPage({
     canLoadSecureApi,
     resultsOffset,
     searchContext,
+    useStubAuth,
+  ]);
+
+  useEffect(() => {
+    const requestId = ++qdktReadinessSequence.current;
+    const workspace = selectedCaseWorkspace;
+    const caseId = workspace?.case_summary.id;
+    const item = workspace?.contextual_document_actions.find(candidate =>
+      candidate.family_code === "INSPECTION_QD_KT"
+      && candidate.parent_scope === "case"
+      && candidate.parent_id === caseId,
+    );
+    if (!canLoadSecureApi || !workspace || !caseId || !item) {
+      setQdKtReadiness(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    setQdKtReadiness({ case_id: caseId, family_code: "INSPECTION_QD_KT", status: "loading" });
+    void getCaseQdKtRuntimeReadiness(caseId, auth, useStubAuth, bearerToken, controller.signal)
+      .then(readiness => {
+        if (controller.signal.aborted || qdktReadinessSequence.current !== requestId) return;
+        if (
+          readiness.case_id !== caseId
+          || readiness.family_code !== "INSPECTION_QD_KT"
+          || readiness.ready_to_render !== false
+          || readiness.blocked_reasons.length === 0
+        ) {
+          setQdKtReadiness({
+            case_id: caseId,
+            family_code: "INSPECTION_QD_KT",
+            status: "error",
+            message: "Readiness QĐKT không khớp hồ sơ hoặc contract hiện tại.",
+          });
+          return;
+        }
+        setQdKtReadiness({
+          case_id: caseId,
+          family_code: "INSPECTION_QD_KT",
+          status: "blocked",
+          readiness,
+        });
+      })
+      .catch(error => {
+        if (controller.signal.aborted || qdktReadinessSequence.current !== requestId) return;
+        setQdKtReadiness({
+          case_id: caseId,
+          family_code: "INSPECTION_QD_KT",
+          status: "error",
+          message: qdktReadinessError(error),
+        });
+      });
+    return () => controller.abort();
+  }, [
+    auth,
+    bearerToken,
+    canLoadSecureApi,
+    qdktReadinessRetry,
+    selectedCaseWorkspace,
     useStubAuth,
   ]);
 
@@ -2493,6 +2568,8 @@ export function SearchPage({
               onInspectionPlanSave={handleInspectionPlanSave}
               inspectionPlanReadiness={inspectionPlanReadiness}
               onRetryInspectionPlanReadiness={() => setInspectionPlanReadinessRetry(current => current + 1)}
+              qdktReadiness={qdktReadiness}
+              onRetryQdKtReadiness={() => setQdKtReadinessRetry(current => current + 1)}
               onCreateDocument={handleCreateDocument}
               onLoadDocumentDetail={handleLoadDocumentDetail}
               onOpenDocument={handleOpenDocument}

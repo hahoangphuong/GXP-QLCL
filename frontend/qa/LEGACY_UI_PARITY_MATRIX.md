@@ -5,6 +5,42 @@ recommendations in UI_REDESIGN_VBA_REFERENCE and PHASE12. Preserve legacy UI whe
 evidenced. Baseline: `50576b0b383161e26e27b6cdc4a1a469aff1ae17`; work branch:
 `codex/legacy-ui-parity-20261010`. This delivery is partial; it does not close #1.
 
+## QĐKT Case readiness and workflow gap matrix — 2026-10-25
+
+Baseline: `fba6b69ba0ca1a7f85aa055b5775874438b8382c`. The backend/OpenAPI
+audit distinguishes the implemented read-only Case readiness endpoint from the
+Python-only team-handoff contracts. The frontend now reads
+`GET /cases/{case_id}/documents/inspection-qd-kt/readiness` for the exact
+selected Case, displays its blockers plus opaque decision-source and registered-
+Site identifiers, and explicitly labels this as draft preparation rather than an
+issued decision. AbortSignal plus request sequence reject Case A → B → A and late
+responses. Errors fail closed and retry only after explicit activation. The
+unavailable create action remains unavailable; no generic renderer, persistence,
+number/date inference or issuance mutation is introduced.
+
+| QĐKT workflow capability | Status after this slice | Contract/evidence boundary |
+| --- | --- | --- |
+| Open the selected Case and KHKT context | `IMPLEMENTED` | Existing Case workspace and KHKT typed contracts; unchanged. |
+| View/edit the current structured inspection team | `IMPLEMENTED` | Existing Case team read/update API, canonical member identity and ordering; this is not an immutable draft snapshot. |
+| Create typed KHKT | `IMPLEMENTED` | Existing authenticated Case-owned readiness and render endpoints; unchanged. |
+| Inspect QĐKT draft readiness and blockers | `IMPLEMENTED` | Case-owned read-only endpoint integrated here; `BACKEND_CONTRACT_VERIFIED`, `UNIT_VERIFIED`. |
+| Create QĐKT draft DOCX | `BLOCKED_BY_BACKEND` | `QDKT_TYPED_RENDER_CONTRACT_MISSING`; no typed POST renderer. |
+| Persist immutable proposed-team snapshot for a draft | `BLOCKED_BY_BACKEND` | Snapshot review/handoff dataclasses exist, but no endpoint or persistence owner is exposed. |
+| List issued/adjusted/replacement QĐKT records per Case | `BLOCKED_BY_BACKEND` | No issued-decision aggregate/list API; latest must not be inferred from ID or date. |
+| Enter official decision number/date | `BLOCKED_BY_BACKEND` | No issuance transaction, optimistic token or authorization contract. Existing inspection-plan fields are not reclassified as issued QĐKT. |
+| Confirm official team as `DRAFT_UNCHANGED`, `DRAFT_EDITED` or `USER_ENTERED` | `BLOCKED_BY_BACKEND` | Validation dataclasses exist only in Python; no write/read API or persistence contract. |
+| Distinguish draft from issued decision | `PARTIAL` | Readiness UI preserves the legal boundary; issued-decision storage and history remain absent. |
+| QĐKT history scoped to canonical Case UUID | `PARTIAL` | Contextual document identity/history exists, but there is no issued QĐKT aggregate covering initial/adjusted/replacement decisions. |
+
+This slice is `UNIT_VERIFIED`, `BACKEND_CONTRACT_VERIFIED` and
+`FIXTURE_VERIFIED`. The actual component was checked in Edge-based browser
+fixtures at 1366×768, 1920×1080 and 390×844; document client/scroll widths were
+1366/1366, 1920/1920 and 390/390. Focus-only Home/End/Arrow navigation retained
+the unselected document row and invoked zero create/open/detail callbacks. It is
+not `AUTHENTICATED_BACKEND_VERIFIED`; production UAT remains `UAT_PENDING`.
+Narrator/NVDA speech evidence is `DEFERRED_BY_USER_PRIORITY` and is not claimed
+as a pass.
+
 ## Frontend business-function audit and typed KHKT integration — 2026-10-22
 
 Baseline: `af4abf6df7e3f11ddeb0c120924f082f22645096`. The audit compares the

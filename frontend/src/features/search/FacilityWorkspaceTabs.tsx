@@ -14,6 +14,7 @@ import type {
   CaseApplicationUpsertRequest,
   CaseAssessmentUpsertRequest,
   CaseInspectionPlanReadinessState,
+  CaseQdKtReadinessState,
   CaseWorkspace,
   ChangeRequestWorkspace,
   ContextualDocumentAction,
@@ -96,6 +97,8 @@ export function FacilityWorkspaceTabs({
   onInspectionPlanSave,
   inspectionPlanReadiness,
   onRetryInspectionPlanReadiness,
+  qdktReadiness,
+  onRetryQdKtReadiness,
   onInspectionOutcomeSave,
   onInspectionPeriodSegmentsSave,
   onCreateApprovalSubmission,
@@ -170,6 +173,8 @@ export function FacilityWorkspaceTabs({
   onInspectionPlanSave: (payload: InspectionPlanUpsertRequest) => Promise<void>;
   inspectionPlanReadiness: CaseInspectionPlanReadinessState | null;
   onRetryInspectionPlanReadiness: () => void;
+  qdktReadiness: CaseQdKtReadinessState | null;
+  onRetryQdKtReadiness: () => void;
   onInspectionOutcomeSave: (payload: InspectionOutcomeUpsertRequest) => Promise<void>;
   onInspectionPeriodSegmentsSave: (payload: import("../../types").InspectionPeriodSegmentsUpsertRequest) => Promise<void>;
   onCreateApprovalSubmission: (stage: "PCT" | "CT", payload: import("../../types").InspectionApprovalSubmissionCreateRequest) => Promise<import("../../types").InspectionApprovalSubmissionMutationResponse>;
@@ -261,6 +266,8 @@ export function FacilityWorkspaceTabs({
           onInspectionPlanSave={onInspectionPlanSave}
           inspectionPlanReadiness={inspectionPlanReadiness}
           onRetryInspectionPlanReadiness={onRetryInspectionPlanReadiness}
+          qdktReadiness={qdktReadiness}
+          onRetryQdKtReadiness={onRetryQdKtReadiness}
           onIssueCertificate={onIssueCertificate}
           onCreateDocument={onCreateDocument}
           onLoadDocumentDetail={onLoadDocumentDetail}

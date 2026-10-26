@@ -81,6 +81,7 @@ const apiMocks = vi.hoisted(() => ({
   listSites: vi.fn().mockResolvedValue([]),
   prepareDocument: vi.fn(),
   getCaseInspectionPlanRuntimeReadiness: vi.fn(),
+  getCaseQdKtRuntimeReadiness: vi.fn(),
   renderCaseInspectionPlan: vi.fn(),
   renderTemplateDocx: vi.fn(),
   submitCapaCycle: vi.fn(),
@@ -202,6 +203,7 @@ function resetApiMocks() {
   apiMocks.listSites.mockReset();
   apiMocks.prepareDocument.mockReset();
   apiMocks.getCaseInspectionPlanRuntimeReadiness.mockReset();
+  apiMocks.getCaseQdKtRuntimeReadiness.mockReset();
   apiMocks.renderCaseInspectionPlan.mockReset();
   apiMocks.renderTemplateDocx.mockReset();
   apiMocks.submitCapaCycle.mockReset();
@@ -239,6 +241,14 @@ function resetApiMocks() {
     inspection_folder_status: "ready",
     ready_to_attempt_render: true,
     blocked_reasons: [],
+  });
+  apiMocks.getCaseQdKtRuntimeReadiness.mockResolvedValue({
+    case_id: "case-1",
+    family_code: "INSPECTION_QD_KT",
+    ready_to_render: false,
+    decision_source_id: "decision-source-1",
+    registered_site_id: "site-1",
+    blocked_reasons: ["QDKT_TYPED_RENDER_CONTRACT_MISSING"],
   });
   apiMocks.createChangeRequest.mockResolvedValue(null);
   apiMocks.createChangeRequestDetail.mockResolvedValue(null);
@@ -698,6 +708,34 @@ function buildKhktReadiness(caseId = "case-1", overrides: Record<string, unknown
     inspection_folder_status: "ready",
     ready_to_attempt_render: true,
     blocked_reasons: [],
+    ...overrides,
+  };
+}
+
+function buildQdKtDocument(caseId = "case-1") {
+  return {
+    ...buildKhktDocument(caseId),
+    checklist_key: `case:${caseId}:INSPECTION_QD_KT`,
+    label: "Quyết định kiểm tra",
+    family_code: "INSPECTION_QD_KT",
+    actions: [{
+      action_key: "create",
+      label: "Tạo",
+      available: false,
+      disabled_reason: "Backend chưa mở typed create contract.",
+      required_permissions: ["document.write"],
+    }],
+  };
+}
+
+function buildQdKtReadiness(caseId = "case-1", overrides: Record<string, unknown> = {}) {
+  return {
+    case_id: caseId,
+    family_code: "INSPECTION_QD_KT",
+    ready_to_render: false,
+    decision_source_id: `decision-${caseId}`,
+    registered_site_id: "site-1",
+    blocked_reasons: ["QDKT_TYPED_RENDER_CONTRACT_MISSING"],
     ...overrides,
   };
 }
@@ -2924,13 +2962,7 @@ describe("App Slice A.4 search workspace", () => {
   });
 
   it("keeps QĐKT blocked when the backend does not advertise a typed create contract", async () => {
-    const qdkt = {
-      ...buildKhktDocument(),
-      checklist_key: "case:case-1:INSPECTION_QD_KT",
-      label: "Quyết định kiểm tra",
-      family_code: "INSPECTION_QD_KT",
-      actions: [{ action_key: "create", label: "Tạo", available: false, disabled_reason: "Backend chưa mở typed create contract.", required_permissions: ["document.write"] }],
-    };
+    const qdkt = buildQdKtDocument();
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
     apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
@@ -2940,9 +2972,77 @@ describe("App Slice A.4 search workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
     expect(screen.queryByRole("button", { name: "Tạo Quyết định kiểm tra" })).not.toBeInTheDocument();
     expect(screen.getByText("Backend chưa mở typed create contract.")).toBeInTheDocument();
+    await screen.findByText(/decision-source-1/);
+    expect(screen.getByRole("status", { name: "Điều kiện dự thảo QĐKT" })).toHaveTextContent("Dự thảo QĐKT chưa thể tạo");
+    expect(apiMocks.getCaseQdKtRuntimeReadiness).toHaveBeenCalledWith("case-1", expect.any(Object), true, null, expect.any(AbortSignal));
     expect(apiMocks.getCaseInspectionPlanRuntimeReadiness).not.toHaveBeenCalled();
     expect(apiMocks.renderTemplateDocx).not.toHaveBeenCalled();
     await flushSearchUrlSync();
+  });
+
+  it.each([403, 404, 409, 422])("fails closed on QĐKT readiness GET %s and retries only on explicit activation", async status => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ contextual_document_actions: [buildQdKtDocument()] }));
+    apiMocks.getCaseQdKtRuntimeReadiness
+      .mockRejectedValueOnce(Object.assign(new Error("backend readiness failure"), { status }))
+      .mockResolvedValueOnce(buildQdKtReadiness());
+
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("backend readiness failure");
+    expect(apiMocks.getCaseQdKtRuntimeReadiness).toHaveBeenCalledTimes(1);
+    expect(apiMocks.renderTemplateDocx).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Thử kiểm tra lại điều kiện QĐKT" }));
+    await waitFor(() => expect(screen.getByRole("status", { name: "Điều kiện dự thảo QĐKT" })).toHaveTextContent("Dự thảo QĐKT chưa thể tạo"));
+    expect(apiMocks.getCaseQdKtRuntimeReadiness).toHaveBeenCalledTimes(2);
+    expect(apiMocks.renderTemplateDocx).not.toHaveBeenCalled();
+  });
+
+  it("owns QĐKT readiness across Case A → B → A and ignores superseded responses", async () => {
+    const history = ["A", "B"].map((suffix, index) => ({
+      id: `case-${suffix}`,
+      source_type: "case",
+      reference_code: `KT-${suffix}`,
+      event_type: `Case ${suffix}`,
+      gxp_type: "GMP",
+      standard: "WHO-GMP",
+      occurred_on: `2026-08-0${index + 1}`,
+      state: "inspection_scheduled",
+    }));
+    let resolveOldA!: (value: ReturnType<typeof buildQdKtReadiness>) => void;
+    let resolveB!: (value: ReturnType<typeof buildQdKtReadiness>) => void;
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history }));
+    apiMocks.getCaseWorkspace.mockImplementation(async (caseId: string) => buildCaseWorkspace({
+      case_summary: { ...buildCaseWorkspace().case_summary, id: caseId },
+      contextual_document_actions: [buildQdKtDocument(caseId)],
+    }));
+    apiMocks.getCaseQdKtRuntimeReadiness.mockImplementation((caseId: string) => {
+      const call = apiMocks.getCaseQdKtRuntimeReadiness.mock.calls.length;
+      if (call === 1) return new Promise(resolve => { resolveOldA = resolve; });
+      if (caseId === "case-B") return new Promise(resolve => { resolveB = resolve; });
+      return Promise.resolve(buildQdKtReadiness("case-A"));
+    });
+
+    renderApp(["/search"]);
+    await waitFor(() => expect(apiMocks.getCaseQdKtRuntimeReadiness).toHaveBeenCalledWith("case-A", expect.any(Object), true, null, expect.any(AbortSignal)));
+    fireEvent.click(screen.getByRole("row", { name: /Case B/ }));
+    await waitFor(() => expect(apiMocks.getCaseQdKtRuntimeReadiness).toHaveBeenCalledWith("case-B", expect.any(Object), true, null, expect.any(AbortSignal)));
+    fireEvent.click(screen.getByRole("row", { name: /Case A/ }));
+    await waitFor(() => expect(apiMocks.getCaseQdKtRuntimeReadiness).toHaveBeenCalledTimes(3));
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    expect(await screen.findByText(/decision-case-A/)).toBeInTheDocument();
+    await act(async () => {
+      resolveB(buildQdKtReadiness("case-B"));
+      resolveOldA(buildQdKtReadiness("case-A", { decision_source_id: "stale-A" }));
+    });
+    expect(screen.getByText(/decision-case-A/)).toBeInTheDocument();
+    expect(screen.queryByText(/stale-A/)).not.toBeInTheDocument();
+    expect(apiMocks.renderTemplateDocx).not.toHaveBeenCalled();
   });
 
   it("does not open a late document binary after history navigation", async () => {

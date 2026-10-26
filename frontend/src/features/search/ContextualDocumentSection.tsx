@@ -1,6 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 
-import type { CaseInspectionPlanReadinessState, ContextualDocumentAction, DocumentDetail } from "../../types";
+import type { CaseInspectionPlanReadinessState, CaseQdKtReadinessState, ContextualDocumentAction, DocumentDetail } from "../../types";
 import { formatCompactDate } from "../../lib/presentation";
 
 type Selection = { context: string; key: string; id: string | null };
@@ -31,11 +31,26 @@ function blockedReadinessMessage(reasons: string[]): string {
   return reasons.map(reason => KHKT_BLOCKED_REASON_LABELS[reason] ?? reason).join(" ");
 }
 
-export function ContextualDocumentSection({ items, contextKey, createReadiness, onRetryCreateReadiness, onOpenDocument, onLoadDocumentDetail, onCreateDocument }: {
+const QDKT_BLOCKED_REASON_LABELS: Record<string, string> = {
+  MANUFACTURING_CLASSIFICATION_SOURCE_UNPROVEN: "Nguồn phân loại cơ sở sản xuất chưa được chứng minh.",
+  LOCATION_BOOKMARK_FORMAT_UNPROVEN: "Định dạng bookmark địa điểm chưa được chứng minh.",
+  BLANK_ISSUANCE_DATE_BOOKMARK_UNVERIFIED: "Bookmark ngày ban hành để trống chưa được xác minh.",
+  INSPECTION_TEAM_BOOKMARK_CONTRACT_UNRESOLVED: "Hợp đồng bookmark đoàn kiểm tra chưa được chốt.",
+  QDKT_TYPED_RENDER_CONTRACT_MISSING: "Chưa có hợp đồng tạo dự thảo QĐKT typed.",
+  REGISTERED_PROVINCE_MISSING: "Cơ sở đăng ký chưa có tỉnh/thành.",
+};
+
+function qdktBlockedReasonLabel(reason: string): string {
+  return QDKT_BLOCKED_REASON_LABELS[reason] ?? reason;
+}
+
+export function ContextualDocumentSection({ items, contextKey, createReadiness, qdktReadiness, onRetryCreateReadiness, onRetryQdKtReadiness, onOpenDocument, onLoadDocumentDetail, onCreateDocument }: {
   items: ContextualDocumentAction[];
   contextKey?: string;
   createReadiness?: CaseInspectionPlanReadinessState | null;
+  qdktReadiness?: CaseQdKtReadinessState | null;
   onRetryCreateReadiness?: () => void;
+  onRetryQdKtReadiness?: () => void;
   onOpenDocument: (item: ContextualDocumentAction, isCurrentDocument?: () => boolean) => Promise<void>;
   onLoadDocumentDetail: (documentId: string) => Promise<DocumentDetail>;
   onCreateDocument: (item: ContextualDocumentAction, action: ContextualDocumentAction["actions"][number]) => Promise<void>;
@@ -210,6 +225,24 @@ export function ContextualDocumentSection({ items, contextKey, createReadiness, 
                       : createReadiness.status === "blocked" ? <p className="workspace-note" role="status">Chưa thể tạo: {blockedReadinessMessage(createReadiness.readiness.blocked_reasons)}</p>
                         : createReadiness.status === "error" ? <div><p className="form-error" role="alert">{createReadiness.message}</p>{onRetryCreateReadiness ? <button type="button" onClick={onRetryCreateReadiness}>Thử kiểm tra lại</button> : null}</div>
                           : null
+                ) : null}
+                {item.family_code === "INSPECTION_QD_KT" && qdktReadiness !== undefined ? (
+                  qdktReadiness === null || qdktReadiness.case_id !== item.parent_id
+                    ? <p aria-label="Điều kiện dự thảo QĐKT" className="workspace-note" role="status">Đang kiểm tra điều kiện chuẩn bị dự thảo QĐKT...</p>
+                    : qdktReadiness.status === "loading"
+                      ? <p aria-label="Điều kiện dự thảo QĐKT" className="workspace-note" role="status">Đang kiểm tra điều kiện chuẩn bị dự thảo QĐKT...</p>
+                      : qdktReadiness.status === "blocked"
+                        ? <div aria-label="Điều kiện dự thảo QĐKT" className="workspace-note" role="status">
+                            <strong>Dự thảo QĐKT chưa thể tạo.</strong>
+                            <ul>{qdktReadiness.readiness.blocked_reasons.map(reason => <li key={reason}>{qdktBlockedReasonLabel(reason)}</li>)}</ul>
+                            {qdktReadiness.readiness.decision_source_id ? <p>Nguồn quyết định: <code>{qdktReadiness.readiness.decision_source_id}</code></p> : null}
+                            {qdktReadiness.readiness.registered_site_id ? <p>Cơ sở đăng ký: <code>{qdktReadiness.readiness.registered_site_id}</code></p> : null}
+                            <p>Đây là kiểm tra điều kiện chuẩn bị dự thảo; không phải QĐKT đã ban hành.</p>
+                          </div>
+                        : <div>
+                            <p className="form-error" role="alert">{qdktReadiness.message}</p>
+                            {onRetryQdKtReadiness ? <button type="button" onClick={onRetryQdKtReadiness}>Thử kiểm tra lại điều kiện QĐKT</button> : null}
+                          </div>
                 ) : null}
               </td>
             </tr>)}</tbody>

@@ -29,6 +29,7 @@ import {
   openCaseDocumentCurrentContent,
   getGenerationRun,
   getCaseInspectionPlanRuntimeReadiness,
+  getCaseQdKtRuntimeReadiness,
   listCases,
   listSiteGxpCertificates,
   listCompanies,
@@ -123,6 +124,23 @@ describe("frontend API routing contract", () => {
         headers: expect.objectContaining({ Authorization: "Bearer oidc-token" }),
       }),
     ]);
+  });
+  it("reads QĐKT draft readiness from the canonical Case route with cancellation ownership", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+    const auth = { username: "operator.local", role: "manager" as const };
+    const controller = new AbortController();
+
+    await getCaseQdKtRuntimeReadiness("case/unsafe", auth, false, "oidc-token", controller.signal);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/cases/case%2Funsafe/documents/inspection-qd-kt/readiness",
+      expect.objectContaining({
+        method: "GET",
+        signal: controller.signal,
+        headers: expect.objectContaining({ Authorization: "Bearer oidc-token" }),
+      }),
+    );
   });
   it("reads GxP and ĐĐK metadata from their distinct canonical owner routes", async () => {
     const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ json: {} }));

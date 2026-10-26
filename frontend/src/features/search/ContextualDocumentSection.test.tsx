@@ -19,7 +19,73 @@ function detail(id: string): DocumentDetail {
 function deferred<T>() { let resolve!: (value: T) => void; let reject!: (error: Error) => void; const promise = new Promise<T>((r, j) => { resolve = r; reject = j; }); return { promise, resolve, reject }; }
 const defaults = { onCreateDocument: vi.fn(), onOpenDocument: vi.fn() };
 
+function qdktItem(caseId = "case-1"): ContextualDocumentAction {
+  return {
+    ...item("QD-KT"),
+    checklist_key: `case:${caseId}:INSPECTION_QD_KT`,
+    label: "Quyết định kiểm tra",
+    family_code: "INSPECTION_QD_KT",
+    parent_id: caseId,
+    document_id: null,
+    status: "missing",
+    actions: [{
+      action_key: "create",
+      label: "Tạo",
+      available: false,
+      disabled_reason: "Backend chưa mở typed create contract.",
+      required_permissions: ["document.write"],
+    }],
+  };
+}
+
 describe("Document workspace identity and focus", () => {
+  it("presents Case-owned QĐKT draft readiness without exposing an issue or create action", () => {
+    render(
+      <ContextualDocumentSection
+        {...defaults}
+        items={[qdktItem()]}
+        onLoadDocumentDetail={vi.fn()}
+        qdktReadiness={{
+          case_id: "case-1",
+          family_code: "INSPECTION_QD_KT",
+          status: "blocked",
+          readiness: {
+            case_id: "case-1",
+            family_code: "INSPECTION_QD_KT",
+            ready_to_render: false,
+            decision_source_id: "decision-source-uuid",
+            registered_site_id: "site-uuid",
+            blocked_reasons: ["QDKT_TYPED_RENDER_CONTRACT_MISSING", "FUTURE_REASON"],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("status", { name: "Điều kiện dự thảo QĐKT" })).toHaveTextContent("Dự thảo QĐKT chưa thể tạo");
+    expect(screen.getByText(/Chưa có hợp đồng tạo dự thảo QĐKT typed/)).toBeInTheDocument();
+    expect(screen.getByText(/FUTURE_REASON/)).toBeInTheDocument();
+    expect(screen.getByText(/decision-source-uuid/)).toBeInTheDocument();
+    expect(screen.getByText(/site-uuid/)).toBeInTheDocument();
+    expect(screen.getByText(/không phải QĐKT đã ban hành/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Tạo Quyết định kiểm tra" })).not.toBeInTheDocument();
+  });
+
+  it("shows QĐKT readiness errors and retries only after explicit activation", () => {
+    const retry = vi.fn();
+    render(
+      <ContextualDocumentSection
+        {...defaults}
+        items={[qdktItem()]}
+        onLoadDocumentDetail={vi.fn()}
+        onRetryQdKtReadiness={retry}
+        qdktReadiness={{ case_id: "case-1", family_code: "INSPECTION_QD_KT", status: "error", message: "Không có quyền." }}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("Không có quyền.");
+    expect(retry).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Thử kiểm tra lại điều kiện QĐKT" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
   it("R1 rejects an initial binary after same-event A → B → A selection", async () => {
     const pending = deferred<void>(); const opened = vi.fn();
     const a = item("A"); a.actions.push({ action_key: "open", label: "Mở", available: true, disabled_reason: null, required_permissions: [] });

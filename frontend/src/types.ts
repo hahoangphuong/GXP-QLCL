@@ -1274,6 +1274,24 @@ export type CaseInspectionPlanReadinessState = {
   | { status: "error"; message: string }
 );
 
+export type CaseQdKtRuntimeReadiness = {
+  case_id: string;
+  family_code: "INSPECTION_QD_KT";
+  ready_to_render: false;
+  decision_source_id: string | null;
+  registered_site_id: string | null;
+  blocked_reasons: string[];
+};
+
+export type CaseQdKtReadinessState = {
+  case_id: string;
+  family_code: "INSPECTION_QD_KT";
+} & (
+  | { status: "loading" }
+  | { status: "blocked"; readiness: CaseQdKtRuntimeReadiness }
+  | { status: "error"; message: string }
+);
+
 export type DocumentGenerationRunStatus = {
   generation_run_id: string;
   document_id: string;

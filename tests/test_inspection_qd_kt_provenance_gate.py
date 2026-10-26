@@ -87,3 +87,12 @@ def test_absent_active_expression_is_rejected(tmp_path):
         data["fields"]["Tencoso"]["vba_rendered_operations"][0]["expression"] = ""
     with pytest.raises(QdKtProvenanceGateBlocked, match="QDKT_I2_OPERATION_TRACE_CHANGED"):
         inspect_qdkt_source_provenance(_mutated(tmp_path, mutate))
+
+
+def test_delete_bookmark_may_have_no_value_expression(tmp_path):
+    # Real TT3Del is a DELETE operation without a rendered value.
+    inventory = inspect_qdkt_source_provenance()
+    assert "TT3Del" in inventory.partial_fields
+    def mutate(data):
+        data["fields"]["TT3Del"]["vba_rendered_operations"][0]["expression"] = ""
+    assert inspect_qdkt_source_provenance(_mutated(tmp_path, mutate)).ready_for_typed_payload is False

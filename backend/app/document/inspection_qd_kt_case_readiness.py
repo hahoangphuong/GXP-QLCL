@@ -11,6 +11,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
+from backend.app.db.models.phase1 import Case
+from backend.app.document.inspection_qd_kt_template_asset_contract import (
+    InspectionQdKtTemplateAssetContractError,
+    get_inspection_qd_kt_template_asset,
+)
+
 from backend.app.document.inspection_qd_kt_provenance_gate import (
     QdKtProvenanceGateBlocked, inspect_qdkt_source_provenance,
 )
@@ -54,6 +60,15 @@ def inspect_qdkt_case_readiness(session: Session, *, case_id: str) -> QdKtCaseRe
     blockers: list[str] = []
     decision_source_id: str | None = None
     registered_site_id: str | None = None
+    # This verifies only the declared template locator/checksum contract;
+    # availability and binary DOTX contents still require independent proof.
+    with session.no_autoflush:
+        case = session.get(Case, case_id)
+    if case is not None:
+        try:
+            get_inspection_qd_kt_template_asset(case.gxp_type)
+        except (InspectionQdKtTemplateAssetContractError, ValueError, OSError):
+            blockers.append("QDKT_CASE_GXP_TEMPLATE_CONTRACT_UNVERIFIED")
     try:
         decision = read_latest_qdkt_reference_for_case(session, case_id=case_id)
         decision_source_id = decision.source_decision_id

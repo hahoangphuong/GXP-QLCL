@@ -49,3 +49,41 @@ def test_ambiguous_bookmark_metadata_is_rejected(tmp_path):
     path = _mutated(tmp_path, lambda data: data["fields"]["VKN"].update(physical_bookmark="TTx"))
     with pytest.raises(QdKtProvenanceGateBlocked, match="QDKT_SOURCE_PROVENANCE_INCOMPLETE"):
         inspect_qdkt_source_provenance(path)
+
+
+@pytest.mark.parametrize("name", ["Fulldate", "QDKT", "TT3Del"])
+def test_active_i2_operation_cannot_be_retagged_as_unreachable(tmp_path, name):
+    def mutate(data):
+        for operation in data["fields"][name]["vba_rendered_operations"]:
+            if operation["reachability_i2"] != "UNREACHABLE_I2":
+                operation["reachability_i2"] = "UNREACHABLE_I2"
+    with pytest.raises(QdKtProvenanceGateBlocked, match="QDKT_I2_OPERATION_TRACE_CHANGED"):
+        inspect_qdkt_source_provenance(_mutated(tmp_path, mutate))
+
+
+def test_wrong_active_vba_line_is_rejected(tmp_path):
+    def mutate(data):
+        data["fields"]["Diadiem"]["vba_rendered_operations"][0]["line"] = 999
+    with pytest.raises(QdKtProvenanceGateBlocked, match="QDKT_I2_OPERATION_TRACE_CHANGED"):
+        inspect_qdkt_source_provenance(_mutated(tmp_path, mutate))
+
+
+def test_delete_is_not_silently_promoted_to_write(tmp_path):
+    def mutate(data):
+        data["fields"]["TT3Del"]["vba_rendered_operations"][0]["operation_type"] = "WRITE"
+    with pytest.raises(QdKtProvenanceGateBlocked, match="QDKT_I2_OPERATION_TRACE_CHANGED"):
+        inspect_qdkt_source_provenance(_mutated(tmp_path, mutate))
+
+
+def test_missing_source_variable_chain_is_rejected(tmp_path):
+    def mutate(data):
+        data["fields"]["VKN"]["provenance_chain"] = data["fields"]["VKN"]["provenance_chain"][:1]
+    with pytest.raises(QdKtProvenanceGateBlocked, match="QDKT_I2_SOURCE_CHAIN_INCOMPLETE"):
+        inspect_qdkt_source_provenance(_mutated(tmp_path, mutate))
+
+
+def test_absent_active_expression_is_rejected(tmp_path):
+    def mutate(data):
+        data["fields"]["Tencoso"]["vba_rendered_operations"][0]["expression"] = ""
+    with pytest.raises(QdKtProvenanceGateBlocked, match="QDKT_I2_OPERATION_TRACE_CHANGED"):
+        inspect_qdkt_source_provenance(_mutated(tmp_path, mutate))

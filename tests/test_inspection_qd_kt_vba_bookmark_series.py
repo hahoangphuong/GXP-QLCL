@@ -35,6 +35,8 @@ def _source_lines(entry: str) -> list[str]:
 
 
 def test_rules_are_pinned_to_the_direct_vba_zip_i2_call_chain():
+    if not SOURCE_ZIP.is_file():
+        pytest.skip("Direct VBA ZIP check requires a local legacy archive; CI uses pinned trace provenance.")
     record = _source_lines("RecordForm.frm")
     module = _source_lines("Module1.bas")
     assert record[588].startswith("Private Sub Replace_Bookmark")
@@ -194,3 +196,15 @@ def test_observation_fixture_remains_non_renderable_and_unmodified_in_meaning():
     assert source["ready_to_render"] is False
     assert {row["bookmark_count"] for row in source["templates"]} == {11, 14, 22}
     assert all(row["ready_to_render"] is False for row in source["templates"])
+
+
+def test_pinned_vba_trace_provenance_is_available_in_all_ci_checkouts():
+    """Always run a source-pin test; never claim the direct ZIP check ran in CI."""
+    trace_path = Path(__file__).resolve().parents[1] / "artifacts/legacy_audit/inspection_qd_kt_vba_trace.json"
+    source = json.loads(trace_path.read_text(encoding="utf-8"))
+    assert source["source_zip"] == "legacy/GXP-VBA code.zip"
+    assert source["source_zip_sha256"] == "6227fb0a6b3d74fa0f4cc655b94b021a40d65a508c2f2eefc62f1724c7b89ff7"
+    assert source["procedures"]["RecordForm.Tao_QDKT_KHKT_BBKT"]["start_line"] == 739
+    assert source["procedures"]["RecordForm.Tao_QDKT_KHKT_BBKT"]["end_line"] == 818
+    operations = source["physical_bookmark_operations"]
+    assert any(row["physical_bookmark"] == "Tencoso" and row["line"] == 744 and row["reachability_i2"] == "REACHABLE_I2" for row in operations)

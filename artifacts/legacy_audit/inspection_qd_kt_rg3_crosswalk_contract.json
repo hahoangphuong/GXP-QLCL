@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "purpose": "Privacy-safe, read-only proof contract for the legacy QĐKT Rg3 selection and canonical Case/Application/Site identity bridge.",
+  "sources": {
+    "workbook": "legacy/Danh sách Kiểm tra GPs.xlsb",
+    "workbook_sha256": "c12537ea5a5c9f470e42fb5bdbe214f36983e310fceac7c560ad38885209fe3d",
+    "vba_archive": "legacy/GXP-VBA code.zip",
+    "vba_archive_sha256": "6227fb0a6b3d74fa0f4cc655b94b021a40d65a508c2f2eefc62f1724c7b89ff7",
+    "snapshot": "artifacts/phase3c/legacy_snapshot.json",
+    "anchor_projection": "artifacts/legacy_audit/legacy_inspection_storage_anchor_projection.json"
+  },
+  "named_range": {
+    "name": "db_ktra",
+    "refers_to": "=db.ktra!$A$5:$CV$1549",
+    "physical_first_row": 5,
+    "row_coordinate_rule": "physical source row = named-range index + 4"
+  },
+  "vba_selection_trace": [
+    {
+      "source": "MainForm.frm:2798-2808",
+      "fact": "UpdateListHistory filters by Site ID and GxP, with an optional GMP production-line filter, and collects every matching db.ktra row."
+    },
+    {
+      "source": "Module1.bas:2199-2237",
+      "fact": "LoadMappingList compares exact values when Iden=True and returns every matching named-range row index; it does not establish uniqueness."
+    },
+    {
+      "source": "MainForm.frm:2827-2833",
+      "fact": "The displayed history list is sorted by date; the previous selected row is preserved when present, otherwise the first displayed row is selected."
+    },
+    {
+      "source": "MainForm.frm:629-649",
+      "fact": "Get_IdxKtra returns the selected history item's hidden db.ktra row index and btnFile passes it to RecordForm."
+    },
+    {
+      "source": "RecordForm.frm:441-465",
+      "fact": "PrepareRecordFormData stores the selected named-range row index as Idx_Ktr."
+    },
+    {
+      "source": "RecordForm.frm:326-405",
+      "fact": "GetTT_Ktra assigns Rg3 = Names(\"db_ktra\").RefersToRange.Rows(Idx_Ktr), then reads NgaynopHsDK and HsDK from that exact row."
+    },
+    {
+      "source": "RecordForm.frm:327,334,343,411,417,431",
+      "fact": "The dossier-row Rg3 is procedure-local, assigned once and released; other Rg3 locals belong to separate procedures and never assign the dossier variables."
+    }
+  ],
+  "khkt_independent_path": {
+    "source": "Module1.bas:595-650",
+    "fact": "TaoQDKT_KHKT reads an ActiveSheet planning row and invokes CreateFile with i=2 without assigning Rg3, s_MaHsDk, or s_NgaynopHsDk.",
+    "assignment_evidence": "RecordForm.frm:18 declares the dossier variables; RecordForm.frm:343 is their only assignment; RecordForm.frm:748-749 renders them.",
+    "identity_conclusion": "A KHKT ActiveSheet row does not prove a db.ktra dossier-row identity."
+  },
+  "canonical_projection": {
+    "case": "Each effective db.ktra row creates one Case keyed by legacy_inspection_id and linked to the Site resolved from that same row's legacy site ID.",
+    "application": "The importer creates one CaseApplication for that Case and projects submitted_at and dossier_code from the same normalized db.ktra row.",
+    "anchor": "LegacyInspectionStorageAnchor binds a Case to the exact db.ktra physical source row and pinned source version; source_hash is checked as an additional row-evidence coordinate.",
+    "non_keys": [
+      "site identity alone",
+      "dossier code alone",
+      "display name",
+      "date",
+      "named-range row index treated as legacy inspection ID"
+    ]
+  },
+  "snapshot_columns": {
+    "legacy_inspection_id": "ID",
+    "legacy_site_id": "site_legacy_id_ref",
+    "dossier_code": "dossier_code"
+  },
+  "anchor_projection_audit": {
+    "source": "local read-only legacy_inspection_storage_anchor_projection.json plus its audit summary; raw projection is intentionally excluded from Git",
+    "source_version": "c12537ea5a5c9f470e42fb5bdbe214f36983e310fceac7c560ad38885209fe3d",
+    "effective_case_count": 1496,
+    "exact_id_source_row_match_count": 1496,
+    "duplicate_projection_case_id_count": 0,
+    "duplicate_source_case_id_count": 0,
+    "missing_case_id_count": 0,
+    "extra_case_id_count": 0,
+    "field_mismatch_count": 0,
+    "parity_passed": true
+  },
+  "privacy_safe_aggregates": {
+    "snapshot_row_count": 1543,
+    "effective_row_count": 1496,
+    "unique_legacy_inspection_id_count": 1496,
+    "anchor_projection_row_count": 1496,
+    "projection_exact_id_row_count": 1496,
+    "legacy_id_differs_from_named_range_index_count": 917,
+    "sites_with_multiple_cases": 276,
+    "max_cases_per_site": 17,
+    "nonblank_dossier_row_count": 1012,
+    "duplicate_dossier_value_count": 138,
+    "rows_with_duplicate_dossier_value": 486
+  },
+  "invariants": {
+    "contains_raw_business_values": false,
+    "identity_join": "selected named-range row -> physical db.ktra row -> legacy inspection ID -> canonical Case -> CaseApplication and Site, with exact storage-anchor source coordinates",
+    "submission_semantics": "PARTIAL: literal value projection is testable, but legacy source evidence does not resolve whether the field means submitted or received.",
+    "physical_bookmark_presence": "SEPARATE_BLOCKER: record identity does not prove that HsDK/Ngaynop bookmarks exist in the approved templates.",
+    "modern_owner_verified": false,
+    "owner_promotion_allowed": false,
+    "ready_to_render": false
+  }
+}

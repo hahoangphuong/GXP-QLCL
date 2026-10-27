@@ -69,11 +69,12 @@ These aggregates prove why neither Site nor dossier text is a safe record key. T
 | Canonical Case/Application/Site identity | `PROVEN` | Exact legacy inspection ID, Site FK and storage-anchor coordinates agree. |
 | Dossier code literal projection | `PROVEN` | Import and render source use the same normalized `db.ktra` row. |
 | Submission date literal projection | `PROVEN` | Parsed source value equals `CaseApplication.submitted_on`. |
-| Meaning of submission date | `OWNER_PARTIAL` | Evidence does not resolve “submitted” versus “received” business semantics. |
+| Meaning of submission date | `PROVEN` | The pinned workbook places column H under `ĐĂNG KÝ`, labels it `Ngày nộp`, and names it `db_NgayDky_ktra` / `Ngay_nop_HS`; it is not a receipt, decision, inspection or KHKT date. |
+| Canonical submission-date normalization | `OWNER_PARTIAL` | `CaseApplication.submitted_on` is the semantic owner, but legacy midnight versus `DateTime(timezone=True)` conversion has no proven business timezone. |
 | KHKT planning-row dossier identity | `OWNER_BLOCKED` | That route does not select or assign `Rg3`. |
-| Physical `HsDK` / `NgaynopHsDK` bookmarks | `OWNER_BLOCKED` | All four verified templates lack the physical bookmarks; this is separate from record identity. |
+| Physical `HsDK` / `NgaynopHsDK` bookmarks | `VERIFIED_ABSENT` | Original bytes for all four manifest-pinned templates were scanned across document/header/footer story parts; there are no exact or case-variant spans. VBA attempts silently no-op under `On Error Resume Next`. |
 | Modern render owner / renderer readiness | `OWNER_BLOCKED` | Identity proof is necessary but not sufficient for legal output ownership. |
 
-`assess_qdkt_rg3_crosswalk` fails closed for zero/multiple rows, missing or duplicate canonical Cases, zero/multiple/wrong-owner CaseApplications, changed source coordinates/version/hash, Site conflicts, value drift and ambiguous date parsing. `inspect_qdkt_rg3_baseline` recomputes the aggregate contract from committed snapshot and anchor artifacts.
+`assess_qdkt_rg3_crosswalk` fails closed for zero/multiple rows, missing or duplicate canonical Cases, zero/multiple/wrong-owner CaseApplications, changed source coordinates/version/hash, Site conflicts, value drift and ambiguous date parsing. It now distinguishes equal-null projections from required value presence. `inspect_qdkt_rg3_baseline` recomputes the aggregate contract from committed snapshot and anchor artifacts. `assess_qdkt_dossier_bookmark_evidence` composes that result with the source-pinned VBA/date contract and all-part DOTX audit.
 
-The global gate remains **8 `OWNER_BLOCKED`, 6 `OWNER_PARTIAL`, `ready_to_render=False`**. No renderer, owner promotion, API, database, storage or authorization behavior is enabled by this evidence.
+The immutable input-provenance baseline remains **8 `OWNER_BLOCKED`, 6 `OWNER_PARTIAL`**; the separate primary-source overlay closes the date meaning and physical-absence questions without rewriting that raw trace. Global `ready_to_render=False`. No renderer, API, database, storage or authorization behavior is enabled by this evidence.

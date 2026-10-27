@@ -95,7 +95,9 @@ class QdKtRg3CrosswalkResult:
     same_canonical_case: bool = False
     same_application: bool = False
     dossier_value_projection_verified: bool = False
+    dossier_value_present: bool = False
     submitted_value_projection_verified: bool = False
+    submitted_value_present: bool = False
     submitted_business_semantics_verified: bool = False
     modern_owner_verified: bool = False
     owner_promotion_allowed: bool = False
@@ -242,6 +244,7 @@ def assess_qdkt_rg3_crosswalk(
     if legacy_dossier != modern_dossier:
         return _result("DOSSIER_VALUE_CONFLICT", **base)
     base["dossier_value_projection_verified"] = True
+    base["dossier_value_present"] = legacy_dossier is not None
 
     legacy_submitted = parse_dt(row.submitted_raw)
     if row.submitted_raw not in (None, "") and legacy_submitted is None:
@@ -252,6 +255,7 @@ def assess_qdkt_rg3_crosswalk(
     if legacy_submitted != modern_submitted:
         return _result("SUBMISSION_VALUE_CONFLICT", **base)
     base["submitted_value_projection_verified"] = True
+    base["submitted_value_present"] = legacy_submitted is not None
     return _result("IDENTITY_PROVEN_SEMANTICS_PARTIAL", **base)
 
 

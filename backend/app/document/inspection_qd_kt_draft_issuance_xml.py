@@ -33,6 +33,25 @@ def blank_issuance_year_xml(xml: bytes) -> tuple[bytes, str]:
     if len(candidates) != 1:
         raise QdKtIssuanceDateBlocked('ISSUANCE_PARAGRAPH_NOT_UNIQUE')
     nodes, text = candidates[0]
+    # Field instructions, revisions and content controls have distinct Word
+    # display/acceptance semantics. Plain w:t concatenation does not prove
+    # which value Word will display, so never rewrite these candidate dates.
+    paragraph = nodes[0]
+    while paragraph is not None and paragraph.tag != W + 'p':
+        paragraph = paragraph.getparent()
+    unsafe = {
+        W + name for name in (
+            'fldChar', 'fldSimple', 'instrText', 'del', 'delText',
+            'ins', 'moveFrom', 'moveTo', 'sdt',
+        )
+    }
+    if paragraph is None or any(node.tag in unsafe for node in paragraph.iter()):
+        raise QdKtIssuanceDateBlocked('ISSUANCE_DATE_MARKUP_UNPROVEN')
+    # Block-level revisions/content controls can wrap an entire paragraph.
+    # The paragraph itself may contain only innocuous w:t descendants.
+    for ancestor in paragraph.iterancestors():
+        if ancestor.tag in unsafe:
+            raise QdKtIssuanceDateBlocked('ISSUANCE_DATE_MARKUP_UNPROVEN')
     matches = list(ISSUE.finditer(text))
     if len(matches) != 1:
         raise QdKtIssuanceDateBlocked('ISSUANCE_YEAR_NOT_UNIQUE')

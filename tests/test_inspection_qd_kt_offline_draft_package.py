@@ -87,3 +87,26 @@ def test_preserves_word_namespace_prefixes_and_ignorable_declarations():
     assert b'xmlns:w14=' in doc
     assert b'mc:Ignorable="w14"' in doc
     assert b'<ns0:document' not in doc
+
+
+@pytest.mark.parametrize("unsafe", [
+    '<w:ins w:id="1"><w:r><w:t>2026</w:t></w:r></w:ins>',
+    '<w:fldSimple w:instr="DATE"><w:r><w:t>2026</w:t></w:r></w:fldSimple>',
+])
+def test_offline_package_rejects_unreviewed_issuance_field_or_revision(unsafe):
+    source = _source()
+    with ZipFile(BytesIO(source)) as old:
+        modified = old.read("word/document.xml").replace(
+            b'<w:r><w:t>202</w:t></w:r><w:r><w:t>6</w:t></w:r>',
+            unsafe.encode("utf-8"),
+        )
+        memory = BytesIO()
+        with ZipFile(memory, "w") as out:
+            for part in old.infolist():
+                out.writestr(
+                    part,
+                    modified if part.filename == "word/document.xml" else old.read(part.filename),
+                )
+    raw = memory.getvalue()
+    with pytest.raises(QdKtDraftPackageBlocked, match="QDKT_PACKAGE_INVALID"):
+        build_offline_date_only_docx(template=raw, expected_sha256=sha256(raw).hexdigest())

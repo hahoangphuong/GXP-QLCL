@@ -56,3 +56,32 @@ def test_unrelated_bookmark_survives_third_member_removal():
     root = ET.fromstring(result)
     assert [b.get(W + 'name') for b in root.iter(W + 'bookmarkStart')] == ['Preceding']
     assert [b.get(W + 'id') for b in root.iter(W + 'bookmarkEnd')] == ['19']
+
+
+@pytest.mark.parametrize("unsafe", [
+    '<w:ins w:id="8"><w:r><w:t>Tracked member</w:t></w:r></w:ins>',
+    '<w:del w:id="9"><w:r><w:delText>Deleted member</w:delText></w:r></w:del>',
+    '<w:fldSimple w:instr="MERGEFIELD Person"><w:r><w:t>Name</w:t></w:r></w:fldSimple>',
+    '<w:r><w:fldChar w:fldCharType="begin"/></w:r>',
+    '<w:sdt><w:sdtContent><w:r><w:t>Controlled member</w:t></w:r></w:sdtContent></w:sdt>',
+])
+def test_third_member_removal_refuses_unresolved_word_markup(unsafe):
+    source = _xml()
+    source = source.replace(
+        b'<w:r><w:t>TT3 - ',
+        unsafe.encode('utf-8') + b'<w:r><w:t>TT3 - ',
+        1,
+    )
+    with pytest.raises(QdKtThirdMemberSpanBlocked, match='QDKT_TT3DEL_MARKUP_UNPROVEN'):
+        remove_third_member_span_xml(source)
+
+
+def test_revision_outside_target_paragraph_is_preserved():
+    source = _xml().replace(
+        b'<w:p><w:r><w:t>TT2</w:t></w:r></w:p>',
+        b'<w:p><w:ins w:id="11"><w:r><w:t>TT2</w:t></w:r></w:ins></w:p>',
+    )
+    result = remove_third_member_span_xml(source)
+    root = ET.fromstring(result)
+    assert len(list(root.iter(W+'ins'))) == 1
+    assert 'TT2' in result.decode('utf-8')

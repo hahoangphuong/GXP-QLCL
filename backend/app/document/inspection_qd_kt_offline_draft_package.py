@@ -33,9 +33,10 @@ def build_offline_date_only_docx(*, template: bytes, expected_sha256: str) -> by
         raise QdKtDraftPackageBlocked("QDKT_TEMPLATE_CHECKSUM_MISMATCH")
     try:
         with ZipFile(BytesIO(template)) as source:
-            members = require_safe_ooxml_members(source)
+            members = source.infolist()
             if len({part.filename for part in members}) != len(members):
                 raise QdKtDraftPackageBlocked("QDKT_PACKAGE_DUPLICATE_PART")
+            members = require_safe_ooxml_members(source)
             if "word/document.xml" not in source.namelist() or "[Content_Types].xml" not in source.namelist():
                 raise QdKtDraftPackageBlocked("QDKT_PACKAGE_PART_MISSING")
             types_root = ET.fromstring(source.read("[Content_Types].xml"))

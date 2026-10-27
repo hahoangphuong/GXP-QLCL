@@ -1,0 +1,203 @@
+{
+  "schema_version": "inspection-qd-kt-dossier-bookmark-source-evidence/v1",
+  "evidence_origin": "PRIMARY_LEGACY_BINARY_AND_VBA_AUDIT",
+  "sources": {
+    "workbook": {
+      "filename": "Danh sách Kiểm tra GPs.xlsb",
+      "sha256": "c12537ea5a5c9f470e42fb5bdbe214f36983e310fceac7c560ad38885209fe3d",
+      "byte_size": 3284315,
+      "sheet": "db.ktra",
+      "named_range": "db_ktra",
+      "named_range_address": "$A$5:$CV$1549"
+    },
+    "vba_archive": {
+      "filename": "GXP-VBA code.zip",
+      "sha256": "6227fb0a6b3d74fa0f4cc655b94b021a40d65a508c2f2eefc62f1724c7b89ff7"
+    }
+  },
+  "workbook_column_contract": {
+    "group_header_row": 3,
+    "group_start_column": 8,
+    "group_label": "ĐĂNG KÝ",
+    "field_header_row": 4,
+    "submission_column": 8,
+    "submission_header": "Ngày nộp",
+    "submission_named_ranges": [
+      "db_NgayDky_ktra",
+      "Ngay_nop_HS"
+    ],
+    "dossier_code_column": 9,
+    "dossier_code_header": "Mã hồ sơ"
+  },
+  "runtime_assignment_contract": {
+    "module": "RecordForm.frm",
+    "selected_row_assignment_line": 334,
+    "value_assignment_line": 343,
+    "dossier_code_expression": "Rg3.Cells(1, ColDB_HSDK_Ktra + 1).Value",
+    "submission_date_expression": "Rg3.Cells(1, ColDB_HSDK_Ktra).Value",
+    "writer_procedure": "Tao_QDKT_KHKT_BBKT",
+    "dossier_write_line": 748,
+    "submission_write_line": 749,
+    "dossier_bookmark": "HsDK",
+    "submission_bookmark": "NgaynopHsDK",
+    "submission_display_transform": "Replace('-', '/')",
+    "replace_bookmark_procedure_lines": "589-603",
+    "missing_bookmark_behavior": "SILENT_NO_OP_ON_ERROR_RESUME_NEXT"
+  },
+  "date_semantics": {
+    "classification": "VERIFIED",
+    "business_meaning": "DOSSIER_SUBMISSION_DATE",
+    "receipt_date_equivalence": false,
+    "decision_date_equivalence": false,
+    "inspection_date_equivalence": false,
+    "khkt_planning_date_equivalence": false,
+    "canonical_candidate": "CaseApplication.submitted_on",
+    "canonical_mapping_confidence": "PARTIAL",
+    "canonical_timezone_rule": "PARTIAL_UNPROVEN_BUSINESS_TIMEZONE",
+    "legacy_display_normalization": "Replace('-', '/')"
+  },
+  "dossier_code_semantics": {
+    "classification": "VERIFIED",
+    "business_meaning": "DOSSIER_CODE",
+    "canonical_candidate": "CaseApplication.dossier_code",
+    "canonical_mapping_confidence": "VERIFIED"
+  },
+  "templates": [
+    {
+      "gxp_type": "GLP",
+      "filename": "2. QD KT - GLP.dotx",
+      "sha256": "c55695dbdaafa48f0b2a4211a8adda7b97443a44439d9a81de306ce98729ec19",
+      "byte_size": 25900,
+      "scanned_word_parts": [
+        "word/document.xml",
+        "word/header1.xml"
+      ],
+      "bookmark_count": 22,
+      "nested_pair_count": 11,
+      "overlapping_pair_count": 5,
+      "dossier_plain_text_paragraph_count": 1,
+      "targets": {
+        "HsDK": {
+          "status": "VERIFIED_ABSENT",
+          "exact_case_match_count": 0,
+          "case_variant_count": 0,
+          "xml_location": null,
+          "enclosing_paragraph": null,
+          "field_code_context": null,
+          "span_structure": null
+        },
+        "NgaynopHsDK": {
+          "status": "VERIFIED_ABSENT",
+          "exact_case_match_count": 0,
+          "case_variant_count": 0,
+          "xml_location": null,
+          "enclosing_paragraph": null,
+          "field_code_context": null,
+          "span_structure": null
+        }
+      }
+    },
+    {
+      "gxp_type": "GMP",
+      "filename": "2. QD KT - GMP.dotx",
+      "sha256": "490d534580ce00844b6175e64ca4e2fdc345d7957be8813f0f62d03a9b82c1a5",
+      "byte_size": 25878,
+      "scanned_word_parts": [
+        "word/document.xml",
+        "word/header1.xml"
+      ],
+      "bookmark_count": 22,
+      "nested_pair_count": 11,
+      "overlapping_pair_count": 5,
+      "dossier_plain_text_paragraph_count": 1,
+      "targets": {
+        "HsDK": {
+          "status": "VERIFIED_ABSENT",
+          "exact_case_match_count": 0,
+          "case_variant_count": 0,
+          "xml_location": null,
+          "enclosing_paragraph": null,
+          "field_code_context": null,
+          "span_structure": null
+        },
+        "NgaynopHsDK": {
+          "status": "VERIFIED_ABSENT",
+          "exact_case_match_count": 0,
+          "case_variant_count": 0,
+          "xml_location": null,
+          "enclosing_paragraph": null,
+          "field_code_context": null,
+          "span_structure": null
+        }
+      }
+    },
+    {
+      "gxp_type": "GMPbb",
+      "filename": "2. QD KT - GMPbb.dotx",
+      "sha256": "fec4dc35ac5fbb2f2ef6b56750fe6dcf5316dafc0898395279d9ff281b2ca771",
+      "byte_size": 23165,
+      "scanned_word_parts": [
+        "word/document.xml"
+      ],
+      "bookmark_count": 14,
+      "nested_pair_count": 4,
+      "overlapping_pair_count": 3,
+      "dossier_plain_text_paragraph_count": 1,
+      "targets": {
+        "HsDK": {
+          "status": "VERIFIED_ABSENT",
+          "exact_case_match_count": 0,
+          "case_variant_count": 0,
+          "xml_location": null,
+          "enclosing_paragraph": null,
+          "field_code_context": null,
+          "span_structure": null
+        },
+        "NgaynopHsDK": {
+          "status": "VERIFIED_ABSENT",
+          "exact_case_match_count": 0,
+          "case_variant_count": 0,
+          "xml_location": null,
+          "enclosing_paragraph": null,
+          "field_code_context": null,
+          "span_structure": null
+        }
+      }
+    },
+    {
+      "gxp_type": "GSP",
+      "filename": "2. QD KT - GSP.dotx",
+      "sha256": "890df5e2345e2927b286f4a3adb107a984825eff21e998ae253020ecac46eea1",
+      "byte_size": 29099,
+      "scanned_word_parts": [
+        "word/document.xml"
+      ],
+      "bookmark_count": 11,
+      "nested_pair_count": 3,
+      "overlapping_pair_count": 2,
+      "dossier_plain_text_paragraph_count": 1,
+      "targets": {
+        "HsDK": {
+          "status": "VERIFIED_ABSENT",
+          "exact_case_match_count": 0,
+          "case_variant_count": 0,
+          "xml_location": null,
+          "enclosing_paragraph": null,
+          "field_code_context": null,
+          "span_structure": null
+        },
+        "NgaynopHsDK": {
+          "status": "VERIFIED_ABSENT",
+          "exact_case_match_count": 0,
+          "case_variant_count": 0,
+          "xml_location": null,
+          "enclosing_paragraph": null,
+          "field_code_context": null,
+          "span_structure": null
+        }
+      }
+    }
+  ],
+  "contains_raw_business_values": false,
+  "ready_to_render": false
+}

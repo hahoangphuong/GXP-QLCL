@@ -49,3 +49,32 @@ def test_clear_split_year_without_touching_other_paragraphs(parts, year):
 def test_unproven_date_fails_closed(source, blocked):
     with pytest.raises(QdKtIssuanceDateBlocked, match=blocked):
         blank_issuance_year_xml(source)
+
+
+@pytest.mark.parametrize("markup", [
+    '<w:ins w:id="1"><w:r><w:t>2026</w:t></w:r></w:ins>',
+    '<w:del w:id="2"><w:r><w:delText>2024</w:delText></w:r></w:del>'
+    '<w:r><w:t>2026</w:t></w:r>',
+    '<w:fldSimple w:instr="DATE"><w:r><w:t>2026</w:t></w:r></w:fldSimple>',
+    '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:t>2026</w:t></w:r>'
+    '<w:r><w:fldChar w:fldCharType="end"/></w:r>',
+    '<w:sdt><w:sdtContent><w:r><w:t>2026</w:t></w:r></w:sdtContent></w:sdt>',
+    '<w:moveTo w:id="3"><w:r><w:t>2026</w:t></w:r></w:moveTo>',
+])
+def test_refuses_issuance_date_with_word_revision_or_field_markup(markup):
+    xml = _xml('', other='')
+    xml = xml.replace(
+        b'</w:p>', markup.encode('utf-8') + b'</w:p>', 1,
+    )
+    with pytest.raises(QdKtIssuanceDateBlocked, match='ISSUANCE_DATE_MARKUP_UNPROVEN'):
+        blank_issuance_year_xml(xml)
+
+
+def test_unrelated_field_or_revision_paragraph_is_not_rewritten():
+    unrelated = (
+        '<w:p><w:ins w:id="4"><w:r><w:t>Unrelated evidence</w:t></w:r></w:ins></w:p>'
+    )
+    output, year = blank_issuance_year_xml(_xml('2026', other=unrelated))
+    assert year == '2026'
+    assert 'Unrelated evidence' in output.decode('utf-8')
+    assert 'w:ins' in output.decode('utf-8')

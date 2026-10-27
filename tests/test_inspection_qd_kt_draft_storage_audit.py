@@ -293,3 +293,51 @@ def test_db_binding_rejects_control_characters_before_storage_read(unsafe_path):
 
     with pytest.raises(QdKtDraftStorageAuditBlocked, match="OWNER_MISMATCH"):
         resolve_qdkt_draft_storage_locator(Session(), provenance=provenance)
+
+
+@pytest.mark.parametrize("stage", ["open", "read", "close"])
+@pytest.mark.parametrize("error_type", [OSError, RuntimeError, EOFError, ConnectionError, TimeoutError])
+def test_storage_adapter_lifecycle_failures_are_blocked(stage, error_type):
+    data, source, locator = fixture()
+
+    class BrokenStorage(FakeStorage):
+        @contextmanager
+        def read_stream(self, path, *, root):
+            self.calls.append((path, root))
+            if stage == "open":
+                raise error_type("adapter interrupted")
+            class Stream:
+                def read(self, n):
+                    if stage == "read":
+                        raise error_type("adapter interrupted")
+                    if not hasattr(self, "seen"):
+                        self.seen = True
+                        return data
+                    return b""
+            try:
+                yield Stream()
+            finally:
+                if stage == "close":
+                    raise error_type("adapter interrupted")
+
+    storage = BrokenStorage(data)
+    with pytest.raises(QdKtDraftStorageAuditBlocked, match="READ_FAILED") as caught:
+        audit_qdkt_draft_storage_binary(storage, provenance=source, locator=locator)
+    assert isinstance(caught.value.__cause__, error_type)
+    assert storage.calls == [(locator.storage_relative_path, "inspection")]
+
+
+def test_storage_adapter_programming_error_not_swallowed():
+    data, source, locator = fixture()
+
+    class BrokenStorage(FakeStorage):
+        @contextmanager
+        def read_stream(self, path, *, root):
+            self.calls.append((path, root))
+            raise TypeError("incorrect storage adapter API")
+            yield  # pragma: no cover
+
+    with pytest.raises(TypeError, match="incorrect storage adapter API"):
+        audit_qdkt_draft_storage_binary(
+            BrokenStorage(data), provenance=source, locator=locator,
+        )

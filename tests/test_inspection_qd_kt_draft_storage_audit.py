@@ -191,7 +191,7 @@ def test_internal_case_entrypoint_orders_all_gates_before_storage(monkeypatch):
     evidence = audit_case_qdkt_draft_binary_readonly(
         session, storage, case_id="case-1", snapshot=snapshot,
     )
-    assert calls == ["source", "binding", "source", "binding"]
+    assert calls == ["source", "binding", "source", "binding", "source", "binding"]
     assert storage.calls == [(locator.storage_relative_path, "inspection")] * 2
     assert evidence.actual_docx_bytes_verified
     assert not evidence.ready_to_render
@@ -434,7 +434,7 @@ def test_internal_audit_rechecks_unchanged_source_after_storage(monkeypatch):
         SimpleNamespace(no_autoflush=nullcontext()), FakeStorage(data),
         case_id="case-1", snapshot=snapshot,
     )
-    assert calls == ["source", "locator", "source", "locator"]
+    assert calls == ["source", "locator", "source", "locator", "source", "locator"]
     assert evidence.actual_docx_bytes_verified
     assert not evidence.ready_to_render
 
@@ -497,4 +497,42 @@ def test_internal_case_audit_detects_in_place_storage_replacement(monkeypatch):
             SimpleNamespace(no_autoflush=nullcontext()), storage,
             case_id="case-1", snapshot=snapshot,
         )
+    assert storage.calls == [(locator.storage_relative_path, "inspection")] * 2
+
+
+@pytest.mark.parametrize("drift", ["provenance", "locator"])
+def test_internal_case_audit_blocks_drift_during_second_storage_read(monkeypatch, drift):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from backend.app.document.inspection_qd_kt_draft_storage_audit import (
+        audit_case_qdkt_draft_binary_readonly,
+    )
+    from backend.app.document.inspection_qd_kt_team_snapshot_review import (
+        DraftTeamSnapshot, TeamMemberAtDraft,
+    )
+    import backend.app.document.inspection_qd_kt_draft_storage_audit as module
+
+    data, source, locator = fixture()
+    calls = []
+    def source_reader(session, *, case_id, snapshot):
+        calls.append("source")
+        if drift == "provenance" and calls.count("source") == 3:
+            return replace(source, draft_id="changed-during-second-read")
+        return source
+    def locator_reader(session, *, provenance):
+        calls.append("locator")
+        if drift == "locator" and calls.count("locator") == 3:
+            return replace(locator, storage_relative_path="case-1/qdkt/moved.docx")
+        return locator
+    monkeypatch.setattr(module, "read_qdkt_draft_provenance", source_reader)
+    monkeypatch.setattr(module, "resolve_qdkt_draft_storage_locator", locator_reader)
+    snapshot = DraftTeamSnapshot("case-1", "draft-1", "version-1", "team-1", 2,
+        (TeamMemberAtDraft("member-1", "Inspector", "LEADER", "Unverified"),))
+    storage = FakeStorage(data)
+    with pytest.raises(QdKtDraftStorageAuditBlocked, match="SOURCE_CHANGED"):
+        audit_case_qdkt_draft_binary_readonly(
+            SimpleNamespace(no_autoflush=nullcontext()), storage,
+            case_id="case-1", snapshot=snapshot,
+        )
+    assert calls == ["source", "locator"] * 3
     assert storage.calls == [(locator.storage_relative_path, "inspection")] * 2

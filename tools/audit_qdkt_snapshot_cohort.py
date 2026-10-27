@@ -153,20 +153,28 @@ def write_private_report_pair(
         output=aggregate_output, report=aggregate_report,
         inputs=(*inputs, exceptions_output),
     )
-    first = aggregate_output.lstat()
+    # Keep the original inode referenced throughout the second write. Without
+    # an open handle, rapid unlink/replacement may reuse the same inode number.
+    descriptor = os.open(
+        aggregate_output, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+    )
     try:
-        write_private_report(
-            output=exceptions_output, report=exceptions_report,
-            inputs=(*inputs, aggregate_output),
-        )
-    except BaseException:
+        original = os.fstat(descriptor)
         try:
-            current = aggregate_output.lstat()
-            if (current.st_dev, current.st_ino) == (first.st_dev, first.st_ino):
-                aggregate_output.unlink()
-        except FileNotFoundError:
-            pass
-        raise
+            write_private_report(
+                output=exceptions_output, report=exceptions_report,
+                inputs=(*inputs, aggregate_output),
+            )
+        except BaseException:
+            try:
+                current = aggregate_output.lstat()
+                if (current.st_dev, current.st_ino) == (original.st_dev, original.st_ino):
+                    aggregate_output.unlink()
+            except FileNotFoundError:
+                pass
+            raise
+    finally:
+        os.close(descriptor)
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -192,7 +192,7 @@ def test_internal_case_entrypoint_orders_all_gates_before_storage(monkeypatch):
         session, storage, case_id="case-1", snapshot=snapshot,
     )
     assert calls == ["source", "binding", "source", "binding"]
-    assert storage.calls == [(locator.storage_relative_path, "inspection")]
+    assert storage.calls == [(locator.storage_relative_path, "inspection")] * 2
     assert evidence.actual_docx_bytes_verified
     assert not evidence.ready_to_render
     calls.clear()

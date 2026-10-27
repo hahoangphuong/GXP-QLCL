@@ -199,3 +199,60 @@ def test_internal_case_entrypoint_orders_all_gates_before_storage(monkeypatch):
             session, storage, case_id="other-case", snapshot=snapshot,
         )
     assert calls == [] and storage.calls == []
+
+
+@pytest.mark.parametrize("invalid", [None, "", "text", bytearray(b"x"), 0])
+def test_storage_stream_rejects_nonbyte_chunks_including_falsy_eof(invalid):
+    data, source, locator = fixture()
+
+    class MalformedStorage(FakeStorage):
+        @contextmanager
+        def read_stream(self, path, *, root):
+            self.calls.append((path, root))
+            class BrokenStream:
+                def read(self, n):
+                    return invalid
+            yield BrokenStream()
+
+    storage = MalformedStorage(data)
+    with pytest.raises(QdKtDraftStorageAuditBlocked, match="STREAM_TYPE_INVALID"):
+        audit_qdkt_draft_storage_binary(storage, provenance=source, locator=locator)
+    assert storage.calls == [(locator.storage_relative_path, "inspection")]
+
+
+def test_storage_stream_rejects_single_oversized_adapter_chunk():
+    data, source, locator = fixture()
+
+    class OverreadStorage(FakeStorage):
+        @contextmanager
+        def read_stream(self, path, *, root):
+            class OverreadingStream:
+                def read(self, n):
+                    return b"x" * (n + 1)
+            yield OverreadingStream()
+
+    with pytest.raises(QdKtDraftStorageAuditBlocked, match="CHUNK_SIZE_UNSAFE"):
+        audit_qdkt_draft_storage_binary(
+            OverreadStorage(data), provenance=source, locator=locator,
+        )
+
+
+def test_storage_stream_accepts_fragmented_binary_reads():
+    data, source, locator = fixture()
+
+    class FragmentedStorage(FakeStorage):
+        @contextmanager
+        def read_stream(self, path, *, root):
+            self.calls.append((path, root))
+            class FragmentedStream:
+                offset = 0
+                def read(self, n):
+                    chunk = data[self.offset:self.offset + 7]
+                    self.offset += len(chunk)
+                    return chunk
+            yield FragmentedStream()
+
+    storage = FragmentedStorage(data)
+    evidence = audit_qdkt_draft_storage_binary(storage, provenance=source, locator=locator)
+    assert evidence.verified_sha256 == sha256(data).hexdigest()
+    assert not evidence.ready_to_render

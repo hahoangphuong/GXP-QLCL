@@ -47,6 +47,11 @@ def blank_issuance_year_xml(xml: bytes) -> tuple[bytes, str]:
     }
     if paragraph is None or any(node.tag in unsafe for node in paragraph.iter()):
         raise QdKtIssuanceDateBlocked('ISSUANCE_DATE_MARKUP_UNPROVEN')
+    # Block-level revisions/content controls can wrap an entire paragraph.
+    # The paragraph itself may contain only innocuous w:t descendants.
+    for ancestor in paragraph.iterancestors():
+        if ancestor.tag in unsafe:
+            raise QdKtIssuanceDateBlocked('ISSUANCE_DATE_MARKUP_UNPROVEN')
     matches = list(ISSUE.finditer(text))
     if len(matches) != 1:
         raise QdKtIssuanceDateBlocked('ISSUANCE_YEAR_NOT_UNIQUE')

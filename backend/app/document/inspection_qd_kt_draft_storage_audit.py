@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from io import BytesIO
+from re import fullmatch
 from unicodedata import category, normalize
 from sqlalchemy import select
 from backend.app.db.models.phase1 import Document, DocumentVariant, DocumentVersion, StorageBinding
@@ -107,7 +108,9 @@ def resolve_qdkt_draft_storage_locator(
         or version.document_variant_id != variant.id
         or version.storage_binding_id != binding.id
         or binding.case_id != provenance.case_id
-        or version.checksum_sha256 != provenance.stored_checksum_sha256
+        or not isinstance(version.checksum_sha256, str)
+        or fullmatch(r"[0-9a-fA-F]{64}", version.checksum_sha256) is None
+        or version.checksum_sha256.lower() != provenance.stored_checksum_sha256
         or version.storage_root != "inspection"
         or not isinstance(path, str)
         or not isinstance(folder, str)

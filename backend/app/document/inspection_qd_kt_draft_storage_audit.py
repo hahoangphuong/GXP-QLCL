@@ -14,7 +14,7 @@ from backend.app.db.models.phase1 import Document, DocumentVariant, DocumentVers
 from backend.app.document.inspection_qd_kt_draft_binary_evidence import (
     QdKtDraftBinaryEvidence, verify_supplied_qdkt_draft_docx,
 )
-from backend.app.document.inspection_qd_kt_draft_provenance import QdKtDraftProvenance
+from backend.app.document.inspection_qd_kt_draft_provenance import (\n    QdKtDraftProvenance, read_qdkt_draft_provenance,\n)\nfrom backend.app.document.inspection_qd_kt_team_snapshot_review import DraftTeamSnapshot
 from backend.app.storage.types import StorageServiceProtocol
 
 MAX_BINARY_BYTES = 32 * 1024 * 1024
@@ -99,7 +99,7 @@ def resolve_qdkt_draft_storage_locator(
         or version.storage_root != "inspection"
         or not isinstance(path, str)
         or not isinstance(folder, str)
-        or not folder or not path.startswith(folder.rstrip("/") + "/")
+        or not folder\n        or not _safe_inspection_relative_path(folder)\n        or not _safe_inspection_relative_path(path)\n        or not path.startswith(folder + "/")
     ):
         raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_OWNER_MISMATCH")
     locator = QdKtExactDraftLocator(
@@ -109,10 +109,41 @@ def resolve_qdkt_draft_storage_locator(
         storage_relative_path=path,
         storage_binding_owner_verified=True,
     )
-    # Reuse precise syntactic path requirements before any StorageService call.
-    if (
-        "\\" in path or path.startswith("/") or ":" in path
-        or any(piece in ("", ".", "..") for piece in path.split("/"))
-    ):
-        raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_LOCATOR_UNPROVEN")
     return locator
+
+
+def _safe_inspection_relative_path(value: str) -> bool:
+    return (
+        isinstance(value, str) and bool(value)
+        and "\\" not in value and not value.startswith("/")
+        and ":" not in value
+        and all(part not in ("", ".", "..") for part in value.split("/"))
+    )
+
+
+def audit_case_qdkt_draft_binary_readonly(
+    session, storage: StorageServiceProtocol, *, case_id: str,
+    snapshot: DraftTeamSnapshot,
+) -> QdKtDraftBinaryEvidence:
+    """Trusted internal entrypoint: Case/snapshot/DB-binding/bytes in one flow.
+
+    This is not an authentication or permission boundary. Only an already
+    authorized service may call it; no public endpoint or implicit permission.
+    """
+    if (
+        not isinstance(case_id, str) or not case_id.strip()
+        or not isinstance(snapshot, DraftTeamSnapshot)
+        or snapshot.case_id != case_id
+    ):
+        raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_CASE_MISMATCH")
+    with session.no_autoflush:
+        provenance = read_qdkt_draft_provenance(
+            session, case_id=case_id, snapshot=snapshot,
+        )
+        locator = resolve_qdkt_draft_storage_locator(
+            session, provenance=provenance,
+        )
+        # A read-only stream cannot authorize generation or approval.
+        return audit_qdkt_draft_storage_binary(
+            storage, provenance=provenance, locator=locator,
+        )

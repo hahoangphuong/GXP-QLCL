@@ -78,3 +78,18 @@ def test_unrelated_field_or_revision_paragraph_is_not_rewritten():
     assert year == '2026'
     assert 'Unrelated evidence' in output.decode('utf-8')
     assert 'w:ins' in output.decode('utf-8')
+
+
+@pytest.mark.parametrize("wrapper", [
+    '<w:ins w:id="7">{paragraph}</w:ins>',
+    '<w:sdt><w:sdtContent>{paragraph}</w:sdtContent></w:sdt>',
+    '<w:moveFrom w:id="8">{paragraph}</w:moveFrom>',
+])
+def test_refuses_outer_word_revision_or_content_control(wrapper):
+    source = _xml('2026')
+    start = source.index(b'<w:p>')
+    end = source.index(b'</w:p>', start) + len(b'</w:p>')
+    paragraph = source[start:end].decode('utf-8')
+    modified = source[:start] + wrapper.replace('{paragraph}', paragraph).encode('utf-8') + source[end:]
+    with pytest.raises(QdKtIssuanceDateBlocked, match='ISSUANCE_DATE_MARKUP_UNPROVEN'):
+        blank_issuance_year_xml(modified)

@@ -78,8 +78,8 @@ def test_qdkt_readiness_authorized_still_explicitly_blocked(monkeypatch):
 
     calls = []
 
-    def inspect(session, *, case_id):
-        calls.append((session, case_id))
+    def inspect(session, *, case_id, purpose):
+        calls.append((session, case_id, purpose))
         return SimpleNamespace(
             case_id=case_id,
             decision_source_id="decision-id",
@@ -96,4 +96,41 @@ def test_qdkt_readiness_authorized_still_explicitly_blocked(monkeypatch):
     assert response.family_code == "INSPECTION_QD_KT"
     assert response.ready_to_render is False
     assert response.blocked_reasons == ["BLANK_ISSUANCE_DATE_BOOKMARK_UNVERIFIED"]
-    assert calls == [(session, "case-id")]
+    assert calls == [(session, "case-id", "EXISTING_APPROVED_DECISION_REFERENCE")]
+
+
+def test_explicit_draft_purpose_keeps_readonly_gate_and_never_claims_ready(monkeypatch):
+    from types import SimpleNamespace
+    from backend.app.auth import build_authenticated_user
+    import backend.app.api.routers.document as document_router
+
+    purposes = []
+
+    def inspect(session, *, case_id, purpose):
+        purposes.append(purpose)
+        return SimpleNamespace(
+            case_id=case_id, decision_source_id=None,
+            registered_site_id="site-1",
+            blockers=("QDKT_TYPED_RENDER_CONTRACT_MISSING",),
+        )
+
+    monkeypatch.setattr(document_router, "inspect_qdkt_case_readiness", inspect)
+    response = _qdkt_endpoint()(
+        case_id="case-1", purpose="DRAFT_QDKT", session=object(),
+        user=build_authenticated_user("writer", permissions={"document.write"}),
+    )
+    assert purposes == ["DRAFT_QDKT"]
+    assert response.decision_source_id is None
+    assert response.ready_to_render is False
+    assert response.blocked_reasons == ["QDKT_TYPED_RENDER_CONTRACT_MISSING"]
+
+
+def test_qdkt_readiness_purpose_is_openapi_limited_to_two_modes():
+    from typing import get_type_hints, get_args, Literal
+    import inspect
+
+    endpoint = _qdkt_endpoint()
+    parameters = inspect.signature(endpoint).parameters
+    assert parameters["purpose"].default == "EXISTING_APPROVED_DECISION_REFERENCE"
+    allowed = set(get_args(get_type_hints(endpoint)["purpose"]))
+    assert allowed == {"DRAFT_QDKT", "EXISTING_APPROVED_DECISION_REFERENCE"}

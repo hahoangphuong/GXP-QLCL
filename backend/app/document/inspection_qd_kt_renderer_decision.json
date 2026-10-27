@@ -1,0 +1,14 @@
+{
+  "schema_version": "qdkt-dossier-renderer-decision/v1",
+  "decision": "UNDECIDED",
+  "submission_date_rule": "UNDECIDED",
+  "date_display_format": "UNDECIDED",
+  "approval_record_ids": [],
+  "ready_to_render": false,
+  "templates": [
+    {"gxp_type": "GLP", "source_sha256": "c55695dbdaafa48f0b2a4211a8adda7b97443a44439d9a81de306ce98729ec19", "candidate_version": null, "candidate_sha256": null, "placements": []},
+    {"gxp_type": "GMP", "source_sha256": "490d534580ce00844b6175e64ca4e2fdc345d7957be8813f0f62d03a9b82c1a5", "candidate_version": null, "candidate_sha256": null, "placements": []},
+    {"gxp_type": "GMPbb", "source_sha256": "fec4dc35ac5fbb2f2ef6b56750fe6dcf5316dafc0898395279d9ff281b2ca771", "candidate_version": null, "candidate_sha256": null, "placements": []},
+    {"gxp_type": "GSP", "source_sha256": "890df5e2345e2927b286f4a3adb107a984825eff21e998ae253020ecac46eea1", "candidate_version": null, "candidate_sha256": null, "placements": []}
+  ]
+}

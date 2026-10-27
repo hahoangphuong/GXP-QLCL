@@ -1,8 +1,8 @@
 """Bounded read-only QĐKT draft binary audit through the existing StorageService.
 
-The caller must supply a separately authorized exact locator. This function
-does not discover file paths, verify a StorageBinding owner, issue documents,
-or write to storage. It never treats a checksum alone as Word visual UAT.
+The low-level stream verifier requires a pinned exact locator. The internal
+entrypoint resolves its StorageBinding ownership from the database, but does
+not authenticate callers, issue documents, or write to storage. It never treats a checksum alone as Word visual UAT.
 """
 from __future__ import annotations
 
@@ -61,9 +61,16 @@ def audit_qdkt_draft_storage_binary(
             payload = BytesIO()
             while True:
                 chunk = stream.read(1024 * 1024)
-                if not chunk:
+                # Only a genuine byte EOF is acceptable. A broken storage
+                # adapter returning None, text or other falsy objects must not
+                # be mistaken for a complete, verified stream.
+                if not isinstance(chunk, bytes):
+                    raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_STREAM_TYPE_INVALID")
+                if chunk == b"":
                     break
-                if not isinstance(chunk, bytes) or payload.tell() + len(chunk) > MAX_BINARY_BYTES:
+                if len(chunk) > 1024 * 1024:
+                    raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_CHUNK_SIZE_UNSAFE")
+                if payload.tell() + len(chunk) > MAX_BINARY_BYTES:
                     raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_BINARY_SIZE_UNSAFE")
                 payload.write(chunk)
     except (OSError, RuntimeError) as exc:

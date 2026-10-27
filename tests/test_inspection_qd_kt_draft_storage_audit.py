@@ -92,3 +92,49 @@ def test_binary_size_limit_stops_stream():
     storage = FakeStorage(b"x" * (32 * 1024 * 1024 + 1))
     with pytest.raises(QdKtDraftStorageAuditBlocked, match="SIZE_UNSAFE"):
         audit_qdkt_draft_storage_binary(storage, provenance=source, locator=locator)
+
+
+def test_db_resolved_locator_proves_document_version_and_binding_ownership():
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from backend.app.document.inspection_qd_kt_draft_storage_audit import (
+        resolve_qdkt_draft_storage_locator,
+    )
+    data, provenance, _ = fixture()
+
+    class Session:
+        no_autoflush = nullcontext()
+        def __init__(self, rows):
+            self.rows = rows
+        def execute(self, statement):
+            return self
+        def all(self):
+            return self.rows
+
+    version = SimpleNamespace(
+        id="version-1", document_variant_id="variant-1",
+        storage_binding_id="binding-1", storage_root="inspection",
+        storage_relative_path="case-1/qdkt/draft.docx",
+        checksum_sha256=sha256(data).hexdigest(),
+    )
+    variant = SimpleNamespace(id="variant-1", document_id="document-1")
+    doc = SimpleNamespace(id="document-1", case_id="case-1", family_code="INSPECTION_QD_KT")
+    binding = SimpleNamespace(id="binding-1", case_id="case-1", relative_path="case-1")
+    result = resolve_qdkt_draft_storage_locator(
+        Session([(version, variant, doc, binding)]), provenance=provenance,
+    )
+    assert result.storage_binding_owner_verified
+    assert result.storage_relative_path == "case-1/qdkt/draft.docx"
+    for changed in (
+        ("case_id", "other-case", binding),
+        ("relative_path", "wrong-folder", binding),
+    ):
+        key, value, _ = changed
+        bad_binding = SimpleNamespace(**vars(binding))
+        setattr(bad_binding, key, value)
+        with pytest.raises(QdKtDraftStorageAuditBlocked, match="OWNER_MISMATCH"):
+            resolve_qdkt_draft_storage_locator(
+                Session([(version, variant, doc, bad_binding)]), provenance=provenance,
+            )
+    with pytest.raises(QdKtDraftStorageAuditBlocked, match="NOT_UNIQUE"):
+        resolve_qdkt_draft_storage_locator(Session([]), provenance=provenance)

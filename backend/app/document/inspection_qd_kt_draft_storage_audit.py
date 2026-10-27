@@ -136,9 +136,26 @@ def _safe_inspection_relative_path(value: str) -> bool:
         # overrides) and non-canonical Unicode aliases before adapter access.
         and normalize("NFC", value) == value
         and not any(category(char) in ("Cc", "Cf", "Cs") for char in value)
-        and all(part not in ("", ".", "..") for part in value.split("/"))
+        and all(_safe_storage_component(part) for part in value.split("/"))
     )
 
+
+
+# SMB/Windows clients may interpret trailing dots/spaces and DOS device names
+# as aliases rather than distinct objects. Refuse them for audit locators.
+_WINDOWS_DEVICE_NAMES = frozenset(
+    ("CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$")
+    + tuple(f"COM{i}" for i in range(1, 10))
+    + tuple(f"LPT{i}" for i in range(1, 10))
+)
+
+
+def _safe_storage_component(part: str) -> bool:
+    return (
+        part not in ("", ".", "..")
+        and not part.endswith((" ", "."))
+        and part.split(".", 1)[0].upper() not in _WINDOWS_DEVICE_NAMES
+    )
 
 def audit_case_qdkt_draft_binary_readonly(
     session, storage: StorageServiceProtocol, *, case_id: str,

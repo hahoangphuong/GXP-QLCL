@@ -38,6 +38,17 @@ def remove_third_member_span_xml(xml: bytes) -> bytes:
     index, para, starts = spans[0]
     if para.tag != W + "p" or len(starts) != 1:
         raise QdKtThirdMemberSpanBlocked("QDKT_TT3DEL_NOT_PARAGRAPH")
+    # A tracked insertion/deletion, content control or live Word field makes
+    # the paragraph's visible meaning dependent on Word's revision/field state.
+    # Deleting such a paragraph by bookmark coordinates would not be proven.
+    unsafe = {
+        W + name for name in (
+            "ins", "del", "delText", "moveFrom", "moveTo",
+            "fldSimple", "fldChar", "instrText", "sdt",
+        )
+    }
+    if any(node.tag in unsafe for node in para.iter()):
+        raise QdKtThirdMemberSpanBlocked("QDKT_TT3DEL_MARKUP_UNPROVEN")
     identifier = starts[0].get(W + "id")
     names = [b.get(W + "name") for b in para.iter(W + "bookmarkStart")]
     if not identifier or not {"TT3Del", "TT3x", "TT_ext"}.issubset(names):

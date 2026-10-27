@@ -123,9 +123,24 @@ def test_exact_rg3_row_case_application_and_site_identity_is_proven_without_owne
     assert result.same_canonical_case is True
     assert result.same_application is True
     assert result.dossier_value_projection_verified is True
+    assert result.dossier_value_present is True
     assert result.submitted_value_projection_verified is True
+    assert result.submitted_value_present is True
     assert result.submitted_business_semantics_verified is False
     assert result.modern_owner_verified is False
+    assert result.ready_to_render is False
+
+
+def test_equal_missing_values_are_projection_equal_but_not_present():
+    result = assess(
+        rows=[legacy_row(dossier_code=None, submitted_raw=None)],
+        cases=[canonical_case(application_dossier_code=None, application_submitted_on=None)],
+    )
+    assert result.status == "IDENTITY_PROVEN_SEMANTICS_PARTIAL"
+    assert result.dossier_value_projection_verified is True
+    assert result.dossier_value_present is False
+    assert result.submitted_value_projection_verified is True
+    assert result.submitted_value_present is False
     assert result.ready_to_render is False
 
 

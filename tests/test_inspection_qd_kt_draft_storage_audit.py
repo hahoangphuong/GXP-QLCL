@@ -68,6 +68,9 @@ def test_matching_storage_bytes_are_verified_without_approving_word_layout():
     {"storage_relative_path": "/absolute.docx"},
     {"storage_relative_path": "case-1//draft.docx"},
     {"storage_relative_path": "C:drive.docx"},
+    {"storage_relative_path": "case-1/qdkt/evil\\x00.docx"},
+    {"storage_relative_path": "case-1/qdkt/evil\\n.docx"},
+    {"storage_relative_path": "case-1/qdkt/evil\\x7f.docx"},
     {"storage_binding_owner_verified": False},
 ])
 def test_unproven_locator_is_rejected_before_storage_access(changes):
@@ -256,3 +259,37 @@ def test_storage_stream_accepts_fragmented_binary_reads():
     evidence = audit_qdkt_draft_storage_binary(storage, provenance=source, locator=locator)
     assert evidence.verified_sha256 == sha256(data).hexdigest()
     assert not evidence.ready_to_render
+
+
+@pytest.mark.parametrize("unsafe_path", [
+    "case-1/qdkt/draft\\x00.docx",
+    "case-1/qdkt/draft\\r.docx",
+    "case-1/qdkt/draft\\x1f.docx",
+    "case-1/qdkt/draft\\x7f.docx",
+])
+def test_db_binding_rejects_control_characters_before_storage_read(unsafe_path):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from backend.app.document.inspection_qd_kt_draft_storage_audit import (
+        resolve_qdkt_draft_storage_locator,
+    )
+
+    data, provenance, _ = fixture()
+
+    class Session:
+        no_autoflush = nullcontext()
+        def execute(self, query):
+            return self
+        def all(self):
+            return [(
+                SimpleNamespace(id="version-1", document_variant_id="variant-1",
+                    storage_binding_id="binding-1", storage_root="inspection",
+                    storage_relative_path=unsafe_path,
+                    checksum_sha256=sha256(data).hexdigest()),
+                SimpleNamespace(id="variant-1", document_id="document-1"),
+                SimpleNamespace(id="document-1", case_id="case-1", family_code="INSPECTION_QD_KT"),
+                SimpleNamespace(id="binding-1", case_id="case-1", relative_path="case-1"),
+            )]
+
+    with pytest.raises(QdKtDraftStorageAuditBlocked, match="OWNER_MISMATCH"):
+        resolve_qdkt_draft_storage_locator(Session(), provenance=provenance)

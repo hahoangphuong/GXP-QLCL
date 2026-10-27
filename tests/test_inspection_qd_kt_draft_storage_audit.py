@@ -536,3 +536,33 @@ def test_internal_case_audit_blocks_drift_during_second_storage_read(monkeypatch
         )
     assert calls == ["source", "locator"] * 3
     assert storage.calls == [(locator.storage_relative_path, "inspection")] * 2
+
+
+@pytest.mark.parametrize("unsafe_path", [
+    "case-1/qdkt/draft\\x85.docx",  # C1 next-line
+    "case-1/qdkt/draft\\u202e.docx",  # bidi right-to-left override
+    "case-1/qdkt/draft\\u200b.docx",  # zero-width space
+    "case-1/qdkt/draft\\ud800.docx",  # unpaired surrogate
+    "case-1/qdkt/cafe\\u0301.docx",  # decomposed alias
+])
+def test_unicode_obfuscated_locator_is_rejected_before_storage_read(unsafe_path):
+    data, provenance, locator = fixture()
+    storage = FakeStorage(data)
+    with pytest.raises(QdKtDraftStorageAuditBlocked, match="LOCATOR_UNPROVEN"):
+        audit_qdkt_draft_storage_binary(
+            storage, provenance=provenance,
+            locator=replace(locator, storage_relative_path=unsafe_path),
+        )
+    assert storage.calls == []
+
+
+def test_unicode_vietnamese_nfc_locator_is_accepted():
+    data, provenance, locator = fixture()
+    storage = FakeStorage(data)
+    safe = replace(locator, storage_relative_path="hồ-sơ/quyết-định.docx")
+    evidence = audit_qdkt_draft_storage_binary(
+        storage, provenance=provenance, locator=safe,
+    )
+    assert evidence.actual_docx_bytes_verified
+    assert not evidence.ready_to_render
+    assert storage.calls == [("hồ-sơ/quyết-định.docx", "inspection")]

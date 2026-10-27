@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from io import BytesIO
+from unicodedata import category, normalize
 from sqlalchemy import select
 from backend.app.db.models.phase1 import Document, DocumentVariant, DocumentVersion, StorageBinding
 
@@ -131,8 +132,10 @@ def _safe_inspection_relative_path(value: str) -> bool:
         isinstance(value, str) and bool(value)
         and "\\" not in value and not value.startswith("/")
         and ":" not in value
-        # Reject NUL, line breaks and other ASCII controls before adapter access.
-        and not any(ord(char) < 32 or ord(char) == 127 for char in value)
+        # Disallow invisible control/format characters (including C1 and bidi
+        # overrides) and non-canonical Unicode aliases before adapter access.
+        and normalize("NFC", value) == value
+        and not any(category(char) in ("Cc", "Cf", "Cs") for char in value)
         and all(part not in ("", ".", "..") for part in value.split("/"))
     )
 

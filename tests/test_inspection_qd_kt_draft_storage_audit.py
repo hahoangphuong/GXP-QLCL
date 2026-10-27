@@ -566,3 +566,42 @@ def test_unicode_vietnamese_nfc_locator_is_accepted():
     assert evidence.actual_docx_bytes_verified
     assert not evidence.ready_to_render
     assert storage.calls == [("hồ-sơ/quyết-định.docx", "inspection")]
+
+
+@pytest.mark.parametrize("unsafe_path", [
+    "case-1/qdkt/report.docx.",
+    "case-1/qdkt/report.docx ",
+    "case-1/qdkt/folder./draft.docx",
+    "case-1/qdkt/folder /draft.docx",
+    "case-1/qdkt/CON",
+    "case-1/qdkt/NUL.docx",
+    "case-1/qdkt/com1.txt",
+    "case-1/qdkt/LPT9.docx",
+    "case-1/qdkt/CONIN$.txt",
+])
+def test_smb_alias_paths_rejected_before_storage_access(unsafe_path):
+    data, source, locator = fixture()
+    storage = FakeStorage(data)
+    with pytest.raises(QdKtDraftStorageAuditBlocked, match="LOCATOR_UNPROVEN"):
+        audit_qdkt_draft_storage_binary(
+            storage, provenance=source,
+            locator=replace(locator, storage_relative_path=unsafe_path),
+        )
+    assert storage.calls == []
+
+
+@pytest.mark.parametrize("safe_path", [
+    "case-1/qdkt/console.docx",
+    "case-1/qdkt/COM10.docx",
+    "case-1/qdkt/report.final.docx",
+])
+def test_non_alias_components_keep_working(safe_path):
+    data, source, locator = fixture()
+    storage = FakeStorage(data)
+    evidence = audit_qdkt_draft_storage_binary(
+        storage, provenance=source,
+        locator=replace(locator, storage_relative_path=safe_path),
+    )
+    assert evidence.actual_docx_bytes_verified
+    assert not evidence.ready_to_render
+    assert storage.calls == [(safe_path, "inspection")]

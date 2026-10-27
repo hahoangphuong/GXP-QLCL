@@ -1012,9 +1012,10 @@ export type QdKtCurrentTeam = {
 export function getCaseQdKtReadiness(
   caseId: string, auth: StubAuthState, useStubAuth: boolean,
   bearerToken?: string | null, signal?: AbortSignal,
+  purpose: "DRAFT_QDKT" | "EXISTING_APPROVED_DECISION_REFERENCE" = "EXISTING_APPROVED_DECISION_REFERENCE",
 ): Promise<QdKtReadiness> {
   return requestJson<QdKtReadiness>(
-    `/cases/${encodeURIComponent(caseId)}/documents/inspection-qd-kt/readiness`,
+    `/cases/${encodeURIComponent(caseId)}/documents/inspection-qd-kt/readiness?purpose=${purpose}`,
     { auth, useStubAuth, bearerToken, signal },
   );
 }

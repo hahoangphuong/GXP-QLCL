@@ -7,8 +7,9 @@ or write to storage. It never treats a checksum alone as Word visual UAT.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
 from io import BytesIO
+from sqlalchemy import select
+from backend.app.db.models.phase1 import Document, DocumentVariant, DocumentVersion, StorageBinding
 
 from backend.app.document.inspection_qd_kt_draft_binary_evidence import (
     QdKtDraftBinaryEvidence, verify_supplied_qdkt_draft_docx,
@@ -65,3 +66,53 @@ def audit_qdkt_draft_storage_binary(
     except (OSError, RuntimeError) as exc:
         raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_READ_FAILED") from exc
     return verify_supplied_qdkt_draft_docx(provenance=provenance, payload=payload.getvalue())
+
+
+def resolve_qdkt_draft_storage_locator(
+    session, *, provenance: QdKtDraftProvenance,
+) -> QdKtExactDraftLocator:
+    """Verify persisted version, document and binding ownership; no writes."""
+    if not isinstance(provenance, QdKtDraftProvenance):
+        raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_CONTRACT_INVALID")
+    with session.no_autoflush:
+        matches = session.execute(
+            select(DocumentVersion, DocumentVariant, Document, StorageBinding)
+            .join(DocumentVariant, DocumentVersion.document_variant_id == DocumentVariant.id)
+            .join(Document, DocumentVariant.document_id == Document.id)
+            .join(StorageBinding, DocumentVersion.storage_binding_id == StorageBinding.id)
+            .where(DocumentVersion.id == provenance.document_version_id)
+        ).all()
+    if len(matches) != 1:
+        raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_BINDING_NOT_UNIQUE")
+    version, variant, document, binding = matches[0]
+    path = version.storage_relative_path
+    folder = binding.relative_path
+    if (
+        document.id != provenance.document_id
+        or document.case_id != provenance.case_id
+        or document.family_code != "INSPECTION_QD_KT"
+        or variant.document_id != document.id
+        or version.document_variant_id != variant.id
+        or version.storage_binding_id != binding.id
+        or binding.case_id != provenance.case_id
+        or version.checksum_sha256 != provenance.stored_checksum_sha256
+        or version.storage_root != "inspection"
+        or not isinstance(path, str)
+        or not isinstance(folder, str)
+        or not folder or not path.startswith(folder.rstrip("/") + "/")
+    ):
+        raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_OWNER_MISMATCH")
+    locator = QdKtExactDraftLocator(
+        case_id=provenance.case_id,
+        document_version_id=provenance.document_version_id,
+        storage_root=version.storage_root,
+        storage_relative_path=path,
+        storage_binding_owner_verified=True,
+    )
+    # Reuse precise syntactic path requirements before any StorageService call.
+    if (
+        "\\" in path or path.startswith("/") or ":" in path
+        or any(piece in ("", ".", "..") for piece in path.split("/"))
+    ):
+        raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_LOCATOR_UNPROVEN")
+    return locator

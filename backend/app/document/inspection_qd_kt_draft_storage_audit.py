@@ -48,12 +48,7 @@ def audit_qdkt_draft_storage_binary(
         or locator.case_id != provenance.case_id
         or locator.document_version_id != provenance.document_version_id
         or locator.storage_root != "inspection"
-        or not isinstance(locator.storage_relative_path, str)
-        or not locator.storage_relative_path
-        or "\\" in locator.storage_relative_path
-        or locator.storage_relative_path.startswith("/")
-        or ":" in locator.storage_relative_path
-        or any(piece in ("", ".", "..") for piece in locator.storage_relative_path.split("/"))
+        or not _safe_inspection_relative_path(locator.storage_relative_path)
     ):
         raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_LOCATOR_UNPROVEN")
     try:
@@ -130,6 +125,8 @@ def _safe_inspection_relative_path(value: str) -> bool:
         isinstance(value, str) and bool(value)
         and "\\" not in value and not value.startswith("/")
         and ":" not in value
+        # Reject NUL, line breaks and other ASCII controls before adapter access.
+        and not any(ord(char) < 32 or ord(char) == 127 for char in value)
         and all(part not in ("", ".", "..") for part in value.split("/"))
     )
 

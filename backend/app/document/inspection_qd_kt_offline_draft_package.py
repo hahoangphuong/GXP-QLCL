@@ -9,6 +9,9 @@ from hashlib import sha256
 from io import BytesIO
 from zipfile import ZipFile, BadZipFile, ZIP_DEFLATED
 from lxml import etree as ET
+from backend.app.document.inspection_qd_kt_offline_package_integrity import (
+    QdKtOfflinePackageIntegrityBlocked, require_safe_ooxml_members,
+)
 
 from backend.app.document.inspection_qd_kt_draft_issuance_xml import (
     QdKtIssuanceDateBlocked, blank_issuance_year_xml,
@@ -33,6 +36,7 @@ def build_offline_date_only_docx(*, template: bytes, expected_sha256: str) -> by
             members = source.infolist()
             if len({part.filename for part in members}) != len(members):
                 raise QdKtDraftPackageBlocked("QDKT_PACKAGE_DUPLICATE_PART")
+            members = require_safe_ooxml_members(source)
             if "word/document.xml" not in source.namelist() or "[Content_Types].xml" not in source.namelist():
                 raise QdKtDraftPackageBlocked("QDKT_PACKAGE_PART_MISSING")
             types_root = ET.fromstring(source.read("[Content_Types].xml"))
@@ -51,5 +55,6 @@ def build_offline_date_only_docx(*, template: bytes, expected_sha256: str) -> by
                 for member in members:
                     out.writestr(member, replacements.get(member.filename, source.read(member.filename)))
             return target.getvalue()
-    except (BadZipFile, ET.ParseError, OSError, QdKtIssuanceDateBlocked) as exc:
+    except (BadZipFile, ET.ParseError, OSError, QdKtIssuanceDateBlocked,
+            QdKtOfflinePackageIntegrityBlocked) as exc:
         raise QdKtDraftPackageBlocked("QDKT_PACKAGE_INVALID") from exc

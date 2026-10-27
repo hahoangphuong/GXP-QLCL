@@ -11,6 +11,9 @@ from io import BytesIO
 from zipfile import ZipFile, BadZipFile
 
 from lxml import etree as ET
+from backend.app.document.inspection_qd_kt_offline_package_integrity import (
+    QdKtOfflinePackageIntegrityBlocked, require_safe_ooxml_members,
+)
 
 from backend.app.document.inspection_qd_kt_offline_draft_package import (
     QdKtDraftPackageBlocked, build_offline_date_only_docx,
@@ -39,7 +42,7 @@ def build_offline_two_member_docx(
             template=template, expected_sha256=expected_sha256,
         )
         with ZipFile(BytesIO(blanked)) as src:
-            members = src.infolist()
+            members = require_safe_ooxml_members(src)
             original_xml = src.read("word/document.xml")
             changed_xml = remove_third_member_span_xml(original_xml)
             if changed_xml == original_xml:
@@ -59,5 +62,6 @@ def build_offline_two_member_docx(
                 raise QdKtOfflineTeamPackageBlocked("QDKT_SOURCE_HASH_CHANGED")
         return result
     except (QdKtDraftPackageBlocked, QdKtThirdMemberSpanBlocked,
+            QdKtOfflinePackageIntegrityBlocked,
             BadZipFile, ET.ParseError, OSError) as exc:
         raise QdKtOfflineTeamPackageBlocked("QDKT_OFFLINE_TWO_MEMBER_PACKAGE_INVALID") from exc

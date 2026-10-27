@@ -191,7 +191,7 @@ def test_internal_case_entrypoint_orders_all_gates_before_storage(monkeypatch):
     evidence = audit_case_qdkt_draft_binary_readonly(
         session, storage, case_id="case-1", snapshot=snapshot,
     )
-    assert calls == ["source", "binding"]
+    assert calls == ["source", "binding", "source", "binding"]
     assert storage.calls == [(locator.storage_relative_path, "inspection")]
     assert evidence.actual_docx_bytes_verified
     assert not evidence.ready_to_render
@@ -367,5 +367,73 @@ def test_valid_binary_metadata_still_reads_and_keeps_renderer_blocked():
     storage = FakeStorage(data)
     evidence = audit_qdkt_draft_storage_binary(storage, provenance=source, locator=locator)
     assert storage.calls == [(locator.storage_relative_path, "inspection")]
+    assert evidence.actual_docx_bytes_verified
+    assert not evidence.ready_to_render
+
+
+@pytest.mark.parametrize("drift", ["provenance", "locator"])
+def test_internal_audit_rejects_observed_source_drift_after_read(monkeypatch, drift):
+    from contextlib import nullcontext
+    from dataclasses import replace
+    from types import SimpleNamespace
+    from backend.app.document.inspection_qd_kt_draft_storage_audit import (
+        audit_case_qdkt_draft_binary_readonly,
+    )
+    from backend.app.document.inspection_qd_kt_team_snapshot_review import (
+        DraftTeamSnapshot, TeamMemberAtDraft,
+    )
+    import backend.app.document.inspection_qd_kt_draft_storage_audit as module
+
+    data, source, locator = fixture()
+    snapshot = DraftTeamSnapshot("case-1", "draft-1", "version-1", "team-1", 2,
+        (TeamMemberAtDraft("member-1", "Inspector", "LEADER", "Unverified"),))
+    seen = []
+    def source_reader(session, *, case_id, snapshot):
+        seen.append("source")
+        if drift == "provenance" and seen.count("source") == 2:
+            return replace(source, draft_id="changed-draft")
+        return source
+    def locator_reader(session, *, provenance):
+        seen.append("locator")
+        if drift == "locator" and seen.count("locator") == 2:
+            return replace(locator, storage_relative_path="case-1/qdkt/changed.docx")
+        return locator
+
+    monkeypatch.setattr(module, "read_qdkt_draft_provenance", source_reader)
+    monkeypatch.setattr(module, "resolve_qdkt_draft_storage_locator", locator_reader)
+    storage = FakeStorage(data)
+    with pytest.raises(QdKtDraftStorageAuditBlocked, match="SOURCE_CHANGED"):
+        audit_case_qdkt_draft_binary_readonly(
+            SimpleNamespace(no_autoflush=nullcontext()), storage,
+            case_id="case-1", snapshot=snapshot,
+        )
+    assert seen == ["source", "locator", "source", "locator"]
+    assert storage.calls == [(locator.storage_relative_path, "inspection")]
+
+
+def test_internal_audit_rechecks_unchanged_source_after_storage(monkeypatch):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from backend.app.document.inspection_qd_kt_draft_storage_audit import (
+        audit_case_qdkt_draft_binary_readonly,
+    )
+    from backend.app.document.inspection_qd_kt_team_snapshot_review import (
+        DraftTeamSnapshot, TeamMemberAtDraft,
+    )
+    import backend.app.document.inspection_qd_kt_draft_storage_audit as module
+
+    data, source, locator = fixture()
+    calls = []
+    monkeypatch.setattr(module, "read_qdkt_draft_provenance",
+        lambda *args, **kwargs: calls.append("source") or source)
+    monkeypatch.setattr(module, "resolve_qdkt_draft_storage_locator",
+        lambda *args, **kwargs: calls.append("locator") or locator)
+    snapshot = DraftTeamSnapshot("case-1", "draft-1", "version-1", "team-1", 2,
+        (TeamMemberAtDraft("member-1", "Inspector", "LEADER", "Unverified"),))
+    evidence = audit_case_qdkt_draft_binary_readonly(
+        SimpleNamespace(no_autoflush=nullcontext()), FakeStorage(data),
+        case_id="case-1", snapshot=snapshot,
+    )
+    assert calls == ["source", "locator", "source", "locator"]
     assert evidence.actual_docx_bytes_verified
     assert not evidence.ready_to_render

@@ -7,6 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 import os
 import shutil
+import stat
 import sys
 import tempfile
 from typing import BinaryIO, Iterator
@@ -221,9 +222,39 @@ class LocalStorageService:
     @contextmanager
     def read_stream(self, relative_path: str, *, root: str = "inspection") -> Iterator[BinaryIO]:
         base_root = self._select_root(root)
-        target = self._path_under(base_root, relative_path)
-        with target.open("rb") as fh:
-            yield fh
+        # On POSIX, hold descriptors for each directory and reject symlinks.
+        # A path.resolve() check followed by Path.open() can be raced by
+        # replacing a parent directory with a symlink to another tree.
+        # This is descriptor-anchored containment, NOT an immutable version pin.
+        if os.name != "posix":
+            target = self._path_under(base_root, relative_path)
+            with target.open("rb") as fh:
+                yield fh
+            return
+        normalized = _normalize_relative(relative_path)
+        if not normalized:
+            raise StorageOperationError("A regular file path is required for storage read.")
+        parts = normalized.split("/")
+        flags = os.O_RDONLY | os.O_NOFOLLOW
+        dirflags = flags | os.O_DIRECTORY
+        fds: list[int] = []
+        try:
+            directory_fd = os.open(base_root, dirflags)
+            fds.append(directory_fd)
+            for part in parts[:-1]:
+                directory_fd = os.open(part, dirflags, dir_fd=directory_fd)
+                fds.append(directory_fd)
+            file_fd = os.open(parts[-1], flags | getattr(os, "O_NONBLOCK", 0), dir_fd=directory_fd)
+            fds.append(file_fd)
+            if not stat.S_ISREG(os.fstat(file_fd).st_mode):
+                raise StorageOperationError("Storage read target is not a regular file.")
+            # Close only through the returned stream from this point onward.
+            fds.pop()
+            with os.fdopen(file_fd, "rb") as fh:
+                yield fh
+        finally:
+            for fd in reversed(fds):
+                os.close(fd)
 
     def write_stream(
         self,

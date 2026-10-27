@@ -12,7 +12,7 @@ from io import BytesIO
 from re import fullmatch
 from zipfile import BadZipFile, ZipFile
 
-from defusedxml import ElementTree as ET
+from xml.etree import ElementTree as ET
 
 from backend.app.document.inspection_qd_kt_draft_provenance import QdKtDraftProvenance
 from backend.app.document.inspection_qd_kt_offline_package_integrity import (
@@ -72,7 +72,12 @@ def verify_supplied_qdkt_draft_docx(
             names = {item.filename for item in require_safe_ooxml_members(archive)}
             if "[Content_Types].xml" not in names or "word/document.xml" not in names:
                 raise QdKtDraftBinaryBlocked("QDKT_DRAFT_BINARY_REQUIRED_PART_MISSING")
-            types = ET.fromstring(archive.read("[Content_Types].xml"))
+            types_raw = archive.read("[Content_Types].xml")
+            document_raw = archive.read("word/document.xml")
+            if any(marker in xml.upper() for xml in (types_raw, document_raw)
+                   for marker in (b"<!DOCTYPE", b"<!ENTITY")):
+                raise QdKtDraftBinaryBlocked("QDKT_DRAFT_BINARY_DTD_UNSAFE")
+            types = ET.fromstring(types_raw)
             if types.tag != _CONTENT_TYPES + "Types":
                 raise QdKtDraftBinaryBlocked("QDKT_DRAFT_BINARY_CONTENT_TYPE_INVALID")
             main = [
@@ -81,7 +86,7 @@ def verify_supplied_qdkt_draft_docx(
             ]
             if main != [_DOCX_MAIN]:
                 raise QdKtDraftBinaryBlocked("QDKT_DRAFT_BINARY_CONTENT_TYPE_INVALID")
-            document = ET.fromstring(archive.read("word/document.xml"))
+            document = ET.fromstring(document_raw)
             if document.tag != _WORD_ROOT:
                 raise QdKtDraftBinaryBlocked("QDKT_DRAFT_BINARY_WORD_ROOT_INVALID")
     except (BadZipFile, OSError, KeyError, ET.ParseError,

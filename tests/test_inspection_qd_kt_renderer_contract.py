@@ -30,7 +30,7 @@ from backend.app.document import inspection_qd_kt_renderer_contract as contract_
 
 def source():
     case, site, application = (str(uuid4()) for _ in range(3))
-    return DossierSnapshot(case, site, application, case, 1, "SYNTHETIC-001", datetime.fromisoformat("2026-01-02T00:30:00+07:00"))
+    return DossierSnapshot(case, site, application, case, 1, "SYNTHETIC-001", datetime.fromisoformat("2026-01-02T00:30:00+07:00"), origin="PERSISTED_CASE_APPLICATION")
 
 
 def fixture(tmp_path, option="DEPRECATE_WRITES", *, absent=False):
@@ -259,6 +259,16 @@ def test_missing_or_invalid_primary_semantic_contract_stays_structured_and_block
     monkeypatch.setattr(contract_module, "load_qdkt_dossier_bookmark_source_evidence", unavailable)
     result = assess_renderer_preflight(**inputs)
     assert "QDKT_SUBMISSION_SEMANTICS_UNVERIFIED" in result.blockers
+    assert not result.contract_evidence_complete
+
+
+def test_snapshot_without_explicit_persisted_source_origin_fails_closed(tmp_path):
+    inputs = fixture(tmp_path)
+    row = inputs["observed"]
+    unproven = DossierSnapshot(row.case_id, row.site_id, row.application_id,
+        row.application_case_id, row.application_version, row.dossier_code, row.submitted_on)
+    inputs.update(expected=unproven, observed=unproven)
+    result = assess_renderer_preflight(**inputs)
     assert not result.contract_evidence_complete
 
 

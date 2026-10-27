@@ -199,7 +199,7 @@ class DossierSnapshot:
     application_version: int
     dossier_code: str | None
     submitted_on: datetime | None
-    origin: str = "PERSISTED_CASE_APPLICATION"
+    origin: str = "UNVERIFIED"
 
 
 def read_dossier_snapshot(session, *, case_id: str) -> DossierSnapshot:
@@ -224,7 +224,7 @@ def read_dossier_snapshot(session, *, case_id: str) -> DossierSnapshot:
     return DossierSnapshot(
         case_id=case_id, site_id=site_id, application_id=application_id,
         application_case_id=application_case_id, application_version=version,
-        dossier_code=code, submitted_on=submitted,
+        dossier_code=code, submitted_on=submitted, origin="PERSISTED_CASE_APPLICATION",
     )
 
 

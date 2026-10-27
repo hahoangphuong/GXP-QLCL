@@ -192,7 +192,7 @@ def test_internal_case_entrypoint_orders_all_gates_before_storage(monkeypatch):
         session, storage, case_id="case-1", snapshot=snapshot,
     )
     assert calls == ["source", "binding", "source", "binding"]
-    assert storage.calls == [(locator.storage_relative_path, "inspection")]
+    assert storage.calls == [(locator.storage_relative_path, "inspection")] * 2
     assert evidence.actual_docx_bytes_verified
     assert not evidence.ready_to_render
     calls.clear()
@@ -464,3 +464,37 @@ def test_db_locator_query_refreshes_existing_identity_map_rows():
             )]
     resolve_qdkt_draft_storage_locator(Session(), provenance=provenance)
     assert seen == [True]
+
+
+def test_internal_case_audit_detects_in_place_storage_replacement(monkeypatch):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from backend.app.document.inspection_qd_kt_draft_storage_audit import (
+        audit_case_qdkt_draft_binary_readonly,
+    )
+    from backend.app.document.inspection_qd_kt_team_snapshot_review import (
+        DraftTeamSnapshot, TeamMemberAtDraft,
+    )
+    import backend.app.document.inspection_qd_kt_draft_storage_audit as module
+
+    data, source, locator = fixture()
+    monkeypatch.setattr(module, "read_qdkt_draft_provenance",
+        lambda *args, **kwargs: source)
+    monkeypatch.setattr(module, "resolve_qdkt_draft_storage_locator",
+        lambda *args, **kwargs: locator)
+
+    class ReplacedStorage(FakeStorage):
+        @contextmanager
+        def read_stream(self, path, *, root):
+            self.calls.append((path, root))
+            yield BytesIO(data if len(self.calls) == 1 else data + b"replaced")
+
+    snapshot = DraftTeamSnapshot("case-1", "draft-1", "version-1", "team-1", 2,
+        (TeamMemberAtDraft("member-1", "Inspector", "LEADER", "Unverified"),))
+    storage = ReplacedStorage(data)
+    with pytest.raises(ValueError, match="CHECKSUM_MISMATCH"):
+        audit_case_qdkt_draft_binary_readonly(
+            SimpleNamespace(no_autoflush=nullcontext()), storage,
+            case_id="case-1", snapshot=snapshot,
+        )
+    assert storage.calls == [(locator.storage_relative_path, "inspection")] * 2

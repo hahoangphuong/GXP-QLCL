@@ -173,4 +173,12 @@ def audit_case_qdkt_draft_binary_readonly(
         )
         if current_provenance != provenance or current_locator != locator:
             raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_SOURCE_CHANGED")
+        # Re-open the exact locator to reject a detectable replacement of the
+        # underlying object while this audit ran. Both reads use the same
+        # bounded checksum/OOXML verifier; this is not an atomic object pin.
+        repeated = audit_qdkt_draft_storage_binary(
+            storage, provenance=current_provenance, locator=current_locator,
+        )
+        if repeated != evidence:
+            raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_SOURCE_CHANGED")
         return evidence

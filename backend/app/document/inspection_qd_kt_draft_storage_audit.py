@@ -68,7 +68,9 @@ def audit_qdkt_draft_storage_binary(
                 if payload.tell() + len(chunk) > MAX_BINARY_BYTES:
                     raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_BINARY_SIZE_UNSAFE")
                 payload.write(chunk)
-    except (OSError, RuntimeError) as exc:
+    except (OSError, RuntimeError, EOFError, ConnectionError, TimeoutError) as exc:
+        # Adapter failures while opening, reading or closing a stream must not
+        # escape as an apparently successful binary audit.
         raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_READ_FAILED") from exc
     return verify_supplied_qdkt_draft_docx(provenance=provenance, payload=payload.getvalue())
 

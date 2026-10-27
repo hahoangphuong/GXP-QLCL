@@ -138,3 +138,64 @@ def test_db_resolved_locator_proves_document_version_and_binding_ownership():
             )
     with pytest.raises(QdKtDraftStorageAuditBlocked, match="NOT_UNIQUE"):
         resolve_qdkt_draft_storage_locator(Session([]), provenance=provenance)
+
+
+def test_db_binding_rejects_parent_segments_in_bound_folder():
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from backend.app.document.inspection_qd_kt_draft_storage_audit import resolve_qdkt_draft_storage_locator
+    data, provenance, _ = fixture()
+
+    class Session:
+        no_autoflush = nullcontext()
+        def __init__(self, values):
+            self.values = values
+        def execute(self, query):
+            return self
+        def all(self):
+            return self.values
+
+    version = SimpleNamespace(id="version-1", document_variant_id="variant-1",
+        storage_binding_id="binding-1", storage_root="inspection",
+        storage_relative_path="case-1/../other/draft.docx",
+        checksum_sha256=sha256(data).hexdigest())
+    variant = SimpleNamespace(id="variant-1", document_id="document-1")
+    doc = SimpleNamespace(id="document-1", case_id="case-1", family_code="INSPECTION_QD_KT")
+    binding = SimpleNamespace(id="binding-1", case_id="case-1", relative_path="case-1/..")
+    with pytest.raises(QdKtDraftStorageAuditBlocked, match="OWNER_MISMATCH"):
+        resolve_qdkt_draft_storage_locator(
+            Session([(version, variant, doc, binding)]), provenance=provenance,
+        )
+
+
+def test_internal_case_entrypoint_orders_all_gates_before_storage(monkeypatch):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from backend.app.document.inspection_qd_kt_draft_storage_audit import audit_case_qdkt_draft_binary_readonly
+    from backend.app.document.inspection_qd_kt_team_snapshot_review import DraftTeamSnapshot, TeamMemberAtDraft
+    import backend.app.document.inspection_qd_kt_draft_storage_audit as module
+
+    data, source, locator = fixture()
+    calls = []
+    monkeypatch.setattr(module, "read_qdkt_draft_provenance",
+        lambda session, *, case_id, snapshot: calls.append("source") or source)
+    monkeypatch.setattr(module, "resolve_qdkt_draft_storage_locator",
+        lambda session, *, provenance: calls.append("binding") or locator)
+    storage = FakeStorage(data)
+    snapshot = DraftTeamSnapshot("case-1", "draft-1", "version-1", "team-1", 2,
+        (TeamMemberAtDraft("member-1", "Inspector", "LEADER", "Unverified"),))
+    session = SimpleNamespace(no_autoflush=nullcontext())
+    evidence = audit_case_qdkt_draft_binary_readonly(
+        session, storage, case_id="case-1", snapshot=snapshot,
+    )
+    assert calls == ["source", "binding"]
+    assert storage.calls == [(locator.storage_relative_path, "inspection")]
+    assert evidence.actual_docx_bytes_verified
+    assert not evidence.ready_to_render
+    calls.clear()
+    storage.calls.clear()
+    with pytest.raises(QdKtDraftStorageAuditBlocked, match="CASE_MISMATCH"):
+        audit_case_qdkt_draft_binary_readonly(
+            session, storage, case_id="other-case", snapshot=snapshot,
+        )
+    assert calls == [] and storage.calls == []

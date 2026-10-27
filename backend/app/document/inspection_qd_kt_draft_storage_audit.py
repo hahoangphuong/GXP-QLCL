@@ -181,4 +181,14 @@ def audit_case_qdkt_draft_binary_readonly(
         )
         if repeated != evidence:
             raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_SOURCE_CHANGED")
+        # The second read has its own race window: verify the DB owner
+        # and provenance once more after that read, before returning.
+        final_provenance = read_qdkt_draft_provenance(
+            session, case_id=case_id, snapshot=snapshot,
+        )
+        final_locator = resolve_qdkt_draft_storage_locator(
+            session, provenance=final_provenance,
+        )
+        if final_provenance != provenance or final_locator != locator:
+            raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_SOURCE_CHANGED")
         return evidence

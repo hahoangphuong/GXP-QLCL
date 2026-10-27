@@ -129,6 +129,46 @@ def write_private_report(*, output: Path, report: Any,
         raise
 
 
+
+def write_private_report_pair(
+    *, aggregate_output: Path, aggregate_report: Any,
+    exceptions_output: Path, exceptions_report: Any,
+    inputs: tuple[Path, Path],
+) -> None:
+    """Publish a pair of private reports or roll back the new aggregate.
+
+    Exclusive creation still happens separately; filesystem paths cannot be
+    committed atomically together. On a second-write failure, only remove
+    the first file if it is still the exact inode created by this call.
+    Never unlink a pre-existing or replaced file.
+    """
+    if (
+        aggregate_output.resolve() == exceptions_output.resolve()
+        or any(path.resolve() == source.resolve()
+               for path in (aggregate_output, exceptions_output)
+               for source in inputs)
+    ):
+        raise QdKtCohortAuditBlocked("REPORT_OUTPUT_COLLISION")
+    write_private_report(
+        output=aggregate_output, report=aggregate_report,
+        inputs=(*inputs, exceptions_output),
+    )
+    first = aggregate_output.lstat()
+    try:
+        write_private_report(
+            output=exceptions_output, report=exceptions_report,
+            inputs=(*inputs, aggregate_output),
+        )
+    except BaseException:
+        try:
+            current = aggregate_output.lstat()
+            if (current.st_dev, current.st_ino) == (first.st_dev, first.st_ino):
+                aggregate_output.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--snapshot", type=Path, required=True)
@@ -175,14 +215,16 @@ def main(argv: list[str] | None = None) -> int:
                 or args.exceptions_output.exists() or args.exceptions_output.is_symlink()):
             parser.error("QDKT_REPORT_WRITE_BLOCKED: report destinations collide or exist")
     try:
-        write_private_report(output=args.output, report=report,
-                             inputs=((args.snapshot, args.cases_json, args.exceptions_output)
-                                     if args.exceptions_output is not None
-                                     else (args.snapshot, args.cases_json)))
         if args.exceptions_output is not None:
+            write_private_report_pair(
+                aggregate_output=args.output, aggregate_report=report,
+                exceptions_output=args.exceptions_output, exceptions_report=exceptions,
+                inputs=(args.snapshot, args.cases_json),
+            )
+        else:
             write_private_report(
-                output=args.exceptions_output, report=exceptions,
-                inputs=(args.snapshot, args.cases_json, args.output),
+                output=args.output, report=report,
+                inputs=(args.snapshot, args.cases_json),
             )
     except (OSError, QdKtCohortAuditBlocked):
         parser.error("QDKT_REPORT_WRITE_BLOCKED: output file is unsafe or exists")

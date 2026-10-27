@@ -105,6 +105,14 @@ python -m tools.audit_qdkt_snapshot_cohort \
 
 Exception output is **opt-in**, mode `0600`, exclusive-create only. Never
 upload it into GitHub, CI artifacts, issue comments, or public documentation.
+
+When both aggregate and exception outputs are requested, failure creating the
+second report removes the newly created aggregate, provided its inode has not
+been replaced. Pre-existing exception reports are never overwritten. This is
+**best-effort filesystem rollback, not an atomic multi-file transaction**; if
+an operator or process replaces a path during the run, the tool preserves that
+replacement rather than deleting a file it does not own. Treat a CLI error as
+no completed audit and inspect the protected output directory before retrying.
 The manifest includes the SHA digests of its snapshot/cohort inputs so it
 cannot be mistaken for another source run. A Case with `SOURCE_ROW_UNIQUE` is intentionally omitted; that result is only a historical `db.ktra` identity match and neither establishes nor replaces modern Case-owned QĐKT input validation.
 

@@ -107,3 +107,68 @@ def test_exception_output_cannot_alias_aggregate_or_input(tmp_path):
     with pytest.raises(SystemExit):
         main(_argv(snap, cohort, report) + ["--exceptions-output", str(cohort)])
     assert not report.exists()
+
+
+def test_pair_rolls_back_aggregate_when_second_file_creation_fails(tmp_path, monkeypatch):
+    import tools.audit_qdkt_snapshot_cohort as audit
+
+    output = tmp_path / "aggregate.json"
+    exceptions = tmp_path / "exceptions.json"
+    old_writer = audit.write_private_report
+
+    def fail_second(*, output, report, inputs):
+        if output == exceptions:
+            raise OSError("simulated private report I/O failure")
+        return old_writer(output=output, report=report, inputs=inputs)
+
+    monkeypatch.setattr(audit, "write_private_report", fail_second)
+    with pytest.raises(OSError, match="simulated"):
+        audit.write_private_report_pair(
+            aggregate_output=output, aggregate_report={"safe": True},
+            exceptions_output=exceptions, exceptions_report={"private": "case"},
+            inputs=(tmp_path / "source.json", tmp_path / "cases.json"),
+        )
+    assert not output.exists()
+    assert not exceptions.exists()
+
+
+def test_pair_does_not_delete_replaced_aggregate_on_second_failure(tmp_path, monkeypatch):
+    import tools.audit_qdkt_snapshot_cohort as audit
+
+    output = tmp_path / "aggregate.json"
+    exceptions = tmp_path / "exceptions.json"
+    old_writer = audit.write_private_report
+    replacement = b"unrelated replacement"
+
+    def replace_and_fail(*, output: object, report, inputs):
+        if output == exceptions:
+            aggregate = tmp_path / "aggregate.json"
+            aggregate.unlink()
+            aggregate.write_bytes(replacement)
+            raise OSError("simulated replacement and failure")
+        return old_writer(output=output, report=report, inputs=inputs)
+
+    monkeypatch.setattr(audit, "write_private_report", replace_and_fail)
+    with pytest.raises(OSError):
+        audit.write_private_report_pair(
+            aggregate_output=output, aggregate_report={"safe": True},
+            exceptions_output=exceptions, exceptions_report={"private": "case"},
+            inputs=(tmp_path / "source.json", tmp_path / "cases.json"),
+        )
+    assert output.read_bytes() == replacement
+
+
+def test_pair_rejects_existing_private_exception_without_touching_it(tmp_path):
+    from tools.audit_qdkt_snapshot_cohort import write_private_report_pair
+
+    output = tmp_path / "aggregate.json"
+    exceptions = tmp_path / "exceptions.json"
+    exceptions.write_bytes(b"pre-existing private evidence")
+    with pytest.raises(QdKtCohortAuditBlocked, match="OUTPUT_ALREADY_EXISTS"):
+        write_private_report_pair(
+            aggregate_output=output, aggregate_report={"safe": True},
+            exceptions_output=exceptions, exceptions_report={"private": "case"},
+            inputs=(tmp_path / "source.json", tmp_path / "cases.json"),
+        )
+    assert not output.exists()
+    assert exceptions.read_bytes() == b"pre-existing private evidence"

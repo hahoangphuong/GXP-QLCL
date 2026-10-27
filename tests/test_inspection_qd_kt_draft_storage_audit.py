@@ -1,0 +1,94 @@
+"""Storage-backed DOCX audit uses a pinned exact locator, never a folder search."""
+from contextlib import contextmanager
+from hashlib import sha256
+from io import BytesIO
+from dataclasses import replace
+from zipfile import ZipFile
+
+import pytest
+
+from backend.app.document.inspection_qd_kt_draft_provenance import QdKtDraftProvenance
+from backend.app.document.inspection_qd_kt_draft_storage_audit import (
+    QdKtDraftStorageAuditBlocked, QdKtExactDraftLocator,
+    audit_qdkt_draft_storage_binary,
+)
+
+CT = "http://schemas.openxmlformats.org/package/2006/content-types"
+W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"
+
+
+def fixture():
+    buf = BytesIO()
+    with ZipFile(buf, "w") as out:
+        out.writestr("[Content_Types].xml", (
+            f'<Types xmlns="{CT}"><Override PartName="/word/document.xml"'
+            f' ContentType="{DOCX}"/></Types>'
+        ))
+        out.writestr("word/document.xml", f'<w:document xmlns:w="{W}"><w:body/></w:document>')
+    payload = buf.getvalue()
+    source = QdKtDraftProvenance(
+        "case-1", "draft-1", "version-1", "document-1",
+        sha256(payload).hexdigest(), "team-1", 2, ("member-1",),
+    )
+    locator = QdKtExactDraftLocator(
+        "case-1", "version-1", "inspection", "case-1/qdkt/draft.docx",
+        storage_binding_owner_verified=True,
+    )
+    return payload, source, locator
+
+
+class FakeStorage:
+    def __init__(self, binary):
+        self.binary = binary
+        self.calls = []
+
+    @contextmanager
+    def read_stream(self, path, *, root):
+        self.calls.append((path, root))
+        yield BytesIO(self.binary)
+
+
+def test_matching_storage_bytes_are_verified_without_approving_word_layout():
+    data, source, locator = fixture()
+    storage = FakeStorage(data)
+    result = audit_qdkt_draft_storage_binary(storage, provenance=source, locator=locator)
+    assert storage.calls == [("case-1/qdkt/draft.docx", "inspection")]
+    assert result.actual_docx_bytes_verified
+    assert not result.roster_in_document_verified
+    assert not result.visual_word_uat_verified
+    assert not result.ready_to_render
+
+
+@pytest.mark.parametrize("changes", [
+    {"case_id": "case-2"},
+    {"document_version_id": "version-2"},
+    {"storage_root": "dkkd"},
+    {"storage_relative_path": "../escape.docx"},
+    {"storage_relative_path": "/absolute.docx"},
+    {"storage_relative_path": "case-1//draft.docx"},
+    {"storage_relative_path": "C:drive.docx"},
+    {"storage_binding_owner_verified": False},
+])
+def test_unproven_locator_is_rejected_before_storage_access(changes):
+    data, source, locator = fixture()
+    storage = FakeStorage(data)
+    with pytest.raises(QdKtDraftStorageAuditBlocked, match="LOCATOR_UNPROVEN"):
+        audit_qdkt_draft_storage_binary(
+            storage, provenance=source, locator=replace(locator, **changes),
+        )
+    assert storage.calls == []
+
+
+def test_tampered_storage_bytes_fail_checksum():
+    data, source, locator = fixture()
+    storage = FakeStorage(data + b"tampered")
+    with pytest.raises(ValueError, match="CHECKSUM_MISMATCH"):
+        audit_qdkt_draft_storage_binary(storage, provenance=source, locator=locator)
+
+
+def test_binary_size_limit_stops_stream():
+    _, source, locator = fixture()
+    storage = FakeStorage(b"x" * (32 * 1024 * 1024 + 1))
+    with pytest.raises(QdKtDraftStorageAuditBlocked, match="SIZE_UNSAFE"):
+        audit_qdkt_draft_storage_binary(storage, provenance=source, locator=locator)

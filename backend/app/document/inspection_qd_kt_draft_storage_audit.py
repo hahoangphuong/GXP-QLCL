@@ -158,7 +158,18 @@ def audit_case_qdkt_draft_binary_readonly(
         locator = resolve_qdkt_draft_storage_locator(
             session, provenance=provenance,
         )
-        # A read-only stream cannot authorize generation or approval.
-        return audit_qdkt_draft_storage_binary(
+        # Reading storage can overlap with a concurrent DB update. Re-query
+        # the source after the binary read and reject observable drift. This
+        # is a consistency check, not a transaction-isolation guarantee.
+        evidence = audit_qdkt_draft_storage_binary(
             storage, provenance=provenance, locator=locator,
         )
+        current_provenance = read_qdkt_draft_provenance(
+            session, case_id=case_id, snapshot=snapshot,
+        )
+        current_locator = resolve_qdkt_draft_storage_locator(
+            session, provenance=current_provenance,
+        )
+        if current_provenance != provenance or current_locator != locator:
+            raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_SOURCE_CHANGED")
+        return evidence

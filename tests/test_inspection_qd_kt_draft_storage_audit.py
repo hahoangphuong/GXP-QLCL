@@ -437,3 +437,30 @@ def test_internal_audit_rechecks_unchanged_source_after_storage(monkeypatch):
     assert calls == ["source", "locator", "source", "locator"]
     assert evidence.actual_docx_bytes_verified
     assert not evidence.ready_to_render
+
+
+def test_db_locator_query_refreshes_existing_identity_map_rows():
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from backend.app.document.inspection_qd_kt_draft_storage_audit import (
+        resolve_qdkt_draft_storage_locator,
+    )
+    data, provenance, _ = fixture()
+    seen = []
+    class Session:
+        no_autoflush = nullcontext()
+        def execute(self, statement):
+            seen.append(statement.get_execution_options().get("populate_existing"))
+            return self
+        def all(self):
+            return [(
+                SimpleNamespace(id="version-1", document_variant_id="variant-1",
+                    storage_binding_id="binding-1", storage_root="inspection",
+                    storage_relative_path="case-1/qdkt/draft.docx",
+                    checksum_sha256=sha256(data).hexdigest()),
+                SimpleNamespace(id="variant-1", document_id="document-1"),
+                SimpleNamespace(id="document-1", case_id="case-1", family_code="INSPECTION_QD_KT"),
+                SimpleNamespace(id="binding-1", case_id="case-1", relative_path="case-1"),
+            )]
+    resolve_qdkt_draft_storage_locator(Session(), provenance=provenance)
+    assert seen == [True]

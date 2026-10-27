@@ -42,6 +42,7 @@ def require_qdkt_draft_version_binding(
             .join(DocumentVariant, DocumentVersion.document_variant_id == DocumentVariant.id)
             .join(Document, DocumentVariant.document_id == Document.id)
             .where(DocumentVersion.id == snapshot.document_version_id)
+            .execution_options(populate_existing=True)
         ).one_or_none()
     if match is None:
         raise QdKtDraftVersionBindingBlocked("QDKT_DRAFT_VERSION_NOT_FOUND")

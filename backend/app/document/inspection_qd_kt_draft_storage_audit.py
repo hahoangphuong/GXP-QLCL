@@ -91,6 +91,7 @@ def resolve_qdkt_draft_storage_locator(
             .join(Document, DocumentVariant.document_id == Document.id)
             .join(StorageBinding, DocumentVersion.storage_binding_id == StorageBinding.id)
             .where(DocumentVersion.id == provenance.document_version_id)
+            .execution_options(populate_existing=True)
         ).all()
     if len(matches) != 1:
         raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_BINDING_NOT_UNIQUE")

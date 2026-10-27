@@ -341,3 +341,31 @@ def test_storage_adapter_programming_error_not_swallowed():
         audit_qdkt_draft_storage_binary(
             BrokenStorage(data), provenance=source, locator=locator,
         )
+
+
+@pytest.mark.parametrize("changes", [
+    {"stored_checksum_sha256": "not-a-sha256"},
+    {"ready_to_render": True},
+    {"issuance_approved": True},
+    {"case_roster_identity_verified": False},
+    {"version_case_ownership_verified": False},
+    {"binary_content_verified": True},
+    {"job_title_provenance_verified": True},
+])
+def test_unproven_binary_metadata_blocks_before_storage_read(changes):
+    data, source, locator = fixture()
+    storage = FakeStorage(data)
+    with pytest.raises(ValueError, match="PROVENANCE_UNPROVEN"):
+        audit_qdkt_draft_storage_binary(
+            storage, provenance=replace(source, **changes), locator=locator,
+        )
+    assert storage.calls == []
+
+
+def test_valid_binary_metadata_still_reads_and_keeps_renderer_blocked():
+    data, source, locator = fixture()
+    storage = FakeStorage(data)
+    evidence = audit_qdkt_draft_storage_binary(storage, provenance=source, locator=locator)
+    assert storage.calls == [(locator.storage_relative_path, "inspection")]
+    assert evidence.actual_docx_bytes_verified
+    assert not evidence.ready_to_render

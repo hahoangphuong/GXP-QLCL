@@ -13,6 +13,7 @@ from backend.app.db.models.phase1 import Document, DocumentVariant, DocumentVers
 
 from backend.app.document.inspection_qd_kt_draft_binary_evidence import (
     QdKtDraftBinaryEvidence, verify_supplied_qdkt_draft_docx,
+    require_qdkt_draft_binary_provenance,
 )
 from backend.app.document.inspection_qd_kt_draft_provenance import (
     QdKtDraftProvenance, read_qdkt_draft_provenance,
@@ -51,6 +52,8 @@ def audit_qdkt_draft_storage_binary(
         or not _safe_inspection_relative_path(locator.storage_relative_path)
     ):
         raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_LOCATOR_UNPROVEN")
+    # Invalid evidence metadata must never trigger a storage read.
+    require_qdkt_draft_binary_provenance(provenance)
     try:
         with storage.read_stream(locator.storage_relative_path, root=locator.storage_root) as stream:
             payload = BytesIO()

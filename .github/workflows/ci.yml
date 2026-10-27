@@ -58,6 +58,11 @@ jobs:
           GXP_DDK_CI_POSTGRES_INTEGRATION: "1"
         run: python -m pytest tests/test_ddk_gxp_0023_postflight_postgres.py tests/test_ddk_gxp_source_apply_postgres.py -q -p no:cacheprovider
 
+      - name: Validate QDKT transaction visibility with disposable PostgreSQL
+        env:
+          GXP_QDKT_POSTGRES_CONCURRENCY_INTEGRATION: "1"
+        run: python -m pytest tests/test_inspection_qd_kt_transaction_visibility_postgres.py -q -p no:cacheprovider
+
       - name: Run backend tests
         run: python -m pytest -q
 

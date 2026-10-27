@@ -42,7 +42,7 @@ def build_offline_two_member_docx(
             template=template, expected_sha256=expected_sha256,
         )
         with ZipFile(BytesIO(blanked)) as src:
-            members = require_safe_ooxml_members(source)
+            members = require_safe_ooxml_members(src)
             original_xml = src.read("word/document.xml")
             changed_xml = remove_third_member_span_xml(original_xml)
             if changed_xml == original_xml:

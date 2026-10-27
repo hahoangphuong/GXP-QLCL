@@ -14,7 +14,10 @@ from backend.app.db.models.phase1 import Document, DocumentVariant, DocumentVers
 from backend.app.document.inspection_qd_kt_draft_binary_evidence import (
     QdKtDraftBinaryEvidence, verify_supplied_qdkt_draft_docx,
 )
-from backend.app.document.inspection_qd_kt_draft_provenance import (\n    QdKtDraftProvenance, read_qdkt_draft_provenance,\n)\nfrom backend.app.document.inspection_qd_kt_team_snapshot_review import DraftTeamSnapshot
+from backend.app.document.inspection_qd_kt_draft_provenance import (
+    QdKtDraftProvenance, read_qdkt_draft_provenance,
+)
+from backend.app.document.inspection_qd_kt_team_snapshot_review import DraftTeamSnapshot
 from backend.app.storage.types import StorageServiceProtocol
 
 MAX_BINARY_BYTES = 32 * 1024 * 1024
@@ -99,7 +102,10 @@ def resolve_qdkt_draft_storage_locator(
         or version.storage_root != "inspection"
         or not isinstance(path, str)
         or not isinstance(folder, str)
-        or not folder\n        or not _safe_inspection_relative_path(folder)\n        or not _safe_inspection_relative_path(path)\n        or not path.startswith(folder + "/")
+        or not folder
+        or not _safe_inspection_relative_path(folder)
+        or not _safe_inspection_relative_path(path)
+        or not path.startswith(folder + "/")
     ):
         raise QdKtDraftStorageAuditBlocked("QDKT_STORAGE_AUDIT_OWNER_MISMATCH")
     locator = QdKtExactDraftLocator(

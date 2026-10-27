@@ -605,3 +605,54 @@ def test_non_alias_components_keep_working(safe_path):
     assert evidence.actual_docx_bytes_verified
     assert not evidence.ready_to_render
     assert storage.calls == [(safe_path, "inspection")]
+
+
+@pytest.mark.parametrize("stored_checksum_case", ["upper", "mixed"])
+def test_db_locator_accepts_equivalent_canonical_sha256(monkeypatch, stored_checksum_case):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from backend.app.document.inspection_qd_kt_draft_storage_audit import (
+        resolve_qdkt_draft_storage_locator,
+    )
+    data, provenance, locator = fixture()
+    digest = sha256(data).hexdigest()
+    stored = digest.upper() if stored_checksum_case == "upper" else "".join(
+        c.upper() if i % 2 else c for i, c in enumerate(digest)
+    )
+    version = SimpleNamespace(id="version-1", document_variant_id="variant-1",
+        storage_binding_id="binding-1", storage_root="inspection",
+        storage_relative_path=locator.storage_relative_path, checksum_sha256=stored)
+    variant = SimpleNamespace(id="variant-1", document_id="document-1")
+    doc = SimpleNamespace(id="document-1", case_id="case-1", family_code="INSPECTION_QD_KT")
+    binding = SimpleNamespace(id="binding-1", case_id="case-1", relative_path="case-1")
+    class Session:
+        no_autoflush = nullcontext()
+        def execute(self, statement):
+            return self
+        def all(self):
+            return [(version, variant, doc, binding)]
+    result = resolve_qdkt_draft_storage_locator(Session(), provenance=provenance)
+    assert result.storage_relative_path == locator.storage_relative_path
+    assert result.storage_binding_owner_verified
+
+
+@pytest.mark.parametrize("stored_checksum", ["invalid", "z" * 64, None, "0" * 64])
+def test_db_locator_still_rejects_invalid_or_changed_checksum(stored_checksum):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from backend.app.document.inspection_qd_kt_draft_storage_audit import resolve_qdkt_draft_storage_locator
+    _, provenance, locator = fixture()
+    version = SimpleNamespace(id="version-1", document_variant_id="variant-1",
+        storage_binding_id="binding-1", storage_root="inspection",
+        storage_relative_path=locator.storage_relative_path, checksum_sha256=stored_checksum)
+    variant = SimpleNamespace(id="variant-1", document_id="document-1")
+    doc = SimpleNamespace(id="document-1", case_id="case-1", family_code="INSPECTION_QD_KT")
+    binding = SimpleNamespace(id="binding-1", case_id="case-1", relative_path="case-1")
+    class Session:
+        no_autoflush = nullcontext()
+        def execute(self, statement):
+            return self
+        def all(self):
+            return [(version, variant, doc, binding)]
+    with pytest.raises(QdKtDraftStorageAuditBlocked, match="OWNER_MISMATCH"):
+        resolve_qdkt_draft_storage_locator(Session(), provenance=provenance)

@@ -43,10 +43,8 @@ class QdKtDraftBinaryEvidence:
     ready_to_render: bool = False
 
 
-def verify_supplied_qdkt_draft_docx(
-    *, provenance: QdKtDraftProvenance, payload: bytes,
-) -> QdKtDraftBinaryEvidence:
-    """Measure caller-supplied, bounded bytes, not a locator or persisted hash."""
+def require_qdkt_draft_binary_provenance(provenance: QdKtDraftProvenance) -> None:
+    """Reject unproven source flags and malformed checksum before storage I/O."""
     if not isinstance(provenance, QdKtDraftProvenance):
         raise QdKtDraftBinaryBlocked("QDKT_DRAFT_BINARY_PROVENANCE_INVALID")
     if (
@@ -62,6 +60,12 @@ def verify_supplied_qdkt_draft_docx(
         or fullmatch(r"[0-9a-f]{64}", provenance.stored_checksum_sha256) is None
     ):
         raise QdKtDraftBinaryBlocked("QDKT_DRAFT_BINARY_PROVENANCE_UNPROVEN")
+
+def verify_supplied_qdkt_draft_docx(
+    *, provenance: QdKtDraftProvenance, payload: bytes,
+) -> QdKtDraftBinaryEvidence:
+    """Measure caller-supplied, bounded bytes, not a locator or persisted hash."""
+    require_qdkt_draft_binary_provenance(provenance)
     if not isinstance(payload, bytes) or not payload or len(payload) > _MAX_SUPPLIED_BYTES:
         raise QdKtDraftBinaryBlocked("QDKT_DRAFT_BINARY_SIZE_UNSAFE")
     actual = sha256(payload).hexdigest()

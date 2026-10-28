@@ -437,7 +437,108 @@ class LocalStorageService:
                 f"Storage target already exists and will not be overwritten: {relative_path!r}."
             )
 
+    @staticmethod
+    def _rename_noreplace_dirfd(parent_fd: int, source_name: str, target_name: str, relative_path: str) -> None:
+        """OS-enforced exclusive publication within one held directory."""
+        if not sys.platform.startswith("linux"):
+            raise StorageOperationError("Atomic no-replace rename is unsupported on this platform.")
+        libc = ctypes.CDLL(None, use_errno=True)
+        renameat2 = getattr(libc, "renameat2", None)
+        if renameat2 is None:
+            raise StorageOperationError("Atomic no-replace rename is unavailable on this runtime.")
+        renameat2.argtypes = (
+            ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint,
+        )
+        renameat2.restype = ctypes.c_int
+        result = renameat2(
+            parent_fd, os.fsencode(source_name), parent_fd, os.fsencode(target_name), 1,
+        )
+        if result != 0:
+            error_code = ctypes.get_errno()
+            if error_code in {errno.EEXIST, errno.ENOTEMPTY}:
+                raise StorageTargetExistsError(
+                    f"Storage target already exists and will not be overwritten: {relative_path!r}."
+                )
+            if error_code in {errno.ENOSYS, errno.EINVAL, errno.EOPNOTSUPP, errno.EXDEV}:
+                raise StorageOperationError(
+                    "Atomic no-replace rename is unsupported for this storage location."
+                )
+            raise OSError(error_code, os.strerror(error_code), relative_path)
+
+    def _copy_posix(self, source_relative_path: str, target_relative_path: str, *, root: str) -> StorageEntry:
+        """Stage and publish a copy relative to one held destination directory fd.
+
+        Linux renameat2 enforces no-replace. This pins directories, not the
+        final destination's immutable generation or a DB transaction.
+        """
+        import secrets
+
+        base_root = self._select_root(root)
+        normalized = _normalize_relative(target_relative_path)
+        if not normalized:
+            raise StorageOperationError("A regular file path is required for storage copy.")
+        parts = normalized.split("/")
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        fds: list[int] = []
+        staging_name: str | None = None
+        size: int | None = None
+        try:
+            parent_fd = os.open(base_root, flags)
+            fds.append(parent_fd)
+            for component in parts[:-1]:
+                try:
+                    os.mkdir(component, dir_fd=parent_fd)
+                except FileExistsError:
+                    pass
+                parent_fd = os.open(component, flags, dir_fd=parent_fd)
+                fds.append(parent_fd)
+
+            with self.read_stream(source_relative_path, root=root) as stream:
+                source_stat = os.fstat(stream.fileno())
+                for _ in range(8):
+                    candidate = ".gxp-stage-" + secrets.token_hex(16) + ".tmp"
+                    try:
+                        staged_fd = os.open(
+                            candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                            0o600, dir_fd=parent_fd,
+                        )
+                    except FileExistsError:
+                        continue
+                    staging_name = candidate
+                    break
+                else:
+                    raise StorageOperationError("Unable to allocate a private staging file.")
+
+                try:
+                    staged_stream = os.fdopen(staged_fd, "wb")
+                except BaseException:
+                    os.close(staged_fd)
+                    raise
+                with staged_stream:
+                    shutil.copyfileobj(stream, staged_stream, length=1024 * 1024)
+                    staged_stream.flush()
+                    os.fchmod(staged_stream.fileno(), stat.S_IMODE(source_stat.st_mode))
+                    os.utime(
+                        staged_stream.fileno(),
+                        ns=(source_stat.st_atime_ns, source_stat.st_mtime_ns),
+                    )
+                    size = os.fstat(staged_stream.fileno()).st_size
+
+            self._rename_noreplace_dirfd(parent_fd, staging_name, parts[-1], target_relative_path)
+            staging_name = None
+        finally:
+            if staging_name is not None and fds:
+                try:
+                    os.unlink(staging_name, dir_fd=fds[-1])
+                except FileNotFoundError:
+                    pass
+            for fd in reversed(fds):
+                os.close(fd)
+        return StorageEntry(relative_path=normalized, name=parts[-1], is_dir=False, size=size)
+
     def copy(self, source_relative_path: str, target_relative_path: str, *, root: str = "inspection") -> StorageEntry:
+        if os.name == "posix":
+            return self._copy_posix(source_relative_path, target_relative_path, root=root)
         base_root = self._select_root(root)
         source = self._path_under(base_root, source_relative_path)
         target = self._path_under(base_root, target_relative_path)

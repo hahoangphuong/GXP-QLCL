@@ -808,7 +808,11 @@ def test_storage_copy_metadata_failure_cleans_exclusive_target(tmp_path: Path, m
     def fail_metadata_copy(*args, **kwargs):
         raise OSError("simulated metadata error")
 
-    monkeypatch.setattr("backend.app.storage.local.shutil.copystat", fail_metadata_copy)
+    monkeypatch.setattr(
+        "backend.app.storage.local.os.utime" if os.name == "posix"
+        else "backend.app.storage.local.shutil.copystat",
+        fail_metadata_copy,
+    )
     with pytest.raises(OSError, match="simulated metadata error"):
         service.copy("source.txt", "copied.txt")
 
@@ -833,13 +837,19 @@ def test_storage_copy_does_not_delete_concurrent_writer_on_metadata_failure(tmp_
     target = service.inspection_root / "copy.txt"
     source.write_bytes(b"original source")
 
-    def concurrent_writer_then_metadata_failure(source_path, staged_path):
+    def concurrent_writer_then_metadata_failure(*args, **kwargs):
         assert target.exists() is False
-        assert Path(staged_path).read_bytes() == b"original source"
+        stages = list(service.inspection_root.glob(".gxp-stage-*.tmp"))
+        assert len(stages) == 1
+        assert stages[0].read_bytes() == b"original source"
         target.write_bytes(b"other writer")
         raise OSError("metadata failed after concurrent writer published")
 
-    monkeypatch.setattr("backend.app.storage.local.shutil.copystat", concurrent_writer_then_metadata_failure)
+    monkeypatch.setattr(
+        "backend.app.storage.local.os.utime" if os.name == "posix"
+        else "backend.app.storage.local.shutil.copystat",
+        concurrent_writer_then_metadata_failure,
+    )
     with pytest.raises(OSError, match="metadata failed"):
         service.copy("source.txt", "copy.txt")
 

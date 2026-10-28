@@ -559,7 +559,8 @@ def test_storage_list_rejects_child_symlinks_escaping_root(tmp_path: Path, is_di
     alias = service.inspection_root / "linked-external"
     _create_storage_symlink_or_skip(alias, outside, is_dir=is_dir)
 
-    with pytest.raises(StorageOperationError, match="escapes configured storage root"):
+    expected = "symlink" if os.name == "posix" else "escapes configured storage root"
+    with pytest.raises(StorageOperationError, match=expected):
         service.list("")
     # POSIX metadata now rejects the final symlink before pathname resolution.
     expected = "symlink" if os.name == "posix" else "escapes configured storage root"
@@ -611,11 +612,15 @@ def test_storage_list_allows_symlink_to_a_target_within_root(tmp_path: Path):
     alias = service.inspection_root / "report-link.txt"
     _create_storage_symlink_or_skip(alias, target)
 
-    entries = {entry.name: entry for entry in service.list()}
-    assert entries["report-link.txt"].relative_path == "report-link.txt"
-    assert entries["report-link.txt"].size == len(b"within-root")
-    # Listing metadata permits an in-root alias, but the descriptor-anchored
-    # binary-read/checksum contract on POSIX deliberately rejects symlinks.
+    # POSIX enumeration now shares the binary read's fail-closed symlink
+    # contract. Non-POSIX retains its historical in-root alias behavior.
+    if os.name == "posix":
+        with pytest.raises(StorageOperationError, match="symlink"):
+            service.list()
+    else:
+        entries = {entry.name: entry for entry in service.list()}
+        assert entries["report-link.txt"].relative_path == "report-link.txt"
+        assert entries["report-link.txt"].size == len(b"within-root")
     assert service.checksum("2026/report.txt") == sha256(b"within-root").hexdigest()
     if os.name == "posix":
         with pytest.raises(OSError):

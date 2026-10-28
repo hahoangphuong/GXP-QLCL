@@ -182,8 +182,45 @@ class LocalStorageService:
             detail=None,
         )
 
+    @contextmanager
+    def _scandir_posix(self, base_root: Path, relative_path: str):
+        """Anchor enumeration to held no-follow directory descriptors."""
+        normalized = _normalize_relative(relative_path)
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        fds: list[int] = []
+        try:
+            directory_fd = os.open(base_root, flags)
+            fds.append(directory_fd)
+            for component in normalized.split("/") if normalized else ():
+                directory_fd = os.open(component, flags, dir_fd=directory_fd)
+                fds.append(directory_fd)
+            with os.scandir(directory_fd) as listing:
+                yield normalized, directory_fd, listing
+        finally:
+            for fd in reversed(fds):
+                os.close(fd)
+
+    @staticmethod
+    def _entry_from_scandir_posix(normalized: str, directory_fd: int, name: str) -> StorageEntry:
+        # The entry name is not resolved against a mutable pathname.
+        info = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        if stat.S_ISLNK(info.st_mode):
+            raise StorageOperationError("Storage enumeration child is a symlink.")
+        is_dir = stat.S_ISDIR(info.st_mode)
+        return StorageEntry(
+            relative_path=f"{normalized}/{name}" if normalized else name,
+            name=name, is_dir=is_dir, size=None if is_dir else info.st_size,
+        )
+
     def list(self, relative_path: str = "", *, root: str = "inspection") -> list[StorageEntry]:
         base_root = self._select_root(root)
+        if os.name == "posix":
+            with self._scandir_posix(base_root, relative_path) as (normalized, directory_fd, listing):
+                entries = [
+                    self._entry_from_scandir_posix(normalized, directory_fd, item.name)
+                    for item in listing
+                ]
+            return sorted(entries, key=lambda entry: (not entry.is_dir, entry.name.lower()))
         target = self._path_under(base_root, relative_path)
         if not target.exists():
             raise FileNotFoundError(target)
@@ -192,12 +229,13 @@ class LocalStorageService:
         return [self._entry_for(base_root, child) for child in sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))]
 
     def iter_entries_for_audit(self, relative_path: str = "", *, root: str = "inspection") -> Iterator[StorageEntry]:
-        """Stream entries without sorting/materializing a large directory.
-
-        This iterator is for bounded, read-only audits; every child retains
-        the same root-containment check used by normal listing.
-        """
+        """Stream read-only entries, anchored to a directory fd on POSIX."""
         base_root = self._select_root(root)
+        if os.name == "posix":
+            with self._scandir_posix(base_root, relative_path) as (normalized, directory_fd, listing):
+                for item in listing:
+                    yield self._entry_from_scandir_posix(normalized, directory_fd, item.name)
+            return
         target = self._path_under(base_root, relative_path)
         if not target.exists():
             raise FileNotFoundError(target)

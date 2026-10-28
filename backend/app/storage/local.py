@@ -404,10 +404,10 @@ class LocalStorageService:
         return self._entry_for(base_root, target)
 
     def checksum(self, relative_path: str, *, root: str = "inspection") -> str:
-        base_root = self._select_root(root)
-        target = self._path_under(base_root, relative_path)
+        # Use the same descriptor-anchored, no-follow read path as binary audits.
+        # Resolving a pathname and then reopening it has a symlink-swap window.
         digest = sha256()
-        with target.open("rb") as fh:
+        with self.read_stream(relative_path, root=root) as fh:
             for chunk in iter(lambda: fh.read(1024 * 1024), b""):
                 digest.update(chunk)
         return digest.hexdigest()

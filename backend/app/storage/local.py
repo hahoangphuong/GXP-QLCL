@@ -273,6 +273,7 @@ class LocalStorageService:
         flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY
         fds: list[int] = []
         staging_name: str | None = None
+        published_size: int | None = None
         import secrets
 
         try:
@@ -313,6 +314,8 @@ class LocalStorageService:
                     if not chunk:
                         break
                     staged_stream.write(chunk)
+                staged_stream.flush()
+                published_size = os.fstat(staged_stream.fileno()).st_size
 
             if overwrite:
                 os.replace(staging_name, name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
@@ -348,7 +351,10 @@ class LocalStorageService:
                     pass
             for fd in reversed(fds):
                 os.close(fd)
-        return self._entry_for(base_root, base_root / normalized)
+        # Publication was relative to the held parent fd. Do not reopen the
+        # pathname for the result: a swapped parent can now point outside
+        # the root even though the publication itself remained contained.
+        return StorageEntry(relative_path=normalized, name=name, is_dir=False, size=published_size)
 
     def write_stream(
         self,

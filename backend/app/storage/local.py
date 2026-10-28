@@ -258,6 +258,98 @@ class LocalStorageService:
             for fd in reversed(fds):
                 os.close(fd)
 
+    def _write_stream_posix(
+        self, base_root: Path, relative_path: str, stream: BinaryIO, *, overwrite: bool,
+    ) -> StorageEntry:
+        """Keep a directory fd through staging, publication and cleanup.
+
+        No post-containment pathname lookup can redirect writes outside root.
+        An exclusive publish requires Linux renameat2(RENAME_NOREPLACE).
+        """
+        normalized = _normalize_relative(relative_path)
+        if not normalized:
+            raise StorageOperationError("A regular file path is required for storage write.")
+        parts = normalized.split("/")
+        flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY
+        fds: list[int] = []
+        staging_name: str | None = None
+        import secrets
+
+        try:
+            parent_fd = os.open(base_root, flags)
+            fds.append(parent_fd)
+            for part in parts[:-1]:
+                try:
+                    os.mkdir(part, dir_fd=parent_fd)
+                except FileExistsError:
+                    pass
+                parent_fd = os.open(part, flags, dir_fd=parent_fd)
+                fds.append(parent_fd)
+
+            name = parts[-1]
+            for _ in range(8):
+                candidate = ".gxp-stage-" + secrets.token_hex(16) + ".tmp"
+                try:
+                    staged_fd = os.open(
+                        candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                        0o600, dir_fd=parent_fd,
+                    )
+                except FileExistsError:
+                    continue
+                staging_name = candidate
+                break
+            else:
+                raise StorageOperationError("Unable to allocate a private staging file.")
+
+            # fdopen takes ownership only after successful wrapping.
+            try:
+                staged_stream = os.fdopen(staged_fd, "wb")
+            except BaseException:
+                os.close(staged_fd)
+                raise
+            with staged_stream:
+                while True:
+                    chunk = stream.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    staged_stream.write(chunk)
+
+            if overwrite:
+                os.replace(staging_name, name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+            else:
+                if not sys.platform.startswith("linux"):
+                    raise StorageOperationError("Atomic no-replace rename is unsupported on this platform.")
+                libc = ctypes.CDLL(None, use_errno=True)
+                renameat2 = getattr(libc, "renameat2", None)
+                if renameat2 is None:
+                    raise StorageOperationError("Atomic no-replace rename is unavailable on this runtime.")
+                renameat2.argtypes = (
+                    ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint,
+                )
+                renameat2.restype = ctypes.c_int
+                result = renameat2(parent_fd, os.fsencode(staging_name), parent_fd, os.fsencode(name), 1)
+                if result != 0:
+                    error_code = ctypes.get_errno()
+                    if error_code in {errno.EEXIST, errno.ENOTEMPTY}:
+                        raise StorageTargetExistsError(
+                            f"Storage target already exists and will not be overwritten: {relative_path!r}."
+                        )
+                    if error_code in {errno.ENOSYS, errno.EINVAL, errno.EOPNOTSUPP, errno.EXDEV}:
+                        raise StorageOperationError(
+                            "Atomic no-replace rename is unsupported for this storage location."
+                        )
+                    raise OSError(error_code, os.strerror(error_code), normalized)
+            staging_name = None
+        finally:
+            if staging_name is not None and fds:
+                try:
+                    os.unlink(staging_name, dir_fd=fds[-1])
+                except FileNotFoundError:
+                    pass
+            for fd in reversed(fds):
+                os.close(fd)
+        return self._entry_for(base_root, base_root / normalized)
+
     def write_stream(
         self,
         relative_path: str,
@@ -267,11 +359,11 @@ class LocalStorageService:
         overwrite: bool = True,
     ) -> StorageEntry:
         base_root = self._select_root(root)
+        if os.name == "posix":
+            return self._write_stream_posix(base_root, relative_path, stream, overwrite=overwrite)
         target = self._path_under(base_root, relative_path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        # Both modes prepare an entire private file before publication.
-        # Exclusive creates use kernel-enforced no-replace; they must not
-        # expose a partially written document or unlink a competing writer.
+        # Non-POSIX retains the existing pathname-based publication contract.
         temp_path: Path | None = None
         try:
             with tempfile.NamedTemporaryFile(delete=False, dir=target.parent, prefix=".gxp-stage-", suffix=".tmp") as tmp:

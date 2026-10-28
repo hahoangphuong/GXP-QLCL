@@ -252,3 +252,61 @@ def test_failed_fdopen_on_top_level_file_closes_root_and_file(tmp_path, monkeypa
     for fd in acquired:
         with pytest.raises(OSError):
             os.fstat(fd)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX anchored write contract")
+@pytest.mark.parametrize("overwrite", [False, True])
+def test_write_parent_swap_cannot_publish_outside_root(tmp_path, overwrite):
+    from io import BytesIO
+
+    root = tmp_path / "inspection"
+    outside = tmp_path / "outside"
+    (root / "parent").mkdir(parents=True)
+    outside.mkdir()
+    (outside / "draft.docx").write_bytes(b"outside-original")
+    storage = LocalStorageService(StorageConfig(inspection_root=root))
+
+    class SwappingStream(BytesIO):
+        swapped = False
+        def read(self, n=-1):
+            if not self.swapped:
+                self.swapped = True
+                (root / "parent").rename(root / "original-parent")
+                (root / "parent").symlink_to(outside, target_is_directory=True)
+            return super().read(n)
+
+    with pytest.raises((StorageOperationError, OSError)):
+        storage.write_stream("parent/draft.docx", SwappingStream(b"new-bytes"), overwrite=overwrite)
+    assert (outside / "draft.docx").read_bytes() == b"outside-original"
+    assert (root / "original-parent" / "draft.docx").read_bytes() == b"new-bytes"
+    assert not list((root / "original-parent").glob(".gxp-stage-*"))
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX anchored write contract")
+def test_write_symlink_parent_rejected_without_external_write(tmp_path):
+    from io import BytesIO
+
+    root = tmp_path / "inspection"
+    outside = tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    (root / "alias").symlink_to(outside, target_is_directory=True)
+    storage = LocalStorageService(StorageConfig(inspection_root=root))
+    with pytest.raises(OSError):
+        storage.write_stream("alias/file.docx", BytesIO(b"forbidden"))
+    assert not (outside / "file.docx").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX no-replace contract")
+def test_descriptor_write_exclusive_preserves_existing_target(tmp_path):
+    from io import BytesIO
+
+    root = tmp_path / "inspection"
+    root.mkdir()
+    storage = LocalStorageService(StorageConfig(inspection_root=root))
+    storage.write_stream("child/draft.docx", BytesIO(b"first"), overwrite=False)
+    from backend.app.storage.types import StorageTargetExistsError
+    with pytest.raises(StorageTargetExistsError):
+        storage.write_stream("child/draft.docx", BytesIO(b"second"), overwrite=False)
+    assert (root / "child" / "draft.docx").read_bytes() == b"first"
+    assert not list((root / "child").glob(".gxp-stage-*"))

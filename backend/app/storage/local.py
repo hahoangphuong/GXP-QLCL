@@ -660,14 +660,14 @@ class LocalStorageService:
         )
         renameat2.restype = ctypes.c_int
         result = renameat2(
-            source_fd, os.fsencode(source_parts[-1]),
-            target_fd, os.fsencode(target_parts[-1]), 1,
+            source_fd, os.fsencode(source_name),
+            target_fd, os.fsencode(target_name), 1,
         )
         if result != 0:
             code = ctypes.get_errno()
             if code in {errno.EEXIST, errno.ENOTEMPTY}:
                 raise StorageTargetExistsError(
-                f"Storage target already exists and will not be overwritten: {relative_path!r}."
+                    f"Storage target already exists and will not be overwritten: {relative_path!r}."
                 )
             if code in {errno.ENOSYS, errno.EINVAL, errno.EOPNOTSUPP, errno.EXDEV}:
                 raise StorageOperationError("Atomic no-replace rename is unsupported for this storage location.")

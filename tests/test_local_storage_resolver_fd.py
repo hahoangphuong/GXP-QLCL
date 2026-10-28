@@ -24,8 +24,8 @@ def test_legacy_resolver_parent_swap_never_reads_external_entries(tmp_path, monk
     else:
         inside = root
         external = outside
-        (inside / "A (ID-91)").mkdir()
-        (external / "B (ID-91)").mkdir()
+        (inside / "A (91)").mkdir()
+        (external / "B (91)").mkdir()
         kwargs = {"site_legacy_id": 91}
         method = "resolve_dkkd_folder"
     svc = LocalStorageService(StorageConfig(inspection_root=root, dkkd_root=root))
@@ -49,7 +49,7 @@ def test_legacy_resolver_parent_swap_never_reads_external_entries(tmp_path, monk
     result = getattr(svc, method)(**kwargs)
     assert swapped
     assert result.status == StorageResolutionStatus.RESOLVED
-    assert result.relative_path.endswith("A (ID-103) (KT-1376-GMP)" if kind == "inspection" else "A (ID-91)")
+    assert result.relative_path.endswith("A (ID-103) (KT-1376-GMP)" if kind == "inspection" else "A (91)")
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX dirfd resolution")
@@ -64,7 +64,7 @@ def test_legacy_resolver_rejects_matching_symlink_without_outside_read(tmp_path,
         with pytest.raises(StorageOperationError, match="escapes configured storage root"):
             svc.resolve_inspection_folder(year=2026, site_legacy_id=103, inspection_legacy_code="KT-1376-GMP")
     else:
-        (root / "A (ID-91)").symlink_to(outside, target_is_directory=True)
+        (root / "A (91)").symlink_to(outside, target_is_directory=True)
         with pytest.raises(StorageOperationError, match="escapes configured storage root"):
             svc.resolve_dkkd_folder(site_legacy_id=91)
 
@@ -79,5 +79,5 @@ def test_inspection_resolver_missing_year_and_symlink_year(tmp_path):
     outside = tmp_path / "outside"
     outside.mkdir()
     (root / "2026").symlink_to(outside, target_is_directory=True)
-    with pytest.raises(OSError):
+    with pytest.raises(StorageOperationError, match="escapes configured storage root"):
         svc.resolve_inspection_folder(**kwargs)

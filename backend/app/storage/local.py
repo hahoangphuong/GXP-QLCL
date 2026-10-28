@@ -86,6 +86,18 @@ class LocalStorageService:
                 detail="Missing or invalid inspection folder identity input.",
             )
 
+        if os.name == "posix":
+            return self._resolve_matching_folders_posix(
+                root=self.inspection_root, parent_relative=str(year),
+                matches_name=lambda name: matches_inspection_identity(
+                    name, site_legacy_id=site_legacy_id,
+                    inspection_legacy_code=inspection_legacy_code,
+                ),
+                not_found_detail="No inspection folder matched the legacy identity tokens.",
+                ambiguous_detail="More than one inspection folder matched the legacy identity tokens.",
+                missing_parent_is_not_found=True,
+            )
+
         # Do not enumerate a year directory that resolves outside the
         # inspection root (for example, a year-named symlink).
         year_roots = [self._path_under(self.inspection_root, str(year))]
@@ -132,6 +144,16 @@ class LocalStorageService:
                 detail="Missing or invalid site legacy ID for DDKD folder resolution.",
             )
 
+        if os.name == "posix":
+            return self._resolve_matching_folders_posix(
+                root=self.dkkd_root, parent_relative="",
+                matches_name=lambda name: matches_dkkd_identity(
+                    name, site_legacy_id=site_legacy_id,
+                ),
+                not_found_detail="No DDKD folder matched the site legacy token.",
+                ambiguous_detail="More than one DDKD folder matched the site legacy token.",
+            )
+
         matches = [
             path
             for path in self.dkkd_root.iterdir()
@@ -142,6 +164,45 @@ class LocalStorageService:
             matches=matches,
             not_found_detail="No DDKD folder matched the site legacy token.",
             ambiguous_detail="More than one DDKD folder matched the site legacy token.",
+        )
+
+    def _resolve_matching_folders_posix(
+        self, *, root: Path, parent_relative: str, matches_name,
+        not_found_detail: str, ambiguous_detail: str,
+        missing_parent_is_not_found: bool = False,
+    ) -> StorageResolution:
+        """Enumerate under a no-follow fd; output paths remain unpinned locators."""
+        matches: list[str] = []
+        try:
+            with self._scandir_posix(root, parent_relative) as (_relative, parent_fd, listing):
+                for child in listing:
+                    if not matches_name(child.name):
+                        continue
+                    info = os.stat(child.name, dir_fd=parent_fd, follow_symlinks=False)
+                    if stat.S_ISLNK(info.st_mode):
+                        raise StorageOperationError("Resolved path escapes configured storage root.")
+                    if stat.S_ISDIR(info.st_mode):
+                        matches.append(child.name)
+        except FileNotFoundError:
+            if not missing_parent_is_not_found:
+                raise
+        if not matches:
+            return StorageResolution(
+                status=StorageResolutionStatus.NOT_FOUND,
+                relative_path=None, absolute_path=None, candidate_count=0,
+                detail=not_found_detail,
+            )
+        if len(matches) > 1:
+            return StorageResolution(
+                status=StorageResolutionStatus.AMBIGUOUS,
+                relative_path=None, absolute_path=None,
+                candidate_count=len(matches), detail=ambiguous_detail,
+            )
+        relative = f"{parent_relative}/{matches[0]}" if parent_relative else matches[0]
+        return StorageResolution(
+            status=StorageResolutionStatus.RESOLVED,
+            relative_path=relative, absolute_path=root / relative,
+            candidate_count=1, detail=None,
         )
 
     def _resolution_from_matches(

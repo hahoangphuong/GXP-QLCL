@@ -1,7 +1,5 @@
 """Fail closed when a matching legacy folder vanishes during enumeration."""
 import os
-import stat
-
 import pytest
 
 from backend.app.storage.local import LocalStorageService
@@ -11,8 +9,7 @@ from backend.app.db.enums import StorageResolutionStatus
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX resolver descriptor semantics")
 @pytest.mark.parametrize("kind", ["inspection", "dkkd"])
-@pytest.mark.parametrize("first_valid", [False, True])
-def test_matching_candidate_disappears_during_resolution(tmp_path, monkeypatch, kind, first_valid):
+def test_matching_candidate_disappears_during_resolution(tmp_path, monkeypatch, kind):
     inspection = tmp_path / "inspection"
     dkkd = tmp_path / "dkkd"
     inspection.mkdir()
@@ -21,11 +18,11 @@ def test_matching_candidate_disappears_during_resolution(tmp_path, monkeypatch, 
     if kind == "inspection":
         parent = inspection / "2026"
         parent.mkdir()
-        first, vanishing = "A (ID-103) (KT-1376-GMP)", "B (ID-103) (KT-1376-GMP)"
+        first, vanishing = "A (ID-103) (1376-GMP)", "B (ID-103) (1376-GMP)"
         resolve = lambda: service.resolve_inspection_folder(year=2026, site_legacy_id=103, inspection_legacy_code="1376-GMP")
     else:
         parent = dkkd
-        first, vanishing = "A (ID-103)", "B (ID-103)"
+        first, vanishing = "A (103)", "B (103)"
         resolve = lambda: service.resolve_dkkd_folder(site_legacy_id=103)
     (parent / first).mkdir()
     (parent / vanishing).mkdir()
@@ -37,8 +34,6 @@ def test_matching_candidate_disappears_during_resolution(tmp_path, monkeypatch, 
         if path == vanishing and kwargs.get("dir_fd") is not None:
             injected = True
             raise FileNotFoundError(2, "injected candidate removal", path)
-        if not first_valid and path == first and kwargs.get("dir_fd") is not None:
-            return original_stat(path, *args, **kwargs)
         return original_stat(path, *args, **kwargs)
 
     monkeypatch.setattr(os, "stat", stat_with_missing_candidate)

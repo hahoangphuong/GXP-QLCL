@@ -390,6 +390,32 @@ class LocalStorageService:
 
     def delete(self, relative_path: str, *, root: str = "inspection") -> None:
         base_root = self._select_root(root)
+        if os.name == "posix":
+            normalized = _normalize_relative(relative_path)
+            if not normalized:
+                raise IsADirectoryError(base_root)
+            parts = normalized.split("/")
+            directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+            fds: list[int] = []
+            try:
+                parent_fd = os.open(base_root, directory_flags)
+                fds.append(parent_fd)
+                for component in parts[:-1]:
+                    parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+                    fds.append(parent_fd)
+                name = parts[-1]
+                # Inspect and unlink relative to the *same* held parent
+                # directory, not a pathname that can be swapped to a symlink.
+                mode = os.stat(name, dir_fd=parent_fd, follow_symlinks=False).st_mode
+                if stat.S_ISDIR(mode):
+                    raise IsADirectoryError(normalized)
+                if not stat.S_ISREG(mode):
+                    raise StorageOperationError("Storage delete target is not a regular file.")
+                os.unlink(name, dir_fd=parent_fd)
+            finally:
+                for fd in reversed(fds):
+                    os.close(fd)
+            return
         target = self._path_under(base_root, relative_path)
         if not target.exists():
             raise FileNotFoundError(target)

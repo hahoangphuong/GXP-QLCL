@@ -310,3 +310,53 @@ def test_descriptor_write_exclusive_preserves_existing_target(tmp_path):
         storage.write_stream("child/draft.docx", BytesIO(b"second"), overwrite=False)
     assert (root / "child" / "draft.docx").read_bytes() == b"first"
     assert not list((root / "child").glob(".gxp-stage-*"))
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX fd-anchored write publication")
+def test_write_result_does_not_reopen_swapped_parent_after_publish(tmp_path, monkeypatch):
+    from io import BytesIO
+
+    root = tmp_path / "inspection"
+    outside = tmp_path / "outside"
+    (root / "folder").mkdir(parents=True)
+    outside.mkdir()
+    (outside / "document.bin").write_bytes(b"outside-unchanged")
+    storage = LocalStorageService(StorageConfig(inspection_root=root))
+    original_replace = os.replace
+    swapped = False
+
+    def swap_parent_after_publish(source, destination, *args, **kwargs):
+        nonlocal swapped
+        result = original_replace(source, destination, *args, **kwargs)
+        if not swapped and kwargs.get("src_dir_fd") is not None:
+            swapped = True
+            (root / "folder").rename(root / "original")
+            (root / "folder").symlink_to(outside, target_is_directory=True)
+        return result
+
+    monkeypatch.setattr(os, "replace", swap_parent_after_publish)
+    result = storage.write_stream("folder/document.bin", BytesIO(b"verified"), overwrite=True)
+    assert swapped
+    assert result.relative_path == "folder/document.bin"
+    assert result.name == "document.bin"
+    assert result.size == len(b"verified")
+    assert not result.is_dir
+    assert (root / "original" / "document.bin").read_bytes() == b"verified"
+    assert (outside / "document.bin").read_bytes() == b"outside-unchanged"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX fd-anchored write publication")
+def test_write_entry_reports_actual_bytes_from_staged_descriptor(tmp_path):
+    from io import BytesIO
+
+    root = tmp_path / "inspection"
+    root.mkdir()
+    storage = LocalStorageService(StorageConfig(inspection_root=root))
+    for overwrite in (True, False):
+        name = "overwrite.bin" if overwrite else "exclusive.bin"
+        entry = storage.write_stream(name, BytesIO(b"abc" * 13), overwrite=overwrite)
+        assert entry.relative_path == name
+        assert entry.name == name
+        assert entry.size == 39
+        assert entry.is_dir is False
+        assert (root / name).read_bytes() == b"abc" * 13

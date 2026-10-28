@@ -269,3 +269,19 @@ def test_reader_executes_only_one_select_without_flush_commit_or_mutation(tmp_pa
             raise AssertionError("add")
     assert read_dossier_snapshot(ReadOnlySession(), case_id=snapshot.case_id) == snapshot
     assert calls == ["no_autoflush", "select"]
+
+
+def test_preflight_uses_one_validated_manifest_snapshot(tmp_path, monkeypatch):
+    inputs = fixture(tmp_path)
+    assets = owner.load_inspection_qd_kt_template_assets()
+    calls = []
+    def read_once():
+        calls.append("manifest")
+        if len(calls) > 1:
+            raise ValueError("manifest changed during assessment")
+        return assets
+    monkeypatch.setattr(owner, "load_inspection_qd_kt_template_assets", read_once)
+    result = assess_renderer_preflight(**inputs)
+    assert result.contract_evidence_complete
+    assert result.ready_to_render is False
+    assert calls == ["manifest"]

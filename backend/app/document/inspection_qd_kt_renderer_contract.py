@@ -187,7 +187,12 @@ def _checked_model(cls, value):
 
 def decision_digest(decision: RendererDecision) -> str:
     # Approval references are excluded to avoid self-referential signatures.
-    decision = _checked_model(RendererDecision, decision)
+    return _decision_digest_checked(_checked_model(RendererDecision, decision))
+
+
+def _decision_digest_checked(decision: RendererDecision) -> str:
+    # Internal only: use the fresh model already validated at the entry boundary,
+    # without re-reading the manifest midway through the same assessment.
     content = decision.model_dump(mode="json", exclude={"approval_record_ids"})
     return sha256(json.dumps(content, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
 
@@ -423,7 +428,7 @@ def assess_renderer_preflight(
     except (ValueError, TypeError, AttributeError, RecursionError):
         return RendererPreflightResult(("QDKT_PHYSICAL_EVIDENCE_INVALID",), False)
     physical = tuple(checked_physical)
-    digest = decision_digest(decision)
+    digest = _decision_digest_checked(decision)
     purposes: set[tuple[str, str]] = set()
     seen_purposes: set[str] = set()
     allowed_roles = {"LEGAL_TEMPLATE": "LEGAL_OWNER", "DOSSIER_SEMANTICS": "BUSINESS_OWNER", "DATE_NORMALIZATION": "BUSINESS_OWNER", "DEPRECATE_WRITES": "LEGAL_OWNER", "WORD_UAT": "UAT_OWNER"}

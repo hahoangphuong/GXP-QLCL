@@ -248,9 +248,11 @@ class LocalStorageService:
             fds.append(file_fd)
             if not stat.S_ISREG(os.fstat(file_fd).st_mode):
                 raise StorageOperationError("Storage read target is not a regular file.")
-            # Close only through the returned stream from this point onward.
+            # fdopen may fail before it takes ownership of file_fd. Keep the
+            # descriptor in the cleanup stack until wrapping succeeds.
+            fh = os.fdopen(file_fd, "rb")
             fds.pop()
-            with os.fdopen(file_fd, "rb") as fh:
+            with fh:
                 yield fh
         finally:
             for fd in reversed(fds):

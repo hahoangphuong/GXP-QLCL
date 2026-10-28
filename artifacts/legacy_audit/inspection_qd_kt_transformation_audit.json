@@ -1,0 +1,1706 @@
+{
+  "adversarial_regressions": [
+    {
+      "case": "CROSS_CASE",
+      "defect_or_unproven_behavior": "Decision from another Case",
+      "evidence_required": "Persisted Case/Plan ownership",
+      "expected_fail_closed_outcome": "Reject mismatched source scope",
+      "risk": "HIGH",
+      "test_reference": "tests/test_inspection_qd_kt_lifecycle_integrity.py::test_cross_case_decision_cannot_be_composed_with_local_site_and_team"
+    },
+    {
+      "case": "WRONG_SITE",
+      "defect_or_unproven_behavior": "Registered Site association differs",
+      "evidence_required": "Canonical registered Site relation",
+      "expected_fail_closed_outcome": "Read only the Case-linked Site; no fallback",
+      "risk": "HIGH",
+      "test_reference": "tests/test_inspection_qd_kt_registered_site.py::test_qdkt_case_uses_only_its_registered_site_address"
+    },
+    {
+      "case": "STALE_PROJECTION",
+      "defect_or_unproven_behavior": "Scalar projection disagrees or source row is absent",
+      "evidence_required": "Matching persisted source row and projection",
+      "expected_fail_closed_outcome": "DECISION_PROJECTION_MISMATCH or missing-source blocker",
+      "risk": "HIGH",
+      "test_reference": "tests/test_inspection_qd_kt_decision_source.py::test_missing_or_stale_scalar_projection_never_silently_falls_back"
+    },
+    {
+      "case": "MULTIPLE_DECISIONS",
+      "defect_or_unproven_behavior": "Ambiguous decision lineage",
+      "evidence_required": "Owner-approved explicit lifecycle; no MAX/date heuristic",
+      "expected_fail_closed_outcome": "Reject incomplete/branched/circular histories",
+      "risk": "HIGH",
+      "test_reference": "tests/test_inspection_qd_kt_latest_reference.py::test_missing_or_ambiguous_replacement_history_blocks"
+    },
+    {
+      "case": "MISSING_ATOM",
+      "defect_or_unproven_behavior": "Canonical application atom absent",
+      "evidence_required": "Matching Case/Application/Site/version source",
+      "expected_fail_closed_outcome": "Block before dispatch; never manufacture values",
+      "risk": "HIGH",
+      "test_reference": "tests/test_inspection_qd_kt_renderer_contract.py::test_canonical_provenance_negative_paths"
+    },
+    {
+      "case": "NULL_DEFAULT",
+      "defect_or_unproven_behavior": "Missing registered address",
+      "evidence_required": "Approved registered address; no plan default",
+      "expected_fail_closed_outcome": "REGISTERED_SITE_ADDRESS_MISSING",
+      "risk": "HIGH",
+      "test_reference": "tests/test_inspection_qd_kt_registered_site.py::test_missing_or_unapproved_address_cannot_be_guessed"
+    },
+    {
+      "case": "UNKNOWN_ENUM",
+      "defect_or_unproven_behavior": "Unknown geography or counterfeit classification",
+      "evidence_required": "Explicit canonical manufacturing classification",
+      "expected_fail_closed_outcome": "Reject invalid enum/type before comparisons",
+      "risk": "HIGH",
+      "test_reference": "tests/test_inspection_qd_kt_transformation_audit.py::test_foreign_classification_cannot_masquerade_as_vaccine"
+    },
+    {
+      "case": "DATE_ONLY_TIMESTAMP",
+      "defect_or_unproven_behavior": "Date-only/timestamp representation conflict",
+      "evidence_required": "Owner-approved source date/display policy",
+      "expected_fail_closed_outcome": "No implicit date-to-timestamp conversion",
+      "risk": "HIGH",
+      "test_reference": "tests/test_inspection_qd_kt_renderer_contract.py::test_ambiguous_or_unsupported_date_transform_is_rejected"
+    },
+    {
+      "case": "TIMEZONE",
+      "defect_or_unproven_behavior": "Equal instants have different recorded calendar days",
+      "evidence_required": "Business timezone decision and boundary-case UAT",
+      "expected_fail_closed_outcome": "No server timezone or guessed conversion",
+      "risk": "HIGH",
+      "test_reference": "tests/test_inspection_qd_kt_renderer_contract.py::test_equal_instants_with_different_recorded_calendar_days_conflict"
+    },
+    {
+      "case": "UNKNOWN_PROVINCE",
+      "defect_or_unproven_behavior": "No unique legacy province mapping",
+      "evidence_required": "Source-proven applicable geography; no alphabetic rule",
+      "expected_fail_closed_outcome": "LEGACY_PROVINCE_MAPPING_UNPROVEN",
+      "risk": "HIGH",
+      "test_reference": "tests/test_inspection_qd_kt_legacy_province_band.py::test_unsupported_classification_or_legacy_location_fails_closed"
+    },
+    {
+      "case": "MISSING_MANUFACTURE",
+      "defect_or_unproven_behavior": "Manufacturing classification UNPROVEN",
+      "evidence_required": "Canonical classification owner; not company-name guessing",
+      "expected_fail_closed_outcome": "MANUFACTURE_CLASSIFICATION_UNPROVEN",
+      "risk": "HIGH",
+      "test_reference": "tests/test_inspection_qd_kt_vkn_authority.py::test_unproven_source_classification_never_guesses_institution"
+    },
+    {
+      "case": "TEAM_ORDER",
+      "defect_or_unproven_behavior": "Ambiguous or unsorted member order",
+      "evidence_required": "Explicit ordered roster and draft/version link",
+      "expected_fail_closed_outcome": "Reject unstable order/identity/role",
+      "risk": "HIGH",
+      "test_reference": "tests/test_inspection_qd_kt_team_source.py::test_unproven_source_fails_closed"
+    },
+    {
+      "case": "UNPROVEN_FORMAT",
+      "defect_or_unproven_behavior": "Correct DB members do not prove formatted Word strings",
+      "evidence_required": "Title/position/unit/paragraph evidence plus Word UAT",
+      "expected_fail_closed_outcome": "No VERIFIED or legal-equivalence promotion",
+      "risk": "HIGH",
+      "test_reference": "tests/test_inspection_qd_kt_transformation_audit.py::test_all_14_fields_remain_unverified_and_have_complete_audit_dimensions"
+    },
+    {
+      "case": "MISSING_TARGET",
+      "defect_or_unproven_behavior": "VBA attempts target absent from original DOTX",
+      "evidence_required": "A/B wording/placement or omission acceptance",
+      "expected_fail_closed_outcome": "Report source no-op, keep owner blocker",
+      "risk": "HIGH",
+      "test_reference": "tests/test_inspection_qd_kt_transformation_audit.py::test_exact_absence_and_numbered_target_facts_are_not_conflated"
+    },
+    {
+      "case": "DUPLICATE_TARGET",
+      "defect_or_unproven_behavior": "Duplicate physical bookmark name",
+      "evidence_required": "Independent valid primary byte audit",
+      "expected_fail_closed_outcome": "Reject ambiguous physical structure",
+      "risk": "HIGH",
+      "test_reference": "tests/test_inspection_qd_kt_dotx_binary_audit.py::test_duplicate_bookmark_names_across_ids_fail_closed"
+    },
+    {
+      "case": "FALSE_VERIFIED",
+      "defect_or_unproven_behavior": "Audit status/ready flag edited without evidence",
+      "evidence_required": "Reviewed source changes, owner approval and actual Word UAT",
+      "expected_fail_closed_outcome": "QDKT_TRANSFORMATION_AUDIT_REPORT_DRIFT",
+      "risk": "HIGH",
+      "test_reference": "tests/test_inspection_qd_kt_transformation_audit.py::test_committed_report_cannot_self_promote"
+    }
+  ],
+  "backend_source_utf8_lf_sha256": {
+    "backend/app/document/inspection_qd_kt_case_readiness.py": "d516551bc2f0feaf1d77bbe4fc285b5971ea458782651efd775c899a4b9f6bea",
+    "backend/app/document/inspection_qd_kt_case_source_bundle.py": "6d036703889ef6d368d88e8c5ee860c2be7bbc7d227d8a48d64121bf8ef8bd0a",
+    "backend/app/document/inspection_qd_kt_decision_source.py": "2bdbc2171f00c46d80f62b86c4307de315ddf15a481a3a6ffe4aeb69336ef675",
+    "backend/app/document/inspection_qd_kt_legacy_province_band.py": "ad605062081f16938cbb57c468eaa64048406b54dfc134a1b6ce333a7ae838c1",
+    "backend/app/document/inspection_qd_kt_locality_projection.py": "9d4202c7fe585f7ebf11a2f42564e2cf229f478816aa9f547ea8a8b8d82b981d",
+    "backend/app/document/inspection_qd_kt_registered_site.py": "1b9f788f807f39d2448b5056417814dbb4b074ef3ee2d3a25dbf71071f72679a",
+    "backend/app/document/inspection_qd_kt_renderer_contract.py": "960a61c49a5e51f44f79b6127935906f0d917335bbd185ffc8f3a9a487778aa8",
+    "backend/app/document/inspection_qd_kt_team_layout_instructions.py": "6bacc1d8cbf99414c8abb9a591118ba79c53e4751039aeff5dc924f5d0cc6304",
+    "backend/app/document/inspection_qd_kt_team_source.py": "a7c31fd11a39617800875b0b6a207a3516aa23e2be04340ceca0d1f00615b856",
+    "backend/app/document/inspection_qd_kt_vkn_authority.py": "86ee7da35154c6bd059654e5ea81b7aab4c035a436396d9839d536ee57114d4b"
+  },
+  "blocker_inventory": {
+    "BLANK_ISSUANCE_DATE_BOOKMARK_UNVERIFIED": [
+      "Fulldate"
+    ],
+    "INSPECTION_TEAM_BOOKMARK_CONTRACT_UNRESOLVED": [
+      "TT3Del",
+      "TT3x",
+      "TTx"
+    ],
+    "LEGACY_PROVINCE_MAPPING_UNPROVEN": [
+      "Diadiem",
+      "VKNx"
+    ],
+    "LOCATION_BOOKMARK_FORMAT_UNPROVEN": [
+      "Diachicoso",
+      "Diadiem",
+      "Diadiemx"
+    ],
+    "MANUFACTURING_CLASSIFICATION_SOURCE_UNPROVEN": [
+      "VKN",
+      "VKNx"
+    ],
+    "QDKT_ADDRESS_SOURCE_POLICY_CONFLICT": [
+      "Diachicoso"
+    ],
+    "QDKT_AUTHORITY_PROSE_ACCEPTANCE_UNPROVEN": [
+      "VKN"
+    ],
+    "QDKT_BUSINESS_TIMEZONE_UNPROVEN": [
+      "Fulldate",
+      "NgaynopHsDK"
+    ],
+    "QDKT_DATE_NORMALIZATION_UNAPPROVED": [
+      "NgaynopHsDK"
+    ],
+    "QDKT_DOSSIER_TARGET_ABSENT": [
+      "HsDK",
+      "NgaynopHsDK"
+    ],
+    "QDKT_DRAFT_DATE_POLICY_CONFLICT": [
+      "Fulldate",
+      "NgayQDKT"
+    ],
+    "QDKT_DRAFT_ISSUED_REFERENCE_POLICY_CONFLICT": [
+      "QDKT"
+    ],
+    "QDKT_LEGACY_PUBLIC_STATE_LIFETIME_UNPROVEN": [
+      "HsDK",
+      "VKNx"
+    ],
+    "QDKT_LEGAL_ISSUANCE_EVIDENCE_UNPROVEN": [
+      "NgayQDKT",
+      "QDKT"
+    ],
+    "QDKT_NAME_FORMATTING_UNPROVEN": [
+      "Tencoso"
+    ],
+    "QDKT_PLANNING_ROW_PROVINCE_UNATTESTED": [
+      "Diadiemx"
+    ],
+    "QDKT_SITE_NAME_SOURCE_EQUIVALENCE_PARTIAL": [
+      "Tencoso"
+    ],
+    "QDKT_TEAM_TITLE_PROVENANCE_UNPROVEN": [
+      "TTx"
+    ],
+    "QDKT_TEAM_WORD_FORMAT_UNPROVEN": [
+      "TT3x"
+    ],
+    "QDKT_THIRD_MEMBER_DELETION_ACCEPTANCE_UNPROVEN": [
+      "TT3Del"
+    ]
+  },
+  "business_timezone": "PARTIAL_UNPROVEN_BUSINESS_TIMEZONE",
+  "call_chain": [
+    "Module1.TaoQDKT_KHKT",
+    "RecordForm.CreateFile(i=2)",
+    "RecordForm.Get_Tpl(i=2)",
+    "RecordForm.Tao_QDKT_KHKT_BBKT(i=2)"
+  ],
+  "decision": "UNDECIDED",
+  "extends_inventory": "artifacts/legacy_audit/inspection_qd_kt_input_provenance.json",
+  "fields": [
+    {
+      "blocker_codes": [
+        "LOCATION_BOOKMARK_FORMAT_UNPROVEN",
+        "QDKT_ADDRESS_SOURCE_POLICY_CONFLICT"
+      ],
+      "canonical_candidate": "Persisted Site.site_address via Case.site_id and read_qdkt_registered_site.",
+      "date_time_handling": "Not a date field.",
+      "differences": "The legacy and approved current source owners differ by design. Exact target is absent in all four originals; no current punctuation/layout acceptance exists.",
+      "evidence_refs": [
+        "MainForm.frm:4154",
+        "Module1.bas:612",
+        "RecordForm.frm:747",
+        "backend/app/document/inspection_qd_kt_registered_site.py:read_qdkt_registered_site",
+        "docs/INSPECTION_QD_KT_CONFIRMED_BUSINESS_RULES_20261022.md:Địa chỉ và địa danh",
+        "legacy/GPs.xlam!WinAPI.bas:559-561 (supplementary version)"
+      ],
+      "groups": [
+        "LOCATION"
+      ],
+      "legacy_owner_classification": "OWNER_BLOCKED",
+      "legacy_source_endpoint": "selected planning row cell 11, then CRLF-to-semicolon and final-period normalization",
+      "legacy_source_expression": "Del_LastPeriod(Replace(DiachiDD, vbCrLf, \";\"))",
+      "legacy_transformation": "Replace CRLF with semicolon, then Del_LastPeriod. Supplementary add-in helper removes exactly one trailing period, without Trim or lone-LF cleanup. This is not approved current address normalization.",
+      "logical_operation": "Diachicoso",
+      "multiple_record_behavior": "One Case-linked Site; no address concatenation or selection from another Case.",
+      "null_missing_behavior": "Current reader blocks missing/untrimmed registered address or absent Case/Site join; never falls back to plan cells.",
+      "operation_type": "WRITE",
+      "owner_evidence_needed": [
+        "Owner-approved registered-address presentation without importing planning-row assumptions",
+        "Word layout acceptance or intentional no-op decision"
+      ],
+      "ownership": "Current owner explicitly selected registered Site address; legacy primary entry reads planning-row cell 11.",
+      "physical_targets": [
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "Diachicoso"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GLP",
+          "missing_targets": [
+            "Diachicoso"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "Diachicoso"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GMP",
+          "missing_targets": [
+            "Diachicoso"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "Diachicoso"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GMPbb",
+          "missing_targets": [
+            "Diachicoso"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "Diachicoso"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GSP",
+          "missing_targets": [
+            "Diachicoso"
+          ],
+          "word_equivalence_verified": false
+        }
+      ],
+      "ready_to_render": false,
+      "status": "CONTRADICTED"
+    },
+    {
+      "blocker_codes": [
+        "LEGACY_PROVINCE_MAPPING_UNPROVEN",
+        "LOCATION_BOOKMARK_FORMAT_UNPROVEN"
+      ],
+      "canonical_candidate": "Case-linked Site.province_name is a candidate province, not automatically a legal locality string.",
+      "date_time_handling": "Not a date field.",
+      "differences": "Attested-legacy locality projection exists but does not establish current Case equivalence; legal locality and registered address are different concepts. Exact Diadiem is absent in all originals.",
+      "evidence_refs": [
+        "MainForm.frm:4156",
+        "Module1.bas:614",
+        "Module1.bas:614-632",
+        "Module1.bas:617",
+        "Module1.bas:618",
+        "Module1.bas:619",
+        "Module1.bas:620",
+        "Module1.bas:621",
+        "Module1.bas:622",
+        "Module1.bas:623",
+        "Module1.bas:625",
+        "RecordForm.frm:745",
+        "backend/app/document/inspection_qd_kt_locality_projection.py:project_qdkt_locality_from_attested_legacy"
+      ],
+      "groups": [
+        "LOCATION"
+      ],
+      "legacy_owner_classification": "OWNER_BLOCKED",
+      "legacy_source_endpoint": "selected planning row cell 10, with province-name normalization",
+      "legacy_source_expression": "Tinhthanh",
+      "legacy_transformation": "Only when a comma exists: take suffix, trim, remove province/city prefixes and periods case-insensitively; then HCM alias rewrite; Dia_danh Match index.",
+      "logical_operation": "Diadiem",
+      "multiple_record_behavior": "Require exactly one legacy-reference match; no first match or alphabetic comparison.",
+      "null_missing_behavior": "Legacy missing Match becomes 0; modern unknown/absent province blocks, never defaults to a northern province.",
+      "operation_type": "WRITE",
+      "owner_evidence_needed": [
+        "Owner-approved Case locality source and prefix/alias/character rules",
+        "Evidence for current versus historical province mapping"
+      ],
+      "ownership": "Legacy selected planning-row cell 10; modern registered province is Case -> Site. Their live-value equivalence is not proven.",
+      "physical_targets": [
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "Diadiem"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GLP",
+          "missing_targets": [
+            "Diadiem"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "Diadiem"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GMP",
+          "missing_targets": [
+            "Diadiem"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "Diadiem"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GMPbb",
+          "missing_targets": [
+            "Diadiem"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "Diadiem"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GSP",
+          "missing_targets": [
+            "Diadiem"
+          ],
+          "word_equivalence_verified": false
+        }
+      ],
+      "ready_to_render": false,
+      "status": "BLOCKED"
+    },
+    {
+      "blocker_codes": [
+        "LOCATION_BOOKMARK_FORMAT_UNPROVEN",
+        "QDKT_PLANNING_ROW_PROVINCE_UNATTESTED"
+      ],
+      "canonical_candidate": "Attested legacy Dia_danh_x prefix plus province; no approved Site-to-legal-place display contract.",
+      "date_time_handling": "Not a date field.",
+      "differences": "GLP/GMP have three effective targets; GMPbb/GSP have two. Existing attested projection leaves case_source_equivalence_verified=false.",
+      "evidence_refs": [
+        "MainForm.frm:4158",
+        "Module1.bas:626-632",
+        "Module1.bas:628",
+        "Module1.bas:630",
+        "Module1.bas:632",
+        "RecordForm.frm:746",
+        "backend/app/document/inspection_qd_kt_locality_projection.py:project_qdkt_locality_from_attested_legacy",
+        "legacy/GPs.xlam!WinAPI.bas:552-555 (supplementary version)"
+      ],
+      "groups": [
+        "LOCATION"
+      ],
+      "legacy_owner_classification": "OWNER_BLOCKED",
+      "legacy_source_endpoint": "Tinhthanh plus Dia_danh/Dia_danh_x named-range lookup",
+      "legacy_source_expression": "LCase_FirstChar(Tinhthanhx), 1, 3",
+      "legacy_transformation": "If Match > 0, Index(Dia_danh_x,index,2) + province, else raw province; replace TP prefix; LCase_FirstChar call; numbered targets 1..3. Supplementary add-in helper lowercases only the first character and preserves the rest.",
+      "logical_operation": "Diadiemx",
+      "multiple_record_behavior": "One unique source reference entry; missing numbered target is a legacy no-op, not a reason to choose another province.",
+      "null_missing_behavior": "Legacy falls back to province on missing lookup; backend does not certify that fallback for a modern Case.",
+      "operation_type": "WRITE",
+      "owner_evidence_needed": [
+        "Owner-approved current locality display and Case binding",
+        "Word acceptance of numbered target formatting"
+      ],
+      "ownership": "Planning province lookup via Dia_danh/Dia_danh_x, not address parsing or a free-text plan fallback.",
+      "physical_targets": [
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "Diadiemx1",
+            "Diadiemx2",
+            "Diadiemx3"
+          ],
+          "effective_targets": [
+            "Diadiemx1",
+            "Diadiemx2",
+            "Diadiemx3"
+          ],
+          "gxp_type": "GLP",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "Diadiemx1",
+            "Diadiemx2",
+            "Diadiemx3"
+          ],
+          "effective_targets": [
+            "Diadiemx1",
+            "Diadiemx2",
+            "Diadiemx3"
+          ],
+          "gxp_type": "GMP",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "Diadiemx1",
+            "Diadiemx2",
+            "Diadiemx3"
+          ],
+          "effective_targets": [
+            "Diadiemx1",
+            "Diadiemx2"
+          ],
+          "gxp_type": "GMPbb",
+          "missing_targets": [
+            "Diadiemx3"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "Diadiemx1",
+            "Diadiemx2",
+            "Diadiemx3"
+          ],
+          "effective_targets": [
+            "Diadiemx1",
+            "Diadiemx2"
+          ],
+          "gxp_type": "GSP",
+          "missing_targets": [
+            "Diadiemx3"
+          ],
+          "word_equivalence_verified": false
+        }
+      ],
+      "ready_to_render": false,
+      "status": "BLOCKED"
+    },
+    {
+      "blocker_codes": [
+        "BLANK_ISSUANCE_DATE_BOOKMARK_UNVERIFIED",
+        "QDKT_BUSINESS_TIMEZONE_UNPROVEN",
+        "QDKT_DRAFT_DATE_POLICY_CONFLICT"
+      ],
+      "canonical_candidate": "No Process A issuance date source is authorized.",
+      "date_time_handling": "Workstation calendar Date is distinct from backend clock, generated_at, Case dates and legal issuance. Business timezone is unproven.",
+      "differences": "Legacy attempts a workstation-date write; confirmed current Process A policy requires blank issuance date. All four observed templates lack this target.",
+      "evidence_refs": [
+        "Module1.bas:2042-2052",
+        "RecordForm.frm:736",
+        "RecordForm.frm:743",
+        "docs/INSPECTION_QD_KT_CONFIRMED_BUSINESS_RULES_20261022.md:Ngày trên bản dự thảo"
+      ],
+      "groups": [
+        "DATES"
+      ],
+      "legacy_owner_classification": "OWNER_BLOCKED",
+      "legacy_source_endpoint": "deterministic generated value: current VBA workstation date",
+      "legacy_source_expression": "FormatDateS(Date, 1)",
+      "legacy_transformation": "Module1.FormatDateS(Date, 1): IsDate then dd tháng MM năm yyyy; invalid date returns NulStr. RecordForm calls the exact unnumbered target.",
+      "logical_operation": "Fulldate",
+      "multiple_record_behavior": "No latest record or file creation timestamp may supply an issuance date.",
+      "null_missing_behavior": "Process A preserves the template's blank issuance date; absence of Fulldate does not prove a visually blank date line.",
+      "operation_type": "WRITE",
+      "owner_evidence_needed": [
+        "Owner-approved blank-date layout and handling of literal template year",
+        "Actual Word visual evidence for four variants"
+      ],
+      "ownership": "VBA workstation intrinsic Date has no Case/Site/Plan owner; do not substitute Case dates or server clock.",
+      "physical_targets": [
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "Fulldate"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GLP",
+          "missing_targets": [
+            "Fulldate"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "Fulldate"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GMP",
+          "missing_targets": [
+            "Fulldate"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "Fulldate"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GMPbb",
+          "missing_targets": [
+            "Fulldate"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "Fulldate"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GSP",
+          "missing_targets": [
+            "Fulldate"
+          ],
+          "word_equivalence_verified": false
+        }
+      ],
+      "ready_to_render": false,
+      "status": "CONTRADICTED"
+    },
+    {
+      "blocker_codes": [
+        "QDKT_DOSSIER_TARGET_ABSENT",
+        "QDKT_LEGACY_PUBLIC_STATE_LIFETIME_UNPROVEN"
+      ],
+      "canonical_candidate": "Current persisted CaseApplication.dossier_code, through read_dossier_snapshot.",
+      "date_time_handling": "Dossier code is not a date or issuance number.",
+      "differences": "Dossier semantics are source-proven; public-state freshness at the planning entry is not. Target absent in all originals; A/B owner choice still required.",
+      "evidence_refs": [
+        "RecordForm.frm:334-343",
+        "RecordForm.frm:343",
+        "RecordForm.frm:748",
+        "artifacts/legacy_audit/inspection_qd_kt_dossier_bookmark_source_evidence.json",
+        "backend/app/document/inspection_qd_kt_renderer_contract.py:read_dossier_snapshot"
+      ],
+      "groups": [
+        "DOSSIER"
+      ],
+      "legacy_owner_classification": "OWNER_PARTIAL",
+      "legacy_source_endpoint": "db.ktra row, ColDB_HSDK_Ktra + 1",
+      "legacy_source_expression": "s_MaHsDk",
+      "legacy_transformation": "Exact unnumbered HsDK write of s_MaHsDk; GetTT_Ktra reads the selected db_ktra row column ColDB_HSDK_Ktra+1 (I). No coercion from a similar field name.",
+      "logical_operation": "HsDK",
+      "multiple_record_behavior": "Current CaseApplication snapshot only; no legacy row, prior Case or latest unrelated application fallback.",
+      "null_missing_behavior": "Legacy empty text is silently skipped; current dossier gate blocks absent/blank code and identity/version conflicts.",
+      "operation_type": "WRITE",
+      "owner_evidence_needed": [
+        "Legal A/B wording/placement or intentional omission approval",
+        "Candidate version/checksum and Word UAT"
+      ],
+      "ownership": "Case/Application/Site canonical UUID/version join is separate from historical selected Rg3 row identity. Module1 entry does not reload this public variable.",
+      "physical_targets": [
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "HsDK"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GLP",
+          "missing_targets": [
+            "HsDK"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "HsDK"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GMP",
+          "missing_targets": [
+            "HsDK"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "HsDK"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GMPbb",
+          "missing_targets": [
+            "HsDK"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "HsDK"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GSP",
+          "missing_targets": [
+            "HsDK"
+          ],
+          "word_equivalence_verified": false
+        }
+      ],
+      "ready_to_render": false,
+      "status": "PARTIAL"
+    },
+    {
+      "blocker_codes": [
+        "QDKT_DRAFT_DATE_POLICY_CONFLICT",
+        "QDKT_LEGAL_ISSUANCE_EVIDENCE_UNPROVEN"
+      ],
+      "canonical_candidate": "Process B only: date-only InspectionDecision.decision_on from the same selected source as reference.",
+      "date_time_handling": "Source decision_on is date-only and distinct from aware CaseApplication submission time. Legal issuance is still unverified.",
+      "differences": "Legacy attempted write conflicts with blank draft-date policy; exact target absent in originals. No automatic legal-issued status follows from persistence.",
+      "evidence_refs": [
+        "MainForm.frm:4176",
+        "MainForm.frm:4179",
+        "RecordForm.frm:374-384",
+        "RecordForm.frm:381",
+        "RecordForm.frm:383",
+        "RecordForm.frm:790",
+        "backend/app/document/inspection_qd_kt_decision_source.py:require_latest_qdkt_reference"
+      ],
+      "groups": [
+        "DECISION",
+        "DATES"
+      ],
+      "legacy_owner_classification": "OWNER_BLOCKED",
+      "legacy_source_endpoint": "db.ktra row, ColDB_NgayKtra + 1, trailing token after space/line break",
+      "legacy_source_expression": "NgayQDKT",
+      "legacy_transformation": "Trailing token of legacy combined cell, or empty string when no delimiter; exact NgayQDKT write. No timestamp/date-only conversion is justified by this split.",
+      "logical_operation": "NgayQDKT",
+      "multiple_record_behavior": "Reference and date stay paired to one source ID; replacement date cannot precede predecessor; same-day requires explicit lineage.",
+      "null_missing_behavior": "Process A has no issuance-date atom; Process B missing date blocks. Empty legacy text skips replacement without proving a blank Word date.",
+      "operation_type": "WRITE",
+      "owner_evidence_needed": [
+        "External issuance evidence for Process B",
+        "Owner/Word proof of Process A blank administrative date"
+      ],
+      "ownership": "Same Case/Plan/decision atoms and lineage; never Case creation date, file date, backend clock or prior Case.",
+      "physical_targets": [
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "NgayQDKT"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GLP",
+          "missing_targets": [
+            "NgayQDKT"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "NgayQDKT"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GMP",
+          "missing_targets": [
+            "NgayQDKT"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "NgayQDKT"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GMPbb",
+          "missing_targets": [
+            "NgayQDKT"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "NgayQDKT"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GSP",
+          "missing_targets": [
+            "NgayQDKT"
+          ],
+          "word_equivalence_verified": false
+        }
+      ],
+      "ready_to_render": false,
+      "status": "CONTRADICTED"
+    },
+    {
+      "blocker_codes": [
+        "QDKT_BUSINESS_TIMEZONE_UNPROVEN",
+        "QDKT_DATE_NORMALIZATION_UNAPPROVED",
+        "QDKT_DOSSIER_TARGET_ABSENT"
+      ],
+      "canonical_candidate": "Current persisted CaseApplication.submitted_on: timestamp with timezone, not date-only.",
+      "date_time_handling": "Date-only and aware timestamp are separate representations; recorded-offset date is only an explicit proposal. PostgreSQL session offset can change calendar day; timezone remains unproven.",
+      "differences": "Semantic submission-date evidence exists, but DB representation/display policy and absent target prevent full equivalence.",
+      "evidence_refs": [
+        "RecordForm.frm:343",
+        "RecordForm.frm:749",
+        "backend/app/document/inspection_qd_kt_renderer_contract.py:normalize_submission_date",
+        "docs/QDKT_RENDERER_DECISION_WORD_UAT.md:Confirmed lineage and date contract"
+      ],
+      "groups": [
+        "DOSSIER",
+        "DATES"
+      ],
+      "legacy_owner_classification": "OWNER_PARTIAL",
+      "legacy_source_endpoint": "db.ktra row, ColDB_HSDK_Ktra",
+      "legacy_source_expression": "Replace(s_NgaynopHsDk, \"-\", \"/\")",
+      "legacy_transformation": "GetTT_Ktra reads H; writer only replaces '-' with '/'. It does not define business timezone or normalize a backend timestamp.",
+      "logical_operation": "NgaynopHsDK",
+      "multiple_record_behavior": "Require the matching application snapshot/version; no mixed code/date from different records.",
+      "null_missing_behavior": "Missing/naive/ambiguous timestamp or UNDECIDED rule blocks. Never use today, file time, received_at or created_at.",
+      "operation_type": "WRITE",
+      "owner_evidence_needed": [
+        "Business owner date normalization/display decision",
+        "Legal A/B decision and actual Word UAT"
+      ],
+      "ownership": "Same Case/Application/Site/version snapshot as dossier code; db_ktra H is submission date, not automatically receipt date.",
+      "physical_targets": [
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "NgaynopHsDK"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GLP",
+          "missing_targets": [
+            "NgaynopHsDK"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "NgaynopHsDK"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GMP",
+          "missing_targets": [
+            "NgaynopHsDK"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "NgaynopHsDK"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GMPbb",
+          "missing_targets": [
+            "NgaynopHsDK"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "NgaynopHsDK"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GSP",
+          "missing_targets": [
+            "NgaynopHsDK"
+          ],
+          "word_equivalence_verified": false
+        }
+      ],
+      "ready_to_render": false,
+      "status": "PARTIAL"
+    },
+    {
+      "blocker_codes": [
+        "QDKT_DRAFT_ISSUED_REFERENCE_POLICY_CONFLICT",
+        "QDKT_LEGAL_ISSUANCE_EVIDENCE_UNPROVEN"
+      ],
+      "canonical_candidate": "Process B only: Case/Plan-bound InspectionDecision.reference selected by proven REPLACES lineage.",
+      "date_time_handling": "Reference text is not evidence of legal issuance.",
+      "differences": "Legacy i=2 attempts a reference write while current draft policy excludes issued reference/date. Exact target absent; persisted source is not external issuance proof.",
+      "evidence_refs": [
+        "MainForm.frm:4176",
+        "MainForm.frm:4179",
+        "RecordForm.frm:1453",
+        "RecordForm.frm:374-384",
+        "RecordForm.frm:381",
+        "RecordForm.frm:383",
+        "RecordForm.frm:790",
+        "backend/app/document/inspection_qd_kt_case_readiness.py:inspect_qdkt_case_readiness",
+        "backend/app/document/inspection_qd_kt_decision_source.py:read_latest_qdkt_reference_for_case"
+      ],
+      "groups": [
+        "DECISION"
+      ],
+      "legacy_owner_classification": "OWNER_BLOCKED",
+      "legacy_source_endpoint": "db.ktra row, ColDB_NgayKtra + 1, first token before space/line break",
+      "legacy_source_expression": "QDKT:",
+      "legacy_transformation": "GetTT_Ktra splits combined db_ktra decision cell into first token and trailing date; malformed/no separator leaves reference string. Writer attempts exact QDKT.",
+      "logical_operation": "QDKT",
+      "multiple_record_behavior": "Use #191 complete single-root/REPLACES chain, no MAX(id), MAX(date), insertion order, unknown amendments or scalar projection.",
+      "null_missing_behavior": "No source rows or incomplete/ambiguous chain blocks. Process A must not inherit an existing reference; planning entry does not reload this public variable.",
+      "operation_type": "WRITE",
+      "owner_evidence_needed": [
+        "Approved external issuance evidence contract for Process B",
+        "Keep Process A reference absent; resolve unsupported lifecycle policy"
+      ],
+      "ownership": "Persisted Case -> InspectionPlan -> source decision, never scalar projection fallback or identity-map state. No such atom belongs in Process A.",
+      "physical_targets": [
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "QDKT"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GLP",
+          "missing_targets": [
+            "QDKT"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "QDKT"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GMP",
+          "missing_targets": [
+            "QDKT"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "QDKT"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GMPbb",
+          "missing_targets": [
+            "QDKT"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "QDKT"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GSP",
+          "missing_targets": [
+            "QDKT"
+          ],
+          "word_equivalence_verified": false
+        }
+      ],
+      "ready_to_render": false,
+      "status": "CONTRADICTED"
+    },
+    {
+      "blocker_codes": [
+        "INSPECTION_TEAM_BOOKMARK_CONTRACT_UNRESOLVED",
+        "QDKT_THIRD_MEMBER_DELETION_ACCEPTANCE_UNPROVEN"
+      ],
+      "canonical_candidate": "Same ordered Case team and draft roster evidence; no write payload is a deletion instruction.",
+      "date_time_handling": "Not an issuance-date source.",
+      "differences": "Physical presence and count predicate are proven facts; deleting a Word range with legal surrounding text still requires span/visual acceptance.",
+      "evidence_refs": [
+        "ExtRecordForm.frm:102",
+        "ExtRecordForm.frm:138",
+        "ExtRecordForm.frm:171",
+        "ExtRecordForm.frm:185",
+        "ExtRecordForm.frm:227",
+        "ExtRecordForm.frm:229",
+        "ExtRecordForm.frm:236",
+        "ExtRecordForm.frm:242",
+        "ExtRecordForm.frm:41",
+        "ExtRecordForm.frm:43",
+        "ExtRecordForm.frm:44",
+        "ExtRecordForm.frm:46",
+        "ExtRecordForm.frm:47",
+        "ExtRecordForm.frm:53",
+        "ExtRecordForm.frm:54",
+        "ExtRecordForm.frm:56",
+        "ExtRecordForm.frm:57",
+        "Module1.bas:645",
+        "RecordForm.frm:1394",
+        "RecordForm.frm:1488",
+        "RecordForm.frm:1526",
+        "RecordForm.frm:1541",
+        "RecordForm.frm:1986",
+        "RecordForm.frm:1997",
+        "RecordForm.frm:2000",
+        "RecordForm.frm:2003",
+        "RecordForm.frm:2004",
+        "RecordForm.frm:576-587",
+        "RecordForm.frm:754",
+        "RecordForm.frm:754-766",
+        "RecordForm.frm:776",
+        "RecordForm.frm:783",
+        "RecordForm.frm:800",
+        "RecordForm.frm:877",
+        "RecordForm.frm:898",
+        "TTVForm.frm:351",
+        "TTVForm.frm:413",
+        "TTVForm.frm:504",
+        "TTVForm.frm:508",
+        "backend/app/document/inspection_qd_kt_third_member_span.py"
+      ],
+      "groups": [
+        "TEAM"
+      ],
+      "legacy_owner_classification": "OWNER_PARTIAL",
+      "legacy_source_endpoint": "Delete_Bookmark when UBound(Split(TTVdd, '|')) <= 1",
+      "legacy_source_expression": "",
+      "legacy_transformation": "When UBound(Split(TTVdd,'|'))<=1, Delete_Bookmark.Range.Delete of TT3Del; DELETE has no value expression.",
+      "logical_operation": "TT3Del",
+      "multiple_record_behavior": "Member count/order and third-member span evidence are required; a current count does not approve a prior draft.",
+      "null_missing_behavior": "Missing target is silently ignored in VBA; current deletion span/format must remain fail-closed until verified.",
+      "operation_type": "DELETE",
+      "owner_evidence_needed": [
+        "Approved deletion span and roster binding",
+        "Word proof for short and extended rosters"
+      ],
+      "ownership": "Deletion predicate must bind to the same reviewed roster/version and template span, never another decision's team.",
+      "physical_targets": [
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "TT3Del"
+          ],
+          "effective_targets": [
+            "TT3Del"
+          ],
+          "gxp_type": "GLP",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "TT3Del"
+          ],
+          "effective_targets": [
+            "TT3Del"
+          ],
+          "gxp_type": "GMP",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "TT3Del"
+          ],
+          "effective_targets": [
+            "TT3Del"
+          ],
+          "gxp_type": "GMPbb",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "TT3Del"
+          ],
+          "effective_targets": [
+            "TT3Del"
+          ],
+          "gxp_type": "GSP",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        }
+      ],
+      "ready_to_render": false,
+      "status": "PARTIAL"
+    },
+    {
+      "blocker_codes": [
+        "INSPECTION_TEAM_BOOKMARK_CONTRACT_UNRESOLVED",
+        "QDKT_TEAM_WORD_FORMAT_UNPROVEN"
+      ],
+      "canonical_candidate": "Case-owned ordered InspectionTeamMember rows plus separately reviewed draft roster/version/title evidence.",
+      "date_time_handling": "Roster-at-draft/version evidence is separate from current team and issue date.",
+      "differences": "Legacy formatted TTVdd comes through TTVForm; modern display_name/role_code alone cannot reproduce degree/title/position and template fragment formatting.",
+      "evidence_refs": [
+        "ExtRecordForm.frm:102",
+        "ExtRecordForm.frm:138",
+        "ExtRecordForm.frm:171",
+        "ExtRecordForm.frm:185",
+        "ExtRecordForm.frm:227",
+        "ExtRecordForm.frm:229",
+        "ExtRecordForm.frm:236",
+        "ExtRecordForm.frm:242",
+        "ExtRecordForm.frm:41",
+        "ExtRecordForm.frm:43",
+        "ExtRecordForm.frm:44",
+        "ExtRecordForm.frm:46",
+        "ExtRecordForm.frm:47",
+        "ExtRecordForm.frm:53",
+        "ExtRecordForm.frm:54",
+        "ExtRecordForm.frm:56",
+        "ExtRecordForm.frm:57",
+        "Module1.bas:639-645",
+        "Module1.bas:645",
+        "RecordForm.frm:1394",
+        "RecordForm.frm:1488",
+        "RecordForm.frm:1526",
+        "RecordForm.frm:1541",
+        "RecordForm.frm:1986",
+        "RecordForm.frm:1997",
+        "RecordForm.frm:2000",
+        "RecordForm.frm:2003",
+        "RecordForm.frm:2004",
+        "RecordForm.frm:754",
+        "RecordForm.frm:754-765",
+        "RecordForm.frm:759",
+        "RecordForm.frm:761",
+        "RecordForm.frm:763",
+        "RecordForm.frm:776",
+        "RecordForm.frm:778",
+        "RecordForm.frm:783",
+        "RecordForm.frm:785",
+        "RecordForm.frm:800",
+        "RecordForm.frm:877",
+        "RecordForm.frm:898",
+        "TTVForm.frm:148-155,329-340,380-428,494-527",
+        "TTVForm.frm:351",
+        "TTVForm.frm:413",
+        "TTVForm.frm:504",
+        "TTVForm.frm:508",
+        "backend/app/document/inspection_qd_kt_team_layout_instructions.py:plan_qdkt_team_layout"
+      ],
+      "groups": [
+        "TEAM"
+      ],
+      "legacy_owner_classification": "OWNER_PARTIAL",
+      "legacy_source_endpoint": "Split(TTVdd, '|'), third entry plus TT_ext and CRLF for later entries",
+      "legacy_source_expression": "TVss",
+      "legacy_transformation": "TTVForm.Get_TTV_List3 composes degree/prefix + cleaned name (remove '*' and 'PCT. ') + ' - ' + title + ', ' + unit. Writer splits TTVdd by '|', trims third entry, adds TT_ext + CRLF for later entries and writes TT3x only when UBound >1.",
+      "logical_operation": "TT3x",
+      "multiple_record_behavior": "Exactly one Case team and unique ordered members; preserve source order, do not reorder by name/title/ID.",
+      "null_missing_behavior": "Legacy On Error Resume Next/empty text can leave placeholders. Modern missing/empty/unstable team or absent required extension blocks.",
+      "operation_type": "WRITE",
+      "owner_evidence_needed": [
+        "Source-attested TTVForm formatting/title provenance",
+        "Exact TT_ext fragment and real Word roster/layout acceptance"
+      ],
+      "ownership": "Case team is not an approved decision-specific roster. Member identity/order does not prove titles, positions or Word text.",
+      "physical_targets": [
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "TT3x"
+          ],
+          "effective_targets": [
+            "TT3x"
+          ],
+          "gxp_type": "GLP",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "TT3x"
+          ],
+          "effective_targets": [
+            "TT3x"
+          ],
+          "gxp_type": "GMP",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "TT3x"
+          ],
+          "effective_targets": [
+            "TT3x"
+          ],
+          "gxp_type": "GMPbb",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "TT3x"
+          ],
+          "effective_targets": [
+            "TT3x"
+          ],
+          "gxp_type": "GSP",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        }
+      ],
+      "ready_to_render": false,
+      "status": "PARTIAL"
+    },
+    {
+      "blocker_codes": [
+        "INSPECTION_TEAM_BOOKMARK_CONTRACT_UNRESOLVED",
+        "QDKT_TEAM_TITLE_PROVENANCE_UNPROVEN"
+      ],
+      "canonical_candidate": "Ordered Case team members with separately attested legacy formatted display/title provenance.",
+      "date_time_handling": "Draft snapshot/version is distinct from legal issuance and current member metadata.",
+      "differences": "Physical target mapping is proven; formatted legacy role/title strings and Word paragraph layout remain unresolved despite correct DB membership.",
+      "evidence_refs": [
+        "ExtRecordForm.frm:102",
+        "ExtRecordForm.frm:138",
+        "ExtRecordForm.frm:171",
+        "ExtRecordForm.frm:185",
+        "ExtRecordForm.frm:227",
+        "ExtRecordForm.frm:229",
+        "ExtRecordForm.frm:236",
+        "ExtRecordForm.frm:242",
+        "ExtRecordForm.frm:41",
+        "ExtRecordForm.frm:43",
+        "ExtRecordForm.frm:44",
+        "ExtRecordForm.frm:46",
+        "ExtRecordForm.frm:47",
+        "ExtRecordForm.frm:53",
+        "ExtRecordForm.frm:54",
+        "ExtRecordForm.frm:56",
+        "ExtRecordForm.frm:57",
+        "Module1.bas:639-645",
+        "Module1.bas:645",
+        "RecordForm.frm:1394",
+        "RecordForm.frm:1488",
+        "RecordForm.frm:1526",
+        "RecordForm.frm:1541",
+        "RecordForm.frm:1986",
+        "RecordForm.frm:1997",
+        "RecordForm.frm:2000",
+        "RecordForm.frm:2003",
+        "RecordForm.frm:2004",
+        "RecordForm.frm:754",
+        "RecordForm.frm:754-759",
+        "RecordForm.frm:759",
+        "RecordForm.frm:776",
+        "RecordForm.frm:783",
+        "RecordForm.frm:800",
+        "RecordForm.frm:877",
+        "RecordForm.frm:898",
+        "TTVForm.frm:148-155,329-340,380-397",
+        "TTVForm.frm:351",
+        "TTVForm.frm:413",
+        "TTVForm.frm:504",
+        "TTVForm.frm:508",
+        "backend/app/document/inspection_qd_kt_team_snapshot_review.py",
+        "backend/app/document/inspection_qd_kt_team_source.py:read_qdkt_team_source"
+      ],
+      "groups": [
+        "TEAM"
+      ],
+      "legacy_owner_classification": "OWNER_PARTIAL",
+      "legacy_source_endpoint": "first two Split(TTVdd, '|') entries written to TT1x/TT2x; later entries feed TT3x",
+      "legacy_source_expression": "Trim(Ds_TTV(k)):        k = k + 1",
+      "legacy_transformation": "k=0..1 while within UBound: exact dynamic names TT1x/TT2x and Trim(Ds_TTV(k)). TTx itself is not a physical target.",
+      "logical_operation": "TTx",
+      "multiple_record_behavior": "Backend requires explicit stable sort_order/unique identities. Legacy Get_TTV_Index follows comma-token order and picks the first normalized name match; unmatched names are omitted by Get_TTV_List3. Do not import that name lookup as canonical identity.",
+      "null_missing_behavior": "Legacy may leave later placeholders when tokens are missing; modern pure layout gate conservatively requires a complete attested display, not guessed blank members.",
+      "operation_type": "WRITE",
+      "owner_evidence_needed": [
+        "Owner-approved identity/title/position composition",
+        "Version-bound roster and four-variant Word acceptance"
+      ],
+      "ownership": "Process A uses proposed Case team; Process B needs approved decision-specific evidence. No automatic conversion between them.",
+      "physical_targets": [
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "TT1x",
+            "TT2x"
+          ],
+          "effective_targets": [
+            "TT1x",
+            "TT2x"
+          ],
+          "gxp_type": "GLP",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "TT1x",
+            "TT2x"
+          ],
+          "effective_targets": [
+            "TT1x",
+            "TT2x"
+          ],
+          "gxp_type": "GMP",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "TT1x",
+            "TT2x"
+          ],
+          "effective_targets": [
+            "TT1x",
+            "TT2x"
+          ],
+          "gxp_type": "GMPbb",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "TT1x",
+            "TT2x"
+          ],
+          "effective_targets": [
+            "TT1x",
+            "TT2x"
+          ],
+          "gxp_type": "GSP",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        }
+      ],
+      "ready_to_render": false,
+      "status": "PARTIAL"
+    },
+    {
+      "blocker_codes": [
+        "QDKT_NAME_FORMATTING_UNPROVEN",
+        "QDKT_SITE_NAME_SOURCE_EQUIVALENCE_PARTIAL"
+      ],
+      "canonical_candidate": "Site.site_name via persisted Case.site_id; candidate only, not a complete QĐKT name atom.",
+      "date_time_handling": "Not a date field.",
+      "differences": "Three observed numbered targets receive identical text; source-row/name/title equivalence and Word line wrapping remain partial.",
+      "evidence_refs": [
+        "MainForm.frm:4151",
+        "Module1.bas:607",
+        "RecordForm.frm:589-603",
+        "RecordForm.frm:744",
+        "legacy/GPs.xlam!WinAPI.bas:504-510 (supplementary version)"
+      ],
+      "groups": [
+        "SITE_NAME"
+      ],
+      "legacy_owner_classification": "OWNER_PARTIAL",
+      "legacy_source_endpoint": "planning row cell 4; fallback/alternate db_cso site row",
+      "legacy_source_expression": "TenCtydd, 1, 8",
+      "legacy_transformation": "DelLastIf_Ins(cell 4, vbCrLf); supplementary add-in helper removes trailing characters in the CR/LF set, not embedded lines/general whitespace. Replace_Bookmark bounds 1..8 repeats the same TenCtydd value.",
+      "logical_operation": "Tencoso",
+      "multiple_record_behavior": "Read one Case-linked Site; series target count is not a multi-Site selection rule.",
+      "null_missing_behavior": "Legacy empty text exits without replacement. No backend default to company name, parent company or another Site is approved.",
+      "operation_type": "WRITE",
+      "owner_evidence_needed": [
+        "Owner-approved current Site-name snapshot/normalization rule",
+        "Four-variant Word name/line-wrap acceptance"
+      ],
+      "ownership": "Primary Module1 entry uses merged planning-row cell 4; MainForm alternate uses db_cso. Modern Case-to-Site is canonical, but name/format selection is not closed.",
+      "physical_targets": [
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "Tencoso1",
+            "Tencoso2",
+            "Tencoso3",
+            "Tencoso4",
+            "Tencoso5",
+            "Tencoso6",
+            "Tencoso7",
+            "Tencoso8"
+          ],
+          "effective_targets": [
+            "Tencoso1",
+            "Tencoso2",
+            "Tencoso3"
+          ],
+          "gxp_type": "GLP",
+          "missing_targets": [
+            "Tencoso4",
+            "Tencoso5",
+            "Tencoso6",
+            "Tencoso7",
+            "Tencoso8"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "Tencoso1",
+            "Tencoso2",
+            "Tencoso3",
+            "Tencoso4",
+            "Tencoso5",
+            "Tencoso6",
+            "Tencoso7",
+            "Tencoso8"
+          ],
+          "effective_targets": [
+            "Tencoso1",
+            "Tencoso2",
+            "Tencoso3"
+          ],
+          "gxp_type": "GMP",
+          "missing_targets": [
+            "Tencoso4",
+            "Tencoso5",
+            "Tencoso6",
+            "Tencoso7",
+            "Tencoso8"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "Tencoso1",
+            "Tencoso2",
+            "Tencoso3",
+            "Tencoso4",
+            "Tencoso5",
+            "Tencoso6",
+            "Tencoso7",
+            "Tencoso8"
+          ],
+          "effective_targets": [
+            "Tencoso1",
+            "Tencoso2",
+            "Tencoso3"
+          ],
+          "gxp_type": "GMPbb",
+          "missing_targets": [
+            "Tencoso4",
+            "Tencoso5",
+            "Tencoso6",
+            "Tencoso7",
+            "Tencoso8"
+          ],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "Tencoso1",
+            "Tencoso2",
+            "Tencoso3",
+            "Tencoso4",
+            "Tencoso5",
+            "Tencoso6",
+            "Tencoso7",
+            "Tencoso8"
+          ],
+          "effective_targets": [
+            "Tencoso1",
+            "Tencoso2",
+            "Tencoso3"
+          ],
+          "gxp_type": "GSP",
+          "missing_targets": [
+            "Tencoso4",
+            "Tencoso5",
+            "Tencoso6",
+            "Tencoso7",
+            "Tencoso8"
+          ],
+          "word_equivalence_verified": false
+        }
+      ],
+      "ready_to_render": false,
+      "status": "PARTIAL"
+    },
+    {
+      "blocker_codes": [
+        "MANUFACTURING_CLASSIFICATION_SOURCE_UNPROVEN",
+        "QDKT_AUTHORITY_PROSE_ACCEPTANCE_UNPROVEN"
+      ],
+      "canonical_candidate": "Same dedicated authority atoms as VKNx; abbreviated institution text, not an inspector name.",
+      "date_time_handling": "Not a date field.",
+      "differences": "GLP/GMP numbered targets are effective; base VKN is not used by this helper invocation. GMPbb/GSP branch is not applicable even if a similarly named bookmark exists.",
+      "evidence_refs": [
+        "MainForm.frm:1632",
+        "MainForm.frm:4157",
+        "MainForm.frm:4161",
+        "Module1.bas:626",
+        "RecordForm.frm:1854-1871",
+        "RecordForm.frm:1861",
+        "RecordForm.frm:1865",
+        "RecordForm.frm:1868",
+        "RecordForm.frm:280",
+        "RecordForm.frm:365",
+        "RecordForm.frm:752",
+        "backend/app/document/inspection_qd_kt_vba_bookmark_series.py:reconcile_qdkt_i2_bookmarks"
+      ],
+      "groups": [
+        "AUTHORITY"
+      ],
+      "legacy_owner_classification": "OWNER_BLOCKED",
+      "legacy_source_endpoint": "Get_VKN: vaccine/province branch, used for Sel_GPs 1 or 2 and i=2",
+      "legacy_source_expression": "s2, 1, 2",
+      "legacy_transformation": "Get_VKN second output s2; Sel_GPs 1/2 and i=2; helper bounds 1..2 writes VKN1/VKN2, not the unnumbered VKN bookmark.",
+      "logical_operation": "VKN",
+      "multiple_record_behavior": "Same exact classification/zone selection as VKNx; no independent institution guess for the abbreviation.",
+      "null_missing_behavior": "Missing manufacturing classification or medicine province mapping blocks; vaccine may use declared UNPROVEN geography, never an unknown enum.",
+      "operation_type": "WRITE",
+      "owner_evidence_needed": [
+        "Canonical classification owner",
+        "Owner acceptance of exact abbreviation/full-name pair and variant policy"
+      ],
+      "ownership": "No manufacture enum may be inferred from company names or accepted from a counterfeit Python equality callback.",
+      "physical_targets": [
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "VKN1",
+            "VKN2"
+          ],
+          "effective_targets": [
+            "VKN1",
+            "VKN2"
+          ],
+          "gxp_type": "GLP",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "VKN1",
+            "VKN2"
+          ],
+          "effective_targets": [
+            "VKN1",
+            "VKN2"
+          ],
+          "gxp_type": "GMP",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": false,
+          "candidate_targets": [
+            "VKN1",
+            "VKN2"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GMPbb",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": false,
+          "candidate_targets": [
+            "VKN1",
+            "VKN2"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GSP",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        }
+      ],
+      "ready_to_render": false,
+      "status": "BLOCKED"
+    },
+    {
+      "blocker_codes": [
+        "LEGACY_PROVINCE_MAPPING_UNPROVEN",
+        "MANUFACTURING_CLASSIFICATION_SOURCE_UNPROVEN",
+        "QDKT_LEGACY_PUBLIC_STATE_LIFETIME_UNPROVEN"
+      ],
+      "canonical_candidate": "Dedicated manufacture-kind + source-proven province-zone atoms; no canonical classification extraction owner is established.",
+      "date_time_handling": "Historical 63-province reference is not a current administrative-date policy.",
+      "differences": "Pure authority text and legacy geography helpers exist, but their source atoms are not thereby owner-approved. GMPbb target exists yet branch is not reached; GSP has no target.",
+      "evidence_refs": [
+        "MainForm.frm:1632",
+        "MainForm.frm:4157",
+        "MainForm.frm:4161",
+        "Module1.bas:626",
+        "Module1.bas:626,637",
+        "RecordForm.frm:1854-1871",
+        "RecordForm.frm:1860",
+        "RecordForm.frm:1864",
+        "RecordForm.frm:1867",
+        "RecordForm.frm:280",
+        "RecordForm.frm:365",
+        "RecordForm.frm:750-752",
+        "backend/app/document/inspection_qd_kt_legacy_province_band.py:classify_qdkt_legacy_province_zone",
+        "backend/app/document/inspection_qd_kt_vkn_authority.py:select_qdkt_vkn_authority"
+      ],
+      "groups": [
+        "AUTHORITY"
+      ],
+      "legacy_owner_classification": "OWNER_BLOCKED",
+      "legacy_source_endpoint": "Get_VKN: DaychuyenDD vaccine detection, else TinhthanhId <= 32",
+      "legacy_source_expression": "s1",
+      "legacy_transformation": "For Sel_GPs 1/2: Get_VKN detects four vaccine strings in DaychuyenDD, else legacy province index <=32 versus >32; generates full institute prose.",
+      "logical_operation": "VKNx",
+      "multiple_record_behavior": "One uniquely mapped province and explicit classification; no first mapping, lexical ordering or current administrative-code substitution.",
+      "null_missing_behavior": "Legacy missing Match index 0 falls into north branch; current unknown classification/mapping blocks. No northern default.",
+      "operation_type": "WRITE",
+      "owner_evidence_needed": [
+        "Approved canonical vaccine/biological classification source and variant applicability",
+        "Accepted historical/current geography and exact institute prose"
+      ],
+      "ownership": "Case/Site manufacturing classification remains unresolved; never infer from facility name, team or free-text scope. Legacy primary entry sets Daychuyen, while Get_VKN reads public DaychuyenDD.",
+      "physical_targets": [
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "VKNx"
+          ],
+          "effective_targets": [
+            "VKNx"
+          ],
+          "gxp_type": "GLP",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": true,
+          "candidate_targets": [
+            "VKNx"
+          ],
+          "effective_targets": [
+            "VKNx"
+          ],
+          "gxp_type": "GMP",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": false,
+          "candidate_targets": [
+            "VKNx"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GMPbb",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        },
+        {
+          "branch_reachable": false,
+          "candidate_targets": [
+            "VKNx"
+          ],
+          "effective_targets": [],
+          "gxp_type": "GSP",
+          "missing_targets": [],
+          "word_equivalence_verified": false
+        }
+      ],
+      "ready_to_render": false,
+      "status": "BLOCKED"
+    }
+  ],
+  "groups": {
+    "AUTHORITY": [
+      "VKN",
+      "VKNx"
+    ],
+    "DATES": [
+      "Fulldate",
+      "NgayQDKT",
+      "NgaynopHsDK"
+    ],
+    "DECISION": [
+      "NgayQDKT",
+      "QDKT"
+    ],
+    "DOSSIER": [
+      "HsDK",
+      "NgaynopHsDK"
+    ],
+    "LOCATION": [
+      "Diachicoso",
+      "Diadiem",
+      "Diadiemx"
+    ],
+    "SITE_NAME": [
+      "Tencoso"
+    ],
+    "TEAM": [
+      "TT3Del",
+      "TT3x",
+      "TTx"
+    ]
+  },
+  "inventory_semantic_sha256": "17ed8cd21147a0ae4d860700444f5dc59a572acd7d32f18f78776aea600ea279",
+  "legacy_owner_counts": {
+    "OWNER_BLOCKED": 8,
+    "OWNER_PARTIAL": 6
+  },
+  "legal_equivalence_verified": false,
+  "limitations": [
+    "Static source evidence is not a live Case mapping or authorization",
+    "Physical presence/absence is not visual Word parity",
+    "No owner A/B, date/timezone, wording or placement approval supplied",
+    "No production DB/NAS/GCS/Word access",
+    "Public-variable lifetime at Module1 entry is unproven; no fabricated initialization"
+  ],
+  "logical_operation_count": 14,
+  "physical_evidence_kind": "COMMITTED_PRIMARY_BINARY_OBSERVATION_NOT_FRESH_BINARY_OR_WORD_EXECUTION",
+  "physical_observation_semantic_sha256": "3bbd80effa08441c565e44ff25b98ead46a065f6f08d9c18e242b2ab45ec0ad5",
+  "process_a": "No issued reference/date; preserve blank administrative date; no latest decision inheritance.",
+  "process_b": "Case/Plan-bound lineage is diagnostic; external legal issuance remains unverified.",
+  "ready_to_render": false,
+  "schema_version": "inspection-qd-kt-input-provenance-audit/v1",
+  "source_zip_sha256": "6227fb0a6b3d74fa0f4cc655b94b021a40d65a508c2f2eefc62f1724c7b89ff7",
+  "status_counts": {
+    "BLOCKED": 4,
+    "CONTRADICTED": 4,
+    "PARTIAL": 6,
+    "VERIFIED": 0
+  },
+  "supplementary_helper_evidence": {
+    "limitation": "Supplementary add-in source; no invented ZIP helper body or automatic cross-version runtime-binding proof.",
+    "path": "tests/fixtures/inspection_qd_kt_transform_helper_evidence.json",
+    "semantic_sha256": "50e09014a07f265f5c2bca8619b0062438bed827582db1a56592e014dda4fb9a",
+    "source_binary_sha256": "52725cba1fd87107814d07da1dbae8d79c77127765018b0daf4b6fe6f44b1b58"
+  },
+  "trace_semantic_sha256": "83b652b4ece582416434700df9c987a33ed811c57d6b576dda2ad6065d731c8f",
+  "word_uat": "NOT_EXECUTED"
+}

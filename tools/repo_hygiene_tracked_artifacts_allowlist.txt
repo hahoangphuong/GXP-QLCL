@@ -27,6 +27,7 @@ artifacts/legacy_audit/inspection_qd_kt_input_provenance.json
 artifacts/legacy_audit/inspection_qd_kt_dossier_bookmark_source_evidence.json
 artifacts/legacy_audit/inspection_qd_kt_rg3_crosswalk_contract.json
 artifacts/legacy_audit/inspection_qd_kt_vba_trace.json
+artifacts/legacy_audit/inspection_qd_kt_transformation_audit.json
 artifacts/legacy_snapshot/evaluation_scope_taxonomy.json
 artifacts/phase3c/legacy_snapshot.json
 artifacts/phase3p/current_projection_conflicts.json

@@ -332,6 +332,7 @@ class LocalStorageService:
                 temp_path = Path(tmp.name)
                 source_stat = os.fstat(stream.fileno())
                 shutil.copyfileobj(stream, tmp, length=1024 * 1024)
+                tmp.flush()  # Buffered writes must finish before setting mtime.
                 if os.name == "posix":
                     os.fchmod(tmp.fileno(), stat.S_IMODE(source_stat.st_mode))
                     os.utime(tmp.fileno(), ns=(source_stat.st_atime_ns, source_stat.st_mtime_ns))

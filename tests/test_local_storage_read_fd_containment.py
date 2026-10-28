@@ -195,3 +195,60 @@ def test_copy_preserves_source_mode_and_mtime_without_reopening_source(tmp_path)
     assert dest.read_bytes() == b"trusted"
     assert stat.S_IMODE(dest.stat().st_mode) == 0o640
     assert dest.stat().st_mtime_ns == timestamp
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX fd ownership contract")
+def test_failed_fdopen_closes_every_descriptor(tmp_path, monkeypatch):
+    root = tmp_path / "inspection"
+    (root / "folder").mkdir(parents=True)
+    (root / "folder" / "document.bin").write_bytes(b"safe")
+    storage = LocalStorageService(StorageConfig(inspection_root=root))
+
+    original_open = os.open
+    acquired = []
+
+    def capture_open(*args, **kwargs):
+        fd = original_open(*args, **kwargs)
+        acquired.append(fd)
+        return fd
+
+    def fail_fdopen(*args, **kwargs):
+        raise OSError("synthetic fdopen conversion failure")
+
+    monkeypatch.setattr(os, "open", capture_open)
+    monkeypatch.setattr(os, "fdopen", fail_fdopen)
+    with pytest.raises(OSError, match="synthetic fdopen conversion failure"):
+        with storage.read_stream("folder/document.bin") as stream:
+            stream.read()
+    assert len(acquired) == 3  # root, nested directory, regular source
+    for fd in acquired:
+        with pytest.raises(OSError):
+            os.fstat(fd)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX fd ownership contract")
+def test_failed_fdopen_on_top_level_file_closes_root_and_file(tmp_path, monkeypatch):
+    root = tmp_path / "inspection"
+    root.mkdir()
+    (root / "document.bin").write_bytes(b"safe")
+    storage = LocalStorageService(StorageConfig(inspection_root=root))
+
+    original_open = os.open
+    acquired = []
+
+    def capture_open(*args, **kwargs):
+        fd = original_open(*args, **kwargs)
+        acquired.append(fd)
+        return fd
+
+    monkeypatch.setattr(os, "open", capture_open)
+    monkeypatch.setattr(os, "fdopen", lambda *args, **kwargs: (_ for _ in ()).throw(
+        ValueError("synthetic wrapper rejected mode")
+    ))
+    with pytest.raises(ValueError, match="synthetic wrapper rejected mode"):
+        with storage.read_stream("document.bin") as stream:
+            stream.read()
+    assert len(acquired) == 2
+    for fd in acquired:
+        with pytest.raises(OSError):
+            os.fstat(fd)

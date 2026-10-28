@@ -5,6 +5,9 @@ Status: technical review package; legal decision **UNDECIDED**, timezone confide
 `ready_to_render=False` for every result, including a complete simulated contract.
 Issues #74 and #144 remain OPEN.
 
+For offline documentary package checking (never trusted approval or activation),
+see [QDKT_OWNER_EVIDENCE_PACKAGE.md](QDKT_OWNER_EVIDENCE_PACKAGE.md).
+
 ## Owner decision matrix
 
 | Concern | A — ADD_BOOKMARKS | B — DEPRECATE_WRITES |

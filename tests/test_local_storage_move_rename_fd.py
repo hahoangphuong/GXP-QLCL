@@ -118,3 +118,32 @@ def test_move_stat_error_closes_parent_fds(tmp_path, monkeypatch):
         with pytest.raises(OSError):
             os.fstat(fd)
     assert (root / "folder/src.bin").read_bytes() == b"source"
+
+
+@pytest.mark.skipif(os.name != "posix" or not sys.platform.startswith("linux"), reason="Linux renameat2")
+def test_move_destination_parent_swap_is_contained(tmp_path, monkeypatch):
+    root = tmp_path / "root"
+    outside = tmp_path / "outside"
+    (root / "dest").mkdir(parents=True)
+    outside.mkdir()
+    (root / "src.bin").write_bytes(b"trusted")
+    (outside / "moved.bin").write_bytes(b"foreign")
+    storage = LocalStorageService(StorageConfig(inspection_root=root))
+    original_open = os.open
+    swapped = False
+
+    def swap_after_target_parent_open(path, *args, **kwargs):
+        nonlocal swapped
+        fd = original_open(path, *args, **kwargs)
+        if path == "dest" and kwargs.get("dir_fd") is not None and not swapped:
+            swapped = True
+            (root / "dest").rename(root / "original-dest")
+            (root / "dest").symlink_to(outside, target_is_directory=True)
+        return fd
+
+    monkeypatch.setattr(os, "open", swap_after_target_parent_open)
+    entry = storage.move("src.bin", "dest/moved.bin")
+    assert swapped and entry.relative_path == "dest/moved.bin"
+    assert (root / "original-dest/moved.bin").read_bytes() == b"trusted"
+    assert (outside / "moved.bin").read_bytes() == b"foreign"
+    assert not (root / "src.bin").exists()

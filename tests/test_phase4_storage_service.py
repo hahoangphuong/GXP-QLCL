@@ -756,14 +756,23 @@ def test_storage_no_replace_blocks_destination_created_after_preflight(tmp_path:
     target = service.inspection_root / "target.txt"
     source.write_bytes(b"original-source")
 
-    # Simulate another writer racing with this operation after the
-    # optimistic fast-path vacancy check but before the atomic OS rename.
-    original_check = service._require_vacant_target
-    def race_after_check(target_path: Path, relative_path: str):
-        original_check(target_path, relative_path)
-        target.write_bytes(b"other-writer-data")
+    # Inject at the actual OS publication boundary (dirfd on POSIX).
+    if os.name == "posix":
+        original_publish = service._rename_noreplace_between_dirfds
 
-    monkeypatch.setattr(service, "_require_vacant_target", race_after_check)
+        def concurrent_publish(src_fd, src_name, dst_fd, dst_name, relative_path):
+            target.write_bytes(b"other-writer-data")
+            return original_publish(src_fd, src_name, dst_fd, dst_name, relative_path)
+
+        monkeypatch.setattr(service, "_rename_noreplace_between_dirfds", concurrent_publish)
+    else:
+        original_check = service._require_vacant_target
+
+        def race_after_check(target_path: Path, relative_path: str):
+            original_check(target_path, relative_path)
+            target.write_bytes(b"other-writer-data")
+
+        monkeypatch.setattr(service, "_require_vacant_target", race_after_check)
     with pytest.raises(StorageTargetExistsError, match="will not be overwritten"):
         if operation == "move":
             service.move("source.txt", "target.txt")
@@ -784,7 +793,11 @@ def test_storage_atomic_no_replace_unsupported_storage_fails_closed(tmp_path: Pa
     def unavailable(*args):
         raise StorageOperationError("Atomic no-replace rename is unsupported.")
 
-    monkeypatch.setattr(service, "_rename_noreplace", unavailable)
+    monkeypatch.setattr(
+        service,
+        "_rename_noreplace_between_dirfds" if os.name == "posix" else "_rename_noreplace",
+        unavailable,
+    )
     with pytest.raises(StorageOperationError, match="unsupported"):
         if operation == "move":
             service.move("source.txt", "target.txt")

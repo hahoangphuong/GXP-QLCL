@@ -643,7 +643,87 @@ class LocalStorageService:
 
         raise StorageOperationError("Atomic no-replace rename is unsupported on this platform.")
 
+    @staticmethod
+    def _rename_noreplace_between_dirfds(
+        source_fd: int, source_name: str, target_fd: int, target_name: str,
+        relative_path: str,
+    ) -> None:
+        """Atomic Linux no-replace between descriptor-pinned parents."""
+        if not sys.platform.startswith("linux"):
+            raise StorageOperationError("Atomic no-replace rename is unsupported on this platform.")
+        libc = ctypes.CDLL(None, use_errno=True)
+        renameat2 = getattr(libc, "renameat2", None)
+        if renameat2 is None:
+            raise StorageOperationError("Atomic no-replace rename is unavailable on this runtime.")
+        renameat2.argtypes = (
+            ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint,
+        )
+        renameat2.restype = ctypes.c_int
+        result = renameat2(
+            source_fd, os.fsencode(source_name),
+            target_fd, os.fsencode(target_name), 1,
+        )
+        if result != 0:
+            code = ctypes.get_errno()
+            if code in {errno.EEXIST, errno.ENOTEMPTY}:
+                raise StorageTargetExistsError(
+                    f"Storage target already exists and will not be overwritten: {relative_path!r}."
+                )
+            if code in {errno.ENOSYS, errno.EINVAL, errno.EOPNOTSUPP, errno.EXDEV}:
+                raise StorageOperationError("Atomic no-replace rename is unsupported for this storage location.")
+            raise OSError(code, os.strerror(code), relative_path)
+    def _relocate_posix(
+        self, source_relative_path: str, target_relative_path: str, *, root: str,
+        create_target_parents: bool,
+    ) -> StorageEntry:
+        """No-follow source/destination parents, held through atomic no-replace.
+
+        Final-leaf identity may change between stat and rename; directory FDs
+        protect against parent symlink redirection, not generation pinning.
+        """
+        base_root = self._select_root(root)
+        source_rel = _normalize_relative(source_relative_path)
+        target_rel = _normalize_relative(target_relative_path)
+        if not source_rel or not target_rel:
+            raise StorageOperationError("Regular source and destination paths are required.")
+        source_parts, target_parts = source_rel.split("/"), target_rel.split("/")
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        fds: list[int] = []
+        try:
+            source_fd = os.open(base_root, flags)
+            fds.append(source_fd)
+            for part in source_parts[:-1]:
+                source_fd = os.open(part, flags, dir_fd=source_fd)
+                fds.append(source_fd)
+            source_stat = os.stat(source_parts[-1], dir_fd=source_fd, follow_symlinks=False)
+            if not (stat.S_ISREG(source_stat.st_mode) or stat.S_ISDIR(source_stat.st_mode)):
+                raise StorageOperationError("Storage relocation source must be a regular file or directory.")
+
+            target_fd = os.open(base_root, flags)
+            fds.append(target_fd)
+            for part in target_parts[:-1]:
+                if create_target_parents:
+                    try:
+                        os.mkdir(part, dir_fd=target_fd)
+                    except FileExistsError:
+                        pass
+                target_fd = os.open(part, flags, dir_fd=target_fd)
+                fds.append(target_fd)
+            self._rename_noreplace_between_dirfds(
+                source_fd, source_parts[-1], target_fd, target_parts[-1], target_relative_path,
+            )
+            return StorageEntry(
+                relative_path=target_rel, name=target_parts[-1],
+                is_dir=stat.S_ISDIR(source_stat.st_mode),
+                size=None if stat.S_ISDIR(source_stat.st_mode) else source_stat.st_size,
+            )
+        finally:
+            for fd in reversed(fds):
+                os.close(fd)
+
     def move(self, source_relative_path: str, target_relative_path: str, *, root: str = "inspection") -> StorageEntry:
+        if os.name == "posix":
+            return self._relocate_posix(source_relative_path, target_relative_path, root=root, create_target_parents=True)
         base_root = self._select_root(root)
         source = self._path_under(base_root, source_relative_path)
         target = self._path_under(base_root, target_relative_path)
@@ -655,6 +735,15 @@ class LocalStorageService:
     def rename(self, source_relative_path: str, new_name: str, *, root: str = "inspection") -> StorageEntry:
         if "/" in new_name or "\\" in new_name or new_name in {"", ".", ".."}:
             raise StorageOperationError("Invalid rename target.")
+        if os.name == "posix":
+            normalized = _normalize_relative(source_relative_path)
+            if not normalized:
+                raise StorageOperationError("Regular source path is required.")
+            target_relative_path = normalized.rsplit("/", 1)[0] + "/" + new_name if "/" in normalized else new_name
+            return self._relocate_posix(
+                source_relative_path, target_relative_path, root=root,
+                create_target_parents=False,
+            )
         base_root = self._select_root(root)
         source = self._path_under(base_root, source_relative_path)
         target = source.with_name(new_name)

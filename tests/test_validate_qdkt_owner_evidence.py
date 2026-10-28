@@ -41,6 +41,7 @@ def test_undecided_package_cannot_authorize_or_claim_word_execution(tmp_path):
     assert report["trusted_authorization_verified"] is False
     assert report["word_uat_verified"] is False
     assert report["ready_to_render"] is False
+    assert all(row["version_matches_manifest"] is None for row in report["candidates"])
     assert {r["option"] for r in report["owner_checklists"]} == {"ADD_BOOKMARKS", "DEPRECATE_WRITES"}
 
 

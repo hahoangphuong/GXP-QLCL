@@ -197,7 +197,7 @@ def validate_package(manifest_path: Path) -> dict:
             t = templates[variant.gxp_type]
             report["candidates"].append({"gxp_type": t.gxp_type, "declared_sha256": t.candidate_sha256, "actual_sha256": None,
                 "candidate_version_sha256": sha256(t.candidate_version.encode()).hexdigest() if t.candidate_version else None,
-                "version_matches_manifest": variant.candidate_version == t.candidate_version})
+                "version_matches_manifest": variant.candidate_version == t.candidate_version if variant.candidate_version and t.candidate_version else None})
             for kind, ref_id, checksum in (("source_template", variant.source_ref, t.source_sha256), ("candidate_template", variant.candidate_ref, t.candidate_sha256)):
                 data = require(ref_id, kind)
                 if data is None:

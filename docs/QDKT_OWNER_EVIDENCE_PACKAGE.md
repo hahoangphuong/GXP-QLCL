@@ -121,6 +121,8 @@ invocation also uses argparse's exit 2. Inspect the structured findings instead.
 - Provenance: report/manifest schema versions, SHA of exact manifest bytes,
   canonical decision digest, candidate/version hashes, per-reference declared
   and observed SHA/status, selected date policy and both owner checklists.
+  `version_matches_manifest` is null when either version is missing; two absent
+  versions never produce a positive match claim.
 
 JSON has stable ordering and no wall-clock timestamps. Markdown embeds exactly
 the same JSON. Reordering/changing manifest bytes deliberately changes its SHA.

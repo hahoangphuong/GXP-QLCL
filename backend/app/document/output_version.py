@@ -574,8 +574,14 @@ def cleanup_output_target_if_owned(
     storage_relative_path: str,
     expected_checksum: str,
 ) -> str | None:
-    normalized_checksum = str(expected_checksum or "").strip()
-    if not normalized_checksum:
+    """Fail closed: checksum matching cannot authorize deletion.
+
+    A competing writer can replace the final pathname between checksum()
+    and delete(), even if the checksums matched at inspection time. The
+    current StorageServiceProtocol has no atomic compare-generation-delete
+    primitive. Keep the target for explicit, read-only reconciliation.
+    """
+    if not str(expected_checksum or "").strip():
         return (
             "Rendered output checksum is unavailable; refusing cleanup without "
             "file-ownership evidence."
@@ -583,20 +589,12 @@ def cleanup_output_target_if_owned(
     try:
         if not storage.exists(storage_relative_path, root=storage_root):
             return None
-        actual_checksum = storage.checksum(
-            storage_relative_path,
-            root=storage_root,
-        )
-        if actual_checksum != normalized_checksum:
-            return (
-                "Rendered output changed before cleanup; refusing to delete a "
-                "target whose checksum no longer matches the render result."
-            )
-        storage.delete(storage_relative_path, root=storage_root)
     except Exception as exc:
         return str(exc)
-    return None
-
+    return (
+        "Output cleanup deferred: storage does not support atomic "
+        "generation-conditional delete; retaining target for reconciliation."
+    )
 
 def finalize_output_document_version_write(
     session: Session,

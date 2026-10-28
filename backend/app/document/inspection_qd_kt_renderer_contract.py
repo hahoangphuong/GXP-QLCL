@@ -24,7 +24,7 @@ from backend.app.document.inspection_qd_kt_dossier_bookmark_evidence import (
     load_qdkt_dossier_bookmark_source_evidence,
 )
 from backend.app.document.inspection_qd_kt_dotx_binary_audit import (
-    MAX_QDKT_DOTX_BYTES, QdKtBookmarkSpan, QdKtDotxBinaryAudit, classify_qdkt_target_bookmark,
+    MAX_QDKT_DOTX_BYTES, QdKtBookmarkSpan, QdKtDotxAuditBlocked, QdKtDotxBinaryAudit, classify_qdkt_target_bookmark,
     inspect_qdkt_dotx_bytes,
 )
 from backend.app.document.inspection_qd_kt_template_asset_contract import (
@@ -310,8 +310,11 @@ def inspect_renderer_candidates(
             storage_root="template", storage_relative_path=paths[template.gxp_type].name,
             checksum_sha256=template.candidate_sha256,
         )
-        with paths[template.gxp_type].open("rb") as stream:
-            data = stream.read(MAX_QDKT_DOTX_BYTES + 1)
+        try:
+            with paths[template.gxp_type].open("rb") as stream:
+                data = stream.read(MAX_QDKT_DOTX_BYTES + 1)
+        except OSError as exc:
+            raise QdKtDotxAuditBlocked("QDKT_DOTX_BINARY_UNAVAILABLE") from exc
         results.append(PhysicalTemplateEvidence(
             inspect_qdkt_dotx_bytes(data, asset=asset), "PRIMARY_CANDIDATE_BYTES", data,
         ))

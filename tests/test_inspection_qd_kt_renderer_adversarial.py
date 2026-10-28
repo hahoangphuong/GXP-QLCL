@@ -285,3 +285,26 @@ def test_preflight_uses_one_validated_manifest_snapshot(tmp_path, monkeypatch):
     assert result.contract_evidence_complete
     assert result.ready_to_render is False
     assert calls == ["manifest"]
+
+
+def test_candidate_acquisition_retains_the_existing_unavailable_source_error(tmp_path):
+    inputs = fixture(tmp_path)
+    paths = {row.gxp_type: tmp_path / (row.gxp_type + ".dotx") for row in inputs["decision"].templates}
+    paths["GLP"].unlink()
+    with pytest.raises(ValueError, match="QDKT_DOTX_BINARY_UNAVAILABLE"):
+        inspect_renderer_candidates(inputs["decision"], paths=paths)
+
+
+def test_candidate_map_keys_cannot_execute_foreign_hash_callback(tmp_path):
+    inputs = fixture(tmp_path)
+    class ForeignKey:
+        armed = False
+        def __hash__(self):
+            if self.armed:
+                raise AssertionError("foreign hash invoked")
+            return 42
+    key = ForeignKey()
+    paths = {key: tmp_path / "untrusted.dotx"}
+    key.armed = True
+    with pytest.raises(ValueError):
+        inspect_renderer_candidates(inputs["decision"], paths=paths)

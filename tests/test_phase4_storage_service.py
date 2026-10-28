@@ -869,15 +869,30 @@ def test_storage_copy_rejects_concurrent_writer_during_atomic_publication(tmp_pa
     source = service.inspection_root / "source.txt"
     target = service.inspection_root / "copy.txt"
     source.write_bytes(b"original source")
-    real_rename = service._rename_noreplace
+    if os.name == "posix":
+        real_rename = service._rename_noreplace_dirfd
 
-    def concurrent_writer_at_publish(staged_path: Path, target_path: Path, relative_path: str):
-        assert Path(staged_path).read_bytes() == b"original source"
-        assert not target.exists()
-        target.write_bytes(b"other writer")
-        return real_rename(staged_path, target_path, relative_path)
+        def concurrent_writer_at_publish(parent_fd: int, staged_name: str, target_name: str, relative_path: str):
+            fd = os.open(staged_name, os.O_RDONLY, dir_fd=parent_fd)
+            try:
+                assert os.read(fd, 1024) == b"original source"
+            finally:
+                os.close(fd)
+            assert not target.exists()
+            target.write_bytes(b"other writer")
+            return real_rename(parent_fd, staged_name, target_name, relative_path)
 
-    monkeypatch.setattr(service, "_rename_noreplace", concurrent_writer_at_publish)
+        monkeypatch.setattr(service, "_rename_noreplace_dirfd", concurrent_writer_at_publish)
+    else:
+        real_rename = service._rename_noreplace
+
+        def concurrent_writer_at_publish(staged_path: Path, target_path: Path, relative_path: str):
+            assert Path(staged_path).read_bytes() == b"original source"
+            assert not target.exists()
+            target.write_bytes(b"other writer")
+            return real_rename(staged_path, target_path, relative_path)
+
+        monkeypatch.setattr(service, "_rename_noreplace", concurrent_writer_at_publish)
     with pytest.raises(StorageTargetExistsError, match="will not be overwritten"):
         service.copy("source.txt", "copy.txt")
 
@@ -895,7 +910,11 @@ def test_storage_copy_unsupported_atomic_publish_fails_closed_and_cleans_temp(tm
     def unsupported(*args):
         raise StorageOperationError("Atomic no-replace rename is unsupported.")
 
-    monkeypatch.setattr(service, "_rename_noreplace", unsupported)
+    monkeypatch.setattr(
+        service,
+        "_rename_noreplace_dirfd" if os.name == "posix" else "_rename_noreplace",
+        unsupported,
+    )
     with pytest.raises(StorageOperationError, match="unsupported"):
         service.copy("source.txt", "copy.txt")
 

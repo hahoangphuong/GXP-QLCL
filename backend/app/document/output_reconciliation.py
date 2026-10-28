@@ -38,6 +38,7 @@ class OutputLocatorEvidence:
     locator: OutputLocator
     versions: tuple[OutputVersionEvidence, ...]
     classification: str
+    review_flags: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,7 @@ class OutputReconciliationReport:
     items: tuple[OutputLocatorEvidence, ...]
     status: str = "review_only"
     deletion_authorized: bool = False
+    db_snapshot_consistency: str = "caller_transaction_unverified"
 
 
 def _valid_locator(locator: OutputLocator) -> bool:
@@ -143,7 +145,25 @@ def reconcile_output_locators(
             "multiple_exact_document_version_references" if len(versions) > 1 else
             "registered_exact_document_version_locator"
         )
-        evidence.append(OutputLocatorEvidence(locator, tuple(versions), classification))
+        flags: set[str] = set()
+        if not versions:
+            flags.add("no_exact_db_reference")
+        if len(versions) > 1:
+            flags.add("multiple_exact_db_references")
+        for version in versions:
+            if not version.checksum_recorded:
+                flags.add("checksum_not_recorded")
+            if not version.generation_run_ids:
+                flags.add("no_linked_generation_run")
+            if len(version.generation_run_ids) > 1:
+                flags.add("multiple_linked_generation_runs")
+            if any(status != "succeeded" for status in version.generation_run_statuses):
+                flags.add("generation_run_not_succeeded")
+            if version.is_current and not version.checksum_recorded:
+                flags.add("current_version_without_checksum")
+        evidence.append(OutputLocatorEvidence(
+            locator, tuple(versions), classification, tuple(sorted(flags)),
+        ))
     return OutputReconciliationReport(
         items=tuple(sorted(evidence, key=lambda item: (
             item.locator.root, item.locator.relative_path,

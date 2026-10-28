@@ -86,3 +86,49 @@ def test_empty_inventory_does_not_query_or_infer_orphan():
     assert report.items == ()
     assert report.deletion_authorized is False
     assert session.calls == 0
+
+
+def test_review_flags_identify_unresolved_db_evidence_without_orphan_verdict():
+    versions = [
+        ("inspection", "case/output.docx", "v1", "variant", True, None),
+        ("inspection", "case/output.docx", "v2", "variant", False, "recorded"),
+    ]
+    runs = [
+        ("v2", "r2", SimpleNamespace(value="failed")),
+        ("v2", "r1", SimpleNamespace(value="pending")),
+    ]
+    session = QueryOnlySession(versions, runs)
+    report = reconcile_output_locators(
+        session, [OutputLocator("inspection", "case/output.docx")]
+    )
+    item = report.items[0]
+    assert item.classification == "multiple_exact_document_version_references"
+    assert item.review_flags == tuple(sorted({
+        "multiple_exact_db_references", "current_version_without_checksum",
+        "checksum_not_recorded", "no_linked_generation_run",
+        "multiple_linked_generation_runs", "generation_run_not_succeeded",
+    }))
+    assert report.db_snapshot_consistency == "caller_transaction_unverified"
+    assert report.deletion_authorized is False
+    assert item.versions[1].generation_run_ids == ("r1", "r2")
+    assert item.versions[1].generation_run_statuses == ("pending", "failed")
+
+
+def test_missing_reference_flag_is_not_orphan_authorization():
+    report = reconcile_output_locators(
+        QueryOnlySession(), [OutputLocator("dkkd", "missing.docx")]
+    )
+    assert report.items[0].review_flags == ("no_exact_db_reference",)
+    assert report.deletion_authorized is False
+
+
+def test_clean_single_reference_has_no_review_flags():
+    report = reconcile_output_locators(
+        QueryOnlySession(
+            [("inspection", "case/ok.docx", "v", "variant", True, "sha")],
+            [("v", "r", SimpleNamespace(value="succeeded"))],
+        ),
+        [OutputLocator("inspection", "case/ok.docx")],
+    )
+    assert report.items[0].review_flags == ()
+    assert report.deletion_authorized is False

@@ -332,8 +332,12 @@ class LocalStorageService:
                 temp_path = Path(tmp.name)
                 source_stat = os.fstat(stream.fileno())
                 shutil.copyfileobj(stream, tmp, length=1024 * 1024)
-                os.fchmod(tmp.fileno(), stat.S_IMODE(source_stat.st_mode))
-                os.utime(tmp.fileno(), ns=(source_stat.st_atime_ns, source_stat.st_mtime_ns))
+                if os.name == "posix":
+                    os.fchmod(tmp.fileno(), stat.S_IMODE(source_stat.st_mode))
+                    os.utime(tmp.fileno(), ns=(source_stat.st_atime_ns, source_stat.st_mtime_ns))
+                else:
+                    # No POSIX descriptor-anchored contract on this platform.
+                    shutil.copystat(source, temp_path)
             # Atomic conflict detection also covers a destination created
             # after the preflight check or while bytes are copied.
             self._rename_noreplace(temp_path, target, target_relative_path)

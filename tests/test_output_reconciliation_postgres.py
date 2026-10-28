@@ -97,10 +97,11 @@ def test_reconciliation_uses_typed_uuid_and_exact_locator_on_postgres():
             )
             assert report.db_snapshot_consistency == "caller_transaction_unverified"
             assert report.deletion_authorized is False
+            version_id = version.id
             # The caller retains ownership of the transaction and rolls back.
             session.rollback()
         with Session(engine) as verify:
-            assert verify.get(DocumentVersion, version.id) is None
+            assert verify.get(DocumentVersion, version_id) is None
             verify.rollback()
     finally:
         engine.dispose()

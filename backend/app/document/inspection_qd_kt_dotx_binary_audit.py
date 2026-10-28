@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from hashlib import sha256
+from io import BytesIO
 from pathlib import Path
 import re
 from xml.etree import ElementTree
@@ -25,6 +26,7 @@ _MAX_CONTENT_TYPES_BYTES = 1024 * 1024
 _OPC_NS = "{http://schemas.openxmlformats.org/package/2006/content-types}"
 _DOTX_MAIN_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml"
 _WORD_STORY_PART = re.compile(r"word/(?:document|header\d+|footer\d+)\.xml")
+MAX_QDKT_DOTX_BYTES = 32 * 1024 * 1024
 
 
 class QdKtDotxAuditBlocked(ValueError):
@@ -214,16 +216,27 @@ def inspect_qdkt_dotx_binary(
     path = Path(path)
     try:
         with path.open("rb") as stream:
-            digest = sha256()
-            while chunk := stream.read(1024 * 1024):
-                digest.update(chunk)
-        actual = digest.hexdigest()
+            data = stream.read(MAX_QDKT_DOTX_BYTES + 1)
     except OSError as exc:
         raise QdKtDotxAuditBlocked("QDKT_DOTX_BINARY_UNAVAILABLE") from exc
+    return inspect_qdkt_dotx_bytes(data, asset=asset)
+
+
+def inspect_qdkt_dotx_bytes(
+    data: bytes, *, asset: InspectionQdKtTemplateAsset,
+) -> QdKtDotxBinaryAudit:
+    """Hash and parse the same bounded immutable snapshot, with no path re-open.
+
+    Proves supplied contents only, not filesystem freshness or immutable storage
+    generation identity. Caller owns acquisition and source-origin attestation.
+    """
+    if type(data) is not bytes or len(data) > MAX_QDKT_DOTX_BYTES:
+        raise QdKtDotxAuditBlocked("QDKT_DOTX_BYTES_INVALID")
+    actual = sha256(data).hexdigest()
     if actual != asset.checksum_sha256:
         raise QdKtDotxAuditBlocked("QDKT_DOTX_CHECKSUM_MISMATCH")
     try:
-        with ZipFile(path) as archive:
+        with ZipFile(BytesIO(data)) as archive:
             names = [info.filename for info in archive.infolist()]
             if len(names) != len(set(names)):
                 raise QdKtDotxAuditBlocked("QDKT_DOTX_PACKAGE_MEMBER_AMBIGUOUS")

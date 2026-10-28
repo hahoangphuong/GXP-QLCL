@@ -205,3 +205,53 @@ limitations must be reported separately.
   For candidate adoption rollback, revoke approvals and restore the pinned prior
   template version through a separately approved release. Never overwrite source
   templates; preserve candidate history and failed UAT evidence.
+
+## Trust-boundary hardening (28 October 2026)
+
+The caller and its owner-review ledger remain trusted application boundaries.
+Request JSON is not a ledger. Schema validation, byte integrity, reviewer
+authentication, owner authorization and renderer activation are five distinct
+concerns. This contract implements the first two and checks scoped attestations;
+it does not authenticate a reviewer, prove that Word was actually operated, or
+pin an immutable NAS/storage generation. In-process arbitrary Python code that
+can patch verifier functions is outside the data-validation threat model.
+
+| Boundary | Confirmed defect before hardening | Current rule |
+|---|---|---|
+| Pydantic instances | Serialization could drop undeclared `model_copy` fields or coerce a wrongly typed `approved_at` datetime to a valid string. Digest helpers did not revalidate. | Validate raw exact model classes, field sets and Python primitives before serialization, including nested models; reject subclasses, cyclic state and unexpected fields. Digest helpers use the same boundary. |
+| Approval records | Multiple selected records for one purpose were merged; an unrelated subject digest could be ignored; UAT acceptance could predate execution; impossible offset `+00:60` could normalize silently. | One selected record per purpose, exact role, disposition, decision digest and evidence references; only WORD_UAT may carry its subject digest. Strict offset-bearing timestamps; UAT acceptance must follow every execution record. No inferred quorum or latest-record selection. |
+| Physical audit | A caller could change count/names while leaving spans empty and obtain completeness. Malformed nested state could raise instead of returning a blocker. | `PhysicalTemplateEvidence` carries bounded immutable `candidate_bytes`. Recompute SHA and all-story OOXML audit from those bytes and compare the entire summary with type-sensitive equality. Missing bytes, synthetic origin, altered bytes or inconsistent summary block. |
+| Snapshot | A malformed datetime/tzinfo could invoke a callback and escape as an exception. | Exact primitive/UUID/version field shapes and standard datetime/timezone representations are validated before comparisons; no foreign equality or timezone callback is invoked. Persisted origin still comes from the trusted reader/caller, not authentication supplied by this data model. |
+| Word UAT | Metadata and PASS alone had no explicit unverified/synthetic origin state. | `evidence_origin` defaults to UNVERIFIED. Only OWNER_ATTESTED_WORD_EXECUTION, bound into the trusted UAT subject digest, can satisfy this data contract; SYNTHETIC stays blocked even with internally consistent metadata. Four unique variants and all previous execution/hash/version/check requirements still apply. |
+| Result/read-only execution | A manually constructed result could claim completeness alongside blockers. | Result consistency is checked; `ready_to_render` remains an unassignable false property. Fault injection guards filesystem, ORM and renderer calls. |
+
+Candidate acquisition reads each explicit local file once, bounded to 32 MiB,
+then hashes/parses that same byte snapshot. Preflight does **not** re-read paths.
+A path replacement after acquisition neither changes the captured bytes nor
+proves that the current pathname still holds those bytes. A future render owner
+must bind its own consumption to the approved content and existing storage
+controls; this preflight is not permission to read an arbitrary later file.
+The offline DOTX audit shares the same bytes parser. Original authoritative
+templates remain checksum-pinned and unchanged. Candidate bytes are excluded
+from the evidence object's repr to avoid accidental binary logging.
+
+Compatibility: formerly hand-built `PhysicalTemplateEvidence(audit, origin)`
+objects without byte binding now fail closed. Use `inspect_renderer_candidates`
+for explicit local candidate snapshots, or supply the exact inspected immutable
+bytes at a trusted internal acquisition boundary. Older UAT records lacking the
+new origin attestation cannot satisfy the gate; review/acceptance is required,
+not an automatic promotion. Unit fixtures simulate trusted receipts only and
+never establish actual Word UAT or production approval.
+
+Reproduce the adversarial regression suite with:
+
+```powershell
+python -m pytest tests/test_inspection_qd_kt_renderer_adversarial.py tests/test_inspection_qd_kt_renderer_contract.py tests/test_inspection_qd_kt_dotx_binary_audit.py -q -p no:cacheprovider
+```
+
+The initial adversarial run reproduced 11 failures and 2 already-protected
+cases. Three further RED cases covered float/int audit equality, an undeclared
+physical approval flag and the impossible approval offset. These are contract
+completeness/exception defects, not evidence of production issuance: the false
+`ready_to_render` invariant was never lifted. Legal decision stays UNDECIDED,
+business timezone PARTIAL, and actual Word UAT NOT_EXECUTED.

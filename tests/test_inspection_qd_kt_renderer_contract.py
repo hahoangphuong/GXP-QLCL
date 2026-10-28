@@ -53,7 +53,7 @@ def fixture(tmp_path, option="DEPRECATE_WRITES", *, absent=False):
         placements = tuple(BookmarkPlacement(bookmark=s.name, part=s.part_name, start_location=s.start_location, end_location=s.end_location, semantic_context="Synthetic proposed placement") for s in audit.bookmark_spans)
         templates.append(t.model_copy(update={"candidate_version": "synthetic-contract-test-v1", "candidate_sha256": checksum, "placements": placements}))
         # Test-only simulation of trusted primary-byte receipt: never persisted.
-        physical.append(PhysicalTemplateEvidence(audit, "PRIMARY_CANDIDATE_BYTES"))
+        physical.append(PhysicalTemplateEvidence(audit, "PRIMARY_CANDIDATE_BYTES", data))
     decision = decision.model_copy(update={"decision": option, "submission_date_rule": "AWARE_RECORDED_OFFSET_DATE", "date_display_format": "DD/MM/YYYY", "templates": tuple(templates)})
     digest = decision_digest(decision)
     uat = tuple(WordUatEvidence(
@@ -62,6 +62,7 @@ def fixture(tmp_path, option="DEPRECATE_WRITES", *, absent=False):
         word_version="TEST-ONLY", tester_ref="SYNTHETIC-TESTER", executed_at="2026-01-03T12:00:00+00:00",
         output_sha256="e" * 64, synthetic_input_sha256=SYNTHETIC_INPUT_SHA256,
         screenshot_refs=("TEST-ONLY",), acceptance_checks=tuple(sorted(UAT_CHECKS)),
+        evidence_origin="OWNER_ATTESTED_WORD_EXECUTION",  # test-only ledger simulation
     ) for t in templates)
     ledger = {}
     for purpose, role in (("LEGAL_TEMPLATE", "LEGAL_OWNER"), ("DOSSIER_SEMANTICS", "BUSINESS_OWNER"), ("DATE_NORMALIZATION", "BUSINESS_OWNER"), ("DEPRECATE_WRITES", "LEGAL_OWNER"), ("WORD_UAT", "UAT_OWNER")):
@@ -153,7 +154,8 @@ def test_checksum_synthetic_evidence_and_duplicate_template_set_block(tmp_path):
     inputs["physical"] = (replace(first, origin="SYNTHETIC", audit=replace(first.audit, actual_sha256="0" * 64)),) + inputs["physical"][1:]
     result = assess_renderer_preflight(**inputs)
     assert "QDKT_SYNTHETIC_PHYSICAL_EVIDENCE:GLP" in result.blockers
-    assert "QDKT_TEMPLATE_CHECKSUM_CONFLICT:GLP" in result.blockers
+    # The bytes still match the decision; the caller's forged summary does not.
+    assert "QDKT_PHYSICAL_AUDIT_CONFLICT:GLP" in result.blockers
     inputs["physical"] = inputs["physical"] + (first,)
     assert "QDKT_PHYSICAL_TEMPLATE_SET_INCOMPLETE" in assess_renderer_preflight(**inputs).blockers
 

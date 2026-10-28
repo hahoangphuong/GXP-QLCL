@@ -612,7 +612,14 @@ def test_storage_list_allows_symlink_to_a_target_within_root(tmp_path: Path):
     entries = {entry.name: entry for entry in service.list()}
     assert entries["report-link.txt"].relative_path == "report-link.txt"
     assert entries["report-link.txt"].size == len(b"within-root")
-    assert service.checksum("report-link.txt") == sha256(b"within-root").hexdigest()
+    # Listing metadata permits an in-root alias, but the descriptor-anchored
+    # binary-read/checksum contract on POSIX deliberately rejects symlinks.
+    assert service.checksum("2026/report.txt") == sha256(b"within-root").hexdigest()
+    if os.name == "posix":
+        with pytest.raises(OSError):
+            service.checksum("report-link.txt")
+    else:
+        assert service.checksum("report-link.txt") == sha256(b"within-root").hexdigest()
 
 
 def test_storage_write_stream_can_create_exclusively_without_overwriting(tmp_path: Path):

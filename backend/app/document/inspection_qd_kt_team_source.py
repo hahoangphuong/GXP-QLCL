@@ -75,31 +75,30 @@ def read_qdkt_team_source(session, *, case_id: str) -> QdKtTeamSource:
     from sqlalchemy import select
     from backend.app.db.models.phase1 import Case, InspectionTeam, InspectionTeamMember
 
-    if not isinstance(case_id, str) or not case_id.strip():
+    if type(case_id) is not str or not case_id.strip() or case_id != case_id.strip():
         raise QdKtTeamSourceBlocked("CASE_ID_MISSING")
     with session.no_autoflush:
-        if session.get(Case, case_id) is None:
+        # Scalar projections bypass the identity map without refreshing,
+        # expiring or flushing the caller's pending team edits.
+        owners = session.execute(select(Case.id, InspectionTeam.id)
+            .outerjoin(InspectionTeam, InspectionTeam.case_id == Case.id)
+            .where(Case.id == case_id)).all()
+        if not owners:
             raise QdKtTeamSourceBlocked("CASE_NOT_FOUND")
-        teams = session.scalars(
-            select(InspectionTeam).where(InspectionTeam.case_id == case_id)
-        ).all()
-        if len(teams) != 1:
+        if len(owners) != 1 or owners[0][1] is None:
             raise QdKtTeamSourceBlocked("CASE_INSPECTION_TEAM_NOT_UNIQUE")
-        team = teams[0]
-        rows = session.scalars(
-            select(InspectionTeamMember)
-            .where(InspectionTeamMember.team_id == team.id)
+        team_id = owners[0][1]
+        rows = session.execute(
+            select(InspectionTeamMember.id, InspectionTeamMember.sort_order,
+                InspectionTeamMember.role_code, InspectionTeamMember.display_name,
+                InspectionTeamMember.identity_kind, InspectionTeamMember.inspector_profile_id,
+                InspectionTeamMember.person_id, InspectionTeamMember.participant_catalog_id)
+            .join(InspectionTeam, InspectionTeamMember.team_id == InspectionTeam.id)
+            .join(Case, InspectionTeam.case_id == Case.id)
+            .where(InspectionTeamMember.team_id == team_id, Case.id == case_id)
             .order_by(InspectionTeamMember.sort_order, InspectionTeamMember.id)
         ).all()
     return require_qdkt_team_source(
-        case_id=case_id, team_id=team.id,
-        members=(
-            QdKtTeamMemberSource(
-                id=row.id, sort_order=row.sort_order, role_code=row.role_code,
-                display_name=row.display_name, identity_kind=row.identity_kind,
-                inspector_profile_id=row.inspector_profile_id, person_id=row.person_id,
-                participant_catalog_id=row.participant_catalog_id,
-            )
-            for row in rows
-        ),
+        case_id=case_id, team_id=team_id,
+        members=tuple(QdKtTeamMemberSource(*row) for row in rows),
     )

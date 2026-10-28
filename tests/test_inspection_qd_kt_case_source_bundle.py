@@ -18,6 +18,7 @@ def _sources(*, site_case="c1", team_case="c1", mapped=False):
     decision = QdKtDecisionAtoms(
         source_decision_id="decision1", reference="QD-123",
         decision_on=date(2026, 10, 1), legacy_raw="raw",
+        case_id="c1", inspection_plan_id="plan1",
     )
     site = QdKtRegisteredSite(
         case_id=site_case, site_id="site1", registered_address="123 Street", province_name="Hà Nội",

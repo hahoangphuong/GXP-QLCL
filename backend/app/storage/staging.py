@@ -127,7 +127,7 @@ def audit_staging_candidates(
                         or type(entry.name) is not str
                         or not entry.name
                         or entry.name in {".", ".."}
-                        or "/" in entry.name or "\\\\" in entry.name
+                        or "/" in entry.name or chr(92) in entry.name
                         or child_path != expected_parent + entry.name
                         or type(entry.is_dir) is not bool
                         or (entry.size is not None and

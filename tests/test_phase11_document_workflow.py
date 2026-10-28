@@ -1930,7 +1930,7 @@ def test_render_template_docx_restores_previous_current_when_post_write_audit_fa
                 failed_version.storage_relative_path,
                 failed_version.original_filename,
             ) == original_output_identity
-            assert candidate_path.exists() is False
+            assert candidate_path.exists() is True  # Retry did not delete retained file.
             drifted_path = root / "dkkd" / "drifted-folder" / "candidate.docx"
             assert drifted_path.exists() is False
 

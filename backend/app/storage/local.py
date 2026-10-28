@@ -425,6 +425,29 @@ class LocalStorageService:
 
     def create_folder(self, relative_path: str, *, root: str = "inspection") -> StorageEntry:
         base_root = self._select_root(root)
+        if os.name == "posix":
+            normalized = _normalize_relative(relative_path)
+            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+            fds: list[int] = []
+            try:
+                directory_fd = os.open(base_root, flags)
+                fds.append(directory_fd)
+                for component in normalized.split("/") if normalized else ():
+                    try:
+                        os.mkdir(component, dir_fd=directory_fd)
+                    except FileExistsError:
+                        pass
+                    directory_fd = os.open(component, flags, dir_fd=directory_fd)
+                    fds.append(directory_fd)
+            finally:
+                for fd in reversed(fds):
+                    os.close(fd)
+            return StorageEntry(
+                relative_path=normalized,
+                name=normalized.rsplit("/", 1)[-1] if normalized else base_root.name,
+                is_dir=True,
+                size=None,
+            )
         target = self._path_under(base_root, relative_path)
         target.mkdir(parents=True, exist_ok=True)
         return self._entry_for(base_root, target)

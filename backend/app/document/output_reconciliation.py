@@ -85,6 +85,12 @@ def reconcile_output_locators(
     if len(set(pairs)) != len(pairs):
         raise ValueError("Duplicate output locator.")
 
+    # No claim of a transaction-stable snapshot is possible from this helper.
+    # In PostgreSQL READ COMMITTED, version SELECTs and generation-run SELECTs
+    # can observe different committed states. Callers needing one snapshot must
+    # open a read-only REPEATABLE READ transaction before invoking this helper.
+    # Keep the report conservatively unverified even if an external transaction
+    # may have stronger isolation.
     references: dict[tuple[str, str], list[tuple[str, str, bool, bool]]] = {}
     runs: dict[str, list[tuple[str, str]]] = {}
     raw_version_ids: set = set()

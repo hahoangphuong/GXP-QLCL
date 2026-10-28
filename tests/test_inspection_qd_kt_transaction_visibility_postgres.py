@@ -82,3 +82,108 @@ def test_populate_existing_refresh_respects_postgres_snapshot(isolation, should_
     finally:
         Base.metadata.drop_all(engine, checkfirst=True)
         engine.dispose()
+
+
+# Dedicated disposable relation probe, not the production Case/Document tables.
+# It mirrors the ownership join and exercises two real PostgreSQL connections.
+from sqlalchemy import ForeignKey
+
+
+class BoundaryCase(Base):
+    __tablename__ = "qdkt_ci_boundary_case"
+    id = Column(String(40), primary_key=True)
+
+
+class BoundaryDocument(Base):
+    __tablename__ = "qdkt_ci_boundary_document"
+    id = Column(String(40), primary_key=True)
+    case_id = Column(String(40), ForeignKey("qdkt_ci_boundary_case.id"), nullable=False)
+
+
+class BoundaryBinding(Base):
+    __tablename__ = "qdkt_ci_boundary_binding"
+    id = Column(String(40), primary_key=True)
+    case_id = Column(String(40), ForeignKey("qdkt_ci_boundary_case.id"), nullable=False)
+    relative_path = Column(String(200), nullable=False)
+
+
+class BoundaryVersion(Base):
+    __tablename__ = "qdkt_ci_boundary_version"
+    id = Column(String(40), primary_key=True)
+    document_id = Column(String(40), ForeignKey("qdkt_ci_boundary_document.id"), nullable=False)
+    storage_binding_id = Column(String(40), ForeignKey("qdkt_ci_boundary_binding.id"), nullable=False)
+    storage_relative_path = Column(String(200), nullable=False)
+
+
+def _boundary_source(session):
+    return session.execute(
+        select(
+            BoundaryDocument.case_id,
+            BoundaryBinding.case_id,
+            BoundaryBinding.relative_path,
+            BoundaryVersion.storage_relative_path,
+            BoundaryVersion.storage_binding_id,
+        )
+        .join(BoundaryDocument, BoundaryVersion.document_id == BoundaryDocument.id)
+        .join(BoundaryBinding, BoundaryVersion.storage_binding_id == BoundaryBinding.id)
+        .where(BoundaryVersion.id == "v1")
+        .execution_options(populate_existing=True)
+    ).one()
+
+
+@pytest.mark.parametrize("isolation,observes_commit", [
+    ("READ COMMITTED", True),
+    ("REPEATABLE READ", False),
+])
+@pytest.mark.parametrize("mutation", ["binding_owner", "binding_path", "version_binding"])
+def test_concurrent_case_version_binding_source_visibility(isolation, observes_commit, mutation):
+    engine = create_engine(_checked_ci_url())
+    try:
+        Base.metadata.create_all(engine, checkfirst=True)
+        with engine.begin() as conn:
+            conn.execute(BoundaryVersion.__table__.delete())
+            conn.execute(BoundaryBinding.__table__.delete())
+            conn.execute(BoundaryDocument.__table__.delete())
+            conn.execute(BoundaryCase.__table__.delete())
+            conn.execute(BoundaryCase.__table__.insert(), [{"id": "case-1"}, {"id": "case-2"}])
+            conn.execute(BoundaryDocument.__table__.insert().values(id="d1", case_id="case-1"))
+            conn.execute(BoundaryBinding.__table__.insert(), [
+                {"id": "b1", "case_id": "case-1", "relative_path": "case-1"},
+                {"id": "b2", "case_id": "case-2", "relative_path": "case-2"},
+            ])
+            conn.execute(BoundaryVersion.__table__.insert().values(
+                id="v1", document_id="d1", storage_binding_id="b1",
+                storage_relative_path="case-1/draft.docx",
+            ))
+        with (
+            engine.connect().execution_options(isolation_level=isolation) as reader_conn,
+            Session(reader_conn, autoflush=False) as reader,
+            Session(engine, autoflush=False) as writer,
+        ):
+            initial = _boundary_source(reader)
+            assert initial == ("case-1", "case-1", "case-1", "case-1/draft.docx", "b1")
+            if mutation == "binding_owner":
+                statement = BoundaryBinding.__table__.update().where(
+                    BoundaryBinding.id == "b1"
+                ).values(case_id="case-2")
+            elif mutation == "binding_path":
+                statement = BoundaryBinding.__table__.update().where(
+                    BoundaryBinding.id == "b1"
+                ).values(relative_path="case-2")
+            else:
+                statement = BoundaryVersion.__table__.update().where(
+                    BoundaryVersion.id == "v1"
+                ).values(storage_binding_id="b2")
+            writer.execute(statement)
+            # Uncommitted changes must not be interpreted as observed drift.
+            assert _boundary_source(reader) == initial
+            writer.commit()
+            after = _boundary_source(reader)
+            assert (after != initial) is observes_commit
+            if observes_commit:
+                assert after[0] == "case-1"
+                assert after[1] != "case-1" or after[2] != "case-1"
+            reader.rollback()
+    finally:
+        Base.metadata.drop_all(engine, checkfirst=True)
+        engine.dispose()

@@ -13,6 +13,7 @@ from backend.app.document.inspection_qd_kt_vkn_authority import (
     QdKtAuthorityBlocked,
     QdKtVknAuthority,
     select_qdkt_vkn_authority,
+    require_qdkt_manufacture_kind,
 )
 
 
@@ -49,6 +50,7 @@ def qdkt_vkn_from_source_province(
     source row index. Vaccine/biological manufacturers always use the national
     institute, but the registered province is still not invented or normalized.
     """
+    manufacture_kind = require_qdkt_manufacture_kind(manufacture_kind)
     if manufacture_kind == "VACCINE_OR_BIOLOGICAL":
         return select_qdkt_vkn_authority(
             manufacture_kind="VACCINE_OR_BIOLOGICAL", geography="UNPROVEN"

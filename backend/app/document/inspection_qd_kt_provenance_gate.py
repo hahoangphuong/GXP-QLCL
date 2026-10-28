@@ -8,10 +8,14 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+from hashlib import sha256
 import json
 
 SOURCE = Path(__file__).resolve().parents[3] / "artifacts/legacy_audit/inspection_qd_kt_input_provenance.json"
 TRACE = SOURCE.with_name("inspection_qd_kt_vba_trace.json")
+SOURCE_ARCHIVE_SHA256 = "6227fb0a6b3d74fa0f4cc655b94b021a40d65a508c2f2eefc62f1724c7b89ff7"
+INVENTORY_SEMANTIC_SHA256 = "17ed8cd21147a0ae4d860700444f5dc59a572acd7d32f18f78776aea600ea279"
+TRACE_SEMANTIC_SHA256 = "83b652b4ece582416434700df9c987a33ed811c57d6b576dda2ad6065d731c8f"
 # The legacy JSON calls these keys "physical_bookmark", but the values are
 # logical VBA operation symbols. Some resolve to numbered Word bookmarks,
 # others have no physical target in the four observed DOTX packages.
@@ -56,7 +60,7 @@ def _require_i2_trace(name: str, row: dict) -> None:
         if not isinstance(operation, dict):
             raise QdKtProvenanceGateBlocked("QDKT_I2_OPERATION_TRACE_CHANGED")
         reachability = operation.get("reachability_i2")
-        if reachability not in {"REACHABLE_I2", "CONDITIONAL_I2", "UNREACHABLE_I2"}:
+        if type(reachability) is not str or reachability not in {"REACHABLE_I2", "CONDITIONAL_I2", "UNREACHABLE_I2"}:
             raise QdKtProvenanceGateBlocked("QDKT_I2_OPERATION_TRACE_CHANGED")
         if operation.get("physical_bookmark") != name:
             raise QdKtProvenanceGateBlocked("QDKT_I2_OPERATION_TRACE_CHANGED")
@@ -93,6 +97,36 @@ class QdKtProvenanceGateBlocked(ValueError):
     pass
 
 
+def semantic_sha256(value: dict) -> str:
+    return sha256(json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+
+
+def read_provenance_json(path: Path) -> dict:
+    """Bounded single acquisition; reject duplicate keys instead of losing them."""
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise QdKtProvenanceGateBlocked("QDKT_SOURCE_JSON_DUPLICATE_KEY")
+            result[key] = value
+        return result
+    def invalid_constant(_):
+        raise QdKtProvenanceGateBlocked("QDKT_SOURCE_PROVENANCE_INCOMPLETE")
+    try:
+        with Path(path).open("rb") as stream:
+            raw = stream.read(2 * 1024 * 1024 + 1)
+        if len(raw) > 2 * 1024 * 1024:
+            raise ValueError("size")
+        value = json.loads(raw.decode("utf-8"), object_pairs_hook=unique, parse_constant=invalid_constant)
+        if type(value) is not dict:
+            raise ValueError("object")
+        return value
+    except (OSError, UnicodeError, ValueError, RecursionError) as exc:
+        if isinstance(exc, QdKtProvenanceGateBlocked):
+            raise
+        raise QdKtProvenanceGateBlocked("QDKT_SOURCE_PROVENANCE_INCOMPLETE") from exc
+
+
 @dataclass(frozen=True)
 class QdKtProvenanceGate:
     source_sha256: str
@@ -111,7 +145,7 @@ _TRACE_OPERATION_KEYS = (
 def _require_independent_trace_match(evidence: dict, fields: dict, trace_path: Path) -> None:
     """Reconcile the owner inventory with the separately captured VBA operation trace."""
     try:
-        trace = json.loads(trace_path.read_text(encoding="utf-8"))
+        trace = read_provenance_json(trace_path)
     except (OSError, ValueError, TypeError) as exc:
         raise QdKtProvenanceGateBlocked("QDKT_VBA_TRACE_UNVERIFIED") from exc
     if (
@@ -136,15 +170,17 @@ def _require_independent_trace_match(evidence: dict, fields: dict, trace_path: P
         ]
         if not expected or actual != expected:
             raise QdKtProvenanceGateBlocked("QDKT_VBA_TRACE_MISMATCH")
+    if semantic_sha256(trace) != TRACE_SEMANTIC_SHA256:
+        raise QdKtProvenanceGateBlocked("QDKT_VBA_TRACE_MISMATCH")
 
 
-def inspect_qdkt_source_provenance(path: Path = SOURCE) -> QdKtProvenanceGate:
+def load_qdkt_source_provenance(path: Path = SOURCE) -> dict:
     """Check a pinned source-trace inventory, never infer owner equivalence.
 
     Source changes require a separately reviewed source/Word contract,
     never a silent status promotion from a new modern column.
     """
-    evidence = json.loads(Path(path).read_text(encoding="utf-8"))
+    evidence = read_provenance_json(path)
     fields = evidence.get("fields")
     if evidence.get("schema_version") != "inspection-qd-kt-input-provenance/v1":
         raise QdKtProvenanceGateBlocked("QDKT_SOURCE_SCHEMA_UNEXPECTED")
@@ -155,12 +191,16 @@ def inspect_qdkt_source_provenance(path: Path = SOURCE) -> QdKtProvenanceGate:
     digest = evidence.get("source_zip_sha256")
     if not isinstance(digest, str) or len(digest) != 64:
         raise QdKtProvenanceGateBlocked("QDKT_SOURCE_ZIP_PIN_MISSING")
+    if digest != SOURCE_ARCHIVE_SHA256:
+        raise QdKtProvenanceGateBlocked("QDKT_SOURCE_ZIP_PIN_MISMATCH")
     if any(not isinstance(row, dict) for row in fields.values()):
         raise QdKtProvenanceGateBlocked("QDKT_SOURCE_PROVENANCE_INCOMPLETE")
     for name, row in fields.items():
         _require_i2_trace(name, row)
     _require_independent_trace_match(evidence, fields, TRACE)
     status = {name: row.get("owner_classification") for name, row in fields.items()}
+    if any(type(value) is not str for value in status.values()):
+        raise QdKtProvenanceGateBlocked("QDKT_OWNER_STATUS_REQUIRES_REVIEW")
     if any(
         not isinstance(fields[name], dict)
         or fields[name].get("physical_bookmark") != name
@@ -174,10 +214,19 @@ def inspect_qdkt_source_provenance(path: Path = SOURCE) -> QdKtProvenanceGate:
     counts = Counter(status.values())
     if counts != {"OWNER_BLOCKED": 8, "OWNER_PARTIAL": 6}:
         raise QdKtProvenanceGateBlocked("QDKT_OWNER_STATUS_REQUIRES_REVIEW")
+    # Operations alone cannot authenticate assignment/format/owner metadata.
+    # Pin the entire reviewed semantic inventory, independent of JSON spacing.
+    if semantic_sha256(evidence) != INVENTORY_SEMANTIC_SHA256:
+        raise QdKtProvenanceGateBlocked("QDKT_SOURCE_METADATA_DRIFT")
+    return evidence
+
+
+def inspect_qdkt_source_provenance(path: Path = SOURCE) -> QdKtProvenanceGate:
+    evidence = load_qdkt_source_provenance(path)
     # This gate intentionally cannot return ready=True: even changing all 14
     # statuses requires an independently specified typed/render acceptance path.
     return QdKtProvenanceGate(
-        source_sha256=digest,
+        source_sha256=evidence["source_zip_sha256"],
         blocked_fields=tuple(sorted(EXPECTED_BLOCKED)),
         partial_fields=tuple(sorted(EXPECTED_FIELDS - EXPECTED_BLOCKED)),
         proven_fields=(),

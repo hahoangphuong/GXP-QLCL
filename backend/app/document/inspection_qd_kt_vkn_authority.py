@@ -44,10 +44,19 @@ _AUTHORITY = {
 }
 
 
+def require_qdkt_manufacture_kind(value: ManufactureKind) -> ManufactureKind:
+    if type(value) is not str or value not in {"VACCINE_OR_BIOLOGICAL", "MEDICINE", "UNPROVEN"}:
+        raise QdKtAuthorityBlocked("MANUFACTURE_CLASSIFICATION_UNPROVEN")
+    return value
+
+
 def select_qdkt_vkn_authority(
     *, manufacture_kind: ManufactureKind, geography: GeoZone
 ) -> QdKtVknAuthority:
     """Use source-verified classification, not an invented location heuristic."""
+    manufacture_kind = require_qdkt_manufacture_kind(manufacture_kind)
+    if type(geography) is not str or geography not in {"DA_NANG_AND_NORTH", "SOUTH_OF_DA_NANG", "UNPROVEN"}:
+        raise QdKtAuthorityBlocked("GEOGRAPHY_CLASSIFICATION_UNPROVEN")
     if manufacture_kind == "VACCINE_OR_BIOLOGICAL":
         return _AUTHORITY["VACCINE"]
     if manufacture_kind != "MEDICINE":

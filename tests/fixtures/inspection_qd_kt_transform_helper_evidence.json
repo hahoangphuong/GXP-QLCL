@@ -1,0 +1,46 @@
+{
+  "schema_version": "qdkt-supplementary-helper-source/v1",
+  "origin": "STATIC_PRIMARY_ADDIN_EXTRACTION_NOT_WORD_EXECUTION",
+  "source_binary": "legacy/GPs.xlam",
+  "source_binary_sha256": "52725cba1fd87107814d07da1dbae8d79c77127765018b0daf4b6fe6f44b1b58",
+  "module_normalized_utf8_sha256": "e943e12ba8f976282faad7677e7bce3df9dffc3e451676065b6a58f308db1213",
+  "functions": {
+    "DelLastIf_Ins": {
+      "module": "WinAPI.bas",
+      "start_line": 504,
+      "end_line": 510,
+      "source": [
+        "Public Function DelLastIf_Ins(ByVal s$, ByVal si$) As String",
+        "    Do While s <> vbNullString",
+        "        If InStr(1, si, Right$(s, 1), vbTextCompare) > 0 Then s = Left$(s, Len(s) - 1) Else GoTo Quit0",
+        "    Loop",
+        "Quit0:",
+        "    DelLastIf_Ins = s",
+        "End Function"
+      ]
+    },
+    "LCase_FirstChar": {
+      "module": "WinAPI.bas",
+      "start_line": 552,
+      "end_line": 555,
+      "source": [
+        "Public Function LCase_FirstChar$(ByVal s$)",
+        "    If s = vbNullString Then Exit Function",
+        "    LCase_FirstChar = LCase$(Left$(s, 1)) & Right$(s, Len(s) - 1)",
+        "End Function"
+      ]
+    },
+    "Del_LastPeriod": {
+      "module": "WinAPI.bas",
+      "start_line": 559,
+      "end_line": 561,
+      "source": [
+        "Public Function Del_LastPeriod$(ByVal s$)",
+        "    If Right$(s, 1) = \".\" Then Del_LastPeriod = Left$(s, Len(s) - 1) Else Del_LastPeriod = s",
+        "End Function"
+      ]
+    }
+  },
+  "limitation": "Supplementary add-in source; no invented ZIP helper body or automatic cross-version runtime-binding proof.",
+  "ready_to_render": false
+}

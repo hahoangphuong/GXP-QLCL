@@ -34,13 +34,19 @@ def test_relocate_parent_swap_does_not_modify_external_tree(tmp_path, monkeypatc
 
     monkeypatch.setattr(os, "stat", swap_after_source_stat)
     if operation == "move":
-        entry = storage.move("folder/src.bin", "folder/dst.bin")
+        # Destination does not traverse the swapped component: publication
+        # succeeds from the held source parent into the safe root directory.
+        entry = storage.move("folder/src.bin", "dst.bin")
+        assert entry.relative_path == "dst.bin"
+        assert (root / "dst.bin").read_bytes() == b"trusted"
+        assert not (root / "original-folder/src.bin").exists()
     else:
-        entry = storage.rename("folder/src.bin", "dst.bin")
+        # Rename needs to reopen the swapped parent as its destination.
+        # Refuse the symlink rather than redirect publication outside root.
+        with pytest.raises(NotADirectoryError):
+            storage.rename("folder/src.bin", "dst.bin")
+        assert (root / "original-folder/src.bin").read_bytes() == b"trusted"
     assert swapped
-    assert entry.relative_path == "folder/dst.bin"
-    assert (root / "original-folder/dst.bin").read_bytes() == b"trusted"
-    assert not (root / "original-folder/src.bin").exists()
     assert (outside / "src.bin").read_bytes() == b"foreign"
     assert (outside / "dst.bin").read_bytes() == b"outside-dst"
 

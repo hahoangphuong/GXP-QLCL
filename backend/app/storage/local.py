@@ -643,6 +643,35 @@ class LocalStorageService:
 
         raise StorageOperationError("Atomic no-replace rename is unsupported on this platform.")
 
+    @staticmethod
+    def _rename_noreplace_between_dirfds(
+        source_fd: int, source_name: str, target_fd: int, target_name: str,
+        relative_path: str,
+    ) -> None:
+        """Atomic Linux no-replace between descriptor-pinned parents."""
+        if not sys.platform.startswith("linux"):
+            raise StorageOperationError("Atomic no-replace rename is unsupported on this platform.")
+        libc = ctypes.CDLL(None, use_errno=True)
+        renameat2 = getattr(libc, "renameat2", None)
+        if renameat2 is None:
+            raise StorageOperationError("Atomic no-replace rename is unavailable on this runtime.")
+        renameat2.argtypes = (
+            ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint,
+        )
+        renameat2.restype = ctypes.c_int
+        result = renameat2(
+            source_fd, os.fsencode(source_parts[-1]),
+            target_fd, os.fsencode(target_parts[-1]), 1,
+        )
+        if result != 0:
+            code = ctypes.get_errno()
+            if code in {errno.EEXIST, errno.ENOTEMPTY}:
+                raise StorageTargetExistsError(
+                f"Storage target already exists and will not be overwritten: {relative_path!r}."
+                )
+            if code in {errno.ENOSYS, errno.EINVAL, errno.EOPNOTSUPP, errno.EXDEV}:
+                raise StorageOperationError("Atomic no-replace rename is unsupported for this storage location.")
+            raise OSError(code, os.strerror(code), relative_path)
     def _relocate_posix(
         self, source_relative_path: str, target_relative_path: str, *, root: str,
         create_target_parents: bool,
@@ -680,29 +709,9 @@ class LocalStorageService:
                         pass
                 target_fd = os.open(part, flags, dir_fd=target_fd)
                 fds.append(target_fd)
-            if not sys.platform.startswith("linux"):
-                raise StorageOperationError("Atomic no-replace rename is unsupported on this platform.")
-            libc = ctypes.CDLL(None, use_errno=True)
-            renameat2 = getattr(libc, "renameat2", None)
-            if renameat2 is None:
-                raise StorageOperationError("Atomic no-replace rename is unavailable on this runtime.")
-            renameat2.argtypes = (
-                ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint,
+            self._rename_noreplace_between_dirfds(
+                source_fd, source_parts[-1], target_fd, target_parts[-1], target_relative_path,
             )
-            renameat2.restype = ctypes.c_int
-            result = renameat2(
-                source_fd, os.fsencode(source_parts[-1]),
-                target_fd, os.fsencode(target_parts[-1]), 1,
-            )
-            if result != 0:
-                code = ctypes.get_errno()
-                if code in {errno.EEXIST, errno.ENOTEMPTY}:
-                    raise StorageTargetExistsError(
-                        f"Storage target already exists and will not be overwritten: {target_relative_path!r}."
-                    )
-                if code in {errno.ENOSYS, errno.EINVAL, errno.EOPNOTSUPP, errno.EXDEV}:
-                    raise StorageOperationError("Atomic no-replace rename is unsupported for this storage location.")
-                raise OSError(code, os.strerror(code), target_rel)
             return StorageEntry(
                 relative_path=target_rel, name=target_parts[-1],
                 is_dir=stat.S_ISDIR(source_stat.st_mode),

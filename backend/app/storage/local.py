@@ -323,12 +323,17 @@ class LocalStorageService:
         # metadata failure: another writer may have replaced it meanwhile.
         temp_path: Path | None = None
         try:
-            with source.open("rb") as stream, tempfile.NamedTemporaryFile(
+            # Hold the verified source descriptor while copying bytes and
+            # metadata. Re-opening source or copystat(source) after checking
+            # containment can follow a concurrently swapped parent symlink.
+            with self.read_stream(source_relative_path, root=root) as stream, tempfile.NamedTemporaryFile(
                 delete=False, dir=target.parent, prefix=".gxp-stage-", suffix=".tmp"
             ) as tmp:
                 temp_path = Path(tmp.name)
+                source_stat = os.fstat(stream.fileno())
                 shutil.copyfileobj(stream, tmp, length=1024 * 1024)
-            shutil.copystat(source, temp_path)
+                os.fchmod(tmp.fileno(), stat.S_IMODE(source_stat.st_mode))
+                os.utime(tmp.fileno(), ns=(source_stat.st_atime_ns, source_stat.st_mtime_ns))
             # Atomic conflict detection also covers a destination created
             # after the preflight check or while bytes are copied.
             self._rename_noreplace(temp_path, target, target_relative_path)

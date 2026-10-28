@@ -207,8 +207,39 @@ class LocalStorageService:
             for entry in listing:
                 yield self._entry_for(base_root, Path(entry.path))
 
+    def _stat_posix(self, base_root: Path, relative_path: str) -> StorageEntry:
+        """Read entry metadata via no-follow, held directory descriptors."""
+        normalized = _normalize_relative(relative_path)
+        parts = normalized.split("/") if normalized else []
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        fds: list[int] = []
+        try:
+            parent_fd = os.open(base_root, flags)
+            fds.append(parent_fd)
+            for component in parts[:-1]:
+                parent_fd = os.open(component, flags, dir_fd=parent_fd)
+                fds.append(parent_fd)
+            if parts:
+                info = os.stat(parts[-1], dir_fd=parent_fd, follow_symlinks=False)
+                if stat.S_ISLNK(info.st_mode):
+                    raise StorageOperationError("Storage metadata target is a symlink.")
+                name = parts[-1]
+            else:
+                info = os.fstat(parent_fd)
+                name = base_root.name
+            return StorageEntry(
+                relative_path=normalized, name=name,
+                is_dir=stat.S_ISDIR(info.st_mode),
+                size=None if stat.S_ISDIR(info.st_mode) else info.st_size,
+            )
+        finally:
+            for fd in reversed(fds):
+                os.close(fd)
+
     def stat(self, relative_path: str, *, root: str = "inspection") -> StorageEntry:
         base_root = self._select_root(root)
+        if os.name == "posix":
+            return self._stat_posix(base_root, relative_path)
         target = self._path_under(base_root, relative_path)
         if not target.exists():
             raise FileNotFoundError(target)
@@ -216,6 +247,12 @@ class LocalStorageService:
 
     def exists(self, relative_path: str, *, root: str = "inspection") -> bool:
         base_root = self._select_root(root)
+        if os.name == "posix":
+            try:
+                self._stat_posix(base_root, relative_path)
+            except FileNotFoundError:
+                return False
+            return True
         target = self._path_under(base_root, relative_path)
         return target.exists()
 

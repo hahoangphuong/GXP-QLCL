@@ -561,7 +561,9 @@ def test_storage_list_rejects_child_symlinks_escaping_root(tmp_path: Path, is_di
 
     with pytest.raises(StorageOperationError, match="escapes configured storage root"):
         service.list("")
-    with pytest.raises(StorageOperationError, match="escapes configured storage root"):
+    # POSIX metadata now rejects the final symlink before pathname resolution.
+    expected = "symlink" if os.name == "posix" else "escapes configured storage root"
+    with pytest.raises(StorageOperationError, match=expected):
         service.stat("linked-external")
     assert outside.exists()
     if is_dir:

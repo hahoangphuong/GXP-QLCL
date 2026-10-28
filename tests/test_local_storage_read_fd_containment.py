@@ -363,3 +363,90 @@ def test_write_entry_reports_actual_bytes_from_staged_descriptor(tmp_path):
         assert entry.size == 39
         assert entry.is_dir is False
         assert (root / name).read_bytes() == b"abc" * 13
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX fd-anchored staging contract")
+@pytest.mark.parametrize("overwrite", [False, True])
+def test_write_midstream_failure_removes_private_staging_and_preserves_target(tmp_path, overwrite):
+    from io import BytesIO
+
+    root = tmp_path / "inspection"
+    (root / "folder").mkdir(parents=True)
+    (root / "folder" / "document.bin").write_bytes(b"original")
+    storage = LocalStorageService(StorageConfig(inspection_root=root))
+
+    class FailingInput(BytesIO):
+        reads = 0
+
+        def read(self, size=-1):
+            self.reads += 1
+            if self.reads == 2:
+                raise OSError("synthetic input failure")
+            return super().read(size)
+
+    with pytest.raises(OSError, match="synthetic input failure"):
+        storage.write_stream("folder/document.bin", FailingInput(b"partial"), overwrite=overwrite)
+    assert (root / "folder" / "document.bin").read_bytes() == b"original"
+    assert list((root / "folder").glob(".gxp-stage-*")) == []
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX directory fd contract")
+def test_write_midstream_parent_swap_does_not_delete_outside_staging(tmp_path):
+    from io import BytesIO
+
+    root = tmp_path / "inspection"
+    outside = tmp_path / "outside"
+    (root / "folder").mkdir(parents=True)
+    outside.mkdir()
+    (outside / ".gxp-stage-keep.tmp").write_bytes(b"outside")
+    storage = LocalStorageService(StorageConfig(inspection_root=root))
+
+    class SwapThenFail(BytesIO):
+        called = False
+
+        def read(self, size=-1):
+            if not self.called:
+                self.called = True
+                (root / "folder").rename(root / "original")
+                (root / "folder").symlink_to(outside, target_is_directory=True)
+                raise OSError("synthetic swap failure")
+            return super().read(size)
+
+    with pytest.raises(OSError, match="synthetic swap failure"):
+        storage.write_stream("folder/document.bin", SwapThenFail(b"irrelevant"))
+    assert (outside / ".gxp-stage-keep.tmp").read_bytes() == b"outside"
+    assert not (outside / "document.bin").exists()
+    assert list((root / "original").glob(".gxp-stage-*")) == []
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX fdopen ownership")
+def test_write_fdopen_failure_cleans_staging_and_closes_descriptors(tmp_path, monkeypatch):
+    from io import BytesIO
+
+    root = tmp_path / "inspection"
+    (root / "folder").mkdir(parents=True)
+    storage = LocalStorageService(StorageConfig(inspection_root=root))
+    original_fdopen = os.fdopen
+    original_open = os.open
+    acquired = []
+
+    def track_open(*args, **kwargs):
+        fd = original_open(*args, **kwargs)
+        acquired.append(fd)
+        return fd
+
+    def fail_staging_fdopen(fd, mode="r", *args, **kwargs):
+        if mode == "wb":
+            raise OSError("synthetic staging wrapper failure")
+        return original_fdopen(fd, mode, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", track_open)
+    monkeypatch.setattr(os, "fdopen", fail_staging_fdopen)
+    with pytest.raises(OSError, match="synthetic staging wrapper failure"):
+        storage.write_stream("folder/file.bin", BytesIO(b"content"))
+    assert not (root / "folder" / "file.bin").exists()
+    assert list((root / "folder").glob(".gxp-stage-*")) == []
+    assert len(acquired) == 3
+    for fd in acquired:
+        with pytest.raises(OSError):
+            os.fstat(fd)

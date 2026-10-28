@@ -61,7 +61,7 @@ jobs:
       - name: Validate QDKT transaction visibility and submission timestamp with disposable PostgreSQL
         env:
           GXP_QDKT_POSTGRES_CONCURRENCY_INTEGRATION: "1"
-        run: python -m pytest tests/test_inspection_qd_kt_transaction_visibility_postgres.py tests/test_inspection_qd_kt_submission_timestamp_postgres.py -q -p no:cacheprovider
+        run: python -m pytest tests/test_inspection_qd_kt_transaction_visibility_postgres.py tests/test_inspection_qd_kt_real_orm_owner_postgres.py tests/test_inspection_qd_kt_submission_timestamp_postgres.py -q -p no:cacheprovider
 
       - name: Run backend tests
         run: python -m pytest -q

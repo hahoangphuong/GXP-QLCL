@@ -672,17 +672,23 @@ def test_storage_exclusive_write_keeps_incomplete_document_private(tmp_path: Pat
 def test_storage_exclusive_write_does_not_replace_concurrent_destination(tmp_path: Path, monkeypatch):
     service = build_service(tmp_path)
     target = service.inspection_root / "document.docx"
-    atomic = service._rename_noreplace
+    class ConcurrentWriter(BytesIO):
+        published = False
 
-    def concurrent_publish(temp_path: Path, destination: Path, relative_path: str):
-        assert temp_path.read_bytes() == b"completed-document"
-        assert not target.exists()
-        target.write_bytes(b"other-writer")
-        return atomic(temp_path, destination, relative_path)
+        def read(self, size=-1):
+            chunk = super().read(size)
+            if not chunk and not self.published:
+                self.published = True
+                assert not target.exists()
+                target.write_bytes(b"other-writer")
+            return chunk
 
-    monkeypatch.setattr(service, "_rename_noreplace", concurrent_publish)
+    # Publish during stream EOF, after staging but before the kernel's
+    # no-replace operation; valid for pathname and descriptor-based writes.
     with pytest.raises(StorageTargetExistsError, match="will not be overwritten"):
-        service.write_stream("document.docx", BytesIO(b"completed-document"), overwrite=False)
+        service.write_stream(
+            "document.docx", ConcurrentWriter(b"completed-document"), overwrite=False,
+        )
 
     assert target.read_bytes() == b"other-writer"
     assert [p.name for p in service.inspection_root.iterdir()] == ["document.docx"]

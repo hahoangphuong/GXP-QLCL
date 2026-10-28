@@ -9,6 +9,7 @@ KHKT lineage is not a renderer readiness gate.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.db.models.phase1 import Case
@@ -50,6 +51,10 @@ class QdKtCaseReadiness:
     ready_to_render: bool
     blockers: tuple[str, ...]
 
+    def __post_init__(self):
+        if self.ready_to_render is not False:
+            raise ValueError("QDKT_RENDER_ACTIVATION_FORBIDDEN")
+
 
 def inspect_qdkt_case_readiness(
     session: Session, *, case_id: str,
@@ -68,15 +73,19 @@ def inspect_qdkt_case_readiness(
     # This verifies only the declared template locator/checksum contract;
     # availability and binary DOTX contents still require independent proof.
     with session.no_autoflush:
-        case = session.get(Case, case_id)
-    if case is not None:
+        gxp_type = session.execute(select(Case.gxp_type).where(Case.id == case_id)).scalar_one_or_none()
+    if gxp_type is not None:
         try:
-            get_inspection_qd_kt_template_asset(case.gxp_type)
+            get_inspection_qd_kt_template_asset(gxp_type)
         except (InspectionQdKtTemplateAssetContractError, ValueError, OSError):
             blockers.append("QDKT_CASE_GXP_TEMPLATE_CONTRACT_UNVERIFIED")
     # Draft creation must never depend on an already issued decision.
     # The default retains the established approved-reference behavior.
     if purpose == "EXISTING_APPROVED_DECISION_REFERENCE":
+        # Current InspectionDecision persists source atoms/lineage only. It has
+        # no authenticated external issuance evidence. Keep the selected ID as
+        # diagnostic data without calling it legally issued or authorizing use.
+        blockers.append("QDKT_LEGAL_ISSUANCE_EVIDENCE_UNPROVEN")
         try:
             decision = read_latest_qdkt_reference_for_case(session, case_id=case_id)
             decision_source_id = decision.source_decision_id

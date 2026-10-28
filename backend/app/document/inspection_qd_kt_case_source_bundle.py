@@ -6,7 +6,7 @@ not claim modern team rows reproduce legacy formatted TTVdd strings.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 
 from backend.app.document.inspection_qd_kt_decision_source import (
     QdKtDecisionAtoms, read_latest_qdkt_reference_for_case,
@@ -35,30 +35,39 @@ class QdKtCaseSourceBundle:
     location_render_format_verified: bool = False
     ready_to_render: bool = False
 
+    def __post_init__(self):
+        if self.ready_to_render is not False:
+            raise QdKtCaseSourceBlocked("QDKT_RENDER_ACTIVATION_FORBIDDEN")
+
 
 def require_qdkt_case_source_bundle(
     *, case_id: str, decision: QdKtDecisionAtoms,
     site: QdKtRegisteredSite, team: QdKtTeamSource,
 ) -> QdKtCaseSourceBundle:
     """Reject cross-Case atoms before even considering document generation."""
-    if not isinstance(case_id, str) or not case_id.strip():
+    if type(case_id) is not str or not case_id.strip() or case_id != case_id.strip():
         raise QdKtCaseSourceBlocked("CASE_ID_MISSING")
-    if site.case_id != case_id or team.case_id != case_id:
+    if type(decision) is not QdKtDecisionAtoms or type(site) is not QdKtRegisteredSite or type(team) is not QdKtTeamSource:
+        raise QdKtCaseSourceBlocked("QDKT_CASE_SOURCE_TYPE_INVALID")
+    if any(type(scope) is not str for scope in (site.case_id, team.case_id, decision.case_id)):
         raise QdKtCaseSourceBlocked("QDKT_CASE_SOURCE_IDENTITY_MISMATCH")
-    if not decision.source_decision_id or not site.site_id or not team.team_id:
+    if site.case_id != case_id or team.case_id != case_id or decision.case_id != case_id:
+        raise QdKtCaseSourceBlocked("QDKT_CASE_SOURCE_IDENTITY_MISMATCH")
+    if type(decision.inspection_plan_id) is not str or not decision.inspection_plan_id.strip():
+        raise QdKtCaseSourceBlocked("QDKT_DECISION_PLAN_OWNERSHIP_MISSING")
+    if any(type(identity) is not str or not identity.strip() for identity in (decision.source_decision_id, site.site_id, team.team_id)):
         raise QdKtCaseSourceBlocked("QDKT_SOURCE_IDENTITY_MISSING")
     # These objects are assembled from separate owner gates. Validate their
     # value contracts again: synthetic or stale caller-supplied dataclasses
     # must not bypass the Case-owned source invariants.
     if (
-        not isinstance(decision.source_decision_id, str)
+        type(decision.source_decision_id) is not str
         or not decision.source_decision_id.strip()
-        or not isinstance(decision.reference, str)
+        or type(decision.reference) is not str
         or not decision.reference.strip()
         or decision.reference != decision.reference.strip()
-        or not isinstance(decision.decision_on, date)
-        or isinstance(decision.decision_on, datetime)
-        or not isinstance(decision.legacy_raw, str)
+        or type(decision.decision_on) is not date
+        or type(decision.legacy_raw) is not str
         or not decision.legacy_raw.strip()
     ):
         raise QdKtCaseSourceBlocked("QDKT_DECISION_SOURCE_INCOMPLETE")
@@ -103,6 +112,12 @@ class QdKtPreapprovalCaseSource:
     process: str = "DRAFT_QDKT"
     # No issued reference/date belongs in this contract.
     ready_to_render: bool = False
+
+    def __post_init__(self):
+        if type(self.process) is not str or self.process != "DRAFT_QDKT":
+            raise QdKtCaseSourceBlocked("QDKT_DRAFT_PROCESS_INVALID")
+        if self.ready_to_render is not False:
+            raise QdKtCaseSourceBlocked("QDKT_RENDER_ACTIVATION_FORBIDDEN")
 
 
 def require_qdkt_preapproval_case_source(

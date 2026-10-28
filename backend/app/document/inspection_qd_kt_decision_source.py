@@ -1,14 +1,13 @@
 """Conservative, read-only selection of QĐKT source decision atoms.
 
-This is not a rendering or approval API. It intentionally admits only one
-unambiguous source decision whose structured scalar projection agrees with
-the source record. Replacement chains and multiple decisions need an explicit
-lifecycle rule before QĐKT can be rendered.
+This is not a rendering or approval API. A unique-source projection gate and
+an explicit REPLACES-chain reference gate are distinct. Neither proves external
+legal issuance or supplies a reference/date to a Process A draft.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import date, datetime
+from dataclasses import dataclass, replace
+from datetime import date
 from typing import Iterable
 
 
@@ -33,6 +32,35 @@ class QdKtDecisionAtoms:
     reference: str
     decision_on: date
     legacy_raw: str
+    # Populated only by the persisted reader; a pure chain has no Case proof.
+    case_id: str | None = None
+    inspection_plan_id: str | None = None
+
+    @property
+    def legal_issuance_verified(self) -> bool:
+        return False
+
+
+def _checked_items(decisions):
+    try:
+        items = tuple(decisions)
+    except TypeError as exc:
+        raise QdKtDecisionSourceBlocked("SOURCE_DECISION_INCOMPLETE") from exc
+    for item in items:
+        # Validate before sorting, hashing, stripping or comparing. Python bool
+        # and float ordinals otherwise compare equal to integer positions.
+        if type(item) is not QdKtSourceDecision or any(
+            type(value) is not str or not value.strip()
+            for value in (item.id, item.reference, item.legacy_raw)
+        ):
+            raise QdKtDecisionSourceBlocked("SOURCE_DECISION_INCOMPLETE")
+        if (item.id != item.id.strip() or item.reference != item.reference.strip()
+            or type(item.ordinal) is not int or item.ordinal < 1
+            or type(item.decision_on) is not date
+            or type(item.relation_type) not in (str, type(None))
+            or type(item.related_decision_id) not in (str, type(None))):
+            raise QdKtDecisionSourceBlocked("SOURCE_DECISION_INCOMPLETE")
+    return items
 
 
 def require_unique_qdkt_source(
@@ -48,7 +76,7 @@ def require_unique_qdkt_source(
     In particular it never trusts a scalar projection in the absence of its
     independently persisted InspectionDecision source record.
     """
-    items = tuple(decisions)
+    items = _checked_items(decisions)
     if len(items) != 1:
         raise QdKtDecisionSourceBlocked("SOURCE_DECISION_CARDINALITY_UNPROVEN")
     item = items[0]
@@ -57,15 +85,15 @@ def require_unique_qdkt_source(
         or item.ordinal != 1
         or not item.reference
         or item.reference != item.reference.strip()
-        or not isinstance(item.decision_on, date)
-        or isinstance(item.decision_on, datetime)
+        or type(item.decision_on) is not date
         or not item.legacy_raw
         or not item.legacy_raw.strip()
     ):
         raise QdKtDecisionSourceBlocked("SOURCE_DECISION_INCOMPLETE")
     if item.relation_type is not None or item.related_decision_id is not None:
         raise QdKtDecisionSourceBlocked("SOURCE_DECISION_LINEAGE_UNRESOLVED")
-    if (
+    if (type(plan_decision_reference) is not str or type(plan_decision_date) is not date
+        or type(plan_decision_legacy_raw) is not str or
         plan_decision_reference != item.reference
         or plan_decision_date != item.decision_on
         or plan_decision_legacy_raw != item.legacy_raw
@@ -86,34 +114,26 @@ def read_unique_qdkt_source_for_plan(session, plan) -> QdKtDecisionAtoms:
     being flushed implicitly by this preflight. Callers still need separate
     evidence gates for template, place, authority and inspector bookmarks.
     """
-    from sqlalchemy import select
-    from backend.app.db.models.phase1 import InspectionDecision
+    from sqlalchemy import inspect, select
+    from backend.app.db.models.phase1 import InspectionPlan
 
-    if not getattr(plan, "id", None):
+    if type(plan) is not InspectionPlan:
         raise QdKtDecisionSourceBlocked("INSPECTION_PLAN_ID_MISSING")
+    state = inspect(plan)
+    if not state.persistent or state.session is not session or not state.identity:
+        raise QdKtDecisionSourceBlocked("INSPECTION_PLAN_ID_MISSING")
+    if any(state.attrs[name].history.has_changes() for name in ("id", "case_id")):
+        raise QdKtDecisionSourceBlocked("INSPECTION_PLAN_IDENTITY_PENDING")
+    if any(state.attrs[name].history.has_changes() for name in ("decision_reference", "decision_date", "decision_legacy_raw")):
+        raise QdKtDecisionSourceBlocked("DECISION_PROJECTION_MISMATCH")
     with session.no_autoflush:
-        source_rows = session.scalars(
-            select(InspectionDecision)
-            .where(InspectionDecision.inspection_plan_id == plan.id)
-            .order_by(InspectionDecision.ordinal, InspectionDecision.id)
-        ).all()
-    return require_unique_qdkt_source(
-        (
-            QdKtSourceDecision(
-                id=row.id,
-                ordinal=row.ordinal,
-                reference=row.reference,
-                decision_on=row.decision_on,
-                legacy_raw=row.legacy_raw,
-                relation_type=row.relation_type,
-                related_decision_id=row.related_decision_id,
-            )
-            for row in source_rows
-        ),
-        plan_decision_reference=plan.decision_reference,
-        plan_decision_date=plan.decision_date,
-        plan_decision_legacy_raw=plan.decision_legacy_raw,
-    )
+        owner = session.execute(select(InspectionPlan.case_id).where(InspectionPlan.id == state.identity[0])).scalar_one_or_none()
+        if owner is None:
+            raise QdKtDecisionSourceBlocked("INSPECTION_PLAN_ID_MISSING")
+        snapshot = _read_case_plan(session, owner)
+        if snapshot[1] != state.identity[0]:
+            raise QdKtDecisionSourceBlocked("CASE_INSPECTION_PLAN_NOT_UNIQUE")
+        return _unique_from_snapshot(session, snapshot)
 
 
 def read_unique_qdkt_source_for_case(session, *, case_id: str) -> QdKtDecisionAtoms:
@@ -122,22 +142,43 @@ def read_unique_qdkt_source_for_case(session, *, case_id: str) -> QdKtDecisionAt
     This is intentionally an internal owner boundary, not a write/render API.
     It cannot borrow another Case's InspectionPlan or fabricate a missing plan.
     """
+    with session.no_autoflush:
+        return _unique_from_snapshot(session, _read_case_plan(session, case_id))
+
+
+def _read_case_plan(session, case_id):
     from sqlalchemy import select
     from backend.app.db.models.phase1 import Case, InspectionPlan
-
-    if not isinstance(case_id, str) or not case_id.strip():
+    if type(case_id) is not str or not case_id.strip() or case_id != case_id.strip():
         raise QdKtDecisionSourceBlocked("CASE_ID_MISSING")
-    with session.no_autoflush:
-        case = session.get(Case, case_id)
-        if case is None:
-            raise QdKtDecisionSourceBlocked("CASE_NOT_FOUND")
-        plans = session.scalars(
-            select(InspectionPlan)
-            .where(InspectionPlan.case_id == case.id)
-        ).all()
-        if len(plans) != 1:
-            raise QdKtDecisionSourceBlocked("CASE_INSPECTION_PLAN_NOT_UNIQUE")
-        return read_unique_qdkt_source_for_plan(session, plans[0])
+    rows = session.execute(select(
+        Case.id, InspectionPlan.id, InspectionPlan.case_id,
+        InspectionPlan.decision_reference, InspectionPlan.decision_date, InspectionPlan.decision_legacy_raw,
+    ).outerjoin(InspectionPlan, InspectionPlan.case_id == Case.id).where(Case.id == case_id)).all()
+    if not rows:
+        raise QdKtDecisionSourceBlocked("CASE_NOT_FOUND")
+    if len(rows) != 1 or rows[0][1] is None:
+        raise QdKtDecisionSourceBlocked("CASE_INSPECTION_PLAN_NOT_UNIQUE")
+    if rows[0][0] != case_id or rows[0][2] != case_id:
+        raise QdKtDecisionSourceBlocked("QDKT_DECISION_CASE_OWNERSHIP_MISMATCH")
+    return rows[0]
+
+
+def _read_decisions(session, plan_id, case_id):
+    from sqlalchemy import select
+    from backend.app.db.models.phase1 import Case, InspectionPlan, InspectionDecision as D
+    rows = session.execute(select(D.id, D.ordinal, D.reference, D.decision_on, D.legacy_raw,
+        D.relation_type, D.related_decision_id)
+        .join(InspectionPlan, D.inspection_plan_id == InspectionPlan.id)
+        .join(Case, InspectionPlan.case_id == Case.id)
+        .where(D.inspection_plan_id == plan_id, Case.id == case_id)).all()
+    return tuple(QdKtSourceDecision(*row) for row in rows)
+
+
+def _unique_from_snapshot(session, snapshot):
+    atoms = require_unique_qdkt_source(_read_decisions(session, snapshot[1], snapshot[0]),
+        plan_decision_reference=snapshot[3], plan_decision_date=snapshot[4], plan_decision_legacy_raw=snapshot[5])
+    return replace(atoms, case_id=snapshot[0], inspection_plan_id=snapshot[1])
 
 
 def require_latest_qdkt_reference(
@@ -149,7 +190,7 @@ def require_latest_qdkt_reference(
     the preceding decision; ambiguous, branched or incomplete histories fail
     closed. This does NOT change the draft QĐKT template or populate its date.
     """
-    items = tuple(decisions)
+    items = _checked_items(decisions)
     if not items:
         raise QdKtDecisionSourceBlocked("SOURCE_DECISION_CARDINALITY_UNPROVEN")
     by_id = {item.id: item for item in items}
@@ -158,14 +199,6 @@ def require_latest_qdkt_reference(
     ordinals = [item.ordinal for item in items]
     if sorted(ordinals) != list(range(1, len(items) + 1)):
         raise QdKtDecisionSourceBlocked("DECISION_ORDER_UNPROVEN")
-    for item in items:
-        if (
-            not item.reference or item.reference != item.reference.strip()
-            or not isinstance(item.decision_on, date)
-            or isinstance(item.decision_on, datetime)
-            or not item.legacy_raw or not item.legacy_raw.strip()
-        ):
-            raise QdKtDecisionSourceBlocked("SOURCE_DECISION_INCOMPLETE")
     ordered = sorted(items, key=lambda item: item.ordinal)
     root = ordered[0]
     if root.relation_type is not None or root.related_decision_id is not None:
@@ -192,30 +225,7 @@ def read_latest_qdkt_reference_for_case(session, *, case_id: str) -> QdKtDecisio
     Only the ordered source collection is authoritative for this selection.
     The plan's scalar projection is not substituted for a missing row.
     """
-    from sqlalchemy import select
-    from backend.app.db.models.phase1 import Case, InspectionPlan, InspectionDecision
-
-    if not isinstance(case_id, str) or not case_id.strip():
-        raise QdKtDecisionSourceBlocked("CASE_ID_MISSING")
     with session.no_autoflush:
-        if session.get(Case, case_id) is None:
-            raise QdKtDecisionSourceBlocked("CASE_NOT_FOUND")
-        plans = session.scalars(
-            select(InspectionPlan).where(InspectionPlan.case_id == case_id)
-        ).all()
-        if len(plans) != 1:
-            raise QdKtDecisionSourceBlocked("CASE_INSPECTION_PLAN_NOT_UNIQUE")
-        rows = session.scalars(
-            select(InspectionDecision)
-            .where(InspectionDecision.inspection_plan_id == plans[0].id)
-            .order_by(InspectionDecision.ordinal, InspectionDecision.id)
-        ).all()
-    return require_latest_qdkt_reference(
-        QdKtSourceDecision(
-            id=row.id, ordinal=row.ordinal, reference=row.reference,
-            decision_on=row.decision_on, legacy_raw=row.legacy_raw,
-            relation_type=row.relation_type,
-            related_decision_id=row.related_decision_id,
-        )
-        for row in rows
-    )
+        snapshot = _read_case_plan(session, case_id)
+        atoms = require_latest_qdkt_reference(_read_decisions(session, snapshot[1], snapshot[0]))
+    return replace(atoms, case_id=snapshot[0], inspection_plan_id=snapshot[1])

@@ -186,6 +186,14 @@ class LocalStorageService:
         except FileNotFoundError:
             if not missing_parent_is_not_found:
                 raise
+        except NotADirectoryError as exc:
+            # An untrusted year directory may have become a symlink between
+            # lookup and traversal; never follow it or enumerate its target.
+            if not parent_relative:
+                raise
+            raise StorageOperationError(
+                "Resolved path escapes configured storage root."
+            ) from exc
         if not matches:
             return StorageResolution(
                 status=StorageResolutionStatus.NOT_FOUND,

@@ -636,6 +636,7 @@ def finalize_output_document_version_write(
         document_version,
     )
     expected_checksum = sha256(binary_payload).hexdigest()
+    write_returned = False
     try:
         storage.write_stream(
             allocation.storage_relative_path,
@@ -643,6 +644,7 @@ def finalize_output_document_version_write(
             root=allocation.storage_root,
             overwrite=False,
         )
+        write_returned = True
         checksum = storage.checksum(
             allocation.storage_relative_path,
             root=allocation.storage_root,
@@ -670,7 +672,10 @@ def finalize_output_document_version_write(
     except Exception as exc:
         # Exclusive-create refusal proves we do not own this existing target.
         # Never attempt checksum-based cleanup of another writer's file.
-        if isinstance(exc, StorageTargetExistsError):
+        if isinstance(exc, StorageTargetExistsError) or not write_returned:
+            # A failed write may have published before reporting an fsync error,
+            # or an existing target may merely have identical bytes. Neither
+            # case proves this attempt owns the pathname. Never delete it.
             raise
         cleanup_error = cleanup_output_target_if_owned(
             storage,

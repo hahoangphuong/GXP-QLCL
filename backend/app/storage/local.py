@@ -467,6 +467,8 @@ class LocalStorageService:
                         break
                     staged_stream.write(chunk)
                 staged_stream.flush()
+                # Flush bytes to durable storage before publishing the name.
+                os.fsync(staged_stream.fileno())
                 published_size = os.fstat(staged_stream.fileno()).st_size
 
             if overwrite:
@@ -494,7 +496,10 @@ class LocalStorageService:
                             "Atomic no-replace rename is unsupported for this storage location."
                         )
                     raise OSError(error_code, os.strerror(error_code), normalized)
+            # A post-publication fsync failure cannot roll back publication.
+            # Do not delete a successfully published entry on this failure.
             staging_name = None
+            os.fsync(parent_fd)
         finally:
             if staging_name is not None and fds:
                 try:

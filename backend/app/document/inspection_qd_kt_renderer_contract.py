@@ -6,14 +6,15 @@ reviewer, replace DocumentService controls, or call a renderer/StorageService.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import date, datetime
+from dataclasses import dataclass, field, fields
+from datetime import date, datetime, timezone
 from hashlib import sha256
 import json
 from pathlib import Path
 import re
 from typing import Literal, Mapping, Sequence
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import select
@@ -23,7 +24,8 @@ from backend.app.document.inspection_qd_kt_dossier_bookmark_evidence import (
     load_qdkt_dossier_bookmark_source_evidence,
 )
 from backend.app.document.inspection_qd_kt_dotx_binary_audit import (
-    QdKtDotxBinaryAudit, classify_qdkt_target_bookmark, inspect_qdkt_dotx_binary,
+    MAX_QDKT_DOTX_BYTES, QdKtBookmarkSpan, QdKtDotxAuditBlocked, QdKtDotxBinaryAudit, classify_qdkt_target_bookmark,
+    inspect_qdkt_dotx_bytes,
 )
 from backend.app.document.inspection_qd_kt_template_asset_contract import (
     InspectionQdKtTemplateAsset, load_inspection_qd_kt_template_assets,
@@ -34,6 +36,14 @@ TARGETS = ("HsDK", "NgaynopHsDK")
 DateRule = Literal["UNDECIDED", "ISO_DATE_ONLY", "AWARE_RECORDED_OFFSET_DATE"]
 SYNTHETIC_INPUT = {"HsDK": "UAT-SYNTHETIC-001", "NgaynopHsDK": "2026-01-02"}
 SYNTHETIC_INPUT_SHA256 = sha256(json.dumps(SYNTHETIC_INPUT, sort_keys=True).encode()).hexdigest()
+
+
+def _evidence_timestamp(value: str) -> datetime:
+    if type(value) is not str or not re.fullmatch(
+        r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])", value,
+    ) or value.endswith("-00:00"):
+        raise ValueError("QDKT_EVIDENCE_TIME_INVALID")
+    return datetime.fromisoformat(value)
 
 
 class StrictEvidence(BaseModel):
@@ -111,7 +121,7 @@ class ApprovalRecord(StrictEvidence):
     @field_validator("approved_at")
     @classmethod
     def aware_approval_time(cls, value: str):
-        parsed = datetime.fromisoformat(value)
+        parsed = _evidence_timestamp(value)
         if parsed.utcoffset() is None:
             raise ValueError("QDKT_APPROVAL_TIME_OFFSET_REQUIRED")
         return value
@@ -131,6 +141,7 @@ class WordUatEvidence(StrictEvidence):
     synthetic_input_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     screenshot_refs: tuple[str, ...] = ()
     acceptance_checks: tuple[str, ...] = ()
+    evidence_origin: Literal["UNVERIFIED", "OWNER_ATTESTED_WORD_EXECUTION", "SYNTHETIC"] = "UNVERIFIED"
 
 
 UAT_CHECKS = frozenset({
@@ -143,13 +154,53 @@ def load_renderer_decision(path: Path = CONTRACT_PATH) -> RendererDecision:
     return RendererDecision.model_validate_json(path.read_text(encoding="utf-8"))
 
 
+def _plain_evidence(value, depth: int = 0):
+    """Snapshot only exact builtins/known models, without invoking serializers.
+
+    In-process arbitrary-code execution is outside this validation boundary.
+    Reject subclasses, callbacks, cycles and undeclared instance attributes.
+    """
+    if depth > 24:
+        raise ValueError("QDKT_EVIDENCE_NESTING_INVALID")
+    if type(value) in (str, int, bool, float, type(None)):
+        return value
+    if type(value) in (tuple, list):
+        return type(value)(_plain_evidence(v, depth + 1) for v in value)
+    if type(value) is dict:
+        if any(type(k) is not str for k in value):
+            raise ValueError("QDKT_EVIDENCE_KEYS_INVALID")
+        return {k: _plain_evidence(v, depth + 1) for k, v in value.items()}
+    if type(value) in (RendererDecision, TemplateDecision, BookmarkPlacement, ApprovalRecord, WordUatEvidence):
+        raw = object.__getattribute__(value, "__dict__")
+        extra = object.__getattribute__(value, "__pydantic_extra__")
+        if type(raw) is not dict or extra is not None or set(raw) - set(type(value).model_fields):
+            raise ValueError("QDKT_EVIDENCE_UNDECLARED_FIELDS")
+        return _plain_evidence(raw, depth + 1)
+    raise ValueError("QDKT_EVIDENCE_TYPE_INVALID")
+
+
+def _checked_model(cls, value):
+    if type(value) is not cls:
+        raise ValueError("QDKT_EVIDENCE_MODEL_TYPE_INVALID")
+    return cls.model_validate(_plain_evidence(value), strict=True)
+
+
 def decision_digest(decision: RendererDecision) -> str:
     # Approval references are excluded to avoid self-referential signatures.
+    return _decision_digest_checked(_checked_model(RendererDecision, decision))
+
+
+def _decision_digest_checked(decision: RendererDecision) -> str:
+    # Internal only: use the fresh model already validated at the entry boundary,
+    # without re-reading the manifest midway through the same assessment.
     content = decision.model_dump(mode="json", exclude={"approval_record_ids"})
     return sha256(json.dumps(content, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
 
 
 def word_uat_digest(evidence: Sequence[WordUatEvidence]) -> str:
+    if type(evidence) not in (tuple, list):
+        raise ValueError("QDKT_UAT_CONTAINER_INVALID")
+    evidence = tuple(_checked_model(WordUatEvidence, row) for row in evidence)
     content = [r.model_dump(mode="json") for r in sorted(evidence, key=lambda r: r.gxp_type)]
     return sha256(json.dumps(content, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
@@ -165,6 +216,12 @@ def normalize_submission_date(value: date | datetime | str | None, *, rule: Date
     proven business timezone. Choosing that rule requires separate owner approval
     in preflight. Naive timestamps remain unresolved even at midnight.
     """
+    if type(rule) is not str or rule not in ("UNDECIDED", "ISO_DATE_ONLY", "AWARE_RECORDED_OFFSET_DATE"):
+        raise SubmissionDateBlocked("QDKT_DATE_RULE_INVALID")
+    if type(value) not in (str, date, datetime, type(None)):
+        raise SubmissionDateBlocked("QDKT_DATE_REPRESENTATION_CONFLICT")
+    if type(value) is datetime and type(value.tzinfo) not in (type(None), timezone, ZoneInfo):
+        raise SubmissionDateBlocked("QDKT_TIMESTAMP_ZONE_TYPE_INVALID")
     if value is None or value == "":
         raise SubmissionDateBlocked("QDKT_SUBMISSION_DATE_MISSING")
     if rule == "UNDECIDED":
@@ -232,14 +289,18 @@ def read_dossier_snapshot(session, *, case_id: str) -> DossierSnapshot:
 class PhysicalTemplateEvidence:
     audit: QdKtDotxBinaryAudit
     origin: Literal["PRIMARY_CANDIDATE_BYTES", "SYNTHETIC"]
+    candidate_bytes: bytes | None = field(default=None, repr=False)
 
 
 def inspect_renderer_candidates(
     decision: RendererDecision, *, paths: Mapping[str, Path],
 ) -> tuple[PhysicalTemplateEvidence, ...]:
     """Explicit local candidate paths, pinned hashes, zero writes/storage calls."""
-    if set(paths) != {t.gxp_type for t in decision.templates}:
+    decision = _checked_model(RendererDecision, decision)
+    if type(paths) is not dict or set(paths) != {t.gxp_type for t in decision.templates}:
         raise ValueError("QDKT_CANDIDATE_SET_INCOMPLETE")
+    if any(type(path) is not type(Path()) for path in paths.values()):
+        raise ValueError("QDKT_CANDIDATE_PATH_TYPE_INVALID")
     results = []
     for template in decision.templates:
         if not template.candidate_sha256 or not template.candidate_version:
@@ -249,9 +310,13 @@ def inspect_renderer_candidates(
             storage_root="template", storage_relative_path=paths[template.gxp_type].name,
             checksum_sha256=template.candidate_sha256,
         )
+        try:
+            with paths[template.gxp_type].open("rb") as stream:
+                data = stream.read(MAX_QDKT_DOTX_BYTES + 1)
+        except OSError as exc:
+            raise QdKtDotxAuditBlocked("QDKT_DOTX_BINARY_UNAVAILABLE") from exc
         results.append(PhysicalTemplateEvidence(
-            inspect_qdkt_dotx_binary(paths[template.gxp_type], asset=asset),
-            "PRIMARY_CANDIDATE_BYTES",
+            inspect_qdkt_dotx_bytes(data, asset=asset), "PRIMARY_CANDIDATE_BYTES", data,
         ))
     return tuple(results)
 
@@ -260,10 +325,52 @@ def inspect_renderer_candidates(
 class RendererPreflightResult:
     blockers: tuple[str, ...]
     contract_evidence_complete: bool
+    def __post_init__(self):
+        if (type(self.blockers) is not tuple or
+            any(type(code) is not str or not code.strip() for code in self.blockers) or
+            type(self.contract_evidence_complete) is not bool or
+            self.contract_evidence_complete != (not self.blockers)):
+            raise ValueError("QDKT_PREFLIGHT_RESULT_INCONSISTENT")
     # Intentionally cannot be set through the constructor.
     @property
     def ready_to_render(self) -> Literal[False]:
         return False
+
+
+def _audit_snapshot(value, depth=0):
+    if depth > 24:
+        raise ValueError("QDKT_AUDIT_NESTING_INVALID")
+    if type(value) in (QdKtDotxBinaryAudit, QdKtBookmarkSpan):
+        raw = object.__getattribute__(value, "__dict__")
+        if type(raw) is not dict or set(raw) != {f.name for f in fields(type(value))}:
+            raise ValueError("QDKT_AUDIT_FIELDS_INVALID")
+        return {k: _audit_snapshot(v, depth + 1) for k, v in raw.items()}
+    if type(value) in (list, tuple):
+        return type(value)(_audit_snapshot(v, depth + 1) for v in value)
+    # Python considers 0 == 0.0 == False. Audit comparison must preserve types.
+    plain = _plain_evidence(value)
+    return (type(plain).__name__, plain)
+
+
+def _checked_dossier(value):
+    if value is None:
+        return None
+    if type(value) is not DossierSnapshot:
+        raise ValueError("QDKT_DOSSIER_TYPE_INVALID")
+    raw = object.__getattribute__(value, "__dict__")
+    if type(raw) is not dict or set(raw) != {f.name for f in fields(DossierSnapshot)}:
+        raise ValueError("QDKT_DOSSIER_FIELDS_INVALID")
+    for name in ("case_id", "site_id", "application_id", "application_case_id", "origin"):
+        if type(raw[name]) is not str:
+            raise ValueError("QDKT_DOSSIER_SCALAR_INVALID")
+    if type(raw["application_version"]) is not int or type(raw["dossier_code"]) not in (str, type(None)):
+        raise ValueError("QDKT_DOSSIER_SCALAR_INVALID")
+    value_date = raw["submitted_on"]
+    if type(value_date) not in (datetime, type(None)) or (
+        type(value_date) is datetime and type(value_date.tzinfo) not in (type(None), timezone, ZoneInfo)
+    ):
+        raise ValueError("QDKT_DOSSIER_TIMESTAMP_INVALID")
+    return DossierSnapshot(**raw)
 
 
 def assess_renderer_preflight(
@@ -285,31 +392,75 @@ def assess_renderer_preflight(
         if code not in blocks:
             blocks.append(code)
 
-    # Revalidate even internal model_copy/model_construct objects before trusting
-    # their shape. Such constructors intentionally bypass Pydantic validation.
+    # Validate raw Python values BEFORE serializers can erase fields/coerce types.
     try:
-        decision = RendererDecision.model_validate_json(decision.model_dump_json())
+        if (type(trusted_approvals) is not dict or type(physical) not in (tuple, list) or
+            type(word_uat) not in (tuple, list) or
+            any(type(ref) is not str for ref in trusted_approvals)):
+            raise ValueError("QDKT_EVIDENCE_CONTAINER_INVALID")
+        decision = _checked_model(RendererDecision, decision)
         trusted_approvals = {
-            ref: ApprovalRecord.model_validate_json(row.model_dump_json())
+            ref: _checked_model(ApprovalRecord, row)
             for ref, row in trusted_approvals.items()
         }
-        word_uat = tuple(WordUatEvidence.model_validate_json(row.model_dump_json()) for row in word_uat)
+        word_uat = tuple(_checked_model(WordUatEvidence, row) for row in word_uat)
+        expected, observed = _checked_dossier(expected), _checked_dossier(observed)
     except (ValidationError, AttributeError, TypeError, ValueError):
         return RendererPreflightResult(("QDKT_EVIDENCE_SCHEMA_INVALID",), False)
-    if any(not isinstance(item, PhysicalTemplateEvidence) or not isinstance(item.audit, QdKtDotxBinaryAudit) for item in physical):
+    checked_physical = []
+    try:
+        for item in physical:
+            if (type(item) is not PhysicalTemplateEvidence or type(item.audit) is not QdKtDotxBinaryAudit or
+                type(item.audit.gxp_type) is not str or item.audit.gxp_type not in ("GLP", "GMP", "GMPbb", "GSP") or
+                type(item.origin) is not str or item.origin not in ("PRIMARY_CANDIDATE_BYTES", "SYNTHETIC")):
+                raise ValueError("QDKT_PHYSICAL_TYPE_INVALID")
+            raw = object.__getattribute__(item, "__dict__")
+            if type(raw) is not dict or set(raw) != {f.name for f in fields(PhysicalTemplateEvidence)}:
+                raise ValueError("QDKT_PHYSICAL_FIELDS_INVALID")
+            supplied = _audit_snapshot(item.audit)
+            if type(item.candidate_bytes) is not bytes:
+                block(f"QDKT_PHYSICAL_BYTES_UNBOUND:{item.audit.gxp_type}")
+                continue
+            if type(item.audit.expected_sha256) is not str or not re.fullmatch(r"[0-9a-f]{64}", item.audit.expected_sha256):
+                raise ValueError("QDKT_PHYSICAL_HASH_INVALID")
+            asset = InspectionQdKtTemplateAsset(item.audit.gxp_type, "candidate.dotx", "template", "candidate.dotx", item.audit.expected_sha256)
+            measured = inspect_qdkt_dotx_bytes(item.candidate_bytes, asset=asset)
+            if supplied != _audit_snapshot(measured):
+                block(f"QDKT_PHYSICAL_AUDIT_CONFLICT:{item.audit.gxp_type}")
+            checked_physical.append(PhysicalTemplateEvidence(measured, item.origin, item.candidate_bytes))
+    except (ValueError, TypeError, AttributeError, RecursionError):
         return RendererPreflightResult(("QDKT_PHYSICAL_EVIDENCE_INVALID",), False)
-    digest = decision_digest(decision)
+    physical = tuple(checked_physical)
+    digest = _decision_digest_checked(decision)
     purposes: set[tuple[str, str]] = set()
+    seen_purposes: set[str] = set()
+    allowed_roles = {"LEGAL_TEMPLATE": "LEGAL_OWNER", "DOSSIER_SEMANTICS": "BUSINESS_OWNER", "DATE_NORMALIZATION": "BUSINESS_OWNER", "DEPRECATE_WRITES": "LEGAL_OWNER", "WORD_UAT": "UAT_OWNER"}
     for ref in decision.approval_record_ids:
         record = trusted_approvals.get(ref)
         if record is None or record.record_id != ref:
             block("QDKT_APPROVAL_NOT_IN_TRUSTED_LEDGER")
         elif record.contract_sha256 != digest or record.disposition != "APPROVED":
             block("QDKT_APPROVAL_REJECTED_OR_STALE")
+        elif record.purpose in seen_purposes:
+            block("QDKT_APPROVAL_PURPOSE_AMBIGUOUS")
+        elif record.role != allowed_roles[record.purpose]:
+            block("QDKT_APPROVAL_PURPOSE_ROLE_CONFLICT")
+        elif record.purpose != "WORD_UAT" and record.subject_sha256 is not None:
+            block("QDKT_APPROVAL_UNEXPECTED_SUBJECT")
         elif record.purpose == "WORD_UAT" and record.subject_sha256 != word_uat_digest(word_uat):
             block("QDKT_WORD_UAT_APPROVAL_SUBJECT_CONFLICT")
         else:
             purposes.add((record.purpose, record.role))
+        if record is not None:
+            seen_purposes.add(record.purpose)
+            if record.purpose == "WORD_UAT" and record.disposition == "APPROVED":
+                for row in word_uat:
+                    try:
+                        when = _evidence_timestamp(row.executed_at or "")
+                        if when.utcoffset() is None or _evidence_timestamp(record.approved_at) < when:
+                            block("QDKT_WORD_UAT_APPROVAL_TIME_CONFLICT")
+                    except ValueError:
+                        block("QDKT_WORD_UAT_APPROVAL_TIME_CONFLICT")
     for purpose, role, code in (
         ("LEGAL_TEMPLATE", "LEGAL_OWNER", "QDKT_LEGAL_TEMPLATE_UNAPPROVED"),
         ("DOSSIER_SEMANTICS", "BUSINESS_OWNER", "QDKT_DOSSIER_SEMANTICS_UNAPPROVED"),
@@ -418,6 +569,8 @@ def assess_renderer_preflight(
               uat.template_version != template.candidate_version):
             block(f"QDKT_WORD_UAT_IDENTITY_CONFLICT:{prefix}")
         else:
+            if uat.evidence_origin != "OWNER_ATTESTED_WORD_EXECUTION":
+                block(f"QDKT_WORD_UAT_ORIGIN_UNVERIFIED:{prefix}")
             if not all((uat.word_version, uat.tester_ref, uat.executed_at, uat.output_sha256,
                         uat.synthetic_input_sha256, uat.screenshot_refs)) or set(uat.acceptance_checks) != UAT_CHECKS:
                 block(f"QDKT_WORD_UAT_EVIDENCE_INCOMPLETE:{prefix}")
@@ -426,7 +579,7 @@ def assess_renderer_preflight(
             if uat.synthetic_input_sha256 != SYNTHETIC_INPUT_SHA256:
                 block(f"QDKT_WORD_UAT_INPUT_CONFLICT:{prefix}")
             try:
-                if datetime.fromisoformat(uat.executed_at or "").utcoffset() is None:
+                if _evidence_timestamp(uat.executed_at or "").utcoffset() is None:
                     raise ValueError("offset required")
             except ValueError:
                 block(f"QDKT_WORD_UAT_TIME_INVALID:{prefix}")

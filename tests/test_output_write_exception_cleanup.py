@@ -1,4 +1,4 @@
-"""The output owner cleans up an exclusive write that raised after creating bytes."""
+"""A raised storage write does not establish target ownership for cleanup."""
 from __future__ import annotations
 
 from hashlib import sha256
@@ -37,9 +37,9 @@ class _WriteThenRaiseStorage:
 
 @pytest.mark.parametrize(
     ("persisted", "should_delete"),
-    [(b"rendered-document", True), (b"partial-or-changed", False)],
+    [(b"rendered-document", False), (b"partial-or-changed", False)],
 )
-def test_finalization_storage_write_exception_cleans_only_checksum_owned_target(
+def test_finalization_storage_write_exception_never_deletes_unproven_target(
     monkeypatch, persisted, should_delete,
 ):
     monkeypatch.setattr(

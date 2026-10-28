@@ -150,6 +150,8 @@ _WINDOWS_DEVICE_NAMES = frozenset(
     ("CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$")
     + tuple(f"COM{i}" for i in range(1, 10))
     + tuple(f"LPT{i}" for i in range(1, 10))
+    # Windows also reserves device aliases with superscript 1/2/3.
+    + tuple(f"{prefix}{digit}" for prefix in ("COM", "LPT") for digit in ("¹", "²", "³"))
 )
 
 

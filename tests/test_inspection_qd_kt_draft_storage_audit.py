@@ -656,3 +656,72 @@ def test_db_locator_still_rejects_invalid_or_changed_checksum(stored_checksum):
             return [(version, variant, doc, binding)]
     with pytest.raises(QdKtDraftStorageAuditBlocked, match="OWNER_MISMATCH"):
         resolve_qdkt_draft_storage_locator(Session(), provenance=provenance)
+
+
+@pytest.mark.parametrize("device", [
+    "COM¹", "COM²", "COM³", "LPT¹", "LPT²", "LPT³",
+    "com¹.txt", "lpt².docx", "Com³.backup", "LpT¹",
+])
+def test_windows_superscript_device_aliases_rejected_before_storage_read(device):
+    data, provenance, locator = fixture()
+    storage = FakeStorage(data)
+    for alias in (
+        f"case-1/{device}/draft.docx",
+        f"case-1/qdkt/{device}",
+    ):
+        with pytest.raises(QdKtDraftStorageAuditBlocked, match="LOCATOR_UNPROVEN"):
+            audit_qdkt_draft_storage_binary(
+                storage, provenance=provenance,
+                locator=replace(locator, storage_relative_path=alias),
+            )
+    assert storage.calls == []
+
+
+def test_windows_superscript_device_alias_rejected_from_db_owner_gate():
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from backend.app.document.inspection_qd_kt_draft_storage_audit import (
+        resolve_qdkt_draft_storage_locator,
+    )
+
+    data, provenance, _ = fixture()
+    class Session:
+        no_autoflush = nullcontext()
+        def execute(self, query):
+            return self
+        def all(self):
+            return [(
+                SimpleNamespace(
+                    id="version-1", document_variant_id="variant-1",
+                    storage_binding_id="binding-1", storage_root="inspection",
+                    storage_relative_path="case-1/COM¹/draft.docx",
+                    checksum_sha256=sha256(data).hexdigest(),
+                ),
+                SimpleNamespace(id="variant-1", document_id="document-1"),
+                SimpleNamespace(
+                    id="document-1", case_id="case-1",
+                    family_code="INSPECTION_QD_KT",
+                ),
+                SimpleNamespace(
+                    id="binding-1", case_id="case-1", relative_path="case-1",
+                ),
+            )]
+    with pytest.raises(QdKtDraftStorageAuditBlocked, match="OWNER_MISMATCH"):
+        resolve_qdkt_draft_storage_locator(Session(), provenance=provenance)
+
+
+@pytest.mark.parametrize("safe_path", [
+    "case-1/COM⁴/draft.docx",
+    "case-1/LPT⁴/draft.docx",
+    "case-1/COMM¹/draft.docx",
+])
+def test_non_reserved_superscript_names_remain_usable(safe_path):
+    data, provenance, locator = fixture()
+    storage = FakeStorage(data)
+    result = audit_qdkt_draft_storage_binary(
+        storage, provenance=provenance,
+        locator=replace(locator, storage_relative_path=safe_path),
+    )
+    assert result.actual_docx_bytes_verified
+    assert not result.ready_to_render
+    assert storage.calls == [(safe_path, "inspection")]

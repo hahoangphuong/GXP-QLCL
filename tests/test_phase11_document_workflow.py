@@ -1537,14 +1537,16 @@ def test_render_failure_cleans_written_output_when_db_session_is_inactive(monkey
                     payload=render_payload,
                     user=build_authenticated_user("inspector01", "inspector"),
                 )
-            except IntegrityError:
+            except RuntimeError as exc:
+                assert "UNIQUE constraint failed" in str(exc)
+                assert "atomic generation-conditional delete" in str(exc)
                 assert session.is_active is False
             else:
                 raise AssertionError(
                     "Expected post-write DB flush failure to propagate"
                 )
 
-            assert target.exists() is False
+            assert target.exists() is True  # Failed DB flush cannot authorize unlink.
             session.rollback()
 
         with Session(engine) as verify:
@@ -1876,7 +1878,7 @@ def test_render_template_docx_restores_previous_current_when_post_write_audit_fa
             assert failed_version.issued_on is None
 
             candidate_path = output_dir / "candidate.docx"
-            assert candidate_path.exists() is False
+            assert candidate_path.exists() is True  # Retained for reconciliation.
             original_output_identity = (
                 failed_version.storage_root,
                 failed_version.storage_binding_id,
@@ -2917,7 +2919,7 @@ def test_finalize_output_write_rejects_stale_allocation_identity_before_storage_
                 raise AssertionError(
                     "Expected post-write DB mutation failure"
                 )
-            assert original_target.exists() is False
+            assert original_target.exists() is True  # No atomic generation-owned delete.
 
             monkeypatch.setattr(session, "execute", original_execute)
             session.rollback()
@@ -2952,7 +2954,7 @@ def test_finalize_output_write_rejects_stale_allocation_identity_before_storage_
             except RuntimeError as exc:
                 assert "simulated DB failure after foreign replacement" in str(exc)
                 assert "Output cleanup failed" in str(exc)
-                assert "checksum no longer matches the render result" in str(exc)
+                assert "atomic generation-conditional delete" in str(exc)
             else:
                 raise AssertionError(
                     "Expected ownership drift to fail closed during finalizer cleanup"
@@ -3232,12 +3234,14 @@ def test_render_route_removes_new_output_when_db_commit_fails(monkeypatch):
                     permissions={"document.write"},
                 ),
             )
-        except RuntimeError as exc:
-            assert "simulated commit failure" in str(exc)
+        except HTTPException as exc:
+            assert exc.status_code == 500
+            assert "simulated commit failure" in exc.detail
+            assert "atomic generation-conditional delete" in exc.detail
         else:
             raise AssertionError("Expected DB commit failure")
 
-        assert target.exists() is False
+        assert target.exists() is True
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -3294,7 +3298,7 @@ def test_render_route_preserves_replaced_output_when_db_commit_fails(monkeypatch
         except HTTPException as exc:
             assert exc.status_code == 500
             assert "Document DB commit failed and output cleanup also failed" in exc.detail
-            assert "checksum no longer matches the render result" in exc.detail
+            assert "atomic generation-conditional delete" in exc.detail
         else:
             raise AssertionError(
                 "Expected commit-failure cleanup to fail closed on replaced output"

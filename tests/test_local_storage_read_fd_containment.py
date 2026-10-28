@@ -143,7 +143,7 @@ def test_copy_rejects_symlink_source_and_leaves_no_destination(tmp_path):
     (outside / "secret.bin").write_bytes(b"outside")
     (root / "alias").symlink_to(outside, target_is_directory=True)
     storage = LocalStorageService(StorageConfig(inspection_root=root))
-    with pytest.raises(OSError):
+    with pytest.raises((OSError, StorageOperationError)):
         storage.copy("alias/secret.bin", "result.bin")
     assert not (root / "result.bin").exists()
     assert not list(root.glob(".gxp-stage-*.tmp"))

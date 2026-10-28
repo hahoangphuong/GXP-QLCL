@@ -1970,8 +1970,11 @@ def test_render_template_docx_restores_previous_current_when_post_write_audit_fa
                 failed_version.storage_relative_path,
                 failed_version.original_filename,
             ) == original_output_identity
-            assert candidate_path.exists() is False
+            assert candidate_path.exists() is True
             assert drifted_path.exists() is False
+            # The synthetic fixture explicitly retires the orphan before a
+            # separate retry; production cleanup must remain fail-closed.
+            candidate_path.unlink()
 
             retry = service.render_template_docx(
                 session,
@@ -2930,6 +2933,9 @@ def test_finalize_output_write_rejects_stale_allocation_identity_before_storage_
             assert run.status == DocumentGenerationStatus.PENDING
             assert version.is_current is False
             assert version.checksum_sha256 is None
+            # Isolate the next synthetic scenario without granting the
+            # production cleanup code an unsafe delete capability.
+            original_target.unlink()
 
             def replace_target_then_fail_db_update(statement, *args, **kwargs):
                 if getattr(statement, "is_update", False):
@@ -3236,7 +3242,7 @@ def test_render_route_removes_new_output_when_db_commit_fails(monkeypatch):
             )
         except HTTPException as exc:
             assert exc.status_code == 500
-            assert "simulated commit failure" in exc.detail
+            assert "Document DB commit failed" in exc.detail
             assert "atomic generation-conditional delete" in exc.detail
         else:
             raise AssertionError("Expected DB commit failure")

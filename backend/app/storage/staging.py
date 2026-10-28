@@ -115,6 +115,25 @@ def audit_staging_candidates(
                     if scanned_entries >= max_entries:
                         incomplete_reason = "entry_budget_exceeded"
                         break
+                    # A storage adapter may be remote or externally supplied.
+                    # A child attributed to another directory (or carrying a
+                    # forged leaf name) must not become trusted audit evidence.
+                    # Use exact POSIX-style relative paths; no normalization that
+                    # could silently erase traversal components.
+                    child_path = entry.relative_path
+                    expected_parent = folder + "/" if folder else ""
+                    if (
+                        type(child_path) is not str
+                        or type(entry.name) is not str
+                        or not entry.name
+                        or entry.name in {".", ".."}
+                        or "/" in entry.name or chr(92) in entry.name
+                        or child_path != expected_parent + entry.name
+                        or type(entry.is_dir) is not bool
+                        or (entry.size is not None and
+                            (type(entry.size) is not int or entry.size < 0))
+                    ):
+                        raise StorageOperationError("Staging audit entry provenance invalid.")
                     scanned_entries += 1
                     entries_by_root[root] += 1
                     category = None if entry.is_dir else classify_staging_candidate(entry.name)

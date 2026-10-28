@@ -178,7 +178,15 @@ class LocalStorageService:
                 for child in listing:
                     if not matches_name(child.name):
                         continue
-                    info = os.stat(child.name, dir_fd=parent_fd, follow_symlinks=False)
+                    try:
+                        info = os.stat(child.name, dir_fd=parent_fd, follow_symlinks=False)
+                    except FileNotFoundError as exc:
+                        # A matching candidate vanishing during scanning is
+                        # not equivalent to an absent year directory. Never
+                        # collapse an incomplete scan into NOT_FOUND/RESOLVED.
+                        raise StorageOperationError(
+                            "Storage resolution candidate changed during enumeration."
+                        ) from exc
                     if stat.S_ISLNK(info.st_mode):
                         raise StorageOperationError("Resolved path escapes configured storage root.")
                     if stat.S_ISDIR(info.st_mode):

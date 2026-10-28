@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Sequence
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -33,7 +33,8 @@ def reconcile_output_locators_verified_snapshot(
     # Open a fresh connection and set the transaction guarantees before the
     # first SQL statement. SET TRANSACTION is transaction-local.
     with engine.connect() as connection:
-        with connection.begin():
+        transaction = connection.begin()
+        try:
             connection.execute(text(
                 "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
             ))
@@ -47,8 +48,9 @@ def reconcile_output_locators_verified_snapshot(
                 report = reconcile_output_locators(
                     session, locators, max_locators=max_locators,
                 )
-            # No explicit commit: roll back the read-only transaction.
-            connection.rollback()
+        finally:
+            # Never commit, even when reconciliation or validation fails.
+            transaction.rollback()
     return replace(
         report, db_snapshot_consistency="postgresql_repeatable_read_read_only_verified",
     )

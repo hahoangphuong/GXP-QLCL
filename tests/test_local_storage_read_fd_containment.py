@@ -275,8 +275,11 @@ def test_write_parent_swap_cannot_publish_outside_root(tmp_path, overwrite):
                 (root / "parent").symlink_to(outside, target_is_directory=True)
             return super().read(n)
 
-    with pytest.raises((StorageOperationError, OSError)):
-        storage.write_stream("parent/draft.docx", SwappingStream(b"new-bytes"), overwrite=overwrite)
+    # The held directory descriptor permits safe publication into the
+    # original in-root directory even after its pathname is swapped.
+    entry = storage.write_stream("parent/draft.docx", SwappingStream(b"new-bytes"), overwrite=overwrite)
+    assert entry.relative_path == "parent/draft.docx"
+    assert entry.size == len(b"new-bytes")
     assert (outside / "draft.docx").read_bytes() == b"outside-original"
     assert (root / "original-parent" / "draft.docx").read_bytes() == b"new-bytes"
     assert not list((root / "original-parent").glob(".gxp-stage-*"))

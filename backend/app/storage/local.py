@@ -709,6 +709,24 @@ class LocalStorageService:
                         pass
                 target_fd = os.open(part, flags, dir_fd=target_fd)
                 fds.append(target_fd)
+            # A source can be replaced while destination ancestors are opened.
+            # Detect that deterministic window before publication. This is NOT
+            # an immutable-leaf guarantee: a swap can still race the syscall.
+            try:
+                current_source = os.stat(
+                    source_parts[-1], dir_fd=source_fd, follow_symlinks=False,
+                )
+            except FileNotFoundError as exc:
+                raise StorageOperationError(
+                    "Storage relocation source changed before publication."
+                ) from exc
+            if (
+                (source_stat.st_dev, source_stat.st_ino, source_stat.st_mode)
+                != (current_source.st_dev, current_source.st_ino, current_source.st_mode)
+            ):
+                raise StorageOperationError(
+                    "Storage relocation source changed before publication."
+                )
             self._rename_noreplace_between_dirfds(
                 source_fd, source_parts[-1], target_fd, target_parts[-1], target_relative_path,
             )

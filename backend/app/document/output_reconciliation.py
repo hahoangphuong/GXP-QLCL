@@ -85,6 +85,7 @@ def reconcile_output_locators(
 
     references: dict[tuple[str, str], list[tuple[str, str, bool, bool]]] = {}
     runs: dict[str, list[tuple[str, str]]] = {}
+    raw_version_ids: set = set()
     with session.no_autoflush:
         for start in range(0, len(pairs), 200):
             batch = pairs[start:start + 200]
@@ -104,12 +105,12 @@ def reconcile_output_locators(
                 ).in_(batch))
             )
             for root, path, vid, variant_id, current, checksum in rows:
+                raw_version_ids.add(vid)
                 references.setdefault((root, path), []).append((
                     str(vid), str(variant_id), bool(current), bool(checksum),
                 ))
-        version_ids = sorted({
-            vid for group in references.values() for vid, _, _, _ in group
-        })
+        # Preserve UUID values for typed SQLAlchemy/PostgreSQL IN bindings.
+        version_ids = sorted(raw_version_ids, key=str)
         for start in range(0, len(version_ids), 200):
             rows = session.execute(
                 select(

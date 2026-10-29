@@ -84,6 +84,7 @@ export function CaseApplicationWorkspace({
 }) {
   const currentDraft = useMemo(() => buildDraft(caseWorkspace), [caseWorkspace]);
   const [draft, setDraft] = useState<FormDraft>(currentDraft);
+  const [draftVersion, setDraftVersion] = useState(caseWorkspace.application.row_version);
   const [editingField, setEditingField] = useState<"submitted_on" | "dossier_code" | null>(null);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -146,7 +147,7 @@ export function CaseApplicationWorkspace({
       const value = editingField === "submitted_on"
         ? toSubmittedOnPayload(draft.submitted_on)
         : normalizeText(draft.dossier_code);
-      await onSave({ expected_version: caseWorkspace.application.row_version, [editingField]: value });
+      await onSave({ expected_version: draftVersion, [editingField]: value });
       setEditingField(null);
     } catch (error) {
       const nextError = error instanceof Error ? error : new Error("Không lưu được thông tin hồ sơ.");
@@ -213,6 +214,7 @@ export function CaseApplicationWorkspace({
             label="Ngày nộp"
             onCancel={cancelEdit}
             onEdit={() => {
+              setDraftVersion(caseWorkspace.application.row_version);
               setEditingField("submitted_on");
               setErrorMessage(null);
             }}
@@ -236,6 +238,7 @@ export function CaseApplicationWorkspace({
             label="Mã hồ sơ"
             onCancel={cancelEdit}
             onEdit={() => {
+              setDraftVersion(caseWorkspace.application.row_version);
               setEditingField("dossier_code");
               setErrorMessage(null);
             }}

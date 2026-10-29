@@ -6,6 +6,13 @@ source, approved contracts, current frontend/backend source, regression and
 isolated browser fixtures. This is not authenticated staging, production UAT,
 Word acceptance, screen-reader verification or a migration completeness certificate.
 
+The v1.1 CaseApplication optional-null observation records its original baseline.
+During v1.2 validation, backend main PR226 (`a8318119dae3638d3aa5ec29c26cb03945b59394`)
+added create-only-null enforcement at that stage owner. It was audited and
+preserved from main, not implemented by this frontend slice. The generic optional
+helper is unchanged; do not generalize the application-specific rule to CAPA or
+other aggregates. Issue222 closure/transaction acceptance remains backend-owned.
+
 ## Classification and evidence rules
 
 - `IMPLEMENTED_VERIFIED`: only the named behavior was exercised by the cited test
@@ -211,7 +218,8 @@ request identity and draft hydration boundary, while create lacked Case ownershi
 Version advancement is not a new aggregate and must not unlock an in-flight
 command or silently authorize old input with a new token. The owner now keeps
 these boundaries separate. No backend rule, optional-null helper or Issue222 fix
-is implemented. Server readiness still owns permission and status eligibility.
+is implemented by this frontend slice; the independent main PR226 is preserved
+as noted above. Server readiness still owns permission and status eligibility.
 
 Specific corrected behavior is IMPLEMENTED_VERIFIED by regression/fixture:
 edited and unsent command drafts keep their original cycle token; create keeps

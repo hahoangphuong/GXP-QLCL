@@ -20,6 +20,7 @@ from backend.app.db.models.phase1 import (
     Site,
 )
 from backend.app.document.output_version import OutputVersionAllocationError, allocate_output_document_version
+from backend.app.services.document_api import DocumentWorkflowService
 from backend.app.document.persistence import (
     DocumentPersistenceError,
     prepare_generation_persistence,
@@ -133,6 +134,31 @@ def test_concurrent_same_key_preparation_waits_before_document_mutations():
         assert reused.document_id == first.document_id
         assert reused.document_variant_id == first.document_variant_id
         contender.commit()
+
+        # A FAILED run may be claimed for retry inside a transaction, but
+        # its PENDING transition must never leak if the caller rolls back.
+        with factory() as failed:
+            run = failed.get(DocumentGenerationRun, first.generation_run_id)
+            run.status = DocumentGenerationStatus.FAILED
+            run.error_summary = "previous attempt failed"
+            failed.commit()
+
+        with factory() as retry:
+            replay = prepare_generation_persistence(retry, plan)
+            assert replay.reused_generation_run is True
+            DocumentWorkflowService._claim_reused_generation_run_for_render(
+                retry, SimpleNamespace(persisted_state=replay),
+            )
+            assert retry.get(DocumentGenerationRun, first.generation_run_id).status == (
+                DocumentGenerationStatus.PENDING
+            )
+            assert retry.get(DocumentGenerationRun, first.generation_run_id).error_summary is None
+            retry.rollback()
+
+        with factory() as verify_failed:
+            run = verify_failed.get(DocumentGenerationRun, first.generation_run_id)
+            assert run.status == DocumentGenerationStatus.FAILED
+            assert run.error_summary == "previous attempt failed"
 
         # A terminal generation with the same key is a replay of that
         # generation, not permission to allocate/publish another output.

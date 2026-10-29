@@ -78,7 +78,7 @@ export function EditableDetailValue({
   children: ReactNode;
 }) {
   function handleReadOnlyKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (!onEdit) {
+    if (!onEdit || pending || event.nativeEvent.isComposing) {
       return;
     }
     if (event.key !== "Enter" && event.key !== "F2") {
@@ -89,11 +89,15 @@ export function EditableDetailValue({
   }
 
   function handleEditKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.nativeEvent.isComposing) return;
     if (event.key === "Escape") {
       event.preventDefault();
-      onCancel();
+      if (!pending) onCancel();
       return;
     }
+    // Buttons own native keyboard activation; selects/textareas own Enter.
+    // A bubbled key must not turn Cancel or option selection into Save.
+    if (event.target instanceof Element && event.target.closest("button, select, textarea, a")) return;
     if (event.key === "Enter" && !multiline && !pending && !saveDisabled) {
       event.preventDefault();
       onSave();
@@ -109,9 +113,10 @@ export function EditableDetailValue({
       <div className="detail-value-slot">
         {!isEditing ? (
         <div
+          aria-disabled={onEdit ? pending : undefined}
           aria-label={editButtonLabel}
           className={onEdit ? "editable-detail-header editable-detail-header-activator" : "editable-detail-header"}
-          onDoubleClick={onEdit ?? undefined}
+          onDoubleClick={onEdit && !pending ? onEdit : undefined}
           onKeyDown={handleReadOnlyKeyDown}
           role={onEdit ? "button" : undefined}
           tabIndex={onEdit ? 0 : undefined}

@@ -19,6 +19,58 @@ function registration(value = workspace, applicationSave = vi.fn(), assessmentSa
 }
 
 describe("registration presentation preserves existing editor owners", () => {
+  it.each([4, null])("keeps the application draft's %s token through refresh, then uses the new token after Cancel/reopen", async version => {
+    const original = { ...workspace, application: { ...workspace.application, row_version: version } };
+    const save = vi.fn().mockRejectedValue(Object.assign(new Error("stale application"), { status: 409 }));
+    const { rerender } = render(registration(original, save));
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+    fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "local draft" } });
+    const refreshed = { ...original, application: { ...original.application, row_version: 5, dossier_code: "remote value" } };
+    rerender(registration(refreshed, save));
+    await act(async () => fireEvent.keyDown(screen.getByLabelText("Mã hồ sơ"), { key: "Enter" }));
+    expect(save).toHaveBeenLastCalledWith({ expected_version: version, dossier_code: "local draft" });
+    expect(save).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("local draft");
+    expect(screen.getByRole("alert")).toHaveTextContent("đã bị thay đổi");
+    fireEvent.keyDown(screen.getByLabelText("Mã hồ sơ"), { key: "Escape" });
+    fireEvent.keyDown(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }), { key: "F2" });
+    expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("remote value");
+    fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "reviewed new draft" } });
+    await act(async () => fireEvent.keyDown(screen.getByLabelText("Mã hồ sơ"), { key: "Enter" }));
+    expect(save).toHaveBeenLastCalledWith({ expected_version: 5, dossier_code: "reviewed new draft" });
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
+  it("Enter on the application Cancel button never submits a mutation", async () => {
+    const save = vi.fn();
+    render(registration(workspace, save));
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+    fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "not submitted" } });
+    const cancel = screen.getByRole("button", { name: "Hủy sửa Mã hồ sơ" });
+    await act(async () => fireEvent.keyDown(cancel, { key: "Enter" }));
+    expect(save).not.toHaveBeenCalled();
+    fireEvent.click(cancel);
+    expect(screen.getByRole("button", { name: "Sửa Mã hồ sơ" })).toHaveTextContent("HS-001");
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("Escape during pending assessment cannot discard the draft before a 409", async () => {
+    let rejectSave!: (error: Error) => void;
+    const save = vi.fn(() => new Promise<void>((_resolve, reject) => { rejectSave = reject; }));
+    render(registration(workspace, vi.fn(), save));
+    fireEvent.keyDown(screen.getByRole("button", { name: "Sửa Người thẩm định" }), { key: "F2" });
+    fireEvent.change(screen.getByLabelText("Người thẩm định"), { target: { value: "retained draft" } });
+    fireEvent.keyDown(screen.getByLabelText("Người thẩm định"), { key: "Enter" });
+    fireEvent.keyDown(screen.getByLabelText("Người thẩm định"), { key: "Escape" });
+    await act(async () => rejectSave(Object.assign(new Error("conflict"), { status: 409 })));
+    expect(screen.getByLabelText("Người thẩm định")).toHaveValue("retained draft");
+    expect(screen.getByRole("alert")).toHaveTextContent("đã bị thay đổi");
+    expect(save).toHaveBeenCalledExactlyOnceWith({ expected_version: 7, assessed_on: "2026-01-20T00:00:00Z", assessor_name: "retained draft", assessment_result: "Đạt", notes: null });
+    fireEvent.keyDown(screen.getByLabelText("Người thẩm định"), { key: "Escape" });
+    expect(screen.getByRole("button", { name: "Sửa Người thẩm định" })).toHaveTextContent("Assessor");
+    expect(save).toHaveBeenCalledOnce();
+  });
+
   it("keeps the primary field order and moves only additional metadata into a disclosure", () => {
     const { container } = render(registration());
     expect(screen.getByRole("heading", { name: "Thông tin hồ sơ" })).toHaveClass("sr-only");

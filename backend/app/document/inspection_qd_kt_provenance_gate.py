@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from hashlib import sha256
 import json
+import math
 
 SOURCE = Path(__file__).resolve().parents[3] / "artifacts/legacy_audit/inspection_qd_kt_input_provenance.json"
 TRACE = SOURCE.with_name("inspection_qd_kt_vba_trace.json")
@@ -112,12 +113,17 @@ def read_provenance_json(path: Path) -> dict:
         return result
     def invalid_constant(_):
         raise QdKtProvenanceGateBlocked("QDKT_SOURCE_PROVENANCE_INCOMPLETE")
+    def finite_float(text):
+        value = float(text)
+        if not math.isfinite(value):
+            raise QdKtProvenanceGateBlocked("QDKT_SOURCE_PROVENANCE_INCOMPLETE")
+        return value
     try:
         with Path(path).open("rb") as stream:
             raw = stream.read(2 * 1024 * 1024 + 1)
         if len(raw) > 2 * 1024 * 1024:
             raise ValueError("size")
-        value = json.loads(raw.decode("utf-8"), object_pairs_hook=unique, parse_constant=invalid_constant)
+        value = json.loads(raw.decode("utf-8"), object_pairs_hook=unique, parse_constant=invalid_constant, parse_float=finite_float)
         if type(value) is not dict:
             raise ValueError("object")
         return value

@@ -23,6 +23,67 @@ Status counts: {"BLOCKED": 4, "CONTRADICTED": 4, "PARTIAL": 6, "VERIFIED": 0}. L
 | VKN | BLOCKED | VKN1, VKN2 / VKN1, VKN2 / N/A (branch) / N/A (branch) |
 | VKNx | BLOCKED | VKNx / VKNx / N/A (branch) / N/A (branch) |
 
+## Runtime/source evidence hardening
+
+Evidence classes remain separate: approved business policy; reviewed ZIP source; captured add-in source; exact original binary bytes; Word output/legal acceptance. The new capture is pinned static evidence, not a claim that local files were freshly verified by the normal audit.
+
+### Artifact and acquisition inventory
+
+All six inputs were supplied in the local workspace. Original acquisition/build/distribution chain is not attested. No timestamp, filename, excerpt or matching JSON hash field proves version identity.
+
+| Artifact | Exact byte SHA-256 |
+|---|---|
+| `legacy/GPs.xlam` | `52725cba1fd87107814d07da1dbae8d79c77127765018b0daf4b6fe6f44b1b58` |
+| `legacy/GXP-VBA code.zip` | `6227fb0a6b3d74fa0f4cc655b94b021a40d65a508c2f2eefc62f1724c7b89ff7` |
+| `legacy/Templates/2. QD KT - GLP.dotx` | `c55695dbdaafa48f0b2a4211a8adda7b97443a44439d9a81de306ce98729ec19` |
+| `legacy/Templates/2. QD KT - GMP.dotx` | `490d534580ce00844b6175e64ca4e2fdc345d7957be8813f0f62d03a9b82c1a5` |
+| `legacy/Templates/2. QD KT - GMPbb.dotx` | `fec4dc35ac5fbb2f2ef6b56750fe6dcf5316dafc0898395279d9ff281b2ca771` |
+| `legacy/Templates/2. QD KT - GSP.dotx` | `890df5e2345e2927b286f4a3adb107a984825eff21e998ae253020ecac46eea1` |
+
+Extraction: oletools==0.60.2 VBA_Parser + VBA_Project PROJECTCODEPAGE; static only; in-memory immutable bytes. Normalization is LF only; no trim, case-fold, NFC/NFD or punctuation changes.
+
+The add-in physically contains `xl/vbaProject.bin`, SHA `84afc3e2d431b550e7f7f6b392f1a363d6d476efe444ba7aab3b4932dba4bcfe`. BYTE_IDENTICAL_BINDING_PROVEN applies only to that embedded binary member and its containing add-in bytes. It does not prove the ZIP exports came from that binary, that Excel loaded it, or that compiled p-code matches extracted source.
+
+The reviewed ZIP has 51 exports/FRX entries and no WinAPI module or runtime add-in. The add-in contains QĐKT source procedures and all three uniquely declared WinAPI helpers in the same captured project. Static call references resolve in that source snapshot, not in a proven live execution.
+
+PROJECTCODEPAGE in the add-in is 1252. The historic ZIP trace uses `_decode` with cp1258 fallback; the ZIP does not attest its export codepage. Full Get_Tpl and Get_TTV2 text differs under the reviewed decoder in non-i2/error-message literals; cp1252 comparison matches. This is an encoding ambiguity, not proof of an actual changed business implementation. Existing reviewed source and semantic pins are preserved.
+
+| Procedure | ZIP lines | Add-in source lines | Reviewed-decoder comparison |
+|---|---|---|---|
+| `Module1.bas!TaoQDKT_KHKT` | [595, 651] | [595, 651] | CONTENT_EQUIVALENT_VERSION_UNPROVEN |
+| `Module1.bas!FormatDateS` | [2042, 2052] | [2042, 2052] | CONTENT_EQUIVALENT_VERSION_UNPROVEN |
+| `RecordForm.frm!CreateFile` | [1702, 1789] | [1695, 1782] | CONTENT_EQUIVALENT_VERSION_UNPROVEN |
+| `RecordForm.frm!Get_Tpl` | [657, 729] | [650, 722] | IMPLEMENTATION_DIFFERS |
+| `RecordForm.frm!Tao_QDKT_KHKT_BBKT` | [739, 818] | [732, 811] | CONTENT_EQUIVALENT_VERSION_UNPROVEN |
+| `RecordForm.frm!GetTT_Ktra` | [326, 412] | [319, 405] | CONTENT_EQUIVALENT_VERSION_UNPROVEN |
+| `RecordForm.frm!Get_VKN` | [1854, 1871] | [1847, 1864] | CONTENT_EQUIVALENT_VERSION_UNPROVEN |
+| `RecordForm.frm!Replace_Bookmark` | [589, 603] | [582, 596] | CONTENT_EQUIVALENT_VERSION_UNPROVEN |
+| `RecordForm.frm!Delete_Bookmark` | [576, 587] | [569, 580] | CONTENT_EQUIVALENT_VERSION_UNPROVEN |
+| `TTVForm.frm!Get_TTV2` | [399, 428] | [392, 421] | IMPLEMENTATION_DIFFERS |
+| `TTVForm.frm!Get_TTV_List3` | [380, 397] | [373, 390] | CONTENT_EQUIVALENT_VERSION_UNPROVEN |
+| `WinAPI.bas!DelLastIf_Ins` | absent | [504, 510] | ARTIFACT_UNAVAILABLE_OR_EVIDENCE_INSUFFICIENT |
+| `WinAPI.bas!LCase_FirstChar` | absent | [552, 555] | ARTIFACT_UNAVAILABLE_OR_EVIDENCE_INSUFFICIENT |
+| `WinAPI.bas!Del_LastPeriod` | absent | [559, 561] | ARTIFACT_UNAVAILABLE_OR_EVIDENCE_INSUFFICIENT |
+
+All 14 operation source lines match in the captured writer (ZIP 739–818 versus add-in 732–811). Each field's `runtime_source_reference` records exact paired line numbers and LF source hashes. Business ownership, variable initialization and actual values remain unproven by this source match.
+
+Supplementary workbook observed separately: `legacy/Danh sách Kiểm tra GPs.xlsb`, exact SHA `c12537ea5a5c9f470e42fb5bdbe214f36983e310fceac7c560ad38885209fe3d`. Static oletools extraction of `Module1.Load_Lib`, lines 20–40, shows reuse of an already-open workbook named GPs.xlam, then local Addins and configured fallback opening at 32–33. Module1:73 invokes `Application.Run` by add-in name. No checksum/build identity is checked on this path. An already-loaded or different path copy is a competing explanation; this supplementary workbook is not one of the six fresh-verifier inputs. No workbook/add-in was opened in Excel.
+
+### Unresolved evidence matrix
+
+| Relationship | Result | Still needed |
+|---|---|---|
+| Add-in to embedded project bytes | BYTE_IDENTICAL_BINDING_PROVEN (container-member scope only) | Loaded-runtime and p-code/source attestation |
+| Reviewed ZIP to captured QĐKT source lines | CONTENT_EQUIVALENT_VERSION_UNPROVEN | Attested export/build/distribution manifest, including codepage |
+| WinAPI helper to ZIP | ARTIFACT_UNAVAILABLE_OR_EVIDENCE_INSUFFICIENT | Original helper export/runtime-package provenance; no invented ZIP body |
+| Full Get_Tpl/Get_TTV2 reviewed-decoder text | IMPLEMENTATION_DIFFERS as text, encoding cause unresolved | Export codepage evidence; do not infer active i=2 change |
+| Template filename formula to original bytes selected at runtime | UNVERIFIED_VERSION_BINDING | Resolved Template_Path/version capture and actual Word UAT |
+| All source evidence to legal/business equivalence | Not established | Existing owner decisions/date/timezone/Word acceptance |
+
+Fresh local reproduction: with the reviewed optional analyst tool `oletools==0.60.2`, run `python -m tools.audit_qdkt_source_transformations --verify-local-artifacts --format json`. The flag reads the six fixed local inputs through the existing bounded offline evidence reader, checks actual immutable bytes before extraction, re-extracts source and scans every word/*.xml (including notes), then compares the entire capture with the independent pin. Missing/substituted bytes, extractor absence/version change or metadata drift blocks; there is no fallback to captured evidence labelled as fresh. Stdout only and exit 2 remain intentional because render readiness is blocked.
+
+New RED→GREEN cases reject foreign GxP objects, duplicate/malformed physical names, bool/float numbered bounds and JSON exponent overflow. Valid target ordering/missing-target no-op behavior is preserved; Unicode, casing and punctuation are not normalized away. No renderer or business source owner was added.
+
 ## New findings and validation boundary
 
 Last-correct: operation line/reachability and the 8/6 ownership set were already checked. First-incorrect: assignment, formatting, candidate-owner and invariant metadata could change without rejection; matching edits to both archive hashes could substitute the reviewed source. Full semantic pins now reject those changes while allowing JSON whitespace/key ordering differences.

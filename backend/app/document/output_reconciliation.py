@@ -66,16 +66,6 @@ def validate_output_locator_request(
     locators: Iterable[OutputLocator], *, max_locators: int = 1000,
 ) -> None:
     """Reject invalid inventories before starting any database transaction."""
-    session: Session,
-    locators: Iterable[OutputLocator],
-    *,
-    max_locators: int = 1000,
-) -> OutputReconciliationReport:
-    """SELECT-only exact-locator report; caller must own a read-only session.
-
-    Only DB registration is observed. No filesystem snapshot, physical
-    identity, generation pin, ownership proof, or orphan verdict is supplied.
-    """
     if type(max_locators) is not int or not 1 <= max_locators <= 10000:
         raise ValueError("Invalid output reconciliation locator budget.")
     if not isinstance(locators, (tuple, list)):

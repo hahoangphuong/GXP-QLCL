@@ -86,13 +86,13 @@ jobs:
           # Pytest -q may emit bare "10 passed in 1.49s" without
           # terminal separator bars; anchor to the exact final totals line.
           totals = re.findall(
-              r"(?m)^(\\d+) passed in [0-9.]+s\\s*$", output
+              r"(?m)^(\d+) passed in [0-9.]+s\s*$", output
           )
           assert len(totals) == 1, f"Expected one positive pytest total, found {totals}"
           assert int(totals[0]) == 10, f"Unexpected test case count: {totals[0]}"
           assert not re.search(
-              r"(?m)^(?:SKIPPED|FAILED|ERROR)\\s|"
-              r"^\\d+ (?:skipped|deselected|failed|error)s?\\b",
+              r"(?m)^(?:SKIPPED|FAILED|ERROR)\s|"
+              r"^\d+ (?:skipped|deselected|failed|error)s?\b",
               output,
           ), "Incomplete reconciliation execution"
           print(f"PASS: {totals[0]} PostgreSQL reconciliation cases, no skips")

@@ -25,7 +25,7 @@ from backend.app.document.output_version import (
     OutputVersionAllocation, finalize_output_document_version_write,
 )
 from backend.app.storage.filesystem import FilesystemStorageService
-from backend.app.storage.types import StorageConfig
+from backend.app.storage.types import StorageConfig, StorageTargetExistsError
 
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
@@ -135,6 +135,18 @@ def test_file_remains_after_successful_finalization_when_caller_rolls_back(tmp_p
                 DocumentGenerationStatus.SUCCEEDED
             )
             session.rollback()
+
+        # Retrying the same pending allocation must refuse the already
+        # published pathname, even when the bytes would be identical.
+        # In particular, a matching checksum must not be treated as
+        # generation ownership or license for adopt/overwrite/delete.
+        with Session(engine, autoflush=False, expire_on_commit=False) as retry:
+            with pytest.raises(StorageTargetExistsError):
+                finalize_output_document_version_write(
+                    retry, storage, allocation, binary_payload=payload,
+                )
+            retry.rollback()
+        assert (inspection_root / path).read_bytes() == payload
 
         # DB and storage have now diverged. Never infer physical ownership
         # from the DB-only reconciliation report or attempt cleanup.

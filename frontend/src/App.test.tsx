@@ -3295,7 +3295,7 @@ describe("App Slice A.4 search workspace", () => {
       null,
     );
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Không thể lưu vì vòng khắc phục đã bị thay đổi hoặc hồ sơ đã ở trạng thái kết thúc. Tải lại workspace rồi thử lại.",
+      "Không thể lưu vì vòng khắc phục đã bị thay đổi hoặc hồ sơ đã ở trạng thái kết thúc. Bản nháp và phiên bản cũ được giữ lại. Hủy sửa hoặc chọn lại vòng để xem dữ liệu mới trước khi thử lại.",
     );
     expect(screen.getByLabelText("Ghi chú khắc phục")).toHaveValue("Bản nháp mới");
     expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);

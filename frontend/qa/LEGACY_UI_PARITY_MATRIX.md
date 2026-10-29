@@ -1339,6 +1339,10 @@ there is no database, storage, RBAC or concurrency-contract impact.
 
 ### CAPA draft hydration stability follow-up — 2026-10-16
 
+Historical behavior below is superseded for newer-version dirty/open/pending
+drafts by the 2026-10-29 ownership correction below; cycle version is no longer
+treated as an operation identity change.
+
 Baseline `01416846c9d24ba476479c0d0bf5f2f7527f5bad` could overwrite command
 input after an unrelated field editor closed because the passive hydration effect
 reset the complete draft whenever no field was being edited, even when the
@@ -1358,6 +1362,46 @@ contracts are unchanged.
 Regression evidence: the editor-close test failed on baseline with
 `submitted_on` reset from `2026-09-05` to empty and passes after the owner fix.
 Controlled A → B → A tests cover both late update and late submit conflicts.
+
+### CAPA Case/cycle draft and request ownership — 2026-10-29
+
+Baseline657f0ea7c854373d5b115172a47ac84c8aa75cb9. Same-version refetch and
+explicit cycle replacement were already correct. New regressions demonstrate
+that a newer row_version incorrectly closed an open editor, discarded input and
+unlocked pending; create adopted a refreshed Case token and could keep its draft
+or publish completion into a replaced Case. Returning from create to the same
+selected row also leaked the new-cycle draft into an existing cycle editor.
+
+Only CaseRemediationWorkspace state/handlers change: canonical Case+cycle UUID
+owns the operation generation; hydrated draft version is independent. Dirty,
+editing and pending input retains its token across refresh/409. Clean idle input
+and successful callback/newer readback can hydrate; explicit Cancel or row
+activation reloads current data. Create captures its Case token on opening;
+Case/cycle replacement and unmount invalidate old completion. No auto retry,
+extra action, status, limit on cycle count, document lookup or business rule.
+409 text explains the retained token and explicit review/reset boundary.
+
+RED6FAIL/14PASS plus same-row return RED1FAIL/20PASS. CAPA27 tests and targeted
+Inspection/CAPA/Approval/document68PASS, including404/network errors, StrictMode, unsent draft,
+refresh during pending, success readback and A→B→A late completion. Full and exact
+CI counts are in the delivery PR. Final local frontend560PASS/0FAIL/0SKIP,
+37files; targeted68PASS twice; typecheck/lint/buildPASS. Backend CAPA
+contracts14PASS/74deselected, lifecycle/owner12PASS. The full run initially found
+one outdated409-copy assertion; it now verifies the complete review guidance
+without relaxing draft or request-count checks.
+Controlled Edge1366x768/1920x1080/390x844 has scroll/client widths1366/1366,
+1920/1920,390/390. Cancel Enter causes zero callbacks; five explicit fixture
+commands/viewport keep tokens2/3 and Case8; no API requests or navigation writes.
+Evidence `.codex/evidence/inspection-capa-20261029/` is outside Git.
+
+FIXTURE_VERIFIED, not authenticated persistence, screen reader, full-shell
+navigation or VBA runtime acceptance. Workflow-tab unmount still does not promise
+draft restoration. EVIDENCE_MISSING remains supervision fields/notes provenance,
+legacy concurrent editing behavior, authorized A/B readback, Word/NAS and legal
+acceptance. CAPA Word remains BLOCKED_BY_TYPED_DOCUMENT_CONTRACT; metadata is not
+binary/output proof. Existing narrow action-label clipping is not changed by
+this state-only slice. Inspection/Approval refresh-token ownership needs its own
+RED audit; no broad parity promotion or changes to those owners are made here.
 The final CAPA file passes 14/14 in three independent runs, and the exact App
 integration test from workflow `38789920326` passes 10/10 independent runs
 without sleeps, retries, timeout changes or relaxed assertions.

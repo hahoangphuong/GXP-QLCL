@@ -13,6 +13,10 @@ semantics and the pending boundary; no mutation payload or backend rule changed.
 Application drafts also snapshot expected_version at edit start; refresh cannot
 silently upgrade an old draft to the new token. Null (new row) remains null until
 explicit Cancel/reopen, preserving the existing backend conflict contract.
+Post-merge audit correction (Issue #222): null is an optional server version check,
+not create-only. When refresh proves a previously absent application now exists,
+the editor retains the draft and requires Cancel/reopen before submitting. No fake
+409 or request is generated; unobserved creation races remain a backend gap.
 Regression is RED-before-GREEN for both shared callbacks and registration draft409.
 Edge fixtures at1366x768,1920x1080,390x844 show equal page/client widths, zero save
 calls from native Cancel Enter, one explicit Save call with original token, retained

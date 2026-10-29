@@ -1,6 +1,6 @@
 # Legacy VBA/Excel business parity status
 
-Version: **1.0 — 2026-10-29**. Audit baseline main
+Version: **1.1 — 2026-10-29**. Audit baseline main
 `5062b5a3f50f06d8b8348d95199b0bbe5e8f395c`. Scope: available workbook/add-in
 source, approved contracts, current frontend/backend source, regression and
 isolated browser fixtures. This is not authenticated staging, production UAT,
@@ -101,6 +101,18 @@ proved the token changed incorrectly. The application owner now captures the
 token when each field opens, just as assessment already does.409 retains the
 original draft/token; Cancel/reopen adopts the newly reviewed value/version.
 No API/schema or backend concurrency rule changes, merge heuristic or retry.
+
+Version1.1 corrects an important limit found in post-merge source verification:
+backend `_assert_expected_version(None)` skips version checking, even on an
+existing application. The earlier null/409 fixture proved client error handling,
+not server create-only semantics. Actual service reproduction in disposable SQLite
+confirmed the optional-null behavior; backend review is Issue #222. The application
+draft owner now refuses to submit an absent-row draft **after observing** a newly
+created row via refresh, retaining text for explicit Cancel/reopen/review. This is
+an editor ownership boundary, not a synthetic HTTP409 or repair of server races.
+Null creation without an observed owner change keeps the existing API contract.
+An unobserved concurrent creation race still requires the backend owner; no client
+claim of complete concurrency protection is made.
 
 Reproduced on unchanged source: shared9cases had5FAIL/4PASS; registration7cases
 had2FAIL/5PASS. The registration failures demonstrated an unexpected application

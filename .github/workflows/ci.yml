@@ -119,6 +119,12 @@ jobs:
           print(f"PASS: {totals[0]} PostgreSQL reconciliation cases, no skips")
           PY
 
+      - name: Prove output DB rollback leaves physical target for review on disposable PostgreSQL
+        run: |
+          set -euo pipefail
+          test "${DATABASE_URL}" = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_qlcl_test"
+          python -m pytest tests/test_output_finalization_rollback_postgres.py -q -p no:cacheprovider -rs
+
       - name: Run backend tests
         run: python -m pytest -q
 

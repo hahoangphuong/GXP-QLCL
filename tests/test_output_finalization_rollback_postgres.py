@@ -36,7 +36,8 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.mark.parametrize("retry_scenario", ["identical", "different", "externally_replaced"])
-def test_file_remains_after_successful_finalization_when_caller_rolls_back(tmp_path, retry_scenario):
+@pytest.mark.parametrize("first_attempt", ["successful_flush", "write_then_raise", "checksum_raises", "checksum_mismatch"])
+def test_file_remains_after_successful_finalization_when_caller_rolls_back(tmp_path, retry_scenario, first_attempt, monkeypatch):
     assert DATABASE_URL.startswith("postgresql")
     engine = create_engine(DATABASE_URL, future=True)
     token = uuid4().hex
@@ -124,18 +125,41 @@ def test_file_remains_after_successful_finalization_when_caller_rolls_back(tmp_p
             storage_binding_id=None,
         )
 
-        # The storage write + checksum + DB flush succeed, but the caller
-        # deliberately rolls back instead of committing the DB transaction.
+        # A published target remains outside the database transaction
+        # whether the caller rolls back or the storage checksum path fails.
+        original_write = storage.write_stream
+        original_checksum = storage.checksum
+        if first_attempt == "write_then_raise":
+            def write_then_raise(*args, **kwargs):
+                original_write(*args, **kwargs)
+                raise OSError("injected post-publication write failure")
+            monkeypatch.setattr(storage, "write_stream", write_then_raise)
+        elif first_attempt == "checksum_raises":
+            def checksum_raises(*args, **kwargs):
+                raise OSError("injected checksum failure")
+            monkeypatch.setattr(storage, "checksum", checksum_raises)
+        elif first_attempt == "checksum_mismatch":
+            monkeypatch.setattr(storage, "checksum", lambda *args, **kwargs: "0" * 64)
+
         with Session(engine, autoflush=False, expire_on_commit=False) as session:
-            result = finalize_output_document_version_write(
-                session, storage, allocation, binary_payload=payload,
-            )
-            assert result == sha256(payload).hexdigest()
+            if first_attempt == "successful_flush":
+                result = finalize_output_document_version_write(
+                    session, storage, allocation, binary_payload=payload,
+                )
+                assert result == sha256(payload).hexdigest()
+                assert session.get(DocumentGenerationRun, ids["run"]).status == (
+                    DocumentGenerationStatus.SUCCEEDED
+                )
+            else:
+                with pytest.raises((OSError, RuntimeError)):
+                    finalize_output_document_version_write(
+                        session, storage, allocation, binary_payload=payload,
+                    )
             assert (inspection_root / path).read_bytes() == payload
-            assert session.get(DocumentGenerationRun, ids["run"]).status == (
-                DocumentGenerationStatus.SUCCEEDED
-            )
             session.rollback()
+
+        monkeypatch.setattr(storage, "write_stream", original_write)
+        monkeypatch.setattr(storage, "checksum", original_checksum)
 
         # A retry cannot adopt an existing target regardless of payload
         # equality, nor assume a competing writer kept the same bytes.

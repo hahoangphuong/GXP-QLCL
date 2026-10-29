@@ -23,6 +23,27 @@ Status counts: {"BLOCKED": 4, "CONTRADICTED": 4, "PARTIAL": 6, "VERIFIED": 0}. L
 | VKN | BLOCKED | VKN1, VKN2 / VKN1, VKN2 / N/A (branch) / N/A (branch) |
 | VKNx | BLOCKED | VKNx / VKNx / N/A (branch) / N/A (branch) |
 
+## Runtime identity chain and operator protocol
+
+This extends the captured facts without changing any original semantic pin. UNVERIFIED_VERSION_BINDING remains a blocker; no live Excel observation has been supplied or performed by the agent.
+
+| Stage | Category | Scope |
+|---|---|---|
+| PRIMARY_SUPPLIED_ADDIN | BYTE_IDENTITY_PROVEN | supplied snapshot only; not current Excel-loaded or executed bytes |
+| REVIEWED_EXPORT_SET | ENCODING_AMBIGUOUS | 14 writer lines and 9 whole procedures after LF-only normalization; not version identity |
+| BUILD_AND_DISTRIBUTION | VERSION_BINDING_UNVERIFIED | Bounded workspace search; no assertion about unavailable original build/distribution systems. |
+| EXCEL_LOADED_RUNTIME | RUNTIME_IDENTITY_UNVERIFIED | no independently authenticated live-session identity; loader can reuse same-name workbook without a hash check |
+
+Detailed operator-only protocol: `docs/QDKT_RUNTIME_OBSERVATION_PROTOCOL.md`. It separates observed COM path, on-disk snapshot, in-memory executed code and reviewed source. Unsigned, even internally consistent, PID/path/hash metadata never authenticates a collector or closes runtime identity.
+
+Encoding evidence: `tests/fixtures/inspection_qd_kt_runtime_identity_evidence.json` records original line hex/SHA, cp1258 and cp1252 codepoints, and exact ZIP/add-in lines. Get_Tpl has nine differing lines in Cases 7/8/11/12/13, outside Case 2. Get_TTV2 has one differing error-message line in its Fail handler: this CAN be reached on the i=2 call's failure path, not proven executed, and is not a direct Word text write. Neither ambiguity is silently normalized or treated as an approved export encoding.
+
+The add-in docProps/app.xml records producer Application=Microsoft Excel and AppVersion=16.0300, with no custom properties or manifest/build/release/version-named member observed. This is Office producer metadata, not a VBA build/distribution mapping or the version of an observed Excel session. The byte-anchored companion records the metadata XML SHA without collecting author/private core properties.
+
+Verifier boundary review: changed bytes and changed expected metadata cannot pass the independent capture pin; symlink/alternate-root acquisition is delegated to the existing bounded evidence reader. Known binary pins are checked before ZIP/VBA parsing. Malformed foreign projects or case-colliding module attacks are not reachable past unchanged byte pins; parser defense tests do not claim such a bypass was found. Static capture never substitutes for requested fresh extraction. Repository-code/dependency compromise is outside this input-only trust claim.
+
+New demonstrated gap: escaped lone UTF-16 surrogates were accepted by the JSON reader and failed only during later UTF-8 canonicalization. They now fail at the shared parser owner, including nested values/keys; valid Unicode and all old pins remain unchanged. The observation assessor is a diagnostic contract, not an approval or memory-attestation API.
+
 ## Runtime/source evidence hardening
 
 Evidence classes remain separate: approved business policy; reviewed ZIP source; captured add-in source; exact original binary bytes; Word output/legal acceptance. The new capture is pinned static evidence, not a claim that local files were freshly verified by the normal audit.

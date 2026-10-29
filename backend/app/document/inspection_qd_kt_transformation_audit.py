@@ -18,6 +18,7 @@ from backend.app.document.inspection_qd_kt_provenance_gate import (
 from backend.app.document.inspection_qd_kt_template_asset_contract import load_inspection_qd_kt_template_assets
 from backend.app.document.inspection_qd_kt_vba_bookmark_series import reconcile_qdkt_i2_bookmarks
 from backend.app.document.inspection_qd_kt_runtime_provenance import load_runtime_source_evidence, RUNTIME_EVIDENCE_SHA256
+from backend.app.document.inspection_qd_kt_runtime_identity import runtime_identity_chain
 
 ROOT = Path(__file__).resolve().parents[3]
 OBSERVATION = ROOT / "tests/fixtures/inspection_qd_kt_observed_template_binaries.json"
@@ -220,6 +221,7 @@ _SPECS = {
 }
 
 _BACKEND_FILES = [
+    "inspection_qd_kt_runtime_identity.py",
     "inspection_qd_kt_vba_bookmark_series.py", "inspection_qd_kt_runtime_provenance.py",
     "inspection_qd_kt_case_readiness.py", "inspection_qd_kt_case_source_bundle.py",
     "inspection_qd_kt_registered_site.py", "inspection_qd_kt_team_source.py",
@@ -322,6 +324,7 @@ def build_qdkt_transformation_audit(*, source_path: Path = SOURCE, observation_p
         "runtime_source_provenance": {"evidence_class": "PINNED_STATIC_PRIMARY_CAPTURE_NOT_CURRENT_LOCAL_VERIFICATION",
             "path": "tests/fixtures/inspection_qd_kt_runtime_source_evidence.json", "semantic_sha256": RUNTIME_EVIDENCE_SHA256,
             "capture": runtime},
+        "runtime_identity_chain": runtime_identity_chain(),
         "call_chain": inventory["call_chain"], "logical_operation_count": len(result),
         "physical_evidence_kind": "COMMITTED_PRIMARY_BINARY_OBSERVATION_NOT_FRESH_BINARY_OR_WORD_EXECUTION",
         "backend_source_utf8_lf_sha256": module_hashes,
@@ -357,6 +360,18 @@ def transformation_audit_markdown(report: dict) -> str:
         targets = [", ".join(r["effective_targets"]) if r["branch_reachable"] else "N/A (branch)" for r in row["physical_targets"]]
         lines.append(f"| {row['logical_operation']} | {row['status']} | {' / '.join(t or 'absent' for t in targets)} |")
     runtime = report["runtime_source_provenance"]["capture"]
+    chain = report["runtime_identity_chain"]
+    lines.extend(["", "## Runtime identity chain and operator protocol", "",
+        "This extends the captured facts without changing any original semantic pin. UNVERIFIED_VERSION_BINDING remains a blocker; no live Excel observation has been supplied or performed by the agent.", "",
+        "| Stage | Category | Scope |", "|---|---|---|"])
+    for stage in chain["stages"]:
+        lines.append(f"| {stage['stage']} | {stage['category']} | {stage['scope']} |")
+    lines.extend(["", "Detailed operator-only protocol: `docs/QDKT_RUNTIME_OBSERVATION_PROTOCOL.md`. It separates observed COM path, on-disk snapshot, in-memory executed code and reviewed source. Unsigned, even internally consistent, PID/path/hash metadata never authenticates a collector or closes runtime identity.", "",
+        "Encoding evidence: `tests/fixtures/inspection_qd_kt_runtime_identity_evidence.json` records original line hex/SHA, cp1258 and cp1252 codepoints, and exact ZIP/add-in lines. Get_Tpl has nine differing lines in Cases 7/8/11/12/13, outside Case 2. Get_TTV2 has one differing error-message line in its Fail handler: this CAN be reached on the i=2 call's failure path, not proven executed, and is not a direct Word text write. Neither ambiguity is silently normalized or treated as an approved export encoding.", "",
+        "The add-in docProps/app.xml records producer Application=Microsoft Excel and AppVersion=16.0300, with no custom properties or manifest/build/release/version-named member observed. This is Office producer metadata, not a VBA build/distribution mapping or the version of an observed Excel session. The byte-anchored companion records the metadata XML SHA without collecting author/private core properties.", "",
+        "Verifier boundary review: changed bytes and changed expected metadata cannot pass the independent capture pin; symlink/alternate-root acquisition is delegated to the existing bounded evidence reader. Known binary pins are checked before ZIP/VBA parsing. Malformed foreign projects or case-colliding module attacks are not reachable past unchanged byte pins; parser defense tests do not claim such a bypass was found. Static capture never substitutes for requested fresh extraction. Repository-code/dependency compromise is outside this input-only trust claim.", "",
+        "New demonstrated gap: escaped lone UTF-16 surrogates were accepted by the JSON reader and failed only during later UTF-8 canonicalization. They now fail at the shared parser owner, including nested values/keys; valid Unicode and all old pins remain unchanged. The observation assessor is a diagnostic contract, not an approval or memory-attestation API.",
+    ])
     lines.extend(["", "## Runtime/source evidence hardening", "",
         "Evidence classes remain separate: approved business policy; reviewed ZIP source; captured add-in source; exact original binary bytes; Word output/legal acceptance. The new capture is pinned static evidence, not a claim that local files were freshly verified by the normal audit.", "",
         "### Artifact and acquisition inventory", "",

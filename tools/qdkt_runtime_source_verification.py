@@ -14,7 +14,7 @@ from backend.app.document.inspection_qd_kt_runtime_provenance import (
     QdKtRuntimeEvidenceBlocked, normalized_source, compare_source_text,
     load_runtime_source_evidence, validate_runtime_artifact_bytes, validate_runtime_capture,
 )
-from backend.app.document.inspection_qd_kt_provenance_gate import load_qdkt_source_provenance
+from backend.app.document.inspection_qd_kt_provenance_gate import load_qdkt_source_provenance, semantic_sha256
 from backend.app.document.inspection_qd_kt_template_asset_contract import load_inspection_qd_kt_template_assets
 from backend.app.document.inspection_qd_kt_dotx_binary_audit import inspect_qdkt_dotx_bytes
 
@@ -177,7 +177,13 @@ def verify_runtime_sources(artifacts: dict[str, bytes]) -> dict:
     snapshots = validate_runtime_artifact_bytes(artifacts)
     capture = capture_runtime_sources(snapshots)
     validate_runtime_capture(capture)
+    from tools.qdkt_runtime_identity_evidence import capture_encoding_evidence
+    from backend.app.document.inspection_qd_kt_runtime_identity import load_runtime_identity_evidence
+    encoding = capture_encoding_evidence(snapshots)
+    if semantic_sha256(encoding) != semantic_sha256(load_runtime_identity_evidence()["encoding"]):
+        raise QdKtRuntimeEvidenceBlocked("QDKT_RUNTIME_ENCODING_EVIDENCE_MISMATCH")
     return {"primary_bytes_verified": True, "reviewed_capture_reproduced": True,
+        "encoding_primary_bytes_reproduced": True, "workbook_loader_freshly_reacquired_in_this_mode": False,
         "source_to_runtime_version_binding": "UNVERIFIED_VERSION_BINDING", "ready_to_render": False,
         "template_bookmark_counts": {r["gxp_type"]: r["bookmark_count"] for r in capture["templates"]}}
 

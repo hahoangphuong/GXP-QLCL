@@ -102,8 +102,8 @@ def semantic_sha256(value: dict) -> str:
     return sha256(json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
 
 
-def read_provenance_json(path: Path) -> dict:
-    """Bounded single acquisition; reject duplicate keys instead of losing them."""
+def parse_provenance_json_bytes(raw: bytes) -> dict:
+    """Decode one bounded immutable snapshot without normalization or re-open."""
     def unique(pairs):
         result = {}
         for key, value in pairs:
@@ -118,19 +118,38 @@ def read_provenance_json(path: Path) -> dict:
         if not math.isfinite(value):
             raise QdKtProvenanceGateBlocked("QDKT_SOURCE_PROVENANCE_INCOMPLETE")
         return value
+    def require_utf8(value):
+        if isinstance(value, str):
+            value.encode("utf-8")
+        elif isinstance(value, dict):
+            for key, item in value.items():
+                require_utf8(key)
+                require_utf8(item)
+        elif isinstance(value, list):
+            for item in value:
+                require_utf8(item)
     try:
-        with Path(path).open("rb") as stream:
-            raw = stream.read(2 * 1024 * 1024 + 1)
-        if len(raw) > 2 * 1024 * 1024:
+        if type(raw) is not bytes or len(raw) > 2 * 1024 * 1024:
             raise ValueError("size")
         value = json.loads(raw.decode("utf-8"), object_pairs_hook=unique, parse_constant=invalid_constant, parse_float=finite_float)
         if type(value) is not dict:
             raise ValueError("object")
+        require_utf8(value)
         return value
     except (OSError, UnicodeError, ValueError, RecursionError) as exc:
         if isinstance(exc, QdKtProvenanceGateBlocked):
             raise
         raise QdKtProvenanceGateBlocked("QDKT_SOURCE_PROVENANCE_INCOMPLETE") from exc
+
+
+def read_provenance_json(path: Path) -> dict:
+    """Bounded single acquisition; reject duplicates, nonfinite and invalid UTF-8."""
+    try:
+        with Path(path).open("rb") as stream:
+            raw = stream.read(2 * 1024 * 1024 + 1)
+    except OSError as exc:
+        raise QdKtProvenanceGateBlocked("QDKT_SOURCE_PROVENANCE_INCOMPLETE") from exc
+    return parse_provenance_json_bytes(raw)
 
 
 @dataclass(frozen=True)

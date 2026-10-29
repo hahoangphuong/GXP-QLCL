@@ -1,5 +1,23 @@
 # LEGACY_UI_PARITY_MATRIX — Issue #1
 
+## Inline editor business-action boundaries — 2026-10-29
+
+Baseline main `5062b5a3f50f06d8b8348d95199b0bbe5e8f395c`. The versioned
+cross-module business inventory is `docs/LEGACY_VBA_EXCEL_PARITY_STATUS.md`;
+UI, workflow, data, persistence, output and authorization are classified separately.
+MainForm.GetSetData/TextForm.GetText establish distinct OK/Cancel behavior.
+EditableDetailValue previously intercepted bubbled Enter on native buttons/selects,
+cancelled pending work through Escape, and allowed another field to activate while
+its aggregate was pending. The shared owner now preserves native control/IME
+semantics and the pending boundary; no mutation payload or backend rule changed.
+Regression is RED-before-GREEN for both shared callbacks and registration draft409.
+Edge fixtures at1366x768,1920x1080,390x844 show equal page/client widths, zero save
+calls from native Cancel Enter, one explicit Save call with original token, retained
+409 draft and no API requests. Evidence is outside Git under
+`.codex/evidence/legacy-business-parity-20261029/`. FIXTURE_VERIFIED only; no live
+authentication, storage, Word or screen-reader acceptance is claimed. Master/history,
+rail, action panel, two filters and all approved layout exceptions remain unchanged.
+
 Direction: the user decision dated 2026-10-10 supersedes earlier aesthetic
 recommendations in UI_REDESIGN_VBA_REFERENCE and PHASE12. Preserve legacy UI where
 evidenced. Baseline: `50576b0b383161e26e27b6cdc4a1a469aff1ae17`; work branch:

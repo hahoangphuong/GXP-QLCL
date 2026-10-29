@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import replace
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -9,7 +10,7 @@ from sqlalchemy import create_engine, delete, event, select, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
 
-from backend.app.db.enums import CaseState
+from backend.app.db.enums import CaseState, DocumentGenerationStatus
 from backend.app.db.models.phase1 import (
     Case,
     Company,
@@ -18,6 +19,7 @@ from backend.app.db.models.phase1 import (
     DocumentVariant,
     Site,
 )
+from backend.app.document.output_version import OutputVersionAllocationError, allocate_output_document_version
 from backend.app.document.persistence import (
     DocumentPersistenceError,
     prepare_generation_persistence,
@@ -131,6 +133,31 @@ def test_concurrent_same_key_preparation_waits_before_document_mutations():
         assert reused.document_id == first.document_id
         assert reused.document_variant_id == first.document_variant_id
         contender.commit()
+
+        # A terminal generation with the same key is a replay of that
+        # generation, not permission to allocate/publish another output.
+        with factory() as completed:
+            run = completed.get(DocumentGenerationRun, first.generation_run_id)
+            run.status = DocumentGenerationStatus.SUCCEEDED
+            completed.commit()
+
+        with factory() as completed_retry:
+            replay = prepare_generation_persistence(completed_retry, plan)
+            assert replay.reused_generation_run is True
+            assert replay.generation_run_id == first.generation_run_id
+
+            class NoStorageIO:
+                def __getattr__(self, name):
+                    raise AssertionError(f"terminal replay attempted storage operation: {name}")
+
+            with pytest.raises(OutputVersionAllocationError, match="expected 'pending'"):
+                allocate_output_document_version(
+                    completed_retry,
+                    NoStorageIO(),
+                    SimpleNamespace(persisted_state=replay),
+                    output_filename="replayed.docx",
+                )
+            completed_retry.rollback()
 
         # The same key with a genuinely different request still fails closed.
         different_payload = replace(

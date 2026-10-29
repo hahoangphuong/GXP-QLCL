@@ -13,7 +13,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from backend.app.document.output_reconciliation import (
-    OutputLocator, OutputReconciliationReport, reconcile_output_locators,\n    validate_output_locator_request,
+    OutputLocator, OutputReconciliationReport, reconcile_output_locators,
+    validate_output_locator_request,
 )
 
 

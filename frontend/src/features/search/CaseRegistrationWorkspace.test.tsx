@@ -19,6 +19,28 @@ function registration(value = workspace, applicationSave = vi.fn(), assessmentSa
 }
 
 describe("registration presentation preserves existing editor owners", () => {
+  it.each([4, null])("keeps the application draft's %s token through refresh, then uses the new token after Cancel/reopen", async version => {
+    const original = { ...workspace, application: { ...workspace.application, row_version: version } };
+    const save = vi.fn().mockRejectedValue(Object.assign(new Error("stale application"), { status: 409 }));
+    const { rerender } = render(registration(original, save));
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+    fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "local draft" } });
+    const refreshed = { ...original, application: { ...original.application, row_version: 5, dossier_code: "remote value" } };
+    rerender(registration(refreshed, save));
+    await act(async () => fireEvent.keyDown(screen.getByLabelText("Mã hồ sơ"), { key: "Enter" }));
+    expect(save).toHaveBeenLastCalledWith({ expected_version: version, dossier_code: "local draft" });
+    expect(save).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("local draft");
+    expect(screen.getByRole("alert")).toHaveTextContent("đã bị thay đổi");
+    fireEvent.keyDown(screen.getByLabelText("Mã hồ sơ"), { key: "Escape" });
+    fireEvent.keyDown(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }), { key: "F2" });
+    expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("remote value");
+    fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "reviewed new draft" } });
+    await act(async () => fireEvent.keyDown(screen.getByLabelText("Mã hồ sơ"), { key: "Enter" }));
+    expect(save).toHaveBeenLastCalledWith({ expected_version: 5, dossier_code: "reviewed new draft" });
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
   it("Enter on the application Cancel button never submits a mutation", async () => {
     const save = vi.fn();
     render(registration(workspace, save));

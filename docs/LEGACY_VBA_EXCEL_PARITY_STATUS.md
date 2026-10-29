@@ -93,6 +93,15 @@ as a save, including Cancel/Save/select, and Escape called onCancel even when
 pending. IME Enter could also save before composition finished. Other read-only
 fields could activate while the same aggregate was pending, replacing the editor.
 
+A second owner defect was demonstrated in CaseApplicationWorkspace: its draft
+survived refresh but Save read the refreshed prop's row_version instead of the
+version at edit start. That could submit older input with a newer optimistic
+token. Two RED cases (existing version4 and new-row null, both refreshed to5)
+proved the token changed incorrectly. The application owner now captures the
+token when each field opens, just as assessment already does.409 retains the
+original draft/token; Cancel/reopen adopts the newly reviewed value/version.
+No API/schema or backend concurrency rule changes, merge heuristic or retry.
+
 Reproduced on unchanged source: shared9cases had5FAIL/4PASS; registration7cases
 had2FAIL/5PASS. The registration failures demonstrated an unexpected application
 mutation from Enter on Cancel and a lost assessment draft after pending Escape
@@ -110,14 +119,16 @@ Buttons still use their existing click handlers; no downstream rescue added.
 
 Regression evidence includes native Edge fixture Cancel Enter with zero save
 calls, Save Enter once, Tab/Shift+Tab order, pending Escape, retained draft after409
-with expected_version7 and explicit post-error cancellation. Browser fixtures use
+with expected_version7 and explicit post-error cancellation. Application refresh
+keeps its token4; only Cancel/reopen adopts5 (three explicit fixture saves total,
+tokens7/4/5). Browser fixtures use
 synthetic canonical-shaped identities and local promise callbacks, not real
 backend mutations. No real company/case is hardcoded. At1366x768,1920x1080,390x844
 document scroll/client widths match1366/1366,1920/1920,390/390; screenshots and
 measurements are outside Git under `.codex/evidence/legacy-business-parity-20261029/`.
 This is FIXTURE_VERIFIED, not authenticated integration or SCREEN_READER_PASS.
 
-Local validation: targeted41PASS on two final implementation runs; strengthened
+Keyboard-stage local validation: targeted41PASS on two implementation runs; strengthened
 shared/registration subset18PASS; full frontend544PASS/0FAIL/0SKIP across37files;
 lint/typecheck/production build PASS. Relevant backend contract/hygiene subset
 29PASS, plus two named reassessment persistence tests PASS (86 unrelated tests
@@ -125,6 +136,9 @@ deselected by the explicit selection, not skipped). No timeout or assertion was
 weakened. Exact tested SHA and six required CI gates are recorded in the delivery
 PR. Main drift #219 (`85c258fc37a4da81dd3b8a9dfda695ae2b927aae`) was audited:
 one PostgreSQL failure-injection test-only change, preserved without editing.
+The added application-token regression was RED2FAIL/7PASS, then combined targeted
+coverage64PASS including the application/folder owner, inspection and CAPA.
+Final combined full-suite and exact-HEAD CI totals are recorded in the PR handoff.
 
 ## Business contracts retained / backend handoff
 

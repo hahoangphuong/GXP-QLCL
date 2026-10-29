@@ -63,6 +63,25 @@ jobs:
           GXP_QDKT_POSTGRES_CONCURRENCY_INTEGRATION: "1"
         run: python -m pytest tests/test_inspection_qd_kt_transaction_visibility_postgres.py tests/test_inspection_qd_kt_real_orm_owner_postgres.py tests/test_inspection_qd_kt_submission_timestamp_postgres.py -q -p no:cacheprovider
 
+      - name: Verify output reconciliation on disposable PostgreSQL (no skips)
+        run: |
+          set -euo pipefail
+          # This gate runs against the migrated gxp_qlcl_test service database,
+          # never a production DB, filesystem output, NAS or GCS.
+          test "${DATABASE_URL}" = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/gxp_qlcl_test"
+          python -m pytest -q -rA -p no:cacheprovider \
+            tests/test_output_reconciliation_postgres.py \
+            tests/test_output_reconciliation_snapshot_postgres.py \
+            tests/test_output_reconciliation_real_orm_snapshot_postgres.py \
+            tests/test_output_reconciliation_verified_snapshot.py \
+            tests/test_output_reconciliation_midbatch_failure_postgres.py \
+            | tee "${RUNNER_TEMP}/output-reconciliation-postgres-tests.log"
+          # A green pytest exit is not sufficient if these tests were skipped.
+          if grep -Eq '([0-9]+ skipped|SKIPPED)' "${RUNNER_TEMP}/output-reconciliation-postgres-tests.log"; then
+            echo "STOP: output reconciliation PostgreSQL evidence was skipped." >&2
+            exit 1
+          fi
+
       - name: Run backend tests
         run: python -m pytest -q
 

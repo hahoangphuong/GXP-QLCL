@@ -36,7 +36,7 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.mark.parametrize("retry_scenario", ["identical", "different", "externally_replaced"])
-@pytest.mark.parametrize("first_attempt", ["successful_flush", "write_then_raise", "checksum_raises", "checksum_mismatch"])
+@pytest.mark.parametrize("first_attempt", ["successful_flush", "write_then_raise", "checksum_raises", "checksum_mismatch", "db_flush_then_raise"])
 def test_file_remains_after_successful_finalization_when_caller_rolls_back(tmp_path, retry_scenario, first_attempt, monkeypatch):
     assert DATABASE_URL.startswith("postgresql")
     engine = create_engine(DATABASE_URL, future=True)
@@ -142,6 +142,17 @@ def test_file_remains_after_successful_finalization_when_caller_rolls_back(tmp_p
             monkeypatch.setattr(storage, "checksum", lambda *args, **kwargs: "0" * 64)
 
         with Session(engine, autoflush=False, expire_on_commit=False) as session:
+            if first_attempt == "db_flush_then_raise":
+                original_flush = session.flush
+                def db_flush_then_raise(*args, **kwargs):
+                    # SQL flush has reached PostgreSQL, but the caller
+                    # observes an error before the transaction commits.
+                    original_flush(*args, **kwargs)
+                    assert session.get(DocumentGenerationRun, ids["run"]).status == (
+                        DocumentGenerationStatus.SUCCEEDED
+                    )
+                    raise OSError("injected failure after SQL flush")
+                monkeypatch.setattr(session, "flush", db_flush_then_raise)
             if first_attempt == "successful_flush":
                 result = finalize_output_document_version_write(
                     session, storage, allocation, binary_payload=payload,

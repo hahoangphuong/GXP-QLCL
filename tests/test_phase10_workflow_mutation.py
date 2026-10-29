@@ -4004,3 +4004,67 @@ def test_reassessment_without_origin_keeps_user_owned_context_and_no_invented_sc
             CaseEvaluationScope.case_id == actual.id)) is None
         assert session.scalar(select(InspectionPlan).where(
             InspectionPlan.case_id == actual.id)) is None
+
+def test_case_application_null_token_is_create_only_and_conflict_has_no_audit():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    user = build_authenticated_user("application-cas", "manager")
+    with Session(engine) as session:
+        case_id = seed_case(session)
+    def write(session, *, expected_version, value):
+        return service.upsert_case_application(
+            session, case_id=case_id, expected_version=expected_version,
+            submitted_on=None, dossier_code=value, dossier_reference=None,
+            applicant_name=None, reason="Concurrency regression", user=user,
+            fields_set={"dossier_code"},
+        )
+    with Session(engine) as session:
+        created = write(session, expected_version=None, value="original")
+        session.commit()
+        version = created["row_version"]
+    with Session(engine) as session:
+        audits_before = session.scalar(select(func.count(AuditEvent.id)))
+        events_before = session.scalar(select(func.count(InspectionEvent.id)))
+        with pytest.raises(HTTPException) as exc:
+            write(session, expected_version=None, value="stale null-token draft")
+        assert exc.value.status_code == 409
+        session.rollback()
+    with Session(engine) as session:
+        stage = session.scalar(select(CaseApplication).where(CaseApplication.case_id == case_id))
+        assert stage.dossier_code == "original"
+        assert stage.row_version == version
+        assert session.scalar(select(func.count(AuditEvent.id))) == audits_before
+        assert session.scalar(select(func.count(InspectionEvent.id))) == events_before
+        updated = write(session, expected_version=stage.row_version, value="current token")
+        session.commit()
+        assert updated["dossier_code"] == "current token"
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as exc:
+            write(session, expected_version=version, value="stale numeric draft")
+        assert exc.value.status_code == 409
+        session.rollback()
+    engine.dispose()
+
+
+def test_case_application_numeric_token_does_not_implicitly_create_stage():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    with Session(engine) as session:
+        case_id = seed_case(session)
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as exc:
+            service.upsert_case_application(
+                session, case_id=case_id, expected_version=1,
+                submitted_on=None, dossier_code="wrong-create",
+                dossier_reference=None, applicant_name=None,
+                reason=None, user=build_authenticated_user("app-create", "manager"),
+                fields_set={"dossier_code"},
+            )
+        assert exc.value.status_code == 409
+        session.rollback()
+    with Session(engine) as session:
+        assert session.scalar(select(func.count(CaseApplication.id))) == 0
+    engine.dispose()
+

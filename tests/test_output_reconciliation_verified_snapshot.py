@@ -59,3 +59,32 @@ def test_verified_snapshot_sets_read_only_repeatable_read_and_retains_no_transac
             connection.rollback()
     finally:
         engine.dispose()
+
+
+class NoConnectEngine:
+    dialect = type("Dialect", (), {"name": "postgresql"})()
+
+    def connect(self):
+        raise AssertionError("unexpected connection")
+
+
+def test_invalid_snapshot_inventory_is_rejected_before_connect():
+    examples = (
+        ([OutputLocator("inspection", "../bad.docx")], 1000),
+        ([OutputLocator("inspection", "a.docx")] * 2, 1000),
+        ([OutputLocator("inspection", "a.docx")], 0),
+        ([OutputLocator("inspection", "a.docx")], True),
+        ([OutputLocator("inspection", "a.docx"), OutputLocator("dkkd", "b.docx")], 1),
+    )
+    for locators, max_locators in examples:
+        with pytest.raises(ValueError):
+            reconcile_output_locators_verified_snapshot(
+                NoConnectEngine(), locators, max_locators=max_locators,
+            )
+
+
+def test_valid_snapshot_inventory_proceeds_to_connection():
+    with pytest.raises(AssertionError, match="unexpected connection"):
+        reconcile_output_locators_verified_snapshot(
+            NoConnectEngine(), [OutputLocator("inspection", "safe.docx")],
+        )

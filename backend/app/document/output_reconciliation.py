@@ -62,7 +62,10 @@ def _valid_locator(locator: OutputLocator) -> bool:
     return all(part not in ("", ".", "..") for part in path.split("/"))
 
 
-def reconcile_output_locators(
+def validate_output_locator_request(
+    locators: Iterable[OutputLocator], *, max_locators: int = 1000,
+) -> None:
+    """Reject invalid inventories before starting any database transaction."""
     session: Session,
     locators: Iterable[OutputLocator],
     *,
@@ -85,6 +88,21 @@ def reconcile_output_locators(
     if len(set(pairs)) != len(pairs):
         raise ValueError("Duplicate output locator.")
 
+
+
+def reconcile_output_locators(
+    session: Session,
+    locators: Iterable[OutputLocator],
+    *,
+    max_locators: int = 1000,
+) -> OutputReconciliationReport:
+    """SELECT-only exact-locator report; caller must own a read-only session.
+
+    Only DB registration is observed. No filesystem snapshot, physical
+    identity, generation pin, ownership proof, or orphan verdict is supplied.
+    """
+    validate_output_locator_request(locators, max_locators=max_locators)
+    pairs = [(loc.root, loc.relative_path) for loc in locators]
     # No claim of a transaction-stable snapshot is possible from this helper.
     # In PostgreSQL READ COMMITTED, version SELECTs and generation-run SELECTs
     # can observe different committed states. Callers needing one snapshot must

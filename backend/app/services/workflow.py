@@ -2946,13 +2946,34 @@ class CaseWorkflowService:
             raise HTTPException(status_code=422, detail="dossier_reference is a read-only compatibility field.")
         row = self._get_case(session, case_id)
         self._assert_case_not_terminal(row, operation="application update")
+        # Serialize create-vs-update decisions on the owning Case. Without
+        # this lock, two null-token clients can both observe a missing stage.
+        session.execute(
+            select(Case.id).where(Case.id == row.id).with_for_update()
+        ).scalar_one()
+        stage = session.scalars(
+            select(CaseApplication).where(CaseApplication.case_id == row.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).first()
+        if stage is None:
+            if expected_version is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Case application does not exist for the supplied expected_version.",
+                )
+        elif expected_version is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Case application already exists; expected_version is required to update it.",
+            )
+        else:
+            self._assert_expected_version(stage, expected_version, label="case_application")
         actor = self._get_or_create_app_user(session, user)
-        stage = session.scalars(select(CaseApplication).where(CaseApplication.case_id == row.id)).first()
         if stage is None:
             stage = CaseApplication(case_id=row.id)
             session.add(stage)
             session.flush()
-        self._assert_expected_version(stage, expected_version, label="case_application")
         before = self._snapshot_fields(
             stage,
             ["submitted_on", "dossier_code", "dossier_reference", "applicant_name"],

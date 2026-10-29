@@ -76,11 +76,23 @@ jobs:
             tests/test_output_reconciliation_verified_snapshot.py \
             tests/test_output_reconciliation_midbatch_failure_postgres.py \
             | tee "${RUNNER_TEMP}/output-reconciliation-postgres-tests.log"
-          # A green pytest exit is not sufficient if these tests were skipped.
-          if grep -Eq '([0-9]+ skipped|SKIPPED)' "${RUNNER_TEMP}/output-reconciliation-postgres-tests.log"; then
-            echo "STOP: output reconciliation PostgreSQL evidence was skipped." >&2
-            exit 1
-          fi
+          # Verify all expected parameterized cases ran, not merely that
+          # pytest exited zero and omitted the word SKIPPED.
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          import os
+          output = (Path(os.environ["RUNNER_TEMP"]) / "output-reconciliation-postgres-tests.log").read_text()
+          summaries = re.findall(r"(?m)^=+ (.*?) =+$", output)
+          assert summaries, "Missing pytest terminal summary"
+          summary = summaries[-1].lower()
+          assert "skipped" not in summary and "deselected" not in summary, summary
+          assert "failed" not in summary and "error" not in summary, summary
+          match = re.search(r"\\b(\\d+) passed\\b", summary)
+          assert match, f"No positive passed count: {summary}"
+          assert int(match.group(1)) >= 13, f"Unexpected regression collection: {summary}"
+          print(f"PASS: PostgreSQL reconciliation regression collection: {summary}")
+          PY
 
       - name: Run backend tests
         run: python -m pytest -q

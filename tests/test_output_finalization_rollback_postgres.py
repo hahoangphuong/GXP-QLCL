@@ -35,7 +35,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_file_remains_after_successful_finalization_when_caller_rolls_back(tmp_path):
+@pytest.mark.parametrize("retry_scenario", ["identical", "different", "externally_replaced"])
+def test_file_remains_after_successful_finalization_when_caller_rolls_back(tmp_path, retry_scenario):
     assert DATABASE_URL.startswith("postgresql")
     engine = create_engine(DATABASE_URL, future=True)
     token = uuid4().hex
@@ -136,21 +137,28 @@ def test_file_remains_after_successful_finalization_when_caller_rolls_back(tmp_p
             )
             session.rollback()
 
-        # Retrying the same pending allocation must refuse the already
-        # published pathname, even when the bytes would be identical.
-        # In particular, a matching checksum must not be treated as
-        # generation ownership or license for adopt/overwrite/delete.
+        # A retry cannot adopt an existing target regardless of payload
+        # equality, nor assume a competing writer kept the same bytes.
+        # The replacement scenario simulates a separate writer, not an
+        # authorized cleanup or overwrite by the document pipeline.
+        retry_payload = payload
+        expected_physical_bytes = payload
+        if retry_scenario == "different":
+            retry_payload = b"different-rendered-document-not-issued"
+        elif retry_scenario == "externally_replaced":
+            expected_physical_bytes = b"independent-writer-replaced-path"
+            (inspection_root / path).write_bytes(expected_physical_bytes)
         with Session(engine, autoflush=False, expire_on_commit=False) as retry:
             with pytest.raises(StorageTargetExistsError):
                 finalize_output_document_version_write(
-                    retry, storage, allocation, binary_payload=payload,
+                    retry, storage, allocation, binary_payload=retry_payload,
                 )
             retry.rollback()
-        assert (inspection_root / path).read_bytes() == payload
+        assert (inspection_root / path).read_bytes() == expected_physical_bytes
 
         # DB and storage have now diverged. Never infer physical ownership
         # from the DB-only reconciliation report or attempt cleanup.
-        assert (inspection_root / path).read_bytes() == payload
+        assert (inspection_root / path).read_bytes() == expected_physical_bytes
         with Session(engine, autoflush=False) as session:
             version = session.get(DocumentVersion, ids["version"])
             run = session.get(DocumentGenerationRun, ids["run"])

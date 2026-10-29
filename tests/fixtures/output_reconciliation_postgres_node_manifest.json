@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "node_ids": [
+    "tests/test_output_reconciliation_postgres.py::test_reconciliation_uses_typed_uuid_and_exact_locator_on_postgres",
+    "tests/test_output_reconciliation_snapshot_postgres.py::test_two_selects_have_different_snapshot_contracts[READ COMMITTED-1]",
+    "tests/test_output_reconciliation_snapshot_postgres.py::test_two_selects_have_different_snapshot_contracts[REPEATABLE READ-0]",
+    "tests/test_output_reconciliation_real_orm_snapshot_postgres.py::test_real_output_reconciliation_observes_caller_isolation[READ COMMITTED-succeeded]",
+    "tests/test_output_reconciliation_real_orm_snapshot_postgres.py::test_real_output_reconciliation_observes_caller_isolation[REPEATABLE READ-pending]",
+    "tests/test_output_reconciliation_verified_snapshot.py::test_verified_snapshot_rejects_other_database_engines_before_query",
+    "tests/test_output_reconciliation_verified_snapshot.py::test_verified_snapshot_sets_read_only_repeatable_read_and_retains_no_transaction",
+    "tests/test_output_reconciliation_verified_snapshot.py::test_invalid_snapshot_inventory_is_rejected_before_connect",
+    "tests/test_output_reconciliation_verified_snapshot.py::test_valid_snapshot_inventory_proceeds_to_connection",
+    "tests/test_output_reconciliation_midbatch_failure_postgres.py::test_mid_batch_postgres_failure_is_rolled_back_without_verified_report"
+  ]
+}

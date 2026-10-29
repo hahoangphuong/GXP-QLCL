@@ -24,6 +24,8 @@ from backend.app.document.output_reconciliation import (
 from backend.app.document.output_version import (
     OutputVersionAllocation, finalize_output_document_version_write,
 )
+from backend.app.services.document_api import DocumentWorkflowService
+from types import SimpleNamespace
 from backend.app.storage.filesystem import FilesystemStorageService
 from backend.app.storage.types import StorageConfig, StorageTargetExistsError
 
@@ -36,8 +38,9 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.mark.parametrize("retry_scenario", ["identical", "different", "externally_replaced"])
+@pytest.mark.parametrize("run_before_retry", ["pending", "failed"])
 @pytest.mark.parametrize("first_attempt", ["successful_flush", "write_then_raise", "checksum_raises", "checksum_mismatch", "db_flush_then_raise"])
-def test_file_remains_after_successful_finalization_when_caller_rolls_back(tmp_path, retry_scenario, first_attempt, monkeypatch):
+def test_file_remains_after_successful_finalization_when_caller_rolls_back(tmp_path, retry_scenario, run_before_retry, first_attempt, monkeypatch):
     assert DATABASE_URL.startswith("postgresql")
     engine = create_engine(DATABASE_URL, future=True)
     token = uuid4().hex
@@ -183,7 +186,22 @@ def test_file_remains_after_successful_finalization_when_caller_rolls_back(tmp_p
         elif retry_scenario == "externally_replaced":
             expected_physical_bytes = b"independent-writer-replaced-path"
             (inspection_root / path).write_bytes(expected_physical_bytes)
+        if run_before_retry == "failed":
+            with Session(engine) as committed_failure:
+                previous_run = committed_failure.get(DocumentGenerationRun, ids["run"])
+                previous_run.status = DocumentGenerationStatus.FAILED
+                previous_run.error_summary = "earlier render left uncertain output"
+                committed_failure.commit()
         with Session(engine, autoflush=False, expire_on_commit=False) as retry:
+            if run_before_retry == "failed":
+                DocumentWorkflowService._claim_reused_generation_run_for_render(
+                    retry,
+                    SimpleNamespace(persisted_state=SimpleNamespace(
+                        reused_generation_run=True,
+                        generation_run_id=ids["run"],
+                    )),
+                )
+                assert retry.get(DocumentGenerationRun, ids["run"]).status == DocumentGenerationStatus.PENDING
             with pytest.raises(StorageTargetExistsError):
                 finalize_output_document_version_write(
                     retry, storage, allocation, binary_payload=retry_payload,
@@ -200,7 +218,13 @@ def test_file_remains_after_successful_finalization_when_caller_rolls_back(tmp_p
             assert version.checksum_sha256 is None
             assert version.is_current is False
             assert version.issued_on is None
-            assert run.status == DocumentGenerationStatus.PENDING
+            assert run.status == (
+                DocumentGenerationStatus.FAILED if run_before_retry == "failed"
+                else DocumentGenerationStatus.PENDING
+            )
+            assert run.error_summary == (
+                "earlier render left uncertain output" if run_before_retry == "failed" else None
+            )
 
             report = reconcile_output_locators(
                 session, [OutputLocator("inspection", path)],

@@ -31,6 +31,7 @@ class OutputVersionEvidence:
     checksum_recorded: bool
     generation_run_ids: tuple[str, ...]
     generation_run_statuses: tuple[str, ...]
+    generation_run_variant_identity_verified: bool = False
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,8 @@ class OutputLocatorEvidence:
     versions: tuple[OutputVersionEvidence, ...]
     classification: str
     review_flags: tuple[str, ...] = ()
+    physical_generation_identity: str = "not_observed"
+    physical_storage_state: str = "not_observed"
 
 
 @dataclass(frozen=True)
@@ -47,6 +50,9 @@ class OutputReconciliationReport:
     status: str = "review_only"
     deletion_authorized: bool = False
     db_snapshot_consistency: str = "caller_transaction_unverified"
+    physical_generation_ownership: str = "unverified"
+    storage_atomicity: str = "unverified"
+    cleanup_verdict: str = "not_evaluated"
 
 
 def _valid_locator(locator: OutputLocator) -> bool:
@@ -88,8 +94,9 @@ def reconcile_output_locators(
 ) -> OutputReconciliationReport:
     """SELECT-only exact-locator report; caller must own a read-only session.
 
-    Only DB registration is observed. No filesystem snapshot, physical
-    identity, generation pin, ownership proof, or orphan verdict is supplied.
+    Only DB registration is observed. Physical generation identity and
+    storage state are explicitly NOT OBSERVED, regardless of checksum or
+    generation-run success. Neither ownership nor an orphan verdict is supplied.
     """
     validate_output_locator_request(locators, max_locators=max_locators)
     pairs = [(loc.root, loc.relative_path) for loc in locators]
@@ -100,7 +107,7 @@ def reconcile_output_locators(
     # Keep the report conservatively unverified even if an external transaction
     # may have stronger isolation.
     references: dict[tuple[str, str], list[tuple[str, str, bool, bool]]] = {}
-    runs: dict[str, list[tuple[str, str]]] = {}
+    runs: dict[str, list[tuple[str, str, str | None]]] = {}
     raw_version_ids: set = set()
     with session.no_autoflush:
         for start in range(0, len(pairs), 200):
@@ -133,12 +140,16 @@ def reconcile_output_locators(
                     DocumentGenerationRun.output_document_version_id,
                     DocumentGenerationRun.id,
                     DocumentGenerationRun.status,
+                    DocumentGenerationRun.document_variant_id,
                 ).where(DocumentGenerationRun.output_document_version_id.in_(
                     version_ids[start:start + 200],
                 ))
             )
-            for vid, run_id, status in rows:
-                runs.setdefault(str(vid), []).append((str(run_id), str(status.value)))
+            for vid, run_id, status, run_variant_id in rows:
+                runs.setdefault(str(vid), []).append((
+                    str(run_id), str(status.value),
+                    str(run_variant_id) if run_variant_id is not None else None,
+                ))
     evidence = []
     for locator in locators:
         versions = []
@@ -151,8 +162,12 @@ def reconcile_output_locators(
                 document_variant_id=variant_id,
                 is_current=is_current,
                 checksum_recorded=checksum_recorded,
-                generation_run_ids=tuple(run_id for run_id, _ in matched_runs),
-                generation_run_statuses=tuple(status for _, status in matched_runs),
+                generation_run_ids=tuple(run_id for run_id, _, _ in matched_runs),
+                generation_run_statuses=tuple(status for _, status, _ in matched_runs),
+                generation_run_variant_identity_verified=(
+                    bool(matched_runs)
+                    and all(run_variant == variant_id for _, _, run_variant in matched_runs)
+                ),
             ))
         classification = (
             "no_exact_document_version_reference" if not versions else
@@ -169,6 +184,8 @@ def reconcile_output_locators(
                 flags.add("checksum_not_recorded")
             if not version.generation_run_ids:
                 flags.add("no_linked_generation_run")
+            elif not version.generation_run_variant_identity_verified:
+                flags.add("generation_run_variant_identity_mismatch")
             if len(version.generation_run_ids) > 1:
                 flags.add("multiple_linked_generation_runs")
             if any(status != "succeeded" for status in version.generation_run_statuses):

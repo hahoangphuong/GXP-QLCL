@@ -56,7 +56,7 @@ function getCreateErrorMessage(error: Error): string {
     return "Bạn không có quyền thực hiện thao tác này.";
   }
   if (status === 409) {
-    return "Không thể tạo vòng khắc phục vì hồ sơ đã bị thay đổi hoặc đã ở trạng thái kết thúc. Tải lại workspace rồi thử lại.";
+    return "Không thể tạo vòng khắc phục vì hồ sơ đã bị thay đổi hoặc đã ở trạng thái kết thúc. Bản nháp và phiên bản cũ được giữ lại. Hủy rồi mở lại form để xem dữ liệu mới trước khi thử lại.";
   }
   if (status === 422) {
     return `Dữ liệu khắc phục chưa hợp lệ. ${error.message}`;
@@ -70,7 +70,7 @@ function getCycleErrorMessage(error: Error): string {
     return "Bạn không có quyền thực hiện thao tác này.";
   }
   if (status === 409) {
-    return "Không thể lưu vì vòng khắc phục đã bị thay đổi hoặc hồ sơ đã ở trạng thái kết thúc. Tải lại workspace rồi thử lại.";
+    return "Không thể lưu vì vòng khắc phục đã bị thay đổi hoặc hồ sơ đã ở trạng thái kết thúc. Bản nháp và phiên bản cũ được giữ lại. Hủy sửa hoặc chọn lại vòng để xem dữ liệu mới trước khi thử lại.";
   }
   if (status === 422) {
     return `Dữ liệu khắc phục chưa hợp lệ. ${error.message}`;
@@ -84,7 +84,7 @@ function getSubmitErrorMessage(error: Error): string {
     return "Bạn không có quyền thực hiện thao tác này.";
   }
   if (status === 409) {
-    return "Không thể ghi nhận tiếp nhận khắc phục vì vòng hiện tại đã thay đổi hoặc không còn ở trạng thái hợp lệ. Tải lại workspace rồi thử lại.";
+    return "Không thể ghi nhận tiếp nhận khắc phục vì vòng hiện tại đã thay đổi hoặc không còn ở trạng thái hợp lệ. Bản nháp và phiên bản cũ được giữ lại. Chọn lại vòng để xem dữ liệu mới trước khi thử lại.";
   }
   if (status === 422) {
     return `Dữ liệu tiếp nhận khắc phục chưa hợp lệ. ${error.message}`;
@@ -98,7 +98,7 @@ function getAssessErrorMessage(error: Error): string {
     return "Bạn không có quyền thực hiện thao tác này.";
   }
   if (status === 409) {
-    return "Không thể đánh giá khắc phục vì vòng hiện tại đã thay đổi hoặc không còn ở trạng thái hợp lệ. Tải lại workspace rồi thử lại.";
+    return "Không thể đánh giá khắc phục vì vòng hiện tại đã thay đổi hoặc không còn ở trạng thái hợp lệ. Bản nháp và phiên bản cũ được giữ lại. Chọn lại vòng để xem dữ liệu mới trước khi thử lại.";
   }
   if (status === 422) {
     return `Dữ liệu đánh giá khắc phục chưa hợp lệ. ${error.message}`;
@@ -154,8 +154,8 @@ export function CaseRemediationWorkspace({
     () => getSelectedCycle(cycles, effectiveSelectedCycleId),
     [cycles, effectiveSelectedCycleId],
   );
-  // A workspace refetch may create new objects without changing the server version.
-  // Preserve in-progress input until the selected canonical cycle actually changes.
+  // Identity owns the editor/request; a newer server version does not replace a draft.
+  const cycleIdentityKey = JSON.stringify([caseWorkspace.case_summary.id, effectiveSelectedCycleId]);
   const selectedCycleVersionKey = `${selectedCycle?.capa_cycle_id ?? "none"}:${selectedCycle?.row_version ?? "none"}`;
   const currentDraft = useMemo(
     () => buildCycleDraft(selectedCycle),
@@ -166,8 +166,11 @@ export function CaseRemediationWorkspace({
   const [editingField, setEditingField] = useState<"incoming_reference" | "requested_on" | "notes" | null>(null);
   const [pendingAction, setPendingAction] = useState<"create" | "update" | "submit" | "assess" | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [draftVersion, setDraftVersion] = useState(selectedCycle?.row_version ?? null);
+  const [createCaseVersion, setCreateCaseVersion] = useState(caseWorkspace.case_summary.row_version);
+  const [draftChanged, setDraftChanged] = useState(false);
   const hydratedCycleVersionKey = useRef(selectedCycleVersionKey);
-  const cycleOperationOwner = useRef({ key: selectedCycleVersionKey, generation: 0 });
+  const cycleOperationOwner = useRef({ key: cycleIdentityKey, generation: 0 });
 
   useEffect(() => {
     if (effectiveSelectedCycleId !== selectedCycleId) {
@@ -176,22 +179,39 @@ export function CaseRemediationWorkspace({
   }, [effectiveSelectedCycleId, onSelectedCycleChange, selectedCycleId]);
 
   useLayoutEffect(() => {
-    if (cycleOperationOwner.current.key !== selectedCycleVersionKey) {
+    if (cycleOperationOwner.current.key !== cycleIdentityKey) {
       cycleOperationOwner.current = {
-        key: selectedCycleVersionKey,
+        key: cycleIdentityKey,
         generation: cycleOperationOwner.current.generation + 1,
       };
       setPendingAction(null);
+      setIsCreating(false);
+      setEditingField(null);
+      setDraftChanged(false);
+      hydratedCycleVersionKey.current = selectedCycleVersionKey;
+      setDraft(currentDraft);
+      setDraftVersion(selectedCycle?.row_version ?? null);
+      setErrorMessage(null);
+      return;
     }
     const cycleVersionChanged = hydratedCycleVersionKey.current !== selectedCycleVersionKey;
-    if (isCreating || !cycleVersionChanged) {
+    if (isCreating || editingField || pendingAction || draftChanged || !cycleVersionChanged) {
       return;
     }
     hydratedCycleVersionKey.current = selectedCycleVersionKey;
     setDraft(currentDraft);
+    setDraftVersion(selectedCycle?.row_version ?? null);
     setErrorMessage(null);
-    setEditingField(null);
-  }, [currentDraft, isCreating, selectedCycleVersionKey]);
+  }, [currentDraft, cycleIdentityKey, draftChanged, editingField, isCreating, pendingAction, selectedCycle?.row_version, selectedCycleVersionKey]);
+
+  useLayoutEffect(() => () => {
+    cycleOperationOwner.current = { ...cycleOperationOwner.current, generation: cycleOperationOwner.current.generation + 1 };
+  }, []);
+
+  function changeDraft(field: keyof CycleDraft, value: string) {
+    setDraftChanged(true);
+    setDraft((current) => ({ ...current, [field]: value }));
+  }
 
   function isCurrentCycleOperation(owner: { key: string; generation: number }): boolean {
     return cycleOperationOwner.current === owner;
@@ -209,26 +229,32 @@ export function CaseRemediationWorkspace({
     if (isPending) {
       return;
     }
+    const operationOwner = cycleOperationOwner.current;
     setPendingAction("create");
     setErrorMessage(null);
     try {
       await onCreateCycle({
-        expected_case_version: caseWorkspace.case_summary.row_version,
+        expected_case_version: createCaseVersion,
         incoming_reference: normalizeText(draft.incoming_reference),
         requested_on: normalizeText(draft.requested_on),
         notes: normalizeText(draft.notes),
       });
-      setIsCreating(false);
+      if (isCurrentCycleOperation(operationOwner)) {
+        setIsCreating(false);
+        setDraftChanged(false);
+      }
     } catch (error) {
-      const nextError = error instanceof Error ? error : new Error("Không tạo được vòng khắc phục.");
-      setErrorMessage(getCreateErrorMessage(nextError));
+      if (isCurrentCycleOperation(operationOwner)) {
+        const nextError = error instanceof Error ? error : new Error("Không tạo được vòng khắc phục.");
+        setErrorMessage(getCreateErrorMessage(nextError));
+      }
     } finally {
-      setPendingAction(null);
+      if (isCurrentCycleOperation(operationOwner)) setPendingAction(null);
     }
   }
 
   async function handleUpdateField() {
-    if (!selectedCycle || !editingField || isPending) {
+    if (!selectedCycle || !editingField || isPending || draftVersion === null) {
       return;
     }
     const operationOwner = cycleOperationOwner.current;
@@ -236,13 +262,14 @@ export function CaseRemediationWorkspace({
     setErrorMessage(null);
     try {
       await onUpdateCycle(selectedCycle.capa_cycle_id, {
-        expected_version: selectedCycle.row_version,
+        expected_version: draftVersion,
         incoming_reference: normalizeText(draft.incoming_reference),
         requested_on: normalizeText(draft.requested_on),
         notes: normalizeText(draft.notes),
       });
       if (isCurrentCycleOperation(operationOwner)) {
         setEditingField(null);
+        setDraftChanged(false);
       }
     } catch (error) {
       if (isCurrentCycleOperation(operationOwner)) {
@@ -257,7 +284,7 @@ export function CaseRemediationWorkspace({
   }
 
   async function handleSubmitAction() {
-    if (!selectedCycle || isPending) {
+    if (!selectedCycle || isPending || draftVersion === null) {
       return;
     }
     const operationOwner = cycleOperationOwner.current;
@@ -265,10 +292,11 @@ export function CaseRemediationWorkspace({
     setErrorMessage(null);
     try {
       await onSubmitCycle(selectedCycle.capa_cycle_id, {
-        expected_version: selectedCycle.row_version,
+        expected_version: draftVersion,
         submitted_on: draft.submitted_on,
         notes: normalizeText(draft.notes),
       });
+      if (isCurrentCycleOperation(operationOwner)) setDraftChanged(false);
     } catch (error) {
       if (isCurrentCycleOperation(operationOwner)) {
         const nextError = error instanceof Error ? error : new Error("Không ghi nhận được tiếp nhận khắc phục.");
@@ -282,7 +310,7 @@ export function CaseRemediationWorkspace({
   }
 
   async function handleAssessAction() {
-    if (!selectedCycle || isPending) {
+    if (!selectedCycle || isPending || draftVersion === null) {
       return;
     }
     const operationOwner = cycleOperationOwner.current;
@@ -290,11 +318,12 @@ export function CaseRemediationWorkspace({
     setErrorMessage(null);
     try {
       await onAssessCycle(selectedCycle.capa_cycle_id, {
-        expected_version: selectedCycle.row_version,
+        expected_version: draftVersion,
         assessed_on: draft.assessed_on,
         result: draft.result.trim(),
         notes: normalizeText(draft.notes),
       });
+      if (isCurrentCycleOperation(operationOwner)) setDraftChanged(false);
     } catch (error) {
       if (isCurrentCycleOperation(operationOwner)) {
         const nextError = error instanceof Error ? error : new Error("Không đánh giá được vòng khắc phục.");
@@ -308,6 +337,7 @@ export function CaseRemediationWorkspace({
   }
 
   function startCreate() {
+    setCreateCaseVersion(caseWorkspace.case_summary.row_version);
     setDraft(buildCycleDraft(null));
     setErrorMessage(null);
     setEditingField(null);
@@ -315,7 +345,10 @@ export function CaseRemediationWorkspace({
   }
 
   function cancelEditor() {
+    hydratedCycleVersionKey.current = selectedCycleVersionKey;
     setDraft(currentDraft);
+    setDraftVersion(selectedCycle?.row_version ?? null);
+    setDraftChanged(false);
     setErrorMessage(null);
     setIsCreating(false);
     setEditingField(null);
@@ -359,17 +392,13 @@ export function CaseRemediationWorkspace({
                       if (isPending) {
                         return;
                       }
-                      setIsCreating(false);
-                      setEditingField(null);
-                      setErrorMessage(null);
+                      cancelEditor();
                       onSelectedCycleChange(cycle.capa_cycle_id);
                     }}
                     onKeyDown={(event) => {
                       if ((event.key === "Enter" || event.key === " ") && !isPending) {
                         event.preventDefault();
-                        setIsCreating(false);
-                        setEditingField(null);
-                        setErrorMessage(null);
+                        cancelEditor();
                         onSelectedCycleChange(cycle.capa_cycle_id);
                       }
                     }}
@@ -403,7 +432,7 @@ export function CaseRemediationWorkspace({
                 <input
                   aria-label="Số tham chiếu đến"
                   disabled={isPending}
-                  onChange={(event) => setDraft((current) => ({ ...current, incoming_reference: event.target.value }))}
+                  onChange={(event) => changeDraft("incoming_reference", event.target.value)}
                   value={draft.incoming_reference}
                 />
               </label>
@@ -412,7 +441,7 @@ export function CaseRemediationWorkspace({
                 <input
                   aria-label="Ngày yêu cầu"
                   disabled={isPending}
-                  onChange={(event) => setDraft((current) => ({ ...current, requested_on: event.target.value }))}
+                  onChange={(event) => changeDraft("requested_on", event.target.value)}
                   type="date"
                   value={draft.requested_on}
                 />
@@ -425,7 +454,7 @@ export function CaseRemediationWorkspace({
                   aria-label="Ghi chú khắc phục"
                   className="inspection-textarea"
                   disabled={isPending}
-                  onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))}
+                  onChange={(event) => changeDraft("notes", event.target.value)}
                   rows={4}
                   value={draft.notes}
                 />
@@ -491,7 +520,7 @@ export function CaseRemediationWorkspace({
                   <input
                     aria-label="Số tham chiếu đến"
                     disabled={isPending}
-                    onChange={(event) => setDraft((current) => ({ ...current, incoming_reference: event.target.value }))}
+                    onChange={(event) => changeDraft("incoming_reference", event.target.value)}
                     value={draft.incoming_reference}
                   />
                 </EditableDetailValue>
@@ -521,7 +550,7 @@ export function CaseRemediationWorkspace({
                   <input
                     aria-label="Ngày yêu cầu"
                     disabled={isPending}
-                    onChange={(event) => setDraft((current) => ({ ...current, requested_on: event.target.value }))}
+                    onChange={(event) => changeDraft("requested_on", event.target.value)}
                     type="date"
                     value={draft.requested_on}
                   />
@@ -554,7 +583,7 @@ export function CaseRemediationWorkspace({
                     aria-label="Ghi chú khắc phục"
                     className="inspection-textarea"
                     disabled={isPending}
-                    onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))}
+                    onChange={(event) => changeDraft("notes", event.target.value)}
                     rows={4}
                     value={draft.notes}
                   />
@@ -572,7 +601,7 @@ export function CaseRemediationWorkspace({
                   <input
                     aria-label="Ngày ghi nhận tiếp nhận"
                     disabled={isPending || !submitAvailable}
-                    onChange={(event) => setDraft((current) => ({ ...current, submitted_on: event.target.value }))}
+                    onChange={(event) => changeDraft("submitted_on", event.target.value)}
                     type="date"
                     value={draft.submitted_on}
                   />
@@ -582,7 +611,7 @@ export function CaseRemediationWorkspace({
                   <input
                     aria-label="Ngày đánh giá khắc phục"
                     disabled={isPending || !assessAvailable}
-                    onChange={(event) => setDraft((current) => ({ ...current, assessed_on: event.target.value }))}
+                    onChange={(event) => changeDraft("assessed_on", event.target.value)}
                     type="date"
                     value={draft.assessed_on}
                   />
@@ -592,7 +621,7 @@ export function CaseRemediationWorkspace({
                   <input
                     aria-label="Kết quả đánh giá khắc phục"
                     disabled={isPending || !assessAvailable}
-                    onChange={(event) => setDraft((current) => ({ ...current, result: event.target.value }))}
+                    onChange={(event) => changeDraft("result", event.target.value)}
                     value={draft.result}
                   />
                 </label>
@@ -602,7 +631,7 @@ export function CaseRemediationWorkspace({
                     aria-label="Ghi chú thao tác khắc phục"
                     className="inspection-textarea"
                     disabled={isPending || (!submitAvailable && !assessAvailable)}
-                    onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))}
+                    onChange={(event) => changeDraft("notes", event.target.value)}
                     rows={4}
                     value={draft.notes}
                   />

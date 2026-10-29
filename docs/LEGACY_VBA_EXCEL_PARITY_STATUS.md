@@ -1,6 +1,6 @@
 # Legacy VBA/Excel business parity status
 
-Version: **1.1 — 2026-10-29**. Audit baseline main
+Version: **1.2 — 2026-10-29**. Audit baseline main
 `5062b5a3f50f06d8b8348d95199b0bbe5e8f395c`. Scope: available workbook/add-in
 source, approved contracts, current frontend/backend source, regression and
 isolated browser fixtures. This is not authenticated staging, production UAT,
@@ -181,3 +181,75 @@ PR206 remains OPEN/DRAFT with UNVERIFIED_VERSION_BINDING; Issues74/144 OPEN.
 decision=UNDECIDED, ready_to_render=False, WordUAT=NOT_EXECUTED; renderer/legal
 issuance disabled. No production DB/NAS/GCS, deployment, original binary/template,
 Trust Center, VBA execution, API/schema/RBAC or document-finalization changes.
+
+## Inspection / CAPA workflow audit and draft ownership — v1.2
+
+Slice baseline: `657f0ea7c854373d5b115172a47ac84c8aa75cb9`.
+No module-wide parity status is promoted. Sources are the lifecycle owner matrix,
+WORKFLOW_MODEL, CASE_E2E_LEGACY_PARITY_ACCEPTANCE, ADR0037/0060/0061 and the
+current typed requests, workflow service and frontend owners. MainForm
+GetSetDataKtra first resolves the selected history row with Get_List_RngKtra,
+then dispatches GetSetData; only a valid accepted edit refreshes the site/history.
+TextForm.GetText returns output only when not Canceled. RecordForm.CreateFile
+cases5/6 and Tao_BB_CAPA use distinct round outputs and copy DsTT/CAPAx through
+Word COM. These are static source facts, not VBA runtime/Word acceptance.
+
+| Audited owner / operation | Evidence and finding | Disposition |
+|---|---|---|
+| Inspection periods | InspectionPeriodSection retains ordered canonical segments, renumbers explicit reorder/removal, never flattens to legacy scalar dates; existing tests exercise create-only null versus existing version and denied readiness | Unchanged; specific regressions rerun. Authenticated persistence/legacy date acceptance remains partial. |
+| Inspection team | Structured inspector_profile/person/organization identity, explicit order/roles and backend edit readiness; no parsing display text or KHKT backfill | Unchanged. Existing 409 contract intentionally discards the team editor, unlike CAPA; do not globally replace it with CAPA retention semantics. |
+| Inspection plan/outcome/final evaluation | Separate plan/outcome tokens and typed final-evaluation readiness; dossier CaseAssessment stays registration-owned | Unchanged. Source-level risk: several handlers read current prop/readiness versions when saving retained input. Refresh-before-save and Case-switch ownership need a separate RED audit before changing these independent owners. Existing no-refresh 403/409/422 and pending regressions pass; exhaustive refresh concurrency is not claimed verified. |
+| PCT/CT approvals | Canonical stage/round/UUID, completed PCT parent explicitly selected for CT, separate create/complete actions and readiness token | Unchanged; exact payload/denied readiness tests rerun. Shared completion draft, async Case change and refresh-before-complete need focused follow-up; no invented latest-round rule or legal output. |
+| CAPA create | Form retained input while taking current Case version; no Case-bound completion guard | Fixed frontend ownership: capture Case token when opening create; Case/cycle change discards the replaced editor and invalidates late completion, including A→B→A/unmount. |
+| CAPA update/submit/assess | Existing same-version drafts and per-cycle identity were correct. Version-key hydration cleared pending/editor/draft on a newer version, and saving could adopt the refreshed token | Fixed: Case+cycle UUID owns operation generation; a separate hydrated draft token stays with dirty/open/pending input. New server data hydrates only clean idle input, explicit cancel/row activation, or successful callback plus newer readback. |
+| Return from create to the already selected cycle | Row activation closed create but did not reset its draft because the selected cycle/version key did not change | Fixed: explicit row activation cancels/reloads the draft before selecting. It never creates or updates by itself. Focus alone does not activate. |
+| Contextual documents | EventWorkspace filters workflow_step and exact parent_scope=capa_cycle/parent_id; one ContextualDocumentSection retains document/version/rendition/action identity and stale-response generations | Unchanged; contextual identity/binary regressions rerun. Metadata is not proof of an accessible/valid Word file or legal output. |
+
+Last-correct: same-version refetch and canonical cycle switching already worked.
+First-incorrect: CaseRemediationWorkspace used cycle UUID+row_version as both
+request identity and draft hydration boundary, while create lacked Case ownership.
+Version advancement is not a new aggregate and must not unlock an in-flight
+command or silently authorize old input with a new token. The owner now keeps
+these boundaries separate. No backend rule, optional-null helper or Issue222 fix
+is implemented. Server readiness still owns permission and status eligibility.
+
+Specific corrected behavior is IMPLEMENTED_VERIFIED by regression/fixture:
+edited and unsent command drafts keep their original cycle token; create keeps
+its edit-start Case token; refresh does not clear pending or permit duplicate
+activation; current 403/409/422 errors retain CAPA drafts without automatic retry;
+late replaced create/update/submit completion cannot publish into a new owner;
+Cancel/reselect explicitly adopts reviewed server data. Successful callback and
+readback tests prove UI state only, not a production commit or audit row.
+
+Initial RED:6FAIL/14PASS. Additional create→selected-cycle RED:1FAIL/20PASS.
+The corrected CAPA suite has27 tests, including404/network failure on all four
+commands. Targeted Inspection/CAPA/Approval/document suite68PASS; full/CI final
+counts are recorded in the delivery PR and local
+handoff. Existing contract-related backend CAPA tests14PASS,74 explicitly
+deselected, not skipped. No timeout increase, disabled tests or weaker assertions.
+Final local frontend560PASS/0FAIL/0SKIP across37 files; targeted68PASS in each
+of two final runs; typecheck/lint/production buildPASS. Lifecycle/owner backend
+regression12PASS. The first full run had one stale409-copy assertion (557PASS,
+1FAIL); App regression now asserts the complete revised guidance while retaining
+draft and request-count checks. No act/unhandled warning in the final test log.
+
+Controlled headless Edge uses actual React owners/styles and fixture callbacks.
+At1366x768,1920x1080,390x844 document scroll/client widths are respectively
+1366/1366,1920/1920,390/390. Baseline loses the open draft on version refresh;
+fixed fixture retains it, token2, pending, and409. Explicit Cancel/reopen uses3;
+create uses Case8 despite refresh9; submit/assess keep2; late create is ignored.
+Five explicit fixture callbacks per viewport, zero API requests, zero Cancel
+mutations. F2/double-click/Tab/Shift+Tab/Enter/Escape and cycle Space/Enter work.
+Screenshots/measurements are outside Git under
+`.codex/evidence/inspection-capa-20261029/`. FIXTURE_VERIFIED only; this isolated
+component harness does not verify full-shell navigation, authenticated backend,
+screen-reader speech, original VBA, Word formatting or NAS binaries.
+
+Document-output status remains **BLOCKED_BY_TYPED_DOCUMENT_CONTRACT** for CAPA
+Word: current contextual metadata/content actions are not a complete approved
+CAPA render payload/readiness/template contract. No placeholder DOCX, inferred
+storage locator, extra document button or legal generation is introduced.
+Backend handoff remains typed CAPA/PCT/CT output contracts and Issue222; no new
+backend defect was established by this slice. Frontend next priority is a
+separate refresh-token/Case-owner audit for Inspection/Approval editors above.
+PR206, Issues74/144 and QĐKT evidence/render/issuance gates stay unchanged.

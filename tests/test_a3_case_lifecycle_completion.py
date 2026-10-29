@@ -100,8 +100,13 @@ def test_direct_application_compatibility_omission_preserves_historical_referenc
         case_id = _case(session)
         session.add(CaseApplication(case_id=case_id, dossier_code="OLD", dossier_reference="LEGACY-KEEP"))
         session.commit()
+        persisted_application = session.scalar(
+            select(CaseApplication).where(CaseApplication.case_id == case_id)
+        )
+        assert persisted_application is not None
         result = service.upsert_case_application(
-            session, case_id=case_id, submitted_on=None, dossier_code="NEW", dossier_reference=None,
+            session, case_id=case_id, expected_version=persisted_application.row_version,
+            submitted_on=None, dossier_code="NEW", dossier_reference=None,
             applicant_name=None, reason=None, user=_user(), fields_set=None,
         )
         assert result["dossier_reference"] == "LEGACY-KEEP"

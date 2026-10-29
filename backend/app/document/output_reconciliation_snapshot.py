@@ -13,7 +13,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from backend.app.document.output_reconciliation import (
-    OutputLocator, OutputReconciliationReport, reconcile_output_locators,
+    OutputLocator, OutputReconciliationReport, reconcile_output_locators,\n    validate_output_locator_request,
 )
 
 
@@ -28,6 +28,7 @@ def reconcile_output_locators_verified_snapshot(
     Do not accept caller sessions: a pre-existing transaction may already
     have chosen weaker isolation or executed a write.
     """
+    validate_output_locator_request(locators, max_locators=max_locators)
     if engine.dialect.name != "postgresql":
         raise ValueError("Verified output snapshots require PostgreSQL.")
     # Open a fresh connection and set the transaction guarantees before the

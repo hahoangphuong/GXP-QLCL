@@ -19,7 +19,7 @@ function registration(value = workspace, applicationSave = vi.fn(), assessmentSa
 }
 
 describe("registration presentation preserves existing editor owners", () => {
-  it.each([4, null])("keeps the application draft's %s token through refresh, then uses the new token after Cancel/reopen", async version => {
+  it.each([4])("keeps the application draft's %s token through refresh, then uses the new token after Cancel/reopen", async version => {
     const original = { ...workspace, application: { ...workspace.application, row_version: version } };
     const save = vi.fn().mockRejectedValue(Object.assign(new Error("stale application"), { status: 409 }));
     const { rerender } = render(registration(original, save));
@@ -39,6 +39,35 @@ describe("registration presentation preserves existing editor owners", () => {
     await act(async () => fireEvent.keyDown(screen.getByLabelText("Mã hồ sơ"), { key: "Enter" }));
     expect(save).toHaveBeenLastCalledWith({ expected_version: 5, dossier_code: "reviewed new draft" });
     expect(save).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not submit an absent-row draft after observing a newly created application; Cancel/reopen reviews the new owner", async () => {
+    const original = { ...workspace, application: { ...workspace.application, row_version: null } };
+    const save = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(registration(original, save));
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+    fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "draft before creation" } });
+    const refreshed = { ...original, application: { ...original.application, row_version: 5, dossier_code: "created elsewhere" } };
+    rerender(registration(refreshed, save));
+    await act(async () => fireEvent.keyDown(screen.getByLabelText("Mã hồ sơ"), { key: "Enter" }));
+    expect(save).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("draft before creation");
+    expect(screen.getByRole("alert")).toHaveTextContent("Hủy sửa");
+    fireEvent.keyDown(screen.getByLabelText("Mã hồ sơ"), { key: "Escape" });
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+    expect(screen.getByLabelText("Mã hồ sơ")).toHaveValue("created elsewhere");
+    await act(async () => fireEvent.keyDown(screen.getByLabelText("Mã hồ sơ"), { key: "Enter" }));
+    expect(save).toHaveBeenCalledExactlyOnceWith({ expected_version: 5, dossier_code: "created elsewhere" });
+  });
+
+  it("still submits null for a new application when no creation has been observed", async () => {
+    const original = { ...workspace, application: { ...workspace.application, row_version: null } };
+    const save = vi.fn().mockResolvedValue(undefined);
+    render(registration(original, save));
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Mã hồ sơ" }));
+    fireEvent.change(screen.getByLabelText("Mã hồ sơ"), { target: { value: "new application" } });
+    await act(async () => fireEvent.keyDown(screen.getByLabelText("Mã hồ sơ"), { key: "Enter" }));
+    expect(save).toHaveBeenCalledExactlyOnceWith({ expected_version: null, dossier_code: "new application" });
   });
 
   it("Enter on the application Cancel button never submits a mutation", async () => {

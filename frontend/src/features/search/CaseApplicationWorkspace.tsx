@@ -141,6 +141,10 @@ export function CaseApplicationWorkspace({
     if (!editingField || pending) {
       return;
     }
+    if (draftVersion === null && caseWorkspace.application.row_version !== null) {
+      setErrorMessage("Thông tin hồ sơ đã được tạo sau khi bắt đầu sửa. Bản nháp được giữ lại; Hủy sửa rồi mở lại trường để kiểm tra dữ liệu mới.");
+      return;
+    }
     setPending(true);
     setErrorMessage(null);
     try {

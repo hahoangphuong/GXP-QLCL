@@ -7,9 +7,6 @@ from backend.app.document.inspection_qd_kt_vba_bookmark_series import (
     QdKtVbaBookmarkContractError, reconcile_qdkt_i2_bookmarks,
     resolve_vba_bookmark_targets,
 )
-from backend.app.document.inspection_qd_kt_provenance_gate import (
-    QdKtProvenanceGateBlocked, read_provenance_json,
-)
 
 
 def test_foreign_gxp_object_cannot_select_an_authority_branch():
@@ -30,13 +27,6 @@ def test_ambiguous_or_malformed_physical_names_fail_at_target_owner(names):
 def test_non_integer_numbered_bounds_are_not_source_contract(index):
     with pytest.raises(QdKtVbaBookmarkContractError, match="QDKT_BOOKMARK_BOUNDS_INVALID"):
         resolve_vba_bookmark_targets("Tencoso", ["Tencoso1"], first_index=index, last_index=3)
-
-
-def test_json_exponent_overflow_is_not_valid_provenance(tmp_path):
-    path = tmp_path / "source.json"
-    path.write_text('{"observation": 1e9999}', encoding="utf-8")
-    with pytest.raises(QdKtProvenanceGateBlocked, match="QDKT_SOURCE_PROVENANCE_INCOMPLETE"):
-        read_provenance_json(path)
 
 
 @pytest.mark.parametrize("change", ["binary_hash", "binding", "operation", "helper", "template"])

@@ -34,7 +34,10 @@ def main(argv=None) -> int:
             from tools.qdkt_runtime_observation import observe_runtime_file
             report["runtime_disk_observation"] = observe_runtime_file(*args.observe_runtime_file)
     except (QdKtTransformationAuditBlocked, QdKtProvenanceGateBlocked, QdKtRuntimeEvidenceBlocked, QdKtRuntimeIdentityBlocked) as exc:
-        sys.stdout.write(transformation_audit_json({"audit_blockers": [str(exc)], "ready_to_render": False, "legal_equivalence_verified": False}))
+        code = str(exc)
+        status = "EVIDENCE_UNAVAILABLE" if code in ("QDKT_OBSERVATION_FILE_UNAVAILABLE", "QDKT_RUNTIME_ARTIFACT_UNAVAILABLE", "QDKT_RUNTIME_EXTRACTOR_UNAVAILABLE") else "INVALID_EVIDENCE"
+        sys.stdout.write(transformation_audit_json({"audit_blockers": [code], "input_evidence_status": status,
+                                                   "ready_to_render": False, "legal_equivalence_verified": False}))
         return 2
     output = transformation_audit_json(report) if args.format == "json" else transformation_audit_markdown(report)
     if args.verify_local_artifacts and args.format == "markdown":

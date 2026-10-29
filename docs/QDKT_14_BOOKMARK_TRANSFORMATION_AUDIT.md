@@ -34,6 +34,20 @@ This extends the captured facts without changing any original semantic pin. UNVE
 | BUILD_AND_DISTRIBUTION | VERSION_BINDING_UNVERIFIED | Bounded workspace search; no assertion about unavailable original build/distribution systems. |
 | EXCEL_LOADED_RUNTIME | RUNTIME_IDENTITY_UNVERIFIED | no independently authenticated live-session identity; loader can reuse same-name workbook without a hash check |
 
+Acceptance dimensions (not approvals):
+
+| Dimension | Category |
+|---|---|
+| build_distribution | VERSION_BINDING_UNVERIFIED |
+| business_owner_acceptance | EVIDENCE_UNAVAILABLE |
+| executable_vba | RUNTIME_IDENTITY_UNVERIFIED |
+| export_encoding | ENCODING_AMBIGUOUS |
+| independent_custody | EVIDENCE_UNAVAILABLE |
+| loaded_runtime | RUNTIME_IDENTITY_UNVERIFIED |
+| reported_disk | EVIDENCE_UNAVAILABLE |
+| reviewed_source | SOURCE_EQUIVALENCE_PROVEN |
+| supplied_snapshot | BYTE_IDENTITY_PROVEN |
+
 Detailed operator-only protocol: `docs/QDKT_RUNTIME_OBSERVATION_PROTOCOL.md`. It separates observed COM path, on-disk snapshot, in-memory executed code and reviewed source. Unsigned, even internally consistent, PID/path/hash metadata never authenticates a collector or closes runtime identity.
 
 Encoding evidence: `tests/fixtures/inspection_qd_kt_runtime_identity_evidence.json` records original line hex/SHA, cp1258 and cp1252 codepoints, and exact ZIP/add-in lines. Get_Tpl has nine differing lines in Cases 7/8/11/12/13, outside Case 2. Get_TTV2 has one differing error-message line in its Fail handler: this CAN be reached on the i=2 call's failure path, not proven executed, and is not a direct Word text write. Neither ambiguity is silently normalized or treated as an approved export encoding.

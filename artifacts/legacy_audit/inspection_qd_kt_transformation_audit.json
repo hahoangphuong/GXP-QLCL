@@ -137,7 +137,7 @@
     "backend/app/document/inspection_qd_kt_locality_projection.py": "9d4202c7fe585f7ebf11a2f42564e2cf229f478816aa9f547ea8a8b8d82b981d",
     "backend/app/document/inspection_qd_kt_registered_site.py": "1b9f788f807f39d2448b5056417814dbb4b074ef3ee2d3a25dbf71071f72679a",
     "backend/app/document/inspection_qd_kt_renderer_contract.py": "960a61c49a5e51f44f79b6127935906f0d917335bbd185ffc8f3a9a487778aa8",
-    "backend/app/document/inspection_qd_kt_runtime_identity.py": "29de032cd163b4a3929d88b9386139ebc3f50ff51366faafbbbcf9f06595efa2",
+    "backend/app/document/inspection_qd_kt_runtime_identity.py": "c41ebf7f8aef162ac6360403279f8d7bcb3bfd7895ff7bb30304df9f5dc42180",
     "backend/app/document/inspection_qd_kt_runtime_provenance.py": "c15138064bfcfb174e85b72bbe7f16bbf18510a283ba17aff762e733a5831576",
     "backend/app/document/inspection_qd_kt_team_layout_instructions.py": "6bacc1d8cbf99414c8abb9a591118ba79c53e4751039aeff5dc924f5d0cc6304",
     "backend/app/document/inspection_qd_kt_team_source.py": "a7c31fd11a39617800875b0b6a207a3516aa23e2be04340ceca0d1f00615b856",
@@ -1845,6 +1845,17 @@
   "process_b": "Case/Plan-bound lineage is diagnostic; external legal issuance remains unverified.",
   "ready_to_render": false,
   "runtime_identity_chain": {
+    "acceptance_matrix": {
+      "build_distribution": "VERSION_BINDING_UNVERIFIED",
+      "business_owner_acceptance": "EVIDENCE_UNAVAILABLE",
+      "executable_vba": "RUNTIME_IDENTITY_UNVERIFIED",
+      "export_encoding": "ENCODING_AMBIGUOUS",
+      "independent_custody": "EVIDENCE_UNAVAILABLE",
+      "loaded_runtime": "RUNTIME_IDENTITY_UNVERIFIED",
+      "reported_disk": "EVIDENCE_UNAVAILABLE",
+      "reviewed_source": "SOURCE_EQUIVALENCE_PROVEN",
+      "supplied_snapshot": "BYTE_IDENTITY_PROVEN"
+    },
     "blocker": "UNVERIFIED_VERSION_BINDING",
     "build_distribution_survey": {
       "found_attested_build_or_distribution_mapping": false,

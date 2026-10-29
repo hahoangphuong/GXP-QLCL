@@ -366,6 +366,9 @@ def transformation_audit_markdown(report: dict) -> str:
         "| Stage | Category | Scope |", "|---|---|---|"])
     for stage in chain["stages"]:
         lines.append(f"| {stage['stage']} | {stage['category']} | {stage['scope']} |")
+    lines.extend(["", "Acceptance dimensions (not approvals):", "", "| Dimension | Category |", "|---|---|"])
+    for dimension, category in sorted(chain["acceptance_matrix"].items()):
+        lines.append(f"| {dimension} | {category} |")
     lines.extend(["", "Detailed operator-only protocol: `docs/QDKT_RUNTIME_OBSERVATION_PROTOCOL.md`. It separates observed COM path, on-disk snapshot, in-memory executed code and reviewed source. Unsigned, even internally consistent, PID/path/hash metadata never authenticates a collector or closes runtime identity.", "",
         "Encoding evidence: `tests/fixtures/inspection_qd_kt_runtime_identity_evidence.json` records original line hex/SHA, cp1258 and cp1252 codepoints, and exact ZIP/add-in lines. Get_Tpl has nine differing lines in Cases 7/8/11/12/13, outside Case 2. Get_TTV2 has one differing error-message line in its Fail handler: this CAN be reached on the i=2 call's failure path, not proven executed, and is not a direct Word text write. Neither ambiguity is silently normalized or treated as an approved export encoding.", "",
         "The add-in docProps/app.xml records producer Application=Microsoft Excel and AppVersion=16.0300, with no custom properties or manifest/build/release/version-named member observed. This is Office producer metadata, not a VBA build/distribution mapping or the version of an observed Excel session. The byte-anchored companion records the metadata XML SHA without collecting author/private core properties.", "",

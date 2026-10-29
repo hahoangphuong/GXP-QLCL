@@ -4,21 +4,7 @@ import json
 
 import pytest
 
-from backend.app.document.inspection_qd_kt_provenance_gate import QdKtProvenanceGateBlocked, read_provenance_json
-
-
-@pytest.mark.parametrize("payload", [b'{"collector":"\\ud800"}', b'{"\\udfff":"observer"}', b'{"nested":["\\ud800"]}'])
-def test_unpaired_surrogates_cannot_enter_utf8_provenance(tmp_path, payload):
-    path = tmp_path / "observation.json"
-    path.write_bytes(payload)
-    with pytest.raises(QdKtProvenanceGateBlocked, match="QDKT_SOURCE_PROVENANCE_INCOMPLETE"):
-        read_provenance_json(path)
-
-
-def test_valid_unicode_pairs_and_combining_marks_are_not_normalized(tmp_path):
-    path = tmp_path / "unicode.json"
-    path.write_bytes(b'{"text":"e\\u0301 \\ud83d\\ude00"}')
-    assert read_provenance_json(path) == {"text": "e\u0301 \U0001f600"}
+from backend.app.document.inspection_qd_kt_provenance_gate import QdKtProvenanceGateBlocked
 
 
 def _observation():

@@ -64,6 +64,82 @@ approval. Without it, the script exits before inspecting processes or COM.
 
 ## 1. Select an existing session
 
+### Reproducible operator kit — offline preparation
+
+Use a reviewed repository checkout on Windows 11, with Python and Windows
+PowerShell 5.1 available. The kit is a source-checkout manifest, not a standalone
+executable bundle, signed attestation, or automatic Excel discovery tool.
+It has no automatic macro execution or security-setting action.
+
+From the checkout root, record `git rev-parse HEAD`, `git status --short`, the
+approved operator reference and an independently chosen custody witness in a
+ledger **outside Git**. Record exact modified-file/line-ending differences rather
+than treating a changed checkout as the reviewed commit. Then create a local
+manifest without private binaries, Excel or COM:
+
+```powershell
+python -m tools.qdkt_operator_evidence_package --dry-run > operator-manifest.json
+python -m tools.qdkt_operator_evidence_package --check-manifest operator-manifest.json
+powershell.exe -NoProfile -File .\tools\Observe-QdktExcelRuntime.ps1
+```
+
+All three commands deliberately exit 2 because readiness remains blocked.
+For manifest comparison, inspect `package_files_match=true`; for denial, inspect
+`QDKT_OPERATOR_OBSERVATION_REQUIRED`. An error exit alone is not a successful
+dry-run or package-integrity result. Preserve output, then move the local manifest
+to the approved evidence directory. The named JSON must be inside the explicit
+root for bounded acquisition; use a plain safe filename, not a path through a
+link/reparse point. Do not add this operator-specific manifest to Git.
+
+The deterministic manifest records collector schema/version, script SHA-256 and
+size, selected protocol/tool/fixture hashes, reviewed source/export hashes,
+expected private artifact relative paths/hashes and the acceptance matrix. It
+does not enumerate all transitive Python dependencies; use the full reviewed
+checkout. Private original binaries are not bundled or required for this dry-run.
+Hashes cover exact checkout bytes, including line endings; different checkout
+line endings legitimately produce different hashes and need review, not silent
+normalization. Repeating against unchanged bytes is deterministic. The manifest
+has no generated clock/session/operator values. Its checksum is tamper detection
+relative to an independently preserved baseline, not independent custody proof.
+Regenerating a manifest after replacing code does not authenticate either one.
+
+Have the independent witness preserve the approved commit and manifest checksum
+through an existing approved channel. If an approved signing system is already
+available, sign the manifest/evidence checksums there and preserve signer identity,
+verification result and custody records. This tool neither creates keys nor
+validates signatures. Without independent custody, retain
+`independent_custody=EVIDENCE_UNAVAILABLE`; a self-reported operator ID is insufficient.
+
+### Artifact and session ledger
+
+Keep one append-only ledger entry per acquisition; never replace an earlier raw
+observation. Record these values separately from the assessor's input schema:
+
+| Entry | Required observation / limitation |
+|---|---|
+| Collector | Approved commit, exact script hash/size, manifest hash, collector version, operator reference, witness/signing reference or unavailable |
+| Reviewed add-in | Operator-chosen physical path, snapshot size/hash; expected reviewed hash in the manifest; no path inferred from filename alone |
+| Filesystem metadata | Optional `Get-Item -LiteralPath 'D:\approved-addins\GPs.xlam'` then `Select-Object FullName,Length,CreationTimeUtc,LastWriteTimeUtc`; separate self-reported observation, not atomic with the byte snapshot |
+| Clock | UTC acquisition stamp, explicit local UTC offset and workstation clock authority if known; filesystem timestamp resolution/rounding/copy behavior is unverified |
+| Source/build | Reviewed export hashes and original encoding/export/build/distribution manifest/log, or unavailable; Office producer version is insufficient |
+| Excel session | Explicit PID/start/session/HWND, target GPs.xlam Name/FullName; other reported PIDs and same-name paths remain ambiguous, never automatically selected |
+| Host workbook | In the already-open Excel UI, independently record the intended host workbook's exact Name/FullName, visible session association and separately authorized on-disk snapshot hash if available; do not open/reload/save it for evidence |
+| Loaded inventory | Collector observes only the selected ROT instance's target and available same-name AddIns; this is not an exhaustive list of loaded modules or all Excel instances |
+| Raw custody | Original JSON, screenshots if authorized, byte snapshot/hash, file metadata, manifest, independent witness/signature references; redact unrelated personal paths/workbooks from shared copies |
+
+Do not add ledger fields to the strict v1 observation JSON: preserve a sidecar.
+The collector does not enumerate unrelated open workbook names or collect their
+contents. If the intended host/session cannot be independently identified, record
+unavailable; target filename lookup does not establish that the host invoked it.
+File timestamps can be copied or altered, clocks can be wrong, and the file may
+have been replaced after Excel loaded it. Neither timestamp equality nor a later
+matching disk hash proves load-time or executable-memory identity.
+
+Restarting Excel, reloading an add-in, changing Trust Center, enabling VBProject
+access or saving a workbook would change the state being observed. They are
+outside this protocol. If safe in-memory/p-code observation is unavailable, retain
+that limitation rather than restarting/reloading to manufacture correspondence.
+
 Record the collection purpose and operator reference in the evidence ledger.
 Use this read-only process listing; do not start/stop any listed process:
 
@@ -163,6 +239,20 @@ a file named inside the payload. Internal mismatch rejects or reports a
 contradiction. A perfectly consistent forged report still receives
 `UNAUTHENTICATED_OPERATOR_CLAIMS_INTERNAL_CONSISTENCY_ONLY`,
 `RUNTIME_IDENTITY_UNVERIFIED` and `UNVERIFIED_VERSION_BINDING`.
+
+The assessor's `qdkt-runtime-assessment/v1` output exposes a separate acceptance
+matrix for supplied snapshot, reviewed source, export encoding, reported disk,
+build/distribution, loaded runtime, executable VBA, independent custody and
+business-owner acceptance. Invalid schema/Unicode/time/path data raises a fixed
+diagnostic; unavailable file acquisition stays unavailable, with no fallback.
+A valid disk mismatch is `CONTRADICTED`, not an accepted runtime. A matching disk
+claim is only `VERSION_BINDING_UNVERIFIED`. Disk capture chronology is reported
+relative to the claimed session; a capture predating that session is explicit.
+No freshness threshold or business timezone is inferred. Even altered but
+self-consistent timestamps remain unauthenticated acquisition-clock claims.
+Multiple process IDs or same-name paths are reported, never resolved by first,
+latest or installed heuristics. No submitted manifest/custody claim can promote
+business or executable-code identity through this assessor.
 
 Exit 2 is intentional: it is NOT successful readiness. No assessment, checksum,
 collector reference or installed flag is an owner/legal approval token.

@@ -29,6 +29,7 @@ def runtime_identity_chain() -> dict:
     return {
         "evidence_class": "PINNED_STATIC_CAPTURE_NOT_LIVE_EXCEL_ATTESTATION",
         "identity_evidence_pin": IDENTITY_EVIDENCE_SHA256,
+        "acceptance_matrix": runtime_acceptance_matrix(),
         "stages": [
             {"stage": "PRIMARY_SUPPLIED_ADDIN", "category": "BYTE_IDENTITY_PROVEN",
              "scope": "supplied snapshot only; not current Excel-loaded or executed bytes",
@@ -53,6 +54,23 @@ def runtime_identity_chain() -> dict:
 def _fields(value, required):
     if type(value) is not dict or any(type(key) is not str for key in value) or set(value) != set(required):
         raise QdKtRuntimeIdentityBlocked("QDKT_OBSERVATION_FIELDS_INVALID")
+
+
+def runtime_acceptance_matrix(disk_category="EVIDENCE_UNAVAILABLE") -> dict:
+    """Fixed evidence dimensions, never an approval or signature verifier."""
+    if disk_category not in ("EVIDENCE_UNAVAILABLE", "VERSION_BINDING_UNVERIFIED", "CONTRADICTED"):
+        raise QdKtRuntimeIdentityBlocked("QDKT_OBSERVATION_DISK_INVALID")
+    return {
+        "supplied_snapshot": "BYTE_IDENTITY_PROVEN",
+        "reviewed_source": "SOURCE_EQUIVALENCE_PROVEN",
+        "export_encoding": "ENCODING_AMBIGUOUS",
+        "reported_disk": disk_category,
+        "build_distribution": "VERSION_BINDING_UNVERIFIED",
+        "loaded_runtime": "RUNTIME_IDENTITY_UNVERIFIED",
+        "executable_vba": "RUNTIME_IDENTITY_UNVERIFIED",
+        "independent_custody": "EVIDENCE_UNAVAILABLE",
+        "business_owner_acceptance": "EVIDENCE_UNAVAILABLE",
+    }
 
 
 def _text(value, limit=4096):
@@ -151,12 +169,17 @@ def assess_runtime_observation(observation: dict) -> dict:
         raise QdKtRuntimeIdentityBlocked("QDKT_OBSERVATION_INVENTORY_INVALID")
     disk = observation["on_disk"]
     match, disk_category = None, "EVIDENCE_UNAVAILABLE"
+    disk_relation = "EVIDENCE_UNAVAILABLE"
     if disk is not None:
         _fields(disk, ("path", "size_bytes", "sha256", "captured_at", "acquisition_method"))
         if _windows_path(disk["path"]) != path:
             raise QdKtRuntimeIdentityBlocked("QDKT_OBSERVATION_DISK_PATH_MISMATCH")
         _integer(disk["size_bytes"], 0)
-        _time(disk["captured_at"])
+        disk_time = _time(disk["captured_at"])
+        disk_relation = ("PREDATES_REPORTED_SESSION" if disk_time < _time(process["started_at"])
+                         else "PRE_SESSION_OBSERVATION_NOT_MEMORY_BINDING" if disk_time < start
+                         else "POST_SESSION_OBSERVATION_NOT_MEMORY_BINDING" if disk_time > end
+                         else "WITHIN_REPORTED_OBSERVATION_NOT_MEMORY_BINDING")
         if type(disk["acquisition_method"]) is not str or disk["acquisition_method"] != "BOUNDED_OFFLINE_FILE_SNAPSHOT" or type(disk["sha256"]) is not str or not re.fullmatch(r"[0-9a-f]{64}", disk["sha256"]):
             raise QdKtRuntimeIdentityBlocked("QDKT_OBSERVATION_DISK_INVALID")
         capture = load_runtime_source_evidence()
@@ -164,11 +187,16 @@ def assess_runtime_observation(observation: dict) -> dict:
         match = disk["sha256"] == capture["artifact_inputs"]["addin"]["sha256"] and disk["size_bytes"] == identity["primary_addin_size_bytes"]
         disk_category = "VERSION_BINDING_UNVERIFIED" if match else "CONTRADICTED"
     return {
+        "assessment_schema_version": "qdkt-runtime-assessment/v1",
+        "validation_status": "INTERNALLY_CONSISTENT_UNSIGNED_METADATA",
+        "acceptance_matrix": runtime_acceptance_matrix(disk_category),
+        "acquisition_clock_authenticated": False, "disk_capture_relation": disk_relation,
         "observation_trust": "UNAUTHENTICATED_OPERATOR_CLAIMS_INTERNAL_CONSISTENCY_ONLY",
         "collector_authenticated": False, "reported_loaded_path": path,
         "on_disk_category": disk_category, "reported_disk_matches_reviewed": match,
         "in_memory_executed_vba_category": "RUNTIME_IDENTITY_UNVERIFIED",
         "same_name_available_entries": len(available), "all_loaded_instances_accounted_for": False,
+        "same_name_path_ambiguity_reported": len({path, *(row["full_path"] for row in available)}) > 1,
         "multiple_excel_processes_reported": len(ids) > 1,
         "source_identity_scope": "PINNED_REVIEWED_SOURCE_CAPTURE_NOT_OBSERVED_MEMORY",
         "reported_runtime_module_source_status": observation["runtime_module_source_status"],

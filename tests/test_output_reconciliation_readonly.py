@@ -38,7 +38,7 @@ class QueryOnlySession:
 
 def test_reconciliation_matches_exact_root_and_path_without_storage_access():
     version = ("inspection", "2026/case/one.docx", "v-1", "variant-1", True, "abc")
-    run = ("v-1", "r-1", SimpleNamespace(value="succeeded"))
+    run = ("v-1", "r-1", SimpleNamespace(value="succeeded"), "variant-1")
     session = QueryOnlySession((version,), (run,))
     report = reconcile_output_locators(
         session, [
@@ -94,8 +94,8 @@ def test_review_flags_identify_unresolved_db_evidence_without_orphan_verdict():
         ("inspection", "case/output.docx", "v2", "variant", False, "recorded"),
     ]
     runs = [
-        ("v2", "r2", SimpleNamespace(value="failed")),
-        ("v2", "r1", SimpleNamespace(value="pending")),
+        ("v2", "r2", SimpleNamespace(value="failed"), "variant"),
+        ("v2", "r1", SimpleNamespace(value="pending"), "variant"),
     ]
     session = QueryOnlySession(versions, runs)
     report = reconcile_output_locators(
@@ -126,7 +126,7 @@ def test_clean_single_reference_has_no_review_flags():
     report = reconcile_output_locators(
         QueryOnlySession(
             [("inspection", "case/ok.docx", "v", "variant", True, "sha")],
-            [("v", "r", SimpleNamespace(value="succeeded"))],
+            [("v", "r", SimpleNamespace(value="succeeded"), "variant")],
         ),
         [OutputLocator("inspection", "case/ok.docx")],
     )
@@ -140,7 +140,7 @@ def test_clean_single_reference_has_no_review_flags():
         ((), (), "no_exact_document_version_reference"),
         (
             (("inspection", "case/evidence.docx", "v1", "variant", True, "checksum"),),
-            (("v1", "r1", SimpleNamespace(value="succeeded")),),
+            (("v1", "r1", SimpleNamespace(value="succeeded"), "variant"),),
             "registered_exact_document_version_locator",
         ),
         (
@@ -149,8 +149,8 @@ def test_clean_single_reference_has_no_review_flags():
                 ("inspection", "case/evidence.docx", "v2", "variant", False, "checksum"),
             ),
             (
-                ("v1", "r1", SimpleNamespace(value="succeeded")),
-                ("v2", "r2", SimpleNamespace(value="succeeded")),
+                ("v1", "r1", SimpleNamespace(value="succeeded"), "variant"),
+                ("v2", "r2", SimpleNamespace(value="succeeded"), "variant"),
             ),
             "multiple_exact_document_version_references",
         ),
@@ -170,4 +170,37 @@ def test_db_evidence_never_attests_physical_generation_or_cleanup(
     assert report.physical_generation_ownership == "unverified"
     assert report.storage_atomicity == "unverified"
     assert report.cleanup_verdict == "not_evaluated"
+    assert report.deletion_authorized is False
+
+
+def test_run_variant_mismatch_is_not_accepted_as_clean_lineage():
+    report = reconcile_output_locators(
+        QueryOnlySession(
+            [("inspection", "case/wrong-variant.docx", "v", "right-variant", True, "sha")],
+            [("v", "r", SimpleNamespace(value="succeeded"), "other-variant")],
+        ),
+        [OutputLocator("inspection", "case/wrong-variant.docx")],
+    )
+    version = report.items[0].versions[0]
+    assert version.generation_run_statuses == ("succeeded",)
+    assert version.generation_run_variant_identity_verified is False
+    assert report.items[0].review_flags == ("generation_run_variant_identity_mismatch",)
+    assert report.deletion_authorized is False
+
+
+def test_two_runs_with_one_foreign_variant_are_flagged():
+    report = reconcile_output_locators(
+        QueryOnlySession(
+            [("inspection", "case/two-runs.docx", "v", "right-variant", False, "sha")],
+            [
+                ("v", "r1", SimpleNamespace(value="succeeded"), "right-variant"),
+                ("v", "r2", SimpleNamespace(value="succeeded"), "foreign-variant"),
+            ],
+        ),
+        [OutputLocator("inspection", "case/two-runs.docx")],
+    )
+    assert report.items[0].review_flags == (
+        "generation_run_variant_identity_mismatch",
+        "multiple_linked_generation_runs",
+    )
     assert report.deletion_authorized is False

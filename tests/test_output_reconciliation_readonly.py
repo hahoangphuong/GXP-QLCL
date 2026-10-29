@@ -132,3 +132,42 @@ def test_clean_single_reference_has_no_review_flags():
     )
     assert report.items[0].review_flags == ()
     assert report.deletion_authorized is False
+
+
+@pytest.mark.parametrize(
+    ("version_rows", "run_rows", "expected_classification"),
+    [
+        ((), (), "no_exact_document_version_reference"),
+        (
+            (("inspection", "case/evidence.docx", "v1", "variant", True, "checksum"),),
+            (("v1", "r1", SimpleNamespace(value="succeeded")),),
+            "registered_exact_document_version_locator",
+        ),
+        (
+            (
+                ("inspection", "case/evidence.docx", "v1", "variant", True, "checksum"),
+                ("inspection", "case/evidence.docx", "v2", "variant", False, "checksum"),
+            ),
+            (
+                ("v1", "r1", SimpleNamespace(value="succeeded")),
+                ("v2", "r2", SimpleNamespace(value="succeeded")),
+            ),
+            "multiple_exact_document_version_references",
+        ),
+    ],
+)
+def test_db_evidence_never_attests_physical_generation_or_cleanup(
+    version_rows, run_rows, expected_classification,
+):
+    report = reconcile_output_locators(
+        QueryOnlySession(version_rows, run_rows),
+        [OutputLocator("inspection", "case/evidence.docx")],
+    )
+    item = report.items[0]
+    assert item.classification == expected_classification
+    assert item.physical_generation_identity == "not_observed"
+    assert item.physical_storage_state == "not_observed"
+    assert report.physical_generation_ownership == "unverified"
+    assert report.storage_atomicity == "unverified"
+    assert report.cleanup_verdict == "not_evaluated"
+    assert report.deletion_authorized is False

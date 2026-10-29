@@ -4,7 +4,6 @@ All cases use bounded fake connections; no live database or storage touched.
 """
 from __future__ import annotations
 
-from contextlib import nullcontext
 from types import SimpleNamespace
 
 import pytest

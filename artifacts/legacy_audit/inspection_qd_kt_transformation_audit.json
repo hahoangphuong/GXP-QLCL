@@ -137,8 +137,11 @@
     "backend/app/document/inspection_qd_kt_locality_projection.py": "9d4202c7fe585f7ebf11a2f42564e2cf229f478816aa9f547ea8a8b8d82b981d",
     "backend/app/document/inspection_qd_kt_registered_site.py": "1b9f788f807f39d2448b5056417814dbb4b074ef3ee2d3a25dbf71071f72679a",
     "backend/app/document/inspection_qd_kt_renderer_contract.py": "960a61c49a5e51f44f79b6127935906f0d917335bbd185ffc8f3a9a487778aa8",
+    "backend/app/document/inspection_qd_kt_runtime_identity.py": "c41ebf7f8aef162ac6360403279f8d7bcb3bfd7895ff7bb30304df9f5dc42180",
+    "backend/app/document/inspection_qd_kt_runtime_provenance.py": "c15138064bfcfb174e85b72bbe7f16bbf18510a283ba17aff762e733a5831576",
     "backend/app/document/inspection_qd_kt_team_layout_instructions.py": "6bacc1d8cbf99414c8abb9a591118ba79c53e4751039aeff5dc924f5d0cc6304",
     "backend/app/document/inspection_qd_kt_team_source.py": "a7c31fd11a39617800875b0b6a207a3516aa23e2be04340ceca0d1f00615b856",
+    "backend/app/document/inspection_qd_kt_vba_bookmark_series.py": "0485f49e5c2e4a738cec9e8896082f51a59242a5ef7097d47cee37633b70da73",
     "backend/app/document/inspection_qd_kt_vkn_authority.py": "86ee7da35154c6bd059654e5ea81b7aab4c035a436396d9839d536ee57114d4b"
   },
   "blocker_inventory": {
@@ -307,6 +310,17 @@
         }
       ],
       "ready_to_render": false,
+      "runtime_source_reference": {
+        "addin_line": 740,
+        "runtime_execution_verified": false,
+        "source_line_comparison": {
+          "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+          "left_utf8_lf_sha256": "6263afe7b2c052da5b9ddfa43979423331084ddee5005dd2a1700ad34604e32f",
+          "right_utf8_lf_sha256": "6263afe7b2c052da5b9ddfa43979423331084ddee5005dd2a1700ad34604e32f",
+          "version_binding_verified": false
+        },
+        "zip_line": 747
+      },
       "status": "CONTRADICTED"
     },
     {
@@ -399,6 +413,17 @@
         }
       ],
       "ready_to_render": false,
+      "runtime_source_reference": {
+        "addin_line": 738,
+        "runtime_execution_verified": false,
+        "source_line_comparison": {
+          "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+          "left_utf8_lf_sha256": "a52f29dab11d86d6864c129df2f4e4d108a3b6c83b53171115e5a3b218376b65",
+          "right_utf8_lf_sha256": "a52f29dab11d86d6864c129df2f4e4d108a3b6c83b53171115e5a3b218376b65",
+          "version_binding_verified": false
+        },
+        "zip_line": 745
+      },
       "status": "BLOCKED"
     },
     {
@@ -504,6 +529,17 @@
         }
       ],
       "ready_to_render": false,
+      "runtime_source_reference": {
+        "addin_line": 739,
+        "runtime_execution_verified": false,
+        "source_line_comparison": {
+          "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+          "left_utf8_lf_sha256": "3f6ed75a820caeddae4e0f7989c133c02b0cbc3bb46a91eb0eb3c1576cb5168f",
+          "right_utf8_lf_sha256": "3f6ed75a820caeddae4e0f7989c133c02b0cbc3bb46a91eb0eb3c1576cb5168f",
+          "version_binding_verified": false
+        },
+        "zip_line": 746
+      },
       "status": "BLOCKED"
     },
     {
@@ -588,6 +624,17 @@
         }
       ],
       "ready_to_render": false,
+      "runtime_source_reference": {
+        "addin_line": 736,
+        "runtime_execution_verified": false,
+        "source_line_comparison": {
+          "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+          "left_utf8_lf_sha256": "ac7f3bb2c553167c53a28a0eed549f3bb50bc5e6747077d2164100d0ad4ebadd",
+          "right_utf8_lf_sha256": "ac7f3bb2c553167c53a28a0eed549f3bb50bc5e6747077d2164100d0ad4ebadd",
+          "version_binding_verified": false
+        },
+        "zip_line": 743
+      },
       "status": "CONTRADICTED"
     },
     {
@@ -672,6 +719,17 @@
         }
       ],
       "ready_to_render": false,
+      "runtime_source_reference": {
+        "addin_line": 741,
+        "runtime_execution_verified": false,
+        "source_line_comparison": {
+          "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+          "left_utf8_lf_sha256": "7c0d38f5608f12bcea7cb2856ffac9e61f20ef27b34e02023979bdf0db507fe3",
+          "right_utf8_lf_sha256": "7c0d38f5608f12bcea7cb2856ffac9e61f20ef27b34e02023979bdf0db507fe3",
+          "version_binding_verified": false
+        },
+        "zip_line": 748
+      },
       "status": "PARTIAL"
     },
     {
@@ -759,6 +817,17 @@
         }
       ],
       "ready_to_render": false,
+      "runtime_source_reference": {
+        "addin_line": 783,
+        "runtime_execution_verified": false,
+        "source_line_comparison": {
+          "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+          "left_utf8_lf_sha256": "90140f16cf20e7d8bd819d61c209657f2139bcf4fcc2b1073c03f4491df906d3",
+          "right_utf8_lf_sha256": "90140f16cf20e7d8bd819d61c209657f2139bcf4fcc2b1073c03f4491df906d3",
+          "version_binding_verified": false
+        },
+        "zip_line": 790
+      },
       "status": "CONTRADICTED"
     },
     {
@@ -844,6 +913,17 @@
         }
       ],
       "ready_to_render": false,
+      "runtime_source_reference": {
+        "addin_line": 742,
+        "runtime_execution_verified": false,
+        "source_line_comparison": {
+          "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+          "left_utf8_lf_sha256": "cde147a88e13ae30ee81db937844ef63e22e0e4956c4248233a1a97b01c2ea9e",
+          "right_utf8_lf_sha256": "cde147a88e13ae30ee81db937844ef63e22e0e4956c4248233a1a97b01c2ea9e",
+          "version_binding_verified": false
+        },
+        "zip_line": 749
+      },
       "status": "PARTIAL"
     },
     {
@@ -932,6 +1012,17 @@
         }
       ],
       "ready_to_render": false,
+      "runtime_source_reference": {
+        "addin_line": 783,
+        "runtime_execution_verified": false,
+        "source_line_comparison": {
+          "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+          "left_utf8_lf_sha256": "90140f16cf20e7d8bd819d61c209657f2139bcf4fcc2b1073c03f4491df906d3",
+          "right_utf8_lf_sha256": "90140f16cf20e7d8bd819d61c209657f2139bcf4fcc2b1073c03f4491df906d3",
+          "version_binding_verified": false
+        },
+        "zip_line": 790
+      },
       "status": "CONTRADICTED"
     },
     {
@@ -1051,6 +1142,17 @@
         }
       ],
       "ready_to_render": false,
+      "runtime_source_reference": {
+        "addin_line": 759,
+        "runtime_execution_verified": false,
+        "source_line_comparison": {
+          "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+          "left_utf8_lf_sha256": "b281eb309302b6227dab52c54ad275a562b793a12b7bc70cdfb172720a60f4d6",
+          "right_utf8_lf_sha256": "b281eb309302b6227dab52c54ad275a562b793a12b7bc70cdfb172720a60f4d6",
+          "version_binding_verified": false
+        },
+        "zip_line": 766
+      },
       "status": "PARTIAL"
     },
     {
@@ -1176,6 +1278,17 @@
         }
       ],
       "ready_to_render": false,
+      "runtime_source_reference": {
+        "addin_line": 758,
+        "runtime_execution_verified": false,
+        "source_line_comparison": {
+          "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+          "left_utf8_lf_sha256": "415a1272ac1b3c8b0d064018750382254aca08135512e9b73b0416fce7399e15",
+          "right_utf8_lf_sha256": "415a1272ac1b3c8b0d064018750382254aca08135512e9b73b0416fce7399e15",
+          "version_binding_verified": false
+        },
+        "zip_line": 765
+      },
       "status": "PARTIAL"
     },
     {
@@ -1306,6 +1419,17 @@
         }
       ],
       "ready_to_render": false,
+      "runtime_source_reference": {
+        "addin_line": 750,
+        "runtime_execution_verified": false,
+        "source_line_comparison": {
+          "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+          "left_utf8_lf_sha256": "147089c020b280a0f62a8c9f5f6742b366019bdbae696274584f2124868c49bf",
+          "right_utf8_lf_sha256": "147089c020b280a0f62a8c9f5f6742b366019bdbae696274584f2124868c49bf",
+          "version_binding_verified": false
+        },
+        "zip_line": 757
+      },
       "status": "PARTIAL"
     },
     {
@@ -1450,6 +1574,17 @@
         }
       ],
       "ready_to_render": false,
+      "runtime_source_reference": {
+        "addin_line": 737,
+        "runtime_execution_verified": false,
+        "source_line_comparison": {
+          "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+          "left_utf8_lf_sha256": "9c8f88ace9c0ea34be3ba29c7fdbaf4e9c3833eb4ec5421dd54052f3a70a911f",
+          "right_utf8_lf_sha256": "9c8f88ace9c0ea34be3ba29c7fdbaf4e9c3833eb4ec5421dd54052f3a70a911f",
+          "version_binding_verified": false
+        },
+        "zip_line": 744
+      },
       "status": "PARTIAL"
     },
     {
@@ -1543,6 +1678,17 @@
         }
       ],
       "ready_to_render": false,
+      "runtime_source_reference": {
+        "addin_line": 745,
+        "runtime_execution_verified": false,
+        "source_line_comparison": {
+          "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+          "left_utf8_lf_sha256": "76debeee7733248093742b4d5369191f4d0f1b5a9e3a686fe357d8a9bc896328",
+          "right_utf8_lf_sha256": "76debeee7733248093742b4d5369191f4d0f1b5a9e3a686fe357d8a9bc896328",
+          "version_binding_verified": false
+        },
+        "zip_line": 752
+      },
       "status": "BLOCKED"
     },
     {
@@ -1633,6 +1779,17 @@
         }
       ],
       "ready_to_render": false,
+      "runtime_source_reference": {
+        "addin_line": 744,
+        "runtime_execution_verified": false,
+        "source_line_comparison": {
+          "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+          "left_utf8_lf_sha256": "0ca09ca6b04cdf2c1e2fc64c974d881ba48c12313c698d34fa4fd45a28fc72a7",
+          "right_utf8_lf_sha256": "0ca09ca6b04cdf2c1e2fc64c974d881ba48c12313c698d34fa4fd45a28fc72a7",
+          "version_binding_verified": false
+        },
+        "zip_line": 751
+      },
       "status": "BLOCKED"
     }
   ],
@@ -1687,6 +1844,1178 @@
   "process_a": "No issued reference/date; preserve blank administrative date; no latest decision inheritance.",
   "process_b": "Case/Plan-bound lineage is diagnostic; external legal issuance remains unverified.",
   "ready_to_render": false,
+  "runtime_identity_chain": {
+    "acceptance_matrix": {
+      "build_distribution": "VERSION_BINDING_UNVERIFIED",
+      "business_owner_acceptance": "EVIDENCE_UNAVAILABLE",
+      "executable_vba": "RUNTIME_IDENTITY_UNVERIFIED",
+      "export_encoding": "ENCODING_AMBIGUOUS",
+      "independent_custody": "EVIDENCE_UNAVAILABLE",
+      "loaded_runtime": "RUNTIME_IDENTITY_UNVERIFIED",
+      "reported_disk": "EVIDENCE_UNAVAILABLE",
+      "reviewed_source": "SOURCE_EQUIVALENCE_PROVEN",
+      "supplied_snapshot": "BYTE_IDENTITY_PROVEN"
+    },
+    "blocker": "UNVERIFIED_VERSION_BINDING",
+    "build_distribution_survey": {
+      "found_attested_build_or_distribution_mapping": false,
+      "limitation": "Bounded workspace search; no assertion about unavailable original build/distribution systems.",
+      "packages": [
+        {
+          "entries": 4,
+          "path": "artifacts/legacy_audit/batch_a_precommit.zip",
+          "runtime_or_vba_entries": [],
+          "sha256": "85f45b44da814ab6c599ac76a0cd0eeb5474d2c3bb0bb19d61b0e1a5109daa62"
+        },
+        {
+          "entries": 4,
+          "path": "artifacts/legacy_audit/BATCH_B2_PRECOMMIT.zip",
+          "runtime_or_vba_entries": [],
+          "sha256": "549295a5556ab6c2f22daa5bb3abbedc52b887c38412eb6610223561b9a3c30b"
+        },
+        {
+          "entries": 9,
+          "path": "artifacts/legacy_audit/BATCH_B3_PRECOMMIT.zip",
+          "runtime_or_vba_entries": [],
+          "sha256": "83555fafcf65bb5e33b5ba804e50521974ce9b2e551d330758a29133e0349383"
+        }
+      ],
+      "scope": [
+        "legacy/",
+        "artifacts/legacy_audit/*.zip",
+        "git-tracked docs/tools references to GPs.xlam or VBA export/build"
+      ]
+    },
+    "decision": "UNDECIDED",
+    "encoding": {
+      "addin_project_codepage": 1252,
+      "package_metadata": {
+        "app_properties_sha256": "37c8f61419a4ca8d85d26c99391cef0306ff0a5acb12e9bd7889a6052be9d758",
+        "application": "Microsoft Excel",
+        "custom_properties_present": false,
+        "manifest_named_members": [],
+        "producer_app_version": "16.0300",
+        "scope": "Office producer metadata only; not an attested VBA build, distribution or loaded Excel version"
+      },
+      "procedures": [
+        {
+          "addin_lines": [
+            650,
+            722
+          ],
+          "category": "ENCODING_AMBIGUOUS",
+          "differences": [
+            {
+              "addin_line": 678,
+              "case": 7,
+              "cp1252_text": "        If iFName <> vbNullString Then fname = iFName Else fname = \"6. Phi\" & ChrW(&H1EBF) & \"u trình PCT - \" & TenCtyx & \" (\" & syear & \")\"",
+              "cp1258_text": "        If iFName <> vbNullString Then fname = iFName Else fname = \"6. Phi\" & ChrW(&H1EBF) & \"u tŕnh PCT - \" & TenCtyx & \" (\" & syear & \")\"",
+              "differing_byte_decodes": [
+                {
+                  "byte_hex": "ec",
+                  "cp1252_codepoint": "U+00EC",
+                  "cp1258_codepoint": "U+0301",
+                  "offset": 98
+                }
+              ],
+              "raw_hex": "202020202020202049662069464e616d65203c3e2076624e756c6c537472696e67205468656e20666e616d65203d2069464e616d6520456c736520666e616d65203d2022362e20506869222026204368725728264831454246292026202275207472ec6e6820504354202d202220262054656e43747978202620222028222026207379656172202620222922",
+              "raw_sha256": "cb2144f38ab1dafe60c335525123174888a776f5349b61602a070dfd5090c83a",
+              "reachability": "NOT_CASE_2",
+              "zip_line": 685
+            },
+            {
+              "addin_line": 681,
+              "case": 8,
+              "cp1252_text": "        If iFName <> vbNullString Then fname = iFName Else fname = \"7. Phi\" & ChrW(&H1EBF) & \"u trình CT - \" & TenCtyx & \" (\" & syear & \")\"",
+              "cp1258_text": "        If iFName <> vbNullString Then fname = iFName Else fname = \"7. Phi\" & ChrW(&H1EBF) & \"u tŕnh CT - \" & TenCtyx & \" (\" & syear & \")\"",
+              "differing_byte_decodes": [
+                {
+                  "byte_hex": "ec",
+                  "cp1252_codepoint": "U+00EC",
+                  "cp1258_codepoint": "U+0301",
+                  "offset": 98
+                }
+              ],
+              "raw_hex": "202020202020202049662069464e616d65203c3e2076624e756c6c537472696e67205468656e20666e616d65203d2069464e616d6520456c736520666e616d65203d2022372e20506869222026204368725728264831454246292026202275207472ec6e68204354202d202220262054656e43747978202620222028222026207379656172202620222922",
+              "raw_sha256": "5d2e7db14d6d7058c7911ebfd2dfca06c7305d698f9dcadc70b95d49a1c56218",
+              "reachability": "NOT_CASE_2",
+              "zip_line": 688
+            },
+            {
+              "addin_line": 691,
+              "case": 11,
+              "cp1252_text": "        tpl = \"10. B\" & ChrW(&H1EA3) & \"ng công c\" & ChrW(&H1EE5) & \" qu\" & ChrW(&H1EA3) & \"n lý r\" & ChrW(&H1EE7) & \"i ro.dotx\"",
+              "cp1258_text": "        tpl = \"10. B\" & ChrW(&H1EA3) & \"ng công c\" & ChrW(&H1EE5) & \" qu\" & ChrW(&H1EA3) & \"n lư r\" & ChrW(&H1EE7) & \"i ro.dotx\"",
+              "differing_byte_decodes": [
+                {
+                  "byte_hex": "fd",
+                  "cp1252_codepoint": "U+00FD",
+                  "cp1258_codepoint": "U+01B0",
+                  "offset": 95
+                }
+              ],
+              "raw_hex": "202020202020202074706c203d202231302e204222202620436872572826483145413329202620226e672063f46e672063222026204368725728264831454535292026202220717522202620436872572826483145413329202620226e206cfd207222202620436872572826483145453729202620226920726f2e646f747822",
+              "raw_sha256": "fd2ae7a391ac859d02ac9eeb2c53ca86f44e08b4b5c9369cc8f7ad0e7a993ec0",
+              "reachability": "NOT_CASE_2",
+              "zip_line": 698
+            },
+            {
+              "addin_line": 692,
+              "case": 11,
+              "cp1252_text": "        If iFName <> vbNullString Then fname = iFName Else fname = \"10. Qu\" & ChrW(&H1EA3) & \"n lý r\" & ChrW(&H1EE7) & \"i ro - \" & TenCtyx & \" (\" & syear & \")\"",
+              "cp1258_text": "        If iFName <> vbNullString Then fname = iFName Else fname = \"10. Qu\" & ChrW(&H1EA3) & \"n lư r\" & ChrW(&H1EE7) & \"i ro - \" & TenCtyx & \" (\" & syear & \")\"",
+              "differing_byte_decodes": [
+                {
+                  "byte_hex": "fd",
+                  "cp1252_codepoint": "U+00FD",
+                  "cp1258_codepoint": "U+01B0",
+                  "offset": 97
+                }
+              ],
+              "raw_hex": "202020202020202049662069464e616d65203c3e2076624e756c6c537472696e67205468656e20666e616d65203d2069464e616d6520456c736520666e616d65203d202231302e20517522202620436872572826483145413329202620226e206cfd207222202620436872572826483145453729202620226920726f202d202220262054656e43747978202620222028222026207379656172202620222922",
+              "raw_sha256": "6d9e8613ec19d385c49f3f681c8ed4804f41e444c6534de6796b6fc68ed84dc7",
+              "reachability": "NOT_CASE_2",
+              "zip_line": 699
+            },
+            {
+              "addin_line": 694,
+              "case": 12,
+              "cp1252_text": "        tpl = \"a. CV xác nh\" & ChrW(&H1EAD) & \"n tình tr\" & ChrW(&H1EA1) & \"ng.dotx\"",
+              "cp1258_text": "        tpl = \"a. CV xác nh\" & ChrW(&H1EAD) & \"n t́nh tr\" & ChrW(&H1EA1) & \"ng.dotx\"",
+              "differing_byte_decodes": [
+                {
+                  "byte_hex": "ec",
+                  "cp1252_codepoint": "U+00EC",
+                  "cp1258_codepoint": "U+0301",
+                  "offset": 50
+                }
+              ],
+              "raw_hex": "202020202020202074706c203d2022612e2043562078e163206e6822202620436872572826483145414429202620226e2074ec6e6820747222202620436872572826483145413129202620226e672e646f747822",
+              "raw_sha256": "c6ffba89562bb8f0765cf854a23294ef1ee71c9b56c37e20abb5a7b753e7d484",
+              "reachability": "NOT_CASE_2",
+              "zip_line": 701
+            },
+            {
+              "addin_line": 696,
+              "case": 12,
+              "cp1252_text": "            If iFName <> vbNullString Then fname = iFName Else fname = \"a. CV xác nh\" & ChrW(&H1EAD) & \"n tình tr\" & ChrW(&H1EA1) & \"ng ch\" & ChrW(&H1EDD) & \" KT - \" & TenCtyx '& \" (\" & syear & \")\"",
+              "cp1258_text": "            If iFName <> vbNullString Then fname = iFName Else fname = \"a. CV xác nh\" & ChrW(&H1EAD) & \"n t́nh tr\" & ChrW(&H1EA1) & \"ng ch\" & ChrW(&H1EDD) & \" KT - \" & TenCtyx '& \" (\" & syear & \")\"",
+              "differing_byte_decodes": [
+                {
+                  "byte_hex": "ec",
+                  "cp1252_codepoint": "U+00EC",
+                  "cp1258_codepoint": "U+0301",
+                  "offset": 107
+                }
+              ],
+              "raw_hex": "20202020202020202020202049662069464e616d65203c3e2076624e756c6c537472696e67205468656e20666e616d65203d2069464e616d6520456c736520666e616d65203d2022612e2043562078e163206e6822202620436872572826483145414429202620226e2074ec6e6820747222202620436872572826483145413129202620226e672063682220262043687257282648314544442920262022204b54202d202220262054656e4374797820272620222028222026207379656172202620222922",
+              "raw_sha256": "752696bd92cd12275bfc5cd14c4a34282307e1b5bf1c76db623f18b345291521",
+              "reachability": "NOT_CASE_2",
+              "zip_line": 703
+            },
+            {
+              "addin_line": 698,
+              "case": 12,
+              "cp1252_text": "            If iFName <> vbNullString Then fname = iFName Else fname = \"a. CV xác nh\" & ChrW(&H1EAD) & \"n tình tr\" & ChrW(&H1EA1) & \"ng ch\" & ChrW(&H1EDD) & \" c\" & ChrW(&H1EA5) & \"p CC - \" & TenCtyx '& \" (\" & syear & \")\"",
+              "cp1258_text": "            If iFName <> vbNullString Then fname = iFName Else fname = \"a. CV xác nh\" & ChrW(&H1EAD) & \"n t́nh tr\" & ChrW(&H1EA1) & \"ng ch\" & ChrW(&H1EDD) & \" c\" & ChrW(&H1EA5) & \"p CC - \" & TenCtyx '& \" (\" & syear & \")\"",
+              "differing_byte_decodes": [
+                {
+                  "byte_hex": "ec",
+                  "cp1252_codepoint": "U+00EC",
+                  "cp1258_codepoint": "U+0301",
+                  "offset": 107
+                }
+              ],
+              "raw_hex": "20202020202020202020202049662069464e616d65203c3e2076624e756c6c537472696e67205468656e20666e616d65203d2069464e616d6520456c736520666e616d65203d2022612e2043562078e163206e6822202620436872572826483145414429202620226e2074ec6e6820747222202620436872572826483145413129202620226e6720636822202620436872572826483145444429202620222063222026204368725728264831454135292026202270204343202d202220262054656e4374797820272620222028222026207379656172202620222922",
+              "raw_sha256": "edf8add37e97a92b05a02dd223888f63e804a95385db5e9abf14127621be336f",
+              "reachability": "NOT_CASE_2",
+              "zip_line": 705
+            },
+            {
+              "addin_line": 702,
+              "case": 13,
+              "cp1252_text": "        tpl = \"b. CV tr\" & ChrW(&H1EA3) & \" l\" & ChrW(&H1EDD) & \"i \" & ChrW(&H111) & \"\" & ChrW(&H1ED3) & \"ng ý \" & ChrW(&H111) & \"\" & ChrW(&H1ED5) & \"i tên, \" & ChrW(&H111) & \"\" & ChrW(&H1ECB) & \"a ch\" & ChrW(&H1EC9) & \".dotx\"",
+              "cp1258_text": "        tpl = \"b. CV tr\" & ChrW(&H1EA3) & \" l\" & ChrW(&H1EDD) & \"i \" & ChrW(&H111) & \"\" & ChrW(&H1ED3) & \"ng ư \" & ChrW(&H111) & \"\" & ChrW(&H1ED5) & \"i tên, \" & ChrW(&H111) & \"\" & ChrW(&H1ECB) & \"a ch\" & ChrW(&H1EC9) & \".dotx\"",
+              "differing_byte_decodes": [
+                {
+                  "byte_hex": "fd",
+                  "cp1252_codepoint": "U+00FD",
+                  "cp1258_codepoint": "U+01B0",
+                  "offset": 109
+                }
+              ],
+              "raw_hex": "202020202020202074706c203d2022622e2043562074722220262043687257282648314541332920262022206c222026204368725728264831454444292026202269202220262043687257282648313131292026202222202620436872572826483145443329202620226e6720fd20222026204368725728264831313129202620222220262043687257282648314544352920262022692074ea6e2c202220262043687257282648313131292026202222202620436872572826483145434229202620226120636822202620436872572826483145433929202620222e646f747822",
+              "raw_sha256": "e505fb0e3a88256dd86e58827067fa9486279b69886866099ecef0612ec71fb0",
+              "reachability": "NOT_CASE_2",
+              "zip_line": 709
+            },
+            {
+              "addin_line": 703,
+              "case": 13,
+              "cp1252_text": "        If iFName <> vbNullString Then fname = iFName Else fname = \"b. CV tr\" & ChrW(&H1EA3) & \" l\" & ChrW(&H1EDD) & \"i \" & ChrW(&H111) & \"\" & ChrW(&H1ED3) & \"ng ý \" & ChrW(&H111) & \"\" & ChrW(&H1ED5) & \"i tên, \" & ChrW(&H111) & \"\" & ChrW(&H1ECB) & \"a ch\" & ChrW(&H1EC9) & \" \" & TenCtyx '& \" (\" & syear & \")\"",
+              "cp1258_text": "        If iFName <> vbNullString Then fname = iFName Else fname = \"b. CV tr\" & ChrW(&H1EA3) & \" l\" & ChrW(&H1EDD) & \"i \" & ChrW(&H111) & \"\" & ChrW(&H1ED3) & \"ng ư \" & ChrW(&H111) & \"\" & ChrW(&H1ED5) & \"i tên, \" & ChrW(&H111) & \"\" & ChrW(&H1ECB) & \"a ch\" & ChrW(&H1EC9) & \" \" & TenCtyx '& \" (\" & syear & \")\"",
+              "differing_byte_decodes": [
+                {
+                  "byte_hex": "fd",
+                  "cp1252_codepoint": "U+00FD",
+                  "cp1258_codepoint": "U+01B0",
+                  "offset": 162
+                }
+              ],
+              "raw_hex": "202020202020202049662069464e616d65203c3e2076624e756c6c537472696e67205468656e20666e616d65203d2069464e616d6520456c736520666e616d65203d2022622e2043562074722220262043687257282648314541332920262022206c222026204368725728264831454444292026202269202220262043687257282648313131292026202222202620436872572826483145443329202620226e6720fd20222026204368725728264831313129202620222220262043687257282648314544352920262022692074ea6e2c20222026204368725728264831313129202620222220262043687257282648314543422920262022612063682220262043687257282648314543392920262022202220262054656e4374797820272620222028222026207379656172202620222922",
+              "raw_sha256": "83be7511b01edbf23c49e4e17f608def1cad37ad5a68d0cee3b8b9a94f652a22",
+              "reachability": "NOT_CASE_2",
+              "zip_line": 710
+            }
+          ],
+          "direct_qdkt_word_text_write": false,
+          "export_codepage_attested": false,
+          "module": "RecordForm.frm",
+          "normalization": "LF only; no Unicode or punctuation normalization",
+          "procedure": "Get_Tpl",
+          "scope": "non-i2 template/filename branches",
+          "zip_lines": [
+            657,
+            729
+          ],
+          "zip_raw_module_sha256": "9c656a194839c5847789f4c12fcae67d392ed64f7053e241426865e527089b1d"
+        },
+        {
+          "addin_lines": [
+            392,
+            421
+          ],
+          "category": "ENCODING_AMBIGUOUS",
+          "differences": [
+            {
+              "addin_line": 419,
+              "case": null,
+              "cp1252_text": "    MsgBoxU \"Không tìm th\" & ChrW(&H1EA5) & \"y danh sách Thanh tra viên\"",
+              "cp1258_text": "    MsgBoxU \"Không t́m th\" & ChrW(&H1EA5) & \"y danh sách Thanh tra viên\"",
+              "differing_byte_decodes": [
+                {
+                  "byte_hex": "ec",
+                  "cp1252_codepoint": "U+00EC",
+                  "cp1258_codepoint": "U+0301",
+                  "offset": 20
+                }
+              ],
+              "raw_hex": "202020204d7367426f785520224b68f46e672074ec6d2074682220262043687257282648314541352920262022792064616e682073e16368205468616e6820747261207669ea6e22",
+              "raw_sha256": "4f74827c2239f32c7357f7949e97146bd8669496dfd01e25feaf10ce047f98f1",
+              "reachability": "I2_REACHABLE_FAILURE_HANDLER_NOT_PROVEN_EXECUTED",
+              "zip_line": 426
+            }
+          ],
+          "direct_qdkt_word_text_write": false,
+          "export_codepage_attested": false,
+          "module": "TTVForm.frm",
+          "normalization": "LF only; no Unicode or punctuation normalization",
+          "procedure": "Get_TTV2",
+          "scope": "error message in called team function; do not classify as unreachable from i=2",
+          "zip_lines": [
+            399,
+            428
+          ],
+          "zip_raw_module_sha256": "07201c54e73281abf51889769dcbb152f10088c55b7e8c4980b6520675d478f4"
+        }
+      ],
+      "source_capture_pin": "b2cdf80607d44c4543fa0b90e78e9eecfc10c4ef3ebb8ebdecd5d7c32df279ea",
+      "version_binding": "UNVERIFIED_VERSION_BINDING",
+      "zip_decoder": "tools.trace_inspection_qd_kt_vba._decode: utf-8-sig then cp1258 then cp1252 then latin-1"
+    },
+    "evidence_class": "PINNED_STATIC_CAPTURE_NOT_LIVE_EXCEL_ATTESTATION",
+    "identity_evidence_pin": "44fbef547678e1359eea7fb51db037d2bb0ac73ef97ded86e2c606d778025251",
+    "loader": {
+      "artifact": "legacy/Danh sách Kiểm tra GPs.xlsb",
+      "checks_checksum_or_build_identity": false,
+      "limitation": "Source observation only: an already-open same-name add-in or alternate configured path may supply the invoked runtime.",
+      "lines": [
+        20,
+        42
+      ],
+      "loaded_runtime_category": "RUNTIME_IDENTITY_UNVERIFIED",
+      "lookup_and_open_references": [
+        {
+          "line": 27,
+          "text": "    Set wkb = Application.Workbooks(fname)"
+        },
+        {
+          "line": 32,
+          "text": "        Application.Workbooks.Open path1 & fname"
+        },
+        {
+          "line": 33,
+          "text": "        If Err.Number <> 0 Then Err.Clear:   Application.Workbooks.Open path2 & fname"
+        }
+      ],
+      "module": "Module1.bas",
+      "procedure": "Load_Lib",
+      "procedure_utf8_lf_sha256": "f303b4e6691cf745317c63a7e40ed62f42d50c26bf6fe0b0dac427b2a9e11bf3",
+      "project_codepage": 1252,
+      "sha256": "c12537ea5a5c9f470e42fb5bdbe214f36983e310fceac7c560ad38885209fe3d",
+      "size_bytes": 3284315
+    },
+    "ready_to_render": false,
+    "runtime_identity_verified": false,
+    "stages": [
+      {
+        "category": "BYTE_IDENTITY_PROVEN",
+        "scope": "supplied snapshot only; not current Excel-loaded or executed bytes",
+        "sha256": "52725cba1fd87107814d07da1dbae8d79c77127765018b0daf4b6fe6f44b1b58",
+        "source_modules": {
+          "Module1.bas": "bb4196f2fbe8116a9d78c86e7eaf7b42d03e7e1bc6cca3b6b29a35878d48f7a1",
+          "RecordForm.frm": "1aa0ef958d9255d55cec64c5e093f07e2d22242f3597ac658dda3b4bf6e979eb",
+          "TTVForm.frm": "24699d187e28a88b8ffe57f026738f9428d91f3b9a6814d787b2e663d99dfe46",
+          "WinAPI.bas": "e943e12ba8f976282faad7677e7bce3df9dffc3e451676065b6a58f308db1213"
+        },
+        "stage": "PRIMARY_SUPPLIED_ADDIN"
+      },
+      {
+        "category": "ENCODING_AMBIGUOUS",
+        "missing": "WinAPI export, export encoding attestation, source-to-build mapping",
+        "scope": "14 writer lines and 9 whole procedures after LF-only normalization; not version identity",
+        "source_equivalence_category": "SOURCE_EQUIVALENCE_PROVEN",
+        "stage": "REVIEWED_EXPORT_SET"
+      },
+      {
+        "category": "VERSION_BINDING_UNVERIFIED",
+        "manifest_evidence": "EVIDENCE_UNAVAILABLE",
+        "scope": "Bounded workspace search; no assertion about unavailable original build/distribution systems.",
+        "stage": "BUILD_AND_DISTRIBUTION"
+      },
+      {
+        "category": "RUNTIME_IDENTITY_UNVERIFIED",
+        "scope": "no independently authenticated live-session identity; loader can reuse same-name workbook without a hash check",
+        "stage": "EXCEL_LOADED_RUNTIME"
+      }
+    ],
+    "word_uat": "NOT_EXECUTED"
+  },
+  "runtime_source_provenance": {
+    "capture": {
+      "acquisition": "USER_SUPPLIED_LOCAL_ARTIFACTS_ORIGINAL_BUILD_DISTRIBUTION_CHAIN_UNATTESTED",
+      "addin_modules_utf8_lf_sha256": {
+        "Module1.bas": "bb4196f2fbe8116a9d78c86e7eaf7b42d03e7e1bc6cca3b6b29a35878d48f7a1",
+        "RecordForm.frm": "1aa0ef958d9255d55cec64c5e093f07e2d22242f3597ac658dda3b4bf6e979eb",
+        "TTVForm.frm": "24699d187e28a88b8ffe57f026738f9428d91f3b9a6814d787b2e663d99dfe46",
+        "WinAPI.bas": "e943e12ba8f976282faad7677e7bce3df9dffc3e451676065b6a58f308db1213"
+      },
+      "addin_project_embedding": {
+        "comparison": "BYTE_IDENTICAL_BINDING_PROVEN",
+        "member": "xl/vbaProject.bin",
+        "scope": "EXACT_EMBEDDED_MEMBER_OF_PINNED_ADDIN_NOT_ZIP_SOURCE_VERSION_OR_EXECUTION",
+        "sha256": "84afc3e2d431b550e7f7f6b392f1a363d6d476efe444ba7aab3b4932dba4bcfe"
+      },
+      "artifact_inputs": {
+        "addin": {
+          "location": "legacy/GPs.xlam",
+          "sha256": "52725cba1fd87107814d07da1dbae8d79c77127765018b0daf4b6fe6f44b1b58"
+        },
+        "source_zip": {
+          "location": "legacy/GXP-VBA code.zip",
+          "sha256": "6227fb0a6b3d74fa0f4cc655b94b021a40d65a508c2f2eefc62f1724c7b89ff7"
+        },
+        "template_GLP": {
+          "location": "legacy/Templates/2. QD KT - GLP.dotx",
+          "sha256": "c55695dbdaafa48f0b2a4211a8adda7b97443a44439d9a81de306ce98729ec19"
+        },
+        "template_GMP": {
+          "location": "legacy/Templates/2. QD KT - GMP.dotx",
+          "sha256": "490d534580ce00844b6175e64ca4e2fdc345d7957be8813f0f62d03a9b82c1a5"
+        },
+        "template_GMPbb": {
+          "location": "legacy/Templates/2. QD KT - GMPbb.dotx",
+          "sha256": "fec4dc35ac5fbb2f2ef6b56750fe6dcf5316dafc0898395279d9ff281b2ca771"
+        },
+        "template_GSP": {
+          "location": "legacy/Templates/2. QD KT - GSP.dotx",
+          "sha256": "890df5e2345e2927b286f4a3adb107a984825eff21e998ae253020ecac46eea1"
+        }
+      },
+      "compiled_pcode_source_equivalence_verified": false,
+      "extraction": "oletools==0.60.2 VBA_Parser + VBA_Project PROJECTCODEPAGE; static only; in-memory immutable bytes",
+      "helpers": [
+        {
+          "declaration_matches": 1,
+          "module": "WinAPI.bas",
+          "name": "DelLastIf_Ins",
+          "scope": "STATIC_REFERENCE_IN_SAME_CAPTURED_PROJECT_NOT_EXECUTION_PROOF",
+          "static_reference": "Module1.TaoQDKT_KHKT:607"
+        },
+        {
+          "declaration_matches": 1,
+          "module": "WinAPI.bas",
+          "name": "LCase_FirstChar",
+          "scope": "STATIC_REFERENCE_IN_SAME_CAPTURED_PROJECT_NOT_EXECUTION_PROOF",
+          "static_reference": "RecordForm.Tao_QDKT_KHKT_BBKT:746"
+        },
+        {
+          "declaration_matches": 1,
+          "module": "WinAPI.bas",
+          "name": "Del_LastPeriod",
+          "scope": "STATIC_REFERENCE_IN_SAME_CAPTURED_PROJECT_NOT_EXECUTION_PROOF",
+          "static_reference": "RecordForm.Tao_QDKT_KHKT_BBKT:747"
+        }
+      ],
+      "limitations": [
+        "ZIP contains exports/FRX, no WinAPI or runtime add-in: no reproducible build/distribution binding",
+        "PROJECTCODEPAGE attests add-in encoding only; cp1252 interpretation of ZIP is a comparison, not an approved correction of reviewed cp1258 source",
+        "Full Get_Tpl and Get_TTV2 reviewed-decoder text differs in non-i2/error-message literals; alternative cp1252 texts match, so actual semantic change is unproven",
+        "LF-only source equality preserves Unicode, casing, punctuation and whitespace; it is not binary identity",
+        "No evidence of the add-in actually loaded by Excel, p-code/source equivalence, live variable values, resolved Template_Path, business approval or Word output"
+      ],
+      "loaded_excel_runtime_verified": false,
+      "operation_source_lines": {
+        "Diachicoso": {
+          "addin_line": 740,
+          "runtime_execution_verified": false,
+          "source_line_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "6263afe7b2c052da5b9ddfa43979423331084ddee5005dd2a1700ad34604e32f",
+            "right_utf8_lf_sha256": "6263afe7b2c052da5b9ddfa43979423331084ddee5005dd2a1700ad34604e32f",
+            "version_binding_verified": false
+          },
+          "zip_line": 747
+        },
+        "Diadiem": {
+          "addin_line": 738,
+          "runtime_execution_verified": false,
+          "source_line_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "a52f29dab11d86d6864c129df2f4e4d108a3b6c83b53171115e5a3b218376b65",
+            "right_utf8_lf_sha256": "a52f29dab11d86d6864c129df2f4e4d108a3b6c83b53171115e5a3b218376b65",
+            "version_binding_verified": false
+          },
+          "zip_line": 745
+        },
+        "Diadiemx": {
+          "addin_line": 739,
+          "runtime_execution_verified": false,
+          "source_line_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "3f6ed75a820caeddae4e0f7989c133c02b0cbc3bb46a91eb0eb3c1576cb5168f",
+            "right_utf8_lf_sha256": "3f6ed75a820caeddae4e0f7989c133c02b0cbc3bb46a91eb0eb3c1576cb5168f",
+            "version_binding_verified": false
+          },
+          "zip_line": 746
+        },
+        "Fulldate": {
+          "addin_line": 736,
+          "runtime_execution_verified": false,
+          "source_line_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "ac7f3bb2c553167c53a28a0eed549f3bb50bc5e6747077d2164100d0ad4ebadd",
+            "right_utf8_lf_sha256": "ac7f3bb2c553167c53a28a0eed549f3bb50bc5e6747077d2164100d0ad4ebadd",
+            "version_binding_verified": false
+          },
+          "zip_line": 743
+        },
+        "HsDK": {
+          "addin_line": 741,
+          "runtime_execution_verified": false,
+          "source_line_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "7c0d38f5608f12bcea7cb2856ffac9e61f20ef27b34e02023979bdf0db507fe3",
+            "right_utf8_lf_sha256": "7c0d38f5608f12bcea7cb2856ffac9e61f20ef27b34e02023979bdf0db507fe3",
+            "version_binding_verified": false
+          },
+          "zip_line": 748
+        },
+        "NgayQDKT": {
+          "addin_line": 783,
+          "runtime_execution_verified": false,
+          "source_line_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "90140f16cf20e7d8bd819d61c209657f2139bcf4fcc2b1073c03f4491df906d3",
+            "right_utf8_lf_sha256": "90140f16cf20e7d8bd819d61c209657f2139bcf4fcc2b1073c03f4491df906d3",
+            "version_binding_verified": false
+          },
+          "zip_line": 790
+        },
+        "NgaynopHsDK": {
+          "addin_line": 742,
+          "runtime_execution_verified": false,
+          "source_line_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "cde147a88e13ae30ee81db937844ef63e22e0e4956c4248233a1a97b01c2ea9e",
+            "right_utf8_lf_sha256": "cde147a88e13ae30ee81db937844ef63e22e0e4956c4248233a1a97b01c2ea9e",
+            "version_binding_verified": false
+          },
+          "zip_line": 749
+        },
+        "QDKT": {
+          "addin_line": 783,
+          "runtime_execution_verified": false,
+          "source_line_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "90140f16cf20e7d8bd819d61c209657f2139bcf4fcc2b1073c03f4491df906d3",
+            "right_utf8_lf_sha256": "90140f16cf20e7d8bd819d61c209657f2139bcf4fcc2b1073c03f4491df906d3",
+            "version_binding_verified": false
+          },
+          "zip_line": 790
+        },
+        "TT3Del": {
+          "addin_line": 759,
+          "runtime_execution_verified": false,
+          "source_line_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "b281eb309302b6227dab52c54ad275a562b793a12b7bc70cdfb172720a60f4d6",
+            "right_utf8_lf_sha256": "b281eb309302b6227dab52c54ad275a562b793a12b7bc70cdfb172720a60f4d6",
+            "version_binding_verified": false
+          },
+          "zip_line": 766
+        },
+        "TT3x": {
+          "addin_line": 758,
+          "runtime_execution_verified": false,
+          "source_line_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "415a1272ac1b3c8b0d064018750382254aca08135512e9b73b0416fce7399e15",
+            "right_utf8_lf_sha256": "415a1272ac1b3c8b0d064018750382254aca08135512e9b73b0416fce7399e15",
+            "version_binding_verified": false
+          },
+          "zip_line": 765
+        },
+        "TTx": {
+          "addin_line": 750,
+          "runtime_execution_verified": false,
+          "source_line_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "147089c020b280a0f62a8c9f5f6742b366019bdbae696274584f2124868c49bf",
+            "right_utf8_lf_sha256": "147089c020b280a0f62a8c9f5f6742b366019bdbae696274584f2124868c49bf",
+            "version_binding_verified": false
+          },
+          "zip_line": 757
+        },
+        "Tencoso": {
+          "addin_line": 737,
+          "runtime_execution_verified": false,
+          "source_line_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "9c8f88ace9c0ea34be3ba29c7fdbaf4e9c3833eb4ec5421dd54052f3a70a911f",
+            "right_utf8_lf_sha256": "9c8f88ace9c0ea34be3ba29c7fdbaf4e9c3833eb4ec5421dd54052f3a70a911f",
+            "version_binding_verified": false
+          },
+          "zip_line": 744
+        },
+        "VKN": {
+          "addin_line": 745,
+          "runtime_execution_verified": false,
+          "source_line_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "76debeee7733248093742b4d5369191f4d0f1b5a9e3a686fe357d8a9bc896328",
+            "right_utf8_lf_sha256": "76debeee7733248093742b4d5369191f4d0f1b5a9e3a686fe357d8a9bc896328",
+            "version_binding_verified": false
+          },
+          "zip_line": 752
+        },
+        "VKNx": {
+          "addin_line": 744,
+          "runtime_execution_verified": false,
+          "source_line_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "0ca09ca6b04cdf2c1e2fc64c974d881ba48c12313c698d34fa4fd45a28fc72a7",
+            "right_utf8_lf_sha256": "0ca09ca6b04cdf2c1e2fc64c974d881ba48c12313c698d34fa4fd45a28fc72a7",
+            "version_binding_verified": false
+          },
+          "zip_line": 751
+        }
+      },
+      "procedures": [
+        {
+          "addin_lines": [
+            595,
+            651
+          ],
+          "addin_procedure_utf8_lf_sha256": "a44347b9dee8998d900ad88730863b4e54dcf87506d4450363d48736a7168517",
+          "module": "Module1.bas",
+          "procedure": "TaoQDKT_KHKT",
+          "reviewed_decoder_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "a44347b9dee8998d900ad88730863b4e54dcf87506d4450363d48736a7168517",
+            "right_utf8_lf_sha256": "a44347b9dee8998d900ad88730863b4e54dcf87506d4450363d48736a7168517",
+            "version_binding_verified": false
+          },
+          "unattested_zip_cp1252_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "a44347b9dee8998d900ad88730863b4e54dcf87506d4450363d48736a7168517",
+            "right_utf8_lf_sha256": "a44347b9dee8998d900ad88730863b4e54dcf87506d4450363d48736a7168517",
+            "version_binding_verified": false
+          },
+          "zip_lines": [
+            595,
+            651
+          ]
+        },
+        {
+          "addin_lines": [
+            2042,
+            2052
+          ],
+          "addin_procedure_utf8_lf_sha256": "070216ce82e0f43677e9d89c5588217d6b1b06b7284f25e6d6bd1ad89a5e6d08",
+          "module": "Module1.bas",
+          "procedure": "FormatDateS",
+          "reviewed_decoder_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "070216ce82e0f43677e9d89c5588217d6b1b06b7284f25e6d6bd1ad89a5e6d08",
+            "right_utf8_lf_sha256": "070216ce82e0f43677e9d89c5588217d6b1b06b7284f25e6d6bd1ad89a5e6d08",
+            "version_binding_verified": false
+          },
+          "unattested_zip_cp1252_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "070216ce82e0f43677e9d89c5588217d6b1b06b7284f25e6d6bd1ad89a5e6d08",
+            "right_utf8_lf_sha256": "070216ce82e0f43677e9d89c5588217d6b1b06b7284f25e6d6bd1ad89a5e6d08",
+            "version_binding_verified": false
+          },
+          "zip_lines": [
+            2042,
+            2052
+          ]
+        },
+        {
+          "addin_lines": [
+            1695,
+            1782
+          ],
+          "addin_procedure_utf8_lf_sha256": "f2ab0d2b0dc93f6fe0e626ee45bee34c4fd5c4e029aa6db6fd618d651da8fa51",
+          "module": "RecordForm.frm",
+          "procedure": "CreateFile",
+          "reviewed_decoder_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "f2ab0d2b0dc93f6fe0e626ee45bee34c4fd5c4e029aa6db6fd618d651da8fa51",
+            "right_utf8_lf_sha256": "f2ab0d2b0dc93f6fe0e626ee45bee34c4fd5c4e029aa6db6fd618d651da8fa51",
+            "version_binding_verified": false
+          },
+          "unattested_zip_cp1252_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "f2ab0d2b0dc93f6fe0e626ee45bee34c4fd5c4e029aa6db6fd618d651da8fa51",
+            "right_utf8_lf_sha256": "f2ab0d2b0dc93f6fe0e626ee45bee34c4fd5c4e029aa6db6fd618d651da8fa51",
+            "version_binding_verified": false
+          },
+          "zip_lines": [
+            1702,
+            1789
+          ]
+        },
+        {
+          "addin_lines": [
+            650,
+            722
+          ],
+          "addin_procedure_utf8_lf_sha256": "8a787e57877baa525c17635cdf0754220f99f3ef9ee3fc5871c650f5dfb21e37",
+          "module": "RecordForm.frm",
+          "procedure": "Get_Tpl",
+          "reviewed_decoder_comparison": {
+            "comparison": "IMPLEMENTATION_DIFFERS",
+            "left_utf8_lf_sha256": "e344c0c814eb4c66e6441a406e8de9f035e3a0491d8349be21dc505070c6e82d",
+            "right_utf8_lf_sha256": "8a787e57877baa525c17635cdf0754220f99f3ef9ee3fc5871c650f5dfb21e37",
+            "version_binding_verified": false
+          },
+          "unattested_zip_cp1252_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "8a787e57877baa525c17635cdf0754220f99f3ef9ee3fc5871c650f5dfb21e37",
+            "right_utf8_lf_sha256": "8a787e57877baa525c17635cdf0754220f99f3ef9ee3fc5871c650f5dfb21e37",
+            "version_binding_verified": false
+          },
+          "zip_lines": [
+            657,
+            729
+          ]
+        },
+        {
+          "addin_lines": [
+            732,
+            811
+          ],
+          "addin_procedure_utf8_lf_sha256": "1af444e827912de08044339963b42f10d2e0274532d92effc358bc538923856e",
+          "module": "RecordForm.frm",
+          "procedure": "Tao_QDKT_KHKT_BBKT",
+          "reviewed_decoder_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "1af444e827912de08044339963b42f10d2e0274532d92effc358bc538923856e",
+            "right_utf8_lf_sha256": "1af444e827912de08044339963b42f10d2e0274532d92effc358bc538923856e",
+            "version_binding_verified": false
+          },
+          "unattested_zip_cp1252_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "1af444e827912de08044339963b42f10d2e0274532d92effc358bc538923856e",
+            "right_utf8_lf_sha256": "1af444e827912de08044339963b42f10d2e0274532d92effc358bc538923856e",
+            "version_binding_verified": false
+          },
+          "zip_lines": [
+            739,
+            818
+          ]
+        },
+        {
+          "addin_lines": [
+            319,
+            405
+          ],
+          "addin_procedure_utf8_lf_sha256": "9f68927ab51fb413600d3fd2d901f55c4e73c40f6542f772aef9dfe7bd174c0f",
+          "module": "RecordForm.frm",
+          "procedure": "GetTT_Ktra",
+          "reviewed_decoder_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "9f68927ab51fb413600d3fd2d901f55c4e73c40f6542f772aef9dfe7bd174c0f",
+            "right_utf8_lf_sha256": "9f68927ab51fb413600d3fd2d901f55c4e73c40f6542f772aef9dfe7bd174c0f",
+            "version_binding_verified": false
+          },
+          "unattested_zip_cp1252_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "9f68927ab51fb413600d3fd2d901f55c4e73c40f6542f772aef9dfe7bd174c0f",
+            "right_utf8_lf_sha256": "9f68927ab51fb413600d3fd2d901f55c4e73c40f6542f772aef9dfe7bd174c0f",
+            "version_binding_verified": false
+          },
+          "zip_lines": [
+            326,
+            412
+          ]
+        },
+        {
+          "addin_lines": [
+            1847,
+            1864
+          ],
+          "addin_procedure_utf8_lf_sha256": "e41f52e58df20cfb542a9652374b97b880fa07b9fa39552ccc0ed9168d0a2119",
+          "module": "RecordForm.frm",
+          "procedure": "Get_VKN",
+          "reviewed_decoder_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "e41f52e58df20cfb542a9652374b97b880fa07b9fa39552ccc0ed9168d0a2119",
+            "right_utf8_lf_sha256": "e41f52e58df20cfb542a9652374b97b880fa07b9fa39552ccc0ed9168d0a2119",
+            "version_binding_verified": false
+          },
+          "unattested_zip_cp1252_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "e41f52e58df20cfb542a9652374b97b880fa07b9fa39552ccc0ed9168d0a2119",
+            "right_utf8_lf_sha256": "e41f52e58df20cfb542a9652374b97b880fa07b9fa39552ccc0ed9168d0a2119",
+            "version_binding_verified": false
+          },
+          "zip_lines": [
+            1854,
+            1871
+          ]
+        },
+        {
+          "addin_lines": [
+            582,
+            596
+          ],
+          "addin_procedure_utf8_lf_sha256": "00cc7b8ec0550f6ed59d57e9f8bb27dc846436e261d2549c08d44269b543a0df",
+          "module": "RecordForm.frm",
+          "procedure": "Replace_Bookmark",
+          "reviewed_decoder_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "00cc7b8ec0550f6ed59d57e9f8bb27dc846436e261d2549c08d44269b543a0df",
+            "right_utf8_lf_sha256": "00cc7b8ec0550f6ed59d57e9f8bb27dc846436e261d2549c08d44269b543a0df",
+            "version_binding_verified": false
+          },
+          "unattested_zip_cp1252_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "00cc7b8ec0550f6ed59d57e9f8bb27dc846436e261d2549c08d44269b543a0df",
+            "right_utf8_lf_sha256": "00cc7b8ec0550f6ed59d57e9f8bb27dc846436e261d2549c08d44269b543a0df",
+            "version_binding_verified": false
+          },
+          "zip_lines": [
+            589,
+            603
+          ]
+        },
+        {
+          "addin_lines": [
+            569,
+            580
+          ],
+          "addin_procedure_utf8_lf_sha256": "4d9092ac2684a866a03418bec23aaf62d2a2b11954a5bb2036d8d06c5fe4acfe",
+          "module": "RecordForm.frm",
+          "procedure": "Delete_Bookmark",
+          "reviewed_decoder_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "4d9092ac2684a866a03418bec23aaf62d2a2b11954a5bb2036d8d06c5fe4acfe",
+            "right_utf8_lf_sha256": "4d9092ac2684a866a03418bec23aaf62d2a2b11954a5bb2036d8d06c5fe4acfe",
+            "version_binding_verified": false
+          },
+          "unattested_zip_cp1252_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "4d9092ac2684a866a03418bec23aaf62d2a2b11954a5bb2036d8d06c5fe4acfe",
+            "right_utf8_lf_sha256": "4d9092ac2684a866a03418bec23aaf62d2a2b11954a5bb2036d8d06c5fe4acfe",
+            "version_binding_verified": false
+          },
+          "zip_lines": [
+            576,
+            587
+          ]
+        },
+        {
+          "addin_lines": [
+            392,
+            421
+          ],
+          "addin_procedure_utf8_lf_sha256": "1a5cbb4a88707ff2992d011e4f2daddfc390d41f400426f3c4fc80c28134f604",
+          "module": "TTVForm.frm",
+          "procedure": "Get_TTV2",
+          "reviewed_decoder_comparison": {
+            "comparison": "IMPLEMENTATION_DIFFERS",
+            "left_utf8_lf_sha256": "27cd7e1eb3f7c4b40173a7b2d82cb445fd171a29a813983182320d229d690219",
+            "right_utf8_lf_sha256": "1a5cbb4a88707ff2992d011e4f2daddfc390d41f400426f3c4fc80c28134f604",
+            "version_binding_verified": false
+          },
+          "unattested_zip_cp1252_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "1a5cbb4a88707ff2992d011e4f2daddfc390d41f400426f3c4fc80c28134f604",
+            "right_utf8_lf_sha256": "1a5cbb4a88707ff2992d011e4f2daddfc390d41f400426f3c4fc80c28134f604",
+            "version_binding_verified": false
+          },
+          "zip_lines": [
+            399,
+            428
+          ]
+        },
+        {
+          "addin_lines": [
+            373,
+            390
+          ],
+          "addin_procedure_utf8_lf_sha256": "a94b89cbb5acf2c6d18ea513418f78cce727eab192acb022378be00253e8b4fa",
+          "module": "TTVForm.frm",
+          "procedure": "Get_TTV_List3",
+          "reviewed_decoder_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "a94b89cbb5acf2c6d18ea513418f78cce727eab192acb022378be00253e8b4fa",
+            "right_utf8_lf_sha256": "a94b89cbb5acf2c6d18ea513418f78cce727eab192acb022378be00253e8b4fa",
+            "version_binding_verified": false
+          },
+          "unattested_zip_cp1252_comparison": {
+            "comparison": "CONTENT_EQUIVALENT_VERSION_UNPROVEN",
+            "left_utf8_lf_sha256": "a94b89cbb5acf2c6d18ea513418f78cce727eab192acb022378be00253e8b4fa",
+            "right_utf8_lf_sha256": "a94b89cbb5acf2c6d18ea513418f78cce727eab192acb022378be00253e8b4fa",
+            "version_binding_verified": false
+          },
+          "zip_lines": [
+            380,
+            397
+          ]
+        },
+        {
+          "addin_lines": [
+            504,
+            510
+          ],
+          "addin_procedure_utf8_lf_sha256": "953c4c6964deca0f569379538d5d4a2124b3343c1675bb42452d02beb1739b56",
+          "module": "WinAPI.bas",
+          "procedure": "DelLastIf_Ins",
+          "zip_evidence": "ARTIFACT_UNAVAILABLE_OR_EVIDENCE_INSUFFICIENT"
+        },
+        {
+          "addin_lines": [
+            552,
+            555
+          ],
+          "addin_procedure_utf8_lf_sha256": "95127a1eee498f2446e8a036ad1ac2bc4eb4b339490048dcaa8d4796564297b7",
+          "module": "WinAPI.bas",
+          "procedure": "LCase_FirstChar",
+          "zip_evidence": "ARTIFACT_UNAVAILABLE_OR_EVIDENCE_INSUFFICIENT"
+        },
+        {
+          "addin_lines": [
+            559,
+            561
+          ],
+          "addin_procedure_utf8_lf_sha256": "55532ad845997fbe6a2973040d0ea620c44211516d8a2fddc82a6a1b31bf0b2c",
+          "module": "WinAPI.bas",
+          "procedure": "Del_LastPeriod",
+          "zip_evidence": "ARTIFACT_UNAVAILABLE_OR_EVIDENCE_INSUFFICIENT"
+        }
+      ],
+      "project_codepage": 1252,
+      "ready_to_render": false,
+      "schema_version": "qdkt-runtime-source-capture/v1",
+      "source_to_runtime_version_binding": "UNVERIFIED_VERSION_BINDING",
+      "templates": [
+        {
+          "all_word_xml_parts": [
+            {
+              "bookmark_count": 22,
+              "part": "word/document.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/endnotes.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/fontTable.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/footnotes.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/header1.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/numbering.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/settings.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/styles.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/theme/theme1.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/webSettings.xml"
+            }
+          ],
+          "bookmark_count": 22,
+          "bookmark_names": [
+            "CTky",
+            "Diadiemx1",
+            "Diadiemx2",
+            "Diadiemx3",
+            "MoiDel2",
+            "PCTky",
+            "TT1x",
+            "TT2x",
+            "TT3Del",
+            "TT3x",
+            "TT_ext",
+            "TaiDel1",
+            "TaiDel2",
+            "TaiDel3",
+            "TaiDel4",
+            "Tencoso1",
+            "Tencoso2",
+            "Tencoso3",
+            "VKN",
+            "VKN1",
+            "VKN2",
+            "VKNx"
+          ],
+          "gxp_type": "GLP",
+          "runtime_template_path_binding": "UNVERIFIED_VERSION_BINDING",
+          "sha256": "c55695dbdaafa48f0b2a4211a8adda7b97443a44439d9a81de306ce98729ec19"
+        },
+        {
+          "all_word_xml_parts": [
+            {
+              "bookmark_count": 22,
+              "part": "word/document.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/endnotes.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/fontTable.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/footnotes.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/header1.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/numbering.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/settings.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/styles.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/theme/theme1.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/webSettings.xml"
+            }
+          ],
+          "bookmark_count": 22,
+          "bookmark_names": [
+            "CTky",
+            "Diadiemx1",
+            "Diadiemx2",
+            "Diadiemx3",
+            "MoiDel2",
+            "PCTky",
+            "TT1x",
+            "TT2x",
+            "TT3Del",
+            "TT3x",
+            "TT_ext",
+            "TaiDel1",
+            "TaiDel2",
+            "TaiDel3",
+            "TaiDel4",
+            "Tencoso1",
+            "Tencoso2",
+            "Tencoso3",
+            "VKN",
+            "VKN1",
+            "VKN2",
+            "VKNx"
+          ],
+          "gxp_type": "GMP",
+          "runtime_template_path_binding": "UNVERIFIED_VERSION_BINDING",
+          "sha256": "490d534580ce00844b6175e64ca4e2fdc345d7957be8813f0f62d03a9b82c1a5"
+        },
+        {
+          "all_word_xml_parts": [
+            {
+              "bookmark_count": 14,
+              "part": "word/document.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/endnotes.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/fontTable.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/footnotes.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/numbering.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/settings.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/styles.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/theme/theme1.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/webSettings.xml"
+            }
+          ],
+          "bookmark_count": 14,
+          "bookmark_names": [
+            "Diadiemx1",
+            "Diadiemx2",
+            "MoiDel2",
+            "TT1x",
+            "TT2x",
+            "TT3Del",
+            "TT3x",
+            "TT_ext",
+            "TaiDel2",
+            "Tencoso1",
+            "Tencoso2",
+            "Tencoso3",
+            "VKN",
+            "VKNx"
+          ],
+          "gxp_type": "GMPbb",
+          "runtime_template_path_binding": "UNVERIFIED_VERSION_BINDING",
+          "sha256": "fec4dc35ac5fbb2f2ef6b56750fe6dcf5316dafc0898395279d9ff281b2ca771"
+        },
+        {
+          "all_word_xml_parts": [
+            {
+              "bookmark_count": 11,
+              "part": "word/document.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/fontTable.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/numbering.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/settings.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/styles.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/stylesWithEffects.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/theme/theme1.xml"
+            },
+            {
+              "bookmark_count": 0,
+              "part": "word/webSettings.xml"
+            }
+          ],
+          "bookmark_count": 11,
+          "bookmark_names": [
+            "Diadiemx1",
+            "Diadiemx2",
+            "TT1x",
+            "TT2x",
+            "TT3Del",
+            "TT3x",
+            "TT_ext",
+            "Tencoso1",
+            "Tencoso2",
+            "Tencoso3",
+            "_GoBack"
+          ],
+          "gxp_type": "GSP",
+          "runtime_template_path_binding": "UNVERIFIED_VERSION_BINDING",
+          "sha256": "890df5e2345e2927b286f4a3adb107a984825eff21e998ae253020ecac46eea1"
+        }
+      ],
+      "word_uat": "NOT_EXECUTED",
+      "zip_contains_winapi": false,
+      "zip_member_count": 51,
+      "zip_source_members": {
+        "Module1.bas": {
+          "raw_sha256": "ab157d08821144df2f30bc5d93e8a01680fe7bd4d15e63135aeb9e1e3564006a",
+          "reviewed_decoder": "trace_inspection_qd_kt_vba._decode (cp1258 fallback)",
+          "zip_codepage_attested": false
+        },
+        "RecordForm.frm": {
+          "raw_sha256": "9c656a194839c5847789f4c12fcae67d392ed64f7053e241426865e527089b1d",
+          "reviewed_decoder": "trace_inspection_qd_kt_vba._decode (cp1258 fallback)",
+          "zip_codepage_attested": false
+        },
+        "TTVForm.frm": {
+          "raw_sha256": "07201c54e73281abf51889769dcbb152f10088c55b7e8c4980b6520675d478f4",
+          "reviewed_decoder": "trace_inspection_qd_kt_vba._decode (cp1258 fallback)",
+          "zip_codepage_attested": false
+        }
+      }
+    },
+    "evidence_class": "PINNED_STATIC_PRIMARY_CAPTURE_NOT_CURRENT_LOCAL_VERIFICATION",
+    "path": "tests/fixtures/inspection_qd_kt_runtime_source_evidence.json",
+    "semantic_sha256": "b2cdf80607d44c4543fa0b90e78e9eecfc10c4ef3ebb8ebdecd5d7c32df279ea"
+  },
   "schema_version": "inspection-qd-kt-input-provenance-audit/v1",
   "source_zip_sha256": "6227fb0a6b3d74fa0f4cc655b94b021a40d65a508c2f2eefc62f1724c7b89ff7",
   "status_counts": {

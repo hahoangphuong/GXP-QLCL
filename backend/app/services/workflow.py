@@ -3172,13 +3172,23 @@ class CaseWorkflowService:
             raise HTTPException(status_code=422, detail="decision_document_hint is a read-only compatibility field.")
         row = self._get_case(session, case_id)
         self._assert_case_not_terminal(row, operation="inspection plan update")
+        session.execute(select(Case.id).where(Case.id == row.id).with_for_update()).scalar_one()
+        stage = session.scalars(
+            select(InspectionPlan).where(InspectionPlan.case_id == row.id)
+            .with_for_update().execution_options(populate_existing=True)
+        ).first()
+        if stage is None:
+            if expected_version is not None:
+                raise HTTPException(status_code=409, detail="Inspection plan does not exist for supplied expected_version.")
+        elif expected_version is None:
+            raise HTTPException(status_code=409, detail="Inspection plan already exists; expected_version is required.")
+        else:
+            self._assert_expected_version(stage, expected_version, label="inspection_plan")
         actor = self._get_or_create_app_user(session, user)
-        stage = session.scalars(select(InspectionPlan).where(InspectionPlan.case_id == row.id)).first()
         if stage is None:
             stage = InspectionPlan(case_id=row.id)
             session.add(stage)
             session.flush()
-        self._assert_expected_version(stage, expected_version, label="inspection_plan")
         before = self._snapshot_fields(
             stage,
             ["plan_start_on", "plan_end_on", "planning_sheet_name", "decision_reference", "decision_date"],
@@ -3304,15 +3314,25 @@ class CaseWorkflowService:
             raise HTTPException(status_code=422, detail="Inspection outcome end date requires a start date.")
         if "inspected_on" in provided and "inspected_to_on" in provided and inspected_on is not None and inspected_to_on is not None and inspected_on > inspected_to_on:
             raise HTTPException(status_code=422, detail="Inspection outcome start date must not be after its end date.")
+        session.execute(select(Case.id).where(Case.id == row.id).with_for_update()).scalar_one()
+        stage = session.scalars(
+            select(InspectionOutcome).where(InspectionOutcome.case_id == row.id)
+            .with_for_update().execution_options(populate_existing=True)
+        ).first()
+        if stage is None:
+            if expected_version is not None:
+                raise HTTPException(status_code=409, detail="Inspection outcome does not exist for supplied expected_version.")
+        elif expected_version is None:
+            raise HTTPException(status_code=409, detail="Inspection outcome already exists; expected_version is required.")
+        else:
+            self._assert_expected_version(stage, expected_version, label="inspection_outcome")
         actor = self._get_or_create_app_user(session, user)
-        stage = session.scalars(select(InspectionOutcome).where(InspectionOutcome.case_id == row.id)).first()
         if stage is None:
             # This compatibility endpoint does not own a zero-segment source
             # meaning, so a metadata-only create remains unclassified.
             stage = InspectionOutcome(case_id=row.id, inspection_period_state=None)
             session.add(stage)
             session.flush()
-        self._assert_expected_version(stage, expected_version, label="inspection_outcome")
         has_compatibility_period = "inspected_on" in provided or "inspected_to_on" in provided
         effective_start = inspected_on if "inspected_on" in provided else stage.inspected_on
         effective_end = inspected_to_on if "inspected_to_on" in provided else stage.inspected_to_on

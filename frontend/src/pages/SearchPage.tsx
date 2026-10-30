@@ -569,6 +569,24 @@ export function SearchPage({
   // data is never exposed by the workspace projection while loading.
   const eventContext = ownedWorkspace ?? (ownedRequest && ownedRequest.status !== "ready" ? ownedRequest.previous : null);
   const selectedHistory = deepLinkError ? null : eventContext?.history.find((item) => item.id === selectedHistoryId) ?? null;
+  const caseOperationOwner = useRef({ context: selectedContext, historyId: selectedHistory?.id ?? null });
+  useLayoutEffect(() => {
+    const current = caseOperationOwner.current;
+    if (current.context !== selectedContext || current.historyId !== (selectedHistory?.id ?? null)) {
+      caseOperationOwner.current = { context: selectedContext, historyId: selectedHistory?.id ?? null };
+    }
+  }, [selectedContext, selectedHistory?.id]);
+  useLayoutEffect(() => () => {
+    caseOperationOwner.current = { ...caseOperationOwner.current };
+  }, []);
+  function isCurrentCaseOperation(owner: typeof caseOperationOwner.current): boolean {
+    return caseOperationOwner.current === owner && isCurrentContext();
+  }
+  function assertCaseReadbackOwner(payload: CaseWorkspace, caseId: string) {
+    if (payload.case_summary.id !== caseId || (payload.inspection.approval_submissions ?? []).some(item => item.case_id !== caseId)) {
+      throw new Error("Workspace đọc lại không khớp hồ sơ đã chọn.");
+    }
+  }
   const documentContextRef = useRef({ context: selectedContext, historyId: selectedHistoryId, cycleId: selectedRemediationCycleId });
   useLayoutEffect(() => {
     documentContextRef.current = { context: selectedContext, historyId: selectedHistoryId, cycleId: selectedRemediationCycleId };
@@ -1005,6 +1023,7 @@ export function SearchPage({
 
   useEffect(() => {
     const requestId = ++caseRequestSequence.current;
+    const operationOwner = caseOperationOwner.current;
     setSelectedCaseWorkspace(null);
     setCaseWorkspaceError(null);
     setCaseWorkspaceLoading(false);
@@ -1016,7 +1035,8 @@ export function SearchPage({
     setCaseWorkspaceLoading(true);
     void getCaseWorkspace(selectedHistoryId, auth, useStubAuth, bearerToken)
       .then((payload) => {
-        if (!cancelled && caseRequestSequence.current === requestId) {
+        if (!cancelled && isCurrentCaseOperation(operationOwner) && caseRequestSequence.current === requestId) {
+          assertCaseReadbackOwner(payload, selectedHistoryId);
           setSelectedCaseWorkspace(payload);
           setSelectedRemediationCycleId((current) => resolveSelectedRemediationCycleId(payload, current));
           setCaseWorkspaceError(null);
@@ -1024,7 +1044,7 @@ export function SearchPage({
         }
       })
       .catch((error: Error) => {
-        if (!cancelled && caseRequestSequence.current === requestId) {
+        if (!cancelled && isCurrentCaseOperation(operationOwner) && caseRequestSequence.current === requestId) {
           setSelectedCaseWorkspace(null);
           setSelectedRemediationCycleId(null);
           setCaseWorkspaceError({ historyId: selectedHistoryId, message: error.message });
@@ -1430,8 +1450,9 @@ export function SearchPage({
     setSelectedHistoryId(null);
   }
 
-  async function refreshSelectedFacilityWorkspace(preferredHistoryId: string | null) {
+  async function refreshSelectedFacilityWorkspace(preferredHistoryId: string | null, operationOwner?: typeof caseOperationOwner.current) {
     if (!selectedResult || !selectedContext) return null;
+    if (operationOwner && !isCurrentCaseOperation(operationOwner)) return null;
     const context = selectedContext;
     const requestId = beginWorkspaceRequest(context);
     // A mutation may finish after navigation. Its confirmed backend result is
@@ -1444,7 +1465,7 @@ export function SearchPage({
       );
       if (committedContextRef.current !== context || workspaceRequestSequence.current !== requestId) return null;
       publishWorkspaceRequest({ context, requestId, status: "ready", data: payload });
-      setSelectedHistoryId((current) => {
+      if (!operationOwner || isCurrentCaseOperation(operationOwner)) setSelectedHistoryId((current) => {
         const preferred = preferredHistoryId ?? current;
         return preferred && payload.history.some((row) => row.id === preferred) ? preferred : payload.history[0]?.id ?? null;
       });
@@ -1696,28 +1717,9 @@ export function SearchPage({
       throw new Error("Chưa chọn hồ sơ để cập nhật.");
     }
     const caseId = selectedHistory.id;
-    const currentCaseWorkspace = selectedCaseWorkspace;
-    const response = await upsertInspectionPlan(caseId, payload, auth, useStubAuth, bearerToken);
-    const refreshedCaseWorkspace = await getCaseWorkspace(caseId, auth, useStubAuth, bearerToken).catch(() => {
-      if (!currentCaseWorkspace) {
-        throw new Error("Đã lưu nhưng không tải lại được workspace hồ sơ.");
-      }
-      return {
-        ...currentCaseWorkspace,
-        inspection: {
-          ...currentCaseWorkspace.inspection,
-          plan_row_version: response.row_version,
-          plan_start_on: response.plan_start_on,
-          plan_end_on: response.plan_end_on,
-          planning_sheet_name: response.planning_sheet_name,
-          plan_decision_reference: response.decision_reference,
-          plan_decision_date: response.decision_date,
-        },
-      };
-    });
-    if (!isCurrentContext()) return;
-    setSelectedCaseWorkspace(refreshedCaseWorkspace);
-    setCaseWorkspaceError(null);
+    const operationOwner = caseOperationOwner.current;
+    await upsertInspectionPlan(caseId, payload, auth, useStubAuth, bearerToken);
+    await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner);
   }
 
   async function handleInspectionOutcomeSave(payload: InspectionOutcomeUpsertRequest) {
@@ -1725,53 +1727,35 @@ export function SearchPage({
       throw new Error("Chưa chọn hồ sơ để cập nhật.");
     }
     const caseId = selectedHistory.id;
-    const currentCaseWorkspace = selectedCaseWorkspace;
-    const response = await upsertInspectionOutcome(caseId, payload, auth, useStubAuth, bearerToken);
-    const refreshedCaseWorkspace = await getCaseWorkspace(caseId, auth, useStubAuth, bearerToken).catch(() => {
-      if (!currentCaseWorkspace) {
-        throw new Error("Đã lưu nhưng không tải lại được workspace hồ sơ.");
-      }
-      return {
-        ...currentCaseWorkspace,
-        inspection: {
-          ...currentCaseWorkspace.inspection,
-          outcome_row_version: response.row_version,
-          inspected_on: response.inspected_on,
-          inspected_to_on: response.inspected_to_on,
-          outcome_result: response.outcome_result,
-          final_evaluation: response.final_evaluation,
-          minutes_recorded_on: response.minutes_recorded_on,
-          minutes_recorded_time: response.minutes_recorded_time,
-          compliance_due_on: response.compliance_due_on,
-        },
-      };
-    });
-    if (!isCurrentContext()) return;
-    setSelectedCaseWorkspace(refreshedCaseWorkspace);
-    setCaseWorkspaceError(null);
-    await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
+    const operationOwner = caseOperationOwner.current;
+    await upsertInspectionOutcome(caseId, payload, auth, useStubAuth, bearerToken);
+    await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner);
+    await refreshSelectedFacilityWorkspace(caseId, operationOwner).catch(() => undefined);
   }
 
   async function handleInspectionPeriodSegmentsSave(payload: import("../types").InspectionPeriodSegmentsUpsertRequest) {
     if (!selectedHistory || selectedHistory.source_type !== "case") throw new Error("Chưa chọn hồ sơ để cập nhật các đợt kiểm tra.");
     const caseId = selectedHistory.id;
+    const operationOwner = caseOperationOwner.current;
     await upsertInspectionPeriodSegments(caseId, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(caseId);
-    await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
+    await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner);
+    await refreshSelectedFacilityWorkspace(caseId, operationOwner).catch(() => undefined);
   }
 
   async function handleCreateApprovalSubmission(stage: "PCT" | "CT", payload: import("../types").InspectionApprovalSubmissionCreateRequest) {
     if (!selectedHistory || selectedHistory.source_type !== "case") throw new Error("Chưa chọn hồ sơ để tạo trình phê duyệt.");
     const caseId = selectedHistory.id;
+    const operationOwner = caseOperationOwner.current;
     const response = await createInspectionApprovalSubmission(caseId, stage, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(caseId);
+    await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner);
     return response;
   }
 
   async function handleCompleteApprovalSubmission(submissionId: string, payload: import("../types").InspectionApprovalSubmissionCompleteRequest) {
     if (!selectedHistory || selectedHistory.source_type !== "case") throw new Error("Chưa chọn hồ sơ để hoàn tất trình phê duyệt.");
+    const operationOwner = caseOperationOwner.current;
     const response = await completeInspectionApprovalSubmission(submissionId, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(selectedHistory.id);
+    await refreshSelectedCaseWorkspace(selectedHistory.id, undefined, operationOwner);
     return response;
   }
 
@@ -1799,9 +1783,10 @@ export function SearchPage({
       throw new Error("Chưa chọn hồ sơ để hoàn tất đánh giá.");
     }
     const caseId = selectedHistory.id;
+    const operationOwner = caseOperationOwner.current;
     await finalizeInspectionOutcome(caseId, payload, auth, useStubAuth, bearerToken);
-    await refreshSelectedCaseWorkspace(caseId);
-    await refreshSelectedFacilityWorkspace(caseId).catch(() => undefined);
+    await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner);
+    await refreshSelectedFacilityWorkspace(caseId, operationOwner).catch(() => undefined);
   }
 
   async function handleInspectionTeamSave(payload: InspectionTeamUpsertRequest) {
@@ -1809,14 +1794,15 @@ export function SearchPage({
       throw new Error("Chưa chọn hồ sơ để cập nhật đoàn kiểm tra.");
     }
     const caseId = selectedHistory.id;
+    const operationOwner = caseOperationOwner.current;
     try {
       await upsertInspectionTeam(caseId, payload, auth, useStubAuth, bearerToken);
     } catch (error) {
       const status = (error as Error & { status?: number }).status;
-      if (status === 409) await refreshSelectedCaseWorkspace(caseId).catch(() => undefined);
+      if (status === 409) await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner).catch(() => undefined);
       throw error;
     }
-    await refreshSelectedCaseWorkspace(caseId);
+    await refreshSelectedCaseWorkspace(caseId, undefined, operationOwner);
   }
 
   function handleLoadInspectionTeamIdentityOptions(): Promise<InspectionTeamIdentityOption[]> {
@@ -1860,11 +1846,18 @@ export function SearchPage({
     setCaseWorkspaceError(null);
   }
 
-  async function refreshSelectedCaseWorkspace(caseId: string, preferredCycleId?: string | null) {
-    if (!isCurrentContext() || documentContextRef.current.historyId !== caseId) return null;
+  async function refreshSelectedCaseWorkspace(caseId: string, preferredCycleId?: string | null, operationOwner = caseOperationOwner.current) {
+    if (!isCurrentCaseOperation(operationOwner) || documentContextRef.current.historyId !== caseId) return null;
     const requestId = ++caseRequestSequence.current;
-    const payload = await getCaseWorkspace(caseId, auth, useStubAuth, bearerToken);
-    if (!isCurrentContext() || documentContextRef.current.historyId !== caseId || caseRequestSequence.current !== requestId) return payload;
+    let payload: CaseWorkspace;
+    try {
+      payload = await getCaseWorkspace(caseId, auth, useStubAuth, bearerToken);
+    } catch (value) {
+      if (!isCurrentCaseOperation(operationOwner) || caseRequestSequence.current !== requestId) return null;
+      throw new Error(`Đã nhận phản hồi lưu nhưng không tải lại được workspace hồ sơ. ${value instanceof Error ? value.message : ""}`);
+    }
+    if (!isCurrentCaseOperation(operationOwner) || documentContextRef.current.historyId !== caseId || caseRequestSequence.current !== requestId) return null;
+    assertCaseReadbackOwner(payload, caseId);
     setSelectedCaseWorkspace(payload);
     setCaseWorkspaceError(null);
     setSelectedRemediationCycleId((current) => resolveSelectedRemediationCycleId(payload, preferredCycleId ?? current));

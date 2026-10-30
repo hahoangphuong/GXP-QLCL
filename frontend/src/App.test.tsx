@@ -3431,6 +3431,135 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
   });
 
+  it.each(["plan", "approval"] as const)("does not start a replaced %s command's readback after Case A → B → A", async operation => {
+    const history = ["A", "B"].map(suffix => ({ id: `case-${suffix}`, source_type: "case", reference_code: `KT-${suffix}`, event_type: `Case ${suffix}`, gxp_type: "GMP", standard: "WHO-GMP", occurred_on: "2026-10-01", state: "inspection_scheduled" }));
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history }));
+    apiMocks.getCaseWorkspace.mockImplementation(async (id: string) => buildCaseWorkspace({
+      case_summary: { ...buildCaseWorkspace().case_summary, id },
+      inspection: { ...buildCaseWorkspace().inspection, plan_decision_reference: `Plan ${id}`, approval_actions: [{ action_key: "create_approval_pct", available: true, expected_version: null, label: "Tạo trình PCT", reason_code: null, required_permissions: [] }] },
+    }));
+    let resolveSave!: (value: Record<string, unknown>) => void;
+    const mutation = operation === "plan" ? apiMocks.upsertInspectionPlan : apiMocks.createInspectionApprovalSubmission;
+    mutation.mockImplementation(() => new Promise(resolve => { resolveSave = resolve; }));
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    await screen.findByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" });
+    if (operation === "plan") {
+      fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" }));
+      fireEvent.change(screen.getByLabelText("Số/Tham chiếu QĐKT"), { target: { value: "A draft" } });
+      fireEvent.click(screen.getByRole("button", { name: "Lưu Số/Tham chiếu QĐKT" }));
+    } else fireEvent.click(screen.getByRole("button", { name: "Tạo trình PCT" }));
+    expect(mutation).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("row", { name: /Case B/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" })).toHaveTextContent("Plan case-B"));
+    fireEvent.click(screen.getByRole("row", { name: /Case A/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" })).toHaveTextContent("Plan case-A"));
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(3);
+    await act(async () => resolveSave({ case_id: "case-A", row_version: 4 }));
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(3);
+    expect(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" })).toHaveTextContent("Plan case-A");
+    expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledOnce();
+  });
+
+  it("does not let an older plan readback replace a newer outcome readback", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    let resolveOld!: (value: ReturnType<typeof buildCaseWorkspace>) => void;
+    apiMocks.getCaseWorkspace.mockResolvedValueOnce(buildCaseWorkspace())
+      .mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }))
+      .mockResolvedValueOnce(buildCaseWorkspace({ inspection: { ...buildCaseWorkspace().inspection, plan_row_version: 5, plan_decision_reference: "Newest plan", outcome_row_version: 7, outcome_result: "Newest outcome" } }));
+    apiMocks.upsertInspectionPlan.mockResolvedValue({ case_id: "case-1", row_version: 4 });
+    apiMocks.upsertInspectionOutcome.mockResolvedValue({ case_id: "case-1", row_version: 7 });
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    await screen.findByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" });
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" }));
+    fireEvent.change(screen.getByLabelText("Số/Tham chiếu QĐKT"), { target: { value: "Plan draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu Số/Tham chiếu QĐKT" }));
+    await waitFor(() => expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2));
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Kết quả kiểm tra" }));
+    fireEvent.change(screen.getByLabelText("Kết quả kiểm tra"), { target: { value: "New outcome" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu Đánh giá kết quả" }));
+    await waitFor(() => expect(apiMocks.getFacilityWorkspace).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sửa Kết quả kiểm tra" })).toHaveTextContent("Newest outcome"));
+    await act(async () => resolveOld(buildCaseWorkspace({ inspection: { ...buildCaseWorkspace().inspection, plan_row_version: 4, plan_decision_reference: "Obsolete plan" } })));
+    expect(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" })).toHaveTextContent("Newest plan");
+    expect(screen.getByRole("button", { name: "Sửa Kết quả kiểm tra" })).toHaveTextContent("Newest outcome");
+  });
+
+  it("does not start readback from an unmounted Inspection command after a new SearchPage mounts", async () => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace());
+    let resolveSave!: (value: Record<string, unknown>) => void;
+    apiMocks.upsertInspectionPlan.mockImplementation(() => new Promise(resolve => { resolveSave = resolve; }));
+    const old = renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    await screen.findByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" });
+    await flushSearchUrlSync();
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lưu Số/Tham chiếu QĐKT" }));
+    old.unmount();
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    await screen.findByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" });
+    await flushSearchUrlSync();
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
+    await act(async () => resolveSave({ case_id: "case-1", row_version: 4 }));
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["workspace", "approval-row"])("rejects a wrong-Case inspection readback (%s) without publishing it or upgrading the editor", async mismatch => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const wrong = buildCaseWorkspace(mismatch === "workspace"
+      ? { case_summary: { ...buildCaseWorkspace().case_summary, id: "wrong-case" } }
+      : { inspection: { ...buildCaseWorkspace().inspection, approval_submissions: [{ approval_submission_id: "wrong-approval", case_id: "wrong-case", stage: "PCT", round_no: 1 }] } });
+    apiMocks.getCaseWorkspace.mockResolvedValueOnce(buildCaseWorkspace()).mockResolvedValueOnce(wrong);
+    apiMocks.upsertInspectionPlan.mockResolvedValue({ case_id: "case-1", row_version: 4 });
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    await screen.findByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" });
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" }));
+    fireEvent.change(screen.getByLabelText("Số/Tham chiếu QĐKT"), { target: { value: "Retained draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu Số/Tham chiếu QĐKT" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("không khớp hồ sơ");
+    expect(screen.getByLabelText("Số/Tham chiếu QĐKT")).toHaveValue("Retained draft");
+    expect(apiMocks.upsertInspectionPlan).toHaveBeenCalledOnce();
+  });
+
+  it.each(["plan", "outcome"] as const)("does not synthesize %s workspace confirmation when post-write GET fails", async section => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValueOnce(buildCaseWorkspace()).mockRejectedValueOnce(new Error("Readback unavailable"));
+    const mutation = section === "plan" ? apiMocks.upsertInspectionPlan : apiMocks.upsertInspectionOutcome;
+    mutation.mockResolvedValue({ case_id: "case-1", row_version: 99, decision_reference: "Server response", outcome_result: "Server response" });
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    await screen.findByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" });
+    const edit = section === "plan" ? "Sửa Số/Tham chiếu QĐKT" : "Sửa Kết quả kiểm tra";
+    const input = section === "plan" ? "Số/Tham chiếu QĐKT" : "Kết quả kiểm tra";
+    fireEvent.doubleClick(screen.getByRole("button", { name: edit }));
+    fireEvent.change(screen.getByLabelText(input), { target: { value: "Retained local draft" } });
+    fireEvent.click(screen.getByRole("button", { name: section === "plan" ? "Lưu Số/Tham chiếu QĐKT" : "Lưu Đánh giá kết quả" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("không tải lại được workspace");
+    expect(screen.getByLabelText(input)).toHaveValue("Retained local draft");
+    expect(mutation).toHaveBeenCalledOnce();
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
+  });
+
   it("saves inspection plan with plan row_version, refreshes only selected case workspace, and preserves Kiểm tra context", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });

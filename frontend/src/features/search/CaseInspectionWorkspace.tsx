@@ -95,6 +95,7 @@ function InspectionPeriodSection({ caseWorkspace, onSave }: { caseWorkspace: Cas
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const readiness = caseWorkspace.inspection.inspection_period_edit_readiness;
+  const [draftVersion, setDraftVersion] = useState<number | null>(null);
   useEffect(() => {
     if (!editing) setSegments((caseWorkspace.inspection.inspection_period_segments ?? []).map(({ ordinal, started_on, ended_on }) => ({ ordinal, started_on: normalizeDateInputValue(started_on), ended_on: normalizeDateInputValue(ended_on) })));
   }, [caseWorkspace.inspection.inspection_period_segments, editing]);
@@ -102,12 +103,12 @@ function InspectionPeriodSection({ caseWorkspace, onSave }: { caseWorkspace: Cas
   async function save() {
     if (pending || !readiness?.available) return;
     setPending(true); setErrorMessage(null);
-    try { await onSave({ expected_version: readiness.expected_version, segments: renumber(segments) }); setEditing(false); }
+    try { await onSave({ expected_version: draftVersion, segments: renumber(segments) }); setEditing(false); }
     catch (error) { setErrorMessage(getSectionErrorMessage(error instanceof Error ? error : new Error("Không lưu được các đợt kiểm tra."), "các đợt kiểm tra")); }
     finally { setPending(false); }
   }
   return <section className="workspace-section inspection-period-section">
-    <div className="workspace-section-heading"><h4>Các đợt kiểm tra canonical</h4><button disabled={!readiness?.available || pending} onClick={() => setEditing(true)} type="button">{readiness?.label ?? "Sửa các đợt kiểm tra"}</button></div>
+    <div className="workspace-section-heading"><h4>Các đợt kiểm tra canonical</h4><button disabled={!readiness?.available || pending || editing} onClick={() => { setDraftVersion(readiness?.expected_version ?? null); setEditing(true); setErrorMessage(null); }} type="button">{readiness?.label ?? "Sửa các đợt kiểm tra"}</button></div>
     {!readiness?.available && readiness?.reason_code ? <p className="workspace-note">Không thể chỉnh sửa: {readiness.reason_code}.</p> : null}
     {!editing ? <DetailValue multiline label="Các lần kiểm tra" value={formatInspectionPeriods(segments)} /> : <div className="inspection-period-editor">
       {segments.map((segment, index) => <div className="inspection-team-edit-row" key={segment.ordinal}>
@@ -132,6 +133,7 @@ function InspectionPlanSection({
 }) {
   const currentDraft = useMemo(() => buildPlanDraft(caseWorkspace), [caseWorkspace]);
   const [draft, setDraft] = useState<InspectionPlanDraft>(currentDraft);
+  const [draftVersion, setDraftVersion] = useState(caseWorkspace.inspection.plan_row_version);
   const [editingField, setEditingField] = useState<"plan_start_on" | "plan_end_on" | "decision_reference" | "decision_date" | null>(null);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -155,7 +157,7 @@ function InspectionPlanSection({
         : editingField === "decision_date"
           ? normalizeText(draft.decision_date)
           : normalizeText(draft[editingField]);
-      await onSave({ expected_version: caseWorkspace.inspection.plan_row_version, [editingField]: value });
+      await onSave({ expected_version: draftVersion, [editingField]: value });
       setEditingField(null);
     } catch (error) {
       const nextError = error instanceof Error ? error : new Error("Không lưu được kế hoạch kiểm tra.");
@@ -171,6 +173,13 @@ function InspectionPlanSection({
     setEditingField(null);
   }
 
+  function startEdit(field: NonNullable<typeof editingField>) {
+    setDraft(currentDraft);
+    setDraftVersion(caseWorkspace.inspection.plan_row_version);
+    setEditingField(field);
+    setErrorMessage(null);
+  }
+
   return (
     <>
     <section className="workspace-section inspection-plan-section">
@@ -182,7 +191,7 @@ function InspectionPlanSection({
           isEditing={editingField === "decision_reference"}
           label="Số/Tham chiếu QĐKT"
           onCancel={cancelEdit}
-          onEdit={() => { setEditingField("decision_reference"); setErrorMessage(null); }}
+          onEdit={() => startEdit("decision_reference")}
           onSave={() => void saveField()}
           pending={pending}
           value={caseWorkspace.inspection.plan_decision_reference}
@@ -195,7 +204,7 @@ function InspectionPlanSection({
           isEditing={editingField === "decision_date"}
           label="Ngày QĐKT"
           onCancel={cancelEdit}
-          onEdit={() => { setEditingField("decision_date"); setErrorMessage(null); }}
+          onEdit={() => startEdit("decision_date")}
           onSave={() => void saveField()}
           pending={pending}
           value={formatCompactDate(caseWorkspace.inspection.plan_decision_date)}
@@ -213,8 +222,7 @@ function InspectionPlanSection({
           label="Từ ngày"
           onCancel={cancelEdit}
           onEdit={() => {
-            setEditingField("plan_start_on");
-            setErrorMessage(null);
+            startEdit("plan_start_on");
           }}
           onSave={() => void saveField()}
           pending={pending}
@@ -237,8 +245,7 @@ function InspectionPlanSection({
           label="Đến ngày"
           onCancel={cancelEdit}
           onEdit={() => {
-            setEditingField("plan_end_on");
-            setErrorMessage(null);
+            startEdit("plan_end_on");
           }}
           onSave={() => void saveField()}
           pending={pending}
@@ -283,8 +290,10 @@ function InspectionTeamSection({
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const [draftVersion, setDraftVersion] = useState<number | null>(null);
+
   useEffect(() => {
-    if (!editing) {
+    if (!editing && !pending) {
       setMembers((team?.members ?? []).map((member) => ({
         inspector_profile_id: member.inspector_profile_id,
         person_id: member.person_id,
@@ -294,10 +303,11 @@ function InspectionTeamSection({
         sort_order: member.sort_order,
       })));
     }
-  }, [editing, team]);
+  }, [editing, pending, team]);
 
   async function startEdit() {
-    if (!readiness.available || pending) return;
+    if (!readiness.available || pending || editing) return;
+    setDraftVersion(readiness.expected_version);
     setErrorMessage(null);
     setPending(true);
     try {
@@ -348,7 +358,7 @@ function InspectionTeamSection({
     setErrorMessage(null);
     try {
       await onSave({
-        expected_version: readiness.expected_version,
+        expected_version: draftVersion,
         members: members.map((member, index) => ({
           ...member,
           sort_order: index + 1,
@@ -377,7 +387,7 @@ function InspectionTeamSection({
 
   return (
     <section className="workspace-section inspection-team-section">
-      <div className="workspace-section-heading"><h4>Đoàn kiểm tra</h4><button disabled={!readiness.available || pending} onClick={() => void startEdit()} type="button">{readiness.label}</button></div>
+      <div className="workspace-section-heading"><h4>Đoàn kiểm tra</h4><button disabled={!readiness.available || pending || editing} onClick={() => void startEdit()} type="button">{readiness.label}</button></div>
       <div className="detail-grid compact-grid detail-form-matrix">
         <DetailValue label="Thanh tra viên" multiline value={caseWorkspace.inspection.team_display_text} />
       </div>
@@ -420,6 +430,7 @@ function InspectionOutcomeSection({
 }) {
   const currentDraft = useMemo(() => buildOutcomeDraft(caseWorkspace), [caseWorkspace]);
   const [draft, setDraft] = useState<InspectionOutcomeDraft>(currentDraft);
+  const [draftVersion, setDraftVersion] = useState(caseWorkspace.inspection.outcome_row_version);
   const [editingField, setEditingField] = useState<
     "outcome_result" | "minutes_recorded_on" | "minutes_recorded_time" | "compliance_due_on" | null
   >(null);
@@ -440,7 +451,7 @@ function InspectionOutcomeSection({
     setPending(true);
     setErrorMessage(null);
     try {
-      await onSave({ expected_version: caseWorkspace.inspection.outcome_row_version, [editingField]: normalizeText(draft[editingField]) });
+      await onSave({ expected_version: draftVersion, [editingField]: normalizeText(draft[editingField]) });
       setEditingField(null);
     } catch (error) {
       const nextError = error instanceof Error ? error : new Error("Không lưu được kết quả kiểm tra.");
@@ -456,13 +467,20 @@ function InspectionOutcomeSection({
     setEditingField(null);
   }
 
+  function startEdit(field: NonNullable<typeof editingField>) {
+    setDraft(currentDraft);
+    setDraftVersion(caseWorkspace.inspection.outcome_row_version);
+    setEditingField(field);
+    setErrorMessage(null);
+  }
+
   return (
     <section className="workspace-section inspection-outcome-section">
       <h4 className="sr-only">Thực hiện & kết quả</h4>
       <div className="detail-grid compact-grid detail-form-matrix">
         <div className="inspection-date-fields">
           <DetailValue label="Ngày kiểm tra" multiline value={formatInspectionPeriods(caseWorkspace.inspection.inspection_period_segments ?? [])} />
-          <EditableDetailValue editButtonLabel="Sửa Ngày biên bản" error={editingField === "minutes_recorded_on" ? errorMessage : null} isEditing={editingField === "minutes_recorded_on"} label="Ngày biên bản/report" onCancel={cancelEdit} onEdit={() => { setEditingField("minutes_recorded_on"); setErrorMessage(null); }} onSave={() => void saveField()} pending={pending} value={formatCompactDate(caseWorkspace.inspection.minutes_recorded_on)}>
+          <EditableDetailValue editButtonLabel="Sửa Ngày biên bản" error={editingField === "minutes_recorded_on" ? errorMessage : null} isEditing={editingField === "minutes_recorded_on"} label="Ngày biên bản/report" onCancel={cancelEdit} onEdit={() => startEdit("minutes_recorded_on")} onSave={() => void saveField()} pending={pending} value={formatCompactDate(caseWorkspace.inspection.minutes_recorded_on)}>
             <input aria-label="Ngày biên bản/report" disabled={pending} onChange={(event) => setDraft((current) => ({ ...current, minutes_recorded_on: event.target.value }))} type="date" value={draft.minutes_recorded_on} />
           </EditableDetailValue>
         </div>
@@ -476,8 +494,7 @@ function InspectionOutcomeSection({
             multiline
             onCancel={cancelEdit}
             onEdit={() => {
-              setEditingField("outcome_result");
-              setErrorMessage(null);
+              startEdit("outcome_result");
             }}
             onSave={() => void saveField()}
             pending={pending}
@@ -499,10 +516,10 @@ function InspectionOutcomeSection({
 
           <DetailValue label="Thời điểm thực hiện" value={formatCompactDate(caseWorkspace.inspection.executed_on)} />
 
-          <EditableDetailValue editButtonLabel="Sửa Giờ biên bản" error={editingField === "minutes_recorded_time" ? errorMessage : null} isEditing={editingField === "minutes_recorded_time"} label="Giờ biên bản/report" onCancel={cancelEdit} onEdit={() => { setEditingField("minutes_recorded_time"); setErrorMessage(null); }} onSave={() => void saveField()} pending={pending} value={caseWorkspace.inspection.minutes_recorded_time}>
+          <EditableDetailValue editButtonLabel="Sửa Giờ biên bản" error={editingField === "minutes_recorded_time" ? errorMessage : null} isEditing={editingField === "minutes_recorded_time"} label="Giờ biên bản/report" onCancel={cancelEdit} onEdit={() => startEdit("minutes_recorded_time")} onSave={() => void saveField()} pending={pending} value={caseWorkspace.inspection.minutes_recorded_time}>
             <input aria-label="Giờ biên bản/report" disabled={pending} onChange={(event) => setDraft((current) => ({ ...current, minutes_recorded_time: event.target.value }))} type="time" value={draft.minutes_recorded_time} />
           </EditableDetailValue>
-          <EditableDetailValue editButtonLabel="Sửa Hạn tuân thủ" error={editingField === "compliance_due_on" ? errorMessage : null} isEditing={editingField === "compliance_due_on"} label="Hạn tuân thủ/tái kiểm tra" onCancel={cancelEdit} onEdit={() => { setEditingField("compliance_due_on"); setErrorMessage(null); }} onSave={() => void saveField()} pending={pending} value={formatCompactDate(caseWorkspace.inspection.compliance_due_on)}>
+          <EditableDetailValue editButtonLabel="Sửa Hạn tuân thủ" error={editingField === "compliance_due_on" ? errorMessage : null} isEditing={editingField === "compliance_due_on"} label="Hạn tuân thủ/tái kiểm tra" onCancel={cancelEdit} onEdit={() => startEdit("compliance_due_on")} onSave={() => void saveField()} pending={pending} value={formatCompactDate(caseWorkspace.inspection.compliance_due_on)}>
             <input aria-label="Hạn tuân thủ/tái kiểm tra" disabled={pending} onChange={(event) => setDraft((current) => ({ ...current, compliance_due_on: event.target.value }))} type="date" value={draft.compliance_due_on} />
           </EditableDetailValue>
         </div>
@@ -511,7 +528,7 @@ function InspectionOutcomeSection({
   );
 }
 
-export function CaseInspectionWorkspace({
+function CaseInspectionEditor({
   caseWorkspace,
   onInspectionPlanSave,
   onInspectionOutcomeSave,
@@ -535,6 +552,7 @@ export function CaseInspectionWorkspace({
   onTransitionCase: (payload: CaseTransitionRequest) => Promise<void>;
 }) {
   const [finalEvaluation, setFinalEvaluation] = useState("");
+  const [finalDraftVersion, setFinalDraftVersion] = useState<number | null | undefined>();
   const [finalizationError, setFinalizationError] = useState<string | null>(null);
   const [finalizationPending, setFinalizationPending] = useState(false);
   const finalization = caseWorkspace.inspection.final_evaluation_readiness ?? {
@@ -547,12 +565,13 @@ export function CaseInspectionWorkspace({
   };
 
   async function finalize() {
-    if (!onFinalizeInspectionOutcome || !finalization.available || !finalEvaluation.trim() || finalization.expected_version === null) return;
+    if (finalizationPending || !onFinalizeInspectionOutcome || !finalization.available || !finalEvaluation.trim() || finalDraftVersion == null) return;
     setFinalizationPending(true);
     setFinalizationError(null);
     try {
-      await onFinalizeInspectionOutcome({ expected_version: finalization.expected_version, final_evaluation: finalEvaluation.trim() });
+      await onFinalizeInspectionOutcome({ expected_version: finalDraftVersion, final_evaluation: finalEvaluation.trim() });
       setFinalEvaluation("");
+      setFinalDraftVersion(undefined);
     } catch (error) {
       setFinalizationError(getSectionErrorMessage(error instanceof Error ? error : new Error("Không thể chốt đánh giá."), "đánh giá cuối cùng"));
     } finally {
@@ -563,7 +582,7 @@ export function CaseInspectionWorkspace({
     <div className="inspection-workspace">
       <div className="inspection-detail-grid">
         <InspectionPlanSection caseWorkspace={caseWorkspace} onSave={onInspectionPlanSave} />
-        <InspectionTeamSection caseWorkspace={caseWorkspace} onLoadIdentityOptions={onLoadInspectionTeamIdentityOptions} onSave={onInspectionTeamSave} />
+        <InspectionTeamSection key={caseWorkspace.inspection.team?.team_id ?? "new-team"} caseWorkspace={caseWorkspace} onLoadIdentityOptions={onLoadInspectionTeamIdentityOptions} onSave={onInspectionTeamSave} />
         <InspectionOutcomeSection caseWorkspace={caseWorkspace} onSave={onInspectionOutcomeSave} />
         <InspectionPeriodSection caseWorkspace={caseWorkspace} onSave={onInspectionPeriodSegmentsSave} />
         <CaseApprovalWorkspace caseWorkspace={caseWorkspace} onComplete={onCompleteApprovalSubmission} onCreate={onCreateApprovalSubmission} />
@@ -571,12 +590,13 @@ export function CaseInspectionWorkspace({
         <section className="workspace-section">
           <h4>Đánh giá cuối cùng</h4>
           <DetailValue label="Giá trị đã chốt" value={caseWorkspace.inspection.final_evaluation} />
-          {caseWorkspace.inspection.final_evaluation === null ? (
+          {caseWorkspace.inspection.final_evaluation === null || finalDraftVersion !== undefined ? (
             <div className="panel-actions panel-actions-tight">
-              <input aria-label="Đánh giá cuối cùng" disabled={!finalization.available || finalizationPending} onChange={(event) => setFinalEvaluation(event.target.value)} value={finalEvaluation} />
-              <button disabled={!onFinalizeInspectionOutcome || !finalization.available || finalizationPending || !finalEvaluation.trim()} onClick={() => void finalize()} type="button">
+              <input aria-label="Đánh giá cuối cùng" disabled={!finalization.available || finalizationPending} onChange={(event) => { if (finalDraftVersion === undefined) setFinalDraftVersion(finalization.expected_version); setFinalEvaluation(event.target.value); }} value={finalEvaluation} />
+              <button disabled={!onFinalizeInspectionOutcome || !finalization.available || finalizationPending || finalDraftVersion == null || !finalEvaluation.trim()} onClick={() => void finalize()} type="button">
                 {finalizationPending ? "Đang chốt..." : finalization.label}
               </button>
+              {finalDraftVersion !== undefined ? <button disabled={finalizationPending} onClick={() => { setFinalEvaluation(""); setFinalDraftVersion(undefined); setFinalizationError(null); }} type="button">Hủy nhập đánh giá</button> : null}
             </div>
           ) : null}
           {!finalization.available && finalization.reason_code ? <p className="workspace-note">Không thể chốt: {finalization.reason_code}.</p> : null}
@@ -585,4 +605,8 @@ export function CaseInspectionWorkspace({
       </div>
     </div>
   );
+}
+
+export function CaseInspectionWorkspace(props: Parameters<typeof CaseInspectionEditor>[0]) {
+  return <CaseInspectionEditor key={props.caseWorkspace.case_summary.id} {...props} />;
 }

@@ -1408,6 +1408,66 @@ without sleeps, retries, timeout changes or relaxed assertions.
 
 ## Actual inspection visual/interaction slice — 2026-10-11
 
+### Editor/request ownership correction — 2026-10-30
+
+Baseline7eb0f0ad6e04f0928de460407170a8307436d46f. This supersedes only the
+refresh-token/Case-owner risks recorded in the preceding audit, not the visual
+parity/runtime limitations of this historical section. Backend main#229
+bf9fe2545a63a5debb241df8fc938220fd0bdfbe was audited and preserved untouched.
+
+Inspection/Approval editor lifetimes are keyed by Case UUID; Team additionally
+by team_id, completion drafts by approval_submission_id. Version refresh alone
+does not replace them. Plan/outcome token is captured on field activation;
+period on opening; team before async options; final evaluation on first input.
+Explicit local Cancel/reopen adopts reviewed data. Pending does not unlock on
+refresh; old Case/round completion cannot affect a new editor. Team409 still
+closes/discards, while its other errors and the other editor errors retain draft
+according to their existing contracts. Numeric/null token semantics remain
+backend-owned; no Application/Assessment rule is copied into Inspection.
+
+Approval completion's shared date/time/reason group moved to the exact canonical
+row to prevent draft A from completing row B. Local Hủy nhập hoàn tất resets
+only that row. CT uses the explicit completed PCT UUID and cannot submit a parent
+removed from readback; no MAX(date), display index or latest-parent guess. Final
+evaluation has a local cancel for retained input; no new mutation endpoint/state.
+EVIDENCE_MISSING: legacy runtime layout for canonical multi-round completion
+editors. The smallest web layout change follows their proven aggregate owner.
+
+SearchPage now owns Inspection/Approval post-write readback by committed Case/
+context generation plus request sequence. Plan/Outcome no longer patch old
+workspace snapshots after GET failure. Wrong Case summary/foreign approval rows
+are rejected, not filtered/relinked. Superseded or unmounted commands do not
+start late readback; old GET cannot replace newer data or force old history
+selection. Normal selection, UUID/URL/document owners and typed actions remain.
+
+RED: Inspection7 and Approval5 failures; baseline parent6 failures; additional
+unmount, foreign-row and team-ID failures. Final test counts/CI are in the PR and
+reportv1.3. No timeout increase, disabled tests or softened business assertions.
+Final local frontend599PASS/0FAIL/0SKIP,39files; targeted83 plus parent8 in
+repeated runs; typecheck/lint/buildPASS, related backend45PASS and main229
+selection8PASS/84deselected. Team re-entry while already editing has a separate
+RED and is disabled so it cannot recapture a refreshed token for the same draft.
+Owner tests use StrictMode and cover403/404/409/422/network, refresh before/during
+save, reviewed-token reset, per-row identity and late A→B→A completion.
+
+FIXTURE_VERIFIED Edge1366x768/1920x1080/390x844: document widths match viewport.
+DOM also checks individual Approval controls: mobile creation formerly reached
+x547, completion425 even with document390. Scoped Approval flex wrapping and
+min-width put the rightmost control at363px; desktop1339/1893. No global hiding.
+F2/double-click/Tab/Shift+Tab/Enter/Escape/select, Cancel0callbacks, token2→3 only
+after review, pending and Case replacement verified. Nine explicit fixture
+callbacks/viewport; zero API calls. Evidence outside Git under
+`.codex/evidence/inspection-approval-20261030/` includes geometry before/after.
+Pre-existing narrow final-action label clipping remains a presentation follow-up;
+the action's accessible name and explicit activation were tested.
+
+Issue230 hands actual Plan/Outcome null-token overwrite evidence to backend;
+no frontend server-rescue added. NOT_EXECUTED: authenticated readback/audit,
+screen reader, original VBA runtime, Word/NAS and production UAT. Missing PCT/CT
+legal output remains BLOCKED_BY_TYPED_DOCUMENT_CONTRACT. These narrow fixes do
+not promote complete Inspection/Approval parity. Existing master/history/rail,
+registration/CAPA/certificates and QĐKT evidence/issuance gates remain unchanged.
+
 Baseline: 39e80378b71d5cf48d50ebfcc5c509ad2ef4a551. Supplied runtime image 2
 establishes decision/date and inspection/report dates at left; inspectors,
 standard and outcome at right; contextual document access at the right edge.

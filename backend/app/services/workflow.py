@@ -3054,13 +3054,34 @@ class CaseWorkflowService:
         provided = self._provided_fields(fields_set, {"assessed_on", "assessor_name", "assessment_result", "notes"})
         row = self._get_case(session, case_id)
         self._assert_case_not_terminal(row, operation="assessment update")
+        # A null version is create-only. Serialize creation against the owning
+        # Case before checking the stage, as for CaseApplication.
+        session.execute(
+            select(Case.id).where(Case.id == row.id).with_for_update()
+        ).scalar_one()
+        stage = session.scalars(
+            select(CaseAssessment).where(CaseAssessment.case_id == row.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).first()
+        if stage is None:
+            if expected_version is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Case assessment does not exist for the supplied expected_version.",
+                )
+        elif expected_version is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Case assessment already exists; expected_version is required to update it.",
+            )
+        else:
+            self._assert_expected_version(stage, expected_version, label="case_assessment")
         actor = self._get_or_create_app_user(session, user)
-        stage = session.scalars(select(CaseAssessment).where(CaseAssessment.case_id == row.id)).first()
         if stage is None:
             stage = CaseAssessment(case_id=row.id)
             session.add(stage)
             session.flush()
-        self._assert_expected_version(stage, expected_version, label="case_assessment")
         before = self._snapshot_fields(
             stage,
             ["assessed_on", "assessor_name", "assessment_result", "notes"],

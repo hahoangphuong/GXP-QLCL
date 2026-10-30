@@ -591,7 +591,7 @@ function CaseInspectionEditor({
           <h4>Đánh giá cuối cùng</h4>
           <DetailValue label="Giá trị đã chốt" value={caseWorkspace.inspection.final_evaluation} />
           {caseWorkspace.inspection.final_evaluation === null || finalDraftVersion !== undefined ? (
-            <div className="panel-actions panel-actions-tight">
+            <div aria-label="Chốt đánh giá cuối cùng" className="panel-actions panel-actions-tight inspection-final-actions" role="group">
               <input aria-label="Đánh giá cuối cùng" disabled={!finalization.available || finalizationPending} onChange={(event) => { if (finalDraftVersion === undefined) setFinalDraftVersion(finalization.expected_version); setFinalEvaluation(event.target.value); }} value={finalEvaluation} />
               <button disabled={!onFinalizeInspectionOutcome || !finalization.available || finalizationPending || finalDraftVersion == null || !finalEvaluation.trim()} onClick={() => void finalize()} type="button">
                 {finalizationPending ? "Đang chốt..." : finalization.label}

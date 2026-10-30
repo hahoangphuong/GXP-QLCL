@@ -517,6 +517,17 @@ tr:focus-visible {
   max-width: 100%;
 }
 
+.inspection-final-actions { flex-wrap: wrap; margin-left: 0; min-width: 0; }
+.inspection-final-actions > input { flex: 1 1 12rem; min-width: 0; max-width: 100%; }
+.inspection-final-actions > button {
+  height: auto;
+  min-height: 26px;
+  max-width: 100%;
+  padding-block: 0.15rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .panel-heading-inline-wrap {
   flex-wrap: wrap;
 }

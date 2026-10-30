@@ -1889,3 +1889,51 @@ focus/request separation and unchanged request counts. Authenticated live
 backend/RBAC, binary storage, screen-reader acceptance and production UAT are
 still `EVIDENCE_MISSING`; browser checks in this slice use controlled frontend
 fixtures only.
+
+### Inspection/Approval session expiry and final-action follow-up — 2026-10-31
+
+Scope: frontend owners only, following PR231; backend PR232 create-only-null
+Plan/Outcome rule is consumed unchanged. Baseline09ebb20; PR233 main drift35771fe
+(test-only PostgreSQL CaseAssessment) audited/preserved. See reportv1.4 for the
+per-aggregate acceptance matrix and remaining lifecycle boundaries.
+
+App's session-state effect was last correct for credential acceptance/change,
+but did not run again on idle expiry. Baseline RED proves no expiry scheduling
+and an expired pending Inspection editor surviving focus. Timed recheck plus
+focus/visible resume now use the existing30-second margin. Cleanup prevents old
+credential/unmount callbacks from clearing a newer owner. Four App regressions
+cover Plan and approval pending completion, expiry and refresh isolation. This
+is UNIT_VERIFIED client ownership, not Google authentication/refresh acceptance.
+
+Final-evaluation button text exceeded its fixed26px box at320/360/390px. Actual
+Edge Range/DOM regression fails before and passes after scoped flex wrapping,
+input min-width and content-sized buttons in `inspection-final-actions`. All
+five widths320/360/390/1366/1920 have scrollWidth=clientWidth and contained label;
+desktop button height26px retained. No ancestor/body overflow hiding added.
+The existing1366x768/1920x1080/390x844 component keyboard/pending/Case/token fixture
+passes independently. The v1.3 final-action clipping follow-up is closed for
+these measured viewports, not full native speech/visual runtime parity.
+
+Real FastAPI + frontend typed API/editor browser acceptance uses explicit local
+synthetic SQLite and header_stub, not GoogleOIDC. Plan/outcome/two ordered periods/
+team/final have REQUEST_ACCEPTED, CANONICAL_READBACK_VERIFIED and
+RELOAD_PERSISTENCE_VERIFIED. Reader403 retains input; actual404/422/stale409/null409
+checked without retry. Fourteen-event disposable audit snapshot verified.
+Approval HTTP create/complete/second round/explicit CT parent persist, but
+canonical GET fails500 because catalog projection omits required row case_id:
+backend Issue236. REQUEST_ACCEPTED/AUDIT_VERIFIED are not readback/reload PASS.
+No client repair, inferred parent or synthetic canonical response introduced.
+
+User confirms an authorized writable disposable environment; its URL/record
+scope and two Google identity sessions remain requested. Native browser tool
+initialization fails; no old local frontend/tunnel is listening at preflight.
+Authenticated A/B acceptance is NOT_EXECUTED_AUTHENTICATION_DEPENDENCY. Full-shell
+Back/Forward, reload during pending, postcommit interruption/replay and tab
+re-entry acceptance remain distinct gaps; a UI pending lock is not idempotency.
+Screen reader, original VBA runtime, Word/NAS and production UAT NOT_EXECUTED.
+PCT/CT legal output BLOCKED_BY_TYPED_DOCUMENT_CONTRACT; QĐKT gates unchanged.
+Local evidence: `.codex/evidence/inspection-approval-integration-20261031/`.
+Validation: full frontend603PASS/0FAIL/0SKIP,39files; targeted42PASS twice;
+new session4PASS repeated; typecheck/lint/buildPASS; backend contracts139PASS.
+Backend Issue236 actual-HTTP probe remains RED outside the project suite and is
+not counted as a passing integration case. No timeout increase or test disabled.

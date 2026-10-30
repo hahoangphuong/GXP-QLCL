@@ -7,7 +7,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { FACILITY_TAB_LABELS, type FacilityTab } from "./features/search/facilityTabs";
 import { CASE_EVENT_LABELS } from "./features/search/EventWorkspace";
-import type { FacilitySearchPage, FacilitySearchResult } from "./types";
+import { clearOidcSession, saveOidcSession } from "./lib/storage";
+import type { FacilitySearchPage, FacilitySearchResult, OidcSession } from "./types";
 
 const apiMocks = vi.hoisted(() => ({
   assessCapaCycle: vi.fn(),
@@ -92,7 +93,7 @@ const apiMocks = vi.hoisted(() => ({
 const oidcMocks = vi.hoisted(() => ({
   loadGoogleIdentityScript: vi.fn().mockResolvedValue(undefined),
   decodeOidcCredential: vi.fn(),
-  isOidcSessionValid: vi.fn(() => false),
+  isOidcSessionValid: vi.fn<(session: OidcSession | null) => boolean>(() => false),
 }));
 
 // Observe the committed DOM before SearchPage's passive request effects run.
@@ -3429,6 +3430,105 @@ describe("App Slice A.4 search workspace", () => {
     );
     expect(await screen.findByRole("alert")).toHaveTextContent("Bạn không có quyền thực hiện thao tác này.");
     expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { trigger: "timer", operation: "plan" },
+    { trigger: "window-focus", operation: "plan" },
+    { trigger: "visibility", operation: "approval" },
+  ] as const)("expires an idle $operation session on $trigger and rejects its late completion", async ({ trigger, operation }) => {
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ inspection: {
+      ...buildCaseWorkspace().inspection,
+      approval_submissions: [{ approval_submission_id: "pct-session", case_id: "case-1", row_version: 2, stage: "PCT", round_no: 1, completed_on: null }],
+      approval_actions: [{ action_key: "complete_approval:pct-session", available: true, expected_version: 2, label: "Hoàn tất PCT", required_permissions: [] }],
+    } }));
+    let resolveSave!: (value: Record<string, unknown>) => void;
+    const mutation = operation === "plan" ? apiMocks.upsertInspectionPlan : apiMocks.completeInspectionApprovalSubmission;
+    mutation.mockImplementation(() => new Promise(resolve => { resolveSave = resolve; }));
+    const view = await renderOidcSearch();
+    await act(async () => { view.credentialCallback({ credential: "synthetic-A" }); });
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    await screen.findByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" });
+    await flushSearchUrlSync();
+    const now = Date.now();
+    // Refresh installs a short-lived credential while retaining the same Case.
+    const expiryTimers: (() => void)[] = [];
+    const schedule = window.setTimeout.bind(window);
+    const timerSpy = vi.spyOn(window, "setTimeout").mockImplementation((handler, delay, ...args) => {
+      if (delay === 90_000 && typeof handler === "function") expiryTimers.push(handler as () => void);
+      return schedule(handler, delay, ...args);
+    });
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      oidcMocks.isOidcSessionValid.mockImplementation(session => Boolean(session && session.expires_at_epoch_seconds * 1000 - Date.now() > 30_000));
+      oidcMocks.decodeOidcCredential.mockReturnValue({ token: "synthetic-short", subject: "synthetic-A", email: null, name: null, expires_at_epoch_seconds: (now + 120_000) / 1000 });
+      await act(async () => { view.credentialCallback({ credential: "synthetic-short" }); });
+      await screen.findByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" });
+      fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+      await flushSearchUrlSync();
+      if (operation === "plan") {
+        fireEvent.doubleClick(screen.getByRole("button", { name: "Sửa Số/Tham chiếu QĐKT" }));
+        fireEvent.change(screen.getByLabelText("Số/Tham chiếu QĐKT"), { target: { value: "Pending before expiry" } });
+        fireEvent.click(screen.getByRole("button", { name: "Lưu Số/Tham chiếu QĐKT" }));
+      } else {
+        fireEvent.change(screen.getByLabelText("Ngày hoàn tất trình"), { target: { value: "2026-10-31" } });
+        fireEvent.click(screen.getByRole("button", { name: "Hoàn tất PCT" }));
+      }
+      expect(mutation).toHaveBeenCalledOnce();
+      const reads = apiMocks.getCaseWorkspace.mock.calls.length;
+      clock.mockReturnValue(now + 90_001);
+      if (trigger === "timer") {
+        expect(expiryTimers).toHaveLength(1);
+        await act(async () => { expiryTimers[0](); });
+      }
+      else if (trigger === "window-focus") {
+        await act(async () => { window.dispatchEvent(new Event("focus")); });
+      } else await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+      expect(screen.queryByLabelText("Số/Tham chiếu QĐKT")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Ngày hoàn tất trình")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Đăng xuất" })).not.toBeInTheDocument();
+      expect(clearOidcSession).toHaveBeenCalled();
+      await act(async () => { resolveSave({ case_id: "case-1", row_version: 4 }); });
+      expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(reads);
+      expect(mutation).toHaveBeenCalledOnce();
+    } finally {
+      view.unmount();
+      timerSpy.mockRestore();
+      clock.mockRestore();
+    }
+  });
+
+  it("does not let an old expiry callback clear a refreshed session or act after unmount", async () => {
+    const view = await renderOidcSearch();
+    const now = Date.now();
+    const callbacks: (() => void)[] = [];
+    const schedule = window.setTimeout.bind(window);
+    const timerSpy = vi.spyOn(window, "setTimeout").mockImplementation((handler, delay, ...args) => {
+      if ((delay === 30_000 || delay === 90_000) && typeof handler === "function") callbacks.push(handler as () => void);
+      return schedule(handler, delay, ...args);
+    });
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      oidcMocks.isOidcSessionValid.mockImplementation(session => Boolean(session && session.expires_at_epoch_seconds * 1000 - Date.now() > 30_000));
+      oidcMocks.decodeOidcCredential.mockImplementation((token: string) => ({ token, subject: "synthetic-A", email: null, name: null, expires_at_epoch_seconds: (now + (token === "first" ? 60_000 : 120_000)) / 1000 }));
+      await act(async () => { view.credentialCallback({ credential: "first" }); });
+      await act(async () => { view.credentialCallback({ credential: "refreshed" }); });
+      expect(callbacks).toHaveLength(2);
+      clock.mockReturnValue(now + 30_001);
+      await act(async () => { callbacks[0](); window.dispatchEvent(new Event("focus")); });
+      expect(screen.getByRole("button", { name: "Đăng xuất" })).toBeInTheDocument();
+      expect(saveOidcSession).toHaveBeenLastCalledWith(expect.objectContaining({ token: "refreshed" }));
+      const clears = vi.mocked(clearOidcSession).mock.calls.length;
+      view.unmount();
+      clock.mockReturnValue(now + 90_001);
+      callbacks[1]();
+      expect(clearOidcSession).toHaveBeenCalledTimes(clears);
+    } finally {
+      view.unmount(); timerSpy.mockRestore(); clock.mockRestore();
+    }
   });
 
   it.each(["plan", "approval"] as const)("does not start a replaced %s command's readback after Case A → B → A", async operation => {

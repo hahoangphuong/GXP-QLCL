@@ -1,6 +1,6 @@
 # Legacy VBA/Excel business parity status
 
-Version: **1.3 — 2026-10-30**. Historical inventory baseline main
+Version: **1.4 — 2026-10-31**. Historical inventory baseline main
 `5062b5a3f50f06d8b8348d95199b0bbe5e8f395c`. Scope: available workbook/add-in
 source, approved contracts, current frontend/backend source, regression and
 isolated browser fixtures. This is not authenticated staging, production UAT,
@@ -392,3 +392,98 @@ change, production operation or QĐKT renderer/legal issuance activation.
 PR206 stays OPEN/DRAFT, Issues74/144 OPEN. Next: backend Issue230 adjudication,
 then authorized readback/reload integration and remaining transition-intent/
 typed-document acceptance, each with its own proven owner and scope.
+
+## Inspection/Approval integration and session lifecycle — v1.4, 2026-10-31
+
+Starting fetched main `09ebb20d6de60b9452c990a5276876cf5e604065` includes
+PR231 and backend PR232. The latter makes null tokens create-only for Plan and
+Outcome, with Case/stage locks; the frontend does not emulate that rule. During
+this pass PR233 advanced main to `35771fe33b99ef654b1bfb9483d838aedf36a1ce`;
+its isolated PostgreSQL CaseAssessment test was audited and preserved unchanged.
+Issue230 remains backend-owned; this report does not close it or generalize its
+contract to other stages. PR235 is a separate backend test workstream.
+
+### Proven frontend defects and corrections
+
+Last-correct: App already checks the existing 30-second OIDC validity margin
+when accepting/loading session state, and credential changes invalidate access
+ownership. First-incorrect: an idle session never changes that state, so an open
+Inspection/Approval editor and its pending completion survive expiry. App now
+schedules validity rechecks and rechecks on window focus/visible resume, using
+the same predicate/margin. Cleanup invalidates old callbacks/listeners on refresh
+and unmount. Expiry clears the session and advances the existing access owner;
+late Plan/approval completions cannot start old-owner readback. This is client
+lifecycle containment, not a replacement for server authentication or token
+refresh. Google GIS may supply another credential; no refresh token or silent
+refresh protocol has been invented.
+
+Confirmed baseline RED: missing expiry timer and retained pending input after
+expired-window focus (2 failures). Final regressions cover timer, focus,
+visibility during approval completion, refreshed-session callback isolation and
+unmount cleanup. An earlier diagnostic used the wrong tab's text as its wait
+boundary; it is not defect evidence. Tests use observed scheduling callbacks and
+a controlled clock without increasing timeouts or changing business assertions.
+
+The final-evaluation action also inherited a fixed 26px button height and a
+nonwrapping, shrinking flex row. Browser Range measurements showed text bottom
+outside the button at 320/360/390px despite document width equalling viewport.
+Only its named `inspection-final-actions` group now wraps, constrains the input
+and lets buttons grow with text. Desktop button height remains26px. At all five
+widths320/360/390/1366/1920 the label fits and document scrollWidth=clientWidth;
+no global hiding rule was added. Native F2/Tab/Shift+Tab/Enter/Escape/select,
+Cancel, pending, conflict and Case replacement were exercised in actual Edge
+fixtures at1366x768/1920x1080/390x844. This closes the v1.3 narrow final-action
+label gap, not all mobile/legacy visual acceptance.
+
+### Acceptance matrix — keep verification layers separate
+
+| Behavior / aggregate | Concrete evidence | Status / remaining dependency |
+|---|---|---|
+| Plan and Outcome metadata | Real loopback FastAPI HTTP, typed frontend API client and actual editors, committed SQLite, canonical GET and browser reload; stale numeric and create-only-null409 | DISPOSABLE_API_VERIFIED with header_stub; not Google OIDC or PostgreSQL acceptance |
+| Ordered periods | Two independently entered ranges persist through canonical GET/reload, with id-free write payloads | DISPOSABLE_API_VERIFIED; no source-owned period semantics changed |
+| Team | Actual identity-options GET, canonical profile UUID, committed roster and reload | DISPOSABLE_API_VERIFIED; existing Team409 discard contract unchanged |
+| Immutable final evaluation | Actual explicit finalize, canonical GET and reload | DISPOSABLE_API_VERIFIED; backend finalization/readiness remains authoritative |
+| Reader denial | Actual server403 in the open Plan editor retains draft; reader final readiness disabled | Local header_stub permission test only, not authenticated A/B identities |
+| Failure boundaries | Actual missing-Case404, invalid time/date422, stale409 with one request and retained input; existing owner unit/fixture errors and late responses | UNIT_VERIFIED / FIXTURE_VERIFIED / disposable HTTP by the named scenario; not a blanket fault-injection or network replay claim |
+| Approval PCT/CT lifecycle | PCT create/complete, second round, explicit CT parent accepted by real HTTP; persisted rows and structured audit checked read-only in disposable DB | REQUEST_ACCEPTED + AUDIT_VERIFIED only. Canonical workspace GET/reload BLOCKED by backend Issue236 |
+| Late completion / navigation | Existing owner fixtures keep per-UUID drafts and A→B→A response isolation; new App tests discard expired-owner Plan/approval follow-ups | UNIT_VERIFIED / FIXTURE_VERIFIED; full-shell authenticated Back/Forward and reload-during-pending remain unverified |
+| Persistence audit | Fourteen structured audit events in the local acceptance snapshot, including finalization and approval; Case/parent identities checked in the disposable DB | AUDIT_VERIFIED_DISPOSABLE_SQLITE_ONLY; no external audit/production claim |
+| Google OIDC, session refresh and two valid test identities | No active old loopback frontend/tunnel at preflight; native browser tools fail initialization. User confirms writable disposable environment; URL/record scope and account/session details requested | NOT_EXECUTED_AUTHENTICATION_DEPENDENCY. No profile/token/cookie extraction or credential logging |
+| VBA/Word/speech | MainForm DataKT(5..9,16), TextForm explicit OK/Cancel, TTVForm structured selection and RecordForm separate PCT/CT source families re-audited statically | Original VBA runtime, native screen reader, Word/NAS and production UAT NOT_EXECUTED; source is not runtime acceptance |
+
+### Backend readback blocker and remaining lifecycle gaps
+
+Issue236: catalog Case workspace projection omits `case_id` in each persisted
+approval row although `InspectionApprovalSubmissionRead` requires it. Empty list
+GET succeeds; actual PCT POST returns200 and commits the UUID/audit; the next GET
+returns500 (`inspection.approval_submissions.0.case_id` missing). Confirmed with
+both real browser/API and an independently seeded real-HTTP RED probe. The first
+TestClient attempt could not collect because the installed Starlette requires
+httpx2; only the subsequent actual-HTTP assertion failure is defect evidence.
+No backend source or schema was edited; no client injection/filter/rescue or
+mutation-response fallback was added. Do not count Approval readback/reload as
+PASS or retry create blindly after this committed-write/readback failure.
+
+The UI pending lock is not HTTP replay idempotency or database uniqueness.
+Workflow-tab unmount does not promise draft restoration or exactly-once manual
+re-entry; request interruption after server commit and reload while pending still
+need authorized acceptance. No such guarantee is inferred from component tests.
+Real authenticated environment, sessions and disposable record scope must be
+established before that run. No staging was deployed or remote DB touched.
+
+Evidence/scripts/screenshots are local-only under
+`.codex/evidence/inspection-approval-integration-20261031/`. Temporary fixture
+source was moved out of frontend before the final checks. Existing master,
+history, rail, registration, CAPA, certificates and document owners are unchanged.
+PCT/CT legal output remains BLOCKED_BY_TYPED_DOCUMENT_CONTRACT. PR206 stays
+OPEN/DRAFT at its frozen SHA, Issues74/144 remain OPEN, ready_to_render=False,
+legal issuance disabled and Word UAT NOT_EXECUTED. Next priority: backend Issue236
+canonical projection repair followed by permitted authenticated persistence,
+A/B roles and interruption/re-entry acceptance; do not fabricate parity.
+
+Validation for v1.4: full frontend603PASS/0FAIL/0SKIP in39files; existing
+Inspection/Approval/shared keyboard targeted42PASS in each of two runs; four
+new session regressions PASS repeatedly. Typecheck/lint/build PASS; existing
+>500kB bundle advisory retained. Relevant backend contract suites139PASS.
+Issue236's isolated actual-HTTP RED remains an explicit backend handoff, outside
+the passing project suite; it was not skipped, fixed downstream or called GREEN.

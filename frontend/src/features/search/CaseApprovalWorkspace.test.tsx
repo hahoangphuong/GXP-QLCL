@@ -7,6 +7,7 @@ import { CaseApprovalWorkspace } from "./CaseApprovalWorkspace";
 
 function workspace(overrides: Partial<CaseWorkspace["inspection"]> = {}): CaseWorkspace {
   return {
+    case_summary: { id: "case-1" },
     inspection: {
       approval_actions: [],
       approval_submissions: [],

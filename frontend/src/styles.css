@@ -507,6 +507,16 @@ tr:focus-visible {
   font-size: 0.76rem;
 }
 
+.case-approval-workspace { min-width: 0; overflow-wrap: anywhere; }
+.case-approval-workspace .inspection-team-member { margin-top: 0.5rem; }
+.case-approval-workspace .inspection-team-member > span { display: block; }
+.case-approval-workspace .panel-actions { flex-wrap: wrap; margin-left: 0; }
+.case-approval-workspace .panel-actions > :is(input, select) {
+  flex: 1 1 10rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .panel-heading-inline-wrap {
   flex-wrap: wrap;
 }

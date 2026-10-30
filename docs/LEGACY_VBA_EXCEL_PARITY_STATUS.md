@@ -1,6 +1,6 @@
 # Legacy VBA/Excel business parity status
 
-Version: **1.2 — 2026-10-29**. Audit baseline main
+Version: **1.3 — 2026-10-30**. Historical inventory baseline main
 `5062b5a3f50f06d8b8348d95199b0bbe5e8f395c`. Scope: available workbook/add-in
 source, approved contracts, current frontend/backend source, regression and
 isolated browser fixtures. This is not authenticated staging, production UAT,
@@ -261,3 +261,134 @@ Backend handoff remains typed CAPA/PCT/CT output contracts and Issue222; no new
 backend defect was established by this slice. Frontend next priority is a
 separate refresh-token/Case-owner audit for Inspection/Approval editors above.
 PR206, Issues74/144 and QĐKT evidence/render/issuance gates stay unchanged.
+
+## Inspection / Approval editor ownership — v1.3
+
+Starting main `7eb0f0ad6e04f0928de460407170a8307436d46f`. The preceding main
+drift from PR227 was only PR228's disposable PostgreSQL application-creation
+test; it was audited and preserved. During work, backend PR229
+`bf9fe2545a63a5debb241df8fc938220fd0bdfbe` added CaseAssessment-specific
+create-only-null enforcement and tests. Both backend diffs remain untouched.
+This slice does not extend those rules to InspectionPlan/Outcome.
+
+Evidence: current typed requests/read models/service methods, lifecycle owner
+matrix and CASE_E2E acceptance, ADR0037/0052, MainForm.GetSetDataKtra's selected
+history/base-row resolution and accepted-edit refresh, DataKT inspection/final
+controls, TextForm.GetText/OK/Cancel and TTVForm's explicit accepted/canceled
+team input. Static VBA establishes dispatch/ownership and cancel behavior, not
+runtime concurrency or an exact web approval-round layout. PCT/CT stages/rounds,
+explicit completed PCT parent, immutable final evaluation and backend readiness
+are current canonical contracts; no MAX(date)/filename/latest heuristic is added.
+
+### Editor audit: one draft, one owner
+
+All Case editor lifetimes below are keyed by canonical Case UUID. Returning
+A→B→A creates a new editor instance, even if the UUID string equals the earlier
+one. A server version change alone does not replace that instance.
+
+| Editor / aggregate identity | Token and hydration | Pending / response acceptance | Cancel / errors | Readiness owner |
+|---|---|---|---|---|
+| Plan: Case + InspectionPlan (Case-keyed API; no plan UUID exposed in this projection) | Capture plan_row_version and current data on explicit field activation; refresh retains open input/token | One pending field; native controls stay disabled; replaced Case instance cannot receive old completion | Cancel/Escape reloads reviewed data; 403/404/409/422/network retain open draft, no auto retry | Existing backend write contract; no client role map |
+| Outcome metadata: Case + InspectionOutcome | Capture outcome_row_version on field activation; separate from dossier CaseAssessment | Same field pending boundary; readback cannot publish another Case or superseded response | Same retained-draft error contract; reviewed version only after Cancel/reopen | Existing typed metadata mutation; compatibility refs remain read-only |
+| Periods: Case + outcome replacement | Capture inspection_period_edit_readiness.expected_version when opening; ordered 0..n ranges stay id-free and unflattened | Refresh does not re-enable/reopen the active replacement; Save remains single-attempt | Local Hủy discards; errors retain editor. Null initialization versus existing version stays server-owned | Backend period readiness/mode, including source-owned non-KNOWN guards |
+| Team: Case + team_id (or absent aggregate) | Capture token before loading identity options; freeze the matching members while loading/editing. UUID replacement unmounts old editor; version-only refresh does not | Loading and Save share the existing pending boundary; no parsing of display_text, no KHKT backfill | **Existing 409 closes/discards team editor**, other errors retain it. Reopen uses reviewed structured members/token | Backend team readiness and canonical identity options |
+| Final evaluation: Case + outcome finalization | First input change captures readiness.expected_version; even a concurrently published final value does not erase the open draft | Pending prevents second finalize; explicit local cancel disabled while pending | Error retains input/token; local Hủy nhập đánh giá resets intent. Success clears only its own editor | Backend finalization readiness, required numeric version and immutable-value rules |
+| Approval create: Case + explicitly invoked PCT/CT stage | Existing create contract has no client version field; none invented. CT requires the explicitly selected parent still present in completed PCT readback | One pending action disables create/parent/completion controls; Case replacement invalidates old component completion | Failure retains create fields; success clears accepted input. No automatic POST retry | Backend create action readiness; client only validates the explicit selection still exists |
+| Approval complete: Case + approval_submission_id + stage/round metadata | Each canonical UUID owns separate date/time/reason draft; capture readiness token on first change, not at Complete | One workspace command at a time; refreshing/reordering does not transfer draft to another row | Local Hủy nhập hoàn tất clears only that row; 403/404/409/422/network retain it/token, no retry | Matching backend complete_approval:UUID action; no inferred parent/round |
+
+### Proven gaps and owner corrections
+
+1. Last-correct baseline already retained inline drafts while editing and
+   disabled pending buttons. First-incorrect Save handlers used **current props**
+   instead of the token matching that draft. Snapshot tokens are now captured at
+   the actual edit/intent boundary, including Team's async options interval. Team
+   re-entry while already editing is disabled: its RED regression otherwise
+   reloads options twice and recaptures a refreshed token for old members.
+2. CaseInspectionWorkspace and CaseApprovalWorkspace could reuse local state
+   across Case changes. React Case keys now define the owner generation; Team
+   UUID and approval UUID additionally define their child aggregate lifetimes.
+3. A shared completion draft fed any row's Complete button. It now lives at each
+   exact approval row. This minimal presentation difference is required by the
+   multi-round canonical contract; no new server action or approval state exists.
+4. SearchPage Plan/Outcome bypassed the case request sequence and could publish
+   old readback over a newer one. They now use the existing shared readback
+   owner/sequence, with a committed Case/context generation captured **before**
+   mutation. Inspection/Approval follow-ups from replaced/unmounted owners do
+   not initiate GETs; older GETs cannot publish into a new owner/sequence.
+5. The old post-write fallback patched a saved response into an old workspace
+   when GET failed. Removed only for Plan/Outcome: failed readback reports that
+   a save response was received but canonical workspace could not be read. Draft
+   remains; no synthetic confirmation or automatic retry is produced. Wrong-Case
+   summary or foreign-Case approval rows fail closed at the readback owner,
+   without filtering/relinking rescue. Facility refresh cannot force the old
+   preferred Case selection after navigation.
+6. DOM measurements found Approval controls clipped beyond its narrow pane even
+   though document width stayed390. Scoped wrapping/min-width rules make the
+   existing create controls and new per-row completion controls reachable;
+   readable row metadata remains in its existing order. No body/ancestor
+   overflow hiding or other master/history/workflow presentation change.
+
+RED evidence: Inspection7FAIL, Approval5FAIL; corrected parent setup proves6
+readback failures against baseline parent source; unmount guard removal produces
+an extra GET (3 instead of2); foreign approval-row and team-UUID replacement
+tests also fail before their specific guards. Source swaps for owner-isolated
+RED were backed up and restored byte-for-byte. Early unmount/foreign-row runs
+that did not reach the intended action are setup failures, not defect evidence.
+Parent tests now explicitly wait for registration content and open Inspection,
+with the existing URL microtask boundary; no timeout/production guard is relaxed.
+
+UNIT_VERIFIED behavior is limited to these editor/request boundaries, not whole
+workflow completion. New owner suites run under StrictMode; coverage includes
+V1 draft/V2 refresh, pending, A→B→A, Team UUID/options replacement, per-round
+completion, explicit Cancel/reopen, readback ordering/ownership and errors.
+Final targeted/full/CI counts and exact SHAs are recorded in the delivery PR and
+local handoff. Final local frontend599PASS/0FAIL/0SKIP across39 files; targeted
+owner/document/keyboard83PASS and parent readback8PASS in repeated final runs.
+Typecheck/lint/buildPASS; no act/unhandled warnings in the final log and no
+timeout/assertion weakening. Existing >500kB bundle advisory is unchanged.
+Relevant backend contract suites45PASS; backend PR229-related
+selection8PASS/84 explicitly deselected. No backend source/tests were edited.
+
+FIXTURE_VERIFIED: actual React owners/styles in headless Edge at1366x768,
+1920x1080,390x844. Baseline sends refreshed plan token3 for draft2; correction
+sends2, then3 only after explicit Cancel/reopen. Approval similarly keeps2 then
+reviewed3; period/team/finalization keep2. Nine explicit controlled callbacks per
+viewport, zero API requests or Cancel mutations. F2/double-click/Tab/Shift+Tab,
+Enter/Escape, select interaction, pending and late Case completion exercised.
+Document scroll/client widths1366/1366,1920/1920,390/390; rightmost Approval
+control after wrap is1339,1893,363px. Before wrap the mobile create group reached
+547px and completion buttons425px, despite the unchanged390px document width.
+Original measurements, screenshots, fixture source and logs are outside Git:
+`.codex/evidence/inspection-approval-20261030/`. This component fixture does not
+claim authenticated persistence or full-shell Back/Forward acceptance.
+The pre-existing narrow final-action label wrapping/clipping remains a visual
+follow-up; its accessible name and explicit action were exercised. This is not
+a claim of complete mobile/legacy visual parity.
+
+### Backend handoff and remaining acceptance
+
+**Issue230:** actual workflow service on disposable SQLite memory confirms
+InspectionPlan and InspectionOutcome null-token writes can overwrite existing
+version1 rows; stale numeric1 is409. This probe uses current owner logic, not a
+simulated lock algorithm. It does not prove a PostgreSQL competing-create race.
+Frontend pins the original token, including null, and **does not** add a rescue
+or invent create-only semantics. Backend must decide/audit those stage-specific
+contracts and callers; never generalize Application/Assessment fixes silently.
+
+Post-write readback failure is not a verified UI persistence readback. Approval
+creation has no client version/idempotency token in the current contract; this
+slice prevents overlapping UI commands, not all manual/network replay. Reconcile
+canonical state before deciding whether a new create is intended. Server
+transaction/idempotency policy remains backend-owned.
+
+Inspection/Approval remain IMPLEMENTED_PARTIAL overall. Authenticated A/B roles,
+real persistence/audit reload, original VBA editor/runtime acceptance and native
+screen-reader verification are NOT_EXECUTED in this slice. Workflow-tab unmount
+does not promise draft restoration; it guarantees old completion isolation.
+PCT/CT and other missing legal output remain BLOCKED_BY_TYPED_DOCUMENT_CONTRACT;
+metadata/version presence is not a valid Word/NAS binary. No placeholder DOCX,
+path/template inference, original binary/VBA execution, API/schema/RBAC/storage
+change, production operation or QĐKT renderer/legal issuance activation.
+PR206 stays OPEN/DRAFT, Issues74/144 OPEN. Next: backend Issue230 adjudication,
+then authorized readback/reload integration and remaining transition-intent/
+typed-document acceptance, each with its own proven owner and scope.

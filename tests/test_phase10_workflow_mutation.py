@@ -1126,9 +1126,13 @@ def test_outcome_compatibility_writer_metadata_only_preserves_period_truth():
         session.commit()
 
     with Session(engine) as session:
+        persisted = session.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == case_id))
+        assert persisted is not None
+        expected_version = persisted.row_version
         service.upsert_inspection_outcome(
             session,
             case_id=case_id,
+            expected_version=expected_version,
             inspected_on=None,
             inspected_to_on=None,
             decision_reference=None,
@@ -1170,10 +1174,14 @@ def test_outcome_compatibility_writer_rejects_invalid_dates_and_multi_segment_tr
         session.commit()
 
     with Session(engine) as session:
+        persisted = session.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == case_id))
+        assert persisted is not None
+        expected_version = persisted.row_version
         with pytest.raises(Exception, match="end date requires a start date"):
             service.upsert_inspection_outcome(
                 session,
                 case_id=case_id,
+                expected_version=expected_version,
                 inspected_on=None,
                 inspected_to_on=date(2026, 8, 26),
                 decision_reference=None,
@@ -1186,6 +1194,7 @@ def test_outcome_compatibility_writer_rejects_invalid_dates_and_multi_segment_tr
             service.upsert_inspection_outcome(
                 session,
                 case_id=case_id,
+                expected_version=expected_version,
                 inspected_on=date(2026, 8, 25),
                 inspected_to_on=None,
                 decision_reference=None,
@@ -1206,10 +1215,14 @@ def test_outcome_compatibility_writer_does_not_replace_a_source_owned_non_known_
         session.commit()
 
     with Session(engine) as session:
+        persisted = session.scalar(select(InspectionOutcome).where(InspectionOutcome.case_id == case_id))
+        assert persisted is not None
+        expected_version = persisted.row_version
         with pytest.raises(Exception, match="source-owned non-KNOWN"):
             service.upsert_inspection_outcome(
                 session,
                 case_id=case_id,
+                expected_version=expected_version,
                 inspected_on=date(2026, 8, 25),
                 inspected_to_on=None,
                 decision_reference=None,

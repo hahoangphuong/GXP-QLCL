@@ -4068,3 +4068,69 @@ def test_case_application_numeric_token_does_not_implicitly_create_stage():
         assert session.scalar(select(func.count(CaseApplication.id))) == 0
     engine.dispose()
 
+
+def test_case_assessment_null_token_is_create_only_and_does_not_leak_audit():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    user = build_authenticated_user("assessment-cas", "manager")
+    with Session(engine) as session:
+        case_id = seed_case(session)
+
+    def write(session, *, expected_version, value):
+        return service.upsert_case_assessment(
+            session, case_id=case_id, expected_version=expected_version,
+            assessed_on=None, assessor_name=value, assessment_result=None,
+            notes=None, reason="Assessment CAS", user=user,
+            fields_set={"assessor_name"},
+        )
+
+    with Session(engine) as session:
+        created = write(session, expected_version=None, value="Original assessor")
+        session.commit()
+        version = created["row_version"]
+
+    with Session(engine) as session:
+        audit_count = session.scalar(select(func.count(AuditEvent.id)))
+        event_count = session.scalar(select(func.count(InspectionEvent.id)))
+        with pytest.raises(HTTPException) as error:
+            write(session, expected_version=None, value="stale null draft")
+        assert error.value.status_code == 409
+        session.rollback()
+    with Session(engine) as session:
+        assessment = session.scalar(select(CaseAssessment).where(CaseAssessment.case_id == case_id))
+        assert assessment.assessor_name == "Original assessor"
+        assert assessment.row_version == version
+        assert session.scalar(select(func.count(AuditEvent.id))) == audit_count
+        assert session.scalar(select(func.count(InspectionEvent.id))) == event_count
+        updated = write(session, expected_version=version, value="Current assessor")
+        session.commit()
+        assert updated["assessor_name"] == "Current assessor"
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as error:
+            write(session, expected_version=version, value="stale numeric draft")
+        assert error.value.status_code == 409
+        session.rollback()
+    engine.dispose()
+
+
+def test_case_assessment_numeric_token_cannot_create_missing_stage():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    with Session(engine) as session:
+        case_id = seed_case(session)
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as error:
+            service.upsert_case_assessment(
+                session, case_id=case_id, expected_version=1,
+                assessed_on=None, assessor_name="untrusted first update",
+                assessment_result=None, notes=None, reason=None,
+                user=build_authenticated_user("assessment-create", "manager"),
+                fields_set={"assessor_name"},
+            )
+        assert error.value.status_code == 409
+        session.rollback()
+    with Session(engine) as session:
+        assert session.scalar(select(func.count(CaseAssessment.id))) == 0
+    engine.dispose()

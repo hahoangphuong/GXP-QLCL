@@ -160,17 +160,42 @@ export function App() {
   }, [location.pathname]);
 
   useEffect(() => {
-    if (oidcSession && !isOidcSessionValid(oidcSession)) {
-      setAccessGeneration((current) => current + 1);
-      setOidcSession(null);
+    if (!oidcSession) {
       clearOidcSession();
       return;
     }
-    if (oidcSession) {
-      saveOidcSession(oidcSession);
-    } else {
-      clearOidcSession();
+
+    const session = oidcSession;
+    let active = true;
+    let timer: number | undefined;
+    function checkExpiry() {
+      if (!active) return;
+      window.clearTimeout(timer);
+      if (!isOidcSessionValid(session)) {
+        active = false;
+        setAccessGeneration((current) => current + 1);
+        setOidcSession(null);
+        clearOidcSession();
+        return;
+      }
+      // Match the existing 30-second validity margin. Recheck on resume too:
+      // suspended/background tabs may delay timers or observe a changed clock.
+      const remaining = session.expires_at_epoch_seconds * 1000 - Date.now() - 30_000;
+      timer = window.setTimeout(checkExpiry, Math.max(1, Math.min(remaining, 2_147_483_647)));
     }
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") checkExpiry();
+    }
+    checkExpiry();
+    if (isOidcSessionValid(oidcSession)) saveOidcSession(oidcSession);
+    window.addEventListener("focus", checkExpiry);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+      window.removeEventListener("focus", checkExpiry);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [oidcSession]);
 
   useEffect(() => {

@@ -4134,3 +4134,63 @@ def test_case_assessment_numeric_token_cannot_create_missing_stage():
     with Session(engine) as session:
         assert session.scalar(select(func.count(CaseAssessment.id))) == 0
     engine.dispose()
+
+@pytest.mark.parametrize("kind", ("plan", "outcome"))
+def test_inspection_stage_create_only_null_and_versioned_updates(kind):
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    service = CaseWorkflowService()
+    user = build_authenticated_user("inspection-cas", "manager")
+    with Session(engine) as session:
+        case_id = seed_case(session)
+
+    def write(session, version, value):
+        if kind == "plan":
+            return service.upsert_inspection_plan(
+                session, case_id=case_id, expected_version=version,
+                plan_start_on=None, plan_end_on=None, planning_sheet_name=value,
+                decision_document_hint=None, reason=None, user=user,
+                fields_set={"planning_sheet_name"},
+            )
+        return service.upsert_inspection_outcome(
+            session, case_id=case_id, expected_version=version,
+            inspected_on=None, inspected_to_on=None, decision_reference=None,
+            bbkt_reference=None, outcome_result=value, reason=None, user=user,
+            fields_set={"outcome_result"},
+        )
+
+    model = InspectionPlan if kind == "plan" else InspectionOutcome
+    field = "planning_sheet_name" if kind == "plan" else "outcome_result"
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as err:
+            write(session, 1, "ghost")
+        assert err.value.status_code == 409
+        session.rollback()
+        assert session.scalar(select(func.count(model.id))) == 0
+
+    with Session(engine) as session:
+        created = write(session, None, "initial")
+        session.commit()
+        version = created["row_version"]
+    with Session(engine) as session:
+        audits = session.scalar(select(func.count(AuditEvent.id)))
+        events = session.scalar(select(func.count(InspectionEvent.id)))
+        with pytest.raises(HTTPException) as err:
+            write(session, None, "stale null")
+        assert err.value.status_code == 409
+        session.rollback()
+    with Session(engine) as session:
+        stage = session.scalar(select(model).where(model.case_id == case_id))
+        assert getattr(stage, field) == "initial"
+        assert stage.row_version == version
+        assert session.scalar(select(func.count(AuditEvent.id))) == audits
+        assert session.scalar(select(func.count(InspectionEvent.id))) == events
+        updated = write(session, version, "current")
+        session.commit()
+        assert updated[field] == "current"
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as err:
+            write(session, version, "old version")
+        assert err.value.status_code == 409
+        session.rollback()
+    engine.dispose()

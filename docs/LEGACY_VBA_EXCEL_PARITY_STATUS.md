@@ -1,6 +1,6 @@
 # Legacy VBA/Excel business parity status
 
-Version: **1.4 — 2026-10-31**. Historical inventory baseline main
+Version: **1.5 — 2026-10-31**. Historical inventory baseline main
 `5062b5a3f50f06d8b8348d95199b0bbe5e8f395c`. Scope: available workbook/add-in
 source, approved contracts, current frontend/backend source, regression and
 isolated browser fixtures. This is not authenticated staging, production UAT,
@@ -487,3 +487,121 @@ new session regressions PASS repeatedly. Typecheck/lint/build PASS; existing
 >500kB bundle advisory retained. Relevant backend contract suites139PASS.
 Issue236's isolated actual-HTTP RED remains an explicit backend handoff, outside
 the passing project suite; it was not skipped, fixed downstream or called GREEN.
+
+## Master / Facility / Case lifecycle / History — v1.5, 2026-10-31
+
+Fetched baseline `c3168aac3ee9f2e3516791f8123d5ffd7a7ebccc` contains PR237.
+This pass audits FacilityTable, FacilitySummary/FacilityWorkspaceTabs,
+FacilityHistoryPane/HistoryTable/PersistedCertificateHistory, CaseLifecycleActions,
+CaseApplication/Processing and SearchPage's selection, creation and transition
+owners. Legacy MainForm selected-row resolution/InsertNewKtraDB, TaiDKForm's
+explicit accepted/canceled return and Module1.ReFilter delegation were read
+statically. No Office binary or macro ran. ADR0037 and request-owned commit,
+canonical reassessment/line and approved workflow contracts remain authoritative.
+
+### Proven gaps, last-correct / first-incorrect
+
+- **Master reactivation:** roving focus and canonical result_key were already
+  correct. SearchPage nevertheless cleared selectedHistoryId whenever that same
+  row was activated, discarding the mounted Case draft. Single and repeated-click
+  RED plus a real browser double-click RED establish the defect. Settled same-row
+  activation now leaves selection, URL and draft unchanged. Pending/failed deep
+  links still use the existing explicit-selection escape; different Site/line
+  identity still changes context normally. No FacilityTable/layout rewrite.
+- **Transition intent:** readiness already supplies opaque action key, typed
+  target and Case version. Execute used refreshed action props with an old reason
+  (also after a rejected blank-reason attempt). The editor now captures the
+  reviewed action/target/version at first input or invocation, retains it on
+  failure, and offers local Cancel/review. It requires numeric positive integral
+  versions, does not interpret action keys, and still honors current backend
+  availability. Immediate in-flight protection prevents pre-render double
+  activation; it is not server idempotency. Canonical Case UUID owns its lifetime.
+- **Transition completion:** its SearchPage follow-up adopted the current owner
+  after await, allowing old A success/409 to start a fourth Case GET after A-B-A.
+  Both success and conflict follow-ups now carry the owner captured before POST.
+  No transition policy or server locking changed; same-owner409 still performs
+  the existing canonical refresh and retains the reviewed intent.
+- **Reassessment intent:** the dialog's source formerly followed mutable selected
+  history at Submit. It now snapshots selected source UUID/reference, displays it
+  read-only, and closes the old intent on Site/line/history replacement. No
+  chronology/filename/KHKT inference. Empty history still allows source_case_id
+  null when the backend grants creation. An additional commit-level RED found
+  activation briefly enabled before the initial history owner was selected;
+  action visibility now waits for that client context to settle without changing
+  backend permission/readiness policy.
+- **Reassessment request:** two submits before the pending render dispatched two
+  POSTs. A synchronous, owner-bound flight guard serializes that intent. Success,
+  failure and follow-up refresh use the captured owner; old source A completion
+  cannot close/error a new A dialog after A-B-A. Isolated guard-removal RED proves
+  both cases, with byte-identical source restoration. New-generation manual
+  re-entry/network replay remains distinct from duplicate clicks and is not
+  claimed exactly-once.
+- **Reassessment focus:** the old aria-modal markup lacked a boundary Tab trap.
+  A small dialog-lifetime wrapper reuses the unchanged certificate focus hook:
+  background inert, Tab/Shift+Tab/programmatic containment, zero-enabled-control
+  pending fallback and cleanup. Explicit close restores the trigger after inert
+  cleanup. SearchPage retains business state. Source metadata spans one new row;
+  existing three context fields/layout remain. Local intent Cancel/source display
+  are web concurrency/identity safeguards, not newly inferred VBA fields/actions.
+
+### Acceptance matrix and dimensions
+
+| Surface / dimension | Concrete verification | Limit |
+|---|---|---|
+| Master UI / interaction | UNIT_VERIFIED and full-App Edge fixture: same canonical row preserves selected history/dossier draft; Arrow/Home/End focus-only; native Enter activates exact line; one Tab entry | User-approved table/rail/two filters/action panel unchanged; no full legacy runtime claim |
+| Facility Summary / data | FIXTURE_VERIFIED A/B lines on the same Site and C on another Site, distinct server-projected summary/certificate text, external URL Back/Forward/reload | Summary does not invent certificate UUID/current/coverage policy; multi-certificate server projection remains backend-owned |
+| Search / history | FIXTURE_VERIFIED actual held old search after newer response, empty/503 hide old history, canonical history reorder/reload, focus-only keys without GET; existing master/history/persisted-version suites | No chronological identity substitution; business history and audit remain separate evidence |
+| Transition workflow / concurrency | UNIT_VERIFIED reviewed numeric token, target replacement,403/409/422/network retention, pending, local Cancel, A-B-A and session expiry; full-App fixture late completion and conflict | No backend optional-version policy change; Issue234 remains separately owned |
+| Reassessment workflow / identity | UNIT_VERIFIED explicit source snapshot, initial owner stability, empty source, duplicate submit, replacement, late success/failure, expiry, focus; fixture source/line payload | Backend validates compatible Site/GxP/line and controls permitted copying; no new mutation API |
+| Persistence | DISPOSABLE_API_VERIFIED: unchanged FastAPI, actual full frontend/browser and typed API, explicit synthetic SQLite/header_stub. Create Case -> canonical GET -> URL-selected UUID -> reload; user enters dossier; numeric transition -> GET/reload | Not Google OIDC or PostgreSQL acceptance. Seeded source has no populated scope-copy evidence; approved scope-copy coverage stays in backend contracts |
+| Authorization / negative writes | Actual server reader403, source-line mismatch422, stale transition409 and duplicate creation409; read-only DB check finds exactly one new Case and three structured audit events | Header_stub roles are local tests, not authenticated A/B identities or production RBAC proof |
+| Documents / legacy runtime | Existing QDKT/PCT/CT/CAPA typed-output boundaries preserved | Word/NAS/speech/VBA runtime/production UAT NOT_EXECUTED; metadata/history is not legal binary evidence |
+
+Browser fixture viewports1366x768/1920x1080/390x844 have document/client widths
+1366/1366,1920/1920,390/390. Each final full-shell scenario records68 requests,
+four explicit POST attempts (three transition intents and one create), zero
+focus-only GET/mutation and no duplicate form POST. Existing internal selections
+use URL REPLACE; Back/Forward evidence deliberately uses external URL entries.
+An initial browser expectation treated internal REPLACE as a pushed entry; that
+setup failure is not a product defect and no navigation contract was changed.
+The dialog/source metadata fits at each viewport, with pending/error keyboard
+and explicit Escape/Cancel restoration. Synthetic screenshots and scripts stay
+outside Git in `.codex/evidence/master-lifecycle-history-20261031/`.
+
+Real disposable acceptance has27 browser API requests, one UI create and one UI
+transition. Original three closed synthetic Cases remain; one new Case and three
+structured audit events persist. Rejected commands add no Case. The new dossier
+is user-entered, not copied from source or KHKT. This is REQUEST_ACCEPTED +
+CANONICAL_READBACK_VERIFIED + RELOAD_PERSISTENCE_VERIFIED and a separate
+AUDIT_VERIFIED_DISPOSABLE_SQLITE_ONLY snapshot, not authenticated acceptance.
+
+### Remaining gates
+
+At this checkpoint Issue236 is OPEN and backend PR238 is OPEN (catalog approval
+case_id projection repair). Neither backend branch is imported or edited here;
+Approval GET/reload remains BLOCKED until a merged source is available and
+retested. PR235 PostgreSQL tests remain independent. Google OIDC A/B acceptance,
+native screen reader and original legacy runtime remain NOT_EXECUTED. No deploy,
+remote rehearsal/production/NAS/GCS write, schema/API/RBAC/storage change or
+original binary modification. PR206 remains frozen OPEN/DRAFT, Issues74/144 OPEN,
+ready_to_render=False and legal issuance disabled. Overall modules remain
+IMPLEMENTED_PARTIAL; next is canonical Approval readback on merged backend and
+permitted authenticated lifecycle acceptance, then separately proven UI gaps.
+
+The new local transition-Cancel control is also measured with browser Range/DOM
+bounds: the inherited fixed-height/nowrap action row initially failed containment.
+Scoped CaseLifecycleActions wrapping/content height now contains every label at
+all three viewports. No global overflow hiding, business mutation or master layout
+change. This is presentation verification of the web intent controls, not a VBA
+runtime geometry assertion.
+
+Validation for v1.5: final full frontend631PASS/0FAIL/0SKIP in39files
+(full-precommit.log,250.13s), no final act/unhandled warnings. Component/master/
+history/persisted-version targeted51PASS twice; parent/session22PASS twice.
+Typecheck/lint/buildPASS; existing large-bundle advisory retained. Relevant
+backend contracts108PASS. No timeout, assertion or test skip was relaxed.
+Several earlier local runs had varying unrelated timeouts, one worker RPC error
+and unusually extended wall-clock durations; none is counted as PASS. Intermediate
+625/629 clean runs are not substituted for the final631-run evidence. The
+initial-history activation race was separately proven with a deterministic
+commit-level RED and fixed at the owner, not by changing old test assertions.

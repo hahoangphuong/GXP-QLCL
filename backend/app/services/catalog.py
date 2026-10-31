@@ -2674,7 +2674,7 @@ class CatalogReadService:
                 "final_evaluation_readiness": final_evaluation_readiness,
                 "approval_actions": approval_actions,
                 "approval_submissions": [
-                    {"approval_submission_id": item.id, "stage": item.stage, "round_no": item.round_no,
+                    {"approval_submission_id": item.id, "case_id": item.case_id, "stage": item.stage, "round_no": item.round_no,
                      "reference": item.reference, "submitted_on": item.submitted_on, "submitted_time": item.submitted_time,
                      "completed_on": item.completed_on, "completed_time": item.completed_time,
                      "pct_submission_id": item.pct_submission_id, "row_version": item.row_version}

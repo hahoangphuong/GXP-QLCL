@@ -1215,9 +1215,10 @@ describe("App Slice A.4 search workspace", () => {
     expect(container.querySelector(".event-workspace-body.has-scope-context > .event-step-content + .event-scope-context")).not.toBeNull();
     expect(container.querySelectorAll(".workflow-stepper")).toHaveLength(1);
 
+    const workflowSteps = within(container.querySelector(".workflow-stepper") as HTMLElement);
     for (const step of ["Hồ sơ", "Kiểm tra", "Khắc phục", "Xử lý", "Chứng nhận GxP", "Chứng nhận ĐĐK"]) {
-      fireEvent.click(screen.getByRole("button", { name: CASE_EVENT_LABELS[step] ?? step }));
-      expect(screen.getByRole("button", { name: CASE_EVENT_LABELS[step] ?? step })).toHaveClass("active");
+      fireEvent.click(workflowSteps.getByRole("button", { name: CASE_EVENT_LABELS[step] ?? step }));
+      expect(workflowSteps.getByRole("button", { name: CASE_EVENT_LABELS[step] ?? step })).toHaveClass("active");
       expect(screen.getAllByRole("tab", { name: "Phạm vi đánh giá" })).toHaveLength(1);
       expect(screen.getAllByRole("heading", { name: "Phạm vi chứng nhận GPs", hidden: true })).toHaveLength(1);
     }
@@ -4612,7 +4613,7 @@ describe("App Slice A.4 search workspace", () => {
     const gxpCertificateTable = document.querySelector(".certificate-history-table");
     expect(within(gxpCertificateTable as HTMLElement).queryByRole("columnheader", { name: "GxP" })).not.toBeInTheDocument();
     expect(within(gxpCertificateTable as HTMLElement).getByRole("columnheader", { name: "DC" })).toBeInTheDocument();
-    expect(screen.getByText("195/GCN-QLD")).toBeInTheDocument();
+    expect(within(gxpCertificateTable as HTMLElement).getByText("195/GCN-QLD")).toBeInTheDocument();
     expect(screen.getByText("533/GCN-QLD")).toBeInTheDocument();
     expect(await screen.findByText("Thuốc không vô trùng")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Đặt làm chứng nhận hiện hành" })).toBeEnabled();
@@ -4870,6 +4871,92 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks[load]).toHaveBeenCalledTimes(2);
   });
 
+  it.each([
+    { kind: "gxp", action: "edit" }, { kind: "ddk", action: "edit" },
+    { kind: "gxp", action: "promote" }, { kind: "ddk", action: "promote" },
+  ] as const)("ignores $kind $action readback from the previous A-B-A selection generation", async ({ kind, action }) => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
+    const gxp = kind === "gxp";
+    const idKey = gxp ? "certificate_id" : "business_eligibility_certificate_id";
+    const tab = gxp ? "Giấy chứng nhận GxP" : "Giấy chứng nhận đủ điều kiện";
+    const editLabel = gxp ? "Cập nhật chứng nhận" : "Cập nhật GCN đủ điều kiện";
+    const table = gxp ? "Danh mục GCN GxP" : "Danh mục GCN đủ điều kiện";
+    const base = { site_id: "site-1", company_id: "company-1", case_id: "case-1", certificate_type: "GMP", line_code: "A", production_line_id: "line-uuid-1", context_match_kind: "exact_line", latest_flag: true, certificate_number: "SAME", issue_date: null, issued_on: null, expiry_date: null, issuance_sequence_text: "1", scopes: [], linked_gxp_certificates: [],
+      row_version: 7, action_readiness: [
+        { action_key: "edit_latest_version", label: editLabel, available: true, expected_version: 7, required_permissions: ["certificate.edit"], reason_code: null },
+        { action_key: "promote_current", label: "Đặt hiện hành", available: true, expected_version: 7, required_permissions: ["certificate.approve"], reason_code: null },
+      ] };
+    const list = gxp ? apiMocks.listSiteGxpCertificates : apiMocks.listSiteBusinessEligibilityCertificates;
+    const load = gxp ? apiMocks.getGxpCertificateDetail : apiMocks.getBusinessEligibilityDetail;
+    const mutate = action === "promote"
+      ? gxp ? apiMocks.promoteGxpCertificateCurrent : apiMocks.promoteBusinessEligibilityCurrent
+      : gxp ? apiMocks.upsertGxpCertificateLatestVersion : apiMocks.upsertBusinessEligibilityLatestVersion;
+    list.mockResolvedValue({ items: ["A", "B"].map(id => ({ ...base, [idKey]: id })), issue_readiness: null });
+    let resolveOld!: (value: unknown) => void;
+    load.mockResolvedValueOnce({ ...base, [idKey]: "A", facility_name: "Initial A" })
+      .mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }))
+      .mockResolvedValueOnce({ ...base, [idKey]: "B", facility_name: "Current B" })
+      .mockResolvedValueOnce({ ...base, [idKey]: "A", facility_name: "Current A generation", row_version: 9 });
+    mutate.mockResolvedValue(null);
+    renderApp([`/search?gxp_type=GMP&facility_tab=${encodeURIComponent(tab)}`]);
+    await screen.findByText("Initial A");
+    if (action === "edit") {
+      fireEvent.click(screen.getByRole("button", { name: editLabel }));
+      fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+    } else {
+      const promote = screen.getByRole("button", { name: "Đặt hiện hành" });
+      act(() => { promote.click(); promote.click(); });
+      expect(mutate).toHaveBeenCalledOnce();
+    }
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    fireEvent.click(within(screen.getByRole("table", { name: table })).getAllByRole("row")[2]);
+    await screen.findByText("Current B");
+    fireEvent.click(within(screen.getByRole("table", { name: table })).getAllByRole("row")[1]);
+    await screen.findByText("Current A generation");
+    await act(async () => resolveOld({ ...base, [idKey]: "A", facility_name: "Obsolete A readback", row_version: 8 }));
+    expect(screen.getByText("Current A generation")).toBeInTheDocument();
+    expect(screen.queryByText("Obsolete A readback")).not.toBeInTheDocument();
+    expect(mutate).toHaveBeenCalledOnce();
+    expect(load).toHaveBeenCalledTimes(4);
+  });
+
+  it.each([
+    { kind: "gxp", action: "edit" }, { kind: "ddk", action: "edit" },
+    { kind: "gxp", action: "promote" }, { kind: "ddk", action: "promote" },
+  ] as const)("does not replay $kind $action canonical GET 409 after the version write was accepted", async ({ kind, action }) => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace({ history: [] }));
+    const gxp = kind === "gxp", idKey = gxp ? "certificate_id" : "business_eligibility_certificate_id";
+    const tab = gxp ? "Giấy chứng nhận GxP" : "Giấy chứng nhận đủ điều kiện";
+    const label = gxp ? "Cập nhật chứng nhận" : "Cập nhật GCN đủ điều kiện";
+    const current = { [idKey]: "certificate-readback", site_id: "site-1", certificate_type: "GMP", latest_flag: true, certificate_number: "Original", row_version: 7, facility_name: "Readback owner", scopes: [], linked_gxp_certificates: [],
+      action_readiness: [{ action_key: "edit_latest_version", label, available: true, expected_version: 7 }, { action_key: "promote_current", label: "Đặt hiện hành", available: true, expected_version: 7 }] };
+    const list = gxp ? apiMocks.listSiteGxpCertificates : apiMocks.listSiteBusinessEligibilityCertificates;
+    const load = gxp ? apiMocks.getGxpCertificateDetail : apiMocks.getBusinessEligibilityDetail;
+    const mutate = action === "promote" ? gxp ? apiMocks.promoteGxpCertificateCurrent : apiMocks.promoteBusinessEligibilityCurrent
+      : gxp ? apiMocks.upsertGxpCertificateLatestVersion : apiMocks.upsertBusinessEligibilityLatestVersion;
+    list.mockResolvedValue({ items: [current], issue_readiness: null });
+    load.mockResolvedValueOnce(current).mockRejectedValue(Object.assign(new Error("Canonical readback conflict"), { status: 409 }));
+    mutate.mockResolvedValue({ row_version: 8 });
+    renderApp([`/search?gxp_type=GMP&facility_tab=${encodeURIComponent(tab)}`]);
+    await screen.findByRole("button", { name: label });
+    if (action === "edit") {
+      fireEvent.click(screen.getByRole("button", { name: label }));
+      fireEvent.change(screen.getByLabelText(gxp ? "Số GCN" : "Số GCN ĐĐK"), { target: { value: "Unverified draft" } });
+      fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+    } else fireEvent.click(screen.getByRole("button", { name: "Đặt hiện hành" }));
+    await screen.findByRole("alert");
+    if (action === "edit") {
+      expect(screen.getByLabelText(gxp ? "Số GCN" : "Số GCN ĐĐK")).toHaveValue("Unverified draft");
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    }
+    expect(mutate).toHaveBeenCalledOnce();
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
   it("refreshes only the selected certificate after an edit conflict and keeps the edit form open", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
@@ -4975,7 +5062,7 @@ describe("App Slice A.4 search workspace", () => {
     expect(document.querySelector(".certificate-detail-panel.detail-pane")).not.toBeNull();
     expect(screen.getByRole("columnheader", { name: "Số GCN" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Lần" })).toBeInTheDocument();
-    expect(screen.getByText("1201/ĐKKDD-BYT")).toBeInTheDocument();
+    expect(within(screen.getByRole("table", { name: "Danh mục GCN đủ điều kiện" })).getByText("1201/ĐKKDD-BYT")).toBeInTheDocument();
     expect(await screen.findByText("Nguyễn Khắc Minh")).toBeInTheDocument();
     expect(screen.getByText("Võ Việt Hùng")).toBeInTheDocument();
     expect(screen.getByText("703/ĐKKDD-BYT")).toBeInTheDocument();

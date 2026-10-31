@@ -1,6 +1,6 @@
 # Legacy VBA/Excel business parity status
 
-Version: **1.5 — 2026-10-31**. Historical inventory baseline main
+Version: **1.6 — 2026-11-01**. Historical inventory baseline main
 `5062b5a3f50f06d8b8348d95199b0bbe5e8f395c`. Scope: available workbook/add-in
 source, approved contracts, current frontend/backend source, regression and
 isolated browser fixtures. This is not authenticated staging, production UAT,
@@ -605,3 +605,66 @@ and unusually extended wall-clock durations; none is counted as PASS. Intermedia
 625/629 clean runs are not substituted for the final631-run evidence. The
 initial-history activation race was separately proven with a deterministic
 commit-level RED and fixed at the owner, not by changing old test assertions.
+
+## v1.6 — GxP/ĐĐK certificate intent and completion ownership
+
+Starting main `9f26223280b55295420f3997022e18ed5c1ae27e`; approved main drift
+`f1002326324c12680f099f241b3a4b734d02fb41` adds Approval `case_id` projection
+and its regression only. It was audited and fast-forwarded, without taking any
+unmerged backend branch. Certificate issue, latest-version update and promotion
+remain independent actions with server-owned readiness, UUIDs and numeric tokens.
+
+Last-correct: a same-certificate refresh retains the editor's draft and original
+expected_version. First-incorrect: a selection UUID comparison alone treats the
+new A after A → B → A as the previous A. Hidden draft state revived, an old
+completion could close a newly opened editor, and old mutation readback could
+overwrite current detail. Workspace owners now discard departed edit intents;
+identity-checked close callbacks cannot close their successor. SearchPage binds
+readback/promotion feedback to committed selection generations as well as context
+and certificate UUID. Read/source/history/document owners are unchanged.
+
+Two activations before React's pending render previously bypassed state-only
+guards. Synchronous guards now cover the three certificate dialogs and the two
+promotion handlers. Case issuance captures its Case/type/basis intent; changed
+readiness blocks save without replacing the draft. ĐĐK issue also observes live
+readiness. Successful PUT/POST followed by GET409 is distinguished from a rejected
+mutation409: the canonical GET is not replayed as conflict recovery. Existing
+mutation409 refresh, draft/token retention, 403/422 errors and no automatic write
+retry remain intact. A failed GET is not canonical success.
+
+Static legacy evidence: MainForm Replace_CC/UpdateCCGPsItem_Row and
+CapNhat_DDK/GetSetDataDDKDs/ChonDDK_Thaythe use explicit selected row/Site references;
+SelectCC/SelectDDK and RecordForm remain evidence, not authority to infer current
+identity, normalize historical exceptions, fabricate source groups or generate
+legal binaries. No legacy macro execution or original binary changes.
+
+FIXTURE_VERIFIED full React browser at1366×768,1920×1080,390×844: respectively
+client/scroll widths1366/1366,1920/1920,390/390; focus-only navigation0requests.
+Same-number UUID selection, old readback after A-B-A, new draft retention,
+409/no retry, readonly historical snapshots and modal keyboard containment were
+exercised. Programmatic row activation models external context replacement during
+pending; it does not claim background mouse interaction through a modal.
+
+DISPOSABLE_API_VERIFIED: actual FastAPI HTTP/SQLite plus actual React/typed API
+browser. Synthetic two-Site/three-line data: issue3GMP +1ĐĐK, update and promote
+each, canonical GET/history, browser update/reload, server reader403, Case/Site422,
+stale409, duplicate GMP409 and cross-Site ĐĐK basis409. Eight API audit events plus
+two browser updates; numeric tokens and canonical basis UUID retained. Issue234's
+HTTP missing/null promotion token is rejected422 at this baseline; this does not
+prove PostgreSQL simultaneous promotion safety or close the backend audit.
+
+Evidence: `.codex/evidence/certificate-integrity-20261101/` outside Git. OIDC A/B,
+PostgreSQL concurrent writers, original VBA runtime, native screen reader,
+Word/signed output, NAS/GCS and production UAT remain NOT_EXECUTED. Metadata is
+not a verified binary. Modules10/11 stay IMPLEMENTED_PARTIAL; QĐKT PR206,
+Issues74/144, ready_to_render=False and legal-output barriers are unchanged.
+
+Validation v1.6: full frontend648PASS/0FAIL/0SKIP,39files; no final act/unhandled
+warnings. Targeted owners/history/source/metadata126PASS twice; SearchPage
+acceptance12PASS twice. Typecheck/lint/buildPASS (existing bundle advisory);
+backend contracts20PASS on mainf100232.28 actual HTTP checks match contract;
+two actual browser writes/reloads and ten structured audit events verified.
+Earlier full diagnostic640PASS/4FAIL is retained: one5s timeout, two globally
+ambiguous list/detail text selectors and one focus assertion waiting for callback
+entry instead of dialog closure. Tests now query the actual list/stepper owner
+and await closure before focus; no timeout increase, assertion removal or skip.

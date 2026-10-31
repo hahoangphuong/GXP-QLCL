@@ -1991,3 +1991,52 @@ Earlier timed-out/RPC-error runs are preserved as failed diagnostics, not PASS;
 no timeout/assertion/skip changes. Commit-level initial-owner RED is independent
 of those timing failures. Local source swap for creation A-B-A RED restored the
 working file byte-for-byte before final validation.
+
+## GxP/ĐĐK certificate integrity — 2026-11-01
+
+Baseline9f26223; audited/fast-forwarded mainf100232 (Approval projection only).
+Scope: existing Case issue and Facility GxP/ĐĐK mutation/selection owners; no
+layout, master/history/rail, source provenance, persisted-history or document
+contract change. Static MainForm/SelectCC/SelectDDK/RecordForm evidence supports
+explicit selected-row context; it does not establish async web editor behavior.
+
+RED→GREEN boundaries:
+
+- Same-UUID refresh correctly kept draft/token; departure A→B→A incorrectly
+  revived draft and admitted old close/readback. Editor lifetime and SearchPage
+  selection generation now own those effects. Same-number certificates stay
+  distinct UUIDs; historical snapshots remain readonly and separate from current.
+- State-only pending guards admitted two activations before render. Dialog and
+  promotion guards are synchronous, scoped to their own intent/action generation.
+- Open issue dialogs ignored withdrawn readiness; Case type/basis could change
+  under the draft. Original intent is retained, save observes live readiness.
+- Accepted version write / ĐĐK promotion followed by canonical GET409 incorrectly
+  entered mutation-conflict recovery and issued GET again. Recovery is limited
+  to a rejected mutation409; readback failure keeps its own error and no write
+  is retried. Existing numeric expected_version and conflict drafts are retained.
+
+Fixture browser1366×768/1920×1080/390×844: client=scroll1366/1920/390, no horizontal
+page overflow; Arrow/Home/End0requests, Enter/Space exact-ID activation, pending
+context replacement, old readback/new draft, 409 lock, historical snapshots,
+Tab/Shift+Tab/Escape containment verified. Six screenshots and counters outside
+Git. This is FIXTURE_VERIFIED, not native screen-reader or Google authentication.
+
+Actual disposable FastAPI/SQLite/header_stub: issue, update, promote, canonical
+GET/history and audit; browser typed API update/reload for both aggregates.
+Reader403, stale409, Case/Site422, duplicate GMP409, cross-Site basis409 and
+missing/null GxP promotion-token422 verified. No backend change/fallback. Original
+runtime source was9f26223; subsequent mainf100232 has no certificate-contract diff.
+
+EVIDENCE_MISSING: original legacy certificate editing runtime/async equivalence,
+Google OIDC two-user acceptance, native speech, PostgreSQL competing promotions,
+signed/legal output and binary storage. No inferred source/successor relationships,
+dates/current identity, new document actions or legal-output readiness introduced.
+User-approved UI exceptions and prospective GMP/historical-exception rules stay.
+
+Validation: frontend648PASS/0FAIL/0SKIP in39files, final log without act/unhandled
+warnings; targeted126PASS twice, SearchPage12PASS twice; typecheck/lint/buildPASS;
+backend20PASS. Initial full640PASS/4FAIL diagnostics retained and corrected at
+test query/synchronization owners, without larger timeouts or weaker assertions.
+28 real HTTP checks plus2 browser writes/reloads; audit10events. Fixture64requests
+per viewport,6 intentional PUTs (write/readback race, mutation409 and accepted
+write/GET409 for each aggregate); focus-only0requests, no automatic write retry.

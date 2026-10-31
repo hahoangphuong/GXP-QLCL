@@ -1,13 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { CertificateIssueActionReadiness, CertificateIssueRequest } from "../../types";
 import { useCertificateDialogFocus } from "./useCertificateDialogFocus";
 
 type ScopeDraft = CertificateIssueRequest["scopes"][number];
 
-function CertificateIssueDialog({ caseId, readiness, onClose, onIssue }: {
+function CertificateIssueDialog({ caseId, readiness, saveAvailable, onClose, onIssue }: {
   caseId: string;
   readiness: CertificateIssueActionReadiness;
+  saveAvailable: boolean;
   onClose: () => void;
   onIssue: (payload: CertificateIssueRequest) => Promise<void>;
 }) {
@@ -18,6 +19,7 @@ function CertificateIssueDialog({ caseId, readiness, onClose, onIssue }: {
   const [reason, setReason] = useState("");
   const [scopes, setScopes] = useState<ScopeDraft[]>([]);
   const [pending, setPending] = useState(false);
+  const inFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -52,7 +54,8 @@ function CertificateIssueDialog({ caseId, readiness, onClose, onIssue }: {
   }
 
   async function submit() {
-    if (pending) return;
+    if (inFlight.current || !saveAvailable) return;
+    inFlight.current = true;
     setPending(true);
     setError(null);
     try {
@@ -75,6 +78,7 @@ function CertificateIssueDialog({ caseId, readiness, onClose, onIssue }: {
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Không thể cấp giấy chứng nhận.");
     } finally {
+      inFlight.current = false;
       setPending(false);
     }
   }
@@ -108,7 +112,7 @@ function CertificateIssueDialog({ caseId, readiness, onClose, onIssue }: {
       </section>
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       <div className="panel-actions certificate-edit-dialog-actions">
-        <button disabled={pending} onClick={() => void submit()} type="button">{pending ? "Đang cấp..." : "Cấp giấy chứng nhận"}</button>
+        <button disabled={pending || !saveAvailable} onClick={() => void submit()} type="button">{pending ? "Đang cấp..." : "Cấp giấy chứng nhận"}</button>
         <button disabled={pending} onClick={onClose} type="button">Hủy</button>
       </div>
     </section>
@@ -120,13 +124,19 @@ export function CaseCertificateIssueWorkspace({ caseId, readiness, onIssue }: {
   readiness: CertificateIssueActionReadiness | null;
   onIssue: (payload: CertificateIssueRequest) => Promise<void>;
 }) {
-  const [open, setOpen] = useState(false);
+  const [intent, setIntent] = useState<{ caseId: string; readiness: CertificateIssueActionReadiness } | null>(null);
+  const [intentCaseId, setIntentCaseId] = useState(caseId);
+  if (intentCaseId !== caseId) {
+    setIntentCaseId(caseId);
+    setIntent(null);
+  }
   if (!readiness || readiness.action_key !== "issue_certificate") return null;
   return <section className="workspace-section certificate-issue-section">
     <div className="certificate-action-bar">
-      <button disabled={!readiness.available} onClick={() => setOpen(true)} title={readiness.reason_code ?? undefined} type="button">{readiness.label}</button>
+      <button disabled={!readiness.available} onClick={() => setIntent({ caseId, readiness })} title={readiness.reason_code ?? undefined} type="button">{readiness.label}</button>
       {!readiness.available && readiness.reason_code ? <span>{readiness.reason_code}</span> : null}
     </div>
-    {open ? <CertificateIssueDialog caseId={caseId} onClose={() => setOpen(false)} onIssue={onIssue} readiness={readiness} /> : null}
+    {intent ? <CertificateIssueDialog caseId={intent.caseId} onClose={() => setIntent(current => current === intent ? null : current)} onIssue={onIssue} readiness={intent.readiness}
+      saveAvailable={readiness.available && readiness.certificate_type === intent.readiness.certificate_type && readiness.issuance_basis === intent.readiness.issuance_basis} /> : null}
   </section>;
 }

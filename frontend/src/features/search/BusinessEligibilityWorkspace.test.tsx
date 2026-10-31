@@ -106,6 +106,45 @@ function baseProps() {
 }
 
 describe("Eligibility certificate keyboard and identity", () => {
+  it.each(["issue", "edit"])("submits %s only once before pending renders", async mode => {
+    let finish!: () => void;
+    const props = baseProps();
+    const save = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+    if (mode === "issue") props.onIssue = save; else props.onEditLatestVersion = save;
+    render(<BusinessEligibilityWorkspace {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: mode === "issue" ? "Cấp GCN đủ điều kiện" : "Cập nhật GCN đủ điều kiện" }));
+    const button = within(screen.getByRole("dialog")).getByRole("button", { name: mode === "issue" ? "Cấp GCN" : "Lưu thay đổi" });
+    act(() => { button.click(); button.click(); });
+    expect(save).toHaveBeenCalledOnce();
+    await act(async () => finish());
+  });
+  it("preserves an issue draft but blocks submission after readiness is withdrawn", () => {
+    const props = baseProps();
+    const { rerender } = render(<BusinessEligibilityWorkspace {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "Cấp GCN đủ điều kiện" }));
+    fireEvent.change(screen.getByLabelText("Số GCN ĐĐK"), { target: { value: "retained" } });
+    rerender(<BusinessEligibilityWorkspace {...props} issueReadiness={{ ...props.issueReadiness, available: false }} />);
+    expect(screen.getByLabelText("Số GCN ĐĐK")).toHaveValue("retained");
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Cấp GCN" })).toBeDisabled();
+    expect(props.onIssue).not.toHaveBeenCalled();
+  });
+  it("discards an editor on A to B to A and ignores its late completion", async () => {
+    let finish!: () => void;
+    const props = baseProps();
+    props.onEditLatestVersion = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+    const { rerender } = render(<BusinessEligibilityWorkspace {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "Cập nhật GCN đủ điều kiện" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Số GCN ĐĐK" }), { target: { value: "old A draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+    rerender(<BusinessEligibilityWorkspace {...props} selectedCertificateId="dkkd-2" detail={{ ...detail(), business_eligibility_certificate_id: "dkkd-2" }} />);
+    rerender(<BusinessEligibilityWorkspace {...props} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cập nhật GCN đủ điều kiện" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Số GCN ĐĐK" }), { target: { value: "new A draft" } });
+    await act(async () => finish());
+    expect(screen.getByRole("textbox", { name: "Số GCN ĐĐK" })).toHaveValue("new A draft");
+    expect(props.onEditLatestVersion).toHaveBeenCalledOnce();
+  });
   it("mounts ĐĐK document metadata separately from source evidence and canonical basis", () => {
     const props = baseProps();
     const { container } = render(<BusinessEligibilityWorkspace {...props} documentMetadata={{ status: "ready", data: {
@@ -263,6 +302,7 @@ describe("Eligibility certificate keyboard and identity", () => {
     expect(input).toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
     await waitFor(() => expect(props.onEditLatestVersion).toHaveBeenCalledWith(expect.objectContaining({ expected_version: 4, certificate_number: "draft survives" })));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(trigger).toHaveFocus();
   });
 });

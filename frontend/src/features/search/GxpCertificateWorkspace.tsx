@@ -1,7 +1,7 @@
 import { PersistedCertificateHistory } from "./PersistedCertificateHistory";
 import type { HistoryState } from "./usePersistedCertificateHistory";
 import type { GxpCertificateVersionHistory } from "../../types";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
@@ -38,6 +38,7 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
   const [reason, setReason] = useState("");
   const [scopes, setScopes] = useState<ScopeDraft[]>(() => buildScopeDrafts(detail.scopes));
   const [pending, setPending] = useState(false);
+  const inFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [conflicted, setConflicted] = useState(false);
   const dialogRef = useCertificateDialogFocus();
@@ -74,7 +75,8 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
   }
 
   async function submit() {
-    if (pending || conflicted || !saveAvailable) return;
+    if (inFlight.current || conflicted || !saveAvailable) return;
+    inFlight.current = true;
     setPending(true);
     setError(null);
     try {
@@ -102,6 +104,7 @@ export function GxpCertificateEditDialog({ detail, expectedVersion, onClose, onS
       }
       setError(nextError instanceof Error ? nextError.message : "Không thể cập nhật giấy chứng nhận.");
     } finally {
+      inFlight.current = false;
       setPending(false);
     }
   }
@@ -173,6 +176,11 @@ export function GxpCertificateWorkspace({
   onEditLatestVersion: (payload: CertificateLatestVersionUpsertRequest) => Promise<void>;
 }) {
   const [editDraft, setEditDraft] = useState<{ detail: GxpCertificateDetail; expectedVersion: number } | null>(null);
+  const [draftSelection, setDraftSelection] = useState(selectedCertificateId);
+  if (draftSelection !== selectedCertificateId) {
+    setDraftSelection(selectedCertificateId);
+    setEditDraft(null);
+  }
   const hintId = useId();
   const rowProps = useCertificateRows(items.map((item) => item.certificate_id), selectedCertificateId, onSelectCertificate, listLoading || Boolean(listError));
   // The selected ID, never the certificate number or version, owns visibility.
@@ -273,7 +281,7 @@ export function GxpCertificateWorkspace({
         )}
         {selectedCertificateId && versionHistory ? <PersistedCertificateHistory kind="gxp" state={versionHistory} /> : null}
       </section>
-      {visibleDraft ? <GxpCertificateEditDialog detail={visibleDraft.detail} expectedVersion={visibleDraft.expectedVersion} saveAvailable={!detailLoading && (detail?.action_readiness ?? []).some(action => action.action_key === "edit_latest_version" && action.available)} onClose={() => setEditDraft(null)} onSave={onEditLatestVersion} onStaleConflict={() => undefined} /> : null}
+      {visibleDraft ? <GxpCertificateEditDialog detail={visibleDraft.detail} expectedVersion={visibleDraft.expectedVersion} saveAvailable={!detailLoading && (detail?.action_readiness ?? []).some(action => action.action_key === "edit_latest_version" && action.available)} onClose={() => setEditDraft(current => current === visibleDraft ? null : current)} onSave={onEditLatestVersion} onStaleConflict={() => undefined} /> : null}
     </div>
   );
 }

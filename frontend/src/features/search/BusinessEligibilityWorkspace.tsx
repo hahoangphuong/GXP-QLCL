@@ -1,7 +1,7 @@
 import { PersistedCertificateHistory } from "./PersistedCertificateHistory";
 import type { HistoryState } from "./usePersistedCertificateHistory";
 import type { BusinessEligibilityVersionHistory } from "../../types";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
@@ -65,6 +65,7 @@ export function BusinessEligibilityMutationDialog({
   const [reason, setReason] = useState("");
   const [links, setLinks] = useState<LinkDraft[]>(() => buildLinkDrafts(detail));
   const [pending, setPending] = useState(false);
+  const inFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [conflicted, setConflicted] = useState(false);
   const dialogRef = useCertificateDialogFocus();
@@ -93,11 +94,12 @@ export function BusinessEligibilityMutationDialog({
   }
 
   async function submit() {
-    if (pending || conflicted || !saveAvailable) return;
+    if (inFlight.current || conflicted || !saveAvailable) return;
     if (mode === "edit" && expectedVersion === null) {
       setError("Thiếu phiên bản đồng bộ để cập nhật GCN đủ điều kiện.");
       return;
     }
+    inFlight.current = true;
     setPending(true);
     setError(null);
     const common: BusinessEligibilityIssueRequest = {
@@ -126,6 +128,7 @@ export function BusinessEligibilityMutationDialog({
       }
       setError(nextError instanceof Error ? nextError.message : "Không thể lưu GCN đủ điều kiện.");
     } finally {
+      inFlight.current = false;
       setPending(false);
     }
   }
@@ -229,6 +232,11 @@ export function BusinessEligibilityWorkspace({
 }) {
   const [issueOpen, setIssueOpen] = useState(false);
   const [editDraft, setEditDraft] = useState<{ detail: BusinessEligibilityDetail; expectedVersion: number } | null>(null);
+  const [draftSelection, setDraftSelection] = useState(selectedCertificateId);
+  if (draftSelection !== selectedCertificateId) {
+    setDraftSelection(selectedCertificateId);
+    setEditDraft(null);
+  }
   const hintId = useId();
   const rowProps = useCertificateRows(items.map((item) => item.business_eligibility_certificate_id), selectedCertificateId, onSelectCertificate, listLoading || Boolean(listError));
   detail = detail?.business_eligibility_certificate_id === selectedCertificateId ? detail : null;
@@ -310,6 +318,7 @@ export function BusinessEligibilityWorkspace({
         detail={null}
         expectedVersion={null}
         mode="issue"
+        saveAvailable={issueReadiness?.available === true}
         onClose={() => setIssueOpen(false)}
         onEdit={onEditLatestVersion}
         onIssue={onIssue}
@@ -324,7 +333,7 @@ export function BusinessEligibilityWorkspace({
         expectedVersion={visibleDraft.expectedVersion}
         mode="edit"
         saveAvailable={!detailLoading && edit?.available === true}
-        onClose={() => setEditDraft(null)}
+        onClose={() => setEditDraft(current => current === visibleDraft ? null : current)}
         onEdit={onEditLatestVersion}
         onIssue={onIssue}
         onStaleConflict={() => undefined}

@@ -10,6 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from backend.app.db.base import Base
+from backend.app.db.enums import CaseState
 from backend.app.db.models.phase1 import Case, Certificate, Company, Site
 from backend.app.services.catalog import CatalogReadService
 from backend.app.services.workflow import CaseWorkflowService
@@ -31,6 +32,7 @@ def test_linked_certificate_requires_primary_site_until_coverage_is_reviewed(cro
             linked_case = Case(
                 site_id=other.id if cross_site else primary.id,
                 gxp_type="GMP",
+                state=CaseState.DRAFT,
             )
             session.add(linked_case)
             session.flush()

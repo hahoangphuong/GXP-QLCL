@@ -4061,6 +4061,11 @@ class CaseWorkflowService:
         user: AuthenticatedUser,
     ) -> dict[str, Any]:
         certificate = self._get_certificate(session, certificate_id)
+        # A Site serializes promotions across every certificate context that it owns.
+        # Re-read the candidate after acquiring the lock so competing promotions
+        # cannot use a stale version/readiness snapshot.
+        self._lock_site(session, certificate.site_id)
+        session.refresh(certificate)
         self._assert_expected_version(certificate, expected_version, label="certificate")
         candidate_version = self._load_latest_certificate_version(session, certificate.id)
         blocker = self._get_certificate_promotion_blocker(

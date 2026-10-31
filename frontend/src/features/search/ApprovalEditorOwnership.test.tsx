@@ -24,6 +24,17 @@ function setup(value = workspace()) {
   return { ...view, handlers, refresh: (next: CaseWorkspace) => view.rerender(<StrictMode><CaseApprovalWorkspace caseWorkspace={next} {...handlers} /></StrictMode>) };
 }
 describe("Approval canonical editor ownership", () => {
+  it.each(["create", "complete"])("deduplicates %s activations before pending is rendered", async mode => {
+    const request = deferred<never>();
+    const view = setup();
+    const handler = mode === "create" ? view.handlers.onCreate : view.handlers.onComplete;
+    handler.mockImplementation(() => request.promise);
+    if (mode === "complete") fireEvent.change(screen.getByLabelText("Ngày hoàn tất trình"), { target: { value: "2026-11-01" } });
+    const button = screen.getByRole("button", { name: mode === "create" ? "Tạo trình PCT" : "Hoàn tất PCT" });
+    act(() => { button.click(); button.click(); });
+    expect(handler).toHaveBeenCalledOnce();
+    await act(async () => request.resolve({} as never));
+  });
   it.each([403, 404, 409, 422, undefined])("retains create/completion drafts for status %s without retry", async status => {
     const view = setup();
     view.handlers.onCreate.mockRejectedValue(Object.assign(new Error("Rejected create"), { status }));

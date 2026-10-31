@@ -2040,3 +2040,49 @@ test query/synchronization owners, without larger timeouts or weaker assertions.
 28 real HTTP checks plus2 browser writes/reloads; audit10events. Fixture64requests
 per viewport,6 intentional PUTs (write/readback race, mutation409 and accepted
 write/GET409 for each aggregate); focus-only0requests, no automatic write retry.
+
+## Cross-workflow / Approval acceptance — 2026-11-01
+
+Baseline22b7aa2; audited approved main drift13670d9 (PR245 Site lock/candidate
+refresh and PostgreSQL regression only). No backend branch or storage owner was
+modified. Parity status v1.7 contains the boundary-by-boundary acceptance matrix;
+existing module classifications remain partial.
+
+DISPOSABLE_API_VERIFIED: actual FastAPI/SQLite/header_stub,166 HTTP checks and
+68 initial command/audit events. Master/Line→new Case→intake/assessment→Plan/
+Outcome→CAPA→PCT/CT→GMP/GLP/GMPbb→ĐĐK have canonical readback. CAPA first rejected,
+then accepted; no fabricated extra round after acceptance. Approval rows include
+the Case UUID after PR240, CT uses an explicit completed PCT UUID, and stale409,
+viewer403 and foreign parent422 are real HTTP negatives. GLP/GMPbb keep their own
+type/Case/Line/current identities; no GMP-specific guard was copied into UI.
+
+Root causes and RED evidence: state-only pending admitted duplicate Approval
+activations; accepted POST/failed GET or unknown response allowed another round;
+component-local pending/review disappeared on tab remount. Final SearchPage
+coordinator owns an access-generation/Case-UUID barrier, with local synchronous
+activation protection. No successful POST is synthesized into canonical GET.
+Known HTTP errors retain existing token/draft handling. Case workspace validation,
+request cancellation and late-owner checks remain authoritative.
+
+Browser actual API at1366×768/1920×1080/390×844: client=scroll1366/1920/390,
+focus-only0GETs; PCT/CT multi-round create/complete/readback/reload, canonical
+parent/token, workflow and Facility certificate round-trips, modal containment,
+history/Back/Forward, readonly snapshots and unknown provenance checked. Actual
+commit plus injected missing response/GET503 blocks replay at all widths; a held
+real response remains pending across tab remount. Synthetic session fixture tests
+expiry, role change, logout and A-B-A without late GET/data adoption. No Google
+credential acceptance inferred from a synthetic token or header_stub.
+
+EVIDENCE_MISSING / NOT_EXECUTED: authenticated Google A/B, native screen reader,
+original VBA runtime, successor issuance acceptance, legal typed PCT/CT/CAPA and
+Word/NAS output. Unsaved inline input currently resets on tab unmount; no evidence
+establishes legacy equivalence, and this slice does not add persistent draft
+storage. Recovery/pending barriers survive remount; discarded input is not
+misrepresented as retained draft. Master/history/rail and approved layout stay.
+
+Final validation: frontend656PASS/0FAIL/0SKIP,39files, no act/unhandled warnings;
+targeted65PASS twice and parent9PASS twice; typecheck/lint/buildPASS; relevant
+backend110PASS on13670d9. RED logs include duplicate activation, actual committed
+PCT/GET503 replay, ambiguous-response recovery and tab-remount bypass. One earlier
+targeted Plan timeout remains a diagnostic failure, not a relaxed test.125 final
+synthetic audit events include all controlled probes; no production/storage data.

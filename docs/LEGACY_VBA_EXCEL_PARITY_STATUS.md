@@ -1,6 +1,6 @@
 # Legacy VBA/Excel business parity status
 
-Version: **1.6 — 2026-11-01**. Historical inventory baseline main
+Version: **1.7 — 2026-11-01**. Historical inventory baseline main
 `5062b5a3f50f06d8b8348d95199b0bbe5e8f395c`. Scope: available workbook/add-in
 source, approved contracts, current frontend/backend source, regression and
 isolated browser fixtures. This is not authenticated staging, production UAT,
@@ -668,3 +668,89 @@ Earlier full diagnostic640PASS/4FAIL is retained: one5s timeout, two globally
 ambiguous list/detail text selectors and one focus assertion waiting for callback
 entry instead of dialog closure. Tests now query the actual list/stepper owner
 and await closure before focus; no timeout increase, assertion removal or skip.
+
+## v1.7 — Cross-workflow disposable acceptance and Approval recovery
+
+Starting main `22b7aa29a48b5b9fb0f571aace5488c49c8cabf0`. Approved drift
+`13670d957d617cfa5acdad6299f7878b35dafaea` (PR245) adds a Site lock and candidate
+refresh for GMP promotion plus a PostgreSQL race regression. It was audited and
+fast-forwarded; this frontend work does not modify that backend owner or PR242.
+
+The serial HTTP acceptance server loaded22b7aa2. Its own fresh SQLite contains
+synthetic Sites/ProductionLines and closed source Cases only. Actual HTTP then
+creates three new Cases, writes intake/assessment, Plan/Outcome, performs explicit
+state transitions, exercises rejected→accepted CAPA rounds, completed PCT→CT
+parents and multiple Approval rounds, issues/updates/promotes GMP, GLP and GMPbb,
+and creates ĐĐK with three explicit canonical basis UUIDs. All166 HTTP checks
+match the observed contract;68 successful commands have68 structured audit events.
+Transitions are audit facts, not invented proof of stage completion. Direct DB
+readback separately verifies stored dossier/assessment values and that promoting
+one GxP type did not clear another type's current flag. No GMP-only prospective
+rule is imposed on GLP/GMPbb. Sourcegroup provenance stays unknown when no legacy
+identity exists; canonical basis links are not reclassified as Excel sourcegroups.
+
+Actual defects reproduced before fixes:
+
+- Two Approval activations before pending render issued two commands. A local
+  state-only pending check was the first incorrect boundary; synchronous guards
+  now cover create/complete, without changing permissions or numeric tokens.
+- Accepted PCT creation followed by canonical GET503 retained input but permitted
+  another POST, creating a second round. A lost POST response is equally
+  unverified. SearchPage now owns pending/review state by access generation and
+  canonical Case UUID. It survives workflow/facility tab remount and blocks blind
+  manual replay; known HTTP403/409/422 handling is preserved. Canonical readback
+  failure never becomes success or a fabricated mutation response.
+- A component-local recovery barrier disappeared on tab remount. RED covers that
+  boundary as well as pending remount; the final owner is SearchPage, exposed by
+  a narrow React context. Existing editor inputs/tokens remain editor-owned.
+  Drafts stay readable after failure; users can copy them before authoritative
+  reload. No draft is persisted to browser storage. Existing tab-unmount loss of
+  unsaved inline input is recorded below, not represented as draft persistence.
+
+Acceptance matrix (named scenarios only; no full-parity promotion):
+
+| Boundary/category | Evidence and result | Remaining limit |
+| --- | --- | --- |
+| Master→Site/Line→Case; Workflow/Data | Actual React search/deep-link and HTTP Case creation; UUIDs retained through type/context navigation | Not imported-data reconciliation |
+| Intake/Assessment→Inspection; Persistence | Actual writes, canonical workspace and stored values; Plan/Outcome owners remain distinct from assessment | Original VBA runtime not executed |
+| Inspection→CAPA; Workflow | Two real rounds: first rejected, second accepted; transition denied while unaccepted; assessor bound to server AppUser | New round after accepted is correctly409, not a parity defect |
+| Inspection→PCT/CT; Persistence | Create/complete, fresh GET/reload, multiple rounds, explicit completed PCT parent, stale409, viewer403, wrong-Case parent422 | Legal PCT/CT output is separate |
+| Case→GxP→ĐĐK; Data | Real GMP/GLP/GMPbb issue/update/promote/readiness/versions and three-basis ĐĐK | No original signed binary or legal output claim |
+| Certificate source/history/successor; Workflow/Data | Canonical Case/Line source and persisted-history reads; unknown legacy provenance remains unknown | Successor issuance scenario NOT_EXECUTED; do not infer replacement links |
+| Audit/history; Persistence/UI | Structured DB audit; actual Case/history URL, cross-module and Back/Forward navigation | No unsupported global audit UI added |
+| Authorization | Real header_stub viewer403 and foreign CT parent422; synthetic session expiry/role/logout fixture | NOT_EXECUTED_AUTH_DEPENDENCY for Google OIDC A/B; relationship checks are not tenant-authorization proof |
+| Error recovery; Runtime/UI | Actual committed writes with injected GET failure/lost response; pending/remount/reload and no replay | NOT_EXECUTED for real network infrastructure failures |
+| Legal documents; Document output | Existing readiness barriers retained; no rendering or storage fallback | PR206/Issues74/144, ready_to_render=False unchanged; Word/NAS acceptance NOT_EXECUTED |
+
+Full React/actual HTTP browser at1366×768,1920×1080,390×844: client=scroll at
+1366/1920/390; no new overflow or clipped Approval buttons. Verified PCT/CT
+reloads, expected_version, parent UUID, six workflow steps, Facility GxP/ĐĐK
+round-trip, readonly history/source state, modal Tab/ShiftTab/Escape and focus
+return, history identity, Back/Forward and focus-only0requests. Actual committed
+write/lost-response and GET-outage probes keep one command per intent, including
+tab remount. A held real response also keeps the Case's Approval busy through
+remount until canonical readback. Synthetic-token browser scenarios exercise
+A→B→A, late response, expiry, role change and logout; they are explicitly
+SYNTHETIC_SESSION_FIXTURE, never AUTHENTICATED_VERIFIED.
+
+Remaining gaps: EVIDENCE_MISSING for desired legacy unsaved inline-draft behavior
+on workflow tab unmount (current local inputs reset, with no mutation); original
+VBA runtime/pixel acceptance; native speech; Google A/B credentials and permitted
+synthetic records; successor scenario; Word/PCT/CT/CAPA typed output and binary
+storage. No new UI module, template, NAS path, state or business permission map.
+Evidence and failed diagnostics remain outside Git in
+`.codex/evidence/cross-workflow-acceptance-20261101/`.
+
+Static MainForm DataKT26/27 map edPT_PCT/edPT_CT, and DataKT21–24 map legacy
+CAPA reference/date controls. Those scalar fields do not establish a two-round
+web limit or authority to flatten canonical PCT/CT/CAPA histories. Original
+workbook/add-in/Word binaries were not modified or executed.
+
+Final validation: frontend656PASS/0FAIL/0SKIP in39files, without act/unhandled
+warnings; component/Inspection/CAPA regression65PASS twice, parent Approval/
+ownership regression9PASS twice. Typecheck/lint/buildPASS; backend contracts
+110PASS after audited main13670d9. The existing bundle-size advisory remains.
+Earlier intentional REDs and a targeted unrelated Plan5s timeout are retained,
+not counted as PASS; no timeout/assertion/skip changes. Final disposable DB has
+125 structured audit events including controlled RED and browser probes; initial
+serial acceptance has68 events for68 successful commands. No remote DB/NAS/GCS.

@@ -3873,6 +3873,64 @@ describe("App Slice A.4 search workspace", () => {
     expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(2);
   });
 
+  it.each(["create", "complete"] as const)("retains approval %s pending ownership through workflow tab remount", async action => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    apiMocks.getCaseWorkspace.mockResolvedValue(buildCaseWorkspace({ inspection: { ...buildCaseWorkspace().inspection,
+      approval_actions: [{ action_key: "create_approval_pct", available: true }, { action_key: "complete_approval:pct-remount", available: true, expected_version: 4 }],
+      approval_submissions: [{ approval_submission_id: "pct-remount", case_id: "case-1", row_version: 4, stage: "PCT", round_no: 1, completed_on: null }],
+    } }));
+    let finish!: (value: unknown) => void;
+    const mutate = action === "create" ? apiMocks.createInspectionApprovalSubmission : apiMocks.completeInspectionApprovalSubmission;
+    mutate.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    renderApp(["/search"]);await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    if (action === "complete") fireEvent.change(screen.getByLabelText("Ngày hoàn tất trình"), { target: { value: "2026-11-01" } });
+    fireEvent.click(screen.getByRole("button", { name: action === "create" ? "Tạo trình PCT" : "Hoàn tất PCT" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hồ sơ đăng ký" }));
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    expect(screen.getByRole("button", { name: "Tạo trình PCT" })).toBeDisabled();
+    expect(mutate).toHaveBeenCalledOnce();
+    await act(async () => finish({ approval_submission_id: "pct-remount", case_id: "case-1", row_version: 5 }));
+  });
+
+  it.each([
+    { action: "create", failure: "readback" }, { action: "complete", failure: "readback" },
+    { action: "create", failure: "network" }, { action: "complete", failure: "network" },
+  ] as const)("requires canonical review before replaying approval $action after $failure ambiguity", async ({ action, failure }) => {
+    apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
+    apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });
+    apiMocks.getFacilityWorkspace.mockResolvedValue(buildWorkspace());
+    const initial = buildCaseWorkspace({ inspection: { ...buildCaseWorkspace().inspection,
+      approval_actions: [
+        { action_key: "create_approval_pct", available: true, expected_version: null, label: "Tạo trình PCT", required_permissions: [] },
+        { action_key: "complete_approval:pct-1", available: true, expected_version: 4, label: "Hoàn tất PCT", required_permissions: [] },
+      ],
+      approval_submissions: [{ approval_submission_id: "pct-1", case_id: "case-1", stage: "PCT", round_no: 1, row_version: 4, completed_on: null }],
+    } });
+    apiMocks.getCaseWorkspace.mockResolvedValueOnce(initial).mockRejectedValue(Object.assign(new Error("Readback unavailable"), { status: 503 }));
+    const mutate = action === "create" ? apiMocks.createInspectionApprovalSubmission : apiMocks.completeInspectionApprovalSubmission;
+    if (failure === "network") mutate.mockRejectedValue(new TypeError("Response lost after send"));
+    else mutate.mockResolvedValue({ approval_submission_id: "pct-1", case_id: "case-1", row_version: 5 });
+    renderApp(["/search"]);
+    await screen.findByText("HS-001");
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    const input = screen.getByLabelText(action === "create" ? "Tham chiếu trình" : "Ngày hoàn tất trình");
+    fireEvent.change(input, { target: { value: action === "create" ? "Unverified intent" : "2026-11-01" } });
+    const button = screen.getByRole("button", { name: action === "create" ? "Tạo trình PCT" : "Hoàn tất PCT" });
+    fireEvent.click(button);
+    await screen.findByRole("alert");
+    expect(input).toHaveValue(action === "create" ? "Unverified intent" : "2026-11-01");
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(mutate).toHaveBeenCalledOnce();
+    expect(apiMocks.getCaseWorkspace).toHaveBeenCalledTimes(failure === "readback" ? 2 : 1);
+    fireEvent.click(screen.getByRole("button", { name: "Hồ sơ đăng ký" }));
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra thực tế" }));
+    expect(screen.getByRole("button", { name: "Tạo trình PCT" })).toBeDisabled();
+  });
+
   it("saves inspection plan with plan row_version, refreshes only selected case workspace, and preserves Kiểm tra context", async () => {
     apiMocks.getAppStatus.mockResolvedValue(buildStatus("header_stub", null));
     apiMocks.searchFacilities.mockResolvedValue({ items: [buildSearchResult()], total_count: 1, offset: 0, limit: 100 });

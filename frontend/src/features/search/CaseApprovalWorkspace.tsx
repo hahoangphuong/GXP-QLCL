@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useContext, useMemo, useRef, useState } from "react";
 
 import { formatCompactDate } from "../../lib/presentation";
+import { ApprovalMutationContext } from "./approvalMutationRecovery";
 import type {
   CaseWorkspace,
   InspectionApprovalSubmissionCompleteRequest,
@@ -11,10 +12,11 @@ import type {
 
 type Submission = CaseWorkspace["inspection"]["approval_submissions"][number];
 
-function ApprovalCompletionEditor({ item, readiness, pending, onComplete }: {
+function ApprovalCompletionEditor({ item, readiness, pending, requiresReview, onComplete }: {
   item: Submission;
   readiness: LifecycleActionReadiness | undefined;
   pending: boolean;
+  requiresReview: boolean;
   onComplete: (id: string, payload: InspectionApprovalSubmissionCompleteRequest) => Promise<boolean>;
 }) {
   const [draft, setDraft] = useState({ date: "", time: "", reason: "" });
@@ -30,7 +32,7 @@ function ApprovalCompletionEditor({ item, readiness, pending, onComplete }: {
     setError(null);
   }
   async function complete() {
-    if (pending || !readiness?.available || version == null || !draft.date) return;
+    if (pending || requiresReview || !readiness?.available || version == null || !draft.date) return;
     setError(null);
     try {
       if (await onComplete(item.approval_submission_id, {
@@ -46,8 +48,8 @@ function ApprovalCompletionEditor({ item, readiness, pending, onComplete }: {
       <input aria-label="Ngày hoàn tất trình" disabled={pending || !readiness?.available} type="date" value={draft.date} onChange={(event) => change("date", event.target.value)} />
       <input aria-label="Giờ hoàn tất trình" disabled={pending || !readiness?.available} type="time" value={draft.time} onChange={(event) => change("time", event.target.value)} />
       <input aria-label="Lý do hoàn tất trình" disabled={pending || !readiness?.available} value={draft.reason} onChange={(event) => change("reason", event.target.value)} />
-      <button disabled={pending || !readiness?.available || version == null || !draft.date} onClick={() => void complete()} type="button">Hoàn tất {item.stage}</button>
-      {version !== undefined ? <button aria-label={`Hủy nhập hoàn tất ${item.stage} lần ${item.round_no}`} disabled={pending} onClick={reset} type="button">Hủy nhập hoàn tất</button> : null}
+      <button disabled={pending || requiresReview || !readiness?.available || version == null || !draft.date} onClick={() => void complete()} type="button">Hoàn tất {item.stage}</button>
+      {version !== undefined ? <button aria-label={`Hủy nhập hoàn tất ${item.stage} lần ${item.round_no}`} disabled={pending || requiresReview} onClick={reset} type="button">Hủy nhập hoàn tất</button> : null}
     </div>
     {error ? <p className="form-error" role="alert">{error}</p> : null}
   </div>;
@@ -68,6 +70,8 @@ function CaseApprovalEditor({
   const [createReason, setCreateReason] = useState("");
   const [parentId, setParentId] = useState("");
   const [pending, setPending] = useState<string | null>(null);
+  const inFlight = useRef(false);
+  const { pending: ownerPending, requiresReview } = useContext(ApprovalMutationContext);
   const [error, setError] = useState<string | null>(null);
 
   const submissions = useMemo(
@@ -82,8 +86,9 @@ function CaseApprovalEditor({
 
   async function create(stage: "PCT" | "CT") {
     const readiness = action(`create_approval_${stage.toLowerCase()}`);
-    if (!readiness?.available || pending || (stage === "CT" && !parentId)) return;
+    if (!readiness?.available || inFlight.current || ownerPending || requiresReview || (stage === "CT" && !parentId)) return;
     if (stage === "CT" && !hasSelectedParent) return;
+    inFlight.current = true;
     setPending(readiness.action_key);
     setError(null);
     try {
@@ -98,19 +103,22 @@ function CaseApprovalEditor({
     } catch (value) {
       setError(value instanceof Error ? value.message : "Không thể tạo trình phê duyệt.");
     } finally {
+      inFlight.current = false;
       setPending(null);
     }
   }
 
   async function complete(id: string, payload: InspectionApprovalSubmissionCompleteRequest): Promise<boolean> {
     const readiness = action(`complete_approval:${id}`);
-    if (!readiness?.available || pending) return false;
+    if (!readiness?.available || inFlight.current || ownerPending || requiresReview) return false;
+    inFlight.current = true;
     setPending(readiness.action_key);
     setError(null);
     try {
       await onComplete(id, payload);
       return true;
     } finally {
+      inFlight.current = false;
       setPending(null);
     }
   }
@@ -118,16 +126,16 @@ function CaseApprovalEditor({
   return <section className="workspace-section case-approval-workspace">
     <h4>Trình phê duyệt PCT / CT</h4>
     <div className="panel-actions">
-      <input aria-label="Tham chiếu trình" disabled={pending !== null} value={reference} onChange={(event) => setReference(event.target.value)} />
-      <input aria-label="Ngày trình" disabled={pending !== null} type="date" value={submittedOn} onChange={(event) => setSubmittedOn(event.target.value)} />
-      <input aria-label="Giờ trình" disabled={pending !== null} type="time" value={submittedTime} onChange={(event) => setSubmittedTime(event.target.value)} />
-      <input aria-label="Lý do tạo trình" disabled={pending !== null} value={createReason} onChange={(event) => setCreateReason(event.target.value)} />
-      <button disabled={!action("create_approval_pct")?.available || pending !== null} onClick={() => void create("PCT")} type="button">Tạo trình PCT</button>
-      <select aria-label="PCT hoàn tất cho CT" disabled={pending !== null} value={parentId} onChange={(event) => setParentId(event.target.value)}>
+      <input aria-label="Tham chiếu trình" disabled={pending !== null || ownerPending} value={reference} onChange={(event) => setReference(event.target.value)} />
+      <input aria-label="Ngày trình" disabled={pending !== null || ownerPending} type="date" value={submittedOn} onChange={(event) => setSubmittedOn(event.target.value)} />
+      <input aria-label="Giờ trình" disabled={pending !== null || ownerPending} type="time" value={submittedTime} onChange={(event) => setSubmittedTime(event.target.value)} />
+      <input aria-label="Lý do tạo trình" disabled={pending !== null || ownerPending} value={createReason} onChange={(event) => setCreateReason(event.target.value)} />
+      <button disabled={!action("create_approval_pct")?.available || pending !== null || ownerPending || requiresReview} onClick={() => void create("PCT")} type="button">Tạo trình PCT</button>
+      <select aria-label="PCT hoàn tất cho CT" disabled={pending !== null || ownerPending} value={parentId} onChange={(event) => setParentId(event.target.value)}>
         <option value="">Chọn PCT đã hoàn tất</option>
         {completedPct.map((item) => <option key={item.approval_submission_id} value={item.approval_submission_id}>PCT lần {item.round_no}</option>)}
       </select>
-      <button disabled={!action("create_approval_ct")?.available || !hasSelectedParent || pending !== null} onClick={() => void create("CT")} type="button">Tạo trình CT</button>
+      <button disabled={!action("create_approval_ct")?.available || !hasSelectedParent || pending !== null || ownerPending || requiresReview} onClick={() => void create("CT")} type="button">Tạo trình CT</button>
     </div>
     {submissions.map((item) => {
       const readiness = action(`complete_approval:${item.approval_submission_id}`);
@@ -139,11 +147,12 @@ function CaseApprovalEditor({
         <span>Ngày hoàn tất: {formatCompactDate(item.completed_on)}</span>
         <span>Giờ hoàn tất: {item.completed_time ?? "Chưa có"}</span>
         {item.stage === "CT" ? <span>PCT: {item.pct_submission_id ?? "Chưa có"}</span> : null}
-        <ApprovalCompletionEditor item={item} readiness={readiness} pending={pending !== null} onComplete={complete} />
+        <ApprovalCompletionEditor item={item} readiness={readiness} pending={pending !== null || ownerPending} requiresReview={requiresReview} onComplete={complete} />
         {!readiness?.available && readiness?.reason_code ? <span className="workspace-note">{readiness.reason_code}</span> : null}
       </div>;
     })}
     {error ? <p className="form-error" role="alert">{error}</p> : null}
+    {requiresReview ? <p className="workspace-note" role="status">Chưa xác minh kết quả ghi. Giữ bản sao bản nháp và tải lại hồ sơ trước khi thao tác tiếp.</p> : null}
   </section>;
 }
 
